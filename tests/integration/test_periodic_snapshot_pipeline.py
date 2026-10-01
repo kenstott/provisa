@@ -26,7 +26,7 @@ from types import SimpleNamespace
 
 import duckdb
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.schema_org import event_status, events, node_freshness_state
@@ -55,7 +55,10 @@ class _DuckEngine:
     def __init__(self, con):
         self.con = con
 
-    async def execute_engine(self, sql: str):
+    # Mirrors the real ENGINE terminal's contract (provisa/federation/runtime.py execute_engine):
+    # REQ-1760 callers (provisa/mv/refresh.py) name what authorizes each statement.
+    async def execute_engine(self, sql: str, params=None, *, authorization=None):
+        del params, authorization
         cur = self.con.execute(sql)
         cols = [d[0] for d in cur.description] if cur.description else []
         return SimpleNamespace(column_names=cols, rows=cur.fetchall())
@@ -63,17 +66,13 @@ class _DuckEngine:
 
 @asynccontextmanager
 async def _control_plane(tmp_path):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'cp.db'}")
-    async with engine.begin() as c:
-        await c.run_sync(
-            lambda s: events.metadata.create_all(
-                s, tables=[events, event_status, node_freshness_state]
-            )
-        )
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cp.db'}")
+    with engine.begin() as c:
+        events.metadata.create_all(c, tables=[events, event_status, node_freshness_state])
     try:
         yield Database(engine, name="cp")
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 def _mv() -> MVDefinition:

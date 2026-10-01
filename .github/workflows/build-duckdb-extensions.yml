@@ -43,8 +43,18 @@ jobs:
       - name: Sync (pins DuckDB + provisa; the mirror derives the list from the connector defs)
         run: uv sync --frozen --extra dev
 
+      # packaging/duckdb-ext/pyproject.toml is the source of truth for the DuckDB version these blobs
+      # are built for. The root lock resolves duckdb through the PUBLISHED provisa-duckdb-ext, so a
+      # version bump would otherwise mirror the previous DuckDB's extensions under the new pin.
+      - name: Install the DuckDB version provisa-duckdb-ext pins
+        shell: bash
+        run: |
+          set -euo pipefail
+          PIN=$(uv run --no-sync python -c "import tomllib;d=tomllib.load(open('packaging/duckdb-ext/pyproject.toml','rb'));print([x for x in d['project']['dependencies'] if x.startswith('duckdb==')][0])")
+          uv pip install "$PIN"
+
       - name: Mirror + prove-load DuckDB extensions
-        run: uv run python scripts/ci/mirror_duckdb_extensions.py dist/duckdb-ext/${{ matrix.label }}
+        run: uv run --no-sync python scripts/ci/mirror_duckdb_extensions.py dist/duckdb-ext/${{ matrix.label }}
 
       - name: Package
         shell: bash
@@ -137,6 +147,8 @@ jobs:
         run: |
           set -o pipefail
           python -m venv /tmp/toolchain-venv
+          # `python -m venv` seeds the runner's bundled pip, which pip-audit then flags; upgrade it first.
+          /tmp/toolchain-venv/bin/pip install --upgrade pip -q
           /tmp/toolchain-venv/bin/pip install --upgrade build cyclonedx-bom pip-audit -q
           mkdir -p sbom
           /tmp/toolchain-venv/bin/cyclonedx-py environment --of JSON \

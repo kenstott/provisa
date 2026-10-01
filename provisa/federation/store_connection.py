@@ -224,10 +224,12 @@ def apply_cdc_duckdb_native(
     store's landing table through the engine's own connection (REQ-989/REQ-1733) — the duckdb-native
     mirror of ``materialize_exec.apply_cdc`` for a store the engine itself holds the file handle for.
 
-    A primary key is REQUIRED — without one there is no identity to upsert or delete by. Each event
-    applies as its own DELETE-then-INSERT (upsert) or DELETE (tombstone) in stream order, so a
-    delete immediately followed by a re-insert of the same key within one debounced batch still
-    converges correctly."""
+    A primary key is REQUIRED — without one there is no identity to upsert or delete by. Applying
+    the events one DELETE/INSERT at a time in stream order leaves each key at its LAST event's
+    outcome (a later upsert's row, or absent after a later delete), so the batch is applied as that
+    net effect in two set statements: DELETE every touched key, then bulk-INSERT each key whose last
+    event is an upsert. Confirmed live: per-event statements took over ten minutes to land
+    large_federated_join's ~3M keyed rows while holding the store lock."""
     if not pk_columns:
         raise ValueError(
             f"CDC land into {_qualified(catalog, schema, table)} requires primary key columns "
@@ -238,20 +240,68 @@ def apply_cdc_duckdb_native(
     con.execute(_create_ddl(catalog, schema, table, columns))  # create-if-absent (first land)
     qualified = _qualified(catalog, schema, table)
     colnames = [name for name, _ in columns]
-    pk_where = " AND ".join(f'"{c}" = ?' for c in pk_columns)
     counts = {"upsert": 0, "delete": 0}
+    last: dict[tuple[Any, ...], Any] = {}
     for ev in events:
-        pk_vals = [ev.row.get(c) for c in pk_columns]
-        con.execute(f"DELETE FROM {qualified} WHERE {pk_where}", pk_vals)
-        if ev.operation.lower() == "delete":
-            counts["delete"] += 1
-            continue
-        collist = ", ".join(f'"{cn}"' for cn in colnames)
-        placeholders = ", ".join("?" * len(colnames))
-        data = [ev.row.get(cn) for cn in colnames]
-        con.execute(f"INSERT INTO {qualified} ({collist}) VALUES ({placeholders})", data)
-        counts["upsert"] += 1
+        last[tuple(ev.row.get(c) for c in pk_columns)] = ev
+        counts["delete" if ev.operation.lower() == "delete" else "upsert"] += 1
+    if not last:
+        return counts
+    import uuid
+
+    import pandas as pd
+
+    keys_view = f"_cdc_keys_{uuid.uuid4().hex}"
+    con.register(keys_view, pd.DataFrame(list(last), columns=pd.Index(pk_columns)))
+    try:
+        pk_list = ", ".join(f'"{c}"' for c in pk_columns)
+        con.execute(
+            f'DELETE FROM {qualified} WHERE ({pk_list}) IN (SELECT {pk_list} FROM "{keys_view}")'
+        )
+    finally:
+        con.unregister(keys_view)
+    upserts = [ev.row for ev in last.values() if ev.operation.lower() != "delete"]
+    _bulk_insert_rows(con, qualified, colnames, upserts)
     return counts
+
+
+def upsert_arrow_duckdb_native(
+    con: Any,
+    *,
+    catalog: str,
+    schema: str,
+    table: str,
+    columns: list[tuple[str, str]],
+    pk_columns: list[str],
+    data: Any,
+) -> int:
+    """Upsert the Arrow table ``data`` by ``pk_columns`` into the DuckDB store's landing table
+    (REQ-1865/REQ-1901), columnar end to end: one DELETE of every key ``data`` carries, one
+    INSERT ... SELECT from the registered Arrow table -- no per-row Python objects. ``data`` holds
+    each of ``columns`` by name (a key is trusted unique within it, REQ-1865 design constraint 6).
+    Returns the row count landed."""
+    if not pk_columns:
+        raise ValueError(
+            f"upsert into {_qualified(catalog, schema, table)} requires primary key columns"
+        )
+    dialect = _duckdb_dialect()
+    _ensure_schema(con, catalog, schema, dialect)
+    con.execute(_create_ddl(catalog, schema, table, columns))  # create-if-absent (first land)
+    qualified = _qualified(catalog, schema, table)
+    import uuid
+
+    view = f"_upsert_arrow_{uuid.uuid4().hex}"
+    con.register(view, data)
+    try:
+        pk_list = ", ".join(f'"{c}"' for c in pk_columns)
+        collist = ", ".join(f'"{name}"' for name, _ in columns)
+        con.execute(
+            f'DELETE FROM {qualified} WHERE ({pk_list}) IN (SELECT {pk_list} FROM "{view}")'
+        )
+        con.execute(f'INSERT INTO {qualified} ({collist}) SELECT {collist} FROM "{view}"')
+    finally:
+        con.unregister(view)
+    return int(data.num_rows)
 
 
 def land_duckdb_native(
@@ -345,17 +395,23 @@ def read_row_cache_duckdb_native(
             return {}
         qualified = _qualified(catalog, schema, table)
         pk_list = ", ".join(f'"{c}"' for c in pk_columns)
-        if len(pk_columns) == 1:
-            placeholders = ", ".join("?" * len(keys))
-            params: list[Any] = [k[0] for k in keys]
-            where = f'"{pk_columns[0]}" IN ({placeholders})'
-        else:
-            placeholders = ", ".join("(" + ", ".join("?" * len(pk_columns)) + ")" for _ in keys)
-            params = [v for k in keys for v in k]
-            where = f"({pk_list}) IN ({placeholders})"
-        rows = cur.execute(
-            f'SELECT {pk_list}, "{expires_column}" FROM {qualified} WHERE {where}', params
-        ).fetchall()
+        # The keys join as a registered frame, never a bound IN list: confirmed live, a 1M-key
+        # IN (?, ...) took ~18s to bind and plan for large_federated_join. The key columns may
+        # repeat in the cache (a keyed fetch on a non-PK join column, e.g. order_events.order_id),
+        # so each key reports its EARLIEST expiry -- it is fresh only while every cached row is.
+        import uuid
+
+        import pandas as pd
+
+        keys_view = f"_row_cache_keys_{uuid.uuid4().hex}"
+        cur.register(keys_view, pd.DataFrame(list(keys), columns=pd.Index(pk_columns)))
+        try:
+            rows = cur.execute(
+                f'SELECT {pk_list}, min("{expires_column}") FROM {qualified} '
+                f'WHERE ({pk_list}) IN (SELECT {pk_list} FROM "{keys_view}") GROUP BY {pk_list}'
+            ).fetchall()
+        finally:
+            cur.unregister(keys_view)
         # DuckDB's TIMESTAMP has no timezone of its own -- every _row_expires_at this module ever
         # writes is UTC (query_residency._land_row_cache stamps datetime.now(UTC)), so a naive
         # value read back is always UTC too; normalize it before the caller compares it against an

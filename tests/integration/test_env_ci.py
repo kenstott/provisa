@@ -37,13 +37,13 @@ async def registry(docker_postgres):
 
     org_id = f"envci{uuid.uuid4().hex[:8]}"
     url = (
-        f"postgresql+asyncpg://provisa:{os.environ.get('PG_PASSWORD', 'provisa')}@"
+        f"postgresql+psycopg://provisa:{os.environ.get('PG_PASSWORD', 'provisa')}@"
         f"{docker_postgres['host']}:{docker_postgres['port']}/provisa"
     )
     admin_db = Database(create_engine_from_url(url, pool_size=2), name="admin")
     await init_registry_schema(admin_db, org_id)
     yield admin_db, org_id
-    await admin_db.engine.dispose()
+    admin_db.engine.dispose()
 
 
 @pytest.fixture(autouse=True)

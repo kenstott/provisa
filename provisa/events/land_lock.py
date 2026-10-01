@@ -15,11 +15,13 @@ loop's lease and the store's atomic replace hold the line; inside one process th
 
 from __future__ import annotations
 
-import asyncio
+from provisa.core.connection_loop import CrossLoopLock
 
-_locks: dict[str, asyncio.Lock] = {}
+# REQ-1882 (amended 2026-09-29): the query path lands from pgwire/Bolt/Flight connection-thread
+# loops and the event loop from the process loop, so the lock holds across loops and threads.
+_locks: dict[str, CrossLoopLock] = {}
 
 
-def land_lock(node: str) -> asyncio.Lock:
+def land_lock(node: str) -> CrossLoopLock:
     """The lock for ``node`` (``schema.table``, the registered name both paths use)."""
-    return _locks.setdefault(node, asyncio.Lock())
+    return _locks.setdefault(node, CrossLoopLock())

@@ -22,7 +22,6 @@ Covers:
 from __future__ import annotations
 
 import asyncio
-import socket
 import ssl
 import tempfile
 import threading
@@ -39,9 +38,9 @@ from provisa.pgwire.server import ProvisaConnection, ProvisaServer  # noqa: F401
 
 
 def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+    from tests.port_lease import lease_port
+
+    return lease_port()
 
 
 def _make_server(port: int, ssl_ctx=None) -> ProvisaServer:
@@ -283,18 +282,11 @@ def test_classify_copy_is_passthrough():
 
 @pytest_asyncio.fixture(scope="module")
 async def pgwire_server_p3():
-    import provisa.pgwire.server as _srv
-
-    loop = asyncio.get_running_loop()
-    with _srv._loop_lock:
-        previous_loop = _srv._loop
-        _srv._loop = loop
+    # Each connection runs on its own thread's loop (REQ-1882); no shared loop to install.
     port = _free_port()
     server = _make_server(port)
     yield port
     server.shutdown()
-    with _srv._loop_lock:
-        _srv._loop = previous_loop
 
 
 @pytest.fixture(scope="module")
@@ -399,13 +391,6 @@ async def test_tls_connection():
     if cert_pem is None or key_pem is None:
         pytest.skip("cryptography library not available")
 
-    import provisa.pgwire.server as _srv
-
-    loop = asyncio.get_running_loop()
-    with _srv._loop_lock:
-        previous_loop = _srv._loop
-        _srv._loop = loop
-
     with tempfile.NamedTemporaryFile(suffix=".pem", delete=False) as cf:
         cf.write(cert_pem)
         cert_path = cf.name
@@ -452,8 +437,6 @@ async def test_tls_connection():
         assert "provisa" in str(row[0])
     finally:
         server.shutdown()
-        with _srv._loop_lock:
-            _srv._loop = previous_loop
 
 
 # ── SQLAlchemy psycopg2 compatibility ─────────────────────────────────────────
@@ -559,18 +542,11 @@ def _make_state_er():
 
 @pytest_asyncio.fixture(scope="module")
 async def pgwire_server_er():
-    import provisa.pgwire.server as _srv
-
-    loop = asyncio.get_running_loop()
-    with _srv._loop_lock:
-        previous_loop = _srv._loop
-        _srv._loop = loop
+    # Each connection runs on its own thread's loop (REQ-1882); no shared loop to install.
     port = _free_port()
     server = _make_server(port)
     yield port
     server.shutdown()
-    with _srv._loop_lock:
-        _srv._loop = previous_loop
 
 
 @pytest.mark.asyncio

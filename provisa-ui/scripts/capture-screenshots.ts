@@ -22,7 +22,7 @@ const VIEWPORT = { width: 1440, height: 900 };
 
 import type { Page } from "@playwright/test";
 
-const GQL_QUERY = `query InquiryCountByUser @noCache {
+const GQL_QUERY = `query InquiryCountByUser {
   ps__inquiriesGroupBy(by: [userId]) {
     groupKey
     aggregate {

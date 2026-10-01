@@ -446,7 +446,7 @@ async def test_publish_snapshot_loads_persists_and_prunes_bindings(snapshot, tmp
 
     from contextlib import asynccontextmanager
 
-    from sqlalchemy.ext.asyncio import create_async_engine
+    from provisa.core.database import create_engine_from_url
 
     from provisa.api.metadata_export import publishing
     from provisa.core.database import Database
@@ -460,21 +460,19 @@ async def test_publish_snapshot_loads_persists_and_prunes_bindings(snapshot, tmp
         registered_tables,
     )
 
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'tenant.db'}")
-    async with engine.begin() as c:
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'tenant.db'}")
+    with engine.begin() as c:
         # glossary_* + registered_tables: publish_snapshot hydrates the term graph (REQ-1387).
-        await c.run_sync(
-            lambda s: catalog_bindings.metadata.create_all(
-                s,
-                tables=[
-                    catalog_bindings,
-                    registered_tables,
-                    glossary_terms,
-                    glossary_term_refs,
-                    glossary_term_edges,
-                    glossary_term_experts,
-                ],
-            )
+        catalog_bindings.metadata.create_all(
+            c,
+            tables=[
+                catalog_bindings,
+                registered_tables,
+                glossary_terms,
+                glossary_term_refs,
+                glossary_term_edges,
+                glossary_term_experts,
+            ],
         )
     db = Database(engine, name="tenant")
 
@@ -553,7 +551,7 @@ async def test_publish_snapshot_loads_persists_and_prunes_bindings(snapshot, tmp
         stored = await catalog_binding.load_bindings(conn, "atlas")
     # The capture updated the physical key, and the departed asset's binding is pruned.
     assert stored == {uri: ("guid-1", f"{TABLE_FQN}@provisa")}
-    await engine.dispose()
+    engine.dispose()
 
 
 @pytest.mark.asyncio

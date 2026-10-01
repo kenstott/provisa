@@ -89,6 +89,15 @@ async def sql_client(monkeypatch):
     _prev_tenant_db = app_mod.state.tenant_db
     app_mod.state.tenant_db = MagicMock()
 
+    # The stand-in tenant database holds no source registry; routing reads the operator floor from
+    # it (REQ-030), and none of these sources carries one.
+    async def _no_registered_sources(_state, conn=None):
+        return []
+
+    monkeypatch.setattr(
+        "provisa.federation.registry_view.registered_sources", _no_registered_sources
+    )
+
     the_app = create_app()
 
     ctx = _make_ctx("orders", table_id=1)
@@ -218,7 +227,7 @@ class TestSqlEndpointStatsAndFormat:
                 json={"sql": "SELECT id FROM orders", "role": "org_admin"},
                 headers={"accept": "application/json", "x-provisa-stats": "true"},
             )
-        assert resp.status_code == 200
+        assert resp.status_code == 200, resp.text
         body = resp.json()
         assert "provisa_stats" in body
 

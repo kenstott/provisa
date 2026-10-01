@@ -28,8 +28,7 @@ from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.pool import StaticPool
+from provisa.core.database import create_engine_from_url
 
 from provisa.api import sandbox_org as sandbox_mod
 from provisa.api.sandbox_org import SANDBOX_ORG_ID, ensure_sandbox_org
@@ -39,17 +38,13 @@ from provisa.core.schema_admin import AWAITING_CHECKOUT, metadata, orgs
 
 @pytest.fixture
 async def admin_db():
-    engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
-        poolclass=StaticPool,
-        connect_args={"check_same_thread": False},
-    )
-    async with engine.begin() as conn:
-        await conn.run_sync(metadata.create_all)
+    engine = create_engine_from_url("sqlite+pysqlite:///:memory:")
+    with engine.begin() as conn:
+        metadata.create_all(conn)
     try:
         yield Database(engine, "test")
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 @pytest.fixture
@@ -80,8 +75,9 @@ def spawned(monkeypatch):
 
 async def _drain():
     """Await the background build the seed spawns, so what it did is there to assert on."""
+    # REQ-1882: the build runs on a background worker; its future is awaited from this loop.
     while sandbox_mod._build_tasks:
-        await asyncio.gather(*list(sandbox_mod._build_tasks))
+        await asyncio.gather(*(asyncio.wrap_future(f) for f in list(sandbox_mod._build_tasks)))
 
 
 async def _row(pool):
@@ -193,13 +189,9 @@ async def tenant_dbs(monkeypatch):
 
     made = []
     for _ in range(2):
-        engine = create_async_engine(
-            "sqlite+aiosqlite:///:memory:",
-            poolclass=StaticPool,
-            connect_args={"check_same_thread": False},
-        )
-        async with engine.begin() as conn:
-            await conn.run_sync(org_metadata.create_all)
+        engine = create_engine_from_url("sqlite+pysqlite:///:memory:")
+        with engine.begin() as conn:
+            org_metadata.create_all(conn)
         made.append((engine, Database(engine, "test")))
     root, sandbox = made[0][1], made[1][1]
 
@@ -216,7 +208,7 @@ async def tenant_dbs(monkeypatch):
         yield SimpleNamespace(root=root, sandbox=sandbox)
     finally:
         for engine, _ in made:
-            await engine.dispose()
+            engine.dispose()
 
 
 async def _assign(db, user_id, role_id):

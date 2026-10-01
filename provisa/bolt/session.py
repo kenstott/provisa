@@ -24,6 +24,7 @@ import provisa.bolt.messages as msg
 from provisa.auth.throttle import LockedOut
 from provisa.bolt.packstream import pack_message
 from provisa.bolt.websocket import BoltWriter
+from provisa.compiler.directives import NO_CACHE_HINT, cache_hint_for
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
 log = logging.getLogger(__name__)
@@ -1127,7 +1128,7 @@ async def _maybe_invoke_metric_call(
     from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
 
     sql = metric_semantic_sql(name, dims)
-    plan = await _govern_and_route_compiled(sql, role_id, buffered=True)
+    plan = await _govern_and_route_compiled(sql, role_id, buffered=True, cache_hint=NO_CACHE_HINT)
     result = await _execute_plan(plan)
     return list(result.column_names), [list(row) for row in result.rows]
 
@@ -1255,22 +1256,38 @@ async def _execute_cypher(
     # (github.com/kenstott/provisa/issues/123).
     from provisa.transpiler.router import Route
 
+    # REQ-544: the Cypher request's own `// @provisa cache` opt-in, carried onto every plan.
+    cache_hint = cache_hint_for("cypher", cypher)
     plan = await _govern_and_route_compiled(
-        semantic_sql, role_id, exec_params=resolved_params or None, deliver=deliver
+        semantic_sql,
+        role_id,
+        exec_params=resolved_params or None,
+        deliver=deliver,
+        cache_hint=cache_hint,
     )
     if plan.route != Route.ENGINE and plan.source_id:
-        from provisa.api.rest.cypher_router import _dispatch_execution_direct
+        from provisa.api.rest.cypher_router import (
+            _dispatch_execution_direct,
+            cached_cypher_rows,
+            store_cypher_rows,
+        )
         from provisa.pgwire._pipeline import require_governed_plan
 
         require_governed_plan(plan)  # REQ-1176: verified before the source executes
-        _direct_result = await _dispatch_execution_direct(
-            plan.exec_sql or "", plan.source_id, resolved_params, app_state
-        )
-        if not isinstance(_direct_result, list):
-            body = getattr(_direct_result, "body", b"")
-            detail = body.decode() if isinstance(body, bytes) else str(body)
-            raise RuntimeError(detail or "direct execution failed")
-        raw_rows = _direct_result
+        # REQ-1897: this DIRECT terminal bypasses the chokepoint, so it reads/writes the cache itself.
+        _cached_rows = await cached_cypher_rows(plan, app_state)
+        if _cached_rows is not None:
+            raw_rows = _cached_rows
+        else:
+            _direct_result = await _dispatch_execution_direct(
+                plan.exec_sql or "", plan.source_id, resolved_params, app_state
+            )
+            if not isinstance(_direct_result, list):
+                body = getattr(_direct_result, "body", b"")
+                detail = body.decode() if isinstance(body, bytes) else str(body)
+                raise RuntimeError(detail or "direct execution failed")
+            await store_cypher_rows(plan, app_state, _direct_result)
+            raw_rows = _direct_result
     else:
         # Not single-source-eligible (or already ENGINE-routed) — the buffered/auto-deliver
         # protection this class of query actually needs, so re-govern with it on. A second
@@ -1283,6 +1300,7 @@ async def _execute_cypher(
             exec_params=resolved_params or None,
             deliver=deliver,
             buffered=True,  # REQ-1224: buffered transport — terminal auto-thresholds inline vs CTAS
+            cache_hint=cache_hint,
         )
         result = await _execute_plan(plan)
         if result.redirect is not None:
@@ -1320,7 +1338,7 @@ async def _execute_write_cypher(
     translator = WriteTranslator(label_map)
     sql = translator.translate(write_ast)
 
-    plan = await _govern_and_route_compiled(sql, role_id)
+    plan = await _govern_and_route_compiled(sql, role_id, cache_hint=NO_CACHE_HINT)
     result = await _execute_plan(plan)
     rows = [list(row) for row in result.rows]
     return result.column_names, rows

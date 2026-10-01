@@ -73,6 +73,33 @@ def _is_cap_bust(exc: BaseException) -> bool:
     return False
 
 
+async def _connect_pg_driver(dsn: str):
+    """A real PostgreSQLDriver connected to ``dsn`` (min 1 / max 2 pooled connections).
+
+    ``dsn`` is either a TCP URI or pgserver's unix-socket form, whose socket directory rides in the
+    ``host`` query parameter (``postgresql://user:@/db?host=/dir``)."""
+    from urllib.parse import parse_qs, unquote, urlparse
+
+    from provisa.executor.drivers.postgresql import PostgreSQLDriver
+
+    u = urlparse(dsn)
+    query = parse_qs(u.query)
+    host = query["host"][0] if "host" in query else u.hostname
+    if not host:
+        raise ValueError(f"DSN names no host or socket directory: {dsn!r}")
+    drv = PostgreSQLDriver()
+    await drv.connect(
+        host,
+        u.port or 5432,  # libpq's default port, which is what a DSN without one means
+        (u.path or "/").lstrip("/"),
+        unquote(u.username or ""),
+        unquote(u.password or ""),
+        1,
+        2,
+    )
+    return drv
+
+
 class _DirectPools:
     """A real ``SourcePool`` fronting a single asyncpg-backed PostgreSQL driver at id ``src`` — the
     airport DIRECT variant's ``source_pools``. ``warm()`` builds the pool from the raw DSN (pgserver
@@ -85,13 +112,9 @@ class _DirectPools:
         self._pool: Any = None  # provisa.executor.pool.SourcePool, built in warm()
 
     async def warm(self) -> None:
-        import asyncpg
-
-        from provisa.executor.drivers.postgresql import PostgreSQLDriver
         from provisa.executor.pool import SourcePool
 
-        drv = PostgreSQLDriver()
-        drv._pool = await asyncpg.create_pool(dsn=self._dsn, min_size=1, max_size=2)
+        drv = await _connect_pg_driver(self._dsn)
         sp = SourcePool()
         sp._drivers["src"] = drv
         sp._dialects["src"] = "postgresql"
@@ -232,7 +255,13 @@ def _mem_worker(dsn: str, variant: str, q: "mp.Queue", cap: bool, trace_path: st
             if cap:
                 _cap_address_space()  # cap AFTER the pool/arena is warm, like the rt variants
             rt = EngineRuntime.__new__(EngineRuntime)  # only execute_native_stream is exercised
-            stream = rt.execute_native_stream(pools, "src", _SQL, [], loop=loop)
+            stream = rt.execute_native_stream(
+                pools,
+                "src",
+                _SQL,
+                [],
+                run=lambda c: asyncio.run_coroutine_threadsafe(c, loop).result(),
+            )
             typed = _direct_typed_schema(stream.column_names, stream.column_types)
             n = sum(b.num_rows for b in _typed_batches_from_rows(stream, typed))
             loop.call_soon_threadsafe(loop.stop)
@@ -240,13 +269,9 @@ def _mem_worker(dsn: str, variant: str, q: "mp.Queue", cap: bool, trace_path: st
             return
 
         if variant.startswith("direct_"):
-            import asyncpg
-
-            from provisa.executor.drivers.postgresql import PostgreSQLDriver
 
             async def _direct() -> int:
-                drv = PostgreSQLDriver()
-                drv._pool = await asyncpg.create_pool(dsn=dsn, min_size=1, max_size=2)
+                drv = await _connect_pg_driver(dsn)
                 if cap:
                     _cap_address_space()  # cap AFTER the pool/arena is warm, like the rt variants
                 if variant == "direct_stream":

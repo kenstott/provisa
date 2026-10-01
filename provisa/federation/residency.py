@@ -66,6 +66,17 @@ def resolve_landing_args(
     # part of the landed replica — exclude them from the landing shape (they carry no data_type).
     data_cols = [c for c in table.columns if getattr(c, "native_filter_type", None) is None]
     pk_columns = [c.name for c in data_cols if c.is_primary_key]
+    # REQ-1908: an epoch-stored temporal column is translated only on live reads (the compiler's
+    # physical rewrite). Landing would copy the stored numbers into a temporal-typed replica column
+    # with no conversion, so the land is refused here — every landing path resolves through this
+    # function — naming the column, rather than failing on a type mismatch or landing raw numbers.
+    epoch_stored = [c.name for c in data_cols if getattr(c, "epoch_unit", None)]
+    if epoch_stored:
+        raise ValueError(
+            f"cannot land {table.schema_name}.{table.table_name}: column(s) {epoch_stored} are "
+            "epoch-stored temporals (epoch_unit), which are supported on live reads only — this "
+            "engine would land the table (REQ-1908)"
+        )
     columns: list[tuple[str, str]] = []
     for c in data_cols:
         if c.data_type is None:

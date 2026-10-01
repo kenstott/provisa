@@ -26,6 +26,7 @@ pa = pytest.importorskip("pyarrow")
 
 from provisa.api.flight import server as flight_server  # noqa: E402
 from provisa.api.flight.server import ProvisaFlightServer  # noqa: E402
+from provisa.cache.store import NoopCacheStore  # noqa: E402
 from provisa.executor.formats.arrow import rows_to_arrow_table  # noqa: E402
 from provisa.executor.result import QueryResult  # noqa: E402
 from provisa.compiler.sql_gen import ColumnRef  # noqa: E402
@@ -153,8 +154,12 @@ class TestFlightSqlDispatchHopCount:
     def _server() -> ProvisaFlightServer:
         """A server instance without binding a port — __init__ would open a listener."""
         srv = ProvisaFlightServer.__new__(ProvisaFlightServer)
-        srv._state = SimpleNamespace(federation_engine=None, source_pools=None, roles={})  # pyright: ignore[reportAttributeAccessIssue]
-        srv._main_loop = None  # pyright: ignore[reportAttributeAccessIssue]
+        srv._state = SimpleNamespace(
+            federation_engine=None,
+            source_pools=None,
+            roles={},
+            response_cache_store=NoopCacheStore(),
+        )  # pyright: ignore[reportAttributeAccessIssue]
         return srv
 
     @staticmethod
@@ -203,6 +208,8 @@ class TestFlightSqlDispatchHopCount:
             sql="SELECT 1",
             exec_params=None,
             stamp="governed",
+            response_cacheable=False,  # REQ-1897: the cache read folds into execute's dispatch
+            cache_opt_in=False,
         )
         monkeypatch.setattr(
             _pipeline, "govern_batch_final_plan_with_fn", AsyncMock(return_value=plan)
@@ -213,7 +220,9 @@ class TestFlightSqlDispatchHopCount:
         source_pools = MagicMock()
         source_pools.has.return_value = False  # forces the non-streaming execute_native branch
         srv._state.source_pools = source_pools
-        result = SimpleNamespace(column_names=["id"], rows=[(1,)])
+        from provisa.executor.result import QueryResult
+
+        result = QueryResult(rows=[(1,)], column_names=["id"])  # execute_native's real type
         srv._state.federation_engine = SimpleNamespace(
             execute_native=AsyncMock(return_value=result)
         )
@@ -246,6 +255,10 @@ class TestFlightSqlDispatchHopCount:
         monkeypatch.setattr(
             flight_server, "_prepare_engine_residency", AsyncMock(return_value=None)
         )
+        # REQ-1897: a cache MISS is checked inside the SAME residency dispatch (no extra hop), and
+        # this plan has nothing to write through.
+        monkeypatch.setattr(_pipeline, "check_response_cache_arrow", AsyncMock(return_value=None))
+        monkeypatch.setattr(_pipeline, "response_cache_tee", lambda *_a, **_k: None)
 
         empty_gen = iter(())
         srv._state.federation_engine = SimpleNamespace(

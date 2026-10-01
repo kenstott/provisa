@@ -133,7 +133,7 @@ def client(monkeypatch):
     state.source_dialects = {"pet-store-sqlite": "sqlite"}
 
     async def _fake_govern(
-        sql, role_id, exec_params=None, state=None, deliver=None, buffered=False
+        sql, role_id, exec_params=None, state=None, deliver=None, buffered=False, *, cache_hint
     ):
         return SimpleNamespace(_is_count="COUNT(*)" in sql)
 

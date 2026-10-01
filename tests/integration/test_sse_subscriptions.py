@@ -45,24 +45,16 @@ def _pg_env() -> dict:
 
 
 async def _try_pg_pool():
-    """Create an asyncpg pool; raises if PG is unavailable."""
-    import asyncpg  # noqa: PLC0415
+    """The control-plane ``Database`` over the test PG — what production hands the provider
+    (REQ-1882: LISTEN is served by the database's listener thread)."""
+    from provisa.core.database import Database, create_engine_from_url  # noqa: PLC0415
 
     env = _pg_env()
-    pool = await asyncio.wait_for(
-        asyncpg.create_pool(
-            host=env["host"],
-            port=env["port"],
-            database=env["database"],
-            user=env["user"],
-            password=env["password"],
-            min_size=1,
-            max_size=3,
-            command_timeout=10,
-        ),
-        timeout=5.0,
+    url = (
+        f"postgresql://{env['user']}:{env['password']}@{env['host']}:{env['port']}"
+        f"/{env['database']}"
     )
-    return pool
+    return Database(create_engine_from_url(url, pool_size=3, max_overflow=0), name="org")
 
 
 # ---------------------------------------------------------------------------

@@ -22,7 +22,6 @@ Builds on buenavista's socketserver-based handler, adding:
 
 from __future__ import annotations
 
-import asyncio
 import datetime
 import decimal
 import logging
@@ -35,7 +34,7 @@ import threading
 import time
 from dataclasses import dataclass
 from dataclasses import field as _dc_field
-from typing import TYPE_CHECKING, Iterator, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional, Tuple
 
 import jwt
 
@@ -54,16 +53,21 @@ from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
 log = logging.getLogger(__name__)
 
-_loop: asyncio.AbstractEventLoop | None = None
-_loop_lock = threading.Lock()
+# REQ-1882 (amended 2026-09-29): the entire request runs on its connection thread. Each TCP
+# connection is served by its own socketserver thread (ThreadingTCPServer); ProvisaHandler.handle
+# checks a ConnectionLoop out for the connection's lifetime and every coroutine the connection runs
+# — authentication, org resolution, governance, execution, audit, streamed-cursor pumps — executes
+# on that loop via ``loop.run_until_complete`` on this same thread (provisa.core.connection_loop).
+# No second thread, no hop to a shared loop: two connections govern and execute in parallel.
 
 
 async def _run_with_org(org_id: str | None, coro):  # REQ-1266
-    """Await ``coro`` on the event loop with ``current_org`` bound to ``org_id``.
+    """Await ``coro`` with ``current_org`` bound to ``org_id``.
 
-    pgwire governs/executes on the main loop via run_coroutine_threadsafe; the ContextVar set on the
-    socketserver worker thread does NOT propagate into that loop-side coroutine, so the org must be
-    bound inside it. ``None`` (single-org / default) awaits unbound → the default-org runtime."""
+    The connection loop's task copies this thread's context when it starts, so an org bound on the
+    thread is already visible; binding it here makes the coroutine's org explicit where the caller
+    holds a session org rather than a thread binding (COPY, CTAS, audit finalization). ``None``
+    (single-org / default) awaits unbound → the default runtime."""
     if org_id is None:
         return await coro
     from provisa.core.request_context import reset_current_org, set_current_org
@@ -78,8 +82,8 @@ async def _run_with_org(org_id: str | None, coro):  # REQ-1266
 async def _resolve_and_build_org(state_, identity, requested_org: str | None) -> str | None:
     """Resolve the org for an authenticated pgwire identity and materialize its runtime (REQ-1266).
 
-    Runs on the main event loop (membership lookup + build touch loop-bound DB handles). Returns the
-    org id to bind on the session, or None for a single-org deployment / default-org principal.
+    Runs on the connection's own loop (REQ-1882). Returns the org id to bind on the session, or
+    None for a single-org deployment / default-org principal.
 
     REQ-1234: ``requested_org`` is the org the TLS SNI hostname named, when the client dialed one.
     It is a request and nothing more — ``resolve_session_org`` refuses an org the principal is not
@@ -207,11 +211,31 @@ _TYPE_TO_BVTYPE: dict[str, BVType] = {
     # PostgreSQL result-type names (DIRECT sources now report real column types, REQ-883) —
     # without these, an int/float column would fall through to TEXT and mistype the client.
     "BOOL": BVType.BOOL,
-    "FLOAT4": BVType.FLOAT,
+    "FLOAT4": BVType.REAL,
     "FLOAT8": BVType.FLOAT,
     "NUMERIC": BVType.DECIMAL,
-    "TIMESTAMPTZ": BVType.TIMESTAMP,
-    "TIMETZ": BVType.TIME,
+    "TIMESTAMPTZ": BVType.TIMESTAMPTZ,
+    "TIMETZ": BVType.TIMETZ,
+    "INT2": BVType.SMALLINT,
+    "SMALLINT": BVType.SMALLINT,
+    "TINYINT": BVType.SMALLINT,
+    "UUID": BVType.UUID,
+    # Declared engine types reported for every column (REQ-589): the Describe and the Execute use
+    # these, never first-batch inference, so each value type must land on its own encoder.
+    "TIMESTAMP WITH TIME ZONE": BVType.TIMESTAMPTZ,
+    "TIMESTAMP_S": BVType.TIMESTAMP,
+    "TIMESTAMP_MS": BVType.TIMESTAMP,
+    "TIMESTAMP_NS": BVType.TIMESTAMP,
+    "TIME WITH TIME ZONE": BVType.TIMETZ,
+    "REAL": BVType.REAL,
+    "DOUBLE PRECISION": BVType.FLOAT,
+    "JSON": BVType.JSON,
+    "JSONB": BVType.JSONB,
+    "STRUCT": BVType.JSON,
+    "MAP": BVType.JSON,
+    "BLOB": BVType.BYTES,
+    "BYTEA": BVType.BYTES,
+    "INTERVAL": BVType.INTERVAL,
 }
 _INT_TYPES = {
     "INTEGER",
@@ -239,10 +263,20 @@ def _sql_type_to_bvtype(type_str: str) -> BVType:
     # default, and TEXT's own converter is just `str`, tolerant of any Python type — so this was
     # never visible until a binary-preferring client (asyncpg) exercised the DIRECT route.
     type_str = type_str.upper()
+    # A parameterized type name (DuckDB's "DECIMAL(18,2)", "NUMERIC(10,2)", "VARCHAR(20)",
+    # "TIMESTAMP(3)") names the same wire type as its bare base: an exact lookup missed it and fell
+    # to TEXT, whose binary converter then crashed on a Decimal. Array suffixes ("[]") are kept.
+    type_str = re.sub(r"\s*\([^)]*\)", "", type_str).strip()
     if type_str in _TYPE_TO_BVTYPE:
         return _TYPE_TO_BVTYPE[type_str]
+    # A 4-byte integer is advertised as int4 (OID 23), not widened to int8: a REQ-1863 passthrough
+    # forwards the source's raw 4-byte int4 value, which a binary client would misread as int8.
+    if type_str in ("INTEGER", "INT4"):
+        return BVType.INTEGER
     if type_str in _INT_TYPES:
         return BVType.BIGINT
+    if type_str.endswith("[]"):
+        return BVType.JSON  # any other list type: its Python list value encodes as JSON
     return BVType.TEXT
 
 
@@ -305,6 +339,11 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         # silently dropping the unforwarded tail.
         self._pending: list | None = None
         self._pending_pos: int = 0
+        # Set by ProvisaSession: whether the Execute of this statement would take the REQ-1863
+        # raw-DataRow passthrough given a Bind's result formats (see reusable_for_execute).
+        self.passthrough_eligible = False
+        # A Describe's zero-row shape (REQ-589): never served to an Execute.
+        self.shape_only = False
         ctypes = engine_result.column_types
         # A None entry (or absent types) means the type must be inferred from data, which
         # requires the first batch on hand before RowDescription is sent.
@@ -317,6 +356,13 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
             ]
         else:
             self._types = [_infer_bvtype(self._head or [], i) for i in range(len(self._cols))]
+
+    def reusable_for_execute(self, result_formats: list[int]) -> bool:
+        # A passthrough needs the Bind's result formats BEFORE running (it forwards the source's
+        # DataRow bytes in that format) — re-run so the Execute gets that fast path.
+        if self.shape_only:
+            return False
+        return not (self.passthrough_eligible and result_formats)
 
     def has_results(self) -> bool:
         return len(self._cols) > 0
@@ -595,11 +641,25 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         self.org_id: str | None = None
         # REQ-1862: named SQL cursors DECLAREd on this connection, keyed by normalized name.
         self.cursors: dict[str, _CursorState] = {}
+        # REQ-1882: the connection thread that created this session and runs its loop.
+        self._owner_thread: int | None = threading.get_ident()
+        self._close_requested = False
 
     def cursor(self):
         return None
 
     def close(self):
+        # REQ-1882: a cursor's stream is pumped on its connection's loop, which only the connection
+        # thread may run. A CancelRequest arrives on ANOTHER connection and closes the session from
+        # there; the owning thread releases the cursors when its handler exits (close_owned).
+        owner = self._owner_thread
+        if owner is not None and owner != threading.get_ident():
+            self._close_requested = True
+            return
+        self.close_owned()
+
+    def close_owned(self):
+        """Release cursors on the owning connection thread (its loop is bound here)."""
         # REQ-1862: release every still-open cursor's underlying stream (server-side cursor /
         # pooled connection) — a client that disconnects mid-cursor must not leak it.
         for cs in self.cursors.values():
@@ -617,28 +677,47 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         return None
 
     def execute_sql(self, sql: str, params=None, result_fmt=None) -> ProvisaQueryResult:
-        # REQ-1266: bind this session's org on the worker thread so the sync state.X reads below
-        # (answer/INTERCEPT, execute_engine_sync, source_pools) route to its runtime. The loop-side
-        # governance/execute coroutines are separately bound via _run_with_org (ContextVars do not
-        # cross the run_coroutine_threadsafe boundary). None → default runtime (no bind).
+        return self._with_org(lambda: self._execute_sql_bound(sql, params, result_fmt))
+
+    def describe_sql(self, sql: str, params=None) -> ProvisaQueryResult:
+        """Describe(Statement): the statement's result shape — column names and the engine's
+        DECLARED types — without running it (REQ-589). Governed through the one pipeline exactly as
+        the Execute is, so a column the role cannot see is absent here too; the Execute reports the
+        same declared types, so describe and execute agree by construction."""
+        return self._with_org(lambda: self._execute_sql_bound(sql, params, None, describe=True))
+
+    def _with_org(self, fn: Callable[[], ProvisaQueryResult]) -> ProvisaQueryResult:
+        # REQ-1266: bind this session's org on the connection thread so the sync state.X reads
+        # below (answer/INTERCEPT, execute_engine_sync, source_pools) route to its runtime; the
+        # governance/execute coroutines run on this thread's loop and are bound again explicitly via
+        # _run_with_org. None → default runtime (no bind).
         if self.org_id is None:
-            return self._execute_sql_bound(sql, params, result_fmt)
+            return fn()
         from provisa.core.request_context import reset_current_org, set_current_org
 
         token = set_current_org(self.org_id)
         try:
-            return self._execute_sql_bound(sql, params, result_fmt)
+            return fn()
         finally:
             reset_current_org(token)
 
-    def _execute_sql_bound(self, sql: str, params=None, result_fmt=None) -> ProvisaQueryResult:
+    def _execute_sql_bound(
+        self, sql: str, params=None, result_fmt=None, *, describe: bool = False
+    ) -> ProvisaQueryResult:
         from provisa.pgwire.catalog import answer, classify
 
-        stripped = _substitute_params(sql.strip(), params)
+        # REQ-589: the statement keeps its $N placeholders and the client's values stay BOUND all
+        # the way to the engine/source (govern_pgwire_plan(params=...)) — never spliced in here, so
+        # every value shares one SQL text (server-side prepares, SQL-text-keyed caches) and a value
+        # can never change the governed shape. Only the INTERCEPT catalog emulation (not a governed
+        # query) reads the values inline.
+        stripped = sql.strip()
+        bound = list(params) if params else None
         disposition = classify(stripped)
         if disposition == "INTERCEPT":
             from provisa.api.app import state
 
+            stripped = _substitute_params(stripped, params)
             result = answer(stripped, self.role_id or "", state)
             log.debug(
                 "[RESULT] cols=%r rows=%r",
@@ -654,11 +733,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             # session was admitted by a path that never identified its caller.
             raise RuntimeError("Authenticated session has no principal")
 
-        global _loop
-        with _loop_lock:
-            loop = _loop
-        if loop is None:
-            raise RuntimeError("Event loop not available")
+        from provisa.core.connection_loop import current_connection_loop
+
+        cl = current_connection_loop()
 
         from provisa.pgwire._pipeline import (
             _execute_plan,
@@ -667,27 +744,29 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             require_governed_plan,
         )
 
-        # Govern on the event loop, then — for the ENGINE route — drain the engine's SYNC
-        # streaming terminal HERE on the socketserver worker thread (REQ-028). Mirrors Flight
-        # SQL's govern-then-stream split: the private engine cursor is created and drained on
-        # this one thread, and rows flow lazily as buenavista emits DataRow (never buffered on
-        # the loop). DIRECT/admin/govdata routes are async-native and materialize via the loop.
+        # Govern on this connection's loop, then — for the ENGINE route — drain the engine's SYNC
+        # streaming terminal on this same thread (REQ-028). Mirrors Flight SQL's govern-then-stream
+        # split: the private engine cursor is created and drained here, and rows flow lazily as
+        # buenavista emits DataRow. DIRECT/admin/govdata routes are async-native and materialize
+        # via the connection loop — all on this one thread (REQ-1882).
         _t_govern0 = time.perf_counter()
         try:
-            # REQ-074/REQ-1386: the acting principal is bound INSIDE the loop coroutine (ContextVars
-            # do not cross run_coroutine_threadsafe), so the governor's audit/denial write records
-            # who ran the statement and that it arrived over pgwire.
+            # REQ-074/REQ-1386: the acting principal is bound inside the coroutine, so the
+            # governor's audit/denial write records who ran the statement and that it arrived over
+            # pgwire.
             from provisa.audit.context import with_audit_identity
 
-            governed = asyncio.run_coroutine_threadsafe(
+            governed = cl.run(
                 _run_with_org(
                     self.org_id,
                     with_audit_identity(
-                        self.user_id, "pgwire", govern_pgwire_plan(stripped, self.role_id)
+                        self.user_id,
+                        "pgwire",
+                        govern_pgwire_plan(stripped, self.role_id, bound),
                     ),
                 ),
-                loop,
-            ).result(timeout=120)
+                timeout=120,
+            )
         except PermissionError as exc:
             raise PermissionError(str(exc)) from exc
         except Exception as exc:
@@ -701,6 +780,23 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
 
         from provisa.api.app import state
         from provisa.transpiler.router import Route
+
+        if describe:
+            shape = self._describe_governed(governed, state, cl)
+            if shape is not None:
+                qr = ProvisaQueryResult(shape, stripped)
+                qr.shape_only = True
+                return qr
+            # No describe-without-running for this route/engine (Trino, the Arrow warehouse and
+            # SQLAlchemy engines, a non-streaming DIRECT source, the API/cache terminals): the
+            # statement runs, as a Describe always did before REQ-589's amendment. A parameterless
+            # statement's run is handed to its Execute (vendor buenavista add_portal); a
+            # parameterized one runs with placeholder values.
+
+        from provisa.pgwire._pipeline import serve_stream_through_cache
+
+        def cache_run(coro):  # REQ-1897: cache reads/writes on this connection's loop and org
+            return cl.run(_run_with_org(self.org_id, coro), timeout=30)
 
         try:
             if isinstance(governed, _Plan) and governed.route == Route.ENGINE:
@@ -731,7 +827,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 # not just in _execute_plan_in_org, or a JOIN-reached row_materialize table (e.g.
                 # cypher_cross_engine's bench_contains_edge) never gets landed for this transport at
                 # all (confirmed live: 0 rows, no [DIAG] trace, for every SQL-transport query here).
-                # REQ-1887: folded into one run_coroutine_threadsafe dispatch — see
+                # REQ-1887: folded into one connection-loop run — see
                 # prepare_residency_and_check_cache (provisa/pgwire/_pipeline.py), shared with
                 # Flight SQL's identical ENGINE-route fold.
                 # REQ-1897: this streaming sink bypasses _execute_plan_in_org entirely, so it needs
@@ -744,43 +840,40 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 # and execute_engine_sync. check_response_cache itself audits/egress-accounts a HIT.
                 from provisa.pgwire._pipeline import prepare_residency_and_check_cache
 
-                result = asyncio.run_coroutine_threadsafe(
-                    prepare_residency_and_check_cache(governed, state), loop
-                ).result(timeout=120)
-                # REQ-1863 counterpart: when the bound federation ENGINE is itself Postgres
-                # (PROVISA_ENGINE=pg), pgwire and the engine both speak real Postgres wire
-                # protocol end to end — the same raw-DataRow-forwarding passthrough applies here,
-                # not just to a DIRECT-route source. Same fallback discipline: any PassthroughError
-                # falls through to the normal decode/re-encode execute_engine_sync call below.
-                if (
-                    result is None
-                    and result_fmt
-                    and state.federation_engine.dialect
-                    in (
-                        "postgres",
-                        "postgresql",
-                    )
-                ):
-                    from provisa.pgwire.pg_passthrough import PassthroughError
-
-                    try:
-                        result = state.federation_engine.execute_pg_engine_passthrough(
-                            governed.physical_sql,
-                            governed.exec_params,
-                            result_fmt,
-                            loop=loop,
-                        )
-                    except PassthroughError:
-                        log.debug(
-                            "[PGWIRE] ENGINE passthrough fallback sql=%r",
-                            stripped[:200],
-                            exc_info=True,
-                        )
+                result = cl.run(prepare_residency_and_check_cache(governed, state), timeout=120)
                 if result is None:
-                    result = state.federation_engine.execute_engine_sync(
-                        governed.physical_sql,
-                        governed.exec_params,
-                        session_hints=governed.session_hints,
+                    engine_plan = governed
+                    # REQ-1897: the one read/write-through for this streaming sink — a raw
+                    # DataRow (pg_datarows) HIT when the passthrough applies, else the decoded
+                    # stream teed into the raw-SQL cache (the decoded HIT was checked above).
+                    result = serve_stream_through_cache(
+                        engine_plan,
+                        state,
+                        run=cache_run,
+                        check_rows=False,
+                        # REQ-1863 counterpart: when the bound federation ENGINE is itself
+                        # Postgres (PROVISA_ENGINE=pg), pgwire and the engine both speak real
+                        # Postgres wire protocol end to end — raw DataRows are forwarded; a
+                        # PassthroughError falls through to execute_engine_sync below.
+                        passthrough=(
+                            (
+                                result_fmt,
+                                lambda: state.federation_engine.execute_pg_engine_passthrough(
+                                    engine_plan.physical_sql,
+                                    engine_plan.exec_params,
+                                    result_fmt,
+                                    run=cl.run,
+                                ),
+                            )
+                            if result_fmt
+                            and state.federation_engine.dialect in ("postgres", "postgresql")
+                            else None
+                        ),
+                        open_rows=lambda: state.federation_engine.execute_engine_sync(
+                            engine_plan.physical_sql,
+                            engine_plan.exec_params,
+                            session_hints=engine_plan.session_hints,
+                        ),
                     )
             elif (
                 isinstance(governed, _Plan)
@@ -799,26 +892,33 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 # of route. Falls back to the decode/re-encode path below on ANY PassthroughError
                 # (never a correctness risk, purely a fast path).
                 require_governed_plan(governed)
-                from provisa.pgwire.pg_passthrough import PassthroughError
-
-                try:
-                    result = state.federation_engine.execute_pg_passthrough(
-                        state.source_pools,
-                        governed.source_id,
-                        governed.sql,
-                        governed.exec_params,
+                direct_plan = governed
+                # REQ-1897: pg_datarows HIT replayed undecoded, else the passthrough teed; a
+                # PassthroughError falls back to the decoded DIRECT stream (rows HIT / teed).
+                result = serve_stream_through_cache(
+                    direct_plan,
+                    state,
+                    run=cache_run,
+                    check_rows=True,
+                    passthrough=(
                         result_fmt,
-                        loop=loop,
-                    )
-                except PassthroughError:
-                    log.debug("[PGWIRE] passthrough fallback sql=%r", stripped[:200], exc_info=True)
-                    result = state.federation_engine.execute_native_stream(
+                        lambda: state.federation_engine.execute_pg_passthrough(
+                            state.source_pools,
+                            direct_plan.source_id,
+                            direct_plan.sql,
+                            direct_plan.exec_params,
+                            result_fmt,
+                            run=cl.run,
+                        ),
+                    ),
+                    open_rows=lambda: state.federation_engine.execute_native_stream(
                         state.source_pools,
-                        governed.source_id,
-                        governed.sql,
-                        governed.exec_params,
-                        loop=loop,
-                    )
+                        direct_plan.source_id,
+                        direct_plan.sql,
+                        direct_plan.exec_params,
+                        run=cl.run,
+                    ),
+                )
             elif (
                 isinstance(governed, _Plan)
                 and governed.route == Route.DIRECT
@@ -830,24 +930,31 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 # drained on this worker thread just like the ENGINE terminal — never materialized on the
                 # loop (streaming-uniformity Defect 1). REQ-1176: verify the stamp before the source runs.
                 require_governed_plan(governed)
-                result = state.federation_engine.execute_native_stream(
-                    state.source_pools,
-                    governed.source_id,
-                    governed.sql,
-                    governed.exec_params,
-                    loop=loop,
+                direct_plan = governed
+                # REQ-1897: a decoded HIT served, else the source's stream teed into the cache.
+                result = serve_stream_through_cache(
+                    direct_plan,
+                    state,
+                    run=cache_run,
+                    check_rows=True,
+                    passthrough=None,
+                    open_rows=lambda: state.federation_engine.execute_native_stream(
+                        state.source_pools,
+                        direct_plan.source_id,
+                        direct_plan.sql,
+                        direct_plan.exec_params,
+                        run=cl.run,
+                    ),
                 )
             elif isinstance(governed, _Plan):
-                result = asyncio.run_coroutine_threadsafe(
-                    _run_with_org(self.org_id, _execute_plan(governed)), loop
-                ).result(timeout=120)
+                result = cl.run(_run_with_org(self.org_id, _execute_plan(governed)), timeout=120)
             else:
                 result = governed  # registered-function call: bounded, already materialized
         except PermissionError as exc:
-            self._finalize_audit(governed, 500, loop)
+            self._finalize_audit(governed, 500)
             raise PermissionError(str(exc)) from exc
         except Exception as exc:
-            self._finalize_audit(governed, 500, loop)
+            self._finalize_audit(governed, 500)
             log.warning("[PGWIRE] EXCEPTION sql=%r", stripped[:300], exc_info=True)
             raise RuntimeError(str(exc)) from exc
         _t_execute1 = time.perf_counter()
@@ -860,18 +967,86 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
 
         # REQ-074/REQ-1386: the ENGINE/DIRECT streaming terminals above never reach _execute_plan,
         # so the audit row is written here. Idempotent — the _execute_plan branch already wrote it.
-        self._finalize_audit(governed, 200, loop)
-        return ProvisaQueryResult(result, stripped)
+        self._finalize_audit(governed, 200)
+        qr = ProvisaQueryResult(result, stripped)
+        # A Describe(Statement) result is handed to the following Execute instead of re-running
+        # (see vendor buenavista describe_statement) — except when that Execute would take the
+        # REQ-1863 raw-DataRow passthrough, which needs the Bind's result format up front.
+        qr.passthrough_eligible = isinstance(governed, _Plan) and (
+            (
+                governed.route == Route.ENGINE
+                and state.federation_engine.dialect in ("postgres", "postgresql")
+            )
+            or (
+                governed.route == Route.DIRECT
+                and bool(governed.source_id)
+                and state.source_pools.has(governed.source_id)
+                and state.source_pools.supports_stream(governed.source_id)
+                and state.source_pools.dialect_for(governed.source_id) in ("postgres", "postgresql")
+            )
+        )
+        return qr
 
-    def _finalize_audit(self, governed, status_code: int, loop) -> None:
-        """Write the governed plan's audit row from this worker thread, under the session's org."""
+    def _describe_governed(self, governed: Any, state: Any, cl: Any) -> Any:
+        """The governed plan's result shape (zero rows, declared column types), or ``None`` when its
+        route/engine cannot describe without running. REQ-589."""
+        from provisa.pgwire._pipeline import _Plan, require_governed_plan
+        from provisa.transpiler.router import Route
+
+        if not isinstance(governed, _Plan):
+            return None
+        if governed.route == Route.ENGINE:
+            require_governed_plan(governed)
+            if governed.physical_sql is None:
+                raise RuntimeError("ENGINE plan missing physical_sql")
+            from provisa.federation.query_residency import prepare_engine_residency
+
+            # The engine must be able to bind every relation the plan reads — the same residency
+            # the Execute prepares (and would prepare anyway) — but no response-cache read and no
+            # row is produced.
+            cl.run(prepare_engine_residency(state, governed), timeout=120)
+            shape = state.federation_engine.describe_engine_sync(
+                governed.physical_sql, governed.exec_params
+            )
+        elif (
+            governed.route == Route.DIRECT
+            and governed.source_id
+            and state.source_pools.has(governed.source_id)
+            and state.source_pools.supports_stream(governed.source_id)
+            and state.source_pools.dialect_for(governed.source_id) in ("postgres", "postgresql")
+        ):
+            require_governed_plan(governed)
+            # Postgres plans a constant-false filter as a one-time filter: nothing is scanned, and
+            # the portal still describes every column (duplicate names kept) with its type.
+            shape = state.federation_engine.execute_native_stream(
+                state.source_pools,
+                governed.source_id,
+                f"SELECT * FROM ({governed.sql}) _provisa_describe WHERE false",
+                governed.exec_params,
+                run=cl.run,
+            )
+        else:
+            return None
+        if shape is None:
+            return None
+        if not shape.column_types or any(t is None for t in shape.column_types):
+            shape.close()
+            raise RuntimeError(
+                "describe returned no declared column types — the Describe cannot agree with the "
+                "Execute without them"
+            )
+        return shape
+
+    def _finalize_audit(self, governed, status_code: int) -> None:
+        """Write the governed plan's audit row on this connection's loop, under the session's org."""
+        from provisa.core.connection_loop import run_on_connection_loop
         from provisa.pgwire._pipeline import _Plan, finalize_audit
 
         if not isinstance(governed, _Plan):
             return  # a registered-function call carries no plan
-        asyncio.run_coroutine_threadsafe(
-            _run_with_org(self.org_id, finalize_audit(governed, status_code)), loop
-        ).result(timeout=30)
+        run_on_connection_loop(
+            _run_with_org(self.org_id, finalize_audit(governed, status_code)), timeout=30
+        )
 
 
 class ProvisaConnection(Connection):  # REQ-529
@@ -917,6 +1092,25 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
     # send_auth_request has been offered nothing and must not be read as mid-SASL.
     _sasl_offered: bool = False
     _sasl: "ScramExchange | None" = None
+    # The session this connection's startup created (REQ-1882: closed on this thread).
+    _session: "ProvisaSession | None" = None
+
+    def handle(self) -> None:
+        """Serve the connection with a ConnectionLoop bound to this thread for its whole life.
+
+        REQ-1882 (amended 2026-09-29): every coroutine this connection runs — auth, org resolution,
+        governance, execution, audit, cursor pumps — executes on this loop, on this thread."""
+        from provisa.core.connection_loop import connection_loop
+
+        with connection_loop():
+            try:
+                super().handle()
+            finally:
+                # A CancelRequest from another connection may have asked this session to close;
+                # its cursors are released here, on the thread that owns their loop.
+                session = self._session
+                if session is not None and session._close_requested:
+                    session.close_owned()
 
     def setup(self) -> None:
         # REQ-1452/REQ-1455: meter what this connection writes to its client. Wrapping the socket
@@ -1009,6 +1203,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 "[PGWIRE] connect params: %s", {k: v for k, v in params.items() if k != "password"}
             )
             ctx = BVContext(conn.create_session(), None, params)
+            self._session = ctx.session  # type: ignore[assignment]
             self.send_auth_request(ctx)
             return ctx
         else:
@@ -1094,11 +1289,6 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             return
 
         assert auth_config is not None  # provider != "none" ⇒ auth_config is present
-        with _loop_lock:
-            loop = _loop
-        if loop is None:
-            self._send_pg_error("FATAL", "08004", "pgwire event loop not available")
-            return
 
         from provisa.auth.throttle import LockedOut
 
@@ -1115,7 +1305,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         if auth_provider is None:
             return
         try:
-            identity = self._validate_credential(loop, auth_provider, provider, username, password)
+            identity = self._validate_credential(auth_provider, provider, username, password)
         except LockedOut as locked:
             # REQ-1393: a distinct answer from a wrong password. 28000 is invalid_authorization_
             # specification — the attempt was refused before the credential was examined at all.
@@ -1186,9 +1376,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         from provisa.auth.scram_store import read_verifier
         from provisa.auth.throttle import LockedOut, login_throttle, subject_key
 
-        loop = self._sasl_loop()
-        if loop is None:
-            return
+        from provisa.core.connection_loop import run_on_connection_loop
+
         try:
             # REQ-1393: the lockout is checked before any work is done on the account's behalf,
             # so a locked-out name cannot be used to make the server derive verifiers all day.
@@ -1200,9 +1389,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         _state = self._app_state()
         admin_db = _state.admin_db
         assert admin_db is not None  # the basic provider is DB-backed; _scram_offered required it
-        verifier = asyncio.run_coroutine_threadsafe(read_verifier(admin_db, username), loop).result(
-            timeout=60
-        )
+        verifier = run_on_connection_loop(read_verifier(admin_db, username), timeout=60)
         if verifier is None:
             # PostgreSQL's mock authentication. A user who has never set a password under SCRAM —
             # and a user who does not exist — gets a well-formed exchange that no proof satisfies,
@@ -1218,14 +1405,6 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         self._sasl = exchange
         self._send_auth_message(_AUTH_SASL_CONTINUE, first.encode("utf-8"))
 
-    def _sasl_loop(self):
-        """The API event loop, or None after telling the client why authentication cannot run."""
-        with _loop_lock:
-            loop = _loop
-        if loop is None:
-            self._send_pg_error("FATAL", "08004", "pgwire event loop not available")
-        return loop
-
     def _sasl_complete(self, ctx: BVContext, username: str) -> None:  # REQ-1394
         """Turn a verified proof into a session.
 
@@ -1235,9 +1414,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         """
         from provisa.auth.throttle import login_throttle, subject_key
 
-        loop = self._sasl_loop()
-        if loop is None:
-            return
+        from provisa.core.connection_loop import run_on_connection_loop
+
         _state = self._app_state()
         auth_config = _state.auth_config
         assert auth_config is not None  # _scram_offered required it
@@ -1252,9 +1430,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
 
         assert isinstance(auth_provider, BasicAuthProvider)
         try:
-            identity = asyncio.run_coroutine_threadsafe(
-                auth_provider.identity_for(username), loop
-            ).result(timeout=60)
+            identity = run_on_connection_loop(auth_provider.identity_for(username), timeout=60)
         except ValueError:
             # The verifier matched but the account is gone or deactivated. Answered as a failed
             # password: a deactivated account must not be able to tell that its password is right.
@@ -1315,7 +1491,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             return None
 
     def _validate_credential(  # REQ-124, REQ-890, REQ-1263
-        self, loop, auth_provider, provider_name: str, username: str, password: str
+        self, auth_provider, provider_name: str, username: str, password: str
     ):
         """Validate the startup credential against the provider, or None.
 
@@ -1326,8 +1502,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         presented as ``basic``. One decision, one validator: a credential the chosen validator
         refuses is not retried against another, which would turn one rejection into a second guess.
 
-        Validators run on the main loop, never a private ``asyncio.run`` — the PAT store and any
-        DB-backed provider hold loop-bound handles.
+        Validators run on this connection's loop (REQ-1882); the PAT store and DB-backed providers
+        resolve their loop-bound handles per loop.
         """
         import base64
 
@@ -1347,8 +1523,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         # REQ-1393: the startup packet names the account, so failed guesses count against it here
         # and on every other surface alike. LockedOut propagates — the caller answers 28000.
         attempt = throttled(validator, token, principal=username if scheme == "basic" else None)
+        from provisa.core.connection_loop import run_on_connection_loop
+
         try:
-            return asyncio.run_coroutine_threadsafe(attempt, loop).result(timeout=60)
+            return run_on_connection_loop(attempt, timeout=60)
         except (ValueError, jwt.PyJWTError):
             return None
 
@@ -1365,8 +1543,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             raise RuntimeError("pgwire auth requires auth.default_role to be configured")
         role = resolve_role(identity, auth_config.get("role_mapping", []), default_role)
         # REQ-1266: bind the session to the identity's org (multitenant) so its queries route to that
-        # org's data-plane runtime. Resolution + build run on the main loop (loop-bound DB handles);
-        # an unresolvable principal fails the connection rather than silently landing on the default.
+        # org's data-plane runtime. Resolution + build run on this connection's loop (REQ-1882); an
+        # unresolvable principal fails the connection rather than silently landing on the default.
         import provisa.pgwire.server as _m
 
         _state = _m.state
@@ -1375,15 +1553,12 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         if getattr(_state, "multitenancy", False):
             from provisa.api.org_resolve import OrgResolutionError
 
-            with _loop_lock:
-                loop = _loop
-            if loop is None:
-                self._send_pg_error("FATAL", "08004", "pgwire event loop not available")
-                return
+            from provisa.core.connection_loop import run_on_connection_loop
+
             try:
-                ctx.session.org_id = asyncio.run_coroutine_threadsafe(  # type: ignore[attr-defined]
-                    _resolve_and_build_org(_state, identity, self._requested_org()), loop
-                ).result(timeout=60)
+                ctx.session.org_id = run_on_connection_loop(  # type: ignore[attr-defined]
+                    _resolve_and_build_org(_state, identity, self._requested_org()), timeout=60
+                )
             except OrgResolutionError as exc:
                 self._send_pg_error("FATAL", "28000", f"org selection failed: {exc}")
                 return
@@ -1451,17 +1626,16 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 else:
                     self.send_no_data()
             finally:
-                # Unlike describe_portal, describe_statement's eagerly-executed result is never
-                # cached (buenavista/postgres.py's own describe_statement) — the later Execute
-                # re-runs the query fresh via execute_portal's uncached fallback branch, so this
-                # result is never needed again. Confirmed live: asyncpg's prepare flow issues a
-                # Describe(Statement) (unlike psycopg2, which doesn't exercise this path the same
-                # way), and with nothing ever closing it, this leaked one live cursor/source
-                # connection PER QUERY — same leak class as the portal-describe one already fixed
-                # in close_portal, just on the statement side instead of the portal side.
-                closer = getattr(query_result, "close", None)
-                if closer is not None:
-                    closer()
+                # describe_statement HOLDS a parameterless statement's result for the Execute of
+                # the Bind that follows (vendor buenavista add_portal), so it runs once; that held
+                # result is closed by the context when used, replaced or dropped. Anything it does
+                # not hold (a statement with parameters, a non-row result) is closed here —
+                # asyncpg's prepare flow otherwise leaked one live cursor/source connection per
+                # query (same leak class as the portal-describe one fixed in close_portal).
+                if not ctx.holds_described(query_result):
+                    closer = getattr(query_result, "close", None)
+                    if closer is not None:
+                        closer()
             return
         super().handle_describe(ctx, payload)
 
@@ -1616,16 +1790,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             if _CTAS_RE.match(stmt):
                 from provisa.executor.ctas import run_ctas
 
-                # role_id lives on the session, not the handler; the loop may be unset.
+                # role_id lives on the session, not the handler.
                 role = ctx.session.role_id  # type: ignore[attr-defined]
                 if not role:
                     self._send_pg_error("ERROR", "28000", "Not authenticated")
-                    ctx.mark_error()
-                    break
-                with _loop_lock:
-                    _ctas_loop = _loop
-                if _ctas_loop is None:
-                    self._send_pg_error("ERROR", "58000", "Event loop not available")
                     ctx.mark_error()
                     break
                 user = ctx.session.user_id  # type: ignore[attr-defined]
@@ -1634,17 +1802,18 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                     ctx.mark_error()
                     break
                 from provisa.audit.context import with_audit_identity
+                from provisa.core.connection_loop import run_on_connection_loop
 
                 try:
-                    tag = asyncio.run_coroutine_threadsafe(
+                    tag = run_on_connection_loop(
                         _run_with_org(
                             ctx.session.org_id,  # type: ignore[attr-defined]
                             # REQ-074/REQ-1386: the CTAS SELECT runs through the governed pipeline;
-                            # bind its principal inside the loop coroutine so the row is attributed.
+                            # bind its principal inside the coroutine so the row is attributed.
                             with_audit_identity(user, "pgwire", run_ctas(stmt, role)),
                         ),
-                        _ctas_loop,
-                    ).result(timeout=120)
+                        timeout=120,
+                    )
                     self.send_command_complete(f"{tag}\x00")
                 except PermissionError as exc:
                     self._send_pg_error("ERROR", "42501", str(exc))
@@ -1748,14 +1917,11 @@ def start_pgwire_server(  # REQ-527
     host: str,
     port: int,
     ssl_ctx: ssl.SSLContext | None,
-    loop: asyncio.AbstractEventLoop,
 ) -> ProvisaServer:
-    """Start the pgwire server in a daemon thread. Returns the server instance."""
-    import os
+    """Start the pgwire server in a daemon thread. Returns the server instance.
 
-    global _loop
-    with _loop_lock:
-        _loop = loop
+    Each TCP connection is served on its own thread with its own event loop (REQ-1882)."""
+    import os
 
     _debug_log = os.path.expanduser("~/pgwire_debug.log")
     _fh = logging.FileHandler(_debug_log)

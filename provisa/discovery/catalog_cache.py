@@ -33,8 +33,8 @@ async def ensure_table(pool) -> None:
     """Create the source catalog cache table via portable SQLAlchemy metadata."""
     from provisa.core.schema_org import metadata
 
-    async with pool.engine.begin() as conn:
-        await conn.run_sync(lambda sc: metadata.create_all(sc, tables=[source_catalog_cache]))
+    with pool.engine.begin() as conn:
+        metadata.create_all(conn, tables=[source_catalog_cache])
 
 
 @dataclass

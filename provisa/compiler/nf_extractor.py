@@ -261,8 +261,9 @@ def apply_dropped_tables(sql: str, dropped: dict[str, str]) -> str:  # REQ-599
     """Drop UNION branches for each table in *dropped*; raise the table's own reason for any
     that survive.
 
-    ``dropped`` maps a materialization-unreachable table (unsatisfied required_args, an
-    unreachable remote, or a failed fetch) to a human reason. A table referenced inside a UNION
+    ``dropped`` maps a table the query cannot address (unsatisfied required_args / path params)
+    to a human reason; an unreachable remote or a failed fetch is never here -- it fails the query
+    (REQ-1661, amended 2026-09-30). A table referenced inside a UNION
     (a relationship join, a multi-label sweep) is simply excluded from the sweep — the ordinary
     REQ-848/REQ-941 behavior. A table that is the SOLE FROM target has no branch to drop, would
     otherwise reach the engine unqualified, and surfaces as an opaque native catalog error

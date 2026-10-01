@@ -1,0 +1,76 @@
+# REQ-1863: a DuckDB + SQLite stack whose one source is the test stack's real Postgres. Its only
+# table is a view over every exact-width Postgres type plus a probe column: reading a row records
+# the reading connection's application_name, so a test learns — from the source itself — whether
+# the REQ-1863 raw passthrough or the decoded DIRECT stream executed the statement.
+federation_engine: duckdb
+auth:
+  provider: none
+  assignments_source: provisa
+  default_assignments:
+    - domain_id: '*'
+      role_id: org_admin
+naming:
+  domain_prefix: false
+  rules: []
+cache:
+  enabled: false
+domains:
+  - id: ptloop
+    description: pgwire passthrough event-loop probe
+roles:
+  - id: org_admin
+    capabilities:
+      - source_registration
+      - table_registration
+      - query_development
+      - full_results
+      - usage
+    domain_access:
+      - '*'
+sources:
+  - id: ptloop-pg
+    type: postgresql
+    host: localhost
+    port: ${env:PG_PORT:-5432}
+    database: provisa
+    username: provisa
+    password: ${env:PG_PASSWORD}
+tables:
+  - source_id: ptloop-pg
+    domain_id: ptloop
+    schema: ptloop
+    table: wide_probe
+    columns:
+      - name: si
+        data_type: smallint
+        visible_to: [org_admin]
+      - name: r
+        data_type: real
+        visible_to: [org_admin]
+      - name: jb
+        data_type: jsonb
+        visible_to: [org_admin]
+      - name: tz
+        data_type: timestamp with time zone
+        visible_to: [org_admin]
+      - name: ttz
+        data_type: time with time zone
+        visible_to: [org_admin]
+      - name: u
+        data_type: uuid
+        visible_to: [org_admin]
+      - name: iv
+        data_type: interval
+        visible_to: [org_admin]
+      - name: ba
+        data_type: bytea
+        visible_to: [org_admin]
+      - name: old_ts
+        data_type: timestamp
+        visible_to: [org_admin]
+      - name: old_day
+        data_type: date
+        visible_to: [org_admin]
+      - name: reader
+        data_type: integer
+        visible_to: [org_admin]

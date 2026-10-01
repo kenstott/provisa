@@ -418,7 +418,7 @@ class TestExecuteGrpcRemoteSource:
                 new=AsyncMock(return_value=[{"id": 1, "name": "Fido"}]),
             ),
             patch("provisa.api_source.engine_cache.land_api_cache", new=AsyncMock()),
-            patch("provisa.api_source.engine_cache.schedule_drop", new=AsyncMock()),
+            patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
         ):
             (
                 field_rows,
@@ -682,11 +682,12 @@ class TestStoreResponseCache:
             ) as mock_store,
         ):
             await _store_response_cache(
-                state, "ck1", {"data": {}}, "pets", ctx, compiled, None, False
+                state, "ck1", {"data": {}}, "pets", ctx, compiled, None, True
             )
         mock_store.assert_called_once()
 
-    async def test_no_cache_flag_skips_store(self):
+    async def test_without_opt_in_skips_store(self):
+        """REQ-544 (amended 2026-09-30): a request that did not opt in never writes."""
         from provisa.api.data.endpoint_executors import _store_response_cache
 
         ctx = _make_ctx("pets", table_id=42)
@@ -704,7 +705,7 @@ class TestStoreResponseCache:
             ) as mock_store,
         ):
             await _store_response_cache(
-                state, "ck1", {"data": {}}, "pets", ctx, compiled, None, True
+                state, "ck1", {"data": {}}, "pets", ctx, compiled, None, False
             )
         mock_store.assert_not_called()
 
@@ -726,7 +727,7 @@ class TestStoreResponseCache:
             ) as mock_store,
         ):
             await _store_response_cache(
-                state, "ck1", {"data": {}}, "pets", ctx, compiled, None, False
+                state, "ck1", {"data": {}}, "pets", ctx, compiled, None, True
             )
         mock_store.assert_not_called()
 
@@ -749,7 +750,7 @@ class TestStoreApiSourceCache:
             ) as mock_store,
         ):
             await _store_api_source_cache(
-                state, "ck1", {"data": {}}, "pets", "pets", ctx, "api1", None, False
+                state, "ck1", {"data": {}}, "pets", "pets", ctx, "api1", None, True
             )
         mock_store.assert_called_once()
 
@@ -934,7 +935,7 @@ class TestExecCtasRoute:
                 "provisa.executor.redirect.presign_ctas_result",
                 new=AsyncMock(return_value="https://presigned"),
             ),
-            patch("provisa.executor.redirect.schedule_s3_cleanup", new=AsyncMock()),
+            patch("provisa.executor.redirect.schedule_s3_cleanup", new=MagicMock()),
         ):
             result = await _exec_ctas_route(compiled, ctx, state, "parquet", redirect_config)
             import asyncio
@@ -973,7 +974,7 @@ class TestExecCtasRoute:
                 "provisa.executor.redirect.presign_ctas_result",
                 new=AsyncMock(return_value="https://presigned"),
             ),
-            patch("provisa.executor.redirect.schedule_s3_cleanup", new=AsyncMock()),
+            patch("provisa.executor.redirect.schedule_s3_cleanup", new=MagicMock()),
         ):
             await _exec_ctas_route(compiled, ctx, state, "orc", redirect_config)
             import asyncio
@@ -1079,7 +1080,7 @@ class TestExecInlineResult:
                 "json",
                 "ck1",
                 None,
-                False,
+                True,  # REQ-544 (amended): the request opted into the response cache
                 0.0,
                 {},
                 {},

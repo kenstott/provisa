@@ -116,7 +116,7 @@ async def test_materialized_api_source_federates_via_pg_store():
         ]
         from sqlalchemy.schema import CreateSchema
 
-        eng = create_engine_from_url(_dsn("+asyncpg"), pool_size=1)
+        eng = create_engine_from_url(_dsn("+psycopg2"), pool_size=1)
         try:
             async with Database(eng, name="mat").acquire() as sconn:
                 await sconn.execute_core(CreateSchema("e2e_materialize", if_not_exists=True))
@@ -127,7 +127,7 @@ async def test_materialized_api_source_federates_via_pg_store():
                 )
                 loc = await land_replace(sconn, table, api_rows)
         finally:
-            await eng.dispose()
+            eng.dispose()
         assert loc == "e2e_materialize.orders"
         landed = await conn.fetch("SELECT * FROM e2e_materialize.orders ORDER BY id")
         assert len(landed) == 3  # the API source really landed in the store

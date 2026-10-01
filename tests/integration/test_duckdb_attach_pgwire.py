@@ -84,9 +84,9 @@ _COL_WIRE_TYPES = ["INTEGER", "DOUBLE", "VARCHAR"]
 
 
 def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+    from tests.port_lease import lease_port
+
+    return lease_port()
 
 
 def _build_state():
@@ -163,8 +163,6 @@ def pgwire_port():
         patch.object(_pl, "_execute_plan", _fake_execute_plan),
         patch.object(_pl, "execute_pgwire_sql", _fake_execute_sql),
     ):
-        with _srv._loop_lock:
-            _srv._loop = loop
         t = threading.Thread(target=server.serve_forever, daemon=True)
         t.start()
         # Poll until the server thread actually accepts a connection. A fixed sleep under-provisions
@@ -184,8 +182,6 @@ def pgwire_port():
             yield port, state
         finally:
             server.shutdown()
-            with _srv._loop_lock:
-                _srv._loop = None
             loop.call_soon_threadsafe(loop.stop)
 
 

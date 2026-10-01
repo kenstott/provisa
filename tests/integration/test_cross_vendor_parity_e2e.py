@@ -413,14 +413,21 @@ async def _fab_seed(rt):
 
 
 def _fab_teardown(rt):
-    cur = rt.connection.cursor()
+    from tests.integration.fabric_capacity import suspend_capacity
+
     try:
-        cur.execute(f"DROP TABLE IF EXISTS [{_FAB_SCH}].[{_TABLE}]")
-        cur.execute(f"DROP SCHEMA IF EXISTS [{_FAB_SCH}]")
-        rt.connection.commit()
+        cur = rt.connection.cursor()
+        try:
+            cur.execute(f"DROP TABLE IF EXISTS [{_FAB_SCH}].[{_TABLE}]")
+            cur.execute(f"DROP SCHEMA IF EXISTS [{_FAB_SCH}]")
+            rt.connection.commit()
+        finally:
+            cur.close()
+        rt.close()
     finally:
-        cur.close()
-    rt.close()
+        # Pause the capacity the engine resumed on connect (REQ-1775) so the lane stops billing,
+        # even when the cleanup above fails.
+        suspend_capacity()
 
 
 _FABRIC = Lane(

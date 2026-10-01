@@ -18,7 +18,7 @@ from __future__ import annotations
 import pytest
 
 from provisa.federation.runtime import EngineRuntime, _strip_driver_suffix
-from provisa.pgwire.pg_passthrough import PassthroughError
+from provisa.pgwire.pg_passthrough import PassthroughError, PassthroughFailure
 
 
 class _FakeEngine:
@@ -30,14 +30,17 @@ class _FakeEngine:
         return self._materialize_store
 
 
-def test_no_configured_url_raises_passthrough_error(monkeypatch):
+def test_no_configured_url_is_a_failure_not_a_decline(monkeypatch):
+    """A Postgres engine with no URL is a config error: it fails the request (PassthroughFailure),
+    never reads as "the passthrough does not apply" (PassthroughError), REQ-1863."""
     import provisa.federation.engine as engine_mod
 
     monkeypatch.setattr(engine_mod, "configured_engine_url", lambda: None)
     rt = EngineRuntime(_FakeEngine(materialize_store=None), state=object())
 
-    with pytest.raises(PassthroughError, match="no configured URL"):
-        rt.execute_pg_engine_passthrough("SELECT 1", None, [0], loop=object())
+    with pytest.raises(PassthroughFailure, match="no configured URL") as exc:
+        rt.execute_pg_engine_passthrough("SELECT 1", None, [0], run=lambda coro: coro.close())
+    assert not isinstance(exc.value, PassthroughError)
 
 
 @pytest.mark.parametrize(

@@ -11,10 +11,10 @@
 """Neo4j Bolt protocol server for Provisa."""
 
 
-def start_bolt_server(host, port, ssl_ctx, loop):
+def start_bolt_server(host, port, ssl_ctx):
     from provisa.bolt.server import start_bolt_server as _start
 
-    return _start(host, port, ssl_ctx, loop)
+    return _start(host, port, ssl_ctx)
 
 
 __all__ = ["start_bolt_server"]

@@ -29,7 +29,44 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from graphql.language.ast import FieldNode, OperationDefinitionNode, SelectionSetNode
 from graphql.language import print_ast
 
+from provisa.core.operator_floor import OperatorFloorError
+
 log = logging.getLogger(__name__)
+
+
+class SubscriptionFloorViolation(OperatorFloorError):
+    """A subscription request would move a setting the operator owns (REQ-030)."""
+
+
+def sink_broker_within_floor(requested: str | None) -> str:  # REQ-030, REQ-176
+    """The Kafka cluster a sink writes to: the operator's ``KAFKA_BOOTSTRAP_SERVERS``. A request may
+    repeat it; any other broker — or a sink when the operator configured no cluster — is refused."""
+    operator = os.environ.get("KAFKA_BOOTSTRAP_SERVERS")
+    if not operator:
+        raise SubscriptionFloorViolation(
+            "a Kafka sink needs the operator's broker: KAFKA_BOOTSTRAP_SERVERS is not configured"
+        )
+    if requested and requested != operator:
+        raise SubscriptionFloorViolation(
+            f"sink broker {requested!r} is outside the operator's floor: the operator set "
+            f"KAFKA_BOOTSTRAP_SERVERS={operator!r}. Omit the broker or use that one."
+        )
+    return operator
+
+
+def watermark_within_floor(  # REQ-030, REQ-260
+    requested: str | None, registered: str | None, table_name: str
+) -> str | None:
+    """The column ``table_name`` is polled by: the operator's registered watermark. Whether and how
+    a table is polled sets its upstream load, so a request may only repeat it — a different column,
+    or one on a table the operator gave none, is refused."""
+    if requested is None or requested == registered:
+        return registered
+    raise SubscriptionFloorViolation(
+        f"@watermark({requested}) on {table_name!r} is outside the operator's floor: the operator "
+        + (f"polls it by {registered!r}." if registered else "registered no watermark for it.")
+        + " Remove the @watermark directive."
+    )
 
 
 def _collect_related_tables(selection_set: SelectionSetNode, type_name: str, ctx) -> set[str]:
@@ -131,8 +168,12 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
         _sql_directives = extract_directives_from_sql_comments(print_ast(document))
         directives = merge_directives(_sql_directives, extract_directives(document))
 
-    # Watermark column: @watermark field directive overrides state.table_watermarks
-    _watermark_override = directives.watermark_column if directives else None
+    # REQ-030: the watermark is the operator's (state.table_watermarks) — a request may only repeat it.
+    _watermark = watermark_within_floor(
+        directives.watermark_column if directives else None,
+        (state.table_watermarks or {}).get(table_name),
+        table_name,
+    )
 
     # Kafka sink redirect — @sink directive or X-Provisa-Sink header
     sink_topic = (directives.sink_topic if directives else None) or None
@@ -140,14 +181,11 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
     sink_header = raw_request.headers.get("x-provisa-sink", "")
     if not sink_topic and sink_header:
         # Parse header URI into topic/broker for _launch_kafka_sink
-        try:
-            _parsed = urlparse(sink_header)
-            sink_topic = _parsed.path.lstrip("/") or None
-            sink_broker = _parsed.netloc or None
-        except Exception:
-            pass
+        _parsed = urlparse(sink_header)
+        sink_topic = _parsed.path.lstrip("/") or None
+        sink_broker = _parsed.netloc or None
     if sink_topic:
-        _broker = sink_broker or os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+        _broker = sink_broker_within_floor(sink_broker)  # REQ-030: the operator's cluster only
         return await _launch_kafka_sink(
             sink_header=f"kafka://{_broker}/{sink_topic}",
             table_name=table_name,
@@ -179,7 +217,18 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
         from provisa.api.data.endpoint import _handle_query
 
         q_doc = _parse(schema, query_text, variables)
-        result = await _handle_query(q_doc, ctx, rls, state, variables, role, "json", role_id)
+        result = await _handle_query(
+            q_doc,
+            ctx,
+            rls,
+            state,
+            variables,
+            role,
+            "json",
+            role_id,
+            cache_ttl=None,
+            cache_opt_in=False,  # REQ-544: a subscription poll never reads or writes the cache
+        )
         # JSONResponse stores serialized bytes in .body
         if isinstance(result, JSONResponse):
             body = result.body
@@ -200,10 +249,7 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
                 yield f"data: {json.dumps({'errors': [{'message': str(exc)}]})}\n\n"
                 return
 
-            # Effective watermark: @watermark field directive > table registration
-            effective_watermark = _watermark_override or (state.table_watermarks or {}).get(
-                table_name
-            )
+            effective_watermark = _watermark
 
             # Watch for table changes — pg_notify triggers preferred; poll as fallback
             use_polling_fallback = (
@@ -361,7 +407,18 @@ async def _launch_kafka_sink(  # REQ-176, REQ-177, REQ-286
         from provisa.api.data.endpoint import _handle_query
 
         q_doc = _parse(schema, query_text, variables)
-        result = await _handle_query(q_doc, ctx, rls, state, variables, role, "json", role_id)
+        result = await _handle_query(
+            q_doc,
+            ctx,
+            rls,
+            state,
+            variables,
+            role,
+            "json",
+            role_id,
+            cache_ttl=None,
+            cache_opt_in=False,  # REQ-544: a subscription poll never reads or writes the cache
+        )
         if isinstance(result, JSONResponse):
             body = result.body
             if isinstance(body, memoryview):
@@ -452,7 +509,12 @@ async def _launch_kafka_sink(  # REQ-176, REQ-177, REQ-286
             producer.close()
             log.info("Kafka sink stopped: %s → %s", table_name, topic)
 
-    asyncio.create_task(_sink_loop())
+    from provisa.core.connection_loop import spawn_long_lived
+
+    # REQ-1882: the sink outlives this request (the response is a 202) and runs until its source
+    # disconnects, so it gets its own long-lived thread and loop — never the process loop, and
+    # never a pooled worker it would pin indefinitely. Its provider/producer are built inside it.
+    spawn_long_lived(_sink_loop(), name=f"kafka-sink:{table_name}")
     return JSONResponse(
         status_code=202,
         content={

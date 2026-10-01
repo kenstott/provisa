@@ -37,15 +37,18 @@ def test_sqlglot_dialect_none_for_unmapped_or_nonrelational():
 
 
 def test_writable_requires_both_gates():
-    # postgresql: native driver (asyncpg, always installed) + sqlglot dialect → writable.
+    # postgresql: native driver (psycopg2, always installed) + sqlglot dialect → writable.
     assert is_writable("postgresql") is True
     # redshift: registry.py's own "redshift+psycopg2" fallback closed the driver gap (REQ-1730) —
     # both gates now satisfied, so it's writable.
     assert sqlglot_write_dialect("redshift") == "redshift"
     assert is_writable("redshift") is True
-    # sqlserver: a sqlglot dialect but genuinely no direct driver registered is still NOT writable.
+    # sqlserver: the direct driver is gated on pyodbc (REQ-1882: sync DBAPI behind a shared pool)
+    # — writable exactly when that driver is importable, alongside its sqlglot dialect.
+    from provisa.executor.drivers.registry import has_driver
+
     assert sqlglot_write_dialect("sqlserver") is not None
-    assert is_writable("sqlserver") is False
+    assert is_writable("sqlserver") is has_driver("sqlserver")
     # a type with neither gate.
     assert is_writable("iceberg") is False
 
@@ -56,7 +59,7 @@ def test_writable_set_is_subset_of_dialect_mapped_and_driver_backed():
     for t in writable_source_types():
         assert has_driver(t), f"{t} in writable set but has no driver"
         assert sqlglot_write_dialect(t) is not None, f"{t} in writable set but no sqlglot dialect"
-    # postgresql is always present (asyncpg is a core dependency).
+    # postgresql is always present (psycopg2 is a core dependency).
     assert "postgresql" in writable_source_types()
 
 

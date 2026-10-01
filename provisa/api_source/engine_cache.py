@@ -31,7 +31,6 @@ Execution model for OpenAPI/REST sources:
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import logging
@@ -552,16 +551,34 @@ def rewrite_all_from_cache(  # REQ-318, REQ-309, REQ-327
     return result
 
 
-async def schedule_drop(  # REQ-318, REQ-309, REQ-327
+def schedule_drop(  # REQ-318, REQ-309, REQ-327
     engine,
     loc: CacheLocation,
     table_name: str,
     ttl: int,
     redirect_config=None,
 ) -> None:
-    """Drop cache table after TTL seconds — acquires a fresh engine connection at
-    drop-time (not held across the sleep)."""
-    await asyncio.sleep(ttl)
+    """Drop the cache table once ``ttl`` seconds have passed.
+
+    REQ-1882: the delay is held by the background timer thread, not by a sleeping task — the drop
+    runs on a background worker at expiry, acquiring a fresh engine connection then."""
+    from provisa.core.connection_loop import spawn_after
+
+    spawn_after(
+        ttl,
+        drop_cache_table(engine, loc, table_name, ttl, redirect_config),
+        name=f"cache-drop:{table_name}",
+    )
+
+
+async def drop_cache_table(  # REQ-318, REQ-309, REQ-327
+    engine,
+    loc: CacheLocation,
+    table_name: str,
+    ttl: int,
+    redirect_config=None,
+) -> None:
+    """Drop a cache table whose TTL expired (see :func:`schedule_drop`)."""
     _TABLE_EXISTS_CACHE.pop((loc.catalog, loc.schema, table_name), None)
     try:
         with engine.isolated_sync() as conn:
@@ -571,7 +588,7 @@ async def schedule_drop(  # REQ-318, REQ-309, REQ-327
     except Exception as exc:
         log.warning("[API CACHE] drop failed for %s: %s", table_name, exc)
     if loc.backend == "iceberg" and redirect_config is not None:
-        from provisa.executor.redirect import schedule_s3_cleanup
+        from provisa.executor.redirect import cleanup_s3_prefix
 
         s3_prefix = f"s3a://{_ICEBERG_BUCKET}/{loc.schema}/{table_name}/"
-        await schedule_s3_cleanup(s3_prefix, redirect_config, delay_seconds=0)
+        await cleanup_s3_prefix(s3_prefix, redirect_config)

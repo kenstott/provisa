@@ -39,7 +39,7 @@ def startup(monkeypatch):
     """``_start_servers`` with every server it may start recorded instead of bound."""
     started: list[str] = []
 
-    async def _start_grpc(*args, **kwargs):
+    def _start_grpc(*args, **kwargs):
         started.append("grpc")
         return types.SimpleNamespace()
 

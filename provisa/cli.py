@@ -116,7 +116,7 @@ def _apply_embedded_env(data_dir: Path) -> list[str]:
     return notes
 
 
-async def _control_plane_drift() -> str | None:
+def _control_plane_drift() -> str | None:
     """Return a ``plane:table.column`` description of the FIRST schema drift in the embedded control
     plane, else None.
 
@@ -143,22 +143,18 @@ async def _control_plane_drift() -> str | None:
     ):
         engine = create_engine_from_url(os.environ[f"{plane.upper()}_DATABASE_URL"])
         try:
-            async with engine.connect() as conn:
-                present = set(await conn.run_sync(lambda c: sa.inspect(c).get_table_names()))
+            with engine.connect() as conn:
+                insp = sa.inspect(conn)
+                present = set(insp.get_table_names())
                 for table in meta.tables.values():
                     if table.name not in present:
                         continue  # a table the ORM will create on start — not drift
-                    have = {
-                        c["name"]
-                        for c in await conn.run_sync(
-                            lambda c, _t=table.name: sa.inspect(c).get_columns(_t)
-                        )
-                    }
+                    have = {c["name"] for c in insp.get_columns(table.name)}
                     for col in table.columns:
                         if col.name not in have:
                             return f"{plane}:{table.name}.{col.name}"
         finally:
-            await engine.dispose()
+            engine.dispose()
     return None
 
 
@@ -569,7 +565,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     # The launch environment starts the embedded plane and publishes its URLs, so drift is read
     # after it and not before: the check needs the socket the resolver has just chosen (REQ-1535).
     notes = _apply_embedded_env(data_dir)
-    drift = asyncio.run(_control_plane_drift())
+    drift = _control_plane_drift()
     if drift:
         print(
             f"Control-plane store at {data_dir} is from an older Provisa (missing {drift}) and V1 "

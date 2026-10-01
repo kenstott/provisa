@@ -19,8 +19,6 @@ The auth provider is stubbed so no real bcrypt/DB is needed.
 
 from __future__ import annotations
 
-import asyncio
-import socket
 import threading
 import time
 from unittest.mock import MagicMock, patch
@@ -34,9 +32,9 @@ from provisa.pgwire.server import ProvisaConnection, ProvisaServer
 
 
 def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+    from tests.port_lease import lease_port
+
+    return lease_port()
 
 
 def _make_server(port: int) -> ProvisaServer:
@@ -82,18 +80,10 @@ def _stub_auth_provider(valid_user: str, valid_password: str):
 
 @pytest_asyncio.fixture(scope="module")
 async def pgwire_server():
-    import provisa.pgwire.server as _srv
-
-    loop = asyncio.get_running_loop()
-    with _srv._loop_lock:
-        previous_loop = _srv._loop
-        _srv._loop = loop
     port = _free_port()
     server = _make_server(port)
     yield port
     server.shutdown()
-    with _srv._loop_lock:
-        _srv._loop = previous_loop
 
 
 @pytest.fixture(scope="module")
@@ -114,7 +104,7 @@ async def test_select_1(pgwire_server, mock_state):
     port = pgwire_server
     provider = _stub_auth_provider("alice", "secret")
 
-    async def _stub_pipeline(sql, role_id):
+    async def _stub_pipeline(sql, role_id, params=None):
         return EngineResult(rows=[(1,)], column_names=["?column?"])
 
     with (
@@ -164,7 +154,7 @@ async def test_none_provider_trust_mode(pgwire_server):
     trust_state.auth_config = {"provider": "none"}
     trust_state.auth_middleware_active = False
 
-    async def _stub_pipeline(sql, role_id):
+    async def _stub_pipeline(sql, role_id, params=None):
         from provisa.executor.result import QueryResult as EngineResult
 
         return EngineResult(rows=[(role_id,)], column_names=["role"])

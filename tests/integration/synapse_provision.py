@@ -220,18 +220,33 @@ def _create_database(server: str) -> None:
     ``CREATE DATABASE`` cannot run inside a transaction, so the connection is switched to autocommit;
     pyodbc opens one implicitly otherwise.
     """
+    import pyodbc
+
     from provisa.federation.mssql_warehouse_runtime import MssqlWarehouseRuntime
 
-    rt = MssqlWarehouseRuntime(server=server, database="master", engine_name="synapse")
-    try:
-        rt.connection.autocommit = True
-        cur = rt.connection.cursor()
+    # Error 1807 ("Could not obtain exclusive lock on database 'model'") is SQL Server's documented
+    # transient for CREATE DATABASE: every new database copies `model`, and a freshly provisioned
+    # serverless pool is still touching it. Retry that one error, bounded, the same way the
+    # OPENROWSET readiness wait above polls the new workspace; any other error, or 1807 persisting
+    # past the bound, fails the lane.
+    deadline = time.monotonic() + 300
+    while True:
+        rt = MssqlWarehouseRuntime(server=server, database="master", engine_name="synapse")
         try:
-            cur.execute(f"CREATE DATABASE [{_DATABASE}]")
+            rt.connection.autocommit = True
+            cur = rt.connection.cursor()
+            try:
+                cur.execute(f"CREATE DATABASE [{_DATABASE}]")
+                return
+            finally:
+                cur.close()
+        except pyodbc.ProgrammingError as exc:
+            if "(1807)" not in str(exc) or time.monotonic() >= deadline:
+                raise
+            print(f"CREATE DATABASE hit transient 1807; retrying: {exc}", flush=True)
+            time.sleep(15)
         finally:
-            cur.close()
-    finally:
-        rt.close()
+            rt.close()
 
 
 def _teardown(resource_group: str) -> None:

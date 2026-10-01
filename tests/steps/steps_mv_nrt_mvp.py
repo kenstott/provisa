@@ -22,7 +22,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from pytest_bdd import given, scenarios, then, when
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 import provisa.events.processor as processor_mod
 from provisa.api.admin import schema_common
@@ -41,14 +41,10 @@ def ctx(tmp_path) -> dict:
     path = str(tmp_path / "cp.db")
 
     async def _init():
-        engine = create_async_engine(f"sqlite+aiosqlite:///{path}")
-        async with engine.begin() as c:
-            await c.run_sync(
-                lambda s: events.metadata.create_all(
-                    s, tables=[events, event_status, node_freshness_state]
-                )
-            )
-        await engine.dispose()
+        engine = create_engine_from_url(f"sqlite+pysqlite:///{path}")
+        with engine.begin() as c:
+            events.metadata.create_all(c, tables=[events, event_status, node_freshness_state])
+        engine.dispose()
 
     asyncio.run(_init())
     return {"cp_path": path}
@@ -58,12 +54,12 @@ def _run(ctx, coro_fn):
     """Open a fresh control-plane Database on the shared file, run coro_fn(conn), dispose."""
 
     async def _():
-        engine = create_async_engine(f"sqlite+aiosqlite:///{ctx['cp_path']}")
+        engine = create_engine_from_url(f"sqlite+pysqlite:///{ctx['cp_path']}")
         try:
             async with Database(engine, name="cp").acquire() as conn:
                 return await coro_fn(conn)
         finally:
-            await engine.dispose()
+            engine.dispose()
 
     return asyncio.run(_())
 

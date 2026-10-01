@@ -24,7 +24,7 @@ from contextlib import asynccontextmanager
 
 import pytest
 from sqlalchemy import insert, select
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.api.admin._dq_registration import apply_dq_registration
 from provisa.core.database import Database
@@ -84,14 +84,14 @@ def _compiled_estate():
 
 @asynccontextmanager
 async def _conn(tmp_path):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'dq.db'}")
-    async with engine.begin() as c:
-        await c.run_sync(lambda s: registered_tables.metadata.create_all(s, tables=_TABLES))
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'dq.db'}")
+    with engine.begin() as c:
+        registered_tables.metadata.create_all(c, tables=_TABLES)
     try:
         async with Database(engine, name="dq").acquire() as conn:
             yield conn
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 _MAPPING = {

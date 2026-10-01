@@ -66,6 +66,8 @@ GET /auth/provider-type
 - `X-Provisa-Redirect-Threshold` — 触发重定向的行数阈值 (REQ-137)
 - `X-Provisa-Redirect` — `true` 表示无条件强制重定向 (REQ-029)
 
+**响应缓存：** 通过操作级指令 `@cached` 按请求选择启用（`query @cached(ttl: 60) { ... }`，`ttl` 可选）；同一指令也适用于经 Arrow Flight 发送的 GraphQL。Cypher 以 `// @provisa cache=true` 或 `// @provisa cache_ttl=N` 行选择启用，gRPC 以调用元数据 `x-provisa-cache: true` 或 `x-provisa-cache-ttl: N` 选择启用。没有该指令时，请求既不读取也不写入响应缓存。响应头 `X-Provisa-Cache` 报告 `HIT` 或 `MISS`。请参阅[缓存](configuration.md)。（REQ-544）
+
 **响应（内联 JSON）：**
 
 ```json

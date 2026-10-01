@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import threading
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any, Callable, cast
@@ -114,22 +113,14 @@ def fake_pat_store():
 
 @pytest.fixture
 def pgwire_loop():
-    """A running main loop for pgwire's auth path to submit validators to (it authenticates on a
-    socketserver worker thread and drives every validator on the main loop)."""
-    import provisa.pgwire.server as pg_server
+    """This test thread's connection loop, bound as ProvisaHandler.handle binds one.
 
-    loop = asyncio.new_event_loop()
-    thread = threading.Thread(target=loop.run_forever, daemon=True)
-    thread.start()
-    previous = pg_server._loop
-    pg_server._loop = loop
-    try:
-        yield loop
-    finally:
-        pg_server._loop = previous
-        loop.call_soon_threadsafe(loop.stop)
-        thread.join(timeout=5)
-        loop.close()
+    pgwire runs every auth coroutine on the connection thread's own loop (REQ-1882), so a test
+    that drives handler methods directly binds one to the test thread for the test's duration."""
+    from provisa.core.connection_loop import connection_loop
+
+    with connection_loop() as cl:
+        yield cl
 
 
 # --- credentials --------------------------------------------------------------------------------

@@ -27,6 +27,8 @@ read equals the store's direct read, and the TTL sweep really expires the entry.
 
 from __future__ import annotations
 
+import asyncio
+
 import os
 from collections import namedtuple
 from types import SimpleNamespace
@@ -173,8 +175,9 @@ async def test_rewrite_from_cache_repoints_semantic_from_at_the_landed_table(
 async def test_schedule_drop_expires_the_landed_entry_through_the_engine(
     engine_runtime, clean_cache_schema
 ):
-    """TTL expiry against the live engine: schedule_drop sleeps the TTL, then DROPs the landed table
-    through a fresh engine connection — the store entry is really gone afterward (REQ-855)."""
+    """TTL expiry against the live engine: schedule_drop arms the background timer; at the TTL a
+    background worker DROPs the landed table through a fresh engine connection — the store entry
+    is really gone afterward (REQ-855, REQ-1882)."""
     rt = engine_runtime
     loc = cache_location(_SOURCE_ID, cache_schema=_CACHE_SCHEMA, engine=rt)
     table = cache_table_name(_SOURCE_ID, "listOrders", {})
@@ -186,12 +189,20 @@ async def test_schedule_drop_expires_the_landed_entry_through_the_engine(
     with rt.isolated_sync() as conn:
         assert table_exists(conn, loc, table) is True
 
-    await schedule_drop(rt, loc, table, ttl=1)  # sleeps 1s, then DROPs through a fresh engine conn
+    schedule_drop(rt, loc, table, ttl=1)  # returns at once; the timer fires the drop at 1s
 
     # Gone from the store itself — verified directly, not via the engine's (now-invalidated) cache.
+    # Polled: the drop runs on a background worker once the 1s TTL passes.
     pg = await asyncpg.connect(dsn=_pg_dsn())
     try:
-        exists = await pg.fetchval("SELECT to_regclass($1) IS NOT NULL", f"{_CACHE_SCHEMA}.{table}")
+        deadline = asyncio.get_running_loop().time() + 20
+        while True:
+            exists = await pg.fetchval(
+                "SELECT to_regclass($1) IS NOT NULL", f"{_CACHE_SCHEMA}.{table}"
+            )
+            if exists is False or asyncio.get_running_loop().time() > deadline:
+                break
+            await asyncio.sleep(0.2)
     finally:
         await pg.close()
     assert exists is False  # TTL sweep really dropped the landed replica

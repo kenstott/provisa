@@ -30,10 +30,20 @@ import json
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from provisa.core import request_deadline
 from provisa.executor.result import QueryResult
 from provisa.executor.result import ResultStream
 from provisa.federation.bigquery_store import bq_type
 from provisa.federation.runtime_support import run_async_materialized, stream_rows_from_arrow
+
+
+def _job_cancel(job: Any):
+    """Request-deadline cancel for a BigQuery job (REQ-1882); ``QueryJob.cancel`` returns a bool."""
+
+    def _cancel() -> None:
+        job.cancel()
+
+    return _cancel
 
 
 class BigQueryFederationRuntime:  # REQ — BigQuery federation engine
@@ -277,7 +287,9 @@ class BigQueryFederationRuntime:  # REQ — BigQuery federation engine
         """Execute BigQuery-dialect SQL and return a ``pyarrow.Table`` — BigQuery delivers Arrow
         natively via the Storage Read API (``to_arrow``), so no Python rows are materialized."""
         del params
-        return self._client.query(sql).to_arrow()
+        job = self._client.query(sql)
+        with request_deadline.cancel_on_deadline(_job_cancel(job)):
+            return job.to_arrow()
 
     def run_arrow_stream(self, sql: str, params: list | None = None) -> tuple[Any, Any]:
         """Execute BigQuery-dialect SQL and return ``(schema, batch_generator)`` for lazy record-batch
@@ -289,9 +301,11 @@ class BigQueryFederationRuntime:  # REQ — BigQuery federation engine
         import pyarrow as pa
 
         del params
-        it = self._client.query(sql).result()
-        batch_iter = iter(it.to_arrow_iterable())
-        first = next(batch_iter, None)
+        job = self._client.query(sql)
+        with request_deadline.cancel_on_deadline(_job_cancel(job)):
+            it = job.result()
+            batch_iter = iter(it.to_arrow_iterable())
+            first = next(batch_iter, None)
         if first is None:  # zero-row result yields no batches
             names = [f.name for f in it.schema]
             return pa.table({name: [] for name in names}).schema, iter(())
@@ -299,7 +313,12 @@ class BigQueryFederationRuntime:  # REQ — BigQuery federation engine
 
         def _batches():
             yield first
-            yield from batch_iter
+            while True:
+                with request_deadline.cancel_on_deadline(_job_cancel(job)):
+                    batch = next(batch_iter, None)
+                if batch is None:
+                    return
+                yield batch
 
         return schema, _batches()
 

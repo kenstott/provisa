@@ -419,6 +419,8 @@ class TableColumnType:  # REQ-040, REQ-041, REQ-393, REQ-399
     is_implicit_measure: bool = False
     is_implicit_dimension: bool = False
     domain_id: str | None = None
+    # REQ-1908: epoch-number storage unit ("s" | "ms" | "us") of a temporal column; null otherwise.
+    epoch_unit: str | None = None
 
 
 @strawberry.type
@@ -699,6 +701,9 @@ class ColumnInput:  # REQ-040, REQ-041, REQ-393, REQ-399
     is_foreign_key: bool = False
     is_alternate_key: bool = False
     scope: str = "domain"
+    # REQ-1908: the source stores this temporal column as an epoch number in this unit
+    # ("s" | "ms" | "us"). Mirrors the core Column model's epoch_unit.
+    epoch_unit: str | None = None
 
 
 @strawberry.input

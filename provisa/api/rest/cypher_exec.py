@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from provisa.core.database import Connection  # noqa: F401
 
 
+from provisa.core.connection_loop import spawn_background
 from provisa.api.rest.registered_call import (
     _detect_procedure,  # noqa: F401 — re-exported for tests
     _handle_procedure,  # noqa: F401 — re-exported for tests
@@ -245,12 +246,10 @@ async def _execute_with_api(
                 or getattr(state, "response_cache_default_ttl", None)
                 or endpoint.ttl
             )
-            asyncio.create_task(
-                schedule_drop(state.federation_engine, _cache_loc, cache_tbl, ttl, redirect_config)
-            )
+            schedule_drop(state.federation_engine, _cache_loc, cache_tbl, ttl, redirect_config)
 
             if hot_mgr is not None and result.rows:
-                asyncio.create_task(hot_mgr.maybe_promote_dicts(table_name, result.rows))
+                spawn_background(hot_mgr.maybe_promote_dicts(table_name, result.rows))
         else:
             log.info("[API CACHE] hit — %s", cache_tbl)
 
@@ -394,10 +393,8 @@ async def _execute_with_gql_remote(
             # REQ-1688: statistics where the table lives, off the query's critical path.
             from provisa.api_source.engine_cache import analyze_cache_table
 
-            asyncio.create_task(analyze_cache_table(state.federation_engine, cache_loc, cache_tbl))
-            asyncio.create_task(
-                schedule_drop(state.federation_engine, cache_loc, cache_tbl, info["cache_ttl"])
-            )
+            spawn_background(analyze_cache_table(state.federation_engine, cache_loc, cache_tbl))
+            schedule_drop(state.federation_engine, cache_loc, cache_tbl, info["cache_ttl"])
         else:
             log.info("[GQL CACHE] hit — %s", cache_tbl)
 
@@ -444,6 +441,7 @@ async def _execute_call_body(
     from provisa.cypher.graph_rewriter import apply_graph_rewrites
     from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.compiler.nf_extractor import extract_nf_args, find_api_table_names
+    from provisa.compiler.directives import NO_CACHE_HINT
     from provisa.pgwire._pipeline import _govern_and_route_compiled
 
     sql_ast, ordered_params, graph_vars = cypher_to_sql(call_body, label_map, params)
@@ -457,6 +455,8 @@ async def _execute_call_body(
         semantic_sql,
         role_id,
         exec_params=resolved_params or None,
+        # A CALL body is one fragment of a composed result, never a cache entry of its own.
+        cache_hint=NO_CACHE_HINT,
     )
     from provisa.pgwire._pipeline import require_governed_plan
 

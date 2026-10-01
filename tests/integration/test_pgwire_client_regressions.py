@@ -63,9 +63,9 @@ import provisa.pgwire.server as _srv  # noqa: E402
 
 
 def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+    from tests.port_lease import lease_port
+
+    return lease_port()
 
 
 def _make_mock_state(role: str = "admin", provider: str = "none") -> MagicMock:
@@ -115,9 +115,6 @@ def _running_server(state: MagicMock, govern_stub):
         patch.object(_srv, "state", state, create=True),
         patch.object(_pl, "govern_pgwire_plan", govern_stub),
     ):
-        with _srv._loop_lock:
-            previous_loop = _srv._loop
-            _srv._loop = loop
         t = threading.Thread(target=server.serve_forever, daemon=True)
         t.start()
         deadline = time.time() + 30
@@ -133,8 +130,6 @@ def _running_server(state: MagicMock, govern_stub):
             yield port
         finally:
             server.shutdown()
-            with _srv._loop_lock:
-                _srv._loop = previous_loop
             loop.call_soon_threadsafe(loop.stop)
 
 
@@ -239,7 +234,7 @@ class TestDescribeWithoutExecuteDoesNotLeak:
             close_calls.append(self)
             orig_close(self)
 
-        async def _fake_govern(sql, role_id):
+        async def _fake_govern(sql, role_id, params=None):
             del sql, role_id
             return EngineResult(rows=[(1,)], column_names=["v"])
 
@@ -280,7 +275,7 @@ class TestDescribeWithoutExecuteDoesNotLeak:
             close_calls.append(self)
             orig_close(self)
 
-        async def _fake_govern(sql, role_id):
+        async def _fake_govern(sql, role_id, params=None):
             del sql, role_id
             return EngineResult(rows=[(2,)], column_names=["v"])
 
@@ -319,7 +314,7 @@ class TestAsyncpgBinaryTypeRoundTrip:
         """
         state = _make_mock_state("admin", "none")
 
-        async def _fake_govern(sql, role_id):
+        async def _fake_govern(sql, role_id, params=None):
             del sql, role_id
             return EngineResult(rows=[(42,)], column_names=["n"], column_types=["int4"])
 
@@ -339,7 +334,7 @@ class TestAsyncpgBinaryTypeRoundTrip:
         """Same class of bug, a second lowercase integer type name (bigint's wire name)."""
         state = _make_mock_state("admin", "none")
 
-        async def _fake_govern(sql, role_id):
+        async def _fake_govern(sql, role_id, params=None):
             del sql, role_id
             return EngineResult(rows=[(9_876_543_210,)], column_names=["n"], column_types=["int8"])
 

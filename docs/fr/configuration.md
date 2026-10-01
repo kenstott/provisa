@@ -922,6 +922,50 @@ tables:
 
 Définir `cache_enabled: false` sur une source désactive le cache pour toutes les tables de cette source, quel que soit le TTL au niveau table. (REQ-544) Les clés de cache incluent toujours `role_id` et les valeurs du contexte RLS, à des fins de partitionnement de sécurité. (REQ-544)
 
+### Activation par requête
+
+Le cache de réponses est désactivé pour toute requête qui ne le demande pas. (REQ-544) Une requête l'active avec :
+
+| Surface | Activation |
+| --- | --- |
+| GraphQL (`/data/graphql`, Arrow Flight) | `@cached` sur l'opération, éventuellement `@cached(ttl: 60)` |
+| SQL (pgwire, Flight SQL, `/data/sql`) | une ligne de commentaire `-- @provisa cache=true` ou `-- @provisa cache_ttl=60` dans l'instruction |
+| Cypher (`/data/cypher`, la Neo4j Query API, Bolt, Arrow Flight) | une ligne de commentaire `// @provisa cache=true` ou `// @provisa cache_ttl=60` dans la requête |
+| gRPC (et le proxy gRPC HTTP) | métadonnées d'appel (en-têtes sur le proxy) `x-provisa-cache: true` ou `x-provisa-cache-ttl: 60` |
+
+REST et JSON:API n'ont pas d'activation. Un `ttl` qui n'est pas un entier fait échouer la requête.
+
+Sans l'indication, la requête ne lit ni n'écrit le cache. Avec elle, les paramètres ci-dessus décident toujours : le résultat n'est mis en cache que si chaque source lue a `cache_enabled: true` et que le TTL résolu de chaque table est supérieur à 0. L'entrée vit le `ttl` de la requête si elle en donne un, sinon le plus court TTL résolu des tables lues. (REQ-544)
+
+L'indication accepte seulement des données plus anciennes en échange de rapidité. Elle ne rend jamais une lecture plus récente que ne le permettent les paramètres de l'opérateur : la fraîcheur de l'atterrissage et du réplica (`cache_ttl`, `change_signal`), `row_materialize`, les instantanés `load_protected` et les contrôles de fraîcheur s'appliquent à une requête avec indication exactement comme à une requête sans. Voir la section sur la fraîcheur et la charge dans ce document. (REQ-544)
+
+`@noCache` et `-- @provisa no_cache=true` n'existent plus : le cache étant désactivé par défaut, il n'y a rien à contourner.
+
+Une écriture invalide chaque entrée de cache que l'organisation qui écrit détient pour les tables écrites ; les entrées d'une autre organisation pour la même table ne sont pas touchées. Si l'invalidation échoue, la requête échoue au lieu de laisser des entrées périmées. (REQ-544, REQ-595)
+
+## Fraîcheur et charge : qui décide
+
+Trois parties déterminent la fraîcheur d'un résultat et la charge qu'une requête impose aux systèmes en aval. (REQ-030)
+
+- **La source amont.** Idéalement, elle gère sa propre contre-pression : limites de connexions, délais d'exécution, réplicas de lecture.
+- **L'opérateur.** Protège la plateforme, Provisa elle-même, de la contre-pression. Quand une source ne peut pas se protéger, l'opérateur la protège aussi. Les réglages correspondants se trouvent sur les sources et les tables : `load_protected`, `prefer_materialized`, les `federation_hints` de la source, le seuil de redirection des grands résultats, le cluster Kafka où écrivent les sinks et le watermark enregistré de chaque table.
+- **L'utilisateur final.** Arbitre entre vitesse et fraîcheur, requête par requête.
+
+Les réglages de l'opérateur sont le plancher. Une requête peut aller au-dessus, vers des données plus anciennes ou moins de charge ; l'activation du cache de réponses en est l'exemple courant. Elle ne peut jamais descendre en dessous. Un indice de requête qui le ferait est refusé avec une erreur nommant le réglage de l'opérateur, jamais appliqué ni ignoré en silence.
+
+| Entrée de la requête | Ce qu'elle peut faire | Refusée quand |
+| --- | --- | --- |
+| `@route(engine: DIRECT)`, `-- @provisa route=direct` | Choisir le pilote direct pour une source | la source est `load_protected` ou `prefer_materialized` |
+| `@join`, `@reorder`, `@broadcastSize`, `/*+ ... */` | Fixer une propriété de session du moteur laissée libre par les `federation_hints` de la source | elle modifie une propriété fixée par l'opérateur |
+| `X-Provisa-Redirect-Threshold`, `@redirect(threshold:)` | Rediriger un résultat plus tôt | elle dépasse le seuil de l'opérateur |
+| `@sink(broker:)`, broker de `X-Provisa-Sink` | Reprendre le broker de l'opérateur | elle nomme un autre broker, ou aucun `KAFKA_BOOTSTRAP_SERVERS` n'est configuré |
+| `@watermark` sur un abonnement | Reprendre le watermark enregistré de la table | elle nomme une autre colonne, ou la table n'en a pas |
+| `@cached`, `-- @provisa cache=true` | Servir un résultat plus ancien depuis le cache | jamais ; une entrée de cache n'est jamais plus fraîche que la lecture qui l'a stockée |
+
+Les refus renvoient HTTP 403 avec le code `query.operator_floor`, SQLSTATE `42501` via pgwire et `PERMISSION_DENIED` via Flight et gRPC. (REQ-030)
+
+Une source `load_protected` ou `prefer_materialized` n'est jamais lue en direct par une requête, quel que soit le transport. Les requêtes lisent sa copie atterrie. Seuls l'atterrissage et ses rafraîchissements lisent la source : un rafraîchissement a lieu quand `cache_ttl` ou un contrôle de fraîcheur l'exige ; sans l'un ni l'autre, la copie atterrit une fois puis n'est rafraîchie que par un flux de changements ou le planificateur. (REQ-1907) (REQ-1141, REQ-826)
+
 ## Authentification
 
 ```yaml
@@ -1428,7 +1472,7 @@ Pour les sources Google Cloud, pointez `GOOGLE_APPLICATION_CREDENTIALS` vers le 
 | Variable | Défaut | Description |
 | ---------- | --------- | ------------- |
 | `PROVISA_CONFIG` | `config/provisa.yaml` | Chemin du fichier de configuration |
-| `TENANT_DATABASE_URL` | `postgresql+asyncpg://provisa:provisa@localhost:5432/provisa` | URI du magasin du plan de contrôle (SQLAlchemy async) ; accepte `sqlite+aiosqlite://…` / `duckdb://…` pour le magasin de bureau embarqué (REQ-828, REQ-850) |
+| `TENANT_DATABASE_URL` | `postgresql+psycopg://provisa:provisa@localhost:5432/provisa` | URI du magasin du plan de contrôle (SQLAlchemy async) ; accepte `sqlite+pysqlite://…` / `duckdb://…` pour le magasin de bureau embarqué (REQ-828, REQ-850) |
 | `PLATFORM_DATABASE_URL` | — | URI du registre de plateforme (annuaire des tenants, registre des moteurs) ; requis au démarrage, sans repli (REQ-837) |
 | `PROVISA_REDIS_EMBEDDED` | — | `1`/`true` utilise fakeredis embarqué au lieu d'un serveur Redis — sans Docker (REQ-829) |
 | `PG_HOST` | `localhost` | Hôte PostgreSQL |

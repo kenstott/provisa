@@ -18,9 +18,9 @@ engine cache (VALUES-CTE rewrites). Extracted from endpoint.py; leaf module.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
+from provisa.core.connection_loop import spawn_background
 
 
 log = logging.getLogger(__name__)
@@ -333,11 +333,7 @@ async def _mat_gql_remote_table(
         await land_api_cache(
             state.federation_engine, gql_cache_loc, gql_cache_tbl, gql_rows, col_objs
         )
-        asyncio.create_task(
-            schedule_drop(
-                state.federation_engine, gql_cache_loc, gql_cache_tbl, 300, redirect_config
-            )
-        )
+        schedule_drop(state.federation_engine, gql_cache_loc, gql_cache_tbl, 300, redirect_config)
     except Exception as cache_exc:
         log.warning("[GQL REMOTE] cache write failed for %s: %s", tn, cache_exc)
 
@@ -453,14 +449,12 @@ async def _mat_grpc_remote_table(
     if rows:
         try:
             await land_api_cache(state.federation_engine, cache_loc, cache_tbl, rows, cache_cols)
-            asyncio.create_task(
-                schedule_drop(
-                    state.federation_engine,
-                    cache_loc,
-                    cache_tbl,
-                    reg.get("cache_ttl", 300),
-                    redirect_config,
-                )
+            schedule_drop(
+                state.federation_engine,
+                cache_loc,
+                cache_tbl,
+                reg.get("cache_ttl", 300),
+                redirect_config,
             )
         except Exception as cache_exc:
             log.warning("[GRPC REMOTE] cache write failed for %s: %s", tn, cache_exc)
@@ -578,14 +572,12 @@ async def _mat_openapi_table(
     if rows:
         try:
             await land_api_cache(state.federation_engine, cache_loc, cache_tbl, rows, cache_cols)
-            asyncio.create_task(
-                schedule_drop(
-                    state.federation_engine,
-                    cache_loc,
-                    cache_tbl,
-                    entry.get("cache_ttl", 300),
-                    redirect_config,
-                )
+            schedule_drop(
+                state.federation_engine,
+                cache_loc,
+                cache_tbl,
+                entry.get("cache_ttl", 300),
+                redirect_config,
             )
         except Exception as cache_exc:
             log.warning("[OPENAPI] cache write failed for %s: %s", tn, cache_exc)
@@ -615,30 +607,36 @@ async def _mat_openapi_table(
         )
 
 
-async def _mat_fetch_rows_from_pg(ep, col_names: list, _META_COLS: set, state) -> tuple[list, bool]:
-    """Fetch rows for an API endpoint from the PG cache table.
+async def _mat_fetch_rows_from_pg(ep, col_names: list, _META_COLS: set, state) -> list[dict]:
+    """Fetch rows for an API endpoint from the PG cache table -- ``[]`` when there is no tenant
+    database or the cache holds no rows (a miss the caller fills live). A failed read raises: it
+    is never a cue to fetch from REST instead (REQ-1661, amended 2026-09-30)."""
+    from sqlalchemy.exc import NoSuchTableError
 
-    Returns (rows, pg_ok).
-    """
-    rows: list[dict] = []
-    pg_ok = False
+    from provisa.openapi.pg_cache import _relation
+
     if getattr(state, "tenant_db", None) is None:
-        return rows, pg_ok
-    try:
-        async with state.tenant_db.acquire() as _pg_conn:
-            _raw = await _pg_conn.fetch(f'SELECT * FROM "default"."{ep.table_name}"')
-        col_set = set(col_names)
-        for r in _raw:
-            row = {
-                k: _normalize_mat_value(v)
-                for k, v in dict(r).items()
-                if k not in _META_COLS and k in col_set
-            }
-            rows.append(row)
-        pg_ok = True
-    except Exception as exc:
-        log.warning("[MAT] PG read failed for %s: %s — trying REST", ep.table_name, exc)
-    return rows, pg_ok
+        return []
+    async with state.tenant_db.acquire() as _pg_conn:
+        # The cache table exists only once pg_cache created it (at config load, which logs and
+        # moves on when the endpoint's first fetch fails; never for an endpoint registered
+        # without one) -- its absence is a miss, checked explicitly, not a failed read.
+        try:
+            await _pg_conn.reflect_columns(ep.table_name, "default")
+        except NoSuchTableError:
+            return []
+        _raw = await _pg_conn.fetch(
+            f"SELECT * FROM {_relation(_pg_conn, 'default', ep.table_name)}"
+        )
+    col_set = set(col_names)
+    return [
+        {
+            k: _normalize_mat_value(v)
+            for k, v in dict(r).items()
+            if k not in _META_COLS and k in col_set
+        }
+        for r in _raw
+    ]
 
 
 async def _mat_fetch_rows_from_rest(
@@ -717,8 +715,8 @@ def _mat_store_rows(
     with engine.isolated_sync() as _c:
         create_and_insert(_c, _cache_loc, cache_tbl, _snake_rows, _snake_cols)
     # REQ-1688: statistics where the table lives, off the query's critical path.
-    asyncio.create_task(analyze_cache_table(engine, _cache_loc, cache_tbl))
-    asyncio.create_task(schedule_drop(engine, _cache_loc, cache_tbl, ttl, redirect_config))
+    spawn_background(analyze_cache_table(engine, _cache_loc, cache_tbl))
+    schedule_drop(engine, _cache_loc, cache_tbl, ttl, redirect_config)
     log.warning("[MAT] persisted %d rows → store %s", len(rows), cache_tbl)
 
     if 0 < len(rows) <= _hot_threshold:
@@ -811,7 +809,7 @@ async def _mat_api_ep_table(
         )
         cache_rewrites[tn] = (_cache_loc, cache_tbl)
         if hot_mgr is not None and getattr(state, "tenant_db", None) is not None:
-            asyncio.create_task(
+            spawn_background(
                 _promote_joined_from_pg(
                     state, ep, tn, hot_mgr, col_names, _META_COLS, _cache_loc, _hot_threshold
                 )
@@ -831,7 +829,7 @@ async def _mat_api_ep_table(
         )
         cache_rewrites[tn] = (_cache_loc, cache_tbl)
         if hot_mgr is not None and getattr(state, "tenant_db", None) is not None:
-            asyncio.create_task(
+            spawn_background(
                 _promote_joined_from_pg(
                     state, ep, tn, hot_mgr, col_names, _META_COLS, _cache_loc, _hot_threshold
                 )
@@ -839,9 +837,9 @@ async def _mat_api_ep_table(
         return
 
     # Priority 3: cache miss — hydrate from PG then REST fallback
-    rows, pg_ok = await _mat_fetch_rows_from_pg(ep, col_names, _META_COLS, state)
+    rows = await _mat_fetch_rows_from_pg(ep, col_names, _META_COLS, state)
 
-    if not pg_ok or not rows:
+    if not rows:
         path_cols = [c for c in ep.columns if c.param_type == "path"]
         rest_params: dict = {}
         if path_cols:
@@ -860,22 +858,20 @@ async def _mat_api_ep_table(
                 # generically (mirrors the graphql_remote required_args branch above).
                 log.warning("[MAT] %s requires path param(s) %s — skipping", tn, missing)
                 return
-        try:
-            rows = await _mat_fetch_rows_from_rest(
-                ep,
-                col_names,
-                state.federation_engine,
-                api_source,
-                source_id,
-                state,
-                _cache_loc,
-                cache_tbl,
-                cache_rewrites,
-                params=rest_params,
-            )
-        except Exception as rest_exc:
-            log.warning("[MAT] REST fallback failed for %s: %s — skipping", tn, rest_exc)
-            return
+        # REQ-1661 (amended 2026-09-30): a failed live fetch fails the query -- it is never
+        # logged and skipped, which left the engine answering from whatever cache it held.
+        rows = await _mat_fetch_rows_from_rest(
+            ep,
+            col_names,
+            state.federation_engine,
+            api_source,
+            source_id,
+            state,
+            _cache_loc,
+            cache_tbl,
+            cache_rewrites,
+            params=rest_params,
+        )
         if rows is None:
             return  # already written to cache_rewrites by _mat_fetch_rows_from_rest
 
@@ -968,9 +964,11 @@ async def _materialize_api_to_engine_cache(
     Returns (cache_rewrites, values_cte_entries, dropped_tables):
       cache_rewrites: {physical_table_name: (CacheLocation, cache_tbl)}
       values_cte_entries: {physical_table_name: HotTableEntry} — inlined as VALUES CTEs
-      dropped_tables: {physical_table_name: reason} whose UNION branches should be dropped
-        (unreachable remotes) — a table with no UNION to drop from survives the branch-drop, and
-        ``nf_extractor.apply_dropped_tables`` raises the reason for whichever ones do (REQ-848)
+      dropped_tables: {physical_table_name: reason} whose UNION branches should be dropped -- a
+        table the query cannot address because it gives none of the table's required filter /
+        path parameters. A table with no UNION to drop from survives the branch-drop, and
+        ``nf_extractor.apply_dropped_tables`` raises the reason for it. A remote that fails is
+        never dropped: its error fails the query (REQ-1661, amended 2026-09-30).
     """
     from provisa.compiler.nf_extractor import find_api_table_names
 
@@ -1053,43 +1051,37 @@ async def _materialize_api_to_engine_cache(
                         "required parameter(s)"
                     )
                 else:
-                    try:
-                        await _mat_gql_remote_table(
-                            tn,
-                            gql_reg,
-                            gql_tbl,
-                            state,
-                            hot_mgr,
-                            _hot_threshold,
-                            cache_rewrites,
-                            values_cte_entries,
-                            extra_selections=(gql_remote_extra_selections or {}).get(tn),
-                            variables=resolved or None,
-                        )
-                    except RuntimeError as _gql_err:
-                        log.warning("[MAT] GQL remote unreachable for %s: %s", tn, _gql_err)
-                        dropped_tables[tn] = "remote GraphQL source unreachable"
-                continue
-
-            grpc_source_id, grpc_reg, grpc_query = _lookup_grpc_remote_table(state, tn)
-            if grpc_reg is not None and grpc_query is not None:
-                assert grpc_source_id is not None
-                try:
-                    await _mat_grpc_remote_table(
+                    # REQ-1661 (amended 2026-09-30): an unreachable remote fails the whole
+                    # query -- its UNION branch is never dropped to return the rest as complete.
+                    await _mat_gql_remote_table(
                         tn,
-                        grpc_source_id,
-                        grpc_reg,
-                        grpc_query,
+                        gql_reg,
+                        gql_tbl,
                         state,
                         hot_mgr,
                         _hot_threshold,
                         cache_rewrites,
                         values_cte_entries,
-                        nf_args=nf_args,
+                        extra_selections=(gql_remote_extra_selections or {}).get(tn),
+                        variables=resolved or None,
                     )
-                except Exception as _grpc_err:
-                    log.warning("[MAT] gRPC remote fetch failed for %s: %s", tn, _grpc_err)
-                    dropped_tables[tn] = "remote gRPC source unreachable"
+                continue
+
+            grpc_source_id, grpc_reg, grpc_query = _lookup_grpc_remote_table(state, tn)
+            if grpc_reg is not None and grpc_query is not None:
+                assert grpc_source_id is not None
+                await _mat_grpc_remote_table(  # a failed fetch fails the query (REQ-1661)
+                    tn,
+                    grpc_source_id,
+                    grpc_reg,
+                    grpc_query,
+                    state,
+                    hot_mgr,
+                    _hot_threshold,
+                    cache_rewrites,
+                    values_cte_entries,
+                    nf_args=nf_args,
+                )
                 continue
 
             # REQ-1730: openapi (also API_SOURCES) had no fallback here at all — see
@@ -1097,22 +1089,18 @@ async def _materialize_api_to_engine_cache(
             oa_source_id, oa_entry, oa_query = _lookup_openapi_table(state, tn)
             if oa_entry is not None and oa_query is not None:
                 assert oa_source_id is not None
-                try:
-                    await _mat_openapi_table(
-                        tn,
-                        oa_source_id,
-                        oa_entry,
-                        oa_query,
-                        state,
-                        hot_mgr,
-                        _hot_threshold,
-                        cache_rewrites,
-                        values_cte_entries,
-                        nf_args=nf_args,
-                    )
-                except Exception as _oa_err:
-                    log.warning("[MAT] openapi fetch failed for %s: %s", tn, _oa_err)
-                    dropped_tables[tn] = "remote OpenAPI source unreachable"
+                await _mat_openapi_table(  # a failed fetch fails the query (REQ-1661)
+                    tn,
+                    oa_source_id,
+                    oa_entry,
+                    oa_query,
+                    state,
+                    hot_mgr,
+                    _hot_threshold,
+                    cache_rewrites,
+                    values_cte_entries,
+                    nf_args=nf_args,
+                )
             continue
 
         if not _has_pg_pool:

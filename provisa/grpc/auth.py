@@ -18,7 +18,8 @@ validated identity, and publishes that authorized role for the handler to read.
 
 The authorized role travels in a ContextVar rather than in the metadata because gRPC's
 ``context.invocation_metadata()`` reads from the live call and cannot be rewritten by an
-interceptor. The wrapper sets it inside the handler's own task, so each RPC sees its own value.
+interceptor. The wrapper sets it in the RPC's own context (``provisa.grpc.rpc_scope``), so each RPC
+sees its own value.
 """
 
 # Requirements: REQ-273, REQ-1263, REQ-1266, REQ-1337
@@ -29,7 +30,6 @@ import logging
 from contextvars import ContextVar
 
 import grpc
-import grpc.aio
 import jwt
 
 from provisa.audit.context import AuditIdentity, set_audit_identity
@@ -136,7 +136,7 @@ def _text(metadata, name: str) -> str | None:
 _HEALTH_SERVICE_PREFIX = "/grpc.health.v1.Health/"
 
 
-class AuthInterceptor(grpc.aio.ServerInterceptor):
+class AuthInterceptor(grpc.ServerInterceptor):
     """Refuses any RPC that does not present a valid credential, and fixes its role.
 
     Reflection is intercepted along with the data services: a caller who cannot authenticate must
@@ -149,14 +149,20 @@ class AuthInterceptor(grpc.aio.ServerInterceptor):
     in high-security mode, because it returns liveness/readiness only, never row data or schema. An
     orchestrator probe that required a bearer credential could kill a live pod on an auth outage
     that has nothing to do with whether the pod is actually healthy.
+
+    REQ-1882 (amended 2026-09-29): the synchronous server calls ``intercept_service`` on its one
+    polling thread, so only the checks that read local state run here (high-security, auth on/off,
+    a bearer present). Validating the credential can reach the platform database, so it runs on the
+    RPC's own handler thread and loop (:func:`provisa.grpc.rpc_scope.rpc_scope`), ahead of the
+    method's behavior — an unauthenticated caller still reaches no servicer code.
     """
 
     def __init__(self, state):
         self._state = state
 
-    async def intercept_service(self, continuation, handler_call_details):
+    def intercept_service(self, continuation, handler_call_details):
         if (handler_call_details.method or "").startswith(_HEALTH_SERVICE_PREFIX):
-            return await continuation(handler_call_details)
+            return continuation(handler_call_details)
         metadata = handler_call_details.invocation_metadata
         # REQ-693: gRPC stays open in high-security mode — it is one of the two transports an
         # encrypting client actually uses — but each call must carry the same client-side
@@ -172,57 +178,73 @@ class AuthInterceptor(grpc.aio.ServerInterceptor):
         except RuntimeError as exc:
             return _abort_handler(grpc.StatusCode.INTERNAL, str(exc))
         if not active:
-            return await continuation(handler_call_details)
+            return continuation(handler_call_details)
 
         credential = _bearer(metadata)
         if not credential:
             return _abort_handler(
                 grpc.StatusCode.UNAUTHENTICATED, "a bearer credential is required"
             )
-        try:
-            identity = await validate_grpc_credential(self._state, credential)
-        except (ValueError, jwt.PyJWTError):
-            # Every rejection reads the same on the wire: a caller must not learn from the
-            # response whether the credential was unknown, expired or revoked.
-            return _abort_handler(grpc.StatusCode.UNAUTHENTICATED, "credential rejected")
-        try:
-            role = authorize_role(self._state, identity, _text(metadata, "x-provisa-role"))
-        except PermissionError as exc:
-            return _abort_handler(grpc.StatusCode.PERMISSION_DENIED, str(exc))
-
-        handler = await continuation(handler_call_details)
+        requested = _text(metadata, "x-provisa-role")
+        handler = continuation(handler_call_details)
         if handler is None:
-            return None
-        return _with_principal(handler, role, identity)
+            # An unknown method answers UNIMPLEMENTED only to a caller whose credential holds.
+            return _with_principal(
+                _abort_handler(grpc.StatusCode.UNIMPLEMENTED, "Method not found!"),
+                self._state,
+                credential,
+                requested,
+            )
+        return _with_principal(handler, self._state, credential, requested)
+
+
+def _authenticate(rpc, context, state, credential: str, requested: str | None) -> None:
+    """Validate the credential and publish the principal in the RPC's context, or abort."""
+    try:
+        identity = rpc.run(validate_grpc_credential(state, credential))
+    except (ValueError, jwt.PyJWTError):
+        # Every rejection reads the same on the wire: a caller must not learn from the response
+        # whether the credential was unknown, expired or revoked.
+        context.abort(grpc.StatusCode.UNAUTHENTICATED, "credential rejected")
+        raise  # abort ends the RPC by raising; should it return, the rejection still propagates
+    try:
+        role = authorize_role(state, identity, requested)
+    except PermissionError as exc:
+        context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
+        raise  # as above: never proceed as an unauthorized role
+
+    async def _publish() -> None:
+        _authorized_role.set(role)
+        _identity.set(identity)
+        # REQ-074/REQ-1386: the acting principal the pipeline's audit write records, published in
+        # the RPC's context alongside the role so every governed statement is attributed.
+        set_audit_identity(AuditIdentity(user_id=identity.user_id, surface="grpc"))
+
+    rpc.run(_publish())
 
 
 def _with_principal(
-    handler: grpc.RpcMethodHandler, role: str, identity: AuthIdentity
+    handler: grpc.RpcMethodHandler, state, credential: str, requested: str | None
 ) -> grpc.RpcMethodHandler:
-    """Rebuild ``handler`` so its behavior runs with the validated principal published on the task."""
+    """Rebuild ``handler`` so the credential is validated on the RPC's thread before it runs."""
+    from provisa.grpc.rpc_scope import rpc_scope
+
     behavior = (
         handler.unary_unary or handler.unary_stream or handler.stream_unary or handler.stream_stream
     )
     assert behavior is not None  # a resolved handler always carries exactly one behavior
 
-    async def streaming(request, context):
-        _authorized_role.set(role)
-        _identity.set(identity)
-        # REQ-074/REQ-1386: the acting principal the pipeline's audit write records. Set on the
-        # per-RPC task alongside the role, so every handler's governed statements are attributed.
-        set_audit_identity(AuditIdentity(user_id=identity.user_id, surface="grpc"))
-        # The handler's declared behavior type is the union of all four RPC shapes; the branch
-        # below picks the one that matches this handler's own streaming flags.
-        async for message in behavior(request, context):  # pyright: ignore[reportGeneralTypeIssues]
-            yield message
+    def streaming(request, context):
+        with rpc_scope() as rpc:
+            _authenticate(rpc, context, state, credential, requested)
+            # The handler's declared behavior type is the union of all four RPC shapes; this branch
+            # is taken only for a response-streaming handler, whose behavior is a generator.
+            yield from behavior(request, context)  # pyright: ignore[reportGeneralTypeIssues]
 
-    async def unary(request, context):
-        _authorized_role.set(role)
-        _identity.set(identity)
-        # REQ-074/REQ-1386: the acting principal the pipeline's audit write records. Set on the
-        # per-RPC task alongside the role, so every handler's governed statements are attributed.
-        set_audit_identity(AuditIdentity(user_id=identity.user_id, surface="grpc"))
-        return await behavior(request, context)  # pyright: ignore[reportGeneralTypeIssues]
+    def unary(request, context):
+        with rpc_scope() as rpc:
+            _authenticate(rpc, context, state, credential, requested)
+            return behavior(request, context)  # pyright: ignore[reportGeneralTypeIssues]
 
     return _rebuild(handler, streaming if handler.response_streaming else unary)
 
@@ -248,7 +270,7 @@ def _abort_handler(code: grpc.StatusCode, detail: str) -> grpc.RpcMethodHandler:
     resolved — an unauthenticated caller reaches no servicer code, including reflection's.
     """
 
-    async def abort(request, context):  # noqa: ARG001  # the request is never read
-        await context.abort(code, detail)
+    def abort(request, context):  # noqa: ARG001  # the request is never read
+        context.abort(code, detail)
 
     return grpc.unary_unary_rpc_method_handler(abort)

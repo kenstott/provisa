@@ -89,6 +89,9 @@ def test_databricks_run_arrow_stream_is_lazy():
     chunk = pa.table({"n": pa.array([1, 2], type=pa.int64())})
 
     class _Cursor:
+        def cancel(self) -> None:  # driver cancel, used by the request deadline
+            pass
+
         def __init__(self) -> None:
             self._chunks = [chunk, chunk]
             self.fetch_calls = 0
@@ -164,6 +167,9 @@ def test_mssql_run_arrow_stream_is_lazy(monkeypatch):
     )  # small chunks to exercise multi-fetch on 5 rows
 
     class _Cursor:
+        def cancel(self) -> None:  # driver cancel, used by the request deadline
+            pass
+
         def __init__(self) -> None:
             self._rows = [(i,) for i in range(5)]
             self.description = [("n",)]
@@ -227,6 +233,9 @@ def test_databricks_run_sync_streams_lazily():
     chunk = pa.table({"n": pa.array([1, 2], type=pa.int64())})
 
     class _Cursor:
+        def cancel(self) -> None:  # driver cancel, used by the request deadline
+            pass
+
         def __init__(self) -> None:
             self._chunks = [chunk, chunk]
             self.fetch_calls = 0
@@ -266,6 +275,9 @@ def test_mssql_run_sync_streams_lazily(monkeypatch):
     monkeypatch.setattr(mod, "_ARROW_CHUNK_ROWS", 2)
 
     class _Cursor:
+        def cancel(self) -> None:  # driver cancel, used by the request deadline
+            pass
+
         def __init__(self) -> None:
             self._rows = [(i,) for i in range(5)]
             self.description = [("n",)]
@@ -309,6 +321,9 @@ def test_mssql_run_arrow_builds_table_from_stream(monkeypatch):
     monkeypatch.setattr(mod, "_ARROW_CHUNK_ROWS", 2)
 
     class _Cursor:
+        def cancel(self) -> None:  # driver cancel, used by the request deadline
+            pass
+
         def __init__(self) -> None:
             self._rows = [(i,) for i in range(5)]
             self.description = [("n",)]

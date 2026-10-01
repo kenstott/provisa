@@ -78,6 +78,22 @@ async def registered_sources(state: Any, conn: Any | None = None) -> list[Source
     return out
 
 
+async def operator_floor(state: Any) -> dict[str, str]:  # REQ-030, REQ-826, REQ-1141
+    """{source_id: operator setting} for every source whose reads the operator requires to come
+    from the platform's landed copy — the floor ``decide_route`` enforces (REQ-030, amended
+    2026-09-30). Read from the same registry the residency planner lands from
+    (``query_residency.ensure_resident``), so routing and landing never disagree about a source.
+    See ``core.operator_floor.floor_setting`` for which settings floor a source."""
+    from provisa.core.operator_floor import floor_setting
+
+    floor: dict[str, str] = {}
+    for s in await registered_sources(state):
+        setting = floor_setting(s)
+        if setting is not None:
+            floor[s.id] = setting
+    return floor
+
+
 def _merge_source_rows(by_id: dict[str, Source], rows: list[dict]) -> list[Source]:
     """The control-plane rows merged over `by_id` (config-declared sources), factored out so both
     the cached (pool-acquire) and uncached (caller-supplied ``conn``) paths build identically."""

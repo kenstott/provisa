@@ -16,7 +16,7 @@ import datetime as dt
 from contextlib import asynccontextmanager
 
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.schema_org import event_status, events, node_freshness_state
@@ -80,7 +80,7 @@ def test_hash_canonicalizes_decimal_scale():
 
 
 def _dsn(tmp_path) -> str:
-    return f"sqlite+aiosqlite:///{tmp_path / 'store.db'}"
+    return f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
 
 
 @pytest.mark.asyncio
@@ -161,22 +161,18 @@ async def test_append_shape_is_never_gated(tmp_path):
 
 @asynccontextmanager
 async def _db(tmp_path):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'cp.db'}")
-    async with engine.begin() as c:
-        await c.run_sync(
-            lambda s: events.metadata.create_all(
-                s, tables=[events, event_status, node_freshness_state]
-            )
-        )
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cp.db'}")
+    with engine.begin() as c:
+        events.metadata.create_all(c, tables=[events, event_status, node_freshness_state])
     try:
         yield Database(engine, name="cp")
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 @pytest.mark.asyncio
 async def test_processor_gates_second_identical_land(tmp_path):
-    store = f"sqlite+aiosqlite:///{tmp_path / 'store.db'}"
+    store = f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
 
     async def fetch(_pending):
         return [{"id": 1, "status": "new"}]

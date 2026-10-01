@@ -13,7 +13,7 @@ hydration surfaced it as ``no such table: default.find_pets_by_status`` on an un
 """
 
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.openapi.pg_cache import _is_fresh, _relation, cache_openapi_table
@@ -26,11 +26,11 @@ RESPONSE_SCHEMA = {
 
 @pytest.fixture
 async def sqlite_conn(tmp_path):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'cp.db'}")
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cp.db'}")
     db = Database(engine, "test")
     async with db.acquire() as conn:
         yield conn
-    await engine.dispose()
+    engine.dispose()
 
 
 async def test_relation_is_bare_name_on_schemaless_backend(sqlite_conn):

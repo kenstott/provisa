@@ -26,6 +26,7 @@ import time as _time
 
 from fastapi import HTTPException
 
+from provisa.core.connection_loop import spawn_background
 from provisa.api.errors import ApiError
 from provisa.cache.middleware import store_result
 from provisa.compiler.sql_rewrite import (
@@ -219,7 +220,7 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
                 cache_tbl,
             )
             if hot_mgr is not None and result.rows:
-                asyncio.create_task(hot_mgr.maybe_promote_dicts(table_name, result.rows))
+                spawn_background(hot_mgr.maybe_promote_dicts(table_name, result.rows))
         phase1_ms = (_time.perf_counter() - _t_phase1) * 1000
 
     # --- Phase 2: apply WHERE/ORDER BY/LIMIT vithe engine ---
@@ -398,14 +399,12 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
                 await land_api_cache(
                     state.federation_engine, cache_loc, cache_tbl, rows, cache_cols
                 )
-                asyncio.create_task(
-                    schedule_drop(
-                        state.federation_engine,
-                        cache_loc,
-                        cache_tbl,
-                        reg.get("cache_ttl", 300),
-                        redirect_config,
-                    )
+                schedule_drop(
+                    state.federation_engine,
+                    cache_loc,
+                    cache_tbl,
+                    reg.get("cache_ttl", 300),
+                    redirect_config,
                 )
                 materialized = True
             except Exception as cache_exc:
@@ -514,16 +513,16 @@ async def _execute_engine_standard(
 
     # AL5/AL3: extract comment hints, merge source federation hints
     exec_sql, comment_hints = extract_hints(exec_sql)
-    from provisa.compiler.directives import translate_federation_hints
+    from provisa.compiler.directives import merge_session_props, translate_federation_hints
 
-    session_hints: dict[str, str] = {}
+    operator_hints: dict[str, str] = {}
     for sid in compiled.sources:
         src_hints = getattr(state, "source_federation_hints", {}).get(sid, {})
         # REQ-281: source hints use the Provisa-branded @provisa vocabulary; translate to
         # the engine session props here (the single translation layer) before they reach SET SESSION.
-        session_hints.update(translate_federation_hints(src_hints))
-    session_hints.update(query_session_props or {})
-    session_hints.update(comment_hints)
+        operator_hints.update(translate_federation_hints(src_hints))
+    # REQ-281/030: the request's hints may only fill properties the operator left open.
+    session_hints = merge_session_props(operator_hints, query_session_props or {}, comment_hints)
 
     # REQ-1730: PostgreSQL cannot express a catalog.schema.table reference (no cross-database
     # queries), so an engine that declares catalog_qualified=False needs the catalog folded into
@@ -532,6 +531,12 @@ async def _execute_engine_standard(
     # confirmed live (federated_join over GraphQL against the pg engine). pgwire/_pipeline.py's
     # two _govern_and_route*_planned functions already apply this same fold; this terminal is a
     # third, independent place that calls transpile_physical and had never gotten it.
+    # REQ-1880: the pipeline's literal-predicate carry (one shared helper) — a nested relationship
+    # compiles to a correlated subquery whose target (e.g. a Mongo scan with no join pushdown) would
+    # otherwise see no filter and scan its whole collection.
+    from provisa.pgwire._pipeline import propagate_literal_predicates
+
+    exec_sql = await propagate_literal_predicates(exec_sql, state)
     if not state.federation_engine.engine.catalog_qualified:
         from provisa.compiler.sql_rewrite import fold_catalog_into_schema
 
@@ -592,7 +597,7 @@ async def _execute_engine_standard(
     _hot_mgr = getattr(state, "hot_manager", None)
     if _hot_mgr is not None:
         _tbl = compiled.canonical_field or root_field
-        asyncio.create_task(_hot_mgr.maybe_promote(_tbl, result.rows, result.column_names))
+        spawn_background(_hot_mgr.maybe_promote(_tbl, result.rows, result.column_names))
 
     return (
         result,
@@ -659,6 +664,34 @@ async def _exec_nodes_query(compiled, ctx, state, decision):
     )
 
 
+def _operator_ttls(state, root_meta, source_ids) -> list[int]:
+    """The operator's resolved TTL for the root table and for every source the query reads
+    (``resolve_policy`` with no query TTL, REQ-544) — the permission side of the opt-in: a
+    disabled source or a 0 TTL anywhere keeps the result out of the cache (``opt_in_ttl``).
+    Absent per-source/per-table settings inherit (source enabled, next-level TTL) — REQ-544's
+    documented resolution order."""
+    from provisa.cache.policy import resolve_policy
+
+    def _ttl(source_id, table_id) -> int:
+        settings = state.source_cache.get(source_id, {}) if source_id else {}
+        _, ttl = resolve_policy(
+            stable_id=None,
+            cache_ttl=None,
+            default_ttl=state.response_cache_default_ttl,
+            source_cache_enabled=settings.get("cache_enabled", True),
+            source_cache_ttl=settings.get("cache_ttl"),
+            table_cache_ttl=state.table_cache.get(table_id) if table_id else None,
+        )
+        return ttl
+
+    ttls = [_ttl(sid, None) for sid in source_ids]
+    if root_meta is not None:
+        ttls.append(_ttl(root_meta.source_id, root_meta.table_id))
+    if not ttls:
+        ttls.append(_ttl(None, None))
+    return ttls
+
+
 async def _store_response_cache(
     state,
     ck: str,
@@ -667,36 +700,28 @@ async def _store_response_cache(
     ctx,
     compiled,
     response_cache_ttl: int | None,
-    no_cache: bool,
+    cache_opt_in: bool,
     org_id: str | None = None,
     column_types: list[str] | None = None,
 ) -> None:
-    """Store response_data in the response cache if TTL allows."""
-    from provisa.cache.policy import resolve_policy
+    """Store response_data in the response cache — only for a request that opted in (REQ-544,
+    amended 2026-09-30) and only where the operator's settings permit."""
+    if not cache_opt_in:
+        return
+    from provisa.cache.policy import opt_in_ttl
 
-    source_id = next(iter(compiled.sources), None)
-    src_cache = state.source_cache.get(source_id, {}) if source_id else {}
     # Resolve the root table by its ctx.tables key. canonical_field is the pre-alias schema
     # field (variant keys like …GroupBy/…_aggregate are registered too); root_field may be a
     # client alias not present in ctx.tables, so canonical_field takes precedence.
     _root_meta = ctx.tables.get(compiled.canonical_field or root_field)
     table_ids = {_root_meta.table_id} if _root_meta is not None else set()
-    table_id = next(iter(table_ids), None)
-    tbl_cache_ttl = state.table_cache.get(table_id) if table_id else None
-    _, resolved_ttl = resolve_policy(
-        stable_id=None,
-        cache_ttl=response_cache_ttl,
-        default_ttl=state.response_cache_default_ttl,
-        source_cache_enabled=src_cache.get("cache_enabled", True),
-        source_cache_ttl=src_cache.get("cache_ttl"),
-        table_cache_ttl=tbl_cache_ttl,
-    )
-    if resolved_ttl > 0 and not no_cache:
+    ttl = opt_in_ttl(response_cache_ttl, _operator_ttls(state, _root_meta, compiled.sources))
+    if ttl > 0:
         await store_result(
             state.response_cache_store,
             ck,
             response_data,
-            ttl=resolved_ttl,
+            ttl=ttl,
             table_ids=table_ids,
             org_id=org_id,
             column_types=column_types,
@@ -712,33 +737,26 @@ async def _store_api_source_cache(
     ctx,
     source_id: str,
     response_cache_ttl: int | None,
-    no_cache: bool,
+    cache_opt_in: bool,
     org_id: str | None = None,
 ) -> None:
-    """Store API-source response_data in the response cache if TTL allows."""
-    from provisa.cache.policy import resolve_policy
+    """Store API-source response_data in the response cache — opted-in requests only (REQ-544,
+    amended 2026-09-30), where the operator's settings permit."""
+    if not cache_opt_in:
+        return
+    from provisa.cache.policy import opt_in_ttl
 
-    _src_cache = state.source_cache.get(source_id, {})
     # Resolve by ctx.tables key. canonical_field is the pre-alias schema field (variant keys
     # like …GroupBy are registered too); root_field may be a client alias absent from ctx.tables.
     _root_meta = ctx.tables.get(canonical_field or root_field)
     _table_ids = {_root_meta.table_id} if _root_meta is not None else set()
-    _table_id = next(iter(_table_ids), None)
-    _tbl_cache_ttl = state.table_cache.get(_table_id) if _table_id else None
-    _, _resolved_ttl = resolve_policy(
-        stable_id=None,
-        cache_ttl=response_cache_ttl,
-        default_ttl=state.response_cache_default_ttl,
-        source_cache_enabled=_src_cache.get("cache_enabled", True),
-        source_cache_ttl=_src_cache.get("cache_ttl"),
-        table_cache_ttl=_tbl_cache_ttl,
-    )
-    if _resolved_ttl > 0 and not no_cache:
+    ttl = opt_in_ttl(response_cache_ttl, _operator_ttls(state, _root_meta, {source_id}))
+    if ttl > 0:
         await store_result(
             state.response_cache_store,
             ck,
             response_data,
-            ttl=_resolved_ttl,
+            ttl=ttl,
             table_ids=_table_ids,
             org_id=org_id,
         )
@@ -753,7 +771,7 @@ async def _exec_api_route(
     output_format,
     ck,
     response_cache_ttl,
-    no_cache,
+    cache_opt_in,
     org_id: str | None = None,
 ):
     """Execute Route.API path.
@@ -852,7 +870,7 @@ async def _exec_api_route(
             ctx,
             decision.source_id,
             response_cache_ttl,
-            no_cache,
+            cache_opt_in,
             org_id=org_id,
         )
     return root_field, field_rows, None, ck, None
@@ -946,7 +964,7 @@ async def _exec_inline_result(
     output_format,
     ck,
     response_cache_ttl,
-    no_cache,
+    cache_opt_in,
     t0,
     _dataloader_srcs,
     _per_source_ms,
@@ -1008,7 +1026,7 @@ async def _exec_inline_result(
             ctx,
             compiled,
             response_cache_ttl,
-            no_cache,
+            cache_opt_in,
             org_id=org_id,
             column_types=getattr(result, "column_types", None),
         )

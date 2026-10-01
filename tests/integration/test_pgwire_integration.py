@@ -60,9 +60,9 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")
 
 
 def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+    from tests.port_lease import lease_port
+
+    return lease_port()
 
 
 def _make_server(port: int, ssl_ctx=None) -> ProvisaServer:
@@ -141,22 +141,15 @@ def _make_mock_state(role: str = "admin", provider: str = "simple") -> MagicMock
 
 @pytest_asyncio.fixture(scope="module")
 async def pgwire_srv():
-    """Start a ProvisaServer and configure the module-level event loop.
+    """Start a ProvisaServer.
 
-    Sets _srv._loop so execute_pgwire_sql dispatches correctly.
+    Each connection runs on its own thread with a loop that thread owns (REQ-1882); there is no
+    shared loop to configure here.
     """
-    import provisa.pgwire.server as _srv
-
-    loop = asyncio.get_running_loop()
-    with _srv._loop_lock:
-        previous_loop = _srv._loop
-        _srv._loop = loop
     port = _free_port()
     server = _make_server(port)
     yield port, server
     server.shutdown()
-    with _srv._loop_lock:
-        _srv._loop = previous_loop
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +209,7 @@ class TestPgwireAuth:
         port, _ = pgwire_srv
         state = _make_mock_state("analyst", "none")
 
-        async def _echo_role(_, role_id):
+        async def _echo_role(_, role_id, params=None):
             return EngineResult(rows=[(role_id,)], column_names=["role"])
 
         with (
@@ -468,7 +461,8 @@ class TestPgwireMultiStatement:
 
 
 class TestPgwireParameterizedQueries:
-    """REQ-581: $1/$2 positional params substituted as SQL literals."""
+    """REQ-581 / REQ-589 (amended 2026-09-30): $1/$2 positional params reach the pipeline as
+    placeholders with the values BOUND alongside — never spliced into the SQL text."""
 
     async def test_single_param_string(self, pgwire_srv):
         """String param $1 is substituted and query returns expected value."""
@@ -477,8 +471,8 @@ class TestPgwireParameterizedQueries:
         state = _make_mock_state("admin", "simple")
         received: list[str] = []
 
-        async def _capture(sql, *_):
-            received.append(sql)
+        async def _capture(sql, role_id, params=None):
+            received.append((sql, params))
             return EngineResult(rows=[("hello",)], column_names=["v"])
 
         with (
@@ -496,9 +490,8 @@ class TestPgwireParameterizedQueries:
             row = await conn.fetchrow("SELECT $1::text AS v", "hello")
             await conn.close()
         assert row is not None
-        # Param must have been substituted into SQL before dispatch
-        assert received, "execute_pgwire_sql not called"
-        assert "$1" not in received[0]
+        assert received, "govern_pgwire_plan not called"
+        assert received[-1] == ("SELECT $1::text AS v", ["hello"])
 
     async def test_integer_param(self, pgwire_srv):
         """Integer param $1 is substituted without quotes."""
@@ -507,8 +500,8 @@ class TestPgwireParameterizedQueries:
         state = _make_mock_state("admin", "simple")
         received: list[str] = []
 
-        async def _capture(sql, *_):
-            received.append(sql)
+        async def _capture(sql, role_id, params=None):
+            received.append((sql, params))
             return EngineResult(rows=[(42,)], column_names=["v"])
 
         with (
@@ -526,9 +519,8 @@ class TestPgwireParameterizedQueries:
             await conn.fetchrow("SELECT $1 AS v", 42)
             await conn.close()
         assert received
-        # Integer literal in SQL — must not be wrapped in quotes
-        assert "'42'" not in received[0]
-        assert "42" in received[0]
+        # The integer stays a bound int, typed by its declared parameter type — never spliced.
+        assert received[-1] == ("SELECT $1 AS v", [42])
 
     async def test_null_param(self, pgwire_srv):
         """None param becomes NULL literal."""
@@ -537,8 +529,8 @@ class TestPgwireParameterizedQueries:
         state = _make_mock_state("admin", "simple")
         received: list[str] = []
 
-        async def _capture(sql, *_):
-            received.append(sql)
+        async def _capture(sql, role_id, params=None):
+            received.append((sql, params))
             return EngineResult(rows=[(None,)], column_names=["v"])
 
         with (
@@ -556,7 +548,7 @@ class TestPgwireParameterizedQueries:
             await conn.fetchrow("SELECT $1::text AS v", None)
             await conn.close()
         assert received
-        assert any("NULL" in r.upper() for r in received)
+        assert received[-1] == ("SELECT $1::text AS v", [None])
 
     async def test_multi_param_extended(self, pgwire_srv):
         """Two params ($1, $2) bound in a single extended-protocol query."""
@@ -565,8 +557,8 @@ class TestPgwireParameterizedQueries:
         state = _make_mock_state("admin", "simple")
         received: list[str] = []
 
-        async def _capture(sql, *_):
-            received.append(sql)
+        async def _capture(sql, role_id, params=None):
+            received.append((sql, params))
             return EngineResult(rows=[("a", 7)], column_names=["s", "n"])
 
         with (
@@ -584,12 +576,8 @@ class TestPgwireParameterizedQueries:
             await conn.fetchrow("SELECT $1::text AS s, $2::int AS n", "a", 7)
             await conn.close()
         assert received
-        # Both placeholders substituted; neither $1 nor $2 leaks through.
-        # received[-1] is the Execute-phase SQL (received[0] is the Describe
-        # example-value probe asyncpg issues before Bind).
-        assert "$1" not in received[-1] and "$2" not in received[-1]
-        assert "'a'" in received[-1]
-        assert "7" in received[-1]
+        # received[-1] is the Execute (received[0] is the Describe, bound with example values).
+        assert received[-1] == ("SELECT $1::text AS s, $2::int AS n", ["a", 7])
 
     async def test_explicit_prepared_statement(self, pgwire_srv):
         """conn.prepare() drives a discrete Parse/Describe/Bind/Execute cycle.
@@ -602,8 +590,8 @@ class TestPgwireParameterizedQueries:
         state = _make_mock_state("admin", "simple")
         received: list[str] = []
 
-        async def _capture(sql, *_):
-            received.append(sql)
+        async def _capture(sql, role_id, params=None):
+            received.append((sql, params))
             return EngineResult(rows=[(99,)], column_names=["v"])
 
         with (
@@ -622,10 +610,8 @@ class TestPgwireParameterizedQueries:
             row = await stmt.fetchrow(99)
             await conn.close()
         assert row is not None
-        # Bind substituted the param before dispatch through the pipeline.
         assert received
-        assert "$1" not in received[-1]
-        assert "99" in received[-1]
+        assert received[-1] == ("SELECT $1::int AS v", [99])
 
 
 # ---------------------------------------------------------------------------
@@ -882,15 +868,8 @@ class TestPgwireTLS:
             )
             key_path = kf.name
 
-        import provisa.pgwire.server as _srv
-
         ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ssl_ctx.load_cert_chain(cert_path, key_path)
-
-        loop = asyncio.get_running_loop()
-        with _srv._loop_lock:
-            previous_loop = _srv._loop
-            _srv._loop = loop
 
         port = _free_port()
         provider = _stub_auth_provider("admin", "secret")
@@ -928,8 +907,6 @@ class TestPgwireTLS:
             assert val == 1
         finally:
             server.shutdown()
-            with _srv._loop_lock:
-                _srv._loop = previous_loop
 
 
 # ---------------------------------------------------------------------------
@@ -1037,29 +1014,17 @@ class TestPgwireStartupGating:
 
         port = _free_port()
         state = _make_mock_state("admin", "simple")
-        loop = asyncio.new_event_loop()
-        import provisa.pgwire.server as _srv
+        with patch("provisa.api.app.state", state):
+            start_pgwire_server("127.0.0.1", port, ssl_ctx=None)
+        time.sleep(0.2)
 
-        with _srv._loop_lock:
-            previous_loop = _srv._loop
+        # Port should now be in use
         try:
-            with patch("provisa.api.app.state", state):
-                start_pgwire_server("127.0.0.1", port, ssl_ctx=None, loop=loop)
-            time.sleep(0.2)
-
-            # Port should now be in use
-            try:
-                with socket.create_connection(("127.0.0.1", port), timeout=1):
-                    bound = True
-            except OSError:
-                bound = False
-            assert bound, "pgwire server did not bind after start_pgwire_server()"
-        finally:
-            # start_pgwire_server installs its loop module-wide; leaving this dead loop in
-            # place would strand every later connection's auth validator.
-            with _srv._loop_lock:
-                _srv._loop = previous_loop
-            loop.close()
+            with socket.create_connection(("127.0.0.1", port), timeout=1):
+                bound = True
+        except OSError:
+            bound = False
+        assert bound, "pgwire server did not bind after start_pgwire_server()"
 
 
 # ---------------------------------------------------------------------------
@@ -1083,7 +1048,7 @@ class TestPgwireConcurrentGovernanceIsolation:
 
         from provisa.pgwire import _pipeline
 
-        async def _fake_govern(sql, role_id):
+        async def _fake_govern(sql, role_id, params=None):
             if role_id == "slow":
                 await _pipeline._off_loop(time.sleep, 0.5)
             return EngineResult(rows=[(role_id,)], column_names=["role"])
@@ -1113,3 +1078,71 @@ class TestPgwireConcurrentGovernanceIsolation:
         # The old shared-loop-serialization bug would have stretched the cheap request out to
         # track the slow one's duration; isolated, it stays close to its solo baseline.
         assert cheap_elapsed < max(baseline * 4, 0.3)
+
+    async def test_governance_runs_on_the_connection_thread_in_parallel(self, pgwire_srv):
+        """REQ-1882 (amended 2026-09-29): the entire request runs on its connection thread.
+
+        Each connection's governance coroutine must execute on that connection's own handler
+        thread (threading.get_ident() == the handler thread's ident) — never on a shared loop's
+        thread, never via run_coroutine_threadsafe. And two connections must govern in parallel:
+        each governance coroutine BLOCKS its thread on a two-party barrier, so the barrier only
+        opens if both are inside governance at the same moment. On one shared loop the first
+        blocked coroutine would stall the loop, the second could never arrive, and the barrier
+        would break."""
+        import threading
+
+        from provisa.pgwire import _pipeline
+        from provisa.pgwire.server import ProvisaHandler
+
+        port, _ = pgwire_srv
+        state = _make_mock_state("trust_role", "none")
+
+        handler_idents: set[int] = set()
+        govern_idents: list[int] = []
+        both_governing = threading.Barrier(2)
+        real_handle = ProvisaHandler.handle
+
+        def _recording_handle(self) -> None:
+            handler_idents.add(threading.get_ident())
+            real_handle(self)
+
+        async def _blocking_govern(sql, role_id, params=None):
+            del sql
+            govern_idents.append(threading.get_ident())
+            both_governing.wait(timeout=10)  # blocks this connection's thread AND its loop
+            return EngineResult(rows=[(role_id,)], column_names=["role"])
+
+        def _no_cross_thread_hop(*_args, **_kwargs):
+            raise AssertionError("pgwire must not dispatch to another loop (REQ-1882)")
+
+        async def _query(role: str) -> str:
+            conn = await asyncpg.connect(
+                host="127.0.0.1", port=port, user=role, password="any", database="provisa"
+            )
+            try:
+                row = await conn.fetchrow("SELECT 1")
+            finally:
+                await conn.close()
+            assert row is not None
+            return row[0]
+
+        with (
+            patch("provisa.api.app.state", state),
+            patch.object(ProvisaHandler, "handle", _recording_handle),
+            patch.object(_pipeline, "govern_pgwire_plan", _blocking_govern),
+            patch("asyncio.run_coroutine_threadsafe", _no_cross_thread_hop),
+        ):
+            results = await asyncio.wait_for(
+                asyncio.gather(_query("conn_a"), _query("conn_b")), timeout=30
+            )
+
+        assert sorted(results) == ["conn_a", "conn_b"]
+        assert both_governing.broken is False
+        # asyncpg's extended protocol governs each statement at Describe and again at Execute, so
+        # every connection governs more than once — always on its own thread.
+        assert len(govern_idents) >= 2
+        assert len(set(govern_idents)) == 2, "the two connections governed on one thread"
+        assert set(govern_idents) <= handler_idents, (
+            "governance ran on a thread that is not a connection handler thread"
+        )
+        assert threading.get_ident() not in govern_idents

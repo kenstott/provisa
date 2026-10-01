@@ -146,6 +146,16 @@ class TestResolveLandingArgs:
         with pytest.raises(ValueError, match="no resolved data_type"):
             resolve_landing_args(_source(), t)
 
+    def test_an_epoch_stored_temporal_column_refuses_the_land(self):
+        """REQ-1908: epoch-stored temporals are translated on live reads only; landing would put
+        raw numbers into a temporal replica column, so the land is refused, naming the column."""
+        ts = SimpleNamespace(
+            name="ts", data_type="timestamptz", is_primary_key=False, epoch_unit="ms"
+        )
+        t = _table(columns=[_col("id", "bigint", pk=True), ts])
+        with pytest.raises(ValueError, match=r"\['ts'\] are epoch-stored"):
+            resolve_landing_args(_source(), t)
+
     def test_watermark_is_a_single_existing_column(self):
         # REQ-924: the watermark is one column NAME drawn from the table's own columns — a
         # single string field, never a derived/synthetic source column. Naming a real column

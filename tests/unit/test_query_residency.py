@@ -288,12 +288,14 @@ async def test_only_the_sources_the_plan_names_are_considered(wiring):
 
 
 @pytest.mark.asyncio
-async def test_a_failed_land_is_logged_stamped_not_ok_and_does_not_block_the_read(wiring, caplog):
+async def test_a_failed_land_is_stamped_not_ok_and_fails_the_read(wiring):
+    """REQ-1661 (amended 2026-09-30): a failed land raises its own cause -- the query never reads
+    the stale replica. The node is still stamped not ok, so the next query retries the land."""
     backend = _Backend(fail=True)
     state = _state([_source("pets-db")], [_table("pets-db", "pets")], backend)
-    assert await ensure_resident(state, {"pets-db"}) == []
+    with pytest.raises(RuntimeError, match="adapter down"):
+        await ensure_resident(state, {"pets-db"})
     assert state.tenant_db.recorded == [("pet_store.pets", False)]
-    assert "landing pets-db failed" in caplog.text
 
 
 @pytest.mark.asyncio

@@ -199,7 +199,8 @@ async def test_splunk_cim_model_registers_and_serves_semantic_query(connector_cl
         password=_SPLUNK_PASSWORD,
         mapping={"use_token": False, "disable_ssl_validation": True},
         domain_id=_DOMAIN,
-        schema_name="splunk",
+        # REQ-1730: TrinoSplunkConnector.details names the schema the sql-normalized source id.
+        schema_name=_SOURCE_ID.replace("-", "_"),
         table_name=_MODEL_TABLE,
         columns=_COLUMNS,
         order_by="user",

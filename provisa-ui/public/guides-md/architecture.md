@@ -591,8 +591,12 @@ MATCH (o:Order) RETURN o.id, o.amount
 |------|--------|
 | `route=federated` | Force federation through the federation engine, bypassing direct-driver routing |
 | `route=direct` | Force direct-driver execution |
+| `cache=true` | Opt this query into the response cache (SQL comment form: `-- @provisa cache=true`) |
+| `cache_ttl=N` | Opt in, and keep the cached result for N seconds (`-- @provisa cache_ttl=N`) |
 
 (REQ-279, REQ-277, REQ-278)
+
+The response cache is opt-in per request: GraphQL uses the `@cached(ttl: Int)` directive, SQL and Cypher use the `cache`/`cache_ttl` comment, gRPC uses the `x-provisa-cache` / `x-provisa-cache-ttl` call metadata. The hint applies on every transport that carries the language (Cypher over HTTP, Bolt and Arrow Flight; GraphQL over HTTP and Arrow Flight). A request without one never reads or writes the cache, and neither form reads fresher data than the operator's source and table settings allow. See [Cache](configuration.md#per-request-opt-in). (REQ-544)
 
 ## Column Presets in Mutations
 

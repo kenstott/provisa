@@ -247,6 +247,14 @@ async def rest_tenant_db():
     org = f"rest{_uuid.uuid4().hex[:8]}"
     engine = create_engine_from_url(os.environ["TENANT_DATABASE_URL"], pool_size=2)
     db = Database(engine, name="tenant", search_path=f"org_{org}")
+    # The full tenant schema, not just the audit tables: the governed pipeline reads the org's
+    # registered_tables (REQ-1865 PK bounds, row-materialize lookup) on every compiled query.
+    from pathlib import Path
+
+    from provisa.core.db import init_schema
+
+    schema_sql = (Path(__file__).parents[2] / "provisa" / "core" / "schema.sql").read_text()
+    await init_schema(db, schema_sql, org_id=org)
     await init_audit_schema(db, org_id=org)
     try:
         yield db

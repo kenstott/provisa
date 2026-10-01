@@ -27,10 +27,10 @@ from __future__ import annotations
 
 import asyncio
 
-import asyncpg
 import pytest
 from sqlalchemy import select
 
+from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_org import event_status, events
 from provisa.events import queue, supervisor
 from provisa.events.handlers import make_mv_generate, make_source_land
@@ -264,7 +264,7 @@ async def test_store_land_notifies_pg_subscriber(control_plane):
     and the real PgNotificationProvider surfaces it to an external subscriber as an INSERT
     ChangeEvent carrying the landed row."""
     store_dsn = control_plane["store"]
-    pool = await asyncpg.create_pool(store_dsn, min_size=1, max_size=2)
+    pool = Database(create_engine_from_url(store_dsn, pool_size=2, max_overflow=0), name="store")
     try:
         async with pool.acquire() as conn:
             await conn.execute("CREATE TABLE orders (id bigint PRIMARY KEY, status text)")
@@ -288,7 +288,7 @@ async def test_store_delete_notifies_delete_change_event(control_plane):
     """REQ-258 — the trigger maps a DELETE to a ``delete`` ChangeEvent carrying the removed (OLD) row,
     so an external subscriber sees the retraction, not a silent drop."""
     store_dsn = control_plane["store"]
-    pool = await asyncpg.create_pool(store_dsn, min_size=1, max_size=2)
+    pool = Database(create_engine_from_url(store_dsn, pool_size=2, max_overflow=0), name="store")
     try:
         async with pool.acquire() as conn:
             await conn.execute("CREATE TABLE orders (id bigint PRIMARY KEY, status text)")

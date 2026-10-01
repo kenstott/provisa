@@ -74,6 +74,7 @@ _COLUMN_PROJECTION = [
     table_columns.c.object_fields,
     table_columns.c.scope,
     table_columns.c.gql_selection,
+    table_columns.c.epoch_unit,
 ]
 
 
@@ -278,6 +279,7 @@ async def upsert(
                 object_fields=object_fields,
                 scope=getattr(col, "scope", "domain"),
                 gql_selection=getattr(col, "gql_selection", None),
+                epoch_unit=getattr(col, "epoch_unit", None),
             )
         )
     # REQ-1387: this is the single write path for table_columns, so the glossary term

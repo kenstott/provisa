@@ -16,13 +16,13 @@ mutation execute path (never the engine). Extracted from endpoint.py; leaf modul
 
 from __future__ import annotations
 
-import asyncio
 import logging
 
 import httpx
 
 from fastapi import HTTPException
 
+from provisa.core.connection_loop import spawn_background
 from provisa.api.errors import ApiError
 from provisa.compiler.mutation_gen import (
     compile_mutation,
@@ -378,7 +378,10 @@ async def _handle_mutation(
             )
             # Invalidate cache for mutated table (REQ-080)
             if table_meta:
-                await state.response_cache_store.invalidate_by_table(table_meta.table_id)
+                from provisa.cache.tenancy import invalidate_tables
+
+                # REQ-595: the acting org's entries — the tenant they were written under.
+                await invalidate_tables(state, [table_meta.table_id])
                 # Mark affected MVs as stale (REQ-084)
                 state.mv_registry.mark_stale(table_meta.table_name)
                 # Emit dataset change event (REQ-172)
@@ -388,7 +391,7 @@ async def _handle_mutation(
                 # Trigger Kafka sinks for this table (REQ-176, fire-and-forget)
                 from provisa.kafka.sink_executor import trigger_sinks_for_table
 
-                asyncio.create_task(
+                spawn_background(
                     trigger_sinks_for_table(mutation.table_name, state),
                 )
                 # Invalidate and reload hot table if applicable (Phase AD6)

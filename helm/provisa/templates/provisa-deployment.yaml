@@ -109,9 +109,9 @@ spec:
             # this deployment; built from the PG_* vars above via k8s dependent
             # env-var interpolation so the password stays sourced from the secret.
             - name: TENANT_DATABASE_URL
-              value: "postgresql+asyncpg://$(PG_USER):$(PG_PASSWORD)@$(PG_HOST):$(PG_PORT)/$(PG_DATABASE)"
+              value: "postgresql+psycopg://$(PG_USER):$(PG_PASSWORD)@$(PG_HOST):$(PG_PORT)/$(PG_DATABASE){{ if .Values.pgbouncer.enabled }}?use_pgbouncer=true{{ end }}"
             - name: PLATFORM_DATABASE_URL
-              value: "postgresql+asyncpg://$(PG_USER):$(PG_PASSWORD)@$(PG_HOST):$(PG_PORT)/$(PG_DATABASE)"
+              value: "postgresql+psycopg://$(PG_USER):$(PG_PASSWORD)@$(PG_HOST):$(PG_PORT)/$(PG_DATABASE){{ if .Values.pgbouncer.enabled }}?use_pgbouncer=true{{ end }}"
             # Deployment engine (parity with the desktop wizard, REQ-972..979).
             # The user-facing "external" maps to the app's engine key "sqlalchemy"
             # (the value the installers write); the engine registry has no "external"

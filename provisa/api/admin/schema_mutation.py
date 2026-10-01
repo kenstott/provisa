@@ -1056,7 +1056,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         state.source_catalogs[input.id] = catalog_name_for_source(state, input.type, input.id)
 
         # Invalidate and re-index catalog cache (REQ-464)
-        import asyncio as _asyncio
         from provisa.discovery.catalog_cache import (
             invalidate_source as _invalidate,
             index_source as _index_source,
@@ -1073,7 +1072,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 state,
             )
 
-        _asyncio.create_task(_reindex())
+        # REQ-1882: background worker, not the request's own loop (which cancels leftover tasks
+        # when the request ends).
+        from provisa.core.connection_loop import spawn_background
+
+        spawn_background(_reindex(), name=f"catalog-reindex:{input.id}")
 
         return MutationResult(
             success=True,
@@ -2420,6 +2423,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.source_not_found",
                     params={"source": source_id},
                 )
+        # The operator floor routing reads (REQ-030) is keyed on the schema generation; bump it so
+        # the next read routes under the new setting instead of a cached decision.
+        await _rebuild_schemas()
         return MutationResult(
             success=True,
             message=f"prefer_materialized set for source {source_id!r}",
@@ -2498,6 +2504,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     off_peak_tz=off_peak_tz,
                 )
             )
+        # The operator floor routing reads (REQ-030) is keyed on the schema generation; bump it so
+        # the next read routes under the new setting instead of a cached decision.
+        await _rebuild_schemas()
         return MutationResult(
             success=True,
             message=f"load protection set for source {source_id!r}",
@@ -2889,7 +2898,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.api.app import state
 
         try:
-            count = await state.response_cache_store.invalidate_by_table(table_id)
+            from provisa.cache.tenancy import invalidate_tables
+
+            # REQ-595: the acting org's entries — the tenant they were written under.
+            count = await invalidate_tables(state, [table_id])
             return MutationResult(
                 success=True,
                 message=f"Purged {count} cache entries for table {table_id}",

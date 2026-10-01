@@ -160,14 +160,12 @@ class RSSNotificationProvider(NotificationProvider):  # REQ-342, REQ-343, REQ-34
             return resp.content
 
     async def poll_once(self, table: str) -> list[ChangeEvent]:
-        """Perform a single fetch-parse-filter cycle; return list of new ChangeEvents."""
+        """Perform a single fetch-parse-filter cycle; return list of new ChangeEvents. A failed
+        fetch or parse raises: it is never an empty feed (REQ-1661, amended 2026-09-30 -- the land
+        path read it as "zero items" and served the query nothing or the stale replica)."""
         watermark = self._watermark or datetime.min.replace(tzinfo=timezone.utc)
-        try:
-            raw = await self._fetch(self._url)
-            items = parse_feed(raw)
-        except Exception as exc:
-            log.warning("RSSProvider: fetch/parse error (%s)", exc)
-            return []
+        raw = await self._fetch(self._url)
+        items = parse_feed(raw)
 
         events: list[ChangeEvent] = []
         for item in items:

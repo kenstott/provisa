@@ -161,8 +161,10 @@ async def test_config_driven_mongo_fdw_federates_live_mongodb(
         )
         rt.attach_source(src)
 
+        # REQ-1730: exposed under the folded "{catalog}_{schema}" schema the ENGINE route targets
+        # (source_to_catalog("reviews") == "reviews").
         res = rt.run_sync(
-            'SELECT "product_id", "reviewer", "rating" FROM "mongo"."product_reviews" '
+            'SELECT "product_id", "reviewer", "rating" FROM "reviews_mongo"."product_reviews" '
             'ORDER BY "product_id", "reviewer"'
         )
         assert res.column_names == ["product_id", "reviewer", "rating"]

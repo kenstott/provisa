@@ -278,21 +278,14 @@ def _state(auth_config: dict) -> SimpleNamespace:
 
 @pytest.fixture
 def pgwire_loop():
-    """pgwire authenticates on a worker thread and submits validators to the main loop."""
-    import provisa.pgwire.server as pg_server
+    """This test thread's connection loop, bound as ProvisaHandler.handle binds one.
 
-    loop = asyncio.new_event_loop()
-    thread = threading.Thread(target=loop.run_forever, daemon=True)
-    thread.start()
-    previous = pg_server._loop
-    pg_server._loop = loop
-    try:
-        yield loop
-    finally:
-        pg_server._loop = previous
-        loop.call_soon_threadsafe(loop.stop)
-        thread.join(timeout=5)
-        loop.close()
+    pgwire runs every auth coroutine on the connection thread's own loop (REQ-1882), so a test
+    that drives handler methods directly binds one to the test thread for the test's duration."""
+    from provisa.core.connection_loop import connection_loop
+
+    with connection_loop() as cl:
+        yield cl
 
 
 def _pgwire_attempt(auth_config: dict, password: str) -> list[tuple]:

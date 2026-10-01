@@ -12,7 +12,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.models import Column, Table
@@ -31,31 +31,29 @@ from provisa.core.schema_org import (
 
 @asynccontextmanager
 async def _conn(tmp_path):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'r.db'}")
-    async with engine.begin() as c:
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'r.db'}")
+    with engine.begin() as c:
         # roles: table_repo resolves control-plane (cross_org) roles from the DB (REQ-1337), so
         # every fixture that registers tables must carry the roles table the bootstrap guarantees.
-        await c.run_sync(
-            lambda s: registered_tables.metadata.create_all(
-                s,
-                # glossary_*: the table upsert derives glossary terms from columns (REQ-1387).
-                tables=[
-                    registered_tables,
-                    table_columns,
-                    roles,
-                    glossary_terms,
-                    glossary_term_refs,
-                    glossary_term_edges,
-                    glossary_term_domains,
-                    glossary_term_experts,
-                ],
-            )
+        registered_tables.metadata.create_all(
+            c,
+            # glossary_*: the table upsert derives glossary terms from columns (REQ-1387).
+            tables=[
+                registered_tables,
+                table_columns,
+                roles,
+                glossary_terms,
+                glossary_term_refs,
+                glossary_term_edges,
+                glossary_term_domains,
+                glossary_term_experts,
+            ],
         )
     try:
         async with Database(engine, name="r").acquire() as conn:
             yield conn
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 @pytest.mark.asyncio

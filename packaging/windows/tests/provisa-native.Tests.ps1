@@ -130,9 +130,9 @@ Describe 'Native-Env' {
 
   It 'builds sqlite control-plane URLs with forward slashes' {
     $e = Native-Env
-    $e['PLATFORM_DATABASE_URL'] | Should -BeLike 'sqlite+aiosqlite:///*'
+    $e['PLATFORM_DATABASE_URL'] | Should -BeLike 'sqlite+pysqlite:///*'
     $e['PLATFORM_DATABASE_URL'] | Should -Not -Match '\\'
-    $e['TENANT_DATABASE_URL']   | Should -BeLike 'sqlite+aiosqlite:///*'
+    $e['TENANT_DATABASE_URL']   | Should -BeLike 'sqlite+pysqlite:///*'
     $e['PROVISA_ENGINE']        | Should -Be 'duckdb'
     $e['PROVISA_REDIS_EMBEDDED']| Should -Be '1'
   }

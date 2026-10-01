@@ -74,3 +74,20 @@ def resolve_policy(  # REQ-544
         return CachePolicy.NONE, 0
 
     return CachePolicy.TTL, resolved_ttl
+
+
+def opt_in_ttl(request_ttl: int | None, operator_ttls: list[int]) -> int:  # REQ-544 (amended)
+    """Seconds an OPTED-IN request's result may live in the response cache; 0 = not cached.
+
+    The request opts in (GraphQL ``@cached``, SQL ``-- @provisa cache=true|cache_ttl=N``); the
+    operator's per-table resolution (``resolve_policy`` with no query TTL, one entry per table the
+    statement reads) is the permission: any table whose source disables caching, or whose TTL
+    resolves to 0, keeps the whole result out. Permitted, the request's own ``ttl`` wins when it
+    gave one — it can only choose how long it accepts a result it already opted to take stale;
+    an entry is never fresher than the replica it was read from — else the shortest operator TTL.
+    """
+    if not operator_ttls or any(t <= 0 for t in operator_ttls):
+        return 0
+    if request_ttl is not None:
+        return max(request_ttl, 0)
+    return min(operator_ttls)

@@ -24,7 +24,7 @@ import pytest
 
 from pytest_bdd import given, scenarios, then, when
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.api.metadata_export import publishing
 from provisa.api.metadata_export.provider import AssetError, AssetRefStub, PublishResult
@@ -69,11 +69,9 @@ def _configured_org(shared_data, tmp_path, monkeypatch):
     shared_data["published"] = published
 
     async def _open(name: str) -> Database:
-        engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / name}.db")
-        async with engine.begin() as conn:
-            await conn.run_sync(
-                lambda s: events.metadata.create_all(s, tables=[events, event_status])
-            )
+        engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / name}.db")
+        with engine.begin() as conn:
+            events.metadata.create_all(conn, tables=[events, event_status])
         shared_data["engines"].append(engine)
         return Database(engine, name=name)
 

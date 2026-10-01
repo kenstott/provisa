@@ -105,7 +105,9 @@ async def test_config_driven_pg_fdw_federates_postgres_source(pg_with_fdw, tmp_p
         )
         rt.attach_source(src)
 
-        res = rt.run_sync('SELECT "id", "label" FROM "inventory"."widgets" ORDER BY "id"')
+        # REQ-1730: the engine exposes the source under the folded "{catalog}_{schema}" schema
+        # the ENGINE route's physical SQL targets (source_to_catalog("wid") == "wid").
+        res = rt.run_sync('SELECT "id", "label" FROM "wid_inventory"."widgets" ORDER BY "id"')
         assert res.column_names == ["id", "label"]
         assert [r[0] for r in res.rows] == [1, 2, 3]
         assert [r[1] for r in res.rows] == ["a", "b", "c"]

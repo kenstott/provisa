@@ -140,7 +140,9 @@ def plane(monkeypatch):
     monkeypatch.setattr(mod, "_pool", lambda: pool)
 
     # The task is the async half; create_org's contract is that it STARTS one and returns.
-    def _spawn(coro):
+    # REQ-1882: it starts on a background worker (spawn_background), not the request's own loop.
+    def _spawn(coro, *, name=None):
+        del name
         coro.close()
         state.provisioned.append("started")
 
@@ -150,7 +152,7 @@ def plane(monkeypatch):
 
         return _Task()
 
-    monkeypatch.setattr(mod.asyncio, "create_task", _spawn)
+    monkeypatch.setattr(mod, "spawn_background", _spawn)
     monkeypatch.setattr(mod, "_provisioning_tasks", set())
     return state
 

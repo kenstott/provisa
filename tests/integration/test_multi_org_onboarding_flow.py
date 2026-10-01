@@ -57,18 +57,19 @@ from provisa.core.schema_admin import (
     REGISTRY_TABLES,
     local_users,
     org_invites,
+    orgs,
     user_org_memberships,
 )
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_org import metadata as org_metadata
-from provisa.core.schema_org import roles, user_role_assignments
+from provisa.core.schema_org import domains, roles, sources, user_role_assignments
 
 pytestmark = [pytest.mark.integration]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "5432")
-_SYNC_URL = f"postgresql+psycopg2://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
-_ASYNC_URL = f"postgresql+asyncpg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
+_SYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
+_ASYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
 
 _ADMIN_SCHEMA = "test_req1266_admin"
 _TENANT_SCHEMA = "test_req1266_tenant"
@@ -92,7 +93,7 @@ def _prepare_sync():
     """Create both schemas + tables, seed the three local accounts and the org roles — synchronously.
 
     No orgs/invites/memberships are pre-seeded: the flow creates them. The tenant plane seeds the
-    ``org_admin`` and ``analyst`` role rows so the FK-backed ``user_role_assignments`` grants resolve
+    ``org_admin``, ``analyst`` and ``platform_admin`` role rows so the FK-backed ``user_role_assignments`` grants resolve
     (org_admin is normally seeded by schema.sql per org; here provisioning is stubbed)."""
     engine = create_engine(_SYNC_URL, pool_pre_ping=True)
     with engine.begin() as conn:
@@ -103,6 +104,11 @@ def _prepare_sync():
 
         conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
         admin_metadata.create_all(conn, tables=REGISTRY_TABLES)  # includes user_profiles
+        # REQ-1296: the bootstrap claim seats the claimant in the bootstrap org (state.org_id),
+        # whose registry row exists at runtime before any claim — the membership row's FK names it.
+        from provisa.api.app import state as app_state
+
+        conn.execute(insert(orgs).values(id=app_state.org_id, name="Root", created_by="system"))
         for username, password in _ACCOUNTS.items():
             pw_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
             conn.execute(
@@ -123,6 +129,14 @@ def _prepare_sync():
         org_metadata.create_all(conn)
         conn.execute(insert(roles).values(id="org_admin"))
         conn.execute(insert(roles).values(id="analyst"))
+        # REQ-1297: the bootstrap claim also grants platform_admin, a system role schema.sql seeds
+        # in every org.
+        conn.execute(insert(roles).values(id="platform_admin"))
+        # REQ-1301: provisioning refreshes the root org-registry view, registered under the
+        # provisa-admin source in the meta domain — rows the startup seeder
+        # (startup_seed.py's source/meta-domain seeding) writes before any org is provisioned.
+        conn.execute(insert(sources).values(id="provisa-admin", type="postgresql"))
+        conn.execute(insert(domains).values(id="meta"))
     return engine
 
 

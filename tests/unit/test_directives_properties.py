@@ -13,11 +13,12 @@
 
 Directives steer routing, join strategy, caching, and redirect — merged across
 precedence layers (server default < operation < field). A merge bug applies the
-wrong layer's directive (wrong route, stale cache, cache when @noCache was set); a
+wrong layer's directive (wrong route, stale cache, a cache read nobody opted into); a
 parser bug silently drops a directive. Two contracts:
 
   * merge_directives is last-writer-wins per scalar, set-union for watermark fields,
-    OR for no_cache, with the empty directive as identity — the precedence semantics
+    OR for cache_opt_in (REQ-544, amended 2026-09-30: the response cache is per-request
+    opt-in), with the empty directive as identity — the precedence semantics
     callers rely on.
   * extract_directives_from_sql_comments round-trips: rendering a directive set to
     `-- @provisa key=value` comments and re-parsing yields the same set.
@@ -63,7 +64,9 @@ def _directives(draw) -> QueryDirectives:
     d.redirect_format = draw(st.sampled_from([None, "parquet", "csv", "arrow"]))
     d.redirect_threshold = draw(st.sampled_from([None, 0, 100]))
     d.cache_ttl = draw(st.sampled_from([None, 0, 60]))
-    d.no_cache = draw(st.booleans())
+    # A TTL is itself an opt-in (`@cached(ttl:)` / `cache_ttl=N`), so a valid set never pairs a
+    # TTL with no opt-in.
+    d.cache_opt_in = d.cache_ttl is not None or draw(st.booleans())
     return d
 
 
@@ -71,20 +74,20 @@ def _fields_equal(x: QueryDirectives, y: QueryDirectives) -> None:
     for f in _SCALARS:
         assert getattr(x, f) == getattr(y, f), f
     assert x.watermark_fields == y.watermark_fields
-    assert x.no_cache == y.no_cache
+    assert x.cache_opt_in == y.cache_opt_in
 
 
 @settings(max_examples=300, deadline=None)
 @given(a=_directives(), b=_directives())
 def test_merge_is_last_writer_wins(a: QueryDirectives, b: QueryDirectives) -> None:
     """Each scalar takes the later source's value when set, else the earlier's;
-    watermark fields union; no_cache is sticky (OR)."""
+    watermark fields union; cache_opt_in is sticky (OR)."""
     m = merge_directives(a, b)
     for f in _SCALARS:
         bv, av = getattr(b, f), getattr(a, f)
         assert getattr(m, f) == (bv if bv is not None else av), f
     assert m.watermark_fields == (a.watermark_fields | b.watermark_fields)
-    assert m.no_cache == (a.no_cache or b.no_cache)
+    assert m.cache_opt_in == (a.cache_opt_in or b.cache_opt_in)
 
 
 @settings(max_examples=300, deadline=None)
@@ -122,8 +125,8 @@ def _render(d: QueryDirectives) -> str:
         kv.append(f"redirect_threshold={d.redirect_threshold}")
     if d.cache_ttl is not None:
         kv.append(f"cache_ttl={d.cache_ttl}")
-    if d.no_cache:
-        kv.append("no_cache=true")
+    elif d.cache_opt_in:
+        kv.append("cache=true")
     return "SELECT 1 -- @provisa " + " ".join(kv)
 
 

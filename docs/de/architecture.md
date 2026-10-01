@@ -631,8 +631,12 @@ MATCH (o:Order) RETURN o.id, o.amount
 | ------ | -------- |
 | `route=federated` | Federation über die Federation-Engine erzwingen, direktes Treiber-Routing umgehen |
 | `route=direct` | Direkte Treiberausführung erzwingen |
+| `cache=true` | Diese Abfrage für den Antwort-Cache anmelden (SQL-Kommentarform: `-- @provisa cache=true`) |
+| `cache_ttl=N` | Anmelden und das gecachte Ergebnis N Sekunden behalten (`-- @provisa cache_ttl=N`) |
 
 (REQ-279, REQ-277, REQ-278)
+
+Der Antwort-Cache ist pro Anfrage opt-in: GraphQL nutzt die Direktive `@cached(ttl: Int)`, SQL und Cypher den Kommentar `cache`/`cache_ttl`, gRPC die Aufruf-Metadaten `x-provisa-cache` / `x-provisa-cache-ttl`. Der Hinweis gilt auf jedem Transport, der die Sprache trägt (Cypher über HTTP, Bolt und Arrow Flight; GraphQL über HTTP und Arrow Flight). Eine Anfrage ohne Hinweis liest und schreibt den Cache nie, und keine Form liest aktuellere Daten, als die Quellen- und Tabelleneinstellungen des Betreibers erlauben. Siehe [Cache](configuration.md). (REQ-544)
 
 ## Column Presets in Mutations
 

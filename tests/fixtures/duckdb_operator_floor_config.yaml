@@ -1,0 +1,92 @@
+# REQ-030 (amended 2026-09-30): the operator's floor. A DuckDB + SQLite stack reading two tables in
+# the test stack's Postgres, one source marked load_protected and one prefer_materialized. Both must
+# be served from the platform's landed copy after the first land -- never pulled live by a query,
+# with or without a request route hint. floor-bare is prefer_materialized with no refresh policy
+# (no cache_ttl, window or probe): it is still never read live (REQ-826, amended 2026-09-30).
+federation_engine: duckdb
+auth:
+  provider: none
+  assignments_source: provisa
+  default_assignments:
+    - domain_id: '*'
+      role_id: org_admin
+naming:
+  domain_prefix: false
+  rules: []
+cache:
+  enabled: false
+domains:
+  - id: floor
+    description: Operator floor
+roles:
+  - id: org_admin
+    capabilities:
+      - source_registration
+      - table_registration
+      - access_config
+      - query_development
+      - full_results
+      - usage
+    domain_access:
+      - '*'
+sources:
+  - id: floor-protected
+    type: postgresql
+    host: ${env:PG_HOST}
+    port: ${env:PG_PORT}
+    database: ${env:PG_DATABASE}
+    username: ${env:PG_USER}
+    password: ${env:PG_PASSWORD}
+    load_protected: true
+    cache_ttl: 86400
+  - id: floor-materialized
+    type: postgresql
+    host: ${env:PG_HOST}
+    port: ${env:PG_PORT}
+    database: ${env:PG_DATABASE}
+    username: ${env:PG_USER}
+    password: ${env:PG_PASSWORD}
+    prefer_materialized: true
+    cache_ttl: 86400
+  - id: floor-bare
+    type: postgresql
+    host: ${env:PG_HOST}
+    port: ${env:PG_PORT}
+    database: ${env:PG_DATABASE}
+    username: ${env:PG_USER}
+    password: ${env:PG_PASSWORD}
+    prefer_materialized: true
+tables:
+  - source_id: floor-protected
+    table: lp_items
+    schema: op_floor_e2e
+    domain_id: floor
+    columns:
+      - name: id
+        data_type: integer
+        visible_to: [org_admin]
+      - name: name
+        data_type: varchar
+        visible_to: [org_admin]
+  - source_id: floor-materialized
+    table: pm_items
+    schema: op_floor_e2e
+    domain_id: floor
+    columns:
+      - name: id
+        data_type: integer
+        visible_to: [org_admin]
+      - name: name
+        data_type: varchar
+        visible_to: [org_admin]
+  - source_id: floor-bare
+    table: bare_items
+    schema: op_floor_e2e
+    domain_id: floor
+    columns:
+      - name: id
+        data_type: integer
+        visible_to: [org_admin]
+      - name: name
+        data_type: varchar
+        visible_to: [org_admin]

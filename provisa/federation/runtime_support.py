@@ -68,6 +68,7 @@ def stream_from_dbapi(
     obj: Any,
     *,
     on_close: Callable[[StreamStats], None] | None = None,
+    type_names: Callable[[list[Any]], list[str]] | None = None,
 ) -> ResultStream:
     """Build a lazily-streamed result from a DBAPI cursor/result whose fetch state OUTLIVES
     this call. Rows are pulled in batches of ``_STREAM_BATCH_ROWS`` via ``fetchmany`` so a
@@ -78,12 +79,17 @@ def stream_from_dbapi(
     at drain — the DuckDB terminal uses it to close the private cursor. Drivers that close
     the cursor in a ``finally`` or share one cursor across concurrent queries must use
     :func:`result_from_dbapi` instead. A ``None`` description (non-SELECT) yields an empty
-    materialized result and fires ``on_close`` immediately."""
+    materialized result and fires ``on_close`` immediately.
+
+    ``type_names`` maps the description's per-column type codes to declared type names, so the
+    stream reports ``column_types`` even for zero rows (the pgwire Describe needs them without
+    running the full statement, REQ-589)."""
     if not obj.description:
         if on_close is not None:
             on_close(StreamStats(done=True))
         return QueryResult(rows=[], column_names=[])
     cols = [d[0] for d in obj.description]
+    types = type_names([d[1] for d in obj.description]) if type_names is not None else None
 
     def _batches() -> Iterator[list[tuple]]:
         while True:
@@ -92,7 +98,9 @@ def stream_from_dbapi(
                 return
             yield chunk
 
-    return StreamingQueryResult(_batches(), column_names=cols, on_close=on_close)
+    return StreamingQueryResult(
+        _batches(), column_names=cols, column_types=types, on_close=on_close
+    )
 
 
 def arrow_batches_from_rows(
@@ -156,8 +164,9 @@ def stream_rows_from_arrow(
     whole result (REQ-1217, streaming-uniformity-gap Defect 3). Each Arrow batch is converted to row
     tuples on demand — peak memory is one batch — and draining the row stream drains (and closes) the
     underlying Arrow generator. Column names come from the Arrow schema; a zero-row result yields the
-    columns and no rows."""
+    columns and no rows. Column types are declared from the Arrow schema (``arrow_type_name``)."""
     names = list(schema.names)
+    types = [arrow_type_name(f.type) for f in schema]
 
     def _batches() -> Iterator[list[tuple]]:
         for rb in batches:
@@ -166,7 +175,47 @@ def stream_rows_from_arrow(
             cols = [col.to_pylist() for col in rb.columns]
             yield list(zip(*cols, strict=True))
 
-    return StreamingQueryResult(_batches(), column_names=names, on_close=on_close)
+    return StreamingQueryResult(
+        _batches(), column_names=names, column_types=types, on_close=on_close
+    )
+
+
+def arrow_type_name(t: Any) -> str:
+    """A declared SQL type name for an Arrow type, for the pgwire RowDescription (REQ-589).
+
+    Names map through ``provisa.pgwire.server._sql_type_to_bvtype``; the value each yields under
+    ``to_pylist`` (int, float, Decimal, datetime, date, time, bool, bytes, str, list, dict) is what
+    that wire type's encoder takes."""
+    import pyarrow as pa
+
+    if pa.types.is_boolean(t):
+        return "BOOLEAN"
+    if pa.types.is_integer(t):
+        return "BIGINT"
+    if pa.types.is_floating(t):
+        return "DOUBLE"
+    if pa.types.is_decimal(t):
+        return "DECIMAL"
+    if pa.types.is_timestamp(t):
+        return "TIMESTAMP"
+    if pa.types.is_date(t):
+        return "DATE"
+    if pa.types.is_time(t):
+        return "TIME"
+    if pa.types.is_duration(t):
+        return "INTERVAL"
+    if pa.types.is_binary(t) or pa.types.is_large_binary(t) or pa.types.is_fixed_size_binary(t):
+        return "BLOB"
+    if pa.types.is_list(t) or pa.types.is_large_list(t) or pa.types.is_fixed_size_list(t):
+        v = t.value_type
+        if pa.types.is_integer(v):
+            return "INTEGER[]"
+        if pa.types.is_string(v) or pa.types.is_large_string(v):
+            return "VARCHAR[]"
+        return "JSON"
+    if pa.types.is_struct(t) or pa.types.is_map(t):
+        return "JSON"
+    return "VARCHAR"
 
 
 def columns_from_describe(rows: Any) -> dict[str, str]:

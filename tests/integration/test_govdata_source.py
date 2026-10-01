@@ -32,6 +32,9 @@ import pytest
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
 
+# The GovData driver reports its schemas in lower case (JDBC metadata patterns are case-sensitive).
+_FEC = "fec"
+
 # ---------------------------------------------------------------------------
 # Fixtures / skip guards
 # ---------------------------------------------------------------------------
@@ -104,20 +107,17 @@ def govdata_conn():
     if conn is None:
         pytest.skip("GovDataDriver.connect() returned null")
 
-    # connect() succeeds even against an empty parquet bucket — the Iceberg
-    # tables are loaded lazily and missing tables are logged, not raised. Verify
-    # the FEC data actually materialized; skip (data unavailable) if not, per the
-    # documented skip conditions, rather than failing every assertion downstream.
+    # connect() succeeds even against an empty parquet bucket — the Iceberg tables are loaded
+    # lazily and missing tables are logged, not raised. The driver reports the schema in lower case
+    # ("fec"); a missing schema is a real failure of this environment's data, not a skip.
     rs = conn.getMetaData().getSchemas()
     schemas = []
     while rs.next():
         schemas.append(str(rs.getString("TABLE_SCHEM")))
     rs.close()
-    if "FEC" not in schemas:
+    if _FEC not in schemas:
         conn.close()
-        pytest.skip(
-            f"GovData FEC data not materialized (parquet bucket empty); schemas present: {schemas}"
-        )
+        pytest.fail(f"GovData {_FEC!r} schema not materialized; schemas present: {schemas}")
 
     yield conn
     conn.close()
@@ -136,13 +136,13 @@ def test_schemas_present(govdata_conn):
     while rs.next():
         schemas.append(str(rs.getString("TABLE_SCHEM")))
     rs.close()
-    assert "FEC" in schemas, f"Expected FEC in schemas, got: {schemas}"
+    assert _FEC in schemas, f"Expected {_FEC} in schemas, got: {schemas}"
 
 
 def test_tables_in_fec(govdata_conn):
     """FEC schema must expose at least candidates and committees tables."""
     meta = govdata_conn.getMetaData()
-    rs = meta.getTables(None, "FEC", "%", None)
+    rs = meta.getTables(None, _FEC, "%", None)
     tables = []
     while rs.next():
         tables.append(str(rs.getString("TABLE_NAME")))
@@ -155,7 +155,7 @@ def test_tables_in_fec(govdata_conn):
 def test_columns_for_candidates(govdata_conn):
     """candidates table must have at least cand_id and cand_name columns."""
     meta = govdata_conn.getMetaData()
-    rs = meta.getColumns(None, "FEC", "candidates", "%")
+    rs = meta.getColumns(None, _FEC, "candidates", "%")
     cols = []
     while rs.next():
         cols.append(str(rs.getString("COLUMN_NAME")))
@@ -192,7 +192,7 @@ def test_metadata_tables_query(govdata_conn):
     rs = stmt.executeQuery(
         'SELECT "tableSchem", "tableName" '
         'FROM metadata."TABLES" '
-        "WHERE \"tableSchem\" = 'FEC' "
+        f"WHERE \"tableSchem\" = '{_FEC}' "
         'ORDER BY "tableName" '
         "FETCH FIRST 10 ROWS ONLY"
     )

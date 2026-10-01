@@ -55,6 +55,7 @@ def _build_column_models(columns: list) -> list:
             is_foreign_key=c.is_foreign_key,
             is_alternate_key=c.is_alternate_key,
             scope=getattr(c, "scope", "domain"),
+            epoch_unit=getattr(c, "epoch_unit", None),  # REQ-1908
         )
         for c in columns
     ]

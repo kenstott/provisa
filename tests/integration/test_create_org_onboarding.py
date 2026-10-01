@@ -38,11 +38,13 @@ from provisa.core.schema_admin import REGISTRY_TABLES, orgs, user_org_membership
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import (
+    data_products,
     domains,
     registered_tables,
     roles,
     sources,
     table_columns,
+    user_directory,
     user_role_assignments,
 )
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
@@ -51,8 +53,8 @@ pytestmark = [pytest.mark.integration]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "5432")
-_SYNC_URL = f"postgresql+psycopg2://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
-_ASYNC_URL = f"postgresql+asyncpg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
+_SYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
+_ASYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
 
 _ADMIN_SCHEMA = "test_req1266_admin"
 _TENANT_SCHEMA = "test_req1266_tenant"
@@ -79,8 +81,10 @@ def _prepare_sync():
                 user_role_assignments,
                 sources,
                 domains,
+                data_products,  # REQ-1634: registered_tables.product_id FKs it
                 registered_tables,
                 table_columns,
+                user_directory,  # REQ-1439: every authenticated request upserts it
             ],
         )
         conn.execute(insert(roles).values(id="org_admin"))
@@ -91,10 +95,8 @@ def _prepare_sync():
 
 @pytest.fixture
 def planes(monkeypatch):
-    try:
-        sync_engine = _prepare_sync()
-    except Exception as exc:  # noqa: BLE001 — the suite provisions this PG; a miss is a config fault
-        pytest.skip(f"live Postgres not reachable at {_SYNC_URL}: {exc}")
+    # The suite provisions this PG, so a setup error is a real failure, never a skip.
+    sync_engine = _prepare_sync()
 
     admin_db = Database(create_engine_from_url(_ASYNC_URL), name="admin", search_path=_ADMIN_SCHEMA)
     tenant_db = Database(

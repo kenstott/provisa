@@ -35,19 +35,26 @@ racing each other on one key."""
 
 from __future__ import annotations
 
-import asyncio
+import threading
 from typing import Any
+
+from provisa.core.connection_loop import CrossLoopLock
 
 
 class _RefcountedLock:
     __slots__ = ("lock", "refcount")
 
     def __init__(self) -> None:
-        self.lock = asyncio.Lock()
+        self.lock = CrossLoopLock()
         self.refcount = 0
 
 
+# REQ-1882 (amended 2026-09-29): row fetches run on pgwire/Bolt/Flight connection-thread loops as
+# well as the process loop, so the per-key lock works across loops and threads, and the registry's
+# lookup/insert/refcount bookkeeping is guarded by a thread lock rather than relying on one loop's
+# cooperative scheduling.
 _locks: dict[tuple[str, tuple[Any, ...]], _RefcountedLock] = {}
+_registry_lock = threading.Lock()
 
 
 class _RowLockHandle:
@@ -63,28 +70,37 @@ class _RowLockHandle:
         self._entry: _RefcountedLock | None = None
 
     async def __aenter__(self) -> "_RowLockHandle":
-        # No `await` between the dict lookup/insert and the refcount bump: asyncio is single-
-        # threaded cooperative, so this block runs atomically with respect to every other task —
-        # two concurrent callers for the same key are guaranteed to see and share the SAME entry,
-        # never each create their own.
-        entry = _locks.get(self._key)
-        if entry is None:
-            entry = _RefcountedLock()
-            _locks[self._key] = entry
-        entry.refcount += 1
+        # Lookup/insert and the refcount bump happen under the registry lock, so two concurrent
+        # callers for the same key — on any loop or thread — see and share the SAME entry.
+        with _registry_lock:
+            entry = _locks.get(self._key)
+            if entry is None:
+                entry = _RefcountedLock()
+                _locks[self._key] = entry
+            entry.refcount += 1
         self._entry = entry
-        await entry.lock.acquire()
+        try:
+            await entry.lock.acquire()
+        except BaseException:
+            # Cancelled while waiting: this caller never held the lock, so its refcount share is
+            # returned here or the entry could never be evicted.
+            with _registry_lock:
+                entry.refcount -= 1
+                if entry.refcount == 0 and _locks.get(self._key) is entry:
+                    del _locks[self._key]
+            raise
         return self
 
     async def __aexit__(self, *exc_info: object) -> bool:
         entry = self._entry
         assert entry is not None  # __aenter__ always sets it before returning
         entry.lock.release()
-        entry.refcount -= 1
-        # Same atomicity argument as __aenter__: no `await` between the decrement and the delete,
-        # so this can't race a concurrent acquire that just created a fresh entry for this key.
-        if entry.refcount == 0 and _locks.get(self._key) is entry:
-            del _locks[self._key]
+        # Same registry lock as __aenter__, so the decrement-and-evict can't race a concurrent
+        # acquire that just bumped (or freshly created) this key's entry.
+        with _registry_lock:
+            entry.refcount -= 1
+            if entry.refcount == 0 and _locks.get(self._key) is entry:
+                del _locks[self._key]
         self._entry = None
         return False
 

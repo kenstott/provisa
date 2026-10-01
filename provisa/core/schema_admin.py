@@ -648,14 +648,14 @@ async def init_registry_schema(db: "Database", org_id: str) -> None:  # REQ-696,
     control plane's resolved org id — the same value that names the tenant schema
     ``org_<id>``. Seeding a different literal here strands the registry row on an org
     whose schema does not exist, and every org-runtime resolution for it then fails."""
-    async with db.engine.begin() as conn:
-        await conn.run_sync(lambda sc: metadata.create_all(sc, tables=REGISTRY_TABLES))
+    with db.engine.begin() as conn:
+        metadata.create_all(conn, tables=REGISTRY_TABLES)
         # V1 no-migrations: the metadata is the registry's schema, but ``create_all`` skips tables
         # that already exist, so a column added here never reaches a deployment whose registry
         # predates it (REQ-1412's external-engine columns are the case that surfaced it).
         from provisa.core.db import add_missing_columns
 
-        await conn.run_sync(add_missing_columns, REGISTRY_TABLES)
+        add_missing_columns(conn, REGISTRY_TABLES)
     async with db.acquire() as conn:
         result = await conn.execute_core(select(orgs.c.id).where(orgs.c.id == org_id))
         if result.scalar() is None:

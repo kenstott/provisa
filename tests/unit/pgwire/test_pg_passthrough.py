@@ -10,8 +10,9 @@
 
 """REQ-1863: PassthroughCursor forwards raw DataRow message bytes byte-for-byte, unmodified —
 verified over a real socketpair against a scripted fake Postgres server (Parse/Bind/Execute/Sync
-exchange), never a live Postgres. Also verifies the fallback triggers: an ErrorResponse and a
-column-count mismatch both raise PassthroughError rather than corrupting output."""
+exchange), never a live Postgres. Also verifies that an ErrorResponse and a column-count mismatch
+both raise PassthroughFailure — the request fails with that error rather than corrupting output or
+falling back to decode/re-encode (REQ-1863, amended 2026-09-30)."""
 
 from __future__ import annotations
 
@@ -21,7 +22,7 @@ import struct
 
 import pytest
 
-from provisa.pgwire.pg_passthrough import PassthroughCursor, PassthroughError, RawPgConnection
+from provisa.pgwire.pg_passthrough import PassthroughCursor, PassthroughFailure, RawPgConnection
 
 _INT32 = struct.Struct("!i")
 _INT16 = struct.Struct("!h")
@@ -123,7 +124,7 @@ async def test_fetch_respects_portal_suspend_across_two_batches():
         raw._sock.close()
 
 
-async def test_error_response_raises_passthrough_error():
+async def test_error_response_raises_passthrough_failure():
     raw, server_sock = _make_raw_connection()
     try:
         cursor = PassthroughCursor(raw, "SELECT 1/0", [], [0], expected_column_count=1)
@@ -140,7 +141,7 @@ async def test_error_response_raises_passthrough_error():
             )
 
         server_task = asyncio.ensure_future(_server())
-        with pytest.raises(PassthroughError, match="division by zero"):
+        with pytest.raises(PassthroughFailure, match="division by zero"):
             await cursor.fetch(10_000)
         await server_task
     finally:
@@ -148,7 +149,7 @@ async def test_error_response_raises_passthrough_error():
         raw._sock.close()
 
 
-async def test_column_count_mismatch_raises_passthrough_error():
+async def test_column_count_mismatch_raises_passthrough_failure():
     raw, server_sock = _make_raw_connection()
     try:
         # Client was told to expect 2 columns; the source's own DataRow says 3 — must not be
@@ -165,7 +166,7 @@ async def test_column_count_mismatch_raises_passthrough_error():
             )
 
         server_task = asyncio.ensure_future(_server())
-        with pytest.raises(PassthroughError, match="column count mismatch"):
+        with pytest.raises(PassthroughFailure, match="column count mismatch"):
             await cursor.fetch(10_000)
         await server_task
     finally:

@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 from unittest.mock import AsyncMock, patch
 
-import asyncpg
+import asyncio
 import pytest
 import pytest_asyncio
 
@@ -37,9 +37,13 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")
 
 @pytest_asyncio.fixture(scope="session")
 async def tenant_db(pg_dsn):
-    pool = await asyncpg.create_pool(pg_dsn, min_size=1, max_size=5)
-    yield pool
-    await pool.close()
+    """The control-plane ``Database`` — what production hands EventTriggerManager (REQ-1882: one
+    shared sync engine; LISTEN is served by its listener thread)."""
+    from provisa.core.database import Database, create_engine_from_url
+
+    db = Database(create_engine_from_url(pg_dsn, pool_size=5, max_overflow=0), name="org")
+    yield db
+    await db.close()
 
 
 @pytest_asyncio.fixture
@@ -193,6 +197,43 @@ class TestNotifyDispatch:
 
         mock_execute.assert_not_called()
         assert mock_execute.call_count == 0
+
+
+class TestNotifyThroughTheListenerThread:
+    async def test_a_real_insert_notify_reaches_the_webhook(self, tenant_db, scratch_table):
+        """End to end on real PostgreSQL: the installed trigger's NOTIFY is received by the
+        Database's listener thread and dispatched to the webhook on the registering loop."""
+        from provisa.webhooks.executor import WebhookResult
+
+        received: list[dict] = []
+        got = asyncio.Event()
+
+        async def capture_execute(webhook, arguments):
+            received.append(arguments or {})
+            got.set()
+            return WebhookResult(status_code=200, data={}, headers={})
+
+        trigger = EventTrigger(
+            table_id=scratch_table,
+            operations=["insert"],
+            webhook_url="https://example.com/hook",
+            retry_max=0,
+            retry_delay=0.0,
+        )
+        mgr = EventTriggerManager([trigger])
+        with patch(
+            "provisa.events.triggers.execute_webhook", AsyncMock(side_effect=capture_execute)
+        ):
+            await mgr.setup(tenant_db)
+            try:
+                async with tenant_db.acquire() as conn:
+                    await conn.execute(f"INSERT INTO {scratch_table} (val) VALUES ($1)", "hello")
+                await asyncio.wait_for(got.wait(), 10)
+            finally:
+                await mgr.teardown(tenant_db)
+
+        assert len(received) == 1
+        assert received[0]["row"]["val"] == "hello"
 
 
 class TestRetryPolicy:

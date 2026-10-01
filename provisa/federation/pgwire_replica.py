@@ -55,6 +55,18 @@ SERVER_STOP_SECONDS = 30  # SIGTERM grace before the group is killed
 SERVER_READY_SECONDS = (
     90  # a bundled JVM + Calcite schema boot; the probe measured ~10s on a laptop
 )
+# Upper bound on one replica SELECT against the pgwire server. Without it a wedged Calcite server
+# blocks the caller forever (asyncpg's command timeout defaults to none). A request's own budget
+# (REQ-1882 request deadline), when one is bound, tightens it.
+LAND_FETCH_SECONDS = 600
+
+
+def _fetch_timeout() -> float:
+    from provisa.core import request_deadline
+
+    budget = request_deadline.remaining()
+    return LAND_FETCH_SECONDS if budget is None else min(LAND_FETCH_SECONDS, budget)
+
 
 # The Calcite schema factory per connector — the ``model.json`` ``factory`` for the bundle's adapter.
 _SCHEMA_FACTORY: dict[str, str] = {
@@ -548,7 +560,7 @@ async def land_via_select(
     do_connect = connect if connect is not None else _pg_connect
     conn = await do_connect(ports.calcite_child_host, ports.pgwire_port)
     try:
-        rows = await conn.fetch(f'SELECT * FROM "{schema}"."{table}"')
+        rows = await conn.fetch(f'SELECT * FROM "{schema}"."{table}"', timeout=_fetch_timeout())
         return [dict(row) for row in rows]
     finally:
         await conn.close()
@@ -583,7 +595,9 @@ async def land_via_select_keys(
         col = pk_columns[0]
         values = [k[0] for k in keys]
         rows = await conn.fetch(
-            f'SELECT * FROM "{schema}"."{table}" WHERE "{col}" = ANY($1)', values
+            f'SELECT * FROM "{schema}"."{table}" WHERE "{col}" = ANY($1)',
+            values,
+            timeout=_fetch_timeout(),
         )
         return [dict(row) for row in rows]
     finally:

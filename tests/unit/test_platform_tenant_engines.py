@@ -19,10 +19,10 @@ from provisa.core.database import create_engine_from_url
 
 
 def test_engines_are_independent():
-    # Two URLs -> two distinct AsyncEngine instances with distinct pools.
+    # Two URLs -> two distinct Engine instances with distinct pools.
     # (URLs are not connected; engine construction is lazy.)
-    admin = create_engine_from_url("postgresql+asyncpg://u:p@h/admin")
-    tenant = create_engine_from_url("postgresql+asyncpg://u:p@h/tenant")
+    admin = create_engine_from_url("postgresql+psycopg://u:p@h/admin")
+    tenant = create_engine_from_url("postgresql+psycopg://u:p@h/tenant")
     assert admin is not tenant
     assert admin.pool is not tenant.pool
 
@@ -30,8 +30,8 @@ def test_engines_are_independent():
 def test_any_async_backend_accepted():
     # PLATFORM_DATABASE_URL supports any async SQLAlchemy URI, not just asyncpg.
     for url, backend in (
-        ("postgresql+asyncpg://u:p@h/db", "postgresql"),
-        ("sqlite+aiosqlite:////tmp/provisa_req837.db", "sqlite"),
+        ("postgresql+psycopg://u:p@h/db", "postgresql"),
+        ("sqlite+pysqlite:////tmp/provisa_req837.db", "sqlite"),
     ):
         engine = create_engine_from_url(url)
         assert engine.url.get_backend_name() == backend
@@ -53,5 +53,5 @@ def test_platform_url_default_has_no_fallback(monkeypatch):
         resolve_secrets(ref)
 
     # Resolution honours the env var when set.
-    monkeypatch.setenv("PLATFORM_DATABASE_URL", "postgresql+asyncpg://u:p@h/plat")
-    assert resolve_secrets(ref) == "postgresql+asyncpg://u:p@h/plat"
+    monkeypatch.setenv("PLATFORM_DATABASE_URL", "postgresql+psycopg://u:p@h/plat")
+    assert resolve_secrets(ref) == "postgresql+psycopg://u:p@h/plat"

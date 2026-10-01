@@ -36,6 +36,7 @@ from pathlib import Path
 
 import pytest
 
+from provisa.cache.store import NoopCacheStore
 from provisa.executor.result import QueryResult
 from provisa.pgwire import _pipeline
 from provisa.pgwire._pipeline import _Plan, _mint_stamp, require_governed_plan, stamp_is_valid
@@ -93,6 +94,7 @@ async def test_execute_plan_accepts_pipeline_minted_plan():
 
     class _FakeState:
         federation_engine = _FakeEngine()
+        response_cache_store = NoopCacheStore()  # AppState always holds a store
 
     plan = _Plan(
         route=Route.ENGINE,
@@ -150,11 +152,26 @@ def test_direct_engine_execution_verifies_the_stamp():
     require_governed_plan(unstamped)  # a pipeline-minted plan is admitted
 
 
-# Arrow/stream engine methods execute a governed PLAN's SQL directly (they never carry raw system SQL —
-# unlike execute_engine/execute_native, which internal subsystems use). So EVERY module that calls them
-# MUST verify the stamp at the last moment (require_governed_plan) or route through _execute_plan. A new
-# sink that runs plan SQL on the Arrow/stream terminal without verifying is exactly the hole this closes.
+# Arrow/stream engine methods execute SQL directly on the engine. EVERY module that calls them MUST
+# verify authorization at the last moment: a governed PLAN's stamp (require_governed_plan) or a route
+# through _execute_plan — or, for a system-authorized stream (an MV refresh streaming its SELECT,
+# REQ-1901), pass ``authorization=`` on EVERY such call so the terminal verifies it (REQ-1760), exactly
+# as execute_engine does. A new sink that runs SQL on the Arrow/stream terminal without any of these is
+# exactly the hole this closes.
 _ARROW_STREAM_METHODS = ("execute_engine_arrow", "execute_engine_stream")
+
+
+def _every_stream_call_is_authorized(tree: ast.AST) -> bool:
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in _ARROW_STREAM_METHODS
+    ]
+    return bool(calls) and all(
+        any(kw.arg == "authorization" for kw in call.keywords) for call in calls
+    )
 
 
 def test_arrow_stream_sinks_verify_the_stamp():
@@ -165,7 +182,11 @@ def test_arrow_stream_sinks_verify_the_stamp():
             continue
         text = path.read_text()
         if any(f".{m}(" in text for m in _ARROW_STREAM_METHODS):
-            if "require_governed_plan" not in text and "_execute_plan" not in text:
+            if (
+                "require_governed_plan" not in text
+                and "_execute_plan" not in text
+                and not _every_stream_call_is_authorized(ast.parse(text))
+            ):
                 offenders.append(rel)
     assert not offenders, (
         "These modules execute a plan's SQL on the Arrow/stream engine terminal without verifying the "
@@ -189,3 +210,34 @@ def test_no_new_parallel_governed_pipeline():
         f"pipeline (_govern_and_route / _execute_plan): {offenders}. Collapse them onto the "
         "chokepoint; do not add them to the allowlist."
     )
+
+
+def test_an_unauthorized_stream_call_is_still_an_offender():
+    """A module whose stream call omits ``authorization=`` is not admitted by the system-auth arm."""
+    unauth = ast.parse("def f(engine):\n    return engine.execute_engine_stream('SELECT 1')\n")
+    mixed = ast.parse(
+        "def f(engine, a):\n"
+        "    engine.execute_engine_stream('SELECT 1', authorization=a)\n"
+        "    return engine.execute_engine_arrow('SELECT 2')\n"
+    )
+    authed = ast.parse(
+        "def f(engine, a):\n    return engine.execute_engine_stream('x', authorization=a)\n"
+    )
+    assert not _every_stream_call_is_authorized(unauth)
+    assert not _every_stream_call_is_authorized(mixed)
+    assert _every_stream_call_is_authorized(authed)
+
+
+def test_the_stream_terminal_verifies_a_supplied_system_authorization():
+    """REQ-1760 on the stream terminal: a forged system token is refused before the engine runs."""
+    from types import SimpleNamespace
+
+    from provisa.federation.execution_auth import SystemAuth
+    from provisa.federation.runtime import EngineRuntime
+
+    rt = EngineRuntime.__new__(EngineRuntime)
+    rt.require = lambda _cap: None  # type: ignore[method-assign]
+    rt._backend = SimpleNamespace(execute_stream=lambda *_a: pytest.fail("engine must not run"))  # type: ignore[attr-defined]
+    rt._state = None  # type: ignore[attr-defined]
+    with pytest.raises(PermissionError, match="system authorization token"):
+        rt.execute_engine_stream("SELECT 1", authorization=SystemAuth("forged", reason="t"))

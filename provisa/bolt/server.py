@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Bolt TCP server — asyncio-native handler.
+"""Bolt TCP server — one thread per connection, each running its own asyncio loop (REQ-1882).
 
 Handshake sequence:
   1. Client sends 4-byte magic (0x6060B017)
@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import socket
 import ssl
+import threading
 
 import provisa.bolt.messages as msg
 from provisa.bolt.framing import read_message, write_message
@@ -34,6 +36,7 @@ from provisa.bolt.messages import (
 from provisa.bolt.packstream import pack_message
 from provisa.bolt.session import BoltSession
 from provisa.bolt.websocket import BoltReader, BoltWriter
+from provisa.core.connection_loop import connection_loop
 
 log = logging.getLogger(__name__)
 
@@ -195,31 +198,76 @@ async def _dispatch(session: BoltSession, message: BoltMessage) -> None:
         )
 
 
-async def _serve(host: str, port: int, ssl_ctx: ssl.SSLContext | None) -> None:
-    # reuse_port=True (REQ-1900): confirmed live that asyncio honors SO_REUSEPORT for genuine
-    # multi-process port sharing (two independent processes both bind successfully, kernel load-
-    # balances new connections between them) -- unlike allow_reuse_address-style options, which
-    # only permit quick rebind after close, not concurrent listeners. Lets multiple uvicorn
-    # `--workers N` processes each run their own Bolt listener on the same port instead of all but
-    # one crashing on startup with "Address already in use".
-    server = await asyncio.start_server(
-        _handle_client,
-        host,
-        port,
-        ssl=ssl_ctx,
-        reuse_port=True,
-    )
-    log.info("[BOLT] listening on %s:%d (TLS=%s)", host, port, ssl_ctx is not None)
-    async with server:
-        await server.serve_forever()
+async def _serve_accepted(sock: socket.socket, ssl_ctx: ssl.SSLContext | None) -> None:
+    """Wrap an accepted socket in asyncio streams on the running (connection) loop and serve it."""
+    loop = asyncio.get_running_loop()
+    reader = asyncio.StreamReader()
+    protocol = asyncio.StreamReaderProtocol(reader)
+    transport, _ = await loop.connect_accepted_socket(lambda: protocol, sock=sock, ssl=ssl_ctx)
+    writer = asyncio.StreamWriter(transport, protocol, reader, loop)
+    await _handle_client(reader, writer)
+
+
+def _serve_connection(sock: socket.socket, ssl_ctx: ssl.SSLContext | None) -> None:
+    """Serve one Bolt connection entirely on this thread, on a loop this thread owns (REQ-1882).
+
+    Every coroutine the session runs — handshake, auth, org resolution, governance, execution,
+    audit — executes on this connection's loop via ``run_until_complete`` on this thread, so two
+    Bolt connections never queue on one shared loop."""
+    try:
+        with connection_loop() as cl:
+            cl.run(_serve_accepted(sock, ssl_ctx))
+    except Exception:
+        # _handle_client answers and closes every protocol-level failure itself; what reaches here
+        # failed before a stream existed (TLS handshake, socket setup). Reported, and the socket
+        # is not left open.
+        log.exception("[BOLT] connection setup failed")
+        sock.close()
+
+
+class BoltListener:
+    """The Bolt TCP listener: an accept loop on its own thread, one thread per connection."""
+
+    def __init__(self, host: str, port: int, ssl_ctx: ssl.SSLContext | None) -> None:
+        # reuse_port=True (REQ-1900): SO_REUSEPORT lets multiple uvicorn `--workers N` processes
+        # each run their own Bolt listener on the same port (the kernel load-balances new
+        # connections between them) instead of all but one crashing with "Address already in use".
+        self._sock = socket.create_server((host, port), reuse_port=True)
+        self._ssl_ctx = ssl_ctx
+        self._closed = False
+        self.port = self._sock.getsockname()[1]
+        self._thread = threading.Thread(
+            target=self._accept_loop, name=f"bolt-accept:{self.port}", daemon=True
+        )
+        self._thread.start()
+
+    def _accept_loop(self) -> None:
+        while not self._closed:
+            try:
+                conn, _addr = self._sock.accept()
+            except OSError:
+                if self._closed:
+                    return  # close() shut the listening socket
+                # A transient accept failure (EMFILE, ECONNABORTED) costs one connection, not the
+                # listener; it is reported and the loop keeps accepting.
+                log.exception("[BOLT] accept failed")
+                continue
+            threading.Thread(
+                target=_serve_connection, args=(conn, self._ssl_ctx), name="bolt-conn", daemon=True
+            ).start()
+
+    def close(self) -> None:
+        self._closed = True
+        self._sock.close()
 
 
 def start_bolt_server(
     host: str,
     port: int,
     ssl_ctx: ssl.SSLContext | None,
-    loop: asyncio.AbstractEventLoop,
-) -> None:
-    """Schedule the Bolt server on the running event loop. Returns immediately."""
-    asyncio.run_coroutine_threadsafe(_serve(host, port, ssl_ctx), loop)
-    log.info("[BOLT] scheduled on %s:%d", host, port)
+) -> BoltListener:
+    """Start the Bolt listener. Returns once it is bound; connections are served on their own
+    threads, each on a loop that thread owns (REQ-1882)."""
+    listener = BoltListener(host, port, ssl_ctx)
+    log.info("[BOLT] listening on %s:%d (TLS=%s)", host, listener.port, ssl_ctx is not None)
+    return listener

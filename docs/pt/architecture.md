@@ -631,8 +631,12 @@ MATCH (o:Order) RETURN o.id, o.amount
 | ------ | -------- |
 | `route=federated` | Força a federação através do motor de federação, contornando o roteamento de driver direto |
 | `route=direct` | Força a execução de driver direto |
+| `cache=true` | Aderir esta consulta ao cache de respostas (forma de comentário SQL: `-- @provisa cache=true`) |
+| `cache_ttl=N` | Aderir e manter o resultado em cache por N segundos (`-- @provisa cache_ttl=N`) |
 
 (REQ-279, REQ-277, REQ-278)
+
+O cache de respostas é por adesão a cada requisição: GraphQL usa a diretiva `@cached(ttl: Int)`, SQL e Cypher o comentário `cache`/`cache_ttl`, gRPC os metadados de chamada `x-provisa-cache` / `x-provisa-cache-ttl`. A dica vale em todo transporte que carrega a linguagem (Cypher sobre HTTP, Bolt e Arrow Flight; GraphQL sobre HTTP e Arrow Flight). Uma requisição sem dica nunca lê nem grava o cache, e nenhuma forma lê dados mais recentes do que as configurações de fonte e tabela do operador permitem. Veja [Cache](configuration.md). (REQ-544)
 
 ## Presets de Coluna em Mutações
 

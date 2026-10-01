@@ -28,6 +28,7 @@ from __future__ import annotations
 import logging
 from contextlib import contextmanager
 from enum import Enum
+from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -187,6 +188,12 @@ class EngineRuntime:  # REQ-825, REQ-840
         them exactly as their async ``execute`` does."""
         return self._backend.execute_sync(self._state, sql, params, session_hints=session_hints)
 
+    def describe_engine_sync(self, sql: str, params: list | None = None) -> ResultStream | None:
+        """The result SHAPE of governed physical SQL — column names and declared types, zero rows —
+        without running the statement (the pgwire Describe, REQ-589). ``None`` when this engine
+        cannot describe a statement without running it; the caller then runs it (documented)."""
+        return self._backend.describe_sync(self._state, sql, params)
+
     @contextmanager
     def isolated_sync(self):
         """A FRESH, thread-isolated engine connection for background materialization
@@ -220,25 +227,23 @@ class EngineRuntime:  # REQ-825, REQ-840
         sql: str,
         params: list | None,
         *,
-        loop: Any,
+        run: Callable[[Coroutine[Any, Any, Any]], Any],
     ) -> ResultStream:
         """DIRECT STREAMING terminal (REQ-1190): a lazily-drained row :class:`ResultStream` over a
         single reachable source's server-side cursor.
 
         SYNCHRONOUS, for the streaming surfaces (pgwire, Flight SQL) that drive it on a worker thread:
-        the async source cursor is opened and pumped on the event ``loop`` via ``run_coroutine_threadsafe``,
-        one fetch batch at a time, so a large DIRECT scan never fully materializes (streaming-uniformity
-        Defect 1). The connection/transaction is held for the stream's life and released when the row
-        iterator drains (``on_close``). Only valid when ``source_pools.supports_stream(source_id)``."""
-        import asyncio
-
+        the async source cursor is opened and pumped through ``run`` — which runs a coroutine to
+        completion on the caller's event loop (pgwire/Flight: the connection thread's own loop, on
+        that thread, REQ-1882) — one fetch batch at a time, so a large DIRECT scan never fully
+        materializes (streaming-uniformity Defect 1). The connection/transaction is held for the
+        stream's life and released when the row iterator drains (``on_close``). Only valid when
+        ``source_pools.supports_stream(source_id)``."""
         from provisa.executor.direct import open_direct_stream
         from provisa.executor.result import StreamingQueryResult
         from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
 
-        ds = asyncio.run_coroutine_threadsafe(
-            open_direct_stream(source_pools, source_id, sql, params), loop
-        ).result()
+        ds = run(open_direct_stream(source_pools, source_id, sql, params))
 
         released = [False]
 
@@ -250,14 +255,12 @@ class EngineRuntime:  # REQ-825, REQ-840
             if released[0]:
                 return
             released[0] = True
-            asyncio.run_coroutine_threadsafe(ds.close(), loop).result()
+            run(ds.close())
 
         def _batches() -> Any:
             try:
                 while True:
-                    chunk = asyncio.run_coroutine_threadsafe(
-                        ds.fetch(_STREAM_BATCH_ROWS), loop
-                    ).result()
+                    chunk = run(ds.fetch(_STREAM_BATCH_ROWS))
                     if not chunk:
                         return
                     yield chunk
@@ -279,7 +282,7 @@ class EngineRuntime:  # REQ-825, REQ-840
         params: list | None,
         result_formats: list[int],
         *,
-        loop: Any,
+        run: Callable[[Coroutine[Any, Any, Any]], Any],
     ) -> ResultStream:
         """REQ-1863: like :meth:`execute_native_stream`, but for a DIRECT-route source that is
         itself PostgreSQL — each "row" the returned stream yields is a :class:`RawDataRowBytes`
@@ -291,7 +294,7 @@ class EngineRuntime:  # REQ-825, REQ-840
         driver = source_pools.get(source_id)
         return self._pg_passthrough_stream(
             open_passthrough(driver._connect_kwargs, sql, list(params or []), result_formats),
-            loop=loop,
+            run=run,
         )
 
     def execute_pg_engine_passthrough(
@@ -300,37 +303,39 @@ class EngineRuntime:  # REQ-825, REQ-840
         params: list | None,
         result_formats: list[int],
         *,
-        loop: Any,
+        run: Callable[[Coroutine[Any, Any, Any]], Any],
     ) -> ResultStream:
         """Like :meth:`execute_pg_passthrough`, but for the ENGINE route when the bound federation
         engine ITSELF is Postgres (REQ-904, ``PROVISA_ENGINE=pg``) — pgwire and the engine both
         speak real Postgres wire protocol end to end, so the same raw-DataRow-forwarding mechanism
         applies; only the connect parameters differ (the engine's own DSN, not a SourcePool
-        driver's kwargs). Callers catch :class:`PassthroughError` and fall back to the normal
-        ``execute_engine_sync`` decode/re-encode path."""
+        driver's kwargs). Callers catch :class:`PassthroughError` (the statement's column layout
+        does not apply) and take the ``execute_engine_sync`` decode/re-encode path; a
+        :class:`PassthroughFailure` — including a Postgres engine with no URL, a config error —
+        fails the request (REQ-1863)."""
         from provisa.federation.engine import configured_engine_url
-        from provisa.pgwire.pg_passthrough import PassthroughError, open_passthrough
+        from provisa.pgwire.pg_passthrough import PassthroughFailure, open_passthrough
 
         raw = configured_engine_url() or self.engine.default_materialize_store()
         if raw is None:
-            raise PassthroughError("pg engine has no configured URL")
+            raise PassthroughFailure("pg engine has no configured URL")
         dsn = _strip_driver_suffix(raw)
         return self._pg_passthrough_stream(
             open_passthrough({"dsn": dsn}, sql, list(params or []), result_formats),
-            loop=loop,
+            run=run,
         )
 
-    def _pg_passthrough_stream(self, open_coro: Any, *, loop: Any) -> ResultStream:
+    def _pg_passthrough_stream(
+        self, open_coro: Any, *, run: Callable[[Coroutine[Any, Any, Any]], Any]
+    ) -> ResultStream:
         """Drive an ``open_passthrough(...)`` coroutine's cursor into a lazily-drained
         :class:`ResultStream` of :class:`RawDataRowBytes` batches — shared by both the DIRECT and
         ENGINE passthrough entrypoints, which differ only in how they build the coroutine."""
-        import asyncio
-
         from provisa.executor.result import StreamingQueryResult
         from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
         from buenavista.core import RawDataRowBytes
 
-        pr = asyncio.run_coroutine_threadsafe(open_coro, loop).result()
+        pr = run(open_coro)
 
         released = [False]
 
@@ -338,15 +343,13 @@ class EngineRuntime:  # REQ-825, REQ-840
             if released[0]:
                 return
             released[0] = True
-            asyncio.run_coroutine_threadsafe(pr.cursor.close(), loop).result()
+            run(pr.cursor.close())
 
         def _batches() -> Any:
             try:
                 while True:
                     try:
-                        chunk = asyncio.run_coroutine_threadsafe(
-                            pr.cursor.fetch(_STREAM_BATCH_ROWS), loop
-                        ).result()
+                        chunk = run(pr.cursor.fetch(_STREAM_BATCH_ROWS))
                     except Exception:
                         # server.py's `except PassthroughError` only wraps the INITIAL
                         # open_passthrough() call, not this ongoing fetch loop -- an error here
@@ -591,6 +594,11 @@ class EngineRuntime:  # REQ-825, REQ-840
             self._state, schema=schema, table=table, pk_columns=pk_columns
         )
 
+    def mv_store_broker(self) -> Any:
+        """The store broker an MV refresh writes through instead of engine SQL, or ``None``
+        (REQ-1901) — delegated to the backend."""
+        return self._backend.mv_store_broker(self._state)
+
     async def persist_mv_table(
         self,
         *,
@@ -683,13 +691,25 @@ class EngineRuntime:  # REQ-825, REQ-840
         self.require(EngineCapability.ARROW)
         return self._backend.execute_arrow(self._state, sql, params)
 
-    def execute_engine_stream(self, sql: str, params: list | None = None):
+    def execute_engine_stream(
+        self,
+        sql: str,
+        params: list | None = None,
+        *,
+        authorization: "ExecutionAuthorization | None" = None,
+    ):
         """ENGINE terminal returning ``(schema, RecordBatch generator)`` for lazy streaming.
 
         Requires the ARROW_STREAM capability. Synchronous: the caller drives the lazy reader, so
-        the full result is never materialized (REQ-145).
+        the full result is never materialized (REQ-145). ``authorization`` (REQ-1760) is verified
+        when supplied, exactly as on ``execute_engine`` — the system-authorized path (an MV refresh
+        streaming its SELECT) proves its identity the same way.
         """
         self.require(EngineCapability.ARROW_STREAM)
+        if authorization is not None:
+            from provisa.federation.execution_auth import verify_execution_authorization
+
+            verify_execution_authorization(authorization, sql)
         return self._backend.execute_stream(self._state, sql, params)
 
     async def execute(

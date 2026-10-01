@@ -88,6 +88,11 @@ dependencies = [
     # host (GitPython shells out) and no native build (pygit2 needs libgit2), which REQ-294's
     # airgap-capable distribution cannot carry a compiler for.
     "psycopg2-binary",
+    # REQ-052/REQ-1882: the PostgreSQL DIRECT source driver — psycopg 3's extended protocol gives
+    # per-connection server-side prepared statements (prepare_threshold) that psycopg2 lacks, and
+    # psycopg_pool is its thread-safe shared pool.
+    "psycopg[binary]",
+    "psycopg-pool",
     "sqlalchemy-redshift",  # REQ-1730: redshift+psycopg2 dialect — generic-RDB land driver
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp-proto-grpc",
@@ -105,7 +110,7 @@ dependencies = [
     # not fetched from an index — declaring it as a dependency would pull the wrong upstream package.
     # Its own runtime deps are folded in here instead (sqlglot already present):
     "python-dateutil",
-    "duckdb",
+    "duckdb==1.5.5",
     "networkx>=3.0",
     "scipy",
     "defusedxml",
@@ -114,12 +119,6 @@ dependencies = [
     "pyiceberg",
     "deltalake",
     "neo4j",
-    # Native/desktop tier (REQ-979) control plane is SQLite via sqlite+aiosqlite, and SQLAlchemy's
-    # async runtime needs greenlet. Both are RUNTIME requirements — the packaged native runtime
-    # (built with a plain `pip install .`) failed at startup with ModuleNotFoundError: aiosqlite when
-    # these lived only in the `dev` extra.
-    "aiosqlite",
-    "greenlet",
     # REQ-1592: the model report is served as a workbook (GET /admin/report.xlsx). openpyxl was
     # already present transitively (databricks-sql-connector); a first-party surface that writes
     # XLSX cannot depend on another package's dependency graph to keep it there.
@@ -145,15 +144,15 @@ provisa = "provisa.cli:main"
 
 [project.optional-dependencies]
 # REQ-1126/REQ-1129: the pip-installable embedded tier. A fully functional, self-contained
-# system — SQLite control plane (aiosqlite + SQLAlchemy async runtime) + embedded DuckDB engine
+# system — SQLite control plane (stdlib sqlite3 via SQLAlchemy) + embedded DuckDB engine
 # + in-memory (fakeredis) cache — ready to `provisa run` immediately. The bundled Trino JVM is
 # omitted (PyPI carries no JVM server); full multi-engine federation stays available by pointing
-# at a customer-provided external engine via TRINO_HOST/TRINO_PORT. duckdb/aiosqlite/greenlet are
-# already base deps; this extra names the tier explicitly and adds fakeredis for the embedded cache.
+# at a customer-provided external engine via TRINO_HOST/TRINO_PORT. duckdb is
+# already a base dep; this extra names the tier explicitly and adds fakeredis for the embedded cache.
 # provisa-duckdb-ext (the offline DuckDB extension blobs, REQ-1142) is now published on PyPI, so it is a
 # hard dep here: pip install provisa[embedded] stages the extensions offline (no extensions.duckdb.org
 # reach on first LOAD), matching _stage_duckdb_extensions in cli.py.
-embedded = ["duckdb", "aiosqlite", "greenlet", "fakeredis", "provisa-duckdb-ext>=0.1.0"]
+embedded = ["duckdb", "fakeredis", "provisa-duckdb-ext>=0.1.1"]
 # Native/desktop tier: mcp-proxy is the Node-free stdio<->Streamable-HTTP bridge Claude Desktop
 # launches to reach the local MCP server (REQ-1104). Bundled into the standalone runtime by the
 # native installers (build-sfx.ps1 / build-dmg.sh) so the connector needs no Node and no user pip.
@@ -223,10 +222,7 @@ dev = [
     "respx",
     "python-pptx",
     # Test-time deps that were present-but-undeclared in the old venv (recreating
-    # the venv dropped them): async sqlite dialect, sqlalchemy async runtime, and
-    # pandas for provisa_client.query_df. Declared so `uv sync` keeps them.
-    "aiosqlite",
-    "greenlet",
+    # the venv dropped them): pandas for provisa_client.query_df. Declared so `uv sync` keeps it.
     "pandas",
     # Direct-driver libraries the unit suite exercises (test_drivers/routing/transpiler).
     # Declared so `uv sync` installs them and the driver tests run instead of skipping.

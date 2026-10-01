@@ -225,17 +225,26 @@ class _DuckDBExtensionConnector(Connector):  # REQ-899
                 f"{self.extension} did not load: {type(e).__name__}",
                 f"stage it: {self._install_sql()}",
             )
-        rows = await fetch(
+        rows = await fetch(self._registered_query())
+        if rows and rows[0]["n"]:
+            return ProbeResult(
+                True, f"{self.extension} loaded; {self._registered_what()} registered"
+            )
+        return ProbeResult(
+            False,
+            f"{self.extension} loaded but {self._registered_what()} is not registered",
+            f"verify this {self.extension} build exposes {self._registered_what()}",
+        )
+
+    def _registered_query(self) -> str:
+        """``SELECT count(*) AS n ...`` of what the loaded extension must have registered."""
+        return (
             "SELECT count(*) AS n FROM duckdb_functions() "
             f"WHERE function_name = '{self.probe_symbol}'"
         )
-        if rows and rows[0]["n"]:
-            return ProbeResult(True, f"{self.extension} loaded; {self.probe_symbol} registered")
-        return ProbeResult(
-            False,
-            f"{self.extension} loaded but {self.probe_symbol} is not registered",
-            f"verify this {self.extension} build exposes {self.probe_symbol}",
-        )
+
+    def _registered_what(self) -> str:
+        return str(self.probe_symbol)
 
 
 class _DuckDBPgwireConnector(_DuckDBExtensionConnector):  # REQ-1690
@@ -511,6 +520,52 @@ class DuckDBDeltaConnector(_DuckDBExtensionConnector):  # REQ-899
         if secret_ddl:
             details["secret_ddl"] = secret_ddl
         return details
+
+
+class DuckDBClickHouseConnector(_DuckDBExtensionConnector):  # REQ-899
+    """ClickHouse, read live over its HTTP interface: core httpfs + ``read_parquet`` of
+    ``SELECT ... FORMAT Parquet``. There is no ClickHouse DuckDB extension, so no view can stand in
+    for the table — the runtime replaces each reference at query time with a read whose ClickHouse
+    query carries the statement's projection and literal predicates (clickhouse_http_scan). The
+    source's port is ClickHouse's HTTP port (as for the native driver); ``secure`` in
+    federation_hints selects https. The registered table's schema is the ClickHouse database.
+    Credentials ride in a DuckDB http SECRET (X-ClickHouse-User / X-ClickHouse-Key headers),
+    never in a URL. Declaring this connector makes ClickHouse attachable on DuckDB, so
+    row_materialize is ignored for it and a failed live read raises (REQ-1865)."""
+
+    source_type = "clickhouse"
+    key = "duckdb_clickhouse"
+    extension = "httpfs"
+    install_from_community = False  # core registry — INSTALL httpfs
+    probe_symbol = "read_parquet"
+    mechanism = Mechanism.SCAN  # a query-time read_parquet scan — read in place, never landed
+
+    def capability(self) -> Capability:
+        # Literal predicates reach ClickHouse's WHERE; joins and aggregates run in DuckDB.
+        return Capability(predicate_pushdown=True, join_pushdown=False)
+
+    # REQ-904 probe: read_parquet is built in, so what proves httpfs is the http secret type the
+    # credentials ride in.
+    def _registered_query(self) -> str:
+        return "SELECT count(*) AS n FROM duckdb_secret_types() WHERE type = 'http'"
+
+    def _registered_what(self) -> str:
+        return "the http secret type"
+
+    def details(self, source: Source) -> dict:
+        from provisa.federation.clickhouse_http_scan import secret_ddl
+
+        secure = str(source.federation_hints.get("secure", "")).lower() in ("1", "true", "yes")
+        port = source.port or (8443 if secure else 8123)
+        base_url = f"{'https' if secure else 'http'}://{source.host}:{port}"
+        # ClickHouse's own defaults, as the native driver and PgClickHouseFdwConnector apply them:
+        # an unset user is ClickHouse's built-in "default" user, whose stock password is empty.
+        user = source.username or "default"
+        password = source.password or ""
+        return {
+            "clickhouse_http": base_url,
+            "secret_ddl": secret_ddl(source.id, base_url, user, password),
+        }
 
 
 # --- Postgres: a single-node federator that ATTACHes remote sources via postgres_fdw (SQL/MED) ---

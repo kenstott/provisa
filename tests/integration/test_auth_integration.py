@@ -615,7 +615,7 @@ def _make_admin_db(db_file: str):
         metadata.create_all(conn, tables=REGISTRY_TABLES)
     sync_engine.dispose()
 
-    engine = create_engine_from_url(f"sqlite+aiosqlite:///{db_file}")
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{db_file}")
     return Database(engine, name="admin")
 
 
@@ -637,7 +637,7 @@ def _make_tenant_db(db_file: str):
         metadata.create_all(conn, tables=[user_directory, user_role_assignments])
     sync_engine.dispose()
 
-    engine = create_engine_from_url(f"sqlite+aiosqlite:///{db_file}")
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{db_file}")
     return Database(engine, name="tenant")
 
 

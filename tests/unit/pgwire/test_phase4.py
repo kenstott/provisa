@@ -27,8 +27,6 @@ Covers untested catalog tables and rewrite functions:
 
 from __future__ import annotations
 
-import asyncio
-import socket
 import threading
 import time
 from unittest.mock import MagicMock, patch
@@ -42,9 +40,9 @@ from provisa.pgwire.catalog_populate import _build_catalog_db
 
 
 def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+    from tests.port_lease import lease_port
+
+    return lease_port()
 
 
 def _make_server(port: int):
@@ -450,18 +448,11 @@ def test_answer_pg_statio_user_tables():
 
 @pytest_asyncio.fixture(scope="module")
 async def pgwire_server_p4():
-    import provisa.pgwire.server as _srv
-
-    loop = asyncio.get_running_loop()
-    with _srv._loop_lock:
-        previous_loop = _srv._loop
-        _srv._loop = loop
+    # Each connection runs on its own thread's loop (REQ-1882); no shared loop to install.
     port = _free_port()
     server = _make_server(port)
     yield port
     server.shutdown()
-    with _srv._loop_lock:
-        _srv._loop = previous_loop
 
 
 @pytest.fixture(scope="module")

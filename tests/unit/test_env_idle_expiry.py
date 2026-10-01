@@ -24,8 +24,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.pool import StaticPool
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.env_store import renew_idle_expiry
@@ -34,20 +33,16 @@ from provisa.core.schema_admin import REGISTRY_TABLES, environments, metadata, o
 
 @pytest.fixture
 async def admin_db():
-    engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
-        poolclass=StaticPool,
-        connect_args={"check_same_thread": False},
-    )
-    async with engine.begin() as conn:
-        await conn.run_sync(lambda sc: metadata.create_all(sc, tables=REGISTRY_TABLES))
+    engine = create_engine_from_url("sqlite+pysqlite:///:memory:")
+    with engine.begin() as conn:
+        metadata.create_all(conn, tables=REGISTRY_TABLES)
     db = Database(engine, "test")
     async with db.acquire() as conn:
         await conn.execute_core(orgs.insert().values(id="acme", name="Acme"))
     try:
         yield db
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 async def _write(db, name, *, expires_at, idle_ttl_seconds):

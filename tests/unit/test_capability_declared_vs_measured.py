@@ -87,7 +87,11 @@ def test_router_scan_decision_for_file_native_engine_actually_runs(tmp_path):
     # A virtual/file source (iceberg) is where the router consults file_native to decide
     # scan-in-place vs land — the declared trait drives this reason.
     decision = decide_route(
-        sources={"c"}, source_types={"c": "iceberg"}, source_dialects={}, engine=engine
+        sources={"c"},
+        source_types={"c": "iceberg"},
+        source_dialects={},
+        engine=engine,
+        operator_floor={},
     )
     assert decision.route is Route.ENGINE
     assert "scanned in place" in decision.reason  # decision driven by the declared trait
@@ -117,7 +121,11 @@ def test_self_only_engine_declares_no_file_native_and_gets_no_scan_plan():
     assert engine.file_native is False  # the DECLARATION
 
     decision = decide_route(
-        sources={"c"}, source_types={"c": "iceberg"}, source_dialects={}, engine=engine
+        sources={"c"},
+        source_types={"c": "iceberg"},
+        source_dialects={},
+        engine=engine,
+        operator_floor={},
     )
     # Not scanned in place — the non-file_native engine must LAND the file, matching the
     # declaration that it cannot scan in place.

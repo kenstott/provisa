@@ -111,6 +111,7 @@ async def route_and_execute(compiled, state) -> Any:  # REQ-027, REQ-028
     Raises:
         HTTPException: On execution failure or missing the engine connection.
     """
+    from provisa.federation.registry_view import operator_floor
     from provisa.transpiler.router import Route, decide_route
     from provisa.transpiler.transpile import transpile
 
@@ -121,6 +122,7 @@ async def route_and_execute(compiled, state) -> Any:  # REQ-027, REQ-028
         source_dialects=state.source_dialects,
         has_json_extract=has_json_extract,
         source_dsns=getattr(state, "source_dsns", None),
+        operator_floor=await operator_floor(state),
     )
 
     engine = state.federation_engine
@@ -137,4 +139,9 @@ async def route_and_execute(compiled, state) -> Any:  # REQ-027, REQ-028
     # ENGINE terminal — execute_engine guards its own connection/availability, and the physical
     # dialect comes from the bound engine (engine.transpile_physical), so no engine specifics here.
     physical_sql = engine.transpile_physical(compiled.sql)
+    # REQ-1661/030: a MATERIALIZED (incl. operator-floored) source is landed before the engine
+    # reads it — the same residency prep every other ENGINE terminal runs.
+    from provisa.federation.query_residency import ensure_resident
+
+    await ensure_resident(state, compiled.sources)
     return await engine.execute_engine(physical_sql, compiled.params)

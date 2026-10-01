@@ -30,7 +30,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "5432")
-_ASYNC_URL = f"postgresql+asyncpg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
+_ASYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
 
 _ORG_ID = "req609resolve"
 _SCHEMA = f"org_{_ORG_ID}"
@@ -93,7 +93,7 @@ async def org_plane(monkeypatch):
     async with tenant_db.acquire() as conn:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA}_mv_cache CASCADE")
-    await engine.dispose()
+    engine.dispose()
 
 
 def _context(*, active_org_id: str | None, roles: list[str], user_id: str = "member-2"):

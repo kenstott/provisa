@@ -83,20 +83,30 @@ def _make_plan(sql: str = "SELECT id FROM t", role_id: str = "role-1") -> _Plan:
         table_ids=[42],
         started=time.time(),
     )
-    return _Plan(route=object(), sql=sql, source_id="engine", dialect="postgres", audit=audit)
+    return _Plan(
+        route=object(),
+        sql=sql,
+        source_id="engine",
+        dialect="postgres",
+        audit=audit,
+        role_id=role_id,
+        table_ids=(42,),
+        response_cacheable=True,  # REQ-1897: a read the pipeline marked cacheable
+        cache_opt_in=True,  # REQ-544 (amended): the request opted into the response cache
+    )
 
 
 async def _seed_hit(
     store: FakeCacheStore, plan: _Plan, *, rows, column_names, column_types=None
 ) -> None:
-    """Write a cache entry keyed and encoded exactly the way ``store_result`` does, so
-    ``check_response_cache``'s ``decode_cached_result`` unwraps it the same way it would a
-    real production write."""
-    from provisa.cache.key import cache_key
+    """Write a raw-SQL ``rows`` entry keyed and encoded exactly the way the pipeline's tee does
+    (REQ-1897: the raw-SQL namespace, a kind-tagged entry through ``store_result``'s envelope)."""
+    from provisa.cache.key import raw_sql_cache_key
+    from provisa.cache.raw_sql import rows_entry
 
     assert plan.audit is not None
-    ck = cache_key(plan.sql, plan.exec_params or [], plan.audit.role_id, {})
-    payload = {"data": {"rows": rows, "column_names": column_names}, "column_types": column_types}
+    ck = raw_sql_cache_key(plan.sql, plan.exec_params or [], plan.audit.role_id, wire_formats=None)
+    payload = {"data": rows_entry(rows, column_names), "column_types": column_types}
     await store.set(ck, encode_cache_payload(payload), ttl=60)
 
 
@@ -218,9 +228,12 @@ async def test_unresolved_session_state_is_never_cacheable(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_no_store_configured_is_a_miss(monkeypatch):
+async def test_caching_off_is_a_miss(monkeypatch):
+    """AppState always holds a store; with caching off it is the NoopCacheStore (REQ-1897)."""
+    from provisa.cache.store import NoopCacheStore
+
     plan = _make_plan()
-    state = FakeState(response_cache_store=None)  # type: ignore[arg-type]
+    state = FakeState(response_cache_store=NoopCacheStore())
     result = await check_response_cache(plan, state)
     assert result is None
 
@@ -240,3 +253,66 @@ async def test_different_roles_get_different_cache_entries(monkeypatch):
     miss_for_b = await check_response_cache(plan_b, state)
     assert hit_for_a is not None
     assert miss_for_b is None
+
+
+@pytest.mark.asyncio
+async def test_graphql_hit_serves_the_rows_the_miss_stored():
+    """GraphQL's Route.CACHE round trip: the MISS stores the serialized response
+    ({"data": {root_field: rows}}) through store_result; the HIT must serve those same rows.
+    Regression: the HIT read ``payload["data"][root_field]`` one level too shallow and served
+    ``[]`` for every hit (perf bench cache pass: 1000 rows on the miss, 0 on every hit)."""
+    import decimal
+
+    from provisa.api.data.endpoint import cached_field_rows
+    from provisa.cache.middleware import check_cache, store_result
+    from provisa.compiler.sql_types import ColumnRef
+    from provisa.executor.serialize import serialize_rows
+
+    store = FakeCacheStore()
+    rows = [(5001, decimal.Decimal("2850.23")), (5002, decimal.Decimal("2308.34"))]
+    columns = [
+        ColumnRef(None, "order_id", "orderId", None),
+        ColumnRef(None, "amount", "amount", None),
+    ]
+    response_data = serialize_rows(rows, columns, "pb__orders")
+    await store_result(store, "k", response_data, ttl=60, org_id="org-1")
+    cached = await check_cache(store, "k", "org-1")
+    assert cached is not None
+    assert cached_field_rows(cached, "pb__orders") == response_data["data"]["pb__orders"]
+    assert len(cached_field_rows(cached, "pb__orders")) == 2
+
+
+@pytest.mark.asyncio
+async def test_graphql_entry_with_colliding_text_is_a_raw_sql_miss(monkeypatch):
+    """GraphQL's ``store_result`` entry under ``cache_key`` of the SAME SQL/params/role is never
+    read by a raw-SQL plan: the namespaces are disjoint (REQ-1897, #127). Before the split, the
+    raw-SQL reader's ``payload.get("rows", [])`` served it as a zero-row HIT."""
+    from provisa.cache.key import cache_key
+    from provisa.cache.middleware import store_result
+
+    plan = _make_plan()
+    store = FakeCacheStore()
+    assert plan.audit is not None
+    ck = cache_key(plan.sql, [], plan.audit.role_id, {})
+    await store_result(store, ck, {"data": {"orders": [{"id": 1}]}}, ttl=60)
+    monkeypatch.setattr("provisa.audit.pipeline.write_audit", _fake_write_audit_noop)
+
+    assert await check_response_cache(plan, FakeState(response_cache_store=store)) is None
+
+
+@pytest.mark.asyncio
+async def test_raw_sql_entry_of_unknown_kind_raises(monkeypatch):
+    """A raw-SQL entry must name a kind the readers handle; anything else is an error, never a
+    defaulted empty result."""
+    from provisa.cache.key import raw_sql_cache_key
+    from provisa.cache.middleware import store_result
+
+    plan = _make_plan()
+    store = FakeCacheStore()
+    assert plan.audit is not None
+    ck = raw_sql_cache_key(plan.sql, [], plan.audit.role_id, wire_formats=None)
+    await store_result(store, ck, {"kind": "graphql_response", "data": {}}, ttl=60)
+    monkeypatch.setattr("provisa.audit.pipeline.write_audit", _fake_write_audit_noop)
+
+    with pytest.raises(ValueError, match="unknown kind 'graphql_response'"):
+        await check_response_cache(plan, FakeState(response_cache_store=store))

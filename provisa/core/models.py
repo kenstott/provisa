@@ -764,6 +764,28 @@ class Column(
     # Surfaced to clients as the GraphQL @encrypted directive and the SQL/Arrow encrypted-column
     # metadata flag.
     encrypted: bool = False
+    # REQ-1908: the source stores this temporal column as an epoch number in this unit ("s", "ms",
+    # "us"). The compiler translates it in emitted SQL, so every surface reads and filters it as its
+    # registered temporal type (ISO 8601 text in GraphQL). Declared, never inferred.
+    epoch_unit: str | None = None
+
+    @model_validator(mode="after")
+    def _epoch_unit_needs_a_temporal_type(self) -> "Column":
+        if self.epoch_unit is None:
+            return self
+        from provisa.core.ir_types import EPOCH_TEMPORAL_TYPES, EPOCH_UNITS
+
+        if self.epoch_unit not in EPOCH_UNITS:
+            raise ValueError(
+                f"column {self.name}: epoch_unit {self.epoch_unit!r} is not one of "
+                f"{sorted(EPOCH_UNITS)}"
+            )
+        if (self.data_type or "").lower() not in EPOCH_TEMPORAL_TYPES:
+            raise ValueError(
+                f"column {self.name}: epoch_unit needs a temporal data_type "
+                f"({sorted(EPOCH_TEMPORAL_TYPES)}), got {self.data_type!r}"
+            )
+        return self
 
 
 class ColumnPreset(BaseModel):
@@ -1829,7 +1851,7 @@ class ControlPlaneConfig(BaseModel):
     """
 
     tenant_url: str = (
-        "${env:TENANT_DATABASE_URL:-postgresql+asyncpg://provisa:provisa@localhost:5432/provisa}"
+        "${env:TENANT_DATABASE_URL:-postgresql+psycopg://provisa:provisa@localhost:5432/provisa}"
     )
     # REQ-837: PLATFORM_DATABASE_URL is required at startup with no fallback —
     # a missing var raises in resolve_secrets rather than silently defaulting.

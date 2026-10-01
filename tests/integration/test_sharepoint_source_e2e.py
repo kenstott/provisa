@@ -94,7 +94,10 @@ pytestmark.append(
 # always-present target that does not depend on operator-created test fixtures. Override with
 # SHAREPOINT_TEST_LIST to assert a specific operator-managed list.
 _LIST_NAME = os.environ.get("SHAREPOINT_TEST_LIST", "documents")
-_DATA_SCHEMA = "sharepoint"  # calcite-sharepoint-list: JsonCustomSchema(name=sharepoint)
+# REQ-1730: TrinoSharePointConnector.details passes the sql-normalized source id as the plugin's
+# `schema` property, so the data schema is that id, not the plugin's old literal "sharepoint".
+_SOURCE_ID = "sharepoint-itest"
+_DATA_SCHEMA = _SOURCE_ID.replace("-", "_")
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -170,7 +173,7 @@ def test_sharepoint_catalog_created_and_lists_visible():
         mapping["certificate_password"] = os.environ["SHAREPOINT_CERT_PASSWORD"]
 
     src = Source(
-        id="sharepoint-itest",
+        id=_SOURCE_ID,
         type=SourceType.sharepoint,
         base_url=os.environ["SHAREPOINT_SITE_URL"],
         username=os.environ["SHAREPOINT_CLIENT_ID"],

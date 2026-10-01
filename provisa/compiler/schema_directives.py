@@ -167,16 +167,15 @@ PROVISA_DIRECTIVES = [
         locations=_QMS,
         args={
             "ttl": GraphQLArgument(
-                GraphQLInt, description="Cache TTL in seconds; 0 = disable caching"
+                GraphQLInt,
+                description="Seconds the cached result lives; omitted = the operator's TTL",
             )
         },
-        description="Override response cache TTL for this query.",
-    ),
-    GraphQLDirective(
-        name="noCache",
-        locations=_QMS,
-        args={},
-        description="Bypass the response cache entirely — skip both read and write.",
+        description=(
+            "Opt this request into the response cache (REQ-544): accept a result up to ttl "
+            "seconds old for speed. Without it the request neither reads nor writes the cache. "
+            "Never reads fresher than the operator's settings allow."
+        ),
     ),
 ]
 

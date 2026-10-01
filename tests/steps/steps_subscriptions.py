@@ -201,17 +201,18 @@ def when_external_insert(shared_data: dict) -> None:
     received: list[ChangeEvent] = []
 
     async def _run() -> None:
-        import asyncpg as _asyncpg  # noqa: PLC0415
+        from provisa.core.database import Database, create_engine_from_url  # noqa: PLC0415
 
-        pool = await _asyncpg.create_pool(
-            host=pg_env["host"],
-            port=pg_env["port"],
-            database=pg_env["database"],
-            user=pg_env["user"],
-            password=pg_env["password"],
-            min_size=1,
-            max_size=3,
-            command_timeout=10,
+        # The control-plane Database — what production hands the provider (REQ-1882: LISTEN is
+        # served by the database's listener thread).
+        pool = Database(
+            create_engine_from_url(
+                f"postgresql://{pg_env['user']}:{pg_env['password']}@{pg_env['host']}"
+                f":{pg_env['port']}/{pg_env['database']}",
+                pool_size=3,
+                max_overflow=0,
+            ),
+            name="org",
         )
         try:
             provider = PgNotificationProvider(pool)

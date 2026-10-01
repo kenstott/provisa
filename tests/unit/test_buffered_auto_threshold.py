@@ -78,7 +78,10 @@ class _FakeEngine:
 
 class _FakeState:
     def __init__(self, engine) -> None:
+        from provisa.cache.store import NoopCacheStore
+
         self.federation_engine = engine
+        self.response_cache_store = NoopCacheStore()  # AppState always holds a store
 
 
 def _plan(auto_deliver):

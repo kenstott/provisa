@@ -19,7 +19,7 @@ _COLS = [("id", "bigint"), ("status", "text")]
 
 
 def _dsn(tmp_path) -> str:
-    return f"sqlite+aiosqlite:///{tmp_path / 'store.db'}"
+    return f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
 
 
 @pytest.mark.asyncio

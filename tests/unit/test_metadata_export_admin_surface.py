@@ -62,7 +62,7 @@ class _TenantDb:
 
     @asynccontextmanager
     async def acquire(self):
-        from sqlalchemy.ext.asyncio import create_async_engine
+        from provisa.core.database import create_engine_from_url
 
         from provisa.core.database import Database
         from provisa.core.schema_org import (
@@ -75,24 +75,22 @@ class _TenantDb:
         )
 
         if self._engine is None:
-            self._engine = create_async_engine(
-                f"sqlite+aiosqlite:///{self._tmp_path / 'tenant.db'}"
+            self._engine = create_engine_from_url(
+                f"sqlite+pysqlite:///{self._tmp_path / 'tenant.db'}"
             )
-            async with self._engine.begin() as c:
+            with self._engine.begin() as c:
                 # glossary_* + registered_tables: publish_snapshot hydrates the term
                 # graph (REQ-1387).
-                await c.run_sync(
-                    lambda s: catalog_bindings.metadata.create_all(
-                        s,
-                        tables=[
-                            catalog_bindings,
-                            registered_tables,
-                            glossary_terms,
-                            glossary_term_refs,
-                            glossary_term_edges,
-                            glossary_term_experts,
-                        ],
-                    )
+                catalog_bindings.metadata.create_all(
+                    c,
+                    tables=[
+                        catalog_bindings,
+                        registered_tables,
+                        glossary_terms,
+                        glossary_term_refs,
+                        glossary_term_edges,
+                        glossary_term_experts,
+                    ],
                 )
         async with Database(self._engine, name="tenant").acquire() as conn:
             yield conn

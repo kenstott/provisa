@@ -1207,13 +1207,19 @@ async def native_columns(  # REQ-1732
         # connector for any of these four (unlike postgresql itself, see this function's own
         # docstring), so this direct-pool path is the only one, same postgres-wire query trino
         # uses above (all four speak the identical wire protocol/information_schema shape).
+        # information_schema reports ANSI spellings ("character varying", "double precision",
+        # "timestamp without time zone") that no downstream type map keys on; the IR table
+        # (provisa.core.ir_types, the one native→canonical authority) resolves them — an
+        # unknown type raises there rather than registering an unmappable column.
+        from provisa.core.ir_types import to_ir
+
         result = await pool.execute(
             source_id,
             "SELECT column_name, data_type FROM information_schema.columns "
             "WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position",
             [schema_name, table_name],
         )
-        return [(row[0], row[1]) for row in result.rows]
+        return [(row[0], to_ir(row[1])) for row in result.rows]
     if t == "oracle":
         # Same gap, Oracle's own catalog view (no information_schema) — ALL_TAB_COLUMNS mirrors
         # native_tables_rdbms's ALL_TABLES/ALL_TAB_COMMENTS pairing above.

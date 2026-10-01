@@ -78,6 +78,35 @@ _PG_EPOCH = datetime.datetime(2000, 1, 1)
 _PG_EPOCH_UTC = datetime.datetime(2000, 1, 1, tzinfo=datetime.timezone.utc)
 _PG_DATE_EPOCH = datetime.date(2000, 1, 1)
 
+
+def _text_bool(s: str) -> bool:
+    v = s.strip().lower()
+    if v in ("t", "true", "1", "y", "yes", "on"):
+        return True
+    if v in ("f", "false", "0", "n", "no", "off"):
+        return False
+    raise ValueError(f"invalid boolean parameter {s!r}")
+
+
+# Text-format Bind values, decoded by the parameter's declared type OID (REQ-589): the value stays
+# BOUND (never spliced into the SQL), so it must arrive as the typed value the client declared.
+# An OID not listed (0 = unspecified, text types) keeps the string — the engine casts it by context,
+# exactly as it cast the untyped string literal this value used to be spliced in as.
+TEXT_PARAM_DECODERS = {
+    16: _text_bool,
+    20: int,
+    21: int,
+    23: int,
+    700: float,
+    701: float,
+    1700: decimal.Decimal,
+    1082: datetime.date.fromisoformat,
+    1114: datetime.datetime.fromisoformat,
+    1184: datetime.datetime.fromisoformat,
+    2950: _uuid_mod.UUID,
+}
+
+
 TYPE_OIDS = {
     # see Postgres pg_type_d.h — values are (name, decoder_callable, example)
     16: ("BOOLOID", lambda v: v[0] != 0, False),
@@ -151,11 +180,34 @@ def _time_to_microseconds(t):
     return int(total_microseconds)
 
 
+def _micros_since_2000_utc(dt):
+    """timestamptz binary: microseconds since 2000-01-01 UTC. A value with no time zone is not a
+    timestamptz — refused rather than assumed to be UTC."""
+    if dt.tzinfo is None:
+        raise ValueError(f"timestamptz value without a time zone: {dt!r}")
+    return _micros_since_2000(dt)
+
+
+def _timetz_to_pg_binary(t):
+    """timetz binary: int64 microseconds since midnight + int32 zone offset in seconds WEST of UTC."""
+    offset = t.utcoffset()
+    if offset is None:
+        raise ValueError(f"timetz value without a time zone: {t!r}")
+    return struct.pack("!qi", _time_to_microseconds(t), -int(offset.total_seconds()))
+
+
+def _uuid_to_pg_binary(u):
+    return (u if isinstance(u, _uuid_mod.UUID) else _uuid_mod.UUID(str(u))).bytes
+
+
 def _micros_since_2000(dt):
-    micros = (
-        dt - datetime.datetime(2000, 1, 1, tzinfo=datetime.timezone.utc)
-    ).total_seconds() * 1000000
-    return int(micros)
+    # A naive value (TIMESTAMP WITHOUT TIME ZONE — what DuckDB and psycopg2 return for `timestamp`)
+    # counts from a naive epoch; subtracting the aware one raised TypeError mid-stream.
+    epoch = datetime.datetime(2000, 1, 1)
+    if dt.tzinfo is not None:
+        epoch = epoch.replace(tzinfo=datetime.timezone.utc)
+    delta = dt - epoch
+    return (delta.days * 86400 + delta.seconds) * 1_000_000 + delta.microseconds
 
 
 # PostgreSQL binary numeric (OID 1700) encoder.
@@ -211,6 +263,21 @@ def _numeric_to_pg_binary(v) -> bytes:
 
 PG_UNKNOWN = (705, str)
 BVTYPE_TO_PGTYPE = {
+    BVType.SMALLINT: (21, str, lambda r: r.to_bytes(2, "big", signed=True)),
+    BVType.REAL: (700, str, lambda r: struct.pack("!f", r)),
+    BVType.JSONB: (
+        3802,
+        lambda v: json.dumps(v) if not isinstance(v, str) else v,
+        # jsonb binary = a version byte (1) + the JSON text.
+        lambda r: b"\x01" + (json.dumps(r) if not isinstance(r, str) else r).encode("utf-8"),
+    ),
+    BVType.TIMESTAMPTZ: (
+        1184,
+        lambda v: v.isoformat().replace("T", " "),
+        lambda r: int.to_bytes(_micros_since_2000_utc(r), 8, "big", signed=True),
+    ),
+    BVType.TIMETZ: (1266, lambda v: v.isoformat(), _timetz_to_pg_binary),
+    BVType.UUID: (2950, str, _uuid_to_pg_binary),
     BVType.NULL: (-1, lambda *_: None),
     BVType.ARRAY: (
         2277,
@@ -227,7 +294,7 @@ BVTYPE_TO_PGTYPE = {
     BVType.DATE: (
         1082,
         lambda v: v.isoformat(),
-        lambda r: int.to_bytes((r.toordinal() - 730120), 4, "big"),
+        lambda r: int.to_bytes((r.toordinal() - 730120), 4, "big", signed=True),
     ),
     BVType.DECIMAL: (1700, str, _numeric_to_pg_binary),
     BVType.FLOAT: (701, str, lambda r: struct.pack("!d", r)),
@@ -243,7 +310,9 @@ BVTYPE_TO_PGTYPE = {
     BVType.INTERVAL: (
         1186,
         lambda v: f"{v.days} days {v.seconds} seconds {v.microseconds} microseconds",
-        lambda r: struct.pack("!qih", int(r.total_seconds() % 86400 * 1_000_000), r.days, 0),
+        # interval binary = int64 time-of-day microseconds, int32 days, int32 months (16 bytes);
+        # the former "!qih" wrote 14 bytes, which no binary client can decode.
+        lambda r: struct.pack("!qii", r.seconds * 1_000_000 + r.microseconds, r.days, 0),
     ),
     BVType.JSON: (
         114,
@@ -263,7 +332,9 @@ BVTYPE_TO_PGTYPE = {
             )
         ),
     ),
-    BVType.TEXT: (25, str, lambda r: r.encode("utf-8")),
+    # str(r) in binary too: a declared text-family column may carry a non-str value (a UUID, a
+    # driver-specific scalar) — its text form is the wire value in both formats.
+    BVType.TEXT: (25, str, lambda r: str(r).encode("utf-8")),
     BVType.TIME: (
         1083,
         lambda v: v.isoformat(),
@@ -272,7 +343,8 @@ BVTYPE_TO_PGTYPE = {
     BVType.TIMESTAMP: (
         1114,
         lambda v: v.isoformat().replace("T", " "),
-        lambda r: int.to_bytes(_micros_since_2000(r), 8, "big"),
+        # signed: a value before 2000-01-01 is a negative offset (unsigned raised OverflowError).
+        lambda r: int.to_bytes(_micros_since_2000(r), 8, "big", signed=True),
     ),
 }
 
@@ -335,6 +407,9 @@ class BVContext:
         self.stmts = {}
         self.portals = {}
         self.result_cache = {}
+        # statement name -> its Describe(Statement) result, held for the Bind that follows (see
+        # describe_statement / add_portal).
+        self.described = {}
         self.has_error = False
         self.authenticated = False
         self.salt: bytes | None = None
@@ -386,7 +461,35 @@ class BVContext:
                 params.append(type[2])
             else:
                 raise Exception(f"Unsupported parameter type: {typeoid}")
-        return self.execute_sql(sql, params)
+        if self.rewriter:
+            sql = self.rewriter.rewrite(sql)
+        # The RowDescription needs the result's columns, which only running the statement yields.
+        # That run is then handed to the Execute of the Bind that follows (add_portal) instead of
+        # running the statement a second time — so a prepared statement runs ONCE, and the types
+        # the client was told are exactly the ones the Execute sends. Only a statement without
+        # parameters qualifies: with parameters this run used placeholder example values.
+        qr = self.session.describe_sql(sql, params)
+        self._drop_described(name)
+        if not param_oids and qr.has_results():
+            self.described[name] = qr
+        return qr
+
+    def _drop_described(self, stmt: str) -> None:
+        held = self.described.pop(stmt, None)
+        if held is not None:
+            held.close()
+
+    def release_results(self) -> None:
+        """Close every result this connection still holds (suspended portals, Describe-time
+        results awaiting a Bind) — each may hold a live engine cursor / source connection."""
+        held = list(self.result_cache.values()) + list(self.described.values())
+        self.result_cache.clear()
+        self.described.clear()
+        for qr in held:
+            qr.close()
+
+    def holds_described(self, query_result: QueryResult) -> bool:
+        return any(held is query_result for held in self.described.values())
 
     def execute_portal(self, name: str) -> QueryResult:
         if name in self.result_cache:
@@ -400,13 +503,47 @@ class BVContext:
             return qr
 
     def add_statement(self, name: str, sql: str, param_oids: List[int]):
+        # A Parse of DIFFERENT text replaces the statement, so its held Describe result is stale.
+        # A re-Parse of the identical statement is the same statement — asyncpg re-sends Parse for
+        # the unnamed statement between its Describe and its Bind — so the held result stays.
+        prior = self.stmts.get(name)
+        # asyncpg re-Parses with UNSPECIFIED (0) parameter types after its Describe; the types that
+        # Describe resolved (and told the client, which then encodes its Bind values in them) must
+        # survive, or a binary int8 value is decoded as if untyped.
+        if prior is not None and prior[0] == sql and all(o == 0 for o in param_oids):
+            param_oids = prior[1]
+        if prior != (sql, param_oids):
+            self._drop_described(name)
         self.stmts[name] = (sql, param_oids)
 
     def close_statement(self, name: str):
+        self._drop_described(name)
         del self.stmts[name]
 
     def add_portal(self, name: str, stmt: str, params: List, result_formats: List[int]):
+        # A Bind REPLACES the portal it names (the unnamed portal on every simple client query). A
+        # result the PREVIOUS query left cached under this name — suspended because it exactly
+        # filled an Execute(limit), e.g. asyncpg's fetchval (limit=1) on a 1-row result — belongs
+        # to that old portal: serving it to the new one returned the old, drained result (0 rows)
+        # and never ran the new query. Close it with the portal it belonged to.
+        stale = self.result_cache.pop(name, None)
+        if stale is not None:
+            stale.close()
         self.portals[name] = (stmt, params, result_formats)
+        # Hand the statement's Describe-time result to this portal's Execute (see
+        # describe_statement): it is the same statement with no parameters, so the result IS what
+        # the Execute would compute. Used once — a later Bind of the statement runs it fresh.
+        held = self.described.pop(stmt, None)
+        if held is None:
+            return
+        if params or not held.reusable_for_execute(result_formats):
+            held.close()
+            return
+        if result_formats and len(result_formats) != held.column_count():
+            held.result_format = [result_formats[0]] * held.column_count()
+        else:
+            held.result_format = result_formats
+        self.result_cache[name] = held
 
     def close_portal(self, name: str):
         del self.portals[name]
@@ -476,6 +613,7 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
             self.send_error(e)
 
         if ctx:
+            ctx.release_results()
             self.server.conn.close_session(ctx.session)  # type: ignore[attr-defined]
             del self.server.ctxts[ctx.process_id]  # type: ignore[attr-defined]
             ctx = None
@@ -610,7 +748,9 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
             logger.debug("Format: %d, Type: %d", formats[i], typeoid)
             if formats[i] == 0:
                 decoded = v.decode("utf-8")
-                if typeoid == 0:
+                if typeoid in TEXT_PARAM_DECODERS:
+                    params.append(TEXT_PARAM_DECODERS[typeoid](decoded))
+                elif typeoid == 0:
                     # Unspecified type — store raw string; do not date-parse
                     if decoded.startswith("{") and decoded.endswith("}"):
                         params.append(decoded[1:-1].split(","))

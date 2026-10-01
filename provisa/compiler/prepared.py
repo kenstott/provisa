@@ -90,22 +90,18 @@ output is per-call by construction, never reusable across calls even for the ide
 Such a statement is simply never cached; the caller falls through to running the original,
 uncached code path exactly as before this module existed.
 
-ONE PARSE PER CALL, ALWAYS — this is a real, hard ceiling, not an oversight: Provisa's pgwire bind
-path (`_substitute_params`/`_execute_sql_bound` in `provisa/pgwire/server.py`, confirmed by
-reading) inlines `$1`/`$2` bind values into literal SQL TEXT before this stage ever sees it — there
-is no kept-separate bind-parameter list to read a shape from without parsing the text, on a hit or
-a miss. So `raw_sql` must be parsed on every single call, cache hit or not, just to learn THIS
-call's own literal values (there is no way to "look up" a value that only exists as un-parsed text
-in the wire message). This module makes sure that mandatory parse is the ONLY parse: the SQL-shape
+ONE PARSE PER CALL: `raw_sql` is parsed on every call, cache hit or not, to learn THIS call's own
+literal values. (Amended 2026-09-30, REQ-589:) pgwire no longer inlines bind values — a prepared
+statement reaches this stage with its `$1`/`$2` placeholders and the values travel separately as
+bound parameters, so for a pgwire prepared statement the text is identical across values and its
+parse result could be looked up by text. That text-keyed lookup is not implemented here; a client
+that inlines its own literals still needs the parse to learn them. This module makes sure the
+parse is the ONLY parse: the SQL-shape
 digest below is computed directly from the tree that parse already produced (never a second
 `sqlglot.parse_one` of the same text purely to hash its shape, which an earlier draft of this
 change did and which `compiled_query_cache.sql_shape_digest` would also do if called here — hence
 the small local `_shape_digest_from_tree`, deliberately duplicating that function's
-literal-blanking transform rather than its parse). Genuinely eliminating THIS parse — not just the
-structural work after it — needs a real Parse/Bind/Execute wire protocol that keeps `$1`/`$2` as
-placeholders end-to-end instead of inlining them into text before compilation, so a later Bind
-could look up cached shape info by statement handle without ever re-tokenizing the SQL. That is
-separate, much larger work (a new bind-parameter architecture, not a cache), not done here.
+literal-blanking transform rather than its parse).
 
 Invalidation: keyed on `(state.schema_boot_id, state.schema_version)`, the same generation pair
 `_rebuild_schemas_impl` already bumps on every schema/masking/RLS/relationship/tracked-function

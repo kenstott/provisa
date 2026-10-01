@@ -32,6 +32,7 @@ import os
 import shutil
 import sqlite3
 import tempfile
+import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
@@ -42,6 +43,7 @@ import duckdb
 from provisa.executor.result import QueryResult, ResultStream
 from provisa.federation import store_writer
 from provisa.federation.engine import build_duckdb_engine
+from provisa.core import request_deadline
 from provisa.federation.runtime_support import columns_from_describe, stream_from_dbapi
 from provisa.transpiler.transpile import transpile
 
@@ -152,6 +154,18 @@ class _CatalogGate:
                 self._cond.notify_all()
 
 
+# REQ-1901: a `mat_store.<schema>.<table>` read on the engine connection (quoted or bare parts).
+_MAT_STORE_REF = re.compile(
+    r'(?<![\w"])"?mat_store"?\s*\.\s*("?)([^".\s]+)\1\s*\.\s*("?)([^".\s,;()]+)\3'
+)
+_LOCAL_STORE_SCHEMA = "_mat_store_local"
+
+
+def _local_store_name(schema: str, table: str) -> str:
+    """The local table a `mat_store.<schema>.<table>` read is served from on this connection."""
+    return f'"{_LOCAL_STORE_SCHEMA}"."{schema}__{table}"'
+
+
 class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     def __init__(self, *, materialize_dsn: str | None = None) -> None:
         # When PROVISA_DUCKDB_EXT_DIR is set (the embedded tier stages the pinned extension blobs there
@@ -185,7 +199,16 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # dispatch to a thread pool, so two concurrent queries touching the same landed table
         # would otherwise race registering under the same temp name.
         self._store_relation_lock = threading.Lock()
+        # local copy target -> the store canary it was copied at (see _copy_store_table).
+        self._store_copy_canary: dict[str, Any] = {}
         self._phys_catalogs: set[str] = set()  # in-memory catalogs holding the physical views
+        # REQ-899: ClickHouse tables read live over ClickHouse's HTTP interface — physical-name key
+        # (lowercased catalog, schema, table) -> relation. No view stands at that name: every
+        # statement naming one is rewritten to a read_parquet() of it (clickhouse_http_scan).
+        self._ch_relations: dict[tuple[str, str, str], Any] = {}
+        # attach_source (request/prepare threads) writes it while statements on other threads read
+        # it; readers take a snapshot under the lock.
+        self._ch_lock = threading.Lock()
         self._raw_attached: set[str] = set()  # source ids whose remote DB is already ATTACHed
         self._ext_loaded: set[str] = (
             set()
@@ -242,7 +265,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         entry = self._engine.resolve(source)  # picks the (duckdb, source_type) connector
         details = entry.details
         phys = self._phys_name(source)
-        if "view_ddl" in details:  # csv / parquet scanner, or another view_ddl-based connector
+        if "clickhouse_http" in details:
+            self._attach_clickhouse(source, details)
+        elif "view_ddl" in details:  # csv / parquet scanner, or another view_ddl-based connector
             # REQ-1742 gap: this branch only ever installed httpfs (needed by csv/parquet's own
             # secret_ddl) — a scanner connector with its OWN DuckDB extension (e.g.
             # DuckDBGsheetsConnector's `extension = "gsheets"`) never got that extension
@@ -274,6 +299,90 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             remote_schema = details.get("remote_schema", source.schema_name)
             remote = f'"{raw_alias}"."{remote_schema}"."{source.table_name}"'
             self._con.execute(f"CREATE VIEW IF NOT EXISTS {phys} AS SELECT * FROM {remote}")
+
+    def _attach_clickhouse(self, source: Any, details: dict) -> None:
+        """REQ-899: register a ClickHouse table for the query-time HTTP read. Loads httpfs, creates
+        the source's http secret (credentials only there — never in a URL or a log line), and reads
+        the table's (name, type) list from ClickHouse's system.columns over the same interface; a
+        table ClickHouse does not have raises here, at attach."""
+        from provisa.core.catalog import _to_catalog_name
+        from provisa.federation.clickhouse_http_scan import (
+            ClickHouseRelation,
+            columns_query,
+            read_url,
+        )
+
+        if not self._httpfs_loaded:
+            self._con.execute("INSTALL httpfs")
+            self._con.execute("LOAD httpfs")
+            self._httpfs_loaded = True
+        self._con.execute(details["secret_ddl"])
+        base_url = details["clickhouse_http"]
+        url = read_url(
+            base_url,
+            columns_query(source.schema_name, source.table_name),
+            deadline_s=request_deadline.remaining(),
+        )
+        cur = self._open_cursor(live_http=True)
+        try:
+            with request_deadline.cancel_on_deadline(cur.interrupt):
+                rows = cur.execute(f"SELECT name, type FROM read_parquet('{url}')").fetchall()
+        finally:
+            cur.close()
+        if not rows:
+            raise ValueError(
+                f"ClickHouse table {source.schema_name}.{source.table_name} (source "
+                f"{source.id!r}) does not exist or has no columns"
+            )
+        key = (
+            _to_catalog_name(source.id).lower(),
+            source.schema_name.lower(),
+            source.table_name.lower(),
+        )
+        relation = ClickHouseRelation(
+            base_url=base_url,
+            database=source.schema_name,
+            table=source.table_name,
+            columns=tuple((str(n), str(t)) for n, t in rows),
+        )
+        with self._ch_lock:
+            self._ch_relations[key] = relation
+
+    def _rewrite_clickhouse_relations(
+        self,
+        duck_sql: str,
+        params: list | None,
+        *,
+        deadline_s: float | None,
+        describe: bool = False,
+    ) -> tuple[str, bool]:
+        """REQ-899: ``duck_sql`` with every registered ClickHouse table replaced by its live HTTP
+        read (projection + pushed literal predicates), and whether any was. The hook sits beside
+        _refresh_store_relations in every execution path: it runs on the governed engine statement,
+        so RLS/masking are already in it and the outer predicates stay — a read only narrows. A
+        failed read raises from execute; nothing reroutes to row_materialize or a landing."""
+        with self._ch_lock:
+            relations = dict(self._ch_relations)
+        if not relations:
+            return duck_sql, False
+        from provisa.federation.clickhouse_http_scan import rewrite
+
+        rewritten = rewrite(duck_sql, params, relations, deadline_s=deadline_s, describe=describe)
+        return (duck_sql, False) if rewritten is None else (rewritten, True)
+
+    def _open_cursor(self, *, live_http: bool) -> Any:
+        """A private cursor; for a statement reading ClickHouse over HTTP it downloads each result
+        whole (``force_download``): ClickHouse answers per request with no range support, and
+        DuckDB's default HEAD + ranged GETs made ClickHouse execute the query twice. It also turns
+        httpfs retries off: a retry re-runs the whole ClickHouse query with a fresh
+        max_execution_time, so three retries carried a 2s-budget read to 13s (integration test); a
+        failed read raises instead. Both settings are session-scoped, so they stay on this cursor
+        (verified: a sibling cursor still reads the defaults)."""
+        cur = self._con.cursor()
+        if live_http:
+            cur.execute("SET force_download = true")
+            cur.execute("SET http_retries = 0")
+        return cur
 
     def _attach_raw(self, source: Any, details: dict) -> str:
         """ATTACH the source's remote database under its private alias (once), loading the DuckDB
@@ -490,7 +599,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         READ_ONLY and read-write ATTACH, and both with and without explicit WAL checkpoints — a
         plain sqlite3 read-only reader survives the identical workload, so this is specific to the
         extension and not something WAL mode can make safe. The control-plane file is written
-        continuously by aiosqlite (SQLAlchemy), so the engine attaches a copy and never the
+        continuously by the control plane's SQLAlchemy engine, so the engine attaches a copy and never the
         original.
 
         ``sqlite3.Connection.backup`` is SQLite's supported online-backup API: it yields a
@@ -834,6 +943,14 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             match_floor=match_floor,
         )
 
+    def mv_store_broker(self) -> Any:
+        """The broker MV refresh must write through, or ``None`` when the store is attached on this
+        connection. REQ-1901: an embedded DuckDB-file store is never ATTACHed here, so an MV's
+        CTAS / DELETE+INSERT / bitemporal append cannot run as engine SQL against ``mat_store`` —
+        the refresh hands the fresh rows to the broker instead (``provisa.mv.refresh``)."""
+        self.ensure_materialize_attached()
+        return self._store_broker if self._store_is_duckdb() else None
+
     def _expose_landed(self, source: Any, store: str, mat_table: str) -> None:
         """Expose the landed store table under the engine's physical name.
 
@@ -852,40 +969,75 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             f'SELECT * FROM {store}."{self._store_schema()}"."{mat_table}"'
         )
 
-    def _refresh_store_relations(self, duck_sql: str) -> None:
-        """REQ-1901: for every embedded-DuckDB-store-backed physical name that appears (as text) in
-        `duck_sql`, fetch its current contents from the broker singleton and (re)materialize it
-        under that physical name as an ordinary local TABLE, so the query about to run sees live
-        data without this connection ever holding the store file open itself.
+    def _refresh_store_relations(self, duck_sql: str) -> str:
+        """REQ-1901: rehydrate, from the broker singleton, every embedded-DuckDB-store relation
+        `duck_sql` reads, and return the SQL to execute.
+
+        Two kinds of reference are served, both copied ONLY when the statement names them (never
+        the whole store), under `_store_relation_lock`, through the same transient register() ->
+        CREATE OR REPLACE TABLE path:
+
+        * a landed source's physical name recorded by `_expose_landed` (`_store_relations`) is
+          re-materialized under that same name, so the SQL is unchanged;
+        * a direct `mat_store.<schema>.<table>` reference (an MV's read target —
+          `materialize_store_target` names `mat_store`) is copied into a local table and the
+          reference rewritten to it. This connection never ATTACHes the store file (the exclusive
+          DuckDB file lock), and no stand-in `mat_store` catalog is attached either: a WRITE aimed at
+          `mat_store` on this connection must keep failing loudly, not land in memory and vanish.
 
         A real TABLE, not a VIEW over a `register()`-ed Python object: `register()` binds a
-        "replacement scan" that is scoped to the SPECIFIC connection object it was called on, but
-        every query below runs on a PRIVATE `self._con.cursor()` (a separate connection clone) —
-        confirmed live: a VIEW built that way raised ``Catalog Error: Table ... does not exist``
-        the moment a cursor, rather than `self._con` itself, tried to read it. A materialized
-        TABLE has no such scoping — it is ordinary catalog data any cursor of this connection can
-        read — so the registration is only ever a transient staging step, unregistered right after.
+        "replacement scan" scoped to the connection object it was called on, but every query runs
+        on a PRIVATE `self._con.cursor()` — a VIEW built that way raised ``Catalog Error: Table ...
+        does not exist`` from a cursor. A materialized TABLE is ordinary catalog data any cursor of
+        this connection can read, so the registration is only a transient staging step.
 
-        A plain substring check, not a parsed reference list — false positives (a name that
-        happens to appear inside an unrelated literal) only cost one extra broker round-trip,
-        never a correctness problem; a false negative (missed reference) is the only failure mode
-        that would matter, and cannot happen since `phys` is a fully qualified, syntactically-
-        required identifier in any query that actually reads the relation."""
-        if not self._store_relations:
-            return
+        Matching is textual — a false positive (a name inside an unrelated literal) only costs one
+        extra broker round-trip; a false negative cannot happen, since a read of the relation must
+        name it."""
+        if self._store_broker is None:
+            return duck_sql
+        refs = {(m.group(2), m.group(4)) for m in _MAT_STORE_REF.finditer(duck_sql)}
+        wanted = [(phys, st) for phys, st in self._store_relations.items() if phys in duck_sql]
+        if not refs and not wanted:
+            return duck_sql
         with self._store_relation_lock:
-            for phys, (schema, table) in self._store_relations.items():
-                if phys not in duck_sql:
-                    continue
-                arrow_tbl = self._store_broker.fetch_arrow(schema, table)
-                reg_name = f"_matbroker_{table}"
-                self._con.register(reg_name, arrow_tbl)
-                try:
-                    self._con.execute(
-                        f'CREATE OR REPLACE TABLE {phys} AS SELECT * FROM "{reg_name}"'
-                    )
-                finally:
-                    self._con.unregister(reg_name)
+            for phys, (schema, table) in wanted:
+                self._copy_store_table(schema, table, phys)
+            if refs:
+                self._con.execute(f'CREATE SCHEMA IF NOT EXISTS "{_LOCAL_STORE_SCHEMA}"')
+                for schema, table in refs:
+                    self._copy_store_table(schema, table, _local_store_name(schema, table))
+        if not refs:
+            return duck_sql
+        return _MAT_STORE_REF.sub(lambda m: _local_store_name(m.group(2), m.group(4)), duck_sql)
+
+    def _copy_store_table(self, schema: str, table: str, target: str) -> None:
+        """Make `target` on this connection current with the store's `schema.table` (lock held).
+
+        Copies only when the store changed since this target was last copied: the broker returns
+        the store-file canary its read was current as of, and any process's write changes it.
+        Re-copying the whole table on every statement made a landed 1M-row table cost a full copy
+        per query (live on the perf bench: large_federated_join spent its 120s budget copying)."""
+        if self._store_copy_canary.get(target) == self._store_broker.canary():
+            return
+        arrow_tbl, canary = self._store_broker.fetch_arrow(schema, table)
+        reg_name = f"_matbroker_{table}"
+        # A PRIVATE cursor, never the shared connection: register() makes a view holding a Python
+        # reference, and DuckDB destroys it (needing the GIL) while holding the owning client
+        # context's lock. On the shared connection another thread can hold the GIL while waiting
+        # for that same context lock -- a deadlock, caught live on the perf bench (a request stuck
+        # 10+ min in this CREATE's commit while a peer's self._con.execute waited in LockContext).
+        # A cursor's own context is locked by no other thread.
+        cur = self._con.cursor()
+        try:
+            cur.register(reg_name, arrow_tbl)
+            try:
+                cur.execute(f'CREATE OR REPLACE TABLE {target} AS SELECT * FROM "{reg_name}"')
+            finally:
+                cur.unregister(reg_name)
+        finally:
+            cur.close()
+        self._store_copy_canary[target] = canary
 
     # -- metadata --------------------------------------------------------------
 
@@ -896,11 +1048,17 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         the engine-introspection seam (REQ-825/840); callers reach it via EngineRuntime."""
         self.attach_source(source)
         phys = self._phys_name(source)
+        # REQ-899: a ClickHouse table has no view at its physical name — DESCRIBE its HTTP read.
+        target, live_http = self._rewrite_clickhouse_relations(
+            f"SELECT * FROM {phys}", None, deadline_s=request_deadline.remaining(), describe=True
+        )
+        if not live_http:
+            target = phys
         # PRIVATE cursor: introspection runs on request threads concurrently with queries, and the
         # shared connection holds only one pending result (see run()).
-        cur = self._con.cursor()
+        cur = self._open_cursor(live_http=live_http)
         try:
-            res = cur.execute(f"DESCRIBE {phys}")
+            res = cur.execute(f"DESCRIBE {target}")
             # DESCRIBE rows: (column_name, column_type, null, key, default, extra)
             return columns_from_describe(res.fetchall())
         finally:
@@ -916,12 +1074,17 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         """Execute SQL ALREADY in the DuckDB dialect (the backend transpiled it via the seam) against
         the connection, whose attached sources expose every physical ``schema.table`` view."""
         loop = asyncio.get_event_loop()
+        # Read here, on the request's own context: run_in_executor does not carry the contextvar.
+        deadline_s = request_deadline.remaining()
 
         def _run() -> QueryResult:
             # Read gate: a control-plane rebuild swaps the provisa_admin snapshot out from under any
             # query already bound to it, which returns zero rows rather than failing (_CatalogGate).
             with self._catalog_gate.read():
-                self._refresh_store_relations(duck_sql)
+                sql = self._refresh_store_relations(duck_sql)
+                sql, live_http = self._rewrite_clickhouse_relations(
+                    sql, params, deadline_s=deadline_s
+                )
                 # A PRIVATE cursor, never the shared connection: run() is dispatched to an executor
                 # thread, so two queries overlap routinely. A DuckDB connection holds ONE pending
                 # result — the second execute() replaces the first, and the first thread's fetchall()
@@ -929,12 +1092,14 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 # queries intermittently come back with no rows under the parallel e2e suite while
                 # the control plane plainly held the data (run_sync and run_arrow_stream already
                 # took a cursor for this reason).
-                cur = self._con.cursor()
+                cur = self._open_cursor(live_http=live_http)
                 try:
-                    res = cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
-                    cols = [d[0] for d in res.description] if res.description else []
-                    types = [str(d[1]) for d in res.description] if res.description else []
-                    return QueryResult(rows=res.fetchall(), column_names=cols, column_types=types)
+                    with request_deadline.cancel_on_deadline(cur.interrupt):
+                        res = cur.execute(sql, params) if params else cur.execute(sql)
+                        cols = [d[0] for d in res.description] if res.description else []
+                        types = [str(d[1]) for d in res.description] if res.description else []
+                        rows = res.fetchall()
+                    return QueryResult(rows=rows, column_names=cols, column_types=types)
                 finally:
                     cur.close()
 
@@ -952,9 +1117,13 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # from the cursor lazily, so the scan is still live and a rebuild mid-drain would empty it.
         self._catalog_gate.acquire_read()
         try:
-            self._refresh_store_relations(duck_sql)
-            cur = self._con.cursor()
-            cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
+            duck_sql = self._refresh_store_relations(duck_sql)
+            duck_sql, live_http = self._rewrite_clickhouse_relations(
+                duck_sql, params, deadline_s=request_deadline.remaining()
+            )
+            cur = self._open_cursor(live_http=live_http)
+            with request_deadline.cancel_on_deadline(cur.interrupt):
+                cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
         except BaseException:
             self._catalog_gate.release_read()
             raise
@@ -963,7 +1132,38 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             cur.close()
             self._catalog_gate.release_read()
 
-        return stream_from_dbapi(cur, on_close=_close)
+        # DuckDB's description carries each column's declared DuckDBPyType ("BIGINT",
+        # "DECIMAL(18,2)"), even for a zero-row result — the pgwire Describe relies on it.
+        return stream_from_dbapi(
+            cur, on_close=_close, type_names=lambda codes: [str(c) for c in codes]
+        )
+
+    def describe_sync(self, duck_sql: str, params: list | None = None) -> ResultStream:
+        """The statement's result shape without running it: DuckDB's ``DESCRIBE <query>`` binds and
+        plans it and returns each column's name and declared type — the same names and type strings
+        run_sync's cursor description reports, duplicates included (a subquery wrapper would rename
+        a duplicate ``a`` to ``a_1``). REQ-589."""
+        with self._catalog_gate.read():
+            duck_sql = self._refresh_store_relations(duck_sql)
+            duck_sql, live_http = self._rewrite_clickhouse_relations(
+                duck_sql, params, deadline_s=request_deadline.remaining(), describe=True
+            )
+            cur = self._open_cursor(live_http=live_http)
+            try:
+                with request_deadline.cancel_on_deadline(cur.interrupt):
+                    res = (
+                        cur.execute(f"DESCRIBE {duck_sql}", params)
+                        if params
+                        else cur.execute(f"DESCRIBE {duck_sql}")
+                    )
+                    described = res.fetchall()
+            finally:
+                cur.close()
+        return QueryResult(
+            rows=[],
+            column_names=[r[0] for r in described],
+            column_types=[r[1] for r in described],
+        )
 
     # -- Arrow transport (REQ-986) ---------------------------------------------
 
@@ -971,14 +1171,18 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         """Execute dialect-DuckDB SQL and return a ``pyarrow.Table`` — DuckDB produces Arrow natively
         (``fetch_arrow_table``), so no Python rows are materialized for the Flight transport."""
         with self._catalog_gate.read():
-            self._refresh_store_relations(duck_sql)
+            duck_sql = self._refresh_store_relations(duck_sql)
+            duck_sql, live_http = self._rewrite_clickhouse_relations(
+                duck_sql, params, deadline_s=request_deadline.remaining()
+            )
             # PRIVATE cursor for the same reason as run_sync/run_arrow_stream: a concurrent query on
             # the shared connection replaces this one's pending result, and the fetch then yields
             # nothing instead of raising.
-            cur = self._con.cursor()
+            cur = self._open_cursor(live_http=live_http)
             try:
-                res = cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
-                return res.to_arrow_table()
+                with request_deadline.cancel_on_deadline(cur.interrupt):
+                    res = cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
+                    return res.to_arrow_table()
             finally:
                 cur.close()
 
@@ -996,10 +1200,14 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # Held for the whole stream — same reason as run_sync: the batches are scanned on demand.
         self._catalog_gate.acquire_read()
         try:
-            self._refresh_store_relations(duck_sql)
-            cur = self._con.cursor()
-            cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
-            reader = cur.to_arrow_reader(_ARROW_STREAM_BATCH_ROWS)
+            duck_sql = self._refresh_store_relations(duck_sql)
+            duck_sql, live_http = self._rewrite_clickhouse_relations(
+                duck_sql, params, deadline_s=request_deadline.remaining()
+            )
+            cur = self._open_cursor(live_http=live_http)
+            with request_deadline.cancel_on_deadline(cur.interrupt):
+                cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
+                reader = cur.to_arrow_reader(_ARROW_STREAM_BATCH_ROWS)
             schema = reader.schema
         except BaseException:
             self._catalog_gate.release_read()

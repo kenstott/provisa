@@ -18,11 +18,13 @@ Leaf module: depends only on sql_types and sqlglot, never on sql_gen.
 from __future__ import annotations
 
 import re as _re
+from datetime import datetime, timezone
 
 import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.compiler.sql_types import CompilationContext, TableMeta
+from provisa.core.ir_types import EPOCH_UNITS
 
 
 def split_sql_statements(sql: str) -> list[str]:
@@ -314,7 +316,7 @@ def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:  # R
     sql = _apply_replacements(normalize_table_refs(sql, ctx), replacements)
     # DIRECT route: a native driver addresses schema.table, not catalog.schema.table — strip the
     # catalog normalize_table_refs re-attaches for already-qualified refs (REQ-641/REQ-863).
-    return strip_catalog(sql)
+    return translate_epoch_temporal_columns(strip_catalog(sql), ctx.epoch_columns)  # REQ-1908
 
 
 def _all_table_metas(ctx: CompilationContext) -> list[TableMeta]:
@@ -360,7 +362,9 @@ def rewrite_semantic_to_catalog_physical(sql: str, ctx: CompilationContext) -> s
         # pet_store_sqlite.org_kstott__pet_store_sqlite.pet_store.pets ("Too many dots").
         base_catalog_ref = f"{_q(source_to_catalog(meta.source_id))}.{physical_no_catalog}"
         replacements.setdefault(base_catalog_ref, physical_with_catalog)
-    return _apply_replacements(sql, replacements)
+    return translate_epoch_temporal_columns(  # REQ-1908
+        _apply_replacements(sql, replacements), ctx.epoch_columns
+    )
 
 
 def qualify_with_catalogs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
@@ -447,8 +451,18 @@ def strip_schema(sql: str) -> str:  # REQ-1361
 # --- Literal predicate propagation across equi-joins (REQ-1880) ---
 
 
-def _is_literal(node: exp.Expr | None) -> bool:
-    """A true constant: a literal, or a negated literal (``-1``) -- never a function/subquery/column."""
+def _is_literal(node: exp.Expr | None, allow_params: bool = False) -> bool:
+    """A true constant: a literal, or a negated literal (``-1``) -- never a function/subquery/column.
+    With ``allow_params``, a numbered bind parameter (``$1``) too: it is one fixed value for the
+    whole execution, so copying it is as safe as copying a literal -- but only on an engine that
+    binds parameters BY NUMBER, where a reused ``$1`` still means the same value (a positional
+    ``?`` binder would shift every later parameter). The postgres reader parses ``$1`` as a
+    Parameter, the duckdb reader as a numbered Placeholder (REQ-899 reads DuckDB SQL); a bare
+    ``?`` Placeholder has no number and is never a literal."""
+    if allow_params and isinstance(node, exp.Parameter):
+        return True
+    if allow_params and isinstance(node, exp.Placeholder) and str(node.this or "").isdigit():
+        return True
     return isinstance(node, exp.Literal) or (
         isinstance(node, exp.Neg) and isinstance(node.this, exp.Literal)
     )
@@ -464,16 +478,18 @@ def _split_and(node: exp.Expr) -> list[exp.Expr]:
     return [node]
 
 
-def _literal_predicate_target(node: exp.Expr) -> tuple[str, str] | None:
+def _literal_predicate_target(node: exp.Expr, allow_params: bool = False) -> tuple[str, str] | None:
     """(alias, column) for a WHERE conjunct of the form ``alias.col <op> <literal(s)>`` for
-    ``=``/``IN``/``BETWEEN`` -- ``None`` for anything else (a function call, a subquery, a second
-    column, an unqualified column). Never guessed: a shape this doesn't recognize is simply not
-    propagated, same posture as ``query_residency._join_key_column``."""
-    if isinstance(node, exp.EQ):
+    ``=``/``IN``/``BETWEEN``/``<``/``<=``/``>``/``>=`` -- ``None`` for anything else (a function
+    call, a subquery, a second column, an unqualified column). Never guessed: a shape this doesn't
+    recognize is simply not propagated, same posture as ``query_residency._join_key_column``. A
+    range comparison is as safe to carry across an equality as ``=`` is: ``a = b`` and ``a >= 1``
+    imply ``b >= 1`` (the GraphQL compiler emits a range as separate ``>=``/``<=`` conjuncts)."""
+    if isinstance(node, (exp.EQ, exp.GT, exp.GTE, exp.LT, exp.LTE)):
         left, right = node.left, node.right
-        if isinstance(left, exp.Column) and left.table and _is_literal(right):
+        if isinstance(left, exp.Column) and left.table and _is_literal(right, allow_params):
             return left.table, left.name
-        if isinstance(right, exp.Column) and right.table and _is_literal(left):
+        if isinstance(right, exp.Column) and right.table and _is_literal(left, allow_params):
             return right.table, right.name
         return None
     if isinstance(node, exp.In):
@@ -483,14 +499,16 @@ def _literal_predicate_target(node: exp.Expr) -> tuple[str, str] | None:
         if node.args.get("query") is not None:  # IN (SELECT ...) is not a literal set
             return None
         exprs = node.args.get("expressions") or []
-        if not exprs or not all(_is_literal(e) for e in exprs):
+        if not exprs or not all(_is_literal(e, allow_params) for e in exprs):
             return None
         return col.table, col.name
     if isinstance(node, exp.Between):
         col = node.this
         if not (isinstance(col, exp.Column) and col.table):
             return None
-        if _is_literal(node.args.get("low")) and _is_literal(node.args.get("high")):
+        if _is_literal(node.args.get("low"), allow_params) and _is_literal(
+            node.args.get("high"), allow_params
+        ):
             return col.table, col.name
         return None
     return None
@@ -546,6 +564,8 @@ def propagate_literal_join_predicates(  # REQ-1880
     dialect: str,
     eligible_targets: set[tuple[str, str]],
     column_types: dict[tuple[str, str, str], str] | None = None,
+    *,
+    allow_params: bool = False,
 ) -> str:
     """Propagate a literal WHERE predicate across an INNER equi-join onto the far table's own join
     column, so a connector whose pushdown is limited to literal predicates (no join-pushdown --
@@ -584,7 +604,7 @@ def propagate_literal_join_predicates(  # REQ-1880
             continue
         literal_preds: dict[tuple[str, str], list[exp.Expr]] = {}
         for conjunct in _split_and(where.this):
-            target = _literal_predicate_target(conjunct)
+            target = _literal_predicate_target(conjunct, allow_params)
             if target is not None:
                 key = (target[0].lower(), target[1].lower())
                 literal_preds.setdefault(key, []).append(conjunct)
@@ -630,7 +650,105 @@ def propagate_literal_join_predicates(  # REQ-1880
                 combined = exp.and_(combined, pred, copy=False)
             where.set("this", combined)
             changed = True
+    if _propagate_into_correlated_subqueries(tree, eligible_targets, column_types, allow_params):
+        changed = True
     return tree.sql(dialect=dialect) if changed else sql
+
+
+def _propagate_into_correlated_subqueries(
+    tree: exp.Expr,
+    eligible_targets: set[tuple[str, str]],
+    column_types: dict[tuple[str, str, str], str],
+    allow_params: bool,
+) -> bool:
+    """REQ-1880 (amended): the same literal propagation into a CORRELATED scalar subquery in a
+    SELECT list -- the shape a GraphQL nested relationship compiles to (``(SELECT ... FROM docs t2
+    WHERE t2.order_id = t0.order_id)``), which has no JOIN for the join rule above to see.
+
+    Safe for the same reason as the join rule: a select-list subquery is evaluated only for outer
+    rows that already passed the outer WHERE, so an outer literal conjunct on ``t0.k`` plus a
+    top-level inner ``t2.k = t0.k`` conjunct pins ``t2.k`` to the same literal set for every
+    evaluation -- adding it to the subquery's own WHERE changes zero results. Only top-level AND
+    conjuncts on both sides, only plain ``alias.col = alias.col`` correlation, only a subquery
+    whose FROM names an eligible target (a connector that pushes literal predicates but not join/
+    parameterized paths), only type-compatible columns. Returns whether anything was added."""
+    changed = False
+    for outer in list(tree.find_all(exp.Select)):
+        where = outer.args.get("where")
+        if where is None:
+            continue
+        outer_aliases = _collect_table_aliases(outer)
+        if not outer_aliases:
+            continue
+        literal_preds: dict[tuple[str, str], list[exp.Expr]] = {}
+        for conjunct in _split_and(where.this):
+            target = _literal_predicate_target(conjunct, allow_params)
+            if target is not None and target[0].lower() in outer_aliases:
+                literal_preds.setdefault((target[0].lower(), target[1].lower()), []).append(
+                    conjunct
+                )
+        if not literal_preds:
+            continue
+        for projection in outer.expressions:
+            for sub in projection.find_all(exp.Select):
+                sub_where = sub.args.get("where")
+                if sub_where is None:
+                    continue
+                sub_aliases = _collect_table_aliases(sub)
+                additions: list[exp.Expr] = []
+                for conjunct in _split_and(sub_where.this):
+                    if not isinstance(conjunct, exp.EQ):
+                        continue
+                    left, right = conjunct.left, conjunct.right
+                    if not (
+                        isinstance(left, exp.Column)
+                        and isinstance(right, exp.Column)
+                        and left.table
+                        and right.table
+                    ):
+                        continue
+                    for inner_col, outer_col in ((left, right), (right, left)):
+                        inner_alias = inner_col.table.lower()
+                        outer_alias = outer_col.table.lower()
+                        if inner_alias not in sub_aliases or outer_alias in sub_aliases:
+                            continue
+                        if outer_alias not in outer_aliases:
+                            continue
+                        preds = literal_preds.get((outer_alias, outer_col.name.lower()))
+                        if not preds:
+                            continue
+                        tgt_phys = sub_aliases[inner_alias]
+                        if tgt_phys not in eligible_targets:
+                            continue
+                        drv_type = column_types.get(
+                            (*outer_aliases[outer_alias], outer_col.name.lower())
+                        )
+                        tgt_type = column_types.get((*tgt_phys, inner_col.name.lower()))
+                        if (
+                            drv_type is None
+                            or tgt_type is None
+                            or not _types_compatible(drv_type, tgt_type)
+                        ):
+                            continue
+                        for pred in preds:
+                            propagated = pred.copy()
+                            for col in propagated.find_all(exp.Column):
+                                if (
+                                    col.table.lower() == outer_alias
+                                    and col.name.lower() == outer_col.name.lower()
+                                ):
+                                    # Copy the inner column's own identifier nodes so its
+                                    # quoting is preserved.
+                                    col.set("table", inner_col.args["table"].copy())
+                                    col.set("this", inner_col.args["this"].copy())
+                            additions.append(propagated)
+                if additions:
+                    combined = sub_where.this
+                    for pred in additions:
+                        combined = exp.and_(combined, pred, copy=False)
+                    sub_where.set("this", combined)
+                    changed = True
+    return changed
 
 
 # --- ClickHouse LowCardinality(String) decode wrapping (REQ-1881) ---
@@ -714,6 +832,256 @@ def wrap_lowcardinality_columns(  # REQ-1881
         col.replace(exp.Anonymous(this="from_utf8", expressions=[col.copy()]))
         changed = True
     return tree.sql(dialect=dialect) if changed else sql
+
+
+# --- Epoch-stored temporal columns (REQ-1908) ---
+
+_EPOCH_SCALE = {"s": None, "ms": exp.UnixToTime.MILLIS, "us": exp.UnixToTime.MICROS}
+_EPOCH_POWER = {"s": 0, "ms": 3, "us": 6}
+_EPOCH_ORIGIN = datetime(1970, 1, 1, tzinfo=timezone.utc)
+_COMPARISONS = (exp.EQ, exp.NEQ, exp.GT, exp.GTE, exp.LT, exp.LTE)
+
+# (schema, table) lowercased -> {column lowercased: (unit, registered data_type)}
+EpochColumns = dict[tuple[str, str], dict[str, tuple[str, str]]]
+
+
+def iso_to_epoch(text: str, unit: str) -> int:
+    """An ISO 8601 date/time as an exact epoch count in ``unit``. Epoch storage is a UTC instant by
+    definition, so text without an offset is read as UTC — the same zone a read renders it in. A
+    value finer than the unit is refused, never truncated: truncating would silently move a bound."""
+    # The GraphQL filter compiler (sql_where._timestamp_literal_or_param) renders an ISO operand as
+    # TIMESTAMP '<date> <time> UTC' / '<date> <time> +05:30' — its zone after a space.
+    canonical = _re.sub(r"\s+UTC$", "+00:00", text.strip())
+    canonical = _re.sub(r"\s+([+-]\d{2}:?\d{2})$", r"\1", canonical)
+    try:
+        moment = datetime.fromisoformat(canonical)
+    except ValueError as exc:
+        raise ValueError(f"{text!r} is not an ISO 8601 date/time") from exc
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    count, rest = divmod(moment - _EPOCH_ORIGIN, EPOCH_UNITS[unit])
+    if rest:
+        raise ValueError(f"{text!r} is finer than the column's epoch unit {unit!r}")
+    return count
+
+
+def _epoch_read(col: exp.Expr, unit: str, data_type: str) -> exp.Expr:
+    """The stored number as the registered temporal type."""
+    scale = _EPOCH_SCALE[unit]
+    instant = (
+        exp.UnixToTime(this=col, scale=scale) if scale is not None else exp.UnixToTime(this=col)
+    )
+    kind = data_type.lower()
+    if kind in ("timestamptz", "timestamp with time zone"):
+        return instant
+    utc = exp.AtTimeZone(this=instant, zone=exp.Literal.string("UTC"))
+    if kind == "date":
+        return exp.Cast(this=utc, to=exp.DataType.build("DATE"))
+    return utc
+
+
+def _epoch_operand(value: exp.Expr, unit: str) -> exp.Expr | None:
+    """A value compared with (or written to) the stored number, as that number: a string literal
+    becomes its exact epoch count now; a written parameter (or any temporal expression) is
+    converted in SQL. None when the value is already a number — including one this pass produced."""
+    if isinstance(value, exp.Literal):
+        return exp.Literal.number(iso_to_epoch(value.this, unit)) if value.is_string else None
+    if isinstance(value, exp.Null) or _is_epoch_operand(value):
+        return None
+    # Built as EXTRACT(EPOCH ...) — the form its rendered SQL parses back to, so a second pass
+    # recognizes it. Only writes reach here, and a write always routes DIRECT to the source.
+    seconds = exp.Extract(
+        this=exp.var("EPOCH"),
+        expression=exp.Cast(this=value.copy(), to=exp.DataType.build("TIMESTAMPTZ")),
+    )
+    power = _EPOCH_POWER[unit]
+    if power == 0:
+        return seconds
+    return exp.Mul(this=seconds, expression=exp.Literal.number(10**power))
+
+
+def _temporal_type(data_type: str) -> str:
+    kind = data_type.lower()
+    if kind in ("timestamptz", "timestamp with time zone"):
+        return "TIMESTAMPTZ"
+    return "DATE" if kind == "date" else "TIMESTAMP"
+
+
+def _comparison_operands(col: exp.Column, parent: exp.Expr | None) -> list[exp.Expr] | None:
+    """The value operands ``col`` is compared with, when ``parent`` is a comparison, ``IN`` or
+    ``BETWEEN`` whose other side(s) are all literals or bound values; None otherwise (the column
+    is then read as the temporal)."""
+    if isinstance(parent, _COMPARISONS):
+        operands = [parent.expression if col.arg_key == "this" else parent.this]
+    elif isinstance(parent, exp.In) and col.arg_key == "this" and not parent.args.get("query"):
+        operands = list(parent.expressions)
+    elif isinstance(parent, exp.Between) and col.arg_key == "this":
+        operands = [parent.args["low"], parent.args["high"]]
+    else:
+        return None
+    # A cast of a literal or bound value (the GraphQL filter emits CAST('<iso>' AS TIMESTAMP)) is
+    # that value: the cast is dropped here and the value converted like a bare one.
+    operands = [_uncast_value(o) for o in operands]
+    bound = (exp.Literal, exp.Parameter, exp.Placeholder)
+    return operands if operands and all(isinstance(o, bound) for o in operands) else None
+
+
+def _uncast_value(node: exp.Expr) -> exp.Expr:
+    if isinstance(node, exp.Cast) and isinstance(
+        node.this, (exp.Literal, exp.Parameter, exp.Placeholder)
+    ):
+        inner = node.this.copy()
+        node.replace(inner)
+        return inner
+    return node
+
+
+def _is_epoch_operand(node: exp.Expr) -> bool:
+    """True for a value ``_epoch_operand`` already converted in SQL (idempotency)."""
+    if isinstance(node, exp.Mul):
+        node = node.this
+    return isinstance(node, exp.Extract) and node.name.lower() == "epoch"
+
+
+def _scope_tables(scope: exp.Expr) -> dict[str, tuple[str, str]]:
+    if isinstance(scope, exp.Select):
+        return _collect_table_aliases(scope)
+    target = scope.this
+    if isinstance(target, exp.Schema):
+        target = target.this
+    if isinstance(target, exp.Table) and target.db:
+        return {target.alias_or_name.lower(): (target.db.lower(), target.name.lower())}
+    return {}
+
+
+def _resolve_epoch_column(
+    col: exp.Column, tables: dict[str, tuple[str, str]], epoch_columns: EpochColumns
+) -> tuple[str, str] | None:
+    name = col.name.lower()
+    if col.table:
+        phys = tables.get(col.table.lower())
+        return (epoch_columns.get(phys) or {}).get(name) if phys else None
+    # Unqualified: SQL binds it to the one in-scope table that has it.
+    owners = [
+        epoch_columns[phys][name]
+        for phys in set(tables.values())
+        if name in epoch_columns.get(phys, {})
+    ]
+    return owners[0] if len(owners) == 1 else None
+
+
+def _translate_writes(stmt: exp.Expr, epoch_columns: EpochColumns) -> None:
+    """A written ISO 8601 value is stored as the column's epoch number."""
+    tables = _scope_tables(stmt)
+    if not tables:
+        return
+    cols = epoch_columns.get(next(iter(tables.values())), {})
+    if isinstance(stmt, exp.Update):
+        for assign in stmt.expressions:
+            spec = cols.get(assign.this.name.lower()) if isinstance(assign, exp.EQ) else None
+            if spec:
+                converted = _epoch_operand(assign.expression, spec[0])
+                if converted is not None:
+                    assign.set("expression", converted)
+        return
+    schema = stmt.this
+    values = stmt.expression
+    if not isinstance(schema, exp.Schema) or not isinstance(values, exp.Values):
+        return
+    positions = {
+        i: cols[ident.name.lower()]
+        for i, ident in enumerate(schema.expressions)
+        if ident.name.lower() in cols
+    }
+    for row in values.expressions:
+        for i, spec in positions.items():
+            converted = _epoch_operand(row.expressions[i], spec[0])
+            if converted is not None:
+                row.expressions[i].replace(converted)
+
+
+def translate_epoch_temporal_columns(  # REQ-1908
+    sql: str, epoch_columns: EpochColumns
+) -> str:
+    """Translate every reference to an epoch-stored temporal column (REQ-1908) so the statement
+    sees the registered temporal type — on every surface, since both physical rewrites call this.
+
+    * A read yields the temporal (``TO_TIMESTAMP`` & co., transpiled per engine later), aliased to
+      the column's own name in a select list so the output column keeps its name.
+    * A comparison (``=``/``<>``/``<``/``<=``/``>``/``>=``, ``IN``, ``BETWEEN``) against ISO 8601
+      text or a parameter converts the OPERAND to the epoch number and leaves the column bare, so a
+      source index on the stored number still applies.
+    * ``ORDER BY``/``GROUP BY``/``IS NULL`` keep the bare column: the translation is monotonic and
+      one-to-one, so the result is the same without converting every row.
+    * An ``INSERT``/``UPDATE`` stores an ISO 8601 value as its epoch number, and its ``RETURNING``
+      reads the temporal back under the column's own name.
+
+    Idempotent — every call site may see already-translated SQL. Parses only when an affected table
+    is referenced, so every other statement's text is returned unchanged."""
+    if not epoch_columns:
+        return sql
+    lowered = sql.lower()
+    if not any(table in lowered for (_schema, table) in epoch_columns):
+        return sql
+    tree = sqlglot.parse_one(sql, read="postgres")
+    if not any(
+        (t.db.lower(), t.name.lower()) in epoch_columns for t in tree.find_all(exp.Table) if t.db
+    ):
+        return sql
+    for stmt in tree.find_all(exp.Update, exp.Insert):
+        _translate_writes(stmt, epoch_columns)
+    scopes: dict[int, dict[str, tuple[str, str]]] = {}
+    for col in list(tree.find_all(exp.Column)):
+        if isinstance(col.this, exp.Star):
+            continue
+        scope = col.find_ancestor(exp.Select, exp.Update, exp.Delete, exp.Insert)
+        if scope is None:
+            continue
+        if isinstance(scope, exp.Insert) and col.find_ancestor(exp.Returning) is None:
+            continue  # an INSERT's own target list / ON CONFLICT: written, not read
+        if (
+            isinstance(scope, exp.Update)
+            and col.parent in scope.expressions
+            and col.arg_key == "this"
+        ):
+            continue  # an assignment target, not a value
+        tables = scopes.setdefault(id(scope), _scope_tables(scope))
+        spec = _resolve_epoch_column(col, tables, epoch_columns)
+        if spec is None:
+            continue
+        unit, data_type = spec
+        parent = col.parent
+        # Already read as the temporal — as built, or as its rendered SQL parses back.
+        converted_read = col.find_ancestor(
+            exp.UnixToTime, exp.Select, exp.Update, exp.Delete, exp.Insert
+        )
+        if isinstance(converted_read, exp.UnixToTime) or col.find_ancestor(exp.Order, exp.Group):
+            continue
+        if isinstance(parent, exp.Is):
+            continue
+        operands = _comparison_operands(col, parent)
+        if operands is not None:
+            if all(isinstance(o, exp.Literal) for o in operands):
+                # ISO 8601 text becomes its exact epoch number at compile time; the column stays
+                # bare, so a source index on the stored number applies. A number is left as is.
+                for o in operands:
+                    converted = _epoch_operand(o, unit)
+                    if converted is not None:
+                        o.replace(converted)
+                continue
+            # A bound value is typed as the registered temporal and compared with the column read
+            # as that temporal. Converting the value to a number in SQL instead would not survive
+            # the per-engine transpile (EXTRACT(EPOCH ...) drops the offset on Trino).
+            temporal = _temporal_type(data_type)
+            for o in operands:
+                if isinstance(o, (exp.Parameter, exp.Placeholder)):
+                    o.replace(exp.Cast(this=o.copy(), to=exp.DataType.build(temporal)))
+        read = _epoch_read(col.copy(), unit, data_type)
+        if isinstance(parent, (exp.Select, exp.Returning)):
+            col.replace(exp.alias_(read, col.name))
+        else:
+            col.replace(read)
+    return tree.sql(dialect="postgres")
 
 
 # --- Main compilation ---

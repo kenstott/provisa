@@ -98,10 +98,12 @@ class _MockAcquireContext:
 
 
 def _mock_pool_with_conn(mock_conn):
-    """Build a mock asyncpg.Pool whose acquire() works as await and async-with."""
+    """Build a mock control-plane Database: acquire() works as async-with, and LISTEN is
+    registered on the database itself (its listener thread owns the LISTEN connection)."""
     mock_pool = MagicMock()
     mock_pool.acquire.return_value = _MockAcquireContext(mock_conn)
-    mock_pool.release = AsyncMock()
+    mock_pool.add_listener = AsyncMock()
+    mock_pool.remove_listener = AsyncMock()
     return mock_pool
 
 
@@ -124,8 +126,11 @@ async def test_setup_installs_triggers():
     trig_sql = mock_conn.execute.call_args_list[1][0][0]
     assert "provisa_trigger_public_orders" in trig_sql
     assert "INSERT OR UPDATE" in trig_sql
+    # LISTEN is registered on the database's listener, not on a held pooled connection.
+    mock_pool.add_listener.assert_awaited_once_with("provisa_evt_public_orders", mgr._on_notify)
 
     await mgr.teardown(mock_pool)
+    mock_pool.remove_listener.assert_awaited_once_with("provisa_evt_public_orders", mgr._on_notify)
 
 
 # --- Webhook dispatch ---
@@ -263,7 +268,7 @@ async def test_retry_on_http_exception():
 
 
 def test_on_notify_schedules_dispatch():
-    """_on_notify schedules _dispatch via asyncio.ensure_future."""
+    """_on_notify schedules _dispatch on a background worker (REQ-1882: spawn_background)."""
     trigger = _make_trigger()
     mgr = EventTriggerManager([trigger])
     mgr._running = True
@@ -271,10 +276,11 @@ def test_on_notify_schedules_dispatch():
     mock_conn = MagicMock()
     payload = '{"operation": "INSERT", "table": "orders"}'
 
-    with patch("provisa.events.triggers.asyncio.ensure_future") as mock_ef:
+    with patch("provisa.core.connection_loop.spawn_background") as mock_ef:
         mgr._on_notify(mock_conn, 123, _channel_name("public.orders"), payload)
         assert mock_ef.call_count == 1
         coro = mock_ef.call_args[0][0]
+        assert coro.cr_code.co_name == "_dispatch"
         coro.close()
 
 
@@ -284,7 +290,7 @@ def test_on_notify_ignored_when_stopped():
     mgr = EventTriggerManager([trigger])
     mgr._running = False
 
-    with patch("provisa.events.triggers.asyncio.ensure_future") as mock_ef:
+    with patch("provisa.core.connection_loop.spawn_background") as mock_ef:
         mgr._on_notify(MagicMock(), 123, "ch", "{}")
         assert mock_ef.call_count == 0
 

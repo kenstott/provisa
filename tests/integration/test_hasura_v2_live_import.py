@@ -65,13 +65,8 @@ async def seeded_pg(docker_postgres):
 async def client(seeded_pg):
     os.environ.setdefault("PG_PASSWORD", "provisa")
     os.environ["RS_ENV"] = COUNTRIES_URL
-    # The native engine lands the remote schema's rows into its materialization store; point the
-    # store at the test stack's Postgres (tests/conftest.py computes the default before the isolated
-    # stack's port is known).
-    os.environ["PROVISA_MATERIALIZE_URL"] = (
-        f"postgresql://{seeded_pg['username']}:{seeded_pg['password']}@{seeded_pg['host']}:"
-        f"{seeded_pg['port']}/provisa"
-    )
+    # The materialization store (PROVISA_MATERIALIZE_URL) is the test stack's Postgres, set by
+    # tests/conftest.py after the isolated stack's port is allocated.
     from provisa.api.app import create_app
 
     app = create_app()

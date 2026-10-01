@@ -496,10 +496,12 @@ class _FakeConn:
     def __init__(self, rows) -> None:
         self._rows = rows
         self.queries: list[str] = []
+        self.timeouts: list[float | None] = []
         self.closed = False
 
-    async def fetch(self, sql):
+    async def fetch(self, sql, *args, timeout=None):
         self.queries.append(sql)
+        self.timeouts.append(timeout)
         return self._rows
 
     async def close(self):
@@ -520,6 +522,36 @@ async def test_land_via_select_returns_rows():
     assert rows == [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}]
     assert conn.queries == ['SELECT * FROM "local_files"."reports"']
     assert conn.closed is True
+
+
+@_aio
+async def test_land_via_select_is_always_bounded():
+    """A wedged pgwire server must not block the landing forever: every SELECT carries a timeout."""
+    conn = _FakeConn([])
+
+    async def _connect(host, port):
+        return conn
+
+    await pr.land_via_select(pr.PortPair(5433, "127.0.0.1", 5533), "s", "t", connect=_connect)
+    await pr.land_via_select_keys(
+        pr.PortPair(5433, "127.0.0.1", 5533), "s", "t", ["id"], [(1,)], connect=_connect
+    )
+    assert conn.timeouts == [pr.LAND_FETCH_SECONDS, pr.LAND_FETCH_SECONDS]
+
+
+@_aio
+async def test_land_via_select_timeout_is_tightened_by_the_request_budget():
+    from provisa.core import request_deadline
+
+    conn = _FakeConn([])
+
+    async def _connect(host, port):
+        return conn
+
+    with request_deadline.within(5.0):
+        await pr.land_via_select(pr.PortPair(5433, "127.0.0.1", 5533), "s", "t", connect=_connect)
+    (timeout,) = conn.timeouts
+    assert timeout is not None and 0 < timeout <= 5.0
 
 
 @_aio

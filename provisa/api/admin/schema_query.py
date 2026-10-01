@@ -126,8 +126,23 @@ def _safe_store_ref(engine: Any) -> str | None:
 
 # Local-file store schemes: each running instance writes its OWN copy (no cross-instance coordination).
 # Everything else (remote Postgres, object-store/warehouse) is a shared store. Driver suffixes
-# (``sqlite+aiosqlite``) are stripped before the check.
+# (``sqlite+pysqlite``) are stripped before the check.
 _INSTANCE_LOCAL_STORE_SCHEMES = frozenset({"sqlite", "duckdb"})
+
+
+def _engine_reaches_live(state: Any, source_type: str) -> bool:
+    """Whether the bound engine reads ``source_type`` live through its own connector (REQ-840).
+
+    Membership in ``engine.connectors`` alone is not the test: ``FederationEngine.complete_reach``
+    (engine.py) adds a FETCH land connector for every type the engine does not attach, so under a
+    native engine (DuckDB) every landable type is present. The live test is the connector's
+    mechanism — ATTACH/SCAN (``LIVE_IN_PLACE``), the same test ``app_loaders`` applies to catalog
+    naming (REQ-1730). A type the engine only lands (FETCH) is read — and so typed — by the app's
+    own native reader (REQ-1672)."""
+    from provisa.federation.connector_base import LIVE_IN_PLACE
+
+    connector = state.federation_engine.engine.connectors.get(source_type)
+    return connector is not None and connector.mechanism in LIVE_IN_PLACE
 
 
 def _is_instance_local_store(store_ref: str | None) -> bool:
@@ -1646,20 +1661,28 @@ async def resolve_available_columns_metadata(
             ]
     if source_type == "govdata":
         return await _govdata_columns(source_id, schema_name, table_name, None)
-    if source_type == "elasticsearch":
-        return await _elasticsearch_columns(source_id, table_name)
-    if source_type == "redis":
-        return await _redis_columns(source_id, table_name)
-    if source_type == "cassandra":
-        return await _cassandra_columns(source_id, schema_name, table_name)
-    if source_type == "prometheus":
-        return await _prometheus_columns(source_id, table_name)
-    if source_type == "pinot":
-        return await _pinot_columns(source_id, table_name)
-    if source_type == "druid":
-        return await _druid_columns(source_id, table_name)
-    if source_type == "hive_s3":
-        return await _hive_s3_columns(source_id, schema_name, table_name)
+    # REQ-1672 (and the same engine-independent readers for the types below): the app's own native
+    # reader types a table only when the bound engine has NO live connector for the type. An engine
+    # that reaches the source live (Trino's elasticsearch/cassandra/... connectors) types it through
+    # its own information_schema — the generic path below — exactly as it reads it. The native
+    # reader dials ``sources.host``, which is the ENGINE-visible address (trino_system_catalogs.
+    # engine_visible_address); under a live-connector engine the app is not the reader, so that
+    # address need not resolve from the app at all.
+    if not _engine_reaches_live(state, source_type):
+        if source_type == "elasticsearch":
+            return await _elasticsearch_columns(source_id, table_name)
+        if source_type == "redis":
+            return await _redis_columns(source_id, table_name)
+        if source_type == "cassandra":
+            return await _cassandra_columns(source_id, schema_name, table_name)
+        if source_type == "prometheus":
+            return await _prometheus_columns(source_id, table_name)
+        if source_type == "pinot":
+            return await _pinot_columns(source_id, table_name)
+        if source_type == "druid":
+            return await _druid_columns(source_id, table_name)
+        if source_type == "hive_s3":
+            return await _hive_s3_columns(source_id, schema_name, table_name)
     if source_type == "rss":
         # REQ-1745: an rss/Atom feed has no catalog to introspect at all (native_schemas/
         # native_tables give it a synthetic single "default"/<source_id> pick so the picker isn't

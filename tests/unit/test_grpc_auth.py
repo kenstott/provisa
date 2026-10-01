@@ -23,6 +23,7 @@ import pytest
 
 from provisa.grpc import auth as grpc_auth
 from provisa.grpc.auth import AuthInterceptor
+from provisa.grpc.rpc_scope import rpc_scope
 from provisa.auth.models import AuthIdentity
 
 
@@ -65,7 +66,7 @@ class FakeContext:
         self.code = None
         self.detail = None
 
-    async def abort(self, code, detail):
+    def abort(self, code, detail):
         self.code = code
         self.detail = detail
         raise _Aborted(code, detail)
@@ -85,10 +86,17 @@ class CallDetails:
 
 
 def _handler(seen: list) -> grpc.RpcMethodHandler:
-    """A unary handler that records the role published on its own task."""
+    """A unary handler that records the role published in its RPC's context.
 
-    async def behavior(request, context):  # noqa: ARG001  # neither is read
-        seen.append(grpc_auth.authorized_role())
+    Shaped like the real servicer handlers (REQ-1882): synchronous, running its coroutine on the
+    RPC's own loop and context via ``rpc_scope``."""
+
+    def behavior(request, context):  # noqa: ARG001  # neither is read
+        async def _read():
+            return grpc_auth.authorized_role()
+
+        with rpc_scope() as rpc:
+            seen.append(rpc.run(_read()))
         return "ok"
 
     return grpc.unary_unary_rpc_method_handler(behavior)
@@ -107,78 +115,76 @@ def secured(monkeypatch):
     return AuthInterceptor(FakeState(auth_config=_AUTH_CONFIG, auth_middleware_active=True))
 
 
-async def _run(interceptor, metadata, seen):
-    async def continuation(_details):
+def _run(interceptor, metadata, seen):
+    def continuation(_details):
         return _handler(seen)
 
-    handler = await interceptor.intercept_service(continuation, CallDetails(metadata))
+    handler = interceptor.intercept_service(continuation, CallDetails(metadata))
     context = FakeContext()
     try:
-        result = await handler.unary_unary(None, context)
+        result = handler.unary_unary(None, context)
     except _Aborted:
         return context, None
     return context, result
 
 
-@pytest.mark.asyncio
 class TestCredentialIsRequired:
-    async def test_an_rpc_without_a_credential_is_refused(self, secured):
+    def test_an_rpc_without_a_credential_is_refused(self, secured):
         seen: list = []
-        context, result = await _run(secured, [("x-provisa-role", "admin")], seen)
+        context, result = _run(secured, [("x-provisa-role", "admin")], seen)
         assert context.code == grpc.StatusCode.UNAUTHENTICATED
         assert result is None
         assert seen == [], "the handler must not run at all"
 
-    async def test_a_rejected_credential_says_nothing_about_why(self, secured):
-        context, _ = await _run(secured, [("authorization", "Bearer bogus")], [])
+    def test_a_rejected_credential_says_nothing_about_why(self, secured):
+        context, _ = _run(secured, [("authorization", "Bearer bogus")], [])
         assert context.code == grpc.StatusCode.UNAUTHENTICATED
         assert context.detail == "credential rejected"
 
-    async def test_a_non_bearer_authorization_is_not_a_credential(self, secured):
-        context, _ = await _run(secured, [("authorization", "Basic dXNlcjpwdw==")], [])
+    def test_a_non_bearer_authorization_is_not_a_credential(self, secured):
+        context, _ = _run(secured, [("authorization", "Basic dXNlcjpwdw==")], [])
         assert context.code == grpc.StatusCode.UNAUTHENTICATED
         assert context.detail == "a bearer credential is required"
 
-    async def test_reflection_is_gated_too(self, secured):
+    def test_reflection_is_gated_too(self, secured):
         """A caller who cannot authenticate must not be able to enumerate the schema either."""
         details = CallDetails([])
         details.method = "/grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo"
 
-        async def continuation(_details):
+        def continuation(_details):
             raise AssertionError("the real reflection handler must never be resolved")
 
-        handler = await secured.intercept_service(continuation, details)
+        handler = secured.intercept_service(continuation, details)
         context = FakeContext()
         with pytest.raises(_Aborted):
-            await handler.unary_unary(None, context)
+            handler.unary_unary(None, context)
         assert context.code == grpc.StatusCode.UNAUTHENTICATED
 
 
-@pytest.mark.asyncio
 class TestRoleComesFromTheIdentity:
-    async def test_an_unmapped_identity_runs_as_the_default_role(self, secured):
+    def test_an_unmapped_identity_runs_as_the_default_role(self, secured):
         seen: list = []
-        _, result = await _run(secured, [("authorization", "Bearer plain-token")], seen)
+        _, result = _run(secured, [("authorization", "Bearer plain-token")], seen)
         assert result == "ok"
         assert seen == ["analyst"]
 
-    async def test_a_mapped_claim_selects_the_role(self, secured):
+    def test_a_mapped_claim_selects_the_role(self, secured):
         seen: list = []
-        await _run(secured, [("authorization", "Bearer good-token")], seen)
+        _run(secured, [("authorization", "Bearer good-token")], seen)
         assert seen == ["steward"]
 
-    async def test_a_requested_role_the_identity_holds_is_honored(self, secured):
+    def test_a_requested_role_the_identity_holds_is_honored(self, secured):
         seen: list = []
-        await _run(
+        _run(
             secured,
             [("authorization", "Bearer good-token"), ("x-provisa-role", "auditor")],
             seen,
         )
         assert seen == ["auditor"]
 
-    async def test_a_requested_role_the_identity_lacks_is_refused(self, secured):
+    def test_a_requested_role_the_identity_lacks_is_refused(self, secured):
         seen: list = []
-        context, _ = await _run(
+        context, _ = _run(
             secured,
             [("authorization", "Bearer good-token"), ("x-provisa-role", "admin")],
             seen,
@@ -186,9 +192,9 @@ class TestRoleComesFromTheIdentity:
         assert context.code == grpc.StatusCode.PERMISSION_DENIED
         assert seen == []
 
-    async def test_the_metadata_cannot_assert_a_role_it_merely_names(self, secured):
+    def test_the_metadata_cannot_assert_a_role_it_merely_names(self, secured):
         """The old behavior: naming a role granted it. It must not, even with a valid credential."""
-        context, _ = await _run(
+        context, _ = _run(
             secured,
             [("authorization", "Bearer plain-token"), ("x-provisa-role", "steward")],
             [],
@@ -196,7 +202,6 @@ class TestRoleComesFromTheIdentity:
         assert context.code == grpc.StatusCode.PERMISSION_DENIED
 
 
-@pytest.mark.asyncio
 class TestHighSecurityMode:
     """REQ-693: gRPC keeps serving, but every call must prove the client can decrypt."""
 
@@ -205,24 +210,24 @@ class TestHighSecurityMode:
         secured._state.security_high = True
         return secured
 
-    async def test_a_call_without_a_kms_key_is_refused(self, high):
+    def test_a_call_without_a_kms_key_is_refused(self, high):
         seen: list = []
-        context, _ = await _run(high, [("authorization", "Bearer good-token")], seen)
+        context, _ = _run(high, [("authorization", "Bearer good-token")], seen)
         assert context.code == grpc.StatusCode.PERMISSION_DENIED
         assert context.detail is not None and "x-provisa-kms-key" in context.detail
         assert seen == [], "the handler must not run at all"
 
-    async def test_a_call_carrying_the_kms_key_is_served(self, high):
+    def test_a_call_carrying_the_kms_key_is_served(self, high):
         metadata = [("authorization", "Bearer good-token"), ("x-provisa-kms-key", b"arn:kms:key")]
-        _, result = await _run(high, metadata, [])
+        _, result = _run(high, metadata, [])
         assert result == "ok"
 
-    async def test_the_gate_precedes_the_credential_check(self, high):
+    def test_the_gate_precedes_the_credential_check(self, high):
         """An unauthenticated caller in high mode learns nothing about credentials."""
-        context, _ = await _run(high, [], [])
+        context, _ = _run(high, [], [])
         assert context.code == grpc.StatusCode.PERMISSION_DENIED
 
-    async def test_the_gate_holds_when_the_deployment_does_not_authenticate(self):
+    def test_the_gate_holds_when_the_deployment_does_not_authenticate(self):
         """A deployment with auth off still refuses plaintext.
 
         The gate first sat behind ``if not active: return await continuation(...)``, so an
@@ -231,36 +236,35 @@ class TestHighSecurityMode:
         """
         state = FakeState(security_high=True)
         seen: list = []
-        context, _ = await _run(AuthInterceptor(state), [], seen)
+        context, _ = _run(AuthInterceptor(state), [], seen)
         assert context.code == grpc.StatusCode.PERMISSION_DENIED
         assert seen == [], "the handler must not run at all"
 
-    async def test_reflection_is_gated_too(self, high):
+    def test_reflection_is_gated_too(self, high):
         details = CallDetails([])
         details.method = "/grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo"
 
-        async def continuation(_details):
+        def continuation(_details):
             raise AssertionError("the real reflection handler must never be resolved")
 
-        handler = await high.intercept_service(continuation, details)
+        handler = high.intercept_service(continuation, details)
         context = FakeContext()
         with pytest.raises(_Aborted):
-            await handler.unary_unary(None, context)
+            handler.unary_unary(None, context)
         assert context.code == grpc.StatusCode.PERMISSION_DENIED
 
 
-@pytest.mark.asyncio
 class TestUnsecuredDeployment:
-    async def test_no_auth_config_leaves_the_metadata_role_alone(self):
+    def test_no_auth_config_leaves_the_metadata_role_alone(self):
         interceptor = AuthInterceptor(FakeState())
         seen: list = []
-        _, result = await _run(interceptor, [("x-provisa-role", "admin")], seen)
+        _, result = _run(interceptor, [("x-provisa-role", "admin")], seen)
         assert result == "ok"
         assert seen == [None], "no identity to derive from, so the handler falls back to metadata"
 
-    async def test_a_live_middleware_without_config_fails_closed(self):
+    def test_a_live_middleware_without_config_fails_closed(self):
         """A secured server whose config went missing must refuse, never degrade to trust mode."""
         interceptor = AuthInterceptor(FakeState(auth_middleware_active=True))
-        context, _ = await _run(interceptor, [("x-provisa-role", "admin")], [])
+        context, _ = _run(interceptor, [("x-provisa-role", "admin")], [])
         assert context.code == grpc.StatusCode.INTERNAL
         assert context.detail is not None and "auth_config not configured" in context.detail

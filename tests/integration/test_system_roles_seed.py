@@ -32,7 +32,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "5432")
-_ASYNC_URL = f"postgresql+asyncpg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
+_ASYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
 
 _ORG_ID = "req1297"
 _SCHEMA = f"org_{_ORG_ID}"
@@ -59,7 +59,7 @@ async def tenant_db():
     async with db.acquire() as conn:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA}_mv_cache CASCADE")
-    await engine.dispose()
+    engine.dispose()
 
 
 async def _system_roles(db: Database) -> dict[str, list[str]]:
@@ -123,8 +123,15 @@ async def test_the_tenant_roles_hold_the_authority_the_requirement_names(tenant_
     )
     # analyst reads: no authoring, no governance, no member management.
     # glossary_read is read access to the org's term definitions — reading, which is what the role
-    # is for; it authors nothing (glossary_rw and org_glossary_rw stay out).
-    assert set(seeded["analyst"]) == {"usage", "query_development", "glossary_read"}
+    # is for; it authors nothing (glossary_rw and org_glossary_rw stay out). data_product_read
+    # (REQ-1638) mirrors glossary_read for data products — read-only; data_product_rw stays out.
+    assert set(seeded["analyst"]) == {
+        "usage",
+        "query_development",
+        "glossary_read",
+        "data_product_read",
+    }
+    assert "data_product_rw" not in set(seeded["analyst"])
     assert not ({"create_view", "user_management", "write"} & set(seeded["analyst"]))
 
 

@@ -37,6 +37,7 @@ from provisa.grpc.query_ir import (
     split_group_by_columns,
 )
 from provisa.grpc.proto_gen import _to_proto_field_name
+from provisa.compiler.directives import cache_hint_from_grpc_metadata
 from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
 
 log = logging.getLogger(__name__)
@@ -265,6 +266,8 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
 
     body = await request.json()
     role_id = request.headers.get("x-provisa-role") or body.get("role_id") or body.get("role")
+    # REQ-544: the native servicer's `x-provisa-cache` / `x-provisa-cache-ttl` opt-in, as headers.
+    cache_hint = cache_hint_from_grpc_metadata(request.headers.items())
     limit = int(body.get("limit", 100))
 
     if not role_id:
@@ -347,7 +350,11 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
 
         try:
             plan = await _govern_and_route_compiled(
-                compiled.sql, role_id, exec_params=compiled.params or None, state=state
+                compiled.sql,
+                role_id,
+                exec_params=compiled.params or None,
+                state=state,
+                cache_hint=cache_hint,
             )
             result = await _execute_plan(plan, state)
         except PermissionError as exc:
@@ -374,6 +381,7 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
                         role_id,
                         exec_params=compiled.nodes_params or None,
                         state=state,
+                        cache_hint=cache_hint,
                     )
                     nodes_result = await _execute_plan(nodes_plan, state)
                 except PermissionError as exc:
@@ -421,7 +429,9 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
         )
 
     try:
-        plan = await _govern_and_route_compiled(semantic_sql, role_id, state=state)
+        plan = await _govern_and_route_compiled(
+            semantic_sql, role_id, state=state, cache_hint=cache_hint
+        )
         result = await _execute_plan(plan, state)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))

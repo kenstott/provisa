@@ -692,8 +692,8 @@ services:
       PG_DATABASE: "provisa"
       PG_USER: "provisa"
       PG_PASSWORD: "provisa"
-      TENANT_DATABASE_URL: "postgresql+asyncpg://provisa:provisa@${PRIMARY_IP}:5432/provisa"
-      PLATFORM_DATABASE_URL: "postgresql+asyncpg://provisa:provisa@${PRIMARY_IP}:5432/provisa"
+      TENANT_DATABASE_URL: "postgresql+psycopg://provisa:provisa@${PRIMARY_IP}:5432/provisa"
+      PLATFORM_DATABASE_URL: "postgresql+psycopg://provisa:provisa@${PRIMARY_IP}:5432/provisa"
       REDIS_URL: "redis://${PRIMARY_IP}:6379"
       TRINO_HOST: "${PRIMARY_IP}"
       TRINO_PORT: "8080"
@@ -795,8 +795,8 @@ services:
       PG_DATABASE: "\${CONFIG_DB_NAME:-provisa}"
       PG_USER: "\${CONFIG_DB_USER:-provisa}"
       PG_PASSWORD: "\${CONFIG_DB_PASSWORD:?Cloud SQL password}"
-      TENANT_DATABASE_URL: "postgresql+asyncpg://\${CONFIG_DB_USER:-provisa}:\${CONFIG_DB_PASSWORD}@\${CONFIG_DB_HOST}:\${CONFIG_DB_PORT:-5432}/\${CONFIG_DB_NAME:-provisa}"
-      PLATFORM_DATABASE_URL: "postgresql+asyncpg://\${CONFIG_DB_USER:-provisa}:\${CONFIG_DB_PASSWORD}@\${CONFIG_DB_HOST}:\${CONFIG_DB_PORT:-5432}/\${CONFIG_DB_NAME:-provisa}"
+      TENANT_DATABASE_URL: "postgresql+psycopg://\${CONFIG_DB_USER:-provisa}:\${CONFIG_DB_PASSWORD}@\${CONFIG_DB_HOST}:\${CONFIG_DB_PORT:-5432}/\${CONFIG_DB_NAME:-provisa}"
+      PLATFORM_DATABASE_URL: "postgresql+psycopg://\${CONFIG_DB_USER:-provisa}:\${CONFIG_DB_PASSWORD}@\${CONFIG_DB_HOST}:\${CONFIG_DB_PORT:-5432}/\${CONFIG_DB_NAME:-provisa}"
       PROVISA_EXTERNAL_CONTROL_DB: "\${PROVISA_EXTERNAL_CONTROL_DB:-1}"
       # The engine every Starter org queries is a shard POD on the cluster, created on
       # wake and gone on idle, so there is no hostname to pass here: the control plane

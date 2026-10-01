@@ -11,13 +11,21 @@
 """Control-plane database abstraction backed by SQLAlchemy Core.
 
 This is the ``AdminDatabase`` contract that decouples the Provisa control plane
-from raw asyncpg. It wraps a SQLAlchemy :class:`AsyncEngine` (whose connection
-pool replaces the former ``asyncpg.create_pool``) and exposes an asyncpg-shaped
-async API so the ~586 existing call sites keep working with minimal churn:
+from any one driver. It wraps ONE shared, synchronous SQLAlchemy :class:`Engine`
+per store per worker (REQ-828, amended 2026-09-29 by REQ-1882): every request
+runs on its own thread, the engine's pool is thread-safe, and a borrower waits
+for a free pooled connection — bounded by the request's remaining budget — when
+the pool is exhausted. It exposes an asyncpg-shaped awaitable API so the ~586
+existing call sites keep working unchanged:
 
     async with db.acquire() as conn:
         row = await conn.fetchrow("SELECT * FROM sources WHERE id = $1", sid)
         await conn.execute("DELETE FROM sources WHERE id = $1", sid)
+
+The ``async def`` methods keep that awaitable call-site contract only; their
+bodies run synchronously on the calling request thread. Every blocking statement
+is registered with the request deadline (``provisa.core.request_deadline``), whose
+watchdog cancels it through the driver when the budget expires.
 
 Two instances back the split control plane (see ``schema_admin`` /
 ``schema_org``): the **platform control plane** (``admin``) and the **tenant
@@ -33,42 +41,44 @@ Semantics deliberately mirror asyncpg:
 - :meth:`Connection.execute` returns an asyncpg-style status string
   (``"DELETE 1"``, ``"UPDATE 3"``, ``"INSERT 0 1"``) so status parsing at call
   sites (e.g. ``repositories/source.py``) is preserved.
-- ``jsonb``/``json`` columns are (de)serialized via the same codec the old pool
-  registered, so ``row['mapping']`` is a ``dict`` not a JSON string.
+- ``jsonb``/``json`` columns decode to Python objects, and on PostgreSQL a
+  ``dict``/``list`` bound to a raw ``$N`` placeholder is sent as JSON — the
+  control-plane schema has no array columns, so every such value targets a
+  ``jsonb`` column, exactly as the former asyncpg jsonb codec encoded it.
 
-Portability (Tier-2: SQLite >=3.35, MySQL 8) is layered on in later phases via
-:class:`Capabilities` gating; on PostgreSQL behavior is identical to the former
-asyncpg pool.
+Portability (Tier-2: SQLite >=3.35, MySQL 8) is layered on via
+:class:`Capabilities` gating.
 """
 
 from __future__ import annotations
 
+import io
 import json
+import logging
+import os
 import re
+import select
+import threading
 import urllib.parse
-from contextlib import asynccontextmanager
+import weakref
+from collections.abc import Callable, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from typing import Any, AsyncGenerator
 
 import sqlalchemy as sa
 from sqlalchemy import Table, event, text
 from sqlalchemy.engine import Engine
-from sqlalchemy.pool import QueuePool
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
+from sqlalchemy.pool import NullPool, QueuePool, SingletonThreadPool, StaticPool
 
+from provisa.core import request_deadline
 
-def _json_encoder(v: Any) -> str:
-    return v if isinstance(v, str) else json.dumps(v)
+log = logging.getLogger(__name__)
 
-
-async def _register_json_codecs(conn: Any) -> None:
-    """Match the codec the former asyncpg pool installed (provisa/core/db.py)."""
-    await conn.set_type_codec(
-        "jsonb", encoder=_json_encoder, decoder=json.loads, schema="pg_catalog"
-    )
-    await conn.set_type_codec(
-        "json", encoder=_json_encoder, decoder=json.loads, schema="pg_catalog"
-    )
+# Bounded wait for a pooled control-plane connection when every one is checked out (REQ-1882: the
+# (max+1)th borrower waits, never fails with "pool exhausted"); capped further by the request's
+# remaining budget when one is bound.
+_POOL_WAIT_S = 30.0
 
 
 # --------------------------------------------------------------------------- #
@@ -237,17 +247,26 @@ _PLACEHOLDER = re.compile(r"\$(\d+)")
 # A PG cast (``::jsonb``, ``::text[]`` …) applied directly to a placeholder.
 # SQLAlchemy's text() bind regex has a ``(?!:)`` lookahead, so it refuses to
 # bind ``:pN`` when ``::`` follows. We drop the cast on the placeholder: PG
-# infers the param type from the target column/context, and the jsonb codec
-# (registered on the connection) still (de)serializes correctly. Standalone
+# infers the param type from the target column/context, and a JSON-wrapped
+# dict/list (see _translate) lands in a jsonb column unchanged. Standalone
 # casts like ``col::text`` are left untouched.
 _CAST_ON_BIND = re.compile(r"(:p\d+)::\w+(?:\[\])?")
 
 
-def _translate(sql: str, args: tuple) -> tuple[str, dict[str, Any]]:
+def _translate(sql: str, args: tuple, dialect: str = "") -> tuple[str, dict[str, Any]]:
     """Convert asyncpg ``$1``-style SQL + positional args to SQLAlchemy
-    ``:pN``-style SQL + a param dict."""
+    ``:pN``-style SQL + a param dict.
+
+    On PostgreSQL a ``dict``/``list`` argument is wrapped as JSON: asyncpg learned each
+    placeholder's type from the server and its jsonb codec JSON-encoded these, whereas psycopg
+    dumps a list as an ARRAY and cannot dump a dict at all. Every control-plane column such a
+    value lands in is ``jsonb`` (the schema has no array columns), so JSONB is the old semantics."""
     if not args:
         return sql, {}
+    if dialect == "postgresql":
+        from psycopg.types.json import Jsonb
+
+        args = tuple(Jsonb(a) if isinstance(a, (dict, list)) else a for a in args)
     params = {f"p{i + 1}": a for i, a in enumerate(args)}
     sql = _PLACEHOLDER.sub(lambda m: f":p{m.group(1)}", sql)
     # Strip ``::type`` casts on binds — SQLAlchemy text() would misread the ``::``
@@ -292,62 +311,403 @@ def _status(sql: str, rowcount: int) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# statement cancel (request deadline)
+# --------------------------------------------------------------------------- #
+def _mysql_kill(engine: Engine, thread_id: int) -> None:
+    """Cancel a MySQL/MariaDB statement by ``KILL QUERY`` from a short-lived side connection.
+
+    Opened directly through the dialect, never borrowed from the pool: the pool may be exhausted
+    by the very requests whose statements need cancelling."""
+    cargs, cparams = engine.dialect.create_connect_args(engine.url)
+    side = engine.dialect.loaded_dbapi.connect(*cargs, **cparams)
+    try:
+        cur = side.cursor()
+        cur.execute(f"KILL QUERY {int(thread_id)}")
+        cur.close()
+    finally:
+        side.close()
+
+
+def statement_cancel(sc: sa.Connection) -> Callable[[], None]:
+    """The driver call that aborts the statement in flight on ``sc`` from another thread."""
+    dialect = sc.dialect.name
+    dbapi_conn = sc.connection.dbapi_connection
+    if dbapi_conn is None:
+        raise RuntimeError("control-plane connection has no live DBAPI connection")
+    if dialect == "postgresql":
+        return dbapi_conn.cancel  # psycopg 3: sends a cancel request on a separate socket
+    if dialect in ("sqlite", "duckdb"):
+        return dbapi_conn.interrupt
+    if dialect == "oracle":
+        return dbapi_conn.cancel  # python-oracledb: Connection.cancel() from another thread
+    if dialect in ("mysql", "mariadb"):
+        engine = sc.engine
+        thread_id = dbapi_conn.thread_id()
+        return lambda: _mysql_kill(engine, thread_id)
+    raise ValueError(f"no statement cancel for control-plane dialect {dialect!r}")
+
+
+# --------------------------------------------------------------------------- #
+# LISTEN/NOTIFY (PostgreSQL) — one listener thread per Database
+# --------------------------------------------------------------------------- #
+_NotifyCallback = Callable[[Any, int, str, str], None]
+
+
+class _PgListener:
+    """Delivers PostgreSQL NOTIFY payloads to registered callbacks.
+
+    A LISTEN outlives the request that registered it, so it runs on a dedicated daemon thread over
+    its own autocommit psycopg 3 connection (opened directly, not from the shared pool, which it
+    would otherwise hold forever). The thread waits on the connection socket plus a wake pipe with
+    ``select()``, drains what arrived with ``conn.notifies(timeout=0)``, and hands each payload to
+    its callback on the event loop that registered it (``call_soon_threadsafe``) — the callbacks
+    feed ``asyncio.Queue``s owned by that loop. LISTEN/UNLISTEN are issued on the listener thread
+    (the only user of that connection), and ``subscribe`` returns only once the LISTEN is in
+    effect."""
+
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+        self._lock = threading.Lock()
+        self._callbacks: dict[str, list[tuple[_NotifyCallback, Any, Any]]] = {}
+        self._commands: list[tuple[str, str, threading.Event, list[BaseException]]] = []
+        self._thread: threading.Thread | None = None
+        self._wake_r, self._wake_w = os.pipe()
+        self._stopping = False
+        self._conn: Any = None
+
+    def _connect(self) -> Any:
+        cargs, cparams = self._engine.dialect.create_connect_args(self._engine.url)
+        conn = self._engine.dialect.loaded_dbapi.connect(*cargs, **cparams)
+        conn.autocommit = True
+        return conn
+
+    def _ensure_started(self) -> None:
+        if self._thread is not None:
+            return
+        self._conn = self._connect()
+        self._thread = threading.Thread(target=self._run, name="provisa-pg-listen", daemon=True)
+        self._thread.start()
+
+    def _submit(self, verb: str, channel: str) -> None:
+        done = threading.Event()
+        errors: list[BaseException] = []
+        with self._lock:
+            self._ensure_started()
+            self._commands.append((verb, channel, done, errors))
+        os.write(self._wake_w, b"x")
+        if not done.wait(_POOL_WAIT_S):
+            raise TimeoutError(f"LISTEN thread did not apply {verb} {channel!r}")
+        if errors:
+            raise errors[0]
+
+    def subscribe(self, channel: str, callback: _NotifyCallback, owner: Any, loop: Any) -> None:
+        with self._lock:
+            entries = self._callbacks.setdefault(channel, [])
+            first = not entries
+            entries.append((callback, owner, loop))
+        if first:
+            self._submit("LISTEN", channel)
+
+    def unsubscribe(self, channel: str, callback: _NotifyCallback) -> None:
+        with self._lock:
+            entries = self._callbacks.get(channel, [])
+            # Equality, not identity: a bound-method callback is a new object on every access.
+            remaining = [e for e in entries if e[0] != callback]
+            if len(remaining) == len(entries):
+                raise KeyError(f"callback not registered on channel {channel!r}")
+            if remaining:
+                self._callbacks[channel] = remaining
+                return
+            del self._callbacks[channel]
+        self._submit("UNLISTEN", channel)
+
+    def _apply_commands(self) -> None:
+        with self._lock:
+            pending, self._commands = self._commands, []
+        for verb, channel, done, errors in pending:
+            try:
+                cur = self._conn.cursor()
+                cur.execute(f'{verb} "{channel}"')
+                cur.close()
+            except BaseException as exc:  # handed to the waiting subscriber, which re-raises it
+                errors.append(exc)
+            finally:
+                done.set()
+
+    def _dispatch(self) -> None:
+        # timeout=0: consume what the socket already holds (select() reported it readable) and
+        # return, so the loop goes back to waiting on the socket AND the wake pipe.
+        for n in self._conn.notifies(timeout=0):
+            with self._lock:
+                entries = list(self._callbacks.get(n.channel, []))
+            for callback, owner, loop in entries:
+                try:
+                    loop.call_soon_threadsafe(callback, owner, n.pid, n.channel, n.payload)
+                except RuntimeError:
+                    # The registering loop is closed: its request ended without removing the
+                    # listener. Reported and dropped so it is not retried on every notify.
+                    log.error(
+                        "LISTEN %s: registering loop is closed; dropping its callback", n.channel
+                    )
+                    with self._lock:
+                        self._callbacks[n.channel] = [
+                            e for e in self._callbacks.get(n.channel, []) if e[0] != callback
+                        ]
+
+    def _run(self) -> None:
+        while not self._stopping:
+            sock = self._conn.fileno()
+            ready, _, _ = select.select([sock, self._wake_r], [], [], 5.0)
+            if self._wake_r in ready:
+                os.read(self._wake_r, 4096)
+                self._apply_commands()
+            if sock in ready:
+                self._dispatch()
+
+    def close(self) -> None:
+        self._stopping = True
+        os.write(self._wake_w, b"x")
+        if self._thread is not None:
+            self._thread.join(timeout=10)
+        if self._conn is not None:
+            self._conn.close()
+        os.close(self._wake_r)
+        os.close(self._wake_w)
+
+
+# --------------------------------------------------------------------------- #
+# pool gate — bounded, deadline-aware wait for a pooled connection
+# --------------------------------------------------------------------------- #
+class _PoolGate:
+    """Bounds concurrent checkouts from one engine and makes the extra borrower wait.
+
+    A sized ``QueuePool`` takes a semaphore of ``size + overflow`` slots, waited on for the
+    request's remaining budget (SQLAlchemy's own ``pool_timeout`` is shared engine state and cannot
+    be set per caller). A single-connection pool (``StaticPool``/``SingletonThreadPool`` — an
+    in-memory SQLite/DuckDB store) takes a re-entrant lock instead: that one connection is not safe
+    for concurrent use, so request threads use it one at a time, while a nested acquire on the
+    thread already holding it proceeds (the pool hands back the same connection). ``NullPool``
+    opens a connection per checkout and has nothing to exhaust."""
+
+    def __init__(self, engine: Engine) -> None:
+        pool = engine.pool
+        self._lock: Any = None
+        if isinstance(pool, (StaticPool, SingletonThreadPool)):
+            self._lock = threading.RLock()
+        elif isinstance(pool, QueuePool):
+            self._lock = threading.BoundedSemaphore(pool.size() + max(pool._max_overflow, 0))
+        elif not isinstance(pool, NullPool):
+            raise TypeError(f"unsupported control-plane pool {type(pool).__name__}")
+
+    @contextmanager
+    def slot(self) -> Iterator[None]:
+        if self._lock is None:
+            yield
+            return
+        budget = request_deadline.remaining()
+        wait = _POOL_WAIT_S if budget is None else min(_POOL_WAIT_S, budget)
+        if not self._lock.acquire(timeout=wait):
+            raise TimeoutError(f"no control-plane connection freed within {wait:.1f}s")
+        try:
+            yield
+        finally:
+            self._lock.release()
+
+
+_GATES: "weakref.WeakKeyDictionary[Engine, _PoolGate]" = weakref.WeakKeyDictionary()
+_GATES_LOCK = threading.Lock()
+
+
+def _gate_for(engine: Engine) -> _PoolGate:
+    with _GATES_LOCK:
+        gate = _GATES.get(engine)
+        if gate is None:
+            gate = _GATES[engine] = _PoolGate(engine)
+        return gate
+
+
+@contextmanager
+def bounded_connection(engine: Engine, *, begin: bool = False) -> Iterator[sa.Connection]:
+    """A pooled connection from a shared sync ``engine``: the checkout waits for a free slot
+    bounded by the request's remaining budget, and statements run on it are cancellable by the
+    request deadline via :func:`deadline_execute`. ``begin`` wraps it in a transaction committed
+    on exit (``engine.begin()`` semantics)."""
+    with _gate_for(engine).slot():
+        if begin:
+            with engine.begin() as sc:
+                yield sc
+        else:
+            with engine.connect() as sc:
+                yield sc
+
+
+def _buffered(result: Any) -> Any:
+    """Fetch every row of ``result`` now and hand back the same ``CursorResult`` replaying them.
+
+    The driver cursor is drained before the statement's autocommit, as SQLAlchemy's async layer
+    buffered every result — SQLite refuses to commit with a statement still in progress, and
+    callers read rows after the commit. ``rowcount``/``lastrowid``/``keys()`` are preserved.
+    ``_rewind`` is SQLAlchemy's own replay of a fetched rowset onto its result (used for
+    ``return_defaults`` + supplemental returning)."""
+    if not result.returns_rows:
+        return result
+    rowcount = result.rowcount
+    rows = result.fetchall()
+    result._rewind(rows)
+    result.__dict__["rowcount"] = rowcount
+    return result
+
+
+def deadline_execute(sc: sa.Connection, stmt: Any, params: Any = None) -> Any:
+    """``sc.execute`` registered with the request deadline (when one is bound), which cancels it
+    through the driver when the budget expires. The result is fully buffered (see
+    :func:`_buffered`)."""
+    if request_deadline.current() is None:
+        return _buffered(sc.execute(stmt, params))
+    with request_deadline.cancel_on_deadline(statement_cancel(sc)):
+        return _buffered(sc.execute(stmt, params))
+
+
+# --------------------------------------------------------------------------- #
 # connection
 # --------------------------------------------------------------------------- #
-class Connection:
-    """asyncpg-shaped wrapper over a SQLAlchemy :class:`AsyncConnection`."""
+def _copy_text(value: Any) -> str:
+    """A DBAPI value rendered for a PostgreSQL text/CSV ``COPY`` field."""
+    import datetime as _dt
 
-    def __init__(self, ac: AsyncConnection, caps: Capabilities) -> None:
-        self._ac = ac
+    from psycopg import Binary
+    from psycopg.types.json import Json, JsonDumper, Jsonb
+
+    if isinstance(value, Binary):  # a DBAPI Binary wrapper around bytes
+        value = value.obj
+    if isinstance(value, (Json, Jsonb)):  # the dialect's JSON/JSONB bind processor wraps values
+        # psycopg's own text dumper renders the wrapper exactly as it would on the wire.
+        return bytes(JsonDumper(Json).dump(value)).decode()  # type: ignore[arg-type]
+    if isinstance(value, bool):
+        return "t" if value else "f"
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return "\\x" + bytes(value).hex()
+    if isinstance(value, (list, tuple)):
+        return "{" + ",".join(_array_elem(v) for v in value) + "}"
+    if isinstance(value, dict):
+        return json.dumps(value)
+    if isinstance(value, (_dt.datetime, _dt.date, _dt.time)):
+        return value.isoformat()
+    return str(value)
+
+
+def _array_elem(value: Any) -> str:
+    if value is None:
+        return "NULL"
+    if isinstance(value, (list, tuple)):
+        return _copy_text(value)
+    body = _copy_text(value).replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{body}"'
+
+
+class Connection:
+    """asyncpg-shaped wrapper over a synchronous SQLAlchemy :class:`sqlalchemy.Connection`.
+
+    Every method is ``async def`` only to keep the awaitable call-site contract; each body runs
+    synchronously on the calling request thread."""
+
+    def __init__(self, sc: sa.Connection, caps: Capabilities) -> None:
+        self._sc = sc
         self.capabilities = caps
         self._tx_depth = 0
+        self._cancel: Callable[[], None] | None = None
 
-    async def _run(self, sql: str, args: tuple):
-        stmt, params = _translate(sql, args)
-        return await self._ac.execute(text(stmt), params)
+    def _statement_cancel(self) -> Callable[[], None]:
+        if self._cancel is None:
+            self._cancel = statement_cancel(self._sc)
+        return self._cancel
 
-    async def _commit_if_autocommit(self) -> None:
+    @contextmanager
+    def _cancellable(self) -> Iterator[None]:
+        """Register the statement about to run with the request deadline, if one is bound.
+        Outside a request (startup, background work) there is no budget and nothing to cancel.
+
+        A statement that fails OUTSIDE an explicit ``transaction()`` is rolled back at once: the
+        asyncpg contract this class keeps is per-statement autocommit, where a caught failure
+        (a duplicate-key INSERT a caller treats as its success case) leaves the connection usable.
+        Without the rollback PostgreSQL keeps the implicit transaction aborted and refuses every
+        later statement on this connection with "current transaction is aborted"."""
+        try:
+            if request_deadline.current() is None:
+                yield
+            else:
+                with request_deadline.cancel_on_deadline(self._statement_cancel()):
+                    yield
+        except BaseException:
+            if self._tx_depth == 0:
+                self._sc.rollback()
+            raise
+
+    def _exec(self, stmt: Any, params: Any = None) -> Any:
+        with self._cancellable():
+            return _buffered(self._sc.execute(stmt, params))
+
+    def _run(self, sql: str, args: tuple) -> Any:
+        stmt, params = _translate(sql, args, self.capabilities.dialect)
+        return self._exec(text(stmt), params)
+
+    def _commit_if_autocommit(self) -> None:
         if self._tx_depth == 0:
-            await self._ac.commit()
+            self._sc.commit()
 
+    # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
     async def execute(self, sql: str, *args: Any) -> str:
-        # No-arg DDL scripts (multiple statements) can't go through the prepared
-        # protocol; route them to the raw driver. Parameterized statements never
-        # reach here as multi-statement (they carry args).
+        # No-arg DDL scripts (multiple statements) run as one simple-protocol script.
+        # Parameterized statements never reach here as multi-statement (they carry args).
         if not args and _is_multi_statement(sql):
-            await self.execute_script(sql)
-            await self._commit_if_autocommit()
+            self._execute_script(sql)
+            self._commit_if_autocommit()
             return ""
-        result = await self._run(sql, args)
+        result = self._run(sql, args)
         rowcount = result.rowcount if result.rowcount is not None else -1
-        await self._commit_if_autocommit()
+        self._commit_if_autocommit()
         return _status(sql, rowcount)
 
+    # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
     async def executemany(self, sql: str, args_seq: list) -> None:
-        stmt, _ = _translate(sql, tuple(args_seq[0]) if args_seq else ())
-        param_list = [{f"p{i + 1}": v for i, v in enumerate(row)} for row in args_seq]
+        dialect = self.capabilities.dialect
+        stmt, _ = _translate(sql, tuple(args_seq[0]) if args_seq else (), dialect)
+        param_list = [_translate(sql, tuple(row), dialect)[1] for row in args_seq]
         if param_list:
-            await self._ac.execute(text(stmt), param_list)
-        await self._commit_if_autocommit()
+            self._exec(text(stmt), param_list)
+        self._commit_if_autocommit()
 
+    # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
     async def fetch(self, sql: str, *args: Any) -> list[Row]:
-        result = await self._run(sql, args)
+        result = self._run(sql, args)
         rows = [Row(r) for r in result.fetchall()]
-        await self._commit_if_autocommit()
+        self._commit_if_autocommit()
         return rows
 
+    # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
+    async def fetch_with_columns(self, sql: str, *args: Any) -> tuple[list[str], list[Row]]:
+        """Rows plus the result's column names — known even when no row comes back."""
+        result = self._run(sql, args)
+        columns = list(result.keys())
+        rows = [Row(r) for r in result.fetchall()]
+        self._commit_if_autocommit()
+        return columns, rows
+
+    # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
     async def fetchrow(self, sql: str, *args: Any) -> Row | None:
-        result = await self._run(sql, args)
+        result = self._run(sql, args)
         r = result.fetchone()
-        await self._commit_if_autocommit()
+        self._commit_if_autocommit()
         return Row(r) if r is not None else None
 
+    # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
     async def fetchval(self, sql: str, *args: Any, column: int = 0) -> Any:
-        result = await self._run(sql, args)
+        result = self._run(sql, args)
         r = result.fetchone()
-        await self._commit_if_autocommit()
+        self._commit_if_autocommit()
         return r[column] if r is not None else None
 
+    # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
     async def reflect_columns(self, table: str, schema: str | None = None) -> list[dict]:
         """Portable column reflection via the SQLAlchemy Inspector — replaces raw
         ``information_schema`` queries so it runs on any backend. Returns one dict per
@@ -359,6 +719,8 @@ class Connection:
         backends (``capabilities.schemas``) and ignored on schema-less ones (SQLite),
         so callers pass the org schema unconditionally and the dialect decision stays
         inside the abstraction."""
+        from sqlalchemy import inspect as _sa_inspect
+
         eff_schema = schema if self.capabilities.schemas else None
         is_sqlite = self.capabilities.dialect == "sqlite"
 
@@ -366,44 +728,38 @@ class Connection:
         # meta-table views. Rather than default such a column to string, analyze the actual data
         # in-line with SQL (``typeof``) and pick the best match; storage classes map cleanly.
         _SQLITE_STORAGE = {"integer": "integer", "real": "double", "text": "text", "blob": "blob"}
+        sync_conn = self._sc
+        insp = _sa_inspect(sync_conn)
+        pk = set(insp.get_pk_constraint(table, schema=eff_schema).get("constrained_columns") or [])
+        ref = f'"{table}"' if eff_schema is None else f'"{eff_schema}"."{table}"'
 
-        def _inspect(sync_conn: Any) -> list[dict]:
-            from sqlalchemy import inspect as _sa_inspect
+        def _infer_sqlite(col: str) -> str:
+            # A column with no non-null sample (empty table / all-null) yields no row — the
+            # storage class is genuinely undetermined, so "text" is the neutral class. This is
+            # the design-mandated default (REQ-947 design-time typing), not error-swallowing.
+            row = sync_conn.exec_driver_sql(
+                f'SELECT typeof("{col}") FROM {ref} WHERE "{col}" IS NOT NULL LIMIT 1'
+            ).fetchone()
+            return _SQLITE_STORAGE.get(row[0], "text") if row else "text"
 
-            insp = _sa_inspect(sync_conn)
-            pk = set(
-                insp.get_pk_constraint(table, schema=eff_schema).get("constrained_columns") or []
+        cols: list[dict] = []
+        for c in insp.get_columns(table, schema=eff_schema):
+            type_name = str(c["type"]).split("(")[0].strip().lower()
+            if "[]" in type_name or type_name in ("array", "json", "jsonb"):
+                type_name = "text"
+            elif is_sqlite and type_name in ("null", "nulltype", ""):
+                type_name = _infer_sqlite(c["name"])
+            cols.append(
+                {
+                    "column_name": c["name"],
+                    "data_type": type_name,
+                    "is_primary_key": c["name"] in pk,
+                }
             )
-            ref = f'"{table}"' if eff_schema is None else f'"{eff_schema}"."{table}"'
-
-            def _infer_sqlite(col: str) -> str:
-                # A column with no non-null sample (empty table / all-null) yields no row — the
-                # storage class is genuinely undetermined, so "text" is the neutral class. This is
-                # the design-mandated default (REQ-947 design-time typing), not error-swallowing.
-                row = sync_conn.exec_driver_sql(
-                    f'SELECT typeof("{col}") FROM {ref} WHERE "{col}" IS NOT NULL LIMIT 1'
-                ).fetchone()
-                return _SQLITE_STORAGE.get(row[0], "text") if row else "text"
-
-            cols: list[dict] = []
-            for c in insp.get_columns(table, schema=eff_schema):
-                type_name = str(c["type"]).split("(")[0].strip().lower()
-                if "[]" in type_name or type_name in ("array", "json", "jsonb"):
-                    type_name = "text"
-                elif is_sqlite and type_name in ("null", "nulltype", ""):
-                    type_name = _infer_sqlite(c["name"])
-                cols.append(
-                    {
-                        "column_name": c["name"],
-                        "data_type": type_name,
-                        "is_primary_key": c["name"] in pk,
-                    }
-                )
-            return cols
-
-        return await self._ac.run_sync(_inspect)
+        return cols
 
     # -- advisory locks (dialect-portable; a no-op where the backend has none) --
+    # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
     async def advisory_xact_lock(self, key: int) -> None:
         """Take a transaction-scoped advisory lock keyed by ``key`` (auto-released at commit).
         A no-op on backends without advisory locks — single-writer file DBs (SQLite) need none."""
@@ -440,6 +796,15 @@ class Connection:
                 await self.execute(release)
 
     # -- portable Core helpers (dialect-agnostic; used by migrated repositories) --
+    def _execute_core(self, stmt: Any) -> Any:
+        from provisa.core.env_secrets import guard_statement
+        from provisa.core.meta_rls import apply_meta_tenant_guard
+
+        result = self._exec(apply_meta_tenant_guard(guard_statement(stmt)))
+        self._commit_if_autocommit()
+        return result
+
+    # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
     async def execute_core(self, stmt: Any) -> Any:
         """Execute a SQLAlchemy Core statement (select/insert/update/delete)
         and return the CursorResult. Autocommits outside a transaction.
@@ -452,19 +817,16 @@ class Connection:
         credential into a carried field. It sits here rather than at the commit because REQ-1524
         forbids a failed commit from failing the change it observes — refusing at commit time would
         leave the secret in the database and the repository permanently behind."""
-        from provisa.core.env_secrets import guard_statement
-        from provisa.core.meta_rls import apply_meta_tenant_guard
+        return self._execute_core(stmt)
 
-        result = await self._ac.execute(apply_meta_tenant_guard(guard_statement(stmt)))
-        await self._commit_if_autocommit()
-        return result
-
+    # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
     async def bulk_copy(self, table: Table, rows: list[dict[str, Any]]) -> int:
         """Bulk-ingest ``rows`` into ``table`` via the store's fastest columnar / bulk path (REQ-990).
 
         The path is chosen from the dialect capability — explicit, never a silent fallback:
-        - PostgreSQL: binary ``COPY`` (asyncpg ``copy_records_to_table``) — the columnar bulk-load
-          path, one round trip, no per-row statement.
+        - PostgreSQL: ``COPY ... FROM STDIN`` (CSV) — one statement streaming every row, no
+          per-row statement. Each value is first passed through its column type's bind processor
+          (JSON columns serialize, arrays stay lists), then rendered as a COPY field.
         - Every other relational backend: a single ``executemany`` Core INSERT (one prepared
           statement, N parameter sets) — still a bulk path, never a per-row loop.
 
@@ -474,18 +836,42 @@ class Connection:
             return 0
         colnames = [c.name for c in table.columns]
         if self.capabilities.dialect == "postgresql":
-            records = [tuple(r.get(cn) for cn in colnames) for r in rows]
-            raw = await self._driver_connection()
-            await raw.copy_records_to_table(
-                table.name, records=records, columns=colnames, schema_name=table.schema
-            )
-            await self._commit_if_autocommit()
-            return len(records)
+            dialect = self._sc.dialect
+            # The dialect's own implementation of each type — what the statement compiler binds
+            # with (generic Numeric's processor would round-trip Decimal through float).
+            procs = [c.type.dialect_impl(dialect).bind_processor(dialect) for c in table.columns]
+            buf = io.StringIO()
+            for r in rows:
+                fields: list[str] = []
+                for cn, proc in zip(colnames, procs):
+                    v = r.get(cn)
+                    if v is not None and proc is not None:
+                        v = proc(v)
+                    # CSV COPY: NULL is an unquoted empty field; every value is quoted, so an
+                    # empty string ("") stays distinct from NULL.
+                    fields.append("" if v is None else '"' + _copy_text(v).replace('"', '""') + '"')
+                buf.write(",".join(fields) + "\n")
+            qualified = f'"{table.schema}"."{table.name}"' if table.schema else f'"{table.name}"'
+            cols_sql = ", ".join(f'"{cn}"' for cn in colnames)
+            copy_sql = f"COPY {qualified} ({cols_sql}) FROM STDIN WITH (FORMAT csv)"
+            buf.seek(0)
+            dbapi_conn = self._sc.connection.dbapi_connection
+            assert dbapi_conn is not None
+            cur = dbapi_conn.cursor()
+            try:
+                with self._cancellable():
+                    with cur.copy(copy_sql) as copy:
+                        copy.write(buf.getvalue())
+            finally:
+                cur.close()
+            self._commit_if_autocommit()
+            return len(rows)
         param_list = [{cn: r.get(cn) for cn in colnames} for r in rows]
-        await self._ac.execute(table.insert(), param_list)
-        await self._commit_if_autocommit()
+        self._exec(table.insert(), param_list)
+        self._commit_if_autocommit()
         return len(param_list)
 
+    # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
     async def upsert(
         self,
         table: Table,
@@ -524,17 +910,17 @@ class Connection:
         where = and_(*[table.c[k] == values[k] for k in index_elements])
 
         if set_map:
-            res = await self.execute_core(_update(table).where(where).values(**set_map))
+            res = self._execute_core(_update(table).where(where).values(**set_map))
             if (res.rowcount or 0) > 0:
                 return
         else:
-            exists = await self.execute_core(_select(literal(1)).select_from(table).where(where))
+            exists = self._execute_core(_select(literal(1)).select_from(table).where(where))
             if exists.fetchone() is not None:
                 return  # DO NOTHING — row already present
         # Isolate the INSERT in a SAVEPOINT: on PostgreSQL a unique-violation aborts the whole
         # surrounding transaction, so without the nested scope the caught IntegrityError would leave
         # the connection in a failed state and the next statement (e.g. upsert_returning's SELECT)
-        # would raise InFailedSQLTransactionError. begin_nested auto-begins the outer txn if none is
+        # would raise InFailedSQLTransaction. begin_nested auto-begins the outer txn if none is
         # active; rolling back the savepoint keeps the connection usable.
         # REQ-1525: this INSERT is executed directly rather than through execute_core (it needs
         # the savepoint), so the credential guard that lives there is applied here too — a seam
@@ -542,26 +928,27 @@ class Connection:
         insert_stmt = apply_meta_tenant_guard(guard_statement(_insert(table).values(**values)))
         try:
             if self.capabilities.savepoints:
-                async with self._ac.begin_nested():
-                    await self._ac.execute(insert_stmt)
+                with self._sc.begin_nested():
+                    self._exec(insert_stmt)
             else:
                 # No savepoint support (DuckDB has no SAVEPOINT keyword). Safe because these
                 # backends do not abort the surrounding transaction when a statement raises, so
                 # the caught IntegrityError leaves the connection usable without a nested scope.
-                await self._ac.execute(insert_stmt)
+                self._exec(insert_stmt)
         except IntegrityError:
             # Lost an insert race with a concurrent writer — fall back to the update. Only a race
             # leaves a row to update: when the update matches nothing, the INSERT was refused by a
             # constraint (a CHECK, a NOT NULL, a foreign key), and swallowing that turned a schema
             # defect into a silently missing row (REQ-1668: api_sources.type refused 'neo4j').
             if set_map:
-                res = await self.execute_core(_update(table).where(where).values(**set_map))
+                res = self._execute_core(_update(table).where(where).values(**set_map))
                 if (res.rowcount or 0) > 0:
-                    await self._commit_if_autocommit()
+                    self._commit_if_autocommit()
                     return
             raise
-        await self._commit_if_autocommit()
+        self._commit_if_autocommit()
 
+    # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
     async def upsert_returning(
         self,
         table: Table,
@@ -584,10 +971,11 @@ class Connection:
             set_extra=set_extra,
         )
         where = and_(*[table.c[k] == values[k] for k in index_elements])
-        res = await self.execute_core(_select(table.c[returning]).where(where))
+        res = self._execute_core(_select(table.c[returning]).where(where))
         row = res.fetchone()
         return row[0] if row is not None else None
 
+    # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
     async def insert_returning(self, table: Table, values: dict[str, Any], returning: str) -> Any:
         """INSERT and return one generated column value, portably.
 
@@ -597,10 +985,10 @@ class Connection:
 
         if self.capabilities.returning:
             stmt = _insert(table).values(**values).returning(table.c[returning])
-            result = await self.execute_core(stmt)
+            result = self._execute_core(stmt)
             row = result.fetchone()
             return row[0] if row is not None else None
-        result = await self.execute_core(_insert(table).values(**values))
+        result = self._execute_core(_insert(table).values(**values))
         return result.lastrowid
 
     @asynccontextmanager
@@ -614,72 +1002,80 @@ class Connection:
             self._tx_depth += 1
             try:
                 yield
-                await self._ac.commit()
+                self._sc.commit()
             except BaseException:
-                await self._ac.rollback()
+                self._sc.rollback()
                 raise
             finally:
                 self._tx_depth -= 1
         else:
             self._tx_depth += 1
-            sp = await self._ac.begin_nested()
+            sp = self._sc.begin_nested()
             try:
                 yield
-                await sp.commit()
+                sp.commit()
             except BaseException:
-                await sp.rollback()
+                sp.rollback()
                 raise
             finally:
                 self._tx_depth -= 1
 
+    def _execute_script(self, sql: str) -> None:
+        if self.capabilities.dialect == "postgresql":
+            # psycopg with no parameters and prepare=False sends the script on the simple query
+            # protocol, which accepts multiple statements and ``DO $$`` blocks in one call (a
+            # prepared statement cannot hold more than one).
+            dbapi_conn = self._sc.connection.dbapi_connection
+            assert dbapi_conn is not None
+            # The raw cursor bypasses SQLAlchemy's transaction tracking, so outside an explicit
+            # transaction() the script's own DBAPI transaction is committed or rolled back here:
+            # Connection.commit()/rollback() would be no-ops for work SQLAlchemy never saw begin,
+            # leaving a failed script's transaction aborted (poisoning the next statement) or a
+            # successful one uncommitted (lost on pool checkin).
+            cur: Any = (
+                dbapi_conn.cursor()
+            )  # a psycopg cursor (the DBAPI protocol type lacks prepare=)
+            try:
+                with self._cancellable():
+                    cur.execute(sql, prepare=False)
+            except BaseException:
+                if self._tx_depth == 0:
+                    dbapi_conn.rollback()
+                raise
+            finally:
+                cur.close()
+            if self._tx_depth == 0:
+                dbapi_conn.commit()
+            return
+        for stmt in sql.split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                with self._cancellable():
+                    self._sc.exec_driver_sql(stmt)
+
+    # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
     async def execute_script(self, sql: str) -> None:
         """Run a multi-statement SQL script (DDL bootstrap).
 
-        PostgreSQL: SQLAlchemy ``text()`` uses the extended protocol, which rejects
-        multiple statements and ``DO $$`` blocks in a single call, so route the whole
-        script to asyncpg's simple query protocol (``conn.execute``), which allows both.
+        PostgreSQL: the whole script goes to the driver unparameterized, on the simple query
+        protocol, which allows multiple statements and ``DO $$`` blocks.
 
         Other dialects: split into individual statements and run each through the
         SQLAlchemy connection via ``exec_driver_sql`` (dialect-agnostic — no driver-
         specific method). The non-PG scripts we emit are plain DDL (e.g. meta-view
         ``DROP``/``CREATE``) with no procedural blocks or embedded statement separators;
         tables come from ``metadata.create_all``, not this path."""
-        if self.capabilities.dialect == "postgresql":
-            conn = await self._driver_connection()
-            await conn.execute(sql)
-            return
-        for stmt in sql.split(";"):
-            stmt = stmt.strip()
-            if stmt:
-                await self._ac.exec_driver_sql(stmt)
-
-    async def prepare(self, sql: str) -> Any:
-        """Prepare a statement on the raw asyncpg driver connection and return
-        the asyncpg ``PreparedStatement`` (used for describe-empty-result paths
-        via ``stmt.get_attributes()`` in cypher_router / pgwire). PostgreSQL
-        only — these paths are PG-protocol specific."""
-        conn = await self._driver_connection()
-        return await conn.prepare(sql)
-
-    # -- raw driver access for PG-only LISTEN/NOTIFY (subscriptions, triggers) --
-    async def _driver_connection(self) -> Any:
-        raw = await self._ac.get_raw_connection()
-        return raw.driver_connection
-
-    async def add_listener(self, channel: str, callback: Any) -> None:
-        conn = await self._driver_connection()
-        await conn.add_listener(channel, callback)
-
-    async def remove_listener(self, channel: str, callback: Any) -> None:
-        conn = await self._driver_connection()
-        await conn.remove_listener(channel, callback)
+        self._execute_script(sql)
 
 
 # --------------------------------------------------------------------------- #
 # database
 # --------------------------------------------------------------------------- #
 class Database:
-    """A control-plane database handle backed by one SQLAlchemy AsyncEngine.
+    """A control-plane database handle backed by one shared, synchronous SQLAlchemy Engine.
+
+    The engine's pool is thread-safe and shared by every request thread (REQ-1882); ``acquire``
+    waits for a free pooled connection, bounded by the request's remaining budget.
 
     ``search_path`` scopes every acquired connection to the org namespace on
     schema-capable backends, preserving the isolation the former asyncpg pool
@@ -689,25 +1085,34 @@ class Database:
     the org in the file, so this is a no-op there — org = which engine.
     """
 
-    def __init__(self, engine: AsyncEngine, name: str, search_path: str | None = None) -> None:
+    def __init__(self, engine: Engine, name: str, search_path: str | None = None) -> None:
         self._engine = engine
         self.name = name
         self.search_path = search_path
         self.dialect = engine.dialect.name
         self.capabilities = Capabilities.for_dialect(self.dialect)
+        self._listener: _PgListener | None = None
+        self._listener_lock = threading.Lock()
 
     @property
-    def engine(self) -> AsyncEngine:
+    def engine(self) -> Engine:
+        """The shared synchronous engine."""
         return self._engine
+
+    def _get_listener(self) -> _PgListener:
+        with self._listener_lock:
+            if self._listener is None:
+                self._listener = _PgListener(self._engine)
+            return self._listener
 
     @asynccontextmanager
     async def acquire(self) -> AsyncGenerator[Connection]:
-        async with self._engine.connect() as ac:
+        with bounded_connection(self._engine) as sc:
             if self.search_path and (sql := self.capabilities.enter_org_sql(self.search_path)):
-                await ac.execute(text(sql))
-                await ac.commit()
+                sc.execute(text(sql))
+                sc.commit()
             try:
-                yield Connection(ac, self.capabilities)
+                yield Connection(sc, self.capabilities)
             except BaseException:
                 # A statement that failed inside the block (a duplicate-key INSERT a caller
                 # catches as its success case) leaves a PostgreSQL transaction aborted, and an
@@ -716,7 +1121,7 @@ class Database:
                 # the caller's own error. Roll it back first; the caller's exception still
                 # propagates.
                 if self.dialect == "postgresql":
-                    await ac.rollback()
+                    sc.rollback()
                 raise
             finally:
                 # PG session state (search_path) survives pool checkin — SQLAlchemy's
@@ -727,8 +1132,29 @@ class Database:
                 # search_path setting. Reset unconditionally so every acquire starts the
                 # role's default search_path, matching the guarantee this class documents.
                 if self.dialect == "postgresql":
-                    await ac.execute(text("RESET search_path"))
-                    await ac.commit()
+                    sc.execute(text("RESET search_path"))
+                    sc.commit()
+
+    # -- PG-only LISTEN/NOTIFY: served by the listener thread's own connection, so a listener
+    #    (an SSE stream, the event-trigger manager) never holds a pooled connection. --
+    def _pg_listener(self) -> _PgListener:
+        if not self.capabilities.listen_notify:
+            raise NotImplementedError(
+                f"LISTEN/NOTIFY is not available on the {self.dialect} control plane"
+            )
+        return self._get_listener()
+
+    # Async only to keep the awaitable call-site contract; the LISTEN runs on the listener thread.
+    async def add_listener(self, channel: str, callback: _NotifyCallback) -> None:
+        """Deliver NOTIFYs on ``channel`` to ``callback(db, pid, channel, payload)``, called on
+        the running event loop (asyncpg's callback signature and delivery point)."""
+        import asyncio
+
+        self._pg_listener().subscribe(channel, callback, self, asyncio.get_running_loop())
+
+    # Async only to keep the awaitable call-site contract; the UNLISTEN runs on the listener thread.
+    async def remove_listener(self, channel: str, callback: _NotifyCallback) -> None:
+        self._pg_listener().unsubscribe(channel, callback)
 
     # Pool-style passthrough (asyncpg pools proxy connection methods). Used by
     # the few call sites that call db.execute(...) / db.fetch(...) directly.
@@ -767,8 +1193,13 @@ class Database:
             return pool.checkedin()
         return -1
 
+    # Async only to keep the awaitable call-site contract; disposes the pool synchronously.
     async def close(self) -> None:
-        await self._engine.dispose()
+        with self._listener_lock:
+            listener, self._listener = self._listener, None
+        if listener is not None:
+            listener.close()
+        self._engine.dispose()
 
 
 # --------------------------------------------------------------------------- #
@@ -782,9 +1213,9 @@ def build_url(
     username: str,
     password: str,
 ) -> str:
-    """Build a SQLAlchemy async URL (mirrors ingest/engine.py::_build_url)."""
+    """Build a SQLAlchemy URL for the control plane (mirrors ingest/engine.py::_build_url)."""
     if not dialect:
-        dialect = "postgresql+asyncpg"
+        dialect = "postgresql+psycopg"
     if not host:
         host = "localhost"
     if not port:
@@ -802,81 +1233,71 @@ def create_engine(
     password: str,
     pool_size: int = 5,
     pool_min: int = 0,
-    dialect: str = "postgresql+asyncpg",
-) -> AsyncEngine:
-    """Create the control-plane AsyncEngine. ``max_overflow`` is derived from
-    ``pool_size - pool_min``. On PostgreSQL, registers the jsonb/json codecs the
-    former asyncpg pool used."""
+    dialect: str = "postgresql+psycopg",
+) -> Engine:
+    """Create the shared control-plane Engine. ``max_overflow`` is derived from
+    ``pool_size - pool_min``."""
     url = build_url(dialect, host, port, database, user, password)
     return create_engine_from_url(
         url, pool_size=pool_size, max_overflow=max(pool_size - pool_min, 0)
     )
 
 
-# Control-plane store backends selectable by SQLAlchemy URI (REQ-828). The value is the
-# async driver each dialect must use; an embedded engine (sqlite/duckdb) gives the desktop
-# deployment model zero external infra, Postgres backs production — one abstraction, same schema.
-_ADMIN_ASYNC_DRIVER: dict[str, str] = {
-    "postgresql": "asyncpg",
-    "sqlite": "aiosqlite",
-    "duckdb": "aioduckdb",
-    "mysql": "aiomysql",
-    "mariadb": "aiomysql",
+# Control-plane store backends selectable by SQLAlchemy URI (REQ-828). The value is the sync
+# driver each backend runs on (REQ-1882: one shared, thread-safe engine per worker); an embedded
+# engine (sqlite/duckdb) gives the desktop deployment model zero external infra, Postgres backs
+# production — one abstraction, same schema.
+_ADMIN_DRIVER: dict[str, str] = {
+    "postgresql": "psycopg",
+    "sqlite": "pysqlite",
+    "duckdb": "provisa",
+    "mysql": "pymysql",
+    "mariadb": "pymysql",
 }
 
 
-def _normalize_admin_url(url: str) -> str:
-    """Resolve a control-plane URI to its async driver, failing loud on an unsupported
-    or misconfigured backend (REQ-828 — no silent fallback to a default store).
+def sync_store_url(url: str) -> str:
+    """Resolve a relational store URI (control plane or materialization store) to the sync driver
+    Provisa runs it on, failing loud on an unsupported or misconfigured backend (REQ-828 — no
+    silent fallback to a default store).
 
-    A bare backend (``duckdb://…``) is pinned to the one supported async driver; an
-    explicit async driver is passed through; a known sync driver is rejected with the
-    async form to use; an unknown backend is rejected outright."""
+    A bare backend (``duckdb://…``) is pinned to the supported sync driver; the sync driver itself
+    passes through; any other driver (including the async drivers used before REQ-1882) or an
+    unknown backend is rejected."""
     from sqlalchemy import make_url
     from sqlalchemy.exc import ArgumentError
 
     try:
         parsed = make_url(url)
     except ArgumentError as exc:
-        raise ValueError(f"invalid control-plane store URI {url!r}: {exc}") from exc
+        raise ValueError(f"invalid store URI {url!r}: {exc}") from exc
 
     backend = parsed.get_backend_name()
     # ``drivername`` is the raw ``backend[+driver]`` token; ``get_driver_name()`` would
-    # substitute the dialect's default sync driver, hiding that none was requested.
+    # substitute the dialect's default driver, hiding that none was requested.
     driver = parsed.drivername.split("+", 1)[1] if "+" in parsed.drivername else ""
-    if backend not in _ADMIN_ASYNC_DRIVER:
+    if backend not in _ADMIN_DRIVER:
         raise ValueError(
-            f"unsupported control-plane store backend {backend!r} in URI {url!r}; "
-            f"supported: {', '.join(sorted(_ADMIN_ASYNC_DRIVER))}"
+            f"unsupported store backend {backend!r} in URI {url!r}; "
+            f"supported: {', '.join(sorted(_ADMIN_DRIVER))}"
         )
-    async_driver = _ADMIN_ASYNC_DRIVER[backend]
-    if not driver:
-        # ``str(url)``/``URL.__str__`` renders with the password masked (``***``) — the
-        # right default for logging, wrong here since this string becomes the actual
-        # connect URI. render_as_string(hide_password=False) keeps the real password.
-        return parsed.set(drivername=f"{backend}+{async_driver}").render_as_string(
-            hide_password=False
-        )
-    if driver != async_driver:
+    sync_driver = _ADMIN_DRIVER[backend]
+    if driver not in ("", sync_driver):
         raise ValueError(
-            f"control-plane store {backend!r} requires the async driver "
-            f"{backend}+{async_driver}, got {backend}+{driver} in URI {url!r}"
+            f"store {backend!r} runs on {backend}+{sync_driver}, "
+            f"got {backend}+{driver} in URI {url!r}"
         )
-    return url
+    # ``str(url)``/``URL.__str__`` renders with the password masked (``***``) — the right
+    # default for logging, wrong here since this string becomes the actual connect URI.
+    return parsed.set(drivername=f"{backend}+{sync_driver}").render_as_string(hide_password=False)
 
 
 def _pool_kwargs_for(url: str) -> dict[str, Any]:
     """SQLAlchemy pool kwargs for a single-writer file store (DuckDB/SQLite) vs a server
-    backend — the policy a **sync** engine (only a sync driver, no async pool) must apply
-    itself. DuckDB/SQLite are single-writer file stores: a one-connection pool serializes
-    writes so concurrent callers can't corrupt the single writable handle. Server backends
-    get ``pool_pre_ping`` instead, to guard against stale/dropped connections.
-
-    Used by :func:`sync_engine_from_url` (e.g. ``observability/otlp2sql.py``, which
-    threadpool-wraps sync inserts). The async control-plane engine
-    (:func:`create_engine_from_url`) has its own pool_size/max_overflow policy — DuckDB/
-    SQLite there go through the async driver (``aioduckdb``/``aiosqlite``), which does not
-    accept a sync ``QueuePool``, so that policy is not reused here."""
+    backend, for :func:`sync_engine_from_url`'s single-writer callers. DuckDB/SQLite are
+    single-writer file stores: a one-connection pool serializes writes so concurrent callers
+    can't corrupt the single writable handle. Server backends get ``pool_pre_ping`` instead, to
+    guard against stale/dropped connections."""
     from sqlalchemy import make_url
 
     if make_url(url).get_backend_name() in ("duckdb", "sqlite"):
@@ -899,46 +1320,105 @@ def create_engine_from_url(
     *,
     pool_size: int = 5,
     max_overflow: int = 5,
-) -> AsyncEngine:
-    """Create a control-plane AsyncEngine from a SQLAlchemy URI (REQ-828).
+) -> Engine:
+    """Create the shared control-plane Engine from a SQLAlchemy URI (REQ-828, REQ-1882).
 
     The platform and tenant control planes are each configured by an independent
-    SQLAlchemy URI (``postgresql+asyncpg://…``, ``sqlite+aiosqlite:///…``,
-    ``duckdb:///…``, ``mysql+aiomysql://…``), so neither is tied to PostgreSQL. The
-    URI selects the backend; an embedded engine (SQLite/DuckDB) runs the store with
-    zero external infra on a developer desktop, Postgres in production — same schema,
-    same behavior. An unsupported/misconfigured URI fails loud (no default store).
-    On PostgreSQL the jsonb/json codecs the former asyncpg pool used are registered
-    per connection.
+    SQLAlchemy URI (``postgresql://…``, ``sqlite:///…``, ``duckdb:///…``, ``mysql://…``), so
+    neither is tied to PostgreSQL. The URI selects the backend; an embedded engine
+    (SQLite/DuckDB) runs the store with zero external infra on a developer desktop, Postgres in
+    production — same schema, same behavior. An unsupported/misconfigured URI fails loud (no
+    default store).
+
+    The engine is synchronous and shared by every request thread: its ``QueuePool`` is
+    thread-safe, and :class:`Database` bounds each checkout wait by the request's budget. An
+    in-memory store (sqlite/duckdb ``:memory:``) exists only inside one connection, so it gets a
+    ``StaticPool`` — one connection, which ``Database`` hands to one request thread at a time.
     """
     from sqlalchemy import make_url
 
-    normalized = _normalize_admin_url(url)
-    if normalized.startswith("duckdb"):
-        # Ensure the async DuckDB driver is registered before the engine is built.
-        import provisa.core.duckdb_async  # noqa: F401
+    parsed, use_pgbouncer = _pgbouncer_flag(make_url(sync_store_url(url)))
+    normalized = parsed.render_as_string(hide_password=False)
+    backend = parsed.get_backend_name()
+    if backend == "duckdb":
+        # Registers the duckdb+provisa control-plane dialect before the engine is built.
+        import provisa.core.duckdb_store  # noqa: F401
 
-    # An in-memory embedded store (sqlite/duckdb ``:memory:``) lives only inside a
-    # single connection, so its dialect forces a StaticPool — which rejects sizing
-    # kwargs. File and server backends take the sized async pool.
     kwargs: dict[str, Any] = {"pool_pre_ping": True}
-    if make_url(normalized).database not in (None, "", ":memory:"):
+    if backend == "sqlite":
+        # The pooled sqlite3 connection is handed between request threads (one at a time).
+        kwargs["connect_args"] = {"check_same_thread": False}
+    if parsed.database in (None, "", ":memory:"):
+        kwargs["poolclass"] = StaticPool
+    else:
         kwargs["pool_size"] = pool_size
         kwargs["max_overflow"] = max_overflow
-    engine = create_async_engine(normalized, **kwargs)
-    if engine.dialect.name == "postgresql":
-        event.listen(engine.sync_engine, "connect", _on_pg_connect)
-    elif engine.dialect.name == "sqlite":
-        event.listen(engine.sync_engine, "connect", _on_sqlite_connect)
-
+        kwargs["pool_timeout"] = _POOL_WAIT_S
+    if backend == "postgresql":
+        return pg_engine(normalized, use_pgbouncer=use_pgbouncer, **kwargs)
+    engine = sa.create_engine(normalized, **kwargs)
+    if backend == "sqlite":
+        event.listen(engine, "connect", _on_sqlite_connect)
     return engine
 
 
+def pg_engine(url: str, *, use_pgbouncer: bool, **kwargs: Any) -> Engine:
+    """A SQLAlchemy engine on ``postgresql+psycopg`` with Provisa's prepared-statement policy — the
+    one place it is set, for the control plane and the ingest write engines alike.
+
+    ``prepare_threshold=0``: each pooled connection prepares a statement server-side on its first
+    execution and reuses that plan on every later one (the asyncpg pool's statement cache did the
+    same); the cache is bounded by :data:`_PREPARED_MAX`. Behind PgBouncer in transaction mode a
+    session-level prepared statement does not survive the per-transaction server binding, so
+    preparing is off. The choice is recorded on the engine (:func:`pg_uses_pgbouncer`) so an engine
+    that mirrors this one's database inherits it."""
+    connect_args = {
+        **kwargs.pop("connect_args", {}),
+        "prepare_threshold": None if use_pgbouncer else 0,
+    }
+    engine = sa.create_engine(
+        url,
+        connect_args=connect_args,
+        execution_options={_PGBOUNCER_OPTION: use_pgbouncer},
+        **kwargs,
+    )
+    event.listen(engine, "connect", _on_pg_connect)
+    return engine
+
+
+def pg_uses_pgbouncer(engine: Engine) -> bool:
+    """Whether *engine* (built by :func:`pg_engine`) reaches PostgreSQL through PgBouncer."""
+    return engine.get_execution_options()[_PGBOUNCER_OPTION]
+
+
+_PGBOUNCER_OPTION = "provisa_use_pgbouncer"
+
+
+# asyncpg's default per-connection statement cache size, which the psycopg pool replaced.
+_PREPARED_MAX = 100
+
+
+def _pgbouncer_flag(url: Any) -> tuple[Any, bool]:
+    """Strip Provisa's ``use_pgbouncer=true|false`` query flag off a store URL (libpq does not know
+    it) and return it: the URL names PgBouncer's endpoint when the store sits behind one, which only
+    the operator knows. Any other value, or the flag on a non-PostgreSQL store, fails loud."""
+    raw = url.query.get("use_pgbouncer")
+    if raw is None:
+        return url, False
+    if raw not in ("true", "false"):
+        raise ValueError(f"use_pgbouncer must be 'true' or 'false', got {raw!r} in store URI")
+    if url.get_backend_name() != "postgresql":
+        raise ValueError("use_pgbouncer applies only to a postgresql store URI")
+    return url.difference_update_query(["use_pgbouncer"]), raw == "true"
+
+
 def _on_pg_connect(dbapi_conn: Any, connection_record: Any) -> None:
-    """SQLAlchemy ``connect`` listener: install the jsonb/json codecs on each
-    new asyncpg connection (matches the former asyncpg pool ``init``)."""
+    """SQLAlchemy ``connect`` listener: bound each connection's prepared-statement cache (LRU;
+    evicted statements are DEALLOCATEd). psycopg 3's own loaders already return the types the former
+    asyncpg pool returned — uuid as ``uuid.UUID``, bytea as ``bytes``, json/jsonb as Python
+    objects."""
     del connection_record
-    dbapi_conn.run_async(_register_json_codecs)
+    dbapi_conn.prepared_max = _PREPARED_MAX
 
 
 def _on_sqlite_connect(dbapi_conn: Any, connection_record: Any) -> None:

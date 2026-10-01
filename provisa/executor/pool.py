@@ -16,8 +16,7 @@ Pools created at startup, destroyed on shutdown.
 
 from __future__ import annotations
 
-import asyncio
-
+from provisa.core.connection_loop import CrossLoopLock
 from provisa.core.source_registry import SOURCE_TO_DIALECT
 from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.drivers.registry import create_driver
@@ -34,8 +33,10 @@ class SourcePool:  # REQ-052, REQ-053
         self._dialects: dict[str, str] = {}
         # add() is a check-then-connect-then-set across an await; concurrent first-adds for one
         # source would each open a driver and leak all but the last. Serialise adds so "one driver
-        # per source_id" holds (startup-only, so the coarse single lock costs nothing).
-        self._add_lock = asyncio.Lock()
+        # per source_id" holds (startup-only, so the coarse single lock costs nothing). Cross-loop:
+        # an org runtime built on a connection thread's loop adds through this same pool
+        # (REQ-1882, amended 2026-09-29).
+        self._add_lock = CrossLoopLock()
 
     async def add(  # REQ-052, REQ-053
         self,

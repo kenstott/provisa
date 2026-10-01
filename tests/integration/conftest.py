@@ -17,6 +17,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+import pytest_asyncio
 
 from tests._noauth_config import pin_no_auth_config
 
@@ -47,7 +48,8 @@ _INTEGRATION_GROUP_PATTERNS: list[tuple[str, re.Pattern]] = [
         re.compile(
             r"^test_("
             r".+_federation_engine_e2e"
-            r"|duckdb_runtime_e2e|duckdb_attach_pgwire.*|duckdb_attach_calcite_pgwire"
+            r"|duckdb_runtime_e2e|duckdb_clickhouse_http_e2e|duckdb_attach_pgwire.*"
+            r"|duckdb_attach_calcite_pgwire"
             r"|files_pgwire_replica"
             r"|sharepoint_duckdb_attach|splunk_duckdb_attach"
             r"|postgres_native_engine_e2e|pg_runtime_e2e|clickhouse_runtime_e2e"
@@ -57,7 +59,7 @@ _INTEGRATION_GROUP_PATTERNS: list[tuple[str, re.Pattern]] = [
             r"|embedded_pg_duckdb_engine_e2e|embedded_pg_duckdb_iceberg_e2e"
             r"|embedded_pg_fdw_engine_e2e|embedded_pg_sqlite_fdw_e2e"
             r"|duckdb_sqlite_control_plane_e2e|adbc|cross_vendor_parity_e2e"
-            r"|engine_runtime_binding|execution_routing|direct_exec"
+            r"|engine_runtime_binding|execution_routing|direct_exec|operator_floor_e2e"
             r"|federation_integration|databricks_external_link_e2e"
             r")\.py$"
         ),
@@ -74,6 +76,9 @@ _INTEGRATION_GROUP_PATTERNS: list[tuple[str, re.Pattern]] = [
             r"|websocket_rss_integration|live_sse_integration"
             r"|arrow_flight_integration|airport_service_e2e|airport_source_e2e"
             r"|apq_integration|schema_gen|compile_endpoint|nl_endpoint"
+            r"|raw_sql_response_cache_e2e|raw_sql_response_cache_direct_e2e"
+            r"|raw_sql_response_cache_passthrough_e2e|pgwire_passthrough_event_loops_e2e"
+            r"|epoch_temporal_columns_e2e"
             r")\.py$"
         ),
     ),
@@ -382,11 +387,9 @@ def _pgw_params() -> dict:
 
 
 def _pgw_free_port() -> int:
-    import socket
+    from tests.port_lease import lease_port
 
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+    return lease_port()
 
 
 async def _pgw_connect(asyncpg, p: dict):
@@ -465,6 +468,23 @@ def _pgw_build_state(pool):
     state.source_pools = pool
     state.server_limits = {}
     state.engine_conn = None
+    # The governed pipeline keys its compile/routing caches on the schema identity and reads the
+    # response cache; bare MagicMocks there read as a non-string cache key and as cache HITs.
+    from provisa.compiler.compiled_query_cache import CompiledQueryCache
+
+    state.schema_boot_id = "pgw-itest"
+    state.schema_version = 1
+    state.compiled_query_cache = CompiledQueryCache()
+    state.routing_cache = CompiledQueryCache()
+    from provisa.cache.store import NoopCacheStore
+
+    state.response_cache_store = NoopCacheStore()  # AppState's caching-off store (REQ-1897)
+    # AppState's cache-policy inputs (no per-source/per-table overrides, the deployment default
+    # TTL, no org settings overrides) — a bare MagicMock there reads as a truthy non-int.
+    state.source_cache = {}
+    state.table_cache = {}
+    state.response_cache_default_ttl = 300
+    state.settings_overrides = {}
     from tests.helpers import stub_materialization_noop
 
     stub_materialization_noop(state)
@@ -528,7 +548,7 @@ def pgwire_pg_backend(docker_postgres):
 
     audit_org = f"pgw{_uuid.uuid4().hex[:8]}"
     audit_engine = create_engine_from_url(
-        f"postgresql+asyncpg://{pg['user']}:{pg['password']}@{pg['host']}:{pg['port']}"
+        f"postgresql+psycopg://{pg['user']}:{pg['password']}@{pg['host']}:{pg['port']}"
         f"/{pg['database']}",
         pool_size=2,
     )
@@ -549,8 +569,6 @@ def pgwire_pg_backend(docker_postgres):
         patch("provisa.api.app.state", state),
         patch.object(_srv, "state", state, create=True),
     ):
-        with _srv._loop_lock:
-            _srv._loop = loop
         threading.Thread(target=server.serve_forever, daemon=True).start()
         _deadline = time.time() + 30
         while time.time() < _deadline:
@@ -575,11 +593,35 @@ def pgwire_pg_backend(docker_postgres):
             async def _drop_audit() -> None:
                 async with tenant_db.acquire() as conn:
                     await conn.execute(f"DROP SCHEMA IF EXISTS org_{audit_org} CASCADE")
-                await audit_engine.dispose()
+                audit_engine.dispose()
 
             asyncio.run_coroutine_threadsafe(_drop_audit(), loop).result(timeout=30)
             asyncio.run_coroutine_threadsafe(pool.close_all(), loop).result(timeout=10)
             asyncio.run_coroutine_threadsafe(_pgw_drop(asyncpg, pg), loop).result(timeout=10)
-            with _srv._loop_lock:
-                _srv._loop = None
             loop.call_soon_threadsafe(loop.stop)
+
+
+@pytest_asyncio.fixture(scope="module")
+async def platform_admin_db():
+    """Bind ``state.admin_db`` to a real platform control-plane Database for the module.
+
+    ``load_config`` → ``_upsert_sources`` (REQ-1730) always binds the request org so a
+    control-plane-only source's ``${secret:...}`` password can resolve, and that bind reads the
+    org's vault from ``state.admin_db`` (``provisa/api/app.py`` ``_request_org_for_secrets``) even
+    when no source uses a secret. A test that calls ``load_config`` depends on this fixture instead
+    of on whatever an earlier test left in ``state.admin_db``.
+    """
+    import provisa.api.app as app_mod
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.schema_admin import init_registry_schema
+
+    engine = create_engine_from_url(os.environ["PLATFORM_DATABASE_URL"], pool_size=2)
+    db = Database(engine, name="platform")
+    await init_registry_schema(db, "root")
+    previous = app_mod.state.admin_db
+    app_mod.state.admin_db = db
+    try:
+        yield db
+    finally:
+        app_mod.state.admin_db = previous
+        await db.close()

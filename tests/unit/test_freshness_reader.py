@@ -21,7 +21,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.schema_org import event_status, events, node_freshness_state
@@ -35,17 +35,13 @@ WIN_END = datetime(2026, 7, 10, tzinfo=UTC)
 
 @asynccontextmanager
 async def _db(tmp_path):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'fr.db'}")
-    async with engine.begin() as c:
-        await c.run_sync(
-            lambda s: events.metadata.create_all(
-                s, tables=[events, event_status, node_freshness_state]
-            )
-        )
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'fr.db'}")
+    with engine.begin() as c:
+        events.metadata.create_all(c, tables=[events, event_status, node_freshness_state])
     try:
         yield Database(engine, name="fr")
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 async def test_always_current_input_is_fresh_through_any_boundary(tmp_path):

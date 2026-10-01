@@ -192,10 +192,12 @@ def entity_type_defs() -> list[dict[str, Any]]:  # REQ-1388
             "description": "A Provisa data product grouping existing tables across domains.",
             "serviceType": "provisa",
             "superTypes": ["Asset"],
+            # `owner` is inherited from Atlas's Asset (a string attribute); redeclaring it here
+            # makes Atlas refuse the whole typedef batch (ATLAS-400-00-09E "Attribute already
+            # exists in another parent type: Asset"). to_entities sets it on the entity as-is.
             "attributeDefs": [
                 _attr_def("provisaDomain"),
                 _attr_def("provisaUri"),
-                _attr_def("owner"),
             ],
         },
     ]
@@ -223,9 +225,10 @@ def relationship_type_defs() -> list[dict[str, Any]]:  # REQ-1388
         }
 
     def _aggregation(name: str, owner: str, member: str, plural: str, singular: str):
-        # REQ-1634: a data product's member tables are pre-existing assets it does not own or
-        # contain (unlike source→table/table→column composition), so this is AGGREGATION —
-        # neither end is a container, and removing the product must never delete the table.
+        # REQ-1634: a data product's member tables are pre-existing assets it does not own
+        # (unlike source→table/table→column composition), so this is AGGREGATION, which Atlas
+        # never cascade-deletes — removing the product never deletes a table. Atlas still requires
+        # exactly one AGGREGATION end to be the container (ATLAS-400-00-032), so the product is.
         return {
             "name": name,
             "serviceType": "provisa",
@@ -234,7 +237,7 @@ def relationship_type_defs() -> list[dict[str, Any]]:  # REQ-1388
             "endDef1": {
                 "type": owner,
                 "name": plural,
-                "isContainer": False,
+                "isContainer": True,
                 "cardinality": "SET",
             },
             "endDef2": {
@@ -1008,7 +1011,14 @@ class AtlasExport(MetadataExport):  # REQ-1069
             json={"entityDefs": missing_entities, "relationshipDefs": missing_rels},
             headers=headers,
         )
-        response.raise_for_status()
+        if response.is_error:
+            # Atlas states WHY a typedef was refused (errorCode/errorMessage) only in the body;
+            # raise_for_status() alone discards it.
+            raise httpx.HTTPStatusError(
+                f"Atlas refused the provisa_* typedefs ({response.status_code}): {response.text}",
+                request=response.request,
+                response=response,
+            )
 
     async def _merge_classifications(
         self,

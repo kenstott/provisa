@@ -145,10 +145,11 @@ class TestBuildApiSource:
         source = build_api_source(cfg)
         assert source.id == "sparql-test"
 
-    def test_source_type_is_openapi(self):
+    def test_source_type_is_sparql(self):
+        # REQ-1683: a SPARQL endpoint persists as its own query-API source type.
         cfg = SparqlSourceConfig(source_id="s", endpoint_url="http://host/sparql")
         source = build_api_source(cfg)
-        assert source.type == ApiSourceType.openapi
+        assert source.type == ApiSourceType.sparql
 
 
 # ---------------------------------------------------------------------------

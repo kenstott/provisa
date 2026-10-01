@@ -81,7 +81,9 @@ assert probe[0][0] >= 1, "airport_take_flight not registered — extension not a
 
 conn.execute(details["attach"])  # the real ATTACH DDL, unmodified
 
-rows = conn.execute('SELECT id, name FROM "airport_itest".test.widgets ORDER BY id').fetchall()
+# REQ-1670..1676 (803658e4): the raw source is attached under the connector's own alias.
+alias = details["raw_alias"]
+rows = conn.execute(f'SELECT id, name FROM "{alias}".test.widgets ORDER BY id').fetchall()
 print(json.dumps(rows))
 """
 

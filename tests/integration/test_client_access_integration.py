@@ -41,6 +41,8 @@ import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+from provisa.compiler.compiled_query_cache import CompiledQueryCache
 import pytest_asyncio
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
@@ -115,6 +117,12 @@ def _make_app_state_with_orders():
     from provisa.cache.store import NoopCacheStore
 
     state = MagicMock()
+    # The governed pipeline keys its compile/routing caches on the schema identity; bare MagicMocks
+    # there read as a non-string cache key and as cache HITs.
+    state.schema_boot_id = "itest"
+    state.schema_version = 1
+    state.compiled_query_cache = CompiledQueryCache()
+    state.routing_cache = CompiledQueryCache()
     state.schemas = {"admin": schema}
     state.contexts = {"admin": ctx}
     state.rls_contexts = {"admin": RLSContext.empty()}

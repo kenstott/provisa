@@ -18,10 +18,18 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from provisa.federation.engine import UnreachableSource
+from provisa.federation.mssql_warehouse_runtime import driver_error
 from provisa.federation.native_backend import NativeEngineBackend
 
 
 class _MssqlWarehouseBackend(NativeEngineBackend):
+    # The driver error ORed into the base "this table is not queryable" set, as PgBackend/
+    # DuckDBBackend do (native_backend._attach_errors). Without it one registered source whose
+    # attach fails on the warehouse (e.g. a config source registered under schema `public`, which
+    # T-SQL cannot create: `public` is a fixed database role, error 2714) aborted _attach_registered
+    # and failed every query on the engine, including sources that attach fine.
+    _attach_errors = (driver_error(), KeyError, UnreachableSource)
     _server_env = ""
     _database_env = ""
     _engine_name = ""

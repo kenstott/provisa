@@ -18,10 +18,12 @@ Steward override hint respected (REQ-030).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from provisa.core.operator_floor import OperatorFloorError
 from provisa.executor.drivers.registry import has_driver
 
 if TYPE_CHECKING:
@@ -72,6 +74,23 @@ VIRTUAL_SOURCES: set[str] = {
 }
 
 
+class OperatorFloorViolation(OperatorFloorError):
+    """A request hint would read below the operator's floor (REQ-030, amended 2026-09-30).
+
+    The operator's settings are the FLOOR of every read: a request may trade recency for speed
+    above it, never go beneath it. A PermissionError so every transport's existing mapping carries
+    it to the caller (HTTP 403, SQLSTATE 42501, Flight/gRPC PERMISSION_DENIED)."""
+
+    def __init__(self, source_id: str, setting: str, hint: str) -> None:
+        self.source_id = source_id
+        self.setting = setting
+        super().__init__(
+            f"route={hint} would read source {source_id!r} live, below the operator's floor: the "
+            f"operator set {setting} on it, so its reads are served from the platform's landed "
+            "copy. Remove the route hint."
+        )
+
+
 @dataclass(frozen=True)
 class RouteDecision:
     route: Route
@@ -90,12 +109,18 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
     is_mutation: bool = False,
     source_dsns: dict[str, str] | None = None,
     cache_hit: bool = False,
-    no_cache: bool = False,
+    cache_opt_in: bool = False,
     engine: FederationEngine | None = None,
+    operator_floor: Mapping[str, str],
 ) -> RouteDecision:
     """Decide whether to route a query cached, direct, or through the engine.
 
     Args:
+        operator_floor: {source_id: operator setting} for every source the operator requires to
+            be read from the platform's landed copy (``load_protected``, ``prefer_materialized``)
+            — see ``registry_view.operator_floor``. Required, never defaulted: a caller that
+            skipped it would route those sources live, beneath the floor (REQ-030, amended
+            2026-09-30).
         sources: Set of source_ids involved in the query.
         source_types: {source_id: source_type} e.g. {"sales-pg": "postgresql"}.
         source_dialects: {source_id: sqlglot_dialect} e.g. {"sales-pg": "postgres"}.
@@ -104,8 +129,9 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
         is_mutation: True for mutations — always route direct (never the engine).
         cache_hit: True when the result cache (keyed per REQ-864/REQ-544 on the
             governance-normalized IR) holds an entry for this query.
-        no_cache: True when the @noCache/no_cache bypass (REQ-544) removes CACHED
-            from the candidate set for this query.
+        cache_opt_in: True only when the request opted into the response cache (GraphQL
+            @cached / SQL `-- @provisa cache=true|cache_ttl=N`, REQ-544 amended 2026-09-30);
+            without it no cached route is a candidate.
         engine: The bound FederationEngine whose DECLARED capability traits (REQ-897) refine
             the ENGINE-routed decision — e.g. its ``file_native`` trait distinguishes a file
             source read in place (SCAN) from one that must be landed. When None, the decision is
@@ -117,9 +143,10 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
     # Result cache is the first candidate route (REQ-865). A hit serves the
     # stored result with no direct or federated execution. The cache key is
     # derived from the persona-resolved governed IR, so a serve is inherently
-    # isolated (REQ-866). Mutations never serve from cache; the no-cache bypass
-    # removes CACHED from the candidate set (REQ-544).
-    if cache_hit and not is_mutation and not no_cache:
+    # isolated (REQ-866). Mutations never serve from cache, and only a request that opted into
+    # the response cache has CACHED as a candidate (REQ-544, amended 2026-09-30). A cached entry
+    # is never fresher than the read that stored it, so this stays above the operator's floor.
+    if cache_hit and cache_opt_in and not is_mutation:
         return RouteDecision(
             route=Route.CACHE,
             source_id=None,
@@ -137,6 +164,23 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
             reason="mutation (always direct)",
         )
 
+    # The operator's floor (REQ-030, amended 2026-09-30). A floored source is read from the
+    # platform's landed copy, which only the engine serves; no route may pull it live. A request
+    # hint that would (route=direct) is rejected rather than ignored. Checked after mutations —
+    # the floor bounds read load, and writes always go direct (REQ-031) — and before every other
+    # branch, since the steward, colocated, API and direct branches all read the source live.
+    floored = sorted((sid, operator_floor[sid]) for sid in sources if sid in operator_floor)
+    if floored:
+        sid, setting = floored[0]
+        if steward_hint == "direct":
+            raise OperatorFloorViolation(sid, setting, "direct")
+        return RouteDecision(
+            route=Route.ENGINE,
+            source_id=None,
+            dialect=None,
+            reason=f"operator floor: {setting} on {sid} (read from the landed copy)",
+        )
+
     # Steward override
     if steward_hint in ("engine", "federated"):  # REQ-030
         return RouteDecision(
@@ -148,7 +192,10 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
     if steward_hint == "direct" and len(sources) == 1:  # REQ-030
         sid = next(iter(sources))
         stype = source_types.get(sid, "")
-        if has_driver(stype):
+        # A VIRTUAL/API source is reached only through the engine or the API caller, even when a
+        # driver is registered for its type (neo4j, issue #119: raw SQL text is not Cypher, and its
+        # read path is the engine + row_materialize, REQ-1865) — the hint cannot make it direct.
+        if has_driver(stype) and stype not in VIRTUAL_SOURCES and stype not in API_SOURCES:
             return RouteDecision(
                 route=Route.DIRECT,
                 source_id=sid,

@@ -47,6 +47,7 @@ class TestDecideRoute:
             sources={"sales-pg"},
             source_types={"sales-pg": "postgresql"},
             source_dialects={"sales-pg": "postgres"},
+            operator_floor={},
         )
         assert result.route == Route.DIRECT
         assert result.source_id == "sales-pg"
@@ -59,6 +60,7 @@ class TestDecideRoute:
             sources={"sales-pg", "crm-pg"},
             source_types={"sales-pg": "postgresql", "crm-pg": "postgresql"},
             source_dialects={"sales-pg": "postgres", "crm-pg": "postgres"},
+            operator_floor={},
         )
         assert result.route == Route.ENGINE
         assert result.source_id is None
@@ -72,6 +74,7 @@ class TestDecideRoute:
             source_types={"sales-pg": "postgresql"},
             source_dialects={"sales-pg": "postgres"},
             steward_hint="federated",
+            operator_floor={},
         )
         assert result.route == Route.ENGINE
 
@@ -84,6 +87,7 @@ class TestDecideRoute:
             source_types={"sales-pg": "postgresql"},
             source_dialects={"sales-pg": "postgres"},
             steward_hint="direct",
+            operator_floor={},
         )
         assert result.route == Route.DIRECT
 
@@ -96,6 +100,7 @@ class TestDecideRoute:
             source_types={"sales-pg": "postgresql"},
             source_dialects={"sales-pg": "postgres"},
             is_mutation=True,
+            operator_floor={},
         )
         assert result.route == Route.DIRECT
         assert "mutation" in result.reason
@@ -108,6 +113,7 @@ class TestDecideRoute:
             sources={"events-kafka"},
             source_types={"events-kafka": "kafka"},
             source_dialects={"events-kafka": ""},
+            operator_floor={},
         )
         assert result.route == Route.ENGINE
 
@@ -119,6 +125,7 @@ class TestDecideRoute:
             sources={"ext-api"},
             source_types={"ext-api": "openapi"},
             source_dialects={"ext-api": ""},
+            operator_floor={},
         )
         assert result.route == Route.API
 
@@ -130,6 +137,7 @@ class TestDecideRoute:
             sources={"sales-pg", "analytics-mysql"},
             source_types={"sales-pg": "postgresql", "analytics-mysql": "mysql"},
             source_dialects={"sales-pg": "postgres", "analytics-mysql": "mysql"},
+            operator_floor={},
         )
         assert result.route == Route.ENGINE
 
@@ -143,6 +151,7 @@ class TestDecideRoute:
             source_types={"src-a": "postgresql", "src-b": "postgresql"},
             source_dialects={"src-a": "postgres", "src-b": "postgres"},
             source_dsns={"src-a": dsn, "src-b": dsn},
+            operator_floor={},
         )
         assert result.route == Route.DIRECT
 
@@ -357,6 +366,7 @@ class TestTypeCoercedRouting:
             source_types={"mysql-src": "mysql"},
             source_dialects={"mysql-src": "mysql"},
             has_json_extract=True,
+            operator_floor={},
         )
         assert result.route == Route.ENGINE
 
@@ -369,6 +379,7 @@ class TestTypeCoercedRouting:
             source_types={"pg-src": "postgresql"},
             source_dialects={"pg-src": "postgres"},
             has_json_extract=True,
+            operator_floor={},
         )
         assert result.route == Route.DIRECT
 

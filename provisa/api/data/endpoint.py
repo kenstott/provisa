@@ -30,6 +30,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time as _time
+from typing import Any
 
 
 from fastapi import APIRouter, Header, HTTPException, Request
@@ -37,9 +38,12 @@ from fastapi.responses import JSONResponse, Response
 from graphql import GraphQLSyntaxError, OperationType
 from pydantic import BaseModel
 
+from provisa.core import request_deadline
 from provisa.api.errors import ApiError
 from provisa.cache.key import cache_key, is_cacheable
 from provisa.cache.middleware import build_cache_headers, check_cache, decode_cached_result
+from provisa.cache.store import CachedResult
+from provisa.cache.tenancy import cache_tenant
 from provisa.compiler.hints import extract_graphql_hints
 from provisa.compiler.parser import GraphQLValidationError, coerce_variable_defaults, parse_query
 from provisa.compiler.rls import RLSContext
@@ -78,6 +82,7 @@ from provisa.api.data.endpoint_executors import (
     _execute_engine_standard,
 )
 from provisa.federation.engine_wake import ensure_engine_awake, readdress_lost_coordinator
+from provisa.federation.registry_view import operator_floor
 
 
 log = logging.getLogger(__name__)
@@ -192,7 +197,7 @@ async def _handle_normalized(document, ctx, rls, state, variables, role_id, role
         physical_sql = state.federation_engine.transpile_physical(exec_sql)
         ctas = state.federation_engine.ctas_redirect(physical_sql, "parquet")
         url = await presign_ctas_result(ctas["s3_prefix"], redirect_config)
-        asyncio.create_task(schedule_s3_cleanup(ctas["s3_prefix"], redirect_config))
+        schedule_s3_cleanup(ctas["s3_prefix"], redirect_config)
         manifest.append(
             {
                 "table": nt.table_name,
@@ -393,9 +398,11 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
             steward_hint=steward_hint,
             query_session_props=directives.to_session_props(),
             cache_ttl=directives.cache_ttl,
-            no_cache=directives.no_cache,
+            cache_opt_in=directives.cache_opt_in,  # REQ-544 (amended): per-request opt-in
             query_text=request.query,
-            org_id=getattr(raw_request.state, "tenant_id", None),
+            # REQ-595: the response-cache tenant every surface shares (cache.tenancy) — the one
+            # write paths invalidate under.
+            org_id=cache_tenant(state),
         )
 
     if stats_enabled:
@@ -549,6 +556,16 @@ async def _prepare_compiled(
     return compiled, mv_used
 
 
+def cached_field_rows(cached: CachedResult, root_field: str) -> Any:  # REQ-544, REQ-1896
+    """The rows a GraphQL Route.CACHE hit serves for ``root_field``: the MISS stored the whole
+    serialized response (``{"data": {root_field: rows}}``, _store_response_cache) through the typed
+    codec, so the rows sit under ``data`` -> ``root_field`` of the decoded payload. Indexed, not
+    ``.get(..., [])``: a missing key is a writer/reader shape mismatch, and defaulting it served an
+    empty result for every hit."""
+    cached_data, _ = decode_cached_result(cached)  # REQ-1896: typed binary, not lossy JSON
+    return cached_data["data"][root_field]
+
+
 async def _execute_one_field(
     compiled,
     ctx,
@@ -563,8 +580,8 @@ async def _execute_one_field(
     probe_limit,
     steward_hint: str | None = None,
     query_session_props: dict | None = None,
-    response_cache_ttl: int | None = None,
-    no_cache: bool = False,
+    response_cache_ttl: int | None,
+    cache_opt_in: bool,
     query_text: str | None = None,
     org_id: str | None = None,
 ):  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, REQ-196
@@ -578,13 +595,15 @@ async def _execute_one_field(
     root_field = compiled.root_field
     _t0 = _time.perf_counter()
 
-    # Cache check. REQ-866 fail-closed: when the identity is not fully resolved into
-    # the key (empty RLS filter, or a current_setting-dependent predicate), the query
-    # is not cacheable — never read or written — so a per-session value can't leak.
+    # Cache check. REQ-544 (amended 2026-09-30): the response cache is per-request OPT-IN — no
+    # @cached / `-- @provisa cache` hint, no read and no write. REQ-866 fail-closed: when the
+    # identity is not fully resolved into the key (empty RLS filter, or a current_setting-dependent
+    # predicate), the query is not cacheable either, so a per-session value can't leak.
     _rls = rls.rules if rls.has_rules() else {}
     ck = cache_key(compiled.sql, compiled.params, role_id, _rls)
     _cache_off = (
-        no_cache
+        not cache_opt_in
+        or not state.response_cache_store.stores_results  # caching disabled: nothing to read
         or force_redirect
         or output_format != "json"
         or not is_cacheable(compiled.sql, _rls)[0]
@@ -601,11 +620,11 @@ async def _execute_one_field(
         has_json_extract="->>" in compiled.sql,
         source_dsns=state.source_dsns,
         cache_hit=cached is not None,
-        no_cache=_cache_off,
+        cache_opt_in=not _cache_off,
+        operator_floor=await operator_floor(state),
     )
     if decision.route == Route.CACHE and cached is not None:
-        cached_data, _ = decode_cached_result(cached)  # REQ-1896: typed binary, not lossy JSON
-        field_rows = cached_data.get(root_field, [])
+        field_rows = cached_field_rows(cached, root_field)
         _qs_mod.record(
             field=root_field,
             source="cache",
@@ -626,7 +645,7 @@ async def _execute_one_field(
             output_format,
             ck,
             response_cache_ttl,
-            no_cache,
+            cache_opt_in=not _cache_off,
             org_id=org_id,
         )
 
@@ -816,7 +835,7 @@ async def _execute_one_field(
         output_format,
         ck,
         response_cache_ttl,
-        no_cache,
+        not _cache_off,
         _t0,
         _dataloader_srcs,
         _per_source_ms,
@@ -844,8 +863,8 @@ async def _handle_query(
     as_of: str | None = None,  # REQ-1163: validated as-of SQL timestamp literal (or None)
     steward_hint: str | None = None,
     query_session_props: dict | None = None,
-    cache_ttl: int | None = None,
-    no_cache: bool = False,
+    cache_ttl: int | None,
+    cache_opt_in: bool,
     query_text: str | None = None,
     org_id: str | None = None,
 ):  # REQ-001, REQ-027, REQ-028, REQ-029, REQ-043, REQ-047, REQ-049, REQ-137, REQ-140, REQ-196
@@ -896,21 +915,10 @@ async def _handle_query(
         prepared.append(prepped)
 
     # Determine redirect config
-    from provisa.executor.redirect import RedirectConfig
+    from provisa.executor.redirect import request_redirect_config
 
-    redirect_config = RedirectConfig.from_env()
-    if redirect_threshold is not None:
-        redirect_config = RedirectConfig(
-            enabled=True,
-            threshold=redirect_threshold,
-            bucket=redirect_config.bucket,
-            endpoint_url=redirect_config.endpoint_url,
-            access_key=redirect_config.access_key,
-            secret_key=redirect_config.secret_key,
-            ttl=redirect_config.ttl,
-            region=redirect_config.region,
-            default_format=redirect_config.default_format,
-        )
+    # REQ-029: a request threshold may only lower the operator's (the platform's floor).
+    redirect_config = request_redirect_config(redirect_threshold)
     effective_redirect_format = redirect_format or redirect_config.default_format or "parquet"
 
     probe_limit = None
@@ -935,7 +943,7 @@ async def _handle_query(
                     steward_hint=steward_hint,
                     query_session_props=query_session_props,
                     response_cache_ttl=cache_ttl,
-                    no_cache=no_cache,
+                    cache_opt_in=cache_opt_in,
                     query_text=query_text,
                     org_id=org_id,
                 ),
@@ -965,37 +973,42 @@ async def _handle_query(
             headers=headers,
         )
 
-    # --- Multiple root fields: execute in parallel, merge results ---
+    # --- Multiple root fields: execute one after another on this request's thread, merge ---
+    # REQ-1882 (amended 2026-09-29): sequential, not asyncio.gather. The request runs on its own
+    # thread, whose loop executes blocking work inline; concurrent sibling tasks there gain no
+    # parallelism, and one blocked inline would starve a sibling holding an engine connection or
+    # lock — the two-tasks-on-one-connection-loop deadlock. Parallelism is across requests.
     merged_data: dict = {}
     merged_redirects: dict = {}
 
+    async def _execute_fields() -> list:
+        return [
+            await _execute_one_field(
+                compiled,
+                ctx,
+                rls,
+                state,
+                role_id,
+                "json",  # multi-field always uses JSON
+                force_redirect=force_redirect,
+                redirect_config=redirect_config,
+                effective_redirect_format=effective_redirect_format,
+                probe_limit=probe_limit,
+                steward_hint=steward_hint,
+                query_session_props=query_session_props,
+                response_cache_ttl=cache_ttl,
+                cache_opt_in=cache_opt_in,
+                query_text=query_text,
+                org_id=org_id,
+            )
+            for compiled in prepared
+        ]
+
     try:
-        results = await asyncio.wait_for(
-            asyncio.gather(
-                *[
-                    _execute_one_field(
-                        compiled,
-                        ctx,
-                        rls,
-                        state,
-                        role_id,
-                        "json",  # multi-field always uses JSON
-                        force_redirect=force_redirect,
-                        redirect_config=redirect_config,
-                        effective_redirect_format=effective_redirect_format,
-                        probe_limit=probe_limit,
-                        steward_hint=steward_hint,
-                        query_session_props=query_session_props,
-                        response_cache_ttl=cache_ttl,
-                        no_cache=no_cache,
-                        query_text=query_text,
-                        org_id=org_id,
-                    )
-                    for compiled in prepared
-                ]
-            ),
-            timeout=_role_timeout,
-        )
+        # The deadline watchdog cancels an in-flight blocking statement; wait_for alone cannot
+        # fire while inline driver work holds the request thread (REQ-1882).
+        with request_deadline.within(_role_timeout):
+            results = await asyncio.wait_for(_execute_fields(), timeout=_role_timeout)
     except asyncio.TimeoutError:
         raise ApiError(
             504,

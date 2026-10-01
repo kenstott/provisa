@@ -19,12 +19,13 @@ Trino-specific path.
 
 from __future__ import annotations
 
-import asyncio
 from decimal import Decimal
 from itertools import islice
 from typing import TYPE_CHECKING, Any, Iterator
 
 import pyarrow as pa
+
+from provisa.core.connection_loop import run_on_connection_loop
 
 if TYPE_CHECKING:
     from provisa.executor.result import ResultStream
@@ -34,7 +35,6 @@ if TYPE_CHECKING:
 
 def _plan_for_scan(
     state: AppState,
-    main_loop: asyncio.AbstractEventLoop,
     sql: str,
     role_id: str,
 ):
@@ -43,28 +43,25 @@ def _plan_for_scan(
     session_vars={} makes RLS current_setting() predicates deny-by-default (NULL) rather than
     reaching an engine that lacks the function — the airport transport has no SET LOCAL channel
     (REQ-1120). govern_batch_final_plan runs any leading statements of a multi-statement batch
-    (governed) and returns the final statement's plan. Runs on an airport worker thread; the
-    coroutine is dispatched to the main event loop that owns the pools.
+    (governed) and returns the final statement's plan. Runs on the airport RPC's handler thread, on
+    its own connection loop (REQ-1882, provisa.core.rpc_loop).
     """
     from provisa.audit.context import with_audit_identity
     from provisa.pgwire._pipeline import govern_batch_final_plan, require_governed_plan
 
     # REQ-074/REQ-1386: the airport transport authenticates with a role token and carries no
-    # separate principal — the role IS the acting identity here. Bound inside the coroutine
-    # because ContextVars do not cross run_coroutine_threadsafe from the airport worker thread.
-    plan = asyncio.run_coroutine_threadsafe(
+    # separate principal — the role IS the acting identity here, bound inside the coroutine.
+    plan = run_on_connection_loop(
         with_audit_identity(
             role_id, "airport", govern_batch_final_plan(sql, role_id, state, session_vars={})
-        ),
-        main_loop,
-    ).result()
+        )
+    )
     require_governed_plan(plan)  # REQ-1176: this Arrow terminal must verify the stamp too
     return plan
 
 
 def governed_table_scan_stream(
     state: AppState,
-    main_loop: asyncio.AbstractEventLoop,
     sql: str,
     role_id: str,
 ) -> tuple[pa.Schema, Iterator[pa.RecordBatch]]:
@@ -82,7 +79,7 @@ def governed_table_scan_stream(
     """
     from provisa.transpiler.router import Route
 
-    plan = _plan_for_scan(state, main_loop, sql, role_id)
+    plan = _plan_for_scan(state, sql, role_id)
     try:
         if plan.route == Route.ENGINE:
             assert plan.physical_sql is not None
@@ -103,15 +100,14 @@ def governed_table_scan_stream(
                     state, plan.physical_sql, state.federation_engine.dialect, plan.exec_params
                 )
 
-            _pushed_down = asyncio.run_coroutine_threadsafe(_prep_residency(), main_loop).result()
-            asyncio.run_coroutine_threadsafe(
+            _pushed_down = run_on_connection_loop(_prep_residency())
+            run_on_connection_loop(
                 ensure_resident(
                     state, plan.sources, pk_bounds=plan.pk_bounds, pushed_down=_pushed_down
-                ),
-                main_loop,
-            ).result()
+                )
+            )
             schema, batch_gen = state.federation_engine.execute_engine_stream(plan.physical_sql, [])
-            _finalize_scan_audit(plan, 200, main_loop, state)
+            _finalize_scan_audit(plan, 200, state)
             return schema, batch_gen
         if plan.route == Route.DIRECT:
             if state.source_pools.has(plan.source_id) and state.source_pools.supports_stream(
@@ -123,44 +119,42 @@ def governed_table_scan_stream(
                     plan.source_id,
                     plan.sql,
                     plan.exec_params or [],
-                    loop=main_loop,
+                    run=run_on_connection_loop,
                 )
             else:
                 # Source has no server-side cursor — the native driver materializes its own result
                 # (bounded by the source's capability); the airport still emits typed row-batches.
-                stream = asyncio.run_coroutine_threadsafe(
+                stream = run_on_connection_loop(
                     state.federation_engine.execute_native(
                         state.source_pools,
                         plan.source_id,
                         plan.sql,
                         plan.exec_params or [],
-                    ),
-                    main_loop,
-                ).result()
+                    )
+                )
             typed = _direct_typed_schema(stream.column_names, stream.column_types)
-            _finalize_scan_audit(plan, 200, main_loop, state)
+            _finalize_scan_audit(plan, 200, state)
             return typed, _typed_batches_from_rows(stream, typed)
     except Exception:
-        _finalize_scan_audit(plan, 500, main_loop, state)
+        _finalize_scan_audit(plan, 500, state)
         raise
     raise ValueError(f"Route {plan.route!r} is not supported for the airport service")
 
 
-def _finalize_scan_audit(plan, status_code: int, main_loop, state: AppState) -> None:
+def _finalize_scan_audit(plan, status_code: int, state: AppState) -> None:
     """Write the governed scan's audit row (REQ-074/REQ-1386).
 
-    The airport drains its own terminal on a worker thread and never reaches ``_execute_plan``, so
+    The airport drains its own terminal on the RPC's thread and never reaches ``_execute_plan``, so
     the row is written here, once the cursor/reader has opened — the point the scan is served.
     ``finalize_audit`` is idempotent, so no path double-writes.
     """
     from provisa.pgwire._pipeline import finalize_audit
 
-    asyncio.run_coroutine_threadsafe(finalize_audit(plan, status_code, state), main_loop).result()
+    run_on_connection_loop(finalize_audit(plan, status_code, state))
 
 
 def governed_table_scan_schema(
     state: AppState,
-    main_loop: asyncio.AbstractEventLoop,
     sql: str,
     role_id: str,
 ) -> pa.Schema:
@@ -175,7 +169,7 @@ def governed_table_scan_schema(
     """
     from provisa.transpiler.router import Route
 
-    plan = _plan_for_scan(state, main_loop, sql, role_id)
+    plan = _plan_for_scan(state, sql, role_id)
     if plan.route == Route.ENGINE:
         assert plan.physical_sql is not None
         # REQ-1661/REQ-1865: a schema-only probe still binds the query against the engine (DuckDB's
@@ -194,13 +188,10 @@ def governed_table_scan_schema(
                 state, plan.physical_sql, state.federation_engine.dialect, plan.exec_params
             )
 
-        _pushed_down = asyncio.run_coroutine_threadsafe(_prep_residency(), main_loop).result()
-        asyncio.run_coroutine_threadsafe(
-            ensure_resident(
-                state, plan.sources, pk_bounds=plan.pk_bounds, pushed_down=_pushed_down
-            ),
-            main_loop,
-        ).result()
+        _pushed_down = run_on_connection_loop(_prep_residency())
+        run_on_connection_loop(
+            ensure_resident(state, plan.sources, pk_bounds=plan.pk_bounds, pushed_down=_pushed_down)
+        )
         schema, batch_gen = state.federation_engine.execute_engine_stream(plan.physical_sql, [])
         close = getattr(batch_gen, "close", None)
         if close is not None:
@@ -215,20 +206,19 @@ def governed_table_scan_schema(
                 plan.source_id,
                 plan.sql,
                 plan.exec_params or [],
-                loop=main_loop,
+                run=run_on_connection_loop,
             )
             typed = _direct_typed_schema(stream.column_names, stream.column_types)
             stream.close()  # release the eagerly-opened server-side cursor; no rows fetched
             return typed
-        result = asyncio.run_coroutine_threadsafe(
+        result = run_on_connection_loop(
             state.federation_engine.execute_native(
                 state.source_pools,
                 plan.source_id,
                 plan.sql,
                 plan.exec_params or [],
-            ),
-            main_loop,
-        ).result()
+            )
+        )
         return _direct_typed_schema(result.column_names, result.column_types)
     raise ValueError(f"Route {plan.route!r} is not supported for the airport service")
 
@@ -316,7 +306,6 @@ def _ir_to_arrow(ir: str) -> pa.DataType:
 
 def governed_mutation(
     state: AppState,  # noqa: ARG001  # kept for call-site symmetry with the scan seam
-    main_loop: asyncio.AbstractEventLoop,
     sql: str,
     role_id: str,
 ) -> int:
@@ -326,8 +315,7 @@ def governed_mutation(
     ``/data/sql`` endpoint uses, so governance (writable-column ACL, RLS injection on
     UPDATE/DELETE, domain-access) and the write-routing decision (native → sqlalchemy →
     engine, via writable.py) apply — the airport DML path is NOT a parallel writer. Runs
-    on an airport worker thread; the coroutine is dispatched to the main event loop that
-    owns the pools.
+    on the airport RPC's handler thread, on its own connection loop (REQ-1882).
 
     Returns the count of rows the driver reported back (RETURNING/affected rows); callers
     that build a fixed-size mutation use their own input count for the airport
@@ -343,7 +331,5 @@ def governed_mutation(
 
     # REQ-074/REQ-1386: same role-as-principal binding the scan seam uses; _execute_plan writes
     # the audit row itself, so the mutation needs only the identity bound inside the coroutine.
-    result = asyncio.run_coroutine_threadsafe(
-        with_audit_identity(role_id, "airport", _run()), main_loop
-    ).result()
+    result = run_on_connection_loop(with_audit_identity(role_id, "airport", _run()))
     return len(result.rows)

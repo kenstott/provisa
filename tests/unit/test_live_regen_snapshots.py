@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.schema_org import event_status, events, node_freshness_state, preserved_snapshots
@@ -29,7 +29,7 @@ _COLS = [("id", "bigint"), ("status", "text")]
 
 
 def _store(tmp_path) -> str:
-    return f"sqlite+aiosqlite:///{tmp_path / 'store.db'}"
+    return f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
 
 
 async def _rows(dsn, table):
@@ -39,17 +39,15 @@ async def _rows(dsn, table):
 
 @asynccontextmanager
 async def _db(tmp_path):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'q.db'}")
-    async with engine.begin() as c:
-        await c.run_sync(
-            lambda s: events.metadata.create_all(
-                s, tables=[events, event_status, node_freshness_state, preserved_snapshots]
-            )
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'q.db'}")
+    with engine.begin() as c:
+        events.metadata.create_all(
+            c, tables=[events, event_status, node_freshness_state, preserved_snapshots]
         )
     try:
         yield Database(engine, name="q")
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 class _CapMV(MVTableProcessor):
@@ -317,18 +315,14 @@ async def _db_ctx():
     from pathlib import Path
 
     with tempfile.TemporaryDirectory() as d:
-        engine = create_async_engine(f"sqlite+aiosqlite:///{Path(d) / 'q.db'}")
-        async with engine.begin() as c:
-            await c.run_sync(
-                lambda s: events.metadata.create_all(
-                    s, tables=[events, event_status, node_freshness_state]
-                )
-            )
+        engine = create_engine_from_url(f"sqlite+pysqlite:///{Path(d) / 'q.db'}")
+        with engine.begin() as c:
+            events.metadata.create_all(c, tables=[events, event_status, node_freshness_state])
         try:
             async with Database(engine, name="q").acquire() as conn:
                 yield conn
         finally:
-            await engine.dispose()
+            engine.dispose()
 
 
 # ---------------------------------------------------------------------------

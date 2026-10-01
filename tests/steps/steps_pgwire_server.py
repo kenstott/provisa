@@ -8,11 +8,9 @@
 
 from __future__ import annotations
 
-import asyncio
 import io
 import os
 import struct
-import threading
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
@@ -46,21 +44,11 @@ scenarios("../features/REQ-589.feature")
 
 @pytest.fixture
 def pgwire_loop():
-    """Running event loop for pgwire auth; sets pg_server._loop so handle_md5_password can submit coroutines."""
-    import provisa.pgwire.server as pg_server
+    """This test thread's connection loop, bound as ProvisaHandler.handle binds one (REQ-1882)."""
+    from provisa.core.connection_loop import connection_loop
 
-    loop = asyncio.new_event_loop()
-    thread = threading.Thread(target=loop.run_forever, daemon=True)
-    thread.start()
-    previous = pg_server._loop
-    pg_server._loop = loop
-    try:
-        yield loop
-    finally:
-        pg_server._loop = previous
-        loop.call_soon_threadsafe(loop.stop)
-        thread.join(timeout=5)
-        loop.close()
+    with connection_loop() as cl:
+        yield cl
 
 
 @pytest.fixture
@@ -124,7 +112,6 @@ def pgwire_listener_disabled_then_enabled(shared_data):
     2. When PROVISA_PGWIRE_PORT is set to a non-zero integer the server calls
        start_pgwire_server with host="0.0.0.0".
     """
-    import asyncio
     from unittest.mock import patch, MagicMock
 
     # -----------------------------------------------------------------------
@@ -167,11 +154,10 @@ def pgwire_listener_disabled_then_enabled(shared_data):
         patch("threading.Thread", return_value=mock_thread),
     ):
         MockServer.return_value = mock_server
-        loop = MagicMock(spec=asyncio.AbstractEventLoop)
 
         from provisa.pgwire.server import start_pgwire_server
 
-        start_pgwire_server("0.0.0.0", test_port, None, loop)
+        start_pgwire_server("0.0.0.0", test_port, None)
 
         # ProvisaServer must have been instantiated with ("0.0.0.0", test_port) as
         # the first positional argument (the server_address tuple).
@@ -696,7 +682,6 @@ def client_connects(shared_data):
     # ssl.SSLContext from env vars and passing it in.
     # ------------------------------------------------------------------
     from provisa.pgwire.server import start_pgwire_server
-    import asyncio
 
     mock_server2 = MagicMock()
     mock_thread2 = MagicMock()
@@ -710,14 +695,12 @@ def client_connects(shared_data):
         patch("provisa.pgwire.server.ProvisaServer", side_effect=_capture_server),
         patch("threading.Thread", return_value=mock_thread2),
     ):
-        loop = MagicMock(spec=asyncio.AbstractEventLoop)
-
         if not skip_ssl_context_load:
             # Build the SSLContext from env vars (caller responsibility) and
             # pass it to start_pgwire_server; verify ProvisaServer receives it.
             built_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             built_ctx.load_cert_chain(certfile=cert_path, keyfile=key_path)
-            start_pgwire_server("0.0.0.0", 5439, built_ctx, loop)
+            start_pgwire_server("0.0.0.0", 5439, built_ctx)
             shared_data["start_pgwire_passed_ssl_ctx"] = (
                 len(captured_ssl_ctx) > 0 and captured_ssl_ctx[0] is not None
             )
@@ -741,8 +724,7 @@ def client_connects(shared_data):
         env_backup_cert = os.environ.pop("PROVISA_PGWIRE_CERT", None)
         env_backup_key = os.environ.pop("PROVISA_PGWIRE_KEY", None)
         try:
-            loop2 = MagicMock(spec=asyncio.AbstractEventLoop)
-            start_pgwire_server("0.0.0.0", 5439, None, loop2)
+            start_pgwire_server("0.0.0.0", 5439, None)
             shared_data["start_pgwire_no_ssl_ctx"] = (
                 len(captured_ssl_ctx_absent) > 0 and captured_ssl_ctx_absent[0] is None
             )

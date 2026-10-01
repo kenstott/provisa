@@ -102,6 +102,7 @@ SAMPLE_SPEC = {
 
 
 _ISOLATED_ORG = "openapi_src_test"
+_RESPONSE_MARGIN_S = 5.0  # time to deliver a response the server finished within its budget
 
 
 @pytest_asyncio.fixture(scope="module")
@@ -119,7 +120,7 @@ async def _openapi_server():
     server = IsolatedServer(_ISOLATED_ORG)
     server.start()
     try:
-        yield server.base_url
+        yield server
     finally:
         server.stop_process()
         await drop_org_schema(_ISOLATED_ORG)
@@ -128,8 +129,12 @@ async def _openapi_server():
 @pytest_asyncio.fixture(scope="module")
 async def client(_openapi_server):
     # Real HTTP against the isolated subprocess (spec_path points at a local temp file,
-    # which the same-host server reads directly).
-    async with AsyncClient(base_url=_openapi_server) as c:
+    # which the same-host server reads directly). Registration rebuilds the schema and
+    # registers the source on the engine before it answers, so the client waits as long as the
+    # server's own request budget allows (plus a response margin) — never httpx's 5s default,
+    # which a loaded host outruns without the server having failed.
+    budget = _openapi_server.request_timeout + _RESPONSE_MARGIN_S
+    async with AsyncClient(base_url=_openapi_server.base_url, timeout=budget) as c:
         yield c
 
 

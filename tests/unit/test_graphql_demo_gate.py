@@ -22,7 +22,6 @@ deployment is in, and is the state the old gate could not distinguish from "on".
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
 from pathlib import Path
@@ -36,15 +35,17 @@ _URL = "http://graphql-demo:4000/graphql"
 
 @pytest.fixture
 def registrations(monkeypatch):
-    """Records the registration coroutines the gate would have scheduled, without running one."""
+    """Records the registration coroutines the gate would have scheduled, without running one.
+
+    REQ-1882: the registration is detached onto a background worker (spawn_background)."""
     scheduled: list[str] = []
 
-    def _fake_create_task(coro, *a, **kw):
+    def _fake_spawn(coro, *a, **kw):
         scheduled.append(getattr(coro, "__name__", repr(coro)))
         coro.close()  # never let the real introspection run
         return None
 
-    monkeypatch.setattr(asyncio, "create_task", _fake_create_task)
+    monkeypatch.setattr(app_startup, "spawn_background", _fake_spawn)
     return scheduled
 
 

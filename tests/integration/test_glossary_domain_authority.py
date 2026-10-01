@@ -167,7 +167,7 @@ async def _term_id(conn, name: str) -> int:
 
 
 @pytest_asyncio.fixture
-async def loaded(tenant_db):
+async def loaded(tenant_db, platform_admin_db):  # load_config binds the org vault (REQ-1730)
     async with tenant_db.acquire() as conn:
         await load_config(parse_config_dict(_config()), conn)
         yield conn

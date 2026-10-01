@@ -32,7 +32,9 @@ def test_make_job_store_embedded_uses_fakeredis(monkeypatch):
     store = make_job_store()
     assert isinstance(store, RedisJobStore)
     # The client must be embedded fakeredis, not a real-server connection to localhost:6379.
-    assert type(store._redis).__module__.startswith("fakeredis")
+    # make_redis returns a SharedRedis (REQ-1882: one shared client per worker); the underlying
+    # client it resolves to is the one that must be fakeredis.
+    assert type(store._redis.client()).__module__.startswith("fakeredis")
 
 
 async def test_embedded_job_store_roundtrips_without_a_server(monkeypatch):

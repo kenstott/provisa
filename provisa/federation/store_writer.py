@@ -46,33 +46,6 @@ def _qualified(schema: str, table: str) -> str:
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
-# The async SQLAlchemy driver per relational store backend (materialization._RELATIONAL). A store
-# DSN naming a bare scheme gets the async driver injected; a DSN that already names a +driver (or a
-# future non-relational branch) is used as-is.
-_ASYNC_DRIVER = {
-    "postgresql": "asyncpg",
-    "mysql": "aiomysql",
-    "mariadb": "aiomysql",
-    "sqlite": "aiosqlite",
-}
-
-
-def async_store_url(dsn: str) -> str:
-    """Normalize a relational store DSN to an async SQLAlchemy URL, injecting the async driver when
-    the DSN carries none. Raises on a backend with no known async driver rather than guessing."""
-    from sqlalchemy import make_url
-
-    url = make_url(dsn)
-    if "+" in url.drivername:
-        return url.render_as_string(hide_password=False)
-    backend = url.get_backend_name()
-    driver = _ASYNC_DRIVER.get(backend)
-    if driver is None:
-        raise ValueError(
-            f"no async SQLAlchemy driver known for materialize store backend {backend!r}"
-        )
-    return url.set(drivername=f"{backend}+{driver}").render_as_string(hide_password=False)
-
 
 @asynccontextmanager
 async def store_connection(dsn: str) -> AsyncGenerator[Any]:
@@ -84,12 +57,12 @@ async def store_connection(dsn: str) -> AsyncGenerator[Any]:
     since DuckDB is single-writer per file (see ``store_connection.land_duckdb_native``, REQ-989)."""
     from provisa.core.database import Database, create_engine_from_url
 
-    engine = create_engine_from_url(async_store_url(dsn), pool_size=1)
+    engine = create_engine_from_url(dsn, pool_size=1)
     try:
         async with Database(engine, name="materialize").acquire() as conn:
             yield conn
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 async def ensure_table(

@@ -82,10 +82,10 @@ async def test_init_schema_upgrades_an_older_org_schema_in_place(old_shape):
 async def test_metadata_reconciliation_restores_a_column_schema_sql_never_alters(old_shape):
     """The reconciliation is what covers a column nobody wrote an ALTER block for: run it alone,
     scoped to the org schema, and the metadata's column comes back typed like schema.sql's."""
-    async with old_shape.engine.begin() as sa_conn:
+    with old_shape.engine.begin() as sa_conn:
         from provisa.core import schema_org
 
-        await sa_conn.run_sync(add_missing_columns, schema_org.metadata.sorted_tables, _SCHEMA)
+        add_missing_columns(sa_conn, schema_org.metadata.sorted_tables, _SCHEMA)
     async with old_shape.acquire() as conn:
         rows = await conn.fetch(
             "SELECT column_name, data_type, column_default FROM information_schema.columns "

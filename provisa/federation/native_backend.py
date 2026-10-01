@@ -66,7 +66,7 @@ def libpq_dsn(url: "URL") -> str:
 
     The embedded control plane of REQ-1535 has no host in the netloc: pgserver listens on a unix
     socket, and the socket directory and the port it names the socket file after are carried in the
-    query (``postgresql+asyncpg:///provisa?host=/dir&port=54321``) because that is the only place
+    query (``postgresql+psycopg:///provisa?host=/dir&port=54321``) because that is the only place
     asyncpg reads them from. Reading the netloc alone yields ``host=None port=None`` and libpq
     refuses the DSN outright, so both places are read here — the query first, since a URL that
     carries them there is the one that means them.
@@ -128,6 +128,7 @@ class NativeEngineBackend(EngineBackend):
     def _attach_registered(self, state: Any) -> None:
         """ATTACH every registered table into the runtime once. A table whose source cannot be
         attached (offline, or a LAND source not yet materialized) is logged and skipped."""
+        from provisa.core.operator_floor import floor_setting
         from provisa.core.secrets import resolve_secrets
 
         config = getattr(state, "config", None)
@@ -200,6 +201,11 @@ class NativeEngineBackend(EngineBackend):
             if key in self._attached:
                 return
             if getattr(src, "id", None) in _NO_REMOTE_SOURCE_IDS:
+                return
+            if floor_setting(src) is not None:
+                # REQ-030/826/1141: the operator's floor. A floored source is read only from its
+                # landed copy, which the residency prep exposes at this same physical name; a live
+                # attach here would let every query read the source directly beneath the floor.
                 return
             merged = SimpleNamespace(
                 id=getattr(src, "id", None),
@@ -474,6 +480,12 @@ class NativeEngineBackend(EngineBackend):
         plan.store_parts = {landed.identity: (runtime.ensure_materialize_attached(), schema, table)}
         await runtime.reconcile_landed_metadata(plan)
 
+    def mv_store_broker(self, state: Any) -> Any:
+        """The runtime's store broker when MV writes cannot run as engine SQL (REQ-1901: an embedded
+        DuckDB-file store), else ``None`` — the runtime decides; one without a broker has none."""
+        runtime = self._runtime_for(state)
+        return runtime.mv_store_broker() if hasattr(runtime, "mv_store_broker") else None
+
     async def persist_mv_table(
         self,
         state: Any,
@@ -556,6 +568,13 @@ class NativeEngineBackend(EngineBackend):
             )
             return await runtime.run(sql, params)
 
+    def describe_sync(
+        self, state: Any, sql: str, params: list | None = None
+    ) -> ResultStream | None:
+        runtime = self._runtime_for(state)
+        describe = getattr(runtime, "describe_sync", None)
+        return None if describe is None else describe(sql, params)
+
     def execute_sync(
         self,
         state: Any,
@@ -604,11 +623,19 @@ class NativeEngineBackend(EngineBackend):
         attached. Cache writes land in the store — never the engine's transient storage. A missing
         store errors at attach (the engine invariant). Yields an :class:`EngineSession`, never the
         raw physical-driver connection — the runtime's connection is shared/persistent, so the
-        session is not closed on exit."""
-        from provisa.executor.session import EngineSession
+        session is not closed on exit.
+
+        REQ-1901: an embedded DuckDB-file store is never ATTACHed on the runtime connection, so
+        ``mat_store`` does not exist there; the session then runs every cache statement against
+        the store through the store broker instead."""
+        from provisa.executor.session import EngineSession, StoreBrokerSession
 
         rt = self._runtime_for(state)
         rt.ensure_materialize_attached()
+        broker = self.mv_store_broker(state)
+        if broker is not None:
+            yield StoreBrokerSession(broker)
+            return
         yield EngineSession(rt.connection)
 
     def _materialize_store_ref(self, state: Any) -> str | None:

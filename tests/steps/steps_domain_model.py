@@ -593,16 +593,14 @@ async def _open_domain_db(dsn: str):
     """Real file-backed sqlite Database with relationships + table_columns, so the relationship repo
     (SQLAlchemy Core upsert / execute_core, migrated off asyncpg) runs against a real backend and the
     PK/AK flags can be asserted from the stored rows rather than by scraping raw SQL strings."""
-    from sqlalchemy.ext.asyncio import create_async_engine
+    from provisa.core.database import create_engine_from_url
 
     from provisa.core.database import Database
     from provisa.core.schema_org import relationships, table_columns
 
-    engine = create_async_engine(dsn)
-    async with engine.begin() as _c:
-        await _c.run_sync(
-            lambda s: relationships.metadata.create_all(s, tables=[relationships, table_columns])
-        )
+    engine = create_engine_from_url(dsn)
+    with engine.begin() as _c:
+        relationships.metadata.create_all(_c, tables=[relationships, table_columns])
     return Database(engine, name="domain-test")
 
 
@@ -670,7 +668,7 @@ def when_relationship_is_persisted(shared_data: dict, tmp_path) -> None:
     """Persist the relationship through the real repo against a file-backed sqlite store."""
     rel: Relationship = shared_data["relationship"]
     existing_pk_count: int = shared_data.get("existing_pk_count", 0)
-    dsn = f"sqlite+aiosqlite:///{tmp_path / 'domain.db'}"
+    dsn = f"sqlite+pysqlite:///{tmp_path / 'domain.db'}"
     asyncio.run(_run_upsert(rel, dsn, existing_pk_count))
     shared_data["dsn"] = dsn
 

@@ -896,6 +896,50 @@ tables:
 
 在數據來源上設定 `cache_enabled: false` 會停用該數據來源所有表的快取，不論表層級的 TTL 為何。(REQ-544) 快取鍵一律包含 `role_id` 加 RLS 內容值，以達成安全分區。(REQ-544)
 
+### 按請求選擇啟用
+
+對於沒有要求回應快取的請求，回應快取處於關閉狀態。(REQ-544) 請求以下列方式選擇啟用：
+
+| 介面 | 啟用方式 |
+| --- | --- |
+| GraphQL (`/data/graphql`, Arrow Flight) | 在操作上使用 `@cached`，可選 `@cached(ttl: 60)` |
+| SQL (pgwire, Flight SQL, `/data/sql`) | 在語句中加入註解行 `-- @provisa cache=true` 或 `-- @provisa cache_ttl=60` |
+| Cypher（`/data/cypher`、Neo4j Query API、Bolt、Arrow Flight） | 在查詢中加入註解行 `// @provisa cache=true` 或 `// @provisa cache_ttl=60` |
+| gRPC（以及 HTTP gRPC 代理） | 呼叫元數據（代理上為請求標頭）`x-provisa-cache: true` 或 `x-provisa-cache-ttl: 60` |
+
+REST 和 JSON:API 沒有選擇啟用方式。非整數的 `ttl` 會令請求失敗。
+
+沒有該提示時，請求既不讀取也不寫入快取。有提示時，仍由上述設定決定：只有當讀取的每個數據來源都設定了 `cache_enabled: true`，而且每個表解析出的 TTL 大於 0，結果才會被快取。如請求提供了 `ttl`，條目的存活時間就是該值；否則為所讀取各表中最短的解析 TTL。(REQ-544)
+
+該提示只是以接受較舊的數據來換取速度。它絕不會令讀取比營運方設定所容許的更新：落地與副本的新鮮度（`cache_ttl`、`change_signal`）、`row_materialize`、`load_protected` 快照以及新鮮度檢查，對帶提示與不帶提示的請求完全一樣適用。請參閱本文件中有關新鮮度與負載的章節。(REQ-544)
+
+`@noCache` 和 `-- @provisa no_cache=true` 已不再存在：快取預設關閉，因此無需繞過。
+
+寫入會令寫入方機構為其寫入的表所持有的所有快取條目失效；其他機構對同一表的條目不受影響。如失效操作失敗，請求會失敗，而不會留下過期條目。(REQ-544, REQ-595)
+
+## 新鮮度與負載：由誰決定
+
+有三方共同決定結果有多新，以及一次查詢為其後端系統帶來多大負載。(REQ-030)
+
+- **上游資料來源。** 理想情況下它自行管理背壓：連線數上限、語句逾時、唯讀副本。
+- **營運方。** 保護平台（即 Provisa 本身）免受背壓。上游無法自我保護時，營運方亦保護上游。相關設定位於資料來源和表上：`load_protected`、`prefer_materialized`、資料來源的 `federation_hints`、大結果重新導向門檻、sink 寫入的 Kafka 叢集，以及每張表登記的 watermark。
+- **最終用戶。** 逐個請求地在速度和新鮮度之間取捨。
+
+營運方的設定是下限。請求可以在下限之上移動，走向較舊的資料或較低的負載；選擇啟用回應快取就是常見的例子。請求永遠不能低於下限。會低於下限的請求提示會被拒絕，錯誤訊息會指明營運方的設定，既不會被悄悄套用，也不會被悄悄捨棄。
+
+| 請求輸入 | 允許做甚麼 | 何時被拒絕 |
+| --- | --- | --- |
+| `@route(engine: DIRECT)`、`-- @provisa route=direct` | 為單一資料來源選擇直連驅動 | 資料來源為 `load_protected` 或 `prefer_materialized` |
+| `@join`、`@reorder`、`@broadcastSize`、`/*+ ... */` | 設定資料來源 `federation_hints` 未設定的引擎工作階段屬性 | 修改了營運方已設定的屬性 |
+| `X-Provisa-Redirect-Threshold`、`@redirect(threshold:)` | 更早地重新導向結果 | 高於營運方的門檻 |
+| `@sink(broker:)`、`X-Provisa-Sink` 中的 broker | 重複營運方的 broker | 指定了其他 broker，或未設定 `KAFKA_BOOTSTRAP_SERVERS` |
+| 訂閱中的 `@watermark` | 重複該表登記的 watermark | 指定了其他欄位，或該表沒有 watermark |
+| `@cached`、`-- @provisa cache=true` | 傳回較舊的快取結果 | 從不；快取項目不會比寫入它的那次讀取更新 |
+
+拒絕時傳回 HTTP 403 及代碼 `query.operator_floor`，pgwire 上傳回 SQLSTATE `42501`，Flight 和 gRPC 上傳回 `PERMISSION_DENIED`。(REQ-030)
+
+`load_protected` 或 `prefer_materialized` 的資料來源，在任何傳輸上都不會被查詢即時讀取。查詢讀取的是它已落地的副本。只有落地及其刷新會讀取資料來源：當 `cache_ttl` 或新鮮度檢查要求時才刷新；兩者皆無時，副本只落地一次，之後僅透過變更串流或排程器刷新。(REQ-1907)(REQ-1141, REQ-826)
+
 ## 驗證
 
 ```yaml
@@ -1402,7 +1446,7 @@ sources:
 | 變數 | 預設 | 描述 |
 | ---------- | --------- | ------------- |
 | `PROVISA_CONFIG` | `config/provisa.yaml` | 組態檔路徑 |
-| `TENANT_DATABASE_URL` | `postgresql+asyncpg://provisa:provisa@localhost:5432/provisa` | 控制平面儲存區 URI（SQLAlchemy async）；內嵌桌面儲存區接受 `sqlite+aiosqlite://…` / `duckdb://…` (REQ-828, REQ-850) |
+| `TENANT_DATABASE_URL` | `postgresql+psycopg://provisa:provisa@localhost:5432/provisa` | 控制平面儲存區 URI（SQLAlchemy async）；內嵌桌面儲存區接受 `sqlite+pysqlite://…` / `duckdb://…` (REQ-828, REQ-850) |
 | `PLATFORM_DATABASE_URL` | — | 平台登錄 URI（租用戶目錄、引擎登錄）；啟動時必要，無後備值 (REQ-837) |
 | `PROVISA_REDIS_EMBEDDED` | — | `1`/`true` 改用內嵌的 fakeredis 而非 Redis 伺服器 — 不需 Docker (REQ-829) |
 | `PG_HOST` | `localhost` | PostgreSQL 主機 |

@@ -17,12 +17,12 @@ go through tolerate_startup_failure.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import TYPE_CHECKING, cast
 
 from sqlalchemy import select
 
+from provisa.core.connection_loop import spawn_background
 from provisa.core.database import Database
 from provisa.core.schema_org import registered_tables as _registered_tables_t
 from provisa.api.startup_resilience import tolerate_startup_failure
@@ -94,7 +94,9 @@ async def _bg_hydrate_api_endpoints() -> None:
                         _ep.pk_column,
                     )
 
-    asyncio.create_task(_bg_hydrate())
+    # Outlives the rebuild that started it: on the process loop even when the rebuild runs on a
+    # connection-thread loop (REQ-1882, amended 2026-09-29).
+    spawn_background(_bg_hydrate(), name="api-endpoint-hydrate")
 
 
 async def _reconcile_live_engine(conn: "Connection") -> None:  # REQ-565, REQ-813

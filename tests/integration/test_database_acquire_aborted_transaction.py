@@ -28,7 +28,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "5432")
-_ASYNC_URL = f"postgresql+asyncpg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
+_ASYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
 _SCHEMA = "org_acquire_abort"
 
 
@@ -44,7 +44,7 @@ async def db():
     yield database
     async with database.acquire() as conn:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
-    await engine.dispose()
+    engine.dispose()
 
 
 async def test_a_caught_duplicate_key_inside_acquire_releases_cleanly(db):
@@ -55,6 +55,47 @@ async def test_a_caught_duplicate_key_inside_acquire_releases_cleanly(db):
     async with db.acquire() as conn:
         rows = (await conn.execute_core(text(f"SELECT count(*) FROM {_SCHEMA}.seed"))).fetchall()
     assert rows[0][0] == 1
+
+
+async def test_a_caught_failure_leaves_the_same_connection_usable(db):
+    """REQ-1882 (sync control plane): outside an explicit transaction each statement is its own
+    unit, as under asyncpg — a caught failure must not poison the next statement on the SAME
+    connection (the airport create_table -> schema rebuild path died on exactly this)."""
+    async with db.acquire() as conn:
+        with pytest.raises(IntegrityError):
+            await conn.execute_core(text(f"INSERT INTO {_SCHEMA}.seed VALUES ('x')"))
+        assert await conn.fetchval(f"SELECT count(*) FROM {_SCHEMA}.seed") == 1
+        await conn.execute(f"INSERT INTO {_SCHEMA}.seed VALUES ('y')")
+    async with db.acquire() as conn:
+        assert await conn.fetchval(f"SELECT count(*) FROM {_SCHEMA}.seed") == 2
+
+
+async def test_a_failed_multi_statement_script_leaves_the_connection_usable(db):
+    """A multi-statement script runs on the raw psycopg cursor (simple query protocol), outside
+    SQLAlchemy's transaction tracking. A caught failure must still be rolled back (the notify-
+    trigger install in ensure_pg_notify_triggers catches its own failures) and a successful one
+    committed, not lost on pool checkin."""
+    from psycopg import errors as pg_errors
+
+    async with db.acquire() as conn:
+        with pytest.raises(pg_errors.UndefinedTable):
+            await conn.execute(f"SELECT 1; SELECT * FROM {_SCHEMA}.no_such_table;")
+        assert await conn.fetchval(f"SELECT count(*) FROM {_SCHEMA}.seed") == 1
+        await conn.execute(
+            f"CREATE TABLE {_SCHEMA}.scripted (id int); INSERT INTO {_SCHEMA}.scripted VALUES (1);"
+        )
+    async with db.acquire() as conn:
+        assert await conn.fetchval(f"SELECT count(*) FROM {_SCHEMA}.scripted") == 1
+
+
+async def test_a_failure_inside_an_explicit_transaction_still_rolls_the_whole_block_back(db):
+    with pytest.raises(IntegrityError):
+        async with db.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(f"INSERT INTO {_SCHEMA}.seed VALUES ('z')")
+                await conn.execute_core(text(f"INSERT INTO {_SCHEMA}.seed VALUES ('x')"))
+    async with db.acquire() as conn:
+        assert await conn.fetchval(f"SELECT count(*) FROM {_SCHEMA}.seed WHERE id = 'z'") == 0
 
 
 async def test_ensure_mv_row_is_idempotent_on_postgresql(db):

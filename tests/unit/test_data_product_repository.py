@@ -15,7 +15,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.models import DataProduct
@@ -27,16 +27,16 @@ _TABLES = [domains, data_products]
 
 @asynccontextmanager
 async def _conn(tmp_path):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'dp.db'}")
-    async with engine.begin() as c:
-        await c.run_sync(lambda s: domains.metadata.create_all(s, tables=_TABLES))
-        await c.execute(domains.insert().values(id="sales", description="Sales"))
-        await c.execute(domains.insert().values(id="finance", description="Finance"))
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'dp.db'}")
+    with engine.begin() as c:
+        domains.metadata.create_all(c, tables=_TABLES)
+        c.execute(domains.insert().values(id="sales", description="Sales"))
+        c.execute(domains.insert().values(id="finance", description="Finance"))
     try:
         async with Database(engine, name="dp").acquire() as conn:
             yield conn
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 @pytest.mark.asyncio

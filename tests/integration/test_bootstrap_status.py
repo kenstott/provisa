@@ -33,14 +33,15 @@ from provisa.api.auth_router import router as auth_router
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
+from provisa.core.schema_admin import orgs
 from provisa.core.schema_admin import superadmin_bootstrap
 
 pytestmark = [pytest.mark.integration]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "5432")
-_SYNC_URL = f"postgresql+psycopg2://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
-_ASYNC_URL = f"postgresql+asyncpg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
+_SYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
+_ASYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
 
 _SCHEMA = "test_req1288_admin"
 # REQ-1296: claiming the slot seats the claimant in the bootstrap org, so the claim path touches the
@@ -57,6 +58,9 @@ def _prepare_sync():
         conn.execute(text(f"CREATE SCHEMA {_SCHEMA}"))
         conn.execute(text(f"SET search_path TO {_SCHEMA}"))
         admin_metadata.create_all(conn, tables=REGISTRY_TABLES)
+        # REQ-1296: the claim seats the claimant in the bootstrap org, whose registry row exists at
+        # runtime before any claim — the membership row's FK names it.
+        conn.execute(insert(orgs).values(id=_ORG_ID, name="Bootstrap", created_by="system"))
     with engine.begin() as conn:
         # The tenant plane is built with the same schema.sql the runtime runs, so the roles rows the
         # claim path assigns (platform_admin) exist. Built synchronously because an async build would

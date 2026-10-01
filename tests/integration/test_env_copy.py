@@ -58,7 +58,7 @@ async def envs(docker_postgres):
 
     org_id = f"envcopy{uuid.uuid4().hex[:8]}"
     url = (
-        f"postgresql+asyncpg://provisa:{os.environ.get('PG_PASSWORD', 'provisa')}@"
+        f"postgresql+psycopg://provisa:{os.environ.get('PG_PASSWORD', 'provisa')}@"
         f"{docker_postgres['host']}:{docker_postgres['port']}/provisa"
     )
     engine = create_engine_from_url(url, pool_size=2)
@@ -104,7 +104,7 @@ async def envs(docker_postgres):
             "added_domains": staticmethod(added_domains),
         },
     )
-    await engine.dispose()
+    engine.dispose()
 
 
 @pytest.fixture

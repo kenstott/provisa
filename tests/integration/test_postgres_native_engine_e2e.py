@@ -121,7 +121,7 @@ async def test_postgres_zero_connector_engine_lands_everything():
         # ZERO connectors => every source materializes into the engine's OWN native store (no FDW).
         from sqlalchemy.schema import CreateSchema
 
-        eng = create_engine_from_url(_dsn("+asyncpg"), pool_size=1)
+        eng = create_engine_from_url(_dsn("+psycopg2"), pool_size=1)
         try:
             async with Database(eng, name="mat").acquire() as sconn:
                 await sconn.execute_core(CreateSchema("pgself", if_not_exists=True))
@@ -144,7 +144,7 @@ async def test_postgres_zero_connector_engine_lands_everything():
                     orders,
                 )
         finally:
-            await eng.dispose()
+            eng.dispose()
 
         ctx = build_context(_si())
         compiled = compile_query(

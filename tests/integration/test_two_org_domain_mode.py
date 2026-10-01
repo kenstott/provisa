@@ -33,7 +33,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "5432")
-_ASYNC_URL = f"postgresql+asyncpg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
+_ASYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
 
 _ORGS = ("req1349a", "req1349b")
 
@@ -62,7 +62,7 @@ async def tenant_dbs():
     yield dbs
     for org_id, db in dbs.items():
         await _drop(db, org_id)
-    await engine.dispose()
+    engine.dispose()
 
 
 @pytest.fixture

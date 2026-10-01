@@ -27,7 +27,7 @@ import asyncio
 
 import pytest
 from pytest_bdd import given, scenarios, then, when
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.models import Column, Table
@@ -64,10 +64,10 @@ def shared_data(tmp_path) -> dict:
     path = tmp_path / "glossary.db"
 
     async def _init() -> None:
-        engine = create_async_engine(f"sqlite+aiosqlite:///{path}")
-        async with engine.begin() as c:
-            await c.run_sync(lambda s: registered_tables.metadata.create_all(s, tables=_TABLES))
-        await engine.dispose()
+        engine = create_engine_from_url(f"sqlite+pysqlite:///{path}")
+        with engine.begin() as c:
+            registered_tables.metadata.create_all(c, tables=_TABLES)
+        engine.dispose()
 
     asyncio.run(_init())
     return {"db_path": path}
@@ -77,12 +77,12 @@ def _run(shared_data: dict, fn):
     """Run one async repository interaction against the scenario's store."""
 
     async def _go():
-        engine = create_async_engine(f"sqlite+aiosqlite:///{shared_data['db_path']}")
+        engine = create_engine_from_url(f"sqlite+pysqlite:///{shared_data['db_path']}")
         try:
             async with Database(engine, name="bdd").acquire() as conn:
                 return await fn(conn)
         finally:
-            await engine.dispose()
+            engine.dispose()
 
     return asyncio.run(_go())
 

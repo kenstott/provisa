@@ -631,8 +631,12 @@ MATCH (o:Order) RETURN o.id, o.amount
 | ------ | -------- |
 | `route=federated` | Force federation through the federation engine, bypassing direct-driver routing |
 | `route=direct` | Force direct-driver execution |
+| `cache=true` | Activar la caché de respuestas para esta consulta (forma de comentario SQL: `-- @provisa cache=true`) |
+| `cache_ttl=N` | Activarla y conservar el resultado en caché N segundos (`-- @provisa cache_ttl=N`) |
 
 (REQ-279, REQ-277, REQ-278)
+
+La caché de respuestas se activa por solicitud: GraphQL usa la directiva `@cached(ttl: Int)`, SQL y Cypher el comentario `cache`/`cache_ttl`, y gRPC los metadatos de llamada `x-provisa-cache` / `x-provisa-cache-ttl`. La indicación se aplica en cada transporte que lleva el lenguaje (Cypher sobre HTTP, Bolt y Arrow Flight; GraphQL sobre HTTP y Arrow Flight). Una solicitud sin ella nunca lee ni escribe la caché, y ninguna forma lee datos más recientes de lo que permiten los ajustes de origen y tabla del operador. Consulte [Caché](configuration.md). (REQ-544)
 
 ## Presets de columnas en mutaciones
 

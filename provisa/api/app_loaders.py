@@ -80,6 +80,17 @@ def _apply_server_and_engine_config(raw_config: dict, connect_engine: bool = Tru
     from provisa.api.app import state
 
     state.server_cfg = raw_config.get("server", {}) if isinstance(raw_config, dict) else {}
+    # REQ-1882: size the background worker pool from config before anything is submitted to it
+    # (the first boot step that has the config). A value different from a pool already running
+    # raises in configure_background_workers — a running pool is never silently left mis-sized.
+    from provisa.core.connection_loop import (
+        DEFAULT_BACKGROUND_WORKERS,
+        configure_background_workers,
+    )
+
+    configure_background_workers(
+        int(state.server_cfg.get("background_workers", DEFAULT_BACKGROUND_WORKERS))
+    )
     # REQ-693: high-security mode (env override wins so airgapped deploys can force it).
     _sec_cfg = raw_config.get("security", {}) if isinstance(raw_config, dict) else {}
     _sec_mode = os.environ.get("PROVISA_SECURITY_MODE") or _sec_cfg.get("mode", "standard")
@@ -793,12 +804,16 @@ async def _init_ingest_engines() -> None:
                 _pw = _resolve_secrets("")
                 _eng = _get_ingest_engine(
                     source_id=_sid,
-                    dialect=_isrc["dialect"] or "postgresql+asyncpg",
+                    dialect=_isrc["dialect"] or "postgresql",
                     host=_isrc["host"],
                     port=_isrc["port"] or 5432,
                     database=_isrc["database"] or "",
                     username=_isrc["username"] or "",
                     password=_pw or "",
+                    # An ingest source row carries no PgBouncer setting (the sources table has no
+                    # such column; SourceConfig.use_pgbouncer is config-only), so it is a direct
+                    # connection — the same default SourceConfig.use_pgbouncer has.
+                    use_pgbouncer=False,
                 )
             elif _tenant_is_pg:
                 # REQ-1730: state.tenant_db.acquire() scopes every control-plane connection to the
@@ -812,19 +827,22 @@ async def _init_ingest_engines() -> None:
                 # boundaries (DuckDB's postgres ATTACH respects them, and Trino's postgres
                 # connector requires them) exposed it: rows landed in "public", the compiled query
                 # asked provisa_admin.org_<id> for them, found the (empty) table, "No results."
+                from provisa.core.database import pg_uses_pgbouncer as _pg_uses_pgbouncer
                 from provisa.core.environments import active_org_schema
 
                 _pw = _resolve_secrets(_tenant_url.password or "")
                 _sp = active_org_schema(state.org_id, "")
                 _eng = _get_ingest_engine(
                     source_id=_sid,
-                    dialect=_isrc["dialect"] or "postgresql+asyncpg",
+                    dialect=_isrc["dialect"] or "postgresql",
                     host=_tenant_url.host or "localhost",
                     port=_tenant_url.port or 5432,
                     database=_tenant_url.database or "",
                     username=_tenant_url.username or "",
                     password=_pw or "",
                     search_path=_sp,
+                    # Same database as the tenant control plane, so the same PgBouncer path.
+                    use_pgbouncer=_pg_uses_pgbouncer(state.tenant_db.engine),
                 )
             else:
                 _eng = state.tenant_db.engine
@@ -885,8 +903,8 @@ async def _init_ingest_engines() -> None:
             for _tn, _cols in _tbl_map.items():
                 _ddl = _gen_ddl(_tn, _cols, sqlite=_sqlite_backed)
                 with tolerate_startup_failure(f"ingest DDL for {_sid}.{_tn}"):
-                    async with _eng.begin() as _conn:
-                        await _conn.execute(__import__("sqlalchemy").text(_ddl))
+                    with _eng.begin() as _conn:
+                        _conn.execute(__import__("sqlalchemy").text(_ddl))
 
 
 def _graphql_remote_field_name(table_name: str) -> str:

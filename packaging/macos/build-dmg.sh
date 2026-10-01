@@ -242,8 +242,8 @@ bundle_native_payload() {
   # mcp-proxy (REQ-1104): Node-free stdio<->Streamable-HTTP bridge for the Claude Desktop connector.
   "$py" -m pip install --quiet "${built_wheel}[embedded]" uvicorn mcp-proxy
   # Fail the build loudly if a critical native-tier dep did not land (mirrors build-sfx.ps1).
-  "$py" -c "import provisa, aiosqlite, mcp_proxy" || {
-    err "native runtime is missing provisa/aiosqlite/mcp_proxy after install."
+  "$py" -c "import provisa, sqlite3, mcp_proxy" || {
+    err "native runtime is missing provisa/sqlite3/mcp_proxy after install."
     exit 1
   }
   # `build` is a build-host tool — it has no business in the shipped tree.

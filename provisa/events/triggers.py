@@ -94,11 +94,10 @@ class EventTriggerManager:  # REQ-219, REQ-220, REQ-258
 
     def __init__(self, triggers: list[EventTrigger]) -> None:
         self._triggers = {t.table_id: t for t in triggers}
-        self._listen_conn: "Connection | None" = None
-        # The async-context-manager returned by Database.acquire() for the persistent LISTEN
-        # connection — Database has no bare acquire/release pair (unlike asyncpg.Pool), so the
-        # context manager is entered/exited manually across setup()/teardown() instead.
-        self._listen_ctx: Any = None
+        # The Database whose listener thread delivers this manager's NOTIFYs, and the channels
+        # subscribed on it (only enabled triggers are), held across setup()/teardown().
+        self._listen_db: "Database | None" = None
+        self._listen_channels: list[str] = []
         self._listen_task: asyncio.Task | None = None
         self._running = False
 
@@ -114,17 +113,16 @@ class EventTriggerManager:  # REQ-219, REQ-220, REQ-258
                     continue
                 await self._install_trigger(conn, trigger)
 
-        # Acquire a dedicated connection for LISTEN, held open across setup()/teardown().
-        self._listen_ctx = pool.acquire()
-        self._listen_conn = await self._listen_ctx.__aenter__()
+        # LISTEN is served by the Database's listener thread on its own connection — no pooled
+        # connection is held across setup()/teardown().
+        self._listen_db = pool
         self._running = True
-
-        assert self._listen_conn is not None
         for trigger in self._triggers.values():
             if not trigger.enabled:
                 continue
             channel = _channel_name(trigger.table_id)
-            await self._listen_conn.add_listener(channel, self._on_notify)
+            await pool.add_listener(channel, self._on_notify)
+            self._listen_channels.append(channel)
             logger.info("Listening on channel %s for table %s", channel, trigger.table_id)
 
         logger.info("EventTriggerManager started with %d triggers", len(self._triggers))
@@ -133,16 +131,11 @@ class EventTriggerManager:  # REQ-219, REQ-220, REQ-258
         """Remove listeners and drop PG triggers."""
         self._running = False
 
-        if self._listen_conn is not None:
-            for trigger in self._triggers.values():
-                channel = _channel_name(trigger.table_id)
-                try:
-                    await self._listen_conn.remove_listener(channel, self._on_notify)
-                except Exception:
-                    pass
-            await self._listen_ctx.__aexit__(None, None, None)
-            self._listen_ctx = None
-            self._listen_conn = None
+        if self._listen_db is not None:
+            for channel in self._listen_channels:
+                await self._listen_db.remove_listener(channel, self._on_notify)
+            self._listen_channels = []
+            self._listen_db = None
 
         # Drop triggers
         async with pool.acquire() as conn:
@@ -200,10 +193,15 @@ class EventTriggerManager:  # REQ-219, REQ-220, REQ-258
         channel: str,
         payload: str,
     ) -> None:
-        """PG LISTEN callback (raw driver connection, unused) — schedule webhook dispatch."""
+        """PG LISTEN callback (raw driver connection, unused) — schedule webhook dispatch.
+
+        REQ-1882: each dispatch (webhook POST with retries) runs on a background worker, not on
+        the loop the listener delivers to."""
         if not self._running:
             return
-        asyncio.ensure_future(self._dispatch(channel, payload))
+        from provisa.core.connection_loop import spawn_background
+
+        spawn_background(self._dispatch(channel, payload), name=f"event-trigger:{channel}")
 
     async def _dispatch(self, channel: str, payload: str) -> None:  # REQ-220
         """Parse notification and POST to webhook URL with retry."""

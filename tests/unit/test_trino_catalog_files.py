@@ -185,3 +185,23 @@ class TestNonMappingSource:
         src = Source(id="pg", type=SourceType.postgresql, host="h", port=5432)
         assert tcf.catalog_properties_for(src, "secret") is None
         assert tcf.is_mapping_dsl_source(src) is False
+
+
+def test_prometheus_catalog_uri_shares_the_native_readers_endpoint_url():
+    """REQ-1689/REQ-1730: one URL derivation for the Trino catalog and the native reader. A bare
+    host becomes http://host:port (Trino rejects a scheme-less prometheus.uri); a URL host is taken
+    as-is; mapping.url wins; no URL at all raises rather than defaulting to localhost."""
+    import pytest
+
+    from provisa.core.models import Source, SourceType
+    from provisa.core.trino_catalog_files import catalog_properties_for
+
+    def _uri(**kw):
+        src = Source(id="p", type=SourceType.prometheus, **kw)
+        return catalog_properties_for(src, "")["prometheus.uri"]
+
+    assert _uri(host="prometheus", port=9090, mapping={"tables": []}) == "http://prometheus:9090"
+    assert _uri(host="https://prom.example:9443", mapping={}) == "https://prom.example:9443"
+    assert _uri(host="ignored", mapping={"url": "http://m:1"}) == "http://m:1"
+    with pytest.raises(ValueError, match="names no URL"):
+        _uri(mapping={})

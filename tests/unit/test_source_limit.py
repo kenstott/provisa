@@ -30,7 +30,7 @@ from provisa.core.schema_org import sources
 
 
 async def _store() -> Database:
-    db = Database(create_engine_from_url("sqlite+aiosqlite:///:memory:"), name="sources-test")
+    db = Database(create_engine_from_url("sqlite+pysqlite:///:memory:"), name="sources-test")
     await _init_schema_portable(db)
     return db
 

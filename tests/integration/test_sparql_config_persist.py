@@ -89,7 +89,7 @@ def _seed():
 
 
 @pytest_asyncio.fixture(scope="module")
-async def pg_conn(tenant_db):
+async def pg_conn(tenant_db, platform_admin_db):
     await init_schema(tenant_db, _SCHEMA_SQL)
     async with tenant_db.acquire() as conn:
         await conn.execute("SET search_path TO org_default")

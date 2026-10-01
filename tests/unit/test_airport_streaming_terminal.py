@@ -27,13 +27,12 @@ them, which is the thing under test.
 
 from __future__ import annotations
 
-import asyncio
-import threading
 import types
 
 import pyarrow as pa
 import pytest
 
+from provisa.core.connection_loop import connection_loop
 from provisa.api.airport.query import (
     _direct_typed_schema,
     _typed_batches_from_rows,
@@ -91,21 +90,17 @@ def _plan(route, **kwargs):
         pk_bounds=(),  # REQ-1865: row-materialize residency reads this on every plan
         audit=None,
         audit_written=False,
+        writes_tables=False,  # REQ-1897: finalize_audit invalidates a write's tables
         **kwargs,
     )
 
 
 @pytest.fixture
 def main_loop():
-    """The app's event loop, running in its own thread — the airport calls into it from the Flight
-    worker thread (governing the scan, and writing its audit row at the terminal)."""
-    loop = asyncio.new_event_loop()
-    thread = threading.Thread(target=loop.run_forever, daemon=True)
-    thread.start()
-    yield loop
-    loop.call_soon_threadsafe(loop.stop)
-    thread.join(timeout=2)
-    loop.close()
+    """The airport RPC's own connection loop, bound to this (the handler) thread — REQ-1882: the
+    airport governs the scan and writes its audit row on the RPC's thread, never on another loop."""
+    with connection_loop() as cl:
+        yield cl
 
 
 @pytest.fixture
@@ -120,7 +115,7 @@ def airport(monkeypatch, main_loop):
     engine = types.SimpleNamespace(
         dialect="trino",
         execute_engine_stream=lambda sql, params: (engine_schema, reader),
-        execute_native_stream=lambda pools, source_id, sql, params, loop=None: direct_stream,
+        execute_native_stream=lambda pools, source_id, sql, params, run=None: direct_stream,
     )
     pools = types.SimpleNamespace(has=lambda s: True, supports_stream=lambda s: True)
     state = types.SimpleNamespace(federation_engine=engine, source_pools=pools)
@@ -135,7 +130,7 @@ def airport(monkeypatch, main_loop):
     )
     monkeypatch.setattr(
         "provisa.api.airport.query._plan_for_scan",
-        lambda state, loop, sql, role_id: holder.plan,
+        lambda state, sql, role_id: holder.plan,
     )
     return holder
 
@@ -146,9 +141,7 @@ def airport(monkeypatch, main_loop):
 def test_advertising_an_engine_scan_closes_the_reader_without_pulling_a_batch(airport, main_loop):
     """flight_info is called per table by a client listing a catalog; leaving a lazy reader open
     per call holds an engine cursor for each one."""
-    schema = governed_table_scan_schema(
-        airport.state, main_loop, "SELECT id FROM orders", "analyst"
-    )
+    schema = governed_table_scan_schema(airport.state, "SELECT id FROM orders", "analyst")
 
     assert schema == airport.engine_schema
     assert airport.reader.closed is True
@@ -158,7 +151,7 @@ def test_advertising_an_engine_scan_closes_the_reader_without_pulling_a_batch(ai
 def test_advertising_a_direct_scan_releases_the_source_cursor_without_fetching(airport):
     airport.plan = _plan(airport.route.DIRECT)
 
-    schema = governed_table_scan_schema(airport.state, None, "SELECT id FROM orders", "analyst")
+    schema = governed_table_scan_schema(airport.state, "SELECT id FROM orders", "analyst")
 
     assert schema.names == ["id"]
     assert airport.direct.closed is True
@@ -190,9 +183,7 @@ def test_a_direct_scan_that_reports_no_column_types_is_refused():
 
 
 def test_an_engine_scan_streams_the_engines_own_reader(airport, main_loop):
-    schema, batches = governed_table_scan_stream(
-        airport.state, main_loop, "SELECT id FROM orders", "analyst"
-    )
+    schema, batches = governed_table_scan_stream(airport.state, "SELECT id FROM orders", "analyst")
 
     assert schema == airport.engine_schema
     assert airport.reader.pulled == 0  # nothing pulled until the client reads
@@ -202,9 +193,7 @@ def test_an_engine_scan_streams_the_engines_own_reader(airport, main_loop):
 def test_a_direct_scan_streams_through_the_sources_cursor(airport, main_loop):
     airport.plan = _plan(airport.route.DIRECT)
 
-    schema, batches = governed_table_scan_stream(
-        airport.state, main_loop, "SELECT id FROM orders", "analyst"
-    )
+    schema, batches = governed_table_scan_stream(airport.state, "SELECT id FROM orders", "analyst")
 
     assert schema.names == ["id"]
     assert airport.direct.consumed == 0
@@ -238,4 +227,4 @@ def test_an_unroutable_scan_is_refused_rather_than_materialized(airport):
     airport.plan = _plan("SOMETHING_ELSE")
 
     with pytest.raises(ValueError, match="not supported for the airport service"):
-        governed_table_scan_stream(airport.state, None, "SELECT 1", "analyst")
+        governed_table_scan_stream(airport.state, "SELECT 1", "analyst")

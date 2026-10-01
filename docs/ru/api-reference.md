@@ -66,6 +66,8 @@ GET /auth/provider-type
 - `X-Provisa-Redirect-Threshold` — количество строк, выше которого срабатывает перенаправление (REQ-137)
 - `X-Provisa-Redirect` — `true` для безусловного принудительного перенаправления (REQ-029)
 
+**Кеш ответов:** включается для отдельного запроса директивой операции `@cached` (`query @cached(ttl: 60) { ... }`, `ttl` необязателен); та же директива действует для GraphQL, отправленного через Arrow Flight. Cypher включает кеш строкой `// @provisa cache=true` или `// @provisa cache_ttl=N`, gRPC — метаданными вызова `x-provisa-cache: true` или `x-provisa-cache-ttl: N`. Без неё запрос не читает кеш ответов и не пишет в него. Заголовок ответа `X-Provisa-Cache` сообщает `HIT` или `MISS`. См. [Кеш](configuration.md). (REQ-544)
+
 **Ответ (JSON inline):**
 
 ```json

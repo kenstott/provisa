@@ -85,7 +85,7 @@ def _apply_materialize(
     mat_store = spec.get("materialization_store")
     if mat_store not in ("duckdb_file", "sqlite"):
         return
-    scheme = "duckdb" if mat_store == "duckdb_file" else "sqlite+aiosqlite"
+    scheme = "duckdb" if mat_store == "duckdb_file" else "sqlite+pysqlite"
     if ephemeral:
         env["PROVISA_MATERIALIZE_URL"] = f"{scheme}:///:memory:"
         notes.append(f"materialization store: in-memory {mat_store} (ephemeral)")
@@ -126,13 +126,13 @@ def _apply_control_plane(
         return
     # SQLAlchemy control plane on sqlite — no initdb, no pgserver, no Python-version gate.
     if ephemeral:
-        env["PLATFORM_DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
-        env["TENANT_DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+        env["PLATFORM_DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
+        env["TENANT_DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
         notes.append("control plane: in-memory sqlite (ephemeral, fastest)")
         return
     dd = Path(data_dir) if data_dir else _default_data_dir(preset)
-    env["PLATFORM_DATABASE_URL"] = f"sqlite+aiosqlite:///{dd / 'platform.db'}"
-    env["TENANT_DATABASE_URL"] = f"sqlite+aiosqlite:///{dd / 'tenant.db'}"
+    env["PLATFORM_DATABASE_URL"] = f"sqlite+pysqlite:///{dd / 'platform.db'}"
+    env["TENANT_DATABASE_URL"] = f"sqlite+pysqlite:///{dd / 'tenant.db'}"
     notes.append(f"control plane: sqlite files under {dd} (instant, persistent)")
 
 
@@ -163,7 +163,7 @@ def _apply_embedded_pg(
 
     dd = Path(data_dir) if data_dir else _default_data_dir(preset)
     host, port = start_control_plane_pg(str(dd / "control-pg"))
-    url = f"postgresql+asyncpg://provisa:provisa@/provisa?host={host}&port={port}"
+    url = f"postgresql+psycopg://provisa:provisa@/provisa?host={host}&port={port}"
     env["PLATFORM_DATABASE_URL"] = url
     env["TENANT_DATABASE_URL"] = url
     notes.append(f"control plane: embedded PostgreSQL (pgserver, socket {host}:{port})")

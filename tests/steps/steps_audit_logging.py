@@ -56,12 +56,12 @@ def _audit_dsn() -> str:
 def _audit_db(search_path: str | None = None):
     """A provisa Database over the pg DSN — init_audit_schema / log_query were migrated off asyncpg
     to SQLAlchemy Core (execute_core / upsert), so they need a Database, not a raw asyncpg pool."""
-    from sqlalchemy.ext.asyncio import create_async_engine
+    from provisa.core.database import create_engine_from_url
 
     from provisa.core.database import Database
 
-    url = _audit_dsn().replace("postgresql://", "postgresql+asyncpg://", 1)
-    return Database(create_async_engine(url), name="audit-test", search_path=search_path)
+    url = _audit_dsn().replace("postgresql://", "postgresql+psycopg://", 1)
+    return Database(create_engine_from_url(url), name="audit-test", search_path=search_path)
 
 
 @pytest.fixture

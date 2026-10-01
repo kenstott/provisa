@@ -34,7 +34,7 @@ from datetime import datetime, timezone
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.schema_org import event_status, events, node_freshness_state
@@ -61,19 +61,19 @@ _MV_COLS = [("day", "TEXT"), ("total", "INTEGER")]
 @pytest_asyncio.fixture
 async def store(tmp_path):
     """A real sqlite materialization store (the write face target)."""
-    return f"sqlite+aiosqlite:///{tmp_path / 'store.db'}"
+    return f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
 
 
 @pytest_asyncio.fixture
 async def db(tmp_path):
     """A real control-plane Database (event queue + freshness state)."""
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'cp.db'}")
-    async with engine.begin() as c:
-        await c.run_sync(lambda s: events.metadata.create_all(s, tables=_TABLES))
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cp.db'}")
+    with engine.begin() as c:
+        events.metadata.create_all(c, tables=_TABLES)
     try:
         yield Database(engine, name="cp")
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 def _now_at(monkeypatch, instant):
@@ -142,12 +142,12 @@ async def _seed_source_change(db):
 
 
 async def _store_rows(store, table):
-    engine = create_async_engine(store)
+    engine = create_engine_from_url(store)
     try:
-        async with engine.begin() as c:
-            return (await c.execute(text(f"SELECT * FROM main.{table}"))).fetchall()
+        with engine.begin() as c:
+            return (c.execute(text(f"SELECT * FROM main.{table}"))).fetchall()
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 async def _mv_freshness(db):

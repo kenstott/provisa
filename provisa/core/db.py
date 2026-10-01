@@ -266,12 +266,12 @@ async def _init_schema_portable(pool: "Database") -> None:
     from provisa.core import schema_org
     from provisa.core.schema_org import domains, roles
 
-    async with pool.engine.begin() as conn:
-        await conn.run_sync(schema_org.metadata.create_all)
+    with pool.engine.begin() as conn:
+        schema_org.metadata.create_all(conn)
         # ``create_all`` skips tables that already exist, so a column added to the metadata never
         # reaches an existing SQLite/MySQL file — the portable equivalent of schema.sql's
         # ALTER ... ADD COLUMN IF NOT EXISTS blocks.
-        await conn.run_sync(add_missing_columns, schema_org.metadata.sorted_tables)
+        add_missing_columns(conn, schema_org.metadata.sorted_tables)
     async with pool.acquire() as conn:
         for domain_id, description, steward in _SEED_DOMAINS:
             result = await conn.execute_core(select(domains.c.id).where(domains.c.id == domain_id))
@@ -334,10 +334,8 @@ async def init_schema(
     if engine is not None:
         from provisa.core import schema_org
 
-        async with engine.begin() as sa_conn:
-            await sa_conn.run_sync(
-                add_missing_columns, schema_org.metadata.sorted_tables, schema_name
-            )
+        with engine.begin() as sa_conn:
+            add_missing_columns(sa_conn, schema_org.metadata.sorted_tables, schema_name)
 
 
 async def _apply_tenancy_role_grants_portable(pool: "Database", *, multitenancy: bool) -> None:

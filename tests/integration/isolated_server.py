@@ -49,11 +49,9 @@ def _subprocess_coverage_env() -> dict:
 
 
 def free_port() -> int:
-    s = socket.socket()
-    s.bind(("", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
+    from tests.port_lease import lease_port
+
+    return lease_port()
 
 
 async def drop_org_schema(org_id: str) -> None:
@@ -122,8 +120,14 @@ class IsolatedServer:
         config: str = "config/provisa.yaml",
         control_plane: str = "postgres",
         materialize_store_url: str | None = None,
+        app: str = "main:app",
+        loop: str = "auto",
     ) -> None:
         self.org_id = org_id
+        # The ASGI app and uvicorn --loop. main:app installs uvloop itself (REQ-1867); a test that
+        # needs asyncio's own loops passes tests.integration.stdlib_loop_app:app with loop=asyncio.
+        self._app = app
+        self._loop = loop
         self._engine = engine
         self._await_flight = await_flight
         self._await_grpc = await_grpc
@@ -144,6 +148,23 @@ class IsolatedServer:
     @property
     def base_url(self) -> str:
         return f"http://127.0.0.1:{self.http_port}"
+
+    @property
+    def request_timeout(self) -> float:
+        """The server's own per-request budget, resolved the way the server resolves it
+        (``provisa.api.app_loaders``: $PROVISA_REQUEST_TIMEOUT, else the config's
+        ``server.limits.request_timeout``, else 60s). A test client that waits this long plus a
+        response margin fails only when the server itself would have given up."""
+        env = os.environ.get("PROVISA_REQUEST_TIMEOUT")
+        if env:
+            return float(env)
+        base = Path(self._config)
+        if not base.is_absolute():
+            base = _REPO_ROOT / base
+        with open(base) as f:
+            cfg = yaml.safe_load(f)
+        limits = (cfg.get("server") or {}).get("limits") or {}
+        return float(limits.get("request_timeout", 60))
 
     def _write_config(self) -> str:
         # A temp copy of the base config with auth disabled (provider: none → unsecured dev
@@ -169,8 +190,8 @@ class IsolatedServer:
         self._tmpdir = tempfile.TemporaryDirectory()
         d = Path(self._tmpdir.name)
         return {
-            "TENANT_DATABASE_URL": f"sqlite+aiosqlite:///{d / 'tenant.db'}",
-            "PLATFORM_DATABASE_URL": f"sqlite+aiosqlite:///{d / 'platform.db'}",
+            "TENANT_DATABASE_URL": f"sqlite+pysqlite:///{d / 'tenant.db'}",
+            "PLATFORM_DATABASE_URL": f"sqlite+pysqlite:///{d / 'platform.db'}",
             "PROVISA_REDIS_EMBEDDED": "1",
         }
 
@@ -192,6 +213,11 @@ class IsolatedServer:
             "PROVISA_BOLT_PORT": str(self.bolt_port),
             "OTEL_SDK_DISABLED": "true",
         }
+        if self._materialize_store_url is not None:
+            # $PROVISA_MATERIALIZE_URL outranks the config's materialize_store_url, and the test
+            # session exports a Postgres default — so a requested store must be set here too, or the
+            # server silently runs on the session's Postgres store instead.
+            env["PROVISA_MATERIALIZE_URL"] = self._materialize_store_url
         if self._engine == "trino" and self._control_plane != "sqlite":
             # This app subprocess runs on the bare host, but Trino runs inside the compose
             # network's container — see trino_system_catalogs.engine_visible_address(). Without
@@ -208,7 +234,8 @@ class IsolatedServer:
                 sys.executable,
                 "-m",
                 "uvicorn",
-                "main:app",
+                self._app,
+                f"--loop={self._loop}",
                 "--host",
                 "127.0.0.1",
                 f"--port={self.http_port}",

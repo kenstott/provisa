@@ -27,15 +27,15 @@ pytestmark = pytest.mark.asyncio
 
 @asynccontextmanager
 async def _db(tmp_path):
-    from sqlalchemy.ext.asyncio import create_async_engine
+    from provisa.core.database import create_engine_from_url
 
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'metrics.db'}")
-    async with engine.begin() as c:
-        await c.run_sync(lambda s: metrics.metadata.create_all(s, tables=[metrics]))
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'metrics.db'}")
+    with engine.begin() as c:
+        metrics.metadata.create_all(c, tables=[metrics])
     try:
         yield Database(engine, name="cp")
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 # ── expression validation (REQ-1317) ─────────────────────────────────────────
@@ -137,7 +137,7 @@ async def test_upsert_replaces_by_name(tmp_path):
 @asynccontextmanager
 async def _admin_db(tmp_path):
     """Sqlite control plane carrying the registries the metric-view compiler reads."""
-    from sqlalchemy.ext.asyncio import create_async_engine
+    from provisa.core.database import create_engine_from_url
 
     from provisa.core.schema_org import (
         glossary_term_edges,
@@ -151,32 +151,30 @@ async def _admin_db(tmp_path):
         table_columns,
     )
 
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'admin.db'}")
-    async with engine.begin() as c:
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'admin.db'}")
+    with engine.begin() as c:
         # roles: table_repo resolves control-plane (cross_org) roles from the DB (REQ-1337), so
         # every fixture that registers tables must carry the roles table the bootstrap guarantees.
         # glossary_*: the table upsert derives glossary terms from columns (REQ-1387).
-        await c.run_sync(
-            lambda s: metrics.metadata.create_all(
-                s,
-                tables=[
-                    metrics,
-                    registered_tables,
-                    table_columns,
-                    relationships,
-                    roles,
-                    glossary_terms,
-                    glossary_term_refs,
-                    glossary_term_edges,
-                    glossary_term_domains,
-                    glossary_term_experts,
-                ],
-            )
+        metrics.metadata.create_all(
+            c,
+            tables=[
+                metrics,
+                registered_tables,
+                table_columns,
+                relationships,
+                roles,
+                glossary_terms,
+                glossary_term_refs,
+                glossary_term_edges,
+                glossary_term_domains,
+                glossary_term_experts,
+            ],
         )
     try:
         yield Database(engine, name="cp")
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 async def _seed_semantic_layer(conn):

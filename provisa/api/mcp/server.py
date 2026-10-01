@@ -26,6 +26,7 @@ table branches and filtered to the caller's accessible domains.
 
 from __future__ import annotations
 
+import functools
 import logging
 import os
 from contextvars import ContextVar
@@ -34,6 +35,7 @@ from typing import Any
 from provisa.api.mcp import tools
 from provisa.api.org_resolve import OrgResolutionError
 from provisa.core.request_context import reset_current_org, set_current_org
+from provisa.core.request_thread import run_on_request_thread
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
 log = logging.getLogger(__name__)
@@ -192,6 +194,22 @@ def build_mcp_server(state: Any):
         ),
     )
 
+    def _tool(fn):
+        """Register ``fn`` as an MCP tool whose body runs on its own request thread (REQ-1882).
+
+        The MCP transport only receives and dispatches; the tool — catalog reads, governance,
+        execution, audit — runs on a request thread's own loop (a
+        ``provisa.core.connection_loop.ConnectionLoop``), in a copy of this call's context
+        (the bearer-resolved role/identity/org ContextVars travel with it)."""
+
+        @functools.wraps(fn)
+        async def _on_request_thread(*args: Any, **kwargs: Any) -> Any:
+            # Async on the MCP loop by necessity: the MCP SDK dispatches tools as coroutines on
+            # its own loop, which must keep serving other calls while this one runs.
+            return await run_on_request_thread(lambda: fn(*args, **kwargs))
+
+        return mcp.tool()(_on_request_thread)
+
     def _role(role: str | None) -> str:
         if role and str(role).strip():
             return str(role).strip()
@@ -221,22 +239,22 @@ def build_mcp_server(state: Any):
             org_id = org_id or getattr(state, "org_id", None)
         return SimpleNamespace(state=SimpleNamespace(identity=identity, active_org_id=org_id))
 
-    @mcp.tool()
+    @_tool
     async def list_schemas(role: str | None = None) -> list[dict]:
         """List catalog schemas with description and table count."""
         return await tools.list_schemas(state, _role(role))
 
-    @mcp.tool()
+    @_tool
     async def list_tables(schema: str, role: str | None = None) -> list[dict]:
         """List tables in a schema with description and column count."""
         return await tools.list_tables(state, _role(role), schema)
 
-    @mcp.tool()
+    @_tool
     async def describe_table(schema: str, table: str, role: str | None = None) -> dict:
         """Describe a table: columns (name, type, description) and foreign keys."""
         return await tools.describe_table(state, _role(role), schema, table)
 
-    @mcp.tool()
+    @_tool
     async def list_commands(role: str | None = None) -> list[dict]:
         """List registered commands the role may invoke: name, domain, kind, arguments (REQ-1156)."""
         return tools.list_commands(state, _role(role))
@@ -250,16 +268,20 @@ def build_mcp_server(state: Any):
         offset: int = 0,
     ) -> dict:
         """Execute SQL through the governed pipeline; returns row-capped JSON rows."""
-        result = await tools.run_sql(state, _role(role), sql, limit=limit, offset=offset)
+        # REQ-1882: governance and execution run on this call's request thread; the license nag
+        # below writes to the MCP session, whose streams belong to the MCP loop, so it stays here.
+        result = await run_on_request_thread(
+            lambda: tools.run_sql(state, _role(role), sql, limit=limit, offset=offset)
+        )
         await _emit_mcp_nag(ctx)  # REQ-1137: out-of-band license nag, once per session
         return result
 
-    @mcp.tool()
+    @_tool
     async def explain_sql(sql: str, role: str | None = None) -> dict:
         """Validate and govern a query without executing it; confirms it plans cleanly for the role."""
         return await tools.explain_sql(state, _role(role), sql)
 
-    @mcp.tool()
+    @_tool
     async def search_catalog(query: str, role: str | None = None, k: int = 5) -> list[dict]:
         """Semantically search the catalog for datasets matching a natural-language query.
 
@@ -269,7 +291,7 @@ def build_mcp_server(state: Any):
         """
         return await tools.search_catalog(state, _role(role), query, k=k)
 
-    @mcp.tool()
+    @_tool
     async def search_terms(query: str, role: str | None = None, limit: int = 25) -> list[dict]:
         """Look up business-glossary terms by name or definition (REQ-1387).
 
@@ -280,7 +302,7 @@ def build_mcp_server(state: Any):
         """
         return await tools.search_terms(state, _role(role), query, limit=limit)
 
-    @mcp.tool()
+    @_tool
     async def list_metrics(role: str | None = None) -> list[dict]:
         """List governed metric definitions — agents select meanings by name instead of
         composing aggregation SQL (REQ-1319).
@@ -291,7 +313,7 @@ def build_mcp_server(state: Any):
         """
         return tools.list_metrics(state, _role(role))
 
-    @mcp.tool()
+    @_tool
     async def query_metric(
         metric: str,
         dimensions: list[str] | None = None,
@@ -309,7 +331,7 @@ def build_mcp_server(state: Any):
             state, _role(role), metric, dimensions or [], filters=filters
         )
 
-    @mcp.tool()
+    @_tool
     async def propose_source(source: dict, reason: str, role: str | None = None) -> dict:
         """Propose a newly-discovered data source for a human to review and register (REQ-1792).
 
@@ -322,7 +344,7 @@ def build_mcp_server(state: Any):
         """
         return await tools.propose_source(state, _role(role), source, reason)
 
-    @mcp.tool()
+    @_tool
     async def propose_table(table: dict, reason: str, role: str | None = None) -> dict:
         """Propose registering a table from an already-registered source (REQ-1792).
 
@@ -334,20 +356,20 @@ def build_mcp_server(state: Any):
         """
         return await tools.propose_table(state, _role(role), table, reason)
 
-    @mcp.tool()
+    @_tool
     async def graphql_field_names(schema: str, table: str, role: str | None = None) -> dict:
         """The REAL GraphQL field names (and gRPC/JSON:API/OpenAPI deep-link identifiers) for a
         table and its columns — NOT a guessed transform of describe_table's SQL-plane names.
         ALWAYS call this before writing a GraphQL/gRPC/JSON:API/OpenAPI query for a table."""
         return await tools.graphql_field_names(state, _role(role), schema, table)
 
-    @mcp.tool()
+    @_tool
     async def cypher_field_names(schema: str, table: str, role: str | None = None) -> dict:
         """The REAL Cypher node label, id property, and column property names for a table — NOT
         a guessed transform. ALWAYS call this before writing a Cypher query for a table."""
         return await tools.cypher_field_names(state, _role(role), schema, table)
 
-    @mcp.tool()
+    @_tool
     async def generate_explore_queries(question: str, role: str | None = None) -> dict:
         """Generate ready-to-run queries for all six query surfaces (sql, graphql, cypher, grpc,
         jsonapi, openapi) from one natural-language question — the same pipeline the NL Explore
@@ -355,7 +377,7 @@ def build_mcp_server(state: Any):
         BY, a business-term filter, or a question spanning more than one table."""
         return await tools.generate_explore_queries(state, _role(role), question)
 
-    @mcp.tool()
+    @_tool
     async def list_native_tables(
         source_id: str, schema_name: str = "public", role: str | None = None
     ) -> list[dict]:
@@ -364,7 +386,7 @@ def build_mcp_server(state: Any):
         tools can never see."""
         return await tools.list_native_tables(state, _role(role), source_id, schema_name)
 
-    @mcp.tool()
+    @_tool
     async def describe_native_table(
         source_id: str, schema_name: str, table_name: str, role: str | None = None
     ) -> list[dict]:
@@ -374,7 +396,7 @@ def build_mcp_server(state: Any):
             state, _role(role), source_id, schema_name, table_name
         )
 
-    @mcp.tool()
+    @_tool
     async def list_glossary_terms(
         q: str | None = None, include_deprecated: bool = True, role: str | None = None
     ) -> list[dict]:
@@ -384,7 +406,7 @@ def build_mcp_server(state: Any):
             state, resolved, _capability_request(resolved), q, include_deprecated
         )
 
-    @mcp.tool()
+    @_tool
     async def create_glossary_term(
         name: str,
         definition: str | None = None,
@@ -397,7 +419,7 @@ def build_mcp_server(state: Any):
             state, resolved, _capability_request(resolved), name, definition, domains
         )
 
-    @mcp.tool()
+    @_tool
     async def update_glossary_term(
         term_id: int,
         name: str | None = None,
@@ -419,7 +441,7 @@ def build_mcp_server(state: Any):
             retired=retired,
         )
 
-    @mcp.tool()
+    @_tool
     async def delete_glossary_term(term_id: int, role: str | None = None) -> dict:
         """Delete a glossary term. Irreversible."""
         resolved = _role(role)
@@ -427,7 +449,7 @@ def build_mcp_server(state: Any):
             state, resolved, _capability_request(resolved), term_id
         )
 
-    @mcp.tool()
+    @_tool
     async def add_glossary_term_edge(
         term_id: int, to_term_id: int, rel_type: str, role: str | None = None
     ) -> dict:
@@ -437,7 +459,7 @@ def build_mcp_server(state: Any):
             state, resolved, _capability_request(resolved), term_id, to_term_id, rel_type
         )
 
-    @mcp.tool()
+    @_tool
     async def remove_glossary_term_edge(
         term_id: int, to_term_id: int, rel_type: str, role: str | None = None
     ) -> dict:
@@ -447,13 +469,13 @@ def build_mcp_server(state: Any):
             state, resolved, _capability_request(resolved), term_id, to_term_id, rel_type
         )
 
-    @mcp.tool()
+    @_tool
     async def list_data_products(role: str | None = None) -> list[dict]:
         """The org's data products (id, domain, name, purpose, owner/team role, status, etc.)."""
         resolved = _role(role)
         return await tools.list_data_products(state, resolved, _capability_request(resolved))
 
-    @mcp.tool()
+    @_tool
     async def create_data_product(
         id: str,
         domain_id: str,
@@ -490,13 +512,13 @@ def build_mcp_server(state: Any):
             support=support,
         )
 
-    @mcp.tool()
+    @_tool
     async def delete_data_product(id: str, role: str | None = None) -> dict:
         """Delete a data product by id. Irreversible."""
         resolved = _role(role)
         return await tools.delete_data_product(state, resolved, _capability_request(resolved), id)
 
-    @mcp.tool()
+    @_tool
     async def upsert_metric(
         name: str,
         expression: str,
@@ -523,7 +545,7 @@ def build_mcp_server(state: Any):
             visible_to=visible_to,
         )
 
-    @mcp.tool()
+    @_tool
     async def delete_metric(name: str, role: str | None = None) -> dict:
         """Delete a governed metric by name. Irreversible."""
         resolved = _role(role)
@@ -533,7 +555,7 @@ def build_mcp_server(state: Any):
     # a tool it cannot use — no fallback, the tool simply does not exist without the key.
     if os.environ.get("TYPESAFEAI_API_KEY", "").strip():
 
-        @mcp.tool()
+        @_tool
         async def jev_evaluate(
             questions: list[dict],
             jev_state: Any = None,
@@ -596,10 +618,21 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
                 return
             await app(scope, receive, send)  # loopback stdio-style: pinned role applies
             return
-        try:
+
+        async def _resolve_principal() -> tuple[Any, str, str | None]:
             identity = await _validate_mcp_token(token, state)
             role = _role_for_identity(identity, state)
             org_id = await _org_for_identity(identity, state)
+            if org_id is not None:
+                from provisa.api.app import ensure_org_runtime
+
+                await ensure_org_runtime(org_id)
+            return identity, role, org_id
+
+        try:
+            # REQ-1882: credential validation, org resolution and the org runtime build run on
+            # this request's own thread; the MCP loop only receives and relays.
+            identity, role, org_id = await run_on_request_thread(_resolve_principal)
         except (PermissionError, ValueError) as exc:
             # Token present but rejected (bad/expired token, or no mapped role) — fail closed.
             await _send_401(send, str(exc))
@@ -616,9 +649,6 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
         # route to it. None (single-org / default) leaves current_org unset → default runtime.
         org_token = None
         if org_id is not None:
-            from provisa.api.app import ensure_org_runtime
-
-            await ensure_org_runtime(org_id)
             org_token = set_current_org(org_id)
         # REQ-074/REQ-1386: attribute the tools' governed statements to the token's principal. The
         # MCP transport runs on its own event loop in-process, so a plain scope binds it for the

@@ -18,7 +18,6 @@ Falls back to PostgreSQL LISTEN/NOTIFY when source type is ``postgresql``.
 """
 
 # Requirements: REQ-258, REQ-260, REQ-336, REQ-338, REQ-342, REQ-369, REQ-371
-# complexity-gate: allow-ble=1 reason="best-effort listener removal in the SSE disconnect finally-block (pre-existing) — a remove_listener failure during teardown is logged and must not mask the disconnect or block the connection release that follows"
 
 from __future__ import annotations
 
@@ -343,29 +342,25 @@ async def _sse_generator(  # REQ-219, REQ-258
 ) -> AsyncGenerator[str, None]:
     """Yield SSE-formatted events from a PostgreSQL LISTEN channel.
 
-    Acquires a dedicated connection from *pool*, subscribes to the
-    ``provisa_{table}`` channel, and forwards notifications as SSE events
-    until the client disconnects.
+    Subscribes to the ``provisa_{table}`` channel on *pool* (the control-plane
+    ``Database``, whose listener thread holds the LISTEN connection) and forwards
+    notifications as SSE events until the client disconnects.
     """
     channel = f"{CHANNEL_PREFIX}{table}"
     queue: asyncio.Queue[str] = asyncio.Queue()
 
     def _on_notify(  # pyright: ignore[reportUnusedParameter]
-        _conn: object,  # object-ok: asyncpg notify callback — connection type is opaque at this boundary
+        _conn: object,  # object-ok: NOTIFY callback — the Database handle, opaque at this boundary
         _pid: int,
         _channel: str,
         payload: str,
     ) -> None:
         queue.put_nowait(payload)
 
-    # LISTEN needs ONE connection held open for the whole stream, so the acquire context manager is
-    # entered/exited by hand rather than wrapped around the yields (same shape as
-    # EventTriggerManager's dedicated listen connection). ``Database.acquire()`` is an
-    # @asynccontextmanager — there is no bare acquire/release pair to call.
-    acq = pool.acquire()
-    conn = await acq.__aenter__()
+    # LISTEN is served by the Database's listener thread on its own connection, delivering to
+    # _on_notify on this stream's loop — the stream holds no pooled connection while it waits.
+    await pool.add_listener(channel, _on_notify)
     try:
-        await conn.add_listener(channel, _on_notify)
         log.info("SSE: listening on channel %s (role=%s)", channel, role_id)
 
         # Initial keepalive so the client sees headers immediately
@@ -402,11 +397,7 @@ async def _sse_generator(  # REQ-219, REQ-258
             yield f"data: {payload}\n\n"
 
     finally:
-        try:
-            await conn.remove_listener(channel, _on_notify)
-        except Exception:
-            log.debug("Failed to remove listener on %s", channel, exc_info=True)
-        await acq.__aexit__(None, None, None)
+        await pool.remove_listener(channel, _on_notify)
         log.info("SSE: disconnected from channel %s", channel)
 
 

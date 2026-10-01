@@ -20,6 +20,7 @@ from __future__ import annotations
 import sqlglot
 import pytest
 
+from provisa.compiler.directives import NO_CACHE_HINT
 from provisa.pgwire import _pipeline
 from provisa.pgwire._pipeline import _reject_view_writes
 
@@ -82,5 +83,5 @@ async def test_compiled_pipeline_entrypoint_rejects_view_write():
 
     with pytest.raises(PermissionError, match="query-only"):
         await _pipeline._govern_and_route_compiled(
-            "UPDATE daily_totals SET n = 1", "admin", state=_FakeState()
+            "UPDATE daily_totals SET n = 1", "admin", state=_FakeState(), cache_hint=NO_CACHE_HINT
         )

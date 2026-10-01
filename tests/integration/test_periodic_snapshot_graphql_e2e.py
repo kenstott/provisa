@@ -25,7 +25,7 @@ from unittest.mock import patch
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.api.admin.schema import admin_schema
 from provisa.core.database import Database
@@ -35,18 +35,18 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")
 
 
 def _async_dsn(pg_dsn: str) -> str:
-    return pg_dsn.replace("postgresql://", "postgresql+asyncpg://", 1)
+    return pg_dsn.replace("postgresql://", "postgresql+psycopg://", 1)
 
 
 @pytest_asyncio.fixture
 async def pool(pg_dsn):
     """A real PG-backed control-plane Database in a throwaway schema, wired in as the admin pool."""
     schema = f"cale2e_{uuid.uuid4().hex[:12]}"
-    engine = create_async_engine(_async_dsn(pg_dsn))
-    async with engine.begin() as c:
-        await c.execute(text(f'CREATE SCHEMA "{schema}"'))
-        await c.execute(text(f'SET search_path TO "{schema}"'))
-        await c.run_sync(lambda s: calendars.metadata.create_all(s, tables=[calendars]))
+    engine = create_engine_from_url(_async_dsn(pg_dsn))
+    with engine.begin() as c:
+        c.execute(text(f'CREATE SCHEMA "{schema}"'))
+        c.execute(text(f'SET search_path TO "{schema}"'))
+        calendars.metadata.create_all(c, tables=[calendars])
     db = Database(engine, name="cale2e", search_path=schema)
 
     @asynccontextmanager
@@ -60,9 +60,9 @@ async def pool(pg_dsn):
         patch("provisa.api.admin.schema_query._get_pool", return_value=fake_pool),
     ):
         yield
-    async with engine.begin() as c:
-        await c.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
-    await engine.dispose()
+    with engine.begin() as c:
+        c.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+    engine.dispose()
 
 
 _CREATE = """

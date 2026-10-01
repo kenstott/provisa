@@ -92,10 +92,10 @@ async def put_org_storage(body: OrgStorageBody, request: Request):  # REQ-1048
         # a failed refresh hours later, with nothing pointing at the setting that caused it.
         from sqlalchemy.exc import ArgumentError
 
-        from provisa.federation.store_writer import async_store_url
+        from provisa.core.database import sync_store_url
 
         try:
-            async_store_url(url)
+            sync_store_url(url)
         except (ValueError, ArgumentError) as exc:
             raise ApiError(
                 400,

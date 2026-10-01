@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from typing import AsyncGenerator
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.engine import Engine
 
 from provisa.subscriptions.base import ChangeEvent, NotificationProvider
 
@@ -40,7 +40,7 @@ class IngestPollingProvider(NotificationProvider):  # REQ-336
 
     def __init__(
         self,
-        engine: AsyncEngine,
+        engine: Engine,
         poll_interval: float = _DEFAULT_POLL_INTERVAL,
     ) -> None:
         self._engine = engine
@@ -67,12 +67,15 @@ class IngestPollingProvider(NotificationProvider):  # REQ-336
                 row_data = {k: v for k, v in row.items() if not k.startswith("_")}
                 yield ChangeEvent(operation="INSERT", table=table, row=row_data)
 
+    # Async only to keep the awaitable call-site contract; runs synchronously on the calling thread.
     async def _poll(self, table: str, since: datetime) -> list[dict]:
+        from provisa.core.database import bounded_connection, deadline_execute
+
         stmt = text(
             f"SELECT * FROM {table} WHERE _updated_at > :since ORDER BY _updated_at LIMIT :lim"  # noqa: S608
         )
-        async with self._engine.connect() as conn:
-            result = await conn.execute(stmt, {"since": since, "lim": _BATCH_LIMIT})
+        with bounded_connection(self._engine) as conn:
+            result = deadline_execute(conn, stmt, {"since": since, "lim": _BATCH_LIMIT})
             return [dict(r._mapping) for r in result]
 
     async def close(self) -> None:

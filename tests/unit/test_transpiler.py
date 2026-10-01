@@ -336,55 +336,55 @@ class TestTypeCoercions:
 
 class TestRouterSingleSourceDirect:
     def test_postgresql_routes_direct(self):
-        d = decide_route({"pg1"}, _TYPES, _DIALECTS)
+        d = decide_route({"pg1"}, _TYPES, _DIALECTS, operator_floor={})
         assert d.route == Route.DIRECT
         assert d.source_id == "pg1"
         assert d.dialect == "postgres"
 
     @pytest.mark.skipif(not has_driver("mysql"), reason="aiomysql not installed")
     def test_mysql_routes_direct(self):
-        d = decide_route({"mysql1"}, _TYPES, _DIALECTS)
+        d = decide_route({"mysql1"}, _TYPES, _DIALECTS, operator_floor={})
         assert d.route == Route.DIRECT
         assert d.dialect == "mysql"
 
     @pytest.mark.skipif(not has_driver("duckdb"), reason="duckdb driver not installed")
     def test_duckdb_routes_direct(self):
-        d = decide_route({"duck1"}, _TYPES, _DIALECTS)
+        d = decide_route({"duck1"}, _TYPES, _DIALECTS, operator_floor={})
         assert d.route == Route.DIRECT
         assert d.dialect == "duckdb"
 
 
 class TestRouterVirtualSources:
     def test_cassandra_routes_trino(self):
-        d = decide_route({"cass1"}, _TYPES, _DIALECTS)
+        d = decide_route({"cass1"}, _TYPES, _DIALECTS, operator_floor={})
         assert d.route == Route.ENGINE
         assert d.source_id is None
         assert "cassandra" in d.reason
 
     def test_mongodb_routes_trino(self):
-        d = decide_route({"mongo1"}, _TYPES, _DIALECTS)
+        d = decide_route({"mongo1"}, _TYPES, _DIALECTS, operator_floor={})
         assert d.route == Route.ENGINE
 
     def test_kafka_routes_trino(self):
-        d = decide_route({"kafka1"}, _TYPES, _DIALECTS)
+        d = decide_route({"kafka1"}, _TYPES, _DIALECTS, operator_floor={})
         assert d.route == Route.ENGINE
 
     def test_snowflake_with_driver_routes_direct(self):
         # REQ-988: snowflake is now a first-class named source with a direct driver, so a single-
         # source query reads it directly (no Trino detour). Multi-source still routes ENGINE + land.
-        d = decide_route({"sf1"}, _TYPES, _DIALECTS)
+        d = decide_route({"sf1"}, _TYPES, _DIALECTS, operator_floor={})
         assert d.route == Route.DIRECT
 
     def test_bigquery_with_driver_routes_direct(self):
         # BigQuery gained a per-source direct driver (commit 35bb7f74), so a single-source query reads
         # it directly (no Trino detour) — mirroring snowflake. Multi-source still routes ENGINE + land.
-        d = decide_route({"bq1"}, _TYPES, _DIALECTS)
+        d = decide_route({"bq1"}, _TYPES, _DIALECTS, operator_floor={})
         assert d.route == Route.DIRECT
 
 
 class TestRouterAPIRoute:
     def test_openapi_routes_api(self):
-        d = decide_route({"oapi1"}, _TYPES, _DIALECTS)
+        d = decide_route({"oapi1"}, _TYPES, _DIALECTS, operator_floor={})
         assert d.route == Route.API
         assert d.source_id == "oapi1"
 
@@ -396,44 +396,46 @@ class TestRouterAPIRoute:
 
 class TestRouterMultiSource:
     def test_two_pg_sources_routes_trino(self):
-        d = decide_route({"pg1", "pg2"}, _TYPES, _DIALECTS)
+        d = decide_route({"pg1", "pg2"}, _TYPES, _DIALECTS, operator_floor={})
         assert d.route == Route.ENGINE
         assert "multi-source" in d.reason
 
     def test_pg_plus_mongo_routes_trino(self):
-        d = decide_route({"pg1", "mongo1"}, _TYPES, _DIALECTS)
+        d = decide_route({"pg1", "mongo1"}, _TYPES, _DIALECTS, operator_floor={})
         assert d.route == Route.ENGINE
 
 
 class TestRouterStewardHints:
     def test_steward_trino_overrides_direct(self):
-        d = decide_route({"pg1"}, _TYPES, _DIALECTS, steward_hint="engine")
+        d = decide_route({"pg1"}, _TYPES, _DIALECTS, steward_hint="engine", operator_floor={})
         assert d.route == Route.ENGINE
         assert "steward" in d.reason
 
     def test_steward_direct_on_pg(self):
-        d = decide_route({"pg1"}, _TYPES, _DIALECTS, steward_hint="direct")
+        d = decide_route({"pg1"}, _TYPES, _DIALECTS, steward_hint="direct", operator_floor={})
         assert d.route == Route.DIRECT
         assert d.source_id == "pg1"
 
     def test_steward_direct_on_nosql_falls_through(self):
         """NoSQL has no direct driver; steward hint is ignored."""
-        d = decide_route({"cass1"}, _TYPES, _DIALECTS, steward_hint="direct")
+        d = decide_route({"cass1"}, _TYPES, _DIALECTS, steward_hint="direct", operator_floor={})
         assert d.route == Route.ENGINE
 
     def test_steward_direct_on_multi_source_ignored(self):
-        d = decide_route({"pg1", "pg2"}, _TYPES, _DIALECTS, steward_hint="direct")
+        d = decide_route(
+            {"pg1", "pg2"}, _TYPES, _DIALECTS, steward_hint="direct", operator_floor={}
+        )
         assert d.route == Route.ENGINE
 
 
 class TestRouterMutations:
     def test_mutation_always_direct(self):
-        d = decide_route({"pg1"}, _TYPES, _DIALECTS, is_mutation=True)
+        d = decide_route({"pg1"}, _TYPES, _DIALECTS, is_mutation=True, operator_floor={})
         assert d.route == Route.DIRECT
         assert "mutation" in d.reason
 
     def test_mutation_routes_direct_even_for_nosql(self):
-        d = decide_route({"mongo1"}, _TYPES, _DIALECTS, is_mutation=True)
+        d = decide_route({"mongo1"}, _TYPES, _DIALECTS, is_mutation=True, operator_floor={})
         assert d.route == Route.DIRECT
         assert d.source_id == "mongo1"
 
@@ -443,26 +445,26 @@ class TestRouterJSONExtract:
         """JSON path extraction on non-PG dialect forces Trino."""
         types = {"mysql1": "mysql"}
         dialects = {"mysql1": "mysql"}
-        d = decide_route({"mysql1"}, types, dialects, has_json_extract=True)
+        d = decide_route({"mysql1"}, types, dialects, has_json_extract=True, operator_floor={})
         assert d.route == Route.ENGINE
         assert "JSON" in d.reason or "json" in d.reason
 
     def test_json_extract_pg_dialect_stays_direct(self):
         """PG supports ->> natively; direct route is kept."""
-        d = decide_route({"pg1"}, _TYPES, _DIALECTS, has_json_extract=True)
+        d = decide_route({"pg1"}, _TYPES, _DIALECTS, has_json_extract=True, operator_floor={})
         assert d.route == Route.DIRECT
 
 
 class TestRouterRouteDecision:
     def test_route_decision_is_frozen(self):
-        d = decide_route({"pg1"}, _TYPES, _DIALECTS)
+        d = decide_route({"pg1"}, _TYPES, _DIALECTS, operator_floor={})
         assert isinstance(d, RouteDecision)
         with pytest.raises(Exception):
             d.route = Route.ENGINE  # type: ignore[misc]
 
     def test_reason_is_always_non_empty_string(self):
         for sid, stype in _TYPES.items():
-            d = decide_route({sid}, _TYPES, _DIALECTS)
+            d = decide_route({sid}, _TYPES, _DIALECTS, operator_floor={})
             assert d.reason and isinstance(d.reason, str)
 
     def test_virtual_sources_set_populated(self):

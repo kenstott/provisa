@@ -124,9 +124,7 @@ class TestMatFetchRowsFromPg:
     async def test_no_tenant_db_returns_empty(self):
         state = SimpleNamespace(tenant_db=None)
         ep = SimpleNamespace(table_name="pets")
-        rows, ok = await _mat_fetch_rows_from_pg(ep, ["id"], set(), state)
-        assert rows == []
-        assert ok is False
+        assert await _mat_fetch_rows_from_pg(ep, ["id"], set(), state) == []
 
     async def test_success(self):
         conn = AsyncMock()
@@ -134,17 +132,34 @@ class TestMatFetchRowsFromPg:
         tenant_db = SimpleNamespace(acquire=lambda: _FakeAcquireCtx(conn))
         state = SimpleNamespace(tenant_db=tenant_db)
         ep = SimpleNamespace(table_name="pets")
-        rows, ok = await _mat_fetch_rows_from_pg(ep, ["id", "name"], {"_cached_at"}, state)
-        assert ok is True
+        rows = await _mat_fetch_rows_from_pg(ep, ["id", "name"], {"_cached_at"}, state)
         assert rows == [{"id": 1, "name": "Fido"}]
 
-    async def test_pg_failure_returns_empty(self):
+    async def test_an_absent_cache_table_is_a_miss_and_the_read_is_dialect_addressed(
+        self, tmp_path
+    ):
+        """The endpoint's cache table may not exist yet (its boot-time create failed, or it was
+        registered without one): that is a cache miss, not a failed read. On a schema-less
+        (SQLite) control plane the table is addressed bare, as pg_cache writes it."""
+        from provisa.core.database import Database, create_engine_from_url
+
+        db = Database(create_engine_from_url(f"sqlite:///{tmp_path / 'cp.db'}"), name="cp")
+        state = SimpleNamespace(tenant_db=db)
+        ep = SimpleNamespace(table_name="pets")
+        assert await _mat_fetch_rows_from_pg(ep, ["id"], set(), state) == []
+        async with db.acquire() as conn:
+            await conn.execute('CREATE TABLE "pets" ("id" TEXT, "_cached_at" TEXT)')
+            await conn.execute("INSERT INTO \"pets\" VALUES ('7', 'x')")
+        assert await _mat_fetch_rows_from_pg(ep, ["id"], {"_cached_at"}, state) == [{"id": "7"}]
+
+    async def test_a_failed_pg_cache_read_raises(self):
+        """REQ-1661 (amended 2026-09-30): a failed cache read raises -- never an empty result
+        that sends the caller to a different source instead."""
         tenant_db = SimpleNamespace(acquire=MagicMock(side_effect=RuntimeError("down")))
         state = SimpleNamespace(tenant_db=tenant_db)
         ep = SimpleNamespace(table_name="pets")
-        rows, ok = await _mat_fetch_rows_from_pg(ep, ["id"], set(), state)
-        assert rows == []
-        assert ok is False
+        with pytest.raises(RuntimeError, match="down"):
+            await _mat_fetch_rows_from_pg(ep, ["id"], set(), state)
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +236,7 @@ class TestMatStoreRows:
 
         with (
             patch("provisa.api_source.engine_cache.create_and_insert") as mock_insert,
-            patch("provisa.api_source.engine_cache.schedule_drop", new=AsyncMock()),
+            patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
         ):
             _mat_store_rows(
                 "pets",
@@ -254,7 +269,7 @@ class TestMatStoreRows:
 
         with (
             patch("provisa.api_source.engine_cache.create_and_insert"),
-            patch("provisa.api_source.engine_cache.schedule_drop", new=AsyncMock()),
+            patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
         ):
             _mat_store_rows(
                 "pets",
@@ -288,7 +303,7 @@ class TestMatStoreRows:
 
         with (
             patch("provisa.api_source.engine_cache.create_and_insert"),
-            patch("provisa.api_source.engine_cache.schedule_drop", new=AsyncMock()),
+            patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
         ):
             _mat_store_rows(
                 "pets",
@@ -320,7 +335,7 @@ class TestMatStoreRows:
 
         with (
             patch("provisa.api_source.engine_cache.create_and_insert"),
-            patch("provisa.api_source.engine_cache.schedule_drop", new=AsyncMock()),
+            patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
         ):
             _mat_store_rows(
                 "pets",
@@ -475,7 +490,7 @@ class TestMatApiEpTable:
             patch("provisa.api_source.engine_cache.ensure_cache_schema"),
             patch("provisa.api_source.engine_cache.table_exists", return_value=False),
             patch("provisa.api_source.engine_cache.create_and_insert"),
-            patch("provisa.api_source.engine_cache.schedule_drop", new=AsyncMock()),
+            patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
         ):
             await _mat_api_ep_table(
                 "pets", ep, state, None, 500, set(), cache_rewrites, values_cte_entries
@@ -505,7 +520,7 @@ class TestMatApiEpTable:
             patch("provisa.api_source.engine_cache.ensure_cache_schema"),
             patch("provisa.api_source.engine_cache.table_exists", return_value=False),
             patch("provisa.api_source.engine_cache.create_and_insert"),
-            patch("provisa.api_source.engine_cache.schedule_drop", new=AsyncMock()),
+            patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
         ):
             await _mat_api_ep_table("pets", ep, state, None, 500, set(), {}, values_cte_entries)
 
@@ -539,8 +554,10 @@ class TestMatApiEpTable:
                 "pets", ep, state, hot_mgr, 500, set(), cache_rewrites, values_cte_entries
             )
         assert cache_rewrites["pets"] == (loc, "r_x")
-        # Promotion is fired via asyncio.create_task — give the loop a tick to run it.
-        await asyncio.sleep(0)
+        # REQ-1882: promotion is detached onto a background worker thread — wait (bounded) for it.
+        deadline = asyncio.get_running_loop().time() + 5
+        while "pets" not in hot_mgr._hot_tables and asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.01)
         assert "pets" in hot_mgr._hot_tables
 
     async def test_secondary_table_exists_cache_hit(self):
@@ -620,7 +637,7 @@ class TestMatApiEpTable:
             patch("provisa.api_source.engine_cache.table_exists", return_value=False),
             patch("provisa.api_source.router_integration.handle_api_query", new=m_handle),
             patch("provisa.api_source.engine_cache.create_and_insert"),
-            patch("provisa.api_source.engine_cache.schedule_drop", new=AsyncMock()),
+            patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
         ):
             await _mat_api_ep_table(
                 "pets",
@@ -693,14 +710,42 @@ class TestMatApiEpTable:
                 new=AsyncMock(return_value=rest_result),
             ),
             patch("provisa.api_source.engine_cache.create_and_insert"),
-            patch("provisa.api_source.engine_cache.schedule_drop", new=AsyncMock()),
+            patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
         ):
             await _mat_api_ep_table(
                 "pets", ep, state, None, 500, set(), cache_rewrites, values_cte_entries
             )
         assert values_cte_entries["pets"].rows == [{"id": 7}]
 
-    async def test_rest_fallback_failure_skips(self):
+    async def test_a_failed_pg_cache_read_fails_the_query_without_a_rest_fetch(self):
+        """REQ-1661 (amended 2026-09-30): the PG cache read failing is an error, not a cue to
+        fetch the rows from REST instead."""
+        state = SimpleNamespace(
+            api_sources={},
+            org_id="default",
+            federation_engine=MagicMock(),
+            source_cache={},
+            response_cache_default_ttl=300,
+            tenant_db=SimpleNamespace(acquire=MagicMock(side_effect=RuntimeError("pg down"))),
+        )
+        rest = AsyncMock()
+        loc = CacheLocation("cat", "sch", "relational")
+        with (
+            patch("provisa.api_source.engine_cache.cache_location", return_value=loc),
+            patch("provisa.api_source.engine_cache.cache_table_name", return_value="r_x"),
+            patch("provisa.api_source.engine_cache.table_known_live", return_value=False),
+            patch("provisa.api_source.engine_cache.ensure_cache_schema"),
+            patch("provisa.api_source.engine_cache.table_exists", return_value=False),
+            patch("provisa.api.data.materialization._mat_fetch_rows_from_rest", new=rest),
+            pytest.raises(RuntimeError, match="pg down"),
+        ):
+            await _mat_api_ep_table("pets", _ep([_col("id")]), state, None, 500, set(), {}, {})
+        rest.assert_not_awaited()
+
+    async def test_a_failed_rest_fetch_fails_the_query(self):
+        """REQ-1661 (amended 2026-09-30): an expired API cache whose live re-fetch fails raises
+        the fetch's cause -- never logged and skipped, leaving the engine to answer from stale
+        cached rows."""
         state = SimpleNamespace(
             api_sources={},
             org_id="default",
@@ -723,6 +768,7 @@ class TestMatApiEpTable:
                 "provisa.api_source.router_integration.handle_api_query",
                 new=AsyncMock(side_effect=RuntimeError("rest down")),
             ),
+            pytest.raises(RuntimeError, match="rest down"),
         ):
             await _mat_api_ep_table(
                 "pets", ep, state, None, 500, set(), cache_rewrites, values_cte_entries
@@ -829,7 +875,7 @@ class TestMatGqlRemoteTable:
                 new=AsyncMock(return_value=[{"id": 1, "name": "Fido"}]),
             ),
             patch("provisa.api_source.engine_cache.land_api_cache", new=AsyncMock()),
-            patch("provisa.api_source.engine_cache.schedule_drop", new=AsyncMock()),
+            patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
         ):
             await _mat_gql_remote_table(
                 "pets",
@@ -1036,7 +1082,9 @@ class TestMaterializeApiToEngineCache:
         assert dropped == {}
         assert "pets" in rewrites
 
-    async def test_gql_remote_runtime_error_drops_branch(self):
+    async def test_a_failed_gql_remote_branch_fails_the_query(self):
+        """REQ-1661 (amended 2026-09-30): an unreachable remote fails the whole query -- its
+        UNION branch is never dropped to return the other branches' rows as if complete."""
         reg = {
             "source_id": "ghsrc",
             "url": "https://example.test/graphql",
@@ -1068,11 +1116,9 @@ class TestMaterializeApiToEngineCache:
                 "provisa.graphql_remote.executor.execute_remote",
                 new=AsyncMock(side_effect=RuntimeError("remote down")),
             ),
+            pytest.raises(RuntimeError, match="remote down"),
         ):
-            rewrites, ctes, dropped = await _materialize_api_to_engine_cache(
-                "SELECT * FROM pets", state
-            )
-        assert dropped == {"pets": "remote GraphQL source unreachable"}
+            await _materialize_api_to_engine_cache("SELECT * FROM pets", state)
 
     async def test_ep_found_but_unmaterializable_dropped(self):
         ep = _ep([_col("id"), _col("owner_id", param_type=ParamType.path)])
@@ -1085,8 +1131,11 @@ class TestMaterializeApiToEngineCache:
             source_cache={},
             response_cache_default_ttl=300,
             # Non-None so `_has_pg_pool` is True and execution reaches the
-            # post-call drop-check branch instead of the earlier `continue`.
-            tenant_db=SimpleNamespace(acquire=MagicMock(side_effect=RuntimeError("down"))),
+            # post-call drop-check branch instead of the earlier `continue`. The cache read
+            # succeeds with no rows; the missing path param is what leaves it unmaterialized.
+            tenant_db=SimpleNamespace(
+                acquire=lambda: _FakeAcquireCtx(AsyncMock(fetch=AsyncMock(return_value=[])))
+            ),
         )
         with (
             patch("provisa.api_source.engine_cache.cache_location") as m_loc,
@@ -1102,3 +1151,30 @@ class TestMaterializeApiToEngineCache:
         assert dropped == {"pets": "could not be materialized"}
         assert rewrites == {}
         assert ctes == {}
+
+    @pytest.mark.parametrize(
+        ("lookup", "materialize", "reg"),
+        [
+            (
+                "_lookup_grpc_remote_table",
+                "_mat_grpc_remote_table",
+                ("grpcsrc", object(), object()),
+            ),
+            ("_lookup_openapi_table", "_mat_openapi_table", ("oasrc", object(), object())),
+        ],
+    )
+    async def test_a_failed_grpc_or_openapi_branch_fails_the_query(self, lookup, materialize, reg):
+        """REQ-1661 (amended 2026-09-30): a failed gRPC / OpenAPI remote fetch fails the query
+        instead of dropping its UNION branch."""
+        state = SimpleNamespace(hot_manager=None, api_endpoints={}, graphql_remote_sources={})
+        m = "provisa.api.data.materialization"
+        with (
+            patch(f"{m}._lookup_grpc_remote_table", return_value=(None, None, None)),
+            patch(f"{m}._lookup_openapi_table", return_value=(None, None, None)),
+            patch(f"{m}.{lookup}", return_value=reg),
+            patch(f"{m}.{materialize}", new=AsyncMock(side_effect=ConnectionError("remote 500"))),
+            pytest.raises(ConnectionError, match="remote 500"),
+        ):
+            await _materialize_api_to_engine_cache(
+                "SELECT id FROM pets UNION ALL SELECT id FROM pets", state
+            )

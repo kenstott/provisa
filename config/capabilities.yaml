@@ -138,19 +138,19 @@ roles:
   control_plane_store:
     options:
       - id: sqlite
-        name: SQLite (aiosqlite)
+        name: SQLite (stdlib sqlite3)
         platforms: [macos, linux, windows]
-        provisioning: bundled              # aiosqlite is a core dependency
+        provisioning: bundled              # stdlib sqlite3, no extra dependency
         startup_cost: instant              # no initdb — the truly-instant control plane
-        prereq: none (aiosqlite bundled)
-        url: sqlite+aiosqlite:///{data_dir}/control.db
+        prereq: none (stdlib sqlite3)
+        url: sqlite+pysqlite:///{data_dir}/control.db
       - id: embedded_pg
         name: Embedded PostgreSQL (asyncpg)
         platforms: [macos, linux, windows]
         provisioning: bundled
         startup_cost: install-time         # run initdb at INSTALL, not launch
         prereq: "asyncpg bundled; Windows data dir not under %TEMP%"
-        url: postgresql+asyncpg://.../     # unix socket via pgserver
+        url: postgresql+psycopg://.../     # unix socket via pgserver
         # REQ-1535: the default control plane in every self-contained tier. SQLite has no schemas,
         # and REQ-1488 makes an environment a schema — so a SQLite plane can hold prod and nothing
         # else. The embedded instance is the same PostgreSQL the hosted tier runs, which is what
@@ -162,14 +162,14 @@ roles:
         provisioning: pip_driver           # asyncpg bundled
         startup_cost: instant
         prereq: "asyncpg (bundled); host + credentials"
-        url: postgresql+asyncpg://USER:PASS@HOST:5432/DB
+        url: postgresql+psycopg://USER:PASS@HOST:5432/DB
       - id: mysql
         name: MySQL / MariaDB (external, aiomysql)
         platforms: [macos, linux, windows]
         provisioning: pip_driver
         startup_cost: instant
         prereq: "installs aiomysql (async driver); host + credentials"
-        url: mysql+aiomysql://USER:PASS@HOST:3306/DB
+        url: mysql+pymysql://USER:PASS@HOST:3306/DB
       - id: sqlserver
         name: SQL Server (external, aioodbc)
         platforms: [macos, linux, windows]

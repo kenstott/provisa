@@ -24,6 +24,7 @@ Pipeline:
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import logging
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -830,9 +831,16 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
 
     # Strict mode (REQ-1400): graphql/sql/cypher come from a single NL -> GraphQL -> SQL ->
     # Cypher chain, run once and shared by all three branches, instead of being generated
-    # independently. asyncio.Task caches its result, so awaiting it from three branches only
-    # runs the chain once.
-    strict_chain_task: "asyncio.Task[tuple[str | None, str | None, str | None, str | None]] | None" = None
+    # independently. The chain's future caches its result, so awaiting it from three branches
+    # only runs the chain once.
+    #
+    # REQ-1882: the chain and every branch run in parallel, each on its OWN thread and connection
+    # loop (run_on_own_thread), never as sibling tasks on one loop — a sibling holding a shared
+    # connection across an await while another blocks the thread inline would deadlock. Branches
+    # that depend on another await its thread-safe future via asyncio.wrap_future.
+    from provisa.core.connection_loop import run_on_own_thread
+
+    strict_chain_fut: "concurrent.futures.Future[tuple[str | None, str | None, str | None, str | None]] | None" = None
     if strict:
 
         async def _run_strict_chain() -> tuple[str | None, str | None, str | None, str | None]:
@@ -845,15 +853,17 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
                 log.warning("NL strict chain failed: %s", exc)
                 return None, None, None, str(exc)
 
-        strict_chain_task = asyncio.create_task(_run_strict_chain())
+        strict_chain_fut = run_on_own_thread(_run_strict_chain, name="nl-strict-chain")
 
     async def _run_branch(target: NlTarget) -> tuple[NlTarget, str | None, str | None]:
         # Each branch is independent: a failure in one (e.g. SQL generation
         # raising) must not abort the asyncio.as_completed loop and discard the
         # other branches' results. Convert any exception into a branch error.
         try:
-            if strict and target in ("graphql", "sql", "cypher") and strict_chain_task is not None:
-                graphql_query, chain_sql, chain_cypher, chain_error = await strict_chain_task
+            if strict and target in ("graphql", "sql", "cypher") and strict_chain_fut is not None:
+                graphql_query, chain_sql, chain_cypher, chain_error = await asyncio.wrap_future(
+                    strict_chain_fut
+                )
                 if target == "graphql":
                     return target, graphql_query, chain_error if graphql_query is None else None
                 if target == "sql":
@@ -877,7 +887,7 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
                 # sql-to-cypher) instead of generating it independently from NL.
                 if table_selection_error is not None:
                     return target, None, table_selection_error
-                _, sql_query, sql_error = await sql_task
+                _, sql_query, sql_error = await asyncio.wrap_future(sql_fut)
                 if sql_query is None or sql_error is not None:
                     return target, None, sql_error
                 if ctx is None:
@@ -896,11 +906,11 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
                 # SQL-derived plan cannot express it: a query whose GraphQL carries a nodes
                 # sub-selection compiles to SQL with a subquery in its outer FROM, so no table
                 # resolves and every surface degrades to a plain row fetch of another table.
-                _, graphql_query, graphql_error = await graphql_task
+                _, graphql_query, graphql_error = await asyncio.wrap_future(graphql_fut)
                 if graphql_query is not None and graphql_error is None and ctx is not None:
                     plan = _aggregation_plan_from_graphql(ctx, graphql_query)
                 if plan is None:
-                    _, sql_query, sql_error = await sql_task
+                    _, sql_query, sql_error = await asyncio.wrap_future(sql_fut)
                     if sql_query is not None and sql_error is None and ctx is not None:
                         plan = _resolve_aggregation_plan(ctx, app_state, sql_query)
                 gen_fn = {
@@ -930,11 +940,17 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
     # The sql and graphql branches must be scheduled before grpc/jsonapi/openapi (and,
     # non-strict, cypher) so those can await the compiled semantic SQL and the GraphQL query
     # they rewrite (see _run_branch) without a forward reference.
-    sql_task = asyncio.create_task(_run_branch("sql"))
-    graphql_task = asyncio.create_task(_run_branch("graphql"))
-    branch_tasks = [sql_task, graphql_task] + [
-        asyncio.create_task(_run_branch(t)) for t in _TARGETS if t not in ("sql", "graphql")
+    def _branch(
+        target: NlTarget,
+    ) -> "concurrent.futures.Future[tuple[NlTarget, str | None, str | None]]":
+        return run_on_own_thread(lambda: _run_branch(target), name=f"nl-branch-{target}")
+
+    sql_fut = _branch("sql")
+    graphql_fut = _branch("graphql")
+    branch_futs = [sql_fut, graphql_fut] + [
+        _branch(t) for t in _TARGETS if t not in ("sql", "graphql")
     ]
+    branch_tasks = [asyncio.wrap_future(f) for f in branch_futs]
 
     from provisa.nl.executor import execute as _execute
 

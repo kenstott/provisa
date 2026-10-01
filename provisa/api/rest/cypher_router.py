@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import logging
 import time as _time
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Header, Query, Request
@@ -42,6 +43,8 @@ if TYPE_CHECKING:
 import re as _re
 from sqlalchemy import select
 
+from provisa.core.connection_loop import spawn_background
+from provisa.core import request_deadline
 from provisa.core.schema_org import node_ids
 from provisa.api.rest.registered_call import (
     _detect_procedure,  # noqa: F401 — re-exported for tests
@@ -53,6 +56,7 @@ from provisa.compiler.naming import apply_cql_property as _cql_prop
 
 from provisa.executor import stats as _qs_mod
 from provisa.cache.middleware import build_cache_headers
+from provisa.compiler.directives import NO_CACHE_HINT, cache_hint_for
 from provisa.api.rest.cypher_exec import (
     _build_label_map,
     _execute,
@@ -264,8 +268,14 @@ async def _dispatch_execution(
     resolved_params: list,
     state: AppState,
     span_attrs: dict[str, str],
+    *,
+    prepare: Callable[[], Awaitable[None]] | None = None,
 ) -> list[dict] | Response:
-    """Stage 5: route to the correct executor based on table backing. Returns rows or error Response."""
+    """Stage 5: route to the correct executor based on table backing. Returns rows or error Response.
+
+    ``prepare`` (the ENGINE route's residency landing) runs inside the same error classification as
+    execution, so a source that cannot be landed answers with the typed ``error`` field (REQ-778)
+    instead of escaping as a bare 500."""
     import asyncio as _asyncio
     from provisa.api.data.endpoint_helpers import _request_timeout
     from provisa.compiler.nf_extractor import extract_nf_args, find_api_table_names
@@ -294,21 +304,28 @@ async def _dispatch_execution(
     _timeout = _request_timeout()
     log.info("Cypher final SQL: %s", physical_sql)
     try:
-        if _has_gql_remote:
-            rows = await _asyncio.wait_for(
-                _execute_with_gql_remote(clean_exec_sql, clean_params, nf_args, state, span_attrs),
-                timeout=_timeout,
-            )
-        elif nf_args or _has_api_tables:
-            rows = await _asyncio.wait_for(
-                _execute_with_api(clean_exec_sql, clean_params, nf_args, state, span_attrs),
-                timeout=_timeout,
-            )
-        else:
-            rows = await _asyncio.wait_for(
-                _execute(physical_sql, resolved_params, state, span_attrs),
-                timeout=_timeout,
-            )
+        if prepare is not None:
+            await prepare()
+        # REQ-1882: the deadline watchdog cancels an in-flight blocking statement at _timeout;
+        # wait_for alone cannot fire while inline driver work holds the request thread.
+        with request_deadline.within(_timeout):
+            if _has_gql_remote:
+                rows = await _asyncio.wait_for(
+                    _execute_with_gql_remote(
+                        clean_exec_sql, clean_params, nf_args, state, span_attrs
+                    ),
+                    timeout=_timeout,
+                )
+            elif nf_args or _has_api_tables:
+                rows = await _asyncio.wait_for(
+                    _execute_with_api(clean_exec_sql, clean_params, nf_args, state, span_attrs),
+                    timeout=_timeout,
+                )
+            else:
+                rows = await _asyncio.wait_for(
+                    _execute(physical_sql, resolved_params, state, span_attrs),
+                    timeout=_timeout,
+                )
     except _asyncio.TimeoutError:
         return JSONResponse(
             status_code=504,
@@ -363,14 +380,9 @@ async def _dispatch_execution_direct(
             if tenant_db is None:
                 raise RuntimeError("Admin tenant_db not available")
             async with tenant_db.acquire() as _conn:
-                _rows = await _conn.fetch(exec_sql)
-                if _rows:
-                    col_names = list(_rows[0].keys())
-                    rows = [tuple(r) for r in _rows]
-                else:
-                    stmt = await _conn.prepare(exec_sql)
-                    col_names = [a.name for a in stmt.get_attributes()]
-                    rows = []
+                # Column names come from the result itself, so an empty result still has them.
+                col_names, _rows = await _conn.fetch_with_columns(exec_sql)
+                rows = [tuple(r) for r in _rows]
             result = QueryResult(rows=rows, column_names=col_names)
         else:
             result = await state.federation_engine.execute_native(
@@ -380,6 +392,35 @@ async def _dispatch_execution_direct(
     except Exception as exc:
         log.exception("Cypher direct execution failed: %s", exec_sql)
         return _exec_error(500, exc, exec_sql)
+
+
+async def cached_cypher_rows(plan: Any, state: Any) -> list[dict] | None:  # REQ-1897
+    """The opted-in plan's cached rows as the dict rows the Cypher dispatchers return, or None on a
+    MISS. A HIT is audited/accounted inside ``check_response_cache`` — the caller runs nothing."""
+    from provisa.pgwire._pipeline import check_response_cache
+
+    hit = await check_response_cache(plan, state)
+    if hit is None:
+        return None
+    return [dict(zip(hit.column_names, row)) for row in hit.rows]
+
+
+async def store_cypher_rows(plan: Any, state: Any, rows: list[dict]) -> None:  # REQ-1897
+    """Write the dispatchers' dict rows to the plan's raw-SQL entry (the same tee, bound and policy
+    as every other terminal; a no-op for a plan that did not opt in). An empty dict-row result
+    carries no column names, so it is not an entry any other surface could serve faithfully —
+    nothing is stored for it."""
+    if not rows:
+        return
+    from provisa.executor.result import QueryResult
+    from provisa.pgwire._pipeline import store_executed_result
+
+    columns = list(rows[0].keys())
+    await store_executed_result(
+        plan,
+        state,
+        QueryResult(rows=[tuple(r[c] for c in columns) for r in rows], column_names=columns),
+    )
 
 
 def _serialize_rows(
@@ -464,8 +505,6 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         pass  # not a write query; fall through to read path
 
     if _write_ast is not None:
-        import asyncio as _asyncio
-
         from provisa.compiler.mutation_gen import (
             MutationResult as _MutationResult,
             inject_rls_into_mutation as _inject_rls,
@@ -537,13 +576,16 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         # Post-mutation hooks: cache invalidation, MV staleness, Kafka events,
         # hot-table reload — same as GraphQL mutations.
         if _table_meta is not None:
-            await state.response_cache_store.invalidate_by_table(_table_meta.table_id)
+            from provisa.cache.tenancy import invalidate_tables
+
+            # REQ-595: the acting org's entries — the tenant they were written under.
+            await invalidate_tables(state, [_table_meta.table_id])
             state.mv_registry.mark_stale(_table_meta.table_name)
             from provisa.kafka.change_events import emit_change_event as _emit_change
             from provisa.kafka.sink_executor import trigger_sinks_for_table as _trigger_sinks
 
             _emit_change(_mapping.table_name, _source_id)
-            _asyncio.create_task(_trigger_sinks(_mapping.table_name, state))
+            spawn_background(_trigger_sinks(_mapping.table_name, state))
             if state.hot_manager is not None:
                 from provisa.cache.hot_tables import HotTableManager as _HotMgr
 
@@ -687,6 +729,8 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             semantic_sql,
             role_id,
             exec_params=resolved_params or None,
+            # REQ-544: the Cypher request's own `// @provisa cache` opt-in.
+            cache_hint=cache_hint_for("cypher", body.query),
         )
     except PermissionError as exc:
         return JSONResponse(status_code=403, content={"error": str(exc)})
@@ -710,8 +754,12 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     # _execute_plan, so the audit row is written here.
     from provisa.pgwire._pipeline import finalize_audit
 
+    # REQ-1897: an opted-in plan's HIT is served (and audited) without dialling anything.
+    _cached_rows = await cached_cypher_rows(plan, state)
     try:
-        if plan.route != _Route.ENGINE and plan.source_id:
+        if _cached_rows is not None:
+            _exec_result = _cached_rows
+        elif plan.route != _Route.ENGINE and plan.source_id:
             # Single-source direct route — cypher SQL rewritten to physical (no catalog)
             _exec_result = await _dispatch_execution_direct(
                 exec_sql, plan.source_id, resolved_params, state
@@ -730,15 +778,19 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
                 pushdown_row_materialize,
             )
 
-            await ensure_rows_resident(state, plan.pk_bounds)
-            _pushed_down = await pushdown_row_materialize(
-                state, physical_sql, state.federation_engine.dialect, resolved_params
-            )
-            await ensure_resident(
-                state, plan.sources, pk_bounds=plan.pk_bounds, pushed_down=_pushed_down
-            )
+            async def _land_sources() -> None:
+                await ensure_rows_resident(state, plan.pk_bounds)
+                _pushed_down = await pushdown_row_materialize(
+                    state, physical_sql, state.federation_engine.dialect, resolved_params
+                )
+                await ensure_resident(
+                    state, plan.sources, pk_bounds=plan.pk_bounds, pushed_down=_pushed_down
+                )
+
+            # REQ-778: landing runs inside execution's error classification — a source that
+            # cannot be landed (e.g. an unreachable broker) answers with the typed `error` field.
             _exec_result = await _dispatch_execution(
-                exec_sql, physical_sql, resolved_params, state, span_attrs
+                exec_sql, physical_sql, resolved_params, state, span_attrs, prepare=_land_sources
             )
     except Exception:
         await finalize_audit(plan, 500, state)
@@ -746,7 +798,9 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     if isinstance(_exec_result, Response):
         await finalize_audit(plan, _exec_result.status_code, state)
         return _exec_result
-    await finalize_audit(plan, 200, state)
+    if _cached_rows is None:
+        await finalize_audit(plan, 200, state)
+        await store_cypher_rows(plan, state, _exec_result)
     rows = _exec_result
 
     # Assemble & serialize
@@ -910,7 +964,9 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
                 return 0
             sql_str, _, _ = result
             semantic_sql = make_semantic_sql(sql_str, ctx)
-            plan = await _govern_and_route_compiled(semantic_sql, role_id, exec_params=None)
+            plan = await _govern_and_route_compiled(
+                semantic_sql, role_id, exec_params=None, cache_hint=NO_CACHE_HINT
+            )
             from provisa.pgwire._pipeline import require_governed_plan
 
             require_governed_plan(

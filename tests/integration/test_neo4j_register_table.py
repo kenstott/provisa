@@ -60,11 +60,19 @@ def _seed_neo4j():
 
 
 @pytest_asyncio.fixture(loop_scope="session")
-async def admin_client():
+async def admin_client(monkeypatch):
     """An in-process app on the default (native) engine — a neo4j table needs no Trino."""
     import provisa.api.app as app_mod
 
     os.environ.setdefault("PG_PASSWORD", "provisa")
+    # This lifespan loads its config into the SHARED test org (org_default). The session default
+    # PROVISA_CONFIG is the demo config, whose r2-orders source registers an `orders` table that
+    # then collides with sample_config.yaml's sales-pg `orders` when the live test server boots
+    # into the same org ("Ambiguous table name 'orders'"). Load the same isolated config it does.
+    monkeypatch.setenv(
+        "PROVISA_CONFIG",
+        os.path.join(os.path.dirname(__file__), "..", "fixtures", "sample_config.yaml"),
+    )
     app = app_mod.create_app()
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
@@ -175,4 +183,5 @@ async def test_register_without_cypher_is_refused(admin_client):
         )
     )["registerTable"]
     assert result["success"] is False
-    assert result["code"] == "schema.neo4j_query_required", result
+    # REQ-1683 generalized the refusal to every query-API source (neo4j, sparql).
+    assert result["code"] == "schema.query_template_required", result

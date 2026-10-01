@@ -71,8 +71,8 @@ class Query:
     # docstring's CONFIRMED GAP note. {"mode": "scan", "type_name": "PbOrderItems"} for a plain
     # Query{Type} streaming scan; {"mode": "group_by", "type_name": "PbOrders", "by": ["region"]}
     # for a Query{Type}GroupBy streaming call. Re-verified 2026-09-27 by querying the LIVE running
-    # server's own naming authority directly (gRPC server reflection, ServerReflectionInfo, against
-    # a running perf-bench VM) rather than reasoning about it from source — the bare "OrderItems"/
+    # server's own naming authority directly (at the time via gRPC server reflection, against
+    # a running perf-bench VM; the transport now reads the role's published .proto instead) rather than reasoning about it from source — the bare "OrderItems"/
     # "Orders" this spec previously used do not exist as registered message types at all; every
     # message this table's type actually produced came back prefixed. The value below is that
     # response, verbatim (same discipline point_lookup's own cypher label comment above already

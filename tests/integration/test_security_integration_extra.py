@@ -152,8 +152,9 @@ class TestReq556CircuitBreaker:
                 json=payload,
                 headers=_headers(),
             )
-            # Depending on hook implementation, may be 503 or 500 on failure
-            assert resp.status_code in [400, 500, 503]
+            # Depending on hook implementation, may be 503 or 500 on failure. 403: table_{i} is not
+            # a registered table, which governance refuses before routing (V006, REQ-266).
+            assert resp.status_code in [400, 403, 500, 503]
 
         # 6th attempt should see circuit breaker open (reject immediately)
         payload = {"sql": "SELECT * FROM table_6", "domain": domain}
@@ -162,7 +163,7 @@ class TestReq556CircuitBreaker:
             json=payload,
             headers=_headers(),
         )
-        assert resp.status_code in [400, 500, 503, 429]
+        assert resp.status_code in [400, 403, 500, 503, 429]
 
     def test_circuit_breaker_status_endpoint(self, client):
         """Circuit breaker status should be available via health/status endpoint."""
@@ -568,7 +569,10 @@ class TestReq748TenantIdInjection:
             json=payload,
             headers=_headers(),
         )
-        assert resp.status_code in [200, 400, 404]
+        # 403 is a governed refusal: multi_tenant_table is not a registered table in the live
+        # server's config, so governance refuses it before routing (V006, REQ-266) — same posture
+        # as test_tenant_id_injected_in_cypher's V003. It must never run ungoverned.
+        assert resp.status_code in [200, 400, 403, 404]
 
     def test_cross_tenant_isolation_enforced(self, client):
         """Queries should not leak data across tenants."""

@@ -32,7 +32,7 @@ from provisa.api.data.subscribe import (
 
 
 class FakeConnection:
-    """Minimal stand-in for an asyncpg connection with listener support."""
+    """Minimal stand-in for the listener registry NOTIFY callbacks are delivered through."""
 
     def __init__(self):
         self._listeners: dict[str, list] = {}
@@ -52,16 +52,24 @@ class FakeConnection:
 class FakePool:
     """Minimal stand-in for :class:`provisa.core.database.Database`.
 
-    ``acquire`` is an async context manager, not a coroutine returning a connection: the SSE
-    generator enters and exits it by hand to hold ONE connection open for the whole stream, so a
-    fake that returns a bare connection would test a shape the production pool does not have.
+    LISTEN registers on the database itself — its listener thread owns the LISTEN connection — so
+    an SSE stream holds no pooled connection. ``acquire`` is the async context manager the real
+    handle offers; the SSE generator must not need it, which ``acquired`` records.
     """
 
     def __init__(self, conn: FakeConnection):
         self._conn = conn
+        self.acquired = 0
+
+    async def add_listener(self, channel: str, callback):
+        await self._conn.add_listener(channel, callback)
+
+    async def remove_listener(self, channel: str, callback):
+        await self._conn.remove_listener(channel, callback)
 
     @asynccontextmanager
     async def acquire(self):
+        self.acquired += 1
         yield self._conn
 
 
@@ -237,6 +245,8 @@ class TestSSEGenerator:
         # Listener should be removed after generator exits
         channel = f"{CHANNEL_PREFIX}orders"
         assert len(conn._listeners.get(channel, [])) == 0
+        # The stream never held a pooled connection (REQ-1882: listeners must not exhaust the pool).
+        assert pool.acquired == 0
 
     @pytest.mark.asyncio
     async def test_multiple_events_in_sequence(self):

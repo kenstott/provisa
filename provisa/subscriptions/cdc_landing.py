@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from typing import Any, Awaitable, Callable
 
 log = logging.getLogger(__name__)
@@ -43,7 +44,7 @@ async def consume_cdc_into_store(
     *,
     schema: str,
     table: str,
-    disconnect: asyncio.Event,
+    disconnect: threading.Event,
     watch_target: str | None = None,
     debounce_quiet: float = 0.0,
     debounce_max_delay: float = 5.0,

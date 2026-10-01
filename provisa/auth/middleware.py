@@ -12,7 +12,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import binascii
 import logging
@@ -264,7 +263,11 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         # (re)configure — setup wizard / PROVISA_IDP boot deferral), so a server that starts unsecured
         # and later becomes firebase enforces without a process restart (REQ-1267).
         self._resolved_generation = -1
-        self._resolve_lock = asyncio.Lock()
+        # REQ-1882: requests run on their own threads and loops, so the re-resolve serialization
+        # holds across loops.
+        from provisa.core.connection_loop import CrossLoopLock
+
+        self._resolve_lock = CrossLoopLock()
 
     def _current_generation(self) -> int:
         from provisa.api.app import state
@@ -861,9 +864,13 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                     content={"detail": f"Role {requested_role!r} is not assigned to this user"},
                 )
 
-        # Fire-and-forget upsert of user_profiles (platform control plane)
+        # Record last-seen identity in user_profiles (platform control plane) before the request is
+        # handled. REQ-1882: awaited on the request thread, not detached — a detached upsert runs in
+        # parallel on the process loop once requests have their own threads, so it could land AFTER
+        # this request's own handler (DELETE /auth/account) and resurrect the deleted profile, and
+        # it would run synchronous control-plane I/O on the shared process loop.
         if self._admin_pool is not None:
-            asyncio.ensure_future(self._upsert_profile(identity))
+            await self._upsert_profile(identity)
 
         # Canonicalize identity.roles from the resolved assignments so the capability layer
         # (_resolved_capabilities/require_capability), /auth/me, and every downstream reader

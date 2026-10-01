@@ -631,8 +631,12 @@ MATCH (o:Order) RETURN o.id, o.amount
 | ------ | -------- |
 | `route=federated` | 強制透過聯邦引擎聯邦化，繞過直接驅動路由 |
 | `route=direct` | 強制直接驅動執行 |
+| `cache=true` | 為該查詢啟用回應快取（SQL 註解形式：`-- @provisa cache=true`） |
+| `cache_ttl=N` | 啟用並將快取結果保留 N 秒（`-- @provisa cache_ttl=N`） |
 
 （REQ-279、REQ-277、REQ-278）
+
+回應快取按請求選擇啟用：GraphQL 使用 `@cached(ttl: Int)` 指令，SQL 和 Cypher 使用 `cache`/`cache_ttl` 註解，gRPC 使用呼叫元數據 `x-provisa-cache` / `x-provisa-cache-ttl`。該提示在承載該語言的每種傳輸上都生效（Cypher 經 HTTP、Bolt 及 Arrow Flight；GraphQL 經 HTTP 及 Arrow Flight）。沒有提示的請求從不讀取或寫入快取，而任何形式都不會讀取比營運方的數據來源及表設定所容許的更新的數據。請參閱[快取](configuration.md)。(REQ-544)
 
 ## Mutation 中的欄位預設集
 

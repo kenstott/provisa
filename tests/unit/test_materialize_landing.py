@@ -181,7 +181,7 @@ class _FakeProvider:
 
 @pytest.mark.asyncio
 async def test_cdc_landing_consumer_drains_provider():
-    import asyncio
+    import threading
 
     from provisa.subscriptions.cdc_landing import consume_cdc_into_store
 
@@ -208,7 +208,7 @@ async def test_cdc_landing_consumer_drains_provider():
         _land,
         schema="mat",
         table="pets",
-        disconnect=asyncio.Event(),
+        disconnect=threading.Event(),
     )
     assert totals == {"upsert": 2, "delete": 1}
     assert provider.closed

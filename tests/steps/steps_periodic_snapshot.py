@@ -23,7 +23,7 @@ from types import SimpleNamespace
 import duckdb
 import pytest
 from pytest_bdd import given, when, then, scenarios
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.schema_org import event_status, events, node_freshness_state
@@ -51,7 +51,9 @@ class _DuckEngine:
     def __init__(self, con):
         self.con = con
 
-    async def execute_engine(self, sql: str):
+    # Matches the real engine's signature: REQ-1760 passes a keyword-only authorization per statement.
+    async def execute_engine(self, sql: str, params=None, *, authorization=None):
+        del params, authorization
         cur = self.con.execute(sql)
         cols = [d[0] for d in cur.description] if cur.description else []
         return SimpleNamespace(column_names=cols, rows=cur.fetchall())
@@ -78,13 +80,9 @@ async def _build_mode(tmp_path, mode: str):
     con = duckdb.connect(":memory:")
     con.execute("CREATE TABLE base (id INTEGER, region VARCHAR, amount INTEGER)")
     target = f'"memory"."main"."mv_snap_{mode}"'
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / (uuid.uuid4().hex + '.db')}")
-    async with engine.begin() as c:
-        await c.run_sync(
-            lambda s: events.metadata.create_all(
-                s, tables=[events, event_status, node_freshness_state]
-            )
-        )
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / (uuid.uuid4().hex + '.db')}")
+    with engine.begin() as c:
+        events.metadata.create_all(c, tables=[events, event_status, node_freshness_state])
     db = Database(engine, name="cp")
     mv = MVDefinition(
         id=f"view-snap-{mode}",

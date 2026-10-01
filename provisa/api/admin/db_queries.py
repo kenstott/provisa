@@ -156,7 +156,8 @@ async def fetch_tables(conn: "Connection") -> list[dict]:  # REQ-155, REQ-393, R
         table = dict(row)
         col_rows = await conn.fetch(
             "SELECT column_name, data_type, visible_to, writable_by, unmasked_to, "
-            "mask_type, alias, description, path, is_primary_key, object_fields, native_filter_type "
+            "mask_type, alias, description, path, is_primary_key, object_fields, native_filter_type, "
+            "epoch_unit "  # REQ-1908
             "FROM table_columns WHERE table_id = $1 ORDER BY id",
             row["id"],
         )
@@ -177,6 +178,7 @@ async def fetch_tables(conn: "Connection") -> list[dict]:  # REQ-155, REQ-393, R
                 "is_primary_key": bool(r.get("is_primary_key") or False),
                 "object_fields": _as_list(r.get("object_fields")),
                 "native_filter_type": r.get("native_filter_type"),
+                "epoch_unit": r.get("epoch_unit"),  # REQ-1908
             }
             for r in col_rows
         ]

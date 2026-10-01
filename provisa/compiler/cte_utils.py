@@ -17,7 +17,7 @@ import sqlglot.expressions as exp
 
 def cte_names(tree: exp.Expr) -> frozenset[str]:
     """Return the set of user-defined CTE alias names in the WITH clause."""
-    with_clause = tree.args.get("with")
+    with_clause = tree.args.get("with_")  # sqlglot 30 names the WITH arg "with_"
     if not with_clause:
         return frozenset()
     return frozenset(cte.alias for cte in with_clause.expressions)

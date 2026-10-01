@@ -11,7 +11,7 @@ Answers the question end-to-end, through the real HTTP GraphQL interface (not SQ
   * federation engine   — DuckDB (``PROVISA_ENGINE=duckdb``)
   * data source         — a SQLite file (``inquiries.sqlite``), federated in place by the
                           DuckDB sqlite connector (``Mechanism.ATTACH_RW``)
-  * control plane       — SQLite (``TENANT/PLATFORM_DATABASE_URL=sqlite+aiosqlite``), so the
+  * control plane       — SQLite (``TENANT/PLATFORM_DATABASE_URL=sqlite+pysqlite``), so the
                           source is CONSUMED (registered) into a SQLite registry — no Postgres
   * materialize store   — DuckDB (``materialize_store_url=duckdb:///...``)
 
@@ -32,7 +32,6 @@ import pytest_asyncio
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
 pytest.importorskip("duckdb")
-pytest.importorskip("aiosqlite")
 
 _ISOLATED_ORG = "duckdb_sqlite_cp"
 _CONFIG = "tests/fixtures/duckdb_sqlite_config.yaml"

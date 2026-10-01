@@ -22,7 +22,7 @@ from typing import Any, cast
 
 from fastapi import APIRouter, Request
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.engine import Engine
 
 from provisa.api.errors import ApiError
 
@@ -90,7 +90,7 @@ async def ingest_event(  # REQ-331, REQ-333, REQ-335
             continue
         row_data = _extract_row(event, columns)
         # Surface insert failures — never report "accepted" for rows that did not persist.
-        await _insert_row(cast("AsyncEngine", engine), table, row_data)
+        await _insert_row(cast("Engine", engine), table, row_data)
         inserted += 1
 
     return {"status": "accepted", "inserted": str(inserted)}
@@ -118,7 +118,8 @@ def _extract_row(
     return row
 
 
-async def _insert_row(engine: AsyncEngine, table: str, data: dict[str, Any]) -> None:
+# Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
+async def _insert_row(engine: Engine, table: str, data: dict[str, Any]) -> None:
     if not data:
         return
     cols = ", ".join(data.keys())
@@ -130,5 +131,7 @@ async def _insert_row(engine: AsyncEngine, table: str, data: dict[str, Any]) -> 
         f"INSERT INTO {table} ({cols}, _received_at, _updated_at) "  # noqa: S608
         f"VALUES ({placeholders}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
     )
-    async with engine.begin() as conn:
-        await conn.execute(stmt, data)
+    from provisa.core.database import bounded_connection, deadline_execute
+
+    with bounded_connection(engine, begin=True) as conn:
+        deadline_execute(conn, stmt, data)

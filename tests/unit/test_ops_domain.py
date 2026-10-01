@@ -345,7 +345,7 @@ class TestReportViewRegistry:
         assert "jsonb_array_elements_text" in _ops_table_usage_ddl("postgresql")
 
 
-@pytest.mark.parametrize("uri", ["sqlite+aiosqlite:///:memory:", "duckdb:///:memory:"])
+@pytest.mark.parametrize("uri", ["sqlite+pysqlite:///:memory:", "duckdb:///:memory:"])
 async def test_report_views_functional(uri):
     """REQ-1386: create the report views on a real embedded backend, feed audit
     rows + tags, and query every view — validates the SQL on each dialect."""

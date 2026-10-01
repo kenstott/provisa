@@ -19,7 +19,7 @@ from __future__ import annotations
 import types
 
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.models import Column, Table
@@ -52,9 +52,9 @@ _TABLES = [
 
 
 async def _seeded_db(tmp_path):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'catalog.db'}")
-    async with engine.begin() as c:
-        await c.run_sync(lambda s: registered_tables.metadata.create_all(s, tables=_TABLES))
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'catalog.db'}")
+    with engine.begin() as c:
+        registered_tables.metadata.create_all(c, tables=_TABLES)
     db = Database(engine, name="catalog")
     async with db.acquire() as conn:
         await table_repo.upsert(
@@ -89,7 +89,7 @@ async def test_list_schemas_against_real_db_no_event_loop_error(tmp_path):
         result = await tools.list_schemas(_state(db), "analyst")
         assert result == [{"schema": "sales", "description": "", "table_count": 1}]
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 async def test_list_tables_against_real_db_no_event_loop_error(tmp_path):
@@ -100,7 +100,7 @@ async def test_list_tables_against_real_db_no_event_loop_error(tmp_path):
         result = await tools.list_tables(_state(db), "analyst", "sales")
         assert [r["table"] for r in result] == ["orders"]
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 async def test_catalog_returns_empty_list_when_no_tenant_db():

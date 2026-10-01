@@ -347,8 +347,8 @@ def _apply_pipeline_transforms(  # REQ-040, REQ-041, REQ-134, REQ-198, REQ-262, 
     return compiled, mv_applied
 
 
-def _decide_transpile(  # REQ-066, REQ-067, REQ-068, REQ-152, REQ-229
-    compiled, state, steward_hint: str | None
+def _decide_transpile(  # REQ-066, REQ-067, REQ-068, REQ-152, REQ-229, REQ-030
+    compiled, state, steward_hint: str | None, operator_floor: dict[str, str]
 ) -> tuple[Any, str | None, str | None, str]:
     """Return (decision, engine_sql, direct_sql, route_str)."""
     from provisa.transpiler.router import Route, decide_route
@@ -362,6 +362,7 @@ def _decide_transpile(  # REQ-066, REQ-067, REQ-068, REQ-152, REQ-229
         steward_hint=steward_hint,
         has_json_extract=has_json_extract,
         source_dsns=getattr(state, "source_dsns", None),
+        operator_floor=operator_floor,
     )
 
     engine_sql = (
@@ -547,6 +548,9 @@ async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039
 
     fresh_mvs = state.mv_registry.get_fresh()
     results = []
+    from provisa.federation.registry_view import operator_floor
+
+    floor = await operator_floor(state)
 
     for _compiled_orig in compiled_queries:
         pre_mv_sources = set(_compiled_orig.sources)
@@ -556,7 +560,7 @@ async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039
 
         sampling = not has_capability(role, Capability.FULL_RESULTS) if role else True
         decision, engine_sql, direct_sql, route_str = _decide_transpile(
-            compiled, state, steward_hint
+            compiled, state, steward_hint, floor
         )
 
         enforcement = _build_enforcement_metadata(

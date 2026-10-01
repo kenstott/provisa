@@ -42,17 +42,26 @@ VALUE = "ghp_averyrealtokenshapedstring"
 
 
 @pytest.fixture
-async def plane(docker_postgres, monkeypatch):
+async def plane(docker_postgres, monkeypatch, tmp_path):
     """A registry holding two orgs, with a master key the process actually has."""
+    import keyring
+    from keyring.backends.null import Keyring as NullKeyring
+
     from provisa.core.database import Database, create_engine_from_url
 
-    # The store refuses to write without one (REQ-1557); an explicit key keeps the test off the
-    # host keychain entirely.
+    # The store refuses to write without a master key (REQ-1557). LocalKeychain reads the OS
+    # keyring, then $PROVISA_DATA_DIR/encryption, BEFORE PROVISA_ENCRYPTION_KEY (REQ-684,
+    # REQ-1802), so the env key alone does not keep the test off the host: an empty keyring and a
+    # throwaway data dir do. Without them the test would read (and could write) the host's own
+    # key store -- another instance's key -- and swapping the env key would change nothing.
+    previous_keyring = keyring.get_keyring()
+    keyring.set_keyring(NullKeyring())
+    monkeypatch.setenv("PROVISA_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("PROVISA_ENCRYPTION_KEY", base64.b64encode(os.urandom(32)).decode())
     configure_secrets("provisa")
 
     url = (
-        f"postgresql+asyncpg://provisa:{os.environ.get('PG_PASSWORD', 'provisa')}@"
+        f"postgresql+psycopg://provisa:{os.environ.get('PG_PASSWORD', 'provisa')}@"
         f"{docker_postgres['host']}:{docker_postgres['port']}/provisa"
     )
     admin_db = Database(create_engine_from_url(url, pool_size=2), name="admin")
@@ -61,6 +70,7 @@ async def plane(docker_postgres, monkeypatch):
         await init_registry_schema(admin_db, org_id)
     yield admin_db, orgs
     reset_secrets()
+    keyring.set_keyring(previous_keyring)
 
 
 class TestWhatGoesInAndWhatComesBack:

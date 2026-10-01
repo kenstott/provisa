@@ -131,3 +131,18 @@ def test_composite_pk_with_in_list_on_one_column_is_unbounded():
     ast = _ast("SELECT * FROM orders WHERE id IN (1, 2) AND region = 'us'")
     bounds = extract_pk_bounds(ast, tables)
     assert bounds == []
+
+
+def test_a_bound_parameter_point_lookup_resolves_its_bound():
+    """REQ-589 amendment: pgwire keeps `$1` bound instead of splicing the literal, so the pk
+    bound must come from the statement's params — or every point lookup lands the whole table."""
+    ast = _ast("SELECT * FROM orders WHERE id = $1")
+    bounds = extract_pk_bounds(ast, _orders_table(), [42])
+    assert len(bounds) == 1
+    assert bounds[0].values == ((42,),)
+
+
+def test_a_bound_parameter_in_list_resolves_every_value():
+    ast = _ast("SELECT * FROM orders WHERE id IN ($1, $2)")
+    bounds = extract_pk_bounds(ast, _orders_table(), [7, 9])
+    assert set(bounds[0].values) == {(7,), (9,)}

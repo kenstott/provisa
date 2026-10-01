@@ -65,10 +65,11 @@ class TestBuildApiSource:
         source = build_api_source(cfg)
         assert source.id == "my-neo4j"
 
-    def test_source_type_is_openapi(self):
+    def test_source_type_is_neo4j(self):
+        # REQ-1668: a Neo4j source persists as its own source type (not a generic openapi one).
         cfg = Neo4jSourceConfig(source_id="neo4j-x", host="host")
         source = build_api_source(cfg)
-        assert source.type == ApiSourceType.openapi
+        assert source.type == ApiSourceType.neo4j
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +110,7 @@ class TestBuildEndpoint:
         )
         assert ep.response_normalizer == "neo4j_tabular"
 
-    def test_body_encoding_is_json(self):
+    def test_body_encoding_is_neo4j_tx(self):
         from provisa.api_source.models import ApiColumn
 
         cfg = self._cfg()
@@ -119,7 +120,8 @@ class TestBuildEndpoint:
             "MATCH (u) RETURN u.id",
             [ApiColumn(name="id", type=ApiColumnType.integer)],
         )
-        assert ep.body_encoding == "json"
+        # REQ-1668: the endpoint POSTs the Neo4j transaction-API envelope (call_api "neo4j_tx").
+        assert ep.body_encoding == "neo4j_tx"
 
     def test_query_template_stored(self):
         from provisa.api_source.models import ApiColumn

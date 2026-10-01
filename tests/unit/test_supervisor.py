@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.schema_org import event_status, events, node_freshness_state
@@ -27,22 +27,18 @@ _COLS = [("id", "bigint"), ("status", "text")]
 
 @asynccontextmanager
 async def _cp(tmp_path):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'cp.db'}")
-    async with engine.begin() as c:
-        await c.run_sync(
-            lambda s: events.metadata.create_all(
-                s, tables=[events, event_status, node_freshness_state]
-            )
-        )
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cp.db'}")
+    with engine.begin() as c:
+        events.metadata.create_all(c, tables=[events, event_status, node_freshness_state])
     try:
         yield Database(engine, name="cp")
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 @pytest.mark.asyncio
 async def test_change_propagates_through_dag_in_one_drain(tmp_path):
-    store = f"sqlite+aiosqlite:///{tmp_path / 'store.db'}"
+    store = f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
     # lineage: mv.daily depends on s.orders  ->  dependents_of(s.orders) == [mv.daily]
     dep = supervisor.dependents_of({"mv.daily": "SELECT count(*) FROM s.orders"})
 
@@ -125,7 +121,7 @@ def test_dependents_of_rejects_cycle():
 async def test_three_level_cascade_one_recompute_per_node(tmp_path):
     """REQ-965/966: a root change propagates s.orders → mv.a → mv.b in one drain, each node firing
     exactly once (replace emit), reaching quiescence."""
-    store = f"sqlite+aiosqlite:///{tmp_path / 'store.db'}"
+    store = f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
     dep = supervisor.dependents_of(
         {"mv.a": "SELECT count(*) FROM s.orders", "mv.b": "SELECT * FROM mv.a"}
     )
@@ -209,7 +205,7 @@ async def test_debounced_intermediate_defers_then_ripples_once(tmp_path, monkeyp
     import provisa.events.processor as processor_mod
     from provisa.federation import store_writer
 
-    store = f"sqlite+aiosqlite:///{tmp_path / 'store.db'}"
+    store = f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
     dep = supervisor.dependents_of({"mv.b": "SELECT * FROM mv.a"})  # mv.a -> mv.b
 
     calls = {"a": 0, "b": 0}

@@ -80,6 +80,10 @@ class _FakeCursor:
     def fetchone(self):
         return self._rows[0] if self._rows else None
 
+    def cancel(self):
+        # The Trino DBAPI cursor's cancel, registered with the request deadline around execute.
+        self.cancelled = True
+
 
 class _FakeConnection:
     def __init__(self, rows=None, cols=None):
@@ -150,6 +154,9 @@ class TestExecuteTrinoParameterSubstitution:
 
         class _TrackingCursor:
             description = [("n", "integer", None, None, None, None, None)]
+
+            def cancel(self):  # trino Cursor.cancel(), registered with the request deadline
+                pass
 
             def execute(self, sql, params=None):
                 executed.append(sql)

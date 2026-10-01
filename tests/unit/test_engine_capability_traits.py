@@ -131,7 +131,7 @@ def test_traits_descriptor_fails_loud_when_a_trait_is_unset():
 def test_router_reads_file_native_to_route_a_file_source():
     file_engine = build_duckdb_engine()  # file_native=True
     land_engine = build_sqlalchemy_engine("postgresql://h/db")  # file_native=False
-    args = dict(sources={"c"}, source_types={"c": "iceberg"}, source_dialects={})
+    args = dict(sources={"c"}, source_types={"c": "iceberg"}, source_dialects={}, operator_floor={})
 
     scan = decide_route(**args, engine=file_engine)
     land = decide_route(**args, engine=land_engine)
@@ -146,7 +146,7 @@ def test_router_reads_file_native_to_route_a_file_source():
 
 def test_router_engine_agnostic_without_an_engine():
     # No engine bound → engine-agnostic decision (the trait is a planner input, never guessed).
-    d = decide_route({"c"}, {"c": "iceberg"}, {})
+    d = decide_route({"c"}, {"c": "iceberg"}, {}, operator_floor={})
     assert d.route is Route.ENGINE and d.reason == "virtual source (iceberg)"
 
 

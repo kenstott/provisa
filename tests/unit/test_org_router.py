@@ -34,8 +34,8 @@ from provisa.core.database import OrgRouter
 @pytest.mark.parametrize(
     "url",
     [
-        "postgresql+asyncpg://u:p@h/db",
-        "mysql+aiomysql://u:p@h/db",
+        "postgresql+psycopg://u:p@h/db",
+        "mysql+pymysql://u:p@h/db",
     ],
 )
 def test_rejects_schema_capable_backends(url):
@@ -46,7 +46,7 @@ def test_rejects_schema_capable_backends(url):
 
 def test_accepts_not_schema_capable_backend():
     """SQLite (file-per-org, no namespaces) is exactly what OrgRouter is for."""
-    router = OrgRouter("sqlite+aiosqlite:////data/control.db")
+    router = OrgRouter("sqlite+pysqlite:////data/control.db")
     assert router is not None
 
 
@@ -56,13 +56,13 @@ def test_accepts_not_schema_capable_backend():
 
 
 def test_per_org_url_is_a_sibling_file_named_for_the_org():
-    router = OrgRouter("sqlite+aiosqlite:////data/control.db")
-    assert router._org_url("acme") == "sqlite+aiosqlite:////data/org_acme.db"
+    router = OrgRouter("sqlite+pysqlite:////data/control.db")
+    assert router._org_url("acme") == "sqlite+pysqlite:////data/org_acme.db"
 
 
 def test_database_for_rejects_invalid_org_id():
     # database_for validates the org id before deriving any file path (no injection into the URL).
-    router = OrgRouter("sqlite+aiosqlite:////data/control.db")
+    router = OrgRouter("sqlite+pysqlite:////data/control.db")
     with pytest.raises(ValueError):
         router.database_for("bad-org")
     with pytest.raises(ValueError):
@@ -79,7 +79,7 @@ def test_database_for_lazily_builds_and_caches_one_engine_per_org():
 
     engine = MagicMock(name="engine")
     with patch("provisa.core.database.create_engine_from_url", return_value=engine) as make_engine:
-        router = OrgRouter("sqlite+aiosqlite:////data/control.db")
+        router = OrgRouter("sqlite+pysqlite:////data/control.db")
 
         a1 = router.database_for("acme")
         a2 = router.database_for("acme")  # cache hit — no second engine
@@ -90,8 +90,8 @@ def test_database_for_lazily_builds_and_caches_one_engine_per_org():
     # exactly one engine built per distinct org, each pointed at that org's file
     built = [c.args[0] for c in make_engine.call_args_list]
     assert built == [
-        "sqlite+aiosqlite:////data/org_acme.db",
-        "sqlite+aiosqlite:////data/org_beta.db",
+        "sqlite+pysqlite:////data/org_acme.db",
+        "sqlite+pysqlite:////data/org_beta.db",
     ]
 
 
@@ -99,7 +99,7 @@ def test_named_database_reflects_the_org():
     from unittest.mock import MagicMock
 
     with patch("provisa.core.database.create_engine_from_url", return_value=MagicMock()):
-        router = OrgRouter("sqlite+aiosqlite:////data/control.db")
+        router = OrgRouter("sqlite+pysqlite:////data/control.db")
         db = router.database_for("acme")
     assert db.name == "org_acme"
 
@@ -113,7 +113,7 @@ async def test_close_closes_and_clears_every_cached_org_database():
     closed: list[str] = []
 
     with patch("provisa.core.database.create_engine_from_url", return_value=MagicMock()):
-        router = OrgRouter("sqlite+aiosqlite:////data/control.db")
+        router = OrgRouter("sqlite+pysqlite:////data/control.db")
         for org in ("acme", "beta"):
             db = router.database_for(org)
             db.close = AsyncMock(side_effect=lambda o=org: closed.append(o))

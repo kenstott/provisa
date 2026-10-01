@@ -1660,7 +1660,7 @@ A new `ingest` source type allows external services (OTEL Collector, Fluentd, cu
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
 
-Each ingest source specifies a SQLAlchemy-compatible connection (dialect, host, port, database, username/password). Provisa creates one `AsyncEngine` per source at startup and reuses it across all requests. The `dialect` field on the `sources` table carries the SQLAlchemy driver string (e.g. `postgresql+asyncpg`, `mysql+aiomysql`).
+Each ingest source specifies a SQLAlchemy-compatible connection (dialect, host, port, database, username/password). Provisa creates one `AsyncEngine` per source at startup and reuses it across all requests. The `dialect` field on the `sources` table carries the SQLAlchemy driver string (e.g. `postgresql+psycopg2`, `mysql+pymysql`).
 
 **Use case:** Per-source SQLAlchemy AsyncEngine lets ingest tables target any supported relational store asynchronously.
 
@@ -7756,7 +7756,7 @@ Trino FTE exchange spooling directory (provisa_exchange Docker named volume, mou
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** structural
 
-Platform control plane and tenant control plane use two independent SQLAlchemy engines and connection pools (state.admin_db for platform registry; state.org_db for per-tenant data). Platform database is configured by PLATFORM_DATABASE_URL env var (full SQLAlchemy URI supporting any async backend: postgresql+asyncpg, sqlite+aiosqlite, mysql+aiomysql); required at startup with no fallback.
+Platform control plane and tenant control plane use two independent SQLAlchemy engines and connection pools (state.admin_db for platform registry; state.org_db for per-tenant data). Platform database is configured by PLATFORM_DATABASE_URL env var (full SQLAlchemy URI supporting any async backend: postgresql+psycopg2, sqlite+pysqlite, mysql+pymysql); required at startup with no fallback.
 
 **Use case:** Enables deployment models where platform registry and per-tenant data live in separate databases on different backends (platform on SQLite/MySQL, tenant on PostgreSQL, or vice versa), allowing independent lifecycle and scaling.
 

@@ -52,7 +52,6 @@ Resolution recipe for #74 (the config that makes Trino accept password auth):
 from __future__ import annotations
 
 import os
-import socket
 import subprocess
 import time
 import uuid
@@ -69,11 +68,9 @@ _FLIGHT_PASSWORD = "Provisa_2026!"
 
 
 def _free_port() -> int:
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
+    from tests.port_lease import lease_port
+
+    return lease_port()
 
 
 def _wait_healthy(project: str, service: str, timeout_s: int) -> None:

@@ -1272,17 +1272,15 @@ async def _open_candidate_db(dsn: str):
     """Real file-backed sqlite Database with the candidate tables created, so the candidates
     repository (SQLAlchemy Core: upsert_returning / execute_core) exercises a real backend rather
     than a hand-parsed raw-SQL stand-in — the repo was migrated off asyncpg to Core."""
-    from sqlalchemy.ext.asyncio import create_async_engine
+    from provisa.core.database import create_engine_from_url
 
     from provisa.core.database import Database
     from provisa.core.schema_org import api_endpoint_candidates, api_endpoints
 
-    engine = create_async_engine(dsn)
-    async with engine.begin() as _c:
-        await _c.run_sync(
-            lambda s: api_endpoint_candidates.metadata.create_all(
-                s, tables=[api_endpoints, api_endpoint_candidates]
-            )
+    engine = create_engine_from_url(dsn)
+    with engine.begin() as _c:
+        api_endpoint_candidates.metadata.create_all(
+            _c, tables=[api_endpoints, api_endpoint_candidates]
         )
     return Database(engine, name="candidates-test")
 
@@ -1384,7 +1382,7 @@ def when_discovery_endpoint_introspects(shared_data, tmp_path):
 
     # File-backed sqlite so the same store survives the separate asyncio.run() in the accept/reject
     # step (each step opens its own connection to the one DSN).
-    dsn = f"sqlite+aiosqlite:///{tmp_path / 'candidates.db'}"
+    dsn = f"sqlite+pysqlite:///{tmp_path / 'candidates.db'}"
 
     async def _run():
         with mock.patch.object(

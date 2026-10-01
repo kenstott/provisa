@@ -127,7 +127,7 @@ class TestREQ978DemoOffByDefaultTour:
 
 # ---------------------------------------------------------------------------
 # REQ-979: native tier bundles a standalone Python runtime (python-build-standalone
-#          + provisa wheel + duckdb/pg_duckdb + aiosqlite); base ships no images.
+#          + provisa wheel + duckdb/pg_duckdb); base ships no images.
 # ---------------------------------------------------------------------------
 
 
@@ -139,7 +139,8 @@ class TestREQ979NativeStandaloneRuntime:
         # and ships no OVA/VirtualBox/Trino container images.
         base = (PKG / "windows" / "build-sfx.ps1").read_text().lower()
         assert "python-build-standalone" in base
-        assert "aiosqlite" in base
+        # The native control plane is stdlib sqlite3; the build verifies it is present.
+        assert "import sqlite3" in base
         for token in ("vboxmanage", ".ova", "provisa-runtime.ova", "trinosrc"):
             assert token not in base, f"native base installer must not bundle {token}"
 

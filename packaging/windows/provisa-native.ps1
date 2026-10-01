@@ -70,8 +70,8 @@ function Native-Env {
   $e = @{
     'PROVISA_ENGINE'        = $DeployEngine
     'PROVISA_REDIS_EMBEDDED' = '1'
-    'PLATFORM_DATABASE_URL' = "sqlite+aiosqlite:///$platformDb"
-    'TENANT_DATABASE_URL'   = "sqlite+aiosqlite:///$tenantDb"
+    'PLATFORM_DATABASE_URL' = "sqlite+pysqlite:///$platformDb"
+    'TENANT_DATABASE_URL'   = "sqlite+pysqlite:///$tenantDb"
   }
   # Remote MCP on by default for the native/desktop tier (REQ-1101): a ready same-machine Claude
   # Desktop connector. Loopback bind (127.0.0.1) keeps the always-on server off the LAN. The role

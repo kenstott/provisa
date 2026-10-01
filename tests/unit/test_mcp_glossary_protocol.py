@@ -20,7 +20,7 @@ import types
 from contextlib import asynccontextmanager
 
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.models import Column, Table
@@ -55,9 +55,9 @@ _TABLES = [
 async def _server(tmp_path):
     from provisa.api.mcp.server import build_mcp_server
 
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'mcp.db'}")
-    async with engine.begin() as c:
-        await c.run_sync(lambda s: registered_tables.metadata.create_all(s, tables=_TABLES))
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'mcp.db'}")
+    with engine.begin() as c:
+        registered_tables.metadata.create_all(c, tables=_TABLES)
     db = Database(engine, name="mcp")
     try:
         async with db.acquire() as conn:
@@ -80,7 +80,7 @@ async def _server(tmp_path):
         )
         yield build_mcp_server(state), db
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 async def test_search_terms_is_a_registered_tool(tmp_path):

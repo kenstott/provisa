@@ -631,8 +631,12 @@ MATCH (o:Order) RETURN o.id, o.amount
 | ------ | -------- |
 | `route=federated` | 强制经由联邦引擎走联邦路径，绕过直连驱动路由 |
 | `route=direct` | 强制走直连驱动执行 |
+| `cache=true` | 为该查询启用响应缓存（SQL 注释形式：`-- @provisa cache=true`） |
+| `cache_ttl=N` | 启用并将缓存结果保留 N 秒（`-- @provisa cache_ttl=N`） |
 
 (REQ-279, REQ-277, REQ-278)
+
+响应缓存按请求选择启用：GraphQL 使用 `@cached(ttl: Int)` 指令，SQL 和 Cypher 使用 `cache`/`cache_ttl` 注释，gRPC 使用调用元数据 `x-provisa-cache` / `x-provisa-cache-ttl`。该提示在承载该语言的每种传输上都生效（Cypher 经 HTTP、Bolt 和 Arrow Flight；GraphQL 经 HTTP 和 Arrow Flight）。没有提示的请求从不读取或写入缓存，且任何形式都不会读取比运营方的数据源和表设置所允许的更新的数据。请参阅[缓存](configuration.md)。（REQ-544）
 
 ## 变更中的列预设
 

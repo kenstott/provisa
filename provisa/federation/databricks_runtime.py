@@ -24,6 +24,7 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
+from provisa.core import request_deadline
 from provisa.executor.result import QueryResult, ResultStream
 from provisa.federation.runtime_support import run_async_materialized, stream_rows_from_arrow
 
@@ -369,8 +370,9 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         natively via Cloud Fetch, so no Python rows are materialized for the Flight transport."""
         cur = self._conn.cursor()
         try:
-            cur.execute(sql, params or None)
-            return cur.fetchall_arrow()
+            with request_deadline.cancel_on_deadline(cur.cancel):
+                cur.execute(sql, params or None)
+                return cur.fetchall_arrow()
         finally:
             cur.close()
 
@@ -382,8 +384,9 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         full result never materializes — peak memory is bounded by one chunk. The cursor closes when the
         generator drains or the consumer stops early. A zero-row result yields an empty-schema stream."""
         cur = self._conn.cursor()
-        cur.execute(sql, params or None)
-        first = cur.fetchmany_arrow(_ARROW_CHUNK_ROWS)
+        with request_deadline.cancel_on_deadline(cur.cancel):
+            cur.execute(sql, params or None)
+            first = cur.fetchmany_arrow(_ARROW_CHUNK_ROWS)
         if first.num_rows == 0:  # exhausted immediately — carries the column schema, no rows
             schema = first.schema
             cur.close()
@@ -394,7 +397,8 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
             try:
                 yield from first.to_batches()
                 while True:
-                    tbl = cur.fetchmany_arrow(_ARROW_CHUNK_ROWS)
+                    with request_deadline.cancel_on_deadline(cur.cancel):
+                        tbl = cur.fetchmany_arrow(_ARROW_CHUNK_ROWS)
                     if tbl.num_rows == 0:
                         break
                     yield from tbl.to_batches()

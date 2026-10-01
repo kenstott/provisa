@@ -36,6 +36,9 @@ class _Cursor:
         self._log = log
         self.description = [("id", "integer")]
 
+    def cancel(self):  # trino Cursor.cancel(), registered with the request deadline
+        pass
+
     def execute(self, sql, params=None):
         self._log.append(sql)
 

@@ -10,7 +10,8 @@
 
 """the engine type → GraphQL scalar mapping (REQ-010).
 
-Nullability preserved from INFORMATION_SCHEMA. Custom scalars for DateTime, JSON.
+Nullability preserved from INFORMATION_SCHEMA. Custom scalars for DateTime, Date, Interval, JSON,
+BigInt.
 """
 
 # Requirements: REQ-010, REQ-306
@@ -38,12 +39,27 @@ GraphQLBoolean: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLBoolean)
 
 # --- Custom scalars ---
 
+
+def _iso_temporal(kind: str, value: object) -> str:  # object-ok: an engine's date/time value
+    """Date and time values are ALWAYS ISO 8601 strings in a GraphQL response — never a number. A
+    driver's date/datetime renders with ``isoformat()`` (``2026-01-02T03:04:05``, not ``str()``'s
+    space-separated form); engine text is already ISO. A number (an epoch offset in unknown units)
+    or anything else is a wrong type for this column and raises (a GraphQL field error)."""
+    from datetime import date
+
+    if isinstance(value, date):  # datetime is a date subclass
+        return value.isoformat()
+    if isinstance(value, str):
+        return value
+    raise TypeError(f"{kind} cannot represent {type(value).__name__} value {value!r}")
+
+
 DateTime: GraphQLScalarType = cast(
     GraphQLScalarType,
     GraphQLScalarType(
         "DateTime",
         description="ISO 8601 datetime string",
-        serialize=str,
+        serialize=lambda v: _iso_temporal("DateTime", v),
         parse_value=str,
     ),
 )
@@ -53,7 +69,7 @@ Date: GraphQLScalarType = cast(
     GraphQLScalarType(
         "Date",
         description="ISO 8601 date string",
-        serialize=str,
+        serialize=lambda v: _iso_temporal("Date", v),
         parse_value=str,
     ),
 )
@@ -65,6 +81,32 @@ JSONScalar: GraphQLScalarType = cast(
         description="Arbitrary JSON value",
         serialize=lambda v: v,
         parse_value=lambda v: v,
+    ),
+)
+
+
+def _serialize_interval(value: object) -> str:  # object-ok: an engine's interval value, typed below
+    """A driver hands an interval back as a ``timedelta``; an engine that renders it as text (a JSON
+    result, a text-format column) has already produced its canonical ISO 8601 form. Anything else is
+    a wrong type for this column and raises (graphql-core reports it as a field error)."""
+    from datetime import timedelta
+
+    from provisa.core.ir_types import iso8601_duration
+
+    if isinstance(value, timedelta):
+        return iso8601_duration(value)
+    if isinstance(value, str):
+        return value
+    raise TypeError(f"Interval cannot represent {type(value).__name__} value {value!r}")
+
+
+Interval: GraphQLScalarType = cast(
+    GraphQLScalarType,
+    GraphQLScalarType(
+        "Interval",
+        description="Duration as an ISO 8601 duration string (e.g. P3DT4.000005S)",
+        serialize=_serialize_interval,
+        parse_value=str,
     ),
 )
 
@@ -139,6 +181,8 @@ _TYPE_MAP: dict[str, GraphQLScalarType] = cast(
         "date": Date,
         "time": GraphQLString,
         "time with time zone": GraphQLString,
+        "timetz": GraphQLString,  # postgres time with time zone alias
+        "interval": Interval,
         "timestamp": DateTime,
         "timestamp with time zone": DateTime,
         "timestamptz": DateTime,  # postgres timestamp with time zone alias
@@ -229,6 +273,8 @@ DateFilter = GraphQLInputObjectType("DateFilter", lambda: _ordered_filter_fields
 
 DateTimeFilter = GraphQLInputObjectType("DateTimeFilter", lambda: _ordered_filter_fields(DateTime))
 
+IntervalFilter = GraphQLInputObjectType("IntervalFilter", lambda: _ordered_filter_fields(Interval))
+
 JSONFilter = GraphQLInputObjectType(
     "JSONFilter",
     lambda: {
@@ -247,6 +293,7 @@ FILTER_TYPE_MAP: dict[GraphQLScalarType, GraphQLInputObjectType] = cast(
         GraphQLBoolean: BooleanFilter,
         Date: DateFilter,
         DateTime: DateTimeFilter,
+        Interval: IntervalFilter,
         JSONScalar: JSONFilter,
     },
 )

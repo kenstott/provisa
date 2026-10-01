@@ -35,6 +35,7 @@ from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_admin import orgs, user_org_memberships, user_profiles
 from provisa.core.schema_org import metadata as org_metadata
+from provisa.core.schema_org import user_directory
 from provisa.core.schema_org import roles, user_role_assignments
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
 
@@ -42,8 +43,8 @@ pytestmark = [pytest.mark.integration]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "5432")
-_SYNC_URL = f"postgresql+psycopg2://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
-_ASYNC_URL = f"postgresql+asyncpg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
+_SYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
+_ASYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
 
 _ADMIN_SCHEMA = "test_req1263_admin"
 _TENANT_SCHEMA = "test_req1263_tenant"
@@ -61,7 +62,7 @@ def _prepare_sync():
         conn.execute(text(f"CREATE SCHEMA {_ADMIN_SCHEMA}"))
         conn.execute(text(f"CREATE SCHEMA {_TENANT_SCHEMA}"))
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
-        org_metadata.create_all(conn, tables=[roles, user_role_assignments])
+        org_metadata.create_all(conn, tables=[roles, user_role_assignments, user_directory])
         conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
         admin_metadata.create_all(conn, tables=REGISTRY_TABLES)
         conn.execute(insert(orgs).values(id=_ORG, name="Acme", created_by="super"))

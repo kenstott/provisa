@@ -20,7 +20,7 @@ COPY FROM: receives PG COPY wire data, parses rows, inserts into writable
 
 from __future__ import annotations
 
-import asyncio
+from provisa.core.connection_loop import run_on_connection_loop
 import csv
 import io
 import logging
@@ -319,57 +319,49 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
         from provisa.pgwire._pipeline import plan_pgwire_sql
         from provisa.transpiler.router import Route
 
-        with _srv._loop_lock:
-            loop = _srv._loop
-        if loop is None:
-            raise RuntimeError("Event loop not available")
-
         user_id = _ctx.session.user_id  # type: ignore[attr-defined]
         if not user_id:
             raise RuntimeError("Not authenticated")
         org_id = _ctx.session.org_id  # type: ignore[attr-defined]
-        # REQ-074/REQ-1386: bind the principal inside the loop coroutine (ContextVars do not cross
-        # run_coroutine_threadsafe) so the governor's audit write attributes this COPY; REQ-1266
-        # binds the session's org there for the same reason — the row lands in its tenant schema.
-        future = asyncio.run_coroutine_threadsafe(
+        # REQ-074/REQ-1386: bind the principal inside the coroutine so the governor's audit write
+        # attributes this COPY; REQ-1266 binds the session's org there too — the row lands in its
+        # tenant schema. Runs on this connection's own loop, on this thread (REQ-1882).
+        plan = run_on_connection_loop(
             _srv._run_with_org(
                 org_id, with_audit_identity(user_id, "pgwire", plan_pgwire_sql(query, role_id))
             ),
-            loop,
+            timeout=60,
         )
-        plan = future.result(timeout=60)
 
         try:
             if plan.route == Route.ENGINE:
-                data_bytes, nrows = self._exec_engine_flight(plan, fmt, loop)
+                data_bytes, nrows = self._exec_engine_flight(plan, fmt)
             else:
-                data_bytes, nrows = self._exec_direct_plan(plan, loop, fmt)
+                data_bytes, nrows = self._exec_direct_plan(plan, fmt)
         except Exception:
-            self._finalize_audit(plan, 500, loop, org_id)
+            self._finalize_audit(plan, 500, org_id)
             raise
-        self._finalize_audit(plan, 200, loop, org_id)
+        self._finalize_audit(plan, 200, org_id)
 
         self._send_copy_out_response(fmt)
         self._send_copy_data(data_bytes)
         self._send_copy_done()
         return nrows
 
-    def _finalize_audit(self, plan: _Plan, status_code: int, loop, org_id: str | None) -> None:
-        """Write the governed plan's audit row from this worker thread (REQ-074/REQ-1386).
+    def _finalize_audit(self, plan: _Plan, status_code: int, org_id: str | None) -> None:
+        """Write the governed plan's audit row on this connection's loop (REQ-074/REQ-1386).
 
         COPY drains the engine/source terminal here, so the plan never reaches ``_execute_plan`` on
         the ENGINE route; ``finalize_audit`` is idempotent, so the DIRECT route stays single-write.
-        The org is re-bound on the loop side (REQ-1266) so the row lands in this session's tenant."""
+        The org is bound in the coroutine (REQ-1266) so the row lands in this session's tenant."""
         from provisa.pgwire import server as _srv
         from provisa.pgwire._pipeline import finalize_audit
 
-        asyncio.run_coroutine_threadsafe(
-            _srv._run_with_org(org_id, finalize_audit(plan, status_code)), loop
-        ).result(timeout=30)
+        run_on_connection_loop(
+            _srv._run_with_org(org_id, finalize_audit(plan, status_code)), timeout=30
+        )
 
-    def _exec_engine_flight(
-        self, plan: _Plan, fmt: str, loop: asyncio.AbstractEventLoop
-    ) -> tuple[bytes, int]:
+    def _exec_engine_flight(self, plan: _Plan, fmt: str) -> tuple[bytes, int]:
         from provisa.api.app import state
         from provisa.federation.query_residency import ensure_resident
         from provisa.pgwire._pipeline import require_governed_plan
@@ -384,22 +376,17 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
         # a MATERIALIZED source this plan reads gets landed before the engine executes — mirrors
         # the identical ENGINE-route bypass fixes elsewhere (pgwire/server.py, api/flight/server.py,
         # api/airport/query.py).
-        asyncio.run_coroutine_threadsafe(ensure_resident(state, plan.sources), loop).result(
-            timeout=120
-        )
+        run_on_connection_loop(ensure_resident(state, plan.sources), timeout=120)
         # Arrow Flight is an advertised, engine-specific transport (REQ-825): route through the
         # bound engine, which fails closed if the engine lacks ARROW or the proxy is unconfigured.
         table = state.federation_engine.execute_engine_arrow(plan.physical_sql, plan.exec_params)
         data_bytes = _arrow_table_to_copy_bytes(table, fmt)
         return data_bytes, table.num_rows
 
-    def _exec_direct_plan(
-        self, plan: _Plan, loop: asyncio.AbstractEventLoop, fmt: str
-    ) -> tuple[bytes, int]:
+    def _exec_direct_plan(self, plan: _Plan, fmt: str) -> tuple[bytes, int]:
         from provisa.pgwire._pipeline import _execute_plan
 
-        future = asyncio.run_coroutine_threadsafe(_execute_plan(plan), loop)
-        result = future.result(timeout=120)
+        result = run_on_connection_loop(_execute_plan(plan), timeout=120)
         data_bytes = _queryresult_to_copy_bytes(result, fmt)
         return data_bytes, len(result.rows)
 
@@ -481,17 +468,9 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
         target_schema = schema or domain_to_sql_name(tm.domain_id)
         target_table = tm.table_name or tm.original_table_name or table
 
-        from provisa.pgwire import server as _srv
-
-        with _srv._loop_lock:
-            loop = _srv._loop
-        if loop is None:
-            raise RuntimeError("Event loop not available")
-
-        future = asyncio.run_coroutine_threadsafe(
-            _insert_rows(tm.source_id, target_schema, target_table, use_cols, rows), loop
+        return run_on_connection_loop(
+            _insert_rows(tm.source_id, target_schema, target_table, use_cols, rows), timeout=120
         )
-        return future.result(timeout=120)
 
     def _send_copy_in_response(self, _fmt: str) -> None:  # pyright: ignore[reportUnusedParameter]
         overall = 0

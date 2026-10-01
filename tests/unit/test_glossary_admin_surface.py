@@ -22,7 +22,7 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 if TYPE_CHECKING:
     from fastapi import Request
@@ -77,9 +77,9 @@ def _with_json(request: "Request", body: dict) -> "Request":
 
 @asynccontextmanager
 async def _surface(tmp_path, monkeypatch):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'gl.db'}")
-    async with engine.begin() as c:
-        await c.run_sync(lambda s: registered_tables.metadata.create_all(s, tables=_TABLES))
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'gl.db'}")
+    with engine.begin() as c:
+        registered_tables.metadata.create_all(c, tables=_TABLES)
     db = Database(engine, name="gl")
     notified: list[str] = []
 
@@ -121,7 +121,7 @@ async def _surface(tmp_path, monkeypatch):
             )
         yield db, notified
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 async def _term_id(name: str) -> int:

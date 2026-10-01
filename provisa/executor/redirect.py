@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Callable
 
 import logging
 
+from provisa.core.operator_floor import OperatorFloorError
 from provisa.executor.result import QueryResult
 
 log = logging.getLogger(__name__)
@@ -445,23 +446,26 @@ def is_engine_native_format(fmt: str) -> bool:  # REQ-138
     return fmt.lower() in ENGINE_NATIVE_FORMATS
 
 
-async def schedule_s3_cleanup(  # REQ-141
+def schedule_s3_cleanup(  # REQ-141
     s3_prefix: str,
     redirect_config,
     delay_seconds: int | None = None,
 ) -> None:
-    """Delete S3 objects under a CTAS result prefix after a delay.
+    """Delete S3 objects under a CTAS result prefix once the presigned URL's TTL has passed, so
+    the data doesn't accumulate indefinitely.
 
-    Called after the presigned URL TTL expires so the data doesn't
-    accumulate indefinitely.
-    """
-    import asyncio
-    import boto3
-    from botocore.config import Config as BotoConfig
+    REQ-1882: the delay is held by the background timer thread, not by a sleeping task; the
+    deletion runs on a background worker at expiry."""
+    from provisa.core.connection_loop import spawn_after
 
     ttl = delay_seconds if delay_seconds is not None else redirect_config.ttl
+    spawn_after(ttl, cleanup_s3_prefix(s3_prefix, redirect_config), name=f"s3-cleanup:{s3_prefix}")
 
-    await asyncio.sleep(ttl)
+
+async def cleanup_s3_prefix(s3_prefix: str, redirect_config) -> None:  # REQ-141
+    """Delete the S3 objects under a CTAS result prefix now (see :func:`schedule_s3_cleanup`)."""
+    import boto3
+    from botocore.config import Config as BotoConfig
 
     s3 = boto3.client(
         "s3",
@@ -556,6 +560,37 @@ class Delivery:  # REQ-1194, REQ-1195
     role: str | None = None
 
 
+class RedirectFloorViolation(OperatorFloorError):
+    """A request's redirect threshold is above the operator's (REQ-029, amended 2026-09-30).
+
+    The operator's threshold is a floor that protects the platform: a request may lower it
+    (redirect sooner), never raise it. A PermissionError so every transport's existing mapping
+    carries it to the caller."""
+
+    def __init__(self, requested: int, operator_threshold: int) -> None:
+        super().__init__(
+            f"redirect threshold {requested} is above the operator's floor: the operator set the "
+            f"large-result redirect threshold to {operator_threshold} rows. Request a threshold at "
+            "or under it, or omit it."
+        )
+
+
+def request_redirect_config(threshold: int | None) -> RedirectConfig:  # REQ-029, REQ-1194
+    """The redirect config for a request that may carry its own ``threshold``.
+
+    The one place a request's threshold meets the operator's: with redirect enabled the request
+    may only lower it, and a higher one raises :class:`RedirectFloorViolation`. With redirect
+    disabled a request threshold only makes this result redirect sooner than never."""
+    from dataclasses import replace
+
+    config = RedirectConfig.from_env()
+    if threshold is None:
+        return config
+    if config.enabled and threshold > config.threshold:
+        raise RedirectFloorViolation(threshold, config.threshold)
+    return replace(config, enabled=True, threshold=threshold)
+
+
 def delivery_from_request(  # REQ-1194, REQ-1195
     *,
     force_redirect: bool,
@@ -570,13 +605,9 @@ def delivery_from_request(  # REQ-1194, REQ-1195
     to build the IR directive. Returns ``None`` when no redirect was asked for: that is the opt-out
     (``deliver=None``) the streaming transports also use, so the plan returns rows as usual.
     """
-    from dataclasses import replace
-
     if not force_redirect:
         return None
-    config = RedirectConfig.from_env()
-    if threshold is not None:
-        config = replace(config, enabled=True, threshold=threshold)
+    config = request_redirect_config(threshold)
     fmt = redirect_format or config.default_format or "parquet"
     return Delivery(output_format=fmt, config=config, role=role)
 
@@ -618,7 +649,6 @@ async def run_materialize(
 
     Returns a handle dict: ``{sink, redirect_url, row_count, expires_in, content_type}``.
     """
-    import asyncio
 
     fmt = delivery.output_format.lower()
     config = delivery.config
@@ -636,7 +666,7 @@ async def run_materialize(
         url = await presign_ctas_result(ctas_result["s3_prefix"], config)
         # Do NOT drop the Iceberg table here — DROP TABLE on the JDBC catalog purges S3 data files
         # immediately, invalidating the presigned URL. The background task deletes objects after TTL.
-        asyncio.create_task(schedule_s3_cleanup(ctas_result["s3_prefix"], config))
+        schedule_s3_cleanup(ctas_result["s3_prefix"], config)
         return {
             "sink": "object-store",
             "redirect_url": url,

@@ -11,9 +11,15 @@
 """gRPC server that serves queries over generated proto service.
 
 Each RPC: extract role from metadata -> look up context -> build SQL -> execute -> stream rows.
+
+REQ-1882 (amended 2026-09-29): the synchronous ``grpc.server`` serves each RPC on its own thread
+from its pool, and the whole RPC runs on that thread — the handler coroutines below run on the
+RPC's own :class:`provisa.core.connection_loop.ConnectionLoop` via
+:func:`provisa.grpc.rpc_scope.rpc_scope`, never on the process loop. Two RPCs govern and execute in
+parallel.
 """
 
-# Requirements: REQ-045, REQ-051, REQ-143, REQ-145, REQ-266
+# Requirements: REQ-045, REQ-051, REQ-143, REQ-145, REQ-266, REQ-1882
 
 from __future__ import annotations
 
@@ -21,11 +27,15 @@ import importlib.util
 import logging
 import re
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+
+import concurrent.futures
 
 import grpc
-import grpc.aio
 from google.protobuf.descriptor import FieldDescriptor
+
+from provisa.compiler.directives import cache_hint_from_grpc_metadata
+from provisa.core.ir_types import iso8601_duration
 
 log = logging.getLogger(__name__)
 
@@ -70,6 +80,8 @@ def _proto_value(field, value):
             return ts
         return value
     if field.type == FieldDescriptor.TYPE_STRING:
+        if isinstance(value, timedelta):
+            return iso8601_duration(value)  # an interval's canonical text form, as on every surface
         return value if isinstance(value, str) else str(value)
     if field.type in (FieldDescriptor.TYPE_DOUBLE, FieldDescriptor.TYPE_FLOAT):
         return float(value)
@@ -151,6 +163,45 @@ def _rpc_role(metadata: dict) -> str | None:
     return raw.decode() if isinstance(raw, bytes) else raw
 
 
+class _RpcContext:
+    """The handler coroutines' view of the synchronous ``grpc.ServicerContext``.
+
+    The bodies below ``await context.abort(...)``; the synchronous server's ``abort`` raises at
+    once, ending the RPC with that status. Everything else is the context itself."""
+
+    def __init__(self, context: grpc.ServicerContext) -> None:
+        self._context = context
+
+    async def abort(self, code: grpc.StatusCode, details: str) -> None:
+        self._context.abort(code, details)
+
+    def __getattr__(self, name: str):
+        return getattr(self._context, name)
+
+
+def _unary(body):
+    """A unary handler: ``body(request, context)`` runs to completion on the RPC's own loop."""
+    from provisa.grpc.rpc_scope import rpc_scope
+
+    def handler(request, context):
+        with rpc_scope() as rpc:
+            return rpc.run(body(request, _RpcContext(context)))
+
+    return handler
+
+
+def _streaming(body):
+    """A response-streaming handler: the async generator ``body(request, context)`` is advanced
+    one message at a time on the RPC's own loop, on the RPC's thread."""
+    from provisa.grpc.rpc_scope import rpc_scope
+
+    def handler(request, context):
+        with rpc_scope() as rpc:
+            yield from rpc.iterate(body(request, _RpcContext(context)))
+
+    return handler
+
+
 class ProvisaServicer:  # REQ-045, REQ-143
     """Dynamic gRPC servicer that handles query RPCs."""
 
@@ -189,8 +240,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
         unsecured deployment has no principal to resolve, so the metadata org stands; under
         multitenancy it is REQUIRED — a missing org raises ``ValueError`` (the caller aborts) rather
         than silently binding the default. Returns the reset token, or None for single-org
-        deployments (ContextVar left unset → default runtime). Handlers run on the grpc.aio loop in
-        a per-RPC task, so a plain set/reset isolates the binding."""
+        deployments (ContextVar left unset → default runtime). Each RPC runs in its own context
+        (``provisa.grpc.rpc_scope``), so a plain set/reset isolates the binding."""
         if not getattr(self._state, "multitenancy", False):
             return None
         raw = metadata.get("x-provisa-org")
@@ -205,64 +256,46 @@ class ProvisaServicer:  # REQ-045, REQ-143
         return set_current_org(org_id)
 
     def __getattr__(self, name: str):
-        """Dynamically resolve RPC handler methods like QueryOrders, InsertOrders."""
+        """Dynamically resolve RPC handler methods like QueryOrders, InsertOrders.
+
+        Each returned handler is synchronous (the server calls it on the RPC's pool thread) and runs
+        its coroutine body on the RPC's own loop (REQ-1882)."""
         # REQ-1359: Query{Type}Aggregate / Query{Type}GroupBy must resolve BEFORE the generic
         # Query{Type} branch below — both prefixes also start with "Query".
         if name.startswith("Query") and name.endswith("Aggregate"):
             type_name = name[len("Query") : -len("Aggregate")]
-
-            async def query_aggregate_handler(request, context):
-                return await self._handle_query_aggregate(request, context, type_name)
-
-            return query_aggregate_handler
+            return _unary(
+                lambda request, context: self._handle_query_aggregate(request, context, type_name)
+            )
         if name.startswith("Query") and name.endswith("GroupBy"):
             type_name = name[len("Query") : -len("GroupBy")]
-
-            async def query_group_by_handler(request, context):
-                async for msg in self._handle_query_group_by(request, context, type_name):
-                    yield msg
-
-            return query_group_by_handler
+            return _streaming(
+                lambda request, context: self._handle_query_group_by(request, context, type_name)
+            )
         # REQ-1899: Query{Type}Batch must resolve before the generic Query{Type} branch below —
         # both prefixes also start with "Query" (same ordering concern as Aggregate/GroupBy above).
         if name.startswith("Query") and name.endswith("Batch"):
             type_name = name[len("Query") : -len("Batch")]
-
-            async def query_batch_handler(request, context):
-                async for msg in self._handle_query_batch(request, context, type_name):
-                    yield msg
-
-            return query_batch_handler
+            return _streaming(
+                lambda request, context: self._handle_query_batch(request, context, type_name)
+            )
         if name.startswith("Query"):
             type_name = name[len("Query") :]
             # Convert PascalCase type name to snake_case field name
             field_name = _pascal_to_snake(type_name)
-
-            async def query_handler(request, context):
-                async for msg in self._handle_query(request, context, type_name, field_name):
-                    yield msg
-
-            return query_handler
+            return _streaming(
+                lambda request, context: self._handle_query(request, context, type_name, field_name)
+            )
         if name.startswith("Insert"):
             type_name = name[len("Insert") :]
-
-            async def insert_handler(request, context):
-                return await self._handle_insert(request, context, type_name)
-
-            return insert_handler
+            return _unary(lambda request, context: self._handle_insert(request, context, type_name))
         if name == "CallCommand":  # REQ-1156
-
-            async def call_command_handler(request, context):
-                return await self._handle_call_command(request, context)
-
-            return call_command_handler
+            return _unary(lambda request, context: self._handle_call_command(request, context))
         if name.startswith("Call"):  # REQ-1156 — per-command typed RPC Call{Cmd}
             cmd_name = self._resolve_command_rpc(name[len("Call") :])
-
-            async def typed_command_handler(request, context):
-                return await self._handle_typed_command(request, context, cmd_name)
-
-            return typed_command_handler
+            return _unary(
+                lambda request, context: self._handle_typed_command(request, context, cmd_name)
+            )
         raise AttributeError(f"{type(self).__name__!r} has no attribute {name!r}")
 
     def _meter_msg(self, msg):
@@ -420,8 +453,6 @@ class ProvisaServicer:  # REQ-045, REQ-143
 
         REQ-1266: resolve+bind the RPC's org (x-provisa-org) before routing; the body runs bound so
         every state.X read resolves the org's runtime. The reset is in finally around the stream."""
-        # Use await context.abort() directly rather than raising AbortError, which
-        # can cause "Abort error has been replaced!" in gRPC aio async generators.
         metadata = dict(context.invocation_metadata())
         role_id = _rpc_role(metadata)
         if not role_id:
@@ -495,8 +526,6 @@ class ProvisaServicer:  # REQ-045, REQ-143
 
     async def _handle_query_bound(self, request, context, type_name: str, role_id: str):
         """The routing+execution body of _handle_query, run with the RPC's org already bound."""
-        import asyncio
-
         from provisa.grpc.query_ir import grpc_table_to_semantic_sql
         from provisa.pgwire._pipeline import (
             _execute_plan,
@@ -530,7 +559,13 @@ class ProvisaServicer:  # REQ-045, REQ-143
             return s.replace("_", "").lower()
 
         try:
-            plan = await _govern_and_route_compiled(semantic_sql, role_id, state=state)
+            # REQ-544: the call's own `x-provisa-cache` / `x-provisa-cache-ttl` metadata opt-in.
+            plan = await _govern_and_route_compiled(
+                semantic_sql,
+                role_id,
+                state=state,
+                cache_hint=cache_hint_from_grpc_metadata(context.invocation_metadata()),
+            )
         except PermissionError as exc:
             await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
             return
@@ -550,10 +585,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
                     kwargs[col] = _proto_value(field, row[i]) if field is not None else row[i]
             return kwargs
 
-        # ENGINE route streams lazily off a worker thread — the full user result set never
-        # materializes on the event loop (REQ-1215). grpc.aio runs an async generator, so each
-        # batch is pulled through run_in_executor to keep the blocking cursor off the loop; peak
-        # memory is bounded by one batch, not the whole result.
+        # ENGINE route streams lazily — the full user result set never materializes (REQ-1215).
+        # The engine's streaming terminal is synchronous and is drained right here, on the RPC's
+        # own thread (REQ-1882): each batch is pulled only when the previous one's messages have
+        # been handed to gRPC, so peak memory is bounded by one batch, not the whole result.
         if plan.route == Route.ENGINE:
             require_governed_plan(plan)  # REQ-1176: streaming terminal verifies the stamp too
             assert plan.physical_sql is not None
@@ -578,21 +613,28 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await ensure_resident(
                 state, plan.sources, pk_bounds=plan.pk_bounds, pushed_down=_pushed_down
             )
-            loop = asyncio.get_running_loop()
             # REQ-1897: this streaming terminal bypasses _execute_plan_in_org entirely, so it needs
             # its own cache-HIT check. A hit is served as a stream over the cached rows -- the same
             # `.batches()` shape a live QueryResult exposes below -- without touching the engine;
             # check_response_cache itself audits/egress-accounts the hit.
-            from provisa.pgwire._pipeline import check_response_cache, finalize_audit
+            from provisa.pgwire._pipeline import (
+                check_response_cache,
+                finalize_audit,
+                response_cache_tee,
+            )
 
             stream = await check_response_cache(plan, state)
+            tee = None
             if stream is None:
-                stream = await loop.run_in_executor(
-                    None,
-                    lambda: state.federation_engine.execute_engine_sync(
-                        plan.physical_sql, [], session_hints=plan.session_hints
-                    ),
+                stream = state.federation_engine.execute_engine_sync(
+                    plan.physical_sql, [], session_hints=plan.session_hints
                 )
+                # REQ-1897: write-through to the raw-SQL response cache — batches still stream as
+                # they arrive; this RPC is already on its loop, so the entry is committed below,
+                # after a complete drain.
+                tee = response_cache_tee(plan, state, run=None)
+                if tee is not None:
+                    stream = tee.rows(stream)
             self._emit_license_nag(context)  # REQ-1137: trailing-metadata nag before the row stream
             _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
             out_cols = [_proto_by_norm.get(_norm(c), c) for c in stream.column_names]
@@ -605,7 +647,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
 
             try:
                 while True:
-                    batch = await loop.run_in_executor(None, next, batch_iter, None)
+                    batch = next(batch_iter, None)
                     if batch is None:
                         break
                     for row in batch:
@@ -615,6 +657,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 await context.abort(_status_for_exception(exc), str(exc))
                 return
             await finalize_audit(plan, 200, state)
+            if tee is not None:
+                await tee.commit()
             return
 
         # REQ-1891: DIRECT route (single reachable source, live pooled driver — decide_route never
@@ -622,11 +666,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
         # VIRTUAL_SOURCES branches) skips _execute_plan's ENGINE-oriented machinery entirely,
         # mirroring Flight SQL's proven fast path (api/flight/server.py:989-1006). Engine-wake
         # already ran in _govern_and_route_compiled above (_wake_before_governing), so nothing here
-        # needs it again. Unlike Flight/pgwire, _handle_query_bound already runs natively on the
-        # event loop (no worker-thread hop), so the async execute_native (buffered QueryResult) is
-        # the correct terminal here — NOT execute_native_stream, which is documented SYNCHRONOUS-
-        # for-a-worker-thread and drives itself via run_coroutine_threadsafe(..., loop).result();
-        # calling that from the loop's own thread would deadlock.
+        # needs it again. _handle_query_bound is a coroutine on the RPC's own loop, so the async
+        # execute_native (buffered QueryResult) is the correct terminal here — NOT
+        # execute_native_stream, which drives a loop from outside it by submitting to that loop and
+        # blocking on the result; called from the loop's own thread it would deadlock.
         if plan.route == Route.DIRECT and state.source_pools.has(plan.source_id):
             from provisa.pgwire._pipeline import finalize_audit
 
@@ -637,7 +680,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             # alone, ~9.4x flight's ~20.2s for the identical query — a real scaling defect, not the
             # intended behavior. state.source_pools.open_stream/fetch (REQ-1190) is a genuinely
             # ASYNC-NATIVE primitive (plain awaits, no run_coroutine_threadsafe/executor hop needed
-            # — safe to drive directly from this event-loop-resident generator, unlike
+            # — safe to drive directly from this loop-resident generator, unlike
             # execute_native_stream, which is documented synchronous-for-a-worker-thread and would
             # deadlock here), so a source whose driver supports streaming (postgresql today) gets
             # the same bounded-batch treatment as the ENGINE route above instead of buffering the
@@ -796,7 +839,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
 
         try:
             plan = await _govern_and_route_compiled(
-                compiled.sql, role_id, exec_params=compiled.params or None, state=state
+                compiled.sql,
+                role_id,
+                exec_params=compiled.params or None,
+                state=state,
+                cache_hint=cache_hint_from_grpc_metadata(context.invocation_metadata()),  # REQ-544
             )
         except PermissionError as exc:
             await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
@@ -887,7 +934,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
 
         try:
             plan = await _govern_and_route_compiled(
-                compiled.sql, role_id, exec_params=compiled.params or None, state=state
+                compiled.sql,
+                role_id,
+                exec_params=compiled.params or None,
+                state=state,
+                cache_hint=cache_hint_from_grpc_metadata(context.invocation_metadata()),  # REQ-544
             )
         except PermissionError as exc:
             await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
@@ -915,7 +966,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
             and row_msg_cls is not None
         ):
             nodes_plan = await _govern_and_route_compiled(
-                compiled.nodes_sql, role_id, exec_params=compiled.nodes_params or None, state=state
+                compiled.nodes_sql,
+                role_id,
+                exec_params=compiled.nodes_params or None,
+                state=state,
+                cache_hint=cache_hint_from_grpc_metadata(context.invocation_metadata()),  # REQ-544
             )
             nodes_result = await _execute_plan(nodes_plan, state)
             join_key_idx = [i for i, c in enumerate(nodes_columns) if c.nested_in == "__join_key__"]
@@ -979,14 +1034,14 @@ class ProvisaServicer:  # REQ-045, REQ-143
         return msg
 
 
-async def start_grpc_server(
+def start_grpc_server(
     port: int,
     state,
     pb2_path: str,
     pb2_grpc_path: str,
     tls: tuple[str, str] | None = None,
-) -> grpc.aio.Server:  # REQ-045, REQ-143, REQ-1226
-    """Start a gRPC async server with the Provisa service.
+) -> grpc.Server:  # REQ-045, REQ-143, REQ-1226, REQ-1882
+    """Start a thread-per-RPC gRPC server with the Provisa service (REQ-1882).
 
     Args:
         port: Port to listen on.
@@ -997,7 +1052,7 @@ async def start_grpc_server(
             secure port (REQ-1226); otherwise it binds an insecure port.
 
     Returns:
-        The started grpc.aio.Server.
+        The started grpc.Server.
     """
     import os
 
@@ -1048,7 +1103,13 @@ async def start_grpc_server(
             str(state.server_cfg.get("grpc_max_concurrent_rpcs", 200)),
         )
     )
-    server = grpc.aio.server(
+    # REQ-1882 (amended 2026-09-29): one pool thread per in-flight RPC — each RPC runs entirely on
+    # its thread (provisa.grpc.rpc_scope). The pool is sized to the concurrency ceiling, so every
+    # admitted RPC has a thread and the ceiling alone decides RESOURCE_EXHAUSTED.
+    server = grpc.server(
+        concurrent.futures.ThreadPoolExecutor(
+            max_workers=max_concurrent_rpcs, thread_name_prefix="provisa-grpc"
+        ),
         interceptors=[AuthInterceptor(state)],
         maximum_concurrent_rpcs=max_concurrent_rpcs,
         options=[
@@ -1154,6 +1215,6 @@ async def start_grpc_server(
         server.add_secure_port(f"[::]:{port}", _creds)
     else:
         server.add_insecure_port(f"[::]:{port}")
-    await server.start()
+    server.start()
     log.info("gRPC server started on port %d (TLS=%s)", port, tls is not None)
     return server

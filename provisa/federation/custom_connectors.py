@@ -34,7 +34,6 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import yaml
 
 from provisa.federation.connector_base import Capability, Connector, Mechanism, ProbeResult
 from provisa.federation.connector_duckdb import _DuckDBExtensionConnector, _probe_pg_extension
@@ -280,7 +279,10 @@ def load_custom_connectors(engine: str) -> list[Connector]:
     path = _config_path()
     if not path.exists():
         return []
-    data = yaml.safe_load(path.read_text()) or {}
+    # REQ-1669: includes-aware, so a wrapper config's fragments are seen.
+    from provisa.core.config_loader import read_config_with_includes
+
+    data = read_config_with_includes(path)
     out: list[Connector] = []
     for d in data.get("connectors", []):
         if d.get("engine") != engine:

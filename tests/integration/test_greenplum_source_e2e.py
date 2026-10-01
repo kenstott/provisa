@@ -88,7 +88,8 @@ async def pool():
 
 
 async def test_greenplum_source_reads_through_pool(pool):
-    assert pool.dialect_for(_SID) == "greenplum"
+    # REQ-950/REQ-1755: a wire-compatible RDB uses its base wire's SQLGlot dialect.
+    assert pool.dialect_for(_SID) == "postgres"
     result = await pool.execute(_SID, "SELECT id, name FROM widgets ORDER BY id")
     assert result.column_names == ["id", "name"]
     assert result.rows == [(1, "a"), (2, "b"), (3, "c")]

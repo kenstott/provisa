@@ -42,12 +42,10 @@ async def _ensure_tables(pool: "Database") -> None:
 
     from provisa.core.schema_org import metadata
 
-    async with pool.engine.begin() as conn:
+    with pool.engine.begin() as conn:
         if pool.search_path and (sql := pool.capabilities.enter_org_sql(pool.search_path)):
-            await conn.execute(text(sql))
-        await conn.run_sync(
-            lambda sc: metadata.create_all(sc, tables=[tracked_functions, tracked_webhooks])
-        )
+            conn.execute(text(sql))
+        metadata.create_all(conn, tables=[tracked_functions, tracked_webhooks])
 
 
 def _args_to_ui(raw: list[dict] | None) -> list[dict]:

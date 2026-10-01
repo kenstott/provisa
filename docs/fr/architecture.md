@@ -631,8 +631,12 @@ MATCH (o:Order) RETURN o.id, o.amount
 | ------ | -------- |
 | `route=federated` | Force la fédération à travers le moteur de fédération, en contournant le routage par pilote direct |
 | `route=direct` | Force l'exécution par pilote direct |
+| `cache=true` | Activer le cache de réponses pour cette requête (forme commentaire SQL : `-- @provisa cache=true`) |
+| `cache_ttl=N` | L'activer et conserver le résultat en cache N secondes (`-- @provisa cache_ttl=N`) |
 
 (REQ-279, REQ-277, REQ-278)
+
+Le cache de réponses s'active par requête : GraphQL utilise la directive `@cached(ttl: Int)`, SQL et Cypher le commentaire `cache`/`cache_ttl`, gRPC les métadonnées d'appel `x-provisa-cache` / `x-provisa-cache-ttl`. L'indication s'applique sur chaque transport qui porte le langage (Cypher sur HTTP, Bolt et Arrow Flight ; GraphQL sur HTTP et Arrow Flight). Une requête sans indication ne lit ni n'écrit jamais le cache, et aucune forme ne lit des données plus récentes que ne le permettent les paramètres de source et de table de l'opérateur. Voir [Cache](configuration.md). (REQ-544)
 
 ## Préréglages de colonne dans les mutations
 

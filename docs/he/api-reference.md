@@ -66,6 +66,8 @@ GET /auth/provider-type
 - `X-Provisa-Redirect-Threshold` — מספר שורות שמעליו מופעלת הפניה (REQ-137)
 - `X-Provisa-Redirect` — `true` לכפיית הפניה ללא תנאי (REQ-029)
 
+**מטמון תגובות:** הצטרפות לפי בקשה באמצעות הנחיית הפעולה `@cached` (`query @cached(ttl: 60) { ... }`, `ttl` אופציונלי); אותה הנחיה חלה על GraphQL הנשלח דרך Arrow Flight. Cypher מצטרף בשורה `// @provisa cache=true` או `// @provisa cache_ttl=N`, ו-gRPC במטא-נתוני הקריאה `x-provisa-cache: true` או `x-provisa-cache-ttl: N`. בלעדיה הבקשה אינה קוראת ממטמון התגובות ואינה כותבת אליו. כותרת התגובה `X-Provisa-Cache` מדווחת `HIT` או `MISS`. ראו [מטמון](configuration.md). (REQ-544)
+
 **תגובה (JSON מוטבע):**
 
 ```json

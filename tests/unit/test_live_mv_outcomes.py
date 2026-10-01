@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.schema_org import event_status, events, node_freshness_state
@@ -28,7 +28,7 @@ _COLS = [("id", "bigint"), ("status", "text")]
 
 
 def _dsn(tmp_path) -> str:
-    return f"sqlite+aiosqlite:///{tmp_path / 'store.db'}"
+    return f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
 
 
 async def _rows(dsn, table):
@@ -192,17 +192,13 @@ def test_require_pk_delta_without_pk_fails_loud():
 
 @asynccontextmanager
 async def _db(tmp_path):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'q.db'}")
-    async with engine.begin() as c:
-        await c.run_sync(
-            lambda s: events.metadata.create_all(
-                s, tables=[events, event_status, node_freshness_state]
-            )
-        )
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'q.db'}")
+    with engine.begin() as c:
+        events.metadata.create_all(c, tables=[events, event_status, node_freshness_state])
     try:
         yield Database(engine, name="q")
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 def _mv_proc(db, *, emit, subscribers, node="mv.a", deps=("d.replace", "d.append", "d.delta")):

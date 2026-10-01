@@ -36,7 +36,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from typing import Any
+
+from provisa.core.connection_loop import LongLived, spawn_long_lived
 
 log = logging.getLogger(__name__)
 
@@ -109,8 +112,11 @@ def _build_provider(src: Any, tbl: dict, *, node: str) -> tuple[Any, str] | None
     return None
 
 
-async def wire_push_listeners(*, state: Any, log: Any) -> list[asyncio.Task]:
-    """Start one background CDC-landing task per registered table on a kafka/websocket source.
+async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
+    """Start one CDC-landing listener per registered table on a kafka/websocket source.
+
+    REQ-1882: each listener runs for the process on its own dedicated thread and loop
+    (spawn_long_lived) — landing writes block on the store, so never on the process loop.
 
     Idempotent: a node already running (tracked in ``state.push_listener_disconnects``) is
     skipped, so calling this again after a runtime re-wire (e.g. a new table registered) only
@@ -141,7 +147,7 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[asyncio.Task]:
         state.push_listener_tasks = []
 
     store_schema = _env_store_schema(engine.materialize_store_dsn())
-    started: list[asyncio.Task] = []
+    started: list[LongLived] = []
 
     for tbl in tables:
         src = sources.get(tbl["source_id"])
@@ -184,12 +190,14 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[asyncio.Task]:
             schema_name=tbl["schema_name"],
             table_name=tbl["table_name"],
         )
-        disconnect = asyncio.Event()
+        # A threading.Event: the listener polls is_set() on its own thread, and shutdown sets it
+        # from another — an asyncio.Event is not safe to set across threads.
+        disconnect = threading.Event()
         state.push_listener_disconnects[node] = disconnect
         debounce_quiet = float(tbl.get("push_debounce_quiet") or 0.0)
         debounce_max_delay = float(tbl.get("push_debounce_max_delay") or 5.0)
 
-        task = asyncio.create_task(
+        task = spawn_long_lived(
             _run_listener(
                 engine=engine,
                 provider=provider,
@@ -231,7 +239,7 @@ async def _run_listener(
     land_table: str,
     columns: list[tuple[str, str]],
     pk_columns: list[str],
-    disconnect: asyncio.Event,
+    disconnect: threading.Event,
     debounce_quiet: float,
     debounce_max_delay: float,
     node: str,
@@ -276,10 +284,18 @@ async def _run_listener(
         log.exception("push listener %s crashed", node)
 
 
-async def shutdown_push_listeners(state: Any) -> None:
-    """Signal every running push listener to stop and wait for them to finish (app shutdown)."""
+async def shutdown_push_listeners(state: Any, timeout: float = 10.0) -> None:
+    """Stop every running push listener and wait (bounded) for its thread to end (app shutdown).
+
+    The disconnect flag lets a listener between events flush its partial batch and exit; the
+    cancel ends one blocked waiting for the next event."""
     for disconnect in getattr(state, "push_listener_disconnects", {}).values():
         disconnect.set()
-    tasks = getattr(state, "push_listener_tasks", [])
-    if tasks:
-        await asyncio.gather(*tasks, return_exceptions=True)
+    handles = list(getattr(state, "push_listener_tasks", []))
+    for handle in handles:
+        handle.cancel()
+    for handle in handles:
+        if not await handle.wait(timeout):
+            logging.getLogger(__name__).warning(
+                "shutdown: push listener %s did not stop within %.0fs", handle.name, timeout
+            )

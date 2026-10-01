@@ -301,6 +301,8 @@ def transpile(pg_sql: str, target_dialect: str) -> str:  # REQ-066, REQ-068, REQ
     if not results:
         raise ValueError(f"SQLGlot produced no output for: {pg_sql!r}")
     result = results[0]
+    if target_dialect == "tsql":
+        result = _map_tsql_reserved_schemas(result)
     if target_dialect == "sqlite":
         # SQLite has no schema/catalog concept — a direct-execution write against a sqlite
         # source must reference the bare table name (matches provisa/observability/ops_schema.py's
@@ -310,6 +312,36 @@ def transpile(pg_sql: str, target_dialect: str) -> str:  # REQ-066, REQ-068, REQ
 
     trace_stage(f"transpile.{target_dialect}", result)
     return result
+
+
+# T-SQL fixed database principals: a schema cannot share a principal's name, so `CREATE SCHEMA
+# [public]` fails with 2714 ("There is already an object named 'public'") on every SQL Server-family
+# warehouse (Fabric, Synapse) — yet `public` is the default schema of every Postgres-derived source.
+# The registered (semantic) schema stays `public`; only the physical T-SQL name differs.
+_TSQL_RESERVED_SCHEMAS = frozenset({"public"})
+
+
+def tsql_physical_schema(schema: str) -> str:
+    """The physical T-SQL schema for a registered schema name — the ONE mapping shared by the
+    warehouse runtime's DDL (mssql_warehouse_runtime._phys_parts) and the SQL sent to it (below),
+    so an object is created and queried under the same name. T-SQL identifiers compare
+    case-insensitively under the default collation, hence the lowercase check."""
+    return f"provisa_{schema}" if schema.lower() in _TSQL_RESERVED_SCHEMAS else schema
+
+
+def _map_tsql_reserved_schemas(sql: str) -> str:
+    """Rename every table reference's schema through ``tsql_physical_schema`` (tsql target only)."""
+    tree = sqlglot.parse_one(sql, read="tsql")
+    changed = False
+    for table in tree.find_all(exp.Table):
+        db = table.args.get("db")
+        if db is None:
+            continue
+        mapped = tsql_physical_schema(db.name)
+        if mapped != db.name:
+            table.set("db", exp.to_identifier(mapped, quoted=True))
+            changed = True
+    return tree.sql(dialect="tsql") if changed else sql
 
 
 def _strip_schema_qualifiers(sql: str) -> str:

@@ -42,6 +42,34 @@ def substitute_positional_placeholders(
     return sql
 
 
+_PLACEHOLDER_RE = _re.compile(r"[$@](\d+)")
+
+
+def bind_positionally(
+    sql: str, params: Sequence[object] | None, placeholder: str | Callable[[int], str]
+) -> tuple[str, list[object]]:
+    """Rewrite the canonical ``$N``/``@N`` placeholders for a driver that binds POSITIONALLY
+    (``?``, ``%s``, Oracle ``:N`` in SQL): each occurrence becomes ``placeholder`` (or
+    ``placeholder(k)`` for the k-th occurrence, 1-based) and the values are returned in OCCURRENCE
+    order.
+
+    Binding the caller's list as-is is only right when every placeholder appears once, in number
+    order — true of the compiler's own output, not of a client's SQL (pgwire, REQ-589), where
+    ``... $2 ... $1`` or a repeated ``$1`` silently bound the wrong values."""
+    if not params:
+        return sql, []
+    ordered: list[object] = []
+
+    def _sub(m: _re.Match) -> str:
+        n = int(m.group(1))
+        if not 1 <= n <= len(params):
+            raise ValueError(f"placeholder ${n} has no bound value ({len(params)} supplied)")
+        ordered.append(params[n - 1])
+        return placeholder if isinstance(placeholder, str) else placeholder(len(ordered))
+
+    return _PLACEHOLDER_RE.sub(_sub, sql), ordered
+
+
 def _sql_literal(
     val: object,  # object-ok: accepts any SQL-serializable scalar (None, bool, int, float, str)
 ) -> str:

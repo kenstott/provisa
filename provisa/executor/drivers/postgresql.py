@@ -8,81 +8,193 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""PostgreSQL direct driver using asyncpg.
+"""PostgreSQL direct driver over one shared, thread-safe psycopg 3 pool per source.
 
 Supports direct PG connections and PgBouncer (transaction pool mode).
-When using PgBouncer, statement_cache_size=0 is required (PgBouncer
-does not support prepared statements in transaction mode).
+
+Prepared statements: psycopg 3 speaks the extended protocol, so each pooled connection prepares a
+statement server-side on its first execution (``prepare_threshold=0``) and reuses the plan for every
+later execution of the same SQL, up to ``prepared_max`` statements per connection (LRU; evicted
+ones are DEALLOCATEd). This matches what the asyncpg driver did before (its per-connection
+statement cache prepared on first use, 100 entries). A PgBouncer'd source never prepares
+(``prepare_threshold=None``): a session-level prepared statement does not survive PgBouncer's
+per-transaction server binding — the same reason the asyncpg driver ran it with
+``statement_cache_size=0``. It also cannot stream (a server-side cursor outlives that binding).
+
+Connections run in autocommit: a read is one round trip (no BEGIN/COMMIT around it), as it was on
+asyncpg. A stream opens an explicit transaction for its server-side cursor's life.
+
+REQ-1882 (amended 2026-09-29): every request runs on its own thread, so the pool is a shared
+resource used by many request threads; a borrower waits (bounded by the request's remaining budget)
+when all connections are out, and every blocking statement is cancelled via ``conn.cancel()`` when
+the request's deadline fires.
 """
 
-# Requirements: REQ-052, REQ-053, REQ-068, REQ-550
+# Requirements: REQ-052, REQ-053, REQ-068, REQ-550, REQ-1882
 
 from __future__ import annotations
 
-from typing import Any
+import re
+import threading
+from collections.abc import Generator
+from contextlib import contextmanager
+from typing import Any, cast
 
-import asyncpg
+import psycopg
+from psycopg.abc import QueryNoTemplate
+from psycopg.rows import dict_row
+from psycopg.types.string import TextLoader
+from psycopg_pool import ConnectionPool
 
+from provisa.core import request_deadline
 from provisa.executor.drivers.base import DirectDriver, DirectResultStream
 from provisa.executor.result import QueryResult
 
+_PLACEHOLDER = re.compile(r"\$(\d+)")
+
+# asyncpg's default per-connection statement cache size, which this driver replaced.
+_PREPARED_MAX = 100
+
+
+def _exec_args(sql: str, params: list | None) -> tuple[str, dict[str, Any] | None]:
+    """Rewrite PG-native ``$N`` placeholders to psycopg's ``%(pN)s``.
+
+    psycopg sends them to the server as ``$N`` bound parameters (never interpolated); with params
+    present it %-parses the statement, so a literal ``%`` (``LIKE 'a%'``) is escaped first. A named
+    dict binds a repeated ``$N`` to the same value."""
+    if not params:
+        return sql, None
+    converted = _PLACEHOLDER.sub(lambda m: f"%(p{m.group(1)})s", sql.replace("%", "%%"))
+    return converted, {f"p{i + 1}": v for i, v in enumerate(params)}
+
+
+def _configure(conn: psycopg.Connection[Any]) -> None:
+    """Match the value types the asyncpg driver returned: json/jsonb as text (uuid as UUID, inet as
+    ipaddress objects, bytea as bytes and numeric as Decimal are psycopg's own defaults), and bound
+    the per-connection prepared-statement cache."""
+    conn.adapters.register_loader("json", TextLoader)
+    conn.adapters.register_loader("jsonb", TextLoader)
+    conn.prepared_max = _PREPARED_MAX
+
+
+def _q(sql: str) -> QueryNoTemplate:
+    """psycopg types its query parameter as a LiteralString to catch string-built SQL; this SQL is
+    the governed pipeline's output with its values bound as parameters, not interpolated."""
+    return cast(QueryNoTemplate, sql)
+
+
+def _wait_s(default: float) -> float:
+    """The pool wait: its own bound, or less when the request has less budget left."""
+    budget = request_deadline.remaining()
+    return default if budget is None else min(default, budget)
+
 
 class _PgDirectStream(DirectResultStream):  # REQ-1190
-    """asyncpg server-side cursor: a pooled connection + open transaction held for the stream's life,
-    a prepared statement for the column attributes, and a cursor fetched in bounded batches. Releasing
-    commits the (read-only) transaction and returns the connection to the pool. This bounds a large
-    DIRECT passthrough scan to one fetch batch instead of the whole result (streaming-uniformity Defect 1)."""
+    """A server-side cursor on a pooled connection, inside a transaction held for the stream's life
+    and fetched in bounded batches. Closing commits the read-only transaction and returns the
+    connection to the pool. Bounds a large DIRECT scan to one batch (streaming-uniformity Defect
+    1)."""
 
-    def __init__(self, pool: asyncpg.Pool, sql: str, params: list) -> None:
-        self._pool = pool
+    def __init__(self, driver: PostgreSQLDriver, sql: str, params: list) -> None:
+        self._driver = driver
         self._sql = sql
         self._params = params
-        self._conn: Any = None
-        self._tr: Any = None
-        self._cur: Any = None
+        self._conn: psycopg.Connection[Any] | None = None
+        self._cur: psycopg.ServerCursor[Any] | None = None
+        self._first: list[tuple] | None = None
         self.column_names = []
         self.column_types = None
 
-    async def _open(self) -> None:
-        conn = await self._pool.acquire(timeout=PostgreSQLDriver._ACQUIRE_TIMEOUT)
-        self._conn = conn
-        # A server-side cursor requires an open transaction; the read is committed on close.
-        self._tr = conn.transaction()
-        await self._tr.start()
-        stmt = await conn.prepare(self._sql)
-        attrs = stmt.get_attributes()
-        self.column_names = [a.name for a in attrs]
-        self.column_types = [a.type.name for a in attrs]
-        self._cur = await stmt.cursor(*self._params)
+    def _open(self, first_batch: int) -> None:
+        pool = self._driver._require_pool()
+        conn = pool.getconn(timeout=_wait_s(self._driver._ACQUIRE_TIMEOUT))
+        try:
+            # A server-side cursor lives inside a transaction; the connection is autocommit, so the
+            # transaction is opened explicitly and committed in close().
+            conn.execute(_q("BEGIN"))
+            cur = conn.cursor(name=f"provisa_direct_{id(self):x}")
+            sql, args = _exec_args(self._sql, self._params)
+            with request_deadline.cancel_on_deadline(conn.cancel):
+                cur.execute(_q(sql), args)
+                self._first = [tuple(r) for r in cur.fetchmany(first_batch)]
+            desc = cur.description or []
+            self.column_names = [d.name for d in desc]
+            self.column_types = self._driver._type_names(conn, [d.type_code for d in desc])
+        except BaseException:
+            # putconn rolls back an open transaction and discards a broken connection.
+            pool.putconn(conn)
+            raise
+        self._conn, self._cur = conn, cur
 
+    # Async only for the DirectResultStream awaitable contract; fetches synchronously in-thread.
     async def fetch(self, size: int) -> list[tuple]:
-        assert self._cur is not None
-        records = await self._cur.fetch(size)
-        return [tuple(r.values()) for r in records]
+        if self._first is not None:
+            first, self._first = self._first, None
+            if first:
+                return first
+        assert self._cur is not None and self._conn is not None
+        with request_deadline.cancel_on_deadline(self._conn.cancel):
+            return [tuple(r) for r in self._cur.fetchmany(size)]
 
+    # Async only for the DirectResultStream awaitable contract; releases synchronously in-thread.
     async def close(self) -> None:
         if self._conn is None:
             return
-        conn, tr = self._conn, self._tr
-        self._conn = self._tr = self._cur = None
+        conn, cur = self._conn, self._cur
+        self._conn = self._cur = self._first = None
+        pool = self._driver._require_pool()
         try:
-            if tr is not None:
-                await tr.commit()
+            assert cur is not None
+            cur.close()
+            conn.execute(_q("COMMIT"))
         finally:
-            await self._pool.release(conn)
+            # A failed close leaves the transaction open or the connection broken: putconn rolls it
+            # back or discards it; the close error still propagates.
+            pool.putconn(conn)
+
+
+class _RowFetcher:
+    """The ``await conn.fetch(sql)`` surface ``fetch_enum_registry`` reads through."""
+
+    def __init__(self, conn: psycopg.Connection[Any]) -> None:
+        self._conn = conn
+
+    # Async only for fetch_enum_registry's awaitable contract; runs synchronously in-thread.
+    async def fetch(self, sql: str) -> list[dict[str, Any]]:
+        with self._conn.cursor(row_factory=dict_row) as cur:
+            with request_deadline.cancel_on_deadline(self._conn.cancel):
+                cur.execute(_q(sql))
+            return list(cur.fetchall())
 
 
 class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
+    # Bounded wait for a pooled connection when all are checked out (request deadline permitting).
+    _ACQUIRE_TIMEOUT = 10.0
+    # Rows pulled when a stream opens (so its column metadata is known up front); later batches use
+    # the caller's fetch size.
+    _FIRST_BATCH_ROWS = 1000
+
     def __init__(self, use_pgbouncer: bool = False) -> None:
-        self._pool: asyncpg.Pool | None = None
+        self._pool: ConnectionPool[psycopg.Connection[Any]] | None = None
         self._use_pgbouncer = use_pgbouncer
         # Stashed for provisa.pgwire.pg_passthrough: a raw-byte passthrough connection reuses
-        # these exact connect() kwargs (asyncpg's own auth/SCRAM handling, unchanged) to open a
-        # dedicated, single-purpose connection — never shared with self._pool, since bypassing
-        # asyncpg's own Protocol for raw I/O and then returning the connection to a shared pool
-        # risks desyncing asyncpg's cached transaction/connection state on the pool's next use.
+        # these exact connect() kwargs to open a dedicated, single-purpose connection — never
+        # shared with the pool.
         self._connect_kwargs: dict[str, Any] = {}
+        self._typnames: dict[int, str] = {}
+        self._typnames_lock = threading.Lock()
 
+    def _conn_kwargs(self) -> dict[str, Any]:
+        """psycopg connect() kwargs for a pooled connection."""
+        kw = dict(self._connect_kwargs)
+        kw["dbname"] = kw.pop("database")
+        kw["autocommit"] = True
+        # 0: prepare on the first execution and reuse from the second (asyncpg's behavior).
+        # PgBouncer transaction mode cannot keep a session-level prepared statement: never.
+        kw["prepare_threshold"] = None if self._use_pgbouncer else 0
+        return kw
+
+    # Async only for the DirectDriver awaitable contract; connects synchronously in-thread.
     async def connect(
         self,
         host: str,
@@ -100,57 +212,64 @@ class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
             "user": user,
             "password": password,
         }
-        if self._use_pgbouncer:
-            self._pool = await asyncpg.create_pool(
-                host=host,
-                port=port,
-                database=database,
-                user=user,
-                password=password,
-                min_size=min_pool,
-                max_size=max_pool,
-                statement_cache_size=0,
-            )
-        else:
-            self._pool = await asyncpg.create_pool(
-                host=host,
-                port=port,
-                database=database,
-                user=user,
-                password=password,
-                min_size=min_pool,
-                max_size=max_pool,
-            )
+        min_size = max(min_pool, 1)
+        pool: ConnectionPool[psycopg.Connection[Any]] = ConnectionPool(
+            kwargs=self._conn_kwargs(),
+            min_size=min_size,
+            max_size=max(max_pool, min_size),
+            configure=_configure,
+            timeout=self._ACQUIRE_TIMEOUT,
+            name=f"postgresql:{host}:{port}/{database}",
+            open=True,
+        )
+        try:
+            # min_pool connections open now, so an unreachable source fails at registration.
+            pool.wait(timeout=self._ACQUIRE_TIMEOUT)
+        except BaseException:
+            pool.close()
+            raise
+        self._pool = pool
 
-    _ACQUIRE_TIMEOUT = 10.0
+    def _require_pool(self) -> ConnectionPool[psycopg.Connection[Any]]:
+        if self._pool is None:
+            raise RuntimeError("PostgreSQLDriver is not connected")
+        return self._pool
 
+    @contextmanager
+    def _borrow(self) -> Generator[psycopg.Connection[Any]]:
+        """A pooled connection, waiting at most the request's remaining budget for one."""
+        with self._require_pool().connection(timeout=_wait_s(self._ACQUIRE_TIMEOUT)) as conn:
+            yield conn
+
+    def _type_names(self, conn: psycopg.Connection[Any], oids: list[int]) -> list[str]:
+        """REQ-883: the source's real PG result-column type names (pg_type.typname) so downstream
+        binary encoders tag each field with the OID the catalog advertised."""
+        with self._typnames_lock:
+            missing = [o for o in set(oids) if o not in self._typnames]
+        if missing:
+            with conn.cursor() as cur:
+                cur.execute("SELECT oid::int, typname FROM pg_type WHERE oid = ANY(%s)", (missing,))
+                found = {int(oid): name for oid, name in cur.fetchall()}
+            unknown = set(missing) - set(found)
+            if unknown:
+                raise RuntimeError(f"pg_type has no entry for result column OID(s) {unknown}")
+            with self._typnames_lock:
+                self._typnames.update(found)
+        with self._typnames_lock:
+            return [self._typnames[o] for o in oids]
+
+    # Async only for the DirectDriver awaitable contract; executes synchronously in-thread.
     async def execute(self, sql: str, params: list | None = None) -> QueryResult:
-        pool = self._pool
-        assert pool is not None
-        async with pool.acquire(timeout=self._ACQUIRE_TIMEOUT) as conn:
-            col_types: list[str] | None = None
-            if self._use_pgbouncer:
-                # PgBouncer: use conn.fetch directly (no prepared statements)
-                if params:
-                    rows = await conn.fetch(sql, *params)
-                else:
-                    rows = await conn.fetch(sql)
-                columns = list(rows[0].keys()) if rows else self._extract_columns(sql)
-            else:
-                stmt = await conn.prepare(sql)
-                attrs = stmt.get_attributes()
-                columns = [attr.name for attr in attrs]
-                # REQ-883: carry the source's real PG result-column types so downstream
-                # binary encoders (DuckDB ATTACH / libpq COPY binary) tag each field with
-                # the OID the catalog advertised — a missing type would encode as text and
-                # break the client's binary reader.
-                col_types = [attr.type.name for attr in attrs]
-                rows = await stmt.fetch(*(params or []))
-            return QueryResult(
-                rows=[tuple(r.values()) for r in rows],
-                column_names=columns,
-                column_types=col_types,
-            )
+        exec_sql, args = _exec_args(sql, params)
+        with self._borrow() as conn:
+            with conn.cursor() as cur:
+                with request_deadline.cancel_on_deadline(conn.cancel):
+                    cur.execute(_q(exec_sql), args)
+                    rows = [tuple(r) for r in cur.fetchall()] if cur.description else []
+                desc = cur.description or []
+                columns = [d.name for d in desc]
+                col_types = self._type_names(conn, [d.type_code for d in desc])
+        return QueryResult(rows=rows, column_names=columns, column_types=col_types)
 
     @property
     def supports_streaming(self) -> bool:  # REQ-1190
@@ -158,50 +277,35 @@ class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
         # only a direct connection streams; a pgbouncer'd source materializes via execute().
         return not self._use_pgbouncer
 
+    # Async only for the DirectDriver awaitable contract; opens synchronously in-thread.
     async def open_stream(
         self, sql: str, params: list | None = None
     ) -> _PgDirectStream:  # REQ-1190
-        pool = self._pool
-        assert pool is not None
-        stream = _PgDirectStream(pool, sql, list(params or []))
-        await stream._open()
+        stream = _PgDirectStream(self, sql, list(params or []))
+        stream._open(self._FIRST_BATCH_ROWS)
         return stream
 
-    def _extract_columns(self, sql: str) -> list[str]:
-        """Fallback column extraction from SQL for empty results via PgBouncer."""
-        # Parse SELECT ... FROM to get column names
-        import re
-
-        m = re.match(r"SELECT\s+(.+?)\s+FROM", sql, re.IGNORECASE | re.DOTALL)
-        if not m:
-            return []
-        select_part = m.group(1)
-        cols = []
-        for part in select_part.split(","):
-            part = part.strip()
-            # Handle "alias"."col" or "col" or alias
-            cleaned = part.split(".")[-1].strip().strip('"')
-            cols.append(cleaned)
-        return cols
-
+    # Async only for the DirectDriver awaitable contract; executes synchronously in-thread.
     async def execute_ddl(self, sql: str) -> None:
-        pool = self._pool
-        assert pool is not None
-        async with pool.acquire(timeout=self._ACQUIRE_TIMEOUT) as conn:
-            await conn.execute(sql)
+        # Connections are autocommit, so DDL that cannot run in a transaction (CREATE INDEX
+        # CONCURRENTLY, ...) runs as-is.
+        with self._borrow() as conn:
+            with conn.cursor() as cur:
+                with request_deadline.cancel_on_deadline(conn.cancel):
+                    cur.execute(_q(sql))
 
+    # Async only for fetch_enum_registry's awaitable contract; queries synchronously in-thread.
     async def fetch_enums(self) -> dict[str, list[str]]:  # REQ-636
         from provisa.compiler.enum_detect import fetch_enum_registry
 
-        pool = self._pool
-        assert pool is not None
-        async with pool.acquire(timeout=self._ACQUIRE_TIMEOUT) as conn:
-            return await fetch_enum_registry(conn)
+        with self._borrow() as conn:
+            return await fetch_enum_registry(_RowFetcher(conn))
 
+    # Async only for the DirectDriver awaitable contract; closes synchronously in-thread.
     async def close(self) -> None:
-        if self._pool:
-            await self._pool.close()
-            self._pool = None
+        pool, self._pool = self._pool, None
+        if pool is not None:
+            pool.close()
 
     @property
     def is_connected(self) -> bool:

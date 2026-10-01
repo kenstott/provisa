@@ -31,7 +31,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.schema_org import event_status, events, node_freshness_state
@@ -53,24 +53,24 @@ INPUT = "s.transactions"
 
 
 def _async_dsn(pg_dsn: str) -> str:
-    return pg_dsn.replace("postgresql://", "postgresql+asyncpg://", 1)
+    return pg_dsn.replace("postgresql://", "postgresql+psycopg://", 1)
 
 
 @pytest_asyncio.fixture
 async def db(pg_dsn):
     """A real PG-backed control-plane Database scoped to a throwaway schema (isolated per test)."""
     schema = f"frx_{uuid.uuid4().hex[:12]}"
-    engine = create_async_engine(_async_dsn(pg_dsn))
-    async with engine.begin() as c:
-        await c.execute(text(f'CREATE SCHEMA "{schema}"'))
-        await c.execute(text(f'SET search_path TO "{schema}"'))
-        await c.run_sync(lambda s: events.metadata.create_all(s, tables=_TABLES))
+    engine = create_engine_from_url(_async_dsn(pg_dsn))
+    with engine.begin() as c:
+        c.execute(text(f'CREATE SCHEMA "{schema}"'))
+        c.execute(text(f'SET search_path TO "{schema}"'))
+        events.metadata.create_all(c, tables=_TABLES)
     try:
         yield Database(engine, name="frx", search_path=schema)
     finally:
-        async with engine.begin() as c:
-            await c.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
-        await engine.dispose()
+        with engine.begin() as c:
+            c.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        engine.dispose()
 
 
 async def _fan_in(db, node, source, n=1):

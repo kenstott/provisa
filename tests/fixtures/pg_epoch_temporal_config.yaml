@@ -1,0 +1,62 @@
+# REQ-1908: a DuckDB + SQLite stack whose one source is the test stack's real Postgres. Its table
+# stores two temporal columns as epoch numbers (milliseconds and seconds) and one as a native
+# timestamptz — the registered data_type is the temporal; epoch_unit declares the storage.
+federation_engine: duckdb
+auth:
+  provider: none
+  assignments_source: provisa
+  default_assignments:
+    - domain_id: '*'
+      role_id: org_admin
+naming:
+  domain_prefix: false
+  rules: []
+cache:
+  enabled: false
+domains:
+  - id: ptepoch
+    description: epoch-stored temporal columns
+roles:
+  - id: org_admin
+    capabilities:
+      - source_registration
+      - table_registration
+      - query_development
+      - full_results
+      - write
+      - usage
+    domain_access:
+      - '*'
+sources:
+  - id: ptepoch-pg
+    type: postgresql
+    host: localhost
+    port: ${env:PG_PORT:-5432}
+    database: provisa
+    username: provisa
+    password: ${env:PG_PASSWORD}
+tables:
+  - source_id: ptepoch-pg
+    domain_id: ptepoch
+    schema: ptepoch
+    table: events
+    columns:
+      - name: id
+        data_type: integer
+        is_primary_key: true
+        visible_to: [org_admin]
+        writable_by: [org_admin]
+      - name: happened
+        data_type: timestamptz
+        epoch_unit: ms
+        visible_to: [org_admin]
+        writable_by: [org_admin]
+      - name: logged
+        data_type: timestamp
+        epoch_unit: s
+        visible_to: [org_admin]
+        writable_by: [org_admin]
+      - name: seen
+        data_type: timestamptz
+        visible_to: [org_admin]
+        writable_by: [org_admin]

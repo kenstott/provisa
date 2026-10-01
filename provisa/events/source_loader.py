@@ -104,6 +104,44 @@ AdapterLoader = Any  # Callable[[source, table], Awaitable[list[dict]]] — a pe
 AdapterKeyedLoader = Any
 
 
+async def engine_table_rows(engine: Any, source: Any, table: Any) -> list[dict]:
+    """Every row of ``table`` read through the engine terminal at its catalog-physical name — the
+    default row fetch for an engine-scannable source."""
+    from provisa.compiler.naming import source_to_catalog
+
+    catalog = source_to_catalog(source.id)
+    ref = f'"{catalog}"."{table.schema_name}"."{table.table_name}"'
+    result = await engine.execute_engine(f"SELECT * FROM {ref}")
+    return [dict(zip(result.column_names, row)) for row in result.rows]
+
+
+def make_floored_direct_loader(state: Any, engine: Any) -> AdapterLoader:  # REQ-030, REQ-1141
+    """The row fetch for a direct-driver source type: through the source's own direct pool when the
+    operator floors the source, else through the engine as for any engine-scannable source.
+
+    A floored source (``core.operator_floor.floor_setting``) has no live relation on the engine —
+    its catalog-physical name IS the landed copy, so reading it through the engine would land the
+    replica onto itself. The land is the one sanctioned pull from the source, so it reads the source
+    directly, on the refresh policy the operator set; queries never do."""
+    import sqlglot.expressions as exp
+
+    from provisa.core.operator_floor import floor_setting
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        if floor_setting(source) is None:
+            return await engine_table_rows(engine, source, table)
+        dialect = state.source_dialects[source.id] or None
+        sql = (
+            exp.select("*")
+            .from_(exp.table_(table.table_name, db=table.schema_name))
+            .sql(dialect=dialect)
+        )
+        result = await engine.execute_native(state.source_pools, source.id, sql, [])
+        return [dict(zip(result.column_names, row)) for row in result.rows]
+
+    return _load
+
+
 class SourceRowLoader:
     """Reads a MATERIALIZED source table's current rows (REQ-941/846).
 
@@ -122,10 +160,12 @@ class SourceRowLoader:
         engine: Any,
         adapter_loaders: dict[str, AdapterLoader] | None = None,
         keyed_adapter_loaders: dict[str, AdapterKeyedLoader] | None = None,
+        keyed_arrow_loaders: dict[str, AdapterKeyedLoader] | None = None,
     ) -> None:
         self._engine = engine
         self._adapter_loaders = adapter_loaders or {}
         self._keyed_adapter_loaders = keyed_adapter_loaders or {}
+        self._keyed_arrow_loaders = keyed_arrow_loaders or {}
 
     async def load(self, source: Any, table: Any) -> list[dict]:
         # REQ-861: a file source may carry a producer command that refreshes the file IN PLACE.
@@ -148,12 +188,7 @@ class SourceRowLoader:
                 f"source type {stype!r} has no engine-scannable table and no adapter row-fetch "
                 f"is wired (source {source.id!r})"
             )
-        from provisa.compiler.naming import source_to_catalog
-
-        catalog = source_to_catalog(source.id)
-        ref = f'"{catalog}"."{table.schema_name}"."{table.table_name}"'
-        result = await self._engine.execute_engine(f"SELECT * FROM {ref}")
-        return [dict(zip(result.column_names, row)) for row in result.rows]
+        return await engine_table_rows(self._engine, source, table)
 
     async def load_keys(
         self, source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
@@ -189,6 +224,19 @@ class SourceRowLoader:
         where = _pk_in_clause(pk_columns, keys)
         result = await self._engine.execute_engine(f"SELECT * FROM {ref} WHERE {where}")
         return [dict(zip(result.column_names, row)) for row in result.rows]
+
+    async def load_keys_arrow(
+        self, source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+    ) -> Any:
+        """``load_keys`` as a ``pyarrow.Table``. A type with a registered ``keyed_arrow_loaders``
+        entry fetches columnar end to end (REQ-1865: millions of keyed rows never become Python
+        objects); every other type is ``load_keys``'s rows, converted."""
+        import pyarrow as pa
+
+        arrow_loader = self._keyed_arrow_loaders.get(_source_type(source))
+        if arrow_loader is not None:
+            return await arrow_loader(source, table, pk_columns, keys)
+        return pa.Table.from_pylist(await self.load_keys(source, table, pk_columns, keys))
 
 
 def _sql_literal(value: Any) -> str:
@@ -694,18 +742,35 @@ def make_clickhouse_keyed_loader() -> AdapterKeyedLoader:
     was written to stop ``load`` from reading -- confirmed live: with only the whole-table loader
     fixed, opting ``order_events`` into ``row_materialize`` still landed zero rows, because
     ``pushdown_row_materialize`` calls ``load_keys``, not ``load``, and ``load_keys`` had the
-    identical unfixed gap."""
-    from provisa.core.secrets import resolve_secrets
-    from provisa.executor.drivers.clickhouse import ClickHouseDriver
+    identical unfixed gap. The row dicts are the Arrow fetch's (:func:`make_clickhouse_keyed_arrow_loader`)."""
+    fetch = make_clickhouse_keyed_arrow_loader()
 
     async def _load(
         source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
     ) -> list[dict]:
         if not keys:
             return []
+        return (await fetch(source, table, pk_columns, keys)).to_pylist()
+
+    return _load
+
+
+def make_clickhouse_keyed_arrow_loader() -> AdapterKeyedLoader:
+    """The ClickHouse keyed fetch as one ``pyarrow.Table`` (REQ-1865): the table's registered data
+    columns for exactly ``keys``, read in ClickHouse's native Arrow format -- no per-row Python
+    objects. Confirmed live: large_federated_join's ~3M keyed order_events rows spent ~45s as
+    Python rows (result tuples, dicts, a pandas frame) between ClickHouse and the store."""
+    import pyarrow as pa
+
+    from provisa.core.secrets import resolve_secrets
+    from provisa.executor.drivers.clickhouse import ClickHouseDriver
+
+    async def _load(
+        source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+    ) -> Any:
         names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
-        if not names:
-            return []
+        if not keys or not names:
+            return pa.table({n: pa.array([], pa.null()) for n in names})
         driver = ClickHouseDriver()
         driver.configure(getattr(source, "federation_hints", None) or {})
         await driver.connect(
@@ -717,13 +782,101 @@ def make_clickhouse_keyed_loader() -> AdapterKeyedLoader:
         )
         try:
             cols = ", ".join(f'"{n}"' for n in names)
-            where = _pk_in_clause(pk_columns, keys)
-            result = await driver.execute(f'SELECT {cols} FROM "{table.table_name}" WHERE {where}')
-            return [dict(zip(result.column_names, row)) for row in result.rows]
+            parts = [
+                await driver.execute_arrow(f'SELECT {cols} FROM "{table.table_name}" WHERE {where}')
+                for where in _pk_in_clauses_within(
+                    pk_columns, keys, _CLICKHOUSE_MAX_IN_CLAUSE_CHARS
+                )
+            ]
+            return _clickhouse_arrow_temporals(pa.concat_tables(parts), table.columns)
         finally:
             await driver.close()
 
     return _load
+
+
+def _clickhouse_arrow_temporals(data: Any, columns: list[Any]) -> Any:
+    """ClickHouse's Arrow output encodes ``DateTime`` as uint32 epoch seconds and ``Date`` as
+    uint16 epoch days (no output setting changes this; ``DateTime64`` alone arrives as an Arrow
+    timestamp) -- confirmed live: landing order_events.event_ts failed "Unimplemented type for cast
+    (UINTEGER -> TIMESTAMP)". A column the registry declares temporal is re-typed to the Arrow
+    temporal it encodes: naive UTC ``timestamp[s]``, or ``date32``."""
+    import pyarrow as pa
+
+    declared = {c.name: (c.data_type or "").lower() for c in columns}
+    for i, field in enumerate(data.schema):
+        kind = declared.get(field.name, "")
+        if pa.types.is_uint32(field.type) and kind.startswith(("timestamp", "datetime")):
+            via, target = pa.int64(), pa.timestamp("s")
+        elif pa.types.is_uint16(field.type) and kind == "date":
+            via, target = pa.int32(), pa.date32()
+        else:
+            continue
+        data = data.set_column(i, field.name, data.column(i).cast(via).cast(target))
+    return data
+
+
+# ClickHouse rejects any statement longer than its server-side ``max_query_size`` (default 262144
+# bytes) with "Max query size exceeded". Confirmed live: large_federated_join's 1..1M order_id key
+# set (~7 MB of IN list) failed every keyed fetch. The margin leaves room for the SELECT list.
+_CLICKHOUSE_MAX_IN_CLAUSE_CHARS = 200_000
+
+
+def _pk_in_clauses_within(
+    pk_columns: list[str], keys: list[tuple[Any, ...]], max_chars: int
+) -> list[str]:
+    """Predicates that together name exactly ``keys``, each key once, each rendering to at most
+    ``max_chars``. A run of three or more consecutive integers of a single-column key is one
+    ``BETWEEN`` -- over integers it names exactly the run's members -- and the rest are
+    ``_pk_in_clause`` batches. Confirmed live: large_federated_join's 1..1M order_id keys as IN
+    batches were 35 statements of ~200 KB whose parameter-comment scan alone took ~20s; as a
+    run they are one statement."""
+    clauses: list[str] = []
+    if len(pk_columns) == 1 and keys and all(type(k[0]) is int for k in keys):
+        runs, singles = _integer_runs(sorted({k[0] for k in keys}))
+        col = pk_columns[0]
+        between = [f'"{col}" BETWEEN {lo} AND {hi}' for lo, hi in runs]
+        part: list[str] = []
+        size = 0
+        for b in between:
+            if part and size + len(b) + 4 > max_chars:
+                clauses.append("(" + " OR ".join(part) + ")")
+                part, size = [], 0
+            part.append(b)
+            size += len(b) + 4
+        if part:
+            clauses.append("(" + " OR ".join(part) + ")")
+        keys = [(v,) for v in singles]
+    batch: list[tuple[Any, ...]] = []
+    size = 0
+    for key in keys:
+        key_chars = sum(len(_sql_literal(v)) + 2 for v in key) + 4
+        if batch and size + key_chars > max_chars:
+            clauses.append(_pk_in_clause(pk_columns, batch))
+            batch, size = [], 0
+        batch.append(key)
+        size += key_chars
+    if batch:
+        clauses.append(_pk_in_clause(pk_columns, batch))
+    return clauses
+
+
+def _integer_runs(values: list[int]) -> tuple[list[tuple[int, int]], list[int]]:
+    """Split sorted distinct ``values`` into runs of three or more consecutive integers
+    (``(first, last)``) and the values left over."""
+    runs: list[tuple[int, int]] = []
+    singles: list[int] = []
+    i = 0
+    while i < len(values):
+        j = i
+        while j + 1 < len(values) and values[j + 1] == values[j] + 1:
+            j += 1
+        if j - i >= 2:
+            runs.append((values[i], values[j]))
+        else:
+            singles.extend(values[i : j + 1])
+        i = j + 1
+    return runs, singles
 
 
 def make_mongodb_loader() -> AdapterLoader:

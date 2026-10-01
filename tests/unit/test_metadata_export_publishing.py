@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 import pytest
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.api.metadata_export import publishing
 from provisa.api.metadata_export.provider import AssetError, AssetRefStub, PublishResult
@@ -39,14 +39,14 @@ _T0 = datetime(2026, 8, 4, 9, 0, 0, tzinfo=timezone.utc)
 
 @asynccontextmanager
 async def _conn(tmp_path, name="q.db"):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / name}")
-    async with engine.begin() as c:
-        await c.run_sync(lambda s: events.metadata.create_all(s, tables=[events, event_status]))
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / name}")
+    with engine.begin() as c:
+        events.metadata.create_all(c, tables=[events, event_status])
     try:
         async with Database(engine, name="q").acquire() as conn:
             yield conn
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 def _ok(count: int = 7) -> PublishResult:

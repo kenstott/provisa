@@ -14,7 +14,6 @@ import logging
 import os
 from typing import Any
 
-import yaml
 
 _log = logging.getLogger(__name__)
 
@@ -116,8 +115,10 @@ def _exchange_manager_config(cfg: dict) -> str:
 def write_trino_config(config_path: str) -> None:  # REQ-055, REQ-250
     """Regenerate trino/etc/jvm.config and trino/etc/config.properties from provisa config."""
     # Falling back to defaults on unreadable config silently drops FTE/memory settings — propagate.
-    with open(config_path) as _f:
-        cfg = yaml.safe_load(_f) or {}
+    # REQ-1669: includes-aware, so a wrapper config's fragments are seen.
+    from provisa.core.config_loader import read_config_with_includes
+
+    cfg = read_config_with_includes(config_path)
 
     heap_gb = int(_cfg(cfg, "jvm_heap_gb"))
     query_max_memory = _cfg(cfg, "query_max_memory")

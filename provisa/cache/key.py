@@ -99,5 +99,35 @@ def cache_key(  # REQ-544, REQ-864, REQ-866
         "role_id": role_id,
         "rls": {str(k): v for k, v in sorted(rls_rules.items())},
     }
+    return _digest(key_parts)
+
+
+def raw_sql_cache_key(  # REQ-1897
+    sql: str, params: list, role_id: str, *, wire_formats: list[int] | None
+) -> str:
+    """The key of a raw-SQL plan's cached result — a namespace disjoint from GraphQL's.
+
+    ``wire_formats`` is None for a DECODED entry (rows / Arrow — any surface can serve it) and the
+    client's pgwire result format codes for a ``pg_datarows`` entry, whose raw DataRow bytes are
+    specific to those codes: a binary-format client must never be replayed text-format bytes.
+
+    GraphQL (``cache_key``) caches a serialized GraphQL response; a plan executed by the one
+    pipeline caches rows. The ``namespace`` part makes the two digests disjoint even for identical
+    SQL text, params and role, so neither reader can ever meet the other's payload. The governed
+    ``sql`` already carries the resolved RLS predicates and session values (raw-SQL surfaces have
+    no separate rules dict); the bound ``params`` and the ``role_id`` partition it further, and the
+    store prefixes the org (REQ-595). Callers MUST gate on ``is_cacheable`` first (REQ-866)."""
+    return _digest(
+        {
+            "namespace": "raw_sql_rows",
+            "sql": _normalize_sql(sql),
+            "params": params,
+            "role_id": role_id,
+            "wire_formats": wire_formats,
+        }
+    )
+
+
+def _digest(key_parts: dict) -> str:
     canonical = json.dumps(key_parts, sort_keys=True, default=str)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

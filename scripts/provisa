@@ -352,8 +352,8 @@ native_env_pairs() {
     e=(
         "PROVISA_ENGINE=${DEPLOY_ENGINE}"
         "PROVISA_REDIS_EMBEDDED=1"
-        "PLATFORM_DATABASE_URL=sqlite+aiosqlite:///${PROVISA_HOME}/native/platform.db"
-        "TENANT_DATABASE_URL=sqlite+aiosqlite:///${PROVISA_HOME}/native/tenant.db"
+        "PLATFORM_DATABASE_URL=sqlite+pysqlite:///${PROVISA_HOME}/native/platform.db"
+        "TENANT_DATABASE_URL=sqlite+pysqlite:///${PROVISA_HOME}/native/tenant.db"
         # Remote MCP on by default for the native/desktop tier (REQ-1101): a ready same-machine
         # Claude Desktop connector, loopback-only (127.0.0.1) so the always-on server stays off the
         # LAN. Role pinned explicitly (native auth:none = one local admin user), all overridable.

@@ -21,7 +21,7 @@ from contextlib import asynccontextmanager
 
 import pytest
 
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.repositories import catalog_binding
@@ -33,16 +33,14 @@ URI_TOTALS = "provisa://acme/sales/tables/order_totals"
 
 @asynccontextmanager
 async def _conn(tmp_path):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'bindings.db'}")
-    async with engine.begin() as c:
-        await c.run_sync(
-            lambda s: catalog_bindings.metadata.create_all(s, tables=[catalog_bindings])
-        )
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'bindings.db'}")
+    with engine.begin() as c:
+        catalog_bindings.metadata.create_all(c, tables=[catalog_bindings])
     try:
         async with Database(engine, name="bindings").acquire() as conn:
             yield conn
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 @pytest.mark.asyncio

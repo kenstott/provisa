@@ -66,6 +66,8 @@ O campo `extensions` suporta o protocolo Automatic Persisted Query (APQ): (REQ-2
 - `X-Provisa-Redirect-Threshold` — contagem de linhas acima da qual o redirecionamento é acionado (REQ-137)
 - `X-Provisa-Redirect` — `true` para forçar o redirecionamento incondicionalmente (REQ-029)
 
+**Cache de respostas:** adesão por requisição com a diretiva de operação `@cached` (`query @cached(ttl: 60) { ... }`, `ttl` opcional); a mesma diretiva vale para GraphQL enviado por Arrow Flight. Cypher adere com uma linha `// @provisa cache=true` ou `// @provisa cache_ttl=N`, gRPC com os metadados de chamada `x-provisa-cache: true` ou `x-provisa-cache-ttl: N`. Sem ela, a requisição não lê nem grava o cache de respostas. O cabeçalho de resposta `X-Provisa-Cache` informa `HIT` ou `MISS`. Veja [Cache](configuration.md). (REQ-544)
+
 **Resposta (JSON inline):**
 
 ```json

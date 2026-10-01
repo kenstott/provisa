@@ -33,7 +33,7 @@ schema.
 
 from __future__ import annotations
 
-import asyncio
+import concurrent.futures
 import logging
 
 from sqlalchemy import select, update
@@ -95,7 +95,8 @@ async def ensure_sandbox_org(pool) -> str:
     return "building"
 
 
-_build_tasks: set[asyncio.Task] = set()
+# In-flight sandbox builds (REQ-1882: each runs on a background worker, not the caller's loop).
+_build_tasks: set[concurrent.futures.Future[None]] = set()
 
 
 def _spawn_build(pool) -> None:
@@ -115,7 +116,9 @@ def _spawn_build(pool) -> None:
         await _provision_org_task(SANDBOX_ORG_ID, True, None, False)
         await seat_platform_admins(pool)
 
-    task = asyncio.create_task(_build())
+    from provisa.core.connection_loop import spawn_background
+
+    task = spawn_background(_build(), name="sandbox-org-build")
     _build_tasks.add(task)
     task.add_done_callback(_build_tasks.discard)
 

@@ -73,7 +73,14 @@ async def submit_nl_query(
     await _job_store.put(job)
 
     llm = await _get_llm(state)
-    asyncio.create_task(_run_job(job_id, body.q, body.role, state, llm, body.strict))
+    from provisa.core.connection_loop import spawn_background
+
+    # REQ-1882: the job outlives this request (the client polls or streams it), so it is detached;
+    # from the request thread it runs on the process loop, whose default executor runs its parallel
+    # LLM branches on real worker threads.
+    spawn_background(
+        _run_job(job_id, body.q, body.role, state, llm, body.strict), name=f"nl-job:{job_id}"
+    )
 
     return JSONResponse(status_code=202, content={"job_id": job_id})
 

@@ -99,7 +99,19 @@ def test_not_supported_and_schema_missing_creates_directly_against_store(monkeyp
     assert ("provisa_admin", "org_e2e_api_cache") in _SCHEMA_EXISTS_CACHE
 
 
-def test_not_supported_schema_missing_and_direct_create_fails_raises_clear_error():
+def test_not_supported_schema_missing_and_direct_create_fails_raises_clear_error(monkeypatch):
+    # The premise is a store the direct connection cannot reach, so pin one: a port this process
+    # leases and never binds. Left to the ambient PROVISA_MATERIALIZE_URL the test passed only
+    # while nothing happened to be listening on PG_PORT, and created the schema for real — in
+    # whatever Postgres was there — when something was.
+    from provisa.api.app import state
+    from tests.port_lease import lease_port
+
+    monkeypatch.setattr(
+        state.federation_engine.engine,
+        "materialize_store",
+        lambda: f"postgresql://provisa:provisa@127.0.0.1:{lease_port()}/provisa",
+    )
     conn = _FakeConn(
         [
             (

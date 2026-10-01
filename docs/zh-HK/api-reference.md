@@ -66,6 +66,8 @@ GET /auth/provider-type
 - `X-Provisa-Redirect-Threshold` — 觸發重新導向的資料列數門檻 (REQ-137)
 - `X-Provisa-Redirect` — 設為 `true` 可無條件強制重新導向 (REQ-029)
 
+**回應快取：** 透過操作層級指令 `@cached` 按請求選擇啟用（`query @cached(ttl: 60) { ... }`，`ttl` 可選）；同一指令亦適用於經 Arrow Flight 發送的 GraphQL。Cypher 以 `// @provisa cache=true` 或 `// @provisa cache_ttl=N` 行選擇啟用，gRPC 以呼叫元數據 `x-provisa-cache: true` 或 `x-provisa-cache-ttl: N` 選擇啟用。沒有該指令時，請求既不讀取也不寫入回應快取。回應標頭 `X-Provisa-Cache` 報告 `HIT` 或 `MISS`。請參閱[快取](configuration.md)。(REQ-544)
+
 **回應（內嵌 JSON）：**
 
 ```json

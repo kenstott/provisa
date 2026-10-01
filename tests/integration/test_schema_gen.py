@@ -47,8 +47,11 @@ async def _init_schema(tenant_db):
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="session")
-async def _load_config(tenant_db, _init_schema):
-    """Load sample config into PG once per module."""
+async def _load_config(tenant_db, _init_schema, platform_admin_db):
+    """Load sample config into PG once per module.
+
+    platform_admin_db: load_config binds the org vault (REQ-1580/REQ-1730), read off
+    state.admin_db — this module brings its own rather than inheriting another module's."""
     async with tenant_db.acquire() as conn:
         await conn.execute("SET search_path TO org_default")
         await conn.execute("""

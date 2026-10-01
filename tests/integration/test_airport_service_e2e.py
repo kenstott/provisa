@@ -46,6 +46,7 @@ pytestmark = [pytest.mark.integration]
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SAMPLE_CONFIG = _REPO_ROOT / "tests" / "fixtures" / "sample_config.yaml"
+_ORG = "airport_svc"
 
 # Semantic identifiers the governed pipeline advertises for sample_config's
 # domain "sales-analytics" (domain_to_sql_name → "sales_analytics").
@@ -57,12 +58,9 @@ _STATE: dict = {}
 
 
 def _free_port() -> int:
-    s = socket.socket()
-    try:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-    finally:
-        s.close()
+    from tests.port_lease import lease_port
+
+    return lease_port()
 
 
 def _tcp_reachable(host: str, port: int) -> bool:
@@ -92,6 +90,12 @@ def airport_server_port():
         **os.environ,
         "PG_PASSWORD": os.environ.get("PG_PASSWORD") or "provisa",
         "PROVISA_CONFIG": str(_SAMPLE_CONFIG),
+        # Its own org, config REPLACED not merged (same isolation as isolated_server.IsolatedServer):
+        # on the shared default org this server inherited whatever an earlier in-process test
+        # registered (config/provisa.yaml's r2-orders `orders` beside sample_config's sales-pg
+        # `orders`), and startup failed "Ambiguous table name 'orders'" — only when run after it.
+        "ORG_ID": _ORG,
+        "PROVISA_CONFIG_REPLACE": "true",
         "FLIGHT_PORT": str(flight_port),
         "PROVISA_AIRPORT_PORT": str(airport_port),
         # Source-side pushdown trace — the server appends each translated pushdown SQL here so the
@@ -138,6 +142,11 @@ def airport_server_port():
             proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
             proc.kill()
+        import asyncio
+
+        from tests.integration.isolated_server import drop_org_schema
+
+        asyncio.run(drop_org_schema(_ORG))
         os.unlink(logf.name)
         os.unlink(pushdown_log.name)
 

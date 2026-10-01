@@ -99,6 +99,7 @@ async def neo4j_query_v2(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-35
     from provisa.cypher.params import collect_param_names, bind_params, CypherParamError
     from provisa.cypher.assembler import assemble_rows, to_serializable
     from provisa.compiler.sql_rewrite import make_semantic_sql
+    from provisa.compiler.directives import cache_hint_for
     from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
 
     role_id = _resolve_role_id(request, state)
@@ -140,6 +141,8 @@ async def neo4j_query_v2(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-35
             semantic_sql,
             role_id,
             exec_params=resolved_params or None,
+            # REQ-544: the Cypher statement's own `// @provisa cache` opt-in.
+            cache_hint=cache_hint_for("cypher", body.statement),
         )
     except PermissionError as exc:
         return _error_response(str(exc), "Forbidden")

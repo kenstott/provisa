@@ -9,7 +9,6 @@
 # permission from the copyright holder.
 
 import os
-import socket
 import subprocess
 import sys
 import time
@@ -27,25 +26,23 @@ from tests.itest_stack import (
     reap_orphaned_projects,
     release_stack_slot,
 )
+from tests.port_lease import lease_port, lease_ports
+
+# Instance isolation (test vs local-dev): the encryption master key is read from the OS keyring,
+# then $PROVISA_DATA_DIR/encryption (default ~/.provisa), before PROVISA_ENCRYPTION_KEY (REQ-684,
+# REQ-1802), and a generated key is WRITTEN to the keyring. Without this, tests read — and could
+# overwrite — the maintainer's local-dev key store. Forced (not setdefault): a PROVISA_DATA_DIR
+# exported for local-dev in the calling shell must not reach the tests. Set in os.environ so test
+# subprocesses (isolated servers) inherit the same isolation. The keyring is process-local memory
+# (tests/_memory_keyring.py), not keyring's null backend: null drops writes, so a key a test
+# stores (POST /admin/encryption/generate-key) could never be read back.
+os.environ["PYTHON_KEYRING_BACKEND"] = "tests._memory_keyring.MemoryKeyring"
+os.environ["PROVISA_DATA_DIR"] = __import__("tempfile").mkdtemp(prefix="provisa-test-data-")
 
 # Before ANY test module is imported: the cloud-DW e2es gate on os.environ inside module-level
 # skipif conditions evaluated at collection time, so live .env creds must be present now or those
 # tests report as skipped while the credentials sit unused on disk. See tests/env_creds.py.
 load_provider_creds()
-
-# A native engine caches/lands into a materialization store, which MUST exist (the engine invariant).
-# Positive-case tests therefore define one, built from the same PG_* the test PG uses; a negative
-# test that asserts the "no store" error overrides it. setdefault so an explicit outer value wins.
-os.environ.setdefault(
-    "PROVISA_MATERIALIZE_URL",
-    "postgresql://{u}:{pw}@{h}:{p}/{db}".format(
-        u=os.environ.get("PG_USER", "provisa"),
-        pw=os.environ.get("PG_PASSWORD", "provisa"),
-        h=os.environ.get("PG_HOST", "localhost"),
-        p=os.environ.get("PG_PORT", "5432"),
-        db=os.environ.get("PG_DATABASE", "provisa"),
-    ),
-)
 
 # REQ-528: PROVISA_CONFIG names the config the process runs on and has no default — every launcher
 # sets it, and the test suite is one. The repo's dev-local config is what an in-process create_app()
@@ -279,29 +276,15 @@ _ITEST_PORT_ENV = [
 ]
 
 
-def _reserve_free_ports(n: int) -> list[int]:
-    """Return n DISTINCT free TCP ports (sockets held open together so the kernel
-    hands out a different port for each)."""
-    socks: list[socket.socket] = []
-    try:
-        for _ in range(n):
-            s = socket.socket()
-            s.bind(("127.0.0.1", 0))
-            socks.append(s)
-        return [s.getsockname()[1] for s in socks]
-    finally:
-        for s in socks:
-            s.close()
-
-
 def _allocate_itest_ports() -> None:
-    """Assign every isolated-stack host port to a fresh ephemeral port and export the
+    """Assign every isolated-stack host port to a leased port and export the
     URL-shaped env the in-process app reads, so the app never hits the dev stack."""
-    # Reserve one extra port for the isolated Provisa server (PROVISA_URL) IN THE SAME batch,
-    # so it is guaranteed distinct from every docker-service host port. Reserving it in a second
-    # _reserve_free_ports() call would race — those sockets are already closed, so the OS could
-    # hand back a port already assigned to a service, colliding at `up` time.
-    _ports = _reserve_free_ports(len(_ITEST_PORT_ENV) + 1)
+    # Leased, not probed-and-released: these numbers are bound by `docker compose up` minutes
+    # from now (a heavy engine's only when its test runs), and a port found with bind(0) and
+    # closed is anyone's in between — a parallel session took one and the stack failed to start
+    # with "bind: address already in use". See tests/port_lease.py. One extra for the isolated
+    # Provisa server (PROVISA_URL).
+    _ports = lease_ports(len(_ITEST_PORT_ENV) + 1)
     for name, port in zip(_ITEST_PORT_ENV, _ports):
         os.environ[name] = str(port)
     _provisa_server_port = _ports[-1]
@@ -365,6 +348,23 @@ def _allocate_itest_ports() -> None:
 # (pytest_collection_finish); an external stack keeps whatever it published.
 if not os.environ.get("PYTEST_NO_DOCKER") and not os.environ.get("PROVISA_E2E_EXTERNAL_STACK"):
     _allocate_itest_ports()
+
+
+# A native engine caches/lands into a materialization store, which MUST exist (the engine invariant).
+# Positive-case tests therefore define one, built from the same PG_* the test PG uses; a negative
+# test that asserts the "no store" error overrides it. setdefault so an explicit outer value wins.
+# Computed AFTER _allocate_itest_ports(): built earlier, it captured the default PG_PORT 5432 instead
+# of the isolated stack's ephemeral port, so every in-process app's store pointed at nothing.
+os.environ.setdefault(
+    "PROVISA_MATERIALIZE_URL",
+    "postgresql://{u}:{pw}@{h}:{p}/{db}".format(
+        u=os.environ.get("PG_USER", "provisa"),
+        pw=os.environ.get("PG_PASSWORD", "provisa"),
+        h=os.environ.get("PG_HOST", "localhost"),
+        p=os.environ.get("PG_PORT", "5432"),
+        db=os.environ.get("PG_DATABASE", "provisa"),
+    ),
+)
 
 
 # The Calcite-derived Trino connector plugins the compose stack bind-mounts, and the Maven
@@ -840,9 +840,7 @@ def _trino_catalog_exists(catalog: str) -> bool:  # pyright: ignore
 
 
 def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("", 0))
-        return s.getsockname()[1]
+    return lease_port()
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -914,7 +912,7 @@ def _reserve_flight_port():  # pyright: ignore
     # unscoped (default schema) — a separate engine/pool, per the control-plane
     # split. The subprocess server inherits this via {**os.environ}.
     _cp_url = (
-        f"postgresql+asyncpg://{os.environ.get('PG_USER', 'provisa')}"
+        f"postgresql+psycopg://{os.environ.get('PG_USER', 'provisa')}"
         f":{os.environ.get('PG_PASSWORD', 'provisa')}"
         f"@{os.environ.get('PG_HOST', 'localhost')}"
         f":{os.environ.get('PG_PORT', '5432')}"
@@ -978,16 +976,25 @@ def docker_postgres():
     Uses `docker compose -f docker-compose.core.yml up postgres -d` which is
     safe on this machine (single named service — never `compose up` with no
     service name, which crashes Docker Engine).
+
+    The compose project is private to this session's PG_PORT: under the default project every
+    session (each xdist worker, each concurrent run) shared ONE `provisa-postgres-1` container and
+    re-published it on its own ephemeral PG_PORT, so a peer's `up` recreated it out from under a
+    running test ("Connection refused" on the port that had just been published). A container this
+    fixture started is removed with its volume at session end.
     """
     pg_host = os.environ.get("PG_HOST", "localhost")
     pg_port = int(os.environ.get("PG_PORT", "5432"))
 
+    compose_file = os.path.join(os.path.dirname(__file__), "..", "docker-compose.core.yml")
+    project = f"provisa-unitpg-{pg_port}"
+    started = False
     if not _tcp_reachable(pg_host, pg_port):
-        compose_file = os.path.join(os.path.dirname(__file__), "..", "docker-compose.core.yml")
         subprocess.run(
-            ["docker", "compose", "-f", compose_file, "up", "postgres", "-d"],
+            ["docker", "compose", "-p", project, "-f", compose_file, "up", "postgres", "-d"],
             check=True,
         )
+        started = True
         # Wait up to 30 s for postgres to be ready
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
@@ -1000,6 +1007,12 @@ def docker_postgres():
             )
 
     yield {"host": pg_host, "port": pg_port}
+
+    if started:
+        subprocess.run(
+            ["docker", "compose", "-p", project, "-f", compose_file, "down", "-v"],
+            check=True,
+        )
 
 
 @pytest_asyncio.fixture(scope="session")

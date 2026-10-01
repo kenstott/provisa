@@ -150,9 +150,11 @@ def _openapi_state() -> SimpleNamespace:
             ApiColumn(name="petId", type=ApiColumnType.string, param_type=ParamType.path),
         ],
     )
-    # PG hydrate always misses (no pre-seeded row for this specific petId).
+    # PG hydrate always misses (no pre-seeded row for this specific petId): the cache is empty.
+    # A failed read would raise (REQ-1661, amended 2026-09-30) -- a miss is no rows, not an error.
     conn = AsyncMock()
-    conn.fetch = AsyncMock(side_effect=Exception('relation "default.get_pet_by_id" does not exist'))
+    conn.capabilities = SimpleNamespace(schemas=True)
+    conn.fetch = AsyncMock(return_value=[])
     return SimpleNamespace(
         hot_manager=None,
         api_endpoints={"get_pet_by_id": ep},
@@ -199,7 +201,12 @@ async def test_openapi_path_param_table_routes_through_engine_cache_not_tenant_d
             new=AsyncMock(return_value=rest_result),
         ) as m_handle,
         patch("provisa.api_source.engine_cache.create_and_insert"),
-        patch("provisa.api_source.engine_cache.schedule_drop", new=AsyncMock()),
+        patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
+        # The stand-in state has no source registry; none of its sources carries an operator
+        # floor (REQ-030), which routing reads from it.
+        patch(
+            "provisa.federation.registry_view.registered_sources", new=AsyncMock(return_value=[])
+        ),
     ):
         exec_sql, decision, default_source, optimized, sources, _opts = await _optimize_and_route(
             "SELECT * FROM get_pet_by_id WHERE \"_nf_petId\" = '1'",

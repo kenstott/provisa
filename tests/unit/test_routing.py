@@ -55,7 +55,7 @@ _DIALECTS: dict[str, str] = {
 class TestRoutingDecisions:
     def test_single_source_routes_direct(self):
         """A single PostgreSQL source query routes to 'direct'."""
-        decision = decide_route({"pg-main"}, _TYPES, _DIALECTS)
+        decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, operator_floor={})
         assert decision.route == Route.DIRECT
         assert decision.source_id == "pg-main"
         assert decision.dialect == "postgres"
@@ -63,71 +63,90 @@ class TestRoutingDecisions:
 
     def test_multi_source_routes_trino(self):
         """A query involving two different sources routes to Trino."""
-        decision = decide_route({"pg-main", "pg-secondary"}, _TYPES, _DIALECTS)
+        decision = decide_route({"pg-main", "pg-secondary"}, _TYPES, _DIALECTS, operator_floor={})
         assert decision.route == Route.ENGINE
         assert decision.source_id is None
 
     def test_mutation_always_routes_direct(self):
         """Mutations are never routed via Trino — always direct."""
-        decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, is_mutation=True)
+        decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, is_mutation=True, operator_floor={})
         assert decision.route == Route.DIRECT
         assert decision.source_id == "pg-main"
         assert "mutation" in decision.reason.lower()
 
     def test_mutation_always_routes_direct_even_with_nosql(self):
         """Even a NoSQL-sourced mutation routes direct (not Trino)."""
-        decision = decide_route({"mongo-events"}, _TYPES, _DIALECTS, is_mutation=True)
+        decision = decide_route(
+            {"mongo-events"}, _TYPES, _DIALECTS, is_mutation=True, operator_floor={}
+        )
         assert decision.route == Route.DIRECT
         assert decision.source_id == "mongo-events"
 
     def test_cache_hit_routes_cache(self):
-        """A result-cache hit resolves to Route.CACHE as the first candidate (REQ-865)."""
-        decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, cache_hit=True)
+        """An opted-in result-cache hit resolves to Route.CACHE as the first candidate (REQ-865)."""
+        decision = decide_route(
+            {"pg-main"}, _TYPES, _DIALECTS, cache_hit=True, cache_opt_in=True, operator_floor={}
+        )
         assert decision.route == Route.CACHE
         assert decision.source_id is None
         assert "cache" in decision.reason.lower()
 
     def test_cache_hit_takes_priority_over_direct(self):
         """Cache is the first candidate — it wins over an otherwise-direct route (REQ-865)."""
-        direct = decide_route({"pg-main"}, _TYPES, _DIALECTS)
+        direct = decide_route({"pg-main"}, _TYPES, _DIALECTS, operator_floor={})
         assert direct.route == Route.DIRECT
-        cached = decide_route({"pg-main"}, _TYPES, _DIALECTS, cache_hit=True)
+        cached = decide_route(
+            {"pg-main"}, _TYPES, _DIALECTS, cache_hit=True, cache_opt_in=True, operator_floor={}
+        )
         assert cached.route == Route.CACHE
 
-    def test_no_cache_removes_cache_from_candidates(self):
-        """The no_cache bypass removes CACHED even when the store holds an entry (REQ-544/865)."""
-        decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, cache_hit=True, no_cache=True)
+    def test_a_hit_without_the_request_opt_in_is_not_a_candidate(self):
+        """Without the request's opt-in, CACHED is no candidate even when the store holds an
+        entry (REQ-544, amended 2026-09-30: the response cache is per-request opt-in)."""
+        decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, cache_hit=True, operator_floor={})
         assert decision.route == Route.DIRECT
 
     def test_mutation_never_serves_from_cache(self):
         """A mutation with a stale cache entry still routes direct, never cache (REQ-865)."""
-        decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, cache_hit=True, is_mutation=True)
+        decision = decide_route(
+            {"pg-main"},
+            _TYPES,
+            _DIALECTS,
+            cache_hit=True,
+            cache_opt_in=True,
+            is_mutation=True,
+            operator_floor={},
+        )
         assert decision.route == Route.DIRECT
 
     def test_cache_miss_falls_through(self):
         """No cache hit falls through to DIRECT/FEDERATED as before (REQ-865)."""
-        decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, cache_hit=False)
+        decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, cache_hit=False, operator_floor={})
         assert decision.route == Route.DIRECT
 
     def test_route_override_hint_trino(self):
         """A `/* @provisa route=trino */`-style steward hint forces Trino route."""
         # The router accepts the hint as a string "trino" (extracted upstream
         # by the request layer from the comment; we test the routing primitive directly).
-        decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, steward_hint="engine")
+        decision = decide_route(
+            {"pg-main"}, _TYPES, _DIALECTS, steward_hint="engine", operator_floor={}
+        )
         assert decision.route == Route.ENGINE
         assert decision.source_id is None
         assert "override" in decision.reason.lower() or "steward" in decision.reason.lower()
 
     def test_route_override_hint_direct(self):
         """A `/* @provisa route=direct */`-style steward hint forces direct route."""
-        decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, steward_hint="direct")
+        decision = decide_route(
+            {"pg-main"}, _TYPES, _DIALECTS, steward_hint="direct", operator_floor={}
+        )
         assert decision.route == Route.DIRECT
         assert decision.source_id == "pg-main"
         assert "override" in decision.reason.lower() or "steward" in decision.reason.lower()
 
     def test_nosql_source_routes_trino(self):
         """A query on a MongoDB source routes to Trino (no direct SQL driver)."""
-        decision = decide_route({"mongo-events"}, _TYPES, _DIALECTS)
+        decision = decide_route({"mongo-events"}, _TYPES, _DIALECTS, operator_floor={})
         assert decision.route == Route.ENGINE
         assert decision.source_id is None
 
@@ -137,13 +156,13 @@ class TestRoutingDecisions:
         never built, KeyError'ing on the source id)."""
         types = {"notes-sqlite": "sqlite"}
         dialects = {"notes-sqlite": "sqlite"}
-        decision = decide_route({"notes-sqlite"}, types, dialects)
+        decision = decide_route({"notes-sqlite"}, types, dialects, operator_floor={})
         assert decision.route == Route.ENGINE
         assert decision.source_id is None
 
     def test_kafka_streaming_source_routes_trino(self):
         """A Kafka source (virtual) always routes to Trino."""
-        decision = decide_route({"kafka-stream"}, _TYPES, _DIALECTS)
+        decision = decide_route({"kafka-stream"}, _TYPES, _DIALECTS, operator_floor={})
         assert decision.route == Route.ENGINE
         assert decision.source_id is None
 
@@ -154,24 +173,24 @@ class TestRoutingDecisions:
         import provisa.transpiler.router as router
 
         monkeypatch.setattr(router, "has_driver", lambda *_: False)
-        decision = decide_route({"sf-warehouse"}, _TYPES, _DIALECTS)
+        decision = decide_route({"sf-warehouse"}, _TYPES, _DIALECTS, operator_floor={})
         assert decision.route == Route.ENGINE
 
     def test_multi_source_with_hint_direct_still_trino(self):
         """Direct hint on a multi-source query is ignored — must use Trino."""
         decision = decide_route(
-            {"pg-main", "pg-secondary"}, _TYPES, _DIALECTS, steward_hint="direct"
+            {"pg-main", "pg-secondary"}, _TYPES, _DIALECTS, steward_hint="direct", operator_floor={}
         )
         assert decision.route == Route.ENGINE
 
     def test_multi_source_nosql_mix_routes_trino(self):
         """Mixed RDBMS + NoSQL multi-source query routes to Trino."""
-        decision = decide_route({"pg-main", "mongo-events"}, _TYPES, _DIALECTS)
+        decision = decide_route({"pg-main", "mongo-events"}, _TYPES, _DIALECTS, operator_floor={})
         assert decision.route == Route.ENGINE
 
     def test_route_decision_is_frozen_dataclass(self):
         """RouteDecision should be a frozen dataclass (immutable)."""
-        decision = decide_route({"pg-main"}, _TYPES, _DIALECTS)
+        decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, operator_floor={})
         assert isinstance(decision, RouteDecision)
         with pytest.raises((AttributeError, TypeError)):
             decision.route = Route.ENGINE  # type: ignore[misc]
@@ -184,14 +203,14 @@ class TestRoutingDecisions:
             {"mongo-events"},
             {"kafka-stream"},
         ]:
-            d = decide_route(source_set, _TYPES, _DIALECTS)
+            d = decide_route(source_set, _TYPES, _DIALECTS, operator_floor={})
             assert d.reason, f"Empty reason for sources={source_set}"
             assert isinstance(d.reason, str)
 
     @pytest.mark.skipif(not has_driver("mysql"), reason="aiomysql not installed")
     def test_mysql_single_source_routes_direct(self):
         """MySQL with a direct driver routes direct."""
-        decision = decide_route({"mysql-legacy"}, _TYPES, _DIALECTS)
+        decision = decide_route({"mysql-legacy"}, _TYPES, _DIALECTS, operator_floor={})
         assert decision.route == Route.DIRECT
         assert decision.source_id == "mysql-legacy"
         assert decision.dialect == "mysql"

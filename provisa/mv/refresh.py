@@ -43,6 +43,108 @@ def _now_ts_literal() -> str:
     return f"TIMESTAMP '{ts}'"
 
 
+# -- REQ-1901: MV writes into an embedded DuckDB-file store go through its broker ----------------
+# The broker stages the engine-computed fresh rows as ``_mv_fresh`` and runs these statements on its
+# own store connection; they are the same CTAS / DELETE+INSERT / bitemporal-append statements the
+# engine path runs, with the SELECT replaced by the staged rows.
+_FRESH = "SELECT * FROM _mv_fresh"
+
+
+def _mv_store_broker(engine):
+    """The store broker an MV refresh writes through, or None when the engine writes the store as
+    SQL. An engine terminal without the seam (a test fake, a non-native engine) has no broker."""
+    return engine.mv_store_broker() if hasattr(engine, "mv_store_broker") else None
+
+
+def _require_broker_target(mv: MVDefinition) -> None:
+    from provisa.federation.materialize_broker import _MAT_STORE_ALIAS  # noqa: PLC0415
+
+    if mv.target_catalog != _MAT_STORE_ALIAS:
+        raise RuntimeError(
+            f"MV {mv.id}: target catalog {mv.target_catalog!r} is not the broker-backed store "
+            f"{_MAT_STORE_ALIAS!r}"
+        )
+
+
+async def _in_executor(fn):
+    """Run a blocking broker/engine call off a plain event loop (on a request/background thread's
+    connection loop the executor runs it inline on that thread)."""
+    return await asyncio.get_running_loop().run_in_executor(None, fn)
+
+
+async def _store_statement(engine, sql: str, authorization: SystemAuth) -> list:
+    """Run an MV-maintenance statement that acts on the store alone (DROP, SHOW TABLES): through the
+    broker for an embedded DuckDB-file store the engine never ATTACHes (REQ-1901), else as engine
+    SQL. Returns the statement's rows."""
+    broker = _mv_store_broker(engine)
+    if broker is not None:
+        return await _in_executor(lambda: broker.execute(sql))
+    return (await engine.execute_engine(sql, authorization=authorization)).rows
+
+
+def _replace_plan(mv: MVDefinition, target: str):
+    def plan(existing: list[str] | None, fresh_cols: list[str]) -> list[str]:
+        if existing is None:
+            return [f"CREATE TABLE {target} AS {_FRESH}"]
+        if existing != fresh_cols:
+            log.info(
+                "MV %s: target %s shape drifted (%d→%d cols) — rebuilding",
+                mv.id,
+                target,
+                len(existing),
+                len(fresh_cols),
+            )
+            return [f"DROP TABLE {target}", f"CREATE TABLE {target} AS {_FRESH}"]
+        return [f"DELETE FROM {target}", f"INSERT INTO {target} {_FRESH}"]
+
+    return plan
+
+
+def _bitemporal_plan(mv: MVDefinition, target: str, now_ts: str):
+    spec = mv.bitemporal
+    assert spec is not None
+
+    def plan(existing: list[str] | None, fresh_cols: list[str]) -> list[str]:
+        if existing is None:
+            return [create_sql(target, _FRESH, spec, now_ts)]
+        sys_names = {c for c, _ in system_columns_ddl(spec)}
+        business = [c for c in existing if c not in sys_names]
+        if fresh_cols != business:
+            log.info(
+                "MV %s: bitemporal target %s business shape drifted (%d→%d cols) — rebuilding "
+                "(history reset)",
+                mv.id,
+                target,
+                len(business),
+                len(fresh_cols),
+            )
+            return [f"DROP TABLE {target}", create_sql(target, _FRESH, spec, now_ts)]
+        return list(append_sql(target, _FRESH, spec, fresh_cols, now_ts, "duckdb"))
+
+    return plan
+
+
+def _write_via_broker(
+    engine, broker, mv: MVDefinition, select_sql: str, plan, authorization: SystemAuth
+) -> int:
+    """Stream the MV SELECT from the engine as Arrow batches into the broker's write; return the
+    target's row count. The reader is consumed batch by batch inside the broker's lock hold. The
+    stream carries the refresh's SystemAuth (REQ-1760), verified by the terminal."""
+    import pyarrow as pa  # noqa: PLC0415
+
+    schema, batches = engine.execute_engine_stream(select_sql, authorization=authorization)
+    try:
+        reader = pa.RecordBatchReader.from_batches(schema, batches)
+        return broker.write_mv(
+            mv.target_schema,
+            mv.target_table,
+            reader,
+            lambda existing: plan(existing, list(schema.names)),
+        )
+    finally:
+        batches.close()
+
+
 async def _refresh_bitemporal(
     engine,
     mv: MVDefinition,
@@ -110,6 +212,15 @@ async def apply_bitemporal_append(engine, mv: MVDefinition, *, system_ts: str | 
     target = _target_ref(mv)
     authorization = SystemAuth(mint_system_token(), reason=f"mv_bitemporal_append:{mv.id}")
     select_sql = await _build_refresh_sql(mv, engine, authorization=authorization)
+    broker = _mv_store_broker(engine)
+    if broker is not None:
+        # REQ-1901: embedded DuckDB-file store — the broker writes the append (see refresh_mv).
+        _require_broker_target(mv)
+        plan = _bitemporal_plan(mv, target, system_ts or _now_ts_literal())
+        await _in_executor(
+            lambda: _write_via_broker(engine, broker, mv, select_sql, plan, authorization)
+        )
+        return target
     await engine.execute_engine(
         f'CREATE SCHEMA IF NOT EXISTS "{mv.target_catalog}"."{mv.target_schema}"',
         authorization=authorization,
@@ -516,90 +627,122 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
             log.warning("MV %s: %s — materialization skipped", mv.id, detail)
             return
 
-        # Ensure the target schema exists before the CTAS. The store's MV-cache schema is created on
-        # demand (it need not pre-exist — e.g. a fresh deployment where no source has landed yet). The
-        # catalog-qualified form is portable across the engines that materialize (DuckDB/Trino/
-        # Postgres/Databricks/BigQuery all accept CREATE SCHEMA IF NOT EXISTS "catalog"."schema").
-        await engine.execute_engine(
-            f'CREATE SCHEMA IF NOT EXISTS "{mv.target_catalog}"."{mv.target_schema}"',
-            authorization=authorization,
-        )
-
-        # Check if target table exists — probe through the engine (empty rows on absence).
-        # SELECT * (not SELECT 1) so column_names carries the existing target shape.
-        try:
-            existing_cols = (
-                await engine.execute_engine(
-                    f"SELECT * FROM {target} LIMIT 0", authorization=authorization
-                )
-            ).column_names
-            table_exists = True
-        except Exception:
-            existing_cols = []
-            table_exists = False
-
-        # REQ-877: snapshot the prior landed rows BEFORE any mutation, so the post-refresh diff sees
-        # the true previous state (empty unless this MV captures deltas and the target exists).
-        prev_rows = await _snapshot_prev_rows(
-            engine, mv, store, target, table_exists=table_exists, authorization=authorization
-        )
-
-        if mv.bitemporal is not None:
-            # REQ-1162: append-only bitemporal maintenance — never DELETE/UPDATE the history.
-            await _refresh_bitemporal(
-                engine,
-                mv,
-                target,
-                select_sql,
-                table_exists,
-                existing_cols,
-                authorization=authorization,
+        broker = _mv_store_broker(engine)
+        if broker is not None:
+            # REQ-1901: the store is an embedded DuckDB file the engine connection never ATTACHes —
+            # the engine computes the fresh rows, the broker writes them into the store.
+            _require_broker_target(mv)
+            existing = await _in_executor(
+                lambda: broker.table_columns(mv.target_schema, mv.target_table)
             )
-        else:
-            # DELETE+INSERT only reconciles rows, not shape. If the view SQL was edited so its
-            # column set no longer matches the existing target (count or names), INSERT would
-            # mismatch — "table T has N columns but M values were supplied". Rebuild instead.
-            if table_exists:
-                new_cols = (
-                    await engine.execute_engine(
-                        f"SELECT * FROM ({select_sql}) _shape LIMIT 0", authorization=authorization
-                    )
-                ).column_names
-                if new_cols != existing_cols:
-                    log.info(
-                        "MV %s: target %s shape drifted (%d→%d cols) — rebuilding",
-                        mv.id,
-                        target,
-                        len(existing_cols),
-                        len(new_cols),
-                    )
-                    await engine.execute_engine(f"DROP TABLE {target}", authorization=authorization)
-                    table_exists = False
-
-            if table_exists:
-                await engine.execute_engine(f"DELETE FROM {target}", authorization=authorization)
-                await engine.execute_engine(
-                    f"INSERT INTO {target} {select_sql}", authorization=authorization
-                )
-            else:
-                await engine.execute_engine(
-                    f"CREATE TABLE {target} AS {select_sql}", authorization=authorization
-                )
-            # REQ-1652/1654/1655: the MV's keys, descriptions and tags converge onto the store table
-            # it was just created in (or refreshed into) -- on a store that can hold them.
-            if hasattr(engine, "reconcile_mv_metadata"):
+            table_exists = existing is not None
+            prev_rows = await _snapshot_prev_rows(
+                engine, mv, store, target, table_exists=table_exists, authorization=authorization
+            )
+            plan = (
+                _bitemporal_plan(mv, target, _now_ts_literal())
+                if mv.bitemporal is not None
+                else _replace_plan(mv, target)
+            )
+            row_count = await _in_executor(
+                lambda: _write_via_broker(engine, broker, mv, select_sql, plan, authorization)
+            )
+            if mv.bitemporal is None and hasattr(engine, "reconcile_mv_metadata"):
                 await engine.reconcile_mv_metadata(
                     schema=mv.target_schema,
                     table=mv.target_table,
                     pk_columns=list(getattr(mv, "primary_key", []) or []) or None,
                 )
-
-        # Get row count
-        row_count = (
+        else:
+            # Ensure the target schema exists before the CTAS. The store's MV-cache schema is created on
+            # demand (it need not pre-exist — e.g. a fresh deployment where no source has landed yet). The
+            # catalog-qualified form is portable across the engines that materialize (DuckDB/Trino/
+            # Postgres/Databricks/BigQuery all accept CREATE SCHEMA IF NOT EXISTS "catalog"."schema").
             await engine.execute_engine(
-                f"SELECT COUNT(*) FROM {target}", authorization=authorization
+                f'CREATE SCHEMA IF NOT EXISTS "{mv.target_catalog}"."{mv.target_schema}"',
+                authorization=authorization,
             )
-        ).rows[0][0]
+
+            # Check if target table exists — probe through the engine (empty rows on absence).
+            # SELECT * (not SELECT 1) so column_names carries the existing target shape.
+            try:
+                existing_cols = (
+                    await engine.execute_engine(
+                        f"SELECT * FROM {target} LIMIT 0", authorization=authorization
+                    )
+                ).column_names
+                table_exists = True
+            except Exception:
+                existing_cols = []
+                table_exists = False
+
+            # REQ-877: snapshot the prior landed rows BEFORE any mutation, so the post-refresh diff sees
+            # the true previous state (empty unless this MV captures deltas and the target exists).
+            prev_rows = await _snapshot_prev_rows(
+                engine, mv, store, target, table_exists=table_exists, authorization=authorization
+            )
+
+            if mv.bitemporal is not None:
+                # REQ-1162: append-only bitemporal maintenance — never DELETE/UPDATE the history.
+                await _refresh_bitemporal(
+                    engine,
+                    mv,
+                    target,
+                    select_sql,
+                    table_exists,
+                    existing_cols,
+                    authorization=authorization,
+                )
+            else:
+                # DELETE+INSERT only reconciles rows, not shape. If the view SQL was edited so its
+                # column set no longer matches the existing target (count or names), INSERT would
+                # mismatch — "table T has N columns but M values were supplied". Rebuild instead.
+                if table_exists:
+                    new_cols = (
+                        await engine.execute_engine(
+                            f"SELECT * FROM ({select_sql}) _shape LIMIT 0",
+                            authorization=authorization,
+                        )
+                    ).column_names
+                    if new_cols != existing_cols:
+                        log.info(
+                            "MV %s: target %s shape drifted (%d→%d cols) — rebuilding",
+                            mv.id,
+                            target,
+                            len(existing_cols),
+                            len(new_cols),
+                        )
+                        await engine.execute_engine(
+                            f"DROP TABLE {target}", authorization=authorization
+                        )
+                        table_exists = False
+
+                if table_exists:
+                    await engine.execute_engine(
+                        f"DELETE FROM {target}", authorization=authorization
+                    )
+                    await engine.execute_engine(
+                        f"INSERT INTO {target} {select_sql}", authorization=authorization
+                    )
+                else:
+                    await engine.execute_engine(
+                        f"CREATE TABLE {target} AS {select_sql}", authorization=authorization
+                    )
+                # REQ-1652/1654/1655: the MV's keys, descriptions and tags converge onto the store table
+                # it was just created in (or refreshed into) -- on a store that can hold them.
+                if hasattr(engine, "reconcile_mv_metadata"):
+                    await engine.reconcile_mv_metadata(
+                        schema=mv.target_schema,
+                        table=mv.target_table,
+                        pk_columns=list(getattr(mv, "primary_key", []) or []) or None,
+                    )
+
+            # Get row count
+            row_count = (
+                await engine.execute_engine(
+                    f"SELECT COUNT(*) FROM {target}", authorization=authorization
+                )
+            ).rows[0][0]
 
         duration = time.time() - start
         if coordinated:
@@ -662,9 +805,10 @@ async def reclaim_removed_mvs(  # REQ-234
             continue
         target = _target_ref(mv)
         try:
-            await engine.execute_engine(
+            await _store_statement(
+                engine,
                 f"DROP TABLE IF EXISTS {target}",
-                authorization=SystemAuth(mint_system_token(), reason=f"mv_reclaim:{mv_id}"),
+                SystemAuth(mint_system_token(), reason=f"mv_reclaim:{mv_id}"),
             )
             log.info("Reclaimed removed MV %s — dropped %s", mv_id, target)
         except Exception:
@@ -692,14 +836,11 @@ async def detect_orphans(  # REQ-234
     """
     # Snowflake spells the schema-scoped listing ``SHOW TABLES IN SCHEMA``; DuckDB/Trino ``FROM``.
     scope = "IN SCHEMA" if getattr(engine, "dialect", "") == "snowflake" else "FROM"
-    rows = (
-        await engine.execute_engine(
-            f'SHOW TABLES {scope} "{catalog}"."{schema_name}"',
-            authorization=SystemAuth(
-                mint_system_token(), reason=f"mv_detect_orphans:{catalog}.{schema_name}"
-            ),
-        )
-    ).rows
+    rows = await _store_statement(
+        engine,
+        f'SHOW TABLES {scope} "{catalog}"."{schema_name}"',
+        SystemAuth(mint_system_token(), reason=f"mv_detect_orphans:{catalog}.{schema_name}"),
+    )
     actual_tables = {row[0] for row in rows}
 
     known_tables = {mv.target_table for mv in registry.all()}
@@ -753,11 +894,10 @@ async def drop_expired_orphans(  # REQ-234
         if (now - first_seen) >= grace_period:
             target = f'"{catalog}"."{schema_name}"."{table}"'
             try:
-                await engine.execute_engine(
+                await _store_statement(
+                    engine,
                     f"DROP TABLE IF EXISTS {target}",
-                    authorization=SystemAuth(
-                        mint_system_token(), reason=f"mv_drop_expired_orphan:{target}"
-                    ),
+                    SystemAuth(mint_system_token(), reason=f"mv_drop_expired_orphan:{target}"),
                 )
                 log.info("Dropped expired orphan table %s", target)
                 dropped.append(table)

@@ -23,6 +23,7 @@ import logging
 
 import pyarrow as pa
 
+from provisa.core import request_deadline
 from provisa.executor.result import QueryResult
 
 log = logging.getLogger(__name__)
@@ -125,9 +126,12 @@ def execute_trino_flight_arrow(  # REQ-051, REQ-143, REQ-144
 
     cursor = conn.cursor()
     _skip_prepare(cursor)
-    cursor.execute(exec_sql)
-    table = cursor.fetch_arrow_table()
-    cursor.close()
+    try:
+        with request_deadline.cancel_on_deadline(cursor.adbc_cancel):
+            cursor.execute(exec_sql)
+            table = cursor.fetch_arrow_table()
+    finally:
+        cursor.close()
 
     log.info("[EXEC TRINO FLIGHT] rows=%d", table.num_rows)
     return table
@@ -151,9 +155,10 @@ def execute_trino_flight_stream(  # REQ-145, REQ-271
 
     cursor = conn.cursor()
     _skip_prepare(cursor)
-    cursor.execute(exec_sql)
-    reader = cursor.fetch_record_batch()
-    schema = reader.schema
+    with request_deadline.cancel_on_deadline(cursor.adbc_cancel):
+        cursor.execute(exec_sql)
+        reader = cursor.fetch_record_batch()
+        schema = reader.schema
 
     def batch_generator():
         try:

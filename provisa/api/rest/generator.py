@@ -615,6 +615,7 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
 
         compiled = compiled_queries[0]
 
+        from provisa.compiler.directives import NO_CACHE_HINT
         from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
 
         try:
@@ -628,6 +629,7 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
                 # so route them the same unbuffered way JSON:API's aggregate branch does (REQ-1359) —
                 # buffering was forcing them onto the CTAS/engine path unnecessarily.
                 buffered=not (is_group_by or is_aggregate),
+                cache_hint=NO_CACHE_HINT,
             )
             result = await _execute_plan(plan, state)
 
@@ -638,6 +640,7 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
                     role_id,
                     exec_params=compiled.nodes_params or None,
                     state=state,
+                    cache_hint=NO_CACHE_HINT,
                 )
                 nodes_result = await _execute_plan(nodes_plan, state)
         except PermissionError as exc:

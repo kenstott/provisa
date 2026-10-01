@@ -28,29 +28,15 @@ def _make_role(caps: list[str]) -> dict:
 
 @pytest.fixture()
 def pgwire_loop():
-    """A running main loop for the auth path to submit validators to.
+    """This test thread's connection loop, as ProvisaHandler.handle binds one for a connection.
 
-    pgwire authenticates on a socketserver worker thread and drives every validator on the main
-    event loop (the PAT store and DB-backed providers hold loop-bound handles), so a test that
-    exercises the handler needs a real loop running somewhere other than this thread.
+    pgwire runs every validator on the connection thread's own loop (REQ-1882), so a test that
+    drives handler methods directly binds one to the test thread for the test's duration.
     """
-    import asyncio
-    import threading
+    from provisa.core.connection_loop import connection_loop
 
-    import provisa.pgwire.server as pg_server
-
-    loop = asyncio.new_event_loop()
-    thread = threading.Thread(target=loop.run_forever, daemon=True)
-    thread.start()
-    previous = pg_server._loop
-    pg_server._loop = loop
-    try:
-        yield loop
-    finally:
-        pg_server._loop = previous
-        loop.call_soon_threadsafe(loop.stop)
-        thread.join(timeout=5)
-        loop.close()
+    with connection_loop() as cl:
+        yield cl
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +98,6 @@ class TestReq527PgwireDisabledByDefault:
 
     def test_start_pgwire_server_binds_all_interfaces(self):
         # REQ-527: server binds to 0.0.0.0 on the configured port
-        import asyncio
         from unittest.mock import patch, MagicMock
 
         mock_server = MagicMock()
@@ -123,11 +108,10 @@ class TestReq527PgwireDisabledByDefault:
             patch("threading.Thread", return_value=mock_thread),
         ):
             MockServer.return_value = mock_server
-            loop = MagicMock(spec=asyncio.AbstractEventLoop)
 
             from provisa.pgwire.server import start_pgwire_server
 
-            start_pgwire_server("0.0.0.0", 5439, None, loop)
+            start_pgwire_server("0.0.0.0", 5439, None)
 
             # Must be instantiated with host=0.0.0.0
             call_args = MockServer.call_args

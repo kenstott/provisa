@@ -85,11 +85,15 @@ _NS = {
     "oracle": _Ns(
         # An Oracle schema IS a user, so creating one is creating an account and giving it room to
         # store a table. Dropping the user cascades its objects, which is Oracle's DROP SCHEMA.
+        # Quoted, because Capabilities.enter_org_sql names the org schema as a quoted identifier:
+        # unquoted, Oracle would fold the user to upper case and the scoped read could never
+        # reach it.
         create=lambda ns: [
-            f'CREATE USER {ns} IDENTIFIED BY "Provisa_2026"',
-            f"ALTER USER {ns} QUOTA UNLIMITED ON USERS",
+            f'CREATE USER "{ns}" IDENTIFIED BY "Provisa_2026"',
+            f'ALTER USER "{ns}" QUOTA UNLIMITED ON USERS',
         ],
-        drop=lambda ns: [f"DROP USER {ns} CASCADE"],
+        drop=lambda ns: [f'DROP USER "{ns}" CASCADE'],
+        qualify=lambda ns, t: f'"{ns}".{t}',
         column="VARCHAR2(16)",
     ),
 }
@@ -115,7 +119,7 @@ async def _probe(url: str, *, via_loader: bool = True) -> dict[str, object]:
     Returns the two facts the module docstring names plus the dialect, so a caller can assert on
     the one it means and print the whole row when it fails.
 
-    *via_loader* false builds the engine with SQLAlchemy directly. ``_ADMIN_ASYNC_DRIVER`` lists
+    *via_loader* false builds the engine with SQLAlchemy directly. ``_ADMIN_DRIVER`` lists
     only postgresql, sqlite, duckdb, mysql and mariadb, so ``create_engine_from_url`` refuses a
     SQL Server or Oracle URI outright — and refusing to build the engine would answer a question
     about Provisa's driver table, not about the store. The bypass measures the STORE; the separate
@@ -124,9 +128,9 @@ async def _probe(url: str, *, via_loader: bool = True) -> dict[str, object]:
     if via_loader:
         engine = create_engine_from_url(url)
     else:
-        from sqlalchemy.ext.asyncio import create_async_engine
+        import sqlalchemy as sa
 
-        engine = create_async_engine(url, pool_pre_ping=True)
+        engine = sa.create_engine(url, pool_pre_ping=True)
     plain = Database(engine, "probe")
     dialect = plain.dialect
     ns = _NS[dialect]
@@ -156,13 +160,13 @@ async def _probe(url: str, *, via_loader: bool = True) -> dict[str, object]:
     finally:
         async with plain.acquire() as conn:
             await _quiet(conn, [s for n in (_PROD, _DEV) for s in ns.drop(n)])
-        await engine.dispose()
+        engine.dispose()
 
 
 async def test_postgresql_control_plane_holds_an_environment():
     """The reference plane: schemas, and a search_path that enters one (REQ-1488)."""
     port = os.environ["PG_PORT"]
-    result = await _probe(f"postgresql+asyncpg://provisa:provisa@localhost:{port}/provisa")
+    result = await _probe(f"postgresql+psycopg://provisa:provisa@localhost:{port}/provisa")
     assert result == {"dialect": "postgresql", "namespaces": True, "scoped": True}
 
 
@@ -175,7 +179,7 @@ async def test_mysql_control_plane_holds_an_environment():
     store's limit.
     """
     port = os.environ["MARIADB_PORT"]
-    result = await _probe(f"mysql+aiomysql://root:provisa@localhost:{port}/provisa")
+    result = await _probe(f"mysql+pymysql://root:provisa@localhost:{port}/provisa")
     assert result == {"dialect": "mysql", "namespaces": True, "scoped": True}
 
 
@@ -188,13 +192,12 @@ async def test_sqlserver_has_namespaces_that_provisa_can_neither_open_nor_enter(
     schemas and hand back no scoping statement. Both are entries Provisa has not written, which is
     why the probe bypasses the loader to show the server itself keeping the two environments apart.
     """
-    pytest.importorskip("aioodbc", reason="aioodbc/unixODBC not available")
     port = os.environ["SQLSERVER_PORT"]
     url = (
-        f"mssql+aioodbc://sa:Provisa_2026%21@localhost:{port}/master"
+        f"mssql+pyodbc://sa:Provisa_2026%21@localhost:{port}/master"
         "?driver=ODBC+Driver+18+for+SQL+Server&Encrypt=yes&TrustServerCertificate=yes"
     )
-    with pytest.raises(ValueError, match="unsupported control-plane store backend 'mssql'"):
+    with pytest.raises(ValueError, match="unsupported store backend 'mssql'"):
         create_engine_from_url(url)
     assert Capabilities.for_dialect("mssql").schemas is False
     result = await _probe(url, via_loader=False)
@@ -211,8 +214,8 @@ async def test_oracle_holds_an_environment_but_is_not_an_openable_control_plane(
     a reason that has nothing to do with what it can hold.
     """
     port = os.environ["ORACLE_PORT"]
-    url = f"oracle+oracledb_async://system:provisa@localhost:{port}/?service_name=FREEPDB1"
-    with pytest.raises(ValueError, match="unsupported control-plane store backend 'oracle'"):
+    url = f"oracle+oracledb://system:provisa@localhost:{port}/?service_name=FREEPDB1"
+    with pytest.raises(ValueError, match="unsupported store backend 'oracle'"):
         create_engine_from_url(url)
     result = await _probe(url, via_loader=False)
     assert result == {"dialect": "oracle", "namespaces": True, "scoped": True}
@@ -224,7 +227,7 @@ async def test_sqlite_control_plane_has_one_namespace(tmp_path):
     No container and no marker: the store is a file, so this runs everywhere the suite does, and it
     is the end of the matrix the other cases are measured against.
     """
-    url = f"sqlite+aiosqlite:///{tmp_path}/control.db"
+    url = f"sqlite+pysqlite:///{tmp_path}/control.db"
     db = Database(create_engine_from_url(url), "probe")
     assert db.capabilities.schemas is False
     assert db.capabilities.enter_org_sql(_DEV) is None
@@ -232,4 +235,4 @@ async def test_sqlite_control_plane_has_one_namespace(tmp_path):
         with pytest.raises(Exception) as err:
             await conn.execute(f"CREATE SCHEMA {_DEV}")
     assert "SCHEMA" in str(err.value).upper()
-    await db.engine.dispose()
+    db.engine.dispose()

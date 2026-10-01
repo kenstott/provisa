@@ -29,8 +29,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import insert, update
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.pool import StaticPool
+from provisa.core.database import create_engine_from_url
 
 from provisa.api.branding_router import router as branding_router
 from provisa.api.errors import ApiError
@@ -43,13 +42,9 @@ _PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 32
 
 @pytest.fixture
 async def admin_db():
-    engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
-        poolclass=StaticPool,
-        connect_args={"check_same_thread": False},
-    )
-    async with engine.begin() as conn:
-        await conn.run_sync(metadata.create_all)
+    engine = create_engine_from_url("sqlite+pysqlite:///:memory:")
+    with engine.begin() as conn:
+        metadata.create_all(conn)
     db = Database(engine, "test")
     async with db.acquire() as conn:
         await conn.execute_core(
@@ -71,7 +66,7 @@ async def admin_db():
     try:
         yield db
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 @pytest.fixture

@@ -96,6 +96,19 @@ def _session_trino_etc() -> str:
         os.makedirs(os.path.join(path, sub), exist_ok=True)
     os.environ.setdefault("PROVISA_TRINO_ETC_HOST", path)
     os.environ.setdefault("PROVISA_TRINO_ETC_DIR", path)
+    # docker-compose.core.yml bind-mounts the Hive warehouse and the file lake from FIXED host
+    # directories unless these are set, so every session (and every worktree) shared one warehouse:
+    # a table directory left by an interrupted run (wh.db/widgets) made the next session's CREATE
+    # TABLE fail HIVE_PATH_ALREADY_EXISTS on a brand-new metastore. One directory per session,
+    # under the same per-project root reap_orphaned_projects removes. The file lake is an identity
+    # mount (same absolute path inside the containers), so an absolute host path is required.
+    for env_var, sub in (
+        ("PROVISA_E2E_HIVE_WAREHOUSE_HOST", "hive-warehouse"),
+        ("PROVISA_E2E_FILE_LAKE_HOST", "file-lake"),
+    ):
+        d = os.path.join(path, sub)
+        os.makedirs(d, exist_ok=True)
+        os.environ.setdefault(env_var, d)
     return path
 
 

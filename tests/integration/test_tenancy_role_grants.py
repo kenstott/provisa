@@ -33,7 +33,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "5432")
-_ASYNC_URL = f"postgresql+asyncpg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
+_ASYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
 
 _ORG_ID = "req1337"
 _SCHEMA = f"org_{_ORG_ID}"
@@ -56,7 +56,7 @@ async def tenant_db():
     async with db.acquire() as conn:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA}_mv_cache CASCADE")
-    await engine.dispose()
+    engine.dispose()
 
 
 async def _caps(db: Database) -> dict[str, set[str]]:

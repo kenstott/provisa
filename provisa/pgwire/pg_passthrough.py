@@ -45,9 +45,22 @@ _INT32 = struct.Struct("!i")
 
 
 class PassthroughError(Exception):
-    """Any condition that should fall back to the normal decode/re-encode DIRECT path — a real
-    Postgres ErrorResponse, a column-count mismatch against what the client was already told,
-    or a connection-level failure. Never a correctness risk: callers catch this and fall back."""
+    """The passthrough does not APPLY to this statement — a result column whose advertised wire
+    type does not have the source type's exact byte layout. By design the statement then takes the
+    decode/re-encode path; callers catch exactly this and route there. A passthrough that applies
+    but cannot open or read raises :class:`PassthroughFailure` instead, which no caller catches."""
+
+
+class PassthroughFailure(RuntimeError):
+    """The passthrough applies but failed — the raw connection could not be opened, the source
+    returned an ErrorResponse, or its rows contradict the RowDescription the client was sent. The
+    request fails with this error; it never falls back to the decode/re-encode path (REQ-1863)."""
+
+
+# Every raw passthrough connection identifies itself to the source Postgres (pg_stat_activity,
+# the source's own logs) — the one way an operator can tell these dedicated, single-use
+# connections apart from the source pool's.
+_PASSTHROUGH_APPLICATION_NAME = "provisa-pgwire-passthrough"
 
 
 @dataclass
@@ -81,29 +94,18 @@ async def open_raw_connection(connect_kwargs: dict[str, Any]) -> RawPgConnection
     then pause its transport so this module can read/write its raw socket directly instead of
     going through asyncpg's own Cython protocol."""
     import asyncio
+    import os
+    import socket
 
     import asyncpg
 
     if not connect_kwargs:
-        raise PassthroughError("no connect parameters given (connect() never called)")
-    # uvloop's own transport socket, once dup()'d, is still a `uvloop.loop.PseudoSocket` (not a
-    # genuine `socket.socket` the way the stdlib SelectorEventLoop's is) — its `.send()` is a
-    # deliberate stub that raises `TypeError: transport sockets do not support send() method`.
-    # 100% reproducible live: govern+execute both succeed (confirmed via [PGWIRE TIMING] logs),
-    # then PassthroughCursor.fetch's loop.sock_sendall raises this on literally every call, which
-    # propagates uncaught through the passthrough generator (nothing downstream of the initial
-    # open_passthrough() call catches PassthroughError — see server.py) and kills the client
-    # connection with zero visible signal outside ~/pgwire_debug.log. Detect and refuse up front
-    # — matches this whole module's own fallback discipline (falls back to the ordinary
-    # decode/re-encode path on ANY PassthroughError, never a correctness risk) — rather than ever
-    # attempting a technique this event loop cannot support.
-    _loop_for_check = asyncio.get_event_loop()
-    if type(_loop_for_check).__module__.startswith("uvloop"):
-        raise PassthroughError(
-            "raw-socket passthrough is not supported under uvloop "
-            "(PseudoSocket.send() unconditionally raises TypeError)"
-        )
-    conn = await asyncpg.connect(**connect_kwargs)
+        raise PassthroughFailure("no connect parameters given (connect() never called)")
+    server_settings = {
+        **connect_kwargs.get("server_settings", {}),
+        "application_name": _PASSTHROUGH_APPLICATION_NAME,
+    }
+    conn = await asyncpg.connect(**{**connect_kwargs, "server_settings": server_settings})
     # Everything below is real I/O/attribute-access that can raise (the AttributeError/
     # TransportSocket bugs this function's history is full of are exactly the kind of thing this
     # guards against) — on ANY failure past this point, `conn` is a live, connected asyncpg
@@ -122,15 +124,15 @@ async def open_raw_connection(connect_kwargs: dict[str, Any]) -> RawPgConnection
         transport.pause_reading()
         wrapped = transport.get_extra_info("socket")
         if wrapped is None:
-            raise PassthroughError("transport exposes no raw socket (unexpected transport type)")
-        # transport.get_extra_info("socket") is an asyncio.trsock.TransportSocket — a SAFE wrapper
-        # around the real fd that deliberately does not implement send()/recv() (only metadata
-        # calls like getsockname/fileno), specifically to stop code from doing what this module
-        # needs to do. Live-confirmed: loop.sock_sendall() on the bare wrapper raises
-        # AttributeError: 'TransportSocket' object has no attribute 'send'. `.dup()` returns a
-        # genuine `socket.socket` sharing the same underlying fd — real send()/recv(), safe for
-        # loop.sock_* while the original transport stays paused. Must be non-blocking for loop.sock_*.
-        sock = wrapped.dup()
+            raise PassthroughFailure("transport exposes no raw socket (unexpected transport type)")
+        # get_extra_info("socket") is a wrapper that deliberately refuses send()/recv() on BOTH
+        # event loops a deployment runs: asyncio's TransportSocket has no send() at all, and
+        # uvloop's PseudoSocket (main.py installs uvloop, REQ-1867) stubs it to raise TypeError —
+        # and its own .dup() is another PseudoSocket. Both expose fileno(), so build a genuine
+        # socket.socket over a dup of that descriptor: real send()/recv() for loop.sock_* under
+        # either loop, on the same connection, while the original transport stays paused. This
+        # module owns the dup'd descriptor and closes it (RawPgConnection.close).
+        sock = socket.socket(fileno=os.dup(wrapped.fileno()))
         sock.setblocking(False)
     except BaseException:
         # Live-confirmed: conn.close() can itself hang forever here if reads are still paused
@@ -165,11 +167,47 @@ class PassthroughResult:
 _TEXT_SAFE_TYPES = frozenset({"text", "varchar", "bpchar", "name", "char"})
 
 
-def _column_types_are_passthrough_safe(column_types: list[str]) -> bool:
-    from provisa.pgwire.server import _INT_TYPES, _TYPE_TO_BVTYPE
+# Source column type name (asyncpg Type.name) -> its pg_type OID, for the types whose wire layout
+# a pgwire-advertised type can match exactly.
+_SOURCE_TYPE_OIDS = {
+    "bool": 16,
+    "int2": 21,
+    "float4": 700,
+    "jsonb": 3802,
+    "timestamptz": 1184,
+    "timetz": 1266,
+    "uuid": 2950,
+    "interval": 1186,
+    "bytea": 17,
+    "int8": 20,
+    "int4": 23,
+    "float8": 701,
+    "numeric": 1700,
+    "date": 1082,
+    "time": 1083,
+    "timestamp": 1114,
+    "json": 114,
+}
 
-    recognized = {t.lower() for t in _TYPE_TO_BVTYPE} | {t.lower() for t in _INT_TYPES}
-    return all(t.lower() in recognized or t.lower() in _TEXT_SAFE_TYPES for t in column_types)
+
+def _column_types_are_passthrough_safe(column_types: list[str]) -> bool:
+    """Every column's ADVERTISED wire type must have exactly the source type's byte layout — a
+    binary client reads the forwarded raw bytes by the advertised OID (live: int4 advertised as
+    int8 → asyncpg "insufficient data in buffer: requested 8 remaining 4"). Each type here is
+    advertised with its own OID (int2, float4, jsonb, timestamptz, timetz, uuid included), so it
+    stays on the passthrough; any other type is refused (decode/re-encode instead)."""
+    from buenavista.postgres import BVTYPE_TO_PGTYPE
+
+    from provisa.pgwire.server import _sql_type_to_bvtype
+
+    for t in column_types:
+        name = t.lower()
+        if name in _TEXT_SAFE_TYPES:
+            continue
+        exact = _SOURCE_TYPE_OIDS.get(name)
+        if exact is None or BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(t)][0] != exact:
+            return False
+    return True
 
 
 async def open_passthrough(
@@ -184,7 +222,7 @@ async def open_passthrough(
     import asyncpg
 
     if not connect_kwargs:
-        raise PassthroughError("no connect parameters given (connect() never called)")
+        raise PassthroughFailure("no connect parameters given (connect() never called)")
     conn = await asyncpg.connect(**connect_kwargs)
     try:
         stmt = await conn.prepare(sql)
@@ -275,7 +313,7 @@ async def _recv_exact(
     while len(buf) < n:
         chunk = await loop.sock_recv(sock, n - len(buf))
         if not chunk:
-            raise PassthroughError("connection closed mid-message")
+            raise PassthroughFailure("connection closed mid-message")
         buf += chunk
     return buf
 
@@ -310,7 +348,7 @@ async def _simple_query(
     while True:
         tag, payload = await _read_message(loop, sock)
         if tag == b"E":  # ErrorResponse
-            raise PassthroughError(_parse_error_response(payload))
+            raise PassthroughFailure(_parse_error_response(payload))
         if tag == b"Z":  # ReadyForQuery
             return
 
@@ -370,7 +408,7 @@ class PassthroughCursor:
             elif tag == b"D":  # DataRow — the whole point: forward unmodified
                 (ncols,) = _INT16.unpack(payload[:2])
                 if ncols != self._expected_column_count:
-                    raise PassthroughError(
+                    raise PassthroughFailure(
                         f"column count mismatch: source row has {ncols}, "
                         f"client was told {self._expected_column_count}"
                     )
@@ -380,7 +418,7 @@ class PassthroughCursor:
             elif tag == b"C" or tag == b"I":  # CommandComplete / EmptyQueryResponse
                 self._exhausted = True
             elif tag == b"E":  # ErrorResponse
-                raise PassthroughError(_parse_error_response(payload))
+                raise PassthroughFailure(_parse_error_response(payload))
             elif tag == b"Z":  # ReadyForQuery — this fetch's round trip is done
                 awaiting_ready = False
             # Any other tag (NoticeResponse, ParameterStatus, etc.): ignore and keep reading.

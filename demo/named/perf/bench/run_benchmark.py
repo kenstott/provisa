@@ -180,10 +180,11 @@ class QueryResult:
     samples: list[Sample] = field(default_factory=list)
     concurrency: int | None = None  # set for concurrency-ramp samples
     # REQ-1894: which of the two full passes produced these samples (see run_both_cache_passes).
-    # "nocache": every iteration forced no_cache=True end-to-end (global kill switch/header) — no
-    # response-cache hit is possible, so ALL iterations are real, independent executions and the
+    # "nocache": no request opts into the response cache (it is opt-in, REQ-544 amended
+    # 2026-09-30) — no hit is possible, so ALL iterations are real, independent executions and the
     # full percentile set over them is a statistically valid "cold" measurement (not one sample).
-    # "cache": normal run, cache allowed to engage — iteration 1 is dropped before computing
+    # "cache": the request opts in (GraphQL @cached; SQL `-- @provisa cache=true`; gRPC and
+    # Cypher have no opt-in and never cache) — iteration 1 is dropped before computing
     # percentiles (per-maintainer instruction) because it is not guaranteed cache-cold (a prior
     # pass, or another query sharing the same governed shape/role, may have already warmed this
     # exact cache key), so it is neither a reliable cold sample nor a reliable warm one.
@@ -654,15 +655,13 @@ class GraphqlTransport(Transport):
         # (see class docstring), so the once-materialized row list is bounded — small enough that
         # sampling (_ByteEstimator) isn't needed here, unlike the streaming transports.
         assert self._client is not None
-        if no_cache:
-            # REQ-1894: @noCache (provisa/compiler/directives.py) is a real, already-shipped
-            # operation-level GraphQL directive — "bypass response cache (no read, no write)".
-            # This is the ONLY transport with a response cache today (Route.CACHE, endpoint.py),
-            # so this is also the only run_* method with a no_cache param; the other transports
-            # have nothing to disable yet. Inserted right after the operation signature
-            # ("query(...)" or bare "query"), before the first "{" — every query in queries.py
-            # uses that exact shape.
-            query = re.sub(r"(query(?:\([^)]*\))?)\s*\{", r"\1 @noCache {", query, count=1)
+        if not no_cache:
+            # REQ-544 (amended 2026-09-30): the response cache is per-request OPT-IN — the cache
+            # pass asks for it with the operation-level @cached directive; the "nocache" pass
+            # sends nothing (no read, no write by default). Inserted right after the operation
+            # signature ("query(...)" or bare "query"), before the first "{" — every query in
+            # queries.py uses that exact shape.
+            query = re.sub(r"(query(?:\([^)]*\))?)\s*\{", r"\1 @cached {", query, count=1)
         resp = self._client.post("/data/graphql", json={"query": query, "variables": params})
         resp.raise_for_status()
         body = resp.json()
@@ -760,14 +759,11 @@ class GrpcTransport(Transport):
     verified against provisa/grpc/proto_gen.py + provisa/grpc/server.py + provisa/grpc/
     query_ir.py — not MCP, which is a tool-calling protocol, not a raw query surface).
 
-    NO PRE-COMPILED .proto: the server compiles a per-role .proto at boot into a tempdir
-    (provisa/grpc/schema_gen.py's compile_proto) with no stable published copy a client can
-    build against ahead of time. The intended discovery path is gRPC server reflection —
-    provisa/grpc/reflection.py registers grpc_reflection.v1alpha specifically so external
-    clients can do this — so this transport resolves message descriptors at RUN TIME via
-    ServerReflectionInfo (file_containing_symbol / file_by_filename) into a protobuf
-    DescriptorPool, then builds message classes with google.protobuf.message_factory, instead
-    of shipping a static _pb2.py.
+    NO PRE-COMPILED .proto: the schema is generated per role at server boot. The role's .proto
+    is published at GET /data/proto/{role} (REQ-525), so this transport fetches it over HTTP at
+    startup, compiles it in-process with grpc_tools.protoc into a protobuf DescriptorPool, and
+    builds message classes with google.protobuf.message_factory. gRPC server reflection is
+    optional (REQ-1904: off unless auth is active or explicitly opted in), so it is not used.
 
     CORRECTED 2026-09-27 (re-verified live against provisa/grpc/server.py:422-423,667-675 and
     provisa/grpc/query_ir.py, not grepped from memory): `{Type}Request.filter`/
@@ -790,18 +786,16 @@ class GrpcTransport(Transport):
 
     name = "grpc"
 
-    def __init__(self, host: str, port: int, role: str = "org_admin"):
+    def __init__(self, host: str, port: int, http_base_url: str, role: str = "org_admin"):
         self._role = role
         self._channel = None
         self._pool = None
-        self._loaded_files: set[str] = set()
         self._message_class_cache: dict[str, type] = {}
         try:
             import grpc as _grpc
-            from google.protobuf import descriptor_pool as _descriptor_pool
 
             self._grpc = _grpc
-            self._pool = _descriptor_pool.Default()
+            self._pool = self._compile_role_proto(http_base_url, role)
             # REQ-1899: matches the server's own raised max message size (provisa/grpc/server.py's
             # start_grpc_server) — a client-chosen batch_rows large enough to exceed the previous
             # 4MB default (e.g. large_scan's 65,536-row batches) needs the client side raised too,
@@ -820,47 +814,52 @@ class GrpcTransport(Transport):
     def available(self) -> bool:
         return self._channel is not None
 
+    @staticmethod
+    def _compile_role_proto(http_base_url: str, role: str):
+        """Fetch the role's published .proto and compile it (with the well-known imports shipped
+        in grpc_tools) into a fresh DescriptorPool."""
+        import tempfile
+        from importlib import resources
+
+        import httpx
+        from google.protobuf import descriptor_pb2, descriptor_pool
+        from grpc_tools import protoc
+
+        resp = httpx.get(
+            f"{http_base_url}/data/proto/{role}", headers={"X-Provisa-Role": role}, timeout=30
+        )
+        resp.raise_for_status()
+        well_known = str(resources.files("grpc_tools") / "_proto")
+        with tempfile.TemporaryDirectory() as d:
+            src = Path(d) / "provisa.proto"
+            src.write_text(resp.text)
+            out = Path(d) / "provisa.pb"
+            rc = protoc.main(
+                [
+                    "protoc",
+                    f"-I{d}",
+                    f"-I{well_known}",
+                    "--include_imports",
+                    f"--descriptor_set_out={out}",
+                    str(src),
+                ]
+            )
+            if rc != 0:
+                raise RuntimeError(f"protoc failed ({rc}) compiling {role}'s published .proto")
+            fds = descriptor_pb2.FileDescriptorSet.FromString(out.read_bytes())
+        pool = descriptor_pool.DescriptorPool()
+        for fdp in fds.file:
+            pool.Add(fdp)
+        return pool
+
     def _resolve_message_class(self, full_name: str) -> type:
-        """Resolve a `provisa.v1.<Message>` class via gRPC server reflection, recursively
-        pulling in dependency .proto files (google/protobuf/field_mask.proto etc.) the same way
-        any reflection-based client (grpcurl, polyglot) must — the server has no other way to
-        publish message shapes for a per-role, dynamically compiled schema."""
+        """A ``provisa.v1.<Message>`` class from the role's compiled .proto."""
         if full_name in self._message_class_cache:
             return self._message_class_cache[full_name]
-        from google.protobuf import descriptor_pb2, message_factory
-        from grpc_reflection.v1alpha import reflection_pb2, reflection_pb2_grpc
+        from google.protobuf import message_factory
 
-        stub = reflection_pb2_grpc.ServerReflectionStub(self._channel)
-
-        def _fetch(request) -> list:
-            responses = list(stub.ServerReflectionInfo(iter([request])))
-            return list(responses[0].file_descriptor_response.file_descriptor_proto)
-
-        def _load(name: str, by_symbol: bool) -> None:
-            request = (
-                reflection_pb2.ServerReflectionRequest(file_containing_symbol=name)
-                if by_symbol
-                else reflection_pb2.ServerReflectionRequest(file_by_filename=name)
-            )
-            for fdp_bytes in _fetch(request):
-                fdp = descriptor_pb2.FileDescriptorProto()
-                fdp.ParseFromString(fdp_bytes)
-                if fdp.name in self._loaded_files:
-                    continue
-                for dep in fdp.dependency:
-                    if dep in self._loaded_files:
-                        continue
-                    try:
-                        self._pool.FindFileByName(dep)
-                        self._loaded_files.add(dep)
-                    except KeyError:
-                        _load(dep, by_symbol=False)
-                self._pool.Add(fdp)
-                self._loaded_files.add(fdp.name)
-
-        _load(full_name, by_symbol=True)
-        descriptor = self._pool.FindMessageTypeByName(full_name)
-        cls = message_factory.GetMessageClass(descriptor)
+        assert self._pool is not None
+        cls = message_factory.GetMessageClass(self._pool.FindMessageTypeByName(full_name))
         self._message_class_cache[full_name] = cls
         return cls
 
@@ -987,6 +986,10 @@ def _run_sequential(
         query_id=q.id, category=q.category, transport=transport.name, cache_pass=cache_pass
     )
     call = getattr(transport, _CALL_METHOD[method])
+    if method == "sql" and not no_cache and isinstance(text, str):
+        # REQ-544 (amended 2026-09-30): pgwire and Flight SQL opt into the response cache per
+        # statement with a `-- @provisa cache=true` comment; the "nocache" pass sends none.
+        text = "-- @provisa cache=true\n" + text
     for i in range(q.iterations):
         t0 = time.perf_counter()
         try:
@@ -1320,7 +1323,7 @@ def main() -> int:
         "http": HttpTransport(args.http_base_url, role),
         "flight": FlightTransport(args.flight_host, args.flight_port, role),
         "graphql": GraphqlTransport(args.http_base_url, role),
-        "grpc": GrpcTransport(args.grpc_host, args.grpc_port, role),
+        "grpc": GrpcTransport(args.grpc_host, args.grpc_port, args.http_base_url, role),
     }
     for name, t in transports.items():
         status = (
@@ -1339,8 +1342,8 @@ def main() -> int:
     out_path = out_dir / f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}.json"
     saturation: dict[str, list[dict]] = {}
     # REQ-1894: two full passes, not one run split after the fact — "cold"/uncached numbers must
-    # come from every iteration with the response cache genuinely disabled (@noCache, the only
-    # transport with a cache today — see GraphqlTransport.run_graphql), so they're real,
+    # come from every iteration with the response cache genuinely unused (no opt-in hint — the
+    # cache is per-request opt-in, see GraphqlTransport.run_graphql / _run_sequential), so they're real,
     # independent executions throughout, not a single first-iteration sample (not statistically
     # reliable) and not contaminated by a warm cache entry left by a prior identical call. The
     # cache-enabled pass is still run in full (not skipped) — it exercises the cache-hit code path

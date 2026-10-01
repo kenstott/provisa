@@ -97,7 +97,7 @@ class TestSinkTierSelection:
         async def _fake_presign(prefix, config):
             return f"http://minio/{prefix}/f.parquet"
 
-        async def _noop_cleanup(prefix, config, delay_seconds=None):
+        def _noop_cleanup(prefix, config, delay_seconds=None):
             return None
 
         monkeypatch.setattr(rd, "presign_ctas_result", _fake_presign)

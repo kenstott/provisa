@@ -33,6 +33,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from provisa.compiler.compiled_query_cache import CompiledQueryCache
+
 grpc = pytest.importorskip("grpc")
 grpc_aio = pytest.importorskip("grpc.aio")
 
@@ -51,18 +53,16 @@ _TEST_GRPC_PORT = int(os.environ.get("PROVISA_TEST_GRPC_PORT", "50151"))
 
 
 def _free_port() -> int:
-    """An OS-assigned free TCP port (same convention as tests/conftest.py's own _free_port).
+    """A leased free TCP port (same convention as tests/conftest.py's own _free_port).
 
     The fixed _TEST_GRPC_PORT+N ports below are reproducibly reused by every worktree running
     this file concurrently (this session's swarm runs several gRPC-focused agents in parallel
     worktrees) — confirmed live: `[::]:50153` failed with "Address already in use" identically
     against both the pre-hardening baseline server.py and this branch's, so it is not a
     regression, just this file's own fixed-port scheme not surviving concurrent worktree runs."""
-    import socket
+    from tests.port_lease import lease_port
 
-    with socket.socket() as s:
-        s.bind(("", 0))
-        return s.getsockname()[1]
+    return lease_port()
 
 
 MINIMAL_PROTO = """\
@@ -178,14 +178,14 @@ class TestGrpcServerStarts:
 
         state.federation_engine = EngineRuntime(build_trino_engine(), state)
 
-        server = await start_grpc_server(
+        server = start_grpc_server(
             port=_TEST_GRPC_PORT,
             state=state,
             pb2_path=pb2_path,
             pb2_grpc_path=pb2_grpc_path,
         )
         assert server is not None
-        await server.stop(grace=0)
+        server.stop(grace=0).wait()
 
     async def test_grpc_server_binds_expected_port(self, compiled_proto_paths):
         """Server binds to the port specified in the call."""
@@ -225,7 +225,7 @@ class TestGrpcServerStarts:
         state.federation_engine = EngineRuntime(build_trino_engine(), state)
 
         port = _TEST_GRPC_PORT + 1
-        server = await start_grpc_server(
+        server = start_grpc_server(
             port=port,
             state=state,
             pb2_path=pb2_path,
@@ -244,7 +244,7 @@ class TestGrpcServerStarts:
                 pass
             assert connected, f"gRPC server is not listening on port {port}"
         finally:
-            await server.stop(grace=0)
+            server.stop(grace=0).wait()
 
 
 # ---------------------------------------------------------------------------
@@ -362,6 +362,12 @@ class TestGrpcQueryExecution:
         # REQ-693: a bare MagicMock attribute is truthy, which would put this unsecured
         # deployment behind the high-security KMS-key gate. Name it standard mode.
         state.security_high = False
+        # The governed pipeline keys its compile/routing caches on the schema identity; bare MagicMocks
+        # there read as a non-string cache key and as cache HITs.
+        state.schema_boot_id = "itest"
+        state.schema_version = 1
+        state.compiled_query_cache = CompiledQueryCache()
+        state.routing_cache = CompiledQueryCache()
         state.schemas = {"admin": schema}
         state.contexts = {"admin": ctx}
         state.rls_contexts = {"admin": RLSContext.empty()}
@@ -383,7 +389,7 @@ class TestGrpcQueryExecution:
         state.federation_engine = EngineRuntime(build_trino_engine(), state)
 
         port = _free_port()
-        server = await start_grpc_server(
+        server = start_grpc_server(
             port=port,
             state=state,
             pb2_path=pb2_path,
@@ -406,7 +412,7 @@ class TestGrpcQueryExecution:
         yield stub, pb2
 
         await channel.close()
-        await server.stop(grace=0)
+        server.stop(grace=0).wait()
         await source_pool.close_all()
 
     async def test_grpc_query_returns_rows(self, grpc_server_and_stub):
@@ -579,7 +585,7 @@ class TestSecuredGrpcRequiresACredential:
         state.federation_engine = EngineRuntime(build_trino_engine(), state)
 
         secured_port = _free_port()
-        server = await start_grpc_server(
+        server = start_grpc_server(
             port=secured_port,
             state=state,
             pb2_path=pb2_path,
@@ -596,7 +602,7 @@ class TestSecuredGrpcRequiresACredential:
         yield stub_cls(channel), pb2
 
         await channel.close()
-        await server.stop(grace=0)
+        server.stop(grace=0).wait()
         grpc_auth.validate_grpc_credential = original
 
     async def test_an_rpc_without_a_credential_is_refused(self, secured_stub):

@@ -28,7 +28,6 @@ from sqlalchemy import text
 
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_org import event_status, events, node_freshness_state
-from provisa.federation.store_writer import async_store_url
 
 _REPO = Path(__file__).resolve().parents[2]
 _COMPOSE = ["docker", "compose", "-p", "provisa-mvmvp", "-f", "docker-compose.mvmvp.yml"]
@@ -70,19 +69,19 @@ def mvmvp_stack():
 async def control_plane(mvmvp_stack):
     """A control-plane ``Database`` with the queue tables freshly created + truncated per test, plus
     a cleaner that drops any store tables a test lands so runs are isolated."""
-    cp_engine = create_engine_from_url(async_store_url(mvmvp_stack["cp"]), pool_size=2)
+    cp_engine = create_engine_from_url(mvmvp_stack["cp"], pool_size=2)
     tables = [events, event_status, node_freshness_state]
-    async with cp_engine.begin() as c:
-        await c.run_sync(lambda s: events.metadata.create_all(s, tables=tables))
-        await c.execute(
+    with cp_engine.begin() as c:
+        events.metadata.create_all(c, tables=tables)
+        c.execute(
             text("TRUNCATE event_status, events, node_freshness_state RESTART IDENTITY CASCADE")
         )
-    store_engine = create_engine_from_url(async_store_url(mvmvp_stack["store"]), pool_size=1)
+    store_engine = create_engine_from_url(mvmvp_stack["store"], pool_size=1)
 
     async def drop_store(*names: str) -> None:
-        async with store_engine.begin() as c:
+        with store_engine.begin() as c:
             for n in names:
-                await c.execute(text(f'DROP TABLE IF EXISTS "{n}"'))
+                c.execute(text(f'DROP TABLE IF EXISTS "{n}"'))
 
     await drop_store(*_STORE_TABLES)
     try:
@@ -92,5 +91,5 @@ async def control_plane(mvmvp_stack):
             "drop": drop_store,
         }
     finally:
-        await cp_engine.dispose()
-        await store_engine.dispose()
+        cp_engine.dispose()
+        store_engine.dispose()

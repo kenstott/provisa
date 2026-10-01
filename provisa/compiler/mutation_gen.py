@@ -18,7 +18,7 @@ No mutations for NoSQL sources.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from graphql import DocumentNode, FieldNode, OperationDefinitionNode
 
@@ -26,6 +26,7 @@ from datetime import datetime, timezone
 
 from provisa.compiler.params import ParamCollector
 from provisa.compiler.sql_gen import CompilationContext, TableMeta, _q
+from provisa.compiler.sql_rewrite import translate_epoch_temporal_columns
 from provisa.compiler.sql_where import _extract_value
 
 
@@ -363,6 +364,13 @@ def compile_mutation(  # REQ-031, REQ-032, REQ-033, REQ-036, REQ-037
     source_ids = {r.source_id for r in results}
     if len(source_ids) > 1:
         raise ValueError(f"Cross-source mutations not supported. Sources involved: {source_ids}")
+
+    # REQ-1908: a mutation's SQL is physical as built (it never passes the semantic→physical
+    # rewrite), so an epoch-stored temporal column is translated here: an ISO 8601 value is written
+    # as its epoch number, and RETURNING reads it back as the temporal.
+    results = [
+        replace(r, sql=translate_epoch_temporal_columns(r.sql, ctx.epoch_columns)) for r in results
+    ]
 
     return results
 

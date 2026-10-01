@@ -40,6 +40,9 @@ class _FakeCursor:
         self.executed: list[str] = []
         self.description = [("n", "integer", None, None, None, None, None)]
 
+    def cancel(self):  # trino Cursor.cancel(), registered with the request deadline
+        pass
+
     def execute(self, sql, params=None):  # noqa: D401
         self.executed.append(sql)
 

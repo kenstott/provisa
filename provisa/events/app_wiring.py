@@ -225,6 +225,32 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
             continue
         if needs_pgwire_replica(src, bare_engine):
             loaders[stype] = make_pgwire_loader(allocator=allocator)
+    # REQ-030/1141: a direct-driver source the operator floors is landed from its own pool — the
+    # engine holds no live relation for it (native_backend._attach_registered).
+    from provisa.executor.drivers.registry import has_driver
+    from provisa.events.source_loader import make_floored_direct_loader
+    from provisa.transpiler.router import API_SOURCES, VIRTUAL_SOURCES
+
+    floored_direct = make_floored_direct_loader(state, engine)
+    for stype in set(getattr(state, "source_types", {}).values()):
+        if stype in loaders or stype in VIRTUAL_SOURCES or stype in API_SOURCES:
+            continue
+        if has_driver(stype):
+            loaders[stype] = floored_direct
+    return loaders
+
+
+def build_keyed_arrow_loaders(engine: Any = None) -> dict[str, Any]:
+    """The per-type COLUMNAR keyed row fetchers for row_materialize key pushdown (REQ-1865) --
+    ``SourceRowLoader.load_keys_arrow``'s counterpart to :func:`build_keyed_adapter_loaders`, for
+    the types whose fetch reads Arrow natively. Gated on the same declared capability: a type the
+    engine attaches live is never row-materialized, so it gets no fetcher."""
+    from provisa.events.source_loader import make_clickhouse_keyed_arrow_loader
+    from provisa.federation.strategy import engine_attaches
+
+    loaders: dict[str, Any] = {}
+    if not engine_attaches(getattr(engine, "engine", engine), "clickhouse"):
+        loaders["clickhouse"] = make_clickhouse_keyed_arrow_loader()
     return loaders
 
 

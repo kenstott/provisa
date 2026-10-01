@@ -922,6 +922,50 @@ tables:
 
 Configurar `cache_enabled: false` en un origen desactiva la caché para todas las tablas de ese origen, sin importar el TTL a nivel de tabla. (REQ-544) Las claves de caché siempre incluyen `role_id` + valores de contexto RLS para la partición de seguridad. (REQ-544)
 
+### Activación por solicitud
+
+La caché de respuestas está desactivada para toda solicitud que no la pida. (REQ-544) Una solicitud la activa con:
+
+| Superficie | Activación |
+| --- | --- |
+| GraphQL (`/data/graphql`, Arrow Flight) | `@cached` en la operación, opcionalmente `@cached(ttl: 60)` |
+| SQL (pgwire, Flight SQL, `/data/sql`) | una línea de comentario `-- @provisa cache=true` o `-- @provisa cache_ttl=60` en la sentencia |
+| Cypher (`/data/cypher`, la Neo4j Query API, Bolt, Arrow Flight) | una línea de comentario `// @provisa cache=true` o `// @provisa cache_ttl=60` en la consulta |
+| gRPC (y el proxy gRPC HTTP) | metadatos de la llamada (encabezados en el proxy) `x-provisa-cache: true` o `x-provisa-cache-ttl: 60` |
+
+REST y JSON:API no tienen activación. Un `ttl` que no sea un entero hace fallar la solicitud.
+
+Sin la indicación, la solicitud no lee ni escribe la caché. Con ella, siguen decidiendo los ajustes anteriores: el resultado se guarda en caché solo si cada origen que lee tiene `cache_enabled: true` y el TTL resuelto de cada tabla es mayor que 0. La entrada dura el `ttl` de la solicitud si lo indica; si no, el TTL resuelto más corto de las tablas leídas. (REQ-544)
+
+La indicación solo acepta datos más antiguos a cambio de velocidad. Nunca hace una lectura más reciente de lo que permiten los ajustes del operador: la frescura de la carga y de la réplica (`cache_ttl`, `change_signal`), `row_materialize`, las instantáneas `load_protected` y las comprobaciones de frescura se aplican a una solicitud con indicación exactamente igual que a una sin ella. Consulte la sección sobre frescura y carga en este documento. (REQ-544)
+
+`@noCache` y `-- @provisa no_cache=true` ya no existen: con la caché desactivada por defecto no hay nada que omitir.
+
+Una escritura invalida toda entrada de caché que la organización que escribe tiene para las tablas que escribió; las entradas de otra organización para la misma tabla no se tocan. Si la invalidación falla, la solicitud falla en lugar de dejar entradas obsoletas. (REQ-544, REQ-595)
+
+## Frescura y carga: quién decide
+
+Tres partes influyen en lo reciente que es un resultado y en cuánta carga pone una consulta sobre los sistemas que hay detrás. (REQ-030)
+
+- **La fuente de origen.** Lo ideal es que gestione su propia contrapresión: límites de conexiones, tiempos de espera de sentencias, réplicas de lectura.
+- **El operador.** Protege la plataforma, Provisa misma, de la contrapresión. Cuando una fuente no puede protegerse, el operador la protege también. Los ajustes para ello están en fuentes y tablas: `load_protected`, `prefer_materialized`, los `federation_hints` de la fuente, el umbral de redirección de resultados grandes, el clúster de Kafka al que escriben los sinks y el watermark registrado de cada tabla.
+- **El usuario final.** Equilibra velocidad y actualidad, petición a petición.
+
+Los ajustes del operador son el suelo. Una petición puede moverse por encima de él, hacia datos más antiguos o menos carga; activar la caché de respuestas es el ejemplo habitual. Nunca puede bajar de él. Una pista de petición que lo haría se rechaza con un error que nombra el ajuste del operador, sin aplicarse ni descartarse en silencio.
+
+| Entrada de la petición | Qué puede hacer | Se rechaza cuando |
+| --- | --- | --- |
+| `@route(engine: DIRECT)`, `-- @provisa route=direct` | Elegir el driver directo para una fuente | la fuente es `load_protected` o `prefer_materialized` |
+| `@join`, `@reorder`, `@broadcastSize`, `/*+ ... */` | Fijar una propiedad de sesión del motor que los `federation_hints` de la fuente dejaron libre | cambia una propiedad que fijó el operador |
+| `X-Provisa-Redirect-Threshold`, `@redirect(threshold:)` | Redirigir un resultado antes | supera el umbral del operador |
+| `@sink(broker:)`, broker de `X-Provisa-Sink` | Repetir el broker del operador | nombra otro broker o no hay `KAFKA_BOOTSTRAP_SERVERS` configurado |
+| `@watermark` en una suscripción | Repetir el watermark registrado de la tabla | nombra otra columna o la tabla no tiene ninguno |
+| `@cached`, `-- @provisa cache=true` | Servir un resultado en caché más antiguo | nunca; una entrada de caché nunca es más reciente que la lectura que la guardó |
+
+Los rechazos devuelven HTTP 403 con el código `query.operator_floor`, SQLSTATE `42501` por pgwire y `PERMISSION_DENIED` por Flight y gRPC. (REQ-030)
+
+Una fuente `load_protected` o `prefer_materialized` nunca se lee en vivo desde una consulta en ningún transporte. Las consultas leen su copia aterrizada. Solo el aterrizaje y sus refrescos leen la fuente: un refresco ocurre cuando `cache_ttl` o una comprobación de frescura lo pide; sin ninguno, la copia aterriza una vez y luego solo se refresca mediante un feed de cambios o el planificador. (REQ-1907) (REQ-1141, REQ-826)
+
 ## Autenticación
 
 ```yaml
@@ -1428,7 +1472,7 @@ Para orígenes de Google Cloud, configure `GOOGLE_APPLICATION_CREDENTIALS` con l
 | Variable | Por defecto | Descripción |
 | ---------- | --------- | ------------- |
 | `PROVISA_CONFIG` | `config/provisa.yaml` | Ruta del archivo de configuración |
-| `TENANT_DATABASE_URL` | `postgresql+asyncpg://provisa:provisa@localhost:5432/provisa` | URI del almacén del plano de control (SQLAlchemy async); admite `sqlite+aiosqlite://…` / `duckdb://…` para el almacén de escritorio integrado (REQ-828, REQ-850) |
+| `TENANT_DATABASE_URL` | `postgresql+psycopg://provisa:provisa@localhost:5432/provisa` | URI del almacén del plano de control (SQLAlchemy async); admite `sqlite+pysqlite://…` / `duckdb://…` para el almacén de escritorio integrado (REQ-828, REQ-850) |
 | `PLATFORM_DATABASE_URL` | — | URI del registro de plataforma (directorio de tenants, registro de motores); requerida al inicio, sin reserva (REQ-837) |
 | `PROVISA_REDIS_EMBEDDED` | — | `1`/`true` usa fakeredis integrado en lugar de un servidor Redis — sin Docker (REQ-829) |
 | `PG_HOST` | `localhost` | Host de PostgreSQL |

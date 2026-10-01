@@ -264,14 +264,11 @@ class TestProvisaSessionEngineStreaming:
     """REQ-028: an ENGINE plan drains the engine's SYNC streaming terminal on the worker thread."""
 
     def test_engine_route_streams_via_sync_terminal(self, monkeypatch):
-        import asyncio
-        import threading
         from unittest.mock import MagicMock
 
         from provisa.pgwire import _pipeline
         from provisa.pgwire._pipeline import _Plan, _mint_stamp
         from provisa.transpiler.router import Route
-        import provisa.pgwire.server as srv_mod
         from provisa.pgwire.server import ProvisaSession
 
         captured = {}
@@ -288,7 +285,7 @@ class TestProvisaSessionEngineStreaming:
             stamp=_mint_stamp(),
         )
 
-        async def _govern(sql, role_id):
+        async def _govern(sql, role_id, params=None):
             captured["governed"] = sql
             return plan
 
@@ -304,19 +301,18 @@ class TestProvisaSessionEngineStreaming:
 
         state = MagicMock()
         state.federation_engine.execute_engine_sync.side_effect = _execute_engine_sync
-        # REQ-1897: check_response_cache's `getattr(state, "response_cache_store", None)` never
-        # sees the None default on a bare MagicMock (it auto-vivifies the attribute instead) --
-        # set it explicitly so this test's ENGINE-route streaming path is exercised, not the
-        # cache-HIT short circuit.
-        state.response_cache_store = None
+        # REQ-1897: AppState always holds a response-cache store (NoopCacheStore when caching is
+        # off); a bare MagicMock would auto-vivify one that "hits" — set the no-op store so this
+        # test's ENGINE-route streaming path is exercised, not the cache-HIT short circuit.
+        from provisa.cache.store import NoopCacheStore
+
+        state.response_cache_store = NoopCacheStore()
         monkeypatch.setattr("provisa.api.app.state", state)
 
-        loop = asyncio.new_event_loop()
-        with srv_mod._loop_lock:
-            srv_mod._loop = loop
-        t = threading.Thread(target=loop.run_forever, daemon=True)
-        t.start()
-        try:
+        from provisa.core.connection_loop import connection_loop
+
+        # The connection thread's loop, bound as ProvisaHandler.handle binds it (REQ-1882).
+        with connection_loop():
             sess = ProvisaSession()
             sess.role_id = "alice"
             sess.user_id = "alice"  # REQ-074: authentication sets both; the audit row needs it
@@ -326,21 +322,14 @@ class TestProvisaSessionEngineStreaming:
             assert captured["params"] == [7]
             assert captured["physical_sql"] == "SELECT 1"
             assert list(qr.rows()) == [(1,), (2,)]
-        finally:
-            loop.call_soon_threadsafe(loop.stop)
-            t.join(timeout=2)
-            with srv_mod._loop_lock:
-                srv_mod._loop = None
+            sess.close()
 
     def test_engine_route_rejects_ungoverned_plan(self, monkeypatch):
-        import asyncio
-        import threading
         from unittest.mock import MagicMock
 
         from provisa.pgwire import _pipeline
         from provisa.pgwire._pipeline import _Plan
         from provisa.transpiler.router import Route
-        import provisa.pgwire.server as srv_mod
         from provisa.pgwire.server import ProvisaSession
 
         # No stamp → the single-chokepoint guard must refuse before the engine runs.
@@ -353,56 +342,49 @@ class TestProvisaSessionEngineStreaming:
             stamp=None,
         )
 
-        async def _govern(sql, role_id):
+        async def _govern(sql, role_id, params=None):
             return plan
 
         monkeypatch.setattr(_pipeline, "govern_pgwire_plan", _govern)
         state = MagicMock()
         monkeypatch.setattr("provisa.api.app.state", state)
 
-        loop = asyncio.new_event_loop()
-        with srv_mod._loop_lock:
-            srv_mod._loop = loop
-        t = threading.Thread(target=loop.run_forever, daemon=True)
-        t.start()
-        try:
+        from provisa.core.connection_loop import connection_loop
+
+        with connection_loop():
             sess = ProvisaSession()
             sess.role_id = "alice"
             sess.user_id = "alice"  # REQ-074: authentication sets both; the audit row needs it
-            with pytest.raises(PermissionError):
-                sess.execute_sql("select n from t")
-            state.federation_engine.execute_engine_sync.assert_not_called()
-        finally:
-            loop.call_soon_threadsafe(loop.stop)
-            t.join(timeout=2)
-            with srv_mod._loop_lock:
-                srv_mod._loop = None
+            try:
+                with pytest.raises(PermissionError):
+                    sess.execute_sql("select n from t")
+                state.federation_engine.execute_engine_sync.assert_not_called()
+            finally:
+                sess.close()
 
 
 class TestPgwireDispatchHopCount:
-    """REQ-1887: pgwire's ENGINE-route residency prep collapses three sequential
-    ``asyncio.run_coroutine_threadsafe`` dispatches (``ensure_rows_resident`` +
-    ``pushdown_row_materialize`` + ``ensure_resident``) into one, via the shared
-    ``provisa.federation.query_residency.prepare_engine_residency`` also used by Flight SQL. Spies
-    on ``asyncio.run_coroutine_threadsafe`` and asserts the post-fix call count directly, the same
-    way ``TestFlightSqlDispatchHopCount`` does for Flight — asserting the request still succeeds
-    isn't proof the hop count actually dropped."""
+    """REQ-1887: pgwire's ENGINE-route residency prep collapses three sequential loop dispatches
+    (``ensure_rows_resident`` + ``pushdown_row_materialize`` + ``ensure_resident``) into one, via
+    the shared ``provisa.federation.query_residency.prepare_engine_residency`` also used by Flight
+    SQL. Since REQ-1882 (amended 2026-09-29) each dispatch is a run of the connection thread's own
+    loop (``ConnectionLoop.run``); spies on it and asserts the post-fix count directly — asserting
+    the request still succeeds isn't proof the dispatch count actually dropped."""
 
     @staticmethod
     def _counting_dispatch(monkeypatch):
-        """Wrap the real ``asyncio.run_coroutine_threadsafe`` so downstream code still gets a real
-        ``concurrent.futures.Future``, while recording how many times the worker-thread/event-loop
-        bridge boundary was crossed."""
-        import asyncio as _asyncio_mod
+        """Wrap the real ``ConnectionLoop.run`` so the coroutine still runs, while recording how
+        many times the request entered its event loop."""
+        from provisa.core.connection_loop import ConnectionLoop
 
-        real = _asyncio_mod.run_coroutine_threadsafe
+        real = ConnectionLoop.run
         calls: list = []
 
-        def _fake(coro, loop):
+        def _counting(self, coro, *, timeout=None):
             calls.append(coro)
-            return real(coro, loop)
+            return real(self, coro, timeout=timeout)
 
-        monkeypatch.setattr(_asyncio_mod, "run_coroutine_threadsafe", _fake)
+        monkeypatch.setattr(ConnectionLoop, "run", _counting)
         return calls
 
     def test_engine_route_residency_is_three_hops(self, monkeypatch):
@@ -410,15 +392,12 @@ class TestPgwireDispatchHopCount:
         ensure_rows_resident + pushdown_row_materialize + ensure_resident) + finalize_audit (1)
         = 3 hops, where it used to be 5 (govern + 3 separate residency dispatches +
         finalize_audit)."""
-        import asyncio
-        import threading
         from unittest.mock import AsyncMock, MagicMock
 
         from provisa.pgwire import _pipeline
         from provisa.pgwire._pipeline import _Plan, _mint_stamp
         from provisa.transpiler.router import Route
         import provisa.federation.query_residency as residency_mod
-        import provisa.pgwire.server as srv_mod
         from provisa.pgwire.server import ProvisaSession
 
         plan = _Plan(
@@ -433,7 +412,7 @@ class TestPgwireDispatchHopCount:
             stamp=_mint_stamp(),
         )
 
-        async def _govern(sql, role_id):
+        async def _govern(sql, role_id, params=None):
             return plan
 
         monkeypatch.setattr(_pipeline, "govern_pgwire_plan", _govern)
@@ -445,26 +424,22 @@ class TestPgwireDispatchHopCount:
             rows=[(1,)], column_names=["n"]
         )
         # REQ-1897: see the identical fix/comment in test_engine_route_streams_via_sync_terminal
-        # above -- a bare MagicMock never yields the getattr(..., None) default.
-        state.response_cache_store = None
+        # above -- caching off is the NoopCacheStore.
+        from provisa.cache.store import NoopCacheStore
+
+        state.response_cache_store = NoopCacheStore()
         monkeypatch.setattr("provisa.api.app.state", state)
 
         calls = self._counting_dispatch(monkeypatch)
 
-        loop = asyncio.new_event_loop()
-        with srv_mod._loop_lock:
-            srv_mod._loop = loop
-        t = threading.Thread(target=loop.run_forever, daemon=True)
-        t.start()
-        try:
+        from provisa.core.connection_loop import connection_loop
+
+        with connection_loop():
             sess = ProvisaSession()
             sess.role_id = "alice"
             sess.user_id = "alice"
-            sess.execute_sql("select n from t")
-
-            assert len(calls) == 3  # was 5 before REQ-1887
-        finally:
-            loop.call_soon_threadsafe(loop.stop)
-            t.join(timeout=2)
-            with srv_mod._loop_lock:
-                srv_mod._loop = None
+            try:
+                sess.execute_sql("select n from t")
+                assert len(calls) == 3  # was 5 before REQ-1887
+            finally:
+                sess.close()

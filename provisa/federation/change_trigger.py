@@ -25,7 +25,7 @@ off-peak window). Process-local, in-memory: a trigger fires a pull promptly; it 
 
 from __future__ import annotations
 
-import asyncio
+import threading
 
 
 class ChangeTriggerRegistry:  # REQ-1149
@@ -33,7 +33,9 @@ class ChangeTriggerRegistry:  # REQ-1149
 
     def __init__(self) -> None:
         self._counts: dict[str, int] = {}
-        self._lock = asyncio.Lock()
+        # REQ-1882: signalled from request threads (webhook) and the process loop (Kafka consumer);
+        # the read-modify-write never awaits, so a thread lock guards it.
+        self._lock = threading.Lock()
 
     async def signal(self, key: str) -> int:
         """Record a data-less change trigger for ``key`` (a Kafka control message / webhook hit).
@@ -41,7 +43,7 @@ class ChangeTriggerRegistry:  # REQ-1149
         Returns the new counter. Idempotent per delivery only in the sense that each call is one
         trigger; duplicate deliveries each bump — the scheduler collapses many bumps between refreshes
         into a single re-pull, so at-least-once delivery never causes more than one pull per window."""
-        async with self._lock:
+        with self._lock:
             n = self._counts.get(key, 0) + 1
             self._counts[key] = n
             return n

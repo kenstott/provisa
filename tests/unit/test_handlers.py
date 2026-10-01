@@ -20,7 +20,7 @@ _COLS = [("id", "bigint"), ("status", "text")]
 
 
 def _dsn(tmp_path) -> str:
-    return f"sqlite+aiosqlite:///{tmp_path / 'store.db'}"
+    return f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
 
 
 @pytest.mark.asyncio
@@ -128,7 +128,7 @@ async def test_source_land_through_duckdb_embedded_store(tmp_path, monkeypatch):
     # the same read path a real caller uses, rather than asserting an attachment that no longer
     # exists by design.
     runtime = rt._backend._runtime_for(rt._state)
-    table = runtime._store_broker.fetch_arrow("mat", "orders")
+    table, _canary = runtime._store_broker.fetch_arrow("mat", "orders")
     rows = sorted(zip(table.column("id").to_pylist(), table.column("status").to_pylist()))
     assert rows == [(1, "new"), (2, "sold")]
 
@@ -148,5 +148,5 @@ async def test_mv_generate_through_duckdb_embedded_store(tmp_path, monkeypatch):
     assert isinstance(digest, str) and digest
     # REQ-1901: see the matching comment in test_source_land_through_duckdb_embedded_store above.
     runtime = rt._backend._runtime_for(rt._state)
-    table = runtime._store_broker.fetch_arrow("mat", "mv_daily")
+    table, _canary = runtime._store_broker.fetch_arrow("mat", "mv_daily")
     assert table.column("id").to_pylist() == [7]

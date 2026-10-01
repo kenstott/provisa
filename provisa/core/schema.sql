@@ -163,6 +163,7 @@ CREATE TABLE IF NOT EXISTS table_columns (
     mask_value   TEXT,
     mask_precision TEXT,
     is_primary_key BOOLEAN NOT NULL DEFAULT FALSE,
+    epoch_unit   TEXT,  -- REQ-1908: epoch-number storage unit of a temporal column
     UNIQUE (table_id, column_name)
 );
 

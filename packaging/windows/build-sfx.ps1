@@ -1,6 +1,6 @@
 # Build the Provisa Windows base installer (native tier, REQ-979) using Inno Setup.
 # The native tier runs Provisa on a self-contained standalone Python interpreter
-# (python-build-standalone + provisa wheel + duckdb/pg_duckdb + aiosqlite) with NO
+# (python-build-standalone + provisa wheel + duckdb/pg_duckdb) with NO
 # Docker, VM, or container images. Mirrors macOS build-dmg.sh bundle_native_runtime.
 # The compute/container tier (WSL2 + Trino) is a separate on-demand download, not
 # bundled here - the base installer ships no container images (REQ-889, REQ-979).
@@ -91,20 +91,17 @@ $RuntimePy = Join-Path $RuntimeDst 'python.exe'
 Write-Host '[build-sfx] Installing provisa + deps into the native runtime...' -ForegroundColor Cyan
 & $RuntimePy -m pip install --upgrade pip --quiet
 if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed" }
-# aiosqlite + greenlet are explicit belt-and-suspenders: the native tier's control plane is
-# sqlite+aiosqlite and SQLAlchemy async needs greenlet. They are declared runtime deps, but naming
-# them here guarantees the bundle has them even if dependency resolution ever regresses (a missing
-# aiosqlite crashed the native API at startup once).
+# The native tier's control plane is sqlite+pysqlite (stdlib sqlite3), so it needs no extra driver.
 # mcp-proxy (REQ-1104): the Node-free stdio<->Streamable-HTTP bridge Claude Desktop launches to
 # reach the local MCP server. Bundled INTO the runtime so the connector is fully airgapped (no npx,
 # no user pip). The Explore/MCP panel emits a config whose command is this runtime's own python.
-& $RuntimePy -m pip install --quiet $RepoRoot uvicorn aiosqlite greenlet mcp-proxy
+& $RuntimePy -m pip install --quiet $RepoRoot uvicorn mcp-proxy
 if ($LASTEXITCODE -ne 0) { throw "pip install provisa failed" }
 & $RuntimePy -c "import mcp_proxy" 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "mcp-proxy missing from the bundled native runtime after install" }
-# Fail the build loudly if the critical native-tier driver did not land.
-& $RuntimePy -c "import aiosqlite" 2>&1 | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "aiosqlite missing from the bundled native runtime after install" }
+# Fail the build loudly if the control-plane driver (stdlib sqlite3) is missing from the runtime.
+& $RuntimePy -c "import sqlite3" 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "sqlite3 missing from the bundled native runtime" }
 
 # Place the built UI where ui_server resolves it: <site-packages>\static.
 $Site = & $RuntimePy -c "import sysconfig; print(sysconfig.get_paths()['purelib'])"

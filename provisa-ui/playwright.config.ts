@@ -350,15 +350,15 @@ function sqliteControlPlaneEnv(dataDir: string): Record<string, string> {
     }
   }
   return {
-    TENANT_DATABASE_URL: `sqlite+aiosqlite:///${path.join(dataDir, "tenant.db")}`,
-    PLATFORM_DATABASE_URL: `sqlite+aiosqlite:///${path.join(dataDir, "platform.db")}`,
+    TENANT_DATABASE_URL: `sqlite+pysqlite:///${path.join(dataDir, "tenant.db")}`,
+    PLATFORM_DATABASE_URL: `sqlite+pysqlite:///${path.join(dataDir, "platform.db")}`,
   };
 }
 
 function postgresControlPlaneEnv(dataDir: string, port: string): Record<string, string> {
   wipeStaleMaterializeStore(dataDir);
   const pgPassword = process.env.PG_PASSWORD ?? "provisa";
-  const url = `postgresql+asyncpg://provisa:${pgPassword}@localhost:${port}/provisa`;
+  const url = `postgresql+psycopg://provisa:${pgPassword}@localhost:${port}/provisa`;
   return { TENANT_DATABASE_URL: url, PLATFORM_DATABASE_URL: url };
 }
 

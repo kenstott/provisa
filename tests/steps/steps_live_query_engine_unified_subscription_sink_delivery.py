@@ -340,16 +340,14 @@ async def _open_wm_db(dsn: str):
     """Real file-backed sqlite Database with the live_query_state table, so watermark get/set
     (SQLAlchemy Core execute_core / upsert, migrated off asyncpg) run against a real backend and
     each per-output row is a genuine (source, output_type)-keyed row."""
-    from sqlalchemy.ext.asyncio import create_async_engine
+    from provisa.core.database import create_engine_from_url
 
     from provisa.core.database import Database
     from provisa.core.schema_org import live_query_state
 
-    engine = create_async_engine(dsn)
-    async with engine.begin() as _c:
-        await _c.run_sync(
-            lambda s: live_query_state.metadata.create_all(s, tables=[live_query_state])
-        )
+    engine = create_engine_from_url(dsn)
+    with engine.begin() as _c:
+        live_query_state.metadata.create_all(_c, tables=[live_query_state])
     return Database(engine, name="wm-test")
 
 
@@ -357,7 +355,7 @@ async def _open_wm_db(dsn: str):
 def configure_dual_output_watermarks(shared_data: dict, tmp_path) -> None:
     source = "req-286-orders"
     # File-backed sqlite so the store survives the separate asyncio.run() calls in later steps.
-    dsn = f"sqlite+aiosqlite:///{tmp_path / 'watermarks.db'}"
+    dsn = f"sqlite+pysqlite:///{tmp_path / 'watermarks.db'}"
 
     # The poll engine produces a sequence of watermark values, one per interval.
     poll_watermarks = [

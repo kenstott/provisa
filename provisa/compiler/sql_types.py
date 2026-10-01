@@ -133,6 +133,9 @@ class CompilationContext:
     joins: dict[tuple[str, str], JoinMeta] = field(default_factory=dict)
     # (table_id, graphql_field_name) → path expression (e.g. "payload.order_id")
     column_paths: dict[tuple[int, str], str] = field(default_factory=dict)
+    # REQ-1908: (schema, physical table) lowercased → {column lowercased: (epoch unit, data_type)}
+    # for every registered temporal column its source stores as an epoch number.
+    epoch_columns: dict[tuple[str, str], dict[str, tuple[str, str]]] = field(default_factory=dict)
     # table_id → [(col_name, column_type)] for aggregate column metadata
     aggregate_columns: dict[int, list[tuple[str, str]]] = field(default_factory=dict)
     # table_id → user-designated PK column names (informational; empty = heuristic only)

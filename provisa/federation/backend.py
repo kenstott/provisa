@@ -28,7 +28,10 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from provisa.executor.result import QueryResult, ResultStream
+    from provisa.executor.session import EngineSession, StoreBrokerSession
     from provisa.federation.engine import FederationEngine
 
 _log = logging.getLogger(__name__)
@@ -63,6 +66,7 @@ async def landing_worklist(
     """
     from provisa.api.admin.db_queries import fetch_tables
     from provisa.core.ir_types import to_ir
+    from provisa.core.operator_floor import floor_setting
     from provisa.federation.engine import UnreachableSource
     from provisa.federation.strategy import Strategy, federate
 
@@ -81,7 +85,11 @@ async def landing_worklist(
         if src is None:
             continue
         try:
-            if federate(src, engine) is not Strategy.MATERIALIZED:
+            # REQ-826/1141: an operator-floored source (prefer_materialized / load_protected) is
+            # MATERIALIZED even when the engine could reach it live — its reads come from this
+            # landed replica, never the source (REQ-030 floor).
+            floored = floor_setting(src) is not None
+            if federate(src, engine, prefer_materialized=floored) is not Strategy.MATERIALIZED:
                 continue  # live/scan → attached live, not eager-landed
         except UnreachableSource:
             continue
@@ -503,6 +511,13 @@ class EngineBackend:
         REPLACE land. A native engine whose store holds informational constraints overrides this."""
         del state, schema, table, pk_columns
 
+    def mv_store_broker(self, state: Any) -> Any:
+        """A broker the MV refresh must write through instead of engine SQL (REQ-1901). The base
+        engine writes its MV store table as engine SQL, so it has none; a native backend whose
+        runtime holds an unattached embedded store overrides this."""
+        del state
+        return None
+
     async def persist_mv_table(
         self,
         state: Any,
@@ -616,7 +631,7 @@ class EngineBackend:
     # -- connections -----------------------------------------------------------
 
     @contextmanager
-    def isolated_sync(self, state: Any):
+    def isolated_sync(self, state: Any) -> Iterator[EngineSession | StoreBrokerSession]:
         """Native engines share the bound in-process connection. Yields an :class:`EngineSession`,
         never the raw physical-driver connection."""
         from provisa.executor.session import EngineSession
@@ -869,6 +884,15 @@ class EngineBackend:
         raise NotImplementedError(
             f"live ENGINE-terminal execution for engine {self.engine.name!r} is not wired"
         )
+
+    def describe_sync(
+        self, state: Any, sql: str, params: list | None = None
+    ) -> ResultStream | None:
+        """Describe a statement's result shape without running it (REQ-589). ``None``: this
+        engine has no describe-without-running (Trino, the Arrow warehouse engines — the pgwire
+        Describe then runs the statement, as it did before)."""
+        del state, sql, params
+        return None
 
     # -- engine-specific transports (Arrow) ------------------------------------
 

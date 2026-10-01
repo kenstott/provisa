@@ -170,3 +170,19 @@ async def test_make_graphql_remote_loader_missing_registration_raises():
     load = make_graphql_remote_loader({})
     with pytest.raises(UnsupportedSourceFetch, match="no matching"):
         await load(_src("gql", "graphql_remote"), _tbl("default", "orders"))
+
+
+@pytest.mark.asyncio
+async def test_rss_loader_raises_when_the_feed_fetch_fails(monkeypatch):
+    """REQ-1661 (amended 2026-09-30): a failed feed fetch fails the land (and so the query) --
+    it is never read as an empty feed, which landed zero rows or left the stale replica served."""
+    from provisa.events.source_loader import make_rss_loader
+    from provisa.subscriptions.rss_provider import RSSNotificationProvider
+
+    async def _down(self, url):
+        raise ConnectionError("feed down")
+
+    monkeypatch.setattr(RSSNotificationProvider, "_fetch", _down)
+    source = SimpleNamespace(federation_hints={"feed_url": "http://feed.invalid/rss"})
+    with pytest.raises(ConnectionError, match="feed down"):
+        await make_rss_loader()(source, SimpleNamespace(table_name="items"))

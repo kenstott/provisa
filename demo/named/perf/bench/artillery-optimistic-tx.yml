@@ -36,6 +36,6 @@ scenarios:
       - post:
           url: "/data/graphql"
           json:
-            query: "query { pb__orders(limit: 1) { orderId } }"
+            query: "query @cached { pb__orders(limit: 1) { orderId } }"
           expect:
             - statusCode: 200

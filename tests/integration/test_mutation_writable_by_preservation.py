@@ -22,7 +22,7 @@ import json
 import os
 
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.models import Function
@@ -32,33 +32,8 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "5432")
-_PG_URL = f"postgresql+asyncpg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
+_PG_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
 _SCHEMA = "test_req870_wb"
-
-_DDL = f"""
-CREATE SCHEMA IF NOT EXISTS {_SCHEMA};
-CREATE TABLE IF NOT EXISTS {_SCHEMA}.tracked_functions (
-    id SERIAL PRIMARY KEY,
-    name TEXT UNIQUE NOT NULL,
-    source_id TEXT,
-    schema_name TEXT,
-    function_name TEXT,
-    returns TEXT,
-    arguments JSONB,
-    visible_to JSONB NOT NULL DEFAULT '[]',
-    writable_by JSONB NOT NULL DEFAULT '[]',
-    domain_id TEXT,
-    description TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    kind TEXT,
-    return_schema JSONB,
-    output_columns JSONB,
-    impl_kind TEXT NOT NULL DEFAULT 'source_procedure',
-    binding JSONB NOT NULL DEFAULT '{{}}',
-    materialize BOOLEAN NOT NULL DEFAULT false
-);
-"""
 
 
 def _fn(writable_by):
@@ -75,19 +50,23 @@ def _fn(writable_by):
 
 @pytest.fixture
 async def db():
-    engine = create_async_engine(_PG_URL, pool_pre_ping=True)
+    engine = create_engine_from_url(_PG_URL)
     database = Database(engine, name="req870", search_path=_SCHEMA)
-    try:
-        async with database.acquire() as conn:
-            await conn.execute(f"CREATE SCHEMA IF NOT EXISTS {_SCHEMA}")
-            await conn.execute(_DDL)
-    except Exception as exc:  # noqa: BLE001 — skip cleanly if the live store is absent
-        await engine.dispose()
-        pytest.skip(f"live Postgres not reachable at {_PG_URL}: {exc}")
+    # The canonical org metadata, not hand-written DDL: a hand copy of tracked_functions drifted
+    # (it lacked REQ-1634's product_id) and every upsert then failed on the missing column.
+    from sqlalchemy import text
+
+    from provisa.core.schema_org import metadata as org_metadata
+
+    with engine.begin() as sc:
+        sc.execute(text(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE"))
+        sc.execute(text(f"CREATE SCHEMA {_SCHEMA}"))
+        sc.execute(text(f"SET search_path TO {_SCHEMA}"))
+        org_metadata.create_all(sc)
     yield database
     async with database.acquire() as conn:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
-    await engine.dispose()
+    engine.dispose()
 
 
 async def _writable_by(conn):

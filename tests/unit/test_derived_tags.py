@@ -22,7 +22,7 @@ from contextlib import asynccontextmanager
 
 import pytest
 
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.derived_tags import derived_tags_for_table
@@ -41,14 +41,14 @@ _TABLES = [tags, tag_assignments, registered_tables]
 
 @asynccontextmanager
 async def _conn(tmp_path):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'tags.db'}")
-    async with engine.begin() as c:
-        await c.run_sync(lambda s: tags.metadata.create_all(s, tables=_TABLES))
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'tags.db'}")
+    with engine.begin() as c:
+        tags.metadata.create_all(c, tables=_TABLES)
     try:
         async with Database(engine, name="t").acquire() as conn:
             yield conn
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 def test_a_modeling_role_derives_its_own_tag():

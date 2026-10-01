@@ -16,6 +16,9 @@ import time
 import pytest
 import trino.dbapi
 
+from provisa.core.catalog import create_catalog
+from provisa.core.models import Source, SourceType
+
 pytestmark = [pytest.mark.integration]
 
 
@@ -36,6 +39,34 @@ def _wait_for_trino():
         except Exception:
             time.sleep(2)
     raise RuntimeError("Trino did not become ready within 120s")
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _sales_pg_catalog(_wait_for_trino):
+    """Provision the ``sales_pg`` Trino catalog TestTrinoConnectivity queries.
+
+    Must not depend on another module having registered it first: that hidden cross-file ordering
+    dependency is CATALOG_NOT_FOUND whenever this module runs before one that registers it
+    (same defect class and fix as test_introspect.py's ``_sales_pg_catalog``).
+    """
+    source = Source(
+        id="sales-pg",
+        type=SourceType.postgresql,
+        host=os.environ.get("PG_HOST", "localhost"),
+        port=int(os.environ.get("PG_PORT", "5432")),
+        database=os.environ.get("PG_DATABASE", "provisa"),
+        username=os.environ.get("PG_USER", "provisa"),
+        password=os.environ.get("PG_PASSWORD", "provisa"),
+    )
+    conn = trino.dbapi.connect(
+        host=os.environ.get("TRINO_HOST", "localhost"),
+        port=int(os.environ.get("TRINO_PORT", "8080")),
+        user="test",
+    )
+    try:
+        create_catalog(conn, source, resolved_password=source.password)
+    finally:
+        conn.close()
 
 
 @pytest.mark.asyncio(loop_scope="session")

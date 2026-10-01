@@ -33,6 +33,14 @@ class BVType(enum.Enum):
     ARRAY = 14
     INTEGERARRAY = 15
     STRINGARRAY = 16
+    # Exact-width Postgres types (REQ-589/REQ-1863): advertised with the source's own OID so a
+    # passthrough's raw bytes and a re-encoded value share one binary layout.
+    SMALLINT = 17
+    REAL = 18
+    JSONB = 19
+    TIMESTAMPTZ = 20
+    TIMETZ = 21
+    UUID = 22
 
 
 class RawDataRowBytes(bytes):
@@ -48,6 +56,12 @@ class QueryResult:
 
     def __init__(self):
         self.result_format = None
+
+    def reusable_for_execute(self, result_formats: List[int]) -> bool:
+        """Whether this Describe(Statement)-time result may be served to the Execute of a Bind
+        requesting ``result_formats`` instead of re-running the statement. A backend whose execution
+        depends on the requested formats up front (e.g. a raw-byte passthrough) returns False."""
+        return True
 
     def has_results(self) -> bool:
         raise NotImplementedError
@@ -89,6 +103,12 @@ class Session:
         decode/re-encode session: BVContext.execute_sql still assigns ``qr.result_format`` onto
         the returned QueryResult after this call either way. A session only needs it up front to
         pick a wire-compatible fast path (e.g. a raw-byte source passthrough) before executing."""
+        raise NotImplementedError
+
+    def describe_sql(self, sql: str, params=None) -> QueryResult:
+        """The result SHAPE (column names and types) of ``sql`` for a Describe(Statement) — without
+        running the full statement. The following Execute runs it; describing by executing ran
+        every prepared statement twice."""
         raise NotImplementedError
 
     def in_transaction(self) -> bool:

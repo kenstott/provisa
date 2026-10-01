@@ -91,6 +91,13 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
 
         return await asyncio.to_thread(_run)
 
+    async def execute_arrow(self, sql: str) -> Any:
+        """Run fully formed ``sql`` (no bind parameters) and return the result as a
+        ``pyarrow.Table`` in ClickHouse's native Arrow format -- no per-row Python objects
+        (REQ-1865: a keyed row-materialize fetch lands millions of rows columnar). ClickHouse
+        ``String`` arrives as Arrow ``string``, not ``binary``."""
+        return await asyncio.to_thread(self._client.query_arrow, sql, use_strings=True)
+
     async def close(self) -> None:
         if self._client is not None:
             await asyncio.to_thread(self._client.close)

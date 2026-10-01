@@ -137,18 +137,14 @@ def _read_rest(srv: IsolatedServer) -> dict[str, int]:
 
 def _read_grpc(srv: IsolatedServer) -> dict[str, int]:
     import grpc
-    from google.protobuf.descriptor_pool import DescriptorPool
     from google.protobuf.message_factory import GetMessageClass
-    from grpc_reflection.v1alpha.proto_reflection_descriptor_database import (
-        ProtoReflectionDescriptorDatabase,
-    )
 
+    from tests.grpc_proto_client import role_descriptor_pool
+
+    # Reflection is optional (REQ-1904); the role's published .proto is the client schema.
+    _pool, svc = role_descriptor_pool(srv.base_url, _ROLE)
     channel = grpc.insecure_channel(f"127.0.0.1:{srv.grpc_port}")
     try:
-        db = ProtoReflectionDescriptorDatabase(channel)
-        pool = DescriptorPool(db)
-        svc_name = next(s for s in db.get_services() if s.endswith("Service"))
-        svc = pool.FindServiceByName(svc_name)
         method = next(
             m
             for m in svc.methods

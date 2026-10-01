@@ -33,31 +33,104 @@ lose and reconnect, because no connection ever outlives one call.
 from __future__ import annotations
 
 import fcntl
+import os
+import time
+from collections.abc import Callable
 from typing import Any
 
 import duckdb
 
 _MAT_STORE_ALIAS = "mat_store"
 _LOCK_SUFFIX = ".lock"
+_LOCK_POLL_S = 0.005
 
 
-def _with_store(db_path: str, fn: Any) -> Any:
-    """Acquire the sentinel lock for `db_path` (blocks until available), ATTACH it under the
-    `mat_store` alias, run `fn(con)`, then DETACH (close) and release the lock -- see module
-    docstring. The lock file itself is never read or written to; its only role is to be an
-    `flock`-able handle, created if missing."""
+def _lock_exclusive(fd: int) -> None:
+    """Take the exclusive `flock`, bounded by the current request's remaining budget (REQ-1882).
+
+    Outside a request there is no budget and the wait is unbounded, as before. Inside one, a
+    blocking `flock` could not be pre-empted by the request deadline (it is not a statement with a
+    cancel), so the lock is polled non-blocking until it frees or the budget runs out."""
+    from provisa.core import request_deadline
+
+    if request_deadline.remaining() is None:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        return
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        except BlockingIOError:
+            left = request_deadline.remaining()
+            if left is None or left <= 0:
+                raise TimeoutError("request budget spent waiting for the materialize store lock")
+            time.sleep(min(_LOCK_POLL_S, left))
+
+
+_GEN_SUFFIX = ".gen"
+StoreCanary = int
+
+
+def store_canary(db_path: str) -> StoreCanary:
+    """The store's write generation: incremented (under the sentinel lock) by every non-read-only
+    store operation from any process, so a reader holding a copy taken at generation G knows it is
+    still current while the generation still reads G. An exact counter, not a file mtime — mtime
+    ticks coarsely enough that a same-size write inside one tick would look unchanged."""
+    try:
+        with open(db_path + _GEN_SUFFIX) as f:
+            return int(f.read())
+    except FileNotFoundError:
+        return 0
+
+
+def _bump_generation(db_path: str) -> None:
+    """Advance the write generation. Caller holds the sentinel lock; the replace is atomic, so an
+    unlocked reader sees either the old or the new value, never a torn one."""
+    tmp = db_path + _GEN_SUFFIX + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(str(store_canary(db_path) + 1))
+    os.replace(tmp, db_path + _GEN_SUFFIX)
+
+
+def _with_store(db_path: str, fn: Any, *, read_only: bool = False, canary: bool = False) -> Any:
+    """Acquire the sentinel lock for `db_path` (waiting at most the request's remaining budget),
+    ATTACH it under the `mat_store` alias, run `fn(con)` (cancellable at the request deadline), then
+    DETACH (close) and release the lock -- see module docstring. The lock file itself is never read
+    or written to; its only role is to be an `flock`-able handle, created if missing.
+
+    ``read_only`` ATTACHes READ_ONLY; every other call may write, so it advances the store's write
+    generation (even on failure — a partial write must not look unchanged). ``canary`` returns
+    ``(result, generation)`` read while the lock is still held, so no writer can land between the
+    read and the generation it is tagged with."""
+    from provisa.core import request_deadline
+
     lock_path = db_path + _LOCK_SUFFIX
+    mode = ", READ_ONLY" if read_only else ""
     with open(lock_path, "a+") as lockfile:
-        fcntl.flock(lockfile.fileno(), fcntl.LOCK_EX)
+        _lock_exclusive(lockfile.fileno())
         try:
             con = duckdb.connect(":memory:")
-            con.execute(f"ATTACH '{db_path}' AS {_MAT_STORE_ALIAS} (TYPE duckdb)")
+            con.execute(f"ATTACH '{db_path}' AS {_MAT_STORE_ALIAS} (TYPE duckdb{mode})")
             try:
-                return fn(con)
+                with request_deadline.cancel_on_deadline(con.interrupt):
+                    result = fn(con)
             finally:
                 con.close()
+                if not read_only:
+                    _bump_generation(db_path)
+            return (result, store_canary(db_path)) if canary else result
         finally:
             fcntl.flock(lockfile.fileno(), fcntl.LOCK_UN)
+
+
+def _table_columns(con: Any, schema: str, table: str) -> list[str] | None:
+    rows = con.execute(
+        "SELECT column_name FROM duckdb_columns() "
+        "WHERE database_name = ? AND schema_name = ? AND table_name = ? "
+        "ORDER BY column_index",
+        [_MAT_STORE_ALIAS, schema, table],
+    ).fetchall()
+    return [r[0] for r in rows] or None
 
 
 class _SyncedStore:
@@ -100,6 +173,31 @@ class _SyncedStore:
                 rows=rows,
                 change_signal=change_signal,
                 watermark_column=watermark_column,
+            ),
+        )
+
+    def upsert_arrow(
+        self,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        pk_columns: list[str],
+        data: Any,
+    ) -> int:
+        """Upsert an Arrow table by ``pk_columns`` under one lock hold (REQ-1865 row cache) --
+        handed over columnar like ``write_mv``'s ``fresh``, never as per-row events."""
+        from provisa.federation.store_connection import upsert_arrow_duckdb_native
+
+        return _with_store(
+            self._db_path,
+            lambda con: upsert_arrow_duckdb_native(
+                con,
+                catalog=_MAT_STORE_ALIAS,
+                schema=schema,
+                table=table,
+                columns=columns,
+                pk_columns=pk_columns,
+                data=data,
             ),
         )
 
@@ -243,18 +341,67 @@ class _SyncedStore:
             ),
         )
 
-    def fetch_arrow(self, schema: str, table: str) -> Any:
-        """Full current contents of a landed/materialized table, as Arrow -- the read half of
-        this module's contract. Called by a worker immediately before it executes any query
-        referencing this table, so the worker's own connection can register the result as a local
-        relation and join it against its OTHER (live-attached) sources; always current as of the
-        call, since it opens the file fresh every time rather than caching anything."""
+    def table_columns(self, schema: str, table: str) -> list[str] | None:
+        """The store table's column names in ordinal order, or ``None`` when it does not exist."""
+        return _with_store(self._db_path, lambda con: _table_columns(con, schema, table))
+
+    def execute(self, sql: str) -> list[tuple]:
+        """Run one statement against the store (``mat_store.*`` names resolve) and return its rows.
+        For the MV-maintenance statements that act on the store alone (reclaim/orphan DROP, SHOW
+        TABLES) — the engine connection never ATTACHes this file (REQ-1901)."""
+        return _with_store(self._db_path, lambda con: con.execute(sql).fetchall())
+
+    def write_mv(
+        self,
+        schema: str,
+        table: str,
+        fresh: Any,
+        plan: Callable[[list[str] | None], list[str]],
+    ) -> int:
+        """Write an MV refresh into the store under ONE lock hold; return the target's row count.
+
+        ``fresh`` is the MV SELECT's result, computed by the ENGINE (which reads the sources) and
+        handed over as Arrow (a ``RecordBatchReader`` streams: it is staged into a temp table batch
+        by batch, never materialized in Python). ``plan(existing_columns)`` returns the store-side
+        statements, written against ``_mv_fresh`` for the fresh rows and ``mat_store.<schema>.<table>``
+        for the target — the same CTAS / DELETE+INSERT / bitemporal-append statements the engine
+        path runs, so both paths share one set of semantics. ``existing_columns`` is read inside the
+        same lock hold the statements run under."""
+
+        def _do(con: Any) -> int:
+            con.register("_mv_fresh_src", fresh)
+            try:
+                con.execute("CREATE TEMP TABLE _mv_fresh AS SELECT * FROM _mv_fresh_src")
+            finally:
+                con.unregister("_mv_fresh_src")
+            con.execute(f'CREATE SCHEMA IF NOT EXISTS {_MAT_STORE_ALIAS}."{schema}"')
+            for stmt in plan(_table_columns(con, schema, table)):
+                con.execute(stmt)
+            row = con.execute(
+                f'SELECT COUNT(*) FROM {_MAT_STORE_ALIAS}."{schema}"."{table}"'
+            ).fetchone()
+            assert row is not None  # COUNT(*) always yields a row
+            return int(row[0])
+
+        return _with_store(self._db_path, _do)
+
+    def fetch_arrow(self, schema: str, table: str) -> tuple[Any, StoreCanary]:
+        """Full current contents of a landed/materialized table, as Arrow, plus the store canary
+        it is current as of -- the read half of this module's contract. A worker copies the table
+        into its own connection before a query that references it, and re-copies only once
+        ``canary()`` no longer matches (some process wrote the store since)."""
         return _with_store(
             self._db_path,
             lambda con: con.execute(
                 f'SELECT * FROM {_MAT_STORE_ALIAS}."{schema}"."{table}"'
             ).fetch_arrow_table(),
+            read_only=True,
+            canary=True,
         )
+
+    def canary(self) -> StoreCanary:
+        """The store's current canary (no lock: a stat is atomic, and a mismatch only re-copies)."""
+        return store_canary(self._db_path)
 
 
 def get_broker(db_path: str) -> _SyncedStore:

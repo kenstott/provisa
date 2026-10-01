@@ -751,7 +751,9 @@ def then_query_routed_direct(shared_data: dict) -> None:
 
     # Exercise the real decide_route function to confirm that passing the
     # extracted route hint as steward_hint produces a DIRECT decision.
-    decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, steward_hint=route_value)
+    decision = decide_route(
+        {"pg-main"}, _TYPES, _DIALECTS, steward_hint=route_value, operator_floor={}
+    )
     assert decision.route == Route.DIRECT, (
         f"decide_route with steward_hint='direct' should produce Route.DIRECT, "
         f"got {decision.route!r}"
@@ -778,7 +780,9 @@ def then_federated_query_routed_through_federation_engine(shared_data: dict) -> 
     )
 
     # "federated" maps to Route.ENGINE in the router when passed as steward_hint.
-    decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, steward_hint="engine")
+    decision = decide_route(
+        {"pg-main"}, _TYPES, _DIALECTS, steward_hint="engine", operator_floor={}
+    )
     assert decision.route == Route.ENGINE, (
         f"decide_route with steward_hint for federated path should produce Route.ENGINE, "
         f"got {decision.route!r}"

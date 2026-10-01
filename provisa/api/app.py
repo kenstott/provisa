@@ -30,6 +30,7 @@ from fastapi import FastAPI, Request, Response
 from sqlalchemy.exc import SQLAlchemyError
 
 from provisa.core.config_location import config_path_str
+from provisa.core.connection_loop import CrossLoopLock, LongLived, run_lifecycle_work
 from provisa.api.data.endpoint import router as data_router
 from provisa.api.data.redirect_unwrap import router as redirect_unwrap_router
 from provisa.api.data.endpoint_dev import router as dev_router
@@ -135,7 +136,7 @@ if TYPE_CHECKING:
     from provisa.kafka.window import KafkaTableConfig
     from provisa.core.models import Source
     from provisa.core.database import Connection
-    from sqlalchemy.ext.asyncio import AsyncEngine
+    from sqlalchemy.engine import Engine
     import graphql
 
 log = logging.getLogger(__name__)
@@ -149,12 +150,12 @@ class AppState:
     # ``admin_db`` is the global platform control plane (orgs/users/invites/
     # billing), backed by its own SQLAlchemy URI.
     admin_db: Database | None = None
-    # REQ-1316: ONE tenant-plane AsyncEngine shared by every org runtime on a schema-capable
+    # REQ-1316: ONE tenant-plane Engine shared by every org runtime on a schema-capable
     # backend. Database.acquire() issues the org's search_path on each checkout, so orgs need
     # separate handles, never separate pools. A pool per org multiplies connections by tenant
     # count and exhausts the server's max_connections (Cloud SQL db-f1-micro caps at 25 — two
     # orgs at pool_size=5/overflow=5 already blow past it).
-    tenant_engine: Any | None = None  # AsyncEngine; Any avoids the runtime import here
+    tenant_engine: Any | None = None  # Engine; Any avoids the runtime import here
     # engine_conn / engine_conn_kwargs / federation_engine are routed PROPERTIES (REQ-1244):
     # they live on the per-org OrgRuntime and resolve through the current_org ContextVar, falling
     # through to the default-org (shared) runtime for every org without a dedicated engine.
@@ -181,7 +182,7 @@ class AppState:
     # search_catalog and invalidated (set None) on catalog reload. Any so the mcp package owns the type.
     mcp_catalog_index: Any = None
     mv_registry: MVRegistry = MVRegistry()
-    _mv_refresh_task: asyncio.Task | None = None
+    _mv_refresh_task: LongLived | None = None
     proto_files: dict[str, str] = {}  # role_id → .proto content
     # The one SERVED wire descriptor: union of every role's surface (see
     # app_loaders._build_and_register_schemas). Governance is per-request, not per-descriptor.
@@ -219,14 +220,14 @@ class AppState:
     api_endpoints: dict[str, Any] = {}  # table_name → ApiEndpoint
     api_sources: dict[str, Any] = {}  # source_id → ApiSource
     hot_manager: HotTableManager | None = None
-    _hot_refresh_task: asyncio.Task | None = None
+    _hot_refresh_task: LongLived | None = None
     warm_manager: WarmTableManager = WarmTableManager()
-    _warm_task: asyncio.Task | None = None
+    _warm_task: LongLived | None = None
     # Readiness (REQ /ready): False until the boot warmup probe has primed the lazy per-request paths
     # (materialize-store attach + a warm engine terminal). /ready returns 503 while this is False so a
     # launcher/orchestrator holds traffic — and the browser open — until the first interaction is warm.
     is_warm: bool = False
-    _warmup_task: asyncio.Task | None = None
+    _warmup_task: LongLived | None = None
     apq_cache: APQCache = NoopAPQCache()  # Phase AN: Automatic Persisted Queries
     apq_ttl: int = 86400  # REQ-289: APQ cache TTL (apq.ttl config / PROVISA_APQ_TTL env)
     live_engine: Any | None = None  # Phase AM: LiveEngine instance
@@ -250,7 +251,7 @@ class AppState:
     openapi_specs: dict[str, dict] = {}  # source_id → OpenAPI spec registration
     grpc_remote_sources: dict[str, dict] = {}  # source_id → gRPC remote registration
     # Phase AS — Ingest sources
-    ingest_engines: dict[str, AsyncEngine] = {}  # source_id → AsyncEngine
+    ingest_engines: dict[str, Engine] = {}  # source_id → Engine
     ingest_tables: dict[str, dict[str, list[dict]]] = {}  # source_id → {table_name → [col defs]}
     # WebSocket sources
     websocket_sources: dict[str, Source] = {}  # source_id → Source
@@ -1516,41 +1517,48 @@ async def build_org_runtime(
 
         await _rebuild_schemas()
 
-        # REQ-1266: wire this org's MV event loop onto the shared scheduler so its materialized
-        # views refresh on their own cadence. Job ids are org-suffixed and each fire binds
-        # current_org (register_runtime reads the bound org), so a second org never clobbers the
-        # first's jobs. Best-effort — a missing scheduler (tests, engine not connected) skips it.
-        scheduler = getattr(state, "_scheduler", None)
-        if scheduler is not None:
-            from provisa.events.app_wiring import wire_event_loop
+        # REQ-1882 (amended 2026-09-29): the wiring below starts process-lifetime scheduler jobs and
+        # listener tasks. Inline on the process loop; from a connection-thread loop (this org built
+        # on first pgwire/Bolt/Flight access) it is started on the process loop, which outlives the
+        # request — the connection loop stops running when the request ends.
+        async def _wire_org_lifecycle() -> None:
+            # REQ-1266: wire this org's MV event loop onto the shared scheduler so its materialized
+            # views refresh on their own cadence. Job ids are org-suffixed and each fire binds
+            # current_org (register_runtime reads the bound org), so a second org never clobbers the
+            # first's jobs. Best-effort — a missing scheduler (tests, engine not connected) skips it.
+            scheduler = getattr(state, "_scheduler", None)
+            if scheduler is not None:
+                from provisa.events.app_wiring import wire_event_loop
 
-            await wire_event_loop(scheduler, state=state, log=logging.getLogger(__name__))
+                await wire_event_loop(scheduler, state=state, log=logging.getLogger(__name__))
 
-        # REQ-1733: start (or, on a re-wire, top up) the kafka/websocket push-source CDC landing
-        # listeners — a separate mechanism from wire_event_loop's poll/MV tick loop (CDC upsert/
-        # delete-by-PK isn't expressible through the generic land_source_table write face). Best-
-        # effort, same posture as wire_event_loop: never blocks or fails boot.
-        from provisa.events.push_wiring import wire_push_listeners
+            # REQ-1733: start (or, on a re-wire, top up) the kafka/websocket push-source CDC landing
+            # listeners — a separate mechanism from wire_event_loop's poll/MV tick loop (CDC upsert/
+            # delete-by-PK isn't expressible through the generic land_source_table write face). Best-
+            # effort, same posture as wire_event_loop: never blocks or fails boot.
+            from provisa.events.push_wiring import wire_push_listeners
 
-        await wire_push_listeners(state=state, log=logging.getLogger(__name__))
+            await wire_push_listeners(state=state, log=logging.getLogger(__name__))
 
-        # REQ-1865: wire the row-materialize background refresh drain + cold-row reaper for every
-        # row_materialize table, on the same scheduler — best-effort, same posture as the two calls
-        # above (never blocks or fails boot).
-        if scheduler is not None:
-            from provisa.events.row_materialize_lifecycle import wire_row_materialize_background
+            # REQ-1865: wire the row-materialize background refresh drain + cold-row reaper for every
+            # row_materialize table, on the same scheduler — best-effort, same posture as the two calls
+            # above (never blocks or fails boot).
+            if scheduler is not None:
+                from provisa.events.row_materialize_lifecycle import wire_row_materialize_background
 
-            _rm_cfg = getattr(getattr(state, "config", None), "row_materialize", None)
-            if _rm_cfg is not None:
-                await wire_row_materialize_background(
-                    scheduler,
-                    state=state,
-                    log=logging.getLogger(__name__),
-                    tick_seconds=_rm_cfg.refresh_tick_seconds,
-                    reap_interval_seconds=_rm_cfg.reap_interval_seconds,
-                    reap_grace_period=_rm_cfg.reap_grace_period,
-                    reap_batch_size=_rm_cfg.reap_batch_size,
-                )
+                _rm_cfg = getattr(getattr(state, "config", None), "row_materialize", None)
+                if _rm_cfg is not None:
+                    await wire_row_materialize_background(
+                        scheduler,
+                        state=state,
+                        log=logging.getLogger(__name__),
+                        tick_seconds=_rm_cfg.refresh_tick_seconds,
+                        reap_interval_seconds=_rm_cfg.reap_interval_seconds,
+                        reap_grace_period=_rm_cfg.reap_grace_period,
+                        reap_batch_size=_rm_cfg.reap_batch_size,
+                    )
+
+        await run_lifecycle_work(_wire_org_lifecycle(), name=f"org-lifecycle:{key}")
     except Exception:
         # The runtime was registered before this body ran (materialize_store() and the catalog-name
         # map are read off the registry while it builds), so a failure part-way leaves a runtime
@@ -1565,7 +1573,9 @@ async def build_org_runtime(
     return rt
 
 
-_rebuild_schemas_lock = asyncio.Lock()
+# REQ-1882 (amended 2026-09-29): an org runtime built on first access from a pgwire/Bolt/Flight
+# connection thread rebuilds on that thread's own loop, so the serialization holds across loops.
+_rebuild_schemas_lock = CrossLoopLock()
 
 
 async def _rebuild_schemas(raw_config: dict | None = None) -> None:
@@ -1991,71 +2001,82 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None) -> None:
 
     await notify_model_changed(state.active_org_id, reason="schema rebuild")
 
-    # REQ-1745: re-wire push-source landing and ingest engines on EVERY rebuild, not only
-    # register_runtime's per-org build (that call site never fires for the default/single-tenant
-    # path this function is on when a mutation calls `_rebuild_schemas()` directly — e.g.
-    # schema_mutation.py's registerTable). Without this, a kafka/websocket/ingest source
-    # registered live through the Sources+Register Table forms never got its listener started or
-    # its ingest engine/DDL built at all: state.push_listener_disconnects/state.ingest_tables
-    # stayed exactly as they were at process boot, forever, on a server that never restarts. Both
-    # calls are idempotent/best-effort by design (wire_push_listeners skips nodes already running;
-    # _init_ingest_engines rebuilds its maps fresh from the DB each call), so calling them again
-    # here is never harmful, only occasionally redundant with register_runtime's own call.
-    from provisa.events.push_wiring import wire_push_listeners
+    # REQ-1882 (amended 2026-09-29): the re-wiring below starts process-lifetime listeners, ingest
+    # engines and scheduler jobs. Run inline on the process loop; from a connection-thread loop (an
+    # org runtime built on first pgwire/Bolt/Flight access) it is started on the process loop,
+    # since the connection loop stops running when its request ends.
+    async def _rewire_lifecycle() -> None:
+        # REQ-1745: re-wire push-source landing and ingest engines on EVERY rebuild, not only
+        # register_runtime's per-org build (that call site never fires for the default/single-tenant
+        # path this function is on when a mutation calls `_rebuild_schemas()` directly — e.g.
+        # schema_mutation.py's registerTable). Without this, a kafka/websocket/ingest source
+        # registered live through the Sources+Register Table forms never got its listener started or
+        # its ingest engine/DDL built at all: state.push_listener_disconnects/state.ingest_tables
+        # stayed exactly as they were at process boot, forever, on a server that never restarts. Both
+        # calls are idempotent/best-effort by design (wire_push_listeners skips nodes already running;
+        # _init_ingest_engines rebuilds its maps fresh from the DB each call), so calling them again
+        # here is never harmful, only occasionally redundant with register_runtime's own call.
+        from provisa.events.push_wiring import wire_push_listeners
 
-    try:
-        await wire_push_listeners(state=state, log=logging.getLogger(__name__))
-    except Exception:
-        logging.getLogger(__name__).exception("wire_push_listeners failed during schema rebuild")
-    try:
-        await _init_ingest_engines()
-    except Exception:
-        logging.getLogger(__name__).exception("_init_ingest_engines failed during schema rebuild")
-    # REQ-1770: a table on a poll-only adapter-fetch source (rss is the current example) only got
-    # its poll job (re)registered by wire_event_loop, which register_runtime calls but this
-    # function does not — a table registered against an already-running runtime (the common case
-    # outside a fresh per-org build) had no poll job until the next org-runtime rebuild. Calling
-    # wire_event_loop here too was tried and reverted: it re-derives adapter_loaders and re-walks
-    # every registered source's poll-job registration on EVERY schema rebuild (not just ones
-    # involving a new poll-only source), and broke an unrelated already-registered sqlite source's
-    # live queries in testing. Fixed instead with wire_new_poll_jobs (provisa/events/app_wiring.py):
-    # a per-node-scoped rewire mirroring wire_push_listeners' own state.push_listener_disconnects
-    # idempotency via state.poll_jobs_registered — it registers a poll job ONLY for a node that
-    # doesn't already have one, appending its processor into the SAME list object the running tick
-    # job's closure already holds, rather than re-deriving/re-walking every other source's spec.
-    from provisa.events.app_wiring import wire_new_poll_jobs
+        try:
+            await wire_push_listeners(state=state, log=logging.getLogger(__name__))
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "wire_push_listeners failed during schema rebuild"
+            )
+        try:
+            await _init_ingest_engines()
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "_init_ingest_engines failed during schema rebuild"
+            )
+        # REQ-1770: a table on a poll-only adapter-fetch source (rss is the current example) only got
+        # its poll job (re)registered by wire_event_loop, which register_runtime calls but this
+        # function does not — a table registered against an already-running runtime (the common case
+        # outside a fresh per-org build) had no poll job until the next org-runtime rebuild. Calling
+        # wire_event_loop here too was tried and reverted: it re-derives adapter_loaders and re-walks
+        # every registered source's poll-job registration on EVERY schema rebuild (not just ones
+        # involving a new poll-only source), and broke an unrelated already-registered sqlite source's
+        # live queries in testing. Fixed instead with wire_new_poll_jobs (provisa/events/app_wiring.py):
+        # a per-node-scoped rewire mirroring wire_push_listeners' own state.push_listener_disconnects
+        # idempotency via state.poll_jobs_registered — it registers a poll job ONLY for a node that
+        # doesn't already have one, appending its processor into the SAME list object the running tick
+        # job's closure already holds, rather than re-deriving/re-walking every other source's spec.
+        from provisa.events.app_wiring import wire_new_poll_jobs
 
-    try:
-        await wire_new_poll_jobs(state=state, log=logging.getLogger(__name__))
-    except Exception:
-        logging.getLogger(__name__).exception("wire_new_poll_jobs failed during schema rebuild")
+        try:
+            await wire_new_poll_jobs(state=state, log=logging.getLogger(__name__))
+        except Exception:
+            logging.getLogger(__name__).exception("wire_new_poll_jobs failed during schema rebuild")
 
-    # REQ-1865: re-wire the row-materialize background refresh drain + reaper on EVERY rebuild,
-    # same posture as wire_push_listeners above (registered jobs are idempotent via
-    # replace_existing=True, and the row_materialize table set is derived fresh each call, not
-    # incrementally like wire_new_poll_jobs) — so a row_materialize flag flipped on live via the
-    # admin UI (schema_mutation.py's registerTable/updateTable) gets its background jobs without
-    # requiring a restart.
-    _scheduler = getattr(state, "_scheduler", None)
-    if _scheduler is not None:
-        from provisa.events.row_materialize_lifecycle import wire_row_materialize_background
+        # REQ-1865: re-wire the row-materialize background refresh drain + reaper on EVERY rebuild,
+        # same posture as wire_push_listeners above (registered jobs are idempotent via
+        # replace_existing=True, and the row_materialize table set is derived fresh each call, not
+        # incrementally like wire_new_poll_jobs) — so a row_materialize flag flipped on live via the
+        # admin UI (schema_mutation.py's registerTable/updateTable) gets its background jobs without
+        # requiring a restart.
+        _scheduler = getattr(state, "_scheduler", None)
+        if _scheduler is not None:
+            from provisa.events.row_materialize_lifecycle import wire_row_materialize_background
 
-        _rm_cfg = getattr(getattr(state, "config", None), "row_materialize", None)
-        if _rm_cfg is not None:
-            try:
-                await wire_row_materialize_background(
-                    _scheduler,
-                    state=state,
-                    log=logging.getLogger(__name__),
-                    tick_seconds=_rm_cfg.refresh_tick_seconds,
-                    reap_interval_seconds=_rm_cfg.reap_interval_seconds,
-                    reap_grace_period=_rm_cfg.reap_grace_period,
-                    reap_batch_size=_rm_cfg.reap_batch_size,
-                )
-            except Exception:
-                logging.getLogger(__name__).exception(
-                    "wire_row_materialize_background failed during schema rebuild"
-                )
+            _rm_cfg = getattr(getattr(state, "config", None), "row_materialize", None)
+            if _rm_cfg is not None:
+                try:
+                    await wire_row_materialize_background(
+                        _scheduler,
+                        state=state,
+                        log=logging.getLogger(__name__),
+                        tick_seconds=_rm_cfg.refresh_tick_seconds,
+                        reap_interval_seconds=_rm_cfg.reap_interval_seconds,
+                        reap_grace_period=_rm_cfg.reap_grace_period,
+                        reap_batch_size=_rm_cfg.reap_batch_size,
+                    )
+                except Exception:
+                    logging.getLogger(__name__).exception(
+                        "wire_row_materialize_background failed during schema rebuild"
+                    )
+
+    await run_lifecycle_work(_rewire_lifecycle(), name="schema-rebuild-lifecycle")
 
 
 class _DebugLogBufferHandler(logging.Handler):
@@ -2122,7 +2143,11 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
     # Prime the lazy per-request paths in the background and flip /ready when warm. Background (not
     # awaited) so /health and /live serve immediately; a readiness-gated launcher waits on /ready.
-    state._warmup_task = asyncio.create_task(_warmup_readiness(_log))
+    # REQ-1882: the probe blocks on the engine and control plane, so it runs on its own thread,
+    # never on the process loop that relays request I/O.
+    from provisa.core.connection_loop import spawn_long_lived
+
+    state._warmup_task = spawn_long_lived(_warmup_readiness(_log), name="readiness-warmup")
 
     _start_scheduler(_log)
 
@@ -2152,31 +2177,22 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
     # Stop gRPC server
     if state._grpc_server:
-        await state._grpc_server.stop(grace=5)
+        # grpc.Server.stop returns a threading.Event set once in-flight RPCs finish (or the grace
+        # expires); waited off the loop so shutdown's other awaits are not blocked meanwhile.
+        _grpc_stopped = state._grpc_server.stop(grace=5)
+        await asyncio.to_thread(_grpc_stopped.wait)
 
     # Cancel warm-table task
     if state._warm_task:
-        state._warm_task.cancel()
-        try:
-            await state._warm_task
-        except asyncio.CancelledError:
-            pass
+        await _stop_long_lived(state._warm_task)
 
     # Cancel the readiness warmup probe (it may still be priming if shutdown raced boot)
     if state._warmup_task:
-        state._warmup_task.cancel()
-        try:
-            await state._warmup_task
-        except asyncio.CancelledError:
-            pass
+        await _stop_long_lived(state._warmup_task)
 
     # Cancel hot-table refresh task (Phase AD6)
     if state._hot_refresh_task:
-        state._hot_refresh_task.cancel()
-        try:
-            await state._hot_refresh_task
-        except asyncio.CancelledError:
-            pass
+        await _stop_long_lived(state._hot_refresh_task)
     if state.hot_manager is not None:
         from provisa.cache.hot_tables import HotTableManager
 
@@ -2185,11 +2201,7 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
     # Cancel MV refresh task
     if state._mv_refresh_task:
-        state._mv_refresh_task.cancel()
-        try:
-            await state._mv_refresh_task
-        except asyncio.CancelledError:
-            pass
+        await _stop_long_lived(state._mv_refresh_task)
     from provisa.api.startup_resilience import tolerate_shutdown_failure
 
     # REQ-1690: the Calcite pgwire servers a native engine attached live. FIRST, before the long
@@ -2224,6 +2236,12 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         with tolerate_shutdown_failure("scheduler shutdown"):
             state._scheduler.shutdown(wait=False)
 
+    # REQ-1882: stop the background worker pool, its timer and long-lived threads before the
+    # databases and engines they use close below. Blocking (bounded) — run off the process loop.
+    from provisa.core.connection_loop import shutdown_background
+
+    await asyncio.to_thread(shutdown_background)
+
     _shutdown_otel()
 
     await state.response_cache_store.close()
@@ -2254,6 +2272,15 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     if state.admin_db is not None:
         with tolerate_shutdown_failure("admin_db close"):
             await state.admin_db.close()
+
+
+async def _stop_long_lived(handle: Any, timeout: float = 10.0) -> None:
+    """Cancel a long-lived background thread and wait (bounded, off the loop) for it to end."""
+    handle.cancel()
+    if not await handle.wait(timeout):
+        logging.getLogger(__name__).warning(
+            "shutdown: long-lived task %s did not stop within %.0fs", handle.name, timeout
+        )
 
 
 def create_app() -> FastAPI:
@@ -2304,6 +2331,16 @@ def create_app() -> FastAPI:
             status_code=exc.status_code,
             content={"detail": exc.detail, "code": exc.code, "params": exc.params},
             headers=exc.headers,
+        )
+
+    from provisa.core.operator_floor import OperatorFloorError as _OperatorFloorError
+
+    @app.exception_handler(_OperatorFloorError)
+    async def _operator_floor_handler(_req: _Request, exc: _OperatorFloorError):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-030: a request below the operator's floor is refused, naming the setting.
+        return _JSONResponse(
+            status_code=403,
+            content={"detail": str(exc), "code": "query.operator_floor", "params": {}},
         )
 
     @app.exception_handler(Exception)
@@ -2839,5 +2876,14 @@ def create_app() -> FastAPI:
             logs = [log for log in logs if re.search(pattern, log)]
 
         return {"count": len(logs), "logs": logs[-limit:]}
+
+    # REQ-1882 (amended 2026-09-29): every HTTP and WebSocket request — data, admin, UI APIs,
+    # discovery, static — runs entirely on its own request thread and loop. Registered LAST so it
+    # is the outermost user middleware: auth, org routing, rate limiting, egress metering,
+    # governance, execution and response streaming all run on the request thread; the front
+    # (uvicorn) loop only accepts, parses and relays receive/send.
+    from provisa.core.request_thread import RequestThreadMiddleware
+
+    app.add_middleware(RequestThreadMiddleware)
 
     return app

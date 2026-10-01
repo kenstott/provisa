@@ -63,7 +63,8 @@ fi
 for e in "${ENGINES[@]}"; do
   case "$e" in
     duckdb|pg|trino) ;;
-    *) echo "Unknown engine: $e (must be duckdb, pg, or trino)"; exit 1 ;;
+    optimistic-only) ENGINES=() ; break ;;
+    *) echo "Unknown engine: $e (must be duckdb, pg, trino, or optimistic-only)"; exit 1 ;;
   esac
 done
 
@@ -203,7 +204,7 @@ for engine in "${ENGINES[@]}"; do
 
   echo "Running Artillery saturation test..."
   ( cd "$SCRIPT_DIR" && PROVISA_HTTP_BASE_URL="$HTTP_BASE_URL" \
-      npx artillery run --output "results/$engine/artillery-saturation.json" \
+      npx --yes artillery@2.0.21 run --output "results/$engine/artillery-saturation.json" \
       artillery-concurrency-ramp.yml )
 
   stop_steal_logging
@@ -213,5 +214,50 @@ for engine in "${ENGINES[@]}"; do
   echo "=== engine=$engine done ==="
 done
 
+# Most-optimistic-case phase (artillery-optimistic-tx.yml: one byte-identical cached GraphQL query
+# on the pg engine). To measure the app/protocol ceiling rather than host contention, every
+# container other than the benchmark Postgres is PAUSED (frozen, no CPU) for its duration: the
+# other data sources and the Trino/Zaychik engine are idle for a pg-engine run anyway. Paused only
+# AFTER Provisa is ready (its --demo perf boot registers every source), and always unpaused on
+# exit. OPTIMISTIC=0 skips the phase.
+OPTIMISTIC_PAUSE=(perf-mongodb-1 perf-clickhouse-1 perf-neo4j-1 trino-bench zaychik-bench)
+
+unpause_others() {
+  for c in "${OPTIMISTIC_PAUSE[@]}"; do
+    if [ "$(docker inspect -f '{{.State.Paused}}' "$c" 2>/dev/null)" = "true" ]; then
+      docker unpause "$c" > /dev/null
+    fi
+  done
+}
+
+if [ "${OPTIMISTIC:-1}" = "1" ]; then
+  echo ""
+  echo "=== optimistic (pg engine, non-PG containers paused) ==="
+  start_log="$LOG_DIR/start-optimistic.log"
+  kill_stale_instance
+  ( cd "$REPO_ROOT" && PROVISA_ENGINE=pg exec ./start-ui-install.sh --demo perf ) > "$start_log" 2>&1 &
+  provisa_pid=$!
+  if ! wait_for_ready; then
+    echo "Provisa did not become healthy (optimistic, engine=pg) — see $start_log"
+    stop_provisa "$provisa_pid"
+    exit 1
+  fi
+  trap 'unpause_others; stop_provisa "${provisa_pid:-}"' EXIT
+  for c in "${OPTIMISTIC_PAUSE[@]}"; do
+    docker pause "$c" > /dev/null
+    echo "paused $c"
+  done
+  mkdir -p "$SCRIPT_DIR/results/optimistic"
+  start_steal_logging "$SCRIPT_DIR/results/optimistic"
+  ( cd "$SCRIPT_DIR" && PROVISA_HTTP_BASE_URL="$HTTP_BASE_URL" \
+      npx --yes artillery@2.0.21 run --output "results/optimistic/artillery-optimistic-tx.json" \
+      artillery-optimistic-tx.yml )
+  stop_steal_logging
+  unpause_others
+  echo "unpaused ${OPTIMISTIC_PAUSE[*]}"
+  stop_provisa "$provisa_pid"
+  echo "=== optimistic done ==="
+fi
+
 echo ""
-echo "Sweep complete. Results: $SCRIPT_DIR/results/{${ENGINES[*]}}/"
+echo "Sweep complete. Results: $SCRIPT_DIR/results/{${ENGINES[*]}}/ and results/optimistic/"

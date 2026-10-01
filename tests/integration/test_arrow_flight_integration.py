@@ -30,6 +30,10 @@ import threading
 
 import pytest
 
+from provisa.cache.store import NoopCacheStore
+
+from provisa.compiler.compiled_query_cache import CompiledQueryCache
+
 pa = pytest.importorskip("pyarrow")
 flight = pytest.importorskip("pyarrow.flight")
 
@@ -75,6 +79,18 @@ def _make_minimal_state():
     # REQ-693: a bare MagicMock attribute is truthy, which would put this unsecured
     # deployment behind the high-security KMS-key gate. Name it standard mode.
     state.security_high = False
+    # REQ-369/REQ-1905: a bare MagicMock limiter's acquire() returns a MagicMock, not an awaitable,
+    # and a bare MagicMock global cap is truthy — these fixtures exercise the data/auth path, not
+    # rate limiting, so name both absent.
+    state.rate_limiter = None
+    state.flight_global_cap = None
+    # The governed pipeline keys its compile/routing caches on the schema identity and reads the
+    # response cache; bare MagicMocks there read as a non-string key and as cache HITs.
+    state.schema_boot_id = "flight-itest"
+    state.schema_version = 1
+    state.compiled_query_cache = CompiledQueryCache()
+    state.routing_cache = CompiledQueryCache()
+    state.response_cache_store = NoopCacheStore()  # AppState's caching-off store
     state.schemas = {}
     state.contexts = {}
     state.rls_contexts = {}
@@ -270,9 +286,9 @@ class TestFlightDoGetWithRealData:
         # AppState struct fields for server startup. AppState is not a
         # docker-compose service; the real data path (source_pool + PG) is live.
 
-        # Create a dedicated event loop that runs in a background thread.
-        # ProvisaFlightServer dispatches asyncpg coroutines to _main_loop via
-        # run_coroutine_threadsafe, so _main_loop must be actively running.
+        # A background "process" loop builds the source pool, as the app's lifespan does. Flight
+        # RPCs never run on it: each runs on its handler thread's own loop (REQ-1882), where the
+        # driver opens that loop's own asyncpg pool.
         main_loop = asyncio.new_event_loop()
 
         def _run_main_loop():
@@ -297,7 +313,7 @@ class TestFlightDoGetWithRealData:
         ).result(timeout=15)
 
         state_placeholder = MagicMock()
-        server = ProvisaFlightServer(state_placeholder, location=location, main_loop=main_loop)
+        server = ProvisaFlightServer(state_placeholder, location=location)
 
         state = MagicMock()
         # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
@@ -310,6 +326,18 @@ class TestFlightDoGetWithRealData:
         # REQ-693: a bare MagicMock attribute is truthy, which would put this data-path
         # fixture behind the high-security KMS-key gate. Name it standard mode.
         state.security_high = False
+        # REQ-369/REQ-1905: a bare MagicMock limiter's acquire() returns a MagicMock, not an awaitable,
+        # and a bare MagicMock global cap is truthy — these fixtures exercise the data/auth path, not
+        # rate limiting, so name both absent.
+        state.rate_limiter = None
+        state.flight_global_cap = None
+        # The governed pipeline keys its compile/routing caches on the schema identity and reads the
+        # response cache; bare MagicMocks there read as a non-string key and as cache HITs.
+        state.schema_boot_id = "flight-itest"
+        state.schema_version = 1
+        state.compiled_query_cache = CompiledQueryCache()
+        state.routing_cache = CompiledQueryCache()
+        state.response_cache_store = NoopCacheStore()  # AppState's caching-off store
         state.schemas = {"admin": schema}
         state.contexts = {"admin": ctx}
         state.rls_contexts = {"admin": RLSContext.empty()}
@@ -456,11 +484,7 @@ def secured_flight_server():
     state.admin_db = None
     state.roles = {}
 
-    loop = asyncio.new_event_loop()
-    loop_thread = threading.Thread(target=loop.run_forever, daemon=True)
-    loop_thread.start()
-
-    server = ProvisaFlightServer(state, location=_SECURED_LOCATION, main_loop=loop)
+    server = ProvisaFlightServer(state, location=_SECURED_LOCATION)
 
     # The credential check is what is under test; which provider issued the token is not, so the
     # validator is stubbed to a known-good identity rather than standing up an OIDC issuer.
@@ -500,8 +524,6 @@ def secured_flight_server():
     client.close()
     server.shutdown()
     flight_server_module._validate_flight_credential = original
-    loop.call_soon_threadsafe(loop.stop)
-    loop_thread.join(timeout=5)
 
 
 class TestSecuredFlightRequiresACredential:

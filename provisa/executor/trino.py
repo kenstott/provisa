@@ -23,6 +23,7 @@ import random
 import time
 
 import trino
+from provisa.core import request_deadline
 from provisa.executor.result import QueryResult  # re-export: neutral result type (REQ-028)
 from provisa.otel_compat import get_tracer as _get_tracer
 
@@ -145,17 +146,16 @@ def execute_trino(  # REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-
             except Exception as reconnect_exc:
                 raise ConnectionError(f"Trino reconnect failed: {reconnect_exc}") from reconnect_exc
         # Extract embedded provisa-params comment if present; fall back to explicit params.
-        from provisa.compiler.params import (
-            extract_params_comment,
-            substitute_positional_placeholders,
-        )
+        from provisa.compiler.params import bind_positionally, extract_params_comment
 
         exec_sql, embedded = extract_params_comment(sql)
         effective_params = params if params is not None else embedded
         # Trino Python client uses ? for parameter placeholders.
         # After SQLGlot transpilation, PG $N becomes Trino @N.
+        # Trino's ? binds positionally: values are ordered by placeholder occurrence, so a repeated
+        # or out-of-order $N (a pgwire client's SQL, REQ-589) binds the right value.
         if effective_params:
-            exec_sql = substitute_positional_placeholders(exec_sql, effective_params, lambda i: "?")
+            exec_sql, effective_params = bind_positionally(exec_sql, effective_params, "?")
 
         span.set_attribute("db.system", "trino")
         span.set_attribute("db.statement", exec_sql[:1000])
@@ -217,11 +217,12 @@ def execute_trino(  # REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-
                         cur.execute(set_sql)
 
                     log.info("[EXEC TRINO] sql=%s", exec_sql[:200])
-                    if effective_params:
-                        cur.execute(exec_sql, effective_params)
-                    else:
-                        cur.execute(exec_sql)
-                    rows = cur.fetchall()
+                    with request_deadline.cancel_on_deadline(cur.cancel):
+                        if effective_params:
+                            cur.execute(exec_sql, effective_params)
+                        else:
+                            cur.execute(exec_sql)
+                        rows = cur.fetchall()
                     column_names, column_types = _describe(cur)
 
                     span.set_attribute("db.row_count", len(rows))

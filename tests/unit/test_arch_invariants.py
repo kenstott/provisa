@@ -44,7 +44,7 @@ _CAPS = Path(__file__).resolve().parents[2] / "config" / "capabilities.yaml"
 #: The socket a started embedded control plane reports back (REQ-1535), and the URL built from it.
 _FAKE_SOCKET = ("/tmp/fake-pgsock", 55432)
 _PG_URL = (
-    f"postgresql+asyncpg://provisa:provisa@/provisa?host={_FAKE_SOCKET[0]}&port={_FAKE_SOCKET[1]}"
+    f"postgresql+psycopg://provisa:provisa@/provisa?host={_FAKE_SOCKET[0]}&port={_FAKE_SOCKET[1]}"
 )
 
 

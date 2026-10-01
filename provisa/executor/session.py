@@ -49,3 +49,26 @@ class EngineSession:
 
     def close(self) -> None:
         self._conn.close()
+
+
+class StoreBrokerSession:
+    """The ``isolated_sync()`` surface for an engine whose materialization store is held by the
+    store broker instead of being ATTACHed on the engine connection (REQ-1901: an embedded
+    DuckDB-file store). Every statement runs against the store through the broker, where the
+    ``mat_store.*`` names the API-result cache writes resolve; the engine connection is never used.
+
+    Each ``execute`` is one broker operation (one lock hold); ``fetchall`` returns its rows. The
+    broker takes no bind parameters, and no ``isolated_sync()`` caller passes any."""
+
+    def __init__(self, broker: Any) -> None:
+        self._broker = broker
+        self._rows: list = []
+
+    def execute(self, sql: str, params: list | None = None) -> "StoreBrokerSession":
+        if params is not None:
+            raise ValueError("the store broker takes no bind parameters")
+        self._rows = self._broker.execute(sql)
+        return self
+
+    def fetchall(self) -> list:
+        return self._rows

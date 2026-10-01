@@ -77,7 +77,6 @@ OWNERS: dict[str, set[str]] = {
     "databricks.sql": set(),
     "google.cloud.bigquery": set(),
     "asyncpg": {
-        "provisa/executor/drivers/postgresql.py",
         "provisa/federation/connector_postgres.py",
         # Raw wire-byte DataRow passthrough (REQ-1863) — deliberately bypasses asyncpg's own
         # row-decoding for a source/engine that's genuinely Postgres, relaying DataRow bytes
@@ -89,8 +88,18 @@ OWNERS: dict[str, set[str]] = {
         "provisa/federation/pgwire_replica.py",
     },
     "psycopg": {
+        # REQ-052/REQ-1882: the DIRECT postgres source driver — psycopg 3's extended protocol keeps
+        # per-connection server-side prepared statements (psycopg2 has none).
+        "provisa/executor/drivers/postgresql.py",
+        # REQ-828/REQ-1882: the control-plane store abstraction — JSONB parameter wrapping, the
+        # COPY field rendering, and the LISTEN/NOTIFY listener thread's own connection.
+        "provisa/core/database.py",
         "provisa/federation/pg_runtime.py",
         "provisa/federation/pg_backend.py",
+    },
+    "psycopg_pool": {
+        # The DIRECT postgres source driver's one shared, thread-safe pool per source.
+        "provisa/executor/drivers/postgresql.py",
     },
     "psycopg2": {
         "provisa/federation/pg_runtime.py",
@@ -149,20 +158,25 @@ OWNERS: dict[str, set[str]] = {
     "kafka": set(),
     "aiomysql": {
         "provisa/federation/connector_mysql.py",
-        "provisa/executor/drivers/mysql.py",
     },
     "aioodbc": {
         "provisa/federation/connector_mssql.py",
+    },
+    # REQ-1882: the DIRECT mysql/sqlserver source drivers use sync DBAPIs behind one shared,
+    # thread-safe pool per source (every request runs on its own thread).
+    "pymysql": {
+        "provisa/executor/drivers/mysql.py",
+    },
+    "pyodbc": {
         "provisa/executor/drivers/sqlserver.py",
+        "provisa/executor/drivers/mssql_warehouse.py",
+        "provisa/federation/mssql_warehouse_runtime.py",
     },
 }
 
 # files that import a tracked driver for a concern outside the "federated querying"
 # abstraction boundary entirely — accepted, not owners, still must be declared
 ACCEPTED_OUT_OF_SCOPE: dict[str, str] = {
-    "provisa/subscriptions/pg_provider.py": (
-        "CDC-signal consumption (asyncpg) — self-contained, not federated querying"
-    ),
     "provisa/subscriptions/kafka_provider.py": (
         "CDC-signal consumption (aiokafka) — self-contained, not federated querying"
     ),

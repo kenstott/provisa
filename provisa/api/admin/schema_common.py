@@ -499,7 +499,6 @@ async def _analyze_source_on_engine(state, pool, model, input: SourceInput) -> N
 
 def _prime_govdata_cache(input: SourceInput) -> None:
     """Schedule a background task to prime the govdata metadata cache."""
-    import asyncio as _asyncio
     from provisa.core.models import GovDataSource as _GDS, GovDataSubject as _GDSubj
     from provisa.core.secrets import resolve_secrets as _rs2
     from provisa.govdata.source import prime_source as _prime
@@ -514,18 +513,23 @@ def _prime_govdata_cache(input: SourceInput) -> None:
     _schemas = [s.strip().lower() for s in input.database.split(",") if s.strip()]
 
     async def _prime_task() -> None:
-        loop = _asyncio.get_running_loop()
-        await loop.run_in_executor(None, _prime, _gds, _schemas)
+        _prime(_gds, _schemas)
 
-    _asyncio.create_task(_prime_task())
+    # REQ-1882: detached work runs on a background worker, never on the request's own loop (which
+    # stops, cancelling leftover tasks, when the request ends).
+    from provisa.core.connection_loop import spawn_background
+
+    spawn_background(_prime_task(), name=f"govdata-prime:{input.id}")
 
 
 def _fire_catalog_indexing(state, pool, input: SourceInput) -> None:
     """Schedule background catalog indexing for NL table search (REQ-464)."""
-    import asyncio as _asyncio
     from provisa.discovery.catalog_cache import index_source as _index_source
 
-    _asyncio.create_task(
+    from provisa.core.connection_loop import spawn_background
+
+    # REQ-1882: background worker, not the request's loop (see _prime above).
+    spawn_background(
         _index_source(
             input.id,
             pool,
@@ -533,7 +537,8 @@ def _fire_catalog_indexing(state, pool, input: SourceInput) -> None:
             state.source_pools,
             state.source_types,
             state,
-        )
+        ),
+        name=f"catalog-index:{input.id}",
     )
 
 

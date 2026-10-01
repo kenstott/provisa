@@ -20,7 +20,6 @@ Phase 2 SQL (WHERE/ORDER BY/LIMIT) is applied by the caller via rewrite_from_cac
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
 
 import logging
@@ -142,6 +141,6 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
         if endpoint.promotions and loc.backend != "iceberg":
             await _apply_cache_promotions(loc, tbl, endpoint)
 
-        asyncio.ensure_future(schedule_drop(engine, loc, tbl, ttl))
+        schedule_drop(engine, loc, tbl, ttl)
 
         return QueryResult(rows=all_rows, from_cache=False, cache_table=tbl)

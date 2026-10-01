@@ -18,9 +18,7 @@ identity does not hold is refused rather than granted.
 
 from __future__ import annotations
 
-import asyncio
 import json
-import threading
 
 import pyarrow.flight as flight
 import pytest
@@ -61,28 +59,17 @@ def _identity(**claims) -> AuthIdentity:
     )
 
 
-@pytest.fixture(scope="module")
-def loop():
-    """A live event loop on another thread — what _run_on_loop dispatches credential checks to."""
-    made = asyncio.new_event_loop()
-    thread = threading.Thread(target=made.run_forever, daemon=True)
-    thread.start()
-    yield made
-    made.call_soon_threadsafe(made.stop)
-    thread.join(timeout=5)
-
-
-def _server(state, loop) -> ProvisaFlightServer:
-    """A server instance without binding a port — __init__ would open a listener."""
+def _server(state) -> ProvisaFlightServer:
+    """A server instance without binding a port — __init__ would open a listener. Each RPC runs on
+    its handler thread's own connection loop (REQ-1882), so there is no shared loop to hand it."""
     srv = ProvisaFlightServer.__new__(ProvisaFlightServer)
     srv._state = state
-    srv._main_loop = loop
     return srv
 
 
 @pytest.fixture()
-def secured(loop, monkeypatch):
-    srv = _server(FakeState(auth_config=_AUTH_CONFIG, auth_middleware_active=True), loop)
+def secured(monkeypatch):
+    srv = _server(FakeState(auth_config=_AUTH_CONFIG, auth_middleware_active=True))
     seen: dict = {}
 
     async def _validate(state, token):  # noqa: ARG001  # signature mirrors the real validator
@@ -168,8 +155,8 @@ class TestHighSecurityMode:
     """
 
     @pytest.fixture()
-    def high(self, loop):
-        srv = _server(FakeState(), loop)
+    def high(self):
+        srv = _server(FakeState())
         srv._state.security_high = True
         return srv
 
@@ -182,22 +169,22 @@ class TestHighSecurityMode:
         request = {"query": "SELECT 1", "role": "analyst", "kms_key": "arn:kms:key"}
         assert high._do_get_inner(request, _ticket()) == "rows"
 
-    def test_a_query_ticket_is_ungated_in_standard_mode(self, loop, monkeypatch):
-        srv = _server(FakeState(), loop)
+    def test_a_query_ticket_is_ungated_in_standard_mode(self, monkeypatch):
+        srv = _server(FakeState())
         monkeypatch.setattr(type(srv), "_execute_query", lambda self, request: "rows")
         assert srv._do_get_inner({"query": "SELECT 1", "role": "analyst"}, _ticket()) == "rows"
 
 
 class TestUnsecuredDeployment:
-    def test_no_auth_config_leaves_the_ticket_role_alone(self, loop):
-        srv = _server(FakeState(), loop)
+    def test_no_auth_config_leaves_the_ticket_role_alone(self):
+        srv = _server(FakeState())
         seen: dict = {}
         srv._do_get_inner = lambda request, ticket: seen.update(request) or "ok"
         srv.do_get(None, _ticket(query="SELECT 1", role="admin"))
         assert seen["role"] == "admin"
 
-    def test_a_live_middleware_without_config_fails_closed(self, loop):
+    def test_a_live_middleware_without_config_fails_closed(self):
         """A secured server whose config went missing must refuse, never degrade to trust mode."""
-        srv = _server(FakeState(auth_middleware_active=True), loop)
+        srv = _server(FakeState(auth_middleware_active=True))
         with pytest.raises(flight.FlightServerError, match="auth_config not configured"):
             srv.do_get(None, _ticket(query="SELECT 1", role="admin"))

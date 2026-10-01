@@ -854,7 +854,10 @@ def new_scheduler() -> AsyncIOScheduler:
     """
     from provisa.otel_compat import detached_trace_context
 
-    scheduler = AsyncIOScheduler()
+    from provisa.scheduler.executor import background_scheduler
+
+    # REQ-1882: jobs run on background worker threads, never on the process (front) loop.
+    scheduler = background_scheduler()
     inner = scheduler.wakeup
 
     def wakeup() -> None:

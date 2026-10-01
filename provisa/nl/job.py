@@ -146,8 +146,8 @@ class RedisJobStore:  # REQ-371
         return f"nl:job:{job_id}"
 
     async def put(self, job: NlJob) -> None:
-        await self._redis.setex(
-            self._key(job.job_id), _JOB_TTL, json.dumps(job.to_dict(), default=_json_default)
+        await self._redis.set(
+            self._key(job.job_id), json.dumps(job.to_dict(), default=_json_default), ex=_JOB_TTL
         )
 
     async def get(self, job_id: str) -> NlJob | None:

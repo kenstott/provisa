@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import socket
 import subprocess
 import time
 
@@ -30,9 +29,9 @@ _MONGO_CONTAINER = "provisa-bdd-nosql-mongo"
 
 
 def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+    from tests.port_lease import lease_port
+
+    return lease_port()
 
 
 @pytest.fixture(scope="module", autouse=True)

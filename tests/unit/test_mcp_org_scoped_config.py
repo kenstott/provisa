@@ -19,7 +19,7 @@ from __future__ import annotations
 import types
 
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.api.mcp import chat as chat_mod
 from provisa.api.mcp import tools as mcp_tools
@@ -32,12 +32,12 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 async def tenant_db(tmp_path):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'org_cfg.db'}")
-    async with engine.begin() as c:
-        await c.run_sync(lambda s: org_settings.metadata.create_all(s, tables=[org_settings]))
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'org_cfg.db'}")
+    with engine.begin() as c:
+        org_settings.metadata.create_all(c, tables=[org_settings])
     db = Database(engine, name="tenant")
     yield db
-    await engine.dispose()
+    engine.dispose()
 
 
 def _state(tenant_db):

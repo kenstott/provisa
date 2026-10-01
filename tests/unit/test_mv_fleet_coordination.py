@@ -23,7 +23,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import insert, select, update
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.schema_org import materialized_views as MVT
@@ -47,9 +47,9 @@ INST_B = "instance-b"
 @pytest.fixture
 async def store(tmp_path):
     """A single shared control-plane catalog (one file DB both 'instances' talk to)."""
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'cp.db'}")
-    async with engine.begin() as c:
-        await c.run_sync(lambda s: metadata.create_all(s, tables=[MVT]))
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cp.db'}")
+    with engine.begin() as c:
+        metadata.create_all(c, tables=[MVT])
     db = Database(engine, name="cp")
     async with db.acquire() as conn:
         await conn.execute_core(
@@ -63,7 +63,7 @@ async def store(tmp_path):
             )
         )
     yield db
-    await engine.dispose()
+    engine.dispose()
 
 
 async def _row(store):

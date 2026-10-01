@@ -631,8 +631,12 @@ MATCH (o:Order) RETURN o.id, o.amount
 | ------ | -------- |
 | `route=federated` | כפייה על פדרציה דרך מנוע הפדרציה, תוך עקיפת הניתוב הישיר בדרייבר |
 | `route=direct` | כפייה על ביצוע ישיר בדרייבר |
+| `cache=true` | צירוף השאילתה למטמון התגובות (צורת הערת SQL: `-- @provisa cache=true`) |
+| `cache_ttl=N` | צירוף ושמירת התוצאה במטמון למשך N שניות (`-- @provisa cache_ttl=N`) |
 
 (REQ-279, REQ-277, REQ-278)
+
+מטמון התגובות הוא בהצטרפות לפי בקשה: GraphQL משתמש בהנחיה `@cached(ttl: Int)`, SQL ו-Cypher בהערה `cache`/`cache_ttl`, ו-gRPC במטא-נתוני הקריאה `x-provisa-cache` / `x-provisa-cache-ttl`. הרמז חל בכל תעבורה שנושאת את השפה (Cypher על גבי HTTP, Bolt ו-Arrow Flight; GraphQL על גבי HTTP ו-Arrow Flight). בקשה ללא רמז לעולם אינה קוראת מהמטמון או כותבת אליו, ואף צורה אינה קוראת נתונים עדכניים יותר ממה שהגדרות המקור והטבלה של המפעיל מתירות. ראו [מטמון](configuration.md). (REQ-544)
 
 ## Presets עמודה במוטציות
 

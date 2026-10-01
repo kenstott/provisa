@@ -200,6 +200,7 @@ async def test_compiled_path_expands_metric_refs():
     reference must hit the SAME expansion there (unknown metric → named error, proving
     the hook runs before governance)."""
     from provisa.core.models import Metric as _Metric
+    from provisa.compiler.directives import NO_CACHE_HINT
     from provisa.pgwire import _pipeline
 
     class _FakeState:
@@ -211,7 +212,7 @@ async def test_compiled_path_expands_metric_refs():
 
     with pytest.raises(ValueError, match="nope"):
         await _pipeline._govern_and_route_compiled(
-            "SELECT value FROM metrics.nope", "admin", state=_FakeState()
+            "SELECT value FROM metrics.nope", "admin", state=_FakeState(), cache_hint=NO_CACHE_HINT
         )
 
 

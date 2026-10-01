@@ -921,6 +921,50 @@ tables:
 
 Definir `cache_enabled: false` em uma fonte desabilita o cache para todas as tabelas dessa fonte, independentemente do TTL em nível de tabela. (REQ-544) As chaves de cache sempre incluem `role_id` + valores de contexto RLS para particionamento de segurança. (REQ-544)
 
+### Adesão por requisição
+
+O cache de respostas fica desligado para toda requisição que não o pede. (REQ-544) Uma requisição adere com:
+
+| Superfície | Adesão |
+| --- | --- |
+| GraphQL (`/data/graphql`, Arrow Flight) | `@cached` na operação, opcionalmente `@cached(ttl: 60)` |
+| SQL (pgwire, Flight SQL, `/data/sql`) | uma linha de comentário `-- @provisa cache=true` ou `-- @provisa cache_ttl=60` na instrução |
+| Cypher (`/data/cypher`, a Neo4j Query API, Bolt, Arrow Flight) | uma linha de comentário `// @provisa cache=true` ou `// @provisa cache_ttl=60` na consulta |
+| gRPC (e o proxy gRPC HTTP) | metadados da chamada (cabeçalhos no proxy) `x-provisa-cache: true` ou `x-provisa-cache-ttl: 60` |
+
+REST e JSON:API não têm adesão. Um `ttl` que não seja inteiro faz a requisição falhar.
+
+Sem a indicação, a requisição não lê nem grava o cache. Com ela, as configurações acima continuam decidindo: o resultado só é armazenado se cada fonte lida tiver `cache_enabled: true` e o TTL resolvido de cada tabela for maior que 0. A entrada dura o `ttl` da requisição, se ela informar um; caso contrário, o menor TTL resolvido das tabelas lidas. (REQ-544)
+
+A indicação apenas aceita dados mais antigos em troca de velocidade. Ela nunca torna uma leitura mais recente do que as configurações do operador permitem: o frescor do carregamento e da réplica (`cache_ttl`, `change_signal`), `row_materialize`, os snapshots `load_protected` e as verificações de frescor valem para uma requisição com indicação exatamente como para uma sem. Veja a seção sobre frescor e carga neste documento. (REQ-544)
+
+`@noCache` e `-- @provisa no_cache=true` não existem mais: com o cache desligado por padrão, não há o que contornar.
+
+Uma gravação invalida toda entrada de cache que a organização que grava mantém para as tabelas gravadas; as entradas de outra organização para a mesma tabela não são afetadas. Se a invalidação falhar, a requisição falha em vez de deixar entradas obsoletas. (REQ-544, REQ-595)
+
+## Atualidade e carga: quem decide
+
+Três partes influenciam o quão recente é um resultado e quanta carga uma consulta coloca nos sistemas por trás dela. (REQ-030)
+
+- **A fonte de origem.** Idealmente, gerencia a própria contrapressão: limites de conexão, tempos limite de instrução, réplicas de leitura.
+- **O operador.** Protege a plataforma, o próprio Provisa, da contrapressão. Quando uma fonte não consegue se proteger, o operador a protege também. As configurações ficam em fontes e tabelas: `load_protected`, `prefer_materialized`, os `federation_hints` da fonte, o limite de redirecionamento de resultados grandes, o cluster Kafka em que os sinks escrevem e o watermark registrado de cada tabela.
+- **O usuário final.** Equilibra velocidade e atualidade, uma requisição por vez.
+
+As configurações do operador são o piso. Uma requisição pode ir acima dele, rumo a dados mais antigos ou menos carga; ativar o cache de respostas é o exemplo comum. Nunca pode ir abaixo. Uma dica de requisição que faria isso é recusada com um erro que nomeia a configuração do operador, sem ser aplicada nem descartada em silêncio.
+
+| Entrada da requisição | O que pode fazer | Recusada quando |
+| --- | --- | --- |
+| `@route(engine: DIRECT)`, `-- @provisa route=direct` | Escolher o driver direto para uma fonte | a fonte é `load_protected` ou `prefer_materialized` |
+| `@join`, `@reorder`, `@broadcastSize`, `/*+ ... */` | Definir uma propriedade de sessão do motor que os `federation_hints` da fonte deixaram livre | altera uma propriedade definida pelo operador |
+| `X-Provisa-Redirect-Threshold`, `@redirect(threshold:)` | Redirecionar um resultado mais cedo | é maior que o limite do operador |
+| `@sink(broker:)`, broker de `X-Provisa-Sink` | Repetir o broker do operador | nomeia outro broker, ou não há `KAFKA_BOOTSTRAP_SERVERS` configurado |
+| `@watermark` em uma assinatura | Repetir o watermark registrado da tabela | nomeia outra coluna, ou a tabela não tem nenhum |
+| `@cached`, `-- @provisa cache=true` | Servir um resultado mais antigo do cache | nunca; uma entrada de cache nunca é mais recente que a leitura que a gravou |
+
+As recusas retornam HTTP 403 com o código `query.operator_floor`, SQLSTATE `42501` via pgwire e `PERMISSION_DENIED` via Flight e gRPC. (REQ-030)
+
+Uma fonte `load_protected` ou `prefer_materialized` nunca é lida ao vivo por uma consulta, em nenhum transporte. As consultas leem sua cópia carregada. Só o carregamento e suas atualizações leem a fonte: uma atualização ocorre quando `cache_ttl` ou uma verificação de atualidade a exige; sem nenhum dos dois, a cópia é carregada uma vez e depois só é atualizada por um feed de mudanças ou pelo agendador. (REQ-1907) (REQ-1141, REQ-826)
+
 ## Autenticação
 
 ```yaml
@@ -1427,7 +1471,7 @@ Para fontes Google Cloud, defina `GOOGLE_APPLICATION_CREDENTIALS` para o caminho
 | Variável | Padrão | Descrição |
 | ---------- | --------- | ------------- |
 | `PROVISA_CONFIG` | `config/provisa.yaml` | Caminho do arquivo de configuração |
-| `TENANT_DATABASE_URL` | `postgresql+asyncpg://provisa:provisa@localhost:5432/provisa` | URI do armazenamento do plano de controle (SQLAlchemy async); aceita `sqlite+aiosqlite://…` / `duckdb://…` para o armazenamento desktop embutido (REQ-828, REQ-850) |
+| `TENANT_DATABASE_URL` | `postgresql+psycopg://provisa:provisa@localhost:5432/provisa` | URI do armazenamento do plano de controle (SQLAlchemy async); aceita `sqlite+pysqlite://…` / `duckdb://…` para o armazenamento desktop embutido (REQ-828, REQ-850) |
 | `PLATFORM_DATABASE_URL` | — | URI do registro de plataforma (diretório de tenants, registro de motores); obrigatório na inicialização, sem fallback (REQ-837) |
 | `PROVISA_REDIS_EMBEDDED` | — | `1`/`true` usa fakeredis embutido em vez de um servidor Redis — sem Docker (REQ-829) |
 | `PG_HOST` | `localhost` | Host PostgreSQL |

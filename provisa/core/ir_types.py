@@ -22,6 +22,7 @@ resolved at registration — never lazily backfilled, and never silently default
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import (
@@ -33,6 +34,7 @@ from sqlalchemy import (
     Double,
     Float,
     Integer,
+    Interval,
     LargeBinary,
     Numeric,
     Text,
@@ -54,6 +56,9 @@ _IR_TO_SA: dict[str, Any] = {
     "date": Date,
     "timestamp": DateTime,
     "time": Time,
+    # A duration. SQLAlchemy's generic Interval is native INTERVAL on Postgres/DuckDB and its own
+    # epoch-offset emulation elsewhere; its canonical TEXT form is ISO 8601 (iso8601_duration).
+    "interval": Interval,
     "uuid": Uuid,
     "bytea": LargeBinary,
     # REQ-980: first-class JSON. SQLAlchemy's generic JSON renders as native JSON on
@@ -85,6 +90,9 @@ _ALIASES: dict[str, str] = {
     "timestamp without time zone": "timestamp",
     "timestamp with time zone": "timestamp",
     "timestamptz": "timestamp",
+    "time without time zone": "time",
+    "time with time zone": "time",
+    "timetz": "time",  # postgres time with time zone alias
     "datetime": "timestamp",
     "blob": "bytea",
 }
@@ -167,6 +175,47 @@ _PLATFORM_TRANSFORMS: dict[tuple[str, str], str] = {
 }
 
 IR_TYPES: frozenset[str] = frozenset(_IR_TO_SA)
+
+# REQ-1908: a registered temporal column whose source stores it as an epoch number declares the
+# number's unit (Column.epoch_unit). Never inferred: seconds and milliseconds overlap for plausible
+# values, so a guessed unit silently shifts every instant.
+EPOCH_UNITS: dict[str, timedelta] = {
+    "s": timedelta(seconds=1),
+    "ms": timedelta(milliseconds=1),
+    "us": timedelta(microseconds=1),
+}
+# The registered types an epoch number can represent: an instant, or its UTC calendar day.
+EPOCH_TEMPORAL_TYPES = frozenset(
+    {"timestamp", "timestamp without time zone", "timestamptz", "timestamp with time zone", "date"}
+)
+
+
+def bytea_hex(value: bytes | bytearray | memoryview) -> str:
+    """The canonical text form of an IR ``bytea`` value: Postgres's own hex output (``\\x0001ff``,
+    ``bytea_output = hex``). Every transport that renders binary as text (GraphQL's String-typed
+    bytea columns, JSON results) uses it; binary transports (gRPC ``bytes``, pgwire, Arrow) carry
+    the bytes themselves."""
+    return "\\x" + bytes(value).hex()
+
+
+def iso8601_duration(value: timedelta) -> str:
+    """The canonical text form of an IR ``interval`` value: an ISO 8601 duration (``P3DT4.000005S``),
+    the form Postgres itself emits under ``IntervalStyle = iso_8601``. Every transport that renders
+    an interval as text (GraphQL's ``Interval`` scalar, JSON results, gRPC string fields) uses it,
+    so a duration reads the same on every surface. A negative duration is ``-`` + its magnitude."""
+    if value < timedelta(0):
+        return "-" + iso8601_duration(-value)
+    seconds = value.seconds + value.microseconds / 1_000_000
+    hours, rem = divmod(value.seconds, 3600)
+    minutes, secs = divmod(rem, 60)
+    out = "P" + (f"{value.days}D" if value.days else "")
+    if not seconds:
+        return out if value.days else "PT0S"
+    out += "T" + (f"{hours}H" if hours else "") + (f"{minutes}M" if minutes else "")
+    if secs or value.microseconds:
+        frac = f"{secs}.{value.microseconds:06d}".rstrip("0").rstrip(".")
+        out += f"{frac}S"
+    return out
 
 
 def value_transform(native_type: str, platform: str | None = None) -> str | None:

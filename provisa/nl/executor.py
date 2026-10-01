@@ -69,6 +69,7 @@ async def _execute_cypher(query: str, role: str, app_state: Any) -> dict:
     from provisa.cypher.params import collect_param_names, bind_params
     from provisa.cypher.assembler import assemble_rows, to_serializable
     from provisa.compiler.sql_rewrite import make_semantic_sql
+    from provisa.compiler.directives import NO_CACHE_HINT
     from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
 
     ctx = _get_ctx(app_state, role)
@@ -85,7 +86,9 @@ async def _execute_cypher(query: str, role: str, app_state: Any) -> dict:
     # Route through the ONE compiled pipeline (_govern_and_route_compiled → _execute_plan) —
     # same entrypoint the real Bolt/Cypher session uses (provisa/bolt/session.py) — so governance,
     # API-table hydration/materialization, and cache rewrites all apply exactly as they do there.
-    plan = await _govern_and_route_compiled(semantic_sql, role, state=app_state)
+    plan = await _govern_and_route_compiled(
+        semantic_sql, role, state=app_state, cache_hint=NO_CACHE_HINT
+    )
     result = await _execute_plan(plan, app_state)
     rows = [dict(zip(result.column_names, row)) for row in result.rows]
     assembled = assemble_rows(rows, graph_vars)

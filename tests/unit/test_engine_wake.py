@@ -14,6 +14,7 @@ happens when a query lands in the middle of a stop.
 from __future__ import annotations
 
 import asyncio
+import threading
 import contextlib
 
 from types import SimpleNamespace
@@ -191,6 +192,39 @@ async def test_wake_cancels_an_in_flight_stop(fake_k8s):
     assert fake_k8s.stops == []  # the drain never completed
     assert fake_k8s.wakes == ["shared_1"]
     assert engine_wake._stop_tasks.get("shared_1") is None
+
+
+async def test_wake_cancels_a_stop_running_on_another_loop(fake_k8s):
+    """REQ-1882: stop tasks live on the process loop (the reaper's) while a wake runs on its
+    request's own loop and thread. The wake must cancel and collect the stop on the stop's loop —
+    awaiting a task from a foreign loop is an error."""
+    reaper_loop = asyncio.new_event_loop()
+    runner = threading.Thread(target=reaper_loop.run_forever, daemon=True)
+    runner.start()
+    try:
+        drained = threading.Event()
+
+        async def _slow_stop(shard: str) -> None:
+            try:
+                await asyncio.sleep(3600)  # the wake is what ends this
+            finally:
+                drained.set()
+            fake_k8s.stops.append(shard)
+
+        async def _start() -> asyncio.Task:
+            return asyncio.get_running_loop().create_task(_slow_stop("shared_1"))
+
+        stop_task = asyncio.run_coroutine_threadsafe(_start(), reaper_loop).result(5)
+        engine_wake._stop_tasks["shared_1"] = stop_task
+
+        assert await engine_wake.ensure_shard_awake("shared_1") is True
+        assert drained.is_set() and stop_task.cancelled()
+        assert fake_k8s.stops == []  # the drain never completed
+        assert fake_k8s.wakes == ["shared_1"]
+    finally:
+        reaper_loop.call_soon_threadsafe(reaper_loop.stop)
+        runner.join(5)
+        reaper_loop.close()
 
 
 # ── ensure_engine_awake ─────────────────────────────────────────────────────────
@@ -755,7 +789,7 @@ def test_org_build_restores_the_shared_terminal_before_issuing_its_catalogs():
 # ── prewarm (sign-in) ───────────────────────────────────────────────────────────
 
 
-async def test_prewarm_wakes_the_shard_without_blocking_the_caller(fake_k8s):
+async def test_prewarm_wakes_the_shard_without_blocking_the_caller(fake_k8s, monkeypatch):
     """REQ-1471: sign-in starts the cold start; it does not wait on it. The caller is /auth/me, and
     a node is ~90-120s away."""
     from provisa.api.org_runtime import OrgRuntime
@@ -763,10 +797,23 @@ async def test_prewarm_wakes_the_shard_without_blocking_the_caller(fake_k8s):
     default = OrgRuntime(org_id="default", shard="shared_1", engine_generation=0)
     state = _state_with(None, [], default=default)
 
-    engine_wake.prewarm_engine(state, None)
+    # The wake is held until released, so "returned before it ran" is deterministic (REQ-1882: it
+    # runs on a background worker thread, not the caller's loop).
+    release = threading.Event()
+    real_wake = fake_k8s.ensure_shared_shard
+
+    async def _held_wake(shard: str) -> None:
+        await asyncio.to_thread(release.wait, 10)
+        await real_wake(shard)
+
+    monkeypatch.setattr(engine_wake.k8s, "ensure_shared_shard", _held_wake)
+
+    fut = engine_wake.prewarm_engine(state, None)
+    assert fut is not None
     assert fake_k8s.wakes == []  # returned before the wake ran
 
-    await asyncio.gather(*engine_wake._prewarm_tasks.values())
+    release.set()
+    await asyncio.wrap_future(fut)
     assert fake_k8s.wakes == ["shared_1"]
 
 
@@ -781,8 +828,7 @@ async def test_prewarm_binds_the_org_it_was_given(fake_k8s, monkeypatch):
     state = _state_with(rt, [], default=default)
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _noop_rebuild, raising=False)
 
-    engine_wake.prewarm_engine(state, "acme")
-    await asyncio.gather(*engine_wake._prewarm_tasks.values())
+    await asyncio.wrap_future(engine_wake.prewarm_engine(state, "acme"))
 
     assert "shared_2" in fake_k8s.wakes
 
@@ -802,25 +848,36 @@ async def test_prewarm_does_not_bind_the_deployments_own_org(fake_k8s, monkeypat
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _boom, raising=False)
 
-    engine_wake.prewarm_engine(state, "default")
-    await asyncio.gather(*engine_wake._prewarm_tasks.values())
+    await asyncio.wrap_future(engine_wake.prewarm_engine(state, "default"))
 
     assert fake_k8s.wakes == ["shared_1"]
     assert rebuilt == []
 
 
-async def test_prewarm_does_not_start_a_second_wake_for_the_same_org(fake_k8s):
+async def test_prewarm_does_not_start_a_second_wake_for_the_same_org(fake_k8s, monkeypatch):
     from provisa.api.org_runtime import OrgRuntime
 
     default = OrgRuntime(org_id="default", shard="shared_1", engine_generation=0)
     state = _state_with(None, [], default=default)
 
-    engine_wake.prewarm_engine(state, None)
-    engine_wake.prewarm_engine(state, None)
+    release = threading.Event()
+    real_wake = fake_k8s.ensure_shared_shard
+
+    async def _held_wake(shard: str) -> None:
+        await asyncio.to_thread(release.wait, 10)
+        await real_wake(shard)
+
+    monkeypatch.setattr(engine_wake.k8s, "ensure_shared_shard", _held_wake)
+
+    first = engine_wake.prewarm_engine(state, None)
+    second = engine_wake.prewarm_engine(state, None)
+    assert first is not None and second is None  # the in-flight wake is not duplicated
     assert len(engine_wake._prewarm_tasks) == 1
 
-    await asyncio.gather(*engine_wake._prewarm_tasks.values())
+    release.set()
+    await asyncio.wrap_future(first)
     assert fake_k8s.wakes == ["shared_1"]
+    assert engine_wake._prewarm_tasks == {}  # forgotten once done, so a later prewarm can run
 
 
 async def test_prewarm_failure_does_not_reach_the_caller(fake_k8s, monkeypatch):
@@ -836,8 +893,7 @@ async def test_prewarm_failure_does_not_reach_the_caller(fake_k8s, monkeypatch):
     default = OrgRuntime(org_id="default", shard="shared_1", engine_generation=0)
     state = _state_with(None, [], default=default)
 
-    engine_wake.prewarm_engine(state, None)
-    await asyncio.gather(*engine_wake._prewarm_tasks.values())  # does not raise
+    await asyncio.wrap_future(engine_wake.prewarm_engine(state, None))  # does not raise
     assert engine_wake._prewarm_tasks == {}
 
 

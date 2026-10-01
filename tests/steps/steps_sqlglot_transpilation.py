@@ -171,6 +171,7 @@ def a_query_is_transpiled(shared_data: dict) -> None:
         sources={source_id},
         source_types=source_types,
         source_dialects=source_dialects,
+        operator_floor={},
     )
     shared_data["decision"] = decision
 

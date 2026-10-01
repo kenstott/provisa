@@ -339,7 +339,7 @@ class TestReconcile:
             q = engine.subscribe("a")
             engine.reconcile([spec])  # identical signature → no churn
             # Same fanout queue survived (subscriber preserved).
-            assert q in engine._jobs["a"].fanout._queues
+            assert q in [sq for _, sq in engine._jobs["a"].fanout._queues]
 
     @pytest.mark.asyncio
     async def test_reconcile_changed_signature_reregisters(self):

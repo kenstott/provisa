@@ -32,7 +32,7 @@ from provisa.core.database import (
     Capabilities,
     Database,
     create_engine_from_url,
-    _normalize_admin_url,
+    sync_store_url,
 )
 from provisa.core.db import _init_schema_portable
 from provisa.core.models import Source, SourceType
@@ -45,9 +45,9 @@ from provisa.core.repositories import source as source_repo
 @pytest.mark.parametrize(
     "uri, expected_dialect",
     [
-        ("sqlite+aiosqlite:///:memory:", "sqlite"),
+        ("sqlite+pysqlite:///:memory:", "sqlite"),
         ("duckdb:///:memory:", "duckdb"),
-        ("postgresql+asyncpg://u:p@localhost:5432/db", "postgresql"),
+        ("postgresql+psycopg://u:p@localhost:5432/db", "postgresql"),
     ],
 )
 def test_uri_selects_backend(uri, expected_dialect):
@@ -56,14 +56,49 @@ def test_uri_selects_backend(uri, expected_dialect):
     assert engine.dialect.name == expected_dialect
 
 
-def test_bare_duckdb_uri_pins_async_driver():
-    """A bare ``duckdb://`` control-plane URI is normalized onto the async driver
-    (the sync ``duckdb_engine`` cannot back an AsyncEngine)."""
-    assert _normalize_admin_url("duckdb:///:memory:").startswith("duckdb+aioduckdb://")
+def test_bare_duckdb_uri_pins_control_plane_driver():
+    """A bare ``duckdb://`` control-plane URI is normalized onto the control-plane DuckDB dialect
+    (REQ-1882: the shared engine is synchronous; ``duckdb+provisa`` adds the autoincrement DDL
+    and DML-rowcount translation stock ``duckdb_engine`` lacks)."""
+    assert sync_store_url("duckdb:///:memory:").startswith("duckdb+provisa://")
 
 
-def test_bare_sqlite_uri_pins_async_driver():
-    assert _normalize_admin_url("sqlite:///x.db").startswith("sqlite+aiosqlite://")
+def test_bare_sqlite_uri_pins_sync_driver():
+    assert sync_store_url("sqlite:///x.db").startswith("sqlite+pysqlite://")
+
+
+@pytest.mark.parametrize(
+    "uri, expected_prefix",
+    [
+        ("postgresql+psycopg://u:p@h/db", "postgresql+psycopg://"),
+        ("sqlite+pysqlite:///x.db", "sqlite+pysqlite://"),
+        ("duckdb+provisa:///x.duckdb", "duckdb+provisa://"),
+        ("mysql+pymysql://u:p@h/db", "mysql+pymysql://"),
+    ],
+)
+def test_sync_driver_uri_passes_through(uri, expected_prefix):
+    """A URI naming the backend's sync driver resolves to itself, password kept verbatim."""
+    resolved = sync_store_url(uri)
+    assert resolved.startswith(expected_prefix)
+    assert ":p@" in resolved or "///" in resolved  # password kept verbatim, never masked
+
+
+@pytest.mark.parametrize(
+    "former_async_uri",
+    [
+        "postgresql+asyncpg://u:p@h/db",
+        "sqlite+aiosqlite:///x.db",
+        "duckdb+aioduckdb:///x.duckdb",
+        "mysql+aiomysql://u:p@h/db",
+        # REQ-1882 (amended 2026-09-30): the control plane runs on psycopg 3, not psycopg2.
+        "postgresql+psycopg2://u:p@h/db",
+    ],
+)
+def test_former_async_driver_uri_is_rejected(former_async_uri):
+    """REQ-1882: the async drivers are gone and not aliased — a config still naming one fails
+    loud at startup instead of silently running on a different driver."""
+    with pytest.raises(ValueError, match="runs on"):
+        sync_store_url(former_async_uri)
 
 
 @pytest.mark.parametrize(
@@ -71,15 +106,15 @@ def test_bare_sqlite_uri_pins_async_driver():
     [
         "mongodb://host/db",  # unsupported backend
         "redis://host:6379",  # unsupported backend
-        "postgresql+psycopg2://u@h/db",  # sync driver for a supported backend
-        "duckdb+duckdb_engine:///x.db",  # sync driver for duckdb
+        "postgresql+pg8000://u@h/db",  # a driver the control plane does not run on
+        "duckdb+duckdb_engine:///x.db",  # stock duckdb_engine, not the control-plane dialect
         "::not a url::",  # unparseable
     ],
 )
 def test_bad_uri_fails_loud(bad_uri):
     """An unsupported/misconfigured store URI raises — never falls back to a default store."""
     with pytest.raises(ValueError):
-        _normalize_admin_url(bad_uri)
+        sync_store_url(bad_uri)
 
 
 def test_backend_capabilities_gate_pg_only_features():
@@ -114,7 +149,7 @@ async def _make_store(uri: str) -> Database:
     return db
 
 
-@pytest.mark.parametrize("uri", ["sqlite+aiosqlite:///:memory:", "duckdb:///:memory:"])
+@pytest.mark.parametrize("uri", ["sqlite+pysqlite:///:memory:", "duckdb:///:memory:"])
 async def test_same_schema_applies_to_embedded_store(uri):
     """The one dialect-neutral ``schema_org`` metadata creates the identical control-plane
     tables on each embedded backend (SERIAL/JSONB/CASCADE differences absorbed per-dialect)."""
@@ -151,10 +186,10 @@ def _sample_source(sid: str = "src1") -> Source:
 @pytest.mark.parametrize(
     "uri_factory",
     [
-        pytest.param(lambda _d: "sqlite+aiosqlite:///:memory:", id="sqlite-memory"),
+        pytest.param(lambda _d: "sqlite+pysqlite:///:memory:", id="sqlite-memory"),
         pytest.param(lambda _d: "duckdb:///:memory:", id="duckdb-memory"),
         pytest.param(lambda d: f"duckdb:///{d}/admin.duckdb", id="duckdb-file"),
-        pytest.param(lambda d: f"sqlite+aiosqlite:///{d}/admin.db", id="sqlite-file"),
+        pytest.param(lambda d: f"sqlite+pysqlite:///{d}/admin.db", id="sqlite-file"),
     ],
 )
 async def test_source_repository_round_trip(uri_factory):
@@ -211,3 +246,37 @@ async def test_duckdb_file_store_persists_across_reopen():
                 assert got is not None and got["id"] == "persist"
         finally:
             await reopened.close()
+
+
+def test_use_pgbouncer_flag_turns_prepared_statements_off(monkeypatch):
+    """REQ-052/REQ-053: a direct PostgreSQL control plane prepares on first execution
+    (prepare_threshold=0); one behind PgBouncer (transaction mode) never prepares, and the
+    Provisa-only flag is stripped before libpq sees the URL."""
+    import provisa.core.database as dbmod
+
+    seen: list[tuple[str, dict]] = []
+    real = dbmod.sa.create_engine
+
+    def _capture(url, **kwargs):
+        seen.append((str(url), kwargs))
+        return real(url, **kwargs)
+
+    monkeypatch.setattr(dbmod.sa, "create_engine", _capture)
+    dbmod.create_engine_from_url("postgresql://u:p@h:5432/db")
+    dbmod.create_engine_from_url("postgresql://u:p@h:6432/db?use_pgbouncer=true")
+    (direct_url, direct), (bounced_url, bounced) = seen
+    assert direct_url.startswith("postgresql+psycopg://")
+    assert direct["connect_args"] == {"prepare_threshold": 0}
+    assert bounced["connect_args"] == {"prepare_threshold": None}
+    assert "use_pgbouncer" not in bounced_url
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["postgresql://u:p@h/db?use_pgbouncer=yes", "sqlite:///x.db?use_pgbouncer=true"],
+)
+def test_bad_use_pgbouncer_flag_fails_loud(bad):
+    from provisa.core.database import create_engine_from_url
+
+    with pytest.raises(ValueError, match="use_pgbouncer"):
+        create_engine_from_url(bad)

@@ -22,7 +22,7 @@ import types
 from contextlib import asynccontextmanager
 
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.repositories import creation_request as cr_repo
@@ -35,14 +35,14 @@ _TABLES = [creation_requests]
 
 @asynccontextmanager
 async def _db(tmp_path):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'propose.db'}")
-    async with engine.begin() as c:
-        await c.run_sync(lambda s: creation_requests.metadata.create_all(s, tables=_TABLES))
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'propose.db'}")
+    with engine.begin() as c:
+        creation_requests.metadata.create_all(c, tables=_TABLES)
     db = Database(engine, name="propose")
     try:
         yield db
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 def _state(db: Database) -> types.SimpleNamespace:

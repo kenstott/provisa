@@ -212,3 +212,186 @@ def test_empty_eligible_targets_is_a_no_op_short_circuit() -> None:
         "WHERE o.order_id = 1"
     )
     assert propagate_literal_join_predicates(sql, "postgres", set(), _TYPES) == sql
+
+
+# --- REQ-1880 (amended): correlated select-list subqueries (GraphQL nested relationships) ---
+
+_CORR = (
+    'SELECT "t0"."order_id", (SELECT json_object(KEY \'status\' VALUE "t2"."status") '
+    'FROM "perf_bench"."order_docs" "t2" WHERE "t2"."order_id" = "t0"."order_id" LIMIT 1) AS "d" '
+    'FROM "perf_bench"."orders" "t0" WHERE "t0"."order_id" >= 1 AND "t0"."order_id" <= 1000'
+)
+
+
+def test_range_propagates_into_a_correlated_select_list_subquery() -> None:
+    out = propagate_literal_join_predicates(
+        'SELECT t0.order_id, (SELECT max(t2.status) FROM "perf_bench"."order_docs" AS t2 '
+        "WHERE t2.order_id = t0.order_id) AS d "
+        'FROM "perf_bench"."orders" AS t0 WHERE t0.order_id BETWEEN 1 AND 1000',
+        "postgres",
+        _ELIGIBLE,
+        _TYPES,
+    )
+    assert out == _norm(
+        'SELECT t0.order_id, (SELECT max(t2.status) FROM "perf_bench"."order_docs" AS t2 '
+        "WHERE t2.order_id = t0.order_id AND t2.order_id BETWEEN 1 AND 1000) AS d "
+        'FROM "perf_bench"."orders" AS t0 WHERE t0.order_id BETWEEN 1 AND 1000'
+    )
+
+
+def test_the_graphql_nested_relationship_shape_gets_the_outer_bounds() -> None:
+    """Separate >= / <= conjuncts (what the GraphQL compiler emits) each propagate."""
+    out = propagate_literal_join_predicates(_CORR, "postgres", _ELIGIBLE, _TYPES)
+    inner = sqlglot.parse_one(out, read="postgres").expressions[1].find(sqlglot.exp.Select)
+    where = inner.args["where"].sql(dialect="postgres")
+    assert '"t2"."order_id" >= 1' in where and '"t2"."order_id" <= 1000' in where
+
+
+def test_a_subquery_on_an_ineligible_table_is_left_alone() -> None:
+    out = propagate_literal_join_predicates(_CORR, "postgres", {("perf_bench", "other")}, _TYPES)
+    assert out == _CORR
+
+
+def test_an_uncorrelated_subquery_is_left_alone() -> None:
+    sql = (
+        'SELECT t0.order_id, (SELECT max(t2.status) FROM "perf_bench"."order_docs" AS t2 '
+        "WHERE t2.status = 'x') AS d "
+        'FROM "perf_bench"."orders" AS t0 WHERE t0.order_id = 5'
+    )
+    assert propagate_literal_join_predicates(sql, "postgres", _ELIGIBLE, _TYPES) == sql
+
+
+def test_an_outer_predicate_inside_an_or_does_not_propagate_into_a_subquery() -> None:
+    sql = (
+        'SELECT t0.order_id, (SELECT max(t2.status) FROM "perf_bench"."order_docs" AS t2 '
+        "WHERE t2.order_id = t0.order_id) AS d "
+        'FROM "perf_bench"."orders" AS t0 WHERE t0.order_id = 5 OR t0.amount > 3'
+    )
+    assert propagate_literal_join_predicates(sql, "postgres", _ELIGIBLE, _TYPES) == sql
+
+
+def test_incompatible_column_types_do_not_propagate_into_a_subquery() -> None:
+    types = {**_TYPES, ("perf_bench", "order_docs", "order_id"): "varchar"}
+    assert propagate_literal_join_predicates(_CORR, "postgres", _ELIGIBLE, types) == _CORR
+
+
+def test_a_range_comparison_propagates_across_an_inner_join() -> None:
+    sql = (
+        'SELECT o.order_id FROM "perf_bench"."orders" AS o '
+        'JOIN "perf_bench"."order_docs" AS d ON d.order_id = o.order_id '
+        "WHERE o.order_id >= 10 AND 20 >= o.order_id"
+    )
+    out = propagate_literal_join_predicates(sql, "postgres", _ELIGIBLE, _TYPES)
+    assert out == _norm(
+        'SELECT o.order_id FROM "perf_bench"."orders" AS o '
+        'JOIN "perf_bench"."order_docs" AS d ON d.order_id = o.order_id '
+        "WHERE ((o.order_id >= 10 AND 20 >= o.order_id) AND d.order_id >= 10) AND 20 >= d.order_id"
+    )
+
+
+# --- Result preservation: run original vs propagated SQL on real data (in-memory DuckDB) ---
+
+import duckdb  # noqa: E402
+import pytest  # noqa: E402
+
+
+@pytest.fixture(scope="module")
+def _db():
+    con = duckdb.connect()
+    con.execute("CREATE SCHEMA perf_bench")
+    con.execute("CREATE TABLE perf_bench.orders (order_id INTEGER, amount INTEGER)")
+    con.execute("CREATE TABLE perf_bench.order_docs (order_id INTEGER, status VARCHAR)")
+    con.execute("INSERT INTO perf_bench.orders SELECT i, i % 7 FROM range(1, 60) t(i)")
+    # docs: gaps (no doc for multiples of 5), duplicates for multiples of 3, NULL keys, out-of-range
+    con.execute(
+        "INSERT INTO perf_bench.order_docs "
+        "SELECT i, 's' || (i % 4) FROM range(1, 80) t(i) WHERE i % 5 <> 0 "
+        "UNION ALL SELECT i, 'dup' FROM range(1, 80) t(i) WHERE i % 3 = 0 "
+        "UNION ALL SELECT NULL, 'nullkey' FROM range(3)"
+    )
+    yield con
+    con.close()
+
+
+def _rows(con, sql: str) -> list:
+    duck = sqlglot.transpile(sql, read="postgres", write="duckdb")[0]
+    return sorted(con.execute(duck).fetchall(), key=repr)
+
+
+_SEMANTIC_CASES = [
+    # correlated select-list subqueries
+    "SELECT t0.order_id, (SELECT max(t2.status) FROM perf_bench.order_docs AS t2 "
+    "WHERE t2.order_id = t0.order_id) AS d FROM perf_bench.orders AS t0 "
+    "WHERE t0.order_id >= 3 AND t0.order_id <= 40",
+    "SELECT t0.order_id, (SELECT count(*) FROM perf_bench.order_docs AS t2 "
+    "WHERE t2.order_id = t0.order_id) AS n FROM perf_bench.orders AS t0 "
+    "WHERE t0.order_id IN (5, 6, 9, 55)",
+    "SELECT t0.order_id, (SELECT t2.status FROM perf_bench.order_docs AS t2 "
+    "WHERE t2.order_id = t0.order_id ORDER BY t2.status LIMIT 1) AS d "
+    "FROM perf_bench.orders AS t0 WHERE t0.order_id BETWEEN 10 AND 30",
+    # predicate on an outer LEFT-joined side, subquery correlated to the preserved side
+    "SELECT t0.order_id, (SELECT max(t2.status) FROM perf_bench.order_docs AS t2 "
+    "WHERE t2.order_id = t0.order_id) AS d FROM perf_bench.orders AS t0 "
+    "LEFT JOIN perf_bench.order_docs AS x ON x.order_id = t0.order_id "
+    "WHERE t0.order_id < 20",
+    # LEFT join: must NOT be propagated (would drop preserved rows)
+    "SELECT o.order_id, d.status FROM perf_bench.orders AS o "
+    "LEFT JOIN perf_bench.order_docs AS d ON d.order_id = o.order_id "
+    "WHERE o.order_id BETWEEN 1 AND 25",
+    # INNER join ranges
+    "SELECT o.order_id, d.status FROM perf_bench.orders AS o "
+    "JOIN perf_bench.order_docs AS d ON d.order_id = o.order_id "
+    "WHERE o.order_id >= 4 AND o.order_id < 33",
+    # predicate under OR: must not propagate
+    "SELECT t0.order_id, (SELECT max(t2.status) FROM perf_bench.order_docs AS t2 "
+    "WHERE t2.order_id = t0.order_id) AS d FROM perf_bench.orders AS t0 "
+    "WHERE t0.order_id = 5 OR t0.amount = 3",
+]
+
+
+@pytest.mark.parametrize("sql", _SEMANTIC_CASES)
+def test_propagation_never_changes_the_result(_db, sql: str) -> None:
+    out = propagate_literal_join_predicates(sql, "postgres", _ELIGIBLE, _TYPES)
+    assert _rows(_db, out) == _rows(_db, sql)
+
+
+def test_a_left_join_is_never_propagated_across() -> None:
+    sql = _SEMANTIC_CASES[4]
+    assert propagate_literal_join_predicates(sql, "postgres", _ELIGIBLE, _TYPES) == sql
+
+
+# --- Bind parameters ($N): propagated only when the engine binds by number ---
+
+_PARAM_CORR = (
+    "SELECT t0.order_id, (SELECT max(t2.status) FROM perf_bench.order_docs AS t2 "
+    "WHERE t2.order_id = t0.order_id) AS d FROM perf_bench.orders AS t0 "
+    "WHERE t0.order_id >= $1 AND t0.order_id <= $2"
+)
+
+
+def test_a_bind_parameter_is_not_propagated_by_default() -> None:
+    assert propagate_literal_join_predicates(_PARAM_CORR, "postgres", _ELIGIBLE, _TYPES) == (
+        _PARAM_CORR
+    )
+
+
+def test_a_bind_parameter_propagates_when_the_engine_binds_by_number() -> None:
+    out = propagate_literal_join_predicates(
+        _PARAM_CORR, "postgres", _ELIGIBLE, _TYPES, allow_params=True
+    )
+    inner = sqlglot.parse_one(out, read="postgres").expressions[1].find(sqlglot.exp.Select)
+    where = inner.args["where"].sql(dialect="postgres")
+    assert "t2.order_id >= $1" in where and "t2.order_id <= $2" in where
+
+
+def test_a_propagated_bind_parameter_returns_the_same_rows(_db) -> None:
+    out = propagate_literal_join_predicates(
+        _PARAM_CORR, "postgres", _ELIGIBLE, _TYPES, allow_params=True
+    )
+    params = [3, 40]
+
+    def run(sql: str) -> list:
+        duck = sqlglot.transpile(sql, read="postgres", write="duckdb")[0]
+        return sorted(_db.execute(duck, params).fetchall(), key=repr)
+
+    assert run(out) == run(_PARAM_CORR)

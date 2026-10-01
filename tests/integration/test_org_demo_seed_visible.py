@@ -174,12 +174,16 @@ async def test_compiled_pipeline_forces_engine_route_for_view_backed_query(demo_
     of bug that broke ``fact_pet_inquiries`` (500: no such table views.fact_pet_inquiries) in the
     demo config. _govern_and_route_compiled must force Route.ENGINE for any view-referencing query,
     mirroring the guard _govern_and_route (the raw-SQL path) already has."""
+    from provisa.compiler.directives import NO_CACHE_HINT
     from provisa.pgwire import _pipeline
     from provisa.transpiler.router import Route
 
     state, _rt = demo_org
     plan = await _pipeline._govern_and_route_compiled(
-        'SELECT * FROM "sales_analytics"."order_totals"', "org_admin", state=state
+        'SELECT * FROM "sales_analytics"."order_totals"',
+        "org_admin",
+        state=state,
+        cache_hint=NO_CACHE_HINT,
     )
     assert plan.route == Route.ENGINE, plan.route
     assert plan.exec_sql is not None

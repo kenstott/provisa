@@ -51,7 +51,7 @@ def _hammer(worker, n_threads: int, trials: int, setup=None):
     return rounds
 
 
-# ── 1. ingest.engine.get_engine — one AsyncEngine per source_id ─────────────────
+# ── 1. ingest.engine.get_engine — one Engine per source_id ─────────────────
 
 
 class TestIngestEngineCacheRace:
@@ -66,11 +66,14 @@ class TestIngestEngineCacheRace:
     def _run(self, n_threads: int, trials: int):
         import time
 
+        import provisa.core.database as D
         import provisa.ingest.engine as E
 
         built = {"n": 0}
         lock = threading.Lock()
-        orig = E.create_async_engine
+        # A postgresql ingest engine is built by core.database.pg_engine (the shared
+        # prepared-statement policy), which get_engine imports at call time.
+        orig = D.pg_engine
 
         def slow_counting(*a, **k):
             with lock:
@@ -78,7 +81,7 @@ class TestIngestEngineCacheRace:
             time.sleep(0.003)  # hold the window open so racers pile in
             return orig(*a, **k)
 
-        E.create_async_engine = slow_counting  # type: ignore[assignment]
+        D.pg_engine = slow_counting  # type: ignore[assignment]
         try:
             for _ in range(trials):
                 E._engines.clear()
@@ -88,7 +91,18 @@ class TestIngestEngineCacheRace:
 
                 def w():
                     barrier.wait()
-                    sink.append(E.get_engine("s1", "postgresql+asyncpg", "h", 5432, "db", "u", "p"))
+                    sink.append(
+                        E.get_engine(
+                            "s1",
+                            "postgresql+psycopg",
+                            "h",
+                            5432,
+                            "db",
+                            "u",
+                            "p",
+                            use_pgbouncer=False,
+                        )
+                    )
 
                 ts = [threading.Thread(target=w) for _ in range(n_threads)]
                 for t in ts:
@@ -97,11 +111,9 @@ class TestIngestEngineCacheRace:
                     t.join()
                 yield built["n"], sink
         finally:
-            E.create_async_engine = orig  # type: ignore[assignment]
-            loop = asyncio.new_event_loop()
+            D.pg_engine = orig  # type: ignore[assignment]
             for e in list(E._engines.values()):
-                loop.run_until_complete(e.dispose())
-            loop.close()
+                e.dispose()
             E._engines.clear()
 
     def test_exactly_one_engine_constructed(self):

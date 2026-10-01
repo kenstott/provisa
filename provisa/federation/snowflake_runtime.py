@@ -23,11 +23,13 @@ selectable/declarable; a live connection requires the driver + a Snowflake accou
 
 from __future__ import annotations
 
+import math
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 import pyarrow as pa
 
+from provisa.core import request_deadline
 from provisa.executor.result import QueryResult
 from provisa.executor.result import ResultStream
 from provisa.federation.runtime_support import run_async_materialized, stream_rows_from_arrow
@@ -40,6 +42,24 @@ def _arrow_result(cur: Any) -> bool:
     no message ("Unknown error"), confirmed live. The connector records the format on the cursor
     and exposes nothing public for it."""
     return getattr(cur, "_query_result_format", "arrow") == "arrow"
+
+
+def _execute_within_deadline(cur: Any, sql: str, params: list | None) -> None:
+    """``cur.execute`` bounded by the request deadline (REQ-1882).
+
+    The Snowflake query id (``sfqid``) is only assigned once ``execute`` returns, so a watchdog has
+    no id to pass to ``SYSTEM$CANCEL_QUERY`` while the call is in flight. The connector's own
+    ``timeout=`` arms its server-side cancel timer (``_TrackedQueryCancellationTimer`` →
+    ``connection._cancel_query``, keyed by the request id) — that is the cancel used here."""
+    left = request_deadline.remaining()
+    if left is None:
+        cur.execute(sql, params or None)
+        return
+    if left <= 0:
+        dl = request_deadline.current()
+        assert dl is not None
+        raise dl.expired_error()
+    cur.execute(sql, params or None, timeout=max(1, math.ceil(left)))
 
 
 def _status_table(cur: Any) -> Any:
@@ -423,7 +443,7 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         An empty result set yields an empty table rather than ``None``."""
         cur = self._conn.cursor()
         try:
-            cur.execute(sql, params or None)
+            _execute_within_deadline(cur, sql, params)
             if not _arrow_result(cur):
                 return _status_table(cur)
             table = cur.fetch_arrow_all()
@@ -443,7 +463,7 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         cursor closes when the generator drains or the consumer stops early. A zero-row result yields
         an empty-schema stream (column names from the cursor description, no rows)."""
         cur = self._conn.cursor()
-        cur.execute(sql, params or None)
+        _execute_within_deadline(cur, sql, params)
         if not _arrow_result(cur):
             table = _status_table(cur)
             cur.close()

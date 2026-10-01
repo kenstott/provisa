@@ -18,12 +18,12 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timezone
-from typing import AsyncGenerator
-
-import asyncpg
-import asyncpg.pool
+from typing import TYPE_CHECKING, AsyncGenerator
 
 from provisa.subscriptions.base import ChangeEvent, NotificationProvider
+
+if TYPE_CHECKING:
+    from provisa.core.database import Database
 
 log = logging.getLogger(__name__)
 
@@ -31,11 +31,14 @@ CHANNEL_PREFIX = "provisa_"
 
 
 class PgNotificationProvider(NotificationProvider):  # REQ-258
-    """Wraps asyncpg LISTEN/NOTIFY into the NotificationProvider interface."""
+    """Wraps PostgreSQL LISTEN/NOTIFY into the NotificationProvider interface.
 
-    def __init__(self, pool: asyncpg.Pool) -> None:
+    ``pool`` is the control-plane ``Database``; its listener thread holds the LISTEN connection
+    and delivers each payload to this provider's queue on the watching loop, so a watch holds no
+    pooled connection."""
+
+    def __init__(self, pool: "Database") -> None:
         self._pool = pool
-        self._conn: asyncpg.pool.PoolConnectionProxy | None = None
 
     async def watch(  # REQ-565
         self, table: str, filter_expr: str | None = None
@@ -43,14 +46,11 @@ class PgNotificationProvider(NotificationProvider):  # REQ-258
         channel = f"{CHANNEL_PREFIX}{table}"
         queue: asyncio.Queue[str] = asyncio.Queue()
 
-        def _on_notify(
-            conn: asyncpg.pool.PoolConnectionProxy, pid: int, ch: str, payload: str
-        ) -> None:
+        def _on_notify(_db: object, pid: int, ch: str, payload: str) -> None:
             queue.put_nowait(payload)
 
-        self._conn = await self._pool.acquire()
+        await self._pool.add_listener(channel, _on_notify)
         try:
-            await self._conn.add_listener(channel, _on_notify)
             log.info("PgProvider: listening on %s", channel)
 
             while True:
@@ -74,27 +74,21 @@ class PgNotificationProvider(NotificationProvider):  # REQ-258
                     timestamp=datetime.now(timezone.utc),
                 )
         finally:
-            try:
-                await self._conn.remove_listener(channel, _on_notify)
-            except Exception:
-                log.debug("Failed to remove listener on %s", channel, exc_info=True)
-            await self._pool.release(self._conn)
-            self._conn = None
+            await self._pool.remove_listener(channel, _on_notify)
 
     async def watch_many(self, tables: list[str]) -> AsyncGenerator[ChangeEvent, None]:  # REQ-565
         """Listen on multiple table channels; any change event triggers a yield."""
         channels = [f"{CHANNEL_PREFIX}{t}" for t in tables]
         queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
 
-        def _on_notify(
-            conn: asyncpg.pool.PoolConnectionProxy, pid: int, ch: str, payload: str
-        ) -> None:
+        def _on_notify(_db: object, pid: int, ch: str, payload: str) -> None:
             queue.put_nowait((ch, payload))
 
-        self._conn = await self._pool.acquire()
+        subscribed: list[str] = []
         try:
             for ch in channels:
-                await self._conn.add_listener(ch, _on_notify)
+                await self._pool.add_listener(ch, _on_notify)
+                subscribed.append(ch)
             log.info("PgProvider: listening on %s", channels)
 
             while True:
@@ -119,13 +113,9 @@ class PgNotificationProvider(NotificationProvider):  # REQ-258
                     timestamp=datetime.now(timezone.utc),
                 )
         finally:
-            for ch in channels:
-                try:
-                    await self._conn.remove_listener(ch, _on_notify)
-                except Exception:
-                    log.debug("Failed to remove listener on %s", ch, exc_info=True)
-            await self._pool.release(self._conn)
-            self._conn = None
+            for ch in subscribed:
+                await self._pool.remove_listener(ch, _on_notify)
 
     async def close(self) -> None:
-        self._conn = None
+        # Each watch removes its own listeners when it ends; nothing is held between watches.
+        return None

@@ -19,7 +19,6 @@ socket so the field name is checked where it is actually read.
 from __future__ import annotations
 
 import contextlib
-import socket
 import threading
 import time
 
@@ -35,9 +34,9 @@ _JWT_SECRET = "test-secret-for-the-login-exchange-32b"  # >= 32 bytes: HS256 min
 
 
 def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+    from tests.port_lease import lease_port
+
+    return lease_port()
 
 
 @pytest.fixture()

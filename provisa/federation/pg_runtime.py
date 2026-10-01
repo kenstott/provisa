@@ -23,12 +23,14 @@ from __future__ import annotations
 
 import asyncio
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import psycopg2
 import psycopg2.pool
 
+from provisa.core import request_deadline
 from provisa.executor.result import QueryResult, ResultStream, StreamingQueryResult
 from provisa.federation.engine import build_pg_engine
 from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
@@ -41,6 +43,44 @@ from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
 # closest existing convention: a small fixed pool per store connection, not a config knob).
 _POOL_MINCONN = 1
 _POOL_MAXCONN = 10
+# REQ-1882 (amended 2026-09-29): with every request on its own thread, more than _POOL_MAXCONN
+# requests in one worker can want an engine connection at once. The maintainer's rule: the extra
+# request WAITS for a free connection, it never fails with "pool exhausted". The wait is bounded by
+# the pgwire request budget (server.py's .result(timeout=120) contract) so a leaked connection
+# surfaces as a clear error instead of an indefinite hang.
+_POOL_WAIT_S = 120.0
+
+
+class _WaitingThreadedPool(psycopg2.pool.ThreadedConnectionPool):
+    """``ThreadedConnectionPool`` whose ``getconn`` blocks until a slot frees up.
+
+    psycopg2's own pool raises ``PoolError("connection pool exhausted")`` the moment ``maxconn``
+    connections are checked out. A bounded semaphore sized to ``maxconn`` gates checkout so the
+    (maxconn+1)th caller waits instead; every ``putconn`` (including ``close=True`` discards)
+    releases its slot."""
+
+    def __init__(self, minconn: int, maxconn: int, *args: Any, **kwargs: Any) -> None:
+        super().__init__(minconn, maxconn, *args, **kwargs)
+        self._slots = threading.BoundedSemaphore(maxconn)
+
+    def getconn(self, key: Any = None) -> Any:
+        budget = request_deadline.remaining()
+        wait = _POOL_WAIT_S if budget is None else min(_POOL_WAIT_S, budget)
+        if not self._slots.acquire(timeout=wait):
+            raise psycopg2.pool.PoolError(
+                f"no engine connection freed within {wait:.1f}s (all {self.maxconn} checked out)"
+            )
+        try:
+            return super().getconn(key)
+        except BaseException:
+            self._slots.release()
+            raise
+
+    def putconn(self, conn: Any = None, key: Any = None, close: bool = False) -> None:
+        try:
+            super().putconn(conn, key, close)
+        finally:
+            self._slots.release()
 
 
 def _psycopg2_exec_args(sql: str, params: list | None) -> tuple[str, dict[str, Any] | None]:
@@ -65,8 +105,60 @@ def _psycopg2_exec_args(sql: str, params: list | None) -> tuple[str, dict[str, A
         return sql, None
     import re
 
-    converted = re.sub(r"\$(\d+)", lambda m: f"%(p{m.group(1)})s", sql)
+    # With params bound psycopg2 %-formats the whole statement, so a literal % (LIKE 'a%') must be
+    # escaped before the placeholders are rewritten.
+    converted = re.sub(r"\$(\d+)", lambda m: f"%(p{m.group(1)})s", sql.replace("%", "%%"))
     return converted, {f"p{i + 1}": v for i, v in enumerate(params)}
+
+
+# pg_type OID -> type name for the built-in types (their OIDs are fixed across every Postgres);
+# any other OID is looked up in pg_type once and cached.
+_PG_TYPE_NAMES: dict[int, str] = {
+    16: "bool",
+    17: "bytea",
+    18: "char",
+    19: "name",
+    20: "int8",
+    21: "int2",
+    23: "int4",
+    25: "text",
+    26: "oid",
+    114: "json",
+    700: "float4",
+    701: "float8",
+    1007: "INTEGER[]",
+    1009: "VARCHAR[]",
+    1015: "VARCHAR[]",
+    1042: "bpchar",
+    1043: "varchar",
+    1082: "date",
+    1083: "time",
+    1114: "timestamp",
+    1184: "timestamptz",
+    1186: "interval",
+    1266: "timetz",
+    1700: "numeric",
+    2950: "uuid",
+    3802: "jsonb",
+}
+_PG_TYPE_NAMES_LOCK = threading.Lock()
+
+
+def _pg_type_names(con: Any, oids: list[int]) -> list[str]:
+    missing = [o for o in set(oids) if o not in _PG_TYPE_NAMES]
+    if missing:
+        cur = con.cursor()
+        try:
+            cur.execute("SELECT oid, typname FROM pg_type WHERE oid = ANY(%s)", (missing,))
+            found = dict(cur.fetchall())
+        finally:
+            cur.close()
+        unknown = [o for o in missing if o not in found]
+        if unknown:
+            raise RuntimeError(f"pg_type has no entry for result column type OID(s) {unknown}")
+        with _PG_TYPE_NAMES_LOCK:
+            _PG_TYPE_NAMES.update(found)
+    return [_PG_TYPE_NAMES[o] for o in oids]
 
 
 class _AdbcConnectionPool:
@@ -95,6 +187,10 @@ class _AdbcConnectionPool:
         self._not_empty = threading.Condition(self._lock)
 
     def getconn(self) -> Any:
+        budget = request_deadline.remaining()
+        deadline = time.monotonic() + (
+            _POOL_WAIT_S if budget is None else min(_POOL_WAIT_S, budget)
+        )
         with self._lock:
             while True:
                 if self._pool:
@@ -102,7 +198,12 @@ class _AdbcConnectionPool:
                 if self._created < self._maxconn:
                     self._created += 1
                     return self._connect()
-                self._not_empty.wait()
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not self._not_empty.wait(remaining):
+                    raise RuntimeError(
+                        f"no ADBC engine connection freed within {_POOL_WAIT_S:.0f}s "
+                        f"(all {self._maxconn} checked out)"
+                    )
 
     def putconn(self, con: Any) -> None:
         with self._lock:
@@ -142,9 +243,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         # REQ-1895: run_sync's read path borrows from this pool instead of opening a fresh
         # psycopg2 connection per call — scoped to THIS runtime instance (never a process-global
         # pool; see _AdbcConnectionPool's docstring for why).
-        self._read_pool = psycopg2.pool.ThreadedConnectionPool(
-            _POOL_MINCONN, _POOL_MAXCONN, engine_dsn
-        )
+        self._read_pool = _WaitingThreadedPool(_POOL_MINCONN, _POOL_MAXCONN, engine_dsn)
         # run_arrow/run_arrow_stream's ADBC pool — created lazily on first use since
         # adbc_driver_postgresql is an optional dependency, matching the existing lazy import in
         # run_arrow/run_arrow_stream below.
@@ -496,10 +595,11 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         try:
             cur = read_con.cursor(name="provisa_stream")  # named ⇒ server-side portal
             cur.itersize = _STREAM_BATCH_ROWS
-            cur.execute(*_psycopg2_exec_args(sql, params))
-            # psycopg2 populates a NAMED cursor's ``.description`` only after the first FETCH, so peek
-            # one batch to force the portal and expose the columns before building the stream.
-            first = cur.fetchmany(_STREAM_BATCH_ROWS)
+            with request_deadline.cancel_on_deadline(read_con.cancel):
+                cur.execute(*_psycopg2_exec_args(sql, params))
+                # psycopg2 populates a NAMED cursor's ``.description`` only after the first FETCH,
+                # so peek one batch to force the portal and expose the columns before streaming.
+                first = cur.fetchmany(_STREAM_BATCH_ROWS)
         except Exception:
             # Setup failed before the stream/on_close path exists to return this connection —
             # discard it (don't return a possibly-mid-transaction connection to the pool for reuse).
@@ -515,6 +615,9 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             _close()
             return QueryResult(rows=[], column_names=[])
         cols = [d[0] for d in cur.description]
+        # The description's type_code is the column's pg_type OID, known even for a zero-row
+        # result — the pgwire Describe reports it without running the full statement (REQ-589).
+        types = _pg_type_names(read_con, [d[1] for d in cur.description])
 
         def _batches() -> Any:
             if first:
@@ -525,7 +628,16 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
                     return
                 yield chunk
 
-        return StreamingQueryResult(_batches(), column_names=cols, on_close=_close)
+        return StreamingQueryResult(
+            _batches(), column_names=cols, column_types=types, on_close=_close
+        )
+
+    def describe_sync(self, sql: str, params: list | None = None) -> ResultStream:
+        """The statement's result shape without running it: behind a constant-false filter the
+        planner emits a one-time false filter, so no row is produced and no input is scanned, while
+        the portal's description still carries every column's name and type OID. Postgres keeps
+        duplicate column names through ``SELECT *`` of a subquery. REQ-589."""
+        return self.run_sync(f"SELECT * FROM ({sql}) _provisa_describe WHERE false", params)
 
     # -- Arrow transport (ADBC zero-copy) (REQ-1220) ---------------------------
 
@@ -548,8 +660,9 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         con = pool.getconn()
         try:
             cur = con.cursor()
-            cur.execute(sql, params or None)
-            table = cur.fetch_arrow_table()
+            with request_deadline.cancel_on_deadline(cur.adbc_cancel):
+                cur.execute(sql, params or None)
+                table = cur.fetch_arrow_table()
         except Exception:
             pool.discard(con)
             raise
@@ -567,8 +680,9 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         con = pool.getconn()
         try:
             cur = con.cursor()
-            cur.execute(sql, params or None)
-            reader = cur.fetch_record_batch()
+            with request_deadline.cancel_on_deadline(cur.adbc_cancel):
+                cur.execute(sql, params or None)
+                reader = cur.fetch_record_batch()
             schema = reader.schema
         except Exception:
             pool.discard(con)
@@ -604,9 +718,10 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             con = self._read_pool.getconn()
             try:
                 cur = con.cursor()
-                cur.execute(*_psycopg2_exec_args(sql, params))
-                cols = [d[0] for d in cur.description] if cur.description else []
-                rows = list(cur.fetchall()) if cur.description else []
+                with request_deadline.cancel_on_deadline(con.cancel):
+                    cur.execute(*_psycopg2_exec_args(sql, params))
+                    cols = [d[0] for d in cur.description] if cur.description else []
+                    rows = list(cur.fetchall()) if cur.description else []
                 con.commit()
                 cur.close()
             except Exception:

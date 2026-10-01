@@ -65,7 +65,7 @@ async def test_normalized_returns_manifest_of_tables():
             "provisa.executor.redirect.presign_ctas_result",
             new=AsyncMock(side_effect=lambda p, _c: f"https://x/{p[-1]}"),
         ),
-        patch("provisa.executor.redirect.schedule_s3_cleanup", new=AsyncMock()),
+        patch("provisa.executor.redirect.schedule_s3_cleanup", new=MagicMock()),
         patch("provisa.executor.redirect.RedirectConfig.from_env", return_value=MagicMock()),
     ):
         resp = await _handle_normalized(
@@ -108,7 +108,7 @@ async def test_normalized_governs_each_table():
             "provisa.executor.redirect.presign_ctas_result",
             new=AsyncMock(return_value="https://x/u"),
         ),
-        patch("provisa.executor.redirect.schedule_s3_cleanup", new=AsyncMock()),
+        patch("provisa.executor.redirect.schedule_s3_cleanup", new=MagicMock()),
         patch("provisa.executor.redirect.RedirectConfig.from_env", return_value=MagicMock()),
     ):
         await _handle_normalized(

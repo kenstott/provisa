@@ -46,7 +46,7 @@ async def registry(docker_postgres):
     from provisa.core.database import Database, create_engine_from_url
 
     url = (
-        f"postgresql+asyncpg://provisa:{os.environ.get('PG_PASSWORD', 'provisa')}@"
+        f"postgresql+psycopg://provisa:{os.environ.get('PG_PASSWORD', 'provisa')}@"
         f"{docker_postgres['host']}:{docker_postgres['port']}/provisa"
     )
     engine = create_engine_from_url(url, pool_size=2)
@@ -59,7 +59,7 @@ async def registry(docker_postgres):
 
     yield type("Registry", (), {"db": admin_db, "new_org": staticmethod(new_org)})
     reset_encryption()
-    await engine.dispose()
+    engine.dispose()
 
 
 async def _rows(db, org_id):

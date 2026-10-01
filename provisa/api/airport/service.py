@@ -17,7 +17,6 @@ the mandatory ``airport server listening on ...`` startup-banner line.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import threading
@@ -39,7 +38,6 @@ def start_airport_server(state: AppState, log: logging.Logger) -> None:
         state,
         host=state.hostname,
         port=port,
-        main_loop=asyncio.get_running_loop(),
     )
     thread = threading.Thread(target=server.serve, daemon=True)
     thread.start()

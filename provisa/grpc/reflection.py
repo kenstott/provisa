@@ -17,9 +17,7 @@ import grpc
 from grpc_reflection.v1alpha import reflection
 
 
-def enable_reflection(
-    server: grpc.aio.Server, service_names: list[str]
-) -> None:  # REQ-045, REQ-051
+def enable_reflection(server: grpc.Server, service_names: list[str]) -> None:  # REQ-045, REQ-051
     """Enable gRPC server reflection for the given service names.
 
     Args:

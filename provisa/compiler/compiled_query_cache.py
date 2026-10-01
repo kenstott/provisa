@@ -55,13 +55,12 @@ for this role under this schema generation" — never a stale allow.
 
 Key components (see `compiled_query_cache_key`):
   - a SHAPE hash of the SQL — `sqlglot`-parsed with every `exp.Literal` blanked (modeled on
-    `provisa/observability/stage_trace.py`'s `redact_sql`), NOT a hash of the raw text. Provisa's
-    pgwire bind-parameter path (`_substitute_params` in `provisa/pgwire/server.py`) inlines `$1`/
-    `$2` bind values into literal SQL text before the compile stage ever sees it (confirmed by
-    reading `_execute_sql_bound`) — a raw-text key would only ever hit on byte-identical repeats
-    and miss the entire "same query, different bind values" case, which is the actual point of a
-    compiled-query cache for a JDBC/ADBC/asyncpg-style client. Literals never affect what's
-    cached here (see above), so shape-hashing loses nothing.
+    `provisa/observability/stage_trace.py`'s `redact_sql`), NOT a hash of the raw text. Since
+    REQ-589's 2026-09-30 amendment pgwire keeps a prepared statement's `$1`/`$2` placeholders and
+    binds the values, so bound values never reach this text at all; a client that inlines its own
+    literals (a simple-query or ad-hoc SQL client) still produces per-value text, which the
+    literal-blanked shape hash still maps to one entry. Literals never affect what's cached here
+    (see above), so shape-hashing loses nothing.
   - the acting role id
   - the acting person id (`provisa.audit.context.current_audit_identity()`'s `user_id`, or `None`
     when no principal is bound — a background/system call, not a missing value)

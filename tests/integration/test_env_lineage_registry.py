@@ -37,7 +37,7 @@ async def planes(docker_postgres):
 
     org_id = f"envreg{uuid.uuid4().hex[:8]}"
     url = (
-        f"postgresql+asyncpg://provisa:{os.environ.get('PG_PASSWORD', 'provisa')}@"
+        f"postgresql+psycopg://provisa:{os.environ.get('PG_PASSWORD', 'provisa')}@"
         f"{docker_postgres['host']}:{docker_postgres['port']}/provisa"
     )
     admin_engine = create_engine_from_url(url, pool_size=2)
@@ -77,8 +77,8 @@ async def planes(docker_postgres):
         )
 
     yield type("Planes", (), {"org_id": org_id, "admin": admin_db, "tenant": tenant_db})
-    await admin_engine.dispose()
-    await tenant_engine.dispose()
+    admin_engine.dispose()
+    tenant_engine.dispose()
 
 
 class TestRegistry:

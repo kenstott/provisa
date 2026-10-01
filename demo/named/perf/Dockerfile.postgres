@@ -1,0 +1,72 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Perf-bench Postgres: PostgreSQL 16 plus the extensions the pg federation engine uses against this
+# stack, baked into the image so a container recreate (e.g. to retune settings) cannot lose them.
+# Previously they were hand-installed into a running postgres:16 container's filesystem and vanished
+# on the first recreate while the database still referenced them.
+#
+#   base postgres:16.15  — Debian trixie (glibc 2.41), the minor the data directory last ran on.
+#   pg_duckdb 1.0.0      — pg_duckdb.so + libduckdb.so + control/SQL copied from the official
+#                          pg_duckdb release image (built against PG 16; extension ABI is stable
+#                          within a major, and its bookworm/glibc-2.36 build runs on newer glibc).
+#                          Using that image as the BASE was rejected: wrappers' prebuilt .so needs
+#                          glibc >= 2.39, which bookworm lacks.
+#   pg_clickhouse 0.10.0 — source release (no apt/PGDG package exists; same pin as
+#                          scripts/ci/build_pg_extensions.sh, REQ-1870).
+#   mongo_fdw (ext 1.1)  — EnterpriseDB source tag, json-c staged in-tree as its autogen.sh does,
+#                          against the distro mongo-c-driver.
+#   wrappers 0.6.3       — Supabase's prebuilt PG16 amd64 .deb (same pin as
+#                          scripts/ci/build_pg_extensions.sh, REQ-1871).
+
+ARG PG_IMAGE=postgres:16.15
+ARG PG_DUCKDB_IMAGE=pgduckdb/pgduckdb:16-v1.0.0
+
+FROM ${PG_DUCKDB_IMAGE} AS pgduckdb
+
+FROM ${PG_IMAGE} AS build
+ARG PG_CLICKHOUSE_TAG=v0.10.0
+ARG MONGO_FDW_TAG=REL-5_5_2
+ARG JSONC_VERSION=0.15-20200726
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake pkg-config git ca-certificates curl unzip \
+        postgresql-server-dev-16 \
+        libssl-dev liblz4-dev libzstd-dev libcurl4-openssl-dev uuid-dev \
+        libmongoc-dev libbson-dev \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+RUN curl -fsSL -o pg_clickhouse.zip \
+        "https://github.com/ClickHouse/pg_clickhouse/releases/download/${PG_CLICKHOUSE_TAG}/pg_clickhouse-${PG_CLICKHOUSE_TAG#v}.zip" \
+    && unzip -q pg_clickhouse.zip \
+    && make -C "pg_clickhouse-${PG_CLICKHOUSE_TAG#v}" PG_CONFIG=/usr/bin/pg_config \
+    && make -C "pg_clickhouse-${PG_CLICKHOUSE_TAG#v}" PG_CONFIG=/usr/bin/pg_config install DESTDIR=/stage
+# mongo_fdw compiles json-c IN-TREE (its Makefile links json-c/*.o), exactly as its own autogen.sh
+# stages it: the pinned json-c source, configured by cmake to generate its headers. mongo-c-driver
+# comes from the distro (libmongoc-dev) instead of autogen's source build.
+RUN git clone --depth 1 --branch "${MONGO_FDW_TAG}" https://github.com/EnterpriseDB/mongo_fdw.git \
+    && curl -fsSL "https://github.com/json-c/json-c/archive/json-c-${JSONC_VERSION}.tar.gz" | tar -xz -C mongo_fdw \
+    && mv "mongo_fdw/json-c-json-c-${JSONC_VERSION}" mongo_fdw/json-c \
+    && (cd mongo_fdw/json-c && cmake . >/dev/null) \
+    && make -C mongo_fdw USE_PGXS=1 PG_CONFIG=/usr/bin/pg_config \
+    && make -C mongo_fdw USE_PGXS=1 PG_CONFIG=/usr/bin/pg_config install DESTDIR=/stage
+
+FROM ${PG_IMAGE}
+ARG WRAPPERS_TAG=v0.6.3
+# Runtime libraries the built extensions link against (no -dev packages in the final image).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl liblz4-1 libzstd1 libcurl4t64 libuuid1 libmongoc-1.0-0t64 libbson-1.0-0t64 \
+    && curl -fsSL -o /tmp/wrappers.deb \
+        "https://github.com/supabase/wrappers/releases/download/${WRAPPERS_TAG}/wrappers-${WRAPPERS_TAG}-pg16-amd64-linux-gnu.deb" \
+    && dpkg-deb -x /tmp/wrappers.deb /tmp/wrappers \
+    && cp /tmp/wrappers/usr/lib/postgresql/16/lib/wrappers-*.so /usr/lib/postgresql/16/lib/ \
+    && cp /tmp/wrappers/usr/share/postgresql/16/extension/wrappers* /usr/share/postgresql/16/extension/ \
+    && rm -rf /tmp/wrappers /tmp/wrappers.deb /var/lib/apt/lists/*
+COPY --from=pgduckdb /usr/lib/postgresql/16/lib/pg_duckdb.so /usr/lib/postgresql/16/lib/libduckdb.so /usr/lib/postgresql/16/lib/
+COPY --from=pgduckdb /usr/share/postgresql/16/extension/pg_duckdb* /usr/share/postgresql/16/extension/
+COPY --from=build /stage/ /

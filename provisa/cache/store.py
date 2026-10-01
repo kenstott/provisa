@@ -48,6 +48,10 @@ class CachedResult:  # REQ-544
 class CacheStore(ABC):  # REQ-544
     """Abstract cache store interface."""
 
+    # False only for the store that never keeps anything (caching disabled): callers decide
+    # cacheability up front and never wrap, buffer or encode a result for it (REQ-1897).
+    stores_results: bool = True
+
     @abstractmethod
     async def get(self, key: str, tenant_id: str | None = None) -> CachedResult | None:
         """Get a cached result by key. Returns None on miss."""
@@ -85,6 +89,8 @@ class CacheStore(ABC):  # REQ-544
 
 class NoopCacheStore(CacheStore):
     """No-op store when caching is disabled. Always misses."""
+
+    stores_results = False
 
     async def get(self, key: str, tenant_id: str | None = None) -> CachedResult | None:  # pyright: ignore[reportUnusedParameter]
         return None
@@ -230,25 +236,23 @@ class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
     async def invalidate_by_table(
         self, table_id: int, tenant_id: str | None = None
     ) -> int:  # REQ-173, REQ-231
-        try:
-            await self._connect()
-            assert self._redis is not None
-            tkey = self._prefixed_table_key(table_id, tenant_id)
-            cache_keys = await self._redis.smembers(tkey)
-            if not cache_keys:
-                return 0
-            prefix = self._prefixed_key("", tenant_id)
-            pipe = self._redis.pipeline()
-            for ck in cache_keys:
-                ck_str = ck.decode() if isinstance(ck, bytes) else ck
-                pipe.delete(prefix + ck_str)
-                pipe.delete(prefix + ck_str + ":meta")
-            pipe.delete(tkey)
-            await pipe.execute()
-            return len(cache_keys)
-        except (RedisError, OSError):
-            log.warning("Redis invalidate_by_table failed", exc_info=True)
+        """Drop every entry indexed under ``table_id``. A Redis failure RAISES: a swallowed
+        invalidation leaves entries the write just made stale, served until their TTL runs out."""
+        await self._connect()
+        assert self._redis is not None
+        tkey = self._prefixed_table_key(table_id, tenant_id)
+        cache_keys = await self._redis.smembers(tkey)
+        if not cache_keys:
             return 0
+        prefix = self._prefixed_key("", tenant_id)
+        pipe = self._redis.pipeline()
+        for ck in cache_keys:
+            ck_str = ck.decode() if isinstance(ck, bytes) else ck
+            pipe.delete(prefix + ck_str)
+            pipe.delete(prefix + ck_str + ":meta")
+        pipe.delete(tkey)
+        await pipe.execute()
+        return len(cache_keys)
 
     async def table_entry_counts(self) -> dict[int, int]:  # REQ-231
         try:

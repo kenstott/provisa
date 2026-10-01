@@ -248,7 +248,7 @@ def provisa_starts_up(shared_data):
     executed_ddls: list[str] = []
 
     def execute(statement: str) -> None:
-        # Mirrors the real startup path which runs DDL via the AsyncEngine.
+        # Mirrors the real startup path which runs DDL via the shared sync engine.
         assert isinstance(statement, str) and statement.strip()
         executed_ddls.append(statement)
 

@@ -29,6 +29,17 @@ from provisa.federation.query_residency import row_materialized_tables_by_name
 pytestmark = pytest.mark.unit
 
 
+@pytest.fixture(autouse=True)
+def _registered_sources(monkeypatch):
+    """The tables' source (row_materialize applies only when the engine can't attach its type)."""
+    from types import SimpleNamespace
+
+    async def _fake_sources(state):
+        return [SimpleNamespace(id="bench-neo4j", type=SimpleNamespace(value="neo4j"))]
+
+    monkeypatch.setattr("provisa.federation.registry_view.registered_sources", _fake_sources)
+
+
 def _table(**kw):
     from provisa.core.models import Column, Table
 

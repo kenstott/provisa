@@ -18,7 +18,7 @@ from contextlib import asynccontextmanager
 
 import pytest
 from sqlalchemy import insert
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.repositories import calendar as calendar_repo
@@ -31,13 +31,13 @@ _TABLES = [sources, domains, registered_tables, calendars]
 
 @asynccontextmanager
 async def _db(tmp_path):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'cal.db'}")
-    async with engine.begin() as c:
-        await c.run_sync(lambda s: calendars.metadata.create_all(s, tables=_TABLES))
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cal.db'}")
+    with engine.begin() as c:
+        calendars.metadata.create_all(c, tables=_TABLES)
     try:
         yield Database(engine, name="cp")
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 async def _register_mv(conn, *, source_id, table_name, mv_calendar):

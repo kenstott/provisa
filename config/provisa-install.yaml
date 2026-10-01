@@ -432,15 +432,6 @@ server:
     default_row_limit: 100
     request_timeout: 60
     trino_query_timeout: 120
-  # REQ-1904 gated gRPC server reflection behind auth_active(state) OR this explicit opt-in --
-  # this demo runs with auth.provider: none (see top of this file), so auth_active(state) is
-  # always false here and reflection silently went dark the moment that commit landed. The demo
-  # gRPC transport (demo/named/perf/bench/run_benchmark.py's GrpcTransport) resolves every
-  # message class via ServerReflectionInfo before calling the typed Query{Type} RPC -- with
-  # reflection off, EVERY gRPC call failed instantly with UNIMPLEMENTED "Method not found!"
-  # (confirmed live on provisa-perf-bench). This config already chose the no-auth demo posture,
-  # so opting into unsecured reflection here is consistent with that choice, not a new exposure.
-  grpc_allow_unsecured_reflection: true
 sources:
 # REQ-1443: the demo's data-quality checker. Great Expectations, not Soda: Apache 2.0 carries no
 # hosted-service bar, so the same demo config is valid in the cloud plane. The checker connects back

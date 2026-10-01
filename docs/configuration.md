@@ -922,6 +922,50 @@ tables:
 
 Setting `cache_enabled: false` on a source disables caching for all tables in that source, regardless of table-level TTL. (REQ-544) Cache keys always include `role_id` + RLS context values for security partitioning. (REQ-544)
 
+### Per-request opt-in
+
+The response cache is off for every request that does not ask for it. (REQ-544) A request opts in with:
+
+| Surface | Opt-in |
+| --- | --- |
+| GraphQL (`/data/graphql`, Arrow Flight) | `@cached` on the operation, optionally `@cached(ttl: 60)` |
+| SQL (pgwire, Flight SQL, `/data/sql`) | a `-- @provisa cache=true` or `-- @provisa cache_ttl=60` comment line in the statement |
+| Cypher (`/data/cypher`, the Neo4j Query API, Bolt, Arrow Flight) | a `// @provisa cache=true` or `// @provisa cache_ttl=60` comment line in the query |
+| gRPC (and the HTTP gRPC proxy) | call metadata (headers on the proxy) `x-provisa-cache: true` or `x-provisa-cache-ttl: 60` |
+
+REST and JSON:API have no opt-in. A `ttl` that is not an integer fails the request. [tool-verified: `provisa/compiler/directives.py` `cache_hint_for`, `cache_hint_from_grpc_metadata`]
+
+Without the hint the request neither reads nor writes the cache. With it, the settings above still decide: the result is cached only if every source it reads has `cache_enabled: true` and every table's resolved TTL is above 0. The entry lives for the request's `ttl` when it gives one, otherwise for the shortest resolved TTL of the tables it read. (REQ-544) [tool-verified: `provisa/cache/policy.py` `opt_in_ttl`]
+
+The hint only accepts older data in exchange for speed. It never makes a read fresher than the operator's settings allow: landing and replica freshness (`cache_ttl`, `change_signal`), `row_materialize`, `load_protected` snapshots and freshness gates apply to a hinted request exactly as to an unhinted one. See [Freshness and load: who decides](#freshness-and-load-who-decides). (REQ-544)
+
+`@noCache` and `-- @provisa no_cache=true` no longer exist: with caching off by default there is nothing to bypass.
+
+A write invalidates every cached entry the writing org holds for the tables it wrote; another org's entries for the same table are untouched. A failed invalidation fails the request instead of leaving stale entries behind. (REQ-544, REQ-595) [tool-verified: `provisa/cache/tenancy.py` `invalidate_tables`] [tool-verified: `provisa/cache/store.py` `invalidate_by_table`]
+
+## Freshness and load: who decides
+
+Three parties have a say in how fresh a result is and how much load a query puts on the systems behind it. (REQ-030)
+
+- **The upstream source.** Ideally it manages its own backpressure: connection limits, statement timeouts, read replicas.
+- **The operator.** Protects the platform, Provisa itself, from backpressure. When an upstream cannot protect itself, the operator protects it too. The settings for this live on sources and tables: `load_protected`, `prefer_materialized`, source `federation_hints`, the large-result redirect threshold, the Kafka cluster sinks write to, and each table's registered watermark.
+- **The end user.** Trades speed against recency, one request at a time.
+
+The operator's settings are the floor. A request can move above it, toward older data or less load; opting into the response cache is the usual example. It can never go below it. A request hint that would is refused with an error that names the operator setting, never applied quietly and never dropped quietly. [tool-verified: `provisa/core/operator_floor.py`]
+
+| Request input | What it may do | Refused when |
+| --- | --- | --- |
+| `@route(engine: DIRECT)`, `-- @provisa route=direct` | Pick the direct driver for one source | the source is `load_protected` or `prefer_materialized` |
+| `@join`, `@reorder`, `@broadcastSize`, `/*+ ... */` | Set an engine session property the source's `federation_hints` left open | it changes a property the operator set |
+| `X-Provisa-Redirect-Threshold`, `@redirect(threshold:)` | Redirect a result sooner | it is higher than the operator's threshold |
+| `@sink(broker:)`, `X-Provisa-Sink` broker | Repeat the operator's broker | it names another broker, or no `KAFKA_BOOTSTRAP_SERVERS` is configured |
+| `@watermark` on a subscription | Repeat the table's registered watermark | it names another column, or the table has none |
+| `@cached`, `-- @provisa cache=true` | Serve an older cached result | never; a cached entry is never fresher than the read that stored it |
+
+Refusals return HTTP 403 with code `query.operator_floor`, SQLSTATE `42501` over pgwire, and `PERMISSION_DENIED` over Flight and gRPC. (REQ-030) [tool-verified: `provisa/api/app.py` `_operator_floor_handler`]
+
+A `load_protected` or `prefer_materialized` source is never read live by a query on any transport. Queries read its landed copy. Only the land and its refreshes read the source: a refresh runs when a `cache_ttl` or freshness check calls for one, and with neither the copy lands once and then refreshes only through a change feed or the scheduler. (REQ-1907) (REQ-1141, REQ-826) [tool-verified: `tests/integration/test_operator_floor_e2e.py`]
+
 ## Authentication
 
 ```yaml
@@ -1428,7 +1472,7 @@ For Google Cloud sources, set `GOOGLE_APPLICATION_CREDENTIALS` to the path of yo
 | Variable | Default | Description |
 | ---------- | --------- | ------------- |
 | `PROVISA_CONFIG` | `config/provisa.yaml` | Config file path |
-| `TENANT_DATABASE_URL` | `postgresql+asyncpg://provisa:provisa@localhost:5432/provisa` | Control-plane store URI (SQLAlchemy async); accepts `sqlite+aiosqlite://…` / `duckdb://…` for the embedded desktop store (REQ-828, REQ-850) |
+| `TENANT_DATABASE_URL` | `postgresql+psycopg://provisa:provisa@localhost:5432/provisa` | Control-plane store URI (SQLAlchemy); accepts `sqlite+pysqlite://…` / `duckdb://…` for the embedded desktop store (REQ-828, REQ-850) |
 | `PLATFORM_DATABASE_URL` | — | Platform registry URI (tenant directory, engine registry); required at startup, no fallback (REQ-837) |
 | `PROVISA_REDIS_EMBEDDED` | — | `1`/`true` uses embedded fakeredis instead of a Redis server — no Docker (REQ-829) |
 | `PG_HOST` | `localhost` | PostgreSQL host |

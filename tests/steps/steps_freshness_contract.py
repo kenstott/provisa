@@ -20,7 +20,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from pytest_bdd import given, when, then, scenarios
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.schema_org import event_status, events, node_freshness_state
@@ -53,13 +53,9 @@ def ctx(loop, tmp_path) -> dict:
 
 
 async def _build_db(tmp_path):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / (uuid.uuid4().hex + '.db')}")
-    async with engine.begin() as c:
-        await c.run_sync(
-            lambda s: events.metadata.create_all(
-                s, tables=[events, event_status, node_freshness_state]
-            )
-        )
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / (uuid.uuid4().hex + '.db')}")
+    with engine.begin() as c:
+        events.metadata.create_all(c, tables=[events, event_status, node_freshness_state])
     return engine, Database(engine, name="q")
 
 
@@ -105,7 +101,7 @@ async def _run_case(tmp_path, monkeypatch, *, input_state, generate, holidays=fr
             ]
         return fired, posted
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 def _run(ctx, monkeypatch, **kw):

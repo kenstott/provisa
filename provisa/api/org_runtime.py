@@ -32,11 +32,11 @@ once at the entrypoint (never silently here).
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from provisa.compiler.compiled_query_cache import CompiledQueryCache
+from provisa.core.connection_loop import CrossLoopLock
 from provisa.core.environments import PROD
 from provisa.executor.pool import SourcePool
 
@@ -217,14 +217,13 @@ class OrgRegistry:
 
     def __init__(self) -> None:
         self._runtimes: dict[str, OrgRuntime] = {}
-        self._locks: dict[str, asyncio.Lock] = {}
+        # REQ-1882 (amended 2026-09-29): pgwire/Bolt/Flight build and read runtimes from their
+        # connection threads' own loops, so the per-org lock must work across loops and threads;
+        # setdefault is atomic, so two threads never each install a different lock for one org.
+        self._locks: dict[str, CrossLoopLock] = {}
 
-    def _lock_for(self, org_id: str) -> asyncio.Lock:
-        lock = self._locks.get(org_id)
-        if lock is None:
-            lock = asyncio.Lock()
-            self._locks[org_id] = lock
-        return lock
+    def _lock_for(self, org_id: str) -> CrossLoopLock:
+        return self._locks.setdefault(org_id, CrossLoopLock())
 
     def get(self, org_id: str) -> OrgRuntime | None:
         return self._runtimes.get(org_id)

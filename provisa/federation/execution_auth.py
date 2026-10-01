@@ -37,12 +37,16 @@ one mechanism that generalizes across every target.
 from __future__ import annotations
 
 import secrets
+import threading
 from collections import deque
 from dataclasses import dataclass
 from typing import Union
 
 _ISSUED_SYSTEM_TOKENS: deque[str] = deque(maxlen=4096)
 _ISSUED_SYSTEM_SET: set[str] = set()
+# The ring's evict-then-append spans two containers; system jobs mint from the process loop and
+# from worker threads alike (REQ-1882, amended 2026-09-29), so the update is serialized.
+_SYSTEM_TOKEN_LOCK = threading.Lock()
 
 
 def mint_system_token() -> str:
@@ -51,10 +55,11 @@ def mint_system_token() -> str:
     job, MV refresh, cache warming, catalog introspection), never from request-handling
     code reachable by an external caller."""
     token = secrets.token_hex(32)
-    if len(_ISSUED_SYSTEM_TOKENS) == _ISSUED_SYSTEM_TOKENS.maxlen:
-        _ISSUED_SYSTEM_SET.discard(_ISSUED_SYSTEM_TOKENS[0])
-    _ISSUED_SYSTEM_TOKENS.append(token)
-    _ISSUED_SYSTEM_SET.add(token)
+    with _SYSTEM_TOKEN_LOCK:
+        if len(_ISSUED_SYSTEM_TOKENS) == _ISSUED_SYSTEM_TOKENS.maxlen:
+            _ISSUED_SYSTEM_SET.discard(_ISSUED_SYSTEM_TOKENS[0])
+        _ISSUED_SYSTEM_TOKENS.append(token)
+        _ISSUED_SYSTEM_SET.add(token)
     return token
 
 

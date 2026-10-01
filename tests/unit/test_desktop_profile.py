@@ -33,7 +33,7 @@ def _embedded_pg(monkeypatch):
 
 def _pg_url() -> str:
     host, port = _FAKE_SOCKET
-    return f"postgresql+asyncpg://provisa:provisa@/provisa?host={host}&port={port}"
+    return f"postgresql+psycopg://provisa:provisa@/provisa?host={host}&port={port}"
 
 
 def test_demo_preset_is_self_contained_and_duckdb(tmp_path):
@@ -58,7 +58,7 @@ def test_demo_ephemeral_has_no_embedded_pg_form():
 
 def test_demo_ephemeral_sqlite_is_still_available():
     p = load_profile("demo", ephemeral=True, control_plane="sqlite")
-    assert p.env["PLATFORM_DATABASE_URL"] == "sqlite+aiosqlite:///:memory:"
+    assert p.env["PLATFORM_DATABASE_URL"] == "sqlite+pysqlite:///:memory:"
 
 
 def test_unknown_preset_rejected():

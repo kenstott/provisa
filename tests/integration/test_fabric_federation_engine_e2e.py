@@ -101,17 +101,24 @@ def runtime():
     finally:
         # Drop the object then the schema materialize_source/attach auto-created — dropping only
         # the object would leak the schema. T-SQL requires an empty schema before DROP SCHEMA.
-        for sch, obj in ((_SCH, "TABLE"), ("provisa_ext_it", "VIEW")):
-            cur = rt.connection.cursor()
-            try:
-                cur.execute(f"DROP {obj} IF EXISTS [{sch}].[orders]")
-                cur.execute(f"DROP SCHEMA IF EXISTS [{sch}]")
-                rt.connection.commit()
-            except Exception:  # noqa: BLE001 — best-effort teardown
-                pass
-            finally:
-                cur.close()
-        rt.close()
+        from tests.integration.fabric_capacity import suspend_capacity
+
+        try:
+            for sch, obj in ((_SCH, "TABLE"), ("provisa_ext_it", "VIEW")):
+                cur = rt.connection.cursor()
+                try:
+                    cur.execute(f"DROP {obj} IF EXISTS [{sch}].[orders]")
+                    cur.execute(f"DROP SCHEMA IF EXISTS [{sch}]")
+                    rt.connection.commit()
+                except Exception:  # noqa: BLE001 — best-effort teardown
+                    pass
+                finally:
+                    cur.close()
+            rt.close()
+        finally:
+            # Pause the capacity the engine resumed on connect (REQ-1775) so the test stops
+            # billing — even when the cleanup above fails.
+            suspend_capacity()
 
 
 @pytest.mark.asyncio

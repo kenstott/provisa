@@ -36,7 +36,7 @@ class _FakeCursor:
         self.con.executed.append(sql)
         if self.con.raise_on_execute:
             raise self.con.raise_on_execute
-        self.description = [("id",)]
+        self.description = [("id", 23)]  # psycopg2: (name, type_code OID, ...) — int4
         self._rows = [(1,), (2,)]
 
     def fetchmany(self, n: int) -> list[Any]:
@@ -66,6 +66,9 @@ class _FakeConnection:
 
     def commit(self) -> None:
         self.committed = True
+
+    def cancel(self) -> None:  # psycopg2 connection.cancel(), used by the request deadline
+        self.cancelled = True
 
     def close(self) -> None:
         self.closed = True
@@ -203,6 +206,52 @@ def test_run_reuses_pooled_connection_across_calls(fake_psycopg2) -> None:
     assert len(fake_psycopg2) == made_after_init
 
 
+def test_exhausted_pool_makes_the_next_caller_wait_not_fail(fake_psycopg2) -> None:
+    # REQ-1882 (amended 2026-09-29): the (maxconn+1)th concurrent borrower waits for a free
+    # connection instead of raising psycopg2's "connection pool exhausted".
+    import threading
+
+    rt = _runtime(fake_psycopg2)
+    held = [rt._read_pool.getconn() for _ in range(_POOL_MAXCONN)]
+
+    got: list[Any] = []
+    started = threading.Event()
+
+    def _borrow() -> None:
+        started.set()
+        got.append(rt._read_pool.getconn())
+
+    t = threading.Thread(target=_borrow)
+    t.start()
+    started.wait(2)
+    t.join(0.3)
+    assert t.is_alive() and got == []  # still waiting, not failed
+
+    rt._read_pool.putconn(held.pop())
+    t.join(2)
+    assert not t.is_alive() and len(got) == 1  # got the freed connection
+
+    for c in held + got:
+        rt._read_pool.putconn(c)
+
+
+def test_exhausted_pool_wait_is_bounded(fake_psycopg2, monkeypatch) -> None:
+    import psycopg2.pool
+
+    import provisa.federation.pg_runtime as pg_runtime_mod
+
+    monkeypatch.setattr(pg_runtime_mod, "_POOL_WAIT_S", 0.2)
+    rt = _runtime(fake_psycopg2)
+    held = [rt._read_pool.getconn() for _ in range(_POOL_MAXCONN)]
+
+    with pytest.raises(psycopg2.pool.PoolError, match="no engine connection freed"):
+        rt._read_pool.getconn()
+
+    for c in held:
+        rt._read_pool.putconn(c)
+    rt._read_pool.putconn(rt._read_pool.getconn())  # slot accounting intact after the timeout
+
+
 def test_run_discards_connection_on_failure(fake_psycopg2) -> None:
     rt = _runtime(fake_psycopg2)
     made_after_init = len(fake_psycopg2)
@@ -219,3 +268,19 @@ def test_run_discards_connection_on_failure(fake_psycopg2) -> None:
     res = asyncio.run(rt.run("SELECT id FROM t"))
     assert res.rows == [(1,), (2,)]
     assert len(fake_psycopg2) == made_after_init + 1
+
+
+def test_exec_args_escapes_literal_percent_when_params_are_bound() -> None:
+    from provisa.federation.pg_runtime import _psycopg2_exec_args
+
+    sql, params = _psycopg2_exec_args("SELECT * FROM t WHERE a LIKE 'x%' AND b = $1", [7])
+    assert sql == "SELECT * FROM t WHERE a LIKE 'x%%' AND b = %(p1)s"
+    assert params == {"p1": 7}
+    # psycopg2 renders it back to the original literal.
+    assert sql % {"p1": "7"} == "SELECT * FROM t WHERE a LIKE 'x%' AND b = 7"
+
+
+def test_exec_args_leaves_sql_untouched_without_params() -> None:
+    from provisa.federation.pg_runtime import _psycopg2_exec_args
+
+    assert _psycopg2_exec_args("SELECT 'x%'", None) == ("SELECT 'x%'", None)

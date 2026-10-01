@@ -48,11 +48,13 @@ from provisa.core.schema_admin import (
 )
 from provisa.core.schema_org import (
     admin_audit_log,
+    data_products,
     domains,
     query_audit_log,
     registered_tables,
     sources,
     table_columns,
+    user_directory,
 )
 from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import roles, user_role_assignments
@@ -62,8 +64,8 @@ pytestmark = [pytest.mark.integration]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "5432")
-_SYNC_URL = f"postgresql+psycopg2://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
-_ASYNC_URL = f"postgresql+asyncpg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
+_SYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
+_ASYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
 
 _ADMIN_SCHEMA = "test_orglife_admin"
 # One schema per org: the tenant plane is per-org, and an offboarding bug that writes to the wrong
@@ -74,11 +76,14 @@ _ORG_SCHEMAS = {
     "sandbox": "test_orglife_sandbox",
 }
 
-_TENANT_TABLES = [roles, user_role_assignments, admin_audit_log, query_audit_log]
+# user_directory: every authenticated request mirrors the caller's identity into the bound org's
+# tenant plane (REQ-1439) before it is handled (AuthMiddleware._upsert_profile).
+_TENANT_TABLES = [roles, user_role_assignments, admin_audit_log, query_audit_log, user_directory]
 
 # REQ-1301: the root org additionally carries the dataset catalog, because creating or deleting an
-# org rebuilds root's org-registry view and re-registers it as a meta-domain table.
-_ROOT_EXTRA_TABLES = [sources, domains, registered_tables, table_columns]
+# org rebuilds root's org-registry view and re-registers it as a meta-domain table. data_products
+# rides along because registered_tables.product_id references it (REQ-1634).
+_ROOT_EXTRA_TABLES = [sources, domains, data_products, registered_tables, table_columns]
 
 # REQ-1337: every gate on these routers reads a RIGHT, so a role row with an empty capability list
 # authorizes nothing however it is named. These are the capabilities schema.sql seeds, trimmed to
@@ -182,10 +187,9 @@ def _prepare_sync():
 
 @pytest.fixture
 def planes(monkeypatch):
-    try:
-        sync_engine = _prepare_sync()
-    except Exception as exc:  # noqa: BLE001 — the suite provisions this PG; a miss is a config fault
-        pytest.skip(f"live Postgres not reachable at {_SYNC_URL}: {exc}")
+    # The suite provisions this PG, so a setup failure is a real fault and fails the test — never a
+    # skip (a skip here once hid REQ-1634's missing data_products table as "not reachable").
+    sync_engine = _prepare_sync()
 
     admin_db = Database(create_engine_from_url(_ASYNC_URL), name="admin", search_path=_ADMIN_SCHEMA)
     org_dbs = {

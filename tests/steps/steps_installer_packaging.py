@@ -192,7 +192,7 @@ def secondary_reads_from_shared_pool(shared_data: dict) -> None:
     database = os.getenv("PG_DATABASE", "provisa")
     user = os.getenv("PG_USER", "provisa")
     password = os.getenv("PG_PASSWORD", "provisa")
-    dsn = f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{database}"
+    dsn = f"postgresql+psycopg://{user}:{password}@{host}:{port}/{database}"
 
     async def _run() -> None:
         primary_db = Database(create_engine_from_url(dsn), name="primary")

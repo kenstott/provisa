@@ -28,6 +28,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from provisa.cache.store import NoopCacheStore
+
 _otel_missing = importlib.util.find_spec("opentelemetry") is None
 _skip_otel = pytest.mark.skipif(_otel_missing, reason="opentelemetry SDK not installed")
 
@@ -594,6 +596,7 @@ class TestPipelineSpanAttributes:
 
         class _State:
             federation_engine = _Engine()
+            response_cache_store = NoopCacheStore()  # AppState always holds a store
 
         attrs = {"provisa.table": "pet_store.pets", "provisa.role": "analyst"}
         plan = _Plan(
@@ -747,8 +750,8 @@ class TestNonEngineTerminalsAreReported:
                 return iter([1])
 
         class _Conn:
-            async def fetch(self, sql):
-                return [_Row()]
+            async def fetch_with_columns(self, sql):
+                return ["n"], [_Row()]
 
         class _TenantDB:
             @asynccontextmanager

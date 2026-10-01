@@ -14,7 +14,7 @@ nested savepoints, status strings, and the Row adapter.
 from __future__ import annotations
 
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Capabilities, Database, Row
 
@@ -22,11 +22,7 @@ from provisa.core.database import Capabilities, Database, Row
 @pytest.fixture
 async def db():
     # A single shared in-memory connection so all acquires see the same schema.
-    engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=__import__("sqlalchemy").pool.StaticPool,
-    )
+    engine = create_engine_from_url("sqlite+pysqlite:///:memory:")
     database = Database(engine, name="test")
     async with database.acquire() as c:
         await c.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT, n INTEGER)")
@@ -169,16 +165,16 @@ def test_capabilities_by_dialect():
 
 async def test_control_plane_sqlite_uses_wal(tmp_path):
     # REQ-1098: a file-based control-plane SQLite MUST open in WAL mode so the native DuckDB
-    # engine can ATTACH and read it READ_ONLY while aiosqlite writes config changes. Rollback-
+    # engine can ATTACH and read it READ_ONLY while the control plane writes config changes. Rollback-
     # journal mode (the SQLite default) would transiently lock out the reader on a write commit.
     from sqlalchemy import text
 
     from provisa.core.database import create_engine_from_url
 
-    engine = create_engine_from_url(f"sqlite+aiosqlite:///{tmp_path / 'cp.db'}")
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cp.db'}")
     try:
-        async with engine.begin() as c:
-            mode = (await c.execute(text("PRAGMA journal_mode"))).scalar()
+        with engine.begin() as c:
+            mode = (c.execute(text("PRAGMA journal_mode"))).scalar()
         assert mode == "wal"
     finally:
-        await engine.dispose()
+        engine.dispose()

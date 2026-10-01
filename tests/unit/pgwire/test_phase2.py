@@ -160,11 +160,13 @@ class TestPgAm:
 
 class TestWireParamBinding:
     def test_parameterized_select(self, monkeypatch):
-        """After substitution $1 is replaced before reaching the pipeline."""
+        """REQ-589 (amended 2026-09-30): the placeholder reaches the pipeline intact and the value
+        travels bound alongside it — never spliced into the SQL text."""
         captured = {}
 
-        async def _mock_pipeline(sql, role_id):
+        async def _mock_pipeline(sql, role_id, params=None):
             captured["sql"] = sql
+            captured["params"] = params
             from provisa.executor.result import QueryResult
 
             # A materialized QueryResult short-circuits the ENGINE streaming branch (treated as a
@@ -173,27 +175,14 @@ class TestWireParamBinding:
 
         monkeypatch.setattr("provisa.pgwire._pipeline.govern_pgwire_plan", _mock_pipeline)
 
+        from provisa.core.connection_loop import connection_loop
         from provisa.pgwire.server import ProvisaSession
-        import asyncio
 
-        loop = asyncio.new_event_loop()
-        import provisa.pgwire.server as srv_mod
-
-        with srv_mod._loop_lock:
-            srv_mod._loop = loop
-
-        t = __import__("threading").Thread(target=loop.run_forever, daemon=True)
-        t.start()
-
-        try:
+        # The connection thread's loop, bound as ProvisaHandler.handle binds it (REQ-1882).
+        with connection_loop():
             sess = ProvisaSession()
             sess.role_id = "testuser"
             sess.user_id = "testuser"  # REQ-074: authentication sets both; the audit row needs it
             _result = sess.execute_sql("SELECT $1::int", [99])
-            assert "$1" not in captured["sql"]
-            assert "99" in captured["sql"]
-        finally:
-            loop.call_soon_threadsafe(loop.stop)
-            t.join(timeout=2)
-            with srv_mod._loop_lock:
-                srv_mod._loop = None
+            assert captured["sql"] == "SELECT $1::int"
+            assert captured["params"] == [99]

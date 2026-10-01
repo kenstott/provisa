@@ -24,16 +24,19 @@ from provisa.core.redis_factory import make_redis
 
 def test_no_url_returns_fake_client():
     r = make_redis(None, decode_responses=True)
-    assert type(r).__name__ in ("FakeRedis", "FakeAsyncRedis")
+    assert type(r.client()).__name__ in ("FakeRedis", "FakeAsyncRedis")
 
 
 def test_empty_url_returns_fake_client():
-    assert type(make_redis("", decode_responses=False)).__name__ in ("FakeRedis", "FakeAsyncRedis")
+    assert type(make_redis("", decode_responses=False).client()).__name__ in (
+        "FakeRedis",
+        "FakeAsyncRedis",
+    )
 
 
 def test_real_url_returns_asyncio_redis_client():
     # No connection is made at construction — just verify the real client type.
-    r = make_redis("redis://localhost:6379/0", decode_responses=True)
+    r = make_redis("redis://localhost:6379/0", decode_responses=True).client()
     assert type(r).__name__ not in ("FakeRedis", "FakeAsyncRedis")
     assert r.__class__.__module__.startswith("redis")
 
@@ -74,3 +77,88 @@ async def test_fake_supports_pipeline():
     pipe.get("p")
     results = await pipe.execute()
     assert results[-1] == "1"
+
+
+def test_request_threads_share_one_client():
+    """REQ-1882 (amended 2026-09-29): Redis is a shared resource — two concurrently-live request
+    threads (each on its own connection loop) use the SAME underlying client and store."""
+    import threading
+
+    from provisa.core.connection_loop import connection_loop, run_on_connection_loop
+
+    r = make_redis(None, decode_responses=True)
+    both_live = threading.Barrier(2)
+    clients: list[object] = []
+
+    async def _use() -> object:
+        await r.set("shared-client", "shared")
+        assert await r.get("shared-client") == "shared"
+        return r.client()
+
+    def _worker() -> None:
+        with connection_loop():
+            both_live.wait(timeout=10)
+            clients.append(run_on_connection_loop(_use()))
+
+    threads = [threading.Thread(target=_worker) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(clients) == 2
+    assert clients[0] is clients[1]
+
+
+def test_real_redis_pool_waits_when_exhausted(monkeypatch):
+    """The (max+1)th borrower of the real-Redis pool waits for a free connection, then succeeds."""
+    import threading
+
+    import redis.connection
+
+    import provisa.core.redis_factory as rf
+
+    # No server: checkout exercises only the pool's slot accounting, never the socket.
+    monkeypatch.setattr(redis.connection.AbstractConnection, "connect", lambda self: None)
+    monkeypatch.setattr(redis.connection.AbstractConnection, "can_read", lambda self, *a: False)
+    monkeypatch.setattr(rf, "_POOL_MAX_CONNECTIONS", 3)
+
+    r = make_redis("redis://localhost:6379/0", decode_responses=True)
+    pool = r.client().connection_pool
+    assert pool.max_connections == 3
+    held = [pool.get_connection() for _ in range(pool.max_connections)]
+
+    got: list[object] = []
+    t = threading.Thread(target=lambda: got.append(pool.get_connection()))
+    t.start()
+    t.join(0.3)
+    assert t.is_alive() and got == []  # waiting, not failed
+    pool.release(held.pop())
+    t.join(5)
+    assert not t.is_alive() and len(got) == 1
+    for c in held + got:
+        pool.release(c)
+
+
+def test_real_redis_pool_wait_is_bounded_by_the_request_budget(monkeypatch):
+    """REQ-1882: an exhausted pool's wait ends at the request's remaining budget, not the fixed cap."""
+    import time
+
+    import pytest
+    import redis.connection
+    from redis.exceptions import ConnectionError as RedisConnectionError
+
+    import provisa.core.redis_factory as rf
+    from provisa.core import request_deadline
+
+    monkeypatch.setattr(redis.connection.AbstractConnection, "connect", lambda self: None)
+    monkeypatch.setattr(redis.connection.AbstractConnection, "can_read", lambda self, *a: False)
+    monkeypatch.setattr(rf, "_POOL_MAX_CONNECTIONS", 1)
+
+    pool = make_redis("redis://localhost:6379/0", decode_responses=True).client().connection_pool
+    held = pool.get_connection()
+    t0 = time.monotonic()
+    with request_deadline.within(0.3), pytest.raises(RedisConnectionError, match="no Redis"):
+        pool.get_connection()
+    assert time.monotonic() - t0 < 2.0  # the fixed 20s cap did not apply
+    pool.release(held)
+    pool.release(pool.get_connection())  # slot accounting intact after the timeout

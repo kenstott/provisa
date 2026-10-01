@@ -21,9 +21,9 @@ from provisa.core.schema_admin import mail_events
 
 @pytest.fixture
 async def db():
-    pool = Database(create_engine_from_url("sqlite+aiosqlite:///:memory:"), name="mail-stats-test")
-    async with pool.engine.begin() as conn:
-        await conn.run_sync(mail_events.create)
+    pool = Database(create_engine_from_url("sqlite+pysqlite:///:memory:"), name="mail-stats-test")
+    with pool.engine.begin() as conn:
+        mail_events.create(conn)
     yield pool
     await pool.close()
 
@@ -116,7 +116,7 @@ class TestRecording:
         """A registry the writer cannot reach must not turn a delivered message into a reported
         failure, so ``record`` absorbs its own storage error."""
         pool = Database(
-            create_engine_from_url("sqlite+aiosqlite:///:memory:"), name="mail-stats-no-table"
+            create_engine_from_url("sqlite+pysqlite:///:memory:"), name="mail-stats-no-table"
         )
         try:
             await record(

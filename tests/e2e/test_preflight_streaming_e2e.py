@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 
 import duckdb
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.schema_org import event_status, events, node_freshness_state
@@ -86,17 +86,13 @@ class _DuckEngine(_StoreWriteFace):
 
 @asynccontextmanager
 async def _cp(tmp_path):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'cp.db'}")
-    async with engine.begin() as c:
-        await c.run_sync(
-            lambda s: events.metadata.create_all(
-                s, tables=[events, event_status, node_freshness_state]
-            )
-        )
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cp.db'}")
+    with engine.begin() as c:
+        events.metadata.create_all(c, tables=[events, event_status, node_freshness_state])
     try:
         yield Database(engine, name="cp")
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 # The gate inspects the INPUT (orders): abort if any order has a negative amount — even though the
@@ -148,7 +144,7 @@ async def _events_for(conn, node):
 
 
 async def test_continue_lands_output_when_input_is_clean(tmp_path):
-    store_dsn = f"sqlite+aiosqlite:///{tmp_path / 'store.db'}"
+    store_dsn = f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
     con = duckdb.connect(":memory:")
     con.execute("CREATE TABLE orders AS SELECT * FROM (VALUES (1,10),(2,5)) AS v(id, amount)")
     async with _cp(tmp_path) as db:
@@ -162,7 +158,7 @@ async def test_continue_lands_output_when_input_is_clean(tmp_path):
 
 
 async def test_abort_blocks_land_when_input_has_negative(tmp_path):
-    store_dsn = f"sqlite+aiosqlite:///{tmp_path / 'store.db'}"
+    store_dsn = f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
     con = duckdb.connect(":memory:")
     con.execute("CREATE TABLE orders AS SELECT * FROM (VALUES (1,10),(2,-4)) AS v(id, amount)")
     async with _cp(tmp_path) as db:
@@ -235,7 +231,7 @@ _ORDERS_NEG = "CREATE TABLE orders AS SELECT * FROM (VALUES (1,10),(2,-4)) AS v(
 
 async def test_quarantine_holds_no_land_no_poison(tmp_path):
     # A streaming (cross-row) QUARANTINE holds: no land, a non-fanned quarantine event, no poison.
-    store_dsn = f"sqlite+aiosqlite:///{tmp_path / 'store.db'}"
+    store_dsn = f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
     con = duckdb.connect(":memory:")
     con.execute(_ORDERS_CLEAN)  # sum 16 < 20 → quarantine
     gate = (
@@ -257,7 +253,7 @@ async def test_quarantine_holds_no_land_no_poison(tmp_path):
 
 async def test_warn_advisory_still_lands(tmp_path):
     # A CONTINUE with ctx.warn(...) emits an advisory warn event AND still lands the output.
-    store_dsn = f"sqlite+aiosqlite:///{tmp_path / 'store.db'}"
+    store_dsn = f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
     con = duckdb.connect(":memory:")
     con.execute(_ORDERS_CLEAN)
     gate = "def preflight(streams, ctx):\n    ctx.warn('low sum, but allowed')\n    return ctx.ok()"
@@ -274,7 +270,7 @@ async def test_warn_advisory_still_lands(tmp_path):
 
 async def test_streaming_abort_blocks_land(tmp_path):
     # A cross-row (non-pushdown) ABORT blocks the land and fans the error to dependents.
-    store_dsn = f"sqlite+aiosqlite:///{tmp_path / 'store.db'}"
+    store_dsn = f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
     con = duckdb.connect(":memory:")
     con.execute(_ORDERS_NEG)
     # A per-input stream is SINGLE-PASS (it must be, to stream) — iterate it once. This cross-row
@@ -334,7 +330,7 @@ _SRC_GATE = (
 
 async def test_source_preflight_aborts_before_land(tmp_path):
     # The LANDED-SOURCE gate runs over the fetched rows and blocks the land on abort.
-    store_dsn = f"sqlite+aiosqlite:///{tmp_path / 'store.db'}"
+    store_dsn = f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
     async with _cp(tmp_path) as db:
         await _fire(db, "s.orders")
         proc = _source_proc(
@@ -351,7 +347,7 @@ async def test_source_preflight_aborts_before_land(tmp_path):
 
 async def test_source_preflight_continues_and_lands(tmp_path):
     # Clean source rows → the gate continues and the source lands unchanged.
-    store_dsn = f"sqlite+aiosqlite:///{tmp_path / 'store.db'}"
+    store_dsn = f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
     async with _cp(tmp_path) as db:
         await _fire(db, "s.orders")
         proc = _source_proc(

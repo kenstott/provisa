@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-import asyncio
+import concurrent.futures
 import logging
 import re
 
@@ -23,6 +23,7 @@ from pydantic import BaseModel
 from sqlalchemy import and_, delete as _delete, func, select, update
 
 from provisa.api.errors import ApiError
+from provisa.core.connection_loop import spawn_background
 from provisa.core.database import Database
 from provisa.core.org_ids import is_org_id
 from provisa.core.org_membership import (
@@ -43,7 +44,8 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/orgs", tags=["admin"])
 
 # Strong refs to in-flight provisioning tasks so the event loop does not GC them mid-run.
-_provisioning_tasks: set[asyncio.Task] = set()
+# In-flight org builds (REQ-1882: each runs on a background worker, not the request's loop).
+_provisioning_tasks: set[concurrent.futures.Future[None]] = set()
 
 
 def _require_platform_admin(request: Request) -> None:  # REQ-042, REQ-125, REQ-1297
@@ -555,8 +557,9 @@ async def create_org(body: CreateOrgBody, request: Request):  # REQ-042, REQ-059
 def _spawn_provisioning(
     org_id: str, include_demo: bool, created_by: str | None, isolated_engine: bool
 ) -> None:
-    task = asyncio.create_task(
-        _provision_org_task(org_id, include_demo, created_by, isolated_engine)
+    task = spawn_background(
+        _provision_org_task(org_id, include_demo, created_by, isolated_engine),
+        name=f"org-provision:{org_id}",
     )
     _provisioning_tasks.add(task)
     task.add_done_callback(_provisioning_tasks.discard)
@@ -976,8 +979,9 @@ async def retry_provisioning(org_id: str, request: Request):  # REQ-1315
 
     _app_state.org_registry.invalidate_org(org_id)  # REQ-1488: environments go with the org
     await deprovision_org(_pool(), org_id, redis_url=os.environ.get("REDIS_URL"))
-    task = asyncio.create_task(
-        _provision_org_task(org_id, bool(seeded_demo), created_by, bool(iso_engine))
+    task = spawn_background(
+        _provision_org_task(org_id, bool(seeded_demo), created_by, bool(iso_engine)),
+        name=f"org-provision:{org_id}",
     )
     _provisioning_tasks.add(task)
     task.add_done_callback(_provisioning_tasks.discard)

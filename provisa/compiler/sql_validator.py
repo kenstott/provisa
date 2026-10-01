@@ -11,6 +11,9 @@ Rules:
   V003 – Referenced columns must be visible to this role.
   V004 – (retired) Cyclic join graphs are pruned in-place; back-edges are dropped silently.
   V005 – Masked columns must not appear in WHERE or HAVING clauses (prevents plaintext inference).
+  V006 – Every relation must be a registered table (or a CTE, or a pure row generator), for every
+          role including domain_access ["*"]: a table function or unregistered name reaches the
+          engine's internals or its host filesystem, not governed data.
 
 Security model / layer responsibilities:
   Layer 0 – Introspection filtering (schema_gen): the GraphQL schema, SQL catalog, and
@@ -73,6 +76,7 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
 
     violations: list[ValidationViolation] = []
     cte_names_set = cte_names(tree)
+    violations += _check_registered_relations(tree, gov_ctx, ctx, cte_names_set)
 
     # Build reverse maps
     table_id_to_meta: dict[int, TableMeta] = {}
@@ -131,6 +135,52 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
     violations += _check_dag(tree, gov_ctx, cte_names_set)
     violations += _check_masked_in_predicate(tree, gov_ctx, cte_names_set)
 
+    return violations
+
+
+# --------------------------------------------------------------------------- #
+# V006 – Registered relations only                                             #
+# --------------------------------------------------------------------------- #
+
+# Table functions that only generate rows from their literal arguments — no engine state, no
+# file or network read.
+_ROW_GENERATORS = (exp.GenerateSeries, exp.ExplodingGenerateSeries)
+
+
+def _check_registered_relations(  # REQ-001, REQ-266
+    tree: exp.Expr,
+    gov_ctx: GovernanceContext,
+    ctx: CompilationContext,
+    cte_names_set: frozenset[str] = frozenset(),
+) -> list[ValidationViolation]:
+    """Every relation the statement reads is a registered table, a CTE, or a row generator.
+
+    Checked for EVERY role: ``domain_access: ["*"]`` widens which DOMAINS a role reads, never
+    what counts as governed data. Anything else is engine internals or the engine host —
+    ``duckdb_secrets()`` prints http-secret headers (a ClickHouse X-ClickHouse-Key) in clear text,
+    ``duckdb_databases()`` attached DSNs, ``read_csv('/etc/passwd')`` and a quoted
+    ``"/path/x.csv"`` (DuckDB's replacement scan) read host files."""
+    violations: list[ValidationViolation] = []
+    for tbl in tree.find_all(exp.Table):
+        target = tbl.this
+        if isinstance(target, _ROW_GENERATORS):
+            continue
+        if not isinstance(target, exp.Identifier):
+            fn = target.sql(dialect="postgres").split("(", 1)[0] if target is not None else "?"
+            violations.append(
+                ValidationViolation("V006", f"Table function {fn!r} is not a governed relation")
+            )
+            continue
+        if not tbl.db and tbl.name in cte_names_set:
+            continue
+        # A registered table is named by its semantic/physical name (table_map) or, unqualified, by
+        # its field name — the domain-prefixed ``sa__orders`` form a domain_prefix schema exposes.
+        field_named = not tbl.db and tbl.name in ctx.tables
+        if _resolve_table_id(tbl, gov_ctx) is None and not field_named:
+            ref = f"{tbl.db}.{tbl.name}" if tbl.db else tbl.name
+            violations.append(
+                ValidationViolation("V006", f"Relation {ref!r} is not a registered table")
+            )
     return violations
 
 

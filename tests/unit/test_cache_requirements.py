@@ -186,7 +186,7 @@ class TestREQ595InlineResultWritesTenantScoped:
             "json",
             "ck-1",
             None,
-            False,
+            True,  # REQ-544 (amended): the request opted into the response cache
             0.0,
             None,
             {},

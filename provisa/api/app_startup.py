@@ -32,6 +32,7 @@ from provisa.core.schema_org import (
 )
 from provisa.api_source.models import ApiEndpoint as ApiEndpoint, ApiSource as ApiSource
 from provisa.core.config_location import config_path, config_path_str
+from provisa.core.connection_loop import spawn_background, spawn_long_lived
 from provisa.core.models import ProvisaConfig  # noqa: F401
 from typing import TYPE_CHECKING, Any, cast  # noqa: F401
 
@@ -126,6 +127,7 @@ def _prewarm_govdata_jvm(_log: logging.Logger) -> None:
 
 async def _start_background_tasks(_log: logging.Logger) -> None:
     """Start MV storage reclamation, warm-table, hot-table refresh, and SQLite staleness tasks."""
+
     # Start the MV reclamation loop whenever the engine is connected — not gated on MVs already
     # being registered. It idles cheaply on an empty registry and reaps removed/orphaned MV tables.
     # MV COMPUTE is the event loop's job now (REQ-966); this loop no longer refreshes MVs, so the two
@@ -137,8 +139,11 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
     if state.federation_engine.is_connected():
         from provisa.mv.refresh import reclamation_loop
 
-        state._mv_refresh_task = asyncio.create_task(
+        # REQ-1882: long-lived loops that touch the engine/control plane run on their own
+        # threads (spawn_long_lived), never on the process loop that relays request I/O.
+        state._mv_refresh_task = spawn_long_lived(
             reclamation_loop(state.federation_engine, state.mv_registry),
+            name="mv-reclamation",
         )
 
     if state.federation_engine.is_connected():
@@ -149,8 +154,10 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
         _raw: dict = {}
         _warm_cfg_path = config_path()
         if _warm_cfg_path.exists():
-            with open(_warm_cfg_path) as _wf:
-                _raw = yaml.safe_load(_wf) or {}
+            # REQ-1669: includes-aware, so a wrapper config's fragments are seen.
+            from provisa.core.config_loader import read_config_with_includes
+
+            _raw = read_config_with_includes(_warm_cfg_path)
         _wcfg = _raw.get("warm_tables", {})
         _warm_threshold = int(_wcfg.get("query_threshold", 100))
         _warm_max_rows = int(_wcfg.get("max_rows", 10_000_000))
@@ -187,7 +194,7 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
                     _log.exception("Error in warm-table loop")
                 await asyncio.sleep(_warm_interval)
 
-        state._warm_task = asyncio.create_task(_warm_loop())
+        state._warm_task = spawn_long_lived(_warm_loop(), name="warm-tables")
 
     if state.hot_manager is not None and state.federation_engine.is_connected():
         from provisa.cache.hot_tables import HotTableManager
@@ -219,7 +226,7 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
                     except Exception:
                         _log.exception("Hot table refresh failed: %s", entry.table_name)
 
-        state._hot_refresh_task = asyncio.create_task(_hot_refresh_loop())
+        state._hot_refresh_task = spawn_long_lived(_hot_refresh_loop(), name="hot-table-refresh")
 
     # REQ-1448: release the node under any engine shard that stops being queried. Started here with
     # the other background loops; it returns immediately on a deployment that does not provision its
@@ -296,6 +303,13 @@ async def _start_servers(_log: logging.Logger) -> None:
 
     _evaluate_licensing(_log)  # REQ-1135–1139: offline trial/license check + shell banner
 
+    # REQ-1882 (amended 2026-09-29): every request runs on its own thread and loop; the process
+    # loop only accepts connections and relays ASGI I/O. Work that outlives a request runs on the
+    # background worker pool (server.background_workers), never here.
+    from provisa.core.connection_loop import set_process_loop
+
+    set_process_loop(asyncio.get_running_loop())
+
     if state.wire_proto:
         try:
             import tempfile
@@ -327,7 +341,7 @@ async def _start_servers(_log: logging.Logger) -> None:
                 os.environ.get("GRPC_PORT", str(state.server_cfg.get("grpc_port", 50051)))
             )
             _grpc_tls = _resolve_tls("PROVISA_GRPC_CERT", "PROVISA_GRPC_KEY")
-            state._grpc_server = await start_grpc_server(
+            state._grpc_server = start_grpc_server(
                 grpc_port,
                 state,
                 pb2_path,
@@ -366,7 +380,6 @@ async def _start_servers(_log: logging.Logger) -> None:
                 return ProvisaFlightServer(
                     state,
                     location=f"grpc+tls://0.0.0.0:{port}",
-                    main_loop=asyncio.get_running_loop(),
                     tls_certificates=[(_flight_cert_bytes, _flight_key_bytes)],
                     **flight_tls_kwargs(
                         _resolve_client_auth(
@@ -382,7 +395,6 @@ async def _start_servers(_log: logging.Logger) -> None:
                 return ProvisaFlightServer(
                     state,
                     location=f"grpc://0.0.0.0:{port}",
-                    main_loop=asyncio.get_running_loop(),
                 )
 
         # REQ-1900: pyarrow's FlightServerBase has no SO_REUSEPORT equivalent — confirmed live
@@ -499,7 +511,6 @@ async def _start_servers(_log: logging.Logger) -> None:
                 host="0.0.0.0",  # nosec B104 - pgwire server intentionally binds all interfaces
                 port=pgwire_port,
                 ssl_ctx=_ssl_ctx,
-                loop=asyncio.get_running_loop(),
             )
             _log.info(
                 "pgwire server listening on 0.0.0.0:%d (TLS=%s)", pgwire_port, _ssl_ctx is not None
@@ -540,7 +551,6 @@ async def _start_servers(_log: logging.Logger) -> None:
                 host="0.0.0.0",  # nosec B104 - bolt server intentionally binds all interfaces
                 port=bolt_port,
                 ssl_ctx=_bolt_ssl_ctx,
-                loop=asyncio.get_running_loop(),
             )
             _log.info(
                 "bolt server listening on 0.0.0.0:%d (TLS=%s)", bolt_port, _bolt_ssl_ctx is not None
@@ -619,8 +629,10 @@ def _start_scheduler(_log: logging.Logger) -> None:
         scheduler = new_scheduler()
         _cfg_triggers = []
         try:
-            with open(config_path_str()) as _cfg_f:
-                _raw = yaml.safe_load(_cfg_f.read())
+            # REQ-1669: includes-aware, so a wrapper config's fragments are seen.
+            from provisa.core.config_loader import read_config_with_includes
+
+            _raw = read_config_with_includes(config_path_str())
             if isinstance(_raw, dict):
                 from provisa.core.config_loader import parse_config_dict
 
@@ -719,20 +731,19 @@ def _start_scheduler(_log: logging.Logger) -> None:
         # REQ-1072: the metadata-export drain + per-org reconcile. Scheduled after start so a
         # config read that needs the running loop has one.
         try:
-            import asyncio
-
             from provisa.api.metadata_export.publishing import register_all_orgs
 
-            asyncio.ensure_future(register_all_orgs(scheduler))
+            # REQ-1882: reads the control plane — a background worker, not the process loop.
+            spawn_background(register_all_orgs(scheduler), name="metadata-export-register")
         except (ImportError, RuntimeError):
             _log.exception("metadata export sync jobs could not be scheduled")
         # Wire the event loop onto the same scheduler (REQ-941) — best-effort, never bricks boot.
         try:
-            import asyncio
-
             from provisa.events.app_wiring import wire_event_loop
 
-            asyncio.ensure_future(wire_event_loop(scheduler, state=state, log=_log))
+            spawn_background(
+                wire_event_loop(scheduler, state=state, log=_log), name="event-loop-wiring"
+            )
         except (ImportError, RuntimeError):
             _log.exception("event loop wiring could not be scheduled")
     except Exception:
@@ -960,7 +971,8 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
                 exc_info=True,
             )
 
-    asyncio.create_task(_register_graphql_demo())
+    # REQ-1882: introspects the demo service and rebuilds schemas — a background worker.
+    spawn_background(_register_graphql_demo(), name="graphql-demo-register")
 
 
 async def _capture_config_boot_snapshot(_log: logging.Logger) -> None:

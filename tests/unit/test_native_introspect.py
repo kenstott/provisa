@@ -721,3 +721,26 @@ def test_openapi_is_table_petstore_null_response():
     queries, _ = parse_spec(_PETSTORE_SPEC)
     q = _query_by_id(queries, "logoutUser")
     assert _openapi_is_table(q) is False
+
+
+@pytest.mark.parametrize("source_type", ["cockroachdb", "yugabytedb", "greenplum", "redshift"])
+async def test_native_columns_pg_wire_family_reports_ir_types(source_type):
+    """information_schema's ANSI spellings resolve through the IR table (provisa.core.ir_types) —
+    every downstream type map (GraphQL, proto) keys on canonical names, not "character varying"."""
+    pool = _pool(
+        [
+            ("id", "integer"),
+            ("name", "character varying"),
+            ("price", "double precision"),
+            ("seen_at", "timestamp without time zone"),
+            ("opens", "time without time zone"),
+        ]
+    )
+    result = await native_columns("src", source_type, "public", "widgets", pool)
+    assert result == [
+        ("id", "integer"),
+        ("name", "text"),
+        ("price", "double"),
+        ("seen_at", "timestamp"),
+        ("opens", "time"),
+    ]

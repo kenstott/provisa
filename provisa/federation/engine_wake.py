@@ -41,12 +41,14 @@ is simply always on, and must not pay a status check per query to discover that.
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import contextlib
 import logging
 import os
 import time
 from typing import Any
 
+from provisa.core.connection_loop import CrossLoopLock
 from provisa.federation import k8s_provisioner as k8s
 
 log = logging.getLogger(__name__)
@@ -54,13 +56,15 @@ log = logging.getLogger(__name__)
 # Per shard: the lock that makes a wake happen once for N concurrent queries, when the shard was
 # last SEEN ready, when it last served traffic, and the in-flight stop task the reaper started.
 # The generation is NOT here: it belongs to the cluster, not to this process. See `generation`.
-_locks: dict[str, asyncio.Lock] = {}
+# REQ-1882 (amended 2026-09-29): a wake is awaited from pgwire/Bolt/Flight connection-thread loops
+# as well as the process loop, so the per-shard lock works across loops and threads.
+_locks: dict[str, CrossLoopLock] = {}
 _ready_seen: dict[str, float] = {}
 _last_activity: dict[str, float] = {}
 _stop_tasks: dict[str, asyncio.Task] = {}
 # Per org (None = the deployment's own org): the in-flight sign-in prewarm, so a second sign-in
 # does not start one alongside it. REQ-1471.
-_prewarm_tasks: dict[str | None, asyncio.Task] = {}
+_prewarm_tasks: dict[str | None, concurrent.futures.Future[None]] = {}
 
 
 def _int_env(name: str, default: int) -> int:
@@ -70,12 +74,27 @@ def _int_env(name: str, default: int) -> int:
     return int(raw)
 
 
-def _lock_for(shard: str) -> asyncio.Lock:
-    lock = _locks.get(shard)
-    if lock is None:
-        lock = asyncio.Lock()
-        _locks[shard] = lock
-    return lock
+async def _cancel_and_settle(task: asyncio.Task) -> None:
+    """Cancel ``task`` and wait for it to finish, from whichever loop is calling.
+
+    Stop tasks live on the process loop (the reaper's); a wake runs on its request's own loop and
+    thread (REQ-1882). A task can only be awaited on its own loop, so a wake hands the cancel-and-
+    collect to the task's loop and waits for that on its own."""
+
+    async def _settle() -> None:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+    task_loop = task.get_loop()
+    if task_loop is asyncio.get_running_loop():
+        await _settle()
+        return
+    await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(_settle(), task_loop))
+
+
+def _lock_for(shard: str) -> CrossLoopLock:
+    return _locks.setdefault(shard, CrossLoopLock())
 
 
 def boot_shard() -> str:
@@ -150,11 +169,9 @@ async def ensure_shard_awake(shard: str, *, lane: str = "shared", size: Any = No
             # query must not sit behind a shutdown it can simply abandon. The pod is already at zero
             # replicas by then, so what comes back is a new coordinator either way.
             log.info("cancelling in-flight stop of engine shard %s: a query arrived", shard)
-            stop_task.cancel()
-            # The task only ever ends cancelled here; awaiting it is how the cancellation is
+            # The task only ever ends cancelled here; waiting for it is how the cancellation is
             # collected before the pool is resized back up underneath it.
-            with contextlib.suppress(asyncio.CancelledError):
-                await stop_task
+            await _cancel_and_settle(stop_task)
             cold = True
 
         if not cold:
@@ -351,7 +368,7 @@ async def restore_shared_terminal(state: Any, shard: str) -> None:
     default.engine_generation = generation(shard)
 
 
-def prewarm_engine(state: Any, org_id: str | None) -> None:
+def prewarm_engine(state: Any, org_id: str | None) -> concurrent.futures.Future[None] | None:
     """REQ-1471: start the shard's cold start at SIGN-IN, so the first query does not pay for it.
 
     A cold start is ~2-4min of Autopilot node provision plus Trino start, and the query path pays
@@ -365,7 +382,7 @@ def prewarm_engine(state: Any, org_id: str | None) -> None:
     on this one rather than starting a second.
     """
     if not k8s.provisioning_available():
-        return
+        return None
 
     # /auth/me reports the deployment's own org by NAME, but _OrgRoutingMiddleware binds
     # current_org only for a non-default org (auth/middleware.py:601-604) — unset IS the default
@@ -398,13 +415,25 @@ def prewarm_engine(state: Any, org_id: str | None) -> None:
         finally:
             if token is not None:
                 reset_current_org(token)
-            _prewarm_tasks.pop(org_id, None)
 
     if _prewarm_tasks.get(org_id) is not None:
-        return
-    # Held in module state for the task's lifetime: a bare create_task is only weakly referenced by
-    # the loop, so an unheld prewarm can be garbage-collected mid-wake.
-    _prewarm_tasks[org_id] = asyncio.create_task(_run())
+        return None
+    from provisa.core.connection_loop import spawn_background
+
+    # REQ-1882: the wake outlives the request and may block on the engine, so it runs on a
+    # background worker. _run binds its org explicitly. Held here so a second prewarm for the same
+    # org is a no-op while this one runs. Removed by a done-callback that checks it is still THIS
+    # future: the worker can finish before the assignment below runs, and a removal inside _run
+    # would then happen first and leave a finished future blocking every later prewarm.
+    fut = spawn_background(_run(), name=f"engine-prewarm:{org_id}")
+    _prewarm_tasks[org_id] = fut
+
+    def _forget(done: concurrent.futures.Future[None]) -> None:
+        if _prewarm_tasks.get(org_id) is done:
+            _prewarm_tasks.pop(org_id, None)
+
+    fut.add_done_callback(_forget)
+    return fut
 
 
 async def isolated_wake_size(state: Any, org_id: str) -> Any:
@@ -740,6 +769,8 @@ async def idle_reaper() -> None:
                 # A wake is in progress; this shard is about to be busy by definition.
                 continue
             log.info("engine shard %s idle for %ds — scaling it to zero", shard, idle_after)
+            # On the process loop by design: the stop is async httpx calls to the GKE/Kubernetes
+            # APIs (k8s_provisioner), never a blocking call, so it cannot stall request I/O.
             _stop_tasks[shard] = asyncio.create_task(_stop_shard(shard))
 
 
@@ -783,5 +814,7 @@ def start_idle_reaper(state: Any) -> None:
     # considered for release and billed indefinitely. Seeding the boot shard here starts its idle
     # window at the restart, so an untouched shard is released one window later (REQ-1463).
     note_activity(boot_shard())
+    # On the process loop by design: the reaper sleeps and makes async httpx calls only (see
+    # idle_reaper), so it never blocks the loop that relays request I/O (REQ-1882).
     state._engine_reaper_task = asyncio.create_task(idle_reaper())
     log.info("engine idle reaper started")

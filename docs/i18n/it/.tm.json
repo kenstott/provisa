@@ -1,7 +1,7 @@
 {
   "index.md": "c73dba4fb28e77592560aaa6fe11abf00995f09c40ee4f625e5b05341930563c",
-  "configuration.md": "57726f6c3d974531889d088e4c05c966cb2728c67d6147d30e04b4b46205c843",
-  "api-reference.md": "97028f11c164390b43bfaee1c41715ca53ca60fcd3fd344a711bc71275318746",
+  "configuration.md": "3b2807cc0a99a754a0c9cce0227a90ac5b7602be417b0017cbedca83c286462e",
+  "api-reference.md": "666f81b1f5abf24fada591a5451fac61ef9092c8506f17cd214927c9faf83253",
   "sources.md": "9905580d78130102dae37168aa3c13be0d5f1364455f090e99e58f9d727578f8",
   "python-client.md": "54a48f28498d40aaba91b5c4163d55dcd7d3b35122cb0a4c1e3feca1d68c2bcd",
   "deployment.md": "786a88236dd7e6f05f6fe79823c25dba9dad2278246770451be4d0a49d0f1c1f",
@@ -9,7 +9,7 @@
   "commands.md": "70d73254c8362a6a992ac0411d2fb3f9b270fabdb0c3c66e78ecfdb68c9047ec",
   "cypher.md": "36e35e16d5f40c193af9e16e5ab53ac4240c59366730774ec21ec101c1e59cde",
   "quickstart.md": "03d442441ed339c6b0d9a5ef40916f7a4f3ee41ef719ae305f20c8a97593e266",
-  "architecture.md": "ed9f2daf63e991f3aa6bd7025bc2a9f02c42682be0f113e6fb245ffd3d73f13d",
+  "architecture.md": "2ef7333229ee37c6d94558f2a7b7f7aad57e798cc5b8f6f2a157d54ae5de7cc7",
   "security.md": "58b56c55ff0ed08f6c3fcb0f31bf428cd7a478cee664e414be15a6860e9874f7",
   "subscriptions.md": "e1ae1d7f3583954d5103b795d3e6d71aef7fc1c38ce8dba7a155c4b047ec501c",
   "integrations.md": "00bf2fe53b2436f402f1ba8eddea59d68d4b9e03efd4e1071d7847915fdc08d2",

@@ -98,7 +98,9 @@ async def audit_pool(shared_data):
     # search_path is applied on every acquire (Database SET search_path shim). init_audit_schema
     # creates query_audit_log in schema org_<org_id> (provisa/audit/query_log.py schema_name), so the
     # unqualified INSERT/SELECT in the when/then steps must resolve against that same schema.
-    db = Database(engine, name="test", search_path=f"org_{org_id}, public")
+    # Database.search_path names ONE org schema (Capabilities.enter_org_sql quotes it as a single
+    # identifier), so a comma list here would scope every acquire to a schema that does not exist.
+    db = Database(engine, name="test", search_path=f"org_{org_id}")
     await init_audit_schema(db, org_id=org_id)
     # The when/then steps are SYNC pytest-bdd steps that must drive asyncpg coroutines. asyncpg
     # connections are bound to the loop that created the engine (this fixture runs on pytest-asyncio's

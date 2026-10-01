@@ -423,8 +423,7 @@ class TestServicerAggregateDispatch:
         handler = servicer.QueryInquiries
         assert callable(handler)
 
-    @pytest.mark.asyncio
-    async def test_no_collision_aggregate_dispatches_to_aggregate_bound(self, monkeypatch):
+    def test_no_collision_aggregate_dispatches_to_aggregate_bound(self, monkeypatch):
         """Query{Type}Aggregate must dispatch to _handle_query_aggregate, never the generic
         _handle_query (which the plain Query{Type} prefix branch would wrongly match if it were
         checked first)."""
@@ -446,13 +445,13 @@ class TestServicerAggregateDispatch:
         monkeypatch.setattr(servicer, "_handle_query", fake_plain_query)
 
         handler = servicer.QueryInquiriesAggregate
-        result = await handler(MagicMock(), MagicMock())
+        # REQ-1882: a synchronous handler — the server calls it on the RPC's own thread.
+        result = handler(MagicMock(), MagicMock())
 
         assert result == "AGG_RESULT"
         assert calls == [("aggregate", "Inquiries")]
 
-    @pytest.mark.asyncio
-    async def test_no_collision_group_by_dispatches_to_group_by_bound(self, monkeypatch):
+    def test_no_collision_group_by_dispatches_to_group_by_bound(self, monkeypatch):
         pb2 = _make_pb2_module_with_aggregates()
         servicer = ProvisaServicer(MagicMock(), pb2, MagicMock())
 
@@ -472,13 +471,12 @@ class TestServicerAggregateDispatch:
         monkeypatch.setattr(servicer, "_handle_query", fake_plain_query)
 
         handler = servicer.QueryInquiriesGroupBy
-        results = [msg async for msg in handler(MagicMock(), MagicMock())]
+        results = list(handler(MagicMock(), MagicMock()))
 
         assert results == ["ROW1", "ROW2"]
         assert calls == [("group_by", "Inquiries")]
 
-    @pytest.mark.asyncio
-    async def test_plain_query_dispatches_to_handle_query_not_aggregate(self, monkeypatch):
+    def test_plain_query_dispatches_to_handle_query_not_aggregate(self, monkeypatch):
         pb2 = _make_pb2_module_with_aggregates()
         servicer = ProvisaServicer(MagicMock(), pb2, MagicMock())
 
@@ -496,7 +494,7 @@ class TestServicerAggregateDispatch:
         monkeypatch.setattr(servicer, "_handle_query_aggregate", fake_aggregate)
 
         handler = servicer.QueryInquiries
-        results = [msg async for msg in handler(MagicMock(), MagicMock())]
+        results = list(handler(MagicMock(), MagicMock()))
 
         assert results == ["ROW"]
         assert calls == [("plain", "Inquiries", "inquiries")]

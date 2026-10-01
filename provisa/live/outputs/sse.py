@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 
 from provisa.live.outputs.base import LiveOutput
 
@@ -46,48 +47,54 @@ class SSEFanout(LiveOutput):  # REQ-258, REQ-260, REQ-286
 
     def __init__(self, query_id: str) -> None:
         self.query_id = query_id
-        self._queues: list[asyncio.Queue] = []
+        # REQ-1882 (amended 2026-09-29): an SSE client is served on its own request thread and loop,
+        # while polls push from the process loop. Each queue is paired with its subscriber's loop
+        # and filled there (call_soon_threadsafe); the list is guarded by a thread lock.
+        self._lock = threading.Lock()
+        self._queues: list[tuple[asyncio.AbstractEventLoop, asyncio.Queue]] = []
 
     def subscribe(self) -> asyncio.Queue:  # REQ-258, REQ-286
-        """Register a new client queue and return it."""
+        """Register a new client queue (on the calling loop) and return it."""
         q: asyncio.Queue = asyncio.Queue()
-        self._queues.append(q)
-        log.debug(
-            "[SSE FANOUT] client subscribed to %s (total=%d)", self.query_id, len(self._queues)
-        )
+        with self._lock:
+            self._queues.append((asyncio.get_running_loop(), q))
+            total = len(self._queues)
+        log.debug("[SSE FANOUT] client subscribed to %s (total=%d)", self.query_id, total)
         return q
 
     def unsubscribe(self, queue: asyncio.Queue) -> None:  # REQ-565
         """Remove a client queue when the client disconnects."""
-        try:
-            self._queues.remove(queue)
-        except ValueError:
-            pass
+        with self._lock:
+            self._queues = [(lp, q) for lp, q in self._queues if q is not queue]
+            remaining = len(self._queues)
         log.debug(
-            "[SSE FANOUT] client unsubscribed from %s (remaining=%d)",
-            self.query_id,
-            len(self._queues),
+            "[SSE FANOUT] client unsubscribed from %s (remaining=%d)", self.query_id, remaining
         )
 
     @property
     def subscriber_count(self) -> int:
-        return len(self._queues)
+        with self._lock:
+            return len(self._queues)
+
+    def _deliver(self, item: list[dict] | None) -> None:
+        with self._lock:
+            targets = list(self._queues)
+        running = asyncio.get_running_loop()
+        for loop, q in targets:
+            # Unbounded queues: put_nowait never raises QueueFull.
+            if loop is running:
+                q.put_nowait(item)
+            elif not loop.is_closed():  # closed: the subscriber's request ended with its loop
+                loop.call_soon_threadsafe(q.put_nowait, item)
 
     async def send(self, rows: list[dict]) -> None:  # REQ-565
         """Push *rows* to every subscriber queue (non-blocking)."""
         if not rows:
             return
-        for q in list(self._queues):
-            try:
-                q.put_nowait(rows)
-            except asyncio.QueueFull:
-                log.warning("[SSE FANOUT] queue full for %s, dropping batch", self.query_id)
+        self._deliver(rows)
 
     async def close(self) -> None:  # REQ-565
         """Signal all subscribers that the stream ended (send sentinel None)."""
-        for q in list(self._queues):
-            try:
-                q.put_nowait(None)
-            except asyncio.QueueFull:
-                pass
-        self._queues.clear()
+        self._deliver(None)
+        with self._lock:
+            self._queues.clear()

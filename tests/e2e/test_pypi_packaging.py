@@ -46,7 +46,9 @@ def test_embedded_extra_declared(pyproject: dict) -> None:  # REQ-1126, REQ-1129
     extras = pyproject["project"]["optional-dependencies"]
     assert "embedded" in extras
     # Embedded tier = SQLite control plane + embedded DuckDB engine + in-memory cache.
-    assert {"duckdb", "aiosqlite", "greenlet", "fakeredis"} <= set(extras["embedded"])
+    assert {"duckdb", "fakeredis"} <= set(extras["embedded"])
+    # REQ-1882: the control plane is synchronous (stdlib sqlite3); the async driver is gone.
+    assert not {"aiosqlite", "greenlet"} & set(extras["embedded"])
 
 
 def test_python_pin(pyproject: dict) -> None:  # REQ-1130
@@ -89,7 +91,8 @@ def test_cli_builds_embedded_env(tmp_path: Path) -> None:  # REQ-1126, REQ-1129
         _apply_embedded_env(data_dir)
         assert os.environ["PROVISA_ENGINE"] == "duckdb"  # embedded DuckDB engine
         assert os.environ["PROVISA_REDIS_EMBEDDED"] == "1"  # in-memory cache
-        assert os.environ["PLATFORM_DATABASE_URL"].startswith("sqlite+aiosqlite:///")
+        # REQ-1535: the embedded tier's control plane is embedded PostgreSQL (pgserver), not SQLite.
+        assert os.environ["PLATFORM_DATABASE_URL"].startswith("postgresql+psycopg://")
     finally:
         os.environ.clear()
         os.environ.update(saved)

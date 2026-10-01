@@ -45,6 +45,9 @@ class _FakeReader:
 
 
 class _FakeCursor:
+    def adbc_cancel(self) -> None:  # ADBC cancel, used by the request deadline
+        pass
+
     def __init__(self, con, reader, table):
         self._con = con
         self._reader = reader

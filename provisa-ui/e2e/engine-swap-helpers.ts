@@ -769,7 +769,7 @@ function resolveSharedPgPort(): string {
 
 function rebootControlPlaneEnv(): Record<string, string> {
   const pgPassword = process.env.PG_PASSWORD ?? "provisa";
-  const url = `postgresql+asyncpg://provisa:${pgPassword}@localhost:${resolveSharedPgPort()}/provisa`;
+  const url = `postgresql+psycopg://provisa:${pgPassword}@localhost:${resolveSharedPgPort()}/provisa`;
   return { TENANT_DATABASE_URL: url, PLATFORM_DATABASE_URL: url };
 }
 

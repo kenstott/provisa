@@ -111,10 +111,15 @@ def _make_request(headers: dict[str, str]) -> MagicMock:
 
 class TestSinkBranchDecision:
     @pytest.mark.asyncio
-    async def test_header_present_returns_202_and_launches_sink(self):
-        """X-Provisa-Sink header → 202 Accepted, asyncio.create_task called."""
+    async def test_header_present_returns_202_and_launches_sink(self, monkeypatch):
+        """X-Provisa-Sink header → 202 Accepted, the sink loop started as detached work.
+
+        REQ-1882: started via spawn_long_lived — the sink outlives the request and runs until its
+        source disconnects, so it gets its own thread (never the process loop or a pooled worker)."""
         document = _make_minimal_document("orders")
         state, ctx, _table_meta = _make_state()
+        # REQ-030: a sink writes only to the operator's cluster.
+        monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "broker1:9092")
         raw_request = _make_request({"x-provisa-sink": "kafka://broker1:9092/orders-topic"})
 
         directives = MagicMock()
@@ -122,8 +127,12 @@ class TestSinkBranchDecision:
         directives.sink_broker = None
         directives.watermark_column = None
 
-        with patch("asyncio.create_task") as mock_create_task:
-            mock_create_task.return_value = MagicMock()
+        def _spawn(coro, *, name=None):
+            spawned.append(name)
+            coro.close()
+
+        spawned: list = []
+        with patch("provisa.core.connection_loop.spawn_long_lived", _spawn):
             response = await handle_subscription_sse(
                 document=document,
                 ctx=ctx,
@@ -140,7 +149,7 @@ class TestSinkBranchDecision:
 
         assert isinstance(response, JSONResponse)
         assert response.status_code == 202
-        mock_create_task.assert_called_once()
+        assert spawned == ["kafka-sink:orders"]
 
         raw_body = response.body
         body = _json.loads(bytes(raw_body) if isinstance(raw_body, memoryview) else raw_body)
@@ -187,10 +196,12 @@ class TestSinkBranchDecision:
         assert not hasattr(response, "status_code") or response.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_sink_header_parsed_broker_and_topic_forwarded(self):
+    async def test_sink_header_parsed_broker_and_topic_forwarded(self, monkeypatch):
         """Parsed broker and topic from header are forwarded to _launch_kafka_sink."""
         document = _make_minimal_document("events")
         state, ctx, _table_meta = _make_state(table_name="events")
+        # REQ-030: a sink writes only to the operator's cluster.
+        monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "kafka-host:9093")
         raw_request = _make_request({"x-provisa-sink": "kafka://kafka-host:9093/event-stream"})
 
         directives = MagicMock()
@@ -231,11 +242,13 @@ class TestSinkBranchDecision:
         assert "event-stream" in call_kwargs["sink_header"]
 
     @pytest.mark.asyncio
-    async def test_directive_sink_topic_takes_precedence_over_header(self):
+    async def test_directive_sink_topic_takes_precedence_over_header(self, monkeypatch):
         """@sink directive topic takes precedence; header is secondary."""
         document = _make_minimal_document("orders")
         state, ctx, _table_meta = _make_state()
         # Header present but directive already has a topic
+        # REQ-030: a sink writes only to the operator's cluster.
+        monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "directive-broker:9092")
         raw_request = _make_request({"x-provisa-sink": "kafka://broker1:9092/header-topic"})
 
         directives = MagicMock()

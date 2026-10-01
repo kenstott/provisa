@@ -31,7 +31,6 @@ async engines are only ever driven inside the TestClient's event loop.
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import os
 import time
@@ -50,17 +49,17 @@ from provisa.api.auth_router import router as auth_router
 from provisa.auth.middleware import AuthMiddleware
 from provisa.auth.providers.basic import BasicAuthProvider
 from provisa.core.database import Database, create_engine_from_url
-from provisa.core.schema_admin import REGISTRY_TABLES, local_users
+from provisa.core.schema_admin import REGISTRY_TABLES, local_users, orgs
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_org import metadata as org_metadata
-from provisa.core.schema_org import roles
+from provisa.core.schema_org import domains, roles, sources
 
 pytestmark = [pytest.mark.integration]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "5432")
-_SYNC_URL = f"postgresql+psycopg2://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
-_ASYNC_URL = f"postgresql+asyncpg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
+_SYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
+_ASYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
 
 _ADMIN_SCHEMA = "test_req1320_admin"
 _TENANT_SCHEMA = "test_req1320_tenant"
@@ -90,6 +89,11 @@ def _prepare_sync():
 
         conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
         admin_metadata.create_all(conn, tables=REGISTRY_TABLES)
+        # REQ-1296: the bootstrap claim seats the claimant in the bootstrap org (state.org_id),
+        # whose registry row exists at runtime before any claim — the membership row's FK names it.
+        from provisa.api.app import state as app_state
+
+        conn.execute(insert(orgs).values(id=app_state.org_id, name="Root", created_by="system"))
         for username, password in _ACCOUNTS.items():
             pw_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
             conn.execute(
@@ -105,10 +109,17 @@ def _prepare_sync():
 
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
         org_metadata.create_all(conn)
-        # schema.sql seeds org_admin/analyst per org; provisioning is stubbed here, so the FK
-        # targets for user_role_assignments have to exist up front.
+        # schema.sql seeds org_admin/analyst/platform_admin per org; provisioning is stubbed here, so
+        # the FK targets for user_role_assignments have to exist up front. The bootstrap claim
+        # grants platform_admin as well as org_admin (REQ-1297).
         conn.execute(insert(roles).values(id="org_admin"))
         conn.execute(insert(roles).values(id="analyst"))
+        conn.execute(insert(roles).values(id="platform_admin"))
+        # REQ-1301: provisioning refreshes the root org-registry view, registered under the
+        # provisa-admin source in the meta domain — rows the startup seeder writes before any org
+        # is provisioned.
+        conn.execute(insert(sources).values(id="provisa-admin", type="postgresql"))
+        conn.execute(insert(domains).values(id="meta"))
     return engine
 
 
@@ -177,8 +188,8 @@ def planes(monkeypatch):
     # admin_db/tenant_db are never disposed by the code under test (the app they back is torn
     # down by TestClient's own finalizer, which closes its portal loop before this one runs), so
     # each test leaks a pool's worth of connections into the shared Postgres unless disposed here.
-    asyncio.run(admin_db.engine.dispose())
-    asyncio.run(tenant_db.engine.dispose())
+    admin_db.engine.dispose()
+    tenant_db.engine.dispose()
 
 
 def _make_app(admin_db: Database, tenant_db: Database) -> FastAPI:

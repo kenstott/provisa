@@ -109,7 +109,10 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
         """Start the APScheduler scheduler."""
         if AsyncIOScheduler is None:
             raise RuntimeError("apscheduler is required for the live query engine")
-        self._scheduler = AsyncIOScheduler()
+        from provisa.scheduler.executor import BackgroundJobExecutor
+
+        # REQ-1882: poll jobs run on background worker threads, never on the process loop.
+        self._scheduler = AsyncIOScheduler(executors={"default": BackgroundJobExecutor()})
         self._scheduler.start()
         log.info("[LIVE ENGINE] started")
 

@@ -17,7 +17,6 @@ from collections import deque
 from threading import Lock
 from typing import Any
 
-import yaml
 
 from provisa.core.config_location import config_path_str
 
@@ -325,8 +324,10 @@ def setup_otel(
     config_path = config_path_str()
     _otel_cfg: dict = {}
     try:
-        with open(config_path) as _f:
-            _otel_cfg = (yaml.safe_load(_f) or {}).get("observability", {})
+        # REQ-1669: includes-aware, so a wrapper config's fragments are seen.
+        from provisa.core.config_loader import read_config_with_includes
+
+        _otel_cfg = read_config_with_includes(config_path).get("observability", {})
     except Exception:
         pass
     env_endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")

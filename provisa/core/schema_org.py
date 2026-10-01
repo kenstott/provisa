@@ -253,6 +253,7 @@ table_columns = Table(
     Column("object_fields", JSON, nullable=False, default=list, server_default="[]"),
     Column("scope", Text, nullable=False, server_default="domain"),
     Column("gql_selection", Text),
+    Column("epoch_unit", Text),  # REQ-1908: epoch-number storage unit of a temporal column
     Column("tenant_id", Uuid),
     UniqueConstraint("table_id", "column_name"),
     CheckConstraint(

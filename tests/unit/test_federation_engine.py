@@ -225,7 +225,7 @@ def test_trino_declares_the_platform_db_as_its_materialize_store(monkeypatch):
     declared default the write face raised MaterializeStoreUnconfigured while the read face already
     named that store, so a Trino deployment could not land its sqlite demo sources at all."""
     monkeypatch.delenv("PROVISA_MATERIALIZE_URL", raising=False)
-    monkeypatch.setenv("TENANT_DATABASE_URL", "postgresql+psycopg2://u:p@pg:5432/provisa")
+    monkeypatch.setenv("TENANT_DATABASE_URL", "postgresql+psycopg://u:p@pg:5432/provisa")
     eng = build_trino_engine()
     # The +driver suffix is stripped for the asyncpg land / store attach.
     assert eng.materialize_store() == "postgresql://u:p@pg:5432/provisa"

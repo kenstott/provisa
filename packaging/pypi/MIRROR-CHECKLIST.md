@@ -66,8 +66,6 @@ that airgapped hosts cannot complete):
 | pymongo | 4.17.0 | Mongo (C extensions) |
 | motor | 3.7.1 | Async Mongo over pymongo |
 | jpype1 | 1.7.1 | JVM bridge (Iceberg/JDBC paths) |
-| greenlet | 3.5.3 | SQLAlchemy async runtime |
-| aiosqlite | 0.22.1 | SQLite control plane (embedded tier) |
 | pydantic-core | 2.46.4 | Rust extension |
 | rpds-py | 2026.6.3 | Rust extension (jsonschema) |
 | orjson | 3.11.9 | Rust extension |

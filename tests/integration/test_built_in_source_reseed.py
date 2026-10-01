@@ -56,7 +56,7 @@ async def seeded_schema(docker_postgres, monkeypatch):
     schema = f"org_{org_id}"
     host = docker_postgres["host"]
     port = docker_postgres["port"]
-    url = f"postgresql+asyncpg://provisa:{os.environ.get('PG_PASSWORD', 'provisa')}@{host}:{port}/provisa"
+    url = f"postgresql+psycopg://provisa:{os.environ.get('PG_PASSWORD', 'provisa')}@{host}:{port}/provisa"
 
     engine = create_engine_from_url(url, pool_size=2)
     db = Database(engine, name="org", search_path=schema)
@@ -89,7 +89,7 @@ async def seeded_schema(docker_postgres, monkeypatch):
     finally:
         async with db.acquire() as conn:
             await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
-        await engine.dispose()
+        engine.dispose()
 
 
 async def test_derived_sentinel_follows_the_repinned_engine(seeded_schema):

@@ -22,7 +22,7 @@ import json
 import os
 
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.encryption.envelope import EnvelopeEncryption
@@ -33,7 +33,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "5432")
-_PG_URL = f"postgresql+asyncpg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
+_PG_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
 _SCHEMA = "test_req686_apiauth"
 
 _DDL = f"""
@@ -53,19 +53,19 @@ _AUTH = {"type": "bearer", "token": "super-secret-token-abc123"}
 
 @pytest.fixture
 async def db():
-    engine = create_async_engine(_PG_URL, pool_pre_ping=True)
+    engine = create_engine_from_url(_PG_URL)
     database = Database(engine, name="req686", search_path=_SCHEMA)
     try:
         async with database.acquire() as conn:
             await conn.execute(f"CREATE SCHEMA IF NOT EXISTS {_SCHEMA}")
             await conn.execute(_DDL)
     except Exception as exc:  # noqa: BLE001 — skip cleanly if the live store is absent
-        await engine.dispose()
+        engine.dispose()
         pytest.skip(f"live Postgres not reachable at {_PG_URL}: {exc}")
     yield database
     async with database.acquire() as conn:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
-    await engine.dispose()
+    engine.dispose()
 
 
 async def _write(db, enc, auth):

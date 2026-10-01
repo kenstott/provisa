@@ -45,7 +45,7 @@ def _enc():
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "5432")
-_ASYNC_URL = f"postgresql+asyncpg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
+_ASYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
 
 _ORG_ID = "req1395"
 _SCHEMA = f"org_{_ORG_ID}"
@@ -68,7 +68,7 @@ async def tenant_db():
     async with db.acquire() as conn:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA}_mv_cache CASCADE")
-    await engine.dispose()
+    engine.dispose()
 
 
 async def test_a_provisioned_org_has_no_secret_by_default(tenant_db):
@@ -162,7 +162,7 @@ class TestAStoredReferenceIsResolvedOnTheWayOut:
         yield admin_db
         await secrets_store.remove(admin_db, _ORG_ID, "LLM_KEY", owner_id=secrets_store.ORG_OWNER)
         reset_secrets()
-        await engine.dispose()
+        engine.dispose()
 
     async def test_a_reference_is_handed_over_as_the_vaults_value(self, tenant_db, vault):
         from provisa.core import secrets_store

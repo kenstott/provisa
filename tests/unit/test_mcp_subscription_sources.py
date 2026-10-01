@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 import httpx
 import pytest
 import respx
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.api.mcp import tools as mcp_tools
 from provisa.core.database import Database
@@ -66,14 +66,14 @@ async def _admin_db(tmp_path):
     """A real (SQLite) admin_db holding secrets_store — REQ-1799/1802's `bound_to_request_org`
     always queries this table for the org's vault, regardless of whether resolve_secrets itself
     is mocked, so every test below needs a real one, not a bare mock."""
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'secrets.db'}")
-    async with engine.begin() as c:
-        await c.run_sync(lambda s: secrets_store.metadata.create_all(s, tables=[secrets_store]))
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'secrets.db'}")
+    with engine.begin() as c:
+        secrets_store.metadata.create_all(c, tables=[secrets_store])
     db = Database(engine, name="admin")
     try:
         yield db
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 class TestSearchKaggleDatasets:

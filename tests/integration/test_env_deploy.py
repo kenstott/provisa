@@ -59,7 +59,7 @@ async def org(docker_postgres):
 
     org_id = f"envload{uuid.uuid4().hex[:8]}"
     url = (
-        f"postgresql+asyncpg://provisa:{os.environ.get('PG_PASSWORD', 'provisa')}@"
+        f"postgresql+psycopg://provisa:{os.environ.get('PG_PASSWORD', 'provisa')}@"
         f"{docker_postgres['host']}:{docker_postgres['port']}/provisa"
     )
     engine = create_engine_from_url(url, pool_size=2)
@@ -105,7 +105,7 @@ async def org(docker_postgres):
             "tree": staticmethod(tree),
         },
     )
-    await engine.dispose()
+    engine.dispose()
 
 
 async def _seed(org, env=None, *, burn_serials: int = 0):

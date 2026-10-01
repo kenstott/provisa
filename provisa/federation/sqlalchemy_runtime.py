@@ -20,8 +20,11 @@ attach_source, ensure_materialize_attached.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+from collections.abc import Callable, Iterator
 from typing import Any
 
+from provisa.core import request_deadline
 from provisa.executor.result import QueryResult, ResultStream, StreamingQueryResult
 from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
 
@@ -40,6 +43,66 @@ def _is_row_returning(sql: str) -> bool:
             end = s.find("*/")
             s = s[end + 2 :].lstrip() if end != -1 else ""
     return s[:12].split(None, 1)[0].upper() in _ROW_RETURNING if s else False
+
+
+def _driver(dbapi_conn: Any) -> str:
+    return type(dbapi_conn).__module__.split(".")[0]
+
+
+def _mysql_kill(dbapi_conn: Any, open_side_conn: Callable[[], Any]) -> Callable[[], None]:
+    """PyMySQL/mysqlclient cancel: the query's own connection is busy, so ``KILL QUERY`` for its
+    server thread goes over a short-lived second connection with the same credentials."""
+    thread_id = dbapi_conn.thread_id()
+
+    def _kill() -> None:
+        side = open_side_conn()
+        try:
+            cur = side.cursor()
+            cur.execute(f"KILL QUERY {int(thread_id)}")
+            cur.close()
+        finally:
+            side.close()
+
+    return _kill
+
+
+def _dbapi_cancel(
+    dbapi_conn: Any, cur: Any | None, open_side_conn: Callable[[], Any]
+) -> Callable[[], None] | None:
+    """The request-deadline cancel for this store's DBAPI driver (REQ-1882).
+
+    psycopg2/psycopg/oracledb cancel the running statement from another thread via the
+    connection (psycopg2 also serves redshift, greenplum, yugabytedb, cockroachdb, openGauss);
+    pyodbc (mssql, SAP ASE) via the cursor, created before execute; sqlite3 via ``interrupt()``;
+    PyMySQL/mysqlclient (mysql, mariadb, tidb) via ``KILL QUERY`` on a second connection; the
+    Exasol websocket DBAPI via its pyexasol connection's ``abort_query()`` (thread-safe by design,
+    pyexasol/connection.py)."""
+    driver = _driver(dbapi_conn)
+    if driver in ("psycopg2", "psycopg", "oracledb"):
+        return dbapi_conn.cancel
+    if driver == "pyodbc":
+        if cur is None:
+            raise RuntimeError("pyodbc cancel needs the cursor: create it before execute")
+        return cur.cancel
+    if driver == "sqlite3":
+        return dbapi_conn.interrupt
+    if driver in ("pymysql", "MySQLdb"):
+        return _mysql_kill(dbapi_conn, open_side_conn)
+    if driver == "exasol":
+        return dbapi_conn.connection.abort_query
+    return None
+
+
+@contextlib.contextmanager
+def _deadline_bounded(cancel: Callable[[], None] | None) -> Iterator[None]:
+    if cancel is None:
+        # Drivers not wired above are not installed here, so their cancel API is unconfirmed:
+        # ibm_db (db2), vertica_python, teradatasql, hdbcli (SAP HANA), sqlanydb, pymonetdb, fdb /
+        # firebird-driver, singlestoredb. Their statement ends at the driver's own timeout.
+        yield
+        return
+    with request_deadline.cancel_on_deadline(cancel):
+        yield
 
 
 class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
@@ -96,7 +159,11 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
         conn = self._sa.connect().execution_options(
             stream_results=True, yield_per=_STREAM_BATCH_ROWS
         )
-        result = conn.exec_driver_sql(sql, tuple(params) if params else ())
+        dbapi_conn = conn.connection.dbapi_connection
+        if _driver(dbapi_conn) == "pyodbc":
+            return self._run_sync_pyodbc(conn, dbapi_conn, sql, params)
+        with _deadline_bounded(_dbapi_cancel(dbapi_conn, None, self._open_side_conn)):
+            result = conn.exec_driver_sql(sql, tuple(params) if params else ())
 
         def _close(*_: Any) -> None:
             conn.close()
@@ -112,6 +179,44 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
 
         return StreamingQueryResult(_batches(), column_names=cols, on_close=_close)
 
+    def _run_sync_pyodbc(
+        self, conn: Any, dbapi_conn: Any, sql: str, params: list | None
+    ) -> ResultStream:
+        """pyodbc cancels through the cursor, which SQLAlchemy only creates inside execute — so the
+        cursor is created here first and its ``cancel`` registered before execute. pyodbc cursors
+        fetch incrementally from the server, so ``fetchmany`` bounds memory (REQ-1217)."""
+        cur = dbapi_conn.cursor()
+        try:
+            with _deadline_bounded(_dbapi_cancel(dbapi_conn, cur, self._open_side_conn)):
+                # Omit the params argument when there are none — see run()'s pyodbc note.
+                cur.execute(sql, params) if params else cur.execute(sql)
+        except BaseException:
+            cur.close()
+            conn.close()
+            raise
+
+        def _close(*_: Any) -> None:
+            cur.close()
+            conn.close()
+
+        cols = [d[0] for d in cur.description] if cur.description else []
+
+        def _batches() -> Any:
+            while True:
+                with request_deadline.cancel_on_deadline(cur.cancel):
+                    chunk = cur.fetchmany(_STREAM_BATCH_ROWS)
+                if not chunk:
+                    return
+                yield [tuple(r) for r in chunk]
+
+        return StreamingQueryResult(_batches(), column_names=cols, on_close=_close)
+
+    def _open_side_conn(self) -> Any:
+        """A fresh DBAPI connection with the store's credentials, outside the engine pool (a full
+        pool must not block the cancel of the query holding one of its connections)."""
+        cargs, cparams = self._sa.dialect.create_connect_args(self._sa.url)
+        return self._sa.dialect.connect(*cargs, **cparams)
+
     async def run(self, sql: str, params: list | None = None) -> QueryResult:
         """Async variant: MATERIALIZES on the executor (unlike ``run_sync``), because a lazy
         ``fetchmany`` pulled across the async boundary would block the event loop (REQ-1217)."""
@@ -125,12 +230,15 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
             # engine-swap harness, 2026-09-20): a parameterless "SELECT 1" warmup probe against the
             # mssql engine raised `pyodbc.ProgrammingError: The SQL contains 0 parameter markers,
             # but 1 parameters were supplied`. Omit the argument entirely when there are none.
-            if params:
-                cur.execute(sql, params)
-            else:
-                cur.execute(sql)
-            cols = [d[0] for d in cur.description] if cur.description else []
-            rows = list(cur.fetchall()) if cur.description else []
+            with _deadline_bounded(
+                _dbapi_cancel(self._con.dbapi_connection, cur, self._open_side_conn)
+            ):
+                if params:
+                    cur.execute(sql, params)
+                else:
+                    cur.execute(sql)
+                cols = [d[0] for d in cur.description] if cur.description else []
+                rows = list(cur.fetchall()) if cur.description else []
             self._con.commit()
             cur.close()
             return QueryResult(rows=rows, column_names=cols)
@@ -209,10 +317,9 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
         """Land ``rows`` into ``schema.table`` of THIS engine's own store (REQ-1730) — the
         ``NativeEngineBackend.land_source_table``/``hasattr(runtime, "land_table")`` seam every
         other native engine's runtime (DuckDB/Snowflake/Databricks/BigQuery) already uses to bypass
-        the base ``EngineBackend`` default, which lands through ``store_writer``'s ASYNC driver
-        (``_ASYNC_DRIVER`` — postgresql/mysql/mariadb/sqlite only; no async pyodbc driver is
-        installed, and none should be added just for this) against
-        ``self.engine.materialize_store()``, a SEPARATE database from this one. Runs synchronously
+        the base ``EngineBackend`` default, which lands through ``store_writer``'s store connection
+        (``provisa.core.database.sync_store_url`` — postgresql/mysql/mariadb/sqlite/duckdb only)
+        against ``self.engine.materialize_store()``, a SEPARATE database from this one. Runs synchronously
         on the executor (matching ``run()`` above, and Snowflake/Databricks's own
         ``asyncio.to_thread`` pattern) via ``self._sa`` — the SAME sync SQLAlchemy engine ``run_sync``
         already uses, so DDL/DML compiles through the real per-product dialect (Core's own

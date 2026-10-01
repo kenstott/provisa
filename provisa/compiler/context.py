@@ -446,6 +446,36 @@ def _register_ops_synthetic_joins(
             )
 
 
+def _epoch_columns(
+    si: object,  # object-ok: circular-import boundary — SchemaInput imported inside function body
+    physical_map: dict[str, str],
+) -> dict[tuple[str, str], dict[str, tuple[str, str]]]:
+    """REQ-1908: every registered temporal column its source stores as an epoch number, keyed by
+    physical (schema, table) and the names emitted SQL uses for it (physical and SQL-exposed). All
+    registered tables, not only the role's visible ones: storage is a fact of the table, and an
+    RLS predicate may read a column the role cannot select."""
+    from provisa.compiler.naming import apply_sql_name
+    from provisa.compiler.schema_gen import SchemaInput
+
+    assert isinstance(si, SchemaInput)
+    out: dict[tuple[str, str], dict[str, tuple[str, str]]] = {}
+    for td in si.tables:
+        for col in td.get("columns") or []:
+            unit = col.get("epoch_unit")
+            if not unit:
+                continue
+            key = (
+                td["schema_name"].lower(),
+                (physical_map.get(td["table_name"]) or td["table_name"]).lower(),
+            )
+            spec = (unit, col["data_type"])
+            phys = col["column_name"]
+            names = out.setdefault(key, {})
+            names[phys.lower()] = spec
+            names[(col.get("alias") or apply_sql_name(phys)).lower()] = spec
+    return out
+
+
 def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
     si: object,  # object-ok: circular-import boundary — SchemaInput imported inside function body
 ) -> (
@@ -481,6 +511,8 @@ def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
 
     for t in tables:
         _register_table_in_ctx(t, ctx, si, physical_map, table_preset_map)
+
+    ctx.epoch_columns = _epoch_columns(si, physical_map)
 
     _register_relationship_joins(si, ctx, table_lookup, physical_map)
 

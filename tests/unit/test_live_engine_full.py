@@ -626,7 +626,7 @@ class TestSSEFanout:
         # Must not raise; existing subscriber must remain intact
         fanout.unsubscribe(phantom)
         assert fanout.subscriber_count == 1
-        assert real_q in fanout._queues
+        assert real_q in [sq for _, sq in fanout._queues]
 
     async def test_send_after_unsubscribe_skips_removed_queue(self):
         fanout = SSEFanout("q1")

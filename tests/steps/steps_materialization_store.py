@@ -1050,7 +1050,7 @@ def shared_data_934():
 
 @given("a source with a landing table matching config columns")
 def given_landing_table_matching_columns(shared_data, tmp_path):
-    dsn = f"sqlite+aiosqlite:///{tmp_path / 'store934.db'}"
+    dsn = f"sqlite+pysqlite:///{tmp_path / 'store934.db'}"
     cols = [("id", "bigint"), ("name", "text")]
     shared_data["dsn"] = dsn
     shared_data["cols"] = cols
@@ -1147,7 +1147,7 @@ def then_table_dropped_and_recreated(shared_data):
 @given("a source without a landing table")
 def given_source_without_landing_table(shared_data, tmp_path):
     if "dsn" not in shared_data:
-        dsn = f"sqlite+aiosqlite:///{tmp_path / 'store934b.db'}"
+        dsn = f"sqlite+pysqlite:///{tmp_path / 'store934b.db'}"
         shared_data["dsn"] = dsn
     shared_data["new_table"] = "brand_new_table"
     shared_data["new_cols"] = [("pk", "bigint"), ("val", "text")]

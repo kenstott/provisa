@@ -80,6 +80,31 @@ def _active_worker_count() -> int:
         conn.close()
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _provisa_admin_catalog():
+    """Register the ``provisa_admin`` catalog the fan-out query reads, from this module.
+
+    The app registers it at startup, so relying on it made this test pass only when some earlier
+    module had booted an app against this Trino (CATALOG_NOT_FOUND otherwise). Its JDBC URL is the
+    engine-visible control-plane address (PROVISA_ENGINE_CONTROL_PLANE_HOST/PORT = postgres:5432),
+    which worker containers can reach — the reason the query uses it and not sales_pg.
+    """
+    from sqlalchemy import make_url
+
+    from provisa.core.trino_system_catalogs import control_plane_spec, register_catalog
+
+    conn = trino.dbapi.connect(host=_TRINO_HOST, port=_TRINO_PORT, user="test")
+    try:
+        register_catalog(
+            conn,
+            control_plane_spec(
+                make_url(os.environ["TENANT_DATABASE_URL"]), os.environ.get("ORG_ID", "default")
+            ),
+        )
+    finally:
+        conn.close()
+
+
 @pytest.fixture(scope="module")
 def trino_worker():
     """Scale trino-worker to 1 and wait for it to register; scale back to 0 after."""

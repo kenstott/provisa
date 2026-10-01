@@ -23,7 +23,7 @@ import base64
 import os
 
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine
+from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.models import RLSRule
@@ -34,49 +34,55 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "5432")
-_PG_URL = f"postgresql+asyncpg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
+_PG_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
 _SCHEMA = "test_req686_rls"
-
-_DDL = f"""
-CREATE SCHEMA IF NOT EXISTS {_SCHEMA};
-CREATE TABLE IF NOT EXISTS {_SCHEMA}.rls_rules (
-    id SERIAL PRIMARY KEY,
-    table_id INTEGER,
-    domain_id TEXT,
-    role_id TEXT NOT NULL,
-    filter_expr BYTEA NOT NULL,
-    tenant_id UUID,  -- SaaS multi-tenancy column (matches schema.sql / schema_org metadata)
-    UNIQUE (domain_id, role_id)
-);
-"""
 
 _PREDICATE = "region = 'us-east' AND owner = current_setting('provisa.role')"
 
 
 @pytest.fixture(autouse=True)
-def _enc():
+def _enc(monkeypatch, tmp_path):
+    import keyring
+    from keyring.backends.null import Keyring as NullKeyring
+
+    # LocalKeychain reads the OS keyring, then $PROVISA_DATA_DIR/encryption, BEFORE
+    # PROVISA_ENCRYPTION_KEY (REQ-684, REQ-1802): isolate both so the env key is the one in force
+    # and a key rotation in the test actually changes the key (and the host's store is untouched).
+    previous_keyring = keyring.get_keyring()
+    keyring.set_keyring(NullKeyring())
+    monkeypatch.setenv("PROVISA_DATA_DIR", str(tmp_path))
     reset_encryption()
-    os.environ["PROVISA_ENCRYPTION_KEY"] = base64.b64encode(bytes(range(1, 33))).decode()
+    monkeypatch.setenv("PROVISA_ENCRYPTION_KEY", base64.b64encode(bytes(range(1, 33))).decode())
     configure_encryption("local")
     yield
     reset_encryption()
+    keyring.set_keyring(previous_keyring)
 
 
 @pytest.fixture
 async def db():
-    engine = create_async_engine(_PG_URL, pool_pre_ping=True)
+    engine = create_engine_from_url(_PG_URL)
     database = Database(engine, name="req686rls", search_path=_SCHEMA)
-    try:
-        async with database.acquire() as conn:
-            await conn.execute(f"CREATE SCHEMA IF NOT EXISTS {_SCHEMA}")
-            await conn.execute(_DDL)
-    except Exception as exc:  # noqa: BLE001 — skip cleanly if the live store is absent
-        await engine.dispose()
-        pytest.skip(f"live Postgres not reachable at {_PG_URL}: {exc}")
+    # The canonical org metadata, not hand-written DDL: a hand copy of rls_rules drifted (it lacked
+    # REQ-1679's action_name) and every read then failed on the missing column. The integration
+    # stack is self-provisioned (conftest _require_stack): a setup failure is a real failure, never
+    # a skip.
+    from sqlalchemy import text
+
+    from provisa.core.schema_org import metadata as org_metadata
+
+    with engine.begin() as sc:
+        sc.execute(text(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE"))
+        sc.execute(text(f"CREATE SCHEMA {_SCHEMA}"))
+        sc.execute(text(f"SET search_path TO {_SCHEMA}"))
+        org_metadata.create_all(sc)
+        # rls_rules references domains/roles; seed the rows the tests' rules point at.
+        sc.execute(text("INSERT INTO domains (id) VALUES ('sales')"))
+        sc.execute(text("INSERT INTO roles (id) VALUES ('analyst')"))
     yield database
     async with database.acquire() as conn:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
-    await engine.dispose()
+    engine.dispose()
 
 
 async def test_filter_stored_ciphertext_and_decrypts_on_read(db):

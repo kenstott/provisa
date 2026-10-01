@@ -20,7 +20,6 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-import yaml
 
 from provisa.core.config_location import config_path_str
 from provisa.compiler.introspect import ColumnMetadata
@@ -88,8 +87,12 @@ def _resolve_naming_config(raw_config: dict | None) -> tuple[bool, dict | None]:
         config_path = config_path_str()
         path = Path(config_path)
         if path.exists():
-            with open(path) as f:
-                raw_config = yaml.safe_load(f)
+            # REQ-1669: the same loader boot uses, so an ``includes:`` wrapper config (e.g. the
+            # demo's provisa-with-<name>.yaml) yields its fragments' naming section. A bare
+            # yaml.safe_load saw only ``includes:`` and silently turned domain_prefix off.
+            from provisa.core.config_loader import read_config_with_includes
+
+            raw_config = read_config_with_includes(path)
             if isinstance(raw_config, dict):
                 domain_prefix = raw_config.get("naming", {}).get("domain_prefix", False)
                 if raw_config.get("naming", {}).get("convention"):

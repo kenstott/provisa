@@ -803,6 +803,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 return _jsonapi_error_response(400, "Bad Request", "Compilation failed")
             agg_compiled = agg_compiled_queries[0]
 
+            from provisa.compiler.directives import NO_CACHE_HINT
             from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
 
             try:
@@ -811,6 +812,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                     role_id,
                     exec_params=agg_compiled.params or None,
                     state=state,
+                    cache_hint=NO_CACHE_HINT,
                 )
                 agg_result = await _execute_plan(agg_plan, state)
 
@@ -821,6 +823,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                         role_id,
                         exec_params=agg_compiled.nodes_params or None,
                         state=state,
+                        cache_hint=NO_CACHE_HINT,
                     )
                     nodes_result = await _execute_plan(nodes_plan, state)
             except PermissionError as e:
@@ -940,6 +943,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
         # Governance + routing via Stage 2 (REQ-266): RLS, masking, visibility, and the
         # row cap are applied by apply_governance — the same path as GraphQL and REST,
         # so no transport bypasses governance.
+        from provisa.compiler.directives import NO_CACHE_HINT
         from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
 
         # REQ-1194/REQ-1195: a caller may request the result be materialized to a sink instead of
@@ -965,6 +969,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 state=state,
                 deliver=delivery,
                 buffered=True,  # REQ-1224: buffered transport — terminal auto-thresholds inline vs CTAS
+                cache_hint=NO_CACHE_HINT,
             )
             result = await _execute_plan(plan, state)
         except PermissionError as e:
@@ -1005,6 +1010,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 role_id,
                 exec_params=count_compiled[0].params or None,
                 state=state,
+                cache_hint=NO_CACHE_HINT,
             )
             count_result = await _execute_plan(count_plan, state)
         except PermissionError as e:

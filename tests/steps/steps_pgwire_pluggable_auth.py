@@ -13,8 +13,6 @@ presentation decision, the role mapping and the FATAL bytes are the code under t
 
 from __future__ import annotations
 
-import asyncio
-import threading
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -30,25 +28,14 @@ _SECRET = "test-signing-key-at-least-32-bytes-long"
 
 @pytest.fixture
 def pgwire_loop():
-    """A running main loop for the auth path to submit validators to.
+    """This test thread's connection loop, bound as ProvisaHandler.handle binds one.
 
-    pgwire authenticates on a socketserver worker thread and drives every validator on the main
-    event loop, so exercising the handler needs a real loop running off this thread.
-    """
-    import provisa.pgwire.server as pg_server
+    pgwire runs every auth coroutine on the connection thread's own loop (REQ-1882), so a test
+    that drives handler methods directly binds one to the test thread for the test's duration."""
+    from provisa.core.connection_loop import connection_loop
 
-    loop = asyncio.new_event_loop()
-    thread = threading.Thread(target=loop.run_forever, daemon=True)
-    thread.start()
-    previous = pg_server._loop
-    pg_server._loop = loop
-    try:
-        yield loop
-    finally:
-        pg_server._loop = previous
-        loop.call_soon_threadsafe(loop.stop)
-        thread.join(timeout=5)
-        loop.close()
+    with connection_loop() as cl:
+        yield cl
 
 
 @pytest.fixture

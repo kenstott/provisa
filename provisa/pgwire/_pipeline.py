@@ -11,7 +11,8 @@
 """Execute SQL through the full Provisa governance pipeline.
 
 Mirrors the steps in endpoint_dev.sql_endpoint but without HTTP/FastAPI.
-Called from pgwire handler threads via asyncio.run_coroutine_threadsafe.
+pgwire, Bolt and Arrow Flight run it on the connection thread's own event loop, on that thread
+(REQ-1882, provisa.core.connection_loop); HTTP/GraphQL/gRPC run it on the process loop.
 """
 
 # Requirements: REQ-262, REQ-263, REQ-264, REQ-265, REQ-266, REQ-267, REQ-272
@@ -23,6 +24,7 @@ import collections
 import logging
 import re
 import secrets as _secrets
+import threading
 import time as _time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -32,6 +34,7 @@ from provisa.executor.result import QueryResult
 from provisa.otel_compat import get_tracer as _get_tracer
 
 if TYPE_CHECKING:
+    from provisa.compiler.directives import CacheHint
     from provisa.compiler.pk_bounds import PkBound
     from provisa.executor.redirect import Delivery
 
@@ -130,6 +133,23 @@ class _Plan:
     # statement touches no such table, or none of its predicates resolve to a bounded PK set).
     # Populated at the same construction points `sources` itself is populated.
     pk_bounds: tuple["PkBound", ...] = field(default_factory=tuple)
+    # REQ-1897: whether this plan's result may be served from / written to the raw-SQL response
+    # cache — a read with no sink delivery and no EXPLAIN. False (the dataclass default) is the
+    # fail-closed answer for any plan a constructor does not positively mark as a cacheable read.
+    response_cacheable: bool = field(default=False)
+    # REQ-1897: a write statement — on success its tables' cached entries are invalidated.
+    writes_tables: bool = field(default=False)
+    # REQ-1897: the governed role and the registered tables the statement reads/writes — the
+    # response-cache key and policy inputs. Carried on the plan itself, not read off ``audit``: a
+    # statement with no acting principal (an unsecured Flight ticket) has no audit record.
+    role_id: str | None = field(default=None)
+    table_ids: tuple[int, ...] = field(default=())
+    # REQ-544 (amended 2026-09-30): the request's response-cache OPT-IN (`-- @provisa cache=true`
+    # / `cache_ttl=N`; GraphQL @cached on its own endpoint). False — the default — means the plan
+    # neither reads nor writes the response cache. cache_ttl is the request's chosen entry
+    # lifetime (None = the operator-resolved TTL).
+    cache_opt_in: bool = field(default=False)
+    cache_ttl: int | None = field(default=None)
 
 
 # --------------------------------------------------------------------------- #
@@ -152,6 +172,15 @@ class _Plan:
 # Bounded ring of issued stamps — recent-enough to verify in-flight/just-returned plans
 # without unbounded growth. A stamp is a 256-bit random hex token, so collisions/guesses
 # are infeasible.
+#
+# _STAMP_LOCK: mint/evict is a read-modify-write across two containers (deque + set) that was
+# race-free only because governance ran serialized on one shared event loop. Any execution path
+# that runs governance on genuine parallel OS threads (per-connection-thread dispatch, see
+# pgwire/bolt/flight servers) can call _mint_stamp concurrently, which without this lock can drop
+# a just-minted stamp from _ISSUED_SET while another thread's eviction races it, or corrupt the
+# deque under concurrent append/popleft-by-index. threading.Lock, not asyncio.Lock: callers include
+# plain OS threads, not just event-loop coroutines.
+_STAMP_LOCK = threading.Lock()
 _ISSUED_STAMPS: collections.deque[str] = collections.deque(maxlen=8192)
 _ISSUED_SET: set[str] = set()
 
@@ -159,10 +188,11 @@ _ISSUED_SET: set[str] = set()
 def _mint_stamp() -> str:
     """Issue a fresh governed-provenance stamp. Called ONLY from the top of the pipeline."""
     token = _secrets.token_hex(32)
-    if len(_ISSUED_STAMPS) == _ISSUED_STAMPS.maxlen:
-        _ISSUED_SET.discard(_ISSUED_STAMPS[0])  # evict the oldest as the ring wraps
-    _ISSUED_STAMPS.append(token)
-    _ISSUED_SET.add(token)
+    with _STAMP_LOCK:
+        if len(_ISSUED_STAMPS) == _ISSUED_STAMPS.maxlen:
+            _ISSUED_SET.discard(_ISSUED_STAMPS[0])  # evict the oldest as the ring wraps
+        _ISSUED_STAMPS.append(token)
+        _ISSUED_SET.add(token)
     return token
 
 
@@ -260,6 +290,8 @@ async def _optimize_and_route(
         (sid for sid, t in state.source_types.items() if t in ("postgresql", "mysql", "sqlite")),
         next(iter(state.source_pools.source_ids), "pg"),
     )
+    from provisa.federation.registry_view import operator_floor
+
     decision = decide_route(
         sources=sources or {default_source},
         source_types=state.source_types,
@@ -267,6 +299,7 @@ async def _optimize_and_route(
         has_json_extract=has_json_extract,
         source_dsns=getattr(state, "source_dsns", None),
         is_mutation=is_mutation,
+        operator_floor=await operator_floor(state),
     )
     if _rewrites and decision.route != Route.ENGINE:
         # A cache rewrite points the SQL at a materialized table living in the engine's
@@ -565,6 +598,63 @@ async def _wake_before_governing(state: Any) -> None:
     await ensure_engine_awake(state)
 
 
+_BINDS_PARAMS_BY_NUMBER = frozenset({"duckdb", "postgres"})
+
+
+async def propagate_literal_predicates(sql: str, state: Any) -> str:  # REQ-1880
+    """Carry each literal WHERE predicate onto a table the query reaches through an INNER equi-join
+    or a correlated select-list subquery (a GraphQL nested relationship), when that table's
+    connector pushes a literal predicate down but has no join/parameterized-path pushdown
+    (``predicate_pushdown and not join_pushdown`` -- e.g. DuckDB's Mongo scan, REQ-1871's
+    finding). Without it such a connector sees no filter at all and scans its whole collection.
+
+    The ONE place every engine-bound surface applies this: the raw-SQL path, the compiled path
+    (GraphQL-via-plan/Cypher/Flight/gRPC/JSON:API) and the GraphQL engine terminal each call it on
+    the already-governed catalog-physical SQL, before the catalog fold/transpile. A pure rewrite:
+    each added predicate is implied by the query's own predicates, so results are unchanged."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    tree = sqlglot.parse_one(sql, read="postgres")
+    if tree.find(exp.Join) is None and tree.find(exp.Subquery) is None:
+        return sql
+    referenced = {(t.db.lower(), t.name.lower()) for t in tree.find_all(exp.Table) if t.db}
+    if not referenced:
+        return sql
+    from provisa.federation.registry_view import registered_sources, registered_tables
+
+    sources_by_id = {s.id: s for s in await registered_sources(state)}
+    eligible: set[tuple[str, str]] = set()
+    column_types: dict[tuple[str, str, str], str] = {}
+    for t in await registered_tables(state):
+        phys = (t.schema_name.lower(), t.table_name.lower())
+        if phys not in referenced:
+            continue
+        for col in t.columns:
+            if col.data_type:
+                column_types[(*phys, col.name.lower())] = col.data_type
+        src = sources_by_id.get(t.source_id)
+        if src is None:
+            continue
+        cap = state.federation_engine.connector_pushdown(src.type.value)
+        if cap.predicate_pushdown and not cap.join_pushdown:
+            eligible.add(phys)
+    if not eligible:
+        return sql
+    from provisa.compiler.sql_rewrite import propagate_literal_join_predicates
+
+    # A bind parameter ($N) may be copied only where the engine's runtime binds BY NUMBER —
+    # DuckDBFederationRuntime natively, PgFederationRuntime via psycopg2 named %(pN)s slots
+    # (pg_runtime._psycopg2_exec_args). Keyed on the engine NAME, not its dialect: the SQLAlchemy
+    # engine can report a postgres-family dialect yet binds positionally (exec_driver_sql tuple),
+    # as do Trino/ClickHouse/warehouse drivers (compiler.params.substitute_positional_placeholders),
+    # where a reused $1 would shift every later parameter.
+    by_number = state.federation_engine.engine.name in _BINDS_PARAMS_BY_NUMBER
+    return propagate_literal_join_predicates(
+        sql, "postgres", eligible, column_types, allow_params=by_number
+    )
+
+
 async def _off_loop(fn, *args, **kwargs):
     """REQ-1882: run a synchronous, CPU-bound call (sqlglot parsing, the regex-based SQL-rewrite
     passes) on the default thread pool executor instead of in-line on the caller's event loop.
@@ -573,10 +663,13 @@ async def _off_loop(fn, *args, **kwargs):
     concurrent load (docs/arch/requirements.yaml, REQ-1882): one expensive governed query's
     tokenize/rewrite work, run in-line on the ONE shared event loop every governed query's
     ``_run_on_loop`` dispatch (``provisa/api/flight/server.py``) passes through, blocked every
-    other concurrent request's governance step for its duration. This does not introduce a second
-    event loop or a loop-per-thread architecture (explicitly out of scope) — it only moves the
-    blocking function call itself off whichever loop is running, via the loop's own default
-    executor.
+    other concurrent request's governance step for its duration. It moves the blocking call off
+    whichever loop is running, via that loop's own default executor.
+
+    (Amended 2026-09-29) pgwire/Bolt/Flight now run each request on its connection thread's own
+    loop, whose default executor runs work INLINE on that thread (provisa.core.connection_loop):
+    that loop serves one connection, so the call blocks no one else and the request never leaves
+    its thread. On the shared process loop (HTTP/GraphQL/gRPC) this still offloads to the pool.
     """
     loop = asyncio.get_running_loop()
     if kwargs:
@@ -596,6 +689,7 @@ async def _govern_and_route(
     deliver: Delivery | None = None,
     buffered: bool = False,
     explain: bool | None = None,
+    params: list | None = None,
 ) -> _Plan:
     """The top of the ONE pipeline: govern, route, then bind the org's tier ceilings (REQ-1044)."""
     from provisa.api.app import state
@@ -609,6 +703,7 @@ async def _govern_and_route(
         deliver=deliver,
         buffered=buffered,
         explain=explain,
+        params=params,
     )
     return await _attach_tier_caps(plan, state)
 
@@ -626,6 +721,11 @@ async def _govern_and_route_planned(
     # the bottom of the ONE pipeline, after governance, optimization and routing — is what makes
     # the explained statement the statement that would have executed.
     explain: bool | None = None,
+    # REQ-589: a client's bound parameter values for the statement's $N placeholders (pgwire's
+    # extended protocol). They stay BOUND through governance and execution, exactly like the
+    # provisa-params comment's values (they become the same embedded_params) — never spliced into
+    # the SQL, so a value can neither change the governed shape nor defeat SQL-text-keyed caches.
+    params: list | None = None,
 ) -> _Plan:  # REQ-262, REQ-263, REQ-264, REQ-266, REQ-267, REQ-272, REQ-1120, REQ-1159, REQ-1163
     import sqlglot
     import sqlglot.expressions as exp
@@ -656,6 +756,13 @@ async def _govern_and_route_planned(
     role = effective_domain_access_role(role_id, state.roles)
 
     raw_sql, embedded_params = extract_params_comment(sql)
+    if params is not None:
+        if embedded_params:
+            raise ValueError(
+                "statement carries both a provisa-params comment and bound parameters — "
+                "supply the parameter values one way"
+            )
+        embedded_params = list(params)
     raw_sql, sql_opts_out = extract_relationship_guard_comment(raw_sql)
 
     # REQ-1866: parse + REQ-1159's inline-command-localization check + REQ-1317's metric
@@ -771,6 +878,9 @@ async def _govern_and_route_planned(
     # REQ-074/REQ-1386: open the audit record once governance has accepted the statement and the
     # table references have resolved. The terminal finalizes it with the real status and duration.
     _audit = begin_audit(sql, role_id, _parsed_input, gov_ctx)
+    from provisa.audit.pipeline import resolve_table_ids
+
+    _table_ids = tuple(resolve_table_ids(_parsed_input, gov_ctx))  # REQ-1897
 
     # REQ-272: apply_governance enforces full Stage-2 governance on this SQL path — RLS,
     # masking, visibility, and the role row-cap ceiling (gov_ctx carries the role, so
@@ -812,6 +922,13 @@ async def _govern_and_route_planned(
     # writes. decide_route only applies that rule when told; the raw-SQL surfaces (pgwire, /data/sql)
     # parse the statement themselves, so the type must be passed through explicitly.
     _is_mutation = isinstance(_parsed_input, (exp.Insert, exp.Update, exp.Delete, exp.Merge))
+    # REQ-1897: a read whose result is rows — not a write, an EXPLAIN, or a sink delivery.
+    _raw_cacheable = not _is_mutation and explain is None and deliver is None
+    # REQ-544 (amended 2026-09-30): the response cache is per-request opt-in — a `-- @provisa
+    # cache=true` / `cache_ttl=N` comment on the statement; without one no read and no write.
+    from provisa.compiler.directives import cache_hint_for
+
+    _cache_hint = cache_hint_for("sql", sql)
 
     if explain is not None:
         # REQ-1519: describing a statement and delivering its rows to a sink are different
@@ -977,46 +1094,9 @@ async def _govern_and_route_planned(
                     )
         except ValueError:
             raise
-        # REQ-1880: propagate a literal WHERE predicate across an INNER equi-join onto the joined
-        # table's OWN join column too -- a connector that can only push a literal predicate directly
-        # on its own table (predicate_pushdown=True) but has no parameterized-path support
-        # (join_pushdown=False, e.g. PgWrappersMongoDbConnector, REQ-1871's live-verified finding)
-        # otherwise never sees a join-derived filter at all. Runs AFTER governance/routing/view-
-        # expansion have fully executed (this is the already-governed physical-ish SQL text on its
-        # way to the engine, never touching or reordering anything upstream), and BEFORE the
-        # catalog-fold/transpile below -- the propagated predicate is just another literal in the
-        # WHERE clause by the time those run, nothing about them needs to know it was added here.
-        if _tree.find(_exp.Join) is not None:
-            _referenced_phys = {
-                (_tbl.db.lower(), _tbl.name.lower())
-                for _tbl in _tree.find_all(_exp.Table)
-                if _tbl.db
-            }
-            if _referenced_phys:
-                from provisa.federation.registry_view import registered_sources, registered_tables
-
-                _sources_by_id = {s.id: s for s in await registered_sources(state)}
-                _eligible_targets: set[tuple[str, str]] = set()
-                _column_types: dict[tuple[str, str, str], str] = {}
-                for _t in await registered_tables(state):
-                    _phys = (_t.schema_name.lower(), _t.table_name.lower())
-                    if _phys not in _referenced_phys:
-                        continue
-                    for _col in _t.columns:
-                        if _col.data_type:
-                            _column_types[(*_phys, _col.name.lower())] = _col.data_type
-                    _src = _sources_by_id.get(_t.source_id)
-                    if _src is None:
-                        continue
-                    _cap = state.federation_engine.connector_pushdown(_src.type.value)
-                    if _cap.predicate_pushdown and not _cap.join_pushdown:
-                        _eligible_targets.add(_phys)
-                if _eligible_targets:
-                    from provisa.compiler.sql_rewrite import propagate_literal_join_predicates
-
-                    _qualified = propagate_literal_join_predicates(
-                        _qualified, "postgres", _eligible_targets, _column_types
-                    )
+        # REQ-1880: carry a literal WHERE predicate onto a table whose connector pushes literal
+        # predicates but not join/parameterized paths -- see propagate_literal_predicates.
+        _qualified = await propagate_literal_predicates(_qualified, state)
         # REQ-1881: wrap ClickHouse LowCardinality(String)-family column references in
         # from_utf8(...) when this route lands on Trino AND the referenced table's own registered
         # source is clickhouse-typed. Trino's ClickHouse JDBC connector/driver reports these
@@ -1099,6 +1179,12 @@ async def _govern_and_route_planned(
             route_reason=decision.reason,
             optimizations=_opts,
             pk_bounds=await _resolve_pk_bounds(governed_semantic, state, exec_params),  # REQ-1865
+            response_cacheable=_raw_cacheable,  # REQ-1897
+            writes_tables=_is_mutation,  # REQ-1897
+            role_id=role_id,  # REQ-1897
+            table_ids=_table_ids,  # REQ-1897
+            cache_opt_in=_cache_hint.opt_in,  # REQ-544 (amended)
+            cache_ttl=_cache_hint.ttl,
         )
     else:
         dialect = decision.dialect or "postgres"
@@ -1143,6 +1229,12 @@ async def _govern_and_route_planned(
             route_reason=decision.reason,
             optimizations=_opts,
             pk_bounds=await _resolve_pk_bounds(governed_semantic, state, exec_params),  # REQ-1865
+            response_cacheable=_raw_cacheable,  # REQ-1897
+            writes_tables=_is_mutation,  # REQ-1897
+            role_id=role_id,  # REQ-1897
+            table_ids=_table_ids,  # REQ-1897
+            cache_opt_in=_cache_hint.opt_in,  # REQ-544 (amended)
+            cache_ttl=_cache_hint.ttl,
         )
 
 
@@ -1190,6 +1282,12 @@ async def finalize_audit(plan: _Plan, status_code: int, state: Any | None = None
     from provisa.audit.pipeline import write_audit
 
     await write_audit(plan.audit, status_code, state)
+    # REQ-1897: every terminal finalizes here, so a successful write invalidates the tables it
+    # wrote once, whichever surface ran it.
+    if plan.writes_tables and status_code == 200:
+        if state is None:
+            from provisa.api.app import state  # type: ignore[assignment]
+        await _invalidate_written_tables(plan, state)
 
 
 #: REQ-1695: the reference that can only be answered by an ORG's vault. ``${env:...}`` is the
@@ -1331,6 +1429,8 @@ async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-0
         await finalize_audit(plan, 402, state)
         raise
     await finalize_audit(plan, 200, state)
+    # REQ-1897: the buffered chokepoint writes its row result to the raw-SQL namespace.
+    await store_executed_result(plan, state, result)
     # REQ-1517: record this statement against the request's stats accumulator (opt-in via
     # X-Provisa-Stats) from the PLAN, at the one terminal every raw-SQL surface reaches — so the
     # route, the source and the execution DAG a surface reports are the ones that actually ran.
@@ -1364,71 +1464,99 @@ def _apply_output_cap(plan: _Plan, result: QueryResult) -> QueryResult:
 def _response_cache_org_id(state: Any) -> str | None:
     """The acting org for cache key/entry prefixing (REQ-595) -- same resolution `_attach_tier_caps`
     uses, so a cache entry a plan can write is one that same org's later plans can read back."""
-    from provisa.core.request_context import current_org
+    from provisa.cache.tenancy import cache_tenant
 
-    return current_org.get() or getattr(state, "org_id", None)
+    return cache_tenant(state)
 
 
-def _response_cache_key(plan: _Plan) -> str | None:
-    """This plan's shared-cache key (REQ-1897), or ``None`` when it is not cacheable at all.
+def _response_cache_key(plan: _Plan, *, wire_formats: list[int] | None) -> str | None:
+    """This plan's raw-SQL cache key (REQ-1897), or ``None`` when it is not cacheable at all.
+    ``wire_formats`` selects a passthrough ``pg_datarows`` entry (None: a decoded entry).
 
-    Raw-SQL surfaces never carry a separate RLS-rules dict the way GraphQL's ``rls.rules`` does --
-    the resolved identity is already baked into the governed ``plan.sql``/``plan.exec_params`` by
-    the time a plan reaches here. Passing an empty rules dict to ``is_cacheable`` therefore leaves
-    exactly the one residual fail-closed gate that still matters for a raw-SQL plan: a governed SQL
-    string that itself depends on unresolved session state (REQ-866's ``current_setting(`` check).
+    The raw-SQL namespace (``raw_sql_cache_key``) is disjoint from GraphQL's, so a raw-SQL reader
+    never meets a GraphQL response entry. Raw-SQL surfaces carry no separate RLS-rules dict — the
+    resolved identity is already baked into the governed ``plan.sql``/``plan.exec_params`` — so the
+    one residual fail-closed gate is a governed SQL string that itself depends on unresolved
+    session state (REQ-866's ``current_setting(`` check). A plan with no governed role is not
+    cacheable.
     """
-    # REQ-1194/REQ-1195: a materialize-directive plan's result is a sink redirect handle, not row
-    # data -- serving it from a row/column cache entry would skip the sink write and hand back a
-    # stale redirect URL (or a plain row result) instead of running the materialize terminal.
-    if plan.materialize is not None:
+    if not (plan.cache_opt_in and plan.response_cacheable) or plan.role_id is None or not plan.sql:
         return None
-    sql = plan.sql
-    if not sql:
-        return None
-    from provisa.cache.key import cache_key, is_cacheable
+    from provisa.cache.key import is_cacheable, raw_sql_cache_key
 
-    cacheable, _ = is_cacheable(sql, {})
+    cacheable, _ = is_cacheable(plan.sql, {})
     if not cacheable:
         return None
-    role_id = plan.audit.role_id if plan.audit is not None else ""
-    return cache_key(sql, plan.exec_params or [], role_id, {})
+    return raw_sql_cache_key(
+        plan.sql, plan.exec_params or [], plan.role_id, wire_formats=wire_formats
+    )
 
 
-async def check_response_cache(plan: _Plan, state: Any) -> QueryResult | None:  # REQ-1897
-    """Cache-HIT short circuit shared by every surface that runs a plan through the engine
-    (REQ-1897): this chokepoint, and the direct ``execute_engine_sync`` call sites in
-    ``provisa/api/flight/server.py``, ``provisa/grpc/server.py`` and ``provisa/pgwire/server.py``
-    that bypass it. Returns ``None`` on a MISS or when the plan is not cacheable (REQ-866
-    fail-closed) -- the caller must then run the plan through the engine as usual.
+def _response_cache_policy(plan: _Plan, state: Any) -> tuple[int, set[int]] | None:
+    """(ttl, table_ids) for storing this OPTED-IN plan's result, or None when the operator's
+    settings do not permit caching it.
 
-    A HIT is served without touching the engine, but is NOT a skipped statement: it still goes
-    through the exact same egress-cap (REQ-1044) and audit (REQ-074/REQ-1386) accounting a live
-    execution would have, in the same order (`_apply_output_cap` first, audited outcome after) --
-    this is a known gap the maintainer wants closed for cache hits everywhere, GraphQL's own
-    Route.CACHE hit included.
-    """
-    ck = _response_cache_key(plan)
-    if ck is None:
-        return None
-    store = getattr(state, "response_cache_store", None)
-    if store is None:
+    The operator's resolution (``resolve_policy`` with no query TTL, REQ-544) for EVERY table the
+    statement reads is the permission: any table whose source disables caching, or whose TTL
+    resolves to 0, keeps the result out (``opt_in_ttl``). Permitted, the entry lives the
+    request's own ``cache_ttl`` if it chose one, else the shortest operator TTL, and is indexed
+    under every table so any table's invalidation drops it. Absent per-source/per-table settings
+    mean "inherit" (source enabled, TTL from the next level) — REQ-544's resolution order."""
+    from provisa.cache.policy import opt_in_ttl, resolve_policy
+
+    table_ids = set(plan.table_ids)
+    # The role's compilation context is what governance resolved these table ids against, so it
+    # names each one's source.
+    assert plan.role_id is not None  # _response_cache_key gates on it
+    source_of = {m.table_id: m.source_id for m in state.contexts[plan.role_id].tables.values()}
+    ttls: list[int] = []
+    for table_id in table_ids:
+        source_settings = state.source_cache.get(source_of[table_id], {})
+        _, ttl = resolve_policy(
+            stable_id=None,
+            cache_ttl=None,
+            default_ttl=state.response_cache_default_ttl,
+            source_cache_enabled=source_settings.get("cache_enabled", True),
+            source_cache_ttl=source_settings.get("cache_ttl"),
+            table_cache_ttl=state.table_cache.get(table_id),
+        )
+        ttls.append(ttl)
+    if not ttls:
+        _, ttl = resolve_policy(None, None, default_ttl=state.response_cache_default_ttl)
+        ttls.append(ttl)
+    ttl = opt_in_ttl(plan.cache_ttl, ttls)
+    return None if ttl <= 0 else (ttl, table_ids)
+
+
+def _response_cache_bound() -> int:
+    """The most rows a raw-SQL entry may hold: the org's large-result threshold (REQ-1224's
+    inline-vs-redirect line, ``RedirectConfig.threshold``) — a result a buffered transport would
+    not inline is not one the cache holds in memory either."""
+    from provisa.executor.redirect import RedirectConfig
+
+    return RedirectConfig.from_env().threshold
+
+
+async def _read_response_cache(
+    plan: _Plan, state: Any, *, wire_formats: list[int] | None
+) -> tuple[dict, list[str] | None] | None:
+    """The raw-SQL entry for this plan — ``(entry, column_types)`` — or None on a MISS."""
+    ck = _response_cache_key(plan, wire_formats=wire_formats)
+    if ck is None or not state.response_cache_store.stores_results:
         return None
     from provisa.cache.middleware import check_cache, decode_cached_result
 
-    cached = await check_cache(store, ck, _response_cache_org_id(state))
+    # AppState always holds a store (NoopCacheStore when caching is off, app.py).
+    cached = await check_cache(state.response_cache_store, ck, _response_cache_org_id(state))
     if cached is None:
         return None
-    payload, column_types = decode_cached_result(cached)
-    column_names: list[str] = payload.get("column_names") or []
-    # msgpack has no tuple type -- every row decodes back as a list, not the tuple QueryResult.rows
-    # contracts for. Restore row shape here so a cache HIT is indistinguishable from a live result.
-    cached_rows = [tuple(row) for row in payload.get("rows", [])]
-    result = QueryResult(
-        rows=cached_rows,
-        column_names=column_names,
-        column_types=column_types if column_types is not None else payload.get("column_types"),
-    )
+    return decode_cached_result(cached)
+
+
+async def _account_cache_hit(plan: _Plan, state: Any, result: QueryResult) -> QueryResult:
+    """A HIT is served without touching the engine, but is NOT a skipped statement: the same
+    egress-cap (REQ-1044) and audit (REQ-074/REQ-1386) accounting a live execution has, in the same
+    order."""
     try:
         result = _apply_output_cap(plan, result)
     except Exception:
@@ -1438,11 +1566,159 @@ async def check_response_cache(plan: _Plan, state: Any) -> QueryResult | None:  
     return result
 
 
+async def check_response_cache(plan: _Plan, state: Any) -> QueryResult | None:  # REQ-1897
+    """Cache-HIT short circuit for every row terminal a plan reaches (REQ-1897): the chokepoint,
+    and the streaming terminals in ``provisa/api/flight/server.py`` (Cypher), ``provisa/grpc/
+    server.py`` and ``provisa/pgwire/server.py`` that bypass it. Returns ``None`` on a MISS or when
+    the plan is not cacheable (REQ-866 fail-closed) -- the caller then runs the plan as usual.
+    Either decoded kind is served as rows (``raw_sql.entry_as_result``); another kind raises."""
+    hit = await _read_response_cache(plan, state, wire_formats=None)
+    if hit is None:
+        return None
+    from provisa.cache.raw_sql import entry_as_result
+
+    entry, column_types = hit
+    return await _account_cache_hit(plan, state, entry_as_result(entry, column_types))
+
+
+async def check_response_cache_arrow(plan: _Plan, state: Any) -> Any | None:  # REQ-1897
+    """Flight SQL's Arrow-native HIT: the entry as the ``pyarrow.Table`` Flight serves (an
+    ``arrow_ipc`` entry verbatim; a ``rows`` entry converted losslessly), accounted exactly like
+    :func:`check_response_cache`. None on a MISS."""
+    hit = await _read_response_cache(plan, state, wire_formats=None)
+    if hit is None:
+        return None
+    from provisa.cache.raw_sql import entry_as_arrow, entry_as_result
+
+    entry, column_types = hit
+    await _account_cache_hit(plan, state, entry_as_result(entry, column_types))
+    return entry_as_arrow(entry, column_types)
+
+
+async def check_response_cache_datarows(  # REQ-1897
+    plan: _Plan, state: Any, wire_formats: list[int]
+) -> QueryResult | None:
+    """pgwire passthrough's HIT: the ``pg_datarows`` entry written for these client format codes,
+    replayed as the raw DataRow messages the miss forwarded — pgwire skips decode for them exactly
+    as it did on the miss. Accounted like :func:`check_response_cache`. None on a MISS."""
+    hit = await _read_response_cache(plan, state, wire_formats=wire_formats)
+    if hit is None:
+        return None
+    from provisa.cache.raw_sql import entry_as_datarows
+
+    entry, _ = hit
+    return await _account_cache_hit(plan, state, entry_as_datarows(entry, wire_formats))
+
+
+def _cache_tee(plan: _Plan, state: Any, run: Any | None, wire_formats: list[int] | None) -> Any:
+    ck = _response_cache_key(plan, wire_formats=wire_formats)
+    store = state.response_cache_store  # always set (NoopCacheStore when caching is off)
+    if ck is None or not store.stores_results:
+        return None  # decided before any stream is wrapped: nothing is buffered
+    policy = _response_cache_policy(plan, state)
+    if policy is None:
+        return None
+    from provisa.cache.raw_sql import new_tee
+
+    ttl, table_ids = policy
+    return new_tee(
+        store, ck, _response_cache_org_id(state), ttl, table_ids, _response_cache_bound(), run
+    )
+
+
+def response_cache_tee(plan: _Plan, state: Any, run: Any | None) -> Any | None:  # REQ-1897
+    """The write-through tee a streaming terminal wraps its DECODED result in
+    (``raw_sql.ResponseCacheTee``), or None when this plan's result is not cacheable (no key, no
+    store, or policy TTL 0) — the terminal then streams unwrapped. ``run`` runs the store coroutine
+    on the terminal's own loop (None for a terminal already on it, which awaits ``tee.commit()``
+    after the drain)."""
+    return _cache_tee(plan, state, run, None)
+
+
+def serve_stream_through_cache(  # REQ-1897
+    plan: _Plan,
+    state: Any,
+    *,
+    run: Any,
+    open_rows: Any,
+    check_rows: bool,
+    passthrough: tuple[list[int], Any] | None,
+) -> Any:
+    """The one read/write-through for a synchronous streaming terminal (pgwire's ENGINE sink and
+    DIRECT streams, Flight's DIRECT stream), keeping each hit on the path shape its miss took.
+
+    ``passthrough`` — ``(client format codes, open)`` when the terminal may forward a Postgres
+    source's raw DataRow bytes (REQ-1863): a ``pg_datarows`` HIT is replayed undecoded; on a MISS
+    the passthrough stream is teed into a ``pg_datarows`` entry. A ``PassthroughError`` (the fast
+    path declined) falls through to the decoded path, exactly as before caching. The decoded path
+    serves a ``rows``/``arrow_ipc`` HIT when ``check_rows`` (False where the terminal already
+    checked, e.g. pgwire's ENGINE route inside its residency dispatch), else runs ``open_rows()``
+    teed into a ``rows`` entry. ``run`` runs a coroutine on the terminal's loop. With caching
+    disabled (a store that keeps nothing) no read is dispatched and nothing is wrapped."""
+    caching = state.response_cache_store.stores_results
+    if passthrough is not None:
+        wire_formats, open_passthrough = passthrough
+        if caching:
+            replay = run(check_response_cache_datarows(plan, state, wire_formats))
+            if replay is not None:
+                return replay
+        from provisa.pgwire.pg_passthrough import PassthroughError
+
+        try:
+            stream = open_passthrough()
+        except PassthroughError:
+            log.debug("[PGWIRE] passthrough declined; decoded path", exc_info=True)
+        else:
+            tee = _cache_tee(plan, state, run, wire_formats)
+            return stream if tee is None else tee.datarows(stream, wire_formats)
+    if check_rows and caching:
+        hit = run(check_response_cache(plan, state))
+        if hit is not None:
+            return hit
+    stream = open_rows()
+    tee = response_cache_tee(plan, state, run=run)
+    return stream if tee is None else tee.rows(stream)
+
+
+async def serve_buffered_through_cache(  # REQ-1897
+    plan: _Plan, state: Any, execute: Any
+) -> QueryResult:
+    """A buffered terminal's read/write-through in ONE coroutine (one loop dispatch, REQ-1887):
+    the decoded HIT, else ``await execute()`` stored exactly as the chokepoint stores its result."""
+    hit = await check_response_cache(plan, state)
+    if hit is not None:
+        return hit
+    result = await execute()
+    await store_executed_result(plan, state, result)
+    return result
+
+
+async def store_executed_result(plan: _Plan, state: Any, result: QueryResult) -> None:
+    """The chokepoint's write: a buffered row result goes through the same tee (bound, policy,
+    namespace) as every streaming terminal's."""
+    if result.redirect is not None:
+        return  # a sink handle, not rows
+    tee = response_cache_tee(plan, state, run=None)
+    if tee is None:
+        return
+    for _ in tee.rows(result).batches():
+        pass
+    await tee.commit()
+
+
+async def _invalidate_written_tables(plan: _Plan, state: Any) -> None:
+    """A successful write drops every cached entry indexed under the tables it wrote (REQ-1897) —
+    raw-SQL and GraphQL entries alike, since both index by table id."""
+    from provisa.cache.tenancy import invalidate_tables
+
+    await invalidate_tables(state, plan.table_ids)
+
+
 async def prepare_residency_and_check_cache(plan: _Plan, state: Any) -> QueryResult | None:
     # REQ-1887, REQ-1897: folds check_response_cache into the SAME dispatch as
     # prepare_engine_residency for the terminals that call both back-to-back (Flight SQL's
-    # Cypher terminal, pgwire's ENGINE route) -- one asyncio.run_coroutine_threadsafe/_run_on_loop
-    # hop, not two, preserving REQ-1887's hop-count fold. A HIT means the plan never touches the
+    # Cypher terminal, pgwire's ENGINE route) -- one connection-loop run, not two, preserving
+    # REQ-1887's fold. A HIT means the plan never touches the
     # engine, so residency prep (potentially a real materialization) is skipped entirely, not
     # merely deferred, on a cache HIT; a MISS prepares residency exactly as before REQ-1897 existed
     # and returns None so the caller executes the plan against a now-resident source set.
@@ -1542,16 +1818,9 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
             _span.set_attribute("db.system", "postgres")
             _span.set_attribute("db.statement", plan.sql[:1000])
             async with tenant_db.acquire() as _conn:
-                _conn = _conn  # type: ignore[assignment]
-                _rows = await _conn.fetch(plan.sql)
-                if _rows:
-                    col_names = list(_rows[0].keys())
-                    rows = [tuple(r) for r in _rows]
-                else:
-                    # Execute again for column names via a describe-style query
-                    stmt = await _conn.prepare(plan.sql)
-                    col_names = [a.name for a in stmt.get_attributes()]
-                    rows = []
+                # Column names come from the result itself, so an empty result still has them.
+                col_names, _rows = await _conn.fetch_with_columns(plan.sql)
+                rows = [tuple(r) for r in _rows]
             _span.set_attribute("db.row_count", len(rows))
         result = QueryResult(rows=rows, column_names=col_names)
     else:
@@ -1674,8 +1943,13 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
     api_args: dict | None = None,
     deliver: Delivery | None = None,
     buffered: bool = False,
+    cache_hint: CacheHint,
 ) -> _Plan:
-    """Governance + routing for already-physical SQL, with the org's tier ceilings bound."""
+    """Governance + routing for already-physical SQL, with the org's tier ceilings bound.
+
+    ``cache_hint`` is the request's response-cache opt-in (REQ-544), required so every caller
+    states it: ``compiler.directives.cache_hint_for(language, request_text)``, gRPC's
+    ``cache_hint_from_grpc_metadata``, or ``NO_CACHE_HINT`` for a surface with no hint syntax."""
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
     await _wake_before_governing(state)
@@ -1687,6 +1961,7 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
         api_args=api_args,
         deliver=deliver,
         buffered=buffered,
+        cache_hint=cache_hint,
     )
     return await _attach_tier_caps(plan, state)
 
@@ -1700,6 +1975,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     api_args: dict | None = None,
     deliver: Delivery | None = None,
     buffered: bool = False,
+    cache_hint: CacheHint,
 ) -> _Plan:
     """Governance + routing for already-physical SQL.
 
@@ -1781,6 +2057,13 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     # REQ-074/REQ-1386: the compiled surfaces (GQL, Cypher, Flight, gRPC) are audited by the same
     # record the raw-SQL path opens — the terminal finalizes it.
     _audit = begin_audit(sql, role_id, _compiled_tree, gov_ctx)
+    from provisa.audit.pipeline import resolve_table_ids
+
+    _table_ids = tuple(resolve_table_ids(_compiled_tree, gov_ctx))  # REQ-1897
+    # REQ-544 (amended 2026-09-30): the compiled statement's response-cache opt-in is the one the
+    # REQUEST carried (``cache_hint`` — parsed from its GraphQL/Cypher text or gRPC metadata by
+    # ``compiler.directives``), handed through unchanged.
+    _cache_hint = cache_hint
 
     # REQ-863 pipeline order: governance → post-governance optimization → routing.
     # REQ-1882: off-loaded, same rationale as the raw-SQL path's own apply_governance call above.
@@ -1898,6 +2181,8 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
                         )
         except ValueError:
             raise
+        # REQ-1880: same literal-predicate carry the raw-SQL path applies (one helper, both paths).
+        _exec_sql = await propagate_literal_predicates(_exec_sql, state)
         # REQ-1730: mirrors _govern_and_route_planned's identical fold — PostgreSQL cannot express
         # a catalog.schema.table reference (no cross-database queries), so an engine that declares
         # catalog_qualified=False needs the catalog folded into the schema name here too, or a
@@ -1945,6 +2230,14 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
             route_reason=decision.reason,
             optimizations=_opts,
             pk_bounds=await _resolve_pk_bounds(governed_sql, state, exec_params),  # REQ-1865
+            # REQ-1897: the compiled surfaces (GraphQL-via-plan, Cypher, REST, JSON:API, gRPC)
+            # hand this function a read the compiler built from a query AST; writes take the
+            # mutation executor, never this path. A sink delivery returns a handle, not rows.
+            response_cacheable=deliver is None,
+            role_id=role_id,  # REQ-1897
+            table_ids=_table_ids,  # REQ-1897
+            cache_opt_in=_cache_hint.opt_in,  # REQ-544 (amended)
+            cache_ttl=_cache_hint.ttl,
         )
     else:
         dialect = decision.dialect or "postgres"
@@ -1979,6 +2272,14 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
             route_reason=decision.reason,
             optimizations=_opts,
             pk_bounds=await _resolve_pk_bounds(governed_sql, state, exec_params),  # REQ-1865
+            # REQ-1897: the compiled surfaces (GraphQL-via-plan, Cypher, REST, JSON:API, gRPC)
+            # hand this function a read the compiler built from a query AST; writes take the
+            # mutation executor, never this path. A sink delivery returns a handle, not rows.
+            response_cacheable=deliver is None,
+            role_id=role_id,  # REQ-1897
+            table_ids=_table_ids,  # REQ-1897
+            cache_opt_in=_cache_hint.opt_in,  # REQ-544 (amended)
+            cache_ttl=_cache_hint.ttl,
         )
 
 
@@ -1986,7 +2287,9 @@ async def plan_pgwire_sql(sql: str, role_id: str) -> _Plan:  # REQ-267
     return await _govern_and_route(sql, role_id)
 
 
-async def govern_pgwire_plan(sql: str, role_id: str) -> _Plan | QueryResult:  # REQ-028, REQ-266
+async def govern_pgwire_plan(  # REQ-028, REQ-266
+    sql: str, role_id: str, params: list | None = None
+) -> _Plan | QueryResult:
     """Govern a pgwire statement to its last-mile plan WITHOUT executing the ENGINE terminal.
 
     The pgwire socketserver worker thread drains the engine's SYNC streaming terminal itself —
@@ -2012,11 +2315,21 @@ async def govern_pgwire_plan(sql: str, role_id: str) -> _Plan | QueryResult:  # 
     from provisa.api.app import state as _state
     from provisa.pgwire.function_call import maybe_invoke_registered_function
 
-    fn_result = await maybe_invoke_registered_function(sql, role_id, _state)
+    # A registered-function call's arguments are VALUES handed to the function executor, not SQL
+    # sent to a source, so detection sees the value-substituted text (REQ-872). Everything else is
+    # governed with its $N placeholders and the values bound (REQ-589).
+    fn_sql = sql
+    if params:
+        from provisa.compiler.params import _sql_literal, substitute_positional_placeholders
+
+        fn_sql = substitute_positional_placeholders(
+            sql, params, lambda i: _sql_literal(params[i - 1])
+        )
+    fn_result = await maybe_invoke_registered_function(fn_sql, role_id, _state)
     if fn_result is not None:
         return fn_result
 
-    return await _govern_and_route(sql, role_id)
+    return await _govern_and_route(sql, role_id, params=params)
 
 
 async def execute_pgwire_sql(sql: str, role_id: str) -> QueryResult:  # REQ-266, REQ-267, REQ-272

@@ -31,7 +31,7 @@ Requires role capability "ddl".
 
 from __future__ import annotations
 
-import asyncio
+from provisa.core.connection_loop import run_on_connection_loop
 import logging
 import re
 
@@ -140,11 +140,7 @@ class DdlHandler:  # REQ-042, REQ-060
             f"CREATE {or_replace}{verb} {write_catalog}.{write_schema}.{table_name} {rest}"
         )
         log.info("DDL(engine) role=%r: %s", role_id, qualified_sql[:200])
-        future = asyncio.run_coroutine_threadsafe(
-            state.federation_engine.execute_engine(qualified_sql),
-            self._handler._srv._loop,
-        )
-        future.result(timeout=60)
+        run_on_connection_loop(state.federation_engine.execute_engine(qualified_sql), timeout=60)
         _register_ddl_object(role_id, table_name, write_catalog, write_schema, kind)
 
     def _exec_direct(self, _ctx, sql, source_id, write_schema, role_id, state):
@@ -160,24 +156,21 @@ class DdlHandler:  # REQ-042, REQ-060
                 verb = "VIEW" if kind == "VIEW" else "TABLE"
                 sql = f"CREATE {or_replace}{verb} {write_schema}.{table_name} {rest}"
                 log.info("DDL(direct) role=%r source=%r: %s", role_id, source_id, sql[:200])
-                future = asyncio.run_coroutine_threadsafe(
-                    _exec_direct_ddl_async(state.source_pools, source_id, sql),
-                    self._handler._srv._loop,
+                run_on_connection_loop(
+                    _exec_direct_ddl_async(state.source_pools, source_id, sql), timeout=60
                 )
-                future.result(timeout=60)
                 _register_ddl_object(role_id, table_name, source_id, write_schema, kind)
                 return
 
         # ALTER TABLE, DROP, CREATE INDEX, etc. — raw passthrough with schema context
         log.info("DDL(direct/passthrough) role=%r source=%r: %s", role_id, source_id, sql[:200])
         source_type = state.source_types.get(source_id, "")
-        future = asyncio.run_coroutine_threadsafe(
+        run_on_connection_loop(
             _exec_direct_ddl_with_schema_async(
                 state.source_pools, source_id, source_type, write_schema, sql
             ),
-            self._handler._srv._loop,
+            timeout=60,
         )
-        future.result(timeout=60)
 
 
 def _catalog_to_source_id(catalog: str, state) -> str | None:

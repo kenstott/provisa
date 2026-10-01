@@ -121,7 +121,7 @@ class TestParseConfigWithIncludes:
     def test_control_plane_section_reaches_through_a_wrapper(self, tmp_path: Path):
         base = _write(
             tmp_path / "base.yaml",
-            {**_BASE, "control_plane": {"tenant_url": "sqlite+aiosqlite:///cp.db"}},
+            {**_BASE, "control_plane": {"tenant_url": "sqlite+pysqlite:///cp.db"}},
         )
         wrapper = _write(tmp_path / "wrapper.yaml", {"includes": [str(base)]})
-        assert load_control_plane(wrapper).tenant_url == "sqlite+aiosqlite:///cp.db"
+        assert load_control_plane(wrapper).tenant_url == "sqlite+pysqlite:///cp.db"

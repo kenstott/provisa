@@ -107,12 +107,16 @@ def _es_config(source: Source, resolved_password: str):
 def _prometheus_config(source: Source):
     from provisa.prometheus.source import PrometheusSourceConfig, PrometheusTableConfig
 
+    from provisa.prometheus.source import endpoint_url
+
     m = source.mapping
-    # source.host IS the server URL for prometheus (the Sources form stores it that way —
-    # demo/sources/prometheus/fragment.yaml; port is never used). Reconstructing
-    # f"http://{host}:{port}" double-prefixed an already-complete URL into a malformed one
-    # (REQ-1730: surfaced as Trino's prometheus connector failing "Error reading metrics").
-    url = m.get("url") or source.host or "http://localhost:9090"
+    # One derivation of the server URL, shared with the native reader (REQ-1689 endpoint_url):
+    # mapping.url wins; a host that is already a URL (the Sources form stores it that way —
+    # demo/sources/prometheus/fragment.yaml) is taken as-is, never re-prefixed (REQ-1730: that
+    # double prefix surfaced as "Error reading metrics"); a bare host is http://host:port. A bare
+    # host passed straight through became prometheus.uri=<host>, which Trino rejects ("URI does not
+    # have a scheme"). No URL at all is a misconfigured source and raises — no localhost default.
+    url = endpoint_url(source.host, source.port, m)
     tables = [
         PrometheusTableConfig(
             name=t["name"],

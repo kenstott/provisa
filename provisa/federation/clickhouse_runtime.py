@@ -42,9 +42,11 @@ a live EngineRuntime dispatch calls; routing/HTTP wiring is separate — mirrors
 from __future__ import annotations
 
 import re
+import uuid
 from typing import TYPE_CHECKING, Any, Protocol, cast
 from urllib.parse import unquote, urlparse
 
+from provisa.core import request_deadline
 from provisa.executor.result import QueryResult, ResultStream
 
 if TYPE_CHECKING:
@@ -88,21 +90,35 @@ class _ServerBackend:
     def __init__(self, *, host: str, port: int, username: str, password: str) -> None:
         import clickhouse_connect
 
-        self._client = clickhouse_connect.get_client(
-            host=host, port=port, username=username, password=password
-        )
+        self._conn_args = {"host": host, "port": port, "username": username, "password": password}
+        self._client = clickhouse_connect.get_client(**self._conn_args)
+
+    def _kill(self, query_id: str) -> None:
+        # Request-deadline cancel (REQ-1882): the query's own HTTP connection is busy, so the KILL
+        # goes over a separate short-lived client.
+        import clickhouse_connect
+
+        killer = clickhouse_connect.get_client(**self._conn_args)
+        try:
+            killer.command(f"KILL QUERY WHERE query_id = '{query_id}' ASYNC")
+        finally:
+            killer.close()
 
     def command(self, sql: str) -> None:
         self._client.command(sql)
 
     def query(self, sql: str) -> tuple[list[tuple], list[str]]:
-        res = self._client.query(sql)
+        qid = str(uuid.uuid4())
+        with request_deadline.cancel_on_deadline(lambda: self._kill(qid)):
+            res = self._client.query(sql, settings={"query_id": qid})
         return [tuple(r) for r in res.result_rows], list(res.column_names)
 
     def query_arrow(self, sql: str) -> pa.Table:
         # clickhouse-connect requests FORMAT Arrow and returns a native pyarrow Table — no row
         # materialization (REQ-986). use_strings maps ClickHouse String to Arrow utf8, not binary.
-        return self._client.query_arrow(sql, use_strings=True)
+        qid = str(uuid.uuid4())
+        with request_deadline.cancel_on_deadline(lambda: self._kill(qid)):
+            return self._client.query_arrow(sql, settings={"query_id": qid}, use_strings=True)
 
     def query_arrow_stream(self, sql: str) -> tuple[pa.Schema, Iterator[pa.RecordBatch]]:
         # FORMAT ArrowStream: the server streams IPC blocks and clickhouse-connect wraps them in a
@@ -110,9 +126,13 @@ class _ServerBackend:
         # lifetime of the iterator, so the generator owns enter/exit (REQ-986).
         import pyarrow as pa
 
-        stream_ctx = self._client.query_arrow_stream(sql, use_strings=True)
-        reader: Any = stream_ctx.gen  # the pyarrow RecordBatchStreamReader the context wraps
-        schema = reader.schema  # available before consumption; GeneratorStream needs it up front
+        qid = str(uuid.uuid4())
+        with request_deadline.cancel_on_deadline(lambda: self._kill(qid)):
+            stream_ctx = self._client.query_arrow_stream(
+                sql, settings={"query_id": qid}, use_strings=True
+            )
+            reader: Any = stream_ctx.gen  # the pyarrow RecordBatchStreamReader the context wraps
+            schema = reader.schema  # available before consumption; GeneratorStream needs it
         stream_ctx.__enter__()
 
         def _batches() -> Iterator[pa.RecordBatch]:
@@ -142,7 +162,19 @@ class _NativeBackend:
     def __init__(self, *, host: str, port: int, username: str, password: str) -> None:
         from clickhouse_driver import Client
 
-        self._client = Client(host=host, port=port, user=username, password=password)
+        self._conn_args = {"host": host, "port": port, "user": username, "password": password}
+        self._client = Client(**self._conn_args)
+
+    def _kill(self, query_id: str) -> None:
+        # Request-deadline cancel (REQ-1882): the query's own TCP connection is busy, so the KILL
+        # goes over a separate short-lived client.
+        from clickhouse_driver import Client
+
+        killer = Client(**self._conn_args)
+        try:
+            killer.execute(f"KILL QUERY WHERE query_id = '{query_id}' ASYNC")
+        finally:
+            killer.disconnect()
 
     def command(self, sql: str) -> None:
         self._client.execute(sql)
@@ -150,10 +182,10 @@ class _NativeBackend:
     def query(self, sql: str) -> tuple[list[tuple], list[str]]:
         # with_column_types=True → (rows, [(name, type), ...]); the driver stub types execute() as a
         # union (row-count int for DDL), so narrow it explicitly.
-        rows, cols = cast(
-            "tuple[list[tuple], list[tuple[str, str]]]",
-            self._client.execute(sql, with_column_types=True),
-        )
+        qid = str(uuid.uuid4())
+        with request_deadline.cancel_on_deadline(lambda: self._kill(qid)):
+            result = self._client.execute(sql, with_column_types=True, query_id=qid)
+        rows, cols = cast("tuple[list[tuple], list[tuple[str, str]]]", result)
         return [tuple(r) for r in rows], [c[0] for c in cols]
 
     def query_arrow(self, sql: str) -> pa.Table:
@@ -184,6 +216,8 @@ class _EmbeddedBackend:
     def command(self, sql: str) -> None:
         self._session.query(sql)
 
+    # chdb runs the query in-process inside one blocking C call and exposes no cancel/interrupt API
+    # (chdb/session/state.py: query/send_query only), so the request deadline cannot pre-empt it.
     def query(self, sql: str) -> tuple[list[tuple], list[str]]:
         import io
 

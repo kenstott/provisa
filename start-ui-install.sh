@@ -590,8 +590,8 @@ if [ "$DEMO" = true ] || [ "$NATIVE" = true ]; then
     # Both SQLAlchemy control planes (tenant + platform) connect to the embedded
     # instance over its unix socket — the directory travels in ?host=. The tenant
     # and platform planes share this one embedded database (single-tenant desktop).
-    export TENANT_DATABASE_URL="postgresql+asyncpg://provisa:provisa@/provisa?host=${CP_PG_HOST}&port=${CP_PG_PORT}"
-    export PLATFORM_DATABASE_URL="postgresql+asyncpg://provisa:provisa@/provisa?host=${CP_PG_HOST}&port=${CP_PG_PORT}"
+    export TENANT_DATABASE_URL="postgresql+psycopg://provisa:provisa@/provisa?host=${CP_PG_HOST}&port=${CP_PG_PORT}"
+    export PLATFORM_DATABASE_URL="postgresql+psycopg://provisa:provisa@/provisa?host=${CP_PG_HOST}&port=${CP_PG_PORT}"
     CP_STORE_DESC="embedded PostgreSQL (pgserver, socket $CP_PG_HOST:$CP_PG_PORT)"
   else
     echo "FAILED — see $LOG_DIR/control-plane-pg.log"

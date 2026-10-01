@@ -30,7 +30,7 @@ from provisa.api.admin.schema_query import _is_instance_local_store
         "duckdb:///Users/x/.provisa/materialize.duckdb",
         "duckdb:///:memory:",
         "sqlite:///./store.db",
-        "sqlite+aiosqlite:///tmp/store.db",  # driver suffix is stripped
+        "sqlite+pysqlite:///tmp/store.db",  # driver suffix is stripped
         "DuckDB:///CASE.db",  # scheme is case-insensitive
     ],
 )
@@ -43,7 +43,7 @@ def test_local_file_stores_are_instance_local(dsn: str) -> None:
     [
         "postgresql://host/db",
         "postgres://user:pw@shared-host:5432/prov",
-        "postgresql+asyncpg://host/db",
+        "postgresql+psycopg://host/db",
         "s3://bucket/warehouse",  # object-store lakehouse
         "snowflake://acct/db",
         "bigquery://project/ds",

@@ -53,7 +53,6 @@ default for unauthenticated access); absent too → the call is refused.
 
 from __future__ import annotations
 
-import asyncio
 import datetime as _dt
 import json
 import logging
@@ -71,6 +70,8 @@ from provisa.api.airport.query import (
     governed_table_scan_stream,
 )
 from provisa.api.airport.transactions import AirportTransactionManager
+from provisa.core.connection_loop import run_on_connection_loop
+from provisa.core.rpc_loop import hold_loop_for_stream, run_rpc
 
 if TYPE_CHECKING:
     from provisa.api.app import AppState
@@ -117,15 +118,12 @@ class ProvisaAirportServer(
         state: AppState,
         host: str,
         port: int,
-        *,
-        main_loop: asyncio.AbstractEventLoop,
     ) -> None:
         super().__init__(
             f"grpc://0.0.0.0:{port}",
             middleware={"headers": _HeaderMiddlewareFactory()},
         )
         self._state = state
-        self._main_loop = main_loop
         # Advertised endpoint location — where the client sends do_get. Reuse the same
         # gRPC connection by advertising this server's reachable address.
         self._location = f"grpc://{host}:{port}"
@@ -296,7 +294,7 @@ class ProvisaAirportServer(
             cached = self._schema_cache.get(key)
         if cached is not None:
             return cached
-        base = governed_table_scan_schema(self._state, self._main_loop, sql_ref, role_id)
+        base = governed_table_scan_schema(self._state, sql_ref, role_id)
         with self._cache_lock:
             self._schema_cache[key] = base
         return base
@@ -346,6 +344,14 @@ class ProvisaAirportServer(
 
     # ------------------------------------------------------------- DoAction
     def do_action(  # pyright: ignore[reportPrivateImportUsage]
+        self,
+        context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]
+        action: flight.Action,  # pyright: ignore[reportPrivateImportUsage]
+    ):
+        # REQ-1882: the whole RPC runs on this handler thread's own loop.
+        return run_rpc(lambda: self._do_action_on_loop(context, action))
+
+    def _do_action_on_loop(
         self,
         context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]
         action: flight.Action,  # pyright: ignore[reportPrivateImportUsage]
@@ -537,9 +543,7 @@ class ProvisaAirportServer(
         comment = req.get("comment")
         if isinstance(comment, bytes):
             comment = comment.decode("utf-8")
-        asyncio.run_coroutine_threadsafe(
-            self._upsert_domain(str(name), comment or ""), self._main_loop
-        ).result()
+        run_on_connection_loop(self._upsert_domain(str(name), comment or ""))
         serialized, sha256 = wire.serialize_schema_contents([])
         return wire._encode({"sha256": sha256, "url": None, "serialized": wire._Str(serialized)})
 
@@ -553,9 +557,7 @@ class ProvisaAirportServer(
         if not name:
             raise _err("airport: drop_schema requires a schema name")
         ignore = bool(req.get("ignore_not_found"))
-        deleted = asyncio.run_coroutine_threadsafe(
-            self._delete_domain(str(name)), self._main_loop
-        ).result()
+        deleted = run_on_connection_loop(self._delete_domain(str(name)))
         if not deleted and not ignore:
             raise _err(f"airport: schema {name!r} not found")
 
@@ -611,10 +613,9 @@ class ProvisaAirportServer(
         columns = _arrow_schema_to_columns(arrow_schema)
 
         source_id, domain_id, phys_schema = self._resolve_writable_target(role_id, schema)
-        asyncio.run_coroutine_threadsafe(
-            self._create_and_register_table(source_id, domain_id, phys_schema, table, columns),
-            self._main_loop,
-        ).result()
+        run_on_connection_loop(
+            self._create_and_register_table(source_id, domain_id, phys_schema, table, columns)
+        )
         # airport create_table response = the new table's FlightInfo protobuf (matches airport-go
         # buildTableFlightInfo). The fresh table has no PK yet, so it advertises no rowid.
         return self._table_flight_info(schema, table, arrow_schema).serialize()
@@ -710,6 +711,14 @@ class ProvisaAirportServer(
         context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]
         descriptor: flight.FlightDescriptor,  # pyright: ignore[reportPrivateImportUsage]
     ) -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]
+        # REQ-1882: the whole RPC runs on this handler thread's own loop.
+        return run_rpc(lambda: self._get_flight_info_on_loop(context, descriptor))
+
+    def _get_flight_info_on_loop(
+        self,
+        context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]
+        descriptor: flight.FlightDescriptor,  # pyright: ignore[reportPrivateImportUsage]
+    ) -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]
         role_id = self._role(context)
         path = [p.decode("utf-8") if isinstance(p, bytes) else p for p in descriptor.path]
         if len(path) != 2:
@@ -724,6 +733,14 @@ class ProvisaAirportServer(
 
     # ------------------------------------------------------------- DoGet
     def do_get(  # pyright: ignore[reportPrivateImportUsage]
+        self,
+        context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]
+        ticket: flight.Ticket,  # pyright: ignore[reportPrivateImportUsage]
+    ) -> flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]
+        # REQ-1882: the whole RPC — and the stream it returns — runs on this handler thread's loop.
+        return run_rpc(lambda: self._do_get_on_loop(context, ticket))
+
+    def _do_get_on_loop(
         self,
         context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]
         ticket: flight.Ticket,  # pyright: ignore[reportPrivateImportUsage]
@@ -746,9 +763,7 @@ class ProvisaAirportServer(
 
         if not columns and not where:
             # No pushdown — full-table governed scan, STREAMED (never materialized here; Defect 5).
-            _, batch_gen = governed_table_scan_stream(
-                self._state, self._main_loop, sql_ref, role_id
-            )
+            _, batch_gen = governed_table_scan_stream(self._state, sql_ref, role_id)
         else:
             # Pushdown: build the semantic SELECT with source-side projection + WHERE. Injecting the
             # predicate as a semantic WHERE means it flows through the IDENTICAL governance a user's
@@ -764,14 +779,16 @@ class ProvisaAirportServer(
             if where:
                 sql += f" WHERE {where}"
             _trace_pushdown(sql)
-            _, batch_gen = governed_table_scan_stream(self._state, self._main_loop, sql, role_id)
+            _, batch_gen = governed_table_scan_stream(self._state, sql, role_id)
 
         # Stream each governed batch reshaped to the FULL advertised schema (the airport contract:
         # DuckDB planned against the flight_info schema and projects client-side; a narrowed stream
         # would mismatch). Source-side projection still happened above — the columns DuckDB projected
         # out are null-filled per batch and never read. The is_rowid pseudo-column (JSON PK tuple) is
         # appended per batch when the table has a PK, so DuckDB can echo it back on UPDATE/DELETE.
-        out_gen = self._reshape_batches(batch_gen, base, pk)
+        # REQ-1882: pyarrow pulls the batches after do_get returns (a DIRECT scan's cursor fetches
+        # on this RPC's loop), so the stream holds the loop until it ends.
+        out_gen = hold_loop_for_stream(self._reshape_batches(batch_gen, base, pk))
         return flight.GeneratorStream(advertised, out_gen)  # pyright: ignore[reportPrivateImportUsage]
 
     def _reshape_batches(self, batch_gen: Any, base: pa.Schema, pk: list[str]) -> Any:
@@ -788,6 +805,15 @@ class ProvisaAirportServer(
         self,
         context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]
         descriptor: flight.FlightDescriptor,  # pyright: ignore[reportPrivateImportUsage]  # noqa: ARG002
+        reader,
+        writer,
+    ) -> None:
+        # REQ-1882: the whole RPC runs on this handler thread's own loop.
+        run_rpc(lambda: self._do_exchange_on_loop(context, reader, writer))
+
+    def _do_exchange_on_loop(
+        self,
+        context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]
         reader,
         writer,
     ) -> None:
@@ -835,7 +861,7 @@ class ProvisaAirportServer(
             sql = self._build_insert_sql(schema, table, incoming)
             # ONE pipeline: submit the mutation SQL through the SAME governed write path as
             # /data/sql (writable-column ACL, RLS, write-routing all apply).
-            governed_mutation(self._state, self._main_loop, sql, role_id)
+            governed_mutation(self._state, sql, role_id)
         writer.write_metadata(pa.py_buffer(wire._encode({"total_changed": total})))
 
     def _do_exchange_pk_mutation(
@@ -882,7 +908,7 @@ class ProvisaAirportServer(
             pk_tuples = self._decode_rowids(incoming, pk)
             if operation == "delete":
                 sql = self._build_delete_sql(schema, table, pk, pk_tuples)
-                total = governed_mutation(self._state, self._main_loop, sql, role_id)
+                total = governed_mutation(self._state, sql, role_id)
             else:
                 total = self._apply_updates(role_id, schema, table, pk, pk_tuples, incoming)
         writer.write_metadata(pa.py_buffer(wire._encode({"total_changed": total})))
@@ -929,7 +955,7 @@ class ProvisaAirportServer(
                 f'UPDATE "{schema}"."{table}" SET {assignments} WHERE {where} '
                 f"RETURNING {', '.join(chr(34) + c + chr(34) for c in pk)}"
             )
-            total += governed_mutation(self._state, self._main_loop, sql, role_id)
+            total += governed_mutation(self._state, sql, role_id)
         return total
 
     @staticmethod

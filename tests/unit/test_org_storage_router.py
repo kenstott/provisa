@@ -23,8 +23,7 @@ from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.pool import StaticPool
+from provisa.core.database import create_engine_from_url
 
 from provisa.api.admin import org_storage_router as router_mod
 from provisa.api.admin.org_storage_router import (
@@ -37,23 +36,19 @@ from provisa.api.org_runtime import OrgRegistry, OrgRuntime
 from provisa.core.database import Database
 from provisa.core.schema_admin import metadata, orgs
 
-_ORG_STORE = "postgresql+asyncpg://acme:secret@acme-own-host/store"
+_ORG_STORE = "postgresql+psycopg://acme:secret@acme-own-host/store"
 _REQUEST = SimpleNamespace()
 
 
 @pytest.fixture
 async def admin_db():
-    engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
-        poolclass=StaticPool,
-        connect_args={"check_same_thread": False},
-    )
-    async with engine.begin() as conn:
-        await conn.run_sync(metadata.create_all)
+    engine = create_engine_from_url("sqlite+pysqlite:///:memory:")
+    with engine.begin() as conn:
+        metadata.create_all(conn)
     try:
         yield Database(engine, "test")
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
 @pytest.fixture

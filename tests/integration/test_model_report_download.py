@@ -176,7 +176,9 @@ def _request(role_id: str) -> Request:
 
 
 @pytest_asyncio.fixture
-async def served(tenant_db, monkeypatch):
+async def served(
+    tenant_db, monkeypatch, platform_admin_db
+):  # load_config binds the org vault (REQ-1730)
     """The registration plane the report reads, wired to the app state the endpoint resolves."""
     from provisa.api import app as app_module
     from provisa.api.admin import config_export

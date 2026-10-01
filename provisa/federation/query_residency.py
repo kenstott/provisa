@@ -23,9 +23,8 @@ Stale means: a table of the source has no refresh stamp (never landed), or the s
 predicate (REQ-860). A ``load_protected`` source lands here only when it has never landed
 (REQ-1141: the scheduler is its sole refresher).
 
-A land that fails is logged and stamped ``ok=False``; the read proceeds against whatever the
-replica holds. The event loop applies the same rule to a node whose fetch fails: a broken adapter
-withholds fresh rows, it does not withhold every query that names the table.
+A land that fails is stamped ``ok=False`` (so the next query retries it) and fails the query with
+its own cause; the query never reads the stale replica (REQ-1661, amended 2026-09-30).
 """
 
 # Requirements: REQ-1661, REQ-860, REQ-855, REQ-1141
@@ -284,29 +283,70 @@ async def ensure_resident(
                     )
                     landed.append((source.id, t.table_name))
                 backend.mark_landed(source.id)
-                ok = True
-            except Exception:  # noqa: BLE001 - the adapter's error type is its own
-                log.exception(
-                    "query residency: landing %s failed; the read proceeds on the replica as it is",
-                    source.id,
+            except Exception:  # noqa: BLE001 - the adapter's error type is its own; re-raised
+                # REQ-1661 (amended 2026-09-30): a failed land fails the query -- it never reads
+                # the stale replica. Stamp the nodes not ok first, so the next query retries.
+                await _record_refresh(
+                    db,
+                    queue,
+                    [(source.id, t) for t in tables_by_source.get(source.id, [])],
+                    ok=False,
                 )
-                ok = False
-            stamped = (
-                [(source.id, t.table_name) for t in tables_by_source.get(source.id, [])]
-                if not ok
-                else [pair for pair in landed if pair[0] == source.id]
+                raise
+            await _record_refresh(
+                db,
+                queue,
+                [
+                    (sid, t)
+                    for sid, name in landed
+                    if sid == source.id
+                    for t in tables_by_source[sid]
+                    if t.table_name == name
+                ],
+                ok=True,
             )
-            if stamped:
-                at = datetime.now(UTC)
-                async with db.acquire() as conn:
-                    for sid, table_name in stamped:
-                        table = next(t for t in tables_by_source[sid] if t.table_name == table_name)
-                        await queue.record_refresh(
-                            conn, _node(table.schema_name, table.table_name), at=at, ok=ok
-                        )
     if landed:
         log.info("query residency: landed %s before the read", landed)
     return landed
+
+
+async def _record_refresh(db: Any, queue: Any, tables: list[tuple[str, Any]], *, ok: bool) -> None:
+    """Stamp each (source_id, table) node's refresh outcome in the freshness state the event loop
+    reads (REQ-1661)."""
+    if not tables:
+        return
+    at = datetime.now(UTC)
+    async with db.acquire() as conn:
+        for _sid, table in tables:
+            await queue.record_refresh(
+                conn, _node(table.schema_name, table.table_name), at=at, ok=ok
+            )
+
+
+async def active_row_materialize_tables(state: Any) -> list[Any]:
+    """The registered tables row_materialize APPLIES to (REQ-1865, amended 2026-09-30): the flag is
+    set AND the bound engine declares it cannot direct-attach the table's source type.
+
+    row_materialize is the reach for a source the engine cannot attach. When the engine DECLARES it
+    can attach the source (``strategy.engine_attaches`` -- its connector reads in place), the engine
+    attaches and reads the source live; the flag is ignored, by design, not as a fallback. A failed
+    attach is then an error, never a detour through the row cache. Every row-materialize consumer
+    (bound extraction, key pushdown, row fetch, background refresh/reap wiring) selects its tables
+    here, so a declared-attach engine never pays a probe, a keyed fetch or a cache land it would
+    not read."""
+    from provisa.federation.registry_view import registered_sources, registered_tables
+    from provisa.federation.strategy import engine_attaches
+
+    flagged = [t for t in await registered_tables(state) if getattr(t, "row_materialize", False)]
+    if not flagged:
+        return []
+    engine = getattr(state, "federation_engine", None)
+    # tables.source_id is a NOT NULL foreign key to sources.id (core/schema_org.py), so a missing
+    # source is a KeyError, not a skip.
+    sources_by_id = {s.id: s for s in await registered_sources(state)}
+    return [
+        t for t in flagged if not engine_attaches(engine, sources_by_id[t.source_id].type.value)
+    ]
 
 
 async def row_materialized_tables_by_name(state: Any) -> dict[str, Any]:
@@ -327,7 +367,6 @@ async def row_materialized_tables_by_name(state: Any) -> dict[str, Any]:
     "Customer") resolved zero bounds under alias-only keying, since its raw SQL text names the
     table bench_customer_node directly."""
     from provisa.compiler.naming import apply_sql_name
-    from provisa.federation.registry_view import registered_tables
 
     # REQ-1865 (amended): a plain raw-SQL statement (pgwire, Flight) references a table by its own
     # bare physical name (e.g. "bench_customer_node") -- it is never rewritten to the table's
@@ -338,9 +377,7 @@ async def row_materialized_tables_by_name(state: Any) -> dict[str, Any]:
     # for the compiled/GraphQL path) and the bare table_name (for a raw-SQL statement) so
     # extract_pk_bounds matches whichever form the statement's own AST actually uses.
     out: dict[str, Any] = {}
-    for t in await registered_tables(state):
-        if not getattr(t, "row_materialize", False):
-            continue
+    for t in await active_row_materialize_tables(state):
         out[apply_sql_name(t.table_name)] = t
         if t.alias:
             out[apply_sql_name(t.alias)] = t
@@ -471,21 +508,21 @@ async def pushdown_row_materialize(
     import sqlglot
     import sqlglot.expressions as exp
 
-    from provisa.events.app_wiring import build_adapter_loaders, build_keyed_adapter_loaders
+    from provisa.events.app_wiring import (
+        build_adapter_loaders,
+        build_keyed_adapter_loaders,
+        build_keyed_arrow_loaders,
+    )
     from provisa.events.source_loader import SourceRowLoader
     from provisa.federation.backend import _env_store_schema
-    from provisa.federation.registry_view import registered_sources, registered_tables
+    from provisa.federation.registry_view import registered_sources
 
     engine = getattr(state, "federation_engine", None)
     backend = getattr(getattr(engine, "engine", None), "backend", None)
     if engine is None or backend is None:
         return set()
 
-    tables_by_name = {
-        t.table_name: t
-        for t in await registered_tables(state)
-        if getattr(t, "row_materialize", False)
-    }
+    tables_by_name = {t.table_name: t for t in await active_row_materialize_tables(state)}
     if not tables_by_name:
         return set()
     sources_by_id = {s.id: s for s in await registered_sources(state)}
@@ -507,6 +544,7 @@ async def pushdown_row_materialize(
         engine,
         adapter_loaders=build_adapter_loaders(state, engine),
         keyed_adapter_loaders=build_keyed_adapter_loaders(state, engine),
+        keyed_arrow_loaders=build_keyed_arrow_loaders(engine),
     )
 
     for _pass in range(len(all_joins)):
@@ -538,11 +576,9 @@ async def pushdown_row_materialize(
                 exp.alias_(other_expr.copy(), f"__pushdown_{name}"), append=True, copy=False
             )
 
-        try:
-            result = await engine.execute_engine(pass_tree.sql(dialect=dialect), params)
-        except Exception:
-            log.warning("row-materialize key-pushdown probe failed", exc_info=True)
-            break
+        # A failed probe propagates, same as a failed keyed fetch below: breaking out left every
+        # pending table unlanded with no error surfaced.
+        result = await engine.execute_engine(pass_tree.sql(dialect=dialect), params)
 
         made_progress = False
         for name in list(still_pending):
@@ -603,23 +639,17 @@ async def pushdown_row_materialize(
                 landed_this_call.add(name)
                 made_progress = True
                 continue
-            try:
-                rows = await loader.load_keys(
-                    source, table, [target_col], [(v,) for v in stale_or_missing]
-                )
-            except Exception:
-                log.warning(
-                    "row-materialize key-pushdown fetch failed for %s.%s",
-                    name,
-                    target_col,
-                    exc_info=True,
-                )
-                continue
-            if not rows:
+            # A failed keyed fetch propagates: swallowing it left the table unlanded and the
+            # query answered from whatever the row cache already held -- confirmed live,
+            # large_federated_join returned 3030 rows instead of ~3.03M with no error.
+            fetched = await loader.load_keys_arrow(
+                source, table, [target_col], [(v,) for v in stale_or_missing]
+            )
+            if fetched.num_rows == 0:
                 landed_this_call.add(name)
                 made_progress = True
                 continue
-            await _land_row_cache(
+            await _land_row_cache_arrow(
                 engine,
                 backend,
                 state,
@@ -628,7 +658,7 @@ async def pushdown_row_materialize(
                 cache_table,
                 [real_pk],
                 args.columns,
-                rows,
+                fetched,
                 resolved_ttl,
             )
             landed_this_call.add(name)
@@ -692,13 +722,12 @@ async def _ensure_row_cache_table(
     # CREATE TABLE IF NOT EXISTS alone -- confirmed live (UndefinedColumnError on _row_expires_at
     # against a table created before that column existed). ``add_missing_columns`` also creates
     # the table outright when absent, so this replaces the old CreateTable-only step entirely.
-    async_url = store_writer.async_store_url(dsn)
-    reconcile_engine = create_engine_from_url(async_url, pool_size=1)
+    reconcile_engine = create_engine_from_url(dsn, pool_size=1)
     try:
-        async with reconcile_engine.begin() as raw_conn:
-            await raw_conn.run_sync(add_missing_columns, [cache_table], schema)
+        with reconcile_engine.begin() as raw_conn:
+            add_missing_columns(raw_conn, [cache_table], schema)
     finally:
-        await reconcile_engine.dispose()
+        reconcile_engine.dispose()
     return cache_table
 
 
@@ -759,6 +788,57 @@ async def _read_row_cache(
     dsn = engine.engine.materialize_store()
     async with store_writer.store_connection(dsn) as conn:
         return await _read_cached(conn, cache_table, pk_columns, keys)
+
+
+async def _land_row_cache_arrow(
+    engine: Any,
+    backend: Any,
+    state: Any,
+    schema: str,
+    name: str,
+    cache_table: Any,
+    pk_columns: list[str],
+    columns: list[tuple[str, str]],
+    data: Any,
+    resolved_ttl: int,
+) -> None:
+    """``_land_row_cache`` for an Arrow fetch: the same row stamps (``_row_cached_at`` now,
+    ``_row_expires_at`` now + ttl), added as Arrow columns, and on a DuckDB store the same upsert
+    by ``pk_columns`` landed columnar through the broker -- never per-row events (REQ-1865; ~3M
+    keyed rows spent ~45s as Python rows live). A declared column the fetch did not return lands
+    NULL, as ``_land_row_cache``'s ``row.get`` does. Stamps are naive UTC: the DuckDB store's
+    TIMESTAMP carries no zone and every reader treats it as UTC."""
+    import pyarrow as pa
+
+    from provisa.federation.materialize_exec import _ROW_CACHED_AT, _ROW_EXPIRES_AT
+
+    now = datetime.now(UTC)
+    n = data.num_rows
+    arrays = [data.column(c) if c in data.column_names else pa.nulls(n) for c, _ in columns]
+    stamp = pa.timestamp("us")
+    arrays += [
+        pa.array([now.replace(tzinfo=None)] * n, stamp),
+        pa.array([(now + timedelta(seconds=resolved_ttl)).replace(tzinfo=None)] * n, stamp),
+    ]
+    full_columns = list(columns) + [(_ROW_CACHED_AT, "timestamp"), (_ROW_EXPIRES_AT, "timestamp")]
+    stamped = pa.Table.from_arrays(arrays, names=[c for c, _ in full_columns])
+    if _is_duckdb_store(backend):
+        runtime = _duckdb_runtime(backend, state)
+        runtime.ensure_materialize_attached()  # REQ-1901: resolves runtime._store_broker
+        runtime._store_broker.upsert_arrow(schema, name, full_columns, pk_columns, stamped)
+        return
+    await _land_row_cache(
+        engine,
+        backend,
+        state,
+        schema,
+        name,
+        cache_table,
+        pk_columns,
+        columns,
+        data.to_pylist(),
+        resolved_ttl,
+    )
 
 
 async def _land_row_cache(

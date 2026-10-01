@@ -171,10 +171,12 @@ def test_typedefs_cover_the_types_and_containments():
     rels = {d["name"]: d for d in relationship_type_defs()}
     assert rels["provisa_source_tables"]["endDef1"]["isContainer"] is True
     assert rels["provisa_table_columns"]["endDef2"]["type"] == PROVISA_COLUMN_TYPE
-    # REQ-1634: a data product does not own its members, so neither end containers.
+    # REQ-1634: a data product does not own its members — AGGREGATION, never COMPOSITION, so
+    # Atlas never cascade-deletes a table with its product. Atlas requires exactly one container
+    # end on an AGGREGATION (ATLAS-400-00-032): the product, never the member table.
     members_rel = rels["provisa_data_product_members"]
     assert members_rel["relationshipCategory"] == "AGGREGATION"
-    assert members_rel["endDef1"]["isContainer"] is False
+    assert members_rel["endDef1"]["isContainer"] is True
     assert members_rel["endDef2"]["isContainer"] is False
     assert members_rel["endDef1"]["type"] == PROVISA_DATA_PRODUCT_TYPE
     assert members_rel["endDef2"]["type"] == PROVISA_TABLE_TYPE
@@ -224,3 +226,33 @@ def test_atlan_keeps_builtin_types_and_no_classification_merge():
         "Column",
         "Process",
     }
+
+
+# Attributes Atlas's built-in base types already define. Redeclaring one in a subtype makes Atlas
+# refuse the WHOLE typedef batch (ATLAS-400-00-09E "Attribute already exists in another parent
+# type"), so no provisa_* type registers and every publish fails.
+_ATLAS_INHERITED = {
+    "Referenceable": {"qualifiedName"},
+    "Asset": {"qualifiedName", "name", "description", "owner", "displayName", "userDescription"},
+    "DataSet": {"qualifiedName", "name", "description", "owner", "displayName", "userDescription"},
+}
+
+
+def test_no_provisa_typedef_redeclares_an_inherited_attribute():  # REQ-1388, REQ-1634
+    from provisa.api.metadata_export.atlas import entity_type_defs
+
+    for definition in entity_type_defs():
+        inherited = set().union(*(_ATLAS_INHERITED[s] for s in definition["superTypes"]))
+        declared = {a["name"] for a in definition["attributeDefs"]}
+        assert not (declared & inherited), (definition["name"], declared & inherited)
+
+
+def test_every_container_relationship_names_exactly_one_container_end():  # REQ-1388, REQ-1634
+    """Atlas refuses a COMPOSITION/AGGREGATION relationshipDef unless exactly one end is the
+    container (ATLAS-400-00-032), which fails the whole typedef batch."""
+    from provisa.api.metadata_export.atlas import relationship_type_defs
+
+    for rel in relationship_type_defs():
+        if rel["relationshipCategory"] in ("COMPOSITION", "AGGREGATION"):
+            containers = [rel["endDef1"]["isContainer"], rel["endDef2"]["isContainer"]]
+            assert containers.count(True) == 1, (rel["name"], containers)

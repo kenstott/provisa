@@ -40,7 +40,7 @@ from provisa.core.models import MailConfig, SmtpMailConfig
 from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_admin import orgs, user_org_memberships
-from provisa.core.schema_org import admin_audit_log, query_audit_log
+from provisa.core.schema_org import admin_audit_log, query_audit_log, user_directory
 from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import roles, user_role_assignments
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
@@ -49,12 +49,13 @@ pytestmark = [pytest.mark.integration]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "5432")
-_SYNC_URL = f"postgresql+psycopg2://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
-_ASYNC_URL = f"postgresql+asyncpg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
+_SYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
+_ASYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provisa"
 
 _ADMIN_SCHEMA = "test_invmail_admin"
 _ORG_SCHEMAS = {"root": "test_invmail_root", "acme": "test_invmail_acme"}
-_TENANT_TABLES = [roles, user_role_assignments, admin_audit_log, query_audit_log]
+# user_directory: every authenticated request upserts the caller's directory entry (REQ-1439).
+_TENANT_TABLES = [roles, user_role_assignments, admin_audit_log, query_audit_log, user_directory]
 
 # REQ-1297 seeds these as system template roles in every org schema. REQ-1337: the invite gates read
 # the RIGHTS these rows carry — an empty capability list authorizes nothing however the row is named

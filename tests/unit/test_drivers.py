@@ -26,7 +26,7 @@ class TestDriverRegistry:
 
     def test_mysql_has_driver(self):
         if not has_driver("mysql"):
-            pytest.skip("aiomysql not installed")
+            pytest.skip("pymysql not installed")
         assert has_driver("mysql")
 
     def test_duckdb_has_driver(self):
@@ -36,12 +36,12 @@ class TestDriverRegistry:
 
     def test_sqlserver_has_driver(self):
         try:
-            import aioodbc  # noqa: F401
+            import pyodbc  # noqa: F401
 
-            aioodbc_available = True
+            pyodbc_available = True
         except ImportError:
-            aioodbc_available = False
-        assert has_driver("sqlserver") == aioodbc_available
+            pyodbc_available = False
+        assert has_driver("sqlserver") == pyodbc_available
 
     def test_oracle_has_driver(self):
         if not has_driver("oracle"):

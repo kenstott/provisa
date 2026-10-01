@@ -270,7 +270,11 @@ def test_firebird_attached_and_queried_through_duckdb_engine():
 
         conn.execute(details["attach"])  # the real ATTACH DDL, unmodified
 
-        result = conn.execute(f'SELECT id, name FROM "{src.id}".{_TABLE} ORDER BY id').fetchall()
+        # REQ-1670..1676 (803658e4): the connector attaches the raw source under its own alias
+        # (details["raw_alias"], "_src_<id>"), the name the runtime reads it through.
+        result = conn.execute(
+            f'SELECT id, name FROM "{details["raw_alias"]}".{_TABLE} ORDER BY id'
+        ).fetchall()
         assert [(r[0], r[1]) for r in result] == _WIDGETS
     finally:
         conn.close()

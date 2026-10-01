@@ -22,6 +22,7 @@ per call) directly."""
 from __future__ import annotations
 
 import asyncio
+import threading
 from dataclasses import dataclass
 
 import pytest
@@ -64,7 +65,7 @@ async def test_no_debounce_applies_each_event_individually():
     """debounce_quiet=0 (default) — one land_fn call per event, no batching."""
     ev = _events(3)
     provider = _ScriptedProvider([(ev[0], 0), (ev[1], 0), (ev[2], 0)])
-    disconnect = asyncio.Event()
+    disconnect = threading.Event()
     calls: list[list] = []
 
     async def _land(events):
@@ -92,7 +93,7 @@ async def test_debounce_batches_a_burst_into_one_flush():
     # All three arrive back-to-back (no gap), then the stream ends — the quiet period elapses
     # only after the last event, via the final flush (stream end), not a mid-stream timeout.
     provider = _ScriptedProvider([(ev[0], 0), (ev[1], 0), (ev[2], 0)])
-    disconnect = asyncio.Event()
+    disconnect = threading.Event()
     calls: list[list] = []
 
     async def _land(events):
@@ -122,7 +123,7 @@ async def test_debounce_quiet_period_flushes_mid_stream():
     provider = _ScriptedProvider(
         [(ev[0], 0), (ev[1], 0), (ev[2], 0.15), (ev[3], 0)]  # gap > quiet after event[1]
     )
-    disconnect = asyncio.Event()
+    disconnect = threading.Event()
     calls: list[list] = []
 
     async def _land(events):
@@ -152,7 +153,7 @@ async def test_debounce_max_delay_caps_staleness_under_continuous_churn():
     # must force at least one flush before the stream ends.
     script = [(ev[0], 0)] + [(e, 0.03) for e in ev[1:]]
     provider = _ScriptedProvider(script)
-    disconnect = asyncio.Event()
+    disconnect = threading.Event()
     calls: list[list] = []
 
     async def _land(events):
@@ -179,7 +180,7 @@ async def test_stream_end_flushes_partial_batch():
     never elapsed) still lands them — no events silently dropped when the source disconnects."""
     ev = _events(2)
     provider = _ScriptedProvider([(ev[0], 0), (ev[1], 0)])  # stream ends right after
-    disconnect = asyncio.Event()
+    disconnect = threading.Event()
     calls: list[list] = []
 
     async def _land(events):
@@ -213,7 +214,7 @@ async def test_ack_called_with_exactly_the_flushed_batch_after_landing():
     from unittest.mock import AsyncMock
 
     provider.ack = AsyncMock()
-    disconnect = asyncio.Event()
+    disconnect = threading.Event()
 
     async def _land(events):
         return {"upsert": len(events), "delete": 0}
@@ -241,7 +242,7 @@ async def test_backpressure_bounded_queue_never_grows_unbounded():
     buffering every event in memory — the backpressure mechanism, not just a batching nicety."""
     ev = _events(50)
     provider = _ScriptedProvider([(e, 0) for e in ev])  # fires as fast as possible
-    disconnect = asyncio.Event()
+    disconnect = threading.Event()
     calls: list[list] = []
 
     async def _slow_land(events):

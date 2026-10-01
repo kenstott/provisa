@@ -29,7 +29,7 @@ from provisa.core.schema_org import domains
 
 pytestmark = pytest.mark.asyncio
 
-_EMBEDDED = ["sqlite+aiosqlite:///:memory:", "duckdb:///:memory:"]
+_EMBEDDED = ["sqlite+pysqlite:///:memory:", "duckdb:///:memory:"]
 
 # tenant_id is a UUID column. Strings are the ambient form (JWT claim → the guard coerces); the
 # raw, un-guarded seed inserts below use UUID objects the column accepts directly.

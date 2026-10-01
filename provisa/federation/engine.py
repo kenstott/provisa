@@ -522,6 +522,7 @@ def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
     from provisa.federation.connector_duckdb import (
         DuckDBAirportConnector,
         DuckDBBigQueryConnector,
+        DuckDBClickHouseConnector,
         DuckDBCsvConnector,
         DuckDBDeltaConnector,
         DuckDBDuckdbConnector,
@@ -559,6 +560,8 @@ def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
             DuckDBAirportConnector(),
             DuckDBIcebergConnector(),  # core `iceberg` extension — iceberg_scan (REQ-899)
             DuckDBDeltaConnector(),  # core `delta` extension — delta_scan (REQ-899)
+            # core `httpfs` + read_parquet of ClickHouse's HTTP interface, rewritten per query (REQ-899)
+            DuckDBClickHouseConnector(),
             # REQ-1690: the Calcite pgwire connectors attached live through the postgres extension.
             DuckDBSharepointConnector(),
             DuckDBSplunkConnector(),

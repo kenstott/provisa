@@ -58,15 +58,19 @@ _PROTO_TYPE_MAP: dict[str, str] = {
     "number": "double",  # OpenAPI JSON-Schema "number" (provisa.openapi.register._OPENAPI_TYPE_MAP)
     "timestamp": "google.protobuf.Timestamp",
     "timestamp with time zone": "google.protobuf.Timestamp",
+    "timestamptz": "google.protobuf.Timestamp",  # postgres timestamp with time zone alias
     "datetime": "google.protobuf.Timestamp",  # SQLite / MySQL timestamp type name
     "date": "string",
     "time": "string",
     "time with time zone": "string",
+    "timetz": "string",  # postgres time with time zone alias
+    "interval": "string",  # ISO 8601 duration text (ir_types.iso8601_duration)
     "json": "string",
     "jsonb": "string",
     "text": "string",
     "string": "string",  # OpenAPI JSON-Schema "string" (provisa.openapi.register._OPENAPI_TYPE_MAP)
     "float4": "float",
+    "float": "float",  # the canonical IR name (provisa.core.ir_types) for 4-byte floats
     "float8": "double",
 }
 

@@ -63,14 +63,17 @@ class FakeConnection:
 
 
 class FakePool:
+    """The control-plane ``Database`` LISTEN surface: listeners register on the database itself
+    (its listener thread owns the LISTEN connection), not on an acquired pooled connection."""
+
     def __init__(self, conn: FakeConnection):
         self._conn = conn
 
-    async def acquire(self):
-        return self._conn
+    async def add_listener(self, channel: str, callback):
+        await self._conn.add_listener(channel, callback)
 
-    async def release(self, conn):
-        pass
+    async def remove_listener(self, channel: str, callback):
+        await self._conn.remove_listener(channel, callback)
 
 
 class TestPgProvider:
@@ -108,8 +111,21 @@ class TestPgProvider:
         conn = FakeConnection()
         pool = FakePool(conn)
         provider = PgNotificationProvider(pool=pool)
+
+        gen = provider.watch("orders")
+
+        async def fire():
+            await asyncio.sleep(0.05)
+            conn.fire("provisa_orders", json.dumps({"op": "INSERT", "row": {"id": 1}}))
+
+        task = asyncio.create_task(fire())
+        await gen.__anext__()
+        await task
+        assert conn._listeners["provisa_orders"]  # listening while the watch is live
+        await gen.aclose()
         await provider.close()
-        assert provider._conn is None
+        # Nothing is held once the watch ends: its listener is gone from the database.
+        assert conn._listeners["provisa_orders"] == []
 
     @pytest.mark.asyncio
     async def test_invalid_json_skipped(self):

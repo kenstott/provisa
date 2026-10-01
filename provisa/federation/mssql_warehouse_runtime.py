@@ -32,11 +32,22 @@ import os
 import struct
 from typing import Any
 
+from provisa.core import request_deadline
 from provisa.core.ir_types import to_ir
 from provisa.executor.result import QueryResult, ResultStream
 from provisa.federation.runtime_support import run_async_materialized, stream_rows_from_arrow
 
 _SQL_COPT_SS_ACCESS_TOKEN = 1256
+
+
+def driver_error() -> type[Exception]:
+    """The warehouse driver's base error — for the backend's "this table is not queryable" attach
+    contract (native_backend._attach_errors) without the backend importing the driver itself."""
+    import pyodbc
+
+    return pyodbc.Error
+
+
 _AAD_SCOPE = "https://database.windows.net/.default"
 _ARROW_CHUNK_ROWS = 10_000  # rows per lazy fetchmany chunk for the Arrow stream (REQ-1216)
 
@@ -117,6 +128,14 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
         import pyodbc
         from azure.identity import DefaultAzureCredential
 
+        if self._engine_name == "fabric":
+            from provisa.federation import fabric_capacity
+
+            # REQ-1775: a Paused/Suspended capacity refuses the login outright; resume it first
+            # when this deployment names its capacity (unset = capacity managed externally).
+            if fabric_capacity.capacity_configured():
+                fabric_capacity.ensure_capacity_resumed()
+
         token = DefaultAzureCredential().get_token(_AAD_SCOPE).token
         raw = token.encode("utf-16-le")
         token_struct = struct.pack(f"<I{len(raw)}s", len(raw), raw)
@@ -155,7 +174,9 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
 
     def _phys_parts(self, source: Any) -> tuple[str, str, str]:
         """(database, schema, table) — the governed physical name (catalog pinned to the warehouse db)."""
-        return self._database, source.schema_name, source.table_name
+        from provisa.transpiler.transpile import tsql_physical_schema
+
+        return self._database, tsql_physical_schema(source.schema_name), source.table_name
 
     def _ensure_schema(self, cur: Any, schema: str) -> None:
         cur.execute(f"IF SCHEMA_ID('{schema}') IS NULL EXEC('CREATE SCHEMA [{schema}]')")
@@ -410,7 +431,8 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
 
         del params  # SQL arrives fully substituted from the governed pipeline
         cur = self._conn.cursor()
-        cur.execute(sql)
+        with request_deadline.cancel_on_deadline(cur.cancel):
+            cur.execute(sql)
         names = [c[0] for c in cur.description] if cur.description else []
         if not names:
             cur.close()
@@ -420,7 +442,8 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
             cols = {name: [row[i] for row in rows] for i, name in enumerate(names)}
             return pa.table(cols, schema=schema) if schema is not None else pa.table(cols)
 
-        first_rows = cur.fetchmany(_ARROW_CHUNK_ROWS)
+        with request_deadline.cancel_on_deadline(cur.cancel):
+            first_rows = cur.fetchmany(_ARROW_CHUNK_ROWS)
         if not first_rows:
             cur.close()
             return pa.table({name: [] for name in names}).schema, iter(())
@@ -431,7 +454,8 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
             try:
                 yield from first_tbl.to_batches()
                 while True:
-                    rows = cur.fetchmany(_ARROW_CHUNK_ROWS)
+                    with request_deadline.cancel_on_deadline(cur.cancel):
+                        rows = cur.fetchmany(_ARROW_CHUNK_ROWS)
                     if not rows:
                         break
                     yield from _chunk_to_table(rows, schema).to_batches()

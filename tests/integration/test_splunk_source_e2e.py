@@ -28,7 +28,7 @@ its dynamic-discovery path: one Trino/Calcite table per Splunk **Data Model** (`
 (``time``, ``host``, ``source``, ``sourcetype``, ``index``) auto-merged with the model's own
 declared fields. There is no way to expose a bare index as a queryable table through this
 connector — a Data Model is required. This was confirmed live: ``SHOW TABLES FROM
-<catalog>.splunk`` lists Splunk's own shipped sample models (``internal_audit_logs``,
+<catalog>.<source schema>`` (REQ-1730: the sql-normalized source id) lists Splunk's own shipped sample models (``internal_audit_logs``,
 ``internal_server``) plus whatever Data Model this test seeds.
 
 A genuine product-adjacent gotcha, root-caused against the live stack (not guessed) and worked
@@ -366,15 +366,18 @@ async def test_splunk_catalog_created_and_queryable():
 
         # The catalog exposes Splunk's Data Models as Trino tables (see module docstring) —
         # confirmed live: no bare-index table exists through this connector, only Data Models.
+        # REQ-1730: the schema is the sql-normalized source id (TrinoSplunkConnector.details
+        # "schema"), the same name DuckDB's pgwire bridge exposes — no longer the fixed "splunk".
+        schema = src.id.replace("-", "_")
         cur.execute(f"SHOW SCHEMAS FROM {catalog}")
         schemas = {r[0] for r in cur.fetchall()}
-        assert "splunk" in schemas
+        assert schema in schemas
 
-        cur.execute(f"SHOW TABLES FROM {catalog}.splunk")
+        cur.execute(f"SHOW TABLES FROM {catalog}.{schema}")
         tables = {r[0] for r in cur.fetchall()}
         assert _MODEL in tables
 
-        # Querying <catalog>.splunk.<model> through Trino IS reading through the federation
+        # Querying <catalog>.<schema>.<model> through Trino IS reading through the federation
         # engine — Trino's splunk connector (Calcite Data-Model discovery) reads live from
         # Splunk; nothing is landed. Splunk's own indexing + data-model summary generation is
         # eventually consistent, so retry generously.
@@ -383,7 +386,8 @@ async def test_splunk_catalog_created_and_queryable():
         while time.monotonic() < deadline:
             try:
                 cur.execute(
-                    f"SELECT widget_id, widget_name FROM {catalog}.splunk.{_MODEL} ORDER BY widget_id"
+                    f"SELECT widget_id, widget_name FROM {catalog}.{schema}.{_MODEL} "
+                    "ORDER BY widget_id"
                 )
                 rows = cur.fetchall()
             except trino.exceptions.TrinoExternalError:

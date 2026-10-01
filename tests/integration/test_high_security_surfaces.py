@@ -23,7 +23,6 @@ encrypting client actually uses.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import socket
@@ -50,9 +49,9 @@ _KMS_KEY = "arn:aws:kms:us-east-1:000000000000:key/high-security-surfaces"
 
 
 def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return int(s.getsockname()[1])
+    from tests.port_lease import lease_port
+
+    return lease_port()
 
 
 def _high_state() -> SimpleNamespace:
@@ -180,17 +179,13 @@ def test_http_data_path_served_with_a_decryption_key(http_base_url):
 @pytest.fixture(scope="module")
 def flight_location():
     port = _free_port()
-    loop = asyncio.new_event_loop()
-    loop_thread = threading.Thread(target=loop.run_forever, daemon=True)
-    loop_thread.start()
-    server = ProvisaFlightServer(_high_state(), location=f"grpc://127.0.0.1:{port}", main_loop=loop)
+    # Each RPC runs on its handler thread's own loop (REQ-1882); no shared loop to hand it.
+    server = ProvisaFlightServer(_high_state(), location=f"grpc://127.0.0.1:{port}")
     serve_thread = threading.Thread(target=server.serve, daemon=True)
     serve_thread.start()
     yield f"grpc://127.0.0.1:{port}"
     server.shutdown()
     serve_thread.join(timeout=10)
-    loop.call_soon_threadsafe(loop.stop)
-    loop_thread.join(timeout=5)
 
 
 def test_flight_query_ticket_refused_without_a_decryption_key(flight_location):
@@ -209,7 +204,7 @@ class _GenericHandler(grpc.GenericRpcHandler):
     """Answers any method, so a refusal can only have come from the interceptor."""
 
     def service(self, handler_call_details):  # noqa: ARG002  # every method resolves the same way
-        async def behavior(request, context):  # noqa: ARG001  # neither is read
+        def behavior(request, context):  # noqa: ARG001  # neither is read
             return b"rows"
 
         return grpc.unary_unary_rpc_method_handler(behavior)
@@ -217,14 +212,19 @@ class _GenericHandler(grpc.GenericRpcHandler):
 
 @pytest.fixture
 async def grpc_channel():
+    # REQ-1882: the production server is the synchronous thread-per-RPC grpc.server.
+    from concurrent.futures import ThreadPoolExecutor
+
     port = _free_port()
-    server = grpc.aio.server(interceptors=[AuthInterceptor(_high_state())])
+    server = grpc.server(
+        ThreadPoolExecutor(max_workers=4), interceptors=[AuthInterceptor(_high_state())]
+    )
     server.add_generic_rpc_handlers((_GenericHandler(),))
     server.add_insecure_port(f"127.0.0.1:{port}")
-    await server.start()
+    server.start()
     async with grpc.aio.insecure_channel(f"127.0.0.1:{port}") as channel:
         yield channel
-    await server.stop(grace=None)
+    server.stop(grace=None).wait()
 
 
 @pytest.mark.asyncio
