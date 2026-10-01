@@ -37,6 +37,7 @@ import asyncio
 import base64
 import logging
 import os
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, NamedTuple
@@ -151,6 +152,10 @@ class SettingInvalid(ValueError):
 
 _settings: dict[str, Setting] = {}
 _loaded = False
+# Request threads reach the registry at the same time, and the first of them loads the catalog.
+# Re-entrant: the catalog's own import may read the registry on the thread that is loading it.
+_load_lock = threading.RLock()
+_loading = False
 _config: dict[str, Any] = {}
 # The value each restart setting had when this process booted; None until it boots.
 _frozen: dict[str, Any] | None = None
@@ -163,14 +168,24 @@ def register(setting: Setting) -> None:
 
 
 def _ensure_loaded() -> None:
-    global _loaded
+    """Register the catalog, once. ``_loaded`` is set only when every setting is registered, so a
+    thread that finds it set finds the whole registry; a thread that arrives while another loads
+    waits for the lock rather than reading a registry still being filled."""
+    global _loaded, _loading
     if _loaded:
         return
-    _loaded = True
-    from provisa.core import settings_catalog
+    with _load_lock:
+        if _loaded or _loading:
+            return  # loaded while this thread waited, or this thread is the one loading
+        _loading = True
+        try:
+            from provisa.core import settings_catalog
 
-    for setting in settings_catalog.DECLARED:
-        register(setting)
+            for setting in settings_catalog.DECLARED:
+                register(setting)
+            _loaded = True
+        finally:
+            _loading = False
 
 
 def setting(key: str) -> Setting:
