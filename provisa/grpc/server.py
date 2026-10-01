@@ -526,7 +526,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
 
     async def _handle_query_bound(self, request, context, type_name: str, role_id: str):
         """The routing+execution body of _handle_query, run with the RPC's org already bound."""
-        from provisa.grpc.query_ir import grpc_table_to_semantic_sql
+        from provisa.grpc.query_ir import FilterError, grpc_table_to_semantic_sql
         from provisa.pgwire._pipeline import (
             _execute_plan,
             _govern_and_route_compiled,
@@ -550,7 +550,13 @@ class ProvisaServicer:  # REQ-045, REQ-143
         # IR: lower the request straight to a semantic SELECT (shared with the HTTP gRPC proxy), then
         # govern → route → physical exactly as the SQL/Cypher transports do.
         filter_msg = request.filter if request.HasField("filter") else None
-        semantic_sql = grpc_table_to_semantic_sql(ctx, type_name, request.limit, filter_msg)
+        # A filter on a column this role cannot read is refused by name before anything is
+        # governed or run — its row count would otherwise reveal the hidden value.
+        try:
+            semantic_sql = grpc_table_to_semantic_sql(ctx, type_name, request.limit, filter_msg)
+        except FilterError as exc:
+            await context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
+            return
         if semantic_sql is None:
             await context.abort(grpc.StatusCode.NOT_FOUND, f"No table for type {type_name!r}")
             return
@@ -881,7 +887,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
 
         from provisa.compiler.parser import GraphQLValidationError, parse_query
         from provisa.compiler.sql_gen import compile_query
-        from provisa.grpc.query_ir import grpc_table_to_group_by_graphql_text
+        from provisa.grpc.query_ir import FilterError, grpc_table_to_group_by_graphql_text
         from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
 
         state = self._state
@@ -902,16 +908,21 @@ class ProvisaServicer:  # REQ-045, REQ-143
         funcs = list(getattr(request, "funcs", [])) or None
         columns = list(getattr(request, "columns", [])) or None  # REQ-1882
         filter_msg = request.filter if request.HasField("filter") else None
-        gql_text = grpc_table_to_group_by_graphql_text(
-            ctx,
-            type_name,
-            by_columns,
-            funcs=funcs,
-            include_nodes=include_nodes,
-            include=include,
-            filter_msg=filter_msg,
-            columns=columns,
-        )
+        # A filter on a column this role cannot read is refused by name, as on Query{Type}.
+        try:
+            gql_text = grpc_table_to_group_by_graphql_text(
+                ctx,
+                type_name,
+                by_columns,
+                funcs=funcs,
+                include_nodes=include_nodes,
+                include=include,
+                filter_msg=filter_msg,
+                columns=columns,
+            )
+        except FilterError as exc:
+            await context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
+            return
         if gql_text is None:
             await context.abort(
                 grpc.StatusCode.INVALID_ARGUMENT,

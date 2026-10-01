@@ -73,6 +73,32 @@ def _filter_set_fields(filter_msg: Any | None) -> list[tuple[str, Any]]:
     ]
 
 
+class FilterError(ValueError):
+    """A ``filter`` field the request may not set; ``field`` is the offending field name."""
+
+    def __init__(self, field: str, type_name: str, reason: str) -> None:
+        super().__init__(f"Invalid filter field {field!r} for {type_name}: {reason}")
+        self.field = field
+
+
+def _readable_filter_fields(
+    ctx: Any, meta: Any, type_name: str, filter_msg: Any | None
+) -> list[tuple[str, Any]]:
+    """``_filter_set_fields``, each field checked to be a column this role can read.
+
+    The native server serves one wire proto whose ``{Type}Filter`` message carries every column,
+    so a role can set a filter field for a column hidden from it. A predicate on that column
+    would return only the rows matching it — the row count confirming or refuting the hidden
+    value — so the field is refused by name, whatever its value, before any statement is built.
+    Raises :class:`FilterError`."""
+    readable = {c for c, _t in ctx.aggregate_columns.get(meta.table_id, [])}
+    fields = _filter_set_fields(filter_msg)
+    for field, _value in fields:
+        if field not in readable:
+            raise FilterError(field, type_name, "not a readable field")
+    return fields
+
+
 def grpc_table_to_semantic_sql(
     ctx: Any, type_name: str, limit: int, filter_msg: Any | None = None
 ) -> str | None:
@@ -80,7 +106,8 @@ def grpc_table_to_semantic_sql(
     the domain separator (``PS__Inquiries`` → ``PsInquiries``), so match case/separator-insensitively.
 
     ``filter_msg`` (REQ-1860) is the request's ``{Type}Filter`` sub-message; its explicitly-set
-    fields (see ``_filter_set_fields``) become an AND-joined equality WHERE clause."""
+    fields (see ``_filter_set_fields``) become an AND-joined equality WHERE clause. A field that is
+    not a column the role can read raises :class:`FilterError` (``_readable_filter_fields``)."""
     from provisa.compiler.params import _sql_literal
 
     meta = _find_table_meta(ctx, type_name)
@@ -89,7 +116,8 @@ def grpc_table_to_semantic_sql(
     cols = ", ".join(_q(c) for c, _t in ctx.aggregate_columns.get(meta.table_id, [])) or "*"
     sql = f"SELECT {cols} FROM {_semantic_table_ref(meta)}"
     where_parts = [
-        f"{_q(col)} = {_sql_literal(val)}" for col, val in _filter_set_fields(filter_msg)
+        f"{_q(col)} = {_sql_literal(val)}"
+        for col, val in _readable_filter_fields(ctx, meta, type_name, filter_msg)
     ]
     if where_parts:
         sql = f"{sql} WHERE {' AND '.join(where_parts)}"
@@ -313,10 +341,9 @@ def _graphql_literal(val: Any) -> str:
     return f'"{escaped}"'
 
 
-def _filter_graphql_where(filter_msg: Any | None) -> str:
+def _filter_graphql_where(fields: list[tuple[str, Any]]) -> str:
     """``where: { col: { eq: v } ... }`` argument text for a ``{Type}Filter`` message's
     explicitly-set fields (REQ-1860), or "" if none are set."""
-    fields = _filter_set_fields(filter_msg)
     if not fields:
         return ""
     parts = " ".join(
@@ -349,12 +376,14 @@ def grpc_table_to_group_by_graphql_text(
     scalars — mirroring JSON:API's ``?include=`` sideloading and REST's ``?includeNodes=``
     dot-path list; see ``_include_node_fields``. ``filter_msg`` (REQ-1860) is the request's
     ``{Type}Filter`` sub-message; its explicitly-set fields become a ``where: { col: { eq: v } }``
-    argument, mirroring JSON:API/REST's own equality filters."""
+    argument, mirroring JSON:API/REST's own equality filters. A field that is not a column the role
+    can read raises :class:`FilterError` (``_readable_filter_fields``)."""
     meta = _find_table_meta(ctx, type_name)
     if meta is None:
         return None
     if not by_columns:
         return None
+    filter_fields = _readable_filter_fields(ctx, meta, type_name, filter_msg)
     gb_field = _group_by_field_name(meta.field_name)
     by_arg = "[" + ", ".join(apply_gql_name(c) for c in by_columns) + "]"
     agg_selection = _agg_fields_selection(ctx, meta.table_id, funcs, columns)
@@ -362,6 +391,6 @@ def grpc_table_to_group_by_graphql_text(
     if include_nodes:
         node_fields = _include_node_fields(ctx, meta, include or [])
         nodes_part = f" nodes {{ {' '.join(node_fields)} }}"
-    where_part = _filter_graphql_where(filter_msg)
+    where_part = _filter_graphql_where(filter_fields)
     gb_args = ", ".join(a for a in (f"by: {by_arg}", where_part) if a)
     return f"{{ {gb_field}({gb_args}) {{ groupKey aggregate {agg_selection}{nodes_part} }} }}"
