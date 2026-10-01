@@ -191,6 +191,7 @@ def persist_duckdb_native(
     require_pk(persist, set(), pk_columns)
     dialect = _duckdb_dialect()
     _ensure_schema(con, catalog, schema, dialect)
+    require_duckdb_replica_table(con, catalog, schema, table, action="write the replica")
     con.execute(_create_ddl(catalog, schema, table, columns))  # create-if-absent (first land)
     qualified = _qualified(catalog, schema, table)
     colnames = [name for name, _ in columns]
@@ -239,6 +240,7 @@ def apply_cdc_duckdb_native(
         )
     dialect = _duckdb_dialect()
     _ensure_schema(con, catalog, schema, dialect)
+    require_duckdb_replica_table(con, catalog, schema, table, action="write the replica")
     con.execute(_create_ddl(catalog, schema, table, columns))  # create-if-absent (first land)
     qualified = _qualified(catalog, schema, table)
     colnames = [name for name, _ in columns]
@@ -288,6 +290,7 @@ def upsert_arrow_duckdb_native(
         )
     dialect = _duckdb_dialect()
     _ensure_schema(con, catalog, schema, dialect)
+    require_duckdb_replica_table(con, catalog, schema, table, action="write the replica")
     con.execute(_create_ddl(catalog, schema, table, columns))  # create-if-absent (first land)
     qualified = _qualified(catalog, schema, table)
     import uuid
@@ -363,6 +366,9 @@ def ensure_row_cache_table_duckdb_native(
     cur = con.cursor()
     try:
         _ensure_schema(cur, catalog, schema, dialect)
+        require_duckdb_replica_table(
+            cur, catalog, schema, table, action="write the row-level replica"
+        )
         have = _existing_columns(cur, catalog, schema, table)
         want = [name for name, _ in columns]
         if have == want:
@@ -449,6 +455,9 @@ def tombstone_row_cache_duckdb_native(
         return
     cur = con.cursor()
     try:
+        require_duckdb_replica_table(
+            cur, catalog, schema, table, action="write the row-level replica"
+        )
         qualified = _qualified(catalog, schema, table)
         pk_list = ", ".join(f'"{c}"' for c in pk_columns)
         if len(pk_columns) == 1:

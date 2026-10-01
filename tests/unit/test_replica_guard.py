@@ -76,6 +76,49 @@ def test_the_duckdb_store_refuses_a_view_at_the_replicas_name():
     require_duckdb_replica_table(con, "memory", "main", "elsewhere", action="write")
 
 
+@pytest.mark.parametrize(
+    "write",
+    ["persist", "apply_cdc", "upsert_arrow", "ensure_row_cache_table", "tombstone_row_cache"],
+)
+def test_every_duckdb_store_writer_refuses_a_view_at_the_replicas_name(write):
+    import duckdb
+    import pyarrow as pa
+
+    from provisa.federation import store_connection as sc
+
+    con = duckdb.connect()
+    con.execute("CREATE SCHEMA mat")
+    con.execute("CREATE TABLE elsewhere (id INTEGER, amount DOUBLE)")
+    con.execute("INSERT INTO elsewhere VALUES (1, 1.5), (2, 3.0)")
+    con.execute("CREATE VIEW mat.orders AS SELECT * FROM elsewhere")
+    target = {"catalog": "memory", "schema": "mat", "table": "orders"}
+    columns = [("id", "integer"), ("amount", "double")]
+    calls = {
+        "persist": lambda: sc.persist_duckdb_native(
+            con, **target, columns=columns, rows=[{"id": 9, "amount": 0.0}], persist="replace"
+        ),
+        "apply_cdc": lambda: sc.apply_cdc_duckdb_native(
+            con, **target, columns=columns, pk_columns=["id"], events=[]
+        ),
+        "upsert_arrow": lambda: sc.upsert_arrow_duckdb_native(
+            con,
+            **target,
+            columns=columns,
+            pk_columns=["id"],
+            data=pa.table({"id": [9], "amount": [0.0]}),
+        ),
+        "ensure_row_cache_table": lambda: sc.ensure_row_cache_table_duckdb_native(
+            con, **target, columns=columns
+        ),
+        "tombstone_row_cache": lambda: sc.tombstone_row_cache_duckdb_native(
+            con, **target, pk_columns=["id"], keys=[(1,)]
+        ),
+    }
+    with pytest.raises(ReplicaTargetError, match="is a view"):
+        calls[write]()
+    assert con.execute("SELECT * FROM elsewhere ORDER BY id").fetchall() == [(1, 1.5), (2, 3.0)]
+
+
 # -- the DuckDB engine: one relation per physical name, whichever way the table switches --------------
 
 

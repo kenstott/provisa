@@ -156,7 +156,8 @@ async def ensure_resident(
     sources = [s for s in _all_sources if s.id in wanted]
     if not sources:
         return []
-    # REQ-826: a replicated table whose replica could not be reconciled is not read at all.
+    # REQ-826: a replicated table whose replica could not be reconciled is not read at all. An
+    # in-memory lookup: this is on every read's path and issues no control-plane statement.
     backend.require_reconciled(s.id for s in sources)
     _bound_tables = {getattr(b, "table_name", None) for b in pk_bounds} | set(pushed_down)
     _unbound_targets = set(unbound_targets)
@@ -732,9 +733,12 @@ async def _ensure_row_cache_table(
 
     cache_table = build_row_cache_table(schema, name, columns, (), dialect_name=backend.dialect)
     dsn = engine.engine.materialize_store()
+    from provisa.federation.replica_guard import require_store_replica_table
+
     async with store_writer.store_connection(dsn) as conn:
         if schema and conn.capabilities.schemas:
             await conn.execute_core(CreateSchema(schema, if_not_exists=True))
+        await require_store_replica_table(conn, schema, name, action="write the row-level replica")
     # Additive reconcile (REQ-828 pattern, same as add_missing_columns's other callers): a cache
     # table already landed at this name by an OLDER row-materialize schema (missing the cache's
     # own _row_cached_at/_row_expires_at bookkeeping columns) never gets those columns from
@@ -898,7 +902,10 @@ async def _land_row_cache(
     from provisa.federation.materialize_exec import land_rows
 
     dsn = engine.engine.materialize_store()
+    from provisa.federation.replica_guard import require_store_replica_table
+
     async with store_writer.store_connection(dsn) as conn:
+        await require_store_replica_table(conn, schema, name, action="write the row-level replica")
         await land_rows(conn, cache_table, pk_columns, rows, resolved_cache_ttl=resolved_ttl)
 
 
@@ -922,7 +929,10 @@ async def _tombstone_row_cache(
     from provisa.federation import store_writer
 
     dsn = engine.engine.materialize_store()
+    from provisa.federation.replica_guard import require_store_replica_table
+
     async with store_writer.store_connection(dsn) as conn:
+        await require_store_replica_table(conn, schema, name, action="write the row-level replica")
         await _tombstone_keys(conn, cache_table, pk_columns, keys)
 
 

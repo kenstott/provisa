@@ -212,7 +212,12 @@ class EngineBackend:
 
     def require_reconciled(self, source_ids: Any) -> None:
         """Refuse a read of any source with a replica that could not be reconciled (REQ-826): the
-        read would be answered by something other than that table's replica."""
+        read would be answered by something other than that table's replica.
+
+        Refused per SOURCE today: this is asked where a read's sources are known and its tables
+        are not, so a sibling table of the same source is refused with it. The target is per
+        TABLE — it becomes that when a replica is addressed by its own name (REQ-1912) and the
+        read's tables are resolved here. An in-memory lookup; no store or control plane is read."""
         from provisa.federation.replica_guard import ReplicaUnavailable
 
         wanted = set(source_ids)

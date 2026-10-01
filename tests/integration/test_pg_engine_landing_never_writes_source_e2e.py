@@ -240,9 +240,7 @@ def _server(pg: _SourceAndEngine, workdir: str, config: dict):
         return sorted((row["id"], row["amount"]) for row in response.json()["data"]["orders"])
 
     try:
-        # The bound on waiting for the boot, not a delay: a boot is ~30 s of work and a busy
-        # host stretches it (81 s measured at load average 65), past the harness's 120 s default.
-        srv.start(timeout=300.0)
+        srv.start()
         yield _read
         time.sleep(3)  # the boot's background work (readiness warm-up, reconcile) settles
     finally:
@@ -319,15 +317,11 @@ def test_a_source_read_live_again_after_being_replicated_reads_the_source(databa
     ]
 
 
-async def test_a_replica_write_addressed_to_a_view_over_the_source_is_refused(databases):
-    """The guard itself, on the engine's runtime: with the live view standing at the replica's
-    name, a land raises the named error and sends nothing to the source."""
+def _stand_a_view_over_the_source_at_the_replicas_name(pg: _SourceAndEngine) -> None:
+    """What a live attach leaves in the engine: ``src_public.orders``, a view over a postgres_fdw
+    foreign table of the source's ``orders``."""
     import psycopg
 
-    from provisa.federation.pg_runtime import PgFederationRuntime
-    from provisa.federation.replica_guard import ReplicaTargetError
-
-    pg = databases
     with psycopg.connect(pg.url(pg.engine_port, "provisa"), autocommit=True) as conn:
         conn.execute("CREATE EXTENSION IF NOT EXISTS postgres_fdw")
         conn.execute(
@@ -343,14 +337,25 @@ async def test_a_replica_write_addressed_to_a_view_over_the_source_is_refused(da
         conn.execute("CREATE SCHEMA src_public")
         conn.execute("CREATE VIEW src_public.orders AS SELECT * FROM fdw_guarded.orders")
 
+
+_REPLICA_COLUMNS = [("id", "integer"), ("amount", "double")]
+
+
+async def test_a_replica_write_addressed_to_a_view_over_the_source_is_refused(databases):
+    """The guard itself, on the engine's runtime: with the live view standing at the replica's
+    name, a land raises the named error and sends nothing to the source."""
+    from provisa.federation.pg_runtime import PgFederationRuntime
+    from provisa.federation.replica_guard import ReplicaTargetError
+
+    pg = databases
+    _stand_a_view_over_the_source_at_the_replicas_name(pg)
     since = pg.source_statement_count()
     runtime = PgFederationRuntime(engine_dsn=pg.url(pg.engine_port, "provisa"))
-    columns = [("id", "integer"), ("amount", "double")]
     with pytest.raises(ReplicaTargetError) as refused:
         await runtime.land_table(
             schema="src_public",
             table="orders",
-            columns=columns,
+            columns=_REPLICA_COLUMNS,
             rows=[{"id": 1, "amount": 0.0}],
             pk_columns=["id"],
         )
@@ -358,4 +363,49 @@ async def test_a_replica_write_addressed_to_a_view_over_the_source_is_refused(da
     assert '"src_public"."orders" is a view' in message
     assert "fdw_guarded.orders on foreign server guarded" in message and "dbname=shop" in message
     assert pg.source_writes(since) == []
+    assert pg.source_rows() == _ROWS
+
+
+async def test_every_store_write_refuses_a_view_over_the_source(databases):
+    """Every write the store face and the row-level replica make — create, reconcile, replace,
+    persist, CTAS swap, row upsert, tombstone — is refused by the same error, and none reaches
+    the source."""
+    from types import SimpleNamespace
+
+    from provisa.federation import query_residency, store_writer
+    from provisa.federation.materialize_exec import build_row_cache_table
+    from provisa.federation.replica_guard import ReplicaTargetError
+
+    pg = databases
+    _stand_a_view_over_the_source_at_the_replicas_name(pg)
+    since = pg.source_statement_count()
+    dsn = pg.url(pg.engine_port, "provisa")
+    target = {"schema": "src_public", "table": "orders", "columns": _REPLICA_COLUMNS}
+    rows = [{"id": 1, "amount": 0.0}]
+    engine = SimpleNamespace(engine=SimpleNamespace(materialize_store=lambda: dsn))
+    backend = SimpleNamespace(dialect="postgres")
+    cache_table = build_row_cache_table("src_public", "orders", _REPLICA_COLUMNS, ("id",))
+    row_target = (engine, backend, None, "src_public", "orders")
+    writes = {
+        "ensure_table": lambda: store_writer.ensure_table(dsn, **target),
+        "reconcile_table": lambda: store_writer.reconcile_table(dsn, **target),
+        "land": lambda: store_writer.land(dsn, **target, rows=rows),
+        "persist_land": lambda: store_writer.persist_land(
+            dsn, **target, rows=rows, persist="replace"
+        ),
+        "land_ctas": lambda: store_writer.land_ctas(dsn, **target, rows=rows),
+        "row cache: ensure": lambda: query_residency._ensure_row_cache_table(
+            *row_target, _REPLICA_COLUMNS
+        ),
+        "row cache: land": lambda: query_residency._land_row_cache(
+            *row_target, cache_table, ["id"], _REPLICA_COLUMNS, rows, 60
+        ),
+        "row cache: tombstone": lambda: query_residency._tombstone_row_cache(
+            *row_target, cache_table, ["id"], [(1,)]
+        ),
+    }
+    for name, write in writes.items():
+        with pytest.raises(ReplicaTargetError, match="is a view"):
+            await write()
+        assert pg.source_writes(since) == [], name
     assert pg.source_rows() == _ROWS

@@ -117,6 +117,9 @@ async def land_ctas(
             from sqlalchemy.schema import CreateSchema
 
             await conn.execute_core(CreateSchema(schema, if_not_exists=True))
+        # The swap below renames the loaded temp onto ``table``: whatever stands at that name
+        # must be nothing or an ordinary table of the store, checked before anything is written.
+        await require_store_replica_table(conn, schema, table, action="write the CTAS result to")
         await conn.execute_core(CreateTable(tmp_tbl))
         try:
             await _bulk_insert(conn, tmp_tbl, rows)
