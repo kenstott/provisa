@@ -890,7 +890,7 @@ async def govern_statement(
     # statement's bound values — so a governed statement is kept in the org's compiled-query cache
     # (generation-keyed, TTL-evicted, bounded) and a repeat is not parsed, validated or governed
     # again. Every raw-SQL surface reaches the pipeline here, so they all share it.
-    from provisa.pgwire.governed_plan import PlanSlot
+    from provisa.pgwire.governed_plan import PlanSlot, acting_role_set
     from provisa.core.request_context import session_vars_for
 
     _session_vars = session_vars if session_vars is not None else session_vars_for(role)
@@ -968,6 +968,7 @@ async def govern_statement(
         state.schema_boot_id,
         state.schema_version,
         _bypass_guard,
+        acting_roles=acting_role_set(),
     )
     if state.compiled_query_cache.get(_cq_key) is None:
         violations = validate_sql(

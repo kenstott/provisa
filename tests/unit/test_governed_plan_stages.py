@@ -259,3 +259,31 @@ def test_a_cache_key_parses_a_statement_text_once(monkeypatch):
     assert parses["n"] == 1
     # The shape still collapses literal-only differences onto one entry.
     assert cqc.routing_cache_key(sql.replace("7", "8"), "analyst", "boot", 1) == first
+
+
+async def test_a_plan_governed_for_a_wider_acting_role_set_is_not_served_to_a_narrower_one(
+    pipeline,
+):
+    """REQ-1620: domain access follows the union of the roles a caller is acting as. That set is
+    an input of governance, so it is part of the plan's identity: a statement admitted for
+    (analyst + sales_reader) must be governed again — and refused — for analyst alone."""
+    from provisa.core.request_context import reset_role_claims, set_role_claims
+
+    state = pipeline.state
+    state.roles["analyst"]["domain_access"] = ["hr"]  # not the statement's domain (sales)
+    state.roles["sales_reader"] = {"id": "sales_reader", "capabilities": [], "domain_access": ["*"]}
+    token = set_role_claims(["analyst", "sales_reader"])
+    try:
+        wide = await pipeline.mod._govern_and_route(_SQL, "analyst")
+        assert wide.sql
+    finally:
+        reset_role_claims(token)
+    with pytest.raises(PermissionError):
+        await pipeline.mod._govern_and_route(_SQL, "analyst")
+    token = set_role_claims(["sales_reader", "analyst"])  # the same set, another order: same plan
+    try:
+        before = dict(pipeline.calls)
+        await pipeline.mod._govern_and_route(_SQL, "analyst")
+        assert pipeline.calls == before
+    finally:
+        reset_role_claims(token)

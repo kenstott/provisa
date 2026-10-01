@@ -65278,7 +65278,14 @@
     keeps what is a function of the governed statement alone with that statement (its memo): the catalog-physical
     lowering, the unoptimized direct-route SQL, and pgwire''s derived result shape; the routing-cache key
     and the table-name extraction that would_materialize_optimize reads are kept per statement text. Bound
-    values, pk bounds, as-of, delivery, explain, the audit record and every live-state lookup stay per execution.]'
+    values, pk bounds, as-of, delivery, explain, the audit record and every live-state lookup stay per execution.]
+
+
+    (Amended 2026-10-01, acting-role set in the keys.) The kept-plan key (`governed_plan.plan_key`) and
+    the validate-outcome key (`compiled_query_cache_key`) carry the set of roles the caller is acting as
+    when there is more than one (REQ-1620, `governed_plan.acting_role_set`). Domain access is the union
+    over that set, so a statement admitted under a wider set is governed again, and refused, for a
+    narrower one.'
   use_case: >-
     Compiled query outcomes for governance validation are deterministic per (SQL shape, role, person,
     schema version) and expensive (relationship-guard and row-level constraint evaluation over complex

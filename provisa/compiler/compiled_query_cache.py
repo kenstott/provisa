@@ -130,16 +130,21 @@ def compiled_query_cache_key(
     schema_boot_id: str,
     schema_version: int,
     bypass_relationship_guard: bool,
+    acting_roles: tuple[str, ...] = (),
 ) -> str:
     """Build the cache key described in the module docstring. `sql_text` is shape-hashed
     (unbounded caller-authored length, and literal-independent by design); every other component
-    is small and included verbatim."""
+    is small and included verbatim. ``acting_roles`` is the set of roles the caller is acting as
+    when there is more than one (REQ-1620, ``governed_plan.acting_role_set``): the domain-access
+    check this outcome records passes on their union, so an outcome reached under a wider set
+    must not answer for a narrower one."""
     return "\x00".join(
         [
             schema_boot_id,
             str(schema_version),
             role_id,
             person_id or "",
+            ",".join(acting_roles),
             "g1" if bypass_relationship_guard else "g0",
             sql_shape_digest(sql_text),
         ]
