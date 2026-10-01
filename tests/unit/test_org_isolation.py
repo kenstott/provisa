@@ -24,6 +24,27 @@ def _conn_with_advisory_lock() -> AsyncMock:
     return conn
 
 
+def _engine_backed_pool(conn: AsyncMock) -> MagicMock:
+    """A PostgreSQL control-plane ``Database`` double: ``acquire()`` yields ``conn`` and
+    ``engine.begin()`` yields the SQLAlchemy connection ``init_schema`` hands to
+    ``add_missing_columns``.
+
+    That connection is a mock, so a test using this pool patches what runs on it
+    (``add_missing_columns``, the config stamp's install) — the real ones inspect a live connection. Unpatched, a mock connection raised
+    NoInspectionAvailable when this file ran alone and passed in a full run only because
+    ``sqlalchemy.orm`` (imported by some other module by then) registers an inspector for
+    ``object`` that accepts a MagicMock."""
+    pool = MagicMock()
+    pool.acquire = MagicMock(
+        return_value=AsyncMock(
+            __aenter__=AsyncMock(return_value=conn),
+            __aexit__=AsyncMock(return_value=False),
+        )
+    )
+    pool.dialect = "postgresql"
+    return pool
+
+
 # ---------------------------------------------------------------------------
 # REQ-695: asyncpg pool sets search_path=org_<org_id> via init hook
 # ---------------------------------------------------------------------------
@@ -172,6 +193,31 @@ class TestInitSchema:
             assert any(f"{expected}_mv_cache" in s for s in core_sql), core_sql
             executed = [c.args[0] for c in mock_conn.execute.await_args_list if c.args]
             assert any(s == f'SET search_path TO "{expected}"' for s in executed), executed
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("env", "expected"),
+        [(None, "org_myorg"), ("prod", "org_myorg"), ("dev", "org_myorg_env_dev")],
+    )
+    async def test_init_schema_reconciles_columns_on_an_engine_backed_pool(self, env, expected):
+        # REQ-697/REQ-1488: on the control-plane Database (which has a SQLAlchemy engine) the
+        # schema.sql pass is followed by the metadata reconcile — on the pool's own engine
+        # connection, over the tenant metadata's tables, in the org's (or environment's) schema —
+        # and then by the config stamp's install over the same connection and schema (REQ-1914).
+        from provisa.core import config_stamp, schema_org
+        from provisa.core.db import init_schema
+
+        mock_conn = _conn_with_advisory_lock()
+        mock_pool = _engine_backed_pool(mock_conn)
+        with (
+            patch("provisa.core.db.add_missing_columns") as add_missing,
+            patch("provisa.core.config_stamp.install") as install_stamp,
+        ):
+            await init_schema(mock_pool, "SELECT 1", org_id="myorg", env=env)
+
+        sa_conn = mock_pool.engine.begin.return_value.__enter__.return_value
+        add_missing.assert_called_once_with(sa_conn, schema_org.metadata.sorted_tables, expected)
+        install_stamp.assert_called_once_with(sa_conn, config_stamp.TENANT_TABLES, expected)
 
     @pytest.mark.asyncio
     async def test_create_org_role_grants_each_environment_to_the_one_org_role(self):  # REQ-1488
