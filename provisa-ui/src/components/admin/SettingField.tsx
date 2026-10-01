@@ -20,6 +20,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import {
+  Accordion,
   Alert,
   Badge,
   Button,
@@ -29,6 +30,7 @@ import {
   Modal,
   PasswordInput,
   Select,
+  SimpleGrid,
   Stack,
   Text,
   TextInput,
@@ -123,7 +125,10 @@ const rowId = (s: CatalogSetting, mk: string) => `${s.key}.${mk}`;
 const mapStored = (s: CatalogSetting, mk: string) =>
   toDraft((s.stored as Record<string, unknown> | undefined)?.[mk], "str");
 
-/** One row per entry of a fixed-key map; an empty row means the entry uses its default. */
+/**
+ * One row per entry of a fixed-key map, in columns inside an expandable panel; an empty row means
+ * the entry uses its default. The panel starts collapsed and opens by itself when a row has an error.
+ */
 function MapRows({
   setting: s,
   keys,
@@ -138,47 +143,66 @@ function MapRows({
   onChange: (rowKey: string, draft: string) => void;
 }) {
   const { t } = useTranslation();
+  const [opened, setOpened] = useState(false);
   const value = (s.value ?? {}) as Record<string, unknown>;
+  const hasError = keys.some((mk) => Boolean(errors[rowId(s, mk)]));
   return (
-    <Stack gap="xs" data-testid={`setting-${s.key}`}>
-      <Text fw={500} fz="sm">
-        {t(`settings.${s.key}.label`)}
-      </Text>
-      <Text fz="xs" c="dimmed">
-        {t(`settings.${s.key}.help`)}
-        {s.restart_required && (
-          <Badge size="xs" color="orange" ml={4} data-testid={`setting-${s.key}-restart`}>
-            {t("adminPage.setting.restartRequired")}
-          </Badge>
-        )}
-      </Text>
-      {keys.map((mk) => {
-        const id = `setting-${rowId(s, mk)}`;
-        const source = s.sources?.[mk];
-        const error = errors[rowId(s, mk)];
-        return (
-          <TextInput
-            key={mk}
-            label={t(`settings.${s.key}.keys.${mk}`)}
-            placeholder={toDraft(value[mk], "str")}
-            description={
-              source && source !== "stored" ? (
-                <span data-testid={`${id}-source`}>
-                  {t("adminPage.setting.sourceLabel", {
-                    source: t(`adminPage.setting.source.${source}`),
-                  })}
-                </span>
-              ) : undefined
-            }
-            value={drafts[rowId(s, mk)] ?? ""}
-            disabled={!s.editable}
-            onChange={(e) => onChange(rowId(s, mk), e.currentTarget.value)}
-            error={error ? <span data-testid={`${id}-error`}>{error}</span> : undefined}
-            data-testid={id}
-          />
-        );
-      })}
-    </Stack>
+    <Accordion
+      variant="contained"
+      value={opened || hasError ? s.key : null}
+      onChange={(v) => setOpened(v === s.key)}
+      data-testid={`setting-${s.key}`}
+    >
+      <Accordion.Item value={s.key}>
+        <Accordion.Control data-testid={`setting-${s.key}-toggle`}>
+          <Text fw={500} fz="sm" component="span">
+            {t(`settings.${s.key}.label`)}
+          </Text>
+          {s.restart_required && (
+            <Badge size="xs" color="orange" ml={4} data-testid={`setting-${s.key}-restart`}>
+              {t("adminPage.setting.restartRequired")}
+            </Badge>
+          )}
+        </Accordion.Control>
+        <Accordion.Panel>
+          <Text fz="xs" c="dimmed" mb="xs">
+            {t(`settings.${s.key}.help`)}
+          </Text>
+          <SimpleGrid
+            cols={{ base: 1, sm: 2, lg: 3 }}
+            spacing="sm"
+            data-testid={`setting-${s.key}-grid`}
+          >
+            {keys.map((mk) => {
+              const id = `setting-${rowId(s, mk)}`;
+              const source = s.sources?.[mk];
+              const error = errors[rowId(s, mk)];
+              return (
+                <TextInput
+                  key={mk}
+                  label={t(`settings.${s.key}.keys.${mk}`)}
+                  placeholder={toDraft(value[mk], "str")}
+                  description={
+                    source && source !== "stored" ? (
+                      <span data-testid={`${id}-source`}>
+                        {t("adminPage.setting.sourceLabel", {
+                          source: t(`adminPage.setting.source.${source}`),
+                        })}
+                      </span>
+                    ) : undefined
+                  }
+                  value={drafts[rowId(s, mk)] ?? ""}
+                  disabled={!s.editable}
+                  onChange={(e) => onChange(rowId(s, mk), e.currentTarget.value)}
+                  error={error ? <span data-testid={`${id}-error`}>{error}</span> : undefined}
+                  data-testid={id}
+                />
+              );
+            })}
+          </SimpleGrid>
+        </Accordion.Panel>
+      </Accordion.Item>
+    </Accordion>
   );
 }
 

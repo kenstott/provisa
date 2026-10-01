@@ -473,6 +473,35 @@ describe("map settings with map_keys", () => {
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
     expect(await screen.findByTestId(`${row("pgwire")}-error`)).toHaveTextContent("1");
   });
+
+  const toggle = () => screen.getByTestId("setting-limits.request_timeouts-toggle");
+
+  it("keeps the rows in an expandable panel that starts collapsed", () => {
+    wrap(<CatalogCard title="Limits" settings={[timeouts]} onSave={vi.fn()} />);
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(toggle());
+    expect(toggle()).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(toggle());
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("lays the rows out in columns inside the panel", () => {
+    wrap(<CatalogCard title="Limits" settings={[timeouts]} onSave={vi.fn()} />);
+    const grid = screen.getByTestId("setting-limits.request_timeouts-grid");
+    for (const k of ["graphql", "flight", "pgwire"]) {
+      expect(grid).toContainElement(screen.getByTestId(row(k)));
+    }
+    expect(grid.className).toMatch(/SimpleGrid/);
+  });
+
+  it("opens the panel when one of its rows has an error", async () => {
+    wrap(<CatalogCard title="Limits" settings={[timeouts]} onSave={vi.fn()} />);
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
+    fireEvent.change(screen.getByTestId(row("pgwire")), { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+    expect(await screen.findByTestId(`${row("pgwire")}-error`)).toBeInTheDocument();
+    expect(toggle()).toHaveAttribute("aria-expanded", "true");
+  });
 });
 
 describe("new server reasons", () => {

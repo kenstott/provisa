@@ -251,4 +251,29 @@ describe("ServerLimitsCard", () => {
     expect(screen.getByTestId("limit-timeout-flight")).toHaveValue("");
     expect(screen.queryByTestId("limit-timeout-flight-effective")).toBeNull();
   });
+
+  it("keeps the per-transport rows in an expandable panel, in columns, collapsed at first", async () => {
+    fetchMock.mockResolvedValue(settings());
+    renderCard();
+    const toggle = await screen.findByTestId("limit-timeouts-toggle");
+    expect(toggle).toHaveTextContent("Request timeout per transport");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    const grid = screen.getByTestId("limit-timeouts-grid");
+    for (const k of TRANSPORTS)
+      expect(grid).toContainElement(screen.getByTestId(`limit-timeout-${k}`));
+    expect(grid.className).toMatch(/SimpleGrid/);
+    expect(grid).not.toContainElement(screen.getByTestId("limit-request-timeout"));
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("opens the per-transport panel when one of its rows has an error", async () => {
+    fetchMock.mockResolvedValue(settings());
+    renderCard();
+    const toggle = await screen.findByTestId("limit-timeouts-toggle");
+    fireEvent.change(screen.getByTestId("limit-timeout-rest"), { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+    expect(await screen.findByTestId("limit-timeout-rest-error")).toBeInTheDocument();
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+  });
 });

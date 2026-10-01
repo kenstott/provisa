@@ -109,6 +109,7 @@ export function ServerLimitsCard() {
   const [def, setDef] = useState("");
   const [rowLimit, setRowLimit] = useState("");
   const [per, setPer] = useState<Record<string, string>>({});
+  const [perOpen, setPerOpen] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
@@ -261,35 +262,63 @@ export function ServerLimitsCard() {
           }
           data-testid="limit-request-timeout"
         />
-        {TRANSPORTS.map((k) => (
-          <TextInput
-            key={k}
-            label={t(`adminPage.transport.${k}`)}
-            description={
-              <>
-                {k in TRANSPORT_HELP && (
-                  <span data-testid={`limit-timeout-${k}-help`}>
-                    {t(`adminPage.transportHelp.${k}`)}{" "}
-                  </span>
-                )}
-                {(per[k] ?? "").trim() === "" && shipped[k] !== undefined && (
-                  <span data-testid={`limit-timeout-${k}-shipped`}>
-                    {t("adminPage.requestTimeoutUsesShipped", { seconds: shipped[k] })}
-                  </span>
-                )}
-                {(per[k] ?? "").trim() === "" && shipped[k] === undefined && effective !== null && (
-                  <span data-testid={`limit-timeout-${k}-effective`}>
-                    {t("adminPage.requestTimeoutUsesDefault", { seconds: effective })}
-                  </span>
-                )}
-              </>
-            }
-            value={per[k] ?? ""}
-            onChange={(e) => setPer({ ...per, [k]: e.currentTarget.value })}
-            error={errors[k] && <span data-testid={`limit-timeout-${k}-error`}>{errors[k]}</span>}
-            data-testid={`limit-timeout-${k}`}
-          />
-        ))}
+        <Accordion
+          variant="contained"
+          value={perOpen || TRANSPORTS.some((k) => Boolean(errors[k])) ? "per-transport" : null}
+          onChange={(v) => setPerOpen(v === "per-transport")}
+        >
+          <Accordion.Item value="per-transport">
+            <Accordion.Control data-testid="limit-timeouts-toggle">
+              <Text fw={500} fz="sm" component="span">
+                {t("settings.limits.request_timeouts.label")}
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Text fz="xs" c="dimmed" mb="xs">
+                {t("settings.limits.request_timeouts.help")}
+              </Text>
+              <SimpleGrid
+                cols={{ base: 1, sm: 2, lg: 3 }}
+                spacing="sm"
+                data-testid="limit-timeouts-grid"
+              >
+                {TRANSPORTS.map((k) => (
+                  <TextInput
+                    key={k}
+                    label={t(`adminPage.transport.${k}`)}
+                    description={
+                      <>
+                        {k in TRANSPORT_HELP && (
+                          <span data-testid={`limit-timeout-${k}-help`}>
+                            {t(`adminPage.transportHelp.${k}`)}{" "}
+                          </span>
+                        )}
+                        {(per[k] ?? "").trim() === "" && shipped[k] !== undefined && (
+                          <span data-testid={`limit-timeout-${k}-shipped`}>
+                            {t("adminPage.requestTimeoutUsesShipped", { seconds: shipped[k] })}
+                          </span>
+                        )}
+                        {(per[k] ?? "").trim() === "" &&
+                          shipped[k] === undefined &&
+                          effective !== null && (
+                            <span data-testid={`limit-timeout-${k}-effective`}>
+                              {t("adminPage.requestTimeoutUsesDefault", { seconds: effective })}
+                            </span>
+                          )}
+                      </>
+                    }
+                    value={per[k] ?? ""}
+                    onChange={(e) => setPer({ ...per, [k]: e.currentTarget.value })}
+                    error={
+                      errors[k] && <span data-testid={`limit-timeout-${k}-error`}>{errors[k]}</span>
+                    }
+                    data-testid={`limit-timeout-${k}`}
+                  />
+                ))}
+              </SimpleGrid>
+            </Accordion.Panel>
+          </Accordion.Item>
+        </Accordion>
       </Stack>
       <SaveRow save={save} saving={saving} msg={msg} />
     </Card>
