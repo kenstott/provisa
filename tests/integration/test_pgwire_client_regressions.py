@@ -239,7 +239,7 @@ class TestDescribeWithoutExecuteDoesNotLeak:
             close_calls.append(self)
             orig_close(self)
 
-        async def _fake_govern(sql, role_id, params=None):
+        async def _fake_govern(sql, role_id, params=None, wire_formats=None):
             del sql, role_id
             return EngineResult(rows=[(1,)], column_names=["v"])
 
@@ -282,7 +282,7 @@ class TestDescribeWithoutExecuteDoesNotLeak:
             opened.append(self)
             orig_init(self, *args, **kwargs)
 
-        async def _fake_govern(sql, role_id, params=None):
+        async def _fake_govern(sql, role_id, params=None, wire_formats=None):
             del role_id
             executed.append(sql)
             return EngineResult(rows=[(2,)], column_names=["v"])
@@ -319,7 +319,7 @@ class TestAsyncpgBinaryTypeRoundTrip:
         """
         state = _make_mock_state("admin", "none")
 
-        async def _fake_govern(sql, role_id, params=None):
+        async def _fake_govern(sql, role_id, params=None, wire_formats=None):
             del sql, role_id
             return EngineResult(rows=[(42,)], column_names=["n"], column_types=["int4"])
 
@@ -339,7 +339,7 @@ class TestAsyncpgBinaryTypeRoundTrip:
         """Same class of bug, a second lowercase integer type name (bigint's wire name)."""
         state = _make_mock_state("admin", "none")
 
-        async def _fake_govern(sql, role_id, params=None):
+        async def _fake_govern(sql, role_id, params=None, wire_formats=None):
             del sql, role_id
             return EngineResult(rows=[(9_876_543_210,)], column_names=["n"], column_types=["int8"])
 
