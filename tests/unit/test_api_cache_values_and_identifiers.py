@@ -119,6 +119,33 @@ def test_statement_text_is_rendered_by_the_dialect(dialect, column, column_sql, 
     ]
 
 
+async def test_promotion_target_is_a_quoted_schema_qualified_name(monkeypatch):
+    import provisa.api.app as app
+    from provisa.api_source import promotions, router_integration
+
+    targets: list[str] = []
+
+    async def _apply(_conn, table_name, _promotions, cast_source=False):
+        del cast_source
+        targets.append(table_name)
+        return 0
+
+    @asynccontextmanager
+    async def _acquire():
+        yield object()
+
+    monkeypatch.setattr(promotions, "apply_promotions", _apply)
+    monkeypatch.setattr(app.state, "tenant_db", SimpleNamespace(acquire=_acquire), raising=False)
+    endpoint = SimpleNamespace(promotions=[object()])
+
+    plain = CacheLocation(catalog="provisa_admin", schema="org_a_api_cache", backend="relational")
+    await router_integration._apply_cache_promotions(plain, "r_0123", endpoint)
+    odd = CacheLocation(catalog="provisa_admin", schema='s"; x', backend="relational")
+    await router_integration._apply_cache_promotions(odd, 't"; y', endpoint)
+
+    assert targets == ['org_a_api_cache."r_0123"', '"s""; x"."t""; y"']
+
+
 async def test_hydration_parent_lookup_quotes_its_names():
     from provisa.api.data.hydration import _hydrate_dataloader
 

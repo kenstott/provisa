@@ -58,7 +58,8 @@ async def _apply_cache_promotions(
     from provisa.api.app import state
     from provisa.api_source.promotions import apply_promotions
 
-    target = f'{loc.schema}."{tbl}"'
+    # The DDL runs on a connection to the Postgres store itself: schema-qualified, no catalog.
+    target = _engine_cache._table_ref(loc, tbl, "postgres", with_catalog=False)
     assert state.tenant_db is not None
     async with state.tenant_db.acquire() as pgc:
         await apply_promotions(pgc, target, endpoint.promotions, cast_source=True)

@@ -122,13 +122,17 @@ def _schema_ref(loc: CacheLocation, dialect: str) -> str:
     )
 
 
-def _table_ref(loc: CacheLocation, table_name: str, dialect: str) -> str:
+def _table_ref(
+    loc: CacheLocation, table_name: str, dialect: str, *, with_catalog: bool = True
+) -> str:
     """``catalog.schema."table"`` in ``dialect``: the table name always quoted, catalog and
-    schema as :func:`_schema_ref` writes them."""
+    schema as :func:`_schema_ref` writes them. ``with_catalog=False`` gives ``schema."table"``,
+    for a statement run on a connection to the store itself, where the engine's catalog name
+    for that store means nothing."""
     return exp.Table(
         this=exp.to_identifier(table_name, quoted=True),
         db=exp.to_identifier(loc.schema),
-        catalog=exp.to_identifier(loc.catalog),
+        catalog=exp.to_identifier(loc.catalog) if with_catalog else None,
     ).sql(dialect=dialect)
 
 
