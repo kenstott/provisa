@@ -12,6 +12,7 @@ import {
   PendingRestartBanner,
   SettingsCatalogPanel,
 } from "../SettingField";
+import { networkTransport } from "../settingGroups";
 import type { CatalogSetting, SettingsCatalog } from "../../../api/admin";
 import * as api from "../../../api/admin";
 
@@ -606,6 +607,75 @@ describe("PendingRestartBanner", () => {
   });
 });
 
+describe("network settings grouped by transport", () => {
+  const network = [
+    mk({ key: "server.hostname", type: "str", value: "h", stored: "h" }),
+    mk({ key: "server.grpc_port", value: 50051, stored: 50051, min: 0, max: 65535 }),
+    mk({ key: "server.flight_port", value: 8815, stored: 8815, min: 0, max: 65535 }),
+    mk({ key: "tls.cert", type: "str", value: "/c.pem", stored: "/c.pem" }),
+    mk({ key: "tls.grpc_cert", type: "str", value: "/gc.pem", stored: "/gc.pem" }),
+    mk({ key: "tls.grpc_key", type: "str", value: "/gk.pem", stored: "/gk.pem" }),
+  ];
+  const toggle = (g: string) => screen.getByTestId(`settings-group-${g}-toggle`);
+  const flow = (g: string) => screen.getByTestId(`settings-group-${g}-flow`);
+  const card = (onSave = vi.fn()) =>
+    wrap(
+      <CatalogCard title="Network" settings={network} onSave={onSave} groupBy={networkTransport} />,
+    );
+
+  it("names the transport a network setting belongs to", () => {
+    expect(networkTransport(network[0])).toBe("general");
+    expect(networkTransport(network[1])).toBe("grpc");
+    expect(networkTransport(network[2])).toBe("flight");
+    expect(networkTransport(network[3])).toBe("general");
+    expect(networkTransport(network[4])).toBe("grpc");
+    expect(networkTransport(mk({ key: "server.airport_port" }))).toBe("airport");
+    expect(networkTransport(mk({ key: "tls.pgwire_key" }))).toBe("pgwire");
+  });
+
+  it("puts each transport in its own expandable panel, collapsed at first", () => {
+    card();
+    for (const g of ["general", "grpc", "flight"]) {
+      expect(toggle(g)).toHaveAttribute("aria-expanded", "false");
+    }
+    expect(toggle("grpc")).toHaveTextContent("gRPC");
+    expect(toggle("flight")).toHaveTextContent("Arrow Flight");
+    fireEvent.click(toggle("grpc"));
+    expect(toggle("grpc")).toHaveAttribute("aria-expanded", "true");
+    expect(toggle("flight")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("flows the settings of a transport inside its panel", () => {
+    card();
+    for (const k of ["server.grpc_port", "tls.grpc_cert", "tls.grpc_key"]) {
+      expect(flow("grpc")).toContainElement(screen.getByTestId(`setting-${k}`));
+    }
+    expect(flow("general")).toContainElement(screen.getByTestId("setting-server.hostname"));
+    expect(flow("general")).toContainElement(screen.getByTestId("setting-tls.cert"));
+    expect(flow("grpc")).not.toContainElement(screen.getByTestId("setting-server.flight_port"));
+    expect(flow("grpc").style.flexWrap).toBe("wrap");
+  });
+
+  it("opens the panel of the transport whose setting has an error", async () => {
+    card();
+    fireEvent.change(screen.getByTestId("setting-server.grpc_port"), { target: { value: "-1" } });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+    expect(await screen.findByTestId("setting-server.grpc_port-error")).toBeInTheDocument();
+    expect(toggle("grpc")).toHaveAttribute("aria-expanded", "true");
+    expect(toggle("flight")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("still saves a changed setting from inside a panel", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    card(onSave);
+    fireEvent.change(screen.getByTestId("setting-server.flight_port"), {
+      target: { value: "9000" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ "server.flight_port": 9000 }, []));
+  });
+});
+
 describe("SettingsCatalogPanel", () => {
   const fetchMock = api.fetchSettingsCatalog as unknown as ReturnType<typeof vi.fn>;
   const updateMock = api.updateSettingsCatalog as unknown as ReturnType<typeof vi.fn>;
@@ -623,6 +693,22 @@ describe("SettingsCatalogPanel", () => {
   beforeEach(() => {
     fetchMock.mockReset();
     updateMock.mockReset();
+  });
+
+  it("groups the network card by transport", async () => {
+    fetchMock.mockResolvedValue({
+      snapshot_ttl_seconds: 5,
+      pending_restart: [],
+      cards: [
+        { id: "limits", settings: [num] },
+        { id: "network", settings: [mk({ key: "server.grpc_port", value: 50051, stored: 50051 })] },
+      ],
+    });
+    wrap(<SettingsCatalogPanel />);
+    expect(await screen.findByTestId("settings-group-grpc-toggle")).toBeInTheDocument();
+    expect(screen.getByTestId("catalog-card-limits")).not.toContainElement(
+      screen.getByTestId("settings-group-grpc-toggle"),
+    );
   });
 
   it("renders one card per catalog card plus the pending banner", async () => {

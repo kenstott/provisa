@@ -77,6 +77,8 @@
       "query_required": "query è obbligatoria",
       "query_timeout": "Query scaduta dopo {{timeout_s}}s",
       "redirect_upload_failed": "Caricamento con redirect non riuscito: {{error}}",
+      "request_interrupted": "{{error}}",
+      "row_level_key_required": "La tabella '{{table}}' è replicata riga per riga e può essere letta solo tramite la sua chiave ({{key}}). Filtra sulla chiave con un'uguaglianza o un elenco IN, oppure unisci la tabella su una singola colonna.",
       "schema_cache_not_ready": "Cache di generazione dello schema non pronta",
       "sql_generation_failed": "Impossibile generare SQL valido dopo 3 tentativi: {{error}}",
       "table_not_found": "Tabella '{{table}}' non trovata",

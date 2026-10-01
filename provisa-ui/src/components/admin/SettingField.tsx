@@ -23,6 +23,7 @@ import {
   Accordion,
   Alert,
   Badge,
+  Box,
   Button,
   Checkbox,
   Group,
@@ -40,6 +41,7 @@ import {
 import { fetchSettingsCatalog, updateSettingsCatalog } from "../../api/admin";
 import type { CatalogSetting, SettingsCatalog } from "../../api/admin";
 import { SaveRow } from "./settingsCards";
+import { CARD_GROUPS } from "./settingGroups";
 
 const present = (v: unknown) => v !== null && v !== undefined;
 
@@ -351,12 +353,16 @@ export function CatalogCard({
   title,
   settings,
   onSave,
+  groupBy,
 }: {
   title: string;
   settings: CatalogSetting[];
   onSave: (values: Record<string, unknown>, confirm: string[]) => Promise<unknown>;
+  /** When given, the settings are shown in one expandable panel per group, in first-seen order. */
+  groupBy?: (s: CatalogSetting) => string;
 }) {
   const { t } = useTranslation();
+  const [openGroups, setOpenGroups] = useState<string[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>(() =>
     Object.fromEntries(
       settings.flatMap((s) => {
@@ -443,42 +449,91 @@ export function CatalogCard({
     else await send(values, []);
   };
 
+  const field = (s: CatalogSetting) => {
+    const keys = rowKeys(s);
+    if (keys) {
+      return (
+        <MapRows
+          key={s.key}
+          setting={s}
+          keys={keys}
+          drafts={drafts}
+          errors={errors}
+          onChange={(rk, d) => setDrafts({ ...drafts, [rk]: d })}
+        />
+      );
+    }
+    return (
+      <SettingField
+        key={s.key}
+        setting={s}
+        draft={drafts[s.key] ?? ""}
+        error={errors[s.key] ?? ""}
+        cleared={cleared[s.key] === true}
+        onChange={(d) => {
+          setDrafts({ ...drafts, [s.key]: d });
+          setCleared({ ...cleared, [s.key]: false });
+        }}
+        onClear={() => setCleared({ ...cleared, [s.key]: true })}
+      />
+    );
+  };
+  // A setting has an error when its own field has one or, for a map, when one of its rows has.
+  const hasError = (s: CatalogSetting) =>
+    Boolean(errors[s.key]) || (rowKeys(s) ?? []).some((mk) => Boolean(errors[rowId(s, mk)]));
+  const groups: { id: string; settings: CatalogSetting[] }[] = [];
+  if (groupBy) {
+    for (const s of settings) {
+      const id = groupBy(s);
+      const group = groups.find((g) => g.id === id);
+      if (group) group.settings.push(s);
+      else groups.push({ id, settings: [s] });
+    }
+  }
+
   return (
     <Card withBorder padding="md" data-testid="settings-card">
       <Title order={4} mb="sm">
         {title}
       </Title>
-      <Stack gap="sm">
-        {settings.map((s) => {
-          const keys = rowKeys(s);
-          if (keys) {
-            return (
-              <MapRows
-                key={s.key}
-                setting={s}
-                keys={keys}
-                drafts={drafts}
-                errors={errors}
-                onChange={(rk, d) => setDrafts({ ...drafts, [rk]: d })}
-              />
-            );
-          }
-          return (
-            <SettingField
-              key={s.key}
-              setting={s}
-              draft={drafts[s.key] ?? ""}
-              error={errors[s.key] ?? ""}
-              cleared={cleared[s.key] === true}
-              onChange={(d) => {
-                setDrafts({ ...drafts, [s.key]: d });
-                setCleared({ ...cleared, [s.key]: false });
-              }}
-              onClear={() => setCleared({ ...cleared, [s.key]: true })}
-            />
-          );
-        })}
-      </Stack>
+      {groupBy ? (
+        <Accordion
+          multiple
+          variant="contained"
+          value={groups
+            .filter((g) => openGroups.includes(g.id) || g.settings.some(hasError))
+            .map((g) => g.id)}
+          onChange={setOpenGroups}
+        >
+          {groups.map((g) => (
+            <Accordion.Item key={g.id} value={g.id}>
+              <Accordion.Control data-testid={`settings-group-${g.id}-toggle`}>
+                <Text fw={500} fz="sm" component="span">
+                  {t(`adminPage.setting.group.${g.id}`)}
+                </Text>
+              </Accordion.Control>
+              <Accordion.Panel>
+                {/* A flow layout: fields sit side by side and wrap to the next line as needed. */}
+                <Group
+                  wrap="wrap"
+                  align="flex-start"
+                  gap="md"
+                  style={{ flexWrap: "wrap" }}
+                  data-testid={`settings-group-${g.id}-flow`}
+                >
+                  {g.settings.map((s) => (
+                    <Box key={s.key} style={{ flex: "1 1 260px", minWidth: 260 }}>
+                      {field(s)}
+                    </Box>
+                  ))}
+                </Group>
+              </Accordion.Panel>
+            </Accordion.Item>
+          ))}
+        </Accordion>
+      ) : (
+        <Stack gap="sm">{settings.map(field)}</Stack>
+      )}
       <SaveRow save={save} saving={saving} msg={msg} />
       <Modal
         opened={pending !== null}
@@ -579,6 +634,7 @@ export function SettingsCatalogPanel() {
             title={t(`adminPage.setting.card.${c.id}`)}
             settings={c.settings}
             onSave={save}
+            groupBy={CARD_GROUPS[c.id]}
           />
         </div>
       ))}

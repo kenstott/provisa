@@ -116,6 +116,14 @@
         "invalid_tls_pair": "O certificado e a chave privada devem ser definidos juntos ({{other}}).",
         "redis_tls_required": "O Redis deve usar TLS enquanto o TLS for exigido.",
         "cannot_decrypt": "Não foi possível descriptografar um valor armazenado com a chave atual."
+      },
+      "group": {
+        "general": "Geral e HTTP",
+        "grpc": "gRPC",
+        "flight": "Arrow Flight",
+        "pgwire": "PostgreSQL wire",
+        "bolt": "Bolt",
+        "airport": "Airport"
       }
     },
     "transportHelp": {

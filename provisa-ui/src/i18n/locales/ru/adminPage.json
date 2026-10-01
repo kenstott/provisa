@@ -116,6 +116,14 @@
         "invalid_tls_pair": "Сертификат и закрытый ключ нужно задавать вместе ({{other}}).",
         "redis_tls_required": "Redis должен использовать TLS, пока TLS обязателен.",
         "cannot_decrypt": "Сохранённое значение не удалось расшифровать текущим ключом."
+      },
+      "group": {
+        "general": "Общие и HTTP",
+        "grpc": "gRPC",
+        "flight": "Arrow Flight",
+        "pgwire": "PostgreSQL wire",
+        "bolt": "Bolt",
+        "airport": "Airport"
       }
     },
     "transportHelp": {

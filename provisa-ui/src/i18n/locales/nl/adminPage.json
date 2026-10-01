@@ -116,6 +116,14 @@
         "invalid_tls_pair": "Certificaat en privésleutel moeten samen worden ingesteld ({{other}}).",
         "redis_tls_required": "Redis moet TLS gebruiken zolang TLS vereist is.",
         "cannot_decrypt": "Een opgeslagen waarde kon niet worden ontsleuteld met de huidige sleutel."
+      },
+      "group": {
+        "general": "Algemeen en HTTP",
+        "grpc": "gRPC",
+        "flight": "Arrow Flight",
+        "pgwire": "PostgreSQL wire",
+        "bolt": "Bolt",
+        "airport": "Airport"
       }
     },
     "transportHelp": {

@@ -116,6 +116,14 @@
         "invalid_tls_pair": "The certificate and private key must be set together ({{other}}).",
         "redis_tls_required": "Redis must use TLS while TLS is required.",
         "cannot_decrypt": "A stored value could not be decrypted with the current key."
+      },
+      "group": {
+        "general": "General and HTTP",
+        "grpc": "gRPC",
+        "flight": "Arrow Flight",
+        "pgwire": "PostgreSQL wire",
+        "bolt": "Bolt",
+        "airport": "Airport"
       }
     },
     "transportHelp": {

@@ -77,6 +77,8 @@
       "query_required": "требуется query",
       "query_timeout": "Время ожидания запроса истекло через {{timeout_s}} с",
       "redirect_upload_failed": "Сбой загрузки с перенаправлением: {{error}}",
+      "request_interrupted": "{{error}}",
+      "row_level_key_required": "Таблица '{{table}}' реплицируется построчно и может быть прочитана только по её ключу ({{key}}). Отфильтруйте по ключу с помощью равенства или списка IN либо соедините таблицу по одному столбцу.",
       "schema_cache_not_ready": "Кеш сборки схемы не готов",
       "sql_generation_failed": "Не удалось сгенерировать корректный SQL за 3 попытки: {{error}}",
       "table_not_found": "Таблица '{{table}}' не найдена",

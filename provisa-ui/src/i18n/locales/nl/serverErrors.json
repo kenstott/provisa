@@ -77,6 +77,8 @@
       "query_required": "query is vereist",
       "query_timeout": "Query verlopen na {{timeout_s}}s",
       "redirect_upload_failed": "Redirect-upload mislukt: {{error}}",
+      "request_interrupted": "{{error}}",
+      "row_level_key_required": "Tabel '{{table}}' wordt rij voor rij gerepliceerd en kan alleen via de sleutel ({{key}}) worden gelezen. Filter op de sleutel met een gelijkheid of een IN-lijst, of koppel de tabel op één kolom.",
       "schema_cache_not_ready": "Schema-buildcache nog niet gereed",
       "sql_generation_failed": "Kon na 3 pogingen geen geldige SQL genereren: {{error}}",
       "table_not_found": "Tabel '{{table}}' niet gevonden",

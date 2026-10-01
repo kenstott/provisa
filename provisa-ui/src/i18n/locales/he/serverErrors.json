@@ -77,6 +77,8 @@
       "query_required": "query הוא שדה חובה",
       "query_timeout": "השאילתה חרגה מהזמן הקצוב לאחר {{timeout_s}} שניות",
       "redirect_upload_failed": "העלאת redirect נכשלה: {{error}}",
+      "request_interrupted": "{{error}}",
+      "row_level_key_required": "הטבלה '{{table}}' משוכפלת שורה אחר שורה וניתן לקרוא אותה רק לפי המפתח שלה ({{key}}). סננו לפי המפתח באמצעות שוויון או רשימת IN, או צרפו את הטבלה לפי עמודה אחת.",
       "schema_cache_not_ready": "מטמון בניית הסכמה אינו מוכן",
       "sql_generation_failed": "לא ניתן היה להפיק SQL תקין לאחר 3 ניסיונות: {{error}}",
       "table_not_found": "הטבלה '{{table}}' לא נמצאה",

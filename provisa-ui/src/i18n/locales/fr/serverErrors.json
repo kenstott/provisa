@@ -77,6 +77,8 @@
       "query_required": "query est requis",
       "query_timeout": "La requête a expiré après {{timeout_s}} s",
       "redirect_upload_failed": "Échec du téléversement par redirection : {{error}}",
+      "request_interrupted": "{{error}}",
+      "row_level_key_required": "La table '{{table}}' est répliquée ligne par ligne et ne peut être lue que par sa clé ({{key}}). Filtrez sur la clé avec une égalité ou une liste IN, ou joignez la table sur une seule colonne.",
       "schema_cache_not_ready": "Cache de construction du schéma non prêt",
       "sql_generation_failed": "Impossible de générer du SQL valide après 3 tentatives : {{error}}",
       "table_not_found": "Table « {{table}} » introuvable",

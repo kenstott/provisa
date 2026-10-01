@@ -116,6 +116,14 @@
         "invalid_tls_pair": "證書和私密金鑰必須同時設定（{{other}}）。",
         "redis_tls_required": "在要求使用 TLS 時，Redis 必須使用 TLS。",
         "cannot_decrypt": "無法用目前的金鑰解密已儲存的值。"
+      },
+      "group": {
+        "general": "一般及 HTTP",
+        "grpc": "gRPC",
+        "flight": "Arrow Flight",
+        "pgwire": "PostgreSQL wire",
+        "bolt": "Bolt",
+        "airport": "Airport"
       }
     },
     "transportHelp": {

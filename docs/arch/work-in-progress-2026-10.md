@@ -171,3 +171,88 @@ A copy of a source table is a **replica**; making or refreshing it is **replicat
 These replace "materialized", "landed" and "landing" in that sense. A **materialized view**
 keeps its name. The requirements use the new terms; code identifiers and UI strings follow
 in a separate pass.
+
+## Close-out work that every item above carries
+
+Building a feature does not finish it. Each entry in the summary table also needs the three
+things below before its requirement can be marked complete.
+
+### Documentation
+
+No user or operator documentation was written for anything on this page. To write:
+
+- **Operator guide:** the Deployment settings tab and what "restart required" and "pending
+  restart" mean; per-transport request timeouts and the shipped Flight and pgwire values;
+  the request-thread bound; multi-worker launch and the per-worker listener.
+- **Replication guide:** the `replicate` setting and its drop-down, what Never, Hot and
+  Always guarantee, the large-table recommendation, row-level tables and their filter
+  rule, what a reader sees while a replica is being built.
+- **Deployment guide:** control plane and data plane, query node and coordinator roles,
+  horizontal scaling, what must be highly available.
+- **API reference:** the body-role rule (header only), the settings catalog routes and
+  their error shapes, the row-level and replica-building errors, timeout errors that name
+  the transport.
+- **Sizing and tuning guide:** generated from a benchmark run; the hardware it was
+  measured on stated in physical cores.
+- **Terminology:** replica and replication in every document that says materialized or
+  landed for a copy of a source table.
+
+### Tests
+
+The `0911799a` build has 33 known failing tests. They are to be fixed, not left:
+
+| Count | Tests | What is wrong |
+|---|---|---|
+| 11 | pgwire integration | Test doubles take the old number of arguments |
+| 3 | Arrow Flight integration | Fixture connects no audit database |
+| 10 | Debug-trace span counts | Pass alone; an earlier test file in the same process leaves something emitting spans |
+| 2 | Debug-trace detail | Statement text missing on GraphQL over Flight; a window opened on one instance not seen on another |
+| 1 | Flight cached read | Arrow schema differs between the first read and the cached one |
+| 1 | Per-transport timeout, multi-worker | Needs its own Postgres; fails under the shared stack |
+| 2 | Source created through the admin API | The defect it documents is open |
+| 3 | Replica enforcement on Trino | The defect they document is open (REQ-1912) |
+
+Test work still owed by the items on this page:
+
+- Real-service runs for the pooled Databricks, Fabric and Synapse, Hive and Exasol drivers,
+  which have only run against stand-ins.
+- The settings catalog's multi-worker integration test, which has one case that has never
+  run.
+- End-to-end tests for the Deployment settings tab and for the first administrator of a
+  single-tenant install.
+- The benchmark tool against a running four-source stack.
+- A Trino run for every replication change; none of this work has run against Trino.
+- For REQ-1914: every change type observed on every worker of two instances.
+
+### Requirements: validation and consolidation
+
+The requirements were amended as decisions were made, so several now read as a decision
+log more than a specification.
+
+| Requirement | Amendments dated 2026-10-01 | Recorded status |
+|---|---|---|
+| REQ-1915 | 8 | proposed |
+| REQ-1900 | 6 | complete |
+| REQ-1911 | 5 | proposed |
+| REQ-1905 | 5 | complete |
+| REQ-1877 | 4 | complete |
+| REQ-803, REQ-1897 | 3 each | complete |
+
+To do:
+
+- **Consolidate.** Rewrite REQ-1915, REQ-1911 and REQ-1905 as one current statement each,
+  with the amendment history kept beneath it. REQ-1915 should probably split: the data
+  replicator, eager builds and central state, and the row-level rule are three
+  requirements.
+- **Correct statuses.** REQ-238 to REQ-241 (warm tables) are recorded as complete; the
+  design changed and nothing reads a warm copy. REQ-1900 and REQ-1905 are recorded as
+  complete and each gained scope this month. REQ-1907 is recorded as proposed on main
+  while its implementation sits on an unmerged branch with newer text.
+- **Resolve contradictions.** REQ-1865 still describes row-level behaviour that REQ-1915
+  supersedes in part; superseded blocks are tagged, but the two should be read together
+  and reconciled. REQ-238 to REQ-241 and REQ-826 now describe one mechanism in two
+  vocabularies.
+- **Trace tests to requirements.** REQ-1912 to REQ-1916 list no tests. Each needs its
+  tests named as they are written, and the traceability exports regenerated.
+- **Write scenarios.** REQ-1912, REQ-1913 and REQ-1916 have no scenario.
+- **Run the requirements audit** across the whole file once the consolidation is done.

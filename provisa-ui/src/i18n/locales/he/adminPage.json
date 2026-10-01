@@ -116,6 +116,14 @@
         "invalid_tls_pair": "יש להגדיר יחד את התעודה ואת המפתח הפרטי ({{other}}).",
         "redis_tls_required": "Redis חייב להשתמש ב-TLS כל עוד TLS נדרש.",
         "cannot_decrypt": "לא ניתן היה לפענח ערך שמור באמצעות המפתח הנוכחי."
+      },
+      "group": {
+        "general": "כללי ו-HTTP",
+        "grpc": "gRPC",
+        "flight": "Arrow Flight",
+        "pgwire": "PostgreSQL wire",
+        "bolt": "Bolt",
+        "airport": "Airport"
       }
     },
     "transportHelp": {

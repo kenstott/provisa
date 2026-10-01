@@ -116,6 +116,14 @@
         "invalid_tls_pair": "証明書と秘密鍵は一緒に設定する必要があります（{{other}}）。",
         "redis_tls_required": "TLS が必須の間、Redis は TLS を使用する必要があります。",
         "cannot_decrypt": "保存された値を現在の鍵で復号できませんでした。"
+      },
+      "group": {
+        "general": "全般と HTTP",
+        "grpc": "gRPC",
+        "flight": "Arrow Flight",
+        "pgwire": "PostgreSQL wire",
+        "bolt": "Bolt",
+        "airport": "Airport"
       }
     },
     "transportHelp": {

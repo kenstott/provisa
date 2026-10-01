@@ -77,6 +77,8 @@
       "query_required": "query ist erforderlich",
       "query_timeout": "Zeitüberschreitung der Abfrage nach {{timeout_s}}s",
       "redirect_upload_failed": "Redirect-Upload fehlgeschlagen: {{error}}",
+      "request_interrupted": "{{error}}",
+      "row_level_key_required": "Die Tabelle '{{table}}' wird zeilenweise repliziert und kann nur über ihren Schlüssel ({{key}}) gelesen werden. Filtern Sie den Schlüssel mit einer Gleichheit oder einer IN-Liste, oder verknüpfen Sie die Tabelle über eine einzelne Spalte.",
       "schema_cache_not_ready": "Schema-Build-Cache noch nicht bereit",
       "sql_generation_failed": "Nach 3 Versuchen konnte kein gültiges SQL erzeugt werden: {{error}}",
       "table_not_found": "Tabelle '{{table}}' nicht gefunden",

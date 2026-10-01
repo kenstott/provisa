@@ -77,6 +77,8 @@
       "query_required": "query 为必填项",
       "query_timeout": "查询在 {{timeout_s}} 秒后超时",
       "redirect_upload_failed": "重定向上传失败：{{error}}",
+      "request_interrupted": "{{error}}",
+      "row_level_key_required": "表 '{{table}}' 按行复制，只能通过其键 ({{key}}) 读取。请使用等值条件或 IN 列表按键筛选，或在单个列上联接该表。",
       "schema_cache_not_ready": "架构构建缓存尚未就绪",
       "sql_generation_failed": "尝试 3 次后仍无法生成有效的 SQL：{{error}}",
       "table_not_found": "未找到表 '{{table}}'",

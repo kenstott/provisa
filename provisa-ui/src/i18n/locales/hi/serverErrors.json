@@ -77,6 +77,8 @@
       "query_required": "query आवश्यक है",
       "query_timeout": "क्वेरी {{timeout_s}} सेकंड के बाद टाइम आउट हो गई",
       "redirect_upload_failed": "रीडायरेक्ट अपलोड विफल हुआ: {{error}}",
+      "request_interrupted": "{{error}}",
+      "row_level_key_required": "तालिका '{{table}}' पंक्ति-दर-पंक्ति प्रतिकृत की जाती है और केवल उसकी कुंजी ({{key}}) से पढ़ी जा सकती है। कुंजी पर समानता या IN सूची से फ़िल्टर करें, या तालिका को एक ही कॉलम पर जोड़ें।",
       "schema_cache_not_ready": "स्कीमा बिल्ड कैश तैयार नहीं है",
       "sql_generation_failed": "3 प्रयासों के बाद भी मान्य SQL उत्पन्न नहीं किया जा सका: {{error}}",
       "table_not_found": "टेबल '{{table}}' नहीं मिली",

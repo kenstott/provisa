@@ -116,6 +116,14 @@
         "invalid_tls_pair": "प्रमाणपत्र और निजी कुंजी एक साथ सेट करनी होंगी ({{other}})।",
         "redis_tls_required": "जब तक TLS आवश्यक है, Redis को TLS का उपयोग करना होगा।",
         "cannot_decrypt": "संग्रहीत मान को वर्तमान कुंजी से डिक्रिप्ट नहीं किया जा सका।"
+      },
+      "group": {
+        "general": "सामान्य और HTTP",
+        "grpc": "gRPC",
+        "flight": "Arrow Flight",
+        "pgwire": "PostgreSQL wire",
+        "bolt": "Bolt",
+        "airport": "Airport"
       }
     },
     "transportHelp": {

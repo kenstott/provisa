@@ -77,6 +77,8 @@
       "query_required": "必須提供 query",
       "query_timeout": "查詢在 {{timeout_s}} 秒後逾時",
       "redirect_upload_failed": "重新導向上載失敗：{{error}}",
+      "request_interrupted": "{{error}}",
+      "row_level_key_required": "資料表 '{{table}}' 按列複製，只能透過其鍵 ({{key}}) 讀取。請使用等值條件或 IN 清單按鍵篩選，或在單一欄位上聯結該資料表。",
       "schema_cache_not_ready": "結構描述建置快取尚未就緒",
       "sql_generation_failed": "嘗試 3 次後仍無法產生有效的 SQL：{{error}}",
       "table_not_found": "找不到資料表「{{table}}」",

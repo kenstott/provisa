@@ -77,6 +77,8 @@
       "query_required": "query é obrigatório",
       "query_timeout": "A consulta expirou após {{timeout_s}}s",
       "redirect_upload_failed": "Falha no upload por redirecionamento: {{error}}",
+      "request_interrupted": "{{error}}",
+      "row_level_key_required": "A tabela '{{table}}' é replicada linha a linha e só pode ser lida pela sua chave ({{key}}). Filtre pela chave com uma igualdade ou uma lista IN, ou junte a tabela por uma única coluna.",
       "schema_cache_not_ready": "Cache de build de esquema não está pronto",
       "sql_generation_failed": "Não foi possível gerar SQL válido após 3 tentativas: {{error}}",
       "table_not_found": "Tabela '{{table}}' não encontrada",

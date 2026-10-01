@@ -77,6 +77,8 @@
       "query_required": "query は必須です",
       "query_timeout": "クエリが{{timeout_s}}秒でタイムアウトしました",
       "redirect_upload_failed": "リダイレクトアップロードに失敗しました：{{error}}",
+      "request_interrupted": "{{error}}",
+      "row_level_key_required": "テーブル '{{table}}' は行単位で複製されており、キー ({{key}}) でのみ読み取れます。キーを等価条件または IN リストで絞り込むか、単一の列でテーブルを結合してください。",
       "schema_cache_not_ready": "スキーマビルドキャッシュの準備ができていません",
       "sql_generation_failed": "3回試行しましたが有効な SQL を生成できませんでした：{{error}}",
       "table_not_found": "テーブル「{{table}}」が見つかりません",
