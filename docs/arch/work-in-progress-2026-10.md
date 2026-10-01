@@ -157,6 +157,35 @@ for conversations about a specific workload.
 The contract, the knobs and the report exist and pass against recorded responses. They have
 not yet run against a live stack.
 
+## Performance validation: the end state
+
+Performance validation ends with one proper benchmark, suitable for publication. The steps
+before it exist to make that run correct the first time: small local jobs that prove each
+code path, then a cheap VM to prove it runs on a VM, then the published run, briefly, at
+scale.
+
+What makes the final run publishable:
+
+- **One methodology, written down before the run.** The zero-knob request on the expected
+  pairs: SQL over pgwire (cached and uncached, side by side), SQL over Arrow Flight,
+  GraphQL over HTTP, Cypher over Bolt, gRPC, REST and JSON:API.
+- **Separate machines.** Provisa alone on the reference server; sources and the load
+  generator each on their own. A single shared machine measures the neighbours as well.
+- **Reference hardware stated in physical cores:** 16 cores on a current-generation
+  machine, with the chip, clock speed and threads per core read off the machine.
+- **Repeatable.** The contract file, the commit, the worker count and the client
+  concurrency are published with the figures; the run is repeated and the spread reported,
+  not a single best number.
+- **Warm-up and steady state** separated; throughput reported with median and p99 latency
+  at the same point, and errors counted.
+- **Conditions stated beside every figure:** query shape, cache state, engine and source,
+  tracing on with the collector off the box, and that real workloads with filters, joins
+  and larger results cost more.
+- **Raw results kept,** so every published number can be traced to its run.
+
+Anything measured before that run — the sizing sweep, local timings, projections — is
+working data and is not published.
+
 ## Performance items still open
 
 - No transport has been measured on a server since the per-request fixes.
