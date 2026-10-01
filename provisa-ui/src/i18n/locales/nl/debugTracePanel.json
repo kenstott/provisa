@@ -1,0 +1,32 @@
+{
+  "debugTracePanel": {
+    "tabTitle": "Debug-tracing",
+    "intro": "Tracing legt standaard één span per verzoek vast. Debug-tracing voegt een span toe per pipelinefase en per bronaanroep, met SQL-tekst. Het zorgt voor extra belasting, dus zet het aan voor één organisatie, rol of bron voor een vaste tijd; het schakelt zichzelf uit wanneer de tijd om is.",
+    "startTitle": "Een debugvenster starten",
+    "scopeLabel": "Bereik",
+    "scopeOrg": "Organisatie",
+    "scopeRole": "Rol",
+    "scopeSource": "Bron",
+    "orgLabel": "Organisatie",
+    "roleLabel": "Rol-ID",
+    "sourceLabel": "Bron-ID",
+    "minutesLabel": "Duur (minuten)",
+    "minutesHelp": "1 tot {{max}} minuten.",
+    "start": "Starten",
+    "activeTitle": "Actieve vensters",
+    "noWindows": "Er is geen debugvenster open.",
+    "colScope": "Bereik",
+    "colOrg": "Organisatie",
+    "colTarget": "Rol of bron",
+    "colRemaining": "Resterende tijd",
+    "colStartedBy": "Gestart door",
+    "wholeOrg": "Hele organisatie",
+    "stop": "Stoppen",
+    "hintTitle": "Debug-hint per verzoek",
+    "hintIntro": "Een verzoek kan om een debug-trace van zichzelf vragen met de directive @debugTrace, een commentaar \"@provisa trace=debug\" of de header X-Provisa-Trace: debug. Verzoeken met de hint van rollen die hier niet staan, worden geweigerd.",
+    "permit": "Toestaan",
+    "revoke": "Intrekken",
+    "noHintRoles": "Voor geen enkele rol is de hint toegestaan.",
+    "loadFailed": "De instellingen voor debug-tracing konden niet worden geladen"
+  }
+}

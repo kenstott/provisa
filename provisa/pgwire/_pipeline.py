@@ -21,17 +21,21 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import dataclasses
+import functools
 import logging
 import re
 import secrets as _secrets
 import threading
 import time as _time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from provisa.audit.pipeline import PendingAudit
 from provisa.executor.result import QueryResult
 from provisa.otel_compat import get_tracer as _get_tracer
+from provisa.otel_compat import stage as _stage
 
 if TYPE_CHECKING:
     from provisa.compiler.directives import CacheHint
@@ -318,6 +322,30 @@ async def _optimize_and_route(
     return exec_sql, decision, default_source, optimized, sources, tuple(opt_labels)
 
 
+@functools.lru_cache(maxsize=4096)
+def _routing_key(exec_sql: str, role_id: str, schema_boot_id: str, schema_version: int) -> str:
+    """``routing_cache_key`` for these inputs, derived once: the key is a pure function of them,
+    and deriving it parses and re-generates the statement — on every execution, to look up a
+    cache whose point is to skip per-execution work."""
+    from provisa.compiler.compiled_query_cache import routing_cache_key
+
+    return routing_cache_key(exec_sql, role_id, schema_boot_id, schema_version)
+
+
+async def _kept_lowering(memo: dict[str, Any], lower: Callable[[], str]) -> str:
+    """A governed statement lowered to catalog-physical SQL. The lowering is a function of the
+    governed text and the role's compilation context — both fixed for a governed statement (a
+    kept one answers only while that context is the same object) — so it is derived once and kept
+    in the statement's ``memo``; every later execution, whatever its bound values, reuses it.
+
+    REQ-1882: the lowering is sqlglot-parse-based rewrite work; off-loaded (see ``_off_loop``)."""
+    lowered = memo.get("catalog_physical")
+    if lowered is None:
+        lowered = await _off_loop(lower)
+        memo["catalog_physical"] = lowered
+    return lowered
+
+
 async def _optimize_and_route_cached(
     exec_sql: str,
     governed_sql: str,
@@ -360,9 +388,9 @@ async def _optimize_and_route_cached(
             is_mutation=is_mutation,
         )
 
-    from provisa.compiler.compiled_query_cache import RoutingOutcome, routing_cache_key
+    from provisa.compiler.compiled_query_cache import RoutingOutcome
 
-    _rt_key = routing_cache_key(exec_sql, role_id, state.schema_boot_id, state.schema_version)
+    _rt_key = _routing_key(exec_sql, role_id, state.schema_boot_id, state.schema_version)
     _cached = state.routing_cache.get(_rt_key)
     if _cached is not None:
         from provisa.transpiler.router import Route, RouteDecision
@@ -582,6 +610,35 @@ async def _attach_tier_caps(plan: _Plan, state: Any) -> _Plan:
     return plan
 
 
+async def resolve_trace_scope(state: Any, role_id: str, *, hint: bool) -> None:  # REQ-1910
+    """Request entry: decide this request's trace detail from the operator's debug-trace settings
+    (a window on its org or role) and its own hint.
+
+    Every request resolves here and either binds debug or unbinds, so a connection that served a
+    debug statement does not carry the level into its next one. A hint from a role the operator
+    has not permitted raises ``DebugTraceHintNotPermitted`` (REQ-030)."""
+    from provisa.core.trace_scope import request_is_debug
+    from provisa.otel_compat import clear_trace_detail, set_trace_detail
+
+    if await request_is_debug(state, role_id, hint=hint):
+        set_trace_detail("debug")
+    else:
+        # Not "normal": a request no window covers gets the deployment's own default detail.
+        clear_trace_detail()
+
+
+async def extend_trace_scope_to_sources(  # REQ-1910
+    state: Any, role_id: str, source_ids: frozenset[str]
+) -> None:
+    """Once the request's sources are known: a window opened on one of them makes this a debug
+    request from here on. Only ever raises the level — the entry resolution already set it."""
+    from provisa.core.trace_scope import request_is_debug
+    from provisa.otel_compat import set_trace_detail
+
+    if await request_is_debug(state, role_id, hint=False, source_ids=source_ids):
+        set_trace_detail("debug")
+
+
 async def _wake_before_governing(state: Any) -> None:
     """REQ-1448: the shard the active org queries is serving before this statement is planned.
 
@@ -727,6 +784,75 @@ async def _govern_and_route_planned(
     # the SQL, so a value can neither change the governed shape nor defeat SQL-text-keyed caches.
     params: list | None = None,
 ) -> _Plan:  # REQ-262, REQ-263, REQ-264, REQ-266, REQ-267, REQ-272, REQ-1120, REQ-1159, REQ-1163
+    """Govern, then route: the two stages of the one pipeline, run back to back."""
+    governed = await govern_statement(sql, role_id, session_vars=session_vars)
+    return await route_governed(
+        governed,
+        params=params,
+        as_of=as_of,
+        deliver=deliver,
+        buffered=buffered,
+        explain=explain,
+    )
+
+
+@dataclass
+class _Governed:
+    """A statement the pipeline has GOVERNED but not yet routed (REQ-589, amended 2026-10-01).
+
+    Everything here is independent of the statement's bound parameter values and of live routing
+    state: the validated parse, the role's governance context, and the governed semantic SQL (RLS,
+    masking, visibility, row cap applied). ``route_governed`` turns it into an executable plan once
+    the values are known. pgwire holds one between a prepared statement's Describe and its Execute,
+    so the statement is governed once and its Describe is answered from this alone."""
+
+    sql: str
+    role_id: str
+    role: dict | None
+    ctx: Any
+    gov_ctx: Any
+    comment_params: list | None
+    parsed: Any
+    metric_semantic_sql: str | None
+    table_ids: tuple[int, ...]
+    governed_semantic: str
+    # The schema generation it was governed under; a rebuild since then makes it stale.
+    schema_generation: tuple[Any, Any]
+    # Governed-provenance: minted by govern_statement, verified by route_governed.
+    stamp: str
+    # Facts derived from this governed statement, kept with it (pgwire's result shape).
+    memo: dict[str, Any] = field(default_factory=dict)
+
+
+def _calls_a_registered_command(tree: Any, state: Any) -> bool:
+    """Whether the statement invokes a tracked function or webhook: inline-command localization
+    RUNS such a command while preparing the statement, so its governed form is per call."""
+    import sqlglot.expressions as exp
+
+    commands = {
+        **(getattr(state, "tracked_functions", None) or {}),
+        **(getattr(state, "tracked_webhooks", None) or {}),
+    }
+    return bool(commands) and any(n.name in commands for n in tree.find_all(exp.Anonymous))
+
+
+def governed_statement_is_current(governed: _Governed, state: Any) -> bool:
+    """Whether ``governed`` may still be routed: minted by this process's ``govern_statement`` and
+    governed under the schema generation that is still live. A caller holding a stale one governs
+    the statement again."""
+    return stamp_is_valid(governed.stamp) and governed.schema_generation == (
+        state.schema_boot_id,
+        state.schema_version,
+    )
+
+
+async def govern_statement(
+    sql: str,
+    role_id: str,
+    *,
+    session_vars: dict[str, str] | None = None,
+) -> _Governed:
+    """Stage one of the one pipeline: parse, validate and apply governance. Value-independent."""
     import sqlglot
     import sqlglot.expressions as exp
 
@@ -735,15 +861,19 @@ async def _govern_and_route_planned(
     from provisa.compiler.params import extract_params_comment, extract_relationship_guard_comment
     from provisa.compiler.stage2 import apply_governance, build_governance_context
     from provisa.compiler.sql_validator import validate_sql
-    from provisa.transpiler.router import Route
-    from provisa.transpiler.transpile import transpile
 
-    from provisa.audit.pipeline import begin_audit, write_denial
+    from provisa.audit.pipeline import write_denial
 
     if role_id not in state.contexts:
         # REQ-1386: a refusal is auditable evidence — policy_denials reports on it.
         await write_denial(sql, role_id, None, None, state)
         raise PermissionError(f"No schema for role {role_id!r}")
+
+    # REQ-1910: request entry on the raw-SQL path — the governance stage is traced at the level
+    # the operator's windows and the statement's own `-- @provisa trace=debug` hint resolve to.
+    from provisa.compiler.directives import cache_hint_for
+
+    await resolve_trace_scope(state, role_id, hint=cache_hint_for("sql", sql).debug_trace)
 
     ctx = state.contexts[role_id]
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
@@ -755,14 +885,22 @@ async def _govern_and_route_planned(
 
     role = effective_domain_access_role(role_id, state.roles)
 
+    # REQ-1877: governing is a pure function of the statement text, the role, the person, the
+    # session variables RLS resolves against and the role's governance objects — none of them the
+    # statement's bound values — so a governed statement is kept in the org's compiled-query cache
+    # (generation-keyed, TTL-evicted, bounded) and a repeat is not parsed, validated or governed
+    # again. Every raw-SQL surface reaches the pipeline here, so they all share it.
+    from provisa.pgwire.governed_plan import PlanSlot
+    from provisa.core.request_context import session_vars_for
+
+    _session_vars = session_vars if session_vars is not None else session_vars_for(role)
+    _slot = PlanSlot(state, "sql", role_id, sql, sorted(_session_vars.items()))
+    _kept = _slot.cached()
+    if _kept is not None:
+        # A fresh provenance stamp per use: the stamp ring is bounded and a kept statement outlives it.
+        return dataclasses.replace(_kept, stamp=_mint_stamp())
+
     raw_sql, embedded_params = extract_params_comment(sql)
-    if params is not None:
-        if embedded_params:
-            raise ValueError(
-                "statement carries both a provisa-params comment and bound parameters — "
-                "supply the parameter values one way"
-            )
-        embedded_params = list(params)
     raw_sql, sql_opts_out = extract_relationship_guard_comment(raw_sql)
 
     # REQ-1866: parse + REQ-1159's inline-command-localization check + REQ-1317's metric
@@ -875,9 +1013,6 @@ async def _govern_and_route_planned(
 
         state.compiled_query_cache.put(_cq_key, CompiledOutcome())
 
-    # REQ-074/REQ-1386: open the audit record once governance has accepted the statement and the
-    # table references have resolved. The terminal finalizes it with the real status and duration.
-    _audit = begin_audit(sql, role_id, _parsed_input, gov_ctx)
     from provisa.audit.pipeline import resolve_table_ids
 
     _table_ids = tuple(resolve_table_ids(_parsed_input, gov_ctx))  # REQ-1897
@@ -898,11 +1033,78 @@ async def _govern_and_route_planned(
     # SETs the variable on a direct Postgres connection, so a native current_setting there raises
     # "unrecognized configuration parameter"; the literal is the one mechanism every route shares.
     # A missing var becomes NULL, the documented deny-by-default (_resolve_session_settings).
-    from provisa.core.request_context import session_vars_for
+    governed_semantic = _resolve_session_settings(governed_semantic, _session_vars)
 
-    governed_semantic = _resolve_session_settings(
-        governed_semantic, session_vars if session_vars is not None else session_vars_for(role)
+    governed = _Governed(
+        sql=sql,
+        role_id=role_id,
+        role=role,
+        ctx=ctx,
+        gov_ctx=gov_ctx,
+        comment_params=embedded_params,
+        parsed=_parsed_input,
+        metric_semantic_sql=_metric_semantic_sql,
+        table_ids=_table_ids,
+        governed_semantic=governed_semantic,
+        schema_generation=(state.schema_boot_id, state.schema_version),
+        stamp=_mint_stamp(),
     )
+    # Not kept: a write (its admission checks run per call) and a statement that runs a registered
+    # command while it is prepared. The slot itself refuses one governed while a schema rebuild
+    # was moving the state it read.
+    if not isinstance(
+        _parsed_input, (exp.Insert, exp.Update, exp.Delete, exp.Merge)
+    ) and not _calls_a_registered_command(_parsed_input, state):
+        _slot.keep(governed)
+    return governed
+
+
+async def route_governed(
+    governed: _Governed,
+    *,
+    params: list | None = None,
+    as_of: str | None = None,
+    deliver: Delivery | None = None,
+    buffered: bool = False,
+    explain: bool | None = None,
+) -> _Plan:
+    """Stage two of the one pipeline: bind the statement's parameter values, optimize, route and
+    build the executable plan. Runs against live state, so it runs once per execution; it accepts
+    only a statement ``govern_statement`` produced."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    from provisa.api.app import state
+    from provisa.audit.pipeline import begin_audit
+    from provisa.transpiler.router import Route
+    from provisa.transpiler.transpile import transpile
+
+    if not stamp_is_valid(governed.stamp):
+        raise PermissionError(
+            "ungoverned statement rejected: route_governed accepts only what govern_statement "
+            "produced"
+        )
+    sql = governed.sql
+    role_id = governed.role_id
+    ctx = governed.ctx
+    gov_ctx = governed.gov_ctx
+    _parsed_input = governed.parsed
+    _metric_semantic_sql = governed.metric_semantic_sql
+    _table_ids = governed.table_ids
+    governed_semantic = governed.governed_semantic
+
+    embedded_params = governed.comment_params
+    if params is not None:
+        if embedded_params:
+            raise ValueError(
+                "statement carries both a provisa-params comment and bound parameters — "
+                "supply the parameter values one way"
+            )
+        embedded_params = list(params)
+
+    # REQ-074/REQ-1386: open the audit record for this execution of the governed statement. The
+    # terminal finalizes it with the real status and duration.
+    _audit = begin_audit(sql, role_id, _parsed_input, gov_ctx)
 
     # REQ-863 pipeline order: governance → post-governance optimization → routing.
     # Lower the ONE accepted reference model — the semantic domain.table the catalog
@@ -929,6 +1131,9 @@ async def _govern_and_route_planned(
     from provisa.compiler.directives import cache_hint_for
 
     _cache_hint = cache_hint_for("sql", sql)
+    # REQ-1910: resolved per EXECUTION, not only when the statement was governed — a prepared
+    # statement is governed once and executed many times, across windows opening and closing.
+    await resolve_trace_scope(state, role_id, hint=_cache_hint.debug_trace)
 
     if explain is not None:
         # REQ-1519: describing a statement and delivering its rows to a sink are different
@@ -947,10 +1152,11 @@ async def _govern_and_route_planned(
 
     # REQ-1882: both stages are sqlglot-parse-based regex/AST rewrite work; off-load the combined
     # call (see _off_loop's own docstring).
-    _physical_sql = await _off_loop(
+    _physical_sql = await _kept_lowering(
+        governed.memo,
         lambda: rewrite_semantic_to_catalog_physical(
             normalize_table_refs(governed_semantic, ctx), ctx
-        )
+        ),
     )
     _physical_sql, _nf_clean_params, _extracted_nf = extract_nf_args(
         _physical_sql, embedded_params or []
@@ -978,6 +1184,8 @@ async def _govern_and_route_planned(
         is_mutation=_is_mutation,
         nf_args=_nf_args,
     )
+    # REQ-1910: the sources are known now — a window opened on one of them covers this request.
+    await extend_trace_scope_to_sources(state, role_id, frozenset(_sources))
 
     exec_params = exec_params or None
 
@@ -1190,23 +1398,30 @@ async def _govern_and_route_planned(
         dialect = decision.dialect or "postgres"
         # Direct route lowers the OPTIMIZED SQL when the optimization stage changed it (REQ-863),
         # carrying any inlined VALUES CTE onto the direct path; else the unchanged fast path.
+        from provisa.compiler.sql_rewrite import FLAT_NAMESPACE_SOURCES, strip_schema
+
+        _direct_sid = decision.source_id or _default_source
+        _flat = state.source_types.get(_direct_sid) in FLAT_NAMESPACE_SOURCES
         if _optimized:
             from provisa.compiler.sql_rewrite import strip_catalog
 
             _physical = strip_catalog(_qualified)
+            sql_to_run = transpile(strip_schema(_physical) if _flat else _physical, dialect)
         else:
             # Lower the semantic model to physical schema.table for the native driver — same as
             # _govern_and_route_compiled's DIRECT branch. Passing governed_semantic verbatim sent
             # an unresolved semantic ref (e.g. "pet_store"."inquiries") to the source.
-            from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical
+            # The unoptimized lowering is a function of the governed text, the role's compilation
+            # context and the destination — not of the bound values — so it is kept with the
+            # governed statement like its catalog-physical form (see _kept_lowering).
+            _direct_key = f"direct_sql\x00{_direct_sid}\x00{dialect}\x00{_flat}"
+            sql_to_run = governed.memo.get(_direct_key)
+            if sql_to_run is None:
+                from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical
 
-            _physical = rewrite_semantic_to_physical(governed_semantic, ctx)
-        from provisa.compiler.sql_rewrite import FLAT_NAMESPACE_SOURCES, strip_schema
-
-        _direct_sid = decision.source_id or _default_source
-        if state.source_types.get(_direct_sid) in FLAT_NAMESPACE_SOURCES:
-            _physical = strip_schema(_physical)
-        sql_to_run = transpile(_physical, dialect)
+                _physical = rewrite_semantic_to_physical(governed_semantic, ctx)
+                sql_to_run = transpile(strip_schema(_physical) if _flat else _physical, dialect)
+                governed.memo[_direct_key] = sql_to_run
         if explain is not None:
             # REQ-1519: the source describes the pushed-down statement in its own dialect.
             from provisa.executor.explain import wrap_explain
@@ -1254,9 +1469,7 @@ async def _resolve_pk_bounds(
     land on every single call. Confirmed live: a bolt query for a trivial, unbound `LIMIT 1` (which
     SHOULD fall back) and a bolt query with a real `WHERE pk = $1` (which should NOT have)
     were indistinguishable before this — both always fell back."""
-    from provisa.federation.query_residency import row_materialized_tables_by_name
-
-    row_tables = await row_materialized_tables_by_name(state)
+    row_tables = _row_materialize_tables_in_memory(state)
     if not row_tables:
         return ()
     import sqlglot
@@ -1268,7 +1481,54 @@ async def _resolve_pk_bounds(
     return result
 
 
-async def finalize_audit(plan: _Plan, status_code: int, state: Any | None = None) -> None:
+def _row_materialize_tables_in_memory(state: Any) -> dict[str, Any]:
+    """table reference name -> registered table, for the tables row_materialize APPLIES to
+    (REQ-1865), read from the in-memory registry ``_rebuild_schemas`` publishes (``state.tables``).
+
+    This runs for every governed statement, so it reads no control plane: the registry rows are
+    already in memory, and a rebuild republishes them. Same selection and keying as
+    ``query_residency.row_materialized_tables_by_name`` — the flag is set AND the bound engine
+    cannot direct-attach the table's source type; keyed by both the bare table name and the alias."""
+    flagged = [t for t in state.tables if t.get("row_materialize")]
+    if not flagged:
+        return {}
+    from types import SimpleNamespace
+
+    from provisa.compiler.naming import apply_sql_name
+    from provisa.federation.strategy import engine_attaches
+
+    engine = state.federation_engine
+    out: dict[str, Any] = {}
+    for t in flagged:
+        # tables.source_id is a NOT NULL foreign key to sources.id, so the type is always known.
+        if engine_attaches(engine, state.source_types[t["source_id"]]):
+            continue
+        table = SimpleNamespace(
+            id=t["id"],
+            source_id=t["source_id"],
+            schema_name=t["schema_name"],
+            table_name=t["table_name"],
+            alias=t.get("alias"),
+            row_materialize=True,
+            columns=[
+                SimpleNamespace(
+                    name=c["column_name"],
+                    data_type=c["data_type"],
+                    is_primary_key=c["is_primary_key"],
+                    native_filter_type=c["native_filter_type"],
+                )
+                for c in t["columns"]
+            ],
+        )
+        out[apply_sql_name(table.table_name)] = table
+        if table.alias:
+            out[apply_sql_name(table.alias)] = table
+    return out
+
+
+async def finalize_audit(
+    plan: _Plan, status_code: int, state: Any | None = None, *, cache_hit: bool = False
+) -> None:
     """Write ``plan``'s audit row (REQ-074/REQ-1386). Idempotent per plan.
 
     ``_execute_plan`` calls this at its terminals. The govern-then-stream surfaces (pgwire's
@@ -1280,6 +1540,11 @@ async def finalize_audit(plan: _Plan, status_code: int, state: Any | None = None
         return
     plan.audit_written = True
     from provisa.audit.pipeline import write_audit
+    from provisa.observability.request_facts import observe_plan
+
+    # REQ-1910: request facts + metrics, every surface. ``cache_hit``: served from the response
+    # cache, so the route it is reported under is the cache, not the route the plan would have run.
+    observe_plan(plan, status_code, cache_hit=cache_hit)
 
     await write_audit(plan.audit, status_code, state)
     # REQ-1897: every terminal finalizes here, so a successful write invalidates the tables it
@@ -1436,7 +1701,9 @@ async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-0
     # route, the source and the execution DAG a surface reports are the ones that actually ran.
     # A no-op when the caller did not ask for stats.
     from provisa.executor.plan_stats import record_plan_execution
+    from provisa.otel_compat import annotate_request
 
+    annotate_request(db__row_count=len(result.rows))  # REQ-1910
     record_plan_execution(
         plan, state, rows=len(result.rows), elapsed_ms=(_time.perf_counter() - _t0) * 1000
     )
@@ -1560,9 +1827,9 @@ async def _account_cache_hit(plan: _Plan, state: Any, result: QueryResult) -> Qu
     try:
         result = _apply_output_cap(plan, result)
     except Exception:
-        await finalize_audit(plan, 402, state)
+        await finalize_audit(plan, 402, state, cache_hit=True)
         raise
-    await finalize_audit(plan, 200, state)
+    await finalize_audit(plan, 200, state, cache_hit=True)
     return result
 
 
@@ -1811,7 +2078,7 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         # REQ-1425: the admin terminal is a query terminal like any other — it emits the same
         # provisa.query.* span so meta/ops statements reach the ops queries report.
         _span_name = "provisa.query.postgres" if plan.span_attrs else "admin.execute"
-        with _tracer.start_as_current_span(_span_name) as _span:
+        with _stage(_tracer, _span_name, name="execute") as _span:
             if plan.span_attrs:
                 for _k, _v in plan.span_attrs.items():
                     _span.set_attribute(_k, _v)
@@ -1985,22 +2252,80 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     """
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
-    from provisa.compiler.rls import RLSContext
-    from provisa.compiler.sql_rewrite import (
-        rewrite_semantic_to_catalog_physical,
-        rewrite_semantic_to_physical,
-    )
-    from provisa.compiler.stage2 import apply_governance, build_governance_context
-    from provisa.transpiler.router import Route
-    from provisa.transpiler.transpile import transpile
-
     from provisa.audit.pipeline import begin_audit, write_denial
 
     if role_id not in state.contexts:
         await write_denial(sql, role_id, None, None, state)  # REQ-1386: policy_denials
         raise PermissionError(f"No schema for role {role_id!r}")
 
+    import sqlglot.expressions as _sg_exp
+
+    from provisa.pgwire.governed_plan import PlanSlot
+    from provisa.core.request_context import session_vars_for
+
+    # REQ-1877: the governed form of a compiled statement is a pure function of its text, the role,
+    # the person, the session variables and the role's governance objects — its bound values
+    # travel separately in ``exec_params`` — so it is kept like the raw-SQL stage's and the GraphQL
+    # endpoint's (pgwire.governed_plan) and a repeat is not parsed or governed again.
+    _session_vars = session_vars_for(state.roles.get(role_id))
+    _slot = PlanSlot(state, "compiled", role_id, sql, sorted(_session_vars.items()))
+    _governed = _slot.cached()
+    if _governed is None:
+        _governed = await _govern_compiled(sql, role_id, state, _session_vars)
+        # A write is not kept: its admission checks (view writes, unbound branch writes) run per call.
+        if not isinstance(
+            _governed.parsed, (_sg_exp.Insert, _sg_exp.Update, _sg_exp.Delete, _sg_exp.Merge)
+        ):
+            _slot.keep(_governed)
+    sql, _compiled_tree, gov_ctx = _governed.sql, _governed.parsed, _governed.gov_ctx
+    _table_ids, governed_sql = _governed.table_ids, _governed.governed_sql
+    # REQ-1910: request entry on the compiled path (GraphQL over Flight, Cypher, gRPC, MCP, REST).
+    await resolve_trace_scope(state, role_id, hint=cache_hint.debug_trace)
+
+    return await _route_compiled(
+        sql,
+        role_id,
+        state,
+        ctx=state.contexts[role_id],
+        gov_ctx=gov_ctx,
+        governed_sql=governed_sql,
+        compiled_tree=_compiled_tree,
+        table_ids=_table_ids,
+        audit=begin_audit(sql, role_id, _compiled_tree, gov_ctx),
+        cache_hint=cache_hint,
+        exec_params=exec_params,
+        api_args=api_args,
+        deliver=deliver,
+        buffered=buffered,
+        memo=_governed.memo,
+    )
+
+
+@dataclass
+class _GovernedCompiled:
+    """A compiled statement the pipeline has governed but not yet routed — the compiled stage's
+    counterpart of :class:`_Governed`, kept the same way (REQ-1877). Value-independent: the
+    statement's bound values travel separately."""
+
+    sql: str  # after metric expansion
+    parsed: Any
+    gov_ctx: Any
+    table_ids: tuple[int, ...]
+    governed_sql: str
+    # Facts derived from this governed statement, kept with it (as _Governed.memo).
+    memo: dict[str, Any] = field(default_factory=dict)
+
+
+async def _govern_compiled(
+    sql: str, role_id: str, state: Any, session_vars: dict[str, str]
+) -> _GovernedCompiled:
+    """The value-independent half of the compiled stage: parse, metric expansion, write admission,
+    governance."""
     import sqlglot as _sg
+
+    from provisa.audit.pipeline import resolve_table_ids
+    from provisa.compiler.rls import RLSContext
+    from provisa.compiler.stage2 import apply_governance, build_governance_context
 
     # REQ-1882: sqlglot tokenization off-loaded — see _off_loop's own docstring. This is the
     # Flight SQL / gRPC compiled path's own parse, the same class of blocking call the raw-SQL
@@ -2054,34 +2379,61 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
         engine=getattr(state, "federation_engine", None),
     )
 
-    # REQ-074/REQ-1386: the compiled surfaces (GQL, Cypher, Flight, gRPC) are audited by the same
-    # record the raw-SQL path opens — the terminal finalizes it.
-    _audit = begin_audit(sql, role_id, _compiled_tree, gov_ctx)
-    from provisa.audit.pipeline import resolve_table_ids
-
     _table_ids = tuple(resolve_table_ids(_compiled_tree, gov_ctx))  # REQ-1897
-    # REQ-544 (amended 2026-09-30): the compiled statement's response-cache opt-in is the one the
-    # REQUEST carried (``cache_hint`` — parsed from its GraphQL/Cypher text or gRPC metadata by
-    # ``compiler.directives``), handed through unchanged.
-    _cache_hint = cache_hint
 
     # REQ-863 pipeline order: governance → post-governance optimization → routing.
     # REQ-1882: off-loaded, same rationale as the raw-SQL path's own apply_governance call above.
     governed_sql = await _off_loop(apply_governance, sql, gov_ctx)
     # REQ-1682: session-variable predicates resolve to the request's literals on every route (see
     # the raw path above for why the direct Postgres route cannot keep native current_setting).
-    from provisa.core.request_context import session_vars_for
+    governed_sql = _resolve_session_settings(governed_sql, session_vars)
+    return _GovernedCompiled(sql, _compiled_tree, gov_ctx, _table_ids, governed_sql)
 
-    governed_sql = _resolve_session_settings(
-        governed_sql, session_vars_for(state.roles.get(role_id))
+
+async def _route_compiled(
+    sql: str,
+    role_id: str,
+    state: Any,
+    *,
+    ctx: Any,
+    gov_ctx: Any,
+    governed_sql: str,
+    compiled_tree: Any,
+    table_ids: tuple[int, ...],
+    audit: Any,
+    cache_hint: CacheHint,
+    exec_params: list | None,
+    api_args: dict | None,
+    deliver: Delivery | None,
+    buffered: bool,
+    memo: dict[str, Any],
+) -> _Plan:
+    """The per-call half of the compiled stage: optimization, routing and the plan. ``memo`` is
+    the governed statement's own (see :func:`_kept_lowering`).
+
+    REQ-074/REQ-1386: ``audit`` is the record the compiled surfaces (GQL, Cypher, Flight, gRPC)
+    open like the raw-SQL path — the terminal finalizes it. REQ-544 (amended 2026-09-30):
+    ``cache_hint`` is the response-cache opt-in the REQUEST carried, handed through unchanged."""
+    from provisa.compiler.sql_rewrite import (
+        rewrite_semantic_to_catalog_physical,
+        rewrite_semantic_to_physical,
     )
+    from provisa.transpiler.router import Route
+    from provisa.transpiler.transpile import transpile
+
+    _compiled_tree = compiled_tree
+    _table_ids = table_ids
+    _audit = audit
+    _cache_hint = cache_hint
 
     # Post-governance optimization stage (may REMOVE sources): lower to catalog-physical, then
     # inline hot/API tables as VALUES CTEs, prune unreachable union branches, and rewrite cached
     # tables. This MUST complete before extract_sources/decide_route so routing observes the
     # reduced source set (a query whose second source is fully inlined collapses to DIRECT).
     # REQ-1882: off-loaded, same rationale as the raw-SQL path's rewrite call above.
-    _exec_sql = await _off_loop(rewrite_semantic_to_catalog_physical, governed_sql, ctx)
+    _exec_sql = await _kept_lowering(
+        memo, lambda: rewrite_semantic_to_catalog_physical(governed_sql, ctx)
+    )
     _view_map = getattr(state, "view_sql_map", None)
     if _view_map:
         from provisa.compiler.view_expand import expand_view_refs
@@ -2104,6 +2456,8 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     ) = await _optimize_and_route_cached(
         _exec_sql, governed_sql, gov_ctx, ctx, state, role_id, nf_args=_nf_args
     )
+    # REQ-1910: the sources are known now — a window opened on one of them covers this request.
+    await extend_trace_scope_to_sources(state, role_id, frozenset(sources))
 
     # REQ-135/REQ-1163: a query referencing a __derived__ view MUST route through the engine, where
     # the view was already inline-expanded above. A view's virtual source has no native driver/
@@ -2330,6 +2684,78 @@ async def govern_pgwire_plan(  # REQ-028, REQ-266
         return fn_result
 
     return await _govern_and_route(sql, role_id, params=params)
+
+
+@dataclass
+class _Described:
+    """A pgwire statement described without running it (REQ-589, amended 2026-10-01): its result
+    columns, and the governed statement its Execute continues from."""
+
+    shape: list[tuple[str, str]]
+    # None for a registered-function call: a command has no governed statement to hold — its
+    # Execute invokes it through ``govern_pgwire_plan``.
+    governed: _Governed | None
+
+
+def _function_call_shape(name: str, state: Any) -> list[tuple[str, str]]:
+    """A registered command's result columns, from its declared output contract (REQ-1159)."""
+    from provisa.pgwire.result_shape import UnderivableColumn
+
+    action = (getattr(state, "tracked_functions", None) or {}).get(name) or (
+        getattr(state, "tracked_webhooks", None) or {}
+    ).get(name)
+    declared = (action or {}).get("output_columns")
+    if isinstance(declared, str):
+        import json
+
+        declared = json.loads(declared)
+    if not declared:
+        raise UnderivableColumn(
+            f"cannot describe a call to {name!r}: it declares no output_columns, so its result "
+            "columns are unknown until it runs"
+        )
+    return [(c["name"], c["type"]) for c in declared]
+
+
+async def describe_pgwire_statement(sql: str, role_id: str) -> _Described:  # REQ-589
+    """Govern *sql* and derive its result columns from registered metadata — nothing is routed,
+    executed or sent to a source. The Execute continues from the returned governed statement
+    (:func:`plan_pgwire_statement`), so the statement is governed exactly once."""
+    from provisa.api.app import state
+    from provisa.pgwire.ext_surfaces import rewrite_surface_operators
+    from provisa.pgwire.function_call import detect_sql_function_call
+    from provisa.pgwire.result_shape import derive_result_shape
+
+    sql = rewrite_surface_operators(sql)
+    call = detect_sql_function_call(sql, state)
+    if call is not None:
+        return _Described(_function_call_shape(call[0], state), None)
+
+    await _wake_before_governing(state)
+    governed = await govern_statement(sql, role_id)
+    # REQ-1882: the derivation parses and may annotate the statement (sqlglot); off-loaded like the
+    # pipeline's other parse work (see _off_loop).
+    shape = governed.memo.get("result_shape")
+    if shape is None:
+        shape = await _off_loop(
+            derive_result_shape,
+            governed.governed_semantic,
+            governed.gov_ctx.table_map,
+            governed.ctx,
+            state.schema_build_cache["column_types"],
+        )
+        governed.memo["result_shape"] = shape
+    return _Described(shape, governed)
+
+
+async def plan_pgwire_statement(governed: _Governed, params: list | None) -> _Plan:  # REQ-589
+    """The executable plan for a statement :func:`describe_pgwire_statement` already governed, with
+    the Bind's parameter values. Routing runs here, against live state; governance does not run
+    again."""
+    from provisa.api.app import state
+
+    plan = await route_governed(governed, params=params)
+    return await _attach_tier_caps(plan, state)
 
 
 async def execute_pgwire_sql(sql: str, role_id: str) -> QueryResult:  # REQ-266, REQ-267, REQ-272

@@ -78,6 +78,9 @@ class Query:
     # response, verbatim (same discipline point_lookup's own cypher label comment above already
     # documents for this file).
     grpc: dict | None = None
+    # Schema-driven HTTP surfaces: {"path": ..., "params": {...}} for one GET (optimistic only).
+    rest: dict | None = None
+    jsonapi: dict | None = None
     iterations: int = 20  # repeat this many times sequentially, for latency percentiles
     params: dict = field(default_factory=dict)
 
@@ -87,7 +90,13 @@ QUERIES: list[Query] = [
         id="point_lookup",
         category="tiny_rapid",
         description="Single-row point lookup by primary key — per-query overhead floor",
-        sql="SELECT * FROM perf_bench.orders WHERE order_id = :order_id",
+        # The same five columns the Cypher and GraphQL texts below return, so every transport
+        # measures one query: `SELECT *` here made the SQL transports encode every column of the
+        # row while GraphQL/Cypher encoded five.
+        sql=(
+            "SELECT order_id, customer_id, region, status, amount "
+            "FROM perf_bench.orders WHERE order_id = :order_id"
+        ),
         # WHERE clause, not an inline {order_id: $order_id} property-map filter: confirmed live
         # (pg_stat_activity, GCP perf run) that Provisa's Cypher-to-SQL translator silently drops
         # the inline map filter, executing an unfiltered full table scan instead of a point lookup.
@@ -382,3 +391,38 @@ QUERIES: list[Query] = [
     # (arrival-rate) load generator, not this module's closed-model sequential/threaded runs.
     # See that file's header for why the distinction matters for this one category.
 ]
+
+
+# The most-optimistic request, one text per transport: one row, one column, no predicate, and the
+# per-request response-cache opt-in each transport has. Not part of QUERIES (the engine matrix):
+# it is run by optimistic_load.py, where what is left to measure is the transport itself.
+# Verified against a server registered with this demo's orders table (1 row / 1 column each):
+#   sql      pgwire, /data/sql, Flight SQL ticket      `-- @provisa cache=true`
+#   cypher   /data/cypher, Bolt                         `// @provisa cache=true`
+#   graphql  /data/graphql, Flight GraphQL ticket       `@cached`
+#   grpc     QueryPbOrders, read_mask + limit           `x-provisa-cache: true` call metadata
+#   rest / jsonapi   no per-request opt-in exists (both pass NO_CACHE_HINT) — they run uncached.
+# Not expressible: Cypher as a Flight ticket — a single-source statement routes DIRECT and the
+# Flight Cypher path refuses that route ("Route DIRECT is not supported for Cypher via Flight").
+OPTIMISTIC = Query(
+    id="optimistic",
+    category="optimistic",
+    description="One row, one column, no predicate, cached — the per-transport overhead floor",
+    sql="-- @provisa cache=true\nSELECT order_id FROM perf_bench.orders LIMIT 1",
+    cypher=(
+        "// @provisa cache=true\nMATCH (o:PerfBench:Orders) RETURN o.orderId AS order_id LIMIT 1"
+    ),
+    graphql="query @cached { pb__orders(limit: 1) { orderId } }",
+    grpc={
+        "mode": "scan",
+        "type_name": "PbOrders",
+        "limit": 1,
+        "read_mask": ["order_id"],
+        "metadata": [("x-provisa-cache", "true")],
+    },
+    rest={"path": "/data/rest/perf-bench/orders", "params": {"limit": 1, "fields": "orderId"}},
+    jsonapi={
+        "path": "/data/jsonapi/perf-bench/orders",
+        "params": {"page[size]": 1, "fields[orders]": "order_id"},
+    },
+)

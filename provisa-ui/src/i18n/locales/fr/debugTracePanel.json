@@ -1,0 +1,32 @@
+{
+  "debugTracePanel": {
+    "tabTitle": "Traçage de débogage",
+    "intro": "Par défaut, le traçage enregistre un span par requête. Le traçage de débogage ajoute un span par étape du pipeline et par appel à une source, avec le texte SQL. Il ajoute de la charge : activez-le pour une organisation, un rôle ou une source pendant une durée définie ; il se désactive de lui-même à la fin de cette durée.",
+    "startTitle": "Démarrer une fenêtre de débogage",
+    "scopeLabel": "Portée",
+    "scopeOrg": "Organisation",
+    "scopeRole": "Rôle",
+    "scopeSource": "Source",
+    "orgLabel": "Organisation",
+    "roleLabel": "ID du rôle",
+    "sourceLabel": "ID de la source",
+    "minutesLabel": "Durée (minutes)",
+    "minutesHelp": "De 1 à {{max}} minutes.",
+    "start": "Démarrer",
+    "activeTitle": "Fenêtres actives",
+    "noWindows": "Aucune fenêtre de débogage n'est ouverte.",
+    "colScope": "Portée",
+    "colOrg": "Organisation",
+    "colTarget": "Rôle ou source",
+    "colRemaining": "Temps restant",
+    "colStartedBy": "Démarrée par",
+    "wholeOrg": "Toute l'organisation",
+    "stop": "Arrêter",
+    "hintTitle": "Indication de débogage par requête",
+    "hintIntro": "Une requête peut demander sa propre trace de débogage avec la directive @debugTrace, un commentaire \"@provisa trace=debug\" ou l'en-tête X-Provisa-Trace: debug. Les requêtes portant l'indication et provenant de rôles absents de cette liste sont rejetées.",
+    "permit": "Autoriser",
+    "revoke": "Révoquer",
+    "noHintRoles": "Aucun rôle n'est autorisé à utiliser l'indication.",
+    "loadFailed": "Impossible de charger les paramètres du traçage de débogage"
+  }
+}

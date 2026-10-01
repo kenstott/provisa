@@ -184,6 +184,24 @@ services:
       timeout: 5s
       retries: 30
       start_period: 60s
+  # The response cache the benchmark's Provisa workers share. One Python process runs on one core
+  # at a time, so the server under test runs a worker per core, and workers need one cache between
+  # them: the in-process fakeredis the native demo defaults to is private to each worker. No
+  # persistence — it is a cache, and a restart between rounds must start cold.
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: cache
+    ports:
+      - "127.0.0.1:${PROVISA_BENCH_REDIS_PORT:-26379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
   seeder:
     build:
       context: .

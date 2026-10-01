@@ -183,8 +183,6 @@ async def send_test_mail(request: Request):  # REQ-1576
     and a paraphrase of it is not.
     """
     require_platform_settings(request)  # REQ-1337
-    from starlette.concurrency import run_in_threadpool
-
     from provisa.api.app import state
     from provisa.core.mail import MailMessage, email_sender
     from provisa.core.mail_stats import MailAttempt, record
@@ -210,7 +208,7 @@ async def send_test_mail(request: Request):  # REQ-1576
     )
     try:
         sender = email_sender(config.mail)
-        await run_in_threadpool(sender.send, message)
+        sender.send(message)  # blocks this request's own thread (REQ-1882)
     except Exception as exc:
         await record(
             _admin_db(),

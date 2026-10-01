@@ -8,14 +8,16 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Shared checks: a real engine runtime's Describe (describe_sync) and Execute (run_sync) report the
-same column names and declared types, and an asyncpg client reading through pgwire gets exact values
-in binary for every type. Used by the DuckDB (unit) and Postgres (integration) parity tests."""
+"""Shared checks: a real engine runtime's describe_sync and run_sync report the same column names
+and declared types, and an asyncpg client reading through pgwire — whose Describe is answered from
+REGISTERED metadata, never by asking the engine (REQ-589, amended 2026-10-01) — gets exact values in
+binary for every type. Used by the DuckDB (unit) and Postgres (integration) parity tests."""
 
 # Requirements: REQ-589
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
@@ -52,16 +54,46 @@ class PassthroughEngine(RuntimeEngine):
         self._dsn = dsn
         self.passthrough: list[str] = []
 
-    def execute_pg_engine_passthrough(self, sql, params, result_formats, *, run):
+    def execute_pg_engine_passthrough(self, sql, params, result_formats, *, described_oids):
         from provisa.federation.runtime import EngineRuntime
         from provisa.pgwire.pg_passthrough import open_passthrough
 
         self.passthrough.append(sql)
+        # The runtime's own read pool lends the connection, exactly as the server's engine does.
         return EngineRuntime._pg_passthrough_stream(
             cast(Any, None),
-            open_passthrough({"dsn": self._dsn}, sql, list(params or []), result_formats),
-            run=run,
+            open_passthrough(
+                self._rt.borrow_raw, sql, list(params or []), result_formats, described_oids
+            ),
         )
+
+
+def describes_as(*columns: tuple[str, str]):
+    """A ``describe_pgwire_statement`` double for tests that stub the pipeline below pgwire: the
+    statement describes as ``columns`` and holds no governed statement, so its Execute goes through
+    the test's own ``govern_pgwire_plan`` double."""
+    from provisa.pgwire._pipeline import _Described
+
+    async def _describe(sql, role_id):
+        del sql, role_id
+        return _Described(list(columns), None)
+
+    return _describe
+
+
+def registered_shape(sql: str, registry: dict[str, list[tuple[str, str]]]) -> list[tuple[str, str]]:
+    """``sql``'s result shape derived from ``registry`` (table -> [(column, registered type)]) by
+    the real derivation pgwire's Describe uses."""
+    from provisa.compiler.introspect import ColumnMetadata
+    from provisa.pgwire.result_shape import derive_result_shape
+
+    table_map = {name: i for i, name in enumerate(registry, 1)}
+    column_types = {
+        i: [ColumnMetadata(column_name=c, data_type=t, is_nullable=True) for c, t in cols]
+        for i, cols in enumerate(registry.values(), 1)
+    }
+    ctx = SimpleNamespace(physical_to_sql={}, virtual_columns={})
+    return derive_result_shape(sql, table_map, ctx, column_types)
 
 
 def assert_runtime_parity(runtime: Any, sql: str) -> list[str]:
@@ -77,7 +109,10 @@ def assert_runtime_parity(runtime: Any, sql: str) -> list[str]:
     return list(shape.column_types)
 
 
-async def fetch_through_pgwire(port: int, engine: RuntimeEngine, sql: str) -> list[Any]:
+async def fetch_through_pgwire(
+    port: int, engine: RuntimeEngine, sql: str, registry: dict[str, list[tuple[str, str]]]
+) -> list[Any]:
+    from provisa.pgwire._pipeline import _Described
     from provisa.pgwire.server import ProvisaSession
 
     ctx = MagicMock()
@@ -93,6 +128,12 @@ async def fetch_through_pgwire(port: int, engine: RuntimeEngine, sql: str) -> li
     async def _govern(text, role_id, params=None):
         return _engine_plan(sql)
 
+    async def _describe(text, role_id):
+        return _Described(registered_shape(text, registry), cast(Any, "governed"))
+
+    async def _plan(held, params):
+        return _engine_plan(sql)
+
     async def _no_cache(plan, st):
         return None
 
@@ -102,6 +143,9 @@ async def fetch_through_pgwire(port: int, engine: RuntimeEngine, sql: str) -> li
     with (
         patch("provisa.api.app.state", state),
         patch("provisa.pgwire._pipeline.govern_pgwire_plan", _govern),
+        patch("provisa.pgwire._pipeline.describe_pgwire_statement", _describe),
+        patch("provisa.pgwire._pipeline.plan_pgwire_statement", _plan),
+        patch("provisa.pgwire._pipeline.governed_statement_is_current", lambda held, st: True),
         patch("provisa.pgwire._pipeline.prepare_residency_and_check_cache", _no_cache),
         patch("provisa.federation.query_residency.prepare_engine_residency", _resident),
         patch.object(ProvisaSession, "_finalize_audit", lambda self, governed, status: None),

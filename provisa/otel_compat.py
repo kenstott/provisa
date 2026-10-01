@@ -16,19 +16,23 @@ Provides ``get_tracer(name)`` that returns the real OTel tracer when the
 Unit tests run without opentelemetry installed; production uses the real SDK.
 """
 
-# Requirements: REQ-302, REQ-303, REQ-886
+# Requirements: REQ-302, REQ-303, REQ-886, REQ-1910
 
 from __future__ import annotations
 
+import functools
+import inspect
 import time
 import uuid
+import weakref
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from contextvars import Token
 
 
 class _NoopSpan:
@@ -95,6 +99,396 @@ def get_tracer(name: str) -> TracerProtocol:  # REQ-302, REQ-303
         return cast(TracerProtocol, _trace.get_tracer(name))
     except ImportError:
         return _NoopTracer()
+
+
+# ---------------------------------------------------------------------------
+# REQ-1910: trace detail. Every request is traced; ``normal`` detail gives it ONE span — the
+# request span — carrying each pipeline stage's duration and facts as attributes, and ``debug``
+# detail gives it today's waterfall: a span per stage and per Redis, source, engine and outbound
+# call, with SQL text.
+#
+# The detail is resolved per request: ``set_trace_detail`` binds it at request entry, and a request
+# that binds nothing gets the process default (``configure_trace_detail``, from
+# ``observability.trace_detail`` / ``$PROVISA_TRACE_DETAIL``, default ``normal``).
+# ---------------------------------------------------------------------------
+
+TraceDetail = Literal["normal", "debug"]
+TRACE_DETAILS: tuple[TraceDetail, ...] = ("normal", "debug")
+
+_process_detail: TraceDetail = "normal"
+_request_detail: ContextVar[TraceDetail | None] = ContextVar("provisa_trace_detail", default=None)
+# The span of the request this context is serving: set by ``request_span`` (pgwire, Flight) and by
+# the HTTP server-span hook (provisa.api.otel_setup). None outside a request — startup, scheduler
+# jobs, discovery, MV refresh — where spans are created exactly as before in either detail.
+_request_span: ContextVar[Any] = ContextVar("provisa_request_span", default=None)
+_request_transport: ContextVar[str | None] = ContextVar("provisa_request_transport", default=None)
+
+# Attributes that carry statement text or a plan. Normal detail records none of them.
+DEBUG_ONLY_ATTRIBUTES = frozenset(
+    {
+        "db.statement",
+        "db.query.text",
+        "flight.sql",
+        "flight.gql_query",
+        "provisa.query_text",
+        "provisa.plan",
+    }
+)
+
+
+def _checked_detail(detail: str) -> TraceDetail:
+    if detail not in TRACE_DETAILS:
+        raise ValueError(f"trace detail {detail!r} is not one of {', '.join(TRACE_DETAILS)}")
+    return cast(TraceDetail, detail)
+
+
+def configure_trace_detail(detail: str) -> None:
+    """Set the process default detail — what a request gets when nothing binds one for it."""
+    global _process_detail
+    _process_detail = _checked_detail(detail)
+
+
+# The detail bound for a request, keyed by its request span. A transport serves one request as
+# several tasks — pgwire runs govern, execute and audit each through ``run_until_complete`` — and
+# every task gets a COPY of the connection's context, so a ContextVar bound inside one task is
+# seen by neither the next task nor the transport's own stage reporting. The request span object
+# is what they all share, so the binding hangs off it and ends with it (weakly held: no cleanup).
+# Only a RECORDING span carries one: with no SDK every request gets the same non-recording span
+# object, which is not a request's own, and nothing is exported for the detail to shape.
+_span_detail: "weakref.WeakKeyDictionary[Any, TraceDetail]" = weakref.WeakKeyDictionary()
+
+
+def trace_detail() -> TraceDetail:
+    """The trace detail of the request this context is serving."""
+    span = _live_request_span()
+    if span is not None:
+        bound = _span_detail.get(span)
+        if bound is not None:
+            return bound
+    return _request_detail.get() or _process_detail
+
+
+def set_trace_detail(detail: str) -> "Token[TraceDetail | None]":
+    """Bind the detail for the current request — on its request span when it has one, so every
+    task of the request sees it, and in this context. Call at request entry; pass the token to
+    :func:`reset_trace_detail` when the request ends."""
+    checked = _checked_detail(detail)
+    span = _live_request_span()
+    if span is not None:
+        _span_detail[span] = checked
+    return _request_detail.set(checked)
+
+
+def reset_trace_detail(token: "Token[TraceDetail | None]") -> None:
+    _request_detail.reset(token)
+
+
+def clear_trace_detail() -> None:
+    """Unbind the request detail, so this context is traced at the process default again. For a
+    caller that resolves the detail on every request and holds no token from the previous bind
+    (the debug-trace scope, ``provisa.core.trace_scope``): a request nothing covers must not
+    inherit the detail an earlier request on the same context was given."""
+    span = _live_request_span()
+    if span is not None:
+        _span_detail.pop(span, None)
+    _request_detail.set(None)
+
+
+def in_request_scope() -> bool:
+    """True while this context is serving a request that has a request span."""
+    return _request_span.get() is not None
+
+
+def bind_request_span(span: Any, transport: str) -> None:
+    """Mark ``span`` as this context's request span. For a transport whose server span is opened
+    by an instrumentor (HTTP): the binding lives as long as the request's task, so it is not reset."""
+    _request_span.set(span)
+    _request_transport.set(transport)
+    span.set_attribute("provisa.transport", transport)
+
+
+def request_transport() -> str | None:
+    """The transport of the request this context is serving, while its request span is open. None
+    outside a request, and for work that outlives the request it was started from."""
+    return _request_transport.get() if _live_request_span() is not None else None
+
+
+def _live_request_span() -> Any:
+    """The request span while it is still recording, else None."""
+    span = _request_span.get()
+    if span is not None and span.is_recording():
+        return span
+    return None
+
+
+def _server_kind_kwargs() -> dict[str, Any]:
+    try:
+        from opentelemetry.trace import SpanKind
+    except ImportError:
+        return {}
+    return {"kind": SpanKind.SERVER}
+
+
+def _current_server_span() -> Any:
+    """The recording SERVER-kind span current in this context (an instrumentor's), else None."""
+    try:
+        from opentelemetry import trace as _trace
+        from opentelemetry.trace import SpanKind
+    except ImportError:
+        return None
+    span = _trace.get_current_span()
+    if span.is_recording() and getattr(span, "kind", None) is SpanKind.SERVER:
+        return span
+    return None
+
+
+class _RequestFacts:
+    """What a pipeline stage sees in normal detail: its attributes go onto the request span, and
+    statement text is not recorded."""
+
+    __slots__ = ("_span", "_stage")
+
+    def __init__(self, span: Any, stage_key: str | None = None) -> None:
+        self._span = span
+        self._stage = stage_key
+
+    def set_attribute(self, key: str, value: Any) -> None:
+        if key in DEBUG_ONLY_ATTRIBUTES and trace_detail() == "normal":
+            return
+        self._span.set_attribute(key, value)
+
+    def record_exception(self, exception: BaseException, *_: Any, **__: Any) -> None:
+        self._span.set_attribute(_stage_attr(self._stage, "error"), type(exception).__name__)
+
+    def set_status(self, *_: Any, **__: Any) -> None:
+        # The request span's status is the transport's to set: a stage that failed and was
+        # retried or recovered must not mark the request failed.
+        pass
+
+    def add_event(self, name: str, attributes: Any = None, *_: Any, **__: Any) -> None:
+        self._span.add_event(name, attributes=attributes)
+
+    def get_span_context(self) -> Any:
+        return self._span.get_span_context()
+
+    def is_recording(self) -> bool:
+        return self._span.is_recording()
+
+
+def _stage_attr(stage_key: str | None, what: str) -> str:
+    return f"stage.{stage_key}.{what}" if stage_key else f"request.{what}"
+
+
+def current_trace_context() -> Any:
+    """The OpenTelemetry context current on this thread (None without the SDK) — what
+    :func:`request_span` is given as ``parent`` when the request runs in a context of its own."""
+    try:
+        from opentelemetry import context as _context
+    except ImportError:
+        return None
+    return _context.get_current()
+
+
+@contextmanager
+def request_span(
+    tracer: TracerProtocol, name: str, *, transport: str, parent: Any = None
+) -> "Iterator[Any]":
+    """Open the request span of a transport that has no instrumentor to open one (pgwire, Flight).
+
+    Every stage of the request reports into this span in normal detail and hangs a child span off
+    it in debug detail. Yields the span's facts handle: ``set_attribute`` as on a span, with
+    statement text recorded only in debug detail.
+
+    A request has ONE request span. Inside a request that already has one this opens nothing and
+    yields that span's handle; and when an instrumentor has already opened the transport's server
+    span (gRPC), that span is the request span and is bound rather than wrapped in a second.
+
+    ``parent`` is the OpenTelemetry context the transport received the call in, for a transport
+    that runs the request in a fresh context (gRPC's per-RPC context): it is attached for the
+    request, so an instrumentor's server span opened out there is found and bound here."""
+    if parent is not None:
+        from opentelemetry import context as _context
+
+        token = _context.attach(parent)
+        try:
+            with request_span(tracer, name, transport=transport) as facts:
+                yield facts
+        finally:
+            _context.detach(token)
+        return
+    existing = _live_request_span()
+    if existing is not None:
+        yield _RequestFacts(existing)
+        return
+    server = _current_server_span()
+    if server is not None:
+        server.set_attribute("provisa.transport", transport)
+        span_token = _request_span.set(server)
+        transport_token = _request_transport.set(transport)
+        try:
+            yield _RequestFacts(server)
+        finally:
+            _request_transport.reset(transport_token)
+            _request_span.reset(span_token)
+        return
+    with tracer.start_as_current_span(name, **_server_kind_kwargs()) as span:
+        span.set_attribute("provisa.transport", transport)
+        span_token = _request_span.set(span)
+        transport_token = _request_transport.set(transport)
+        try:
+            yield _RequestFacts(span)
+        finally:
+            _request_transport.reset(transport_token)
+            _request_span.reset(span_token)
+
+
+def in_request_span(tracer: TracerProtocol, name: str, *, transport: str) -> Any:
+    """Decorate a transport's request handler (a function or a coroutine function) so each call
+    runs inside its request span (see :func:`request_span`)."""
+
+    def _decorate(fn: Any) -> Any:
+        if inspect.iscoroutinefunction(fn):
+
+            @functools.wraps(fn)
+            async def _async_in_span(*args: Any, **kwargs: Any) -> Any:
+                with request_span(tracer, name, transport=transport):
+                    return await fn(*args, **kwargs)
+
+            return _async_in_span
+
+        @functools.wraps(fn)
+        def _in_span(*args: Any, **kwargs: Any) -> Any:
+            with request_span(tracer, name, transport=transport):
+                return fn(*args, **kwargs)
+
+        return _in_span
+
+    return _decorate
+
+
+@contextmanager
+def stage(tracer: TracerProtocol, span_name: str, *, name: str | None = None) -> "Iterator[Any]":
+    """One pipeline stage of a request.
+
+    Debug detail: a child span named ``span_name``, exactly as before, and the stage's duration
+    on the request span as in normal detail.
+    Normal detail: NO span. The stage's duration is added to ``stage.<name>.ms`` on the request
+    span (a stage that runs more than once in a request accumulates, with ``stage.<name>.count``),
+    and the attributes the stage sets land on the request span — statement text excepted.
+
+    Outside a request (startup, scheduler, discovery, MV refresh) there is no request span to
+    report into, so the stage is a span in either detail.
+
+    ``name`` is the stage the duration is reported under (``govern``, ``compile``, ``route``,
+    ``execute``, ``encode``, ``cache``); it defaults to ``span_name``.
+    """
+    request = _live_request_span()
+    if request is None:
+        with tracer.start_as_current_span(span_name) as span:
+            yield span
+        return
+    key = name or span_name
+    started = time.perf_counter()
+    if trace_detail() == "debug":
+        # The child span is the detail; the request span still reports the stage's duration, so
+        # the request record stands on its own in either detail.
+        try:
+            with tracer.start_as_current_span(span_name) as span:
+                yield span
+        finally:
+            _add_stage_time(request, key, (time.perf_counter() - started) * 1000)
+        return
+    try:
+        yield _RequestFacts(request, key)
+    except BaseException as exc:
+        request.set_attribute(_stage_attr(key, "error"), type(exc).__name__)
+        raise
+    finally:
+        _add_stage_time(request, key, (time.perf_counter() - started) * 1000)
+
+
+def _add_stage_time(request: Any, key: str, elapsed_ms: float) -> None:
+    ms_attr, count_attr = _stage_attr(key, "ms"), _stage_attr(key, "count")
+    recorded = request.attributes
+    previous = recorded.get(ms_attr)
+    if previous is None:
+        request.set_attribute(ms_attr, round(elapsed_ms, 3))
+        return
+    request.set_attribute(ms_attr, round(previous + elapsed_ms, 3))
+    request.set_attribute(count_attr, recorded.get(count_attr, 1) + 1)
+
+
+def record_stage(name: str, started: float, ended: float | None = None) -> None:
+    """Report a stage that has no span of its own in either detail: add ``ended - started``
+    (``time.perf_counter()`` readings; ``ended`` defaults to now) to ``stage.<name>.ms`` on the
+    request span."""
+    request = _live_request_span()
+    if request is not None:
+        finished = time.perf_counter() if ended is None else ended
+        _add_stage_time(request, name, (finished - started) * 1000)
+
+
+def timed_stage(name: str) -> Any:
+    """Decorate a synchronous function so each call is reported as stage ``name`` (see
+    :func:`record_stage`)."""
+
+    def _decorate(fn: Any) -> Any:
+        @functools.wraps(fn)
+        def _timed(*args: Any, **kwargs: Any) -> Any:
+            started = time.perf_counter()
+            try:
+                return fn(*args, **kwargs)
+            finally:
+                record_stage(name, started)
+
+        return _timed
+
+    return _decorate
+
+
+def request_fact(attr: str) -> Any:
+    """The value a request fact currently has on the request span; None when it has not been set
+    or there is no request."""
+    request = _live_request_span()
+    return None if request is None else request.attributes.get(attr)
+
+
+def annotate_request(**facts: Any) -> None:
+    """Set facts about the request (route, engine, source ids, cache result, row count, status) on
+    its request span. Keys are attribute names with ``.`` written as ``__``. A no-op outside a
+    request."""
+    request = _live_request_span()
+    if request is None:
+        return
+    normal = trace_detail() == "normal"
+    for key, value in facts.items():
+        attr = key.replace("__", ".")
+        if value is None or (normal and attr in DEBUG_ONLY_ATTRIBUTES):
+            continue
+        request.set_attribute(attr, value)
+
+
+# Request metrics (REQ-1910): recorded for every statement in either detail, from the audit seam
+# every transport reaches — never derived from spans, so dashboards and alerts do not depend on the
+# trace detail. The instruments exist once setup_otel has a collector to export to.
+_query_counter: Any = None
+_query_duration: Any = None
+
+
+def register_query_instruments(counter: Any, duration: Any) -> None:
+    global _query_counter, _query_duration
+    _query_counter, _query_duration = counter, duration
+
+
+def record_query(
+    *, transport: str, route: str, engine: str, status_code: int, duration_ms: float
+) -> None:
+    """Count one executed statement and record its latency, per transport, route and engine."""
+    if _query_counter is None:
+        return  # no collector configured: metrics are not exported at all (setup_otel)
+    attrs = {"transport": transport, "route": route, "engine": engine, "status": status_code}
+    _query_counter.add(1, attrs)
+    _query_duration.record(duration_ms, attrs)
 
 
 # ---------------------------------------------------------------------------

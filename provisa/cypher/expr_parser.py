@@ -18,6 +18,8 @@ associativity for free (operators listed tightest-binding first).
 
 from __future__ import annotations
 
+import copy
+import functools
 from typing import Any, cast
 
 import pyparsing as pp
@@ -458,13 +460,27 @@ def _mk_map_projection(node: CypherExpr, suf) -> MapProjection:
 _GRAMMAR = _build_grammar()
 
 
-def parse_expression(text: str) -> CypherExpr:
-    """Parse a Cypher expression fragment into a ``CypherExpr`` AST.
+# The grammar is a pure function of the fragment's text and costs about a millisecond per call
+# (pyparsing, pure Python); a request parses half a dozen fragments, the same ones on every request
+# of the same statement shape. Bounded, so a client generating unbounded distinct text cannot grow
+# it; a failed parse raises and is not cached.
+_PARSE_CACHE_SIZE = 4096
 
-    Raises ``CypherExprParseError`` on malformed input — the caller decides whether to fall back.
-    """
+
+@functools.lru_cache(maxsize=_PARSE_CACHE_SIZE)
+def _parse_cached(text: str) -> CypherExpr:
     try:
         result = _GRAMMAR.parse_string(text, parse_all=True)
     except pp.ParseBaseException as exc:  # noqa: BLE001 — normalize to our error type
         raise CypherExprParseError(f"cannot parse Cypher expression {text!r}: {exc}") from exc
     return _e(result[0])
+
+
+def parse_expression(text: str) -> CypherExpr:
+    """Parse a Cypher expression fragment into a ``CypherExpr`` AST.
+
+    Raises ``CypherExprParseError`` on malformed input — the caller decides whether to fall back.
+    The caller owns the returned tree: the nodes are mutable, so each call gets its own copy of the
+    parsed fragment.
+    """
+    return copy.deepcopy(_parse_cached(text))

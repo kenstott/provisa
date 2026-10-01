@@ -38,6 +38,8 @@ processors:
         # every row of the flood was one no ops view reads. Live inspection keeps them via the dev
         # overlay's Tempo pipeline; the Iceberg lane carries query spans, not connection chatter.
         - 'instrumentation_scope.name == "opentelemetry.instrumentation.asyncpg"'
+        # REQ-1910: the same traffic under the driver the control plane uses now (psycopg 3).
+        - 'instrumentation_scope.name == "opentelemetry.instrumentation.psycopg"'
 
 service:
   pipelines:

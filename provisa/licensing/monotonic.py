@@ -19,6 +19,8 @@ so the elapsed measure never shrinks. Fully offline and time-based — no networ
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from datetime import date
 from pathlib import Path
 
@@ -45,9 +47,14 @@ def update_highwater(path: Path, now_epoch: float) -> float:
     lower it, so the trial cannot be extended by moving the system clock backward (REQ-1136)."""
     hw = max(read_highwater(path), now_epoch)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"high_water": hw}), encoding="utf-8")
-    tmp.replace(path)
+    # A temporary file of this writer's own (REQ-1900): every worker of a `--workers N` launch
+    # persists the mark at the same moment, and through one shared name a writer's rename took the
+    # file out from under the next ("highwater.tmp -> highwater.json: No such file").
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=path.parent, prefix=path.stem + ".", suffix=".tmp", delete=False
+    ) as tmp:
+        tmp.write(json.dumps({"high_water": hw}))
+    os.replace(tmp.name, path)
     return hw
 
 

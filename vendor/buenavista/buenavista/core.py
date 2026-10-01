@@ -102,13 +102,20 @@ class Session:
         with no prior Bind passes ``None``) is optional context, not required for a normal
         decode/re-encode session: BVContext.execute_sql still assigns ``qr.result_format`` onto
         the returned QueryResult after this call either way. A session only needs it up front to
-        pick a wire-compatible fast path (e.g. a raw-byte source passthrough) before executing."""
+        pick a wire-compatible fast path (e.g. a raw-byte source passthrough) before executing.
+
+        A session whose ``describe_sql`` returns a ``statement_shape`` / ``prepared`` (below) is
+        also called with those as keyword arguments (``prepared=``, ``shape=``) for the Execute of
+        a statement it described."""
         raise NotImplementedError
 
     def describe_sql(self, sql: str, params=None) -> QueryResult:
         """The result SHAPE (column names and types) of ``sql`` for a Describe(Statement) — without
-        running the full statement. The following Execute runs it; describing by executing ran
-        every prepared statement twice."""
+        running the statement. The returned result may carry two attributes the context keeps:
+        ``statement_shape`` (what the client is told; every later Execute of the statement is
+        handed it back as ``shape=``) and ``prepared`` (work the next Bind's Execute continues
+        from, handed back once as ``prepared=``). A result with neither is one the session could
+        only produce by running the statement; the context hands that run to the Execute."""
         raise NotImplementedError
 
     def in_transaction(self) -> bool:

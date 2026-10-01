@@ -60,6 +60,7 @@ def _state(domain_access: list[str]) -> SimpleNamespace:
     # Keyed by field name too: a domain_prefix schema exposes the table as ``sa__orders``.
     ctx.tables = {"orders": _ORDERS, "sa__orders": _ORDERS}
     return SimpleNamespace(
+        admin_db=None,  # as AppState without a control plane: no debug-trace settings
         contexts={"analyst": ctx},
         rls_contexts={"analyst": RLSContext.empty()},
         roles={"analyst": {"id": "analyst", "capabilities": [], "domain_access": domain_access}},

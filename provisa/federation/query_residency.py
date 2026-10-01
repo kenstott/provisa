@@ -31,6 +31,7 @@ its own cause; the query never reads the stale replica (REQ-1661, amended 2026-0
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from collections.abc import Iterable
@@ -169,16 +170,6 @@ async def ensure_resident(
     from provisa.events.source_loader import SourceRowLoader
     from provisa.freshness.source_gate import source_subject
 
-    async with db.acquire() as conn:
-        states = {
-            _node(t.schema_name, t.table_name): await queue.get_node_state(
-                conn, _node(t.schema_name, t.table_name)
-            )
-            for tables in tables_by_source.values()
-            for t in tables
-        }
-    now = time.time()
-    stamps, oks = stale_sources(sources, tables_by_source, states)
     by_id = {s.id: s for s in sources}
     loader = SourceRowLoader(
         engine,
@@ -190,7 +181,6 @@ async def ensure_resident(
     from contextlib import AsyncExitStack
 
     from provisa.federation.backend import _env_store_schema
-    from provisa.events.land_lock import land_lock
 
     store_schema = _env_store_schema(engine.engine.materialize_store())
 
@@ -199,11 +189,22 @@ async def ensure_resident(
         # never interleave on one replica; every node of the source is held for the source's land.
         async with AsyncExitStack() as held:
             for t in tables_by_source.get(source.id, []):
-                await held.enter_async_context(
-                    land_lock(_physical_node(backend, engine, source, t))
-                )
+                await _hold_land_lock(held, _physical_node(backend, engine, source, t))
+            # Staleness is judged with the locks held: a request that waited here for another
+            # request's land of the same table reads the stamp that land wrote and finds the table
+            # fresh, so one stale table is landed once, not once per waiting reader (REQ-1882).
+            source_tables = {source.id: tables_by_source.get(source.id, [])}
+            async with db.acquire() as conn:
+                states = {
+                    _node(t.schema_name, t.table_name): await queue.get_node_state(
+                        conn, _node(t.schema_name, t.table_name)
+                    )
+                    for t in source_tables[source.id]
+                }
+            now = time.time()
+            stamps, oks = stale_sources([source], source_tables, states)
             try:
-                clock_stale = is_stale_of(sources, stamps, oks, now)
+                clock_stale = is_stale_of([source], stamps, oks, now)
                 # REQ-1730: OR in this backend INSTANCE's own first-touch signal — see
                 # EngineBackend._landed_this_process's own doc for why the persisted, per-NODE
                 # freshness clock alone under-reports staleness for an engine with no live reach for
@@ -308,6 +309,22 @@ async def ensure_resident(
     if landed:
         log.info("query residency: landed %s before the read", landed)
     return landed
+
+
+async def _hold_land_lock(held: Any, node: str) -> None:
+    """Take ``node``'s land lock for the caller's exit stack, waiting no longer than the request's
+    remaining budget. The wait is for another request's (or the event loop's) land of this table."""
+    from provisa.core import request_deadline
+    from provisa.events.land_lock import land_lock
+
+    budget = request_deadline.remaining()
+    try:
+        await asyncio.wait_for(held.enter_async_context(land_lock(node)), budget)
+    except TimeoutError as exc:
+        raise TimeoutError(
+            f"{node}: another land of this table was still running when this request's "
+            f"budget ran out"
+        ) from exc
 
 
 async def _record_refresh(db: Any, queue: Any, tables: list[tuple[str, Any]], *, ok: bool) -> None:

@@ -24,6 +24,7 @@ import re
 from provisa.executor.pool import SourcePool
 from provisa.executor.result import QueryResult
 from provisa.otel_compat import get_tracer as _get_tracer
+from provisa.otel_compat import stage as _stage
 
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
@@ -75,7 +76,7 @@ async def execute_direct(  # REQ-027, REQ-031
         QueryResult with rows and column names.
     """
     span_name = "provisa.query.direct" if span_attrs else "direct.execute"
-    with _tracer.start_as_current_span(span_name) as span:
+    with _stage(_tracer, span_name, name="execute") as span:
         if span_attrs:
             for _k, _v in span_attrs.items():
                 span.set_attribute(_k, _v)
@@ -141,7 +142,7 @@ async def open_direct_stream(  # REQ-1190
     loop: a connection error surfaces at open (before any row has been served), unlike ``execute_direct``
     which can safely replay a whole buffered read.
     """
-    with _tracer.start_as_current_span("direct.stream") as span:
+    with _stage(_tracer, "direct.stream", name="execute") as span:
         from provisa.compiler.params import extract_params_comment
 
         sql, embedded = extract_params_comment(sql)

@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 
 from provisa.core.operator_floor import OperatorFloorError
 from provisa.executor.drivers.registry import has_driver
+from provisa.otel_compat import timed_stage
 
 if TYPE_CHECKING:
     from provisa.federation.engine import FederationEngine
@@ -99,6 +100,7 @@ class RouteDecision:
     reason: str
 
 
+@timed_stage("route")  # REQ-1910
 def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-151, REQ-152
     sources: set[str],
     source_types: dict[str, str],

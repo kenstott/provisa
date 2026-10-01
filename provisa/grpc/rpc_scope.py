@@ -33,6 +33,9 @@ from contextlib import contextmanager
 from typing import Any, TypeVar
 
 from provisa.core.connection_loop import ConnectionLoop, connection_loop
+from provisa.otel_compat import current_trace_context, get_tracer, request_span
+
+_tracer = get_tracer(__name__)
 
 T = TypeVar("T")
 
@@ -79,7 +82,14 @@ def rpc_scope() -> Generator[RpcScope]:
     with connection_loop() as cl:
         scope = RpcScope(cl)
         _local.scope = scope
+        # REQ-1910: the RPC's request span, opened INSIDE the RPC's own context — the one every
+        # coroutine of the RPC runs in — so auth, governance, execution and audit all report into
+        # it. The handler thread's context is passed as the parent: an instrumentor's gRPC server
+        # span opened out there becomes the request span instead of a second one.
+        span = request_span(_tracer, "grpc.rpc", transport="grpc", parent=current_trace_context())
+        scope._ctx.run(span.__enter__)
         try:
             yield scope
         finally:
+            scope._ctx.run(span.__exit__, None, None, None)
             _local.scope = None

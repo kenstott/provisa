@@ -82,10 +82,11 @@ async def sql_client(monkeypatch):
     # REQ-074/REQ-1386: every governed statement appends a query_audit_log row to the org's tenant
     # database. These tests stub the executor, not the audit write, so stand in for the tenant
     # database and capture the append instead of reaching a real pool.
-    async def _log_query(pool, **kwargs):
+    # (The append is the audit writer's batch insert, on its own thread — provisa.audit.writer.)
+    async def _log_queries(pool, rows):
         pass
 
-    monkeypatch.setattr("provisa.audit.query_log.log_query", _log_query)
+    monkeypatch.setattr("provisa.audit.query_log.log_queries", _log_queries)
     _prev_tenant_db = app_mod.state.tenant_db
     app_mod.state.tenant_db = MagicMock()
 

@@ -34,7 +34,7 @@ from typing import Any
 
 
 from fastapi import APIRouter, Header, HTTPException, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import Response
 from graphql import GraphQLSyntaxError, OperationType
 from pydantic import BaseModel
 
@@ -54,6 +54,8 @@ from provisa.compiler.sql_rewrite import (
     rewrite_semantic_to_physical,
 )
 from provisa.executor import stats as _qs_mod
+from provisa.observability.request_facts import TimedJSONResponse as JSONResponse  # REQ-1910
+from provisa.observability.request_facts import observe_cache_hit
 from provisa.mv.rewriter import rewrite_if_mv_match
 from provisa.security.rights import Capability
 from provisa.transpiler.router import Route, decide_route
@@ -221,6 +223,7 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     x_provisa_stats: str | None = Header(None),
     x_provisa_normalized: str | None = Header(None),
     x_provisa_as_of: str | None = Header(None),  # REQ-1163: read bitemporal MVs as of this time
+    x_provisa_trace: str | None = Header(None),  # REQ-1910: "debug" asks for a debug trace
 ):
     """Execute a GraphQL query or mutation. Content negotiation via Accept header.
 
@@ -274,42 +277,79 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     ctx = state.contexts[role_id]
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
 
-    # Parse and validate
-    try:
-        document = parse_query(schema, request.query, request.variables)
-    except GraphQLValidationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except GraphQLSyntaxError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    # REQ-1877 (amended 2026-09-30): a plain query whose governed plan is already cached skips
+    # parse, validation, the complexity guard, compilation and governance — the plan is their
+    # result. A normalized read needs the document itself, so it is not offered the plan path.
+    from provisa.api.data.graphql_plan import PlanRequest
 
-    directives = _build_directives_with_legacy(request.query, document, _legacy_hints)
+    plan_request = PlanRequest(
+        state,
+        role_id=role_id,
+        role=role,
+        schema=schema,
+        query=request.query,
+        variables=request.variables,
+        as_of=x_provisa_as_of,
+        fresh_mvs=state.mv_registry.get_fresh(),
+        eligible=(x_provisa_normalized or "").lower() != "true",
+    )
+    plan = plan_request.cached()
+
+    if plan is not None:
+        document = None
+        directives = plan.directives
+        effective_variables = None
+    else:
+        # Parse and validate
+        try:
+            document = parse_query(schema, request.query, request.variables)
+        except GraphQLValidationError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except GraphQLSyntaxError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        directives = _build_directives_with_legacy(request.query, document, _legacy_hints)
+        effective_variables = coerce_variable_defaults(document, request.variables)
+
+        # Introspection: execute directly against GraphQL schema
+        if _detect_introspection(document):
+            from graphql import execute as gql_execute
+            from graphql.execution.execute import ExecutionResult as _ExecutionResult
+            from typing import cast as _cast
+
+            result = _cast(
+                _ExecutionResult,
+                gql_execute(schema, document, variable_values=effective_variables),
+            )
+            return JSONResponse({"data": result.data})
+
+        # REQ-1174: per-role query-complexity guard at the IR-compile boundary. Introspection
+        # above is exempt (schema meta — depth-limiting it breaks GraphQL tooling). Depth is
+        # measured on the AST (the normalized IR flattens nesting into joins, so it is not
+        # recoverable there); a query over a role's depth/node limit is rejected BEFORE any SQL is
+        # planned or run. 413 = "query too large".
+        from provisa.compiler.limits import QueryLimitError, enforce_limits, role_query_limits
+
+        _max_depth, _max_nodes, _ = role_query_limits(role)
+        try:
+            enforce_limits(document, max_depth=_max_depth, max_nodes=_max_nodes)
+        except QueryLimitError as e:
+            raise HTTPException(status_code=413, detail=str(e))
+        # (the role's max_query_time_ms is applied where execution is wrapped — _handle_query.)
     steward_hint = directives.steward_hint
-    effective_variables = coerce_variable_defaults(document, request.variables)
 
-    # Introspection: execute directly against GraphQL schema
-    if _detect_introspection(document):
-        from graphql import execute as gql_execute
-        from graphql.execution.execute import ExecutionResult as _ExecutionResult
-        from typing import cast as _cast
+    # REQ-1910: request entry for GraphQL over HTTP — the same resolution the pipeline's other
+    # entries make: the operator's debug-trace windows for this org and role, and the request's
+    # own hint (``@debugTrace``, a `-- @provisa trace=debug` comment, or the X-Provisa-Trace
+    # header), which is rejected for a role the operator has not permitted.
+    from provisa.compiler.directives import debug_trace_from_header
+    from provisa.pgwire._pipeline import resolve_trace_scope
 
-        result = _cast(
-            _ExecutionResult,
-            gql_execute(schema, document, variable_values=effective_variables),
-        )
-        return JSONResponse({"data": result.data})
-
-    # REQ-1174: per-role query-complexity guard at the IR-compile boundary. Introspection above is
-    # exempt (schema meta — depth-limiting it breaks GraphQL tooling). Depth is measured on the AST
-    # (the normalized IR flattens nesting into joins, so it is not recoverable there); a query over a
-    # role's depth/node limit is rejected BEFORE any SQL is planned or run. 413 = "query too large".
-    from provisa.compiler.limits import QueryLimitError, enforce_limits, role_query_limits
-
-    _max_depth, _max_nodes, _ = role_query_limits(role)
-    try:
-        enforce_limits(document, max_depth=_max_depth, max_nodes=_max_nodes)
-    except QueryLimitError as e:
-        raise HTTPException(status_code=413, detail=str(e))
-    # (the role's max_query_time_ms is applied where execution is wrapped — _handle_query.)
+    await resolve_trace_scope(
+        state,
+        role_id,
+        hint=directives.debug_trace or debug_trace_from_header(x_provisa_trace),
+    )
 
     # REQ-1448: the wake belongs to every executing surface, not only the SQL pipeline's
     # _execute_plan. Introspection returned above without touching the engine; everything below
@@ -320,17 +360,25 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
 
     from graphql.language.ast import OperationDefinitionNode as _ODN
 
+    # A cached plan is only ever recorded for a plain query (see _handle_query).
+    _definitions = document.definitions if document is not None else ()
     is_mut = any(
-        isinstance(d, _ODN) and d.operation == OperationType.MUTATION for d in document.definitions
+        isinstance(d, _ODN) and d.operation == OperationType.MUTATION for d in _definitions
     )
     is_sub = any(
-        isinstance(d, _ODN) and d.operation == OperationType.SUBSCRIPTION
-        for d in document.definitions
+        isinstance(d, _ODN) and d.operation == OperationType.SUBSCRIPTION for d in _definitions
     )
+
+    # REQ-074/REQ-1386: one audit record per request — a query, a plan- or response-cache hit, a
+    # mutation, a normalized read, a subscription being opened — handed to the audit writer (an
+    # in-memory enqueue: no parse, no database).
+    from provisa.audit.graphql import audit_graphql_request
 
     if is_sub:
         from provisa.api.data.subscription_sse import handle_subscription_sse
 
+        # The row records the subscription being opened; the stream outlives the request.
+        audit_graphql_request(state, role_id, request.query, ctx, 200, _time.monotonic())
         return await handle_subscription_sse(
             document,
             ctx,
@@ -366,44 +414,65 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
 
     # REQ-049: X-Provisa-Normalized returns one governed, deduplicated relational table per
     # entity (PK/FK preserved) as a manifest of S3 URLs, instead of the denormalized result.
+    _audit_started = _time.monotonic()
+    try:
+        if (x_provisa_normalized or "").lower() == "true" and not is_mut:
+            response = await _handle_normalized(
+                document, ctx, rls, state, effective_variables, role_id, role
+            )
+        elif is_mut:
+            response = await _handle_mutation(
+                document,
+                ctx,
+                rls,
+                state,
+                effective_variables,
+                role_id,
+                raw_request,
+            )
+        else:
+            response = await _handle_query(
+                document,
+                ctx,
+                rls,
+                state,
+                effective_variables,
+                role,
+                output_format,
+                role_id,
+                force_redirect=force_redirect,
+                redirect_threshold=effective_threshold,
+                redirect_format=redirect_format,
+                as_of=_as_of,  # REQ-1163
+                steward_hint=steward_hint,
+                query_session_props=directives.to_session_props(),
+                cache_ttl=directives.cache_ttl,
+                cache_opt_in=directives.cache_opt_in,  # REQ-544 (amended): per-request opt-in
+                query_text=request.query,
+                # REQ-595: the response-cache tenant every surface shares (cache.tenancy) — the
+                # one write paths invalidate under.
+                org_id=cache_tenant(state),
+                plan=plan,
+                plan_request=plan_request,
+                directives=directives,
+            )
+    except Exception as exc:
+        # The refusal or failure is the fact the row records (policy_denials reads the 403s).
+        audit_graphql_request(
+            state, role_id, request.query, ctx, getattr(exc, "status_code", 500), _audit_started
+        )
+        raise
+    audit_graphql_request(
+        state,
+        role_id,
+        request.query,
+        ctx,
+        # A handler that returned a body rather than a Response completed normally.
+        response.status_code if isinstance(response, Response) else 200,
+        _audit_started,
+    )
     if (x_provisa_normalized or "").lower() == "true" and not is_mut:
-        return await _handle_normalized(
-            document, ctx, rls, state, effective_variables, role_id, role
-        )
-
-    if is_mut:
-        response = await _handle_mutation(
-            document,
-            ctx,
-            rls,
-            state,
-            effective_variables,
-            role_id,
-            raw_request,
-        )
-    else:
-        response = await _handle_query(
-            document,
-            ctx,
-            rls,
-            state,
-            effective_variables,
-            role,
-            output_format,
-            role_id,
-            force_redirect=force_redirect,
-            redirect_threshold=effective_threshold,
-            redirect_format=redirect_format,
-            as_of=_as_of,  # REQ-1163
-            steward_hint=steward_hint,
-            query_session_props=directives.to_session_props(),
-            cache_ttl=directives.cache_ttl,
-            cache_opt_in=directives.cache_opt_in,  # REQ-544 (amended): per-request opt-in
-            query_text=request.query,
-            # REQ-595: the response-cache tenant every surface shares (cache.tenancy) — the one
-            # write paths invalidate under.
-            org_id=cache_tenant(state),
-        )
+        return response
 
     if stats_enabled:
         qs = _qs_mod.current()
@@ -595,6 +664,11 @@ async def _execute_one_field(
     root_field = compiled.root_field
     _t0 = _time.perf_counter()
 
+    # REQ-1910: this field's sources are known — a debug-trace window on one of them covers it.
+    from provisa.pgwire._pipeline import extend_trace_scope_to_sources
+
+    await extend_trace_scope_to_sources(state, role_id, frozenset(compiled.sources))
+
     # Cache check. REQ-544 (amended 2026-09-30): the response cache is per-request OPT-IN — no
     # @cached / `-- @provisa cache` hint, no read and no write. REQ-866 fail-closed: when the
     # identity is not fully resolved into the key (empty RLS filter, or a current_setting-dependent
@@ -632,6 +706,12 @@ async def _execute_one_field(
             elapsed_ms=(_time.perf_counter() - _t0) * 1000,
             rows=len(field_rows) if isinstance(field_rows, list) else 0,
             cache_hit=True,
+        )
+        observe_cache_hit(  # REQ-1910
+            role_id=role_id,
+            sources=compiled.sources,
+            rows=len(field_rows) if isinstance(field_rows, list) else 0,
+            started=_t0,
         )
         return root_field, field_rows, None, ck, cached
 
@@ -867,12 +947,19 @@ async def _handle_query(
     cache_opt_in: bool,
     query_text: str | None = None,
     org_id: str | None = None,
+    plan=None,
+    plan_request=None,
+    directives=None,
 ):  # REQ-001, REQ-027, REQ-028, REQ-029, REQ-043, REQ-047, REQ-049, REQ-137, REQ-140, REQ-196
     """Handle a GraphQL query operation with content negotiation.
 
     Pipeline per root field: compile → RLS → masking → MV rewrite → sampling
       → cache check → route → transpile → execute → cache store → serialize.
     Multiple root fields are executed independently and merged.
+
+    ``plan`` (REQ-1877): the request's cached governed plan — its compiled fields are executed as
+    they are and the compile/governance stages are skipped. ``plan_request`` records the plan this
+    call builds when there was none; ``directives`` is recorded with it.
     """
     # REQ-1174: cap execution wall-time at the tighter of the global request timeout and the role's
     # max_query_time_ms (None → global only). Applied to every wait_for below.
@@ -883,36 +970,45 @@ async def _handle_query(
         _request_timeout() if _rt_ms is None else min(_request_timeout(), _rt_ms / 1000.0)
     )
 
-    action_sels, regular_names = _split_action_fields(document, state)
+    if plan is not None:
+        prepared = plan.prepared_copies()
+    else:
+        action_sels, regular_names = _split_action_fields(document, state)
 
-    if action_sels and not regular_names:
-        data = {}
-        for sel in action_sels:
-            data[sel.name.value] = await _execute_action_field(
-                sel.name.value, sel, state, variables, ctx=ctx, role_id=role_id
+        if action_sels and not regular_names:
+            data = {}
+            for sel in action_sels:
+                data[sel.name.value] = await _execute_action_field(
+                    sel.name.value, sel, state, variables, ctx=ctx, role_id=role_id
+                )
+            return JSONResponse(content={"data": data}, headers=build_cache_headers(None))
+
+        if action_sels and regular_names:
+            raise ApiError(
+                400,
+                "data.mixed_action_and_table_queries",
+                "Cannot mix action fields with table queries",
             )
-        return JSONResponse(content={"data": data}, headers=build_cache_headers(None))
 
-    if action_sels and regular_names:
-        raise ApiError(
-            400,
-            "data.mixed_action_and_table_queries",
-            "Cannot mix action fields with table queries",
+        compiled_queries = compile_query(document, ctx, variables)
+        if not compiled_queries:
+            raise ApiError(400, "data.no_query_fields", "No query fields found")
+
+        # The plan is keyed on the fresh-MV set the request looked it up with, so the same set
+        # drives the MV rewrite here.
+        fresh_mvs = (
+            plan_request.fresh_mvs if plan_request is not None else state.mv_registry.get_fresh()
         )
 
-    compiled_queries = compile_query(document, ctx, variables)
-    if not compiled_queries:
-        raise ApiError(400, "data.no_query_fields", "No query fields found")
-
-    fresh_mvs = state.mv_registry.get_fresh()
-
-    # Prepare all compiled queries (RLS, masking, MV rewrite, sampling)
-    prepared = []
-    for cq in compiled_queries:
-        prepped, _ = await _prepare_compiled(
-            cq, ctx, rls, state, role_id, role, fresh_mvs, as_of=as_of
-        )
-        prepared.append(prepped)
+        # Prepare all compiled queries (RLS, masking, MV rewrite, sampling)
+        prepared = []
+        for cq in compiled_queries:
+            prepped, _ = await _prepare_compiled(
+                cq, ctx, rls, state, role_id, role, fresh_mvs, as_of=as_of
+            )
+            prepared.append(prepped)
+        if plan_request is not None:
+            plan_request.record(directives, prepared)
 
     # Determine redirect config
     from provisa.executor.redirect import request_redirect_config

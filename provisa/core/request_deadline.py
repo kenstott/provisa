@@ -42,17 +42,22 @@ class Deadline:
         self._lock = threading.Lock()
         self._cancels: dict[int, Callable[[], None]] = {}
         self._next = 0
-        self.fired = False
-        self._timer = threading.Timer(timeout, self._fire)
-        self._timer.daemon = True
-        self._timer.start()
+        # The watchdog is armed by the first statement that registers a cancel (``_registered``),
+        # not here: a budgeted run that makes no blocking driver call has nothing for it to
+        # cancel, and expiry itself is read off the clock (``fired``).
+        self._timer: threading.Timer | None = None
+        self._stopped = False
+
+    @property
+    def fired(self) -> bool:
+        """Whether the budget has expired — by the clock, whether or not a watchdog was armed."""
+        return time.monotonic() >= self.expires
 
     def remaining(self) -> float:
         return max(0.0, self.expires - time.monotonic())
 
     def _fire(self) -> None:
         with self._lock:
-            self.fired = True
             cancels = list(self._cancels.values())
         for cancel in cancels:
             try:
@@ -63,7 +68,11 @@ class Deadline:
                 log.exception("request deadline: cancelling an in-flight statement failed")
 
     def stop(self) -> None:
-        self._timer.cancel()
+        with self._lock:
+            self._stopped = True
+            timer = self._timer
+        if timer is not None:
+            timer.cancel()
 
     def expired_error(self) -> TimeoutError:
         return TimeoutError(f"request exceeded its {self.timeout:g}s budget")
@@ -76,6 +85,14 @@ class Deadline:
             key = self._next
             self._next += 1
             self._cancels[key] = cancel
+            if self._timer is None and not self._stopped:
+                # A second thread by necessity (REQ-1882): the request thread is about to enter a
+                # blocking driver call and cannot time itself out when the budget expires. The
+                # timer runs none of the request's work — at expiry it only calls the in-flight
+                # statement's cancel.
+                self._timer = threading.Timer(self.remaining(), self._fire)
+                self._timer.daemon = True
+                self._timer.start()
         try:
             yield
         except Exception as exc:

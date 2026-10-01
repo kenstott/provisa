@@ -71,6 +71,7 @@ def _ctx() -> CompilationContext:
 
 def _fake_state():
     return SimpleNamespace(
+        admin_db=None,  # as AppState without a control plane: no debug-trace settings
         contexts={"analyst": _ctx()},
         rls_contexts={},
         roles={"analyst": {"capabilities": [], "domain_access": ["*"]}},

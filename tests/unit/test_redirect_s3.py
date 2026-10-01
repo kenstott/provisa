@@ -23,7 +23,7 @@ This file adds:
   - TTL is passed to generate_presigned_url with the exact configured value
   - S3 permission-denied error propagates from upload_and_presign
   - Missing bucket error propagates from upload_and_presign
-  - ensure_results_bucket swallows errors when S3 is unreachable
+  - ensure_results_bucket raises, naming the endpoint, when S3 is unreachable
   - RedirectConfig TTL field drives the returned expires_in value
   - upload_and_presign returns expected response shape
 """
@@ -305,25 +305,37 @@ class TestS3BucketMissing:
         assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"
 
     @pytest.mark.asyncio
-    async def test_ensure_results_bucket_swallows_error_when_s3_unreachable(self):
-        """ensure_results_bucket must not raise even if S3/MinIO is unavailable.
+    async def test_ensure_results_bucket_raises_when_s3_unreachable(self, monkeypatch):
+        """ensure_results_bucket fails the redirect that asked for the bucket, naming the endpoint.
 
-        This prevents startup failures when the object store is not yet ready.
+        It runs on the first redirect, not at startup (REQ-171), so there is no boot to protect
+        and a store that is not there is the caller's error to see.
         """
+        from botocore.exceptions import EndpointConnectionError
+
+        from provisa.executor import redirect
+
+        monkeypatch.setattr(redirect, "_ensured_buckets", set())
         cfg = _config()
+        s3 = MagicMock()
+        s3.head_bucket = MagicMock(
+            side_effect=EndpointConnectionError(endpoint_url=cfg.endpoint_url)
+        )
 
-        with patch("boto3.client", side_effect=Exception("Connection refused")) as mock_client:
-            result = await ensure_results_bucket(cfg)
+        with patch("boto3.client", return_value=s3):
+            with pytest.raises(redirect.RedirectStoreError) as exc_info:
+                await ensure_results_bucket(cfg)
 
-        # boto3.client was attempted (error occurred during client creation)
-        mock_client.assert_called_once()
-        # Return value is None — the error was silently swallowed
-        assert result is None
+        assert cfg.endpoint_url in str(exc_info.value)
+        s3.create_bucket.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_ensure_results_bucket_swallows_client_error(self):
+    async def test_ensure_results_bucket_raises_client_error(self, monkeypatch):
         from botocore.exceptions import ClientError
 
+        from provisa.executor import redirect
+
+        monkeypatch.setattr(redirect, "_ensured_buckets", set())
         cfg = _config()
         s3 = MagicMock()
         s3.head_bucket = MagicMock(
@@ -332,20 +344,15 @@ class TestS3BucketMissing:
                 "HeadBucket",
             )
         )
-        s3.create_bucket = MagicMock(
-            side_effect=ClientError(
-                {"Error": {"Code": "AccessDenied", "Message": "Access Denied"}},
-                "CreateBucket",
-            )
-        )
 
         with patch("boto3.client", return_value=s3):
-            result = await ensure_results_bucket(cfg)
+            with pytest.raises(redirect.RedirectStoreError) as exc_info:
+                await ensure_results_bucket(cfg)
 
-        # The ClientError was swallowed — function returns None without raising
-        assert result is None
-        # head_bucket was attempted (error came from bucket operations, not client creation)
+        assert cfg.endpoint_url in str(exc_info.value)
+        # A bucket this identity is forbidden to see is not one to try to create.
         s3.head_bucket.assert_called_once()
+        s3.create_bucket.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_ensure_results_bucket_noop_when_no_endpoint(self):

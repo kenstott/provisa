@@ -36,9 +36,13 @@ from provisa.api.mcp import tools
 from provisa.api.org_resolve import OrgResolutionError
 from provisa.core.request_context import reset_current_org, set_current_org
 from provisa.core.request_thread import run_on_request_thread
+from provisa.otel_compat import get_tracer as _get_tracer
+from provisa.otel_compat import in_request_span as _in_request_span
+from provisa.otel_compat import request_span as _request_span
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
 log = logging.getLogger(__name__)
+_tracer = _get_tracer(__name__)
 
 
 # Per-request role resolved from the remote HTTP bearer token (REQ-1105). Set by the transport
@@ -206,7 +210,8 @@ def build_mcp_server(state: Any):
         async def _on_request_thread(*args: Any, **kwargs: Any) -> Any:
             # Async on the MCP loop by necessity: the MCP SDK dispatches tools as coroutines on
             # its own loop, which must keep serving other calls while this one runs.
-            return await run_on_request_thread(lambda: fn(*args, **kwargs))
+            with _request_span(_tracer, f"mcp.{fn.__name__}", transport="mcp"):  # REQ-1910
+                return await run_on_request_thread(lambda: fn(*args, **kwargs))
 
         return mcp.tool()(_on_request_thread)
 
@@ -260,6 +265,7 @@ def build_mcp_server(state: Any):
         return tools.list_commands(state, _role(role))
 
     @mcp.tool()
+    @_in_request_span(_tracer, "mcp.run_sql", transport="mcp")  # REQ-1910
     async def run_sql(
         sql: str,
         ctx: Context,

@@ -10,234 +10,184 @@
 
 """Raw-byte DataRow passthrough for a pgwire route whose physical destination is itself Postgres —
 either a DIRECT-route source (``PostgreSQLDriver``) or the ENGINE route when the bound federation
-engine itself is Postgres (``PgFederationRuntime`` / REQ-904's ``PROVISA_ENGINE=pg``). Same wire
-mechanism either way: only the connect parameters differ (a ``SourcePool`` driver's stashed
-``_connect_kwargs`` vs. the pg engine's own ``engine_dsn``), and the dispatch decision of *when* to
-use it lives entirely in ``provisa/pgwire/server.py`` (and Flight's counterpart) — never here.
+engine itself is Postgres (``PgFederationRuntime`` / REQ-904's ``PROVISA_ENGINE=pg``). The dispatch
+decision of *when* to use it lives entirely in ``provisa/pgwire/server.py`` — never here.
 
 Masking/RLS are always baked into ``governed.sql``'s text before this ever runs (see
 ``provisa/compiler/mask_inject.py``/``stage2.py``) — there is no post-execution, per-row Python
 transform anywhere in the pipeline. When the physical destination is genuinely Postgres, the
 DataRow bytes it sends back are therefore already the exact final answer: decoding them into
-``asyncpg.Record`` objects and re-encoding them into pgwire's own DataRow format
-(``send_data_rows``) is pure overhead. This module skips that round trip — it relays the source's
-own DataRow message bytes straight to the downstream pgwire client, unmodified.
+Python values and re-encoding them into pgwire's own DataRow format (``send_data_rows``) is pure
+overhead. This module skips that round trip — it relays the source's own DataRow message bytes
+straight to the downstream pgwire client, unmodified.
 
-No new authentication code: this module always connects with the SAME parameters (kwargs or a
-DSN) the caller's own existing connection was already built from — never a new credential path.
-Two short-lived dedicated connections are opened per query (one normal, to read real column
-metadata via ``conn.prepare()``; one paused-transport, driven raw for the actual fetch) — neither
-is ever pooled or handed back to shared use, so bypassing asyncpg's own row-decoding for the raw
-one carries no cross-query state risk to reason about."""
+One connection, borrowed from the destination's EXISTING pool for the query's duration (REQ-1863,
+amended 2026-10-01): the same pool the decoded path reads through, so a query opens no connection
+and pays no handshake. The exchange is driven on that connection's own socket, on the request's
+thread, as plain blocking I/O:
+
+    Parse(named) + Describe(Statement) + Flush   -> the source's own RowDescription   (first use)
+    Bind + Execute + Sync                        -> every DataRow, then ReadyForQuery
+
+The statement is prepared under a name ON THAT CONNECTION and remembered with it (its name and
+RowDescription), so every later run of the same statement text on the connection is the second
+line alone: one round trip. The rows are read off the socket a batch at a time as the client
+consumes them — TCP flow control holds the source back, so a large result never accumulates here.
+
+The connection's driver (libpq) never sees the exchange and is idle before and after it, so a
+connection whose exchange completed goes back to the pool; one whose exchange did not (it failed,
+or the client stopped reading mid-result) is closed. The source's RowDescription decides whether
+the passthrough APPLIES, before anything executes."""
 
 from __future__ import annotations
 
+import os
+import socket
 import struct
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
+from dataclasses import dataclass, field
 
-if TYPE_CHECKING:
-    import asyncio
-    import socket as socket_module
+from provisa.core import request_deadline
 
 _INT16 = struct.Struct("!h")
 _INT32 = struct.Struct("!i")
 
+# A blocking read's own bound when the request carries no deadline: a source that stops answering
+# surfaces as an error rather than a thread parked forever.
+_IO_TIMEOUT_S = 600.0
+
 
 class PassthroughError(Exception):
     """The passthrough does not APPLY to this statement — a result column whose advertised wire
-    type does not have the source type's exact byte layout. By design the statement then takes the
-    decode/re-encode path; callers catch exactly this and route there. A passthrough that applies
-    but cannot open or read raises :class:`PassthroughFailure` instead, which no caller catches."""
+    type does not have the source type's exact byte layout, or a destination connection whose
+    socket carries TLS records rather than protocol messages. By design the statement then takes
+    the decode/re-encode path; callers catch exactly this and route there. Raised before the
+    statement executes. A passthrough that applies but fails raises :class:`PassthroughFailure`
+    instead, which no caller catches."""
 
 
 class PassthroughFailure(RuntimeError):
-    """The passthrough applies but failed — the raw connection could not be opened, the source
-    returned an ErrorResponse, or its rows contradict the RowDescription the client was sent. The
-    request fails with this error; it never falls back to the decode/re-encode path (REQ-1863)."""
+    """The passthrough applies but failed — the source returned an ErrorResponse, the connection
+    closed, or its rows contradict the RowDescription the client was sent. The request fails with
+    this error; it never falls back to the decode/re-encode path (REQ-1863)."""
 
 
-# Every raw passthrough connection identifies itself to the source Postgres (pg_stat_activity,
-# the source's own logs) — the one way an operator can tell these dedicated, single-use
-# connections apart from the source pool's.
-_PASSTHROUGH_APPLICATION_NAME = "provisa-pgwire-passthrough"
+class _ConnectionLost(PassthroughFailure):
+    """The borrowed connection failed mid-exchange (closed, reset, or silent past its bound): its
+    protocol state is unknown, so it is discarded rather than returned to its pool."""
 
 
 @dataclass
-class RawPgConnection:
-    """A dedicated, single-use asyncpg connection whose transport has been paused so its raw
-    socket can be driven directly. Never returned to any pool — always closed after one query."""
+class PreparedOnConnection:
+    """A statement this module prepared on one connection: its name there and the source's
+    RowDescription for it."""
 
-    _asyncpg_conn: Any
-    _loop: asyncio.AbstractEventLoop
-    _sock: socket_module.socket
-
-    async def close(self) -> None:
-        # self._sock is a dup() of the transport's fd (see open_raw_connection) — a separate
-        # descriptor this module owns outright and must close itself; the original transport's
-        # own fd is unaffected and is released by self._asyncpg_conn.close() below.
-        try:
-            self._sock.close()
-        except Exception:  # noqa: BLE001 - best-effort; the connection is being discarded either way
-            pass
-        try:
-            self._asyncpg_conn._transport.resume_reading()
-        except Exception:  # noqa: BLE001 - best-effort; the connection is being discarded either way
-            pass
-        await self._asyncpg_conn.close()
+    name: str
+    column_names: list[str]
+    type_oids: list[int]
 
 
-async def open_raw_connection(connect_kwargs: dict[str, Any]) -> RawPgConnection:
-    """Open a fresh, dedicated connection using the exact parameters the caller's own existing
-    connection (a ``SourcePool`` driver's pool, or the pg federation engine's ``engine_dsn``) was
-    already built from (real ``asyncpg.connect()`` — the same auth/SCRAM handling, unchanged),
-    then pause its transport so this module can read/write its raw socket directly instead of
-    going through asyncpg's own Cython protocol."""
-    import asyncio
-    import os
-    import socket
+# Statements kept prepared per connection (the source driver's own per-connection bound).
+_PREPARED_MAX = 100
 
-    import asyncpg
 
-    if not connect_kwargs:
-        raise PassthroughFailure("no connect parameters given (connect() never called)")
-    server_settings = {
-        **connect_kwargs.get("server_settings", {}),
-        "application_name": _PASSTHROUGH_APPLICATION_NAME,
-    }
-    conn = await asyncpg.connect(**{**connect_kwargs, "server_settings": server_settings})
-    # Everything below is real I/O/attribute-access that can raise (the AttributeError/
-    # TransportSocket bugs this function's history is full of are exactly the kind of thing this
-    # guards against) — on ANY failure past this point, `conn` is a live, connected asyncpg
-    # connection against the REAL backend Postgres that nothing else will ever close. Confirmed:
-    # during the period this function's bugs were live, every one of the (thousands of) failed
-    # calls leaked one such connection — never explicitly `conn.close()`d, only reclaimed whenever
-    # Python's GC/asyncpg's own __del__ got around to it, if ever, which can exhaust the backend's
-    # max_connections and hang unrelated later callers (e.g. federated_join) with no clean error.
-    try:
-        # conn._transport (asyncpg.Connection's own slot, connection.py), NOT
-        # conn._protocol.transport: CoreProtocol's `transport` is a plain `cdef object`
-        # (coreproto.pxd) with no `public`/`readonly` modifier, so it is never exposed to Python at
-        # all — reading it raises AttributeError, live-confirmed against asyncpg 0.31.0
-        # ('Protocol' object has no attribute 'transport').
-        transport = conn._transport
-        transport.pause_reading()
-        wrapped = transport.get_extra_info("socket")
-        if wrapped is None:
-            raise PassthroughFailure("transport exposes no raw socket (unexpected transport type)")
-        # get_extra_info("socket") is a wrapper that deliberately refuses send()/recv() on BOTH
-        # event loops a deployment runs: asyncio's TransportSocket has no send() at all, and
-        # uvloop's PseudoSocket (main.py installs uvloop, REQ-1867) stubs it to raise TypeError —
-        # and its own .dup() is another PseudoSocket. Both expose fileno(), so build a genuine
-        # socket.socket over a dup of that descriptor: real send()/recv() for loop.sock_* under
-        # either loop, on the same connection, while the original transport stays paused. This
-        # module owns the dup'd descriptor and closes it (RawPgConnection.close).
-        sock = socket.socket(fileno=os.dup(wrapped.fileno()))
-        sock.setblocking(False)
-    except BaseException:
-        # Live-confirmed: conn.close() can itself hang forever here if reads are still paused
-        # (pause_reading() above already ran) — the same reason RawPgConnection.close() resumes
-        # reading before closing. Best-effort; conn is being discarded either way.
-        try:
-            conn._transport.resume_reading()
-        except Exception:  # noqa: BLE001
-            pass
-        await conn.close()
-        raise
-    return RawPgConnection(conn, asyncio.get_event_loop(), sock)
+@dataclass
+class BorrowedPgConnection:
+    """One Postgres connection borrowed from its pool for a single query's raw exchange."""
+
+    fileno: int  # the connection's socket descriptor
+    ssl_in_use: bool
+    cancel: Callable[[], None]  # cancel the statement in flight (safe from another thread)
+    # Hand the connection back. ``discard=True`` closes it instead (its exchange did not complete,
+    # so its protocol state is unknown) and lets the pool replace it.
+    release: Callable[[bool], None]
+    # statement text -> what this module prepared for it ON THIS CONNECTION. The lender keeps the
+    # dict with the connection, so it lives exactly as long as the connection does.
+    statements: dict[str, PreparedOnConnection] = field(default_factory=dict)
 
 
 @dataclass
 class PassthroughResult:
-    """A ready-to-fetch passthrough query: real column metadata (from the pooled connection's own
-    ``conn.prepare(sql)`` — never guessed), plus the cursor that streams raw DataRow bytes."""
+    """A ready-to-fetch passthrough query: the source's own column metadata (its RowDescription for
+    this statement — never guessed), plus the cursor that streams raw DataRow bytes."""
 
     column_names: list[str]
     column_types: list[str]
     cursor: PassthroughCursor
 
 
-# Column type names pgwire's own _sql_type_to_bvtype (provisa/pgwire/server.py) maps to a SPECIFIC
-# real Postgres OID/wire layout (not a generic TEXT fallback). Passthrough forwards the source's
-# raw bytes verbatim in whatever format (text/binary) the client requested — that is only safe if
-# the RowDescription OID pgwire advertises for the column genuinely matches the real source type,
-# since a binary-format client decodes strictly by OID-implied byte layout. An unrecognized type
-# name falls through to a generic TEXT OID in the normal path; forwarded raw bytes for such a
-# column could then be misdecoded, so passthrough is refused for it (falls back to decode/re-encode).
-_TEXT_SAFE_TYPES = frozenset({"text", "varchar", "bpchar", "name", "char"})
-
-
-# Source column type name (asyncpg Type.name) -> its pg_type OID, for the types whose wire layout
-# a pgwire-advertised type can match exactly.
-_SOURCE_TYPE_OIDS = {
-    "bool": 16,
-    "int2": 21,
-    "float4": 700,
-    "jsonb": 3802,
-    "timestamptz": 1184,
-    "timetz": 1266,
-    "uuid": 2950,
-    "interval": 1186,
-    "bytea": 17,
-    "int8": 20,
-    "int4": 23,
-    "float8": 701,
-    "numeric": 1700,
-    "date": 1082,
-    "time": 1083,
-    "timestamp": 1114,
-    "json": 114,
+# Source type OID -> the type name pgwire's _sql_type_to_bvtype (provisa/pgwire/server.py) maps to
+# that SAME OID. Passthrough forwards the source's raw bytes verbatim in whatever format (text or
+# binary) the client requested — safe only where the OID pgwire advertises for a column is the
+# source column's own, since a binary-format client decodes strictly by OID-implied byte layout.
+_OID_TYPE_NAMES = {
+    16: "bool",
+    21: "int2",
+    700: "float4",
+    3802: "jsonb",
+    1184: "timestamptz",
+    1266: "timetz",
+    2950: "uuid",
+    1186: "interval",
+    17: "bytea",
+    20: "int8",
+    23: "int4",
+    701: "float8",
+    1700: "numeric",
+    1082: "date",
+    1083: "time",
+    1114: "timestamp",
+    114: "json",
+    25: "text",
+    1043: "varchar",
+    1042: "bpchar",
+    19: "name",
+    18: "char",
 }
 
+# The text family shares one wire layout (its bytes are the text), whichever of these OIDs the
+# column is advertised under.
+_TEXT_OIDS = frozenset({25, 1043, 1042, 19, 18})
 
-def _column_types_are_passthrough_safe(column_types: list[str]) -> bool:
-    """Every column's ADVERTISED wire type must have exactly the source type's byte layout — a
-    binary client reads the forwarded raw bytes by the advertised OID (live: int4 advertised as
-    int8 → asyncpg "insufficient data in buffer: requested 8 remaining 4"). Each type here is
-    advertised with its own OID (int2, float4, jsonb, timestamptz, timetz, uuid included), so it
-    stays on the passthrough; any other type is refused (decode/re-encode instead)."""
+
+def _same_layout(source_oid: int, advertised_oid: int) -> bool:
+    if source_oid == advertised_oid:
+        return True
+    return source_oid in _TEXT_OIDS and advertised_oid in _TEXT_OIDS
+
+
+def _applicable_types(source_oids: list[int], described_oids: list[int] | None) -> list[str]:
+    """The source columns' type names when the passthrough applies; raises PassthroughError when it
+    does not.
+
+    ``described_oids`` are the type OIDs the client was already told at Describe: every source
+    column must have that exact layout. With no prior Describe (``None``) the client is told the
+    source's own types, so each must be one pgwire advertises under its own OID."""
     from buenavista.postgres import BVTYPE_TO_PGTYPE
 
     from provisa.pgwire.server import _sql_type_to_bvtype
 
-    for t in column_types:
-        name = t.lower()
-        if name in _TEXT_SAFE_TYPES:
-            continue
-        exact = _SOURCE_TYPE_OIDS.get(name)
-        if exact is None or BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(t)][0] != exact:
-            return False
-    return True
-
-
-async def open_passthrough(
-    connect_kwargs: dict[str, Any], sql: str, params: list, result_formats: list[int]
-) -> PassthroughResult:
-    """Get real column metadata from a short-lived NORMAL connection (the same
-    ``conn.prepare(sql)`` call ``_PgDirectStream._open`` already makes for the DIRECT route —
-    closed right after, never pooled), then open a second, dedicated raw connection for the
-    actual row fetch. ``connect_kwargs`` is whatever the caller's own connection was already
-    built from — a ``SourcePool`` driver's stashed kwargs for DIRECT, or the pg federation
-    engine's own DSN (as ``{"dsn": engine_dsn}``) for the ENGINE route."""
-    import asyncpg
-
-    if not connect_kwargs:
-        raise PassthroughFailure("no connect parameters given (connect() never called)")
-    conn = await asyncpg.connect(**connect_kwargs)
-    try:
-        stmt = await conn.prepare(sql)
-        attrs = stmt.get_attributes()
-        column_names = [a.name for a in attrs]
-        column_types = [a.type.name for a in attrs]
-    finally:
-        await conn.close()
-
-    if not _column_types_are_passthrough_safe(column_types):
-        raise PassthroughError(f"unrecognized column type(s) in {column_types!r}")
-
-    raw = await open_raw_connection(connect_kwargs)
-    cursor = PassthroughCursor(raw, sql, params, result_formats, len(column_names))
-    return PassthroughResult(column_names, column_types, cursor)
+    names: list[str] = []
+    for i, oid in enumerate(source_oids):
+        name = _OID_TYPE_NAMES.get(oid)
+        if name is None:
+            raise PassthroughError(f"result column {i + 1} has source type OID {oid}")
+        if described_oids is None:
+            if not _same_layout(oid, BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(name)][0]):
+                raise PassthroughError(f"source type {name!r} is not advertised under its own OID")
+        names.append(name)
+    if described_oids is not None:
+        if len(described_oids) != len(source_oids):
+            raise PassthroughFailure(
+                f"column count mismatch: the source returns {len(source_oids)}, "
+                f"the client was told {len(described_oids)}"
+            )
+        for i, (oid, told) in enumerate(zip(source_oids, described_oids)):
+            if not _same_layout(oid, told):
+                raise PassthroughError(
+                    f"result column {i + 1}: the source type OID {oid} is not the described {told}"
+                )
+    return names
 
 
 def _write_cstring(buf: bytearray, s: str) -> None:
@@ -257,28 +207,44 @@ def _encode_text_param(
     return str(value).encode("utf-8")
 
 
-def _build_extended_query_messages(sql: str, params: list, result_formats: list[int]) -> bytes:
-    """Parse(unnamed) + Bind(unnamed portal, unnamed statement) — sent once, before the
-    Execute/Sync fetch loop begins. No Describe: the caller already has real column metadata
-    from the SAME pooled connection's own ``conn.prepare(sql)`` (the well-tested path
-    ``_PgDirectStream`` already uses), so a second round trip just to re-learn the column count
-    would be pure overhead — the DataRow messages this yields carry their own ``ncols`` header,
-    which is cheap to sanity-check per message instead."""
-    out = bytearray()
+_FLUSH = b"H" + _INT32.pack(4)
+_SYNC = b"S" + _INT32.pack(4)
+# Execute(unnamed portal, no row limit): the whole result, read off the socket as it is consumed.
+_EXECUTE_ALL = b"E" + _INT32.pack(9) + b"\x00" + _INT32.pack(0)
 
-    # Parse: statement="", query=sql, 0 parameter type OIDs (let the server infer them from the
-    # text-format values Bind sends — the same "unspecified type is legal" contract this project's
-    # own pgwire server relies on for asyncpg clients, REQ-883's case-insensitive counterpart).
+# SQLSTATEs after which a kept prepared statement cannot be used again as it stands.
+_STALE_STATEMENT_STATES = frozenset({"26000", "0A000"})
+
+
+def _build_parse(name: str, sql: str) -> bytes:
+    """Parse(named statement) with no parameter type OIDs — the source infers them."""
     body = bytearray()
-    _write_cstring(body, "")
+    _write_cstring(body, name)
     _write_cstring(body, sql)
     body += _INT16.pack(0)
-    out += b"P" + _INT32.pack(4 + len(body)) + body
+    return b"P" + _INT32.pack(4 + len(body)) + bytes(body)
 
-    # Bind: portal="", statement="", all params text-format, values, result_formats per column.
+
+def _build_describe_statement(name: str) -> bytes:
+    body = bytearray(b"S")
+    _write_cstring(body, name)
+    return b"D" + _INT32.pack(4 + len(body)) + bytes(body)
+
+
+def _build_close_statement(name: str) -> bytes:
+    body = bytearray(b"S")
+    _write_cstring(body, name)
+    return b"C" + _INT32.pack(4 + len(body)) + bytes(body)
+
+
+def _build_bind(statement: str, params: list, result_formats: list[int]) -> bytes:
+    """Bind(unnamed portal, ``statement``): every parameter text-format, the result columns in the
+    client's own requested formats."""
+    out = bytearray()
+
     body = bytearray()
     _write_cstring(body, "")
-    _write_cstring(body, "")
+    _write_cstring(body, statement)
     body += _INT16.pack(len(params))
     body += b"\x00\x00" * len(params)  # all parameter formats = text (0)
     body += _INT16.pack(len(params))
@@ -297,35 +263,11 @@ def _build_extended_query_messages(sql: str, params: list, result_formats: list[
     return bytes(out)
 
 
-def _build_execute_sync(limit: int) -> bytes:
-    body = bytearray()
-    _write_cstring(body, "")
-    body += _INT32.pack(limit)
-    execute = b"E" + _INT32.pack(4 + len(body)) + bytes(body)
-    sync = b"S" + _INT32.pack(4)
-    return execute + sync
-
-
-async def _recv_exact(
-    loop: "asyncio.AbstractEventLoop", sock: "socket_module.socket", n: int
-) -> bytes:
-    buf = b""
-    while len(buf) < n:
-        chunk = await loop.sock_recv(sock, n - len(buf))
-        if not chunk:
-            raise PassthroughFailure("connection closed mid-message")
-        buf += chunk
-    return buf
-
-
-async def _read_message(
-    loop: "asyncio.AbstractEventLoop", sock: "socket_module.socket"
-) -> tuple[bytes, bytes]:
-    header = await _recv_exact(loop, sock, 5)
-    tag = header[:1]
-    length = _INT32.unpack(header[1:])[0]
-    payload = await _recv_exact(loop, sock, length - 4) if length > 4 else b""
-    return tag, payload
+def _error_sqlstate(payload: bytes) -> str:
+    for part in payload.split(b"\x00"):
+        if part[:1] == b"C":
+            return part[1:].decode("ascii", errors="replace")
+    return ""
 
 
 def _parse_error_response(payload: bytes) -> str:
@@ -337,100 +279,248 @@ def _parse_error_response(payload: bytes) -> str:
     return "; ".join(parts) if parts else "unknown Postgres error"
 
 
-async def _simple_query(
-    loop: "asyncio.AbstractEventLoop", sock: "socket_module.socket", sql: str
-) -> None:
-    """Send a Simple Query ('Q') message and drain the response up to ReadyForQuery. Used only
-    for the cursor's own BEGIN/COMMIT bracket (never the governed statement itself, which always
-    goes through the Extended Query Parse/Bind/Execute path — see ``_build_extended_query_messages``)."""
-    body = sql.encode("utf-8") + b"\x00"
-    await loop.sock_sendall(sock, b"Q" + _INT32.pack(4 + len(body)) + body)
-    while True:
-        tag, payload = await _read_message(loop, sock)
-        if tag == b"E":  # ErrorResponse
-            raise PassthroughFailure(_parse_error_response(payload))
-        if tag == b"Z":  # ReadyForQuery
+def _parse_row_description(payload: bytes) -> tuple[list[str], list[int]]:
+    """(column names, type OIDs) from a RowDescription message body."""
+    (count,) = _INT16.unpack_from(payload, 0)
+    pos = 2
+    names: list[str] = []
+    oids: list[int] = []
+    for _ in range(count):
+        end = payload.index(b"\x00", pos)
+        names.append(payload[pos:end].decode("utf-8"))
+        pos = end + 1
+        # table OID (4), column attnum (2), type OID (4), typlen (2), typmod (4), format (2)
+        (oid,) = _INT32.unpack_from(payload, pos + 6)
+        oids.append(oid)
+        pos += 18
+    return names, oids
+
+
+class _RawExchange:
+    """Blocking protocol I/O on a borrowed connection's socket, on the request's own thread.
+
+    The socket object is built over a dup of the connection's descriptor and keeps the descriptor's
+    non-blocking mode (libpq relies on it): a timeout makes each call wait in ``poll`` instead."""
+
+    def __init__(self, borrowed: BorrowedPgConnection) -> None:
+        self._borrowed = borrowed
+        self._sock = socket.socket(fileno=os.dup(borrowed.fileno))
+        budget = request_deadline.remaining()
+        self._sock.settimeout(_IO_TIMEOUT_S if budget is None else min(_IO_TIMEOUT_S, budget))
+        self._buf = bytearray()
+        self._released = False
+
+    def send(self, data: bytes) -> None:
+        try:
+            with request_deadline.cancel_on_deadline(self._borrowed.cancel):
+                self._sock.sendall(data)
+        except OSError as exc:
+            raise _ConnectionLost(f"source connection failed while sending: {exc}") from exc
+
+    def read_message(self) -> tuple[bytes, bytes]:
+        header = self._recv_exact(5)
+        length = _INT32.unpack_from(header, 1)[0]
+        payload = self._recv_exact(length - 4) if length > 4 else b""
+        return header[:1], payload
+
+    def _recv_exact(self, n: int) -> bytes:
+        buf = self._buf
+        while len(buf) < n:
+            # REQ-1882: the request's watchdog cancels the statement at its deadline; the source
+            # then answers with an ErrorResponse, which ends this wait.
+            try:
+                with request_deadline.cancel_on_deadline(self._borrowed.cancel):
+                    chunk = self._sock.recv(65536)
+            except OSError as exc:
+                raise _ConnectionLost(f"source connection failed while reading: {exc}") from exc
+            if not chunk:
+                raise _ConnectionLost("connection closed mid-message")
+            buf += chunk
+        out = bytes(buf[:n])
+        del buf[:n]
+        return out
+
+    def sync(self) -> None:
+        """End the exchange: Sync, then read to ReadyForQuery — the connection is idle again."""
+        self.send(_SYNC)
+        while True:
+            tag, _payload = self.read_message()
+            if tag == b"Z":
+                return
+
+    def release(self, *, discard: bool) -> None:
+        if self._released:
             return
+        self._released = True
+        try:
+            self._sock.close()
+        finally:
+            self._borrowed.release(discard)
+
+
+def open_passthrough(
+    borrow: Callable[[], BorrowedPgConnection],
+    sql: str,
+    params: list,
+    result_formats: list[int],
+    described_oids: list[int] | None,
+) -> PassthroughResult:
+    """Borrow ONE pooled connection (``borrow``) and return the cursor that fetches ``sql``'s raw
+    DataRows on it. A statement the connection has not seen is prepared there first (one round
+    trip, which reads the source's own RowDescription); one it has is not sent to the source at all
+    until the first fetch. When the passthrough does not apply (:class:`PassthroughError`) the
+    connection is back in its pool, idle, and nothing has executed."""
+    borrowed = borrow()
+    if borrowed.ssl_in_use:
+        # The socket carries TLS records; the protocol messages are only readable through the
+        # driver that holds the session keys.
+        borrowed.release(False)
+        raise PassthroughError("the destination connection is TLS-encrypted")
+    exchange = _RawExchange(borrowed)
+    clean = True  # nothing sent yet: the connection is still idle
+    try:
+        prepared = borrowed.statements.get(sql)
+        newly_prepared = prepared is None
+        if prepared is None:
+            clean = False
+            prepared = _prepare(exchange, borrowed, sql)
+        try:
+            column_types = _applicable_types(prepared.type_oids, described_oids)
+        except (PassthroughError, PassthroughFailure):
+            if newly_prepared:
+                exchange.sync()  # closes the Parse/Describe exchange; nothing was bound or executed
+            clean = True
+            raise
+    except BaseException:
+        exchange.release(discard=not clean)
+        raise
+    cursor = PassthroughCursor(exchange, borrowed, sql, prepared, params, result_formats)
+    return PassthroughResult(list(prepared.column_names), column_types, cursor)
+
+
+def _prepare(
+    exchange: _RawExchange, borrowed: BorrowedPgConnection, sql: str
+) -> PreparedOnConnection:
+    """Prepare ``sql`` under a name on this connection and read its RowDescription. The exchange is
+    left open (Flushed, not Synced): the Bind/Execute/Sync that follows completes it."""
+    statements = borrowed.statements
+    request = bytearray()
+    if len(statements) >= _PREPARED_MAX:
+        oldest = next(iter(statements))
+        request += _build_close_statement(statements.pop(oldest).name)
+    used = {p.name for p in statements.values()}
+    name = next(n for i in range(_PREPARED_MAX + 1) if (n := f"_provisa_pt_{i}") not in used)
+    request += _build_parse(name, sql) + _build_describe_statement(name) + _FLUSH
+    exchange.send(bytes(request))
+    names: list[str] = []
+    oids: list[int] = []
+    while True:
+        tag, payload = exchange.read_message()
+        if tag == b"T":  # RowDescription
+            names, oids = _parse_row_description(payload)
+            break
+        if tag == b"n":  # NoData — the statement returns no rows
+            break
+        if tag == b"E":  # ErrorResponse — the source ignores the rest until Sync
+            message = _parse_error_response(payload)
+            exchange.sync()
+            exchange.release(discard=False)
+            raise PassthroughFailure(message)
+        # CloseComplete, ParseComplete, ParameterDescription, Notice, ParameterStatus: keep reading.
+    prepared = PreparedOnConnection(name, names, oids)
+    statements[sql] = prepared
+    return prepared
 
 
 class PassthroughCursor:
-    """Drives one query's Extended Query Protocol exchange over a :class:`RawPgConnection`'s raw
-    socket, ``fetch(limit)`` at a time — the same shape as ``_PgDirectStream`` (``postgresql.py``)
-    so the existing ``execute_native_stream``-style ``run_coroutine_threadsafe`` batch pump can
-    drive this one too, one whole batch per hop instead of one message per hop."""
+    """One run of a prepared statement on the borrowed connection: Bind + Execute + Sync on the
+    first fetch, then the result's DataRows read off the socket ``fetch(limit)`` at a time."""
 
     def __init__(
         self,
-        raw: RawPgConnection,
+        exchange: _RawExchange,
+        borrowed: BorrowedPgConnection,
         sql: str,
+        prepared: PreparedOnConnection,
         params: list,
         result_formats: list[int],
-        expected_column_count: int,
     ) -> None:
-        self._raw = raw
+        self._exchange = exchange
+        self._borrowed = borrowed
         self._sql = sql
+        self._prepared = prepared
         self._params = params
         self._result_formats = result_formats
-        self._expected_column_count = expected_column_count
-        self._sent_parse_bind = False
-        self._exhausted = False
-        self._began_txn = False
+        self._expected_column_count = len(prepared.column_names)
+        self._started = False
+        self._done = False  # the connection has been handed back
 
-    async def fetch(self, limit: int) -> list[bytes]:
+    def fetch(self, limit: int) -> list[bytes]:
         """Return up to ``limit`` complete, wire-framed DataRow messages, or ``[]`` once the
         result is exhausted. Never decodes a single column value."""
-        if self._exhausted:
+        if self._done:
             return []
-        sock, loop = self._raw._sock, self._raw._loop
-        if not self._sent_parse_bind:
-            # REQ-1863 multi-batch fix: an unnamed portal only survives a Sync while an explicit
-            # transaction is open — outside one, Sync commits the implicit transaction Postgres
-            # auto-starts and destroys the portal with it. `fetch()` sends Execute+Sync on every
-            # call (see _build_execute_sync below), so a >1-batch result (limit < total rows,
-            # e.g. large_scan) sent its SECOND Execute against an already-destroyed portal —
-            # live-confirmed: `ERROR: portal "" does not exist`. Same bracket _PgDirectStream
-            # (executor/drivers/postgresql.py) already holds for its own asyncpg-level cursor.
-            self._began_txn = True
-            await _simple_query(loop, sock, "BEGIN")
-            self._sent_parse_bind = True
-            await loop.sock_sendall(
-                sock,
-                _build_extended_query_messages(self._sql, self._params, self._result_formats),
-            )
+        exchange = self._exchange
+        try:
+            if not self._started:
+                self._started = True
+                exchange.send(
+                    _build_bind(self._prepared.name, self._params, self._result_formats)
+                    + _EXECUTE_ALL
+                    + _SYNC
+                )
+            rows: list[bytes] = []
+            failure: str | None = None
+            while len(rows) < limit:
+                tag, payload = exchange.read_message()
+                if tag == b"D":  # DataRow — the whole point: forward unmodified
+                    (ncols,) = _INT16.unpack_from(payload, 0)
+                    if ncols != self._expected_column_count:
+                        raise _ConnectionLost(
+                            f"column count mismatch: source row has {ncols}, "
+                            f"client was told {self._expected_column_count}"
+                        )
+                    rows.append(tag + _INT32.pack(4 + len(payload)) + payload)
+                elif (
+                    tag == b"E"
+                ):  # ErrorResponse — ReadyForQuery follows (the Sync is already sent)
+                    failure = _parse_error_response(payload)
+                    if _error_sqlstate(payload) in _STALE_STATEMENT_STATES:
+                        self._borrowed.statements.pop(self._sql, None)
+                elif tag == b"Z":  # ReadyForQuery — the exchange is complete, the connection idle
+                    self._done = True
+                    exchange.release(discard=False)
+                    if failure is not None:
+                        raise PassthroughFailure(failure)
+                    return rows
+                # BindComplete, CommandComplete, EmptyQueryResponse, Notice, ParameterStatus.
+            return rows
+        except _ConnectionLost:
+            self._done = True
+            exchange.release(discard=True)
+            raise
+        except PassthroughFailure:
+            raise
+        except BaseException:
+            # The exchange stopped mid-message: the connection's protocol state is unknown.
+            if not self._done:
+                self._done = True
+                exchange.release(discard=True)
+            raise
 
-        rows: list[bytes] = []
-        await loop.sock_sendall(sock, _build_execute_sync(limit))
-        awaiting_ready = True
-        while awaiting_ready:
-            tag, payload = await _read_message(loop, sock)
-            if tag == b"1" or tag == b"2":  # ParseComplete / BindComplete
-                continue
-            elif tag == b"D":  # DataRow — the whole point: forward unmodified
-                (ncols,) = _INT16.unpack(payload[:2])
-                if ncols != self._expected_column_count:
-                    raise PassthroughFailure(
-                        f"column count mismatch: source row has {ncols}, "
-                        f"client was told {self._expected_column_count}"
-                    )
-                rows.append(tag + _INT32.pack(4 + len(payload)) + payload)
-            elif tag == b"s":  # PortalSuspended — more rows to fetch on the next call
-                pass
-            elif tag == b"C" or tag == b"I":  # CommandComplete / EmptyQueryResponse
-                self._exhausted = True
-            elif tag == b"E":  # ErrorResponse
-                raise PassthroughFailure(_parse_error_response(payload))
-            elif tag == b"Z":  # ReadyForQuery — this fetch's round trip is done
-                awaiting_ready = False
-            # Any other tag (NoticeResponse, ParameterStatus, etc.): ignore and keep reading.
-        return rows
-
-    async def close(self) -> None:
-        if self._began_txn:
-            # Read-only statement (governed SQL never mutates on this route — see the module
-            # docstring), so COMMIT vs ROLLBACK is immaterial; COMMIT mirrors _PgDirectStream's
-            # own close (postgresql.py). Best-effort: the connection is discarded either way.
-            try:
-                await _simple_query(self._raw._loop, self._raw._sock, "COMMIT")
-            except Exception:  # noqa: BLE001
-                pass
-        await self._raw.close()
+    def close(self) -> None:
+        """Release the connection. Safe to call more than once. A result that was never started
+        leaves the connection idle (a freshly prepared statement's exchange is Synced first); one
+        abandoned mid-stream leaves unread rows on the socket, so that connection is closed."""
+        if self._done:
+            return
+        self._done = True
+        if self._started:
+            self._exchange.release(discard=True)
+            return
+        try:
+            self._exchange.sync()
+        except BaseException:
+            self._exchange.release(discard=True)
+            raise
+        self._exchange.release(discard=False)

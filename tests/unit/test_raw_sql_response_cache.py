@@ -43,6 +43,7 @@ from provisa.pgwire._pipeline import (
     finalize_audit,
     response_cache_tee,
 )
+from provisa.transpiler.router import Route
 from tests.unit.test_response_cache_shared import FakeCacheStore
 
 _TS = datetime.datetime(2026, 1, 2, 3, 4, 5, 678000, tzinfo=datetime.UTC)
@@ -61,7 +62,7 @@ def _plan(sql: str = "SELECT id, amount, ts FROM t", *, params=None, role="analy
         started=time.time(),
     )
     return _Plan(
-        route=object(),
+        route=Route.ENGINE,
         sql=sql,
         source_id="engine",
         dialect="duckdb",

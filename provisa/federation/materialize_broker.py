@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import fcntl
 import os
+import threading
 import time
 from collections.abc import Callable
 from typing import Any
@@ -70,12 +71,64 @@ def _lock_exclusive(fd: int) -> None:
 _GEN_SUFFIX = ".gen"
 StoreCanary = int
 
+_MEMORY_PATH = ":memory:"
+
+
+class _MemoryStore:
+    """The in-memory store (``duckdb:///:memory:``): one database for the life of the process.
+
+    It has no file, so nothing beside a file either — no sentinel lock file, no generation file.
+    No other process can reach it, so the lock is a thread lock and the generation a counter. And
+    because a database attached from ``:memory:`` lives only as long as the connection that
+    attached it, that connection stays open: a connection opened and closed per call, as the file
+    store's is, would hand every call a new empty database."""
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.generation: StoreCanary = 0
+        self.db = duckdb.connect(_MEMORY_PATH)
+        self.db.execute(f"ATTACH '{_MEMORY_PATH}' AS {_MAT_STORE_ALIAS}")
+
+
+_memory_store: _MemoryStore | None = None
+_memory_store_guard = threading.Lock()
+
+
+def _memory() -> _MemoryStore:
+    global _memory_store
+    with _memory_store_guard:
+        if _memory_store is None:
+            _memory_store = _MemoryStore()
+        return _memory_store
+
+
+def _with_memory_store(fn: Any, *, read_only: bool, canary: bool) -> Any:
+    """``_with_store`` for the in-memory store: the same one-operation-at-a-time contract and the
+    same generation semantics, held in this process instead of in files."""
+    from provisa.core import request_deadline
+
+    store = _memory()
+    with store.lock:
+        # A cursor is its own connection onto the same database: the operation's temporary
+        # registrations go away with it, as they do when the file store's connection closes.
+        con = store.db.cursor()
+        try:
+            with request_deadline.cancel_on_deadline(con.interrupt):
+                result = fn(con)
+        finally:
+            con.close()
+            if not read_only:
+                store.generation += 1
+        return (result, store.generation) if canary else result
+
 
 def store_canary(db_path: str) -> StoreCanary:
     """The store's write generation: incremented (under the sentinel lock) by every non-read-only
     store operation from any process, so a reader holding a copy taken at generation G knows it is
     still current while the generation still reads G. An exact counter, not a file mtime — mtime
     ticks coarsely enough that a same-size write inside one tick would look unchanged."""
+    if db_path == _MEMORY_PATH:
+        return _memory().generation
     try:
         with open(db_path + _GEN_SUFFIX) as f:
             return int(f.read())
@@ -102,6 +155,9 @@ def _with_store(db_path: str, fn: Any, *, read_only: bool = False, canary: bool 
     generation (even on failure — a partial write must not look unchanged). ``canary`` returns
     ``(result, generation)`` read while the lock is still held, so no writer can land between the
     read and the generation it is tagged with."""
+    if db_path == _MEMORY_PATH:
+        return _with_memory_store(fn, read_only=read_only, canary=canary)
+
     from provisa.core import request_deadline
 
     lock_path = db_path + _LOCK_SUFFIX

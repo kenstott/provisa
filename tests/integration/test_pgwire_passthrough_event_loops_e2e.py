@@ -15,11 +15,12 @@ event loops a deployment can run.
 * ``stdlib`` — the same app on asyncio's own loops (``tests.integration.stdlib_loop_app``).
 
 The source is the test stack's real Postgres. Its one registered table is a view over every
-exact-width type plus a ``reader`` column whose function records the reading connection's
-``application_name`` — so the source itself reports which connection executed the statement: the
-passthrough's dedicated raw connection (``provisa-pgwire-passthrough``) or the decoded DIRECT
-stream's pooled one. asyncpg reads every column back in BINARY, so the forwarded bytes are decoded
-strictly by the OIDs pgwire's Describe advertised.
+exact-width type plus a ``reader`` column whose function records the statement the reading backend
+is executing (``current_query()``) — so the source itself reports which path read the row: the
+passthrough runs the governed SELECT itself on its borrowed pooled connection (REQ-1863, amended
+2026-10-01), while the decoded DIRECT stream FETCHes from a server-side cursor. asyncpg reads every
+column back in BINARY, so the forwarded bytes are decoded strictly by the OIDs pgwire's Describe
+advertised.
 """
 
 # Requirements: REQ-1863, REQ-1867
@@ -37,7 +38,6 @@ pytestmark = [pytest.mark.integration]
 
 _ROLE = "org_admin"
 _SCHEMA = "ptloop"
-_PASSTHROUGH_APP = "provisa-pgwire-passthrough"
 _SQL = "SELECT si, r, jb, tz, ttz, u, iv, ba, old_ts, old_day, reader FROM ptloop.wide_probe"
 _EXPECTED = (
     7,
@@ -78,7 +78,7 @@ async def _seed() -> None:
     try:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.execute(f"CREATE SCHEMA {_SCHEMA}")
-        await conn.execute(f"CREATE TABLE {_SCHEMA}.readers (app text)")
+        await conn.execute(f"CREATE TABLE {_SCHEMA}.readers (statement text)")
         await conn.execute(
             f"CREATE TABLE {_SCHEMA}.wide (si int2, r float4, jb jsonb, tz timestamptz, "
             "ttz timetz, u uuid, iv interval, ba bytea, old_ts timestamp, old_day date)"
@@ -91,7 +91,7 @@ async def _seed() -> None:
         # VOLATILE: evaluated for every row actually read — a Describe's zero-row plan never runs it.
         await conn.execute(
             f"CREATE FUNCTION {_SCHEMA}.note_reader() RETURNS int LANGUAGE sql VOLATILE AS $$ "
-            f"INSERT INTO {_SCHEMA}.readers VALUES (current_setting('application_name')); "
+            f"INSERT INTO {_SCHEMA}.readers VALUES (current_query()); "
             "SELECT 1 $$"
         )
         await conn.execute(
@@ -152,9 +152,12 @@ async def _read_binary(port: int) -> list[tuple]:
 def test_every_wide_type_reads_back_exactly_through_the_passthrough(server):
     asyncio.run(_source(f"TRUNCATE {_SCHEMA}.readers"))
     assert asyncio.run(_read_binary(server.pgwire_port)) == [_EXPECTED]
-    # The source's own record: the statement ran on the passthrough's dedicated raw connection,
-    # once — not on the decoded DIRECT stream's pooled connection.
-    assert asyncio.run(_source(f"SELECT app FROM {_SCHEMA}.readers")) == [(_PASSTHROUGH_APP,)]
+    # The source's own record: the row was read ONCE, by a backend executing the governed SELECT
+    # itself (the passthrough's extended-query exchange) — not by a FETCH from the decoded DIRECT
+    # stream's server-side cursor.
+    ((statement,),) = asyncio.run(_source(f"SELECT statement FROM {_SCHEMA}.readers"))
+    assert statement.lstrip().upper().startswith("SELECT"), statement
+    assert "wide_probe" in statement and "provisa_direct_" not in statement, statement
 
 
 def test_graphql_renders_interval_and_timetz_through_the_same_server(server):

@@ -33,6 +33,7 @@ import struct
 from typing import Any
 
 from provisa.core import request_deadline
+from provisa.federation.land_guard import LandGuard
 from provisa.core.ir_types import to_ir
 from provisa.executor.result import QueryResult, ResultStream
 from provisa.federation.runtime_support import run_async_materialized, stream_rows_from_arrow
@@ -113,16 +114,11 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
         self._engine_name = engine_name  # 'fabric' | 'synapse' — selects the connector set
         self._engine: Any = None
         self._conn = self._connect()
-        # land_table's dedicated single-worker executor — NOT the loop's default pool. self._conn
-        # is ONE shared connection, not a pool; concurrent lands for different tables dispatched
-        # via the default multi-worker executor would pile onto it at once instead of queuing —
-        # confirmed live as a real regression on the DuckDB engine (13 threads simultaneously
-        # blocked in one executemany call). Same reasoning as DuckDBFederationRuntime/
-        # PgFederationRuntime/ClickHouseFederationRuntime/SnowflakeFederationRuntime/
-        # DatabricksFederationRuntime's own ``_land_executor``.
-        from concurrent.futures import ThreadPoolExecutor
-
-        self._land_executor = ThreadPoolExecutor(max_workers=1)
+        # One store connection, so one write on it at a time (two lands interleaving on it was a
+        # confirmed regression). A lock serializes it, and each write runs on the thread that asked
+        # for it — a read-triggered land stays on its request's thread (REQ-1882), where a
+        # one-worker pool took it off.
+        self._land_guard = LandGuard("Fabric/Synapse store connection")
 
     def _connect(self) -> Any:
         import pyodbc
@@ -275,14 +271,11 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
         """LAND a source into a per-source schema at the compiler-physical name. A bulk multi-row
         INSERT (replace = TRUNCATE+insert, append = insert), never per-row."""
         del pk_columns
-        import asyncio
 
         from provisa.core.change_signal import APPEND, select_landing_shape
 
         append = select_landing_shape(change_signal, watermark_column) == APPEND
-        await asyncio.get_event_loop().run_in_executor(
-            self._land_executor, self._land, source, columns, rows, append
-        )
+        await self._land_guard.run(lambda: self._land(source, columns, rows, append))
 
     async def attach_landed_source(
         self, source: Any, columns: list[tuple[str, str]], *, pk_columns: list[str] | None = None
@@ -292,12 +285,9 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
         restart. REQ-1633: MssqlWarehouseRuntime (Fabric/Synapse) had neither this nor
         ``land_table`` before this — one of only two engines (with ClickHouse) implementing none
         of the three landing terminals at all."""
-        import asyncio
 
         del pk_columns  # T-SQL PRIMARY KEY is not a landing concern here — REQ-1651 tracks it
-        return await asyncio.get_event_loop().run_in_executor(
-            self._land_executor, self._reconcile, source, columns
-        )
+        return await self._land_guard.run(lambda: self._reconcile(source, columns))
 
     def _reconcile(self, source: Any, columns: list[tuple[str, str]]) -> str:
         _database, schema, table = self._phys_parts(source)

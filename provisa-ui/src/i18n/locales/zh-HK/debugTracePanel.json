@@ -1,0 +1,32 @@
+{
+  "debugTracePanel": {
+    "tabTitle": "偵錯追蹤",
+    "intro": "預設情況下，追蹤會為每個請求記錄一個 span。偵錯追蹤會為每個管線階段及每次數據來源呼叫各加入一個 span，並包含 SQL 文字。它會增加負載，因此請為某個組織、角色或數據來源開啟一段指定的時間；時間到後會自動關閉。",
+    "startTitle": "啟動偵錯視窗",
+    "scopeLabel": "範圍",
+    "scopeOrg": "組織",
+    "scopeRole": "角色",
+    "scopeSource": "數據來源",
+    "orgLabel": "組織",
+    "roleLabel": "角色 ID",
+    "sourceLabel": "數據來源 ID",
+    "minutesLabel": "持續時間（分鐘）",
+    "minutesHelp": "1 至 {{max}} 分鐘。",
+    "start": "啟動",
+    "activeTitle": "使用中的視窗",
+    "noWindows": "目前沒有開啟的偵錯視窗。",
+    "colScope": "範圍",
+    "colOrg": "組織",
+    "colTarget": "角色或數據來源",
+    "colRemaining": "剩餘時間",
+    "colStartedBy": "啟動者",
+    "wholeOrg": "整個組織",
+    "stop": "停止",
+    "hintTitle": "單一請求的偵錯提示",
+    "hintIntro": "請求可以透過 @debugTrace 指令、\"@provisa trace=debug\" 註解或 X-Provisa-Trace: debug 標頭要求對自身進行偵錯追蹤。未在此列出的角色所發出並帶有該提示的請求會被拒絕。",
+    "permit": "允許",
+    "revoke": "撤銷",
+    "noHintRoles": "沒有任何角色獲准使用該提示。",
+    "loadFailed": "無法載入偵錯追蹤設定"
+  }
+}

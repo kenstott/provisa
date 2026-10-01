@@ -1606,9 +1606,9 @@ class SubsystemTracesConfig(BaseModel):  # REQ-1432
 
     Named for what they are in this product, not for the instrumentation library behind them —
     an operator deciding whether to keep a signal is reasoning about "the catalog database", not
-    about asyncpg. Each field gates one instrumentor in setup_otel.
+    about psycopg. Each field gates one instrumentor in setup_otel.
 
-    catalog_database is off by default: every catalog read and every metadata write is an asyncpg
+    catalog_database is off by default: every catalog read and every metadata write is a psycopg
     call, so it buries the query traces an operator opened the panel to read.
     """
 
@@ -1668,6 +1668,10 @@ class OtelConfig(BaseModel):  # REQ-545
     protocol: str = "grpc"
     service_name: str = "provisa"
     sample_rate: float = 1.0
+    # REQ-1910: the deployment's default trace detail. "normal" exports one span per request;
+    # "debug" exports the span waterfall with SQL text. $PROVISA_TRACE_DETAIL overrides it, and
+    # a request can be given its own (provisa.otel_compat.set_trace_detail).
+    trace_detail: Literal["normal", "debug"] = "normal"
     log_level: str = "WARNING"
     compact_cron: str = "* * * * *"
     compact_batch_size: int = 1000

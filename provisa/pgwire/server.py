@@ -48,10 +48,15 @@ from buenavista.postgres import (
 )
 
 from provisa.core.egress import CountingWriter
+from provisa.otel_compat import annotate_request as _annotate_request
+from provisa.otel_compat import get_tracer as _get_tracer
+from provisa.otel_compat import record_stage as _record_stage
+from provisa.otel_compat import request_span as _request_span
 from provisa.executor.result import ResultStream
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
 log = logging.getLogger(__name__)
+_tracer = _get_tracer(__name__)
 
 # REQ-1882 (amended 2026-09-29): the entire request runs on its connection thread. Each TCP
 # connection is served by its own socketserver thread (ThreadingTCPServer); ProvisaHandler.handle
@@ -271,7 +276,7 @@ def _sql_type_to_bvtype(type_str: str) -> BVType:
         return _TYPE_TO_BVTYPE[type_str]
     # A 4-byte integer is advertised as int4 (OID 23), not widened to int8: a REQ-1863 passthrough
     # forwards the source's raw 4-byte int4 value, which a binary client would misread as int8.
-    if type_str in ("INTEGER", "INT4"):
+    if type_str in ("INTEGER", "INT4", "INT"):
         return BVType.INTEGER
     if type_str in _INT_TYPES:
         return BVType.BIGINT
@@ -311,6 +316,65 @@ def _infer_bvtype(rows: list[tuple], col_idx: int) -> BVType:
     return BVType.TEXT
 
 
+def _to_decimal(v: Any) -> decimal.Decimal:
+    return v if isinstance(v, decimal.Decimal) else decimal.Decimal(str(v))
+
+
+def _to_date(v: Any) -> Any:
+    return v.date() if isinstance(v, datetime.datetime) else v
+
+
+def _to_timestamp(v: Any) -> Any:
+    if isinstance(v, datetime.date) and not isinstance(v, datetime.datetime):
+        return datetime.datetime(v.year, v.month, v.day)
+    return v
+
+
+# REQ-589: a prepared statement's rows are encoded as the types its Describe told the client. A
+# source or engine may compute an expression in a wider or narrower type than the one described
+# (Postgres averages an integer to numeric, DuckDB sums one to HUGEINT); these bring the value to
+# the described type before its encoder runs. A type absent here encodes the value as it is.
+_SHAPE_COERCERS: dict[BVType, Callable[[Any], Any]] = {
+    BVType.INTEGER: int,
+    BVType.BIGINT: int,
+    BVType.SMALLINT: int,
+    BVType.FLOAT: float,
+    BVType.REAL: float,
+    BVType.DECIMAL: _to_decimal,
+    BVType.DATE: _to_date,
+    BVType.TIMESTAMP: _to_timestamp,
+    BVType.TIMESTAMPTZ: _to_timestamp,
+}
+
+
+class _StatementDescription(BVQueryResult):  # REQ-589
+    """A Describe(Statement)'s answer: the statement's result columns, derived from registered
+    metadata, with no rows — nothing ran. ``statement_shape`` is what every Execute of the statement
+    is encoded to; ``prepared`` is the governed statement the next Execute continues from."""
+
+    def __init__(self, shape: list[Tuple[str, str]], prepared: Any, sql: str) -> None:
+        super().__init__()
+        self.statement_shape = shape
+        self.prepared = prepared
+        self._types = [_sql_type_to_bvtype(t) for _, t in shape]
+        self._status = _tag_from_sql(sql)
+
+    def has_results(self) -> bool:
+        return len(self.statement_shape) > 0
+
+    def column_count(self) -> int:
+        return len(self.statement_shape)
+
+    def column(self, index: int) -> Tuple[str, BVType]:
+        return (self.statement_shape[index][0], self._types[index])
+
+    def rows(self) -> Iterator[list]:
+        return iter(())
+
+    def status(self) -> str:
+        return self._status or "OK"
+
+
 class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
     """Adapts a :class:`ResultStream` (streaming ENGINE terminal, materialized DIRECT/admin
     result, or DuckDB catalog result) to the buenavista QueryResult ABC.
@@ -321,7 +385,12 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
     per-column types, exactly ONE batch is buffered to infer them — a bounded peek, not the
     whole result."""
 
-    def __init__(self, engine_result: ResultStream, original_sql: str = ""):
+    def __init__(
+        self,
+        engine_result: ResultStream,
+        original_sql: str = "",
+        shape: list[Tuple[str, str]] | None = None,
+    ):
         super().__init__()
         # Held so close() can release it (server-side cursor / pooled source connection): when a
         # portal is dropped without ever being executed (Describe with no Execute), or when a
@@ -339,12 +408,31 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         # silently dropping the unforwarded tail.
         self._pending: list | None = None
         self._pending_pos: int = 0
-        # Set by ProvisaSession: whether the Execute of this statement would take the REQ-1863
-        # raw-DataRow passthrough given a Bind's result formats (see reusable_for_execute).
-        self.passthrough_eligible = False
-        # A Describe's zero-row shape (REQ-589): never served to an Execute.
-        self.shape_only = False
         ctypes = engine_result.column_types
+        # (column index, coercer) for each column whose rows must be brought to the described type.
+        self._coerce: list[Tuple[int, Callable[[Any], Any]]] = []
+        if shape is not None:
+            # REQ-589: this statement was DESCRIBED — the client decodes its rows by that shape, so
+            # the names and types are the described ones, never re-derived from the result.
+            if len(shape) != len(self._cols):
+                closer = getattr(engine_result, "close", None)
+                if closer is not None:
+                    closer()
+                raise RuntimeError(
+                    f"the statement was described with {len(shape)} result column(s) "
+                    f"{[n for n, _ in shape]} but its execution returned {len(self._cols)} "
+                    f"{list(self._cols)}"
+                )
+            self._cols = [name for name, _ in shape]
+            self._types = [_sql_type_to_bvtype(t) for _, t in shape]
+            for i, described in enumerate(self._types):
+                actual = ctypes[i] if ctypes and i < len(ctypes) else None
+                if actual is not None and _sql_type_to_bvtype(actual) == described:
+                    continue
+                coercer = _SHAPE_COERCERS.get(described)
+                if coercer is not None:
+                    self._coerce.append((i, coercer))
+            return
         # A None entry (or absent types) means the type must be inferred from data, which
         # requires the first batch on hand before RowDescription is sent.
         if not ctypes or any(t is None for t in ctypes):
@@ -356,13 +444,6 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
             ]
         else:
             self._types = [_infer_bvtype(self._head or [], i) for i in range(len(self._cols))]
-
-    def reusable_for_execute(self, result_formats: list[int]) -> bool:
-        # A passthrough needs the Bind's result formats BEFORE running (it forwards the source's
-        # DataRow bytes in that format) — re-run so the Execute gets that fast path.
-        if self.shape_only:
-            return False
-        return not (self.passthrough_eligible and result_formats)
 
     def has_results(self) -> bool:
         return len(self._cols) > 0
@@ -409,7 +490,16 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
             batch = next(self._batch_iter, None)
             if batch is None:
                 return
+            if self._coerce and batch and not isinstance(batch[0], bytes):
+                batch = [self._coerced(row) for row in batch]
             self._pending, self._pending_pos = batch, 0
+
+    def _coerced(self, row: Any) -> list:
+        out = list(row)
+        for i, coercer in self._coerce:
+            if out[i] is not None:
+                out[i] = coercer(out[i])
+        return out
 
     def status(self) -> str:
         return self._status or "OK"
@@ -676,17 +766,63 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         del table
         return None
 
-    def execute_sql(self, sql: str, params=None, result_fmt=None) -> ProvisaQueryResult:
-        return self._with_org(lambda: self._execute_sql_bound(sql, params, result_fmt))
+    def execute_sql(
+        self, sql: str, params=None, result_fmt=None, *, prepared=None, shape=None
+    ) -> ProvisaQueryResult:
+        """``prepared`` is the governed statement this statement's Describe produced (the Execute
+        continues from it instead of governing again); ``shape`` is the result shape that Describe
+        told the client, which the rows are encoded to. Both are None for a statement that was
+        never described (the simple protocol, or a Bind with no Describe(Statement))."""
+        return self._with_org(
+            lambda: self._execute_sql_bound(sql, params, result_fmt, prepared=prepared, shape=shape)
+        )
 
-    def describe_sql(self, sql: str, params=None) -> ProvisaQueryResult:
-        """Describe(Statement): the statement's result shape — column names and the engine's
-        DECLARED types — without running it (REQ-589). Governed through the one pipeline exactly as
-        the Execute is, so a column the role cannot see is absent here too; the Execute reports the
-        same declared types, so describe and execute agree by construction."""
-        return self._with_org(lambda: self._execute_sql_bound(sql, params, None, describe=True))
+    def describe_sql(self, sql: str, params=None) -> BVQueryResult:
+        """Describe(Statement) (REQ-589, amended 2026-10-01): the statement is governed through
+        the one pipeline — so a column the role cannot see is absent here too — and its result
+        columns are derived from registered metadata. Nothing is routed, executed, or sent to a
+        source or an engine, and no source connection is held for the Bind that follows. The
+        Execute continues from the governed statement held here and encodes its rows to this
+        shape, so describe and execute agree by construction and the statement is governed once.
 
-    def _with_org(self, fn: Callable[[], ProvisaQueryResult]) -> ProvisaQueryResult:
+        A catalog statement (INTERCEPT) is answered in-process from the catalog emulation, as its
+        Execute is."""
+        return self._with_org(lambda: self._describe_bound(sql, params))
+
+    def _describe_bound(self, sql: str, params) -> BVQueryResult:
+        from provisa.pgwire.catalog import classify
+
+        stripped = sql.strip()
+        if classify(stripped) == "INTERCEPT":
+            return self._execute_sql_bound(sql, params, None)
+        if self.role_id is None:
+            raise RuntimeError("Not authenticated")
+        if self.user_id is None:
+            raise RuntimeError("Authenticated session has no principal")
+
+        from provisa.audit.context import with_audit_identity
+        from provisa.core.connection_loop import current_connection_loop
+        from provisa.pgwire._pipeline import describe_pgwire_statement
+
+        try:
+            # REQ-074/REQ-1386: a refusal at Describe is audited under the acting principal.
+            described = current_connection_loop().run(
+                _run_with_org(
+                    self.org_id,
+                    with_audit_identity(
+                        self.user_id, "pgwire", describe_pgwire_statement(stripped, self.role_id)
+                    ),
+                ),
+                timeout=120,
+            )
+        except PermissionError as exc:
+            raise PermissionError(str(exc)) from exc
+        except Exception as exc:
+            log.warning("[PGWIRE] DESCRIBE EXCEPTION sql=%r", stripped[:300], exc_info=True)
+            raise RuntimeError(str(exc)) from exc
+        return _StatementDescription(described.shape, described.governed, stripped)
+
+    def _with_org(self, fn: Callable[[], Any]) -> Any:
         # REQ-1266: bind this session's org on the connection thread so the sync state.X reads
         # below (answer/INTERCEPT, execute_engine_sync, source_pools) route to its runtime; the
         # governance/execute coroutines run on this thread's loop and are bound again explicitly via
@@ -702,7 +838,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             reset_current_org(token)
 
     def _execute_sql_bound(
-        self, sql: str, params=None, result_fmt=None, *, describe: bool = False
+        self, sql: str, params=None, result_fmt=None, *, prepared=None, shape=None
     ) -> ProvisaQueryResult:
         from provisa.pgwire.catalog import answer, classify
 
@@ -737,12 +873,23 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
 
         cl = current_connection_loop()
 
+        from provisa.api.app import state
         from provisa.pgwire._pipeline import (
             _execute_plan,
             _Plan,
             govern_pgwire_plan,
+            governed_statement_is_current,
+            plan_pgwire_statement,
             require_governed_plan,
         )
+
+        # REQ-589: a statement its Describe already governed is only ROUTED here, with the Bind's
+        # values — governance does not run a second time. A held statement governed under a schema
+        # generation that has since been rebuilt is stale and is governed again.
+        if prepared is not None and governed_statement_is_current(prepared, state):
+            to_plan = plan_pgwire_statement(prepared, bound)
+        else:
+            to_plan = govern_pgwire_plan(stripped, self.role_id, bound)
 
         # Govern on this connection's loop, then — for the ENGINE route — drain the engine's SYNC
         # streaming terminal on this same thread (REQ-028). Mirrors Flight SQL's govern-then-stream
@@ -759,11 +906,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             governed = cl.run(
                 _run_with_org(
                     self.org_id,
-                    with_audit_identity(
-                        self.user_id,
-                        "pgwire",
-                        govern_pgwire_plan(stripped, self.role_id, bound),
-                    ),
+                    with_audit_identity(self.user_id, "pgwire", to_plan),
                 ),
                 timeout=120,
             )
@@ -778,20 +921,17 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # normal operation.
         _t_govern1 = time.perf_counter()
 
-        from provisa.api.app import state
+        from buenavista.postgres import BVTYPE_TO_PGTYPE
+
         from provisa.transpiler.router import Route
 
-        if describe:
-            shape = self._describe_governed(governed, state, cl)
-            if shape is not None:
-                qr = ProvisaQueryResult(shape, stripped)
-                qr.shape_only = True
-                return qr
-            # No describe-without-running for this route/engine (Trino, the Arrow warehouse and
-            # SQLAlchemy engines, a non-streaming DIRECT source, the API/cache terminals): the
-            # statement runs, as a Describe always did before REQ-589's amendment. A parameterless
-            # statement's run is handed to its Execute (vendor buenavista add_portal); a
-            # parameterized one runs with placeholder values.
+        # The type OIDs the client was told at Describe (None when the statement was not described)
+        # — a raw-DataRow passthrough forwards the source's bytes only where they have that layout.
+        described_oids = (
+            [BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(t)][0] for _, t in shape]
+            if shape is not None
+            else None
+        )
 
         from provisa.pgwire._pipeline import serve_stream_through_cache
 
@@ -862,7 +1002,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                                     engine_plan.physical_sql,
                                     engine_plan.exec_params,
                                     result_fmt,
-                                    run=cl.run,
+                                    described_oids=described_oids,
                                 ),
                             )
                             if result_fmt
@@ -908,7 +1048,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                             direct_plan.sql,
                             direct_plan.exec_params,
                             result_fmt,
-                            run=cl.run,
+                            described_oids=described_oids,
                         ),
                     ),
                     open_rows=lambda: state.federation_engine.execute_native_stream(
@@ -964,78 +1104,18 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             (_t_execute1 - _t_govern1) * 1000,
             stripped[:80],
         )
+        _record_stage("govern", _t_govern0, _t_govern1)  # REQ-1910
+        _record_stage("execute", _t_govern1, _t_execute1)
+        _annotate_request(db__statement=stripped[:1000])  # recorded in debug detail only
 
         # REQ-074/REQ-1386: the ENGINE/DIRECT streaming terminals above never reach _execute_plan,
         # so the audit row is written here. Idempotent — the _execute_plan branch already wrote it.
         self._finalize_audit(governed, 200)
-        qr = ProvisaQueryResult(result, stripped)
-        # A Describe(Statement) result is handed to the following Execute instead of re-running
-        # (see vendor buenavista describe_statement) — except when that Execute would take the
-        # REQ-1863 raw-DataRow passthrough, which needs the Bind's result format up front.
-        qr.passthrough_eligible = isinstance(governed, _Plan) and (
-            (
-                governed.route == Route.ENGINE
-                and state.federation_engine.dialect in ("postgres", "postgresql")
-            )
-            or (
-                governed.route == Route.DIRECT
-                and bool(governed.source_id)
-                and state.source_pools.has(governed.source_id)
-                and state.source_pools.supports_stream(governed.source_id)
-                and state.source_pools.dialect_for(governed.source_id) in ("postgres", "postgresql")
-            )
-        )
-        return qr
-
-    def _describe_governed(self, governed: Any, state: Any, cl: Any) -> Any:
-        """The governed plan's result shape (zero rows, declared column types), or ``None`` when its
-        route/engine cannot describe without running. REQ-589."""
-        from provisa.pgwire._pipeline import _Plan, require_governed_plan
-        from provisa.transpiler.router import Route
-
-        if not isinstance(governed, _Plan):
-            return None
-        if governed.route == Route.ENGINE:
-            require_governed_plan(governed)
-            if governed.physical_sql is None:
-                raise RuntimeError("ENGINE plan missing physical_sql")
-            from provisa.federation.query_residency import prepare_engine_residency
-
-            # The engine must be able to bind every relation the plan reads — the same residency
-            # the Execute prepares (and would prepare anyway) — but no response-cache read and no
-            # row is produced.
-            cl.run(prepare_engine_residency(state, governed), timeout=120)
-            shape = state.federation_engine.describe_engine_sync(
-                governed.physical_sql, governed.exec_params
-            )
-        elif (
-            governed.route == Route.DIRECT
-            and governed.source_id
-            and state.source_pools.has(governed.source_id)
-            and state.source_pools.supports_stream(governed.source_id)
-            and state.source_pools.dialect_for(governed.source_id) in ("postgres", "postgresql")
-        ):
-            require_governed_plan(governed)
-            # Postgres plans a constant-false filter as a one-time filter: nothing is scanned, and
-            # the portal still describes every column (duplicate names kept) with its type.
-            shape = state.federation_engine.execute_native_stream(
-                state.source_pools,
-                governed.source_id,
-                f"SELECT * FROM ({governed.sql}) _provisa_describe WHERE false",
-                governed.exec_params,
-                run=cl.run,
-            )
-        else:
-            return None
-        if shape is None:
-            return None
-        if not shape.column_types or any(t is None for t in shape.column_types):
-            shape.close()
-            raise RuntimeError(
-                "describe returned no declared column types — the Describe cannot agree with the "
-                "Execute without them"
-            )
-        return shape
+        try:
+            return ProvisaQueryResult(result, stripped, shape)
+        except Exception:
+            log.warning("[PGWIRE] EXCEPTION sql=%r", stripped[:300], exc_info=True)
+            raise
 
     def _finalize_audit(self, governed, status_code: int) -> None:
         """Write the governed plan's audit row on this connection's loop, under the session's org."""
@@ -1094,6 +1174,43 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
     _sasl: "ScramExchange | None" = None
     # The session this connection's startup created (REQ-1882: closed on this thread).
     _session: "ProvisaSession | None" = None
+    # REQ-1910: the request span of the statement cycle in flight — one simple Query, or one
+    # extended-protocol cycle from its first Parse/Bind/Describe/Execute to the Sync that ends it.
+    _request_scope: Any = None
+
+    def _begin_request_span(self) -> None:
+        if self._request_scope is None:
+            scope = _request_span(_tracer, "pgwire.query", transport="pgwire")
+            scope.__enter__()
+            self._request_scope = scope
+
+    def _end_request_span(self) -> None:
+        scope, self._request_scope = self._request_scope, None
+        if scope is not None:
+            scope.__exit__(None, None, None)
+
+    def handle_parse(self, ctx: BVContext, payload: bytes) -> None:
+        self._begin_request_span()
+        super().handle_parse(ctx, payload)
+
+    def handle_bind(self, ctx: BVContext, payload: bytes) -> None:
+        self._begin_request_span()
+        super().handle_bind(ctx, payload)
+
+    def send_ready_for_query(self, ctx: Optional[BVContext]) -> None:
+        # ReadyForQuery ends the cycle: the Sync of an extended-protocol cycle, or a Query's end.
+        try:
+            super().send_ready_for_query(ctx)
+        finally:
+            self._end_request_span()
+
+    def send_data_rows(self, query_result: BVQueryResult, limit: int = 0) -> int:
+        # REQ-1910: rows are pulled from the result and encoded onto the socket here.
+        started = time.perf_counter()
+        sent = super().send_data_rows(query_result, limit)
+        _record_stage("encode", started)
+        _annotate_request(db__row_count=sent)
+        return sent
 
     def handle(self) -> None:
         """Serve the connection with a ConnectionLoop bound to this thread for its whole life.
@@ -1106,6 +1223,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             try:
                 super().handle()
             finally:
+                self._end_request_span()  # a connection that died mid-cycle still ends its span
                 # A CancelRequest from another connection may have asked this session to close;
                 # its cursors are released here, on the thread that owns their loop.
                 session = self._session
@@ -1570,6 +1688,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         self.handle_post_auth(ctx)
 
     def handle_describe(self, ctx: BVContext, payload: bytes) -> None:
+        self._begin_request_span()
         ba = bytearray(payload)
         if ba[0] == ord("P"):
             portal = ba[1 : len(ba) - 1].decode("utf-8")
@@ -1640,6 +1759,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         super().handle_describe(ctx, payload)
 
     def handle_execute(self, ctx: BVContext, payload: bytes) -> None:
+        self._begin_request_span()
         ba = bytearray(payload)
         portal_idx = ba.index(0)
         portal = ba[:portal_idx].decode("utf-8")
@@ -1650,6 +1770,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         super().handle_execute(ctx, payload)
 
     def handle_query(self, ctx: BVContext, payload: bytes) -> None:
+        self._begin_request_span()
         from provisa.compiler.sql_rewrite import split_sql_statements
 
         decoded = payload.decode("utf-8").rstrip("\x00")
@@ -1921,17 +2042,6 @@ def start_pgwire_server(  # REQ-527
     """Start the pgwire server in a daemon thread. Returns the server instance.
 
     Each TCP connection is served on its own thread with its own event loop (REQ-1882)."""
-    import os
-
-    _debug_log = os.path.expanduser("~/pgwire_debug.log")
-    _fh = logging.FileHandler(_debug_log)
-    _fh.setLevel(logging.DEBUG)
-    _fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
-    logging.getLogger("provisa.pgwire").addHandler(_fh)
-    logging.getLogger("provisa.pgwire").setLevel(logging.DEBUG)
-    logging.getLogger("buenavista").addHandler(_fh)
-    logging.getLogger("buenavista").setLevel(logging.DEBUG)
-
     conn = ProvisaConnection()
     server = ProvisaServer((host, port), conn, ssl_ctx=ssl_ctx)
     t = threading.Thread(target=server.serve_forever, daemon=True)

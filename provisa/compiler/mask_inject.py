@@ -25,6 +25,7 @@ from sqlglot import exp
 from provisa.compiler.sql_gen import CompiledQuery, CompilationContext
 from provisa.security.masking import MaskingRule, build_mask_expression
 from provisa.otel_compat import get_tracer as _get_tracer
+from provisa.otel_compat import stage as _stage
 
 _tracer = _get_tracer(__name__)
 
@@ -53,7 +54,7 @@ def inject_masking(  # REQ-040, REQ-263, REQ-264
     Returns:
         New CompiledQuery with masked SELECT projection.
     """
-    with _tracer.start_as_current_span("masking.inject") as span:
+    with _stage(_tracer, "masking.inject", name="govern") as span:
         # canonical_field is the pre-alias schema field; root_field may be a client alias
         # absent from ctx.tables — using it alone would skip masking on aliased roots.
         root_table = ctx.tables.get(compiled.canonical_field or compiled.root_field)

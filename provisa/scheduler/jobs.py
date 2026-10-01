@@ -30,6 +30,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from provisa.core.trino_system_catalogs import OTEL_CATALOG
+from provisa.observability.ops_schema import REQUEST_SPAN_ATTR
 
 if TYPE_CHECKING:
     from provisa.core.models import ScheduledTrigger
@@ -42,7 +43,12 @@ _OTEL_FETCH_WORKERS = 16
 
 # REQ-1428: the instrumentation scope the collector's parquet-lane filter drops. Named here too
 # because the bucket still holds objects written before that filter shipped.
-_ASYNCPG_SCOPE = "opentelemetry.instrumentation.asyncpg"
+# REQ-1910: the catalog database is instrumented through psycopg now; asyncpg stays listed for
+# the objects written while it was the instrumented driver.
+_CATALOG_DRIVER_SCOPES = (
+    "opentelemetry.instrumentation.asyncpg",
+    "opentelemetry.instrumentation.psycopg",
+)
 
 
 async def _execute_webhook(
@@ -225,16 +231,34 @@ def _drop_foreign_rows(signal: str, table):
     # generated onto the module at import time from the C++ function registry, so they exist at
     # runtime but are not members any reader -- human or checker -- can find in the source.
     if "scope_name" in table.column_names:
-        keep = pc.call_function(
-            "not_equal", [table.column("scope_name"), pa.scalar(_ASYNCPG_SCOPE, type=pa.string())]
-        )
-        table = table.filter(pc.fill_null(keep, True))
+        for scope in _CATALOG_DRIVER_SCOPES:
+            keep = pc.call_function(
+                "not_equal", [table.column("scope_name"), pa.scalar(scope, type=pa.string())]
+            )
+            table = table.filter(pc.fill_null(keep, True))
     if "service_name" in table.column_names:
         service = os.environ.get("PROVISA_OTEL_SERVICE_NAME", "provisa")
         keep = pc.call_function(
             "equal", [table.column("service_name"), pa.scalar(service, type=pa.string())]
         )
         table = table.filter(pc.fill_null(keep, False))
+    if "parent_span_id" in table.column_names and "span_attributes" in table.column_names:
+        # REQ-1910: `traces` holds one row per request (and per piece of background work). A span
+        # with a parent is detail under one — unless it is itself a request span whose caller
+        # sent a traceparent, which its provisa.transport attribute marks. The Iceberg lane keeps
+        # no detail rows: a debug request's child spans reach only the built-in store's
+        # trace_details table (otlp2sql) and whatever external OTLP endpoint is configured.
+        parent = table.column("parent_span_id")
+        is_root = pc.fill_null(pc.call_function("equal", [parent, pa.scalar("")]), True)
+        is_request = pc.fill_null(
+            pc.call_function(
+                "match_substring",
+                [table.column("span_attributes")],
+                pc.MatchSubstringOptions(f'"{REQUEST_SPAN_ATTR}"'),
+            ),
+            False,
+        )
+        table = table.filter(pc.call_function("or", [is_root, is_request]))
     return table
 
 

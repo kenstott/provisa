@@ -324,8 +324,6 @@ async def _deliver_invite(  # REQ-1310
     """
     if not email:
         return "not_addressed"
-    from starlette.concurrency import run_in_threadpool
-
     from provisa.api.app import state as _app_state
     from provisa.core.mail import compose_invite_message, email_sender
 
@@ -360,7 +358,7 @@ async def _deliver_invite(  # REQ-1310
             token=token,
         )
         sender = email_sender(cfg.mail)  # REQ-1330: the port; the provider is config, not code
-        await run_in_threadpool(sender.send, message)
+        sender.send(message)  # blocks this request's own thread (REQ-1882)
     except Exception as exc:  # reported to the caller, never swallowed
         log.error("invitation to %s for org %s could not be delivered: %s", email, org_id, exc)
         # REQ-1576: recorded BEFORE returning, and failures especially — an invitation nobody

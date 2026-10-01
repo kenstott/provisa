@@ -410,6 +410,13 @@ class BVContext:
         # statement name -> its Describe(Statement) result, held for the Bind that follows (see
         # describe_statement / add_portal).
         self.described = {}
+        # statement name -> the shape its Describe(Statement) told the client. Every later Execute
+        # of the statement is encoded to it (the client decodes by what it was told once).
+        self.statement_shapes = {}
+        # statement name -> what the session prepared at Describe(Statement) for the NEXT Bind's
+        # Execute to continue from (single use); portal name -> the one its Bind took.
+        self.statement_prepared = {}
+        self.portal_prepared = {}
         self.has_error = False
         self.authenticated = False
         self.salt: bytes | None = None
@@ -432,12 +439,17 @@ class BVContext:
                 return TransactionStatus.IN_TRANSACTION
         return TransactionStatus.IDLE
 
-    def execute_sql(self, sql: str, params=None, result_fmt=None) -> QueryResult:
-        logger.info("Input SQL: " + sql)
+    def execute_sql(
+        self, sql: str, params=None, result_fmt=None, *, prepared=None, shape=None
+    ) -> QueryResult:
+        logger.info("Input SQL: %s", sql)
         if self.rewriter:
             sql = self.rewriter.rewrite(sql)
-            logger.info("Rewritten SQL: " + sql)
-        qr = self.session.execute_sql(sql, params, result_fmt)
+            logger.info("Rewritten SQL: %s", sql)
+        if prepared is None and shape is None:
+            qr = self.session.execute_sql(sql, params, result_fmt)
+        else:
+            qr = self.session.execute_sql(sql, params, result_fmt, prepared=prepared, shape=shape)
         if qr.has_results():
             if result_fmt and len(result_fmt) != qr.column_count():
                 qr.result_format = [result_fmt[0]] * qr.column_count()
@@ -448,7 +460,13 @@ class BVContext:
     def describe_portal(self, name: str) -> QueryResult:
         stmt, params, result_fmt = self.portals[name]
         sql, _ = self.stmts[stmt]
-        query_result = self.execute_sql(sql=sql, params=params, result_fmt=result_fmt)
+        query_result = self.execute_sql(
+            sql=sql,
+            params=params,
+            result_fmt=result_fmt,
+            prepared=self.portal_prepared.pop(name, None),
+            shape=self.statement_shapes.get(stmt),
+        )
         self.result_cache[name] = query_result
         return query_result
 
@@ -463,18 +481,28 @@ class BVContext:
                 raise Exception(f"Unsupported parameter type: {typeoid}")
         if self.rewriter:
             sql = self.rewriter.rewrite(sql)
-        # The RowDescription needs the result's columns, which only running the statement yields.
-        # That run is then handed to the Execute of the Bind that follows (add_portal) instead of
-        # running the statement a second time — so a prepared statement runs ONCE, and the types
-        # the client was told are exactly the ones the Execute sends. Only a statement without
-        # parameters qualifies: with parameters this run used placeholder example values.
+        # The session describes the statement WITHOUT running it where it can: the result carries
+        # the shape the client is told (``statement_shape``) and what the session prepared for the
+        # Execute to continue from (``prepared``). Every later Execute of the statement is encoded
+        # to that shape; the prepared work is taken by the next Bind only.
+        #
+        # A session result with neither is one it could only produce by running the statement (a
+        # catalog answer). That run is handed to the Execute of the Bind that follows (add_portal)
+        # instead of running it a second time. Only a statement without parameters qualifies: with
+        # parameters this run used placeholder example values.
         qr = self.session.describe_sql(sql, params)
         self._drop_described(name)
-        if not param_oids and qr.has_results():
+        shape = getattr(qr, "statement_shape", None)
+        if shape is not None:
+            self.statement_shapes[name] = shape
+            self.statement_prepared[name] = getattr(qr, "prepared", None)
+        elif not param_oids and qr.has_results():
             self.described[name] = qr
         return qr
 
     def _drop_described(self, stmt: str) -> None:
+        self.statement_shapes.pop(stmt, None)
+        self.statement_prepared.pop(stmt, None)
         held = self.described.pop(stmt, None)
         if held is not None:
             held.close()
@@ -485,6 +513,9 @@ class BVContext:
         held = list(self.result_cache.values()) + list(self.described.values())
         self.result_cache.clear()
         self.described.clear()
+        self.statement_shapes.clear()
+        self.statement_prepared.clear()
+        self.portal_prepared.clear()
         for qr in held:
             qr.close()
 
@@ -499,7 +530,13 @@ class BVContext:
         else:
             stmt, params, result_fmt = self.portals[name]
             sql, _ = self.stmts[stmt]
-            qr = self.execute_sql(sql=sql, params=params, result_fmt=result_fmt)
+            qr = self.execute_sql(
+                sql=sql,
+                params=params,
+                result_fmt=result_fmt,
+                prepared=self.portal_prepared.pop(name, None),
+                shape=self.statement_shapes.get(stmt),
+            )
             return qr
 
     def add_statement(self, name: str, sql: str, param_oids: List[int]):
@@ -530,6 +567,11 @@ class BVContext:
         if stale is not None:
             stale.close()
         self.portals[name] = (stmt, params, result_formats)
+        # What the statement's Describe prepared goes to THIS portal's Execute, once.
+        self.portal_prepared.pop(name, None)
+        prepared = self.statement_prepared.pop(stmt, None)
+        if prepared is not None:
+            self.portal_prepared[name] = prepared
         # Hand the statement's Describe-time result to this portal's Execute (see
         # describe_statement): it is the same statement with no parameters, so the result IS what
         # the Execute would compute. Used once — a later Bind of the statement runs it fresh.
@@ -547,6 +589,7 @@ class BVContext:
 
     def close_portal(self, name: str):
         del self.portals[name]
+        self.portal_prepared.pop(name, None)
         # A Describe-then-Close flow (no Execute — e.g. a client fetching metadata only, or
         # aborting after Describe) leaves an already-executed result in result_cache with nobody
         # ever draining it. Close it here so a live cursor/source-connection it holds is released

@@ -12,6 +12,7 @@ import duckdb
 import pytest
 import sqlglot
 
+from provisa.compiler.compiled_query_cache import CompiledQueryCache
 from provisa.compiler.metric_expand import (
     expand_metric_calls_in_sql,
     expand_metric_query,
@@ -209,6 +210,13 @@ async def test_compiled_path_expands_metric_refs():
         tables = []
         relationships = []
         view_sql_map = {}
+        # What the governed-plan lookup reads before the statement is parsed (REQ-1877).
+        roles = {"admin": {"id": "admin"}}
+        rls_contexts: dict = {}
+        masking_rules: dict = {}
+        schema_boot_id = "test-boot"
+        schema_version = 1
+        compiled_query_cache = CompiledQueryCache()
 
     with pytest.raises(ValueError, match="nope"):
         await _pipeline._govern_and_route_compiled(

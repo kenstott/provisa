@@ -254,15 +254,14 @@ class EngineBackend:
     def provision(self, state: Any, ops_views: list) -> None:
         """No external terminal to connect; telemetry lands in the dedicated ops store."""
 
-    async def provision_infra(self, state: Any) -> None:
-        """No Arrow-Flight proxy / results schema for a native engine. The redirect results
-        bucket (REQ-171) is engine-agnostic — large-result redirect ships on every engine — so
-        ensure it whenever redirect is configured (a no-op when PROVISA_REDIRECT_ENDPOINT is unset,
-        e.g. the zero-config embedded stack per REQ-989)."""
-        del state
-        from provisa.executor.redirect import RedirectConfig, ensure_results_bucket
+    def connect_terminal(self, state: Any) -> None:  # REQ-1900
+        """No external terminal to connect."""
 
-        await ensure_results_bucket(RedirectConfig.from_env())
+    async def provision_infra(self, state: Any) -> None:
+        """No Arrow-Flight proxy / results schema for a native engine, so nothing to do at boot.
+        The redirect results bucket (REQ-171) is ensured by the first redirect that needs it
+        (``redirect.ensure_results_bucket_sync``), not here."""
+        del state
 
     async def reconcile_landed_tables(self, state: Any) -> list[tuple[str, str]]:
         """Schema-currency reconcile of MATERIALIZED landing tables (REQ-846/932). No-op on the base
@@ -873,6 +872,14 @@ class EngineBackend:
             "(native-runtime execution binding is separate feature work)"
         )
 
+    def borrow_raw_pg_connection(self, state: Any) -> Any:
+        """One pooled Postgres connection for pgwire's raw-DataRow passthrough (REQ-1863). An
+        engine that is not Postgres has none: the passthrough does not apply to it."""
+        from provisa.pgwire.pg_passthrough import PassthroughError
+
+        del state
+        raise PassthroughError(f"engine {self.engine.name!r} is not a Postgres connection pool")
+
     def execute_sync(
         self,
         state: Any,
@@ -1076,6 +1083,11 @@ class TrinoBackend(EngineBackend):
 
         trino_lifecycle.provision(state, ops_views)
 
+    def connect_terminal(self, state: Any) -> None:  # REQ-1900
+        from provisa.federation import trino_lifecycle
+
+        trino_lifecycle.connect_terminal(state)
+
     def bind_terminal(self, state: Any) -> None:
         from provisa.federation import trino_lifecycle
 
@@ -1180,9 +1192,12 @@ class TrinoBackend(EngineBackend):
         return (connected, worker_count, active_workers)
 
     def ctas_redirect(self, state: Any, physical_sql: str, output_format: str) -> dict:
-        from provisa.executor.trino_write import execute_ctas_redirect
+        from provisa.executor import redirect, trino_write
 
-        return execute_ctas_redirect(state.engine_conn, physical_sql, output_format)
+        # REQ-171: the coordinator writes the CTAS result into the results bucket, so the first
+        # CTAS redirect of this process makes sure it exists (it is no longer ensured at boot).
+        redirect.ensure_results_bucket_sync(redirect.RedirectConfig.from_env())
+        return trino_write.execute_ctas_redirect(state.engine_conn, physical_sql, output_format)
 
     # -- source lifecycle ------------------------------------------------------
 

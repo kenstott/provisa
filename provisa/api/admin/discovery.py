@@ -28,6 +28,7 @@ from provisa.discovery.analyzer import analyze
 from provisa.discovery.collector import collect_fk_candidates, collect_metadata
 from provisa.discovery.prompt import build_prompt
 from provisa.otel_compat import get_tracer as _get_tracer
+from provisa.otel_compat import stage as _stage
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -58,7 +59,7 @@ _log = _logging.getLogger(__name__)
 @router.post("/relationships")
 async def trigger_discovery(body: DiscoverRequest):  # REQ-018, REQ-167, REQ-413, REQ-612
     """Trigger relationship discovery: FK constraints always, LLM inference if ANTHROPIC_API_KEY set."""
-    with _tracer.start_as_current_span("admin.discovery") as span:
+    with _stage(_tracer, "admin.discovery") as span:
         scope_id: str | int | None = None
         if body.scope == "table":
             if body.table_id is None:

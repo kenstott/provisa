@@ -117,6 +117,9 @@ def _make_app_state_with_orders():
     from provisa.cache.store import NoopCacheStore
 
     state = MagicMock()
+    # REQ-1910: a bare MagicMock attribute is not None, which reads as a control plane to
+    # resolve the debug-trace scope from. This stand-in has none: no window, no permitted hint.
+    state.admin_db = None
     # The governed pipeline keys its compile/routing caches on the schema identity; bare MagicMocks
     # there read as a non-string cache key and as cache HITs.
     state.schema_boot_id = "itest"

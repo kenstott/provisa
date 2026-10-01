@@ -25,9 +25,10 @@ import gzip
 import json
 import logging
 import os
+import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import sqlalchemy as sa
 from starlette.applications import Starlette
@@ -51,7 +52,9 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
 
 from provisa.core.database import sync_engine_from_url
 from provisa.observability.ops_schema import (
+    REQUEST_SPAN_ATTR,
     TRACE_ATTR_COLS,
+    TRACE_DETAIL_RETENTION_HOURS,
     ensure_tables,
     ops_db_url,
 )
@@ -67,6 +70,8 @@ _tables: dict[str, sa.Table] = {}
 _BATCH_MAX_ROWS = int(os.environ.get("OTLP2SQL_BATCH_MAX_ROWS", "1000"))
 _BATCH_MAX_SECS = float(os.environ.get("OTLP2SQL_BATCH_MAX_SECS", "2"))
 _buffer: dict[str, list[dict]] = defaultdict(list)
+# REQ-1910: how often the flush loop prunes trace_details past its retention.
+_PRUNE_EVERY_SECS = 600
 _buf_lock = asyncio.Lock()
 
 
@@ -168,6 +173,28 @@ def _trace_rows(req: ExportTraceServiceRequest) -> list[dict]:
     return rows
 
 
+def _is_request_record(row: dict) -> bool:
+    """REQ-1910: whether a span row is a record of its own — a request span, or the root span of
+    background work — rather than detail under one."""
+    return row["parent_span_id"] is None or REQUEST_SPAN_ATTR in json.loads(row["span_attributes"])
+
+
+def _detail_retention_hours() -> float:
+    return float(os.environ.get("OTLP2SQL_DETAIL_RETENTION_HOURS", TRACE_DETAIL_RETENTION_HOURS))
+
+
+def _prune_trace_details() -> None:
+    """Delete the detail rows past their retention. Request records are never pruned here."""
+    if _engine is None:
+        return
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(
+        hours=_detail_retention_hours()
+    )
+    tbl = _tables["trace_details"]
+    with _engine.begin() as conn:
+        conn.execute(sa.delete(tbl).where(tbl.c.timestamp < cutoff))
+
+
 def _metric_rows(req: ExportMetricsServiceRequest) -> list[dict]:
     rows: list[dict] = []
     for rm in req.resource_metrics:
@@ -260,6 +287,9 @@ async def _flush() -> None:
         _buffer.clear()
     for table_name, rows in pending.items():
         try:
+            # Async by necessity: this collector is its own process with ONE event loop and no
+            # per-request threads (it is not a Provisa transport; no query runs here), so a
+            # blocking insert on the loop would stall every OTLP export it is receiving.
             await run_in_threadpool(_insert, table_name, rows)
         except Exception:
             log.exception("otlp2sql: flush failed for %s (%d rows)", table_name, len(rows))
@@ -267,9 +297,17 @@ async def _flush() -> None:
 
 async def _flush_loop() -> None:
     try:
+        last_prune = time.monotonic()
         while True:
             await asyncio.sleep(_BATCH_MAX_SECS)
             await _flush()
+            if time.monotonic() - last_prune >= _PRUNE_EVERY_SECS:
+                last_prune = time.monotonic()
+                try:
+                    await run_in_threadpool(_prune_trace_details)
+                except Exception:
+                    # Best-effort like the flush: a failed prune is retried at the next interval.
+                    log.exception("otlp2sql: pruning trace_details failed")
     except asyncio.CancelledError:
         pass
 
@@ -296,8 +334,21 @@ async def _handle(request: Request, decode, to_rows, table_name: str, resp_cls) 
 
 
 async def traces(request: Request) -> Response:
-    return await _handle(
-        request, ExportTraceServiceRequest, _trace_rows, "traces", ExportTraceServiceResponse
+    """REQ-1910: a request span (or a background root) is a `traces` row; any other span is a
+    `trace_details` row under the same trace_id."""
+    body = await request.body()
+    if request.headers.get("content-encoding", "").lower() == "gzip":
+        body = gzip.decompress(body)
+    msg = ExportTraceServiceRequest()
+    msg.ParseFromString(body)
+    records: list[dict] = []
+    details: list[dict] = []
+    for row in _trace_rows(msg):
+        (records if _is_request_record(row) else details).append(row)
+    await _enqueue("traces", records)
+    await _enqueue("trace_details", details)
+    return Response(
+        ExportTraceServiceResponse().SerializeToString(), media_type="application/x-protobuf"
     )
 
 
@@ -337,6 +388,7 @@ def build_app(db_url: str | None = None) -> Starlette:
         # writable handle, pool_pre_ping for server backends.
         _engine = sync_engine_from_url(url)
         _tables = ensure_tables(_engine)
+        _prune_trace_details()  # REQ-1910: detail rows left past their retention by a prior run
         log.info("otlp2sql: ready -> %s", _engine.url.render_as_string(hide_password=True))
         flusher = asyncio.create_task(_flush_loop())
         try:

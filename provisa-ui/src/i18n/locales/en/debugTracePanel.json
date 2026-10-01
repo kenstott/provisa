@@ -1,0 +1,32 @@
+{
+  "debugTracePanel": {
+    "tabTitle": "Debug tracing",
+    "intro": "Tracing records one span per request by default. Debug tracing adds a span per pipeline stage and per source call, with SQL text. It adds load, so turn it on for one org, role or source for a set time; it turns itself off when the time is up.",
+    "startTitle": "Start a debug window",
+    "scopeLabel": "Scope",
+    "scopeOrg": "Org",
+    "scopeRole": "Role",
+    "scopeSource": "Source",
+    "orgLabel": "Org",
+    "roleLabel": "Role ID",
+    "sourceLabel": "Source ID",
+    "minutesLabel": "Duration (minutes)",
+    "minutesHelp": "1 to {{max}} minutes.",
+    "start": "Start",
+    "activeTitle": "Active windows",
+    "noWindows": "No debug window is open.",
+    "colScope": "Scope",
+    "colOrg": "Org",
+    "colTarget": "Role or source",
+    "colRemaining": "Time remaining",
+    "colStartedBy": "Started by",
+    "wholeOrg": "Whole org",
+    "stop": "Stop",
+    "hintTitle": "Per-request debug hint",
+    "hintIntro": "A request can ask for a debug trace of itself with the @debugTrace directive, a \"@provisa trace=debug\" comment, or the X-Provisa-Trace: debug header. Requests from roles not listed here that carry the hint are rejected.",
+    "permit": "Permit",
+    "revoke": "Revoke",
+    "noHintRoles": "No role is permitted the hint.",
+    "loadFailed": "Could not load debug tracing settings"
+  }
+}

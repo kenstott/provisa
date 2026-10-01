@@ -37,6 +37,32 @@ from tests.pgwire_describe_parity import (  # noqa: E402
 from tests.unit.pgwire.test_wire_protocol import _free_port, _make_server  # noqa: E402
 
 _SQL = "SELECT i, b, d, f, s, flag, day, ts, j FROM parity ORDER BY i"
+# The tables as the registry records them (the types the pgwire catalog advertises).
+_REGISTRY = {
+    "parity": [
+        ("i", "int4"),
+        ("b", "int8"),
+        ("d", "numeric(18,2)"),
+        ("f", "float8"),
+        ("s", "text"),
+        ("flag", "bool"),
+        ("day", "date"),
+        ("ts", "timestamp"),
+        ("j", "jsonb"),
+    ],
+    "wide": [
+        ("si", "int2"),
+        ("r", "float4"),
+        ("jb", "jsonb"),
+        ("tz", "timestamptz"),
+        ("ttz", "timetz"),
+        ("u", "uuid"),
+        ("iv", "interval"),
+        ("ba", "bytea"),
+        ("old_ts", "timestamp"),
+        ("old_day", "date"),
+    ],
+}
 
 
 @pytest.fixture(scope="module")
@@ -100,14 +126,14 @@ def test_describe_keeps_duplicate_column_names(runtime):
 @pytest.mark.asyncio
 async def test_every_type_reads_back_exactly_through_pgwire_once(runtime, pgwire_port):
     engine = RuntimeEngine(runtime, "duckdb")  # not "postgres": skip the REQ-1863 passthrough
-    rows = await fetch_through_pgwire(pgwire_port, engine, _SQL)
+    rows = await fetch_through_pgwire(pgwire_port, engine, _SQL, _REGISTRY)
     ((i, b, d, f, s, flag, day, ts, j),) = rows
     assert (i, b, d, f, s, flag) == (1, 9000000000, Decimal("12.34"), 1.5, "x", True)
     assert day == datetime.date(2026, 1, 2)
     assert ts == datetime.datetime(2026, 1, 2, 3, 4, 5)
     assert j == '{"k": 1}'
     assert engine.executed == [_SQL]
-    assert engine.described == [_SQL]
+    assert engine.described == []  # the Describe came from the registry, not from the engine
 
 
 # Every exact-width Postgres type, read by asyncpg in BINARY: once with the source's raw bytes
@@ -156,7 +182,7 @@ async def test_every_wide_type_reads_back_exactly_through_the_passthrough(wide_t
     from tests.pgwire_describe_parity import PassthroughEngine
 
     engine = PassthroughEngine(wide_table, runtime_dsn(wide_table))
-    rows = await fetch_through_pgwire(pgwire_port, engine, _WIDE_SQL)
+    rows = await fetch_through_pgwire(pgwire_port, engine, _WIDE_SQL, _REGISTRY)
     assert rows == [_WIDE_EXPECTED]
     assert engine.passthrough == [_WIDE_SQL]  # forwarded raw, not refused
     assert engine.executed == []  # no decode/re-encode fallback ran
@@ -165,6 +191,6 @@ async def test_every_wide_type_reads_back_exactly_through_the_passthrough(wide_t
 @pytest.mark.asyncio
 async def test_every_wide_type_reads_back_exactly_when_re_encoded(wide_table, pgwire_port):
     engine = RuntimeEngine(wide_table, "duckdb")  # not "postgres": no passthrough
-    rows = await fetch_through_pgwire(pgwire_port, engine, _WIDE_SQL)
+    rows = await fetch_through_pgwire(pgwire_port, engine, _WIDE_SQL, _REGISTRY)
     assert rows == [_WIDE_EXPECTED]
     assert engine.executed == [_WIDE_SQL]

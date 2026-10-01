@@ -30,6 +30,7 @@ from provisa.audit.pipeline import PendingAudit
 from provisa.cache.codec import encode_cache_payload
 from provisa.cache.store import CachedResult, CacheStore
 from provisa.pgwire._pipeline import _Plan, check_response_cache
+from provisa.transpiler.router import Route
 
 
 class FakeCacheStore(CacheStore):
@@ -84,7 +85,7 @@ def _make_plan(sql: str = "SELECT id FROM t", role_id: str = "role-1") -> _Plan:
         started=time.time(),
     )
     return _Plan(
-        route=object(),
+        route=Route.ENGINE,
         sql=sql,
         source_id="engine",
         dialect="postgres",

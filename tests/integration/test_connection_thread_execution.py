@@ -57,6 +57,8 @@ def _no_cross_thread_hop(*args, **kwargs):
 
 def _flight_state(**extra) -> SimpleNamespace:
     """An unsecured single-org deployment — the data path is under test, not auth."""
+    from provisa.cache import NoopCacheStore
+
     base = dict(
         auth_config=None,
         auth_middleware_active=False,
@@ -65,6 +67,7 @@ def _flight_state(**extra) -> SimpleNamespace:
         rate_limiter=None,
         flight_global_cap=None,
         roles={"analyst": {}},
+        response_cache_store=NoopCacheStore(),
     )
     base.update(extra)
     return SimpleNamespace(**base)
@@ -406,14 +409,17 @@ async def test_graphql_governance_runs_on_the_request_thread_in_parallel():
     from provisa.core.connection_loop import current_connection_loop
     from provisa.core.request_thread import RequestThreadMiddleware
 
+    from provisa.api.app import AppState
+
     schema = build_schema("type Query { orders: Int }")
-    state = SimpleNamespace(
-        schemas={"analyst": schema},
-        contexts={"analyst": object()},
-        rls_contexts={},
-        roles={"analyst": {}},
-        apq_cache=None,
-    )
+    # A real AppState, so every attribute the GraphQL path reads exists with its own default; only
+    # what this request needs is set.
+    state = AppState()
+    state.schemas = {"analyst": schema}
+    state.contexts = {"analyst": object()}  # type: ignore[dict-item]
+    state.rls_contexts = {}
+    state.roles = {"analyst": {}}
+    state.apq_cache = None
     request_idents: set[int] = set()
     govern_idents: list[int] = []
     both_governing = threading.Barrier(2)

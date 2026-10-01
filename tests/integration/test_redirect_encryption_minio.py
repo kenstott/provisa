@@ -83,7 +83,7 @@ async def test_encrypted_redirect_roundtrip_via_minio():
     if not _reachable():
         pytest.skip(f"MinIO not reachable at {_ENDPOINT}")
 
-    # Provision the results bucket (the app does this at startup via connect_infra).
+    # Provision the results bucket (the app does this on the first redirect that needs it).
     await ensure_results_bucket(_config())
 
     result = QueryResult(

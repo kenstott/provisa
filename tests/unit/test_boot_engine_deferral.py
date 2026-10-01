@@ -40,9 +40,13 @@ def test_every_engine_step_of_the_boot_is_behind_the_flag():
     coordinator's address, the terminal dials it, provision_infra sets up over it, and load_config
     issues catalogs on it. Each is skipped by the same flag the wake failure sets."""
     src = inspect.getsource(app_module._load_and_build)
-    assert "_seed_built_in_sources(\n        pg_host" in src
+    assert "_seed_built_in_sources(\n            pg_host" in src
     assert "engine_addressable=not engine_deferred" in src
-    assert "_apply_server_and_engine_config(raw_config, connect_engine=not engine_deferred)" in src
+    assert (
+        "_apply_server_and_engine_config(\n"
+        "        raw_config, connect_engine=not engine_deferred, provision_engine=apply\n"
+        "    )"
+    ) in src
     assert "if not engine_deferred:\n        await state.federation_engine.provision_infra()" in src
     assert "None if engine_deferred else state.federation_engine" in src
 

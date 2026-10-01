@@ -1,0 +1,32 @@
+{
+  "debugTracePanel": {
+    "tabTitle": "Rastreamento de depuração",
+    "intro": "Por padrão, o rastreamento registra um span por solicitação. O rastreamento de depuração adiciona um span por etapa do pipeline e por chamada a uma fonte, com o texto SQL. Ele adiciona carga, portanto ative-o para uma organização, uma função ou uma fonte por um tempo definido; ele se desativa sozinho quando o tempo acaba.",
+    "startTitle": "Iniciar uma janela de depuração",
+    "scopeLabel": "Escopo",
+    "scopeOrg": "Organização",
+    "scopeRole": "Função",
+    "scopeSource": "Fonte",
+    "orgLabel": "Organização",
+    "roleLabel": "ID da função",
+    "sourceLabel": "ID da fonte",
+    "minutesLabel": "Duração (minutos)",
+    "minutesHelp": "De 1 a {{max}} minutos.",
+    "start": "Iniciar",
+    "activeTitle": "Janelas ativas",
+    "noWindows": "Nenhuma janela de depuração está aberta.",
+    "colScope": "Escopo",
+    "colOrg": "Organização",
+    "colTarget": "Função ou fonte",
+    "colRemaining": "Tempo restante",
+    "colStartedBy": "Iniciada por",
+    "wholeOrg": "Toda a organização",
+    "stop": "Parar",
+    "hintTitle": "Indicação de depuração por solicitação",
+    "hintIntro": "Uma solicitação pode pedir um rastreamento de depuração de si mesma com a diretiva @debugTrace, um comentário \"@provisa trace=debug\" ou o cabeçalho X-Provisa-Trace: debug. Solicitações com a indicação vindas de funções não listadas aqui são rejeitadas.",
+    "permit": "Permitir",
+    "revoke": "Revogar",
+    "noHintRoles": "Nenhuma função tem permissão para usar a indicação.",
+    "loadFailed": "Não foi possível carregar as configurações do rastreamento de depuração"
+  }
+}

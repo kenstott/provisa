@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
 from provisa.otel_compat import get_tracer as _get_tracer
+from provisa.otel_compat import stage as _stage
 
 if TYPE_CHECKING:
     from provisa.cache.values_cte import HotRows
@@ -738,7 +739,7 @@ def compile_query(  # REQ-007, REQ-009, REQ-010, REQ-011, REQ-262, REQ-263, REQ-
                 field_name = sel.name.value
                 if field_name not in ctx.tables:
                     raise ValueError(f"Unknown root query field: {field_name!r}")
-                with _tracer.start_as_current_span("compiler.compile_query") as span:
+                with _stage(_tracer, "compiler.compile_query", name="compile") as span:
                     from provisa.compiler.aggregates import (
                         _compile_aggregate_field,
                         _compile_group_by_field,

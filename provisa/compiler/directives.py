@@ -21,6 +21,7 @@ Supported GraphQL directives (operation-level unless noted):
     @redirect(format: String, threshold: Int)       — redirect large results to object store
     @cached(ttl: Int)                               — opt this request INTO the response cache;
                                                       ttl (optional) = seconds an entry lives
+    @debugTrace                                     — ask for a debug trace of this request
 
 Equivalent SQL comment syntax (``-- @provisa key=value``):
 
@@ -35,11 +36,15 @@ Equivalent SQL comment syntax (``-- @provisa key=value``):
     -- @provisa redirect_threshold=10000
     -- @provisa cache=true                  (opt into the response cache)
     -- @provisa cache_ttl=N                 (opt in, entry lives N seconds)
+    -- @provisa trace=debug                 (ask for a debug trace of this request)
 
 The response cache is OPT-IN per request (REQ-544, amended 2026-09-30): without ``@cached`` / a
 ``cache``/``cache_ttl`` comment a request neither reads nor writes it. Opting in only trades recency
 for speed above the operator's floor — it never makes a read fresher than the operator's settings
 (landing/replica freshness, row_materialize, load_protected snapshots), which apply unchanged.
+
+A debug trace adds platform load, so the debug-trace hint is one the operator permits per role
+(REQ-1910): the pipeline rejects it from a role that is not permitted (``core.trace_scope``).
 """
 
 from __future__ import annotations
@@ -63,7 +68,7 @@ from graphql.language.ast import (
 
 from provisa.core.operator_floor import OperatorFloorError
 
-# Requirements: REQ-137, REQ-176, REQ-277, REQ-278, REQ-279, REQ-281, REQ-283
+# Requirements: REQ-137, REQ-176, REQ-277, REQ-278, REQ-279, REQ-281, REQ-283, REQ-1910
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +106,9 @@ class QueryDirectives:  # REQ-277, REQ-279, REQ-281
     # @cached / -- @provisa cache=true | cache_ttl=N — the request's response-cache opt-in
     cache_opt_in: bool = False  # False = no cache read, no cache write (REQ-544, amended)
     cache_ttl: int | None = None  # seconds the entry lives; None = the operator-resolved TTL
+
+    # @debugTrace / -- @provisa trace=debug — the request asks for a debug trace (REQ-1910)
+    debug_trace: bool = False
 
     # -----------------------------------------------------------------------
     # Convenience helpers
@@ -289,6 +297,8 @@ def extract_directives(document: DocumentNode) -> QueryDirectives:  # REQ-277, R
                 if ttl is not None:
                     assert isinstance(ttl, (int, float, str))
                     result.cache_ttl = int(ttl)
+            elif name == "debugTrace":
+                result.debug_trace = True
 
         # Field-level @watermark scan
         if defn.selection_set:
@@ -378,6 +388,8 @@ def _directives_from_comments(text: str, comment_re: re.Pattern[str]) -> QueryDi
             elif key == "cache_ttl":
                 result.cache_opt_in = True
                 result.cache_ttl = int(value)  # a malformed TTL fails the request, never ignored
+            elif key == "trace":
+                result.debug_trace = _is_debug_level(value, "@provisa trace")
 
     return result
 
@@ -406,6 +418,8 @@ def merge_directives(*sources: QueryDirectives) -> QueryDirectives:  # REQ-277, 
             result.cache_ttl = src.cache_ttl
         if src.cache_opt_in:
             result.cache_opt_in = True
+        if src.debug_trace:
+            result.debug_trace = True
         result.watermark_fields |= src.watermark_fields
     return result
 
@@ -421,12 +435,31 @@ class CacheHint:  # REQ-544
 
     opt_in: bool
     ttl: int | None
+    # REQ-1910: the request's debug-trace hint rides the same carrier, so every transport that
+    # states its cache hint states this one too and no surface parses it on its own.
+    debug_trace: bool = False
 
 
 NO_CACHE_HINT = CacheHint(opt_in=False, ttl=None)
 
 _GRPC_CACHE_KEY = "x-provisa-cache"
 _GRPC_CACHE_TTL_KEY = "x-provisa-cache-ttl"
+TRACE_HEADER = "x-provisa-trace"  # REQ-1910: gRPC metadata key and HTTP header
+_TRACE_DEBUG = "debug"
+
+
+def _is_debug_level(value: str, where: str) -> bool:  # REQ-1910
+    """``debug`` is the one level a request can ask for; anything else fails the request rather
+    than being read as "no hint"."""
+    if value.lower() != _TRACE_DEBUG:
+        raise ValueError(f"{where} accepts only '{_TRACE_DEBUG}', got {value!r}")
+    return True
+
+
+def debug_trace_from_header(value: str | None) -> bool:  # REQ-1910
+    """The ``x-provisa-trace`` HTTP header as the debug-trace hint: absent is no hint, ``debug``
+    is the hint, anything else fails the request."""
+    return value is not None and _is_debug_level(value, TRACE_HEADER)
 
 
 def cache_hint_for(language: str, text: str) -> CacheHint:  # REQ-544
@@ -446,7 +479,7 @@ def cache_hint_for(language: str, text: str) -> CacheHint:  # REQ-544
         d = extract_directives_from_sql_comments(text)
     else:
         raise ValueError(f"no response-cache hint syntax for language {language!r}")
-    return CacheHint(opt_in=d.cache_opt_in, ttl=d.cache_ttl)
+    return CacheHint(opt_in=d.cache_opt_in, ttl=d.cache_ttl, debug_trace=d.debug_trace)
 
 
 def cache_hint_from_grpc_metadata(metadata: Any) -> CacheHint:  # REQ-544
@@ -456,4 +489,6 @@ def cache_hint_from_grpc_metadata(metadata: Any) -> CacheHint:  # REQ-544
     ttl_raw = values.get(_GRPC_CACHE_TTL_KEY)
     ttl = int(ttl_raw) if ttl_raw is not None else None  # malformed fails the call, never ignored
     opt_in = ttl is not None or values.get(_GRPC_CACHE_KEY, "").lower() in ("true", "1", "yes")
-    return CacheHint(opt_in=opt_in, ttl=ttl)
+    trace_raw = values.get(TRACE_HEADER)  # REQ-1910
+    debug_trace = debug_trace_from_header(trace_raw)
+    return CacheHint(opt_in=opt_in, ttl=ttl, debug_trace=debug_trace)

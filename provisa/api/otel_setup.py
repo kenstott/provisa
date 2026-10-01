@@ -6,7 +6,7 @@
 
 """OpenTelemetry tracing and metrics initialisation."""
 
-# Requirements: REQ-302, REQ-303, REQ-330, REQ-545, REQ-546, REQ-547, REQ-548, REQ-549
+# Requirements: REQ-302, REQ-303, REQ-330, REQ-545, REQ-546, REQ-547, REQ-548, REQ-549, REQ-1910
 
 from __future__ import annotations
 
@@ -19,6 +19,13 @@ from typing import Any
 
 
 from provisa.core.config_location import config_path_str
+from provisa.otel_compat import (
+    bind_request_span,
+    configure_trace_detail,
+    in_request_scope,
+    register_query_instruments,
+    trace_detail,
+)
 
 # Matches SQL string literals ('...') and bare numeric literals outside identifiers.
 _SQL_LITERAL_RE = re.compile(r"'[^']*'|\"[^\"]*\"|\b\d+(\.\d+)?\b")
@@ -97,6 +104,87 @@ span_buffer = SpanBuffer()
 # Custom query instruments — None until setup_otel() initialises metrics
 query_counter: Any = None
 query_duration: Any = None
+
+
+def _metric_export_interval_millis() -> int:
+    """How often metrics are exported: $OTEL_METRIC_EXPORT_INTERVAL (the SDK's own variable), else
+    15 seconds."""
+    return int(os.environ.get("OTEL_METRIC_EXPORT_INTERVAL", 15000))
+
+
+# The transport a data route is reported under on the request span and in request metrics; any
+# other HTTP route is "http".
+_HTTP_TRANSPORT_BY_PATH = {
+    "/data/graphql": "graphql",
+    "/data/sql": "sql",
+    "/data/cypher": "cypher",
+}
+
+
+def _bind_http_request_span(span: Any, scope: dict) -> None:  # REQ-1910
+    """FastAPI server-span hook: the span the instrumentor just opened is this request's span."""
+    if span is None or not span.is_recording():
+        return
+    bind_request_span(span, _HTTP_TRANSPORT_BY_PATH.get(scope.get("path", ""), "http"))
+
+
+def _trace_detail_sampler(sample_rate: float) -> Any:  # REQ-1910
+    """The sampler that holds a request to ONE span in normal trace detail.
+
+    A root span (no parent, or a parent in another process) is sampled as before: always, or at
+    ``sample_rate``. A span with a parent in this process is a child, and inside a request a child
+    is recorded only in debug detail — which is what keeps every instrumentor (Redis, httpx, ASGI
+    receive/send, database drivers) to no span at all in normal detail without each one needing a
+    switch of its own. Outside a request (startup, scheduler, discovery, MV refresh) children are
+    recorded as before in either detail.
+    """
+    from opentelemetry.sdk.trace.sampling import (
+        ALWAYS_ON,
+        Decision,
+        ParentBased,
+        Sampler,
+        SamplingResult,
+        TraceIdRatioBased,
+    )
+    from opentelemetry.trace import SpanKind, get_current_span
+
+    class _TraceDetailSampler(Sampler):
+        def __init__(self) -> None:
+            self._base = ParentBased(
+                TraceIdRatioBased(sample_rate) if sample_rate < 1.0 else ALWAYS_ON
+            )
+
+        def should_sample(
+            self,
+            parent_context: Any,
+            trace_id: int,
+            name: str,
+            kind: Any = None,
+            attributes: Any = None,
+            links: Any = None,
+            trace_state: Any = None,
+        ) -> "SamplingResult":
+            parent = get_current_span(parent_context)
+            parent_ctx = parent.get_span_context()
+            local_child = (
+                parent_ctx.is_valid and not parent_ctx.is_remote and parent_ctx.trace_flags.sampled
+            )
+            if (
+                local_child
+                and trace_detail() == "normal"
+                # A request's server span is opened before anything can bind the request scope, so
+                # its direct children (ASGI receive/send) are recognised by their parent's kind.
+                and (in_request_scope() or getattr(parent, "kind", None) is SpanKind.SERVER)
+            ):
+                return SamplingResult(Decision.DROP, trace_state=parent_ctx.trace_state)
+            return self._base.should_sample(
+                parent_context, trace_id, name, kind, attributes, links, trace_state
+            )
+
+        def get_description(self) -> str:
+            return f"TraceDetail({self._base.get_description()})"
+
+    return _TraceDetailSampler()
 
 
 def _otlp_protocol(configured: str = "") -> str:
@@ -202,7 +290,7 @@ def attach_otlp_exporters(
 
         metric_reader = PeriodicExportingMetricReader(
             _make_metric_exporter(endpoint, otlp_protocol),
-            export_interval_millis=15000,
+            export_interval_millis=_metric_export_interval_millis(),
         )
         meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
         metrics.set_meter_provider(meter_provider)
@@ -215,6 +303,7 @@ def attach_otlp_exporters(
             description="Query execution time in milliseconds",
             unit="ms",
         )
+        register_query_instruments(_self.query_counter, _self.query_duration)  # REQ-1910
 
         import logging as _logging
 
@@ -341,6 +430,10 @@ def setup_otel(
     # env endpoint would speak HTTP at whatever receiver the deployment actually pointed at.
     otlp_protocol = "" if env_endpoint else str(_otel_cfg.get("protocol", ""))
     sample_rate = float(_otel_cfg.get("sample_rate", 1.0))
+    # REQ-1910: the process default trace detail; a request may bind its own (set_trace_detail).
+    configure_trace_detail(
+        os.environ.get("PROVISA_TRACE_DETAIL") or _otel_cfg.get("trace_detail", "normal")
+    )
     log_level_name = os.environ.get("OTEL_LOG_LEVEL") or _otel_cfg.get("log_level", "WARNING")
     span_export_delay_millis = int(
         os.environ.get("OTEL_SPAN_EXPORT_DELAY_MILLIS")
@@ -369,13 +462,11 @@ def setup_otel(
         from opentelemetry import trace
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.sdk.trace.sampling import TraceIdRatioBased, ParentBased
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
         resource = Resource.create({"service.name": service_name})
-        _sampler = ParentBased(TraceIdRatioBased(sample_rate)) if sample_rate < 1.0 else None
         provider = TracerProvider(
-            sampler=_sampler,
+            sampler=_trace_detail_sampler(sample_rate),
             resource=resource,
         )
         # Always buffer spans in-memory for the live trace panel
@@ -447,7 +538,7 @@ def setup_otel(
 
             metric_reader = PeriodicExportingMetricReader(
                 _make_metric_exporter(endpoint, otlp_protocol),
-                export_interval_millis=15000,
+                export_interval_millis=_metric_export_interval_millis(),
             )
             meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
             metrics.set_meter_provider(meter_provider)
@@ -465,6 +556,7 @@ def setup_otel(
                 description="Query execution time in milliseconds",
                 unit="ms",
             )
+            register_query_instruments(_self.query_counter, _self.query_duration)  # REQ-1910
 
         # ── Logs ─────────────────────────────────────────────────────────────
         if endpoint:
@@ -489,8 +581,11 @@ def setup_otel(
             _log.info("OTel logs → %s (service=%s)", endpoint, service_name)
 
         # REQ-1432: each block is one subsystem, instrumented only when its switch is on.
+        # REQ-1910: every instrumentor below stays installed in either trace detail, because the
+        # detail is resolved per request; _trace_detail_sampler is what gives a normal-detail
+        # request no per-command and no per-message span from any of them.
         if _subsystems.http_api:
-            FastAPIInstrumentor.instrument_app(app)
+            FastAPIInstrumentor.instrument_app(app, server_request_hook=_bind_http_request_span)
         if _subsystems.outbound_http:
             try:
                 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
@@ -500,9 +595,10 @@ def setup_otel(
                 pass
         if _subsystems.catalog_database:
             try:
-                from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
+                # The catalog database is reached through psycopg 3 (provisa.core.database).
+                from opentelemetry.instrumentation.psycopg import PsycopgInstrumentor
 
-                AsyncPGInstrumentor().instrument()
+                PsycopgInstrumentor().instrument()
             except ImportError:
                 pass
         if _subsystems.result_cache:

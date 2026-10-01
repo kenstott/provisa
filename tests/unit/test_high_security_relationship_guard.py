@@ -87,6 +87,7 @@ def _ctx() -> CompilationContext:
 
 def _state(*, role: dict, security_high: bool) -> SimpleNamespace:
     return SimpleNamespace(
+        admin_db=None,  # as AppState without a control plane: no debug-trace settings
         contexts={"modeler": _ctx()},
         rls_contexts={"modeler": RLSContext.empty()},
         roles={"modeler": role},

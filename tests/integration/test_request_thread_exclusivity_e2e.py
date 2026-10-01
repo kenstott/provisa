@@ -63,7 +63,7 @@ _CONCURRENT = 6
 _SANCTIONED_HOPS = (
     ("provisa/core/request_thread.py", "thread_send"),
     ("provisa/core/request_thread.py", "thread_receive"),
-    ("provisa/core/request_deadline.py", "__init__"),
+    ("provisa/core/request_deadline.py", "_registered"),
     ("provisa/core/connection_loop.py", "_submit"),
 )
 
@@ -88,6 +88,7 @@ class _Server:
         self.srv = srv
         self.trace = trace
         self.mcp_port = mcp_port
+        self.airport_port = 0
 
     def records(self) -> list[dict]:
         return [json.loads(line) for line in self.trace.read_text().splitlines() if line]
@@ -96,9 +97,7 @@ class _Server:
         return [r for r in self.records() if r.get("tag") == str(tag)]
 
 
-def _start(work: Path, org: str, source_extra: dict, *, store_url: str | None = None) -> _Server:
-    from tests.integration.isolated_server import IsolatedServer, free_port
-
+def _sqlite_config(work: Path, source_extra: dict) -> Path:
     db = work / "events.sqlite"
     _seed(db, _ROWS)
     with open(_REPO / "tests/fixtures/sample_config.yaml") as f:
@@ -120,13 +119,32 @@ def _start(work: Path, org: str, source_extra: dict, *, store_url: str | None = 
     ]
     cfg_path = work / "config.yaml"
     cfg_path.write_text(yaml.safe_dump(cfg))
+    return cfg_path
+
+
+def _start(
+    work: Path,
+    org: str,
+    source_extra: dict | None = None,
+    *,
+    store_url: str | None = None,
+    engine: str = "duckdb",
+    config: Path | None = None,
+) -> _Server:
+    from tests.integration.isolated_server import IsolatedServer
+    from tests.port_lease import lease_ports
+
+    cfg_path = config if config is not None else _sqlite_config(work, source_extra or {})
     trace = work / "threads.jsonl"
-    mcp_port = free_port()
+    # Pinned leases, never reissued: these servers bind the wildcard address, which a loopback
+    # bind probe does not see, and two traced servers run at once in this module.
+    mcp_port, airport_port = lease_ports(2)
     overrides = {
         "PROVISA_TEST_THREAD_TRACE": str(trace),
         "PROVISA_MCP_PORT": str(mcp_port),
         "PROVISA_MCP_HOST": "127.0.0.1",
         "PROVISA_MCP_ROLE": _ROLE,
+        "PROVISA_AIRPORT_PORT": str(airport_port),
         # Room for the concurrent cases: the default Flight ceiling is below _CONCURRENT, and the
         # default inline-result threshold is below _ROWS.
         "FLIGHT_MAX_CONCURRENT_STREAMS": "64",
@@ -137,7 +155,7 @@ def _start(work: Path, org: str, source_extra: dict, *, store_url: str | None = 
     try:
         srv = IsolatedServer(
             org,
-            engine="duckdb",
+            engine=engine,
             enable_pgwire=True,
             enable_bolt=True,
             await_flight=True,
@@ -154,7 +172,9 @@ def _start(work: Path, org: str, source_extra: dict, *, store_url: str | None = 
                 del os.environ[k]
             else:
                 os.environ[k] = v
-    return _Server(srv, trace, mcp_port)
+    server = _Server(srv, trace, mcp_port)
+    server.airport_port = airport_port
+    return server
 
 
 def _stop(server: _Server, org: str) -> None:
@@ -407,7 +427,9 @@ def _assert_exclusive(server: _Server, name: str, tag: int, entry_transport: str
     entries = [
         r
         for r in server.records()
-        if r["kind"] == "entry" and r["ident"] == ident and r["transport"] == entry_transport
+        if r["kind"] == "entry"
+        and r["ident"] == ident
+        and r["transport"].startswith(entry_transport)
     ]
     assert entries, f"{name}: thread {ident} was never handed a {entry_transport} request"
     hops = _unsanctioned([r for r in records if r["kind"] == "hop"])
@@ -495,3 +517,272 @@ def test_a_read_triggered_land_runs_on_the_request_thread(landed_server):
         r["ident"] for r in records if r["kind"] == "stage" and r.get("tag") == str(tag)
     }
     assert len(stage_threads) == 1, f"the request ran on {len(request_threads)} threads"
+
+
+# -- Bolt over WebSocket (the Neo4j Browser transport) -------------------------------------------
+
+
+def _bolt_ws(server: _Server, tag: int) -> int:
+    """One Cypher query over Bolt 4.4 framed in WebSocket binary messages; returns the row count."""
+    import struct
+
+    from websockets.sync.client import connect
+
+    from provisa.bolt import messages as msg
+    from provisa.bolt.packstream import pack_message, unpack_fields
+
+    def _chunked(data: bytes) -> bytes:
+        return struct.pack("!H", len(data)) + data + b"\x00\x00"
+
+    with connect(f"ws://127.0.0.1:{server.srv.bolt_port}", max_size=None) as ws:
+        buf = bytearray()
+
+        def _read(n: int) -> bytes:
+            while len(buf) < n:
+                frame = ws.recv(timeout=60)
+                assert isinstance(frame, bytes)
+                buf.extend(frame)
+            out = bytes(buf[:n])
+            del buf[:n]
+            return out
+
+        def _message() -> tuple[int, list]:
+            parts = []
+            while True:
+                (size,) = struct.unpack("!H", _read(2))
+                if size == 0:
+                    break
+                parts.append(_read(size))
+            data = b"".join(parts)
+            # A message is a PackStream structure: marker (0xB0 | field count), tag, fields.
+            return data[1], unpack_fields(data[2:]) if len(data) > 2 else []
+
+        ws.send(msg.MAGIC + bytes([0, 0, 4, 4]) + b"\x00" * 12)
+        assert _read(4) == bytes([0, 0, 4, 4])
+        hello = {"user_agent": "thread-x/1", "scheme": "basic", "principal": _ROLE}
+        ws.send(_chunked(pack_message(msg.HELLO, {**hello, "credentials": ""})))
+        tag_, fields = _message()
+        assert tag_ == msg.SUCCESS, fields
+        ws.send(_chunked(pack_message(msg.RUN, _cypher(tag), {}, {})))
+        tag_, fields = _message()
+        assert tag_ == msg.SUCCESS, fields
+        ws.send(_chunked(pack_message(msg.PULL, {"n": -1})))
+        rows = 0
+        while True:
+            tag_, fields = _message()
+            if tag_ == msg.RECORD:
+                rows += 1
+                continue
+            assert tag_ == msg.SUCCESS, fields
+            return rows
+
+
+def test_bolt_over_websocket_runs_every_stage_on_its_connection_thread(server):
+    tag = 9103000
+    assert _bolt_ws(server, tag) >= 1
+    _assert_exclusive(server, "bolt-ws", tag, "bolt")
+
+
+# -- a Postgres source: the DIRECT route, the Trino engine route, REST, JSON:API, airport --------
+
+_PG_ORG = _ORG + "_pg"
+
+
+@pytest.fixture(scope="module")
+def pg_server(tmp_path_factory):
+    """The sample catalog over the stack's Postgres, on the Trino engine: a single-source read
+    takes the DIRECT route to the source, and ``route=federated`` sends it through Trino."""
+    s = _start(
+        tmp_path_factory.mktemp("threadx_pg"),
+        _PG_ORG,
+        engine="trino",
+        config=_REPO / "tests/fixtures/sample_config.yaml",
+    )
+    try:
+        yield s
+    finally:
+        _stop(s, _PG_ORG)
+
+
+def _pg_sql(tag: int) -> str:
+    return f"SELECT id, region FROM sales_analytics.orders WHERE id <> {tag}"
+
+
+def _pgwire_text(server: _Server, sql: str) -> int:
+    import psycopg2
+
+    conn = psycopg2.connect(
+        host="127.0.0.1",
+        port=server.srv.pgwire_port,
+        dbname="provisa",
+        user=_ROLE,
+        password="provisa",
+    )
+    try:
+        cur = conn.cursor()
+        cur.execute(sql)
+        return len(cur.fetchall())
+    finally:
+        conn.close()
+
+
+def _pgwire_binary(server: _Server, sql: str) -> int:
+    """asyncpg reads results in binary — the client the raw-DataRow passthrough serves."""
+    import asyncpg
+
+    async def _run() -> int:
+        conn = await asyncpg.connect(
+            host="127.0.0.1",
+            port=server.srv.pgwire_port,
+            user=_ROLE,
+            password="provisa",
+            database="provisa",
+            statement_cache_size=0,
+        )
+        try:
+            return len(await conn.fetch(sql))
+        finally:
+            await conn.close()
+
+    return asyncio.run(_run())
+
+
+def _http_sql_text(server: _Server, sql: str) -> int:
+    import httpx
+
+    resp = httpx.post(
+        f"{server.srv.base_url}/data/sql",
+        json={"sql": sql, "role": _ROLE},
+        headers={"X-Provisa-Role": _ROLE},
+        timeout=120,
+    )
+    assert resp.status_code == 200, resp.text
+    return len(resp.json()["data"]["sql"])
+
+
+def _http_graphql_text(server: _Server, query: str, field: str) -> int:
+    import httpx
+
+    resp = httpx.post(
+        f"{server.srv.base_url}/data/graphql",
+        json={"query": query, "role": _ROLE},
+        headers={"X-Provisa-Role": _ROLE},
+        timeout=120,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "errors" not in body, body
+    return len(body["data"][field])
+
+
+def _rest(server: _Server, tag: int) -> int:
+    import httpx
+
+    resp = httpx.get(
+        f"{server.srv.base_url}/data/rest/sales-analytics/orders",
+        params={"limit": str(tag)},  # the tag is the row limit: it reaches the compiled SQL
+        headers={"X-Provisa-Role": _ROLE},
+        timeout=120,
+    )
+    assert resp.status_code == 200, resp.text
+    return len(resp.json()["data"])
+
+
+def _jsonapi(server: _Server, tag: int) -> int:
+    import httpx
+
+    resp = httpx.get(
+        f"{server.srv.base_url}/data/jsonapi/sales-analytics/orders",
+        params={"filter[id][lt]": str(tag)},
+        headers={"X-Provisa-Role": _ROLE, "Accept": "application/vnd.api+json"},
+        timeout=120,
+    )
+    assert resp.status_code == 200, resp.text
+    return len(resp.json()["data"])
+
+
+_AIRPORT_CLIENT = r"""
+import sys
+
+import duckdb
+
+port, role, tag = int(sys.argv[1]), sys.argv[2], int(sys.argv[3])
+conn = duckdb.connect()
+conn.execute("INSTALL airport FROM community")
+conn.execute("LOAD airport")
+loc = f"grpc://localhost:{port}"
+conn.execute("CREATE SECRET airport_sec (TYPE airport, auth_token ?, scope ?)", [role, loc])
+conn.execute(f"ATTACH '{loc}' AS provisa (TYPE AIRPORT)")
+rows = conn.execute(
+    f'SELECT id FROM provisa."sales_analytics"."orders" WHERE id < {tag}'
+).fetchall()
+print(len(rows))
+"""
+
+
+def _airport(server: _Server, tag: int) -> int:
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, "-c", _AIRPORT_CLIENT, str(server.airport_port), _ROLE, str(tag)],
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    return int(result.stdout.strip().splitlines()[-1])
+
+
+_PG_PATHS = {
+    # name: (call, tag, entry transport, a stage that proves the route taken)
+    "direct-pgwire-text": (lambda s, t: _pgwire_text(s, _pg_sql(t)), 9104000, "pgwire", "pg_"),
+    "direct-pgwire-binary": (lambda s, t: _pgwire_binary(s, _pg_sql(t)), 9104100, "pgwire", "pg_"),
+    "direct-flight": (lambda s, t: _flight(s, _pg_sql(t)), 9104200, "flight.do_get", "pg_"),
+    "direct-http-sql": (lambda s, t: _http_sql_text(s, _pg_sql(t)), 9104300, "http", "pg_"),
+    "direct-http-graphql": (
+        lambda s, t: _http_graphql_text(
+            s, f"query {{ sa__orders(where: {{id: {{lt: {t}}}}}) {{ id region }} }}", "sa__orders"
+        ),
+        9104400,
+        "http",
+        "pg_",
+    ),
+    "rest": (_rest, 9104500, "http", "transport:http.rest"),
+    "jsonapi": (_jsonapi, 9104600, "http", "transport:http.jsonapi"),
+    # A GraphQL ticket over Flight: the Flight server does not pass a request's @route directive
+    # to routing, so this single-source read takes the DIRECT route (buffered, then one Arrow table).
+    "direct-flight-graphql": (
+        lambda s, t: _flight(
+            s, f"query {{ sa__orders(where: {{id: {{lt: {t}}}}}) {{ id region }} }}"
+        ),
+        9104700,
+        "flight.do_get",
+        "pg_",
+    ),
+    # The Trino engine route: a GraphQL request over HTTP with @route(engine: FEDERATED). The
+    # raw-SQL pipeline (pgwire, Flight SQL, /data/sql) does not read a `-- @provisa route=`
+    # comment, so a single-source raw-SQL statement on this catalog always takes DIRECT.
+    "trino-http-graphql": (
+        lambda s, t: _http_graphql_text(
+            s,
+            "query @route(engine: FEDERATED) "
+            f"{{ sa__orders(where: {{id: {{lt: {t}}}}}) {{ id region }} }}",
+            "sa__orders",
+        ),
+        9105000,
+        "http",
+        "trino",
+    ),
+    "airport": (_airport, 9105100, "airport.", "airport"),
+}
+
+
+@pytest.mark.parametrize("name", list(_PG_PATHS))
+def test_postgres_source_paths_run_every_stage_on_the_request_thread(pg_server, name):
+    call, tag, entry_transport, route_marker = _PG_PATHS[name]
+    assert call(pg_server, tag) >= 1
+    _assert_exclusive(pg_server, name, tag, entry_transport)
+    stages = {r["stage"] for r in pg_server.tagged(tag) if r["kind"] == "stage"}
+    assert any(route_marker in s for s in stages), f"{name}: not the route under test: {stages}"

@@ -1,0 +1,32 @@
+{
+  "debugTracePanel": {
+    "tabTitle": "Debug-Tracing",
+    "intro": "Standardmäßig zeichnet das Tracing einen Span pro Anfrage auf. Debug-Tracing fügt einen Span pro Pipeline-Stufe und pro Quellenaufruf hinzu, mit SQL-Text. Es erzeugt zusätzliche Last. Schalten Sie es daher für eine Organisation, eine Rolle oder eine Quelle für eine festgelegte Zeit ein; nach Ablauf der Zeit schaltet es sich selbst aus.",
+    "startTitle": "Debug-Fenster starten",
+    "scopeLabel": "Geltungsbereich",
+    "scopeOrg": "Organisation",
+    "scopeRole": "Rolle",
+    "scopeSource": "Quelle",
+    "orgLabel": "Organisation",
+    "roleLabel": "Rollen-ID",
+    "sourceLabel": "Quellen-ID",
+    "minutesLabel": "Dauer (Minuten)",
+    "minutesHelp": "1 bis {{max}} Minuten.",
+    "start": "Starten",
+    "activeTitle": "Aktive Fenster",
+    "noWindows": "Kein Debug-Fenster ist geöffnet.",
+    "colScope": "Geltungsbereich",
+    "colOrg": "Organisation",
+    "colTarget": "Rolle oder Quelle",
+    "colRemaining": "Verbleibende Zeit",
+    "colStartedBy": "Gestartet von",
+    "wholeOrg": "Gesamte Organisation",
+    "stop": "Stoppen",
+    "hintTitle": "Debug-Hinweis pro Anfrage",
+    "hintIntro": "Eine Anfrage kann mit der Direktive @debugTrace, einem Kommentar \"@provisa trace=debug\" oder dem Header X-Provisa-Trace: debug einen Debug-Trace für sich selbst anfordern. Anfragen mit dem Hinweis von Rollen, die hier nicht aufgeführt sind, werden abgelehnt.",
+    "permit": "Erlauben",
+    "revoke": "Widerrufen",
+    "noHintRoles": "Für keine Rolle ist der Hinweis erlaubt.",
+    "loadFailed": "Die Einstellungen für das Debug-Tracing konnten nicht geladen werden"
+  }
+}

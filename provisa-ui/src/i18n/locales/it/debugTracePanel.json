@@ -1,0 +1,32 @@
+{
+  "debugTracePanel": {
+    "tabTitle": "Tracciamento di debug",
+    "intro": "Per impostazione predefinita, il tracciamento registra uno span per richiesta. Il tracciamento di debug aggiunge uno span per ogni fase della pipeline e per ogni chiamata a un'origine, con il testo SQL. Aggiunge carico, quindi attivalo per un'organizzazione, un ruolo o un'origine per un tempo stabilito; si disattiva da solo allo scadere del tempo.",
+    "startTitle": "Avvia una finestra di debug",
+    "scopeLabel": "Ambito",
+    "scopeOrg": "Organizzazione",
+    "scopeRole": "Ruolo",
+    "scopeSource": "Origine",
+    "orgLabel": "Organizzazione",
+    "roleLabel": "ID ruolo",
+    "sourceLabel": "ID origine",
+    "minutesLabel": "Durata (minuti)",
+    "minutesHelp": "Da 1 a {{max}} minuti.",
+    "start": "Avvia",
+    "activeTitle": "Finestre attive",
+    "noWindows": "Nessuna finestra di debug aperta.",
+    "colScope": "Ambito",
+    "colOrg": "Organizzazione",
+    "colTarget": "Ruolo o origine",
+    "colRemaining": "Tempo rimanente",
+    "colStartedBy": "Avviata da",
+    "wholeOrg": "Intera organizzazione",
+    "stop": "Arresta",
+    "hintTitle": "Indicazione di debug per richiesta",
+    "hintIntro": "Una richiesta può chiedere una traccia di debug di sé stessa con la direttiva @debugTrace, un commento \"@provisa trace=debug\" o l'intestazione X-Provisa-Trace: debug. Le richieste con l'indicazione provenienti da ruoli non elencati qui vengono rifiutate.",
+    "permit": "Consenti",
+    "revoke": "Revoca",
+    "noHintRoles": "A nessun ruolo è consentita l'indicazione.",
+    "loadFailed": "Impossibile caricare le impostazioni del tracciamento di debug"
+  }
+}

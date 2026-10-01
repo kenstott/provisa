@@ -1,0 +1,32 @@
+{
+  "debugTracePanel": {
+    "tabTitle": "调试跟踪",
+    "intro": "默认情况下，跟踪为每个请求记录一个跨度。调试跟踪会为每个管道阶段和每次数据源调用各添加一个跨度，并包含 SQL 文本。它会增加负载，因此请为某个组织、角色或数据源开启一段指定的时间；时间到后会自动关闭。",
+    "startTitle": "启动调试窗口",
+    "scopeLabel": "范围",
+    "scopeOrg": "组织",
+    "scopeRole": "角色",
+    "scopeSource": "数据源",
+    "orgLabel": "组织",
+    "roleLabel": "角色 ID",
+    "sourceLabel": "数据源 ID",
+    "minutesLabel": "持续时间（分钟）",
+    "minutesHelp": "1 到 {{max}} 分钟。",
+    "start": "启动",
+    "activeTitle": "活动窗口",
+    "noWindows": "当前没有打开的调试窗口。",
+    "colScope": "范围",
+    "colOrg": "组织",
+    "colTarget": "角色或数据源",
+    "colRemaining": "剩余时间",
+    "colStartedBy": "启动者",
+    "wholeOrg": "整个组织",
+    "stop": "停止",
+    "hintTitle": "单个请求的调试提示",
+    "hintIntro": "请求可以通过 @debugTrace 指令、\"@provisa trace=debug\" 注释或 X-Provisa-Trace: debug 标头请求对自身进行调试跟踪。未在此处列出的角色发出的带有该提示的请求将被拒绝。",
+    "permit": "允许",
+    "revoke": "撤销",
+    "noHintRoles": "没有任何角色被允许使用该提示。",
+    "loadFailed": "无法加载调试跟踪设置"
+  }
+}

@@ -36,6 +36,7 @@ from provisa.api_source.models import ApiSourceType
 from sqlalchemy.exc import IntegrityError
 from provisa.core.schema_org import api_sources
 from provisa.otel_compat import get_tracer as _get_tracer
+from provisa.otel_compat import stage as _stage
 
 _tracer = _get_tracer(__name__)
 
@@ -56,7 +57,7 @@ class AcceptRequest(BaseModel):
 @router.post("/discover")
 async def discover(req: DiscoverRequest):  # REQ-307, REQ-314, REQ-322
     """Trigger introspection of an API source."""
-    with _tracer.start_as_current_span("admin.api_discovery"):
+    with _stage(_tracer, "admin.api_discovery"):
         from provisa.api.app import state
 
         if state.tenant_db is None:

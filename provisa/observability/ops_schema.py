@@ -85,6 +85,22 @@ OPS_TABLES: dict[str, list[tuple[str, str, bool]]] = {
     ],
 }
 
+# REQ-1910: `traces` holds ONE row per request — the request span, which carries the request's
+# transport, role, org, route, engine, sources, cache result, row count, status and stage
+# durations as attributes — plus one row per piece of background work (a refresh, a scheduler
+# job: a span with no parent). Every other span is detail: a child span a debug-detail request
+# produced, kept in `trace_details` under the same trace_id, with the same columns, for a short
+# retention (TRACE_DETAIL_RETENTION_HOURS).
+OPS_TABLES["trace_details"] = list(OPS_TABLES["traces"])
+
+# The span attribute that marks a request span (set by provisa.otel_compat.request_span and the
+# HTTP server-span hook). A request span whose caller sent a traceparent has a parent, in another
+# process — this attribute, not the absence of a parent, is what says it is the request record.
+REQUEST_SPAN_ATTR = "provisa.transport"
+
+# How long a `trace_details` row is kept. $OTLP2SQL_DETAIL_RETENTION_HOURS overrides it.
+TRACE_DETAIL_RETENTION_HOURS = 24
+
 # Span-attribute key -> trace column, extracted inline at ingest. Mirrors
 # scheduler.jobs._TRACE_EXTRA_ATTRS so otlp2sql rows == the old compaction rows
 # (tenant added; harmless when absent).

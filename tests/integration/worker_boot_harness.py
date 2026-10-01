@@ -1,0 +1,509 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 6f1d3c58-9b2a-4e07-a4c1-7d5e0b8f2a39
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""Boot ``uvicorn main:app --workers N`` against a FRESH control plane and measure it (REQ-1900).
+
+The test instance only: its own database on the Postgres it is pointed at, its own org, its own
+data directory, and every port leased from ``tests/port_lease.py``. Used two ways:
+
+* by the multi-worker boot tests, as :class:`WorkerBoot`;
+* as a script — the reproducer for boot time and listener behaviour::
+
+      .venv/bin/python3 -m tests.integration.worker_boot_harness --workers 4 --pg-port 21100
+
+  prints time-to-first-ready, time-to-all-ready, the per-worker startup phase table and which
+  worker processes listen on (and accept connections on) each protocol port.
+"""
+
+# Requirements: REQ-1900
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.request
+import uuid
+from pathlib import Path
+
+import sqlalchemy as sa
+import yaml
+
+from tests.port_lease import lease_ports
+
+_REPO_ROOT = Path(__file__).parents[2]
+
+_PHASE_RE = re.compile(
+    r"startup phase (?P<name>.+?)\s+\+\s*(?P<delta>[\d.]+)s \(total\s+(?P<total>[\d.]+)s\) "
+    r"pid=(?P<pid>\d+)"
+)
+_READY_RE = re.compile(r"startup phase worker\s+ready pid=(\d+)")
+_TRANSPORTS = ("http", "pgwire", "flight", "grpc", "bolt", "mcp")
+
+
+def _config(pg_host: str, pg_port: int, database: str) -> dict:
+    return {
+        "sources": [
+            {
+                "id": "sales-pg",
+                "type": "postgresql",
+                "host": pg_host,
+                "port": pg_port,
+                "database": database,
+                "username": "provisa",
+                "password": "${env:PG_PASSWORD}",
+            }
+        ],
+        "domains": [{"id": "sales", "description": "boot harness"}],
+        "naming": {"domain_prefix": True},
+        "auth": {"provider": "none"},
+        "tables": [
+            {
+                "source_id": "sales-pg",
+                "domain_id": "sales",
+                "schema": "public",
+                "table": "orders",
+                "columns": [
+                    {"name": "id", "data_type": "integer", "visible_to": ["org_admin"]},
+                    {"name": "region", "data_type": "varchar", "visible_to": ["org_admin"]},
+                ],
+            }
+        ],
+        "roles": [
+            {
+                "id": "org_admin",
+                "capabilities": ["query_development", "full_results"],
+                "domain_access": ["*"],
+            }
+        ],
+    }
+
+
+class WorkerBoot:
+    """One ``uvicorn --workers N`` launch on a fresh control-plane database."""
+
+    def __init__(
+        self,
+        workers: int,
+        *,
+        pg_host: str,
+        pg_port: int,
+        pg_user: str = "provisa",
+        pg_password: str = "provisa",
+        admin_database: str = "provisa",
+        engine: str = "duckdb",
+        redirect_endpoint: str | None = None,
+        database: str | None = None,
+        data_dir: str | None = None,
+    ) -> None:
+        self.workers = workers
+        self._pg = (pg_host, pg_port, pg_user, pg_password)
+        self._base = f"postgresql+psycopg://{pg_user}:{pg_password}@{pg_host}:{pg_port}"
+        self._admin_url = f"{self._base}/{admin_database}"
+        # A relaunch against the SAME control plane passes the first launch's database + data dir.
+        self._owns_database = database is None
+        self.database = database or f"wboot_{uuid.uuid4().hex[:10]}"
+        self.url = f"{self._base}/{self.database}"
+        self._engine = engine
+        self._owns_data_dir = data_dir is None
+        self.data_dir = data_dir or tempfile.mkdtemp(prefix="provisa-wboot-")
+        # Flight is a POOL of ports (base, base+1, ... one per worker), so it takes the last
+        # `workers` leased ports and nothing else is given a number inside that run.
+        others = [name for name in _TRANSPORTS if name != "flight"]
+        ports = lease_ports(len(others) + 1 + workers)
+        self.ports = dict(zip(others, ports))
+        # Nothing listens here: the redirect endpoint a deployment configures but does not run.
+        self._dead_port = ports[len(others)]
+        self.ports["flight"] = ports[len(others) + 1]
+        self._redirect_endpoint = redirect_endpoint
+        self.log_path = Path(self.data_dir) / f"backend-{uuid.uuid4().hex[:6]}.log"
+        self._proc: subprocess.Popen | None = None
+        self._started = 0.0
+
+    # -- lifecycle ---------------------------------------------------------------------------
+
+    def create_database(self) -> None:
+        admin = sa.create_engine(self._admin_url, isolation_level="AUTOCOMMIT")
+        with admin.connect() as conn:
+            conn.execute(sa.text(f'CREATE DATABASE "{self.database}"'))
+        admin.dispose()
+        own = sa.create_engine(self.url, isolation_level="AUTOCOMMIT")
+        with own.connect() as conn:
+            conn.execute(
+                sa.text("CREATE TABLE public.orders (id integer PRIMARY KEY, region text)")
+            )
+            conn.execute(sa.text("INSERT INTO public.orders VALUES (1, 'east'), (2, 'west')"))
+        own.dispose()
+
+    def drop_database(self) -> None:
+        admin = sa.create_engine(self._admin_url, isolation_level="AUTOCOMMIT")
+        with admin.connect() as conn:
+            conn.execute(sa.text(f'DROP DATABASE IF EXISTS "{self.database}" WITH (FORCE)'))
+        admin.dispose()
+
+    def start(self) -> None:
+        host, port, user, password = self._pg
+        cfg_path = Path(self.data_dir) / "provisa.yaml"
+        cfg_path.write_text(yaml.safe_dump(_config(host, port, self.database)))
+        redirect = self._redirect_endpoint or f"http://127.0.0.1:{self._dead_port}"
+        env = {
+            **os.environ,
+            "TENANT_DATABASE_URL": self.url,
+            "PLATFORM_DATABASE_URL": self.url,
+            "PG_HOST": host,
+            "PG_PORT": str(port),
+            "PG_USER": user,
+            "PG_PASSWORD": password,
+            "PG_DATABASE": self.database,
+            "ORG_ID": "default",
+            "PROVISA_ENGINE": self._engine,
+            "PROVISA_CONFIG": str(cfg_path),
+            "PROVISA_CONFIG_REPLACE": "true",
+            "PROVISA_IDP": "",
+            "PROVISA_DEMO": "false",
+            "PROVISA_REDIS_EMBEDDED": "1",
+            "PROVISA_DATA_DIR": self.data_dir,
+            "PROVISA_HOME": self.data_dir,
+            "PROVISA_MATERIALIZE_URL": f"duckdb:///{self.data_dir}/store.duckdb",
+            "PROVISA_REDIRECT_ENABLED": "true",
+            "PROVISA_REDIRECT_ENDPOINT": redirect,
+            "PROVISA_REDIRECT_ACCESS_KEY": "minioadmin",
+            "PROVISA_REDIRECT_SECRET_KEY": "minioadmin",
+            # What a launcher of several workers exports (start-ui-install.sh): the launch's
+            # identity and its worker count, inherited by every worker.
+            "PROVISA_WORKERS": str(self.workers),
+            "PROVISA_LAUNCH_ID": uuid.uuid4().hex,
+            "FLIGHT_PORT": str(self.ports["flight"]),
+            "GRPC_PORT": str(self.ports["grpc"]),
+            "PROVISA_PGWIRE_PORT": str(self.ports["pgwire"]),
+            "PROVISA_BOLT_PORT": str(self.ports["bolt"]),
+            "PROVISA_MCP_PORT": str(self.ports["mcp"]),
+            "PROVISA_MCP_HOST": "127.0.0.1",
+            "OTEL_SDK_DISABLED": "true",
+        }
+        self._log = open(self.log_path, "w")
+        self._started = time.monotonic()
+        self._proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "main:app",
+                "--workers",
+                str(self.workers),
+                "--host",
+                "127.0.0.1",
+                f"--port={self.ports['http']}",
+            ],
+            cwd=str(_REPO_ROOT),
+            env=env,
+            stdout=self._log,
+            stderr=subprocess.STDOUT,
+        )
+
+    def stop(self) -> None:
+        if self._proc is not None:
+            self._proc.terminate()
+            try:
+                self._proc.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()
+                self._proc.wait(timeout=20)
+            self._proc = None
+            self._log.close()
+
+    def cleanup(self) -> None:
+        self.stop()
+        if self._owns_database:
+            self.drop_database()
+        if self._owns_data_dir:
+            shutil.rmtree(self.data_dir, ignore_errors=True)
+
+    # -- observation -------------------------------------------------------------------------
+
+    def log_text(self) -> str:
+        return self.log_path.read_text(errors="replace")
+
+    def health(self) -> dict | None:
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{self.ports['http']}/health", timeout=3
+            ) as resp:
+                return json.loads(resp.read())
+        except (OSError, ValueError):
+            return None
+
+    def _alive(self) -> None:
+        assert self._proc is not None
+        if self._proc.poll() is not None:
+            raise RuntimeError(
+                f"server exited (code {self._proc.returncode}):\n{self.log_text()[-4000:]}"
+            )
+
+    def wait_first_ready(self, timeout: float = 300.0) -> float:
+        """Seconds from launch until /health answers."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            self._alive()
+            if self.health() is not None:
+                return time.monotonic() - self._started
+            time.sleep(0.1)
+        raise RuntimeError(f"no worker became healthy in {timeout}s:\n{self.log_text()[-4000:]}")
+
+    def ready_pids(self) -> set[int]:
+        """Worker processes that logged the end of their startup."""
+        return {int(p) for p in _READY_RE.findall(self.log_text())}
+
+    def wait_all_ready(self, timeout: float = 600.0) -> float:
+        """Seconds from launch until every worker has finished its startup (each worker's own
+        "worker ready" log line — independent of what /health reports)."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            self._alive()
+            if len(self.ready_pids()) >= self.workers:
+                return time.monotonic() - self._started
+            time.sleep(0.1)
+        raise RuntimeError(
+            f"{len(self.ready_pids())}/{self.workers} workers ready after {timeout}s:\n"
+            f"{self.log_text()[-4000:]}"
+        )
+
+    def phases(self) -> dict[int, list[tuple[str, float]]]:
+        """pid -> [(phase, seconds)] from the lifespan's own "startup phase" log lines."""
+        out: dict[int, list[tuple[str, float]]] = {}
+        for m in _PHASE_RE.finditer(self.log_text()):
+            out.setdefault(int(m["pid"]), []).append((m["name"].strip(), float(m["delta"])))
+        return out
+
+    def worker_pids(self) -> list[int]:
+        return [int(p) for p in re.findall(r"Started server process \[(\d+)\]", self.log_text())]
+
+    def listeners(self, port: int) -> set[int]:
+        """PIDs holding a LISTEN socket on ``port``."""
+        out = subprocess.run(
+            ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-Fp"], capture_output=True, text=True
+        ).stdout
+        return {int(line[1:]) for line in out.splitlines() if line.startswith("p")}
+
+    def accepting_pids(self, port: int, connections: int = 50) -> dict[int, int]:
+        """Open ``connections`` concurrent TCP connections to ``port`` and hold them; return
+        {server pid: connections it accepted}, read from the kernel's socket table."""
+        socks = []
+        try:
+            for _ in range(connections):
+                s = socket.create_connection(("127.0.0.1", port), timeout=5)
+                socks.append(s)
+            time.sleep(1.0)
+            out = subprocess.run(
+                ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:ESTABLISHED", "-Fpn"],
+                capture_output=True,
+                text=True,
+            ).stdout
+        finally:
+            for s in socks:
+                s.close()
+        counts: dict[int, int] = {}
+        pid = 0
+        for line in out.splitlines():
+            if line.startswith("p"):
+                pid = int(line[1:])
+            # The server end of a connection is the one whose LOCAL address is the port.
+            elif line.startswith("n") and re.search(rf":{port}->", line) and pid != os.getpid():
+                counts[pid] = counts.get(pid, 0) + 1
+        return counts
+
+
+def _request(name: str, port: int) -> None:
+    """One real request on ``name``'s protocol; raises when the listener does not answer it."""
+    if name == "http":
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=10) as resp:
+            assert resp.status == 200
+    elif name == "pgwire":
+        import psycopg
+
+        with psycopg.connect(
+            host="127.0.0.1",
+            port=port,
+            user="org_admin",
+            password="x",
+            dbname="provisa",
+            connect_timeout=10,
+            autocommit=True,
+        ) as conn:
+            assert conn.execute("SELECT 1").fetchone() == (1,)
+    elif name == "flight":
+        import pyarrow.flight as fl
+
+        client = fl.connect(f"grpc://127.0.0.1:{port}")
+        try:
+            list(client.list_flights(options=fl.FlightCallOptions(timeout=10)))
+        finally:
+            client.close()
+    elif name == "grpc":
+        import grpc
+
+        with grpc.insecure_channel(f"127.0.0.1:{port}") as channel:
+            grpc.channel_ready_future(channel).result(timeout=10)
+    elif name == "bolt":
+        with socket.create_connection(("127.0.0.1", port), timeout=10) as s:
+            # Bolt handshake: magic preamble + four proposed versions; the server answers with
+            # the 4-byte version it picked.
+            s.sendall(bytes.fromhex("6060b017") + bytes.fromhex("00000405000004040000000400000003"))
+            assert len(s.recv(4)) == 4
+    elif name == "mcp":
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/mcp",
+            data=json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {
+                        "protocolVersion": "2025-03-26",
+                        "capabilities": {},
+                        "clientInfo": {"name": "wboot", "version": "0"},
+                    },
+                }
+            ).encode(),
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            assert resp.status == 200
+
+
+def requests_served(name: str, port: int, n: int) -> tuple[int, str]:
+    """Send ``n`` concurrent real requests; return (how many were answered, first failure)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _one(_: int) -> str:
+        try:
+            _request(name, port)
+        except Exception as exc:  # reported in the table, not swallowed
+            return f"{type(exc).__name__}: {exc}"[:120]
+        return ""
+
+    with ThreadPoolExecutor(max_workers=n) as pool:
+        failures = [f for f in pool.map(_one, range(n))]
+    bad = [f for f in failures if f]
+    return n - len(bad), (bad[0] if bad else "")
+
+
+def _print_phase_table(boot: WorkerBoot) -> None:
+    phases = boot.phases()
+    names: list[str] = []
+    for rows in phases.values():
+        for name, _ in rows:
+            if name not in names:
+                names.append(name)
+    pids = sorted(phases)
+    print("\nphase".ljust(34) + "".join(f"{p:>9}" for p in pids) + f"{'sum':>9}")
+    for name in names:
+        vals = [dict(phases[p]).get(name, 0.0) for p in pids]
+        print(name.ljust(33) + "".join(f"{v:9.2f}" for v in vals) + f"{sum(vals):9.2f}")
+
+
+def _print_listener_table(boot: WorkerBoot, connections: int) -> None:
+    workers = set(boot.worker_pids())
+    print(f"\ntransport  port   listening-workers  accepting-workers ({connections} conns)  split")
+    flight_ports = [boot.ports["flight"] + i for i in range(boot.workers)]
+    for name in _TRANSPORTS:
+        port = boot.ports[name]
+        listening = boot.listeners(port)
+        if name == "http":
+            # uvicorn's parent binds; every worker inherits and accepts on the same socket.
+            listening = listening | workers if listening else listening
+        accepted = boot.accepting_pids(port, connections)
+        served, failure = requests_served(name, port, connections)
+        print(
+            f"{name:<10} {port:<6} {len(listening & workers) or len(listening):<18} "
+            f"{len(accepted):<28} {sorted(accepted.values(), reverse=True)} "
+            f"requests answered {served}/{connections} {failure}"
+        )
+    pool = {p: sorted(boot.listeners(p)) for p in flight_ports}
+    print(f"flight pool (base..base+{boot.workers - 1}): {pool}")
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--pg-host", default=os.environ.get("PG_HOST", "127.0.0.1"))
+    ap.add_argument("--pg-port", type=int, required=True)
+    ap.add_argument("--engine", default="duckdb")
+    ap.add_argument("--redirect-endpoint", default=None)
+    ap.add_argument("--connections", type=int, default=50)
+    ap.add_argument("--second-boot", action="store_true", help="relaunch on the same control plane")
+    ap.add_argument("--keep-log", action="store_true")
+    args = ap.parse_args()
+
+    boot = WorkerBoot(
+        args.workers,
+        pg_host=args.pg_host,
+        pg_port=args.pg_port,
+        engine=args.engine,
+        redirect_endpoint=args.redirect_endpoint,
+    )
+    boot.create_database()
+    try:
+        boot.start()
+        first = boot.wait_first_ready()
+        every = boot.wait_all_ready()
+        print(
+            f"workers={args.workers} time-to-first-ready={first:.1f}s time-to-all-ready={every:.1f}s"
+        )
+        print(f"/health: {boot.health()}")
+        _print_phase_table(boot)
+        _print_listener_table(boot, args.connections)
+        errors = [ln for ln in boot.log_text().splitlines() if "ERROR" in ln or "Traceback" in ln]
+        print(f"\nerror lines in log: {len(errors)}")
+        for ln in errors[:20]:
+            print("  " + ln[:240])
+        if args.second_boot:
+            boot.stop()
+            again = WorkerBoot(
+                args.workers,
+                pg_host=args.pg_host,
+                pg_port=args.pg_port,
+                engine=args.engine,
+                redirect_endpoint=args.redirect_endpoint,
+                database=boot.database,
+                data_dir=boot.data_dir,
+            )
+            try:
+                again.start()
+                first = again.wait_first_ready()
+                every = again.wait_all_ready()
+                print(
+                    f"\nsecond boot: time-to-first-ready={first:.1f}s time-to-all-ready={every:.1f}s"
+                )
+                print(f"/health: {again.health()}")
+                _print_phase_table(again)
+            finally:
+                again.stop()
+        if args.keep_log:
+            kept = Path.home() / ".provisa" / "wboot-last.log"
+            kept.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(boot.log_path, kept)
+            print(f"log kept at {kept}")
+    finally:
+        boot.cleanup()
+
+
+if __name__ == "__main__":
+    main()

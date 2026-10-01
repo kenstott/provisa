@@ -36,12 +36,16 @@ describe("telemetryIdKind", () => {
 });
 
 describe("traceDetailSql", () => {
-  it("selects every column of the governed ops table", () => {
+  it("selects the request record and the detail spans under it", () => {
     expect(traceDetailSql("trace", TRACE)).toBe(
-      `SELECT * FROM "ops"."traces" WHERE trace_id = '${TRACE}' ORDER BY "timestamp"`,
+      `SELECT * FROM "ops"."traces" WHERE trace_id = '${TRACE}' ` +
+        `UNION ALL SELECT * FROM "ops"."trace_details" WHERE trace_id = '${TRACE}' ` +
+        `ORDER BY "timestamp"`,
     );
     expect(traceDetailSql("span", SPAN)).toBe(
-      `SELECT * FROM "ops"."traces" WHERE span_id = '${SPAN}' ORDER BY "timestamp"`,
+      `SELECT * FROM "ops"."traces" WHERE span_id = '${SPAN}' ` +
+        `UNION ALL SELECT * FROM "ops"."trace_details" WHERE span_id = '${SPAN}' ` +
+        `ORDER BY "timestamp"`,
     );
   });
 

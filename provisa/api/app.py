@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import hashlib
 import os
 import time
 import uuid
@@ -736,8 +737,17 @@ _redirect.set_org_overrides_resolver(_org_redirect_overrides)
 
 async def _load_and_build(
     config_path: str | None = None,
-) -> None:  # REQ-012, REQ-016, REQ-247, REQ-289, REQ-369, REQ-371
-    """Load config, introspect the engine, build schemas for all roles."""
+    *,
+    apply: bool = True,
+) -> None:  # REQ-012, REQ-016, REQ-247, REQ-289, REQ-369, REQ-371, REQ-1900
+    """Load config, introspect the engine, build schemas for all roles.
+
+    ``apply=False`` (REQ-1900) is a worker of a `--workers N` launch whose once-per-launch work
+    another worker has already completed (see ``provisa.core.boot_lock``). It runs only the
+    per-worker half — pools, the registry read into memory, the compiled schemas — and skips every
+    step that writes the control plane or the engine's shared catalogs: schema DDL, the built-in
+    seeds, the config apply, role grants, primary-key resolution, the environment baselines.
+    """
     if config_path is None:
         config_path = config_path_str()
 
@@ -749,10 +759,12 @@ async def _load_and_build(
     def _mark(name: str) -> None:
         now = time.perf_counter()
         _startup_log.warning(
-            "startup phase %-20s +%6.2fs (total %6.2fs)",
+            # pid: `--workers N` interleaves N processes' phases in one log (REQ-1900).
+            "startup phase %-20s +%6.2fs (total %6.2fs) pid=%d",
             name,
             now - _startup_marks[-1],
             now - _startup_marks[0],
+            os.getpid(),
         )
         _startup_marks.append(now)
 
@@ -767,7 +779,9 @@ async def _load_and_build(
         _resolve_pk_from_sources,
     )
 
-    pg_host, pg_port, pg_database, pg_user = await _init_control_planes(config_path)
+    pg_host, pg_port, pg_database, pg_user = await _init_control_planes(
+        config_path, initialise=apply
+    )
 
     _mark("pg-pool")
     _mark("schema-init")
@@ -820,9 +834,10 @@ async def _load_and_build(
 
     _mark("engine-wake")
 
-    await _seed_built_in_sources(
-        pg_host, pg_port, pg_database, pg_user, engine_addressable=not engine_deferred
-    )
+    if apply:
+        await _seed_built_in_sources(
+            pg_host, pg_port, pg_database, pg_user, engine_addressable=not engine_deferred
+        )
 
     _mark("pg+schema+seed")
 
@@ -844,7 +859,9 @@ async def _load_and_build(
     # dbapi connection and seeds the ops catalogs), so it depends on that same wake (REQ-1448).
     # REQ-1619: with no shard there is no address to dial, so the server settings are applied and
     # the terminal is left unconnected — restore_shared_terminal opens it on the first query.
-    _apply_server_and_engine_config(raw_config, connect_engine=not engine_deferred)
+    _apply_server_and_engine_config(
+        raw_config, connect_engine=not engine_deferred, provision_engine=apply
+    )
 
     _mark("engine-connect")
 
@@ -860,7 +877,7 @@ async def _load_and_build(
 
     # NOTE: Kafka sources must run BEFORE parse_config_dict / load_config so that
     # Kafka-derived tables are present when relationships are validated.
-    _process_kafka_sources(raw_config)
+    _process_kafka_sources(raw_config, register_catalogs=apply)
 
     # Store auth config for middleware setup
     _raw_auth = raw_config.get("auth")
@@ -891,17 +908,19 @@ async def _load_and_build(
     from provisa.core.db import apply_tenancy_role_grants as _apply_tenancy_role_grants
 
     assert state.tenant_db is not None
-    await _apply_tenancy_role_grants(
-        state.tenant_db, state.org_id, multitenancy=config.multitenancy
-    )
+    if apply:
+        await _apply_tenancy_role_grants(
+            state.tenant_db, state.org_id, multitenancy=config.multitenancy
+        )
     if config.multitenancy:
         from provisa.core.tenant_context import TenantContextCache
 
         state.tenant_context_cache = TenantContextCache()
-        tenant_db = state.tenant_db
-        assert tenant_db is not None
-        async with tenant_db.acquire() as _rls_conn:
-            await _init_meta_rls(_rls_conn)
+        if apply:
+            tenant_db = state.tenant_db
+            assert tenant_db is not None
+            async with tenant_db.acquire() as _rls_conn:
+                await _init_meta_rls(_rls_conn)
 
     # Apply observability config to state
     if config.observability:
@@ -988,13 +1007,18 @@ async def _load_and_build(
         # mode. With no coordinator every register_source would resolve an address that does not
         # exist and fail one source at a time; the catalogs are reissued from state.config by
         # restore_shared_terminal on the first query, which is the same call with the engine bound.
-        await load_config(
-            config,
-            conn,
-            None if engine_deferred else state.federation_engine,
-            replace=_replace_mode,
-            extra_sources=_extra_sources,
-        )
+        if apply:
+            await load_config(
+                config,
+                conn,
+                None if engine_deferred else state.federation_engine,
+                replace=_replace_mode,
+                extra_sources=_extra_sources,
+            )
+        else:
+            from provisa.core.config_loader import adopt_loaded_config
+
+            adopt_loaded_config(config)
 
     _mark("load_config")
 
@@ -1043,7 +1067,8 @@ async def _load_and_build(
     # information_schema.table_constraints in the engine catalog), so PKs are read here
     # through the source driver directly, now that the source pools are built. The DB
     # constraint is authoritative — config YAML need not restate is_primary_key.
-    await _resolve_pk_from_sources()
+    if apply:
+        await _resolve_pk_from_sources()
 
     # Schema-currency reconcile (REQ-846/932): converge the materialization store's landing tables
     # to config for every MATERIALIZED source and attach their read views — DDL only, no data landed
@@ -1067,7 +1092,7 @@ async def _load_and_build(
     await _load_grpc_remote_sources_from_db()
 
     # Retry config relationships deferred at load_config time (graphql_remote tables now available)
-    if getattr(state, "config", None) is not None and state.tenant_db is not None:
+    if apply and getattr(state, "config", None) is not None and state.tenant_db is not None:
         from provisa.core.repositories import relationship as _rel_repo
 
         async with state.tenant_db.acquire() as _retry_conn:
@@ -1092,7 +1117,8 @@ async def _load_and_build(
 
     _mark("hot_tables")
 
-    await _ensure_environment_baselines()
+    if apply:
+        await _ensure_environment_baselines()
 
     _mark("prod-baseline")
 
@@ -2094,6 +2120,26 @@ class _DebugLogBufferHandler(logging.Handler):
         self.buffer.append(self.format(record))
 
 
+def _boot_generation(launch: str | None) -> str | None:  # REQ-1900
+    """The generation this process's once-per-launch boot work belongs to, or ``None`` for a
+    process that is not a worker of a launch. Everything that work is derived from is in it — the
+    control-plane schema, the config as it stands on disk, the engine, the replace mode — so a
+    worker whose inputs differ from the ones the work was done for does the work itself."""
+    if launch is None:
+        return None
+    from provisa.core.boot_lock import boot_generation
+
+    path = Path(config_path_str())
+    schema_sql = (Path(__file__).parent.parent / "core" / "schema.sql").read_text()
+    return boot_generation(
+        launch,
+        schema=hashlib.sha256(schema_sql.encode()).hexdigest(),
+        config=read_config_with_includes(path) if path.exists() else None,
+        engine=state.federation_engine.name,
+        replace=config_replace_mode(os.environ),
+    )
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, reportUnusedVariable]
     """App lifespan: load config and build schemas at startup."""
@@ -2105,25 +2151,76 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     )
     logging.getLogger().addHandler(buffer_handler)
     state.schema_boot_id = uuid.uuid4().hex
-    try:
+    # REQ-074: the audit writer lives as long as the application — started here, before anything
+    # serves a request, and stopped in the shutdown below. A request only enqueues to it.
+    from provisa.audit.writer import start_audit_writer
+
+    start_audit_writer()
+    from provisa.api.setup_router import _auto_configure_idp, _idp_override
+
+    async def _once_per_launch() -> None:
+        """Everything the boot writes to the control plane and the engine's shared catalogs."""
         await _load_and_build()
+
+        # REQ-1267: when PROVISA_IDP names an identity provider (e.g. firebase from the
+        # GCP/installer deploy) but the loaded config carries no auth section, configure it now —
+        # BEFORE any request reaches the middleware — so the server enforces auth from its first
+        # request instead of serving an unsecured admin window until the UI happens to call
+        # /setup/status.
+        #
+        # REQ-1472: the call is made whenever PROVISA_IDP names a provider, not only when the auth
+        # section is absent. An already-configured deployment takes the function's reconcile path,
+        # which fills in keys a deploy predating them never wrote (the break-glass account and its
+        # signing key) and leaves everything else exactly as configured.
+        #
+        # REQ-1900: once per launch — it writes the config FILE, including a freshly generated
+        # signing key. Run per worker, each worker would sign sessions with a key of its own.
+        _idp = _idp_override()
+        if _idp and state.admin_db is not None:
+            await _auto_configure_idp(_idp, state.admin_db)
+
+        await _auto_register_graphql_demo(_log)
+
+        # REQ-1598: the org the public "Try it Out" invite admits visitors to. Seeded after the
+        # registry and the org runtime are up, so a redemption never arrives at an org that is
+        # missing.
+        await _seed_sandbox_org(_log)
+
+    try:
+        # REQ-1900: `--workers N` runs this in N processes at once. The first worker to take the
+        # boot lock does the once-per-launch work under it and records its generation complete;
+        # every other worker takes the lock only to read that record, then does its per-worker
+        # half with no lock held — all of them at the same time. A process outside a launch (no
+        # launch id) has no generation and does the whole boot under the lock. Waiting for the
+        # lock blocks this thread, which at startup has nothing else to serve.
+        from provisa.core.boot_lock import control_plane_boot_lock, expected_workers, launch_id
+        from provisa.core.config_loader import load_control_plane
+
+        _cp = load_control_plane(config_path_str())
+        _scope = _cp.resolved_org_id()
+        _launch = launch_id()
+        # A launcher that names a launch names its worker count with it; one without the other
+        # fails here, at boot, rather than in the first /health request.
+        expected_workers()
+        with control_plane_boot_lock(_cp.resolved_platform_url()) as _boot:
+            _applied_elsewhere = _boot.completed(_scope, _boot_generation(_launch))
+            if not _applied_elsewhere:
+                await _once_per_launch()
+                # Computed again: the work above may have rewritten the config file (the auth
+                # section), and the generation the other workers compute is of the file as it now
+                # stands.
+                _boot.mark_completed(_scope, _boot_generation(_launch))
+        if _applied_elsewhere:
+            await _load_and_build(apply=False)
+        _log.warning(
+            "startup phase %-20s %s pid=%d",
+            "once-per-launch",
+            "found complete" if _applied_elsewhere else "applied",
+            os.getpid(),
+        )
     except Exception:
         _log.exception("Startup failed during _load_and_build")
         raise
-
-    # REQ-1267: when PROVISA_IDP names an identity provider (e.g. firebase from the GCP/installer
-    # deploy) but the loaded config carries no auth section, configure it now — BEFORE any request
-    # reaches the middleware — so the server enforces auth from its first request instead of serving
-    # an unsecured admin window until the UI happens to call /setup/status.
-    from provisa.api.setup_router import _auto_configure_idp, _idp_override
-
-    # REQ-1472: the call is made whenever PROVISA_IDP names a provider, not only when the auth
-    # section is absent. An already-configured deployment takes the function's reconcile path,
-    # which fills in keys a deploy predating them never wrote (the break-glass account and its
-    # signing key) and leaves everything else exactly as configured.
-    _idp = _idp_override()
-    if _idp and state.admin_db is not None:
-        await _auto_configure_idp(_idp, state.admin_db)
 
     # REQ-1574: teach the encryption accessor how to find the bound org, and record which orgs hold
     # a key ring of their own. The roster is what makes selection fail closed -- an org named here
@@ -2151,18 +2248,28 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
     _start_scheduler(_log)
 
-    await _auto_register_graphql_demo(_log)
-
-    # REQ-1598: the org the public "Try it Out" invite admits visitors to. Seeded here, after the
-    # registry and the org runtime are up, so a redemption never arrives at an org that is missing.
-    await _seed_sandbox_org(_log)
-
     # Snapshot the config AFTER all boot-time auto-derivation, so the admin config-diff baseline
     # excludes runtime-derived entities (REQ-164). Opt-in; best-effort (the helper degrades and the
     # diff falls back to the on-disk file).
     await _capture_config_boot_snapshot(_log)
 
+    # One line per worker process when it starts serving (REQ-1900): `--workers N` boots N of
+    # these, and the launch is ready when all N have logged it.
+    _log.warning("startup phase %-20s ready pid=%d", "worker", os.getpid())
+
+    # REQ-1900: /health reports how many of the launch's workers are serving, so it is counted in
+    # the control plane, where every worker can read it.
+    if _launch is not None and state.admin_db is not None:
+        from provisa.core.boot_lock import register_ready_worker
+
+        await register_ready_worker(state.admin_db, _launch)
+
     yield
+
+    if _launch is not None and state.admin_db is not None:
+        from provisa.core.boot_lock import unregister_worker
+
+        await unregister_worker(state.admin_db, _launch)
 
     # REQ-1629: the engine idle reaper lives in this process, so a shard still up when the control
     # plane goes away has nothing left that can scale it down and bills until somebody notices.
@@ -2238,8 +2345,11 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
     # REQ-1882: stop the background worker pool, its timer and long-lived threads before the
     # databases and engines they use close below. Blocking (bounded) — run off the process loop.
+    from provisa.audit.writer import shutdown_audit_writer
     from provisa.core.connection_loop import shutdown_background
 
+    # REQ-074: the audit records still queued are written before their databases close.
+    await asyncio.to_thread(shutdown_audit_writer)
     await asyncio.to_thread(shutdown_background)
 
     _shutdown_otel()
@@ -2416,6 +2526,7 @@ def create_app() -> FastAPI:
         env_header_value,
     )
     from provisa.api.admin.capabilities import env_gate_capabilities
+    from provisa.api.http_trace_scope import http_trace_scope
 
     class _OrgRoutingMiddleware:
         def __init__(self, app):
@@ -2486,7 +2597,10 @@ def create_app() -> FastAPI:
             # No org bound (unauthenticated, or a default-org request) AND prod: the AppState shims
             # resolve the default-org runtime. Never fabricate a non-default org here.
             if (active_org is None or active_org == state.org_id) and selected_env == PROD:
-                await self.app(scope, receive, send)
+                # REQ-1910: the org and role are bound and the body is unread — the request is
+                # served under its debug-trace window from here, so its ASGI receive span follows it.
+                async with http_trace_scope(state, scope):
+                    await self.app(scope, receive, send)
                 return
             # Keep existing tenant cache-key call sites (which read request.state.tenant_id)
             # pointed at the same id space as the org router.
@@ -2497,7 +2611,9 @@ def create_app() -> FastAPI:
             token = set_current_org(env_org)
             env_token = set_current_env(selected_env)
             try:
-                await self.app(scope, receive, send)
+                # REQ-1910: as on the default-org path above, now with this org bound.
+                async with http_trace_scope(state, scope):
+                    await self.app(scope, receive, send)
             finally:
                 reset_current_env(env_token)
                 reset_current_org(token)
@@ -2759,6 +2875,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.maintenance_router import router as maintenance_router  # REQ-1466
 
     app.include_router(maintenance_router)
+    from provisa.api.admin.debug_trace_router import router as debug_trace_router  # REQ-1910
+
+    app.include_router(debug_trace_router)
     from provisa.api.admin.invites_router import router as invites_router
 
     app.include_router(invites_router)
@@ -2836,11 +2955,24 @@ def create_app() -> FastAPI:
                 pg_status = "ok"
             except (SQLAlchemyError, OSError, asyncio.TimeoutError):
                 pg_status = "unavailable"
+        # REQ-1900: a `--workers N` launch answers from its first ready worker while the rest are
+        # still starting. The count is the launch's roll call in the control plane — the same
+        # answer whichever worker takes the request — so a deployment (or a benchmark) that needs
+        # every worker waits for ready == expected.
+        from provisa.core.boot_lock import expected_workers, launch_id, ready_worker_count
+
+        _launch = launch_id()
+        if _launch is None:
+            ready = 1
+        else:
+            assert state.admin_db is not None
+            ready = await ready_worker_count(state.admin_db, _launch)
         return {
             "status": "ok",
             "dependencies": {
                 "postgres": pg_status,
             },
+            "workers": {"ready": ready, "expected": expected_workers()},
         }
 
     @app.api_route("/live", methods=["GET", "HEAD"])

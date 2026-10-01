@@ -34,12 +34,12 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
-from opentelemetry import trace
-
 from provisa.federation.backend import EngineBackend
 from provisa.federation.engine import UnreachableSource
+from provisa.otel_compat import get_tracer as _get_tracer
+from provisa.otel_compat import stage as _stage
 
-_tracer = trace.get_tracer(__name__)
+_tracer = _get_tracer(__name__)
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import URL
@@ -547,7 +547,7 @@ class NativeEngineBackend(EngineBackend):
         # that way in execute_trino; a native engine has no such executor, so the terminal names
         # it here — otherwise every native-engine org's report is blank.
         span_name = f"provisa.query.{self.dialect}" if span_attrs else f"{self.dialect}.execute"
-        with _tracer.start_as_current_span(span_name) as span:
+        with _stage(_tracer, span_name, name="execute") as span:
             span.set_attribute("db.system", self.dialect)
             span.set_attribute("db.statement", sql[:1000])
             if span_attrs:
@@ -587,6 +587,19 @@ class NativeEngineBackend(EngineBackend):
         # hints (FTE retry_policy etc.) are Trino session properties with no native analogue.
         del session_hints
         return self._runtime_for(state).run_sync(sql, params)
+
+    def borrow_raw_pg_connection(self, state: Any) -> Any:
+        """One connection from the runtime's own read pool, for pgwire's raw-DataRow passthrough
+        (REQ-1863). Only a runtime that pools genuine Postgres connections offers one; for any
+        other runtime the passthrough does not apply, and the statement is decoded."""
+        from provisa.pgwire.pg_passthrough import PassthroughError
+
+        runtime = self._runtime_for(state)
+        if not hasattr(runtime, "borrow_raw"):
+            raise PassthroughError(
+                f"engine {self.engine.name!r} has no pooled Postgres connection to read through"
+            )
+        return runtime.borrow_raw()
 
     # -- engine-specific transports (Arrow) (REQ-986, REQ-1219) ----------------
     # Routed here only for engines whose capabilities declare ARROW / ARROW_STREAM (the runtime gates

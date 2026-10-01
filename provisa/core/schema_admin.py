@@ -530,6 +530,40 @@ platform_notice = Table(
 )
 
 
+# REQ-1910: the operator's debug-trace windows. One row is one window: debug tracing is on for an
+# org, a role in an org, or a source in an org until ``expires_at``, after which the row covers
+# nothing (it ends on its own; nothing has to turn it off). Registry-resident so every worker
+# process and every instance resolves the same windows — process memory would turn debug on for
+# whichever worker happened to serve the admin call.
+debug_trace_windows = Table(
+    "debug_trace_windows",
+    metadata,
+    Column("id", Text, primary_key=True),
+    Column("scope", Text, nullable=False),
+    Column("org_id", Text, ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False),
+    # The role id or source id the window covers; NULL for an org-wide window.
+    Column("target", Text, nullable=True),
+    Column("started_at", DateTime(timezone=True), nullable=False),
+    Column("expires_at", DateTime(timezone=True), nullable=False),
+    Column("created_by", Text, nullable=True),
+    CheckConstraint("scope IN ('org', 'role', 'source')", name="ck_debug_trace_windows_scope"),
+    CheckConstraint("(scope = 'org') = (target IS NULL)", name="ck_debug_trace_windows_target"),
+)
+
+
+# REQ-1910: the roles the operator permits the per-request debug-trace hint. A row is the
+# permission; no row means a request from that role carrying the hint is rejected (REQ-030).
+debug_trace_hint_roles = Table(
+    "debug_trace_hint_roles",
+    metadata,
+    Column("org_id", Text, ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False),
+    Column("role_id", Text, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_by", Text, nullable=True),
+    PrimaryKeyConstraint("org_id", "role_id"),
+)
+
+
 # REQ-1557, REQ-1558: the org's own secrets, when no central secrets service is connected. One
 # row is one NAME the org can write ``${secret:NAME}`` against; ``value`` is the envelope blob
 # (REQ-685), so the authority to read it is the encryption master key the process holds rather
@@ -633,10 +667,17 @@ REGISTRY_TABLES = [
     scram_credentials,
     platform_notice,
     mail_events,
+    debug_trace_windows,
+    debug_trace_hint_roles,
 ]
 
 
-async def init_registry_schema(db: "Database", org_id: str) -> None:  # REQ-696, REQ-1286
+# REQ-1900: the advisory-lock key serializing the registry DDL across worker processes. Any fixed
+# bigint works; this is "PROVISA2" as ASCII bytes so it reads as app-specific in pg_locks.
+_REGISTRY_DDL_LOCK_KEY = 0x50524F5649534132
+
+
+async def init_registry_schema(db: "Database", org_id: str) -> None:  # REQ-696, REQ-1286, REQ-1900
     """Create the platform registry tables on the platform control-plane engine.
 
     Uses portable SQLAlchemy metadata (dialect-appropriate DDL) so the platform
@@ -649,6 +690,13 @@ async def init_registry_schema(db: "Database", org_id: str) -> None:  # REQ-696,
     ``org_<id>``. Seeding a different literal here strands the registry row on an org
     whose schema does not exist, and every org-runtime resolution for it then fails."""
     with db.engine.begin() as conn:
+        # REQ-1900: `uvicorn --workers N` runs this in N processes at once. PostgreSQL's
+        # CREATE TABLE IF NOT EXISTS is not atomic across sessions — two of them race in the
+        # catalog and the loser dies on pg_type_typname_nsp_index — so the registry DDL runs under
+        # a transaction-scoped advisory lock (released at commit): the first worker creates the
+        # tables, the rest find them. Other control-plane dialects are single-writer file stores.
+        if conn.dialect.name == "postgresql":
+            conn.execute(text(f"SELECT pg_advisory_xact_lock({_REGISTRY_DDL_LOCK_KEY})"))
         metadata.create_all(conn, tables=REGISTRY_TABLES)
         # V1 no-migrations: the metadata is the registry's schema, but ``create_all`` skips tables
         # that already exist, so a column added here never reaches a deployment whose registry

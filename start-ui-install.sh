@@ -640,8 +640,18 @@ start_backend() {
   )
   # Native tier: in-process DuckDB engine + embedded fakeredis, so no Trino/Redis
   # server is contacted. (Docker mode keeps the Trino engine and real Redis above.)
+  # A caller that names an engine keeps it (the perf benchmark starts one server per engine;
+  # forcing duckdb here made every "pg"/"trino" run a DuckDB run). A caller that names a Redis
+  # (PROVISA_SHARED_REDIS_URL) gets that server instead of fakeredis: fakeredis lives inside one
+  # process, so several worker processes would each keep a private cache and miss each other's
+  # invalidations.
   if [ "$NATIVE" = true ]; then
-    _BACKEND_ENV+=( PROVISA_ENGINE=duckdb PROVISA_REDIS_EMBEDDED=1 )
+    _BACKEND_ENV+=( PROVISA_ENGINE="${PROVISA_ENGINE:-duckdb}" )
+    if [ -n "${PROVISA_SHARED_REDIS_URL:-}" ]; then
+      _BACKEND_ENV+=( REDIS_URL="$PROVISA_SHARED_REDIS_URL" )
+    else
+      _BACKEND_ENV+=( PROVISA_REDIS_EMBEDDED=1 )
+    fi
   fi
   # Telemetry lands in its own embedded-pg instance when available.
   [ -n "${TELEM_OPS_URL:-}" ] && _BACKEND_ENV+=( PROVISA_OPS_DB_URL="$TELEM_OPS_URL" )
@@ -662,9 +672,22 @@ start_backend() {
       OTEL_SERVICE_NAME="provisa"
     )
   fi
+  # One auto-reloading process for development. PROVISA_WORKERS=N runs N worker processes
+  # instead (uvicorn cannot combine --reload with --workers): one Python process executes on one
+  # core at a time, so a load test on a multi-core host needs a worker per core to use them.
+  local _serve_args=( --reload --reload-dir provisa --reload-dir config )
+  if [ -n "${PROVISA_WORKERS:-}" ]; then
+    _serve_args=( --workers "$PROVISA_WORKERS" )
+    # The launch's identity and worker count, inherited by every worker (REQ-1900): the first
+    # worker does the once-per-launch boot work (schema DDL, seeds, config apply) and records it
+    # under this id, the others skip to their per-worker half and all start at the same time;
+    # /health reports workers.ready / workers.expected from it. A new id per start, so a restart
+    # applies the config again.
+    _BACKEND_ENV+=( PROVISA_WORKERS="$PROVISA_WORKERS" PROVISA_LAUNCH_ID="$(uuidgen)" )
+  fi
   env "${_BACKEND_ENV[@]}" \
     "$SCRIPT_DIR/.venv/bin/uvicorn" main:app \
-      --reload --reload-dir provisa --reload-dir config \
+      "${_serve_args[@]}" \
       --host 0.0.0.0 --port "$PROVISA_API_PORT" \
       >> "$LOG_DIR/backend.log" 2>&1 &
   BACKEND_PID=$!

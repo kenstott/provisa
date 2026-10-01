@@ -34,7 +34,6 @@ import sqlite3
 import tempfile
 import re
 import threading
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from typing import Any
 
@@ -44,6 +43,7 @@ from provisa.executor.result import QueryResult, ResultStream
 from provisa.federation import store_writer
 from provisa.federation.engine import build_duckdb_engine
 from provisa.core import request_deadline
+from provisa.federation.land_guard import LandGuard
 from provisa.federation.runtime_support import columns_from_describe, stream_from_dbapi
 from provisa.transpiler.transpile import transpile
 
@@ -231,18 +231,11 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # ...and the rebuild is invisible to concurrent queries only if they are excluded from it —
         # see _CatalogGate. Held for read by every execution path, for write by the rebuild.
         self._catalog_gate = _CatalogGate()
-        # land_table's dedicated single-worker executor — NOT the loop's default pool. Confirmed
-        # live: dispatching land_table via loop.run_in_executor(None, ...) (the default pool, many
-        # workers) let concurrent lands for DIFFERENT tables (e.g. cypher_cross_engine's 5 Neo4j-
-        # materialized tables all going stale together, each independently read-triggered via
-        # query_residency.py's ensure_resident) pile onto self._con's cursors at once. DuckDB does
-        # not give concurrent writers from multiple cursors real parallelism on one connection —
-        # they serialize internally — so N concurrent lands is strictly worse than N queued ones:
-        # py-spy showed 13 threads all blocked inside the same executemany call simultaneously,
-        # accumulating 20+ minutes of CPU time for what should be a handful of small lands. A
-        # single-worker executor keeps the ORIGINAL fix's goal (land never blocks the event loop)
-        # while restoring the serialization DuckDB's connection actually needs.
-        self._land_executor = ThreadPoolExecutor(max_workers=1)
+        # One store connection, so one write on it at a time (two lands interleaving on it was a
+        # confirmed regression). A lock serializes it, and each write runs on the thread that asked
+        # for it — a read-triggered land stays on its request's thread (REQ-1882), where a
+        # one-worker pool took it off.
+        self._land_guard = LandGuard("DuckDB store")
 
     # -- source exposure -------------------------------------------------------
 
@@ -837,16 +830,10 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         for an embedded DuckDB store (REQ-989), else the server-store write face."""
         self.ensure_materialize_attached()
         if self._store_is_duckdb():
-            # REQ-1901: land goes through the broker singleton (see ensure_materialize_attached),
-            # a synchronous, potentially blocking RPC call — still dispatched to the executor, not
-            # called inline, for the same reason as before this existed: called on this coroutine
-            # directly, it blocks the event loop for its whole duration, and every OTHER query that
-            # needs this loop to service its own run_coroutine_threadsafe(...) call stalls right
-            # along with it. Confirmed live (pre-broker): an unrelated point-lookup on a completely
-            # different table hung behind a Neo4j-source TTL land of bench_placed_edge.
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(
-                self._land_executor,
+            # REQ-1901: the land goes through the store broker, a synchronous, blocking call. It
+            # runs on the caller's own thread (REQ-1882) — see LandGuard.run for the one place a
+            # land is handed to another thread, and why.
+            return await self._land_guard.run(
                 lambda: self._store_broker.land(
                     schema,
                     table,

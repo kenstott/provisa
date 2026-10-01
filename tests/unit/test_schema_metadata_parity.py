@@ -79,6 +79,10 @@ REGISTRY_ONLY_TABLES = {
     # REQ-1576: the record of what the deployment's mail transport actually delivered. Platform-
     # wide, beside the registry it reports on. Portable metadata only.
     "mail_events",
+    # REQ-1910: the operator's debug-trace windows and per-role hint permission. Deployment-wide
+    # operator settings read on every instance, beside the registry. Portable metadata only.
+    "debug_trace_windows",
+    "debug_trace_hint_roles",
 }
 
 # No admin/platform table has raw SQL DDL any longer — all are metadata-authoritative.

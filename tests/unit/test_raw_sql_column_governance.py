@@ -230,6 +230,7 @@ def _fake_pipeline_state(*, tables: list[dict]) -> SimpleNamespace:
     """Minimal AppState for _govern_and_route — orders table + analyst role."""
     ctx = _ctx()
     return SimpleNamespace(
+        admin_db=None,  # as AppState without a control plane: no debug-trace settings
         contexts={"analyst": ctx},
         rls_contexts={},
         roles={

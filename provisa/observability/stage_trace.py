@@ -30,6 +30,8 @@ import sqlglot
 import sqlglot.errors
 import sqlglot.expressions as exp
 
+from provisa.otel_compat import in_request_scope, trace_detail
+
 
 def _mode() -> str:
     # Read per-call so it can be toggled in a dev session without a restart.
@@ -78,6 +80,10 @@ def trace_stage(stage: str, sql: str) -> None:
     """
     span = _current_span()
     if span is None:
+        return
+    # REQ-1910: stage events are per-stage detail (and can carry SQL). In normal trace detail the
+    # current span is the request span, which records neither.
+    if in_request_scope() and trace_detail() == "normal":
         return
 
     attrs: dict[str, str] = {"pipeline.stage": stage}

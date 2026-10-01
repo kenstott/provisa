@@ -47,6 +47,7 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 from urllib.parse import unquote, urlparse
 
 from provisa.core import request_deadline
+from provisa.federation.land_guard import LandGuard
 from provisa.executor.result import QueryResult, ResultStream
 
 if TYPE_CHECKING:
@@ -271,16 +272,11 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         self._engine = build_clickhouse_engine()
         self._staging = "_provisa_attach"  # database holding engine-backed tables before the view
         self._backend.command(f'CREATE DATABASE IF NOT EXISTS "{self._staging}"')
-        # land_table's dedicated single-worker executor — NOT the loop's default pool. Same
-        # reasoning as DuckDBFederationRuntime._land_executor/PgFederationRuntime._land_executor:
-        # every backend here (_CHHttpBackend/_CHNativeBackend/_CHEmbeddedBackend) holds ONE client
-        # instance (self._client), not a connection pool, so concurrent lands for different tables
-        # dispatched via the default multi-worker executor would pile onto that one client at once
-        # instead of queuing — confirmed live as a real regression on the DuckDB engine (13 threads
-        # simultaneously blocked in one executemany call).
-        from concurrent.futures import ThreadPoolExecutor
-
-        self._land_executor = ThreadPoolExecutor(max_workers=1)
+        # One store connection, so one write on it at a time (two lands interleaving on it was a
+        # confirmed regression). A lock serializes it, and each write runs on the thread that asked
+        # for it — a read-triggered land stays on its request's thread (REQ-1882), where a
+        # one-worker pool took it off.
+        self._land_guard = LandGuard("ClickHouse store client")
 
     # -- backend selection (REQ-912) -------------------------------------------
 
@@ -414,16 +410,13 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         WITHOUT landing data (DDL only), so the catalog is complete at startup and survives
         restart. REQ-1633: ClickHouse had neither this nor ``land_table`` before — one of only two
         engines (with MssqlWarehouseRuntime) implementing none of the three landing terminals."""
-        import asyncio
 
         from provisa.compiler.naming import source_to_catalog
         from provisa.federation.clickhouse_store import reconcile_clickhouse_native
 
         database = f"{source_to_catalog(source.id)}_{source.schema_name}"
         parts = (database, source.table_name)
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            self._land_executor,
+        return await self._land_guard.run(
             lambda: reconcile_clickhouse_native(
                 self._backend, parts=parts, columns=columns, pk_columns=pk_columns
             ),
@@ -454,7 +447,6 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         ``schema`` here is ``ClickHouseBackend.landing_target``'s own already-folded
         ``{catalog}_{schema_name}`` (REQ-1730) — used directly as the database, unlike
         ``attach_landed_source`` above (which folds it itself from a full ``source`` object)."""
-        import asyncio
 
         from provisa.core.change_signal import CDC, select_landing_shape
         from provisa.federation.clickhouse_store import land_clickhouse_native
@@ -466,9 +458,7 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
                 "ClickHouse native landing has no CDC shape; use replace or append"
             )
         parts = (schema, table)
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            self._land_executor,
+        return await self._land_guard.run(
             lambda: land_clickhouse_native(
                 self._backend, parts=parts, columns=columns, rows=rows, shape=landing_shape
             ),

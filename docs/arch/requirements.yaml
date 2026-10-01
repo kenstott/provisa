@@ -13710,45 +13710,70 @@
     (uuid). Unsupported OIDs raise `"Unsupported binary parameter type: <oid>"`. Result columns are also
     sent in binary when the client requests it.
 
-    (Amended 2026-09-30, portal and Describe lifecycle:) A Bind REPLACES the portal it names: any
-    result a previous query left cached under that portal name (suspended because it exactly filled
-    an Execute row limit, as asyncpg fetchval does with limit 1 on a one-row result) is closed, never
-    served to the new portal. Serving it returned the old drained result as 0 rows and never ran the
-    new query (live on the perf bench: the first pgwire query after a pool probe returned 0 rows).
-    [SUPERSEDED by REQ-589, 2026-09-30 -- a Describe no longer runs the statement where the route and engine can describe it; see the Describe-without-execute amendment below. Kept here for history; do not implement against it.]
-    A Describe(Statement) of a statement without parameters runs it once and hands that result to the
-    Execute of the Bind that follows, so a prepared statement runs ONCE and its RowDescription types are
-    exactly the ones the Execute sends (live: a 30s DuckDB query ran twice, 60s end to end). A re-Parse
-    of the identical statement keeps the held result (asyncpg re-sends Parse for the unnamed statement
-    between Describe and Bind); a Parse of different text, a Close, or a Bind with parameters drops it.
-    It is also not reused when that Execute would take the REQ-1863 raw-DataRow passthrough, which
-    needs the Bind result formats before running.
-    [END SUPERSEDED BLOCK]
-    Every result a connection still holds is closed at connection end.
+    (Amended 2026-09-30, portal and Describe lifecycle:) A Bind REPLACES the portal it names: any result
+    a previous query left cached under that portal name (suspended because it exactly filled an Execute
+    row limit, as asyncpg fetchval does with limit 1 on a one-row result) is closed, never served to the
+    new portal. Serving it returned the old drained result as 0 rows and never ran the new query (live on
+    the perf bench: the first pgwire query after a pool probe returned 0 rows). [SUPERSEDED by REQ-589,
+    2026-09-30 -- a Describe no longer runs the statement where the route and engine can describe it; see
+    the Describe-without-execute amendment below. Kept here for history; do not implement against it.] A
+    Describe(Statement) of a statement without parameters runs it once and hands that result to the Execute
+    of the Bind that follows, so a prepared statement runs ONCE and its RowDescription types are exactly
+    the ones the Execute sends (live: a 30s DuckDB query ran twice, 60s end to end). A re-Parse of the identical
+    statement keeps the held result (asyncpg re-sends Parse for the unnamed statement between Describe and
+    Bind); a Parse of different text, a Close, or a Bind with parameters drops it. It is also not reused
+    when that Execute would take the REQ-1863 raw-DataRow passthrough, which needs the Bind result formats
+    before running. [END SUPERSEDED BLOCK] Every result a connection still holds is closed at connection
+    end.
 
-    (Amended 2026-09-30, Describe without execute, bound parameters:) A Describe(Statement) is
-    governed through the ONE pipeline exactly as its Execute (a column the role cannot see is absent
-    from it) and reports the governed plan''s result columns with the ENGINE''s declared types, without
-    running the statement: DuckDB answers DESCRIBE of the query; Postgres plans the governed SQL behind
-    a constant-false filter (one-time filter, nothing scanned); a Postgres DIRECT source is described
-    the same way. The Execute reports the same declared types (DuckDB and Postgres streaming terminals
-    and the Arrow-based engine terminals report per-column types even for zero rows; first-batch
-    inference is not used when types are declared), so the Describe and the Execute agree by
-    construction and each fetch runs the statement once, parameterized or not. A route or engine that
-    cannot describe without running (Trino, the SQLAlchemy engines, a non-streaming DIRECT source, the
-    API and cache terminals) still runs the statement for the Describe; a parameterized one then runs
-    with the parameter types'' example values. Parameterized type names (DECIMAL(18,2), NUMERIC(10,2),
-    VARCHAR(20), TIMESTAMP(3)) map to their base wire type; JSON/JSONB/STRUCT/MAP and other list types
-    are sent as JSON; a naive TIMESTAMP encodes in binary. A statement keeps its $N placeholders and the
-    client values stay BOUND through governance to the engine or source (they become the pipeline''s
-    bound parameters, the same ones a provisa-params comment supplies; a statement carrying both is
-    refused) — never spliced into the SQL at pgwire entry — so a value cannot change the governed shape,
-    every value shares one SQL text for server-side prepares and SQL-text-keyed caches, and the response
-    cache key carries the values. Text-format values decode by their declared parameter type OID; a
-    re-Parse with unspecified types keeps the types the Describe resolved. Drivers that bind
-    positionally (MySQL, SQL Server, Oracle, Trino) receive their values in placeholder occurrence
-    order, so a repeated or reordered $N binds correctly. Only the INTERCEPT catalog emulation and
-    registered-function call detection read the values inline.'
+    (Amended 2026-09-30, Describe without execute, bound parameters:) [SUPERSEDED by REQ-589, 2026-10-01
+    -- a Describe(Statement) is answered from registered metadata and asks no engine or source; its Execute
+    continues from the Describe''s governed statement, so the statement is governed once. Kept here for
+    history; do not implement against it.] A Describe(Statement) is governed through the ONE pipeline exactly
+    as its Execute (a column the role cannot see is absent from it) and reports the governed plan''s result
+    columns with the ENGINE''s declared types, without running the statement: DuckDB answers DESCRIBE of
+    the query; Postgres plans the governed SQL behind a constant-false filter (one-time filter, nothing
+    scanned); a Postgres DIRECT source is described the same way. The Execute reports the same declared
+    types (DuckDB and Postgres streaming terminals and the Arrow-based engine terminals report per-column
+    types even for zero rows; first-batch inference is not used when types are declared), so the Describe
+    and the Execute agree by construction and each fetch runs the statement once, parameterized or not.
+    A route or engine that cannot describe without running (Trino, the SQLAlchemy engines, a non-streaming
+    DIRECT source, the API and cache terminals) still runs the statement for the Describe; a parameterized
+    one then runs with the parameter types'' example values. [END SUPERSEDED BLOCK] Parameterized type names
+    (DECIMAL(18,2), NUMERIC(10,2), VARCHAR(20), TIMESTAMP(3)) map to their base wire type; JSON/JSONB/STRUCT/MAP
+    and other list types are sent as JSON; a naive TIMESTAMP encodes in binary. A statement keeps its $N
+    placeholders and the client values stay BOUND through governance to the engine or source (they become
+    the pipeline''s bound parameters, the same ones a provisa-params comment supplies; a statement carrying
+    both is refused) — never spliced into the SQL at pgwire entry — so a value cannot change the governed
+    shape, every value shares one SQL text for server-side prepares and SQL-text-keyed caches, and the response
+    cache key carries the values. Text-format values decode by their declared parameter type OID; a re-Parse
+    with unspecified types keeps the types the Describe resolved. Drivers that bind positionally (MySQL,
+    SQL Server, Oracle, Trino) receive their values in placeholder occurrence order, so a repeated or reordered
+    $N binds correctly. Only the INTERCEPT catalog emulation and registered-function call detection read
+    the values inline. (Amended 2026-10-01, Describe from registered metadata, governed once:) A Describe(Statement)
+    sends nothing to an engine or a source, on any route. The statement is governed ONCE, at its Describe,
+    by the first stage of the one pipeline (`govern_statement`: parse, validate, apply governance -- everything
+    that does not depend on bound values or live routing state), and its result columns are derived from
+    that governed statement and registered metadata (`provisa/pgwire/result_shape.py`): a registered column
+    carries the registry''s own type -- the per-table column types the pgwire catalog advertises (`schema_build_cache.column_types`),
+    under the names the role sees -- and a computed expression is typed by SQLGlot annotation against those
+    types. A result column whose type cannot be derived fails the Describe with an error naming the column
+    and its expression (the remedy is a CAST); no probe query stands in for it. A write describes no columns
+    unless it has a RETURNING list of its target''s columns; a registered-function call describes from its
+    declared `output_columns` and fails the Describe when it declares none. The Describe holds no result,
+    cursor or source connection for the Bind that follows. The Bind/Execute continues from the held governed
+    statement: only the second stage runs (`route_governed`: bind the values, optimize, route, build the
+    plan, open the audit record), against live state, so governance does not run a second time and routing
+    is never stale; a held statement governed under a schema generation that has since been rebuilt is governed
+    again. A statement that was never described (the simple protocol, or Bind with Describe(Portal)) runs
+    both stages at its Execute, as before. Every Execute of a described statement encodes its rows to the
+    described shape -- names and types are the described ones, a value the source or engine computed in
+    another type (Postgres averages an integer to numeric, DuckDB sums one to HUGEINT) is brought to the
+    described type, and an execution returning a different column count is an error -- so Describe and Execute
+    agree by construction. A catalog (INTERCEPT) statement is still answered in-process from the catalog
+    emulation at its Describe and handed to its Execute. `start_pgwire_server` installs no log handler and
+    sets no logger level (an unconditional DEBUG file handler made every protocol message of every connection
+    format a record and take the handler lock).'
   use_case: Binary parameter encoding support enables psycopg2 and asyncpg to send typed parameters without
     text serialization, preserving full type fidelity for numeric and temporal values.
   code:
@@ -13760,6 +13785,7 @@
   - provisa/federation/pg_runtime.py
   - provisa/federation/runtime_support.py
   - provisa/compiler/params.py
+  - provisa/pgwire/result_shape.py
   tests:
   - tests/integration/test_pgwire_integration.py
   - tests/unit/pgwire/test_wire_protocol.py
@@ -13769,6 +13795,10 @@
   - tests/unit/test_bind_positionally.py
   - tests/integration/test_pgwire_describe_parity_pg.py
   - tests/integration/test_pgwire_bound_params.py
+  - tests/integration/test_pgwire_single_pass.py
+  - tests/unit/pgwire/test_result_shape.py
+  - tests/unit/pgwire/test_statement_stages.py
+  - tests/integration/test_pgwire_client_regressions.py
   since: 2026-01
   scenario: 'Given psycopg2 or asyncpg sending binary-encoded parameters via Bind/Execute
 
@@ -26984,9 +27014,13 @@
   description: Every query transform — governance (RLS, masking, visibility, row-cap), correlated- subquery
     rewriting, and dialect lowering — MUST operate on a parsed SQL/relational AST, never on SQL text via
     regex or string substitution. Each surface language (GraphQL, Cypher, SQL) parses to an AST that is
-    carried through governance and planning and serialized to a dialect string only at final emission;
-    no stage may re-derive query structure (SELECT scope, WHERE injection point, alias binding, LIMIT)
-    from text.
+    carried through governance and planning and serialized to a dialect string only at final emission; no
+    stage may re-derive query structure (SELECT scope, WHERE injection point, alias binding, LIMIT) from
+    text. (Amended 2026-10-01, parsed fragments are reused:) `parse_expression` keeps a bounded cache of
+    parsed fragments keyed by their text and hands each caller its own copy of the tree (the nodes are mutable).
+    The grammar costs about a millisecond per fragment and every request of one statement shape re-parses
+    the same property references -- measured at 7 ms per Cypher request, more than the rest of its compilation;
+    a failed parse is not cached.
   use_case: 'String/regex transforms silently mis-apply governance: a scalar subquery in the projection
     moves the masking boundary (PII leak), a non-t0 alias convention skips RLS qualification (scope-ambiguous
     predicate), and a parameterized LIMIT bypasses the row-cap ceiling. AST transforms make "governance
@@ -26998,10 +27032,12 @@
   - provisa/compiler/mask_inject.py
   - provisa/transpiler/transpile.py
   - provisa/cypher/translator.py
+  - provisa/cypher/expr_parser.py
   tests:
   - tests/unit/test_ast_transform_invariants.py
   - tests/unit/test_ast_transforms.py
   - tests/integration/test_ast_transform_e2e.py
+  - tests/unit/test_cypher_expr_parser.py
   target: 2026-Q4
   competitive_position:
     status: parity
@@ -43005,28 +43041,39 @@
   priority: SHOULD
   type: behavioral
   description: 'Management/operations reporting is delivered as defined views in the built-in ops domain,
-    extending the REQ-884 registry mechanism (_OPS_LOG_TABLE_VIEWS + _seed_ops_domain): each report is
-    a view joining query_audit_log to catalog metadata, registered as a first-class ops-domain table so
-    it is queryable through every governed surface (SQL/pgwire, GraphQL, Cypher) under role + domain access
-    control. Report views: (1) usage_ranking — query count and distinct consumers per table, including
-    never-queried tables (deprecation candidates); (2) deprecated_usage — consumption of deprecated tables/elements
-    over time, per consumer, to establish a safe-removal date; (3) pii_access — accesses touching PII-classified
+    extending the REQ-884 registry mechanism (_OPS_LOG_TABLE_VIEWS + _seed_ops_domain): each report is a
+    view joining query_audit_log to catalog metadata, registered as a first-class ops-domain table so it
+    is queryable through every governed surface (SQL/pgwire, GraphQL, Cypher) under role + domain access
+    control. Report views: (1) usage_ranking — query count and distinct consumers per table, including never-queried
+    tables (deprecation candidates); (2) deprecated_usage — consumption of deprecated tables/elements over
+    time, per consumer, to establish a safe-removal date; (3) pii_access — accesses touching PII-classified
     elements: who, role, masked vs unmasked; (4) policy_denials — access attempts blocked by governance
     rules: who, what, which rule; (5) surface_mix — traffic by protocol via the audit-log source column;
     (6) query_health — latency percentiles and error rate by source and table (duration_ms/status_code);
-    (7) stale_metadata — tables/elements missing owner, description, or classification, with coverage
-    percentage per domain; (8) join_hotspots — most-frequent table_ids co-occurrence, informing materialization/caching.
+    (7) stale_metadata — tables/elements missing owner, description, or classification, with coverage percentage
+    per domain; (8) join_hotspots — most-frequent table_ids co-occurrence, informing materialization/caching.
     Decision: the org_admin role is the designated steward of the ops domain, seeded at ops-domain creation,
-    so it never surfaces as a PENDING stewardship gap (REQ-609). Rollup views: because query_audit_log
-    is append-only and grows unbounded, trend-oriented reports (usage_ranking, deprecated_usage, query_health,
+    so it never surfaces as a PENDING stewardship gap (REQ-609). Rollup views: because query_audit_log is
+    append-only and grows unbounded, trend-oriented reports (usage_ranking, deprecated_usage, query_health,
     surface_mix) read from scheduled daily rollup tables (per-day, per-table, per-role aggregates) rather
     than scanning the raw log; point-in-time reports (pii_access, policy_denials, stale_metadata, join_hotspots)
-    remain live views. Implemented so far: all eight views live (seed-time DDL via _OPS_REPORT_VIEWS +
-    ops_table_usage unnest spine, per-dialect only at the seed layer), registration under provisa-admin/ops,
-    org_admin steward seeding. Outstanding prerequisites: element_ids/masking-outcome/denying-rule-id
-    captured at log-write time (query text is encrypted per REQ-689, so these cannot be derived post-hoc
-    — until then the reports are table-level), the daily rollup job, and the deferred resource-usage (metrics
-    sampler) and source-freshness (sync timestamps) views.'
+    remain live views. Implemented so far: all eight views live (seed-time DDL via _OPS_REPORT_VIEWS + ops_table_usage
+    unnest spine, per-dialect only at the seed layer), registration under provisa-admin/ops, org_admin steward
+    seeding. Outstanding prerequisites: element_ids/masking-outcome/denying-rule-id captured at log-write
+    time (query text is encrypted per REQ-689, so these cannot be derived post-hoc — until then the reports
+    are table-level), the daily rollup job, and the deferred resource-usage (metrics sampler) and source-freshness
+    (sync timestamps) views. [AMENDED 2026-10-01: the audit row''s INSERT is off the request path on every
+    transport. The request thread enqueues its finished record at the one audit seam (write_audit / enqueue_audit)
+    and returns; one writer thread per worker process inserts queued records in batches (one prepared INSERT,
+    a parameter set per row, grouped per tenant database), each row stamped with the time its statement
+    finished. No record is lost quietly: the queue is bounded, a full queue makes the enqueue wait for the
+    request''s remaining deadline and then raise; a failed batch insert is logged at error and retried until
+    it lands; shutdown writes what is queued before the control-plane pools close and reports at error any
+    record it could not write. Durability: a hard crash loses the records enqueued within the last batch
+    window (at most the queue''s capacity). The active-hour meter (REQ-1454) rides the same record. Cache
+    invalidation after a write stays synchronous in finalize_audit. /data/graphql — query, plan- or response-cache
+    hit, mutation, normalized read, subscription open — hands one record per request to the same seam; its
+    table ids are resolved on the writer thread from the document and the role''s compilation context.]'
   use_case: 'Provides self-service management/operations reporting through the governed pipeline without
     custom code: usage-driven deprecation decisions, PII-access oversight, governance-effectiveness inspection,
     and capacity/caching signals — all consumable from any BI tool over pgwire.'
@@ -43035,8 +43082,15 @@
   - provisa/api/startup_seed.py
   - provisa/core/db.py
   - provisa/core/schema.sql
+  - provisa/audit/writer.py
+  - provisa/audit/graphql.py
+  - provisa/audit/pipeline.py
+  - provisa/audit/query_log.py
   tests:
   - tests/unit/test_ops_domain.py
+  - tests/unit/test_audit_writer.py
+  - tests/unit/test_graphql_audit.py
+  - tests/unit/test_audit_pipeline.py
   relates_to:
   - REQ-884
   - REQ-609
@@ -64381,65 +64435,94 @@
   category: pgwire performance optimization
   priority: SHOULD
   type: behavioral
-  description: >-
-    When routing a pgwire DIRECT-route query to a PostgreSQL source, avoid decode/re-encode
-    overhead by forwarding raw DataRow wire messages directly to the downstream client,
-    exploiting the fact that masking/RLS is always pre-applied in the compiled SQL.
+  description: 'When routing a pgwire DIRECT-route query to a PostgreSQL source, avoid decode/re-encode
+    overhead by forwarding raw DataRow wire messages directly to the downstream client, exploiting the fact
+    that masking/RLS is always pre-applied in the compiled SQL.
 
 
-    (Amended 2026-09-29, uvloop incompatibility:) Live-confirmed the raw-socket-driving technique
-    (open_raw_connection's transport.pause_reading() + .dup() + manual loop.sock_sendall/
-    sock_recv) does not work under uvloop: the dup'd socket is still a uvloop.loop.PseudoSocket,
-    whose .send() is a deliberate stub that unconditionally raises TypeError: transport sockets
-    do not support send() method -- 100% reproducible on every passthrough-eligible query when
-    the process event loop is uvloop. This violated the "falls back on any error" guarantee
-    below: the exception propagated from deep inside the streaming generator
-    (provisa/federation/runtime.py's _pg_passthrough_stream), past the ONE call site in
-    provisa/pgwire/server.py that catches PassthroughError (which only wraps the initial
-    open_passthrough() call, not the ongoing fetch loop), and killed the downstream client
-    connection with zero visible signal outside ~/pgwire_debug.log's separate buenavista/
-    provisa.pgwire file handler -- silently breaking every SQL-transport query under a live
-    server for an entire benchmark session before being traced.
-    [SUPERSEDED by REQ-1863, 2026-09-30 -- the passthrough now works under uvloop; declining there disabled it on every deployed server. Kept here for history; do not implement against it.]
-    Fixed by detecting uvloop in
-    open_raw_connection and raising PassthroughError immediately, before ever attempting the
-    incompatible technique -- restores the documented fallback guarantee rather than changing it.
-    [END SUPERSEDED BLOCK]
+    (Amended 2026-09-29, uvloop incompatibility:) Live-confirmed the raw-socket-driving technique (open_raw_connection''s
+    transport.pause_reading() + .dup() + manual loop.sock_sendall/ sock_recv) does not work under uvloop:
+    the dup''d socket is still a uvloop.loop.PseudoSocket, whose .send() is a deliberate stub that unconditionally
+    raises TypeError: transport sockets do not support send() method -- 100% reproducible on every passthrough-eligible
+    query when the process event loop is uvloop. This violated the "falls back on any error" guarantee below:
+    the exception propagated from deep inside the streaming generator (provisa/federation/runtime.py''s
+    _pg_passthrough_stream), past the ONE call site in provisa/pgwire/server.py that catches PassthroughError
+    (which only wraps the initial open_passthrough() call, not the ongoing fetch loop), and killed the downstream
+    client connection with zero visible signal outside ~/pgwire_debug.log''s separate buenavista/ provisa.pgwire
+    file handler -- silently breaking every SQL-transport query under a live server for an entire benchmark
+    session before being traced. [SUPERSEDED by REQ-1863, 2026-09-30 -- the passthrough now works under
+    uvloop; declining there disabled it on every deployed server. Kept here for history; do not implement
+    against it.] Fixed by detecting uvloop in open_raw_connection and raising PassthroughError immediately,
+    before ever attempting the incompatible technique -- restores the documented fallback guarantee rather
+    than changing it. [END SUPERSEDED BLOCK]
 
 
-    (Amended 2026-09-30, works under uvloop; applicability vs failure:) main.py installs uvloop on
-    every non-Windows deployment (REQ-1867), so the 2026-09-29 uvloop refusal meant the
-    passthrough never engaged on any deployed server -- only on asyncio's own loops (tests).
-    open_raw_connection now builds a genuine socket.socket over os.dup() of the transport
-    socket's fileno(): both loops' wrappers (asyncio's TransportSocket, uvloop's PseudoSocket)
-    refuse send()/recv() but expose fileno(), and a real socket over a dup of that descriptor
-    drives loop.sock_sendall/sock_recv under either loop while the original transport stays
-    paused. The raw connection identifies itself to the source as application_name
-    "provisa-pgwire-passthrough" (pg_stat_activity, the source's logs). PassthroughError now
-    means only "does not apply" -- a result column whose advertised wire type lacks the source
-    type's exact byte layout -- and by design that statement takes the decode/re-encode path. A
-    passthrough that applies but cannot open or read (no connect parameters, no transport
-    socket, a source ErrorResponse, a closed connection, a column-count mismatch) raises
-    PassthroughFailure, which no caller catches: the request fails with that error and never
-    falls back to decode/re-encode.
+    (Amended 2026-09-30, works under uvloop; applicability vs failure:) main.py installs uvloop on every
+    non-Windows deployment (REQ-1867), so the 2026-09-29 uvloop refusal meant the passthrough never engaged
+    on any deployed server -- only on asyncio''s own loops (tests). [SUPERSEDED by REQ-1863, 2026-10-01
+    -- the passthrough no longer opens connections of its own; it reads on one connection borrowed from
+    the destination''s existing pool. Kept here for history; do not implement against it.] open_raw_connection
+    now builds a genuine socket.socket over os.dup() of the transport socket''s fileno(): both loops'' wrappers
+    (asyncio''s TransportSocket, uvloop''s PseudoSocket) refuse send()/recv() but expose fileno(), and a
+    real socket over a dup of that descriptor drives loop.sock_sendall/sock_recv under either loop while
+    the original transport stays paused. The raw connection identifies itself to the source as application_name
+    "provisa-pgwire-passthrough" (pg_stat_activity, the source''s logs). [END SUPERSEDED BLOCK] PassthroughError
+    now means only "does not apply" -- a result column whose advertised wire type lacks the source type''s
+    exact byte layout -- and by design that statement takes the decode/re-encode path. A passthrough that
+    applies but cannot open or read (no connect parameters, no transport socket, a source ErrorResponse,
+    a closed connection, a column-count mismatch) raises PassthroughFailure, which no caller catches: the
+    request fails with that error and never falls back to decode/re-encode. (Amended 2026-10-01, one pooled
+    connection, no per-query connect:) The passthrough opens no connection. It borrows ONE connection from
+    the destination''s existing pool for the query''s duration -- the DIRECT source driver''s own pool (`PostgreSQLDriver.borrow_raw`),
+    or the Postgres engine runtime''s read pool (`PgFederationRuntime.borrow_raw`) -- and drives the extended-query
+    exchange on that connection''s socket as blocking I/O on the request''s own thread (a socket built over
+    a dup of the connection''s descriptor, which keeps the non-blocking mode its driver relies on): Parse
+    + Describe(Statement) + Flush reads the source''s own RowDescription; Bind + Execute(n) + Flush fetches
+    up to n DataRows and is repeated for the next batch (nothing is Synced, so the portal stays open without
+    a transaction bracket); Sync ends the exchange. The connection''s driver never sees the exchange and
+    is idle before and after it, so a connection whose exchange completed returns to its pool, and one whose
+    exchange did not (closed, reset, silent past its bound) is closed and the pool replaces it. Whether
+    the passthrough APPLIES is decided from the source''s RowDescription before anything executes: every
+    source column must have exactly the wire layout the client was told at Describe (the described type
+    OIDs; the text family counts as one layout), or -- for a statement that was never described -- a type
+    pgwire advertises under its own OID. When it does not apply (PassthroughError) the connection is back
+    in its pool and the statement is decoded; a TLS-encrypted pooled connection also does not apply, because
+    its socket carries TLS records. The request deadline cancels the statement in flight on the borrowed
+    connection. A PgBouncer source and an engine without a pooled Postgres connection never take the passthrough.
+    [AMENDED 2026-10-01 (2): the statement is prepared under a name on the borrowed pooled connection and
+    remembered with that connection (name + RowDescription, at most 100 per connection); every later run
+    of the same statement text on it is Bind + Execute + Sync — one round trip — with the DataRows read
+    off the socket a batch at a time. A result abandoned mid-stream discards its connection; an error whose
+    SQLSTATE invalidates the prepared statement (26000, 0A000) forgets it.]'
   use_case: >-
     Decoding source DataRow messages into Python objects and re-encoding them into pgwire
     format is pure overhead when all per-row access control is already enforced by the
     governed SQL compiler; raw passthrough delivers the same correctness with zero
     copy cost and better performance.
   code:
+  - provisa/federation/runtime.py
+  - provisa/federation/pg_runtime.py
+  - provisa/federation/native_backend.py
+  - provisa/federation/backend.py
     - provisa/pgwire/pg_passthrough.py
     - provisa/executor/drivers/postgresql.py
     - vendor/buenavista/buenavista/core.py
     - vendor/buenavista/buenavista/postgres.py
   tests:
+  - tests/unit/pgwire/test_pg_passthrough.py
+  - tests/unit/federation/test_pg_engine_passthrough.py
+  - tests/integration/test_pgwire_single_pass.py
     - tests/integration/test_pgwire_passthrough_event_loops_e2e.py
     - tests/integration/test_pgwire_describe_parity_pg.py
   since: "2026-09"
   scenario: |
     Given a pgwire DIRECT-route query SELECT col1, col2 FROM users WHERE domain='acme'
     And the physical source is PostgreSQL
+    [SUPERSEDED by REQ-1863, 2026-10-01 -- the passthrough borrows one connection from the destination's existing pool; it opens none. Kept here for history; do not implement against it.]
     Then the system opens a dedicated asyncpg connection without pooling
+    [END SUPERSEDED BLOCK]
+    Then the system borrows one connection from the source's existing pool for the query
+    And returns it to the pool when the exchange completes
     And forwards raw Extended Query Protocol (Parse/Bind/Execute/Sync) messages
     And each DataRow message's raw bytes are re-sent to the pgwire client without decoding
     [SUPERSEDED by REQ-1863, 2026-09-30 -- only a statement the passthrough does not apply to takes decode/re-encode; a failure raises. Kept here for history; do not implement against it.]
@@ -64559,7 +64642,12 @@
     INSERT of the keys whose last event is an upsert) -- never one DELETE/INSERT per row, which held the
     store lock for over ten minutes landing ~3M rows. (Amended 2026-09-30, no request bypass:) A route=direct
     request hint never reaches a row_materialize source live: decide_route never makes a VIRTUAL source
-    (neo4j included, though a driver is registered for it) direct on a hint (REQ-030).'
+    (neo4j included, though a driver is registered for it) direct on a hint (REQ-030). (Amended 2026-10-01,
+    bound resolution reads the in-memory registry:) Resolving a statement''s PK bounds (`_resolve_pk_bounds`)
+    runs for every governed statement on every surface, so it reads no control plane: the row_materialize
+    tables come from the registry `_rebuild_schemas` publishes in memory (`state.tables`), selected and
+    keyed exactly as `row_materialized_tables_by_name` does (flag set, engine cannot direct-attach the source
+    type; bare table name and alias). A statement that touches no such table pays a list scan.'
   use_case: >-
     A large, expensive-to-fully-land source table (e.g. a multi-million-row Neo4j query_template
     scan) can serve point-lookup queries in milliseconds via a per-row cache instead of paying a
@@ -64586,6 +64674,7 @@
     - provisa/executor/drivers/clickhouse.py
     - provisa/federation/materialize_broker.py
   tests:
+  - tests/unit/pgwire/test_statement_stages.py
     - tests/unit/federation/test_row_materialize_attach_rule.py
     - tests/unit/events/test_source_loader_load_keys.py
     - tests/unit/test_duckdb_store_native.py
@@ -65120,53 +65209,71 @@
   priority: SHOULD
   type: behavioral
   since: "2026-09"
-  description: >-
-    Per-organization, in-memory, TTL-evicted cache of governance-pipeline outcomes (SQL shape-based
-    key, not raw text) for compiled queries. Caches only the `validate_sql` outcome
-    (relationship-guard + row-level violations check) and domain-access-check result —
-    [SUPERSEDED by REQ-1877, 2026-09-29 -- routing/physical-SQL caching is now done for the one case
-    proven safe; see the amendment below. Kept here for history; do not implement against it.] does
-    NOT cache routing decisions or physical SQL, which depend on live hot-table/tier-cap state
-    (provisa/api/data/materialization.py's `state.hot_manager`) that is not schema-version-bound.
-    [END SUPERSEDED BLOCK]
-    Cache key includes: SQL shape digest (sqlglot literal-blanked via
-    provisa.observability.stage_trace.redact_sql), role_id, person_id, schema_boot_id, schema_version,
-    and relationship-guard bypass flag. TTL default 60 seconds, configurable via
-    PROVISA_COMPILED_QUERY_CACHE_TTL_SECONDS environment variable. Per-process dict storage, not
-    Redis-backed or protocol-level (pgwire PREPARE/EXECUTE out of scope). Cache is per-org field on
-    OrgRuntime (provisa/api/org_runtime.py) with AppState property shim (provisa/api/app.py),
-    following the existing contexts/rls_contexts pattern. Prerequisite fix (commit 6a416c52):
-    RLS-rule and role create/delete/mutation call sites (provisa/api/admin/schema_mutation.py)
-    now bump state.schema_version via _rebuild_schemas() so that schema_version serves as a sound
-    invalidation signal.
+  description: 'Per-organization, in-memory, TTL-evicted cache of governance-pipeline outcomes (SQL shape-based
+    key, not raw text) for compiled queries. Caches only the `validate_sql` outcome (relationship-guard
+    + row-level violations check) and domain-access-check result — [SUPERSEDED by REQ-1877, 2026-09-29 --
+    routing/physical-SQL caching is now done for the one case proven safe; see the amendment below. Kept
+    here for history; do not implement against it.] does NOT cache routing decisions or physical SQL, which
+    depend on live hot-table/tier-cap state (provisa/api/data/materialization.py''s `state.hot_manager`)
+    that is not schema-version-bound. [END SUPERSEDED BLOCK] Cache key includes: SQL shape digest (sqlglot
+    literal-blanked via provisa.observability.stage_trace.redact_sql), role_id, person_id, schema_boot_id,
+    schema_version, and relationship-guard bypass flag. TTL default 60 seconds, configurable via PROVISA_COMPILED_QUERY_CACHE_TTL_SECONDS
+    environment variable. Per-process dict storage, not Redis-backed or protocol-level (pgwire PREPARE/EXECUTE
+    out of scope). Cache is per-org field on OrgRuntime (provisa/api/org_runtime.py) with AppState property
+    shim (provisa/api/app.py), following the existing contexts/rls_contexts pattern. Prerequisite fix (commit
+    6a416c52): RLS-rule and role create/delete/mutation call sites (provisa/api/admin/schema_mutation.py)
+    now bump state.schema_version via _rebuild_schemas() so that schema_version serves as a sound invalidation
+    signal.
 
-    (Amended 2026-09-29, routing-decision cache:) Extended to also cache `_optimize_and_route`'s
-    structural routing output (route, source_id, dialect, reason, default_source, source set) as
-    `RoutingOutcome`, in a second per-org `CompiledQueryCache` instance
-    (`OrgRuntime.routing_cache` / `state.routing_cache`), keyed by
-    `routing_cache_key(exec_sql, role_id, schema_boot_id, schema_version)` — narrower than the
-    validate-outcome key (no person_id/bypass flag: routing doesn't read either). Gated on a cheap,
-    no-I/O pre-check, `would_materialize_optimize(exec_sql, state)`
-    (provisa/api/data/materialization.py), re-run on EVERY call, hit or miss alike, mirroring
-    `_materialize_api_to_engine_cache`'s own table-by-table control flow (row_materialize skip,
-    `hot_mgr.is_hot`, registered API-endpoint/graphql_remote/grpc_remote/openapi lookups — all
-    in-memory, no I/O). Only when it returns False (no live/time-varying branch reachable for this
-    call, so `_optimize_and_route` is a pure function of exec-SQL shape/role/schema generation) is
-    the routing cache consulted or written; when it returns True, the full uncached
-    `_optimize_and_route` runs exactly as before this amendment, including the live hot-table check
-    — this preserves the original REQ-1877 constraint for every query that could possibly need it,
-    and only closes the gap for the (empirically common) point-lookup case that touches no
-    API-backed/hot table at all. Wired into both raw-SQL pipeline entrypoints that call
-    `_optimize_and_route` (`_govern_and_route_planned` and `_govern_and_route_compiled_planned`,
-    provisa/pgwire/_pipeline.py) via a shared wrapper, `_optimize_and_route_cached`. NOT wired into
-    the third, independent GraphQL execution path (`_execute_engine_standard` /
-    `_execute_one_field`'s `decide_route` call, provisa/api/data/endpoint_executors.py and
-    provisa/api/data/endpoint.py) — investigated and rejected: that path's `decide_route` call
-    already runs on the compiler's pre-computed `compiled.sources` with no `extract_sources`
-    re-parse to save, and it explicitly reads a live `cache_hit` signal from the response-result
-    cache as one of its own inputs, so caching its output would risk serving a stale
-    Route.CACHE/non-CACHE decision after the response cache changed — an outcome-correctness
-    regression, not a missed optimization.
+    (Amended 2026-09-29, routing-decision cache:) Extended to also cache `_optimize_and_route`''s structural
+    routing output (route, source_id, dialect, reason, default_source, source set) as `RoutingOutcome`,
+    in a second per-org `CompiledQueryCache` instance (`OrgRuntime.routing_cache` / `state.routing_cache`),
+    keyed by `routing_cache_key(exec_sql, role_id, schema_boot_id, schema_version)` — narrower than the
+    validate-outcome key (no person_id/bypass flag: routing doesn''t read either). Gated on a cheap, no-I/O
+    pre-check, `would_materialize_optimize(exec_sql, state)` (provisa/api/data/materialization.py), re-run
+    on EVERY call, hit or miss alike, mirroring `_materialize_api_to_engine_cache`''s own table-by-table
+    control flow (row_materialize skip, `hot_mgr.is_hot`, registered API-endpoint/graphql_remote/grpc_remote/openapi
+    lookups — all in-memory, no I/O). Only when it returns False (no live/time-varying branch reachable
+    for this call, so `_optimize_and_route` is a pure function of exec-SQL shape/role/schema generation)
+    is the routing cache consulted or written; when it returns True, the full uncached `_optimize_and_route`
+    runs exactly as before this amendment, including the live hot-table check — this preserves the original
+    REQ-1877 constraint for every query that could possibly need it, and only closes the gap for the (empirically
+    common) point-lookup case that touches no API-backed/hot table at all. Wired into both raw-SQL pipeline
+    entrypoints that call `_optimize_and_route` (`_govern_and_route_planned` and `_govern_and_route_compiled_planned`,
+    provisa/pgwire/_pipeline.py) via a shared wrapper, `_optimize_and_route_cached`. NOT wired into the
+    third, independent GraphQL execution path (`_execute_engine_standard` / `_execute_one_field`''s `decide_route`
+    call, provisa/api/data/endpoint_executors.py and provisa/api/data/endpoint.py) — investigated and rejected:
+    that path''s `decide_route` call already runs on the compiler''s pre-computed `compiled.sources` with
+    no `extract_sources` re-parse to save, and it explicitly reads a live `cache_hit` signal from the response-result
+    cache as one of its own inputs, so caching its output would risk serving a stale Route.CACHE/non-CACHE
+    decision after the response cache changed — an outcome-correctness regression, not a missed optimization.
+    (Amended 2026-10-01, GRAPHQL GOVERNED PLANS:) /data/graphql keeps the governed plan of each plain query
+    — its directives and its governed compiled fields — in a third per-org `CompiledQueryCache` instance,
+    `OrgRuntime.graphql_plan_cache` (provisa/api/data/graphql_plan.py). A repeated request skips parse,
+    validation, the complexity guard, compilation, MV rewrite and governance and goes straight to execution,
+    where the response cache is consulted: the cached-hit path is role -> plan lookup -> response-cache
+    key -> Redis GET -> respond. Measured on the perf-bench VM for one byte-identical cached query: 16.6
+    ms of CPU per request before (one process, about 60 requests/s whatever the client concurrency, because
+    one Python process runs on one core at a time), 5.0 ms after. The key carries `schema_boot_id` + `schema_version`,
+    the role, the acting person, and a digest of the query text, its variables, the as-of time and the session
+    variables RLS predicates resolve against. Every lookup also compares, by identity, the per-role schema,
+    compilation context, RLS context and role objects and the fresh-MV set the plan was built from: a rebuild
+    swaps those objects before it bumps `schema_version`, so the generation alone would let a plan built
+    from the old objects answer under the new number. A plan is never recorded while a schema rebuild is
+    in progress or when the generation moved during the compile, never when an approval hook is configured
+    (the hook decides per request), never for a query over a Kafka-windowed table (its time filter is chosen
+    per call), and only for plain queries — mutations, subscriptions, introspection, action fields and normalized
+    reads take the ordinary path. Each hit executes its own deep copies of the compiled fields. Two pure
+    helpers on every surface''s per-statement path are memoized alongside it: `compiler.naming._to_snake_case`
+    / `domain_to_sql_name` (governance built a semantic name for every registered table on every request,
+    about 900 regex conversions per GraphQL request) and `cache.key._normalize_sql` (one sqlglot parse per
+    opted-in request). NOT covered: the raw-SQL pipeline (pgwire, Flight SQL, /data/sql, Cypher, gRPC) still
+    rebuilds its governance context and re-parses per statement; the entry above caches only its validation
+    outcome. [AMENDED 2026-10-01: the per-execution half of the pipeline (route_governed / _route_compiled)
+    keeps what is a function of the governed statement alone with that statement (its memo): the catalog-physical
+    lowering, the unoptimized direct-route SQL, and pgwire''s derived result shape; the routing-cache key
+    and the table-name extraction that would_materialize_optimize reads are kept per statement text. Bound
+    values, pk bounds, as-of, delivery, explain, the audit record and every live-state lookup stay per execution.]'
   use_case: >-
     Compiled query outcomes for governance validation are deterministic per (SQL shape, role, person,
     schema version) and expensive (relationship-guard and row-level constraint evaluation over complex
@@ -65180,9 +65287,15 @@
     - provisa/pgwire/_pipeline.py
     - provisa/api/admin/schema_mutation.py
     - provisa/api/data/materialization.py
+    - provisa/api/data/graphql_plan.py
+    - provisa/api/data/endpoint.py
+    - provisa/compiler/naming.py
+    - provisa/cache/key.py
   tests:
+  - tests/integration/test_pgwire_single_pass.py
     - tests/unit/test_compiled_query_cache.py
     - tests/unit/test_routing_cache.py
+    - tests/unit/test_graphql_plan_cache.py
   scenario: |
     Given an org with a compiled query that passes governance validation
     When the same query (same SQL shape, same user role/person) is submitted again within the TTL window
@@ -65401,7 +65514,7 @@
   status: complete
   group: "6. Execution, Routing, Caching & Performance"
   category: Concurrency
-  priority: SHOULD
+  priority: MUST
   type: behavioral
   since: "2026-09"
   description: >-
@@ -65747,6 +65860,67 @@
     stops the timer (dropping entries not yet due), cancels queued submissions, waits a bounded
     time for running ones and for long-lived threads, and logs whatever did not finish, before the
     databases and engines they use are closed.
+    (Amended 2026-09-30, the rule stated, and lands on the request thread:) The requirement, stated
+    once: every request on every transport — pgwire, Bolt (TCP and WebSocket), Arrow Flight (SQL,
+    GraphQL and Cypher tickets), gRPC, HTTP (GraphQL, `/data/sql`, Cypher, REST, JSON:API, SSE
+    subscriptions) and MCP — runs from transport entry to the last byte sent on ONE thread, its
+    connection's or request's own, and two requests in flight at the same time run on two threads.
+    That covers authentication, governance, routing, residency prep including any land the read
+    triggers, engine and driver execution, result encoding and the send. A hand-off to another
+    thread or loop on a request path is allowed only where it cannot be avoided, and each one
+    carries an inline comment at the hop saying why. The sanctioned hand-offs are: (1) the ASGI
+    `receive`/`send` relay to the front loop, where the HTTP server's socket lives
+    (`provisa/core/request_thread.py`); (2) the request's deadline watchdog timer, which runs none
+    of the request's work and only cancels its in-flight statement at expiry
+    (`provisa/core/request_deadline.py`); (3) work that outlives the request, detached with
+    `spawn_background`/`spawn_after` and never awaited by it; (4) an MCP tool's result, which the
+    MCP SDK encodes and sends on its own transport loop after the tool body returns from its
+    request thread; (5) a fan-out a request makes on purpose, each unit on its own thread
+    (`run_on_own_thread`, the NL runner's branches); (6) the audit record: a request puts its
+    record on the audit writer's queue and moves on — the INSERT is the one piece of a request's
+    work nothing in the request reads back — and a dedicated writer thread, started at application
+    startup and never by a request, writes it (`provisa/audit/writer.py`; maintainer decision
+    2026-10-01). The deadline watchdog (2) is armed by the first blocking statement that registers
+    a cancel, not when the budget is created.
+    Lands: a read that finds its source stale lands it before reading (REQ-1661), and that land is
+    part of the request. Every engine runtime used to hand its landing terminals to a one-worker
+    thread pool (`_land_executor`) to keep two writes off its one store connection, which took the
+    land — and the request waiting on it — off the request's thread. The pool is gone from every
+    runtime (DuckDB, Postgres, ClickHouse, Snowflake, Databricks, Fabric/Synapse). A `LandGuard`
+    (`provisa/federation/land_guard.py`) serializes the store connection with a lock and runs the
+    write on the caller's thread; the wait for the connection is bounded by the request's remaining
+    budget and fails with an error naming the store. On the process loop (lifespan startup wiring,
+    the only work that lands from there) the write still goes to the loop's thread pool, because a
+    blocking write there would stall every connection the loop accepts and relays for; that hop is
+    commented at `LandGuard.run`. One land per stale table: `ensure_resident` takes each table's
+    land lock (waiting no longer than the request's remaining budget) and judges staleness with the
+    locks held, so a request that waited for another request's land of the same table finds it
+    fresh and does not land it again; different tables land at the same time.
+    What the tests before this amendment proved, per transport — each drove a stubbed pipeline
+    function, not a real request: Flight (`test_connection_thread_execution.py`): governance on the
+    handler thread and a DIRECT stream pumped there, for SQL tickets only; nothing for GraphQL or
+    Cypher tickets, execution on the ENGINE route, or the stream send. Bolt: the session coroutine
+    on a `bolt-conn` thread; nothing past the handshake. gRPC: `_handle_query_bound` on the RPC
+    thread; nothing for execution or message encoding. HTTP GraphQL: `_handle_query` on the request
+    thread; nothing for execution, serialization or the send, and nothing for `/data/sql`, Cypher,
+    REST or SSE. MCP: `tools.run_sql` on a request thread; nothing inside it. pgwire
+    (`TestPgwireConcurrentGovernanceIsolation`): that a slow governance step does not starve a
+    second connection — latency, not thread identity. No test covered a read-triggered land, which
+    is where the violation was. `tests/integration/test_request_thread_exclusivity_e2e.py` closes
+    those gaps: a real server started as deployed (uvloop), every transport, the thread of every
+    stage recorded by a test-only tracer (`tests/thread_trace.py`), one request and six concurrent
+    ones per transport, an SSE subscription, and a read-triggered land on a DuckDB-file store.
+    It also covers Bolt over WebSocket, REST and JSON:API routes, the airport Flight service, the
+    DIRECT route to a Postgres source (pgwire text and binary, Flight, `/data/sql`, GraphQL) and
+    the Trino engine route (GraphQL over HTTP with `@route(engine: FEDERATED)`).
+    Starlette's shared worker pool is off the request path: route handlers are `async def` (a plain
+    `def` handler is run on that pool), and mail sends block the request's own thread instead of
+    `run_in_threadpool` (`provisa/control_plane/router.py`, `provisa/api/admin/invites_router.py`,
+    `provisa/api/admin/mail_router.py`), guarded by
+    `tests/unit/test_no_shared_threadpool_on_request_paths.py`. The OTLP collector
+    (`provisa/observability/otlp2sql.py`) is its own single-loop process, not a Provisa transport,
+    and keeps its insert hop with the reason written at the call.
+    Priority raised from SHOULD to MUST.
   use_case: >-
     Originating investigation: pg-engine perf benchmark saturation ramp collapse for the Flight
     SQL transport (rate=500/s: 0/15000 ok, 712 errors — most of the ~14288 "missing" requests
@@ -65813,6 +65987,10 @@
     - provisa/api/admin/orgs_router.py
     - provisa/api/sandbox_org.py
     - provisa/api/data/subscription_sse.py
+    - provisa/federation/land_guard.py
+    - provisa/core/connection_loop.py
+    - provisa/core/request_thread.py
+    - provisa/core/request_deadline.py
   tests:
     - tests/unit/test_connection_loop_two_tasks.py
     - tests/unit/test_prepared_front_end_offload.py
@@ -65830,6 +66008,12 @@
     - tests/integration/test_event_triggers_integration.py
     - tests/unit/test_request_thread_middleware.py
     - tests/unit/federation/test_pg_runtime_pool.py
+    - tests/integration/test_request_thread_exclusivity_e2e.py
+    - tests/unit/federation/test_land_on_request_thread.py
+    - tests/unit/test_no_shared_threadpool_on_request_paths.py
+    - tests/integration/test_land_on_request_thread_pg.py
+    - tests/unit/test_query_residency.py::test_two_requests_reading_one_stale_table_share_one_land
+    - tests/unit/test_query_residency.py::test_two_requests_reading_different_stale_tables_land_at_the_same_time
   scenario: |
     Given two concurrent clients on separate connections, one submitting a full-table GROUP BY
     aggregation and the other a single-row primary-key lookup on the same table, submitted ~0.5s
@@ -65851,6 +66035,23 @@
     within the phase window, not silently drop the majority as neither ok nor error
     (Not re-run 2026-09-29 -- the pgwire live check above verifies the same shared governance
     fix; the flight-transport saturation ramp itself was not re-executed.)
+
+    Given a running server with pgwire, Bolt, Arrow Flight, gRPC, HTTP and MCP listening
+    When one request is made on each transport
+    Then every stage of that request (transport dispatch, governance, routing, engine execution,
+    result encoding and the send) ran on one thread, a thread the transport handed that request
+    to, and nothing was handed to another thread except the sanctioned hand-offs
+
+    Given six requests in flight at the same time on one transport
+    Then each ran every stage on one thread, and requests that overlapped in time ran on
+    different threads
+
+    Given a source that must be read from its landed copy and whose copy is stale
+    When a request reads it
+    Then the land, including the store write, runs on that request's thread
+
+    Given two requests that read the same stale table at the same time
+    Then the table is landed once and the second request reads the fresh copy
   target: "2026-Q4"
 
 - id: REQ-1883
@@ -67396,6 +67597,28 @@
     `provisa/bolt/server.py`'s `BoltListener` binds with `socket.create_server(...,
     reuse_port=True)` and serves each accepted connection on its own thread and event loop.
     SO_REUSEPORT multi-worker port sharing is preserved exactly as described above.
+    (Amended 2026-10-01, ONE WORKER BOOTS AT A TIME:) a cold `--workers 16` start on a fresh
+    control plane failed in every worker but one: N sessions raced each other's CREATE TABLE in the
+    PostgreSQL catalog (`duplicate key value violates unique constraint
+    "pg_type_typname_nsp_index"`), N config applies deleted and re-inserted the same registry rows
+    under each other (foreign-key violations, deadlocks), and the embedded control plane's stock
+    100-connection ceiling was exceeded (`sorry, too many clients already`). Three changes:
+    (1) the whole boot sequence runs under a PostgreSQL session advisory lock on the platform
+    control plane (`provisa/core/boot_lock.py`, taken in `lifespan` before the first control-plane
+    statement, released when `_load_and_build` ends; the server releases it if the holder dies) —
+    the first worker initialises and seeds, each later one waits and finds the work done. A
+    control plane on another dialect is a single-writer file store and takes no lock. (2) the
+    registry DDL in `init_registry_schema` additionally takes a transaction-scoped advisory lock,
+    for callers outside the boot sequence. (3) `control_plane_pg.start` raises the embedded
+    server's `max_connections` to 1000 (ALTER SYSTEM + one restart when it is lower). Consequence:
+    workers come up one after another — 16 workers took 374 s on the perf-bench VM, about 16 s of
+    it per worker in the `infra: flight/minio/results` phase — and `/health` answers as soon as the
+    first one is serving. The perf benchmark therefore waits for every worker's
+    `startup phase warmup ready` line before it drives load (`orchestrate.sh`). The launcher
+    (`start-ui-install.sh`) runs N workers when `PROVISA_WORKERS=N` is set (no `--reload`), keeps a
+    caller-supplied `PROVISA_ENGINE` in native mode (it used to force duckdb, so every benchmark
+    "pg"/"trino" run was a DuckDB run), and uses the Redis named by `PROVISA_SHARED_REDIS_URL`
+    instead of in-process fakeredis, which is private to each worker.
   use_case: >-
     Direct follow-up to live saturation findings on the perf-bench VM: the maintainer asked to
     tune the number of uvicorn workers to raise the saturation ceiling, which first required
@@ -67412,7 +67635,13 @@
     - provisa/api/app_startup.py
     - provisa/api/mcp/server.py
     - provisa/api/startup_seed.py
+    - provisa/core/boot_lock.py
+    - provisa/core/schema_admin.py
+    - provisa/core/control_plane_pg.py
+    - provisa/api/app.py
   tests:
+    - tests/integration/test_registry_schema_concurrent_boot.py
+    - tests/unit/test_control_plane_pg_staging.py
     - tests/integration/test_built_in_source_reseed.py::test_reseed_of_an_unchanged_view_does_not_drop_its_dependents
     - tests/integration/test_built_in_source_reseed.py::test_reseed_skips_drop_cascade_when_view_shape_is_unchanged
     - tests/integration/test_built_in_source_reseed.py::test_concurrent_worker_reseed_does_not_error
@@ -68207,3 +68436,137 @@
 
     Given a filter { createdAt: { gte: "2026-01-02T00:00:00Z" } } on that number-stored column
     Then the emitted SQL compares against the translated value and returns exactly the matching rows
+- id: REQ-1910
+  status: in-progress
+  group: "11. Platform, Infrastructure & Delivery"
+  category: OpenTelemetry Instrumentation
+  priority: SHOULD
+  type: behavioral
+  target: "2026-Q4"
+  description: >-
+    Lean tracing by default, detailed tracing in a debug mode. Every request is still traced (this
+    is not sampling), but in normal mode a request produces ONE span: the request span, carrying
+    what the child spans carry today as attributes — transport, role, org, route (cache, direct,
+    engine), engine, source ids, cache hit or miss, row count, status, and the duration of each
+    pipeline stage (governance, compile, route, execute, encode). Normal mode creates no child
+    span for a pipeline stage, a Redis command, an ASGI receive or send, an outbound HTTP call or
+    a source or engine statement, and it records no SQL text or plan. Debug mode produces today's
+    full detail: a span per stage and per Redis, source, engine and outbound call, with SQL text,
+    plan and row counts. Debug mode is scoped and temporary: the operator turns it on for an org,
+    a role or a source for a stated time window, after which it turns itself off; and a single
+    request can ask for a debug trace with a per-request hint that the operator permits per role,
+    since a debug trace adds platform load and operator settings are the floor (REQ-030). The
+    auto-instrumentation that creates per-command and per-message spans (FastAPI ASGI receive and
+    send, Redis, httpx, database drivers) is active only in debug mode; instrumentation for a
+    driver the code no longer uses is removed. Metrics (request counters and latency histograms
+    per transport, route and engine) stay on for every request in both modes, so dashboards and
+    alerts do not depend on the trace detail level. The first deliverable is a measurement: the
+    number of spans and the tracing CPU per request on the cached GraphQL path and the pgwire
+    point-lookup path before the change, recorded in this requirement, and the same two numbers
+    after it.
+    (Amended 2026-10-01, one record per request in the trace database:) The built-in trace
+    database (the otlp2sql collector's traces table) always holds exactly one record per request:
+    the request span with its attributes. The collector filters to request (root) spans in both
+    modes, so the table's size and write load follow the request count, not the span count. The
+    child spans that debug mode produces are written to a separate debug-detail table keyed by
+    trace id, with a short retention, and are still forwarded to any external OTLP endpoint the
+    operator configured.
+    (Amended 2026-10-01, existing reporting is the contract:) The single request record must
+    carry every piece of information the existing trace-based reporting reads today. Before the
+    span reduction, every consumer of trace data is inventoried — the ops-schema views
+    (provisa/observability/ops_schema.py), the seeded reports and dashboards
+    (provisa/api/startup_seed.py), the UI Observability tab and trace-detail views, lineage, and
+    the catalog descriptions — with the span names, attributes and columns each one uses. Each of
+    those values is then present on the request record (as a column or attribute), each report is
+    repointed to it, and each report returns the same results in normal mode as it did when every
+    span was stored. A report that needs per-statement or per-stage rows that one record cannot
+    express is listed explicitly with how it is served (attributes holding the list, or the
+    debug-detail table), never silently degraded.
+  use_case: >-
+    Span creation runs on the request thread and span export shares the interpreter lock with
+    request threads, so every span is CPU taken from the request path even though export never
+    blocks; the collector and its trace store then pay again for each span. On the 2026-09-30
+    single-VM benchmark, tracing was about a quarter of the remaining per-request CPU on a cached
+    GraphQL hit. One span with timing attributes answers where the time went for normal
+    operation; the span waterfall is needed only when someone is debugging.
+  tests:
+  - tests/unit/test_trace_detail.py
+  - tests/integration/test_trace_detail_span_count_e2e.py
+  - tests/unit/test_otlp2sql.py
+  - tests/unit/test_otel_trace_pipeline.py
+  - provisa-ui/src/components/telemetry/__tests__/traceDetails.test.tsx
+  - tests/unit/test_trace_scope.py
+  - tests/unit/test_trace_scope_pipeline.py
+  - tests/unit/test_debug_trace_router.py
+  - tests/integration/test_trace_scope_e2e.py
+  - provisa-ui/src/components/admin/__tests__/DebugTracePanel.test.tsx
+  - provisa-ui/e2e/debug-trace-admin.spec.ts
+  code:
+  - provisa/otel_compat.py
+  - provisa/api/otel_setup.py
+  - provisa/observability/request_facts.py
+  - provisa/pgwire/server.py
+  - provisa/transpiler/router.py
+  - provisa/observability/otlp2sql.py
+  - provisa/observability/ops_schema.py
+  - provisa/observability/stage_trace.py
+  - provisa/scheduler/jobs.py
+  - provisa/api/startup_seed.py
+  - provisa/grpc/rpc_scope.py
+  - provisa/bolt/session.py
+  - provisa/api/mcp/server.py
+  - provisa/api/flight/server.py
+  - provisa-ui/src/components/telemetry/traceDetails.ts
+  - provisa/core/trace_scope.py
+  - provisa/core/schema_admin.py
+  - provisa/api/admin/debug_trace_router.py
+  - provisa/compiler/directives.py
+  - provisa/compiler/schema_directives.py
+  - provisa/pgwire/_pipeline.py
+  - provisa/api/data/endpoint.py
+  - provisa-ui/src/components/admin/DebugTracePanel.tsx
+  - provisa-ui/src/api/debugTrace.ts
+  related_reqs:
+    - REQ-030
+    - REQ-1882
+  since: "2026-10"
+  notes: >-
+    Measurement (2026-10-01, tests/integration/test_trace_detail_span_count_e2e.py: an isolated
+    server, DuckDB engine over a SQLite source, SQLite control plane, embedded Redis, OTLP to a
+    receiver in the test process; CPU = server process CPU over 1000 sequential requests, tracing
+    CPU = that minus the same run with OTEL_SDK_DISABLED). Before: a cached GraphQL hit exported
+    7 spans (HTTP server, 1 ASGI receive, 3 ASGI send, cache.get, the Redis GET pipeline) and
+    cost about 445 microseconds of tracing CPU per request, 26 percent of the request's 1711; a
+    pgwire point lookup exported 0 spans (the pgwire streaming terminal had no span site and
+    pgwire had no request span, so the request was not traced). After, normal detail: 1 span for
+    each; tracing CPU on the cached GraphQL hit about 4 microseconds per request (1270 against
+    1266 with the SDK disabled, inside run-to-run noise). After, debug detail: the cached GraphQL
+    hit exports the same 7 spans at the same cost; the pgwire lookup exports its request span
+    with the statement text. Tracing CPU on the pgwire lookup could not be resolved in this
+    harness: the request costs 80 to 108 milliseconds of CPU and varies by more than tracing
+    adds.
+  scenario: |
+    Given tracing is in normal mode
+    When a cached GraphQL request is served
+    Then exactly one span is exported for it
+    And the span carries the route, the cache result, the row count and each stage duration as attributes
+    And no Redis, ASGI or stage child span exists for the request
+
+    Given the operator turns debug tracing on for org acme for 15 minutes
+    When a request from org acme is served
+    Then the trace contains a span per pipeline stage and per Redis and source call, with SQL text
+    And a request from another org still produces one span
+
+    Given 15 minutes have passed
+    Then requests from org acme produce one span again
+
+    Given role analyst is not permitted the per-request debug hint
+    When an analyst request carries the hint
+    Then the request is rejected with an error naming the operator setting
+
+    Given either mode
+    Then the request counter and latency histogram record every request
+
+    Given debug tracing is on for a request that produces 12 spans
+    Then the trace database's traces table gains exactly one record for that request
+    And the 11 child spans are in the debug-detail table under the same trace id

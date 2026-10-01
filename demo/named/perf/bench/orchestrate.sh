@@ -54,6 +54,71 @@ if [ ! -x "$PYTHON_BIN" ]; then
   exit 1
 fi
 
+# One Python process executes on one core at a time, so the server under test runs a worker
+# process per core; a single `uvicorn --reload` process caps every transport at one core no matter
+# how many request threads it has (measured: a cached GraphQL hit held ~60 req/s flat from 1 to 200
+# clients). Override with PROVISA_WORKERS=N.
+export PROVISA_WORKERS="${PROVISA_WORKERS:-$(nproc)}"
+
+# Workers share one response cache: the `redis` service of this demo's compose stack. The native
+# demo's default fakeredis is private to each process.
+BENCH_REDIS_PORT="${PROVISA_BENCH_REDIS_PORT:-26379}"
+export PROVISA_SHARED_REDIS_URL="redis://localhost:$BENCH_REDIS_PORT"
+if ! (exec 3<>"/dev/tcp/127.0.0.1/$BENCH_REDIS_PORT") 2>/dev/null; then
+  echo "No Redis on localhost:$BENCH_REDIS_PORT — start it: docker compose -p perf -f $SCRIPT_DIR/../docker-compose.yml up -d redis"
+  exit 1
+fi
+
+# Trace collector: in production the collector and the trace database run on other machines, so
+# on this one VM they are replaced by a no-op OTLP receiver (noop_otlp_receiver.py): Provisa still
+# serializes and exports every batch, and nothing downstream of the wire competes for the vCPUs.
+# It listens where `--demo` points the exporters (OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4319).
+# The real collector must not be running: PROVISA_OPS_DB_URL (the trace database otlp2sql writes)
+# is unset for the server, and a foreign listener on the port stops the run.
+OTLP_PORT=4319
+unset PROVISA_OPS_DB_URL
+export PROVISA_BENCH_TRACE_COLLECTOR="noop"
+NOOP_COLLECTOR_PID=""
+start_noop_collector() {
+  if (exec 3<>"/dev/tcp/127.0.0.1/$OTLP_PORT") 2>/dev/null; then
+    echo "Port $OTLP_PORT already has a listener (a real trace collector?) — stop it; the benchmark runs against the no-op receiver only"
+    exit 1
+  fi
+  "$PYTHON_BIN" "$SCRIPT_DIR/noop_otlp_receiver.py" "$OTLP_PORT" > "$LOG_DIR/noop-otlp-receiver.log" 2>&1 &
+  NOOP_COLLECTOR_PID=$!
+  local deadline=$(( $(date +%s) + 10 ))
+  until (exec 3<>"/dev/tcp/127.0.0.1/$OTLP_PORT") 2>/dev/null; do
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      echo "no-op OTLP receiver did not start — see $LOG_DIR/noop-otlp-receiver.log"
+      exit 1
+    fi
+    sleep 0.2
+  done
+  echo "trace collector: noop (pid $NOOP_COLLECTOR_PID, port $OTLP_PORT)"
+}
+stop_noop_collector() {
+  if [ -n "$NOOP_COLLECTOR_PID" ]; then
+    kill "$NOOP_COLLECTOR_PID" 2>/dev/null || true
+    wait "$NOOP_COLLECTOR_PID" 2>/dev/null || true
+    NOOP_COLLECTOR_PID=""
+  fi
+}
+
+# Every in-flight request holds a socket and its thread's event loop; the shell default of 1024
+# descriptors is reached at a few hundred concurrent requests ("Too many open files" -> HTTP 500).
+ulimit -n "$(ulimit -Hn)"
+
+# The data source each engine federates through. start-ui-install.sh passes PROVISA_ENGINE and
+# the caller's environment to the server.
+engine_env() {
+  case "$1" in
+    pg)
+      export PROVISA_ENGINE_URL="postgresql://provisa:provisa@localhost:${PROVISA_BENCH_POSTGRESQL_PORT:-25632}/provisa_bench"
+      ;;
+    *) unset PROVISA_ENGINE_URL ;;
+  esac
+}
+
 if [ "$#" -gt 0 ]; then
   ENGINES=("$@")
 else
@@ -75,10 +140,34 @@ wait_for_ready() {
   local deadline=$(( $(date +%s) + 420 ))
   while [ "$(date +%s)" -lt "$deadline" ]; do
     if curl -sf "$HTTP_BASE_URL/health" > /dev/null 2>&1; then
-      return 0
+      wait_for_all_workers
+      return $?
     fi
     sleep 2
   done
+  return 1
+}
+
+# /health answers as soon as ONE worker is up. The workers boot one after another (the boot
+# sequence writes the control plane and holds a lock, REQ-1900), so a load test started at the
+# first 200 runs against a single worker and overloads it before the rest arrive. Each worker logs
+# "startup phase warmup ready" when it starts serving: wait until every worker has.
+BACKEND_LOG="$REPO_ROOT/.logs/backend.log"
+backend_log_mark() {
+  if [ -f "$BACKEND_LOG" ]; then wc -l < "$BACKEND_LOG"; else echo 0; fi
+}
+wait_for_all_workers() {
+  local deadline=$(( $(date +%s) + 60 * PROVISA_WORKERS ))
+  local up=0
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    up="$(tail -n "+$(( BACKEND_LOG_MARK + 1 ))" "$BACKEND_LOG" | grep -cE 'startup phase warmup +ready' || true)"
+    if [ "$up" -ge "$PROVISA_WORKERS" ]; then
+      echo "all $PROVISA_WORKERS workers serving"
+      return 0
+    fi
+    sleep 5
+  done
+  echo "only $up of $PROVISA_WORKERS workers came up — see $BACKEND_LOG"
   return 1
 }
 
@@ -168,7 +257,7 @@ stop_steal_logging() {
 # trap guarantees Provisa still gets stopped (not left orphaned in the background) no matter how
 # a round ends. Harmless to fire again at normal script exit (stop_provisa is a no-op once the
 # pid is already dead).
-trap 'stop_provisa "${provisa_pid:-}"' EXIT
+trap 'stop_provisa "${provisa_pid:-}"; stop_noop_collector' EXIT
 
 for engine in "${ENGINES[@]}"; do
   echo ""
@@ -184,6 +273,9 @@ for engine in "${ENGINES[@]}"; do
   # exec (not just a plain invocation) so the subshell's process image becomes start-ui-install.sh
   # itself — $! then captures the actual script's pid, so stop_provisa's SIGINT reaches its real
   # `trap cleanup EXIT INT TERM` directly rather than an intermediate subshell wrapper.
+  engine_env "$engine"
+  start_noop_collector
+  BACKEND_LOG_MARK="$(backend_log_mark)"
   ( cd "$REPO_ROOT" && PROVISA_ENGINE="$engine" exec ./start-ui-install.sh --demo perf ) > "$start_log" 2>&1 &
   provisa_pid=$!
 
@@ -211,6 +303,7 @@ for engine in "${ENGINES[@]}"; do
 
   echo "Stopping Provisa (engine=$engine)..."
   stop_provisa "$provisa_pid"
+  stop_noop_collector
   echo "=== engine=$engine done ==="
 done
 
@@ -235,6 +328,9 @@ if [ "${OPTIMISTIC:-1}" = "1" ]; then
   echo "=== optimistic (pg engine, non-PG containers paused) ==="
   start_log="$LOG_DIR/start-optimistic.log"
   kill_stale_instance
+  engine_env pg
+  start_noop_collector
+  BACKEND_LOG_MARK="$(backend_log_mark)"
   ( cd "$REPO_ROOT" && PROVISA_ENGINE=pg exec ./start-ui-install.sh --demo perf ) > "$start_log" 2>&1 &
   provisa_pid=$!
   if ! wait_for_ready; then
@@ -242,7 +338,7 @@ if [ "${OPTIMISTIC:-1}" = "1" ]; then
     stop_provisa "$provisa_pid"
     exit 1
   fi
-  trap 'unpause_others; stop_provisa "${provisa_pid:-}"' EXIT
+  trap 'unpause_others; stop_provisa "${provisa_pid:-}"; stop_noop_collector' EXIT
   for c in "${OPTIMISTIC_PAUSE[@]}"; do
     docker pause "$c" > /dev/null
     echo "paused $c"
@@ -252,10 +348,18 @@ if [ "${OPTIMISTIC:-1}" = "1" ]; then
   ( cd "$SCRIPT_DIR" && PROVISA_HTTP_BASE_URL="$HTTP_BASE_URL" \
       npx --yes artillery@2.0.21 run --output "results/optimistic/artillery-optimistic-tx.json" \
       artillery-optimistic-tx.yml )
+  # The same most-optimistic request on EVERY transport (queries.OPTIMISTIC), closed-loop from
+  # several client processes: results/optimistic/<transport>.json, one summary line per transport
+  # here, and the server CPU per request at concurrency 1 — the per-transport overhead ranking.
+  echo "Running per-transport optimistic ramp..."
+  ( cd "$SCRIPT_DIR" && "$PYTHON_BIN" run_benchmark.py --engine pg --optimistic \
+      --http-base-url "$HTTP_BASE_URL" --server-pid "$provisa_pid" --output-dir results )
   stop_steal_logging
   unpause_others
   echo "unpaused ${OPTIMISTIC_PAUSE[*]}"
   stop_provisa "$provisa_pid"
+  stop_noop_collector
+  echo "trace collector: noop" > "$SCRIPT_DIR/results/optimistic/trace-collector.txt"
   echo "=== optimistic done ==="
 fi
 

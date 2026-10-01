@@ -1,0 +1,32 @@
+{
+  "debugTracePanel": {
+    "tabTitle": "デバッグトレーシング",
+    "intro": "既定では、トレーシングはリクエストごとに 1 つのスパンを記録します。デバッグトレーシングでは、パイプラインの各ステージとソース呼び出しごとにスパンが追加され、SQL テキストも記録されます。負荷が増えるため、1 つの組織、ロール、またはソースに対して時間を決めて有効にしてください。時間が経過すると自動的に無効になります。",
+    "startTitle": "デバッグウィンドウを開始",
+    "scopeLabel": "スコープ",
+    "scopeOrg": "組織",
+    "scopeRole": "ロール",
+    "scopeSource": "ソース",
+    "orgLabel": "組織",
+    "roleLabel": "ロール ID",
+    "sourceLabel": "ソース ID",
+    "minutesLabel": "期間 (分)",
+    "minutesHelp": "1～{{max}} 分。",
+    "start": "開始",
+    "activeTitle": "有効なウィンドウ",
+    "noWindows": "開いているデバッグウィンドウはありません。",
+    "colScope": "スコープ",
+    "colOrg": "組織",
+    "colTarget": "ロールまたはソース",
+    "colRemaining": "残り時間",
+    "colStartedBy": "開始者",
+    "wholeOrg": "組織全体",
+    "stop": "停止",
+    "hintTitle": "リクエスト単位のデバッグヒント",
+    "hintIntro": "リクエストは、@debugTrace ディレクティブ、\"@provisa trace=debug\" コメント、または X-Provisa-Trace: debug ヘッダーで自身のデバッグトレースを要求できます。ここに記載されていないロールからのヒント付きリクエストは拒否されます。",
+    "permit": "許可",
+    "revoke": "取り消し",
+    "noHintRoles": "ヒントが許可されているロールはありません。",
+    "loadFailed": "デバッグトレーシングの設定を読み込めませんでした"
+  }
+}

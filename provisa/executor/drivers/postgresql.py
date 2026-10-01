@@ -36,9 +36,10 @@ from __future__ import annotations
 
 import re
 import threading
+import weakref
 from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import psycopg
 from psycopg.abc import QueryNoTemplate
@@ -49,6 +50,9 @@ from psycopg_pool import ConnectionPool
 from provisa.core import request_deadline
 from provisa.executor.drivers.base import DirectDriver, DirectResultStream
 from provisa.executor.result import QueryResult
+
+if TYPE_CHECKING:
+    from provisa.pgwire.pg_passthrough import BorrowedPgConnection
 
 _PLACEHOLDER = re.compile(r"\$(\d+)")
 
@@ -177,12 +181,15 @@ class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
     def __init__(self, use_pgbouncer: bool = False) -> None:
         self._pool: ConnectionPool[psycopg.Connection[Any]] | None = None
         self._use_pgbouncer = use_pgbouncer
-        # Stashed for provisa.pgwire.pg_passthrough: a raw-byte passthrough connection reuses
-        # these exact connect() kwargs to open a dedicated, single-purpose connection — never
-        # shared with the pool.
         self._connect_kwargs: dict[str, Any] = {}
         self._typnames: dict[int, str] = {}
         self._typnames_lock = threading.Lock()
+        # What the raw passthrough has prepared on each pooled connection (REQ-1863), kept for as
+        # long as the connection object lives.
+        self._raw_statements: weakref.WeakKeyDictionary[Any, dict[str, Any]] = (
+            weakref.WeakKeyDictionary()
+        )
+        self._raw_statements_lock = threading.Lock()
 
     def _conn_kwargs(self) -> dict[str, Any]:
         """psycopg connect() kwargs for a pooled connection."""
@@ -240,6 +247,29 @@ class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
         """A pooled connection, waiting at most the request's remaining budget for one."""
         with self._require_pool().connection(timeout=_wait_s(self._ACQUIRE_TIMEOUT)) as conn:
             yield conn
+
+    def borrow_raw(self) -> BorrowedPgConnection:
+        """One pooled connection for a raw-DataRow passthrough (REQ-1863): the passthrough drives
+        the extended-query exchange on the connection's own socket and hands it back idle."""
+        from provisa.pgwire.pg_passthrough import BorrowedPgConnection
+
+        pool = self._require_pool()
+        conn = pool.getconn(timeout=_wait_s(self._ACQUIRE_TIMEOUT))
+
+        def _release(discard: bool) -> None:
+            if discard:
+                conn.close()  # putconn drops a closed connection and the pool opens a new one
+            pool.putconn(conn)
+
+        with self._raw_statements_lock:
+            statements = self._raw_statements.setdefault(conn, {})
+        return BorrowedPgConnection(
+            fileno=conn.pgconn.socket,
+            ssl_in_use=bool(conn.pgconn.ssl_in_use),
+            cancel=conn.cancel,
+            release=_release,
+            statements=statements,
+        )
 
     def _type_names(self, conn: psycopg.Connection[Any], oids: list[int]) -> list[str]:
         """REQ-883: the source's real PG result-column type names (pg_type.typname) so downstream

@@ -96,6 +96,7 @@ def mock_state():
     state.auth_config = {"provider": "simple", "default_role": "alice", "role_mapping": []}
     state.auth_middleware_active = True
     state.multitenancy = False
+    state.admin_db = None  # no control plane: no debug-trace settings to read (REQ-1910)
     return state
 
 
@@ -107,10 +108,16 @@ async def test_select_1(pgwire_server, mock_state):
     async def _stub_pipeline(sql, role_id, params=None):
         return EngineResult(rows=[(1,)], column_names=["?column?"])
 
+    async def _stub_describe(sql, role_id):
+        from provisa.pgwire._pipeline import _Described
+
+        return _Described([("?column?", "INT")], None)
+
     with (
         patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
         patch("provisa.api.app.state", mock_state),
         patch("provisa.pgwire._pipeline.govern_pgwire_plan", _stub_pipeline),
+        patch("provisa.pgwire._pipeline.describe_pgwire_statement", _stub_describe),
     ):
         conn = await asyncpg.connect(
             host="127.0.0.1",
@@ -159,9 +166,15 @@ async def test_none_provider_trust_mode(pgwire_server):
 
         return EngineResult(rows=[(role_id,)], column_names=["role"])
 
+    async def _stub_describe(sql, role_id):
+        from provisa.pgwire._pipeline import _Described
+
+        return _Described([("role", "VARCHAR")], None)
+
     with (
         patch("provisa.api.app.state", trust_state),
         patch("provisa.pgwire._pipeline.govern_pgwire_plan", _stub_pipeline),
+        patch("provisa.pgwire._pipeline.describe_pgwire_statement", _stub_describe),
     ):
         conn = await asyncpg.connect(
             host="127.0.0.1",
@@ -256,3 +269,33 @@ async def test_multi_statement(pgwire_server, mock_state):
         status = await conn.execute("BEGIN; COMMIT")
         await conn.close()
     assert status == "COMMIT"
+
+
+@pytest.mark.asyncio
+async def test_a_simple_query_of_transaction_control_then_a_catalog_select(
+    pgwire_server, mock_state
+):
+    """DuckDB's postgres extension opens its catalog scan with ONE simple-Query message holding a
+    transaction-control statement and a catalog SELECT. Each statement is answered in turn — the
+    BEGIN with no rows, the SELECT with the catalog's — and the message completes."""
+    port = pgwire_server
+    provider = _stub_auth_provider("alice", "secret")
+    with (
+        patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
+        patch("provisa.api.app.state", mock_state),
+    ):
+        conn = await asyncpg.connect(
+            host="127.0.0.1", port=port, user="alice", password="secret", database="provisa"
+        )
+        try:
+            status = await conn.execute(
+                "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;\n\n"
+                "SELECT oid, nspname\nFROM pg_namespace\n\nORDER BY oid;"
+            )
+            # The connection is usable afterwards: the message ended in ReadyForQuery.
+            names = [r["nspname"] for r in await conn.fetch("SELECT nspname FROM pg_namespace")]
+        finally:
+            await conn.close()
+    # The last statement's own completion tag: the catalog SELECT returned its rows.
+    assert status.startswith("SELECT ") and int(status.split()[1]) >= 1
+    assert "pg_catalog" in names

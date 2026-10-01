@@ -24,13 +24,13 @@ from __future__ import annotations
 import asyncio
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import psycopg2
 import psycopg2.pool
 
 from provisa.core import request_deadline
+from provisa.federation.land_guard import LandGuard
 from provisa.executor.result import QueryResult, ResultStream, StreamingQueryResult
 from provisa.federation.engine import build_pg_engine
 from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
@@ -244,18 +244,17 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         # psycopg2 connection per call — scoped to THIS runtime instance (never a process-global
         # pool; see _AdbcConnectionPool's docstring for why).
         self._read_pool = _WaitingThreadedPool(_POOL_MINCONN, _POOL_MAXCONN, engine_dsn)
+        self._raw_statements: dict[int, dict[str, Any]] = {}
+        self._raw_statements_lock = threading.Lock()
         # run_arrow/run_arrow_stream's ADBC pool — created lazily on first use since
         # adbc_driver_postgresql is an optional dependency, matching the existing lazy import in
         # run_arrow/run_arrow_stream below.
         self._adbc_pool: _AdbcConnectionPool | None = None
-        # land_table/apply_cdc_events's dedicated single-worker executor — NOT the loop's default
-        # pool. Same reasoning as DuckDBFederationRuntime._land_executor: self._con is ONE shared
-        # connection, and dispatching writes against it via the default (multi-worker) executor
-        # lets concurrent lands for different tables pile onto the same connection's cursors at
-        # once instead of queuing — confirmed live as a real regression on the DuckDB engine (13
-        # threads simultaneously blocked in one executemany call, 20+ min of accumulated CPU for
-        # what should have been a handful of small serialized lands).
-        self._land_executor = ThreadPoolExecutor(max_workers=1)
+        # One store connection, so one write on it at a time (two lands interleaving on it was a
+        # confirmed regression). A lock serializes it, and each write runs on the thread that asked
+        # for it — a read-triggered land stays on its request's thread (REQ-1882), where a
+        # one-worker pool took it off.
+        self._land_guard = LandGuard("Postgres store connection")
 
     # -- source exposure -------------------------------------------------------
 
@@ -438,10 +437,8 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         ``NativeEngineBackend.land_source_table`` (``await runtime.land_table(...)``) — every call
         crashed with ``TypeError: object str can't be used in 'await' expression`` the moment a
         Postgres-store land fired (TTL background refresh or a query's own read-triggered stale
-        materialize, REQ-1661). Now ``async``, dispatched to the executor on a PRIVATE cursor —
-        same reasoning as ``DuckDBFederationRuntime.land_table``/``StreamingQueryResult``'s own
-        private-cursor comments: run inline, a large land blocks the event loop for every other
-        query on this connection's engine, not just callers of this table."""
+        materialize, REQ-1661). Now ``async``, on a PRIVATE cursor, on the caller's own thread with
+        the connection held (``LandGuard``, REQ-1882)."""
         from provisa.core.change_signal import APPEND, CDC, REPLACE, select_landing_shape
 
         del match_floor
@@ -473,8 +470,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             finally:
                 cur.close()
 
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(self._land_executor, _run)
+        return await self._land_guard.run(_run)
 
     def _insert_rows(
         self, cur: Any, schema: str, table: str, names: list[str], rows: list[dict]
@@ -525,9 +521,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         already landed in this engine's own store (REQ-1733) — the raw-psycopg2 mirror of
         ``SqlAlchemyFederationRuntime.apply_cdc_events``.
 
-        Dispatched to the executor, same reasoning as ``land_table`` above: this was ``async def``
-        but ran its psycopg2 work inline, so a large event batch still blocked the event loop for
-        every other query on this engine for its whole duration."""
+        Runs on the caller's own thread with the connection held, as ``land_table`` does."""
         if not pk_columns:
             raise ValueError(f"CDC land into {schema}.{table} requires primary key columns")
         names = [name for name, _ in columns]
@@ -552,8 +546,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             finally:
                 cur.close()
 
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(self._land_executor, _run)
+        return await self._land_guard.run(_run)
 
     # -- materialization store -------------------------------------------------
 
@@ -574,6 +567,34 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         return self._con
 
     # -- execution -------------------------------------------------------------
+
+    def borrow_raw(self) -> Any:
+        """One connection from the read pool for pgwire's raw-DataRow passthrough (REQ-1863): the
+        passthrough drives the extended-query exchange on the connection's own socket and hands it
+        back idle (or discards it when its exchange did not complete)."""
+        from provisa.pgwire.pg_passthrough import BorrowedPgConnection
+
+        con = self._read_pool.getconn()
+        # What the passthrough prepared on this backend session, kept with it. A psycopg2
+        # connection cannot be weakly referenced, so the entry is keyed by the session's backend
+        # pid and dropped when the connection is discarded.
+        pid = con.info.backend_pid
+        with self._raw_statements_lock:
+            statements = self._raw_statements.setdefault(pid, {})
+
+        def _release(discard: bool) -> None:
+            if discard:
+                with self._raw_statements_lock:
+                    self._raw_statements.pop(pid, None)
+            self._read_pool.putconn(con, close=discard)
+
+        return BorrowedPgConnection(
+            fileno=con.fileno(),
+            ssl_in_use=bool(con.info.ssl_in_use),
+            cancel=con.cancel,
+            release=_release,
+            statements=statements,
+        )
 
     def run_sync(self, sql: str, params: list | None = None) -> ResultStream:
         """Execute governed physical SQL (a SELECT — transpiled by the backend seam) and STREAM it.

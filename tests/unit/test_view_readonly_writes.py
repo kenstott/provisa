@@ -20,6 +20,7 @@ from __future__ import annotations
 import sqlglot
 import pytest
 
+from provisa.compiler.compiled_query_cache import CompiledQueryCache
 from provisa.compiler.directives import NO_CACHE_HINT
 from provisa.pgwire import _pipeline
 from provisa.pgwire._pipeline import _reject_view_writes
@@ -80,6 +81,13 @@ async def test_compiled_pipeline_entrypoint_rejects_view_write():
         contexts = {"admin": object()}
         rls_contexts: dict = {}
         view_sql_map = {"daily_totals": "SELECT 1"}
+        # What the governed-plan lookup reads before the statement is parsed (REQ-1877).
+        roles = {"admin": {"id": "admin"}}
+        masking_rules: dict = {}
+        tables: list = []
+        schema_boot_id = "test-boot"
+        schema_version = 1
+        compiled_query_cache = CompiledQueryCache()
 
     with pytest.raises(PermissionError, match="query-only"):
         await _pipeline._govern_and_route_compiled(

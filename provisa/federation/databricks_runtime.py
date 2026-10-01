@@ -25,6 +25,7 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 from provisa.core import request_deadline
+from provisa.federation.land_guard import LandGuard
 from provisa.executor.result import QueryResult, ResultStream
 from provisa.federation.runtime_support import run_async_materialized, stream_rows_from_arrow
 
@@ -60,16 +61,11 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
             access_token=self._token,
             **databricks_tls_kwargs(),
         )
-        # land_table's dedicated single-worker executor — NOT the loop's default pool. self._conn
-        # is ONE shared connection, not a pool; concurrent lands for different tables dispatched
-        # via the default multi-worker executor would pile onto it at once instead of queuing —
-        # confirmed live as a real regression on the DuckDB engine (13 threads simultaneously
-        # blocked in one executemany call). Same reasoning as DuckDBFederationRuntime/
-        # PgFederationRuntime/ClickHouseFederationRuntime/SnowflakeFederationRuntime's own
-        # ``_land_executor``.
-        from concurrent.futures import ThreadPoolExecutor
-
-        self._land_executor = ThreadPoolExecutor(max_workers=1)
+        # One store connection, so one write on it at a time (two lands interleaving on it was a
+        # confirmed regression). A lock serializes it, and each write runs on the thread that asked
+        # for it — a read-triggered land stays on its request's thread (REQ-1882), where a
+        # one-worker pool took it off.
+        self._land_guard = LandGuard("Databricks store connection")
 
     @property
     def dialect(self) -> str:
@@ -196,7 +192,6 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         the landed Delta table IS the physical relation the governed query reads — no separate mat table
         or view. Columnar bulk write via ``land_databricks_native`` — a large batch takes the bulk COPY
         INTO from a staged Parquet object when a stage is configured, else the multi-row INSERT."""
-        import asyncio
 
         from provisa.federation.databricks_store import land_databricks_native
 
@@ -204,8 +199,7 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         stage = self._stage_from_env()
         cur = self._conn.cursor()
         try:
-            await asyncio.get_event_loop().run_in_executor(
-                self._land_executor,
+            await self._land_guard.run(
                 lambda: land_databricks_native(
                     cur,
                     catalog=catalog,
@@ -256,7 +250,6 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         same ``_to_catalog_name(source_id)`` call. ``match_floor``/CDC are not shapes
         ``land_databricks_native`` implements (REPLACE/APPEND only) — raising loud on CDC rather
         than silently mishandling it."""
-        import asyncio
 
         from provisa.core.change_signal import CDC, select_landing_shape
         from provisa.federation.databricks_store import land_databricks_native
@@ -271,8 +264,7 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         stage = self._stage_from_env()
         cur = self._conn.cursor()
         try:
-            await asyncio.get_event_loop().run_in_executor(
-                self._land_executor,
+            await self._land_guard.run(
                 lambda: land_databricks_native(
                     cur,
                     catalog=catalog,
@@ -295,15 +287,13 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
     ) -> None:
         """Eager reconcile (boot/registration): converge the landing table at the physical name
         WITHOUT landing data (DDL only), so the catalog is complete at startup and survives restart."""
-        import asyncio
 
         from provisa.federation.databricks_store import reconcile_databricks_native
 
         catalog, schema, table = self._phys_parts(source)
         cur = self._conn.cursor()
         try:
-            await asyncio.get_event_loop().run_in_executor(
-                self._land_executor,
+            await self._land_guard.run(
                 lambda: reconcile_databricks_native(
                     cur,
                     catalog=catalog,
@@ -320,7 +310,6 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         """Apply the landed model's keys, descriptions and tags (REQ-1657): informational
         PRIMARY/FOREIGN KEY constraints, COMMENTs and ``provisa_governance:*`` tags on each landed
         Delta table. No view layer: the landed table is the compiler's physical name."""
-        import asyncio
 
         from provisa.core.catalog import _to_catalog_name
         from provisa.federation.databricks_store import reconcile_metadata_native
@@ -344,7 +333,7 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
             finally:
                 cur.close()
 
-        return await asyncio.get_event_loop().run_in_executor(self._land_executor, _run)
+        return await self._land_guard.run(_run)
 
     @property
     def connection(self):

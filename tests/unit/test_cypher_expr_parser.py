@@ -251,3 +251,35 @@ class TestErrors:
     def test_map_projection_on_nonvariable_raises(self):
         with pytest.raises(CypherExprParseError):
             P("(a.b){.x}")
+
+
+def test_a_repeated_expression_is_parsed_by_the_grammar_once():
+    """The pyparsing grammar costs about a millisecond per expression and every Cypher request
+    re-parses the same property references; a parsed fragment is reused, and each caller gets its
+    own tree (the AST nodes are mutable)."""
+    from unittest.mock import patch
+
+    from provisa.cypher import expr_parser
+
+    expr_parser._parse_cached.cache_clear()
+    real = expr_parser._GRAMMAR.parse_string
+    calls: list[str] = []
+
+    def _counting(text, **kwargs):
+        calls.append(text)
+        return real(text, **kwargs)
+
+    with patch.object(expr_parser._GRAMMAR, "parse_string", _counting):
+        first = expr_parser.parse_expression("o.orderId = $id")
+        second = expr_parser.parse_expression("o.orderId = $id")
+        expr_parser.parse_expression("o.region")
+    assert calls == ["o.orderId = $id", "o.region"]
+    assert first == second and first is not second
+
+
+def test_a_malformed_expression_fails_every_time_it_is_parsed():
+    from provisa.cypher.expr_parser import CypherExprParseError, parse_expression
+
+    for _ in range(2):
+        with pytest.raises(CypherExprParseError):
+            parse_expression("o.orderId = = 3")

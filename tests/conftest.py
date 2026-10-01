@@ -730,6 +730,36 @@ def pytest_collection_modifyitems(config, items):  # pyright: ignore
             item.fixturenames.insert(0, "_heavy_db_service")
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _audit_writer_lives_with_the_session():
+    """The audit writer's lifetime is its application's (the lifespan starts and stops it). An app
+    built in-process by a fixture runs no lifespan, so the session stands in for it: the writer
+    is running before any test and is flushed and stopped at session end — which is before the
+    session's Docker stack is torn down (pytest_sessionfinish). A record still unwritten then is
+    a failure, not a thread left retrying a database that is about to go away."""
+    from provisa.audit.writer import shutdown_audit_writer, start_audit_writer
+
+    start_audit_writer()
+    yield
+    unwritten = shutdown_audit_writer(2.0)
+    assert unwritten == 0, f"{unwritten} audit record(s) were never written by session end"
+
+
+@pytest.fixture(autouse=True)
+def _audit_writer_settled_between_tests():
+    """Every test starts with a running writer and leaves nothing queued behind it. A record a
+    test pointed at a stand-in database it never made insertable cannot land; the writer holding
+    it is stopped (which reports it at error) and replaced, so it does not retry through the
+    tests that follow."""
+    from provisa.audit.writer import flush_audit, shutdown_audit_writer, start_audit_writer
+
+    start_audit_writer()
+    yield
+    if not flush_audit(1.0):
+        shutdown_audit_writer(0.0)
+        start_audit_writer()
+
+
 @pytest.fixture(autouse=True)
 def _repos_stay_in_the_test_instance(tmp_path_factory, monkeypatch):
     """No test writes a git repository into the maintainer's data directory.

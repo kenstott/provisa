@@ -77,11 +77,13 @@ Key components (see `compiled_query_cache_key`):
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import os
 import threading
 import time
 from dataclasses import dataclass
+from typing import Any
 
 _DEFAULT_TTL_SECONDS = int(os.environ.get("PROVISA_COMPILED_QUERY_CACHE_TTL_SECONDS", "60"))
 
@@ -91,6 +93,10 @@ _DEFAULT_TTL_SECONDS = int(os.environ.get("PROVISA_COMPILED_QUERY_CACHE_TTL_SECO
 _MAX_ENTRIES = 4096
 
 
+# Pure text -> digest. Building a key must not cost a parse per lookup: a repeated statement's
+# digest is answered from this memo, and only a text not seen before is parsed (bounded; an evicted
+# text is simply digested again).
+@functools.lru_cache(maxsize=8192)
 def sql_shape_digest(sql_text: str) -> str:
     """SHA-256 of `sql_text` with every literal blanked — the cache-key SQL component.
 
@@ -186,7 +192,9 @@ def routing_cache_key(
 
 @dataclass
 class _Entry:
-    outcome: CompiledOutcome | RoutingOutcome
+    # A CompiledOutcome, a RoutingOutcome, or a GraphQLPlan (provisa/api/data/graphql_plan.py) —
+    # each kind lives in its own CompiledQueryCache instance, so a reader knows what it stored.
+    outcome: Any
     expires_at: float
 
 
@@ -211,7 +219,7 @@ class CompiledQueryCache:
         self._lock = threading.Lock()
         self._entries: dict[str, _Entry] = {}
 
-    def get(self, key: str) -> CompiledOutcome | RoutingOutcome | None:
+    def get(self, key: str) -> Any:
         now = time.monotonic()
         with self._lock:
             entry = self._entries.get(key)
@@ -222,7 +230,7 @@ class CompiledQueryCache:
                 return None
             return entry.outcome
 
-    def put(self, key: str, outcome: CompiledOutcome | RoutingOutcome) -> None:
+    def put(self, key: str, outcome: Any) -> None:
         now = time.monotonic()
         with self._lock:
             if len(self._entries) >= _MAX_ENTRIES and key not in self._entries:

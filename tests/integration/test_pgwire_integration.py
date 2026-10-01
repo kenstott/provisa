@@ -49,6 +49,7 @@ import pytest
 import pytest_asyncio
 
 from provisa.executor.result import QueryResult as EngineResult
+from tests.pgwire_describe_parity import describes_as
 from provisa.pgwire.server import ProvisaConnection, ProvisaServer
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
@@ -173,6 +174,7 @@ class TestPgwireAuth:
             patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
             patch("provisa.pgwire._pipeline.govern_pgwire_plan", _noop),
+            patch("provisa.pgwire._pipeline.describe_pgwire_statement", describes_as(("v", "INT"))),
         ):
             conn = await asyncpg.connect(
                 host="127.0.0.1",
@@ -215,6 +217,10 @@ class TestPgwireAuth:
         with (
             patch("provisa.api.app.state", state),
             patch("provisa.pgwire._pipeline.govern_pgwire_plan", _echo_role),
+            patch(
+                "provisa.pgwire._pipeline.describe_pgwire_statement",
+                describes_as(("role", "VARCHAR")),
+            ),
         ):
             conn = await asyncpg.connect(
                 host="127.0.0.1",
@@ -479,6 +485,9 @@ class TestPgwireParameterizedQueries:
             patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
             patch("provisa.pgwire._pipeline.govern_pgwire_plan", _capture),
+            patch(
+                "provisa.pgwire._pipeline.describe_pgwire_statement", describes_as(("v", "VARCHAR"))
+            ),
         ):
             conn = await asyncpg.connect(
                 host="127.0.0.1",
@@ -508,6 +517,7 @@ class TestPgwireParameterizedQueries:
             patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
             patch("provisa.pgwire._pipeline.govern_pgwire_plan", _capture),
+            patch("provisa.pgwire._pipeline.describe_pgwire_statement", describes_as(("v", "INT"))),
         ):
             conn = await asyncpg.connect(
                 host="127.0.0.1",
@@ -537,6 +547,9 @@ class TestPgwireParameterizedQueries:
             patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
             patch("provisa.pgwire._pipeline.govern_pgwire_plan", _capture),
+            patch(
+                "provisa.pgwire._pipeline.describe_pgwire_statement", describes_as(("v", "VARCHAR"))
+            ),
         ):
             conn = await asyncpg.connect(
                 host="127.0.0.1",
@@ -565,6 +578,10 @@ class TestPgwireParameterizedQueries:
             patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
             patch("provisa.pgwire._pipeline.govern_pgwire_plan", _capture),
+            patch(
+                "provisa.pgwire._pipeline.describe_pgwire_statement",
+                describes_as(("s", "VARCHAR"), ("n", "INT")),
+            ),
         ):
             conn = await asyncpg.connect(
                 host="127.0.0.1",
@@ -598,6 +615,7 @@ class TestPgwireParameterizedQueries:
             patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
             patch("provisa.pgwire._pipeline.govern_pgwire_plan", _capture),
+            patch("provisa.pgwire._pipeline.describe_pgwire_statement", describes_as(("v", "INT"))),
         ):
             conn = await asyncpg.connect(
                 host="127.0.0.1",
@@ -809,6 +827,7 @@ class TestPgwireTLS:
             patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
             patch("provisa.pgwire._pipeline.govern_pgwire_plan", _one),
+            patch("provisa.pgwire._pipeline.describe_pgwire_statement", describes_as(("v", "INT"))),
         ):
             # asyncpg with ssl=False should connect normally (server replies N to SSL)
             conn = await asyncpg.connect(
@@ -893,6 +912,9 @@ class TestPgwireTLS:
                 patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
                 patch("provisa.api.app.state", state),
                 patch("provisa.pgwire._pipeline.govern_pgwire_plan", _one),
+                patch(
+                    "provisa.pgwire._pipeline.describe_pgwire_statement", describes_as(("v", "INT"))
+                ),
             ):
                 conn = await asyncpg.connect(
                     host="127.0.0.1",
@@ -1049,9 +1071,15 @@ class TestPgwireConcurrentGovernanceIsolation:
         from provisa.pgwire import _pipeline
 
         async def _fake_govern(sql, role_id, params=None):
+            return EngineResult(rows=[(role_id,)], column_names=["role"])
+
+        async def _fake_describe(sql, role_id):
+            # asyncpg's extended protocol governs the statement at its Describe (REQ-589).
+            from provisa.pgwire._pipeline import _Described
+
             if role_id == "slow":
                 await _pipeline._off_loop(time.sleep, 0.5)
-            return EngineResult(rows=[(role_id,)], column_names=["role"])
+            return _Described([("role", "VARCHAR")], None)
 
         async def _connect_and_time(role: str) -> float:
             conn = await asyncpg.connect(
@@ -1066,6 +1094,7 @@ class TestPgwireConcurrentGovernanceIsolation:
         with (
             patch("provisa.api.app.state", state),
             patch("provisa.pgwire._pipeline.govern_pgwire_plan", _fake_govern),
+            patch("provisa.pgwire._pipeline.describe_pgwire_statement", _fake_describe),
         ):
             baseline = await _connect_and_time("cheap")
 
@@ -1106,10 +1135,18 @@ class TestPgwireConcurrentGovernanceIsolation:
             handler_idents.add(threading.get_ident())
             real_handle(self)
 
-        async def _blocking_govern(sql, role_id, params=None):
+        async def _blocking_describe(sql, role_id):
+            # The statement's one governance pass runs at its Describe (REQ-589).
+            from provisa.pgwire._pipeline import _Described
+
             del sql
             govern_idents.append(threading.get_ident())
             both_governing.wait(timeout=10)  # blocks this connection's thread AND its loop
+            return _Described([("role", "VARCHAR")], None)
+
+        async def _execute(sql, role_id, params=None):
+            del sql, params
+            govern_idents.append(threading.get_ident())
             return EngineResult(rows=[(role_id,)], column_names=["role"])
 
         def _no_cross_thread_hop(*_args, **_kwargs):
@@ -1129,7 +1166,8 @@ class TestPgwireConcurrentGovernanceIsolation:
         with (
             patch("provisa.api.app.state", state),
             patch.object(ProvisaHandler, "handle", _recording_handle),
-            patch.object(_pipeline, "govern_pgwire_plan", _blocking_govern),
+            patch.object(_pipeline, "describe_pgwire_statement", _blocking_describe),
+            patch.object(_pipeline, "govern_pgwire_plan", _execute),
             patch("asyncio.run_coroutine_threadsafe", _no_cross_thread_hop),
         ):
             results = await asyncio.wait_for(
@@ -1138,9 +1176,9 @@ class TestPgwireConcurrentGovernanceIsolation:
 
         assert sorted(results) == ["conn_a", "conn_b"]
         assert both_governing.broken is False
-        # asyncpg's extended protocol governs each statement at Describe and again at Execute, so
-        # every connection governs more than once — always on its own thread.
-        assert len(govern_idents) >= 2
+        # Each connection runs its Describe (the governance pass) and its Execute — always on its
+        # own thread.
+        assert len(govern_idents) == 4
         assert len(set(govern_idents)) == 2, "the two connections governed on one thread"
         assert set(govern_idents) <= handler_idents, (
             "governance ran on a thread that is not a connection handler thread"

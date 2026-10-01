@@ -282,19 +282,23 @@ class EngineRuntime:  # REQ-825, REQ-840
         params: list | None,
         result_formats: list[int],
         *,
-        run: Callable[[Coroutine[Any, Any, Any]], Any],
+        described_oids: list[int] | None,
     ) -> ResultStream:
         """REQ-1863: like :meth:`execute_native_stream`, but for a DIRECT-route source that is
         itself PostgreSQL — each "row" the returned stream yields is a :class:`RawDataRowBytes`
         (a complete, wire-framed DataRow message from the source, forwarded unmodified) instead of
-        a decoded tuple. Only valid when ``source_pools.dialect_for(source_id)`` is postgres;
-        callers catch :class:`PassthroughError` and fall back to :meth:`execute_native_stream`."""
+        a decoded tuple. The read runs on ONE connection borrowed from the source's own pool, on
+        the calling thread. ``described_oids`` are the type OIDs the client was told at Describe
+        (None when the statement was not described). Only valid when
+        ``source_pools.dialect_for(source_id)`` is postgres; callers catch :class:`PassthroughError`
+        (the passthrough does not apply) and take :meth:`execute_native_stream`."""
         from provisa.pgwire.pg_passthrough import open_passthrough
 
         driver = source_pools.get(source_id)
         return self._pg_passthrough_stream(
-            open_passthrough(driver._connect_kwargs, sql, list(params or []), result_formats),
-            run=run,
+            open_passthrough(
+                driver.borrow_raw, sql, list(params or []), result_formats, described_oids
+            )
         )
 
     def execute_pg_engine_passthrough(
@@ -303,76 +307,55 @@ class EngineRuntime:  # REQ-825, REQ-840
         params: list | None,
         result_formats: list[int],
         *,
-        run: Callable[[Coroutine[Any, Any, Any]], Any],
+        described_oids: list[int] | None,
     ) -> ResultStream:
         """Like :meth:`execute_pg_passthrough`, but for the ENGINE route when the bound federation
         engine ITSELF is Postgres (REQ-904, ``PROVISA_ENGINE=pg``) — pgwire and the engine both
         speak real Postgres wire protocol end to end, so the same raw-DataRow-forwarding mechanism
-        applies; only the connect parameters differ (the engine's own DSN, not a SourcePool
-        driver's kwargs). Callers catch :class:`PassthroughError` (the statement's column layout
-        does not apply) and take the ``execute_engine_sync`` decode/re-encode path; a
-        :class:`PassthroughFailure` — including a Postgres engine with no URL, a config error —
-        fails the request (REQ-1863)."""
-        from provisa.federation.engine import configured_engine_url
-        from provisa.pgwire.pg_passthrough import PassthroughFailure, open_passthrough
+        applies, on one connection borrowed from the engine runtime's own read pool. Callers catch
+        :class:`PassthroughError` (the passthrough does not apply) and take the
+        ``execute_engine_sync`` decode/re-encode path; a :class:`PassthroughFailure` fails the
+        request (REQ-1863)."""
+        from provisa.pgwire.pg_passthrough import open_passthrough
 
-        raw = configured_engine_url() or self.engine.default_materialize_store()
-        if raw is None:
-            raise PassthroughFailure("pg engine has no configured URL")
-        dsn = _strip_driver_suffix(raw)
         return self._pg_passthrough_stream(
-            open_passthrough({"dsn": dsn}, sql, list(params or []), result_formats),
-            run=run,
+            open_passthrough(
+                lambda: self._backend.borrow_raw_pg_connection(self._state),
+                sql,
+                list(params or []),
+                result_formats,
+                described_oids,
+            )
         )
 
-    def _pg_passthrough_stream(
-        self, open_coro: Any, *, run: Callable[[Coroutine[Any, Any, Any]], Any]
-    ) -> ResultStream:
-        """Drive an ``open_passthrough(...)`` coroutine's cursor into a lazily-drained
-        :class:`ResultStream` of :class:`RawDataRowBytes` batches — shared by both the DIRECT and
-        ENGINE passthrough entrypoints, which differ only in how they build the coroutine."""
+    def _pg_passthrough_stream(self, pr: Any) -> ResultStream:
+        """An opened passthrough's cursor as a lazily-drained :class:`ResultStream` of
+        :class:`RawDataRowBytes` batches — shared by the DIRECT and ENGINE passthrough entrypoints."""
         from provisa.executor.result import StreamingQueryResult
         from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
         from buenavista.core import RawDataRowBytes
-
-        pr = run(open_coro)
-
-        released = [False]
-
-        def _release() -> None:
-            if released[0]:
-                return
-            released[0] = True
-            run(pr.cursor.close())
 
         def _batches() -> Any:
             try:
                 while True:
                     try:
-                        chunk = run(pr.cursor.fetch(_STREAM_BATCH_ROWS))
+                        chunk = pr.cursor.fetch(_STREAM_BATCH_ROWS)
                     except Exception:
-                        # server.py's `except PassthroughError` only wraps the INITIAL
-                        # open_passthrough() call, not this ongoing fetch loop -- an error here
-                        # (a real Postgres error mid-stream, or the uvloop PseudoSocket
-                        # incompatibility pg_passthrough.py's open_raw_connection now refuses up
-                        # front) previously propagated silently all the way to the client as a
-                        # bare socket close ("connection was closed in the middle of operation"),
-                        # with zero server-side trace anywhere outside ~/pgwire_debug.log's
-                        # separate buenavista/provisa.pgwire handler. Log here too so a mid-stream
-                        # passthrough failure is never silent again, regardless of cause.
+                        # A mid-stream failure reaches the client as its request's error; log it
+                        # here too so it is never visible only on the client's side.
                         log.exception("[PASSTHROUGH] mid-stream fetch failed")
                         raise
                     if not chunk:
                         return
                     yield [RawDataRowBytes(msg) for msg in chunk]
             finally:
-                _release()
+                pr.cursor.close()
 
         return StreamingQueryResult(
             _batches(),
             column_names=pr.column_names,
             column_types=pr.column_types,
-            on_release=_release,
+            on_release=pr.cursor.close,
         )
 
     # -- engine-native metadata (REQ-825/840): introspection through the abstraction ----------
@@ -450,6 +433,12 @@ class EngineRuntime:  # REQ-825, REQ-840
         """Boot-time: connect the engine terminal and seed the OTel ops store (no-op for native
         engines, whose telemetry lands in the dedicated ops store)."""
         self._backend.provision(self._state, ops_views)
+
+    def connect_terminal(self) -> None:  # REQ-1900
+        """Per worker: connect this process to an engine terminal its launch has already
+        provisioned (see ``provisa.core.boot_lock``) — the connection without the catalog and
+        ops-store seeding ``provision`` does. No-op for native engines."""
+        self._backend.connect_terminal(self._state)
 
     async def reconcile_landed_tables(self) -> list[tuple[str, str]]:
         """Converge the store's landing schema for MATERIALIZED tables and attach their read views

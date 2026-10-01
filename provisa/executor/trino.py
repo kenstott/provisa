@@ -26,6 +26,7 @@ import trino
 from provisa.core import request_deadline
 from provisa.executor.result import QueryResult  # re-export: neutral result type (REQ-028)
 from provisa.otel_compat import get_tracer as _get_tracer
+from provisa.otel_compat import stage as _stage
 
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
@@ -131,7 +132,7 @@ def execute_trino(  # REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-
     extra_table_attrs: list[dict[str, str]] | None = None,
 ) -> QueryResult:
     span_name = "provisa.query.trino" if span_attrs else "trino.execute"
-    with _tracer.start_as_current_span(span_name) as span:
+    with _stage(_tracer, span_name, name="execute") as span:
         _owned_conn = None
         if conn_kwargs is not None:
             conn = trino.dbapi.connect(**conn_kwargs)

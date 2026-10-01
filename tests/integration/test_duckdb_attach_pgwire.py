@@ -107,6 +107,7 @@ def _build_state():
     state.roles = {"admin": {"id": "admin", "capabilities": ["ddl"], "domain_access": ["*"]}}
     state.schema_build_cache = {"column_types": _COL_TYPES, "tables": [], "domains": []}
     # Trust mode: password ignored, username -> role_id.
+    state.admin_db = None  # no control plane: no debug-trace settings to read (REQ-1910)
     state.auth_config = {"provider": "none"}
     state.auth_middleware_active = False
     state.masking_rules = {}

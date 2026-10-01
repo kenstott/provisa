@@ -33,6 +33,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from provisa.audit.context import current_audit_identity
@@ -53,7 +54,9 @@ class PendingAudit:
     surface: str
     role_id: str
     query_text: str
-    table_ids: list[int]
+    # The registered tables the statement touches — or a function that resolves them, called on
+    # the audit writer's thread when resolving costs a parse the request thread should not pay.
+    table_ids: "list[int] | Callable[[], tuple[int, ...]]"
     started: float
 
 
@@ -105,16 +108,32 @@ def begin_audit(
 
 
 async def write_audit(pending: PendingAudit | None, status_code: int, state: Any = None) -> None:
-    """Append ``pending``'s row with its outcome. A None record is a statement with no acting
-    principal (see :func:`begin_audit`) and writes nothing."""
+    """Record ``pending``'s row with its outcome. A None record is a statement with no acting
+    principal (see :func:`begin_audit`) and writes nothing.
+
+    Awaitable for its callers' sake; it does not wait on the database — see :func:`enqueue_audit`."""
+    enqueue_audit(pending, status_code, state)
+
+
+def enqueue_audit(pending: PendingAudit | None, status_code: int, state: Any = None) -> None:
+    """Hand ``pending``'s finished row to the audit writer (:mod:`provisa.audit.writer`) and
+    return: the INSERT, and the active-hour meter that rides the same seam (REQ-1454), happen on
+    the writer's thread. Everything that depends on the request's context — the org, its tenant
+    database, its encryption key, the UDF correlation id — is resolved HERE, on the request thread.
+
+    The meter stays on this seam, after the ``pending is None`` guard, so it inherits the audit's
+    definition of a user query exactly: no surface can execute governed SQL and bill nothing."""
     if pending is None:
         return
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
 
+    from datetime import datetime, timezone
+
+    from provisa.audit.writer import AuditRecord, audit_writer
     from provisa.core.request_context import current_org
-    from provisa.audit.query_log import log_query
     from provisa.encryption.runtime import encryption_service
+    from provisa.otel_compat import current_udf_correlation_id
 
     tenant_db = state.tenant_db
     if tenant_db is None:
@@ -127,38 +146,30 @@ async def write_audit(pending: PendingAudit | None, status_code: int, state: Any
     # is about to land in, so the recorded tenant always names the schema holding the row. The
     # meta-RLS ContextVar that used to be read here is set by nothing in production, so every
     # audit row carried a NULL tenant and every ops report showed a NULL tenant column.
-    await log_query(
-        tenant_db,
-        tenant_id=current_org.get() or state.org_id,
-        user_id=pending.user_id,
-        role_id=pending.role_id,
-        query_text=pending.query_text,
-        table_ids=pending.table_ids,
-        source=pending.surface,
-        status_code=status_code,
-        duration_ms=int((time.monotonic() - pending.started) * 1000),
-        encryption=encryption_service(),
+    org_id = current_org.get() or state.org_id
+    audit_writer().enqueue(
+        AuditRecord(
+            tenant_db=tenant_db,
+            tenant_id=org_id,
+            user_id=pending.user_id,
+            role_id=pending.role_id,
+            query_text=pending.query_text,
+            table_ids=(
+                pending.table_ids if callable(pending.table_ids) else tuple(pending.table_ids)
+            ),
+            source=pending.surface,
+            status_code=status_code,
+            duration_ms=int((time.monotonic() - pending.started) * 1000),
+            logged_at=datetime.now(timezone.utc),
+            # REQ-886: a row written under a UDF's minted session joins back to its trace.
+            trace_id=current_udf_correlation_id(),
+            encryption=encryption_service(),
+            # REQ-1454: the org's clock hour is marked active for this statement. No control
+            # plane (single-tenant / desktop) = no org registry, no subscription, nothing to meter.
+            meter_pool=state.admin_db,
+            meter_org=org_id,
+        )
     )
-    await _meter_active_hour(state)
-
-
-async def _meter_active_hour(state: Any) -> None:
-    """Mark the org's current clock hour active (REQ-1454).
-
-    Placed on the audit seam, and after its ``pending is None`` guard, so the meter inherits the
-    audit's definition of a user query exactly: every protocol reaches this point through
-    ``finalize_audit``, and no new surface can be added that executes governed SQL and bills
-    nothing. The bill counts hours, so N statements in an hour collapse to one row.
-    """
-    from provisa.core.request_context import current_org
-    from provisa.core.commerce import meter_op
-
-    pool = state.admin_db
-    if pool is None:
-        # Single-tenant / desktop: no control plane, so no org registry, no subscription and
-        # nothing to meter. The SaaS deployment always has one.
-        return
-    await meter_op(pool, current_org.get() or state.org_id)
 
 
 async def write_denial(

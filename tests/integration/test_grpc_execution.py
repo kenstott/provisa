@@ -152,6 +152,9 @@ class TestGrpcServerStarts:
         # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
         # server behind the multitenancy org gate. Name the deployment shape explicitly.
         state.multitenancy = False
+        # REQ-1910: a bare MagicMock attribute is not None, which reads as a control plane to
+        # resolve the debug-trace scope from. This stand-in has none: no window, no permitted hint.
+        state.admin_db = None
         # REQ-1263: same reason — a bare MagicMock reads as a configured auth provider, which
         # would put this server behind the credential gate. Name it unsecured; the secured path
         # has its own fixture.
@@ -198,6 +201,9 @@ class TestGrpcServerStarts:
         # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
         # server behind the multitenancy org gate. Name the deployment shape explicitly.
         state.multitenancy = False
+        # REQ-1910: a bare MagicMock attribute is not None, which reads as a control plane to
+        # resolve the debug-trace scope from. This stand-in has none: no window, no permitted hint.
+        state.admin_db = None
         # REQ-1263: same reason — a bare MagicMock reads as a configured auth provider, which
         # would put this server behind the credential gate. Name it unsecured; the secured path
         # has its own fixture.
@@ -350,6 +356,9 @@ class TestGrpcQueryExecution:
         # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
         # server behind the multitenancy org gate. Name the deployment shape explicitly.
         state.multitenancy = False
+        # REQ-1910: a bare MagicMock attribute is not None, which reads as a control plane to
+        # resolve the debug-trace scope from. This stand-in has none: no window, no permitted hint.
+        state.admin_db = None
         # REQ-1263: same reason — a bare MagicMock reads as a configured auth provider, which
         # would put this server behind the credential gate. Name it unsecured; the secured path
         # has its own fixture.
@@ -485,6 +494,9 @@ class TestGrpcQueryExecution:
         # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
         # server behind the multitenancy org gate. Name the deployment shape explicitly.
         state.multitenancy = False
+        # REQ-1910: a bare MagicMock attribute is not None, which reads as a control plane to
+        # resolve the debug-trace scope from. This stand-in has none: no window, no permitted hint.
+        state.admin_db = None
         # REQ-1263: same reason — a bare MagicMock reads as a configured auth provider, which
         # would put this server behind the credential gate. Name it unsecured; the secured path
         # has its own fixture.
@@ -561,6 +573,9 @@ class TestSecuredGrpcRequiresACredential:
         # under test (interceptor → role derivation → handler) is entirely live.
         state = MagicMock()
         state.multitenancy = False
+        # REQ-1910: a bare MagicMock attribute is not None, which reads as a control plane to
+        # resolve the debug-trace scope from. This stand-in has none: no window, no permitted hint.
+        state.admin_db = None
         state.auth_config = _SECURED_AUTH_CONFIG
         state.auth_middleware_active = True
         # REQ-1904: server_cfg.get(...) is read for real during server construction.

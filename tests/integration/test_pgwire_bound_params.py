@@ -26,16 +26,19 @@ asyncpg = pytest.importorskip("asyncpg")
 
 def _spy_source(state) -> list[tuple[str, list | None]]:
     """Record the (SQL, params) every DIRECT read hands the Postgres source — through the pool
-    (Describe shape, decode/re-encode) or the REQ-1863 raw-DataRow passthrough (the Execute)."""
+    (decode/re-encode) or the REQ-1863 raw-DataRow passthrough. A Describe hands it nothing: it is
+    answered from registered metadata (REQ-589)."""
     sent: list[tuple[str, list | None]] = []
     pool = state.source_pools
     real_stream, real_execute = pool.open_stream, pool.execute
     engine = state.federation_engine
     real_passthrough = engine.execute_pg_passthrough
 
-    def _passthrough(source_pools, source_id, sql, params, result_formats, *, run):
+    def _passthrough(source_pools, source_id, sql, params, result_formats, *, described_oids):
         sent.append((sql, params))
-        return real_passthrough(source_pools, source_id, sql, params, result_formats, run=run)
+        return real_passthrough(
+            source_pools, source_id, sql, params, result_formats, described_oids=described_oids
+        )
 
     engine.execute_pg_passthrough = _passthrough
 
@@ -75,7 +78,7 @@ def test_a_bound_value_reaches_the_source_bound_and_every_value_shares_one_sql_t
     got = [asyncio.run(_fetch(b["port"], sql, value)) for value in (1, 3)]
     assert got == [[(1, "us-east")], [(3, "eu-west")]]
 
-    executed = [(s, p) for s, p in sent if "WHERE false" not in s]  # drop the Describe shapes
+    executed = sent  # the Describes reached the source with nothing
     assert [p for _, p in executed] == [[1], [3]]
     texts = {s for s, _ in executed}
     assert len(texts) == 1  # one SQL text for both values — a server-side prepare can be reused
@@ -102,7 +105,7 @@ def test_an_rls_predicate_is_applied_identically_with_a_bound_value(pgwire_pg_ba
         sql = f"SELECT id FROM {b['schema']}.{b['table']} WHERE id >= $1 ORDER BY id"
         assert asyncio.run(_fetch(b["port"], sql, 1)) == [(2,)]
         assert asyncio.run(_fetch(b["port"], sql, 3)) == []
-        executed = [(s, p) for s, p in sent if "WHERE false" not in s]
+        executed = sent
         assert all("us-west" in s for s, _ in executed)
         assert [p for _, p in executed] == [[1], [3]]
     finally:

@@ -24,6 +24,7 @@ serve another. The per-tenant prefix (REQ-595) is applied by the store on top.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 
@@ -33,6 +34,9 @@ import json
 _UNRESOLVED_MARKER = "current_setting("
 
 
+# Pure text -> text and on every opted-in request's path: a repeated statement is parsed once
+# (REQ-1877). Bounded; an evicted statement is simply normalized again.
+@functools.lru_cache(maxsize=4096)
 def _normalize_sql(sql: str) -> str:  # REQ-864
     """Canonicalize cosmetic SQL variation so semantically-identical queries share a key.
 

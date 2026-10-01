@@ -74,11 +74,36 @@ def _socket_port(sockdir: str) -> int:
     raise RuntimeError(f"no postgres unix socket found in {sockdir!r}")
 
 
+# REQ-1900: every worker process of a `uvicorn --workers N` server keeps its own tenant and platform
+# pools, listener and telemetry connections on this server. PostgreSQL's stock ceiling of 100 is
+# reached at a worker per core ("sorry, too many clients already", and the workers die at boot);
+# 1000 covers 16+ workers at their full pool size. The slots cost shared memory only when sized,
+# on the order of tens of megabytes.
+MAX_CONNECTIONS = 1000
+
+
+def _ensure_connection_capacity(srv, datadir: str) -> None:
+    """Raise the embedded server's ``max_connections`` to :data:`MAX_CONNECTIONS` if it is lower.
+
+    ``max_connections`` is fixed at server start, so a change is written with ALTER SYSTEM and the
+    server restarted once (``pg_ctl restart`` reuses the options of the running postmaster,
+    including the socket directory pgserver chose). A server already at capacity is not touched."""
+    from pgserver.postgres_server import pg_ctl  # pyright: ignore[reportAttributeAccessIssue]
+
+    shown = srv.psql("SHOW max_connections")
+    current = next(int(tok) for tok in shown.split() if tok.isdigit())
+    if current >= MAX_CONNECTIONS:
+        return
+    srv.psql(f"ALTER SYSTEM SET max_connections = {MAX_CONNECTIONS}")
+    pg_ctl(["-w", "restart", "-m", "fast"], pgdata=Path(datadir))
+
+
 def start(datadir: str, init_sql: str | None = None) -> tuple[str, int]:
     """Ensure a persistent control-plane postgres with a ``provisa`` role and
     ``provisa`` database, apply ``init_sql`` once, and return ``(host, port)`` for
     a unix-socket asyncpg connection."""
     srv = _server(datadir)
+    _ensure_connection_capacity(srv, datadir)
     _stage_bundled_extensions()  # REQ-1158: make the PyPI-delivered FDWs loadable by the pg fed engine
     if "1" not in srv.psql("SELECT 1 FROM pg_roles WHERE rolname='provisa'"):
         srv.psql("CREATE ROLE provisa LOGIN PASSWORD 'provisa' SUPERUSER")

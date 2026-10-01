@@ -819,6 +819,20 @@ class Connection:
         leave the secret in the database and the repository permanently behind."""
         return self._execute_core(stmt)
 
+    # Async only to keep the awaitable call-site contract; runs synchronously on the calling thread.
+    async def execute_core_many(self, stmt: Any, rows: list[dict[str, Any]]) -> None:
+        """Execute a Core INSERT once for every parameter set in ``rows`` (executemany): the
+        statement is compiled once whatever the batch size, where ``insert().values([...])``
+        compiles every row's binds into the statement. Passes the same guards as
+        :meth:`execute_core`. Autocommits outside a transaction; a no-op for an empty batch."""
+        if not rows:
+            return
+        from provisa.core.env_secrets import guard_statement
+        from provisa.core.meta_rls import apply_meta_tenant_guard
+
+        self._exec(apply_meta_tenant_guard(guard_statement(stmt)), rows)
+        self._commit_if_autocommit()
+
     # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
     async def bulk_copy(self, table: Table, rows: list[dict[str, Any]]) -> int:
         """Bulk-ingest ``rows`` into ``table`` via the store's fastest columnar / bulk path (REQ-990).
@@ -1307,7 +1321,7 @@ def _pool_kwargs_for(url: str) -> dict[str, Any]:
 
 def sync_engine_from_url(url: str, *, pool_pre_ping: bool = True) -> Engine:
     """A **sync** SQLAlchemy engine for single-writer sync callers (e.g. otlp2sql, whose
-    inserts run via ``starlette.concurrency.run_in_threadpool``) — applies
+    inserts run on a worker of its own single-loop process) — applies
     :func:`_pool_kwargs_for`'s single-writer guard."""
     kwargs: dict[str, Any] = {"future": True, **_pool_kwargs_for(url)}
     if "pool_pre_ping" in kwargs:

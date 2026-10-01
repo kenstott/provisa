@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from provisa.compiler.compiled_query_cache import CompiledQueryCache
+
 import pytest
 
 pytestmark = pytest.mark.asyncio
@@ -27,10 +29,17 @@ pytestmark = pytest.mark.asyncio
 def _fake_state():
     """Minimal AppState reaching the physical-ref guard: one role context + one source catalog."""
     return SimpleNamespace(
+        admin_db=None,  # as AppState without a control plane: no debug-trace settings
         contexts={"analyst": SimpleNamespace()},
         rls_contexts={},
         roles={},
         source_catalogs={"pet-store-sqlite": "inquiries_sqlite"},
+        # What the governed-statement cache (REQ-1877) keys and anchors on.
+        schema_boot_id="boot",
+        schema_version=1,
+        masking_rules={},
+        tables=[],
+        compiled_query_cache=CompiledQueryCache(),
     )
 
 

@@ -132,6 +132,15 @@ async def log_query(  # REQ-074, REQ-689
         )
 
 
+async def log_queries(pool: "Database", rows: list[dict]) -> None:  # REQ-074, REQ-689
+    """Append a batch of audit rows in one round of the store (the audit writer's insert,
+    :mod:`provisa.audit.writer`): one prepared INSERT, a parameter set per row, one commit. Each
+    row is already complete: query text encrypted, hash computed, ``logged_at`` the time its
+    statement finished."""
+    async with pool.acquire() as conn:
+        await conn.execute_core_many(insert(query_audit_log), rows)
+
+
 async def read_query_text(  # REQ-689
     pool: "Database", audit_id: int, encryption: "EncryptionService"
 ) -> str | None:

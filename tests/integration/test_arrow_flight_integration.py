@@ -72,6 +72,9 @@ def _make_minimal_state():
     # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
     # server behind the multitenancy org gate. Name the deployment shape explicitly.
     state.multitenancy = False
+    # REQ-1910: a bare MagicMock attribute is not None, which reads as a control plane to
+    # resolve the debug-trace scope from. This stand-in has none: no window, no permitted hint.
+    state.admin_db = None
     # REQ-1263: same reason — a bare MagicMock reads as a configured auth provider, which would put
     # this server behind the credential gate. Name it unsecured; the secured path has its own fixture.
     state.auth_config = None
@@ -319,6 +322,9 @@ class TestFlightDoGetWithRealData:
         # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
         # server behind the multitenancy org gate. Name the deployment shape explicitly.
         state.multitenancy = False
+        # REQ-1910: a bare MagicMock attribute is not None, which reads as a control plane to
+        # resolve the debug-trace scope from. This stand-in has none: no window, no permitted hint.
+        state.admin_db = None
         # REQ-1263: likewise, an unnamed auth_config reads as a configured provider and would put
         # this server behind the credential gate. This fixture exercises the data path, not auth.
         state.auth_config = None

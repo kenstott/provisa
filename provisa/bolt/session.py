@@ -25,9 +25,12 @@ from provisa.auth.throttle import LockedOut
 from provisa.bolt.packstream import pack_message
 from provisa.bolt.websocket import BoltWriter
 from provisa.compiler.directives import NO_CACHE_HINT, cache_hint_for
+from provisa.otel_compat import get_tracer as _get_tracer
+from provisa.otel_compat import in_request_span as _in_request_span
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
 log = logging.getLogger(__name__)
+_tracer = _get_tracer(__name__)
 
 _BOLT_VERSION = "5.4"
 _SERVER_AGENT = f"Neo4j/{_BOLT_VERSION} (Provisa)"
@@ -423,6 +426,7 @@ class BoltSession:
         self.org_id = org_id
         self._org_resolved = True
 
+    @_in_request_span(_tracer, "bolt.run", transport="bolt")  # REQ-1910
     async def handle_run(self, fields: list[Any]) -> None:
         cypher: str = fields[0] if fields else ""
         parameters: dict = fields[1] if len(fields) > 1 and isinstance(fields[1], dict) else {}

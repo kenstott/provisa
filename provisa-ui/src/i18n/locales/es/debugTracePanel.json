@@ -1,0 +1,32 @@
+{
+  "debugTracePanel": {
+    "tabTitle": "Trazado de depuración",
+    "intro": "De forma predeterminada, el trazado registra un span por solicitud. El trazado de depuración añade un span por cada etapa del pipeline y por cada llamada a un origen, con el texto SQL. Añade carga, así que actívelo para una organización, un rol o un origen durante un tiempo determinado; se desactiva solo cuando se acaba el tiempo.",
+    "startTitle": "Iniciar una ventana de depuración",
+    "scopeLabel": "Ámbito",
+    "scopeOrg": "Organización",
+    "scopeRole": "Rol",
+    "scopeSource": "Origen",
+    "orgLabel": "Organización",
+    "roleLabel": "ID de rol",
+    "sourceLabel": "ID de origen",
+    "minutesLabel": "Duración (minutos)",
+    "minutesHelp": "De 1 a {{max}} minutos.",
+    "start": "Iniciar",
+    "activeTitle": "Ventanas activas",
+    "noWindows": "No hay ninguna ventana de depuración abierta.",
+    "colScope": "Ámbito",
+    "colOrg": "Organización",
+    "colTarget": "Rol u origen",
+    "colRemaining": "Tiempo restante",
+    "colStartedBy": "Iniciada por",
+    "wholeOrg": "Toda la organización",
+    "stop": "Detener",
+    "hintTitle": "Indicación de depuración por solicitud",
+    "hintIntro": "Una solicitud puede pedir una traza de depuración de sí misma con la directiva @debugTrace, un comentario \"@provisa trace=debug\" o el encabezado X-Provisa-Trace: debug. Las solicitudes con la indicación de roles que no figuran aquí se rechazan.",
+    "permit": "Permitir",
+    "revoke": "Revocar",
+    "noHintRoles": "Ningún rol tiene permitida la indicación.",
+    "loadFailed": "No se pudo cargar la configuración del trazado de depuración"
+  }
+}

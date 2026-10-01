@@ -25,6 +25,7 @@ import re
 from provisa.compiler.sql_gen import CompiledQuery
 from provisa.mv.models import JoinPattern, MVDefinition
 from provisa.otel_compat import get_tracer as _get_tracer
+from provisa.otel_compat import stage as _stage
 
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
@@ -174,7 +175,7 @@ def _rewrite_join_mv(
     Supports both full match (all JOINs covered) and partial match
     (MV covers a subset of JOINs, remaining JOINs preserved).
     """
-    with _tracer.start_as_current_span("mv.rewrite") as span:
+    with _stage(_tracer, "mv.rewrite") as span:
         span.set_attribute("mv.candidates", len(fresh_mvs))
 
         if not fresh_mvs:

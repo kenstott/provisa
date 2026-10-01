@@ -435,18 +435,36 @@ async def _start_servers(_log: logging.Logger) -> None:
                 probe.close()
 
         _FLIGHT_POOL_MAX = int(os.environ.get("FLIGHT_POOL_MAX", "16"))
-        flight_port = None
-        for _offset in range(_FLIGHT_POOL_MAX):
-            _candidate = flight_port_base + _offset
-            if _port_probably_free(_candidate):
-                flight_port = _candidate
-                break
-        if flight_port is None:
-            raise RuntimeError(
-                f"no free Flight port in pool range [{flight_port_base}, "
-                f"{flight_port_base + _FLIGHT_POOL_MAX})"
-            )
-        flight_server = _build_flight_server(flight_port)
+        # The workers of a launch reach this point TOGETHER (REQ-1900: the per-worker half of the
+        # boot runs in every worker at once), so "probe a port, then bind it" must be one step
+        # across them: two workers that both probed the same port free would both construct a
+        # server on it, and the loser would run with no Flight server at all. An exclusive flock
+        # on one file per pool, held from the probe until the server has bound, makes it one step;
+        # the kernel releases it if the holder dies.
+        import fcntl
+        import tempfile
+
+        _pool_lock_path = os.path.join(
+            tempfile.gettempdir(), f"provisa-flight-pool-{flight_port_base}.lock"
+        )
+        with open(_pool_lock_path, "a+") as _pool_lock:
+            fcntl.flock(_pool_lock.fileno(), fcntl.LOCK_EX)
+            try:
+                flight_port = None
+                for _offset in range(_FLIGHT_POOL_MAX):
+                    _candidate = flight_port_base + _offset
+                    if _port_probably_free(_candidate):
+                        flight_port = _candidate
+                        break
+                if flight_port is None:
+                    raise RuntimeError(
+                        f"no free Flight port in pool range [{flight_port_base}, "
+                        f"{flight_port_base + _FLIGHT_POOL_MAX})"
+                    )
+                # Construction binds the port (FlightServerBase.__init__ starts the listener).
+                flight_server = _build_flight_server(flight_port)
+            finally:
+                fcntl.flock(_pool_lock.fileno(), fcntl.LOCK_UN)
 
         import threading
 

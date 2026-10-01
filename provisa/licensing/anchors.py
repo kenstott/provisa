@@ -20,6 +20,8 @@ anchor, does not reset the clock — a surviving anchor re-seeds the rest. Fully
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -85,9 +87,12 @@ def write_anchor(path: Path, anchor: Anchor) -> None:
         "machine_id": anchor.machine_id,
         "sig": sig.hex(),
     }
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(payload), encoding="utf-8")
-    tmp.replace(path)
+    # A temporary file of this writer's own, for the reason monotonic.update_highwater gives.
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=path.parent, prefix=path.name + ".", suffix=".tmp", delete=False
+    ) as tmp:
+        tmp.write(json.dumps(payload))
+    os.replace(tmp.name, path)
 
 
 def reconcile_first_seen(

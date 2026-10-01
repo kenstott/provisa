@@ -40,6 +40,7 @@ from provisa.pgwire._pipeline import (
     check_response_cache,
     response_cache_tee,
 )
+from provisa.transpiler.router import Route
 from tests.unit.test_response_cache_shared import FakeCacheStore
 
 # -- directives -----------------------------------------------------------------------------------
@@ -107,7 +108,7 @@ def _plan(**kw) -> _Plan:
         started=time.time(),
     )
     return _Plan(
-        route=object(),
+        route=Route.ENGINE,
         sql="SELECT id FROM t",
         source_id="engine",
         dialect="duckdb",
@@ -121,6 +122,7 @@ def _plan(**kw) -> _Plan:
 
 def _state(store, *, source_cache=None):
     return SimpleNamespace(
+        admin_db=None,  # as AppState without a control plane: no debug-trace settings
         response_cache_store=store,
         tenant_db="fake",
         org_id="org-a",

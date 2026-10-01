@@ -78,8 +78,8 @@ def sender_identity(from_address: str, message: MailMessage) -> str:  # REQ-1577
 
 class EmailSender(Protocol):  # REQ-1330
     """The port. Callers hold one of these and call ``send``; the provider behind it is a
-    deployment detail. Implementations are synchronous by design — they run inside a
-    ``run_in_threadpool`` at the one call site. A dedicated queue is the right shape once there
+    deployment detail. Implementations are synchronous by design — the caller's request thread
+    blocks on the send (REQ-1882). A dedicated queue is the right shape once there
     is more than one kind of message; there is not yet."""
 
     def send(self, message: MailMessage) -> None: ...

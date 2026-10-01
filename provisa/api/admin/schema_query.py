@@ -38,6 +38,7 @@ if TYPE_CHECKING:
 
 from provisa.core.repositories import rls as rls_repo
 from provisa.otel_compat import get_tracer as _get_tracer
+from provisa.otel_compat import stage as _stage
 from provisa.api.admin._config_io import config_path as _config_path, read_config
 from provisa.api.admin.types import (
     AvailableColumnType,
@@ -517,7 +518,7 @@ class Query:  # REQ-021, REQ-042
     async def tables(
         self, info: StrawberryInfo
     ) -> list[RegisteredTableType]:  # REQ-016, REQ-021, REQ-042
-        with _tracer.start_as_current_span("admin.schema_introspect"):
+        with _stage(_tracer, "admin.schema_introspect"):
             from provisa.api.admin.capabilities import _identity_from_info, _resolved_capabilities
             from provisa.api.app import state as _state
 

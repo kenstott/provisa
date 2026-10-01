@@ -49,9 +49,13 @@ def _subprocess_coverage_env() -> dict:
 
 
 def free_port() -> int:
-    from tests.port_lease import lease_port
+    """A port this process never issues again. Pinned, not transient: the server binds its ports
+    long after they are leased (five are leased before the process even starts), and a transient
+    lease is reissued while still unbound once the block's cursor wraps — which handed one server's
+    pgwire port to its own HTTP listener (REQ-1910 span-count e2e, two servers in one module)."""
+    from tests.port_lease import lease_ports
 
-    return lease_port()
+    return lease_ports(1)[0]
 
 
 async def drop_org_schema(org_id: str) -> None:
@@ -122,8 +126,12 @@ class IsolatedServer:
         materialize_store_url: str | None = None,
         app: str = "main:app",
         loop: str = "auto",
+        env: dict[str, str] | None = None,
     ) -> None:
         self.org_id = org_id
+        # Extra environment for the server process, applied last (a test that measures the
+        # server's own telemetry overrides OTEL_SDK_DISABLED here).
+        self._extra_env = dict(env or {})
         # The ASGI app and uvicorn --loop. main:app installs uvloop itself (REQ-1867); a test that
         # needs asyncio's own loops passes tests.integration.stdlib_loop_app:app with loop=asyncio.
         self._app = app
@@ -212,6 +220,7 @@ class IsolatedServer:
             "PROVISA_PGWIRE_PORT": str(self.pgwire_port),
             "PROVISA_BOLT_PORT": str(self.bolt_port),
             "OTEL_SDK_DISABLED": "true",
+            **self._extra_env,
         }
         if self._materialize_store_url is not None:
             # $PROVISA_MATERIALIZE_URL outranks the config's materialize_store_url, and the test

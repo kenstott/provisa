@@ -15,6 +15,7 @@ Names must be valid GraphQL identifiers: [_A-Za-z][_0-9A-Za-z]*.
 
 # Requirements: REQ-154, REQ-155, REQ-156, REQ-157, REQ-194, REQ-195, REQ-411, REQ-412, REQ-416
 
+import functools
 import re
 from typing import TYPE_CHECKING, cast
 
@@ -174,6 +175,9 @@ def _to_field_name(name: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_]", "_", name).strip("_")
 
 
+# Pure string -> string, and on every statement's path: governance builds a name for every
+# registered table per request (REQ-1877), so a repeated name is answered from the memo.
+@functools.lru_cache(maxsize=16384)
 def domain_to_sql_name(domain_id: str) -> str:  # REQ-471
     """Normalize a domain ID to a valid SQL identifier (non-alphanumeric → underscore)."""
     return re.sub(r"[^a-zA-Z0-9]", "_", domain_id).strip("_")
@@ -196,6 +200,7 @@ def domain_gql_alias(domain_id: str, stored: str | None = None) -> str:  # REQ-4
     return acronym.lower() if acronym else domain_id[0].lower()
 
 
+@functools.lru_cache(maxsize=16384)
 def _to_snake_case(name: str) -> str:
     """Convert camelCase or PascalCase to snake_case."""
     name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)

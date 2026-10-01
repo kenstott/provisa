@@ -69,8 +69,13 @@ _META_TABLE_ALIAS: dict[str, str] = {
 }
 
 
-def _apply_server_and_engine_config(raw_config: dict, connect_engine: bool = True) -> None:
+def _apply_server_and_engine_config(
+    raw_config: dict, connect_engine: bool = True, provision_engine: bool = True
+) -> None:
     """Populate state.server_cfg, state.hostname, state.server_limits, state.engine_conn, and FTE hints.
+
+    ``provision_engine=False`` (REQ-1900) is a worker whose launch has already provisioned the
+    engine: it opens its own terminal connection and seeds nothing.
 
     ``connect_engine=False`` (REQ-1619) applies the server settings and stops short of the terminal:
     boot passes it when the shard could not be allocated, so there is no coordinator address to dial
@@ -130,15 +135,23 @@ def _apply_server_and_engine_config(raw_config: dict, connect_engine: bool = Tru
     from provisa.api.startup_seed import _OPS_VIEWS
 
     if connect_engine:
-        state.federation_engine.provision(_OPS_VIEWS)
+        if provision_engine:
+            state.federation_engine.provision(_OPS_VIEWS)
+        else:
+            state.federation_engine.connect_terminal()
 
         # Engine session tuning (e.g. Fault-Tolerant Execution) — engine-specific, applied through
         # the lifecycle seam. Native engines have no per-session cluster tuning (no-op).
         state.federation_engine.configure_session(state.server_cfg)
 
 
-def _process_kafka_sources(raw_config: dict) -> None:  # REQ-147, REQ-250
-    """Register Kafka topics as virtual tables and populate state.kafka_table_configs/windows."""
+def _process_kafka_sources(
+    raw_config: dict, register_catalogs: bool = True
+) -> None:  # REQ-147, REQ-250
+    """Register Kafka topics as virtual tables and populate state.kafka_table_configs/windows.
+
+    ``register_catalogs=False`` (REQ-1900) is a worker whose launch has already issued the engine's
+    Kafka catalogs: it builds this process's table maps and issues nothing."""
     from provisa.api.app import state
     from provisa.kafka.window import KafkaTableConfig
 
@@ -157,7 +170,8 @@ def _process_kafka_sources(raw_config: dict) -> None:  # REQ-147, REQ-250
             )
         # REQ-250/147: register the Kafka source as an engine catalog (the engine writes catalog files
         # + CREATE CATALOG so it loads regardless of start order; native engines no-op).
-        state.federation_engine.register_kafka_catalog(ks)
+        if register_catalogs:
+            state.federation_engine.register_kafka_catalog(ks)
         for topic in ks.get("topics", []):
             topic_id = topic.get("id", "")
             physical_table = topic.get("topic", "").replace(".", "_").replace("-", "_")

@@ -25,6 +25,7 @@ from sqlglot import exp
 
 from provisa.compiler.sql_gen import CompiledQuery, CompilationContext
 from provisa.otel_compat import get_tracer as _get_tracer
+from provisa.otel_compat import stage as _stage
 
 _tracer = _get_tracer(__name__)
 
@@ -82,7 +83,7 @@ def inject_rls(  # REQ-038, REQ-040, REQ-041, REQ-402, REQ-403
 
     Returns a new CompiledQuery with the modified SQL.
     """
-    with _tracer.start_as_current_span("rls.inject") as span:
+    with _stage(_tracer, "rls.inject", name="govern") as span:
         if not rls.has_rules():
             span.set_attribute("rls.rules_applied", 0)
             return compiled

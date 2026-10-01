@@ -728,10 +728,13 @@ class TestNonEngineTerminalsAreReported:
 
         # The planners, not their REQ-1044 wrappers: _govern_and_route and
         # _govern_and_route_compiled now only bind the org's tier ceilings onto the plan these two
-        # produce, so the branches that mint span attributes live here.
+        # produce, so the branches that mint span attributes live here. The raw-SQL planner's
+        # plan-building stage is route_governed (REQ-589: _govern_and_route_planned is govern, then
+        # route); the compiled planner's is _route_compiled (REQ-1877: the governed half is kept,
+        # the routing half runs per call).
         for fn in (
-            _pipeline._govern_and_route_planned,
-            _pipeline._govern_and_route_compiled_planned,
+            _pipeline.route_governed,
+            _pipeline._route_compiled,
         ):
             src = inspect.getsource(fn)
             assert src.count("span_attrs=_plan_span_attrs(") == 2, fn.__name__
@@ -942,3 +945,35 @@ def test_compaction_refuses_to_narrow_an_instant_back_to_an_integer():
     table = pa.table({"timestamp": pa.array([0], type=pa.timestamp("us"))})
     with pytest.raises(ValueError, match="drop the table"):
         jobs._cast_table_to_physical_schema("traces", table, {"timestamp": "bigint"})
+
+
+def test_compaction_keeps_one_row_per_request_and_drops_detail_spans():
+    """REQ-1910: the traces table holds the request span (and background roots), never the spans
+    under them — including a request span whose caller sent a traceparent."""
+    import pyarrow as pa
+
+    from provisa.scheduler import jobs
+
+    table = pa.table(
+        {
+            "span_name": pa.array(
+                ["POST /data/graphql", "cache.get", "pgwire.query", "mv.refresh", "GET GET"]
+            ),
+            "parent_span_id": pa.array(["", "aa", "bb", None, "aa"]),
+            "span_attributes": pa.array(
+                [
+                    '{"provisa.transport": "graphql"}',
+                    '{"cache.hit": true}',
+                    '{"provisa.transport": "pgwire"}',
+                    "{}",
+                    None,
+                ]
+            ),
+        }
+    )
+    kept = jobs._drop_foreign_rows("traces", table)
+    assert kept.column("span_name").to_pylist() == [
+        "POST /data/graphql",
+        "pgwire.query",
+        "mv.refresh",
+    ]

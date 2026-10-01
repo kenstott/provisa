@@ -1,0 +1,32 @@
+{
+  "debugTracePanel": {
+    "tabTitle": "מעקב דיבוג",
+    "intro": "כברירת מחדל, המעקב רושם span אחד לכל בקשה. מעקב דיבוג מוסיף span לכל שלב ב-Pipeline ולכל קריאה למקור, כולל טקסט ה-SQL. הוא מוסיף עומס, ולכן יש להפעיל אותו עבור ארגון, תפקיד או מקור אחד לזמן מוגדר; הוא נכבה מעצמו כשהזמן מסתיים.",
+    "startTitle": "הפעלת חלון דיבוג",
+    "scopeLabel": "היקף",
+    "scopeOrg": "ארגון",
+    "scopeRole": "תפקיד",
+    "scopeSource": "מקור",
+    "orgLabel": "ארגון",
+    "roleLabel": "מזהה תפקיד",
+    "sourceLabel": "מזהה מקור",
+    "minutesLabel": "משך (דקות)",
+    "minutesHelp": "בין 1 ל-{{max}} דקות.",
+    "start": "הפעלה",
+    "activeTitle": "חלונות פעילים",
+    "noWindows": "אין חלון דיבוג פתוח.",
+    "colScope": "היקף",
+    "colOrg": "ארגון",
+    "colTarget": "תפקיד או מקור",
+    "colRemaining": "זמן שנותר",
+    "colStartedBy": "הופעל על ידי",
+    "wholeOrg": "כל הארגון",
+    "stop": "עצירה",
+    "hintTitle": "רמז דיבוג לבקשה בודדת",
+    "hintIntro": "בקשה יכולה לבקש מעקב דיבוג של עצמה באמצעות ההנחיה @debugTrace, הערה \"@provisa trace=debug\" או הכותרת X-Provisa-Trace: debug. בקשות שנושאות את הרמז מתפקידים שאינם מופיעים כאן נדחות.",
+    "permit": "אישור",
+    "revoke": "ביטול",
+    "noHintRoles": "הרמז אינו מותר לאף תפקיד.",
+    "loadFailed": "לא ניתן לטעון את הגדרות מעקב הדיבוג"
+  }
+}

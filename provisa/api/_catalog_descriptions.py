@@ -78,8 +78,12 @@ TABLE_DESCRIPTIONS: dict[str, str] = {
     "materialization and caching candidates",
     "tag_usage": "One row per tag in the registry — how widely it is applied, across which kinds "
     "of object, and how much query traffic reaches what it marks",
-    "traces": "OpenTelemetry spans emitted by Provisa and by the federation engine, compacted "
-    "into Iceberg",
+    "traces": "One row per request — the request span, carrying its transport, role, route, "
+    "engine, sources, cache result, row count, status and stage durations as attributes — and "
+    "one row per piece of background work (a refresh, a scheduled job)",
+    "trace_details": "The spans under a request traced in debug detail — one row per stage, "
+    "Redis command, source or engine statement and outbound call — joined to its request by "
+    "trace_id and kept for a short retention",
     "metrics": "OpenTelemetry metric points emitted by Provisa and by the federation engine, "
     "compacted into Iceberg",
     "logs": "OpenTelemetry log records emitted by Provisa and by the federation engine, "
@@ -457,6 +461,29 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "last_queried_at": "When a table carrying the tag was last read",
     },
     "traces": {
+        "trace_id": "Identifier shared by every span of one end-to-end operation",
+        "span_id": "Identifier of this span",
+        "parent_span_id": "Span that this one ran inside, empty for the root",
+        "span_name": "What the span measures, e.g. provisa.query.trino",
+        "span_kind": "OpenTelemetry span kind — server, client, internal",
+        "service_name": "Service that emitted the span (provisa, trino, …)",
+        "service_namespace": "Namespace the emitting service belongs to",
+        "timestamp": "Span start (UTC)",
+        "end_timestamp": "Span end (UTC)",
+        "duration": "Elapsed nanoseconds",
+        "status_code": "OpenTelemetry status — 0 unset, 1 ok, 2 error",
+        "status_message": "Error detail, when the span ended in error",
+        "scope_name": "Instrumentation scope that emitted the span",
+        "span_attributes": "All span attributes, as JSON",
+        "resource_attributes": "Attributes of the emitting resource, as JSON",
+        "table_name": "Registered table the statement read, extracted from the span attributes",
+        "domain_id": "Domain the statement ran in, extracted from the span attributes",
+        "role_id": "Role the statement executed under, extracted from the span attributes",
+        "query_text": "Statement text, extracted from the span attributes",
+        "tenant_id": "Org the span was emitted for",
+        "_date": "Partition day the span was compacted into",
+    },
+    "trace_details": {
         "trace_id": "Identifier shared by every span of one end-to-end operation",
         "span_id": "Identifier of this span",
         "parent_span_id": "Span that this one ran inside, empty for the root",

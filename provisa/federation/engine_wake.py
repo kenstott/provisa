@@ -90,6 +90,8 @@ async def _cancel_and_settle(task: asyncio.Task) -> None:
     if task_loop is asyncio.get_running_loop():
         await _settle()
         return
+    # Cross-loop by necessity: the stop task belongs to the process loop (the reaper's) and a task
+    # can only be cancelled and awaited on its own loop. None of this request's work runs there.
     await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(_settle(), task_loop))
 
 

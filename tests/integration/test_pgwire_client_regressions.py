@@ -54,6 +54,7 @@ from provisa.federation.duckdb_runtime import DuckDBFederationRuntime  # noqa: E
 from provisa.pgwire import _pipeline as _pl  # noqa: E402
 from provisa.pgwire.server import ProvisaConnection, ProvisaServer  # noqa: E402
 import provisa.pgwire.server as _srv  # noqa: E402
+from tests.pgwire_describe_parity import describes_as  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -93,9 +94,10 @@ def _make_mock_state(role: str = "admin", provider: str = "none") -> MagicMock:
 
 
 @contextmanager
-def _running_server(state: MagicMock, govern_stub):
+def _running_server(state: MagicMock, govern_stub, describe_stub=None):
     """Start a real ProvisaServer on a free port with ``govern_pgwire_plan`` stubbed to
-    ``govern_stub``, and the event loop wired the way ``_execute_sql_bound`` expects.
+    ``govern_stub`` (and, for an extended-protocol Describe(Statement), ``describe_pgwire_statement``
+    to ``describe_stub``), and the event loop wired the way ``_execute_sql_bound`` expects.
 
     Yields the port. A real socket accepts real client traffic; only the governance/plan seam is
     stubbed (as in test_pgwire_integration.py) since a live compiler/RLS/source stack is not
@@ -114,6 +116,9 @@ def _running_server(state: MagicMock, govern_stub):
         patch("provisa.api.app.state", state),
         patch.object(_srv, "state", state, create=True),
         patch.object(_pl, "govern_pgwire_plan", govern_stub),
+        patch.object(
+            _pl, "describe_pgwire_statement", describe_stub or _pl.describe_pgwire_statement
+        ),
     ):
         t = threading.Thread(target=server.serve_forever, daemon=True)
         t.start()
@@ -258,30 +263,33 @@ class TestDescribeWithoutExecuteDoesNotLeak:
             "(regression: the cached result/source connection was left open forever)"
         )
 
-    def test_bare_describe_statement_with_no_bind_or_execute_closes_its_probe_result(self):
+    def test_bare_describe_statement_with_no_bind_or_execute_opens_nothing(self):
         """Parse + Describe(Statement) + Sync — no Bind, no Execute, no Close at all.
 
         This is asyncpg's own prepare() flow (Parse then Describe(Statement) to learn parameter
-        types before Bind) and hits EVERY query over the DIRECT route — unlike the portal case,
-        there is no Close message to hook at all: describe_statement() executes the query purely
-        to inspect its shape and must close what it opened itself, synchronously, before ever
-        returning to the client.
+        types before Bind) and hits EVERY query — unlike the portal case, there is no Close
+        message to hook at all. The Describe is answered from registered metadata (REQ-589,
+        amended 2026-10-01): it executes nothing, so there is no result, cursor or source
+        connection for it to leak (regression: asyncpg's prepare() flow once leaked one on EVERY
+        query, then held one across the client round trip).
         """
         state = _make_mock_state("admin", "none")
-        close_calls: list[object] = []
-        orig_close = _srv.ProvisaQueryResult.close
+        opened: list[object] = []
+        executed: list[str] = []
+        orig_init = _srv.ProvisaQueryResult.__init__
 
-        def _tracking_close(self):
-            close_calls.append(self)
-            orig_close(self)
+        def _tracking_init(self, *args, **kwargs):
+            opened.append(self)
+            orig_init(self, *args, **kwargs)
 
         async def _fake_govern(sql, role_id, params=None):
-            del sql, role_id
+            del role_id
+            executed.append(sql)
             return EngineResult(rows=[(2,)], column_names=["v"])
 
         with (
-            patch.object(_srv.ProvisaQueryResult, "close", _tracking_close),
-            _running_server(state, _fake_govern) as port,
+            patch.object(_srv.ProvisaQueryResult, "__init__", _tracking_init),
+            _running_server(state, _fake_govern, describes_as(("v", "INT"))) as port,
         ):
             sock = _connect_and_auth(port, "admin")
             try:
@@ -292,11 +300,8 @@ class TestDescribeWithoutExecuteDoesNotLeak:
             finally:
                 sock.close()
 
-        assert close_calls, (
-            "handle_describe()'s Describe(Statement) branch must close the probe QueryResult it "
-            "eagerly executed even though no Bind/Execute/Close ever followed (regression: "
-            "asyncpg's prepare() flow leaked a source connection/cursor on EVERY query)"
-        )
+        assert executed == [], "a Describe(Statement) must not run the statement"
+        assert opened == [], "a Describe(Statement) must open no result (nothing to leak)"
 
 
 # ---------------------------------------------------------------------------
@@ -318,7 +323,7 @@ class TestAsyncpgBinaryTypeRoundTrip:
             del sql, role_id
             return EngineResult(rows=[(42,)], column_names=["n"], column_types=["int4"])
 
-        with _running_server(state, _fake_govern) as port:
+        with _running_server(state, _fake_govern, describes_as(("n", "int4"))) as port:
             conn = await asyncpg.connect(
                 host="127.0.0.1", port=port, user="admin", password="x", database="provisa"
             )
@@ -338,7 +343,7 @@ class TestAsyncpgBinaryTypeRoundTrip:
             del sql, role_id
             return EngineResult(rows=[(9_876_543_210,)], column_names=["n"], column_types=["int8"])
 
-        with _running_server(state, _fake_govern) as port:
+        with _running_server(state, _fake_govern, describes_as(("n", "int8"))) as port:
             conn = await asyncpg.connect(
                 host="127.0.0.1", port=port, user="admin", password="x", database="provisa"
             )

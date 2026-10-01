@@ -22,6 +22,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import threading
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal
@@ -237,42 +238,81 @@ def _serialize_arrow_table(
     return body.encode("utf-8"), "application/x-ndjson", ".ndjson"
 
 
-async def ensure_results_bucket(config: RedirectConfig) -> None:  # REQ-141
-    """Ensure the configured S3/MinIO results bucket exists, creating it if needed.
+class RedirectStoreError(RuntimeError):
+    """The configured results object store cannot take a redirect (unreachable, or its bucket
+    cannot be seen or created)."""
 
-    Logs the outcome. Does not raise if MinIO is unavailable at startup.
+
+# (endpoint, bucket) pairs this process has confirmed exist.
+_ensured_buckets: set[tuple[str, str]] = set()
+_ensure_bucket_lock = threading.Lock()
+
+
+def ensure_results_bucket_sync(config: RedirectConfig) -> None:  # REQ-141, REQ-171, REQ-1900
+    """Make sure the configured results bucket exists, creating it if it does not.
+
+    Called by the first redirect that needs the bucket, not by boot: boot ran it in every worker
+    process and spent 9-21s of each one's startup on botocore's retry backoff whenever nothing
+    listened at the endpoint. Once per process per (endpoint, bucket) — a success is remembered, a
+    failure is not. ONE attempt with a short connect timeout: the caller is a request.
+
+    Raises :class:`RedirectStoreError` naming the endpoint when the store cannot be reached, the
+    bucket cannot be seen, or it cannot be created — the redirect that asked for it fails with
+    that, rather than a later write failing with less to say.
     """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
     if not config.endpoint_url:
+        return  # no object store configured: redirects materialize locally, there is no bucket
+    key = (config.endpoint_url, config.bucket)
+    if key in _ensured_buckets:
         return
 
-    try:
-        import boto3
-        from botocore.config import Config as BotoConfig
+    import boto3
+    from botocore.config import Config as BotoConfig
+    from botocore.exceptions import BotoCoreError, ClientError
 
+    with _ensure_bucket_lock:
+        if key in _ensured_buckets:
+            return
         s3 = boto3.client(
             "s3",
             endpoint_url=config.endpoint_url,
             aws_access_key_id=config.access_key,
             aws_secret_access_key=config.secret_key,
             region_name=config.region,
-            config=BotoConfig(signature_version="s3v4"),
+            config=BotoConfig(
+                signature_version="s3v4",
+                retries={"total_max_attempts": 1},
+                connect_timeout=3,
+            ),
         )
         try:
-            s3.head_bucket(Bucket=config.bucket)
-            logger.info("S3 bucket %r already exists", config.bucket)
-        except Exception:
-            s3.create_bucket(Bucket=config.bucket)
-            logger.info("Created S3 bucket %r", config.bucket)
-    except Exception:
-        logger.warning(
-            "Could not ensure S3 bucket %r — MinIO may be unavailable at startup",
-            config.bucket,
-            exc_info=True,
-        )
+            try:
+                s3.head_bucket(Bucket=config.bucket)
+            except ClientError as exc:
+                if exc.response["Error"]["Code"] not in ("404", "NoSuchBucket", "NotFound"):
+                    raise
+                try:
+                    s3.create_bucket(Bucket=config.bucket)
+                    log.info("Created S3 bucket %r at %s", config.bucket, config.endpoint_url)
+                except ClientError as create_exc:
+                    # Another worker created it between this one's HEAD and CREATE: the bucket
+                    # exists, which is the outcome asked for.
+                    if create_exc.response["Error"]["Code"] not in (
+                        "BucketAlreadyOwnedByYou",
+                        "BucketAlreadyExists",
+                    ):
+                        raise
+        except (BotoCoreError, ClientError) as exc:
+            raise RedirectStoreError(
+                f"results object store {config.endpoint_url} cannot provide bucket "
+                f"{config.bucket!r}: {type(exc).__name__}: {exc}"
+            ) from exc
+        _ensured_buckets.add(key)
+
+
+async def ensure_results_bucket(config: RedirectConfig) -> None:  # REQ-141
+    """Awaitable form of :func:`ensure_results_bucket_sync`."""
+    ensure_results_bucket_sync(config)
 
 
 async def upload_and_presign(  # REQ-029, REQ-044, REQ-137, REQ-138, REQ-139, REQ-141
@@ -368,6 +408,10 @@ async def upload_and_presign(  # REQ-029, REQ-044, REQ-137, REQ-138, REQ-139, RE
     # No object store configured at all → local fallback (desktop dev).
     if not config.endpoint_url:
         return _store_local("No S3-compatible object store is configured.")
+
+    # The first redirect of this process makes sure its bucket exists (REQ-171); a store that
+    # cannot provide it fails this request here, naming the endpoint.
+    ensure_results_bucket_sync(config)
 
     try:
         s3.put_object(

@@ -72,6 +72,7 @@ async def test_every_marker_parameter_of_the_callee_is_passed(monkeypatch, targe
         accept="application/json",
         x_provisa_stats=None,
         x_provisa_as_of=None,
+        x_provisa_trace=None,
     )
 
     assert result == {"ok": True}

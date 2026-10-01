@@ -51,8 +51,10 @@ class RegisterDataPlaneRequest(BaseModel):  # REQ-456
     region: str
 
 
+# Handlers are ``async def`` so each runs on its request's own thread (REQ-1882): Starlette hands
+# a plain ``def`` handler to its shared worker pool. Their store calls block that request thread.
 @router.post("/orgs")
-def register_org(body: RegisterOrgRequest) -> dict:  # REQ-073, REQ-592
+async def register_org(body: RegisterOrgRequest) -> dict:  # REQ-073, REQ-592
     _require_multitenancy()
     # REQ-1053: reject an unrecognised tier at registration; an org that reaches the store
     # with an untyped tier fails every later entitlement check instead of this one.
@@ -78,7 +80,7 @@ def register_org(body: RegisterOrgRequest) -> dict:  # REQ-073, REQ-592
 
 
 @router.get("/orgs")
-def list_orgs() -> list[dict]:  # REQ-073, REQ-592
+async def list_orgs() -> list[dict]:  # REQ-073, REQ-592
     _require_multitenancy()
     return [
         {
@@ -93,7 +95,7 @@ def list_orgs() -> list[dict]:  # REQ-073, REQ-592
 
 
 @router.get("/orgs/{org_id}/route")
-def route_org(org_id: str) -> dict:  # REQ-073
+async def route_org(org_id: str) -> dict:  # REQ-073
     _require_multitenancy()
     try:
         dp = _store.route_query(org_id)
@@ -105,7 +107,7 @@ def route_org(org_id: str) -> dict:  # REQ-073
 
 
 @router.post("/data-planes")
-def register_data_plane(body: RegisterDataPlaneRequest) -> dict:  # REQ-073, REQ-506
+async def register_data_plane(body: RegisterDataPlaneRequest) -> dict:  # REQ-073, REQ-506
     _require_multitenancy()
     dp = DataPlane(
         id=body.id,
@@ -125,7 +127,7 @@ def register_data_plane(body: RegisterDataPlaneRequest) -> dict:  # REQ-073, REQ
 
 
 @router.get("/data-planes")
-def list_data_planes() -> list[dict]:  # REQ-073, REQ-506
+async def list_data_planes() -> list[dict]:  # REQ-073, REQ-506
     _require_multitenancy()
     return [
         {

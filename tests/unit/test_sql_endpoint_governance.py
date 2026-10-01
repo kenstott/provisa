@@ -70,12 +70,14 @@ async def sql_client(monkeypatch):
     # REQ-074/REQ-1386: a governance refusal appends a 403 row to query_audit_log in the org's
     # tenant database — that row is what the policy_denials report reads. Stand in for the tenant
     # database and record the appends so a test can assert the refusal was recorded.
+    # The row is inserted by the audit writer's thread (provisa.audit.writer), so a test waits for
+    # it with flush_audit before reading AUDIT_ROWS.
     AUDIT_ROWS.clear()
 
-    async def _log_query(pool, **kwargs):
-        AUDIT_ROWS.append(kwargs)
+    async def _log_queries(pool, rows):
+        AUDIT_ROWS.extend(rows)
 
-    monkeypatch.setattr("provisa.audit.query_log.log_query", _log_query)
+    monkeypatch.setattr("provisa.audit.query_log.log_queries", _log_queries)
     _prev_tenant_db = app_mod.state.tenant_db
     app_mod.state.tenant_db = MagicMock()
 
@@ -179,6 +181,9 @@ class TestSQLForbiddenTable:
         detail_str = detail if isinstance(detail, str) else str(detail)
         assert "secret_table" in detail_str
         # REQ-074/REQ-1386: the refusal is the policy_denials fact — it has to be recorded
+        from provisa.audit.writer import audit_writer_status, flush_audit
+
+        assert flush_audit(5.0), audit_writer_status()
         assert [r["status_code"] for r in AUDIT_ROWS] == [403]
 
     async def test_sql_accessible_table_not_forbidden(self, sql_client):

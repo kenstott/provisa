@@ -143,3 +143,42 @@ class TestHasTableToleratesNoDatabaseYet:
         srv = _FakeServer()
         assert control_plane_pg._has_table(srv, "org_settings") is True
         assert len(srv.commands) == 2
+
+
+class TestConnectionCapacity:
+    """REQ-1900: every worker process of a `--workers N` server keeps its own control-plane pools,
+    so the embedded control plane's stock 100-connection ceiling is reached at a worker per core
+    ("FATAL: sorry, too many clients already" — the workers then die at boot)."""
+
+    def _harness(self, monkeypatch, current: int):
+        import sys
+        import types
+
+        calls: list = []
+
+        class _Srv:
+            def psql(self, sql: str) -> str:
+                calls.append(sql)
+                if sql.strip().upper().startswith("SHOW MAX_CONNECTIONS"):
+                    return f" max_connections \n-----------------\n {current}\n(1 row)\n"
+                return ""
+
+        fake = types.ModuleType("pgserver.postgres_server")
+        fake.pg_ctl = lambda args, pgdata=None, **kw: calls.append(("pg_ctl", args, pgdata))
+        monkeypatch.setitem(sys.modules, "pgserver.postgres_server", fake)
+        return _Srv(), calls
+
+    def test_a_stock_ceiling_is_raised_and_the_server_restarted(self, tmp_path, monkeypatch):
+        from provisa.core import control_plane_pg as cpp
+
+        srv, calls = self._harness(monkeypatch, current=100)
+        cpp._ensure_connection_capacity(srv, str(tmp_path))
+        assert f"ALTER SYSTEM SET max_connections = {cpp.MAX_CONNECTIONS}" in calls
+        assert ("pg_ctl", ["-w", "restart", "-m", "fast"], tmp_path) in calls
+
+    def test_an_adequate_ceiling_is_left_alone(self, tmp_path, monkeypatch):
+        from provisa.core import control_plane_pg as cpp
+
+        srv, calls = self._harness(monkeypatch, current=cpp.MAX_CONNECTIONS)
+        cpp._ensure_connection_capacity(srv, str(tmp_path))
+        assert calls == ["SHOW max_connections"]

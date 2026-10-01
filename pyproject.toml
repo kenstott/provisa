@@ -11,6 +11,10 @@ dependencies = [
     # scheduling across the whole app, not just one endpoint. No Windows wheels, same platform
     # gate this file already uses for chdb below.
     "uvloop; sys_platform != 'win32'",
+    # REQ-1867: uvicorn's HTTP parser. Without httptools uvicorn falls back to h11, a pure-Python
+    # parser that runs on the accepting loop for every request (measured: ~10% of a cached
+    # GraphQL hit's CPU). uvicorn picks httptools up on its own when it is importable.
+    "httptools",
     # REQ-1867: was already resolving transitively (langsmith/trino pull it in) but never
     # declared or actually used anywhere in the app — FastAPI's default response class still used
     # stdlib json. Declared explicitly now that provisa.api.app wires it in as the default.
@@ -99,7 +103,7 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-http",
     "opentelemetry-instrumentation-fastapi",
     "opentelemetry-instrumentation-httpx",
-    "opentelemetry-instrumentation-asyncpg",
+    "opentelemetry-instrumentation-psycopg",
     "opentelemetry-instrumentation-redis",
     "opentelemetry-instrumentation-pymongo",
     "opentelemetry-instrumentation-elasticsearch",

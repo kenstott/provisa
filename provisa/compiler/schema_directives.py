@@ -177,6 +177,16 @@ PROVISA_DIRECTIVES = [
             "Never reads fresher than the operator's settings allow."
         ),
     ),
+    GraphQLDirective(
+        name="debugTrace",
+        locations=_QMS,
+        args={},
+        description=(
+            "Ask for a debug trace of this request (REQ-1910): a span per pipeline stage and "
+            "per source call, with SQL text. Rejected unless the operator permits the hint for "
+            "the request's role."
+        ),
+    ),
 ]
 
 # --- Relay-style connection types for cursor pagination (REQ-218) ---

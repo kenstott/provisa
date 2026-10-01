@@ -63,15 +63,29 @@ class _CapturingState:
 
 
 @pytest.fixture
-def captured(monkeypatch) -> list[dict]:
+def captured(monkeypatch):
+    """The rows the audit writer inserted. The write happens on the writer's thread
+    (provisa.audit.writer), so a test waits for it with ``_audited``."""
+    from provisa.encryption import NullEncryption
+
     rows: list[dict] = []
 
-    async def _log_query(pool, **kwargs):  # noqa: ANN001
-        rows.append(kwargs)
+    async def _log_queries(pool, batch):  # noqa: ANN001
+        rows.extend(batch)
 
-    monkeypatch.setattr("provisa.audit.query_log.log_query", _log_query)
-    monkeypatch.setattr("provisa.encryption.runtime.encryption_service", lambda: None)
+    monkeypatch.setattr("provisa.audit.query_log.log_queries", _log_queries)
+    monkeypatch.setattr("provisa.encryption.runtime.encryption_service", NullEncryption)
     return rows
+
+
+def _audited(coro) -> None:
+    """Run ``coro`` and wait until every audit record it enqueued is written."""
+    from provisa.audit.writer import audit_writer_status, flush_audit
+
+    try:
+        asyncio.run(coro)
+    finally:
+        assert flush_audit(5.0), audit_writer_status()
 
 
 # ------------------------------------------------------------------ table ids
@@ -166,7 +180,7 @@ def test_write_audit_appends_the_completed_statement(captured):
         table_ids=[7],
         started=0.0,
     )
-    asyncio.run(write_audit(pending, 200, _CapturingState()))
+    _audited(write_audit(pending, 200, _CapturingState()))
     assert len(captured) == 1
     row = captured[0]
     assert row["user_id"] == "alice"
@@ -185,7 +199,7 @@ def test_the_recorded_tenant_is_the_org_that_owns_the_row(captured):
 
     token = set_current_org("kstott")
     try:
-        asyncio.run(
+        _audited(
             write_audit(
                 PendingAudit("alice", "http", "org_admin", "SELECT 1", [], 0.0),
                 200,
@@ -198,7 +212,7 @@ def test_the_recorded_tenant_is_the_org_that_owns_the_row(captured):
 
 
 def test_write_audit_on_a_none_record_writes_nothing(captured):
-    asyncio.run(write_audit(None, 200, _CapturingState()))
+    _audited(write_audit(None, 200, _CapturingState()))
     assert captured == []
 
 
@@ -212,7 +226,7 @@ def test_write_audit_refuses_to_run_without_a_tenant_database(captured):
 
     pending = PendingAudit("alice", "pgwire", "analyst", "SELECT 1", [], 0.0)
     with pytest.raises(RuntimeError, match="tenant database"):
-        asyncio.run(write_audit(pending, 200, _NoTenant()))
+        _audited(write_audit(pending, 200, _NoTenant()))
     assert captured == []
 
 
@@ -220,7 +234,7 @@ def test_write_denial_records_a_403_with_the_refused_tables(captured):
     """policy_denials reads exactly these rows."""
     tree = sqlglot.parse_one("SELECT * FROM hr.salaries")
     with audit_identity_scope("mallory", "http"):
-        asyncio.run(
+        _audited(
             write_denial(
                 "SELECT * FROM hr.salaries",
                 "analyst",
@@ -239,14 +253,14 @@ def test_write_denial_without_a_resolved_tree_records_no_tables(captured):
     """A statement refused before governance resolved anything (unknown role) touched no
     registered table — the row says so rather than guessing."""
     with audit_identity_scope("mallory", "http"):
-        asyncio.run(write_denial("SELECT 1", "ghost", None, None, _CapturingState()))
+        _audited(write_denial("SELECT 1", "ghost", None, None, _CapturingState()))
     assert len(captured) == 1
     assert captured[0]["table_ids"] == []
 
 
 def test_write_denial_without_an_identity_writes_nothing(captured):
     tree = sqlglot.parse_one("SELECT * FROM hr.salaries")
-    asyncio.run(
+    _audited(
         write_denial("SELECT * FROM hr.salaries", "analyst", tree, _Ctx({}), _CapturingState())
     )
     assert captured == []
@@ -273,7 +287,7 @@ def test_finalize_audit_writes_once_per_plan(captured):
         await finalize_audit(plan, 200, _CapturingState())
         await finalize_audit(plan, 500, _CapturingState())
 
-    asyncio.run(_main())
+    _audited(_main())
     assert len(captured) == 1
     assert captured[0]["status_code"] == 200
 

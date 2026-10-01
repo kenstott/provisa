@@ -55,6 +55,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import random
 import re
 import statistics
@@ -1304,9 +1305,35 @@ def main() -> int:
         "everything already-passing legs before a fix under test. Mutually exclusive with "
         "--query-id; unlike --query-id this only bounds the START, every later query still runs.",
     )
+    parser.add_argument(
+        "--optimistic",
+        action="store_true",
+        help="Run ONLY the most-optimistic request (queries.OPTIMISTIC: one row, one column, no "
+        "predicate, cached where the transport has an opt-in) as a closed-loop ramp on every "
+        "transport, from several client processes — see optimistic_load.py. Results land in "
+        "<output-dir>/optimistic/<transport>.json; the query matrix is not run.",
+    )
+    import optimistic_load
+
+    optimistic_load.add_arguments(parser)
     args = parser.parse_args()
     if args.start_at and args.query_ids:
         parser.error("--start-at and --query-id are mutually exclusive")
+    if args.optimistic:
+        endpoints = optimistic_load.Endpoints(
+            http_base_url=args.http_base_url,
+            pgwire_host=args.pgwire_host,
+            pgwire_port=args.pgwire_port,
+            bolt_host=args.bolt_host,
+            bolt_port=args.bolt_port,
+            flight_host=args.flight_host,
+            flight_port=args.flight_port,
+            grpc_host=args.grpc_host,
+            grpc_port=args.grpc_port,
+            role="org_admin_unguarded" if args.bypass_relationship_guard else "org_admin",
+        )
+        optimistic_load.run_from_args(args, endpoints, Path(args.output_dir) / "optimistic")
+        return 0
     query_ids = set(args.query_ids) if args.query_ids else None
     if args.start_at:
         all_ids = [q.id for q in QUERIES]
@@ -1366,6 +1393,10 @@ def main() -> int:
             # masking, domain-access, and column visibility are identical to org_admin either
             # way — this field never means "governance disabled".
             "relationship_guard_bypassed": args.bypass_relationship_guard,
+            # Where the server's traces went during this run: orchestrate.sh exports
+            # PROVISA_BENCH_TRACE_COLLECTOR=noop (noop_otlp_receiver.py); a run started any other
+            # way records that nothing stated it.
+            "trace_collector": os.environ.get("PROVISA_BENCH_TRACE_COLLECTOR", "unspecified"),
             "results": summaries,
             "saturation": saturation,
         }

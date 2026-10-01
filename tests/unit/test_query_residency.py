@@ -301,3 +301,104 @@ async def test_a_failed_land_is_stamped_not_ok_and_fails_the_read(wiring):
 @pytest.mark.asyncio
 async def test_without_an_engine_or_store_nothing_happens():
     assert await ensure_resident(SimpleNamespace(), {"pets-db"}) == []
+
+
+# -- one land per stale table, shared by the requests that need it (REQ-1661, REQ-1882) ---------
+
+
+class _SlowBackend(_Backend):
+    """Lands like _Backend, but holds each land open and counts the lands that did real work."""
+
+    def __init__(self, hold: float = 0.3, both_inside=None):
+        super().__init__()
+        self.hold = hold
+        self.both_inside = both_inside
+        self.landed_calls: list[tuple[str, int]] = []
+
+    async def materialize_pending(self, state, *, loader, is_stale, source_ids, **kw):
+        import threading
+        import time as _time
+
+        landed = await super().materialize_pending(
+            state, loader=loader, is_stale=is_stale, source_ids=source_ids, **kw
+        )
+        if landed:
+            self.landed_calls += [(sid, threading.get_ident()) for sid, _ in landed]
+            if self.both_inside is not None:
+                self.both_inside.wait(timeout=10)
+            else:
+                _time.sleep(self.hold)  # blocks this request's thread, as a real land does
+        return landed
+
+
+def _stamping_refresh(monkeypatch):
+    """record_refresh that writes the freshness state get_node_state reads, as the real one does."""
+
+    async def record_refresh(conn, node, *, at, ok):
+        conn._recorded.append((node, ok))
+        conn._states[node] = {"last_refresh_at": at.timestamp(), "last_refresh_ok": ok}
+
+    monkeypatch.setattr("provisa.events.queue.record_refresh", record_refresh)
+
+
+def _on_request_threads(calls):
+    """Run each call on its own thread and connection loop, started together; return results."""
+    import threading
+
+    from provisa.core.connection_loop import connection_loop
+
+    start = threading.Barrier(len(calls))
+    results: list = [None] * len(calls)
+    errors: list[BaseException] = []
+
+    def _request(i, make_coro):
+        try:
+            start.wait(timeout=10)
+            with connection_loop() as cl:
+                results[i] = cl.run(make_coro())
+        except BaseException as exc:  # reported by the caller's assertion with the real cause
+            errors.append(exc)
+
+    threads = [threading.Thread(target=_request, args=(i, c)) for i, c in enumerate(calls)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+    assert not errors, errors
+    return results
+
+
+def test_two_requests_reading_one_stale_table_share_one_land(wiring, monkeypatch):
+    """Both requests find the table stale. One lands it; the other waits for that land and then
+    reads the fresh copy — it does not land the table a second time."""
+    _stamping_refresh(monkeypatch)
+    backend = _SlowBackend()
+    state = _state([_source("pets-db")], [_table("pets-db", "pets")], backend)
+
+    results = _on_request_threads(
+        [lambda: ensure_resident(state, {"pets-db"}), lambda: ensure_resident(state, {"pets-db"})]
+    )
+
+    assert len(backend.landed_calls) == 1, f"the table was landed {len(backend.landed_calls)} times"
+    assert sorted(results, key=len) == [[], [("pets-db", "pets")]]
+
+
+def test_two_requests_reading_different_stale_tables_land_at_the_same_time(wiring, monkeypatch):
+    import threading
+
+    _stamping_refresh(monkeypatch)
+    both_inside = threading.Barrier(2)
+    backend = _SlowBackend(both_inside=both_inside)
+    state = _state(
+        [_source("pets-db"), _source("vets-db")],
+        [_table("pets-db", "pets"), _table("vets-db", "vets")],
+        backend,
+    )
+
+    results = _on_request_threads(
+        [lambda: ensure_resident(state, {"pets-db"}), lambda: ensure_resident(state, {"vets-db"})]
+    )
+
+    assert both_inside.broken is False, "the two lands did not overlap"
+    assert sorted(results) == [[("pets-db", "pets")], [("vets-db", "vets")]]
+    assert len({ident for _, ident in backend.landed_calls}) == 2

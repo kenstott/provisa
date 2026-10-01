@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: c09ccc1b-eb8d-4db1-bbd2-e8f994ec663c
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """Ingest write engines run PostgreSQL on the control plane's prepared-statement policy
 (REQ-331, REQ-828): ``prepare_threshold=0`` with a bounded cache, off behind PgBouncer — set by
 the one shared ``core.database.pg_engine``, never a second copy."""

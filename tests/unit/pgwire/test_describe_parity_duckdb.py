@@ -30,6 +30,20 @@ from tests.pgwire_describe_parity import (
 from tests.unit.pgwire.test_wire_protocol import _free_port, _make_server
 
 _SQL = "SELECT i, b, d, f, s, flag, day, ts, j FROM parity ORDER BY i"
+# The table as the registry records it (the types the pgwire catalog advertises).
+_REGISTRY = {
+    "parity": [
+        ("i", "INTEGER"),
+        ("b", "BIGINT"),
+        ("d", "DECIMAL(18,2)"),
+        ("f", "DOUBLE"),
+        ("s", "VARCHAR"),
+        ("flag", "BOOLEAN"),
+        ("day", "DATE"),
+        ("ts", "TIMESTAMP"),
+        ("j", "JSON"),
+    ]
+}
 
 
 @pytest.fixture
@@ -82,11 +96,11 @@ def test_describe_keeps_duplicate_column_names(runtime):
 @pytest.mark.asyncio
 async def test_every_type_reads_back_exactly_through_pgwire_once(runtime, pgwire_port):
     engine = RuntimeEngine(runtime, "duckdb")
-    rows = await fetch_through_pgwire(pgwire_port, engine, _SQL)
+    rows = await fetch_through_pgwire(pgwire_port, engine, _SQL, _REGISTRY)
     ((i, b, d, f, s, flag, day, ts, j),) = rows
     assert (i, b, d, f, s, flag) == (1, 9000000000, Decimal("12.34"), 1.5, "x", True)
     assert day == datetime.date(2026, 1, 2)
     assert ts == datetime.datetime(2026, 1, 2, 3, 4, 5)
     assert json.loads(j) == {"k": 1}
     assert engine.executed == [_SQL]
-    assert engine.described == [_SQL]
+    assert engine.described == []  # the Describe came from the registry, not from the engine

@@ -669,15 +669,8 @@ async def _analyze_sources(  # REQ-275
             log.exception("priming CBO stats for source %r failed", src.id)
 
 
-async def _upsert_tables(  # REQ-013, REQ-016, REQ-251
-    conn: "Connection",
-    engine: Any,
-    config: ProvisaConfig,
-    openapi_specs: dict[str, dict],
-    catalog_names: dict[str, str] | None = None,
-) -> None:
-    sources_by_id = {src.id: src for src in config.sources}
-
+def _expand_view_metrics(config: ProvisaConfig) -> None:  # REQ-1318
+    """Compile each table's metric-composed view definition to SQL, in place on ``config``."""
     # REQ-1318: compile metric-composed view definitions to SQL at registration, so the
     # generated SELECT flows everywhere view_sql does (registered_tables.view_sql →
     # view_sql_map / MV registration). Free-hand view_sql with metric() calls is inlined
@@ -717,6 +710,17 @@ async def _upsert_tables(  # REQ-013, REQ-016, REQ-251
             )
         elif tbl.view_sql is not None:
             tbl.view_sql, _ = expand_metric_calls_in_sql(tbl.view_sql, metric_registry)
+
+
+async def _upsert_tables(  # REQ-013, REQ-016, REQ-251
+    conn: "Connection",
+    engine: Any,
+    config: ProvisaConfig,
+    openapi_specs: dict[str, dict],
+    catalog_names: dict[str, str] | None = None,
+) -> None:
+    sources_by_id = {src.id: src for src in config.sources}
+    _expand_view_metrics(config)
 
     for tbl in config.tables:
         src = sources_by_id.get(tbl.source_id)
@@ -1329,6 +1333,15 @@ async def load_config(  # REQ-012, REQ-016, REQ-250, REQ-1266, REQ-1730
             catalog_names=catalog_names,
             extra_sources=extra_sources,
         )
+
+
+def adopt_loaded_config(config: ProvisaConfig) -> None:  # REQ-1900
+    """The part of ``load_config`` that lives in THIS process, for a worker whose launch has
+    already applied the config to the control plane and the engine (see ``provisa.core.boot_lock``):
+    the domain policy the compilers read, and the view SQL compiled onto the in-memory config.
+    Writes nothing to the control plane and issues no engine catalog."""
+    domain_policy.configure(config.naming.use_domains, config.naming.default_domain)
+    _expand_view_metrics(config)
 
 
 async def load_config_from_yaml(  # REQ-012, REQ-016, REQ-250

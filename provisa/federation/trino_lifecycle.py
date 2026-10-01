@@ -154,6 +154,19 @@ def bind_terminal(state: Any) -> None:
     state.engine_conn_kwargs = terminal_conn_kwargs(state)
 
 
+def connect_terminal(state: Any) -> None:  # REQ-1900
+    """Open THIS process's connection to a coordinator its launch has already provisioned: no
+    system catalog is (re)registered and no ops table seeded — that is ``provision``, which the
+    launch runs once. Re-registering here would DROP and CREATE the catalogs under the workers
+    already serving from them."""
+    state.engine_conn_kwargs = terminal_conn_kwargs(state)
+    state.engine_conn = trino.dbapi.connect(**state.engine_conn_kwargs)
+
+    from provisa.compiler import schema_service
+
+    schema_service.init(state.federation_engine)
+
+
 def provision(state: Any, ops_views: list) -> None:
     """Connect the Trino terminal and seed the OTel ops catalog. Boot-time; blocking."""
     state.engine_conn_kwargs = terminal_conn_kwargs(state)
@@ -198,10 +211,9 @@ async def connect_infra(state: Any) -> None:  # REQ-143, REQ-171
         )
 
     async def _setup_object_store() -> None:
-        # MinIO results bucket (REQ-171) — already async.
-        from provisa.executor.redirect import RedirectConfig, ensure_results_bucket
-
-        await ensure_results_bucket(RedirectConfig.from_env())
+        # The results bucket (REQ-171) is not ensured here: the first redirect that needs it
+        # does that (redirect.ensure_results_bucket_sync, called from TrinoBackend.ctas_redirect
+        # and upload_and_presign).
 
         # MinIO OTEL bucket for otlp2parquet (blocking boto3 → thread).
         def _ensure_otel_bucket() -> None:

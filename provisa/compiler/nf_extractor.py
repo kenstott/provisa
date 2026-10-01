@@ -23,6 +23,7 @@ After extraction, remaining $N references are renumbered contiguously.
 
 from __future__ import annotations
 
+import functools
 import re
 from typing import Any
 
@@ -79,6 +80,10 @@ def extract_nf_args(
     - nf_args maps bare param name (e.g. "id") to its value
     """
     # Parse failure must fail loud: returning input skips NF-arg extraction.
+    # A statement that names no ``_nf_`` column has nothing to extract: the loop below only ever
+    # collects a condition whose column name starts with the prefix, and that name is in the text.
+    if _NF_PREFIX not in sql:
+        return sql, params, {}
     ast = sqlglot.parse_one(sql, dialect="postgres")
 
     where = ast.find(exp.Where)
@@ -138,10 +143,17 @@ def extract_nf_args(
     return clean_sql, clean_params, nf_args
 
 
-def find_api_table_names(sql: str) -> list[str]:  # REQ-599
-    """Return table names referenced in FROM/JOIN clauses of a SQL string."""
+@functools.lru_cache(maxsize=4096)
+def _table_names(sql: str) -> tuple[str, ...]:
     ast = sqlglot.parse_one(sql, dialect="postgres")
-    return [tbl.name for tbl in ast.find_all(exp.Table) if tbl.name]
+    return tuple(tbl.name for tbl in ast.find_all(exp.Table) if tbl.name)
+
+
+def find_api_table_names(sql: str) -> list[str]:  # REQ-599
+    """Return table names referenced in FROM/JOIN clauses of a SQL string. A function of the text
+    alone, asked on every execution of a statement (``would_materialize_optimize``), so the parse
+    is kept per text."""
+    return list(_table_names(sql))
 
 
 def left_join_table_names(sql: str) -> set[str]:  # REQ-599

@@ -45,7 +45,13 @@ export const TELEMETRY_ID_RE = /^[0-9a-f]{8,}$/i;
 export function traceDetailSql(kind: TelemetryIdKind, id: string): string {
   if (!TELEMETRY_ID_RE.test(id)) throw new Error(`not a telemetry id: ${id}`);
   const col = kind === "trace" ? "trace_id" : "span_id";
-  return `SELECT * FROM "ops"."traces" WHERE ${col} = '${id}' ORDER BY "timestamp"`;
+  // REQ-1910: "traces" holds the request's one record; the spans under it (present when the
+  // request was traced in debug detail) are in "trace_details", same columns, same trace_id.
+  return (
+    `SELECT * FROM "ops"."traces" WHERE ${col} = '${id}' ` +
+    `UNION ALL SELECT * FROM "ops"."trace_details" WHERE ${col} = '${id}' ` +
+    `ORDER BY "timestamp"`
+  );
 }
 
 /** Attribute maps arrive as objects; render them expanded rather than as [object Object]. */

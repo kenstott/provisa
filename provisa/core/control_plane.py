@@ -22,7 +22,9 @@ from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_admin import init_registry_schema
 
 
-async def bring_up_platform(url: str, *, pool_size: int, pool_min: int, org_id: str) -> Database:
+async def bring_up_platform(
+    url: str, *, pool_size: int, pool_min: int, org_id: str, initialise: bool = True
+) -> Database:
     """Build the platform-plane ``Database`` from *url* and initialise its schema
     (org/user/invite registry + SaaS billing). Unscoped — no ``search_path``.
 
@@ -38,5 +40,7 @@ async def bring_up_platform(url: str, *, pool_size: int, pool_min: int, org_id: 
     from provisa.core.commerce import load as load_commerce
 
     load_commerce()
-    await init_registry_schema(db, org_id)
+    # REQ-1900: a worker whose launch has already initialised the registry only connects to it.
+    if initialise:
+        await init_registry_schema(db, org_id)
     return db

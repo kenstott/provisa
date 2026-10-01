@@ -47,6 +47,8 @@ from provisa.core.rpc_loop import hold_loop_for_stream as _hold_loop_for_stream
 from provisa.core.rpc_loop import run_rpc as _run_rpc
 from provisa.executor.formats.arrow import rows_to_arrow_table
 from provisa.otel_compat import get_tracer as _get_tracer
+from provisa.otel_compat import in_request_span as _in_request_span
+from provisa.otel_compat import request_span as _request_span
 from provisa.security.high_security import high_security_wire_reject
 from provisa.transpiler.router import Route, decide_route
 
@@ -516,6 +518,7 @@ class ProvisaFlightServer(
     # do_get — execute query or return catalog data
     # ------------------------------------------------------------------
 
+    @_in_request_span(_tracer, "flight.do_get", transport="flight")  # REQ-1910
     def do_get(  # REQ-051, REQ-143, REQ-145, REQ-267, REQ-345, REQ-369
         self,
         context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage, reportUnusedParameter]  # lib omits __all__
@@ -585,7 +588,7 @@ class ProvisaFlightServer(
             if refusal is not None:
                 raise _flight_error(refusal)
         ticket_type = "sql" if _is_sql(str(query_text)) else "graphql"
-        with _tracer.start_as_current_span("flight.do_get") as span:
+        with _request_span(_tracer, "flight.do_get", transport="flight") as span:
             span.set_attribute("flight.ticket_type", ticket_type)
             if ticket_type == "sql":
                 span.set_attribute("flight.sql", str(query_text)[:200])
@@ -643,7 +646,7 @@ class ProvisaFlightServer(
             body = {}
         query_text = body.get("query", "")
         ticket_type = "sql" if _is_sql(str(query_text)) else "graphql"
-        with _tracer.start_as_current_span("flight.do_action") as span:
+        with _request_span(_tracer, "flight.do_action", transport="flight") as span:
             span.set_attribute("flight.ticket_type", ticket_type)
             if ticket_type == "sql":
                 span.set_attribute("flight.sql", str(query_text)[:200])

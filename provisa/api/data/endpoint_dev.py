@@ -950,6 +950,7 @@ async def unified_query_endpoint(  # REQ-001, REQ-267, REQ-345
     accept: str | None = Header(None),
     x_provisa_stats: str | None = Header(None),
     x_provisa_as_of: str | None = Header(None),
+    x_provisa_trace: str | None = Header(None),  # REQ-1910: forwarded to the GraphQL endpoint
 ):
     """Execute a GraphQL, SQL, or Cypher query; auto-detected from syntax.
 
@@ -988,6 +989,7 @@ async def unified_query_endpoint(  # REQ-001, REQ-267, REQ-345
             x_provisa_stats=x_provisa_stats,
             x_provisa_normalized=None,
             x_provisa_as_of=x_provisa_as_of,
+            x_provisa_trace=x_provisa_trace,
         )
 
     # SQL

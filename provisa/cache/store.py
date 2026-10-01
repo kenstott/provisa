@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from redis.exceptions import RedisError
 
 from provisa.otel_compat import get_tracer as _get_tracer
+from provisa.otel_compat import stage as _stage
 
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
@@ -156,7 +157,7 @@ class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
             self._redis = make_redis(self._redis_url, decode_responses=False)
 
     async def get(self, key: str, tenant_id: str | None = None) -> CachedResult | None:  # REQ-544
-        with _tracer.start_as_current_span("cache.get") as span:
+        with _stage(_tracer, "cache.get", name="cache") as span:
             span.set_attribute("cache.key", key)
             try:
                 await self._connect()
@@ -193,7 +194,7 @@ class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
         tenant_id: str | None = None,
         table_ids: set[int] | None = None,
     ) -> None:
-        with _tracer.start_as_current_span("cache.set") as span:
+        with _stage(_tracer, "cache.set") as span:
             span.set_attribute("cache.key", key)
             span.set_attribute("cache.ttl", ttl)
             span.set_attribute("cache.size_bytes", len(data))

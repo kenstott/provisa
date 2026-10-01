@@ -64,6 +64,11 @@ _STAGES: dict[tuple[str, str], str] = {
     ("provisa/api/flight/server.py", "_do_get_graphql"): "transport:flight.graphql",
     ("provisa/api/flight/server.py", "_do_get_cypher"): "transport:flight.cypher",
     ("provisa/grpc/server.py", "_handle_query_bound"): "transport:grpc.query",
+    ("provisa/api/rest/generator.py", "rest_table_endpoint"): "transport:http.rest",
+    ("provisa/api/jsonapi/generator.py", "_jsonapi_table_endpoint"): "transport:http.jsonapi",
+    ("provisa/api/airport/query.py", "governed_table_scan_stream"): "transport:airport.scan",
+    ("provisa/api/airport/query.py", "_plan_for_scan"): "govern:airport.plan",
+    ("provisa/api/airport/query.py", "_typed_batches_from_rows"): "send:airport.batches",
     # governance
     ("provisa/pgwire/_pipeline.py", "_govern_and_route"): "govern:raw",
     ("provisa/pgwire/_pipeline.py", "_govern_and_route_planned"): "govern:raw.planned",
@@ -73,6 +78,11 @@ _STAGES: dict[tuple[str, str], str] = {
         "_govern_and_route_compiled_planned",
     ): "govern:compiled.planned",
     ("provisa/pgwire/_pipeline.py", "govern_pgwire_plan"): "govern:pgwire",
+    # REQ-589: on the extended protocol a statement is governed once, in its Describe; the Execute
+    # only routes the governed statement with the Bind's values.
+    ("provisa/pgwire/_pipeline.py", "describe_pgwire_statement"): "govern:pgwire.describe",
+    ("provisa/pgwire/_pipeline.py", "govern_statement"): "govern:statement",
+    ("provisa/pgwire/_pipeline.py", "plan_pgwire_statement"): "route:pgwire.plan_statement",
     ("provisa/pgwire/_pipeline.py", "govern_batch_final_plan_with_fn"): "govern:batch",
     ("provisa/api/data/endpoint.py", "_handle_query"): "govern:graphql",
     ("provisa/api/data/endpoint.py", "_prepare_compiled"): "govern:graphql.compile",
@@ -97,6 +107,19 @@ _STAGES: dict[tuple[str, str], str] = {
     ("provisa/federation/duckdb_runtime.py", "land_table"): "land:duckdb.land_table",
     ("provisa/federation/materialize_broker.py", "land"): "land:store_broker.land",
     ("provisa/federation/materialize_broker.py", "_with_store"): "land:store_broker.store_io",
+    ("provisa/federation/runtime.py", "execute_engine"): "execute:engine",
+    ("provisa/federation/runtime.py", "execute_engine_sync"): "execute:engine_sync",
+    ("provisa/federation/runtime.py", "execute_engine_stream"): "execute:engine_stream",
+    ("provisa/federation/runtime.py", "execute_native"): "execute:native",
+    ("provisa/federation/runtime.py", "execute_native_stream"): "execute:native_stream",
+    ("provisa/executor/drivers/postgresql.py", "execute"): "execute:pg_source.execute",
+    ("provisa/executor/drivers/postgresql.py", "_open"): "execute:pg_source.stream_open",
+    ("provisa/executor/drivers/postgresql.py", "fetch"): "execute:pg_source.fetch",
+    ("provisa/pgwire/pg_passthrough.py", "open_passthrough"): "execute:pg_passthrough.open",
+    ("provisa/pgwire/pg_passthrough.py", "fetch"): "send:pg_passthrough.fetch",
+    ("provisa/executor/trino.py", "execute_trino"): "execute:trino",
+    ("provisa/executor/trino_flight.py", "execute_trino_flight_stream"): "execute:trino.flight",
+    ("provisa/executor/trino_flight.py", "execute_trino_flight_arrow"): "execute:trino.flight",
     # encode / send
     ("provisa/executor/serialize.py", "serialize_rows"): "encode:json.serialize_rows",
     ("provisa/pgwire/server.py", "rows"): "encode:pgwire.rows",
@@ -104,6 +127,7 @@ _STAGES: dict[tuple[str, str], str] = {
     ("buenavista/postgres.py", "send_data_rows"): "send:pgwire.data_rows",
     ("provisa/api/flight/server.py", "_metered_batches"): "send:flight.batches",
     ("provisa/api/flight/server.py", "_report_table"): "send:flight.table",
+    ("provisa/executor/formats/arrow.py", "rows_to_arrow_table"): "encode:flight.rows_to_arrow",
     ("provisa/api/flight/server.py", "_license_stream"): "send:flight.table_stream",
     ("provisa/core/rpc_loop.py", "__next__"): "send:flight.loop_held_batch",
     ("provisa/federation/duckdb_runtime.py", "_batches"): "send:flight.engine_batches",
@@ -366,6 +390,17 @@ def install(path: str) -> None:
             return _real(self, *args, **kwargs)
 
         setattr(flight_server.ProvisaFlightServer, method, _flight)
+
+    from provisa.api.airport import server as airport_server
+
+    for method in ("do_get", "do_exchange", "do_action", "get_flight_info"):
+        real = getattr(airport_server.ProvisaAirportServer, method)
+
+        def _airport(self, *args, _real=real, _name=method, **kwargs):  # type: ignore[no-untyped-def]
+            _enter(f"airport.{_name}")
+            return _real(self, *args, **kwargs)
+
+        setattr(airport_server.ProvisaAirportServer, method, _airport)
 
     # pyarrow drains a GeneratorStream AFTER do_get returns, from the gRPC handler thread, in a
     # fresh Python thread state (no profile, no thread-locals survive), so each pull is recorded

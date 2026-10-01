@@ -74,6 +74,12 @@ _SEED_DOMAIN_ADVISORY_LOCK_KEY = 0x50524F5649534131
 
 # Views registered in the ops domain alongside the raw Iceberg tables.
 # Each entry: (view_name, [(col_name, data_type, is_pk)], ddl_sql)
+#
+# REQ-1910: `traces` holds one row per request — the request span — in either trace detail, and
+# request_facts.observe_plan puts the statement's provisa.table/domain/role on that span. So
+# `queries` is the request records that read a registered table. A request of several statements
+# is one row: table_name is its first statement's, the span's provisa.tables attribute lists them
+# all and provisa.statements counts them; the per-statement record is query_audit_log.
 _OPS_VIEWS: list[tuple[str, list[tuple[str, str, bool]], str]] = [
     (
         "queries",
@@ -115,7 +121,7 @@ SELECT
     query_text,
     _date
 FROM otel.signals.traces
-WHERE span_name LIKE 'provisa.query%'
+WHERE table_name IS NOT NULL
 """,
     ),
 ]
@@ -719,8 +725,12 @@ async def _seed_ops_pg(conn: "Connection") -> None:  # REQ-016
 
 async def _init_control_planes(
     config_path: str | None,
+    initialise: bool = True,
 ) -> tuple[str, int, str, str]:  # REQ-057, REQ-837
     """Bring up both control planes from config and init tenant schema + audit.
+
+    ``initialise=False`` (REQ-1900) is a worker whose launch has already created the schemas
+    (see ``provisa.core.boot_lock``): it builds this process's pools and runs no DDL.
 
     Returns the tenant DB connection parts (host, port, database, user) for the
     engine self-catalog. All connection details come from the config layer
@@ -747,6 +757,7 @@ async def _init_control_planes(
         pool_size=cp.pool_max,
         pool_min=cp.pool_min,
         org_id=org_id,
+        initialise=initialise,
     )
 
     # schema.sql ships in the wheel (pyproject package-data). It is REQUIRED: the PG path runs it
@@ -756,11 +767,12 @@ async def _init_control_planes(
     schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
     if not schema_sql_path.exists():
         raise RuntimeError(f"control-plane schema.sql missing from the package: {schema_sql_path}")
-    await init_schema(state.tenant_db, schema_sql_path.read_text(), org_id=org_id)
+    if initialise:
+        await init_schema(state.tenant_db, schema_sql_path.read_text(), org_id=org_id)
 
-    from provisa.audit.query_log import init_audit_schema
+        from provisa.audit.query_log import init_audit_schema
 
-    await init_audit_schema(state.tenant_db, org_id=org_id)
+        await init_audit_schema(state.tenant_db, org_id=org_id)
 
     host, port, database, username, _pw = cp.tenant_parts()
     # Every backend identifies a database (a PG database name, a SQLite file path, …).

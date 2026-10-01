@@ -34,6 +34,7 @@ import {
 } from "../../api/admin";
 import { SUBSYSTEM_TRACE_KEYS } from "../../api/admin";
 import type { PlatformSettings } from "../../api/admin";
+import { DebugTracePanel } from "./DebugTracePanel";
 
 interface ObsTabProps {
   settings: PlatformSettings;
@@ -291,6 +292,9 @@ function OtelSettingsSection({
           <Tabs.Tab value="subsystems">{t("observabilityTab.subsystemsTitle")}</Tabs.Tab>
           <Tabs.Tab value="pipeline">{t("observabilityTab.pipelineTitle")}</Tabs.Tab>
           <Tabs.Tab value="support">{t("observabilityTab.supportTitle")}</Tabs.Tab>
+          <Tabs.Tab value="debug" data-testid="observability-debug-trace-tab">
+            {t("debugTracePanel.tabTitle")}
+          </Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="exporter">
@@ -450,6 +454,12 @@ function OtelSettingsSection({
               description={t("observabilityTab.redactAttrsHelp")}
             />
           </Stack>
+        </Tabs.Panel>
+
+        {/* REQ-1910: debug-trace windows and the per-role hint permission. Its changes apply as
+            they are made — the Save below is for the otel settings the other panels edit. */}
+        <Tabs.Panel value="debug">
+          <DebugTracePanel />
         </Tabs.Panel>
       </Tabs>
 
