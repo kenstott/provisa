@@ -17,9 +17,9 @@ SQL on the engine connection (which never ATTACHes that store)."""
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import duckdb
-import pytest
 
 from provisa.executor.session import StoreBrokerSession
 from provisa.federation.materialize_broker import get_broker
@@ -52,10 +52,10 @@ def test_cache_statements_run_in_the_store_file(tmp_path: Path) -> None:
         con.close()
 
 
-def test_a_bind_parameter_is_refused(tmp_path: Path) -> None:
+def test_a_value_binds_at_the_question_mark(tmp_path: Path) -> None:
     session = StoreBrokerSession(get_broker(str(tmp_path / "materialize.duckdb")))
-    with pytest.raises(ValueError, match="no bind parameters"):
-        session.execute("SELECT ?", [1])
+    assert session.placeholder == "?"
+    assert session.execute("SELECT ?", ["a'b"]).fetchall() == [("a'b",)]
 
 
 def test_the_native_cache_terminal_uses_the_broker_for_a_duckdb_file_store(
@@ -67,6 +67,8 @@ def test_the_native_cache_terminal_uses_the_broker_for_a_duckdb_file_store(
 
     rt = DuckDBFederationRuntime(materialize_dsn=f"duckdb:///{tmp_path / 'materialize.duckdb'}")
     backend = NativeEngineBackend.__new__(NativeEngineBackend)
+    # The session carries the engine's dialect, which the backend reads off its engine.
+    backend.engine = SimpleNamespace(native_store="duckdb", name="duckdb")  # type: ignore[assignment]
     backend._runtime_for = lambda _state: rt  # type: ignore[method-assign]
     with backend.isolated_sync(None) as session:
         assert isinstance(session, StoreBrokerSession)
@@ -76,3 +78,4 @@ def test_the_native_cache_terminal_uses_the_broker_for_a_duckdb_file_store(
     backend._runtime_for = lambda _state: rt_pg  # type: ignore[method-assign]
     with backend.isolated_sync(None) as session:
         assert isinstance(session, EngineSession)
+        assert (session.dialect, session.placeholder) == ("duckdb", None)

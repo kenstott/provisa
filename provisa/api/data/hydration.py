@@ -44,7 +44,7 @@ async def _hydrate_dataloader(
     hydration_rows: dict,
 ) -> None:
     """DataLoader branch: batch-fetch via query param list from parent PKs."""
-    from provisa.openapi.pg_cache import fill_api_table
+    from provisa.openapi.pg_cache import _ident, _relation, fill_api_table
 
     async with state.tenant_db.acquire() as pg_conn:
         p_table = dataloader_parent_table_meta.table_name
@@ -55,8 +55,9 @@ async def _hydrate_dataloader(
         )
         try:
             rows = await pg_conn.fetch(
-                f'SELECT DISTINCT "{dataloader_parent_join_col}" FROM "{p_schema}"."{p_table}"'
-                f' WHERE "{dataloader_parent_join_col}" IS NOT NULL'
+                f"SELECT DISTINCT {_ident(dataloader_parent_join_col)}"
+                f" FROM {_relation(pg_conn, p_schema, p_table)}"
+                f" WHERE {_ident(dataloader_parent_join_col)} IS NOT NULL"
             )
             pk_values = [r[0] for r in rows]
         except Exception as exc:
@@ -134,7 +135,7 @@ async def _hydrate_path_param(
 
     Returns False if parent join is missing (caller should skip this table).
     """
-    from provisa.openapi.pg_cache import fetch_pk_row
+    from provisa.openapi.pg_cache import _ident, _relation, fetch_pk_row
 
     path_param_name = path_col.param_name or path_col.name
     parent_join_col = None
@@ -157,8 +158,9 @@ async def _hydrate_path_param(
         p_schema = "default" if p_table in state.api_endpoints else parent_table_meta.schema_name
         try:
             rows = await pg_conn.fetch(
-                f'SELECT DISTINCT "{parent_join_col}" FROM "{p_schema}"."{p_table}"'
-                f' WHERE "{parent_join_col}" IS NOT NULL'
+                f"SELECT DISTINCT {_ident(parent_join_col)}"
+                f" FROM {_relation(pg_conn, p_schema, p_table)}"
+                f" WHERE {_ident(parent_join_col)} IS NOT NULL"
             )
             pk_values = [r[0] for r in rows]
         except Exception as exc:

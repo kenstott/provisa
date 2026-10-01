@@ -718,7 +718,7 @@ class EngineBackend:
         never the raw physical-driver connection."""
         from provisa.executor.session import EngineSession
 
-        yield EngineSession(state.engine_conn)
+        yield EngineSession(state.engine_conn, dialect=self.dialect)
 
     def cache_catalog(self, state: Any) -> str | None:
         """Catalog the API-result cache lives in for THIS engine — the reference to its materialization
@@ -1374,7 +1374,7 @@ class TrinoBackend(EngineBackend):
         from provisa.federation import trino_lifecycle
 
         conn = trino_lifecycle.connect(state.engine_conn_kwargs)
-        session = EngineSession(conn)
+        session = EngineSession(conn, dialect=self.dialect)
         try:
             yield session
         finally:

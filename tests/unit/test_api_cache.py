@@ -167,6 +167,9 @@ class _FakeCursor:
 
 
 class _FakeConn:
+    dialect = "duckdb"
+    placeholder = None
+
     def __init__(self):
         self.executed: list[str] = []
 

@@ -36,6 +36,9 @@ class DuckDBBackend(NativeEngineBackend):
     # out of _attach_registered() into a 400 on an unrelated /data/sql request).
     _attach_errors = (duckdb.Error, KeyError, UnreachableSource)
 
+    # The runtime connection is a duckdb connection: values bind at ``?``.
+    _cache_bind_placeholder = "?"
+
     def transpile_physical(self, pg_sql: str) -> str:
         """DuckDB physical SQL, then rewrite the JSON array aggregate the compiler emits for
         one-to-many relationships: SQLGlot writes Postgres json_agg as JSON_ARRAYAGG, which DuckDB

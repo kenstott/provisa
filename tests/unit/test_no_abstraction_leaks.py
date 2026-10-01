@@ -296,6 +296,8 @@ def test_native_backend_isolated_sync_yields_engine_session_not_raw_connection()
     class _FakeNativeBackend(NativeEngineBackend):
         def __init__(self):  # avoids real engine wiring
             self._runtime = _FakeRuntime()
+            # the session carries the engine's dialect, read off the backend's engine
+            self.engine = SimpleNamespace(native_store="duckdb", name="duckdb")
 
         def _runtime_for(self, state):
             return self._runtime

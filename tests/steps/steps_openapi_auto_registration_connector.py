@@ -1135,7 +1135,9 @@ def given_get_result_cached_in_trino(shared_data):
     # in-process TTL cache (matching real table_exists behaviour on cache miss).
     conn = _make_fake_trino_conn(table_name, loc, _REQ318_TTL)
     _TABLE_EXISTS_CACHE.pop((loc.catalog, loc.schema, table_name), None)
-    assert table_exists(EngineSession(conn), loc, table_name, ttl=_REQ318_TTL) is True
+    assert (
+        table_exists(EngineSession(conn, dialect="trino"), loc, table_name, ttl=_REQ318_TTL) is True
+    )
     assert conn.cursor.called, "first access must probe Trino (cache miss)"
 
     shared_data["loc"] = loc
@@ -1169,7 +1171,10 @@ def then_served_from_trino_zero_rest(shared_data):
     assert table_known_live(loc, table_name) is True
 
     # table_exists returns True from cache without touching the connection.
-    assert table_exists(EngineSession(second_conn), loc, table_name, ttl=_REQ318_TTL) is True
+    assert (
+        table_exists(EngineSession(second_conn, dialect="trino"), loc, table_name, ttl=_REQ318_TTL)
+        is True
+    )
     assert not second_conn.cursor.called, (
         "cache hit must not issue any Trino probe (zero upstream calls)"
     )

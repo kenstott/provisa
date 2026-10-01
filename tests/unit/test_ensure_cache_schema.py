@@ -24,6 +24,8 @@ from provisa.api_source.engine_cache import CacheLocation, _SCHEMA_EXISTS_CACHE,
 class _FakeConn:
     """Records executed SQL; scripted per call via a list of (matches, outcome) rules."""
 
+    dialect = "trino"
+
     def __init__(self, responses: list[tuple[str, object]]):
         self._responses = responses
         self.executed: list[str] = []

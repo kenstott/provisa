@@ -30,11 +30,18 @@ class EngineSession:
     ``fetchall()``. ``close()`` closes the underlying connection — only meaningful for backends
     that hand out a dedicated, disposable connection (e.g. Trino); native-engine backends share
     the runtime's own persistent connection and never call it.
+
+    ``dialect`` is the SQL dialect the connection speaks: a caller that builds a statement
+    quotes its identifiers, and renders any literal, for that dialect. ``placeholder`` is the
+    marker the connection's driver binds a value at; None means the backend that built this
+    session declares none, and a caller then renders each value as a literal of ``dialect``.
     """
 
-    def __init__(self, conn: Any) -> None:
+    def __init__(self, conn: Any, *, dialect: str, placeholder: str | None = None) -> None:
         self._conn = conn
         self._cursor: Any = None
+        self.dialect = dialect
+        self.placeholder = placeholder
 
     def execute(self, sql: str, params: list | None = None) -> "EngineSession":
         self._cursor = self._conn.cursor()
@@ -57,17 +64,18 @@ class StoreBrokerSession:
     DuckDB-file store). Every statement runs against the store through the broker, where the
     ``mat_store.*`` names the API-result cache writes resolve; the engine connection is never used.
 
-    Each ``execute`` is one broker operation (one lock hold); ``fetchall`` returns its rows. The
-    broker takes no bind parameters, and no ``isolated_sync()`` caller passes any."""
+    Each ``execute`` is one broker operation (one lock hold); ``fetchall`` returns its rows.
+    The store is a DuckDB file: statements are in the DuckDB dialect and values bind at ``?``."""
+
+    dialect = "duckdb"
+    placeholder = "?"
 
     def __init__(self, broker: Any) -> None:
         self._broker = broker
         self._rows: list = []
 
     def execute(self, sql: str, params: list | None = None) -> "StoreBrokerSession":
-        if params is not None:
-            raise ValueError("the store broker takes no bind parameters")
-        self._rows = self._broker.execute(sql)
+        self._rows = self._broker.execute(sql, params)
         return self
 
     def fetchall(self) -> list:

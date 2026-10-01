@@ -113,6 +113,52 @@ def cache_table_name(  # REQ-318, REQ-309, REQ-327
     return f"r_{h}"
 
 
+def _schema_ref(loc: CacheLocation, dialect: str) -> str:
+    """``catalog.schema`` in ``dialect``. A name that is not a plain identifier is quoted with
+    the dialect's own quoting; a plain one is left as written, so the engine folds its case as
+    it always has."""
+    return exp.Table(this=exp.to_identifier(loc.schema), db=exp.to_identifier(loc.catalog)).sql(
+        dialect=dialect
+    )
+
+
+def _table_ref(loc: CacheLocation, table_name: str, dialect: str) -> str:
+    """``catalog.schema."table"`` in ``dialect``: the table name always quoted, catalog and
+    schema as :func:`_schema_ref` writes them."""
+    return exp.Table(
+        this=exp.to_identifier(table_name, quoted=True),
+        db=exp.to_identifier(loc.schema),
+        catalog=exp.to_identifier(loc.catalog),
+    ).sql(dialect=dialect)
+
+
+def _string_literal(value: str, dialect: str) -> str:
+    """``value`` as a string literal of ``dialect``, escaped by the dialect's own rules."""
+    return exp.Literal.string(value).sql(dialect=dialect)
+
+
+def _cell(value: Any) -> Any:
+    """One response value as the cache stores it: NULL, a boolean and a number as themselves,
+    an object or array as its JSON text, anything else as its text."""
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, (dict, list)):
+        return json.dumps(value)
+    return str(value)
+
+
+def _literal(value: Any, dialect: str) -> str:
+    """A cache value (:func:`_cell`) as a literal of ``dialect`` — for a connection whose
+    backend declares no bind marker."""
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, (int, float)):
+        return str(value)
+    return _string_literal(value, dialect)
+
+
 # Materialize-store backends a SECOND direct connection can safely reach to create a schema,
 # alongside the engine's own connection — server processes with no single-writer constraint.
 # DuckDB/SQLite are single-writer file stores (store_writer/store_connection.py) the engine holds
@@ -186,13 +232,13 @@ def ensure_cache_schema(conn, loc: CacheLocation) -> None:  # REQ-318, REQ-309, 
     if key in _SCHEMA_EXISTS_CACHE:
         return
     if loc.backend == "iceberg":
-        s3_location = f"s3a://{_ICEBERG_BUCKET}/{loc.schema}/"
+        s3_location = _string_literal(f"s3a://{_ICEBERG_BUCKET}/{loc.schema}/", conn.dialect)
         sql = (
-            f"CREATE SCHEMA IF NOT EXISTS {loc.catalog}.{loc.schema} "
-            f"WITH (location = '{s3_location}')"
+            f"CREATE SCHEMA IF NOT EXISTS {_schema_ref(loc, conn.dialect)} "
+            f"WITH (location = {s3_location})"
         )
     else:
-        sql = f"CREATE SCHEMA IF NOT EXISTS {loc.catalog}.{loc.schema}"
+        sql = f"CREATE SCHEMA IF NOT EXISTS {_schema_ref(loc, conn.dialect)}"
     try:
         conn.execute(sql)
         conn.fetchall()
@@ -205,9 +251,14 @@ def ensure_cache_schema(conn, loc: CacheLocation) -> None:  # REQ-318, REQ-309, 
             ) from create_exc
 
     try:
+        schemata = exp.Table(
+            this=exp.to_identifier("schemata"),
+            db=exp.to_identifier("information_schema"),
+            catalog=exp.to_identifier(loc.catalog),
+        ).sql(dialect=conn.dialect)
         conn.execute(
-            f"SELECT 1 FROM {loc.catalog}.information_schema.schemata "
-            f"WHERE schema_name = '{loc.schema}'"
+            f"SELECT 1 FROM {schemata} "
+            f"WHERE schema_name = {_string_literal(loc.schema, conn.dialect)}"
         )
         exists = bool(conn.fetchall())
     except Exception as read_exc:
@@ -235,7 +286,7 @@ def table_exists(  # REQ-318, REQ-309, REQ-327
     if expiry is not None and time.monotonic() < expiry:
         return True
 
-    sql = f'SELECT 1 FROM {loc.catalog}.{loc.schema}."{table_name}" LIMIT 1'
+    sql = f"SELECT 1 FROM {_table_ref(loc, table_name, conn.dialect)} LIMIT 1"
     try:
         conn.execute(sql)
         conn.fetchall()
@@ -340,19 +391,24 @@ def create_and_insert(  # REQ-318, REQ-309, REQ-327, REQ-280
         raw = col.type.value if hasattr(col.type, "value") else str(col.type)
         return _API_TYPE_TO_IR.get(raw, "VARCHAR")
 
-    col_defs = ", ".join(f'"{c.name}" {_column_type(c)}' for c in columns)
+    dialect = conn.dialect
+    col_defs = ", ".join(
+        f"{exp.to_identifier(c.name, quoted=True).sql(dialect=dialect)} {_column_type(c)}"
+        for c in columns
+    )
+    ref = _table_ref(loc, table_name, dialect)
 
     if loc.backend == "iceberg":
-        s3_location = f"s3a://{_ICEBERG_BUCKET}/{loc.schema}/{table_name}/"
+        s3_location = _string_literal(
+            f"s3a://{_ICEBERG_BUCKET}/{loc.schema}/{table_name}/", dialect
+        )
         create_sql = (
-            f'CREATE TABLE IF NOT EXISTS {loc.catalog}.{loc.schema}."{table_name}" '
+            f"CREATE TABLE IF NOT EXISTS {ref} "
             f"({col_defs}) "
-            f"WITH (format = 'PARQUET', location = '{s3_location}')"
+            f"WITH (format = 'PARQUET', location = {s3_location})"
         )
     else:
-        create_sql = (
-            f'CREATE TABLE IF NOT EXISTS {loc.catalog}.{loc.schema}."{table_name}" ({col_defs})'
-        )
+        create_sql = f"CREATE TABLE IF NOT EXISTS {ref} ({col_defs})"
     try:
         conn.execute(create_sql)
         conn.fetchall()
@@ -367,27 +423,27 @@ def create_and_insert(  # REQ-318, REQ-309, REQ-327, REQ-280
 
     col_names = [c.name for c in columns]
 
-    def _lit(v) -> str:
-        if v is None:
-            return "NULL"
-        if isinstance(v, bool):
-            return "TRUE" if v else "FALSE"
-        if isinstance(v, (int, float)):
-            return str(v)
-        if isinstance(v, (dict, list)):
-            return "'" + json.dumps(v).replace("'", "''") + "'"
-        return "'" + str(v).replace("'", "''") + "'"
+    # A response value is data. Where the connection's driver binds values it is bound;
+    # where the backend declares no bind marker it is a literal the dialect itself escapes.
+    placeholder = conn.placeholder
 
     def _do_inserts() -> None:
         for i in range(0, max(len(rows), 1), 500):
             batch = rows[i : i + 500]
             if not batch:
                 break
-            vals = ", ".join(
-                "(" + ", ".join(_lit(r.get(c)) for c in col_names) + ")" for r in batch
-            )
-            insert_sql = f'INSERT INTO {loc.catalog}.{loc.schema}."{table_name}" VALUES {vals}'
-            conn.execute(insert_sql)
+            if placeholder is None:
+                vals = ", ".join(
+                    "(" + ", ".join(_literal(_cell(r.get(c)), dialect) for c in col_names) + ")"
+                    for r in batch
+                )
+                conn.execute(f"INSERT INTO {ref} VALUES {vals}")
+            else:
+                row_marks = "(" + ", ".join([placeholder] * len(col_names)) + ")"
+                conn.execute(
+                    f"INSERT INTO {ref} VALUES " + ", ".join([row_marks] * len(batch)),
+                    [_cell(r.get(c)) for r in batch for c in col_names],
+                )
             conn.fetchall()
 
     try:
@@ -395,7 +451,7 @@ def create_and_insert(  # REQ-318, REQ-309, REQ-327, REQ-280
     except Exception as exc:
         if "TYPE_MISMATCH" in str(exc):
             # Stale cache table has wrong schema — drop and recreate
-            conn.execute(f'DROP TABLE IF EXISTS {loc.catalog}.{loc.schema}."{table_name}"')
+            conn.execute(f"DROP TABLE IF EXISTS {ref}")
             conn.fetchall()
             conn.execute(create_sql.replace("IF NOT EXISTS ", ""))
             conn.fetchall()
@@ -500,9 +556,10 @@ def rewrite_from_cache(
 
     import re
 
+    cache_ref = _table_ref(loc, table_name, "postgres")
     return re.sub(
         r'FROM\s+"[^"]*"\."[^"]*"(?:\."[^"]*")?',
-        f'FROM {loc.catalog}.{loc.schema}."{table_name}"',
+        lambda _m: f"FROM {cache_ref}",
         sql,
         count=1,
         flags=re.IGNORECASE,
@@ -542,9 +599,10 @@ def rewrite_all_from_cache(  # REQ-318, REQ-309, REQ-327
 
     result = sql
     for orig_tbl, (loc, cache_tbl) in cache_rewrites.items():
+        cache_ref = _table_ref(loc, cache_tbl, "postgres")
         result = re.sub(
             rf'"[^"]*"\."[^"]*"\."{re.escape(orig_tbl)}"',
-            f'{loc.catalog}.{loc.schema}."{cache_tbl}"',
+            lambda _m, _ref=cache_ref: _ref,
             result,
             flags=re.IGNORECASE,
         )
@@ -582,7 +640,7 @@ async def drop_cache_table(  # REQ-318, REQ-309, REQ-327
     _TABLE_EXISTS_CACHE.pop((loc.catalog, loc.schema, table_name), None)
     try:
         with engine.isolated_sync() as conn:
-            conn.execute(f'DROP TABLE IF EXISTS {loc.catalog}.{loc.schema}."{table_name}"')
+            conn.execute(f"DROP TABLE IF EXISTS {_table_ref(loc, table_name, conn.dialect)}")
             conn.fetchall()
         log.info("[API CACHE] dropped %s after TTL=%ds", table_name, ttl)
     except Exception as exc:

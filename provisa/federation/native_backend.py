@@ -116,6 +116,11 @@ class NativeEngineBackend(EngineBackend):
     # already skips the same condition the same way (see its `except UnreachableSource: continue`).
     _attach_errors: tuple[type[BaseException], ...] = (KeyError, UnreachableSource)
 
+    # The marker the runtime connection's driver binds a value at, for the API-result cache
+    # terminal (``isolated_sync``). None: the engine's subclass declares none, and the cache
+    # renders each value as a literal of the engine's dialect instead.
+    _cache_bind_placeholder: str | None = None
+
     def __init__(self, engine: Any) -> None:
         super().__init__(engine)
         self._runtime: Any = None
@@ -757,7 +762,9 @@ class NativeEngineBackend(EngineBackend):
         if broker is not None:
             yield StoreBrokerSession(broker)
             return
-        yield EngineSession(rt.connection)
+        yield EngineSession(
+            rt.connection, dialect=self.dialect, placeholder=self._cache_bind_placeholder
+        )
 
     def _materialize_store_ref(self, state: Any) -> str | None:
         """A native engine's source exposure is not itself a durable catalog, so API results a source

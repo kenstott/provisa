@@ -530,7 +530,7 @@ def _simulate_first_query_execution(
     conn.record_remote_call()
     # engine_cache takes the isolated_sync() session surface, not a raw dbapi connection — the
     # real EngineSession is what opens the cursor this fake records SQL through.
-    session = EngineSession(conn)
+    session = EngineSession(conn, dialect="trino")
     ensure_cache_schema(session, loc)
     create_and_insert(session, loc, table_name, remote_rows, columns)
 
@@ -550,7 +550,7 @@ def _simulate_second_query_from_cache(
     from provisa.api_source.engine_cache import table_exists
     from provisa.executor.session import EngineSession
 
-    cache_hit = table_exists(EngineSession(conn), loc, table_name, ttl=ttl)
+    cache_hit = table_exists(EngineSession(conn, dialect="trino"), loc, table_name, ttl=ttl)
     if not cache_hit:
         return [], False
 

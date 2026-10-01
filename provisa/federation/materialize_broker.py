@@ -401,11 +401,14 @@ class _SyncedStore:
         """The store table's column names in ordinal order, or ``None`` when it does not exist."""
         return _with_store(self._db_path, lambda con: _table_columns(con, schema, table))
 
-    def execute(self, sql: str) -> list[tuple]:
+    def execute(self, sql: str, params: list | None = None) -> list[tuple]:
         """Run one statement against the store (``mat_store.*`` names resolve) and return its rows.
         For the MV-maintenance statements that act on the store alone (reclaim/orphan DROP, SHOW
-        TABLES) — the engine connection never ATTACHes this file (REQ-1901)."""
-        return _with_store(self._db_path, lambda con: con.execute(sql).fetchall())
+        TABLES) — the engine connection never ATTACHes this file (REQ-1901) — and the API-result
+        cache's statements, whose values bind at ``?`` through ``params``."""
+        if params is None:
+            return _with_store(self._db_path, lambda con: con.execute(sql).fetchall())
+        return _with_store(self._db_path, lambda con: con.execute(sql, params).fetchall())
 
     def write_mv(
         self,
