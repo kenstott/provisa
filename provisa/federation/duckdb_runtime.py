@@ -286,12 +286,14 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             if secret_ddl:
                 self._con.execute(secret_ddl)
             scan = details["view_ddl"].split(" AS ", 1)[1]
-            self._con.execute(f"CREATE VIEW IF NOT EXISTS {phys} AS {scan}")
+            self._drop_replica_exposure(source, phys)
+            self._con.execute(f"CREATE OR REPLACE VIEW {phys} AS {scan}")
         else:  # ATTACH postgres / sqlite / extension source once, then view the remote table
             raw_alias = self._attach_raw(source, details)
             remote_schema = details.get("remote_schema", source.schema_name)
             remote = f'"{raw_alias}"."{remote_schema}"."{source.table_name}"'
-            self._con.execute(f"CREATE VIEW IF NOT EXISTS {phys} AS SELECT * FROM {remote}")
+            self._drop_replica_exposure(source, phys)
+            self._con.execute(f"CREATE OR REPLACE VIEW {phys} AS SELECT * FROM {remote}")
 
     def _attach_clickhouse(self, source: Any, details: dict) -> None:
         """REQ-899: register a ClickHouse table for the query-time HTTP read. Loads httpfs, creates
@@ -949,12 +951,47 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         `phys` stays a real VIEW, unchanged from before."""
         phys = self._phys_name(source)
         if self._store_is_duckdb():
+            # A table that was attached live before it was replicated left its live VIEW at this
+            # name; the query-time copy below makes a TABLE of it, which DuckDB refuses over a view.
+            self._drop_live_view(source, phys)
             self._store_relations[phys] = (self._store_schema(), mat_table)
             return
+        # OR REPLACE: the name reads the replica from now on, whatever view (a live one, from
+        # before the table was replicated) held it — IF NOT EXISTS left the live view in place.
         self._con.execute(
-            f"CREATE VIEW IF NOT EXISTS {phys} AS "
+            f"CREATE OR REPLACE VIEW {phys} AS "
             f'SELECT * FROM {store}."{self._store_schema()}"."{mat_table}"'
         )
+
+    def _physical_parts(self, source: Any) -> list[str]:
+        from provisa.core.catalog import _to_catalog_name
+
+        return [_to_catalog_name(source.id), source.schema_name, source.table_name]
+
+    def _drop_live_view(self, source: Any, phys: str) -> None:
+        """Drop the view at ``phys`` (the engine's own in-memory exposure of a table), if one is
+        there — checked against the catalog, so a table is never dropped as a view."""
+        is_view = self._con.execute(
+            "SELECT 1 FROM duckdb_views() WHERE database_name = ? AND schema_name = ? "
+            "AND view_name = ?",
+            self._physical_parts(source),
+        ).fetchone()
+        if is_view is not None:
+            self._con.execute(f"DROP VIEW {phys}")
+
+    def _drop_replica_exposure(self, source: Any, phys: str) -> None:
+        """The table is read live again: forget the replica exposed at ``phys`` — its
+        ``_store_relations`` entry and the local copy of the store table made for queries. The
+        replica itself, in the store, is not touched here."""
+        self._store_relations.pop(phys, None)
+        self._store_copy_canary.pop(phys, None)
+        is_table = self._con.execute(
+            "SELECT 1 FROM duckdb_tables() WHERE database_name = ? AND schema_name = ? "
+            "AND table_name = ?",
+            self._physical_parts(source),
+        ).fetchone()
+        if is_table is not None:
+            self._con.execute(f"DROP TABLE {phys}")
 
     def _refresh_store_relations(self, duck_sql: str) -> str:
         """REQ-1901: rehydrate, from the broker singleton, every embedded-DuckDB-store relation

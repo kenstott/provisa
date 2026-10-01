@@ -38,6 +38,7 @@ from sqlalchemy.schema import CreateSchema, CreateTable
 
 from provisa.core.change_signal import APPEND, select_landing_shape
 from provisa.federation.materialize_exec import build_table
+from provisa.federation.replica_guard import require_duckdb_replica_table
 
 
 def _duckdb_dialect() -> Any:
@@ -142,6 +143,7 @@ def reconcile_duckdb_native(
     Returns ``created`` | ``kept`` | ``recreated``."""
     dialect = _duckdb_dialect()
     _ensure_schema(con, catalog, schema, dialect)
+    require_duckdb_replica_table(con, catalog, schema, table, action="reconcile the replica at")
     have = _existing_columns(con, catalog, schema, table)
     want = [name for name, _ in columns]
     if not have:
@@ -331,6 +333,7 @@ def land_duckdb_native(
     cur = con.cursor()
     try:
         _ensure_schema(cur, catalog, schema, dialect)
+        require_duckdb_replica_table(cur, catalog, schema, table, action="write the replica")
         cur.execute(_create_ddl(catalog, schema, table, columns))  # create-if-absent (first land)
         qualified = _qualified(catalog, schema, table)
         if select_landing_shape(change_signal, watermark_column) != APPEND:

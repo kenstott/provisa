@@ -103,6 +103,10 @@ class _Backend:
         self.dialect = "postgres"
         self._landed_this_process: set[str] = set()
 
+    def require_reconciled(self, source_ids) -> None:
+        """As EngineBackend.require_reconciled: every replica here reconciled."""
+        del source_ids
+
     def is_first_touch(self, source_id: str) -> bool:
         return source_id not in self._landed_this_process
 

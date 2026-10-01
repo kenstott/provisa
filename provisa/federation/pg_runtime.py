@@ -22,6 +22,7 @@ attach_source, ensure_materialize_attached.
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 import time
 from typing import Any
@@ -34,6 +35,8 @@ from provisa.federation.land_guard import LandGuard
 from provisa.executor.result import QueryResult, ResultStream, StreamingQueryResult
 from provisa.federation.engine import build_pg_engine
 from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
+
+_log = logging.getLogger(__name__)
 
 # REQ-1895: run_sync/run_arrow/run_arrow_stream read-connection pool bounds — a fresh connection
 # per call (TCP + auth handshake, no server-side generic-plan reuse across calls) was measured as
@@ -324,6 +327,30 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
 
         folded_schema = f"{source_to_catalog(source.id)}_{source.schema_name}"
         cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{folded_schema}"')
+        # The live view and a replica of this table share this one name. A source that was
+        # replicated and is now read live again has its replica TABLE here, and CREATE OR REPLACE
+        # VIEW refuses a table — the stale replica would go on answering reads. It is the engine's
+        # own copy, so it is dropped (as the ordinary table the catalog says it is) to make room.
+        from provisa.federation.replica_guard import (
+            ReplicaTargetError,
+            pg_kind_name,
+            pg_relation_kind,
+        )
+
+        found = pg_relation_kind(cur, folded_schema, source.table_name)
+        if found is not None and found[1] == "r":
+            _log.warning(
+                'pg: "%s"."%s" is read live again; dropping the replica table that held its name',
+                folded_schema,
+                source.table_name,
+            )
+            cur.execute(f'DROP TABLE "{folded_schema}"."{source.table_name}"')
+        elif found is not None and found[1] != "v":
+            raise ReplicaTargetError(
+                f'"{folded_schema}"."{source.table_name}"',
+                pg_kind_name(found[1]),
+                "create the live view at",
+            )
         cur.execute(
             f'CREATE OR REPLACE VIEW "{folded_schema}"."{source.table_name}" '
             f"AS SELECT * FROM {remote}"
@@ -362,7 +389,18 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             col_defs.append(f"PRIMARY KEY ({', '.join(f'"{c}"' for c in pk)})")
         return f'CREATE TABLE "{schema}"."{table}" ({", ".join(col_defs)})'
 
-    def attach_landed_source(
+    async def attach_landed_source(
+        self, source: Any, columns: list[tuple[str, str]], *, pk_columns: list[str] | None = None
+    ) -> str:
+        """``_reconcile_landed`` on the caller's own thread with the connection held, as
+        ``land_table`` runs. ``NativeEngineBackend.reconcile_landed_tables`` awaits this for every
+        native runtime; as a plain ``def`` it returned a ``str`` to that ``await``, which raised
+        ``TypeError`` after the first table and ended the reconcile there."""
+        return await self._land_guard.run(
+            lambda: self._reconcile_landed(source, columns, pk_columns=pk_columns)
+        )
+
+    def _reconcile_landed(
         self, source: Any, columns: list[tuple[str, str]], *, pk_columns: list[str] | None = None
     ) -> str:
         """Eager reconcile (boot/registration, REQ-846/REQ-1651): converge the source's landed
@@ -385,12 +423,24 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         table = source.table_name
         want_cols = [name for name, _ in columns]
         want_pk = list(pk_columns or ())
+        from provisa.federation.replica_guard import pg_relation_kind, require_pg_replica_table
+
         cur = self._con.cursor()
         cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
-        cur.execute("SELECT to_regclass(%s)", (f'"{schema}"."{table}"',))
-        row = cur.fetchone()
-        assert row is not None  # to_regclass is a scalar function — always exactly one row
-        if row[0] is None:
+        # REQ-826/REQ-1141: what stands at the replica's name decides what may be done to it. A
+        # source that was read live left its live VIEW here (attach_source) — over a postgres_fdw
+        # foreign table, so every write to it is a write into the source. The source is replicated
+        # now: the view goes (dropped AS a view, on the catalog's word that it is one) and the
+        # replica table takes the name. Any other non-table relation is refused, never written.
+        found = pg_relation_kind(cur, schema, table)
+        if found is not None and found[1] == "v":
+            _log.warning(
+                'pg: "%s"."%s" is replicated now; dropping the live view that held its name',
+                schema,
+                table,
+            )
+            cur.execute(f'DROP VIEW "{schema}"."{table}"')
+        if not require_pg_replica_table(cur, schema, table, action="reconcile the replica at"):
             cur.execute(self._create_table_ddl(schema, table, columns, want_pk))
             return "created"
         have_cols = self._existing_columns(cur, schema, table)
@@ -409,10 +459,12 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         columns: list[tuple[str, str]],
         pk_columns: list[str],
     ) -> None:
-        cur.execute("SELECT to_regclass(%s)", (f'"{schema}"."{table}"',))
-        row = cur.fetchone()
-        assert row is not None  # to_regclass is a scalar function — always exactly one row
-        if row[0] is None:
+        """Create the replica table when nothing stands at its name; proceed only when what stands
+        there is an ordinary table. A view or a foreign table raises ``ReplicaTargetError`` — every
+        write a caller issues after this would otherwise go through it into the source."""
+        from provisa.federation.replica_guard import require_pg_replica_table
+
+        if not require_pg_replica_table(cur, schema, table, action="write the replica"):
             cur.execute(self._create_table_ddl(schema, table, columns, pk_columns))
 
     async def land_table(

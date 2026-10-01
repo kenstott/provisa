@@ -204,6 +204,21 @@ class EngineBackend:
         # caller; a later query against an already-first-touched source still defers to the real
         # clock, so a source genuinely fresh elsewhere isn't re-landed on every request.
         self._landed_this_process: set[str] = set()
+        # (source_id, table_name) -> why its replica could not be reconciled to the registered
+        # shape. A replicated table in this state has no replica a read may be answered from, and
+        # whatever stands at its name is not one either — so reads of its source raise this
+        # (``require_reconciled``) instead of reading it. Cleared when a reconcile succeeds.
+        self._unreconciled: dict[tuple[str, str], BaseException] = {}
+
+    def require_reconciled(self, source_ids: Any) -> None:
+        """Refuse a read of any source with a replica that could not be reconciled (REQ-826): the
+        read would be answered by something other than that table's replica."""
+        from provisa.federation.replica_guard import ReplicaUnavailable
+
+        wanted = set(source_ids)
+        for (source_id, table_name), cause in self._unreconciled.items():
+            if source_id in wanted:
+                raise ReplicaUnavailable(source_id, table_name, cause) from cause
 
     def is_first_touch(self, source_id: str) -> bool:
         """Whether this backend instance has never itself landed ``source_id`` — see

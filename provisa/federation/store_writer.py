@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy.schema import CreateTable, DropTable
 
 from provisa.core.change_signal import APPEND, select_landing_shape
+from provisa.federation.replica_guard import require_store_replica_table
 from provisa.federation.materialize_exec import (
     _bulk_insert,
     apply_persistence,
@@ -85,6 +86,7 @@ async def ensure_table(
             from sqlalchemy.schema import CreateSchema
 
             await conn.execute_core(CreateSchema(schema, if_not_exists=True))
+        await require_store_replica_table(conn, schema, table, action="create the replica at")
         await conn.execute_core(CreateTable(tbl, if_not_exists=True))
     return _qualified(schema, table)
 
@@ -157,6 +159,7 @@ async def reconcile_table(
             await conn.execute_core(CreateSchema(schema, if_not_exists=True))
         from sqlalchemy.exc import NoSuchTableError
 
+        await require_store_replica_table(conn, schema, table, action="reconcile the replica at")
         try:
             existing = await conn.reflect_columns(table, schema or None)
         except NoSuchTableError:
@@ -215,6 +218,7 @@ async def persist_land(
             from sqlalchemy.schema import CreateSchema
 
             await conn.execute_core(CreateSchema(schema, if_not_exists=True))
+        await require_store_replica_table(conn, schema, table, action="write the replica")
         return await apply_persistence(
             conn, tbl, rows, persist=persist, pk_columns=list(pk_columns or ())
         )
@@ -315,6 +319,7 @@ async def land(
             from sqlalchemy.schema import CreateSchema
 
             await conn.execute_core(CreateSchema(schema, if_not_exists=True))
+        await require_store_replica_table(conn, schema, table, action="write the replica")
         if shape == APPEND:
             # REQ-960: pass the key so the append is an idempotent upsert-by-key, not a blind append.
             return await land_append(conn, tbl, rows, pk_columns=tuple(pk_columns or ()))

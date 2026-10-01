@@ -305,7 +305,23 @@ class NativeEngineBackend(EngineBackend):
             merged = SimpleNamespace(
                 id=src.id, type=src.type, schema_name=schema_name, table_name=table_name
             )
-            await runtime.attach_landed_source(merged, columns, pk_columns=pk_columns)
+            try:
+                await runtime.attach_landed_source(merged, columns, pk_columns=pk_columns)
+            except Exception as exc:  # allow-ble: any failure to reconcile IS this table's state — recorded, logged, and raised to every read of its source (require_reconciled); the other tables still reconcile
+                self._unreconciled[(src.id, table_name)] = exc
+                _log.error(
+                    "%s: the replica of %s.%s.%s could not be reconciled; reads of source %r are "
+                    "refused until it is: %s",
+                    self.engine.name,
+                    src.id,
+                    schema_name,
+                    table_name,
+                    src.id,
+                    exc,
+                    exc_info=exc,
+                )
+                continue
+            self._unreconciled.pop((src.id, table_name), None)
             reconciled.append((src.id, table_name))
             landed.append(LandedTable(src.id, schema_name, table_name, tuple(pk_columns)))
         # REQ-1652/REQ-1654: the keys and descriptions are part of the landed model's shape and

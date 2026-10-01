@@ -156,6 +156,8 @@ async def ensure_resident(
     sources = [s for s in _all_sources if s.id in wanted]
     if not sources:
         return []
+    # REQ-826: a replicated table whose replica could not be reconciled is not read at all.
+    backend.require_reconciled(s.id for s in sources)
     _bound_tables = {getattr(b, "table_name", None) for b in pk_bounds} | set(pushed_down)
     _unbound_targets = set(unbound_targets)
     tables_by_source: dict[str, list[Any]] = {}
