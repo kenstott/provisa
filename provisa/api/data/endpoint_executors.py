@@ -56,7 +56,9 @@ from provisa.api.data.endpoint_helpers import (
 log = logging.getLogger(__name__)
 
 
-async def _execute_api_source(compiled, ctx, state, source_id, root_field, output_format):
+async def _execute_api_source(
+    compiled, ctx, state, source_id, root_field, output_format, *, role_id: str | None
+):
     """Execute a query against an API source in two phases.
 
     Phase 1 — REST call: native filter args (api_args) build the URL.
@@ -145,11 +147,11 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
         from provisa.pgwire._pipeline import _resolve_pk_bounds
 
         _pk_bounds = await _resolve_pk_bounds(compiled.sql, state, compiled.params)
-        await ensure_rows_resident(state, _pk_bounds)
+        await ensure_rows_resident(state, _pk_bounds, reader_role=role_id)
         await pushdown_row_materialize(
-            state, physical_sql, state.federation_engine.dialect, _exec_params
+            state, physical_sql, state.federation_engine.dialect, _exec_params, reader_role=role_id
         )
-        await ensure_resident(state, compiled.sources)
+        await ensure_resident(state, compiled.sources, reader_role=role_id)
         _loop = asyncio.get_running_loop()
         _t0 = _time.perf_counter()
         engine_result = await _loop.run_in_executor(
@@ -256,11 +258,11 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
     from provisa.pgwire._pipeline import _resolve_pk_bounds
 
     _pk_bounds = await _resolve_pk_bounds(compiled.sql, state, compiled.params)
-    await ensure_rows_resident(state, _pk_bounds)
+    await ensure_rows_resident(state, _pk_bounds, reader_role=role_id)
     await pushdown_row_materialize(
-        state, physical_sql, state.federation_engine.dialect, exec_params
+        state, physical_sql, state.federation_engine.dialect, exec_params, reader_role=role_id
     )
-    await ensure_resident(state, compiled.sources)
+    await ensure_resident(state, compiled.sources, reader_role=role_id)
     _t_phase2 = _time.perf_counter()
     engine_result = await _loop.run_in_executor(
         None, lambda: _engine.execute_engine_sync(physical_sql, exec_params)
@@ -278,7 +280,9 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
     return field_rows, response_data, phase1_ms, phase2_ms, physical_sql, not _cache_miss
 
 
-async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_field, output_format):
+async def _execute_grpc_remote_source(
+    compiled, ctx, state, source_id, root_field, output_format, *, role_id: str | None
+):
     """Execute a gRPC remote query method.
 
     Calls the remote gRPC endpoint with _nf_ args, injects result rows as a
@@ -432,11 +436,11 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
     from provisa.pgwire._pipeline import _resolve_pk_bounds
 
     _pk_bounds = await _resolve_pk_bounds(compiled.sql, state, compiled.params)
-    await ensure_rows_resident(state, _pk_bounds)
+    await ensure_rows_resident(state, _pk_bounds, reader_role=role_id)
     await pushdown_row_materialize(
-        state, physical_sql, state.federation_engine.dialect, exec_params
+        state, physical_sql, state.federation_engine.dialect, exec_params, reader_role=role_id
     )
-    await ensure_resident(state, compiled.sources)
+    await ensure_resident(state, compiled.sources, reader_role=role_id)
     _loop = asyncio.get_running_loop()
     _t2 = _time.perf_counter()
     engine_result = await _loop.run_in_executor(
@@ -568,11 +572,11 @@ async def _execute_engine_standard(
     from provisa.pgwire._pipeline import _resolve_pk_bounds
 
     _pk_bounds = await _resolve_pk_bounds(compiled.sql, state, compiled.params)
-    await ensure_rows_resident(state, _pk_bounds)
+    await ensure_rows_resident(state, _pk_bounds, reader_role=role_id)
     await pushdown_row_materialize(
-        state, physical_sql, state.federation_engine.dialect, exec_params
+        state, physical_sql, state.federation_engine.dialect, exec_params, reader_role=role_id
     )
-    await ensure_resident(state, compiled.sources)
+    await ensure_resident(state, compiled.sources, reader_role=role_id)
 
     result = await state.federation_engine.execute_engine(
         physical_sql,
@@ -768,6 +772,8 @@ async def _exec_api_route(
     response_cache_ttl,
     cache_opt_in,
     org_id: str | None = None,
+    *,
+    role_id: str | None,
 ):
     """Execute Route.API path.
 
@@ -784,7 +790,7 @@ async def _exec_api_route(
                 _api_physical_sql,
                 _api_cache_hit,
             ) = await _execute_grpc_remote_source(
-                compiled, ctx, state, decision.source_id, root_field, output_format
+                compiled, ctx, state, decision.source_id, root_field, output_format, role_id=role_id
             )
             _api_cache_hit = False
         else:
@@ -796,7 +802,7 @@ async def _exec_api_route(
                 _api_physical_sql,
                 _api_cache_hit,
             ) = await _execute_api_source(
-                compiled, ctx, state, decision.source_id, root_field, output_format
+                compiled, ctx, state, decision.source_id, root_field, output_format, role_id=role_id
             )
     except HTTPException:
         raise

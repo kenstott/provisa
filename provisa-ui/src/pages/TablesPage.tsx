@@ -50,7 +50,7 @@ import {
   useAllRelationships,
   useDataProducts, // REQ-1634
 } from "../hooks/useAdminQueries";
-import { usePurgeCacheByTable } from "../hooks/useAdminOpsQueries";
+import { usePurgeCacheByTable, useUpdateTableRoleTtl } from "../hooks/useAdminOpsQueries";
 import type { RegisteredTable, ColumnDependentsResult } from "../types/admin";
 import { DERIVED_SOURCE_ID } from "../types/admin";
 import { FilterInput } from "../components/admin/FilterInput";
@@ -70,6 +70,7 @@ import { previewSql, requiredParamColumns } from "../components/nativeParams";
 import { TagControl } from "../components/TagControl";
 import { TableEditForm } from "./tables/TableEditForm";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
+import { roleTtlValid, tableTtlSignalError } from "./tables/roleTtl";
 
 export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
@@ -98,6 +99,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { updateTable } = useUpdateTable();
   const { deleteTable } = useDeleteTable();
   const { updateTableCache } = useUpdateTableCache();
+  const { updateTableRoleTtl } = useUpdateTableRoleTtl();
   const { updateTablePreferMaterialized } = useUpdateTablePreferMaterialized();
   const { updateTableLoadProtection } = useUpdateTableLoadProtection();
   const { updateTableNaming } = useUpdateTableNaming();
@@ -454,6 +456,22 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const performSaveEdit = async () => {
     if (!editingTable) return;
     setError(null);
+    // REQ-1907: an invalid role TTL row blocks the whole save before any mutation runs.
+    if (!roleTtlValid(editingTable.roleTtl)) {
+      setError(translate("tableEditForm.roleTtlFixErrors"));
+      return;
+    }
+    // REQ-930: a ttl/ttl_probe signal needs a landing Cache TTL (table, else source) as its clock.
+    if (editingTable.viewSql == null) {
+      const staged = cacheTtlEdits[editingTable.id]?.value;
+      const tableTtl =
+        staged === undefined ? editingTable.cacheTtl : staged === "" ? null : Number(staged);
+      const source = sources.find((s) => s.id === editingTable.sourceId);
+      if (tableTtlSignalError(editingTable, source, tableTtl ?? source?.cacheTtl ?? null)) {
+        setError(translate("tableEditForm.loadManagementFixErrors"));
+        return;
+      }
+    }
     setSaving(true);
     try {
       const result = await updateTable(buildTableUpdateInput(editingTable));
@@ -474,6 +492,18 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       }
       const ttlEdit = cacheTtlEdits[editingTable.id];
       if (ttlEdit?.dirty) await handleSaveTableCache(editingTable.id);
+      // REQ-1907: persist the role → TTL list (full replace) only when it changed.
+      const savedRoleTtl = tables.find((tbl) => tbl.id === editingTable.id)?.roleTtl;
+      const roleTtlChanged =
+        JSON.stringify(savedRoleTtl?.map(({ role, ttl }) => ({ role, ttl }))) !==
+        JSON.stringify(editingTable.roleTtl.map(({ role, ttl }) => ({ role, ttl })));
+      if (roleTtlChanged) {
+        const roleTtlResult = await updateTableRoleTtl(editingTable.id, editingTable.roleTtl);
+        if (!roleTtlResult.success) {
+          setError(roleTtlResult.message);
+          return;
+        }
+      }
       const preferResult = await updateTablePreferMaterialized(
         editingTable.id,
         editingTable.preferMaterialized,

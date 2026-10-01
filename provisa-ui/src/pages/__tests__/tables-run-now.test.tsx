@@ -72,6 +72,7 @@ function table(
     alias: null,
     description: null,
     cacheTtl: null,
+    roleTtl: [],
     preferMaterialized: null,
     loadProtected: null,
     offPeakWindow: null,

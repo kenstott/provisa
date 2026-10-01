@@ -12,13 +12,15 @@
 // so form state and testability are unaffected — the header only toggles visibility.
 
 import { useState, type ReactNode } from "react";
-import { ActionIcon, Badge, Collapse, Group, Text } from "@mantine/core";
+import { ActionIcon, Badge, Collapse, Group, Text, Tooltip } from "@mantine/core";
+import { Info } from "lucide-react";
 
 export function CollapsibleSection({
   title,
   testId,
   tourId,
   badge,
+  info,
   defaultOpen = false,
   children,
 }: {
@@ -27,6 +29,8 @@ export function CollapsibleSection({
   /** REQ-1358: `data-tour` on the section wrapper, so a tour step can highlight the whole panel. */
   tourId?: string;
   badge?: ReactNode;
+  /** Explanatory text behind an (i) icon in the header, shown on hover or keyboard focus. */
+  info?: { label: string; text: string };
   defaultOpen?: boolean;
   children: ReactNode;
 }) {
@@ -52,6 +56,30 @@ export function CollapsibleSection({
           <Badge size="xs" variant="light" color="grape">
             {badge}
           </Badge>
+        )}
+        {info && (
+          <Tooltip
+            label={info.text}
+            multiline
+            w={360}
+            events={{ hover: true, focus: true, touch: true }}
+          >
+            <ActionIcon
+              component="span"
+              variant="subtle"
+              color="gray"
+              size="xs"
+              role="button"
+              tabIndex={0}
+              aria-label={info.label}
+              data-testid={`${testId}-info`}
+              // The icon sits in the toggle row; using it must not also open/close the section.
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              <Info size={12} aria-hidden />
+            </ActionIcon>
+          </Tooltip>
         )}
       </Group>
       <Collapse in={open}>

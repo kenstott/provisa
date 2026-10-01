@@ -85,6 +85,21 @@
     "reconnectIntervalSeconds": "Intervalle de reconnexion (secondes)",
     "subscribePayload": "Charge utile d'abonnement (JSON, facultatif)",
     "feedUrlOverride": "URL du flux (remplacement facultatif)",
-    "pollIntervalSeconds": "Intervalle d'interrogation (secondes)"
+    "pollIntervalSeconds": "Intervalle d'interrogation (secondes)",
+    "loadManagementTitle": "Gestion de la charge et fraîcheur",
+    "loadManagementHelp": "Le degré de fraîcheur des données requis pour chaque lecteur, mis en balance avec la charge sur la plateforme et les sources en amont.",
+    "loadManagementInfoLabel": "À propos de la gestion de la charge et de la fraîcheur",
+    "loadManagementInfo": "Met en balance la fraîcheur des données de chaque lecteur et la charge sur la plateforme et les sources en amont. Idéalement, la source en amont gère sa propre charge ; l'opérateur protège la plateforme, et la source lorsqu'elle ne peut pas se protéger. Ces réglages sont le plancher de l'opérateur : aucune requête ni indication de requête ne peut obtenir des données plus récentes ni charger une source davantage qu'ils ne le permettent. Les lecteurs peuvent seulement choisir d'accepter des données plus anciennes pour gagner en rapidité. Une source que le moteur lit en direct ignore les réglages TTL, sauf si « Préférer matérialisé » ou « Protégé contre la charge » est activé.",
+    "sentinelPath": "Chemin sentinelle",
+    "sentinelPathTooltip": "URL d'un fichier marqueur que le producteur met à jour quand ses données changent (file:, ftp:, sftp:, http:, https:). Avec un signal de changement par sonde, Provisa vérifie uniquement ce marqueur pour décider si les données sont à jour. Laissez vide pour aucune sentinelle.",
+    "sentinelPathInvalid": "Utilisez une URL file:, ftp:, sftp:, http: ou https:, ou laissez vide.",
+    "freshnessGate": "Contrôle de fraîcheur",
+    "freshnessGateTooltip": "Vérifie la fraîcheur (à partir du signal de changement et du TTL du cache) avant chaque lecture des tables de cette source, et actualise d'abord si elles sont obsolètes. Nécessite un TTL du cache pour les signaux ttl ; les signaux push ne peuvent pas contrôler.",
+    "maxLiveConcurrency": "Requêtes en direct simultanées max.",
+    "maxLiveConcurrencyHelp": "Limite du nombre de requêtes lisant cette source en direct en même temps, sur toutes les instances Provisa partageant ce Redis. Les requêtes au-delà attendent jusqu'à leur propre échéance, puis échouent. Vide = aucune limite. Sans effet lorsque la source est lue depuis sa réplique (préférer matérialisé / protégé contre la charge).",
+    "maxLiveConcurrencyPlaceholder": "aucune limite",
+    "maxLiveConcurrencyInvalid": "Saisissez un nombre entier de 1 ou plus, ou laissez vide pour aucune limite.",
+    "loadManagementFixErrors": "Corrigez les réglages de Gestion de la charge et fraîcheur avant d'enregistrer.",
+    "cacheTtlRequiredForSignal": "Le signal de changement {{signal}} évalue la fraîcheur selon le TTL du cache ; définissez donc un TTL du cache."
   }
 }

@@ -9,6 +9,11 @@
 // permission from the copyright holder.
 
 import "@testing-library/jest-dom/vitest";
+import { configure } from "@testing-library/react";
+
+// waitFor/findBy* default to a 1 s wall-clock budget, which a loaded shared host overruns (a Modal's
+// exit transition alone missed it at load average ~50). Sized for that host; see vitest.config.ts.
+configure({ asyncUtilTimeout: 10000 });
 // jsdom implements no IndexedDB, and the persisted Apollo cache (src/apolloClient.ts) lives there.
 // A real in-memory implementation rather than a stub, so a test exercising the store gets the
 // store's actual semantics — asynchronous, structured-clone, transactional.

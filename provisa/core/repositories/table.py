@@ -252,6 +252,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         # declared row_materialize: true, cache_ttl: 300 on.
         "row_materialize": getattr(table, "row_materialize", False),
         "cache_ttl": getattr(table, "cache_ttl", None),
+        "role_ttl": dict(table.role_ttl),  # REQ-1907
     }
     _update_columns = [
         "domain_id",
@@ -295,6 +296,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         "off_peak_tz",  # REQ-1141
         "row_materialize",  # REQ-1865
         "cache_ttl",  # REQ-1865
+        "role_ttl",  # REQ-1907
     ]
     table_id = await conn.upsert_returning(
         registered_tables,

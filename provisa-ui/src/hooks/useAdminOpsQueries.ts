@@ -13,7 +13,7 @@
 // than the max-lines cap allows.
 
 import { useQuery, useMutation } from "@apollo/client/react";
-import type { MutationResult } from "../types/admin";
+import type { MutationResult, RoleTtl } from "../types/admin";
 import type {
   MVInfo,
   CacheStats,
@@ -37,6 +37,7 @@ import {
   CreateScheduledTask,
   DeleteScheduledTask,
   PurgeCacheByTable,
+  UpdateTableRoleTtl,
 } from "./admin.graphql";
 
 export function useMVList() {
@@ -204,3 +205,18 @@ export function usePurgeCacheByTable() {
   };
 }
 
+// REQ-1907: full replace of a table's role → TTL list.
+export function useUpdateTableRoleTtl() {
+  const [updateTableRoleTtl, { loading }] = useMutation<{ updateTableRoleTtl: MutationResult }>(
+    UpdateTableRoleTtl,
+  );
+  return {
+    updateTableRoleTtl: async (tableId: number, roleTtl: RoleTtl[]) => {
+      // Rows read back from the TablesQuery carry Apollo's __typename; the input type rejects it.
+      const input = roleTtl.map(({ role, ttl }) => ({ role, ttl }));
+      const result = await updateTableRoleTtl({ variables: { tableId, roleTtl: input } });
+      return (result.data?.updateTableRoleTtl ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}

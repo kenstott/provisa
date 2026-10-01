@@ -8,6 +8,18 @@
     "cacheTtlLabel": "缓存 TTL（秒）",
     "cacheTtlHelp": "此表的查询结果在内存中缓存的时长。0 表示禁用缓存。留空则继承数据源级 TTL。可降低频繁查询的表对源数据库的负载。",
     "cacheTtlPlaceholder": "继承",
+    "roleTtlLabel": "角色 TTL",
+    "roleTtlHelp": "此表按角色设置的数据陈旧容忍度，单位为秒。角色的实际 TTL 取缓存 TTL 与此处条目中的较大值，因此条目只能让该角色接受更旧的数据，绝不会提供比缓存 TTL 允许的更新的数据。",
+    "roleTtlRole": "角色",
+    "roleTtlSeconds": "TTL（秒）",
+    "roleTtlRemove": "移除 {{role}} 的角色 TTL",
+    "roleTtlAdd": "添加角色 TTL",
+    "roleTtlEffective": "实际 TTL：{{sec}} 秒",
+    "roleTtlBelowFloor": "（低于 {{floor}} 秒的缓存 TTL，因此此条目不起作用）",
+    "roleTtlUnlisted": "未列出的角色使用缓存 TTL（{{sec}} 秒）。",
+    "roleTtlInvalidTtl": "请输入不小于 0 的整数秒数。",
+    "roleTtlDuplicateRole": "该角色已在列表中。",
+    "roleTtlFixErrors": "保存前请修正角色 TTL 行。",
     "preferMaterializedLabel": "优先物化",
     "preferMaterializedHelp": "强制将此表物化到存储中并从那里参与联邦查询，而不是实时访问。当连接器不适合此表的查询时使用。继承 = 遵循数据源级默认值。",
     "loadProtectedLabel": "负载保护",
@@ -216,6 +228,12 @@
     "save": "保存",
     "ttlViewRefreshes": "每 {{sec}} 秒刷新一次（来自物化视图的刷新间隔）。",
     "ttlViewNeedsMv": "ttl 需要物化视图——请在上方启用",
-    "ttlViewNeedsMvPost": "并设置刷新间隔。"
+    "ttlViewNeedsMvPost": "并设置刷新间隔。",
+    "loadManagementTitle": "负载管理与时效性",
+    "loadManagementHelp": "每位读者所需数据的时效性，与平台及上游数据源的负载相权衡。",
+    "loadManagementInfoLabel": "关于负载管理与时效性",
+    "loadManagementInfo": "在每位读者数据的时效性与平台及上游数据源的负载之间取得平衡。理想情况下由上游自行管理负载；运维人员保护平台，并在上游无法自我保护时保护上游。这些设置是运维人员设定的下限——任何查询或请求提示都无法获得比其允许的更新的数据，也无法给数据源带来更多负载。读者只能选择为速度接受更旧的数据。引擎实时读取的数据源会忽略 TTL 设置，除非设置了“优先物化”或“负载保护”。",
+    "cacheTtlRequiredForSignal": "变更信号 {{signal}} 根据缓存 TTL 判断数据是否过期，因此请在此处或数据源上设置缓存 TTL。",
+    "loadManagementFixErrors": "保存前请修正“负载管理与时效性”设置。"
   }
 }

@@ -15,7 +15,7 @@
 // org creator hit. Under enforced auth the role list must contain only assigned roles, or nothing.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, act } from "../../test-utils/render";
+import { render, screen, act, waitFor } from "../../test-utils/render";
 import { AuthProvider, useAuth } from "../AuthContext";
 
 const fetchMe = vi.fn();
@@ -90,7 +90,8 @@ describe("AuthProvider role resolution (REQ-1295)", () => {
 
     // `admin` and `analyst` exist in the org's role catalog; alice holds neither. Selecting one
     // would put it in X-Provisa-Role and 403 the request.
-    expect(await screen.findByTestId("available")).toHaveTextContent("org_admin");
+    // The element renders before its value resolves; wait for the value, not the node.
+    await waitFor(() => expect(screen.getByTestId("available")).toHaveTextContent("org_admin"));
     expect(screen.getByTestId("available")).not.toHaveTextContent("analyst");
     expect(screen.getByTestId("role")).toHaveTextContent("org_admin");
     expect(screen.getByTestId("error")).toHaveTextContent("none");
@@ -102,7 +103,10 @@ describe("AuthProvider role resolution (REQ-1295)", () => {
 
     renderAuth(true);
 
-    expect(await screen.findByTestId("error")).toHaveTextContent(/Could not load roles/);
+    // The element renders before its value resolves; wait for the value, not the node.
+    await waitFor(() =>
+      expect(screen.getByTestId("error")).toHaveTextContent(/Could not load roles/),
+    );
     expect(screen.getByTestId("error")).toHaveTextContent(/Org selection required/);
     expect(screen.getByTestId("available")).toHaveTextContent("none");
     expect(screen.getByTestId("role")).toHaveTextContent("none");
@@ -116,7 +120,8 @@ describe("AuthProvider role resolution (REQ-1295)", () => {
 
     renderAuth(true);
 
-    expect(await screen.findByTestId("role")).toHaveTextContent("org_admin");
+    // The element renders before its value resolves; wait for the value, not the node.
+    await waitFor(() => expect(screen.getByTestId("role")).toHaveTextContent("org_admin"));
     // Cleared, not merely ignored: it is stamped into the `role=` parameter of /data/rest/docs,
     // whose Swagger page repeats it as X-Provisa-Role and gets a 403 for it.
     expect(localStorage.getItem("provisa_role")).toBeNull();
@@ -136,7 +141,8 @@ describe("AuthProvider role resolution (REQ-1295)", () => {
     refetchRoles.mockResolvedValue(ORG_ROLE_CATALOG);
 
     renderAuth(true);
-    expect(await screen.findByTestId("available")).toHaveTextContent("analyst");
+    // The element renders before its value resolves; wait for the value, not the node.
+    await waitFor(() => expect(screen.getByTestId("available")).toHaveTextContent("analyst"));
     await act(async () => {
       screen.getByRole("button", { name: "act as analyst" }).click();
     });
@@ -147,7 +153,8 @@ describe("AuthProvider role resolution (REQ-1295)", () => {
       screen.getByRole("button", { name: "refresh" }).click();
     });
 
-    expect(await screen.findByTestId("role")).toHaveTextContent("org_admin");
+    // The element renders before its value resolves; wait for the value, not the node.
+    await waitFor(() => expect(screen.getByTestId("role")).toHaveTextContent("org_admin"));
     expect(localStorage.getItem("provisa_role")).toBeNull();
   });
 
@@ -175,7 +182,8 @@ describe("AuthProvider role resolution (REQ-1295)", () => {
 
     renderAuth(true);
 
-    expect(await screen.findByTestId("role")).toHaveTextContent("org_admin");
+    // The element renders before its value resolves; wait for the value, not the node.
+    await waitFor(() => expect(screen.getByTestId("role")).toHaveTextContent("org_admin"));
     // Both stay selectable — only the default acting role changes.
     expect(screen.getByTestId("available")).toHaveTextContent("org_admin,platform_admin");
   });
@@ -187,7 +195,8 @@ describe("AuthProvider role resolution (REQ-1295)", () => {
 
     renderAuth(false);
 
-    expect(await screen.findByTestId("dev")).toHaveTextContent("true");
+    // The element renders before its value resolves; wait for the value, not the node.
+    await waitFor(() => expect(screen.getByTestId("dev")).toHaveTextContent("true"));
     expect(screen.getByTestId("role")).toHaveTextContent("admin");
     expect(screen.getByTestId("error")).toHaveTextContent("none");
   });

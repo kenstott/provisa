@@ -18,16 +18,23 @@ runs a plan, each source the plan names is checked against the persisted node fr
 ``materialize_pending`` -- the same loaders, landing address and store write face the event loop
 uses, so both paths converge on one replica.
 
-Stale means: a table of the source has no refresh stamp (never landed), or the source declares a
-``cache_ttl`` the stamp has outrun. A source with ``freshness_gate`` set is judged by its own
-predicate (REQ-860). A ``load_protected`` source lands here only when it has never landed
-(REQ-1141: the scheduler is its sole refresher).
+Stale means: a table of the source the query reads has no refresh stamp (never landed), its last
+land failed, or its stamp has outrun THE READER's effective TTL on that table,
+max(cache_ttl, role_ttl(role)) (REQ-1907) -- each table against its own TTL, so readers with a
+larger tolerance serve the existing replica and never start a land. A source with
+``freshness_gate`` set is judged by its own predicate (REQ-860). A ``load_protected`` source lands
+here only when it has never landed (REQ-1141: the scheduler is its sole refresher).
+
+Concurrent stale reads of one source share one land: staleness is re-read from the persisted node
+state AFTER the per-node land locks are held, so a reader that queued behind another's land sees
+the fresh stamp and serves it instead of landing again (REQ-1907). The wait for the lock is an
+await inside the request's own coroutine, bounded by the request's deadline.
 
 A land that fails is stamped ``ok=False`` (so the next query retries it) and fails the query with
 its own cause; the query never reads the stale replica (REQ-1661, amended 2026-09-30).
 """
 
-# Requirements: REQ-1661, REQ-860, REQ-855, REQ-1141
+# Requirements: REQ-1661, REQ-860, REQ-855, REQ-1141, REQ-1907
 
 from __future__ import annotations
 
@@ -98,26 +105,136 @@ def stale_sources(
     return stamps, oks
 
 
+async def _node_states(db: Any, queue: Any, tables: list[Any]) -> dict[str, dict | None]:
+    """The persisted freshness state of each table's node (REQ-1661)."""
+    async with db.acquire() as conn:
+        return {
+            _node(t.schema_name, t.table_name): await queue.get_node_state(
+                conn, _node(t.schema_name, t.table_name)
+            )
+            for t in tables
+        }
+
+
+def _row_cache_ttls(table: Any, source: Any, reader_role: str | None) -> tuple[int, int]:
+    """(effective TTL for this reader, reap horizon) for a row_materialize table (REQ-1865,
+    REQ-1907). Freshness is judged per reader against each row's landed-at stamp; the stamped
+    ``_row_expires_at`` is only the reaper's horizon -- the longest TTL any reader accepts -- so a
+    cold-row sweep never deletes a row a long-TTL class still serves."""
+    from provisa.federation.role_ttl import declared_cache_ttl, effective_ttl, max_accepted_ttl
+
+    if declared_cache_ttl(table, source) is None:
+        raise ValueError(
+            f"row-materialize table {table.table_name!r}: no resolved cache_ttl at fetch time "
+            "(registration should have rejected this — REQ-1865)"
+        )
+    return effective_ttl(table, source, reader_role), max_accepted_ttl(table, source)
+
+
+# Change signals whose rows the event loop's own change path lands as they change (REQ-929): the
+# CDC consumer for a pushed change, the poll node for a probe. For such a table that change path IS
+# its freshness check, and the replica it keeps is current as of the last observed change.
+_PUSH_SIGNALS = frozenset({"native", "debezium", "kafka"})
+_PROBE_SIGNALS = frozenset({"probe", "ttl_probe"})
+
+
+def change_signal_of(table: Any, source: Any) -> str:
+    """The table's change signal, inheriting its source's (REQ-929)."""
+    return table.change_signal if table.change_signal is not None else source.change_signal
+
+
+def freshness_verdict(
+    source: Any, table: Any, stamp: float | None, ok: bool, now: float
+) -> bool | None:
+    """The table's freshness check (REQ-1907, amended 2026-09-30): True = fresh, False = not
+    fresh, None = the table has no freshness check (it replicates on its TTL alone).
+
+    A ``freshness_gate`` source is judged by its own read-time predicate (REQ-860). A table whose
+    change signal is pushed or probed is kept current by the event loop's change path (the CDC
+    consumer / the poll node), so its replica is fresh as of the last observed change: role_ttl
+    limits only read-triggered refreshes and never holds back that feed. A ``ttl`` table has no
+    check beyond its cache_ttl (None: the TTL alone decides). A ``ttl`` / ``ttl_probe`` table with
+    no table or source cache_ttl is a configuration error and raises."""
+    from provisa.federation.role_ttl import require_landing_ttl
+
+    require_landing_ttl(table, source)
+    if source.freshness_gate:
+        from provisa.freshness.source_gate import gate_source, source_subject
+
+        return gate_source(source, source_subject(stamp, ok=ok), now).is_fresh
+    if change_signal_of(table, source) in _PUSH_SIGNALS | _PROBE_SIGNALS:
+        return True
+    return None
+
+
 def is_stale_of(
-    sources: list[Any], stamps: dict[str, float | None], oks: dict[str, bool], now: float
+    sources: list[Any],
+    tables_by_source: dict[str, list[Any]],
+    states: dict[str, dict | None],
+    now: float,
+    *,
+    reader_role: str | None,
+    fresh_of: Any = None,
 ) -> Any:
-    """The generic staleness oracle the plan consults for an ungated source: never landed, last
-    land failed, or a declared ``cache_ttl`` outrun."""
+    """The staleness oracle the residency plan consults (REQ-1661, REQ-1907). A source needs a
+    land when any table of it the query reads:
+
+    - was never landed, or its last land failed (always), or
+    - has a replica older than the reader's effective TTL on THAT table,
+      max(cache_ttl, role_ttl(role)), AND its freshness check (``fresh_of``) does not report it
+      fresh. A table with no freshness check (``fresh_of`` returns None) lands on the TTL alone.
+
+    Both halves are a gate: a reader whose TTL has not passed never lands, whatever changed
+    upstream; a replica the freshness check reports fresh is never re-landed on the clock.
+    ``fresh_of`` defaults to :func:`freshness_verdict`.
+
+    Raises ValueError when a table it would judge has change_signal ttl / ttl_probe and no table or
+    source cache_ttl (REQ-1907, amended 2026-09-30): such a table has no refresh clock."""
+    from provisa.federation.role_ttl import effective_ttl, require_landing_ttl
+
     by_id = {s.id: s for s in sources}
+    for s in sources:
+        for t in tables_by_source.get(s.id, []):
+            require_landing_ttl(t, s)
+    check = fresh_of if fresh_of is not None else freshness_verdict
+
+    def _table_stale(source: Any, table: Any) -> bool:
+        state = states.get(_node(table.schema_name, table.table_name))
+        at = state.get("last_refresh_at") if state else None
+        ok = bool(state.get("last_refresh_ok", True)) if state else True
+        if at is None or not ok:
+            return True
+        if now - float(at) <= float(effective_ttl(table, source, reader_role)):
+            return False
+        return check(source, table, float(at), ok, now) is not True
 
     def is_stale(source_id: str) -> bool:
-        stamp = stamps.get(source_id)
-        if stamp is None or not oks.get(source_id, True):
-            return True
-        ttl = getattr(by_id.get(source_id), "cache_ttl", None)
-        return ttl is not None and now - stamp > float(ttl)
+        tables = tables_by_source.get(source_id, [])
+        if not tables:
+            return True  # a source with no registered table has nothing resident
+        return any(_table_stale(by_id[source_id], t) for t in tables)
 
     return is_stale
 
 
-async def ensure_resident(state: Any, source_ids: Iterable[str]) -> list[tuple[str, str]]:
+def _resolves_to(source: Any, tables: list[Any], setting: str) -> bool:
+    """Whether ``setting`` (prefer_materialized / load_protected) is on for this source's read: the
+    source's own value, or any of the tables the query reads overriding it on (a table value of None
+    inherits the source's, REQ-826/REQ-1141)."""
+    own = bool(getattr(source, setting))
+    return own or any(
+        getattr(t, setting) if getattr(t, setting) is not None else own for t in tables
+    )
+
+
+async def ensure_resident(
+    state: Any, source_ids: Iterable[str], *, reader_role: str | None
+) -> list[tuple[str, str]]:
     """Land what a query reads and is not resident (REQ-1661). Returns the (source_id, table_name)
     pairs landed. A no-op without an engine, config or tenant store, or when nothing is stale.
+
+    ``reader_role`` is the governed role the query runs as (REQ-1907): staleness is judged against
+    its effective TTL per table. None is a caller with no reader (it uses each table's cache_ttl).
 
     A table replicated ROW BY ROW (``_row_level``: the row_materialize flag on an engine that
     cannot attach its source) is never landed here. Its rows are fetched by key —
@@ -160,11 +277,19 @@ async def ensure_resident(state: Any, source_ids: Iterable[str]) -> list[tuple[s
     for t in await registered_tables(state):
         if t.source_id in wanted and not _row_level(t):
             tables_by_source.setdefault(t.source_id, []).append(t)
+    # REQ-826 / REQ-1141: a table override (None inherits the source's) puts its source's read on
+    # the replica even where the engine could attach the source.
+    prefer_of = {
+        s.id: _resolves_to(s, tables_by_source.get(s.id, []), "prefer_materialized")
+        for s in sources
+    }
+    protected_of = {
+        s.id: _resolves_to(s, tables_by_source.get(s.id, []), "load_protected") for s in sources
+    }
 
     from provisa.events import queue
-    from provisa.freshness.source_gate import source_subject
+    from provisa.federation.role_ttl import require_landing_ttl
 
-    by_id = {s.id: s for s in sources}
     landed: list[tuple[str, str]] = []
     from contextlib import AsyncExitStack
 
@@ -185,26 +310,23 @@ async def ensure_resident(state: Any, source_ids: Iterable[str]) -> list[tuple[s
         if states is None:
             is_stale = lambda sid: True  # noqa: E731
             stamps: dict[str, float | None] = {}
-            oks: dict[str, bool] = {}
         else:
-            stamps, oks = stale_sources([source], {source.id: tables}, states)
-            clock_stale = is_stale_of([source], stamps, oks, now)
+            stamps, _ = stale_sources([source], {source.id: tables}, states)
+            clock_stale = is_stale_of(
+                [source], {source.id: tables}, states, now, reader_role=reader_role
+            )
             is_stale = lambda sid: clock_stale(sid) or backend.is_first_touch(sid)  # noqa: E731
         return bool(
             backend.pending_lands(
                 [source],
                 is_stale=is_stale,
-                prefer_materialized_of=lambda sid: bool(
-                    getattr(by_id[sid], "prefer_materialized", False)
-                ),
-                load_protected_of=lambda sid: bool(getattr(by_id[sid], "load_protected", False)),
+                prefer_materialized_of=lambda sid: prefer_of[sid],
+                load_protected_of=lambda sid: protected_of[sid],
                 resident_of=(None if states is None else lambda sid: stamps.get(sid) is not None),
                 materialization_backend=_materialization_backend,
-                freshness_subject_of=(
-                    None
-                    if states is None
-                    else lambda sid: source_subject(stamps.get(sid), ok=oks.get(sid, True))
-                ),
+                # REQ-1907: a freshness_gate source's predicate is folded into ``is_stale`` (the
+                # TTL AND freshness gate); the plan must not re-decide it alone.
+                freshness_subject_of=None,
                 now=now,
             )
         )
@@ -217,8 +339,14 @@ async def ensure_resident(state: Any, source_ids: Iterable[str]) -> list[tuple[s
         # and read the persisted state, which is the truth the land is decided on.
         if not tables_by_source.get(source.id):
             continue  # every table of the source is replicated row by row: nothing lands whole
+        # REQ-1907 (amended 2026-09-30, direct attach is live): a source this engine reads in place
+        # has no replica — cache_ttl, role_ttl and the freshness gate do not apply to it.
         if not _pending(source, None, time.time()):
             continue
+        # REQ-1907 (amended 2026-09-30): a ttl / ttl_probe table that lands with no table or source
+        # cache_ttl has no refresh clock — fail the read before any lock, land or refresh stamp.
+        for t in tables_by_source[source.id]:
+            require_landing_ttl(t, source)
         _nodes = [_node(t.schema_name, t.table_name) for t in tables_by_source.get(source.id, [])]
         _held = view.states(generation, _nodes)
         if _held is not None and not _pending(source, _held, time.time()):
@@ -247,20 +375,20 @@ async def ensure_resident(state: Any, source_ids: Iterable[str]) -> list[tuple[s
                     await _hold_land_lock(held, _physical_node(backend, engine, source, t))
                 # Staleness is judged with the locks held: a request that waited here for another
                 # request's land of the same table reads the stamp that land wrote and finds the table
-                # fresh, so one stale table is landed once, not once per waiting reader (REQ-1882).
+                # fresh, so one stale table is landed once, not once per waiting reader (REQ-1882,
+                # REQ-1907 single-flight).
                 source_tables = {source.id: tables_by_source.get(source.id, [])}
-                async with db.acquire() as conn:
-                    states = {
-                        _node(t.schema_name, t.table_name): await queue.get_node_state(
-                            conn, _node(t.schema_name, t.table_name)
-                        )
-                        for t in source_tables[source.id]
-                    }
+                states = await _node_states(db, queue, source_tables[source.id])
                 view.read(generation, states)
                 now = time.time()
-                stamps, oks = stale_sources([source], source_tables, states)
+                stamps, _ = stale_sources([source], source_tables, states)
                 try:
-                    clock_stale = is_stale_of([source], stamps, oks, now)
+                    # REQ-1907: the whole replication gate -- the reader's effective TTL AND the
+                    # table's freshness check (a freshness_gate source's own predicate included) --
+                    # is decided here, so the plan below consults only this oracle.
+                    clock_stale = is_stale_of(
+                        [source], source_tables, states, now, reader_role=reader_role
+                    )
                     # REQ-1730: OR in this backend INSTANCE's own first-touch signal — see
                     # EngineBackend._landed_this_process's own doc for why the persisted, per-NODE
                     # freshness clock alone under-reports staleness for an engine with no live reach for
@@ -272,18 +400,13 @@ async def ensure_resident(state: Any, source_ids: Iterable[str]) -> list[tuple[s
                         loader=loader,
                         source_ids={source.id},
                         is_stale=is_stale,
-                        prefer_materialized_of=lambda sid: bool(
-                            getattr(by_id[sid], "prefer_materialized", False)
-                        ),
-                        load_protected_of=lambda sid: bool(
-                            getattr(by_id[sid], "load_protected", False)
-                        ),
+                        prefer_materialized_of=lambda sid: prefer_of[sid],
+                        load_protected_of=lambda sid: protected_of[sid],
                         resident_of=lambda sid: stamps.get(sid) is not None,
                         # the engine's own store is what a prefer_materialized source lands into
                         materialization_backend=_materialization_backend,
-                        freshness_subject_of=lambda sid: source_subject(
-                            stamps.get(sid), ok=oks.get(sid, True)
-                        ),
+                        # REQ-1907: folded into ``is_stale`` above; not re-decided by the plan.
+                        freshness_subject_of=None,
                         now=now,
                         coordination=_BuildCoordination(db, queue, view, generation),
                     )
@@ -443,27 +566,38 @@ async def row_materialized_tables_by_name(state: Any) -> dict[str, Any]:
 async def _read_cached(
     conn: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
 ) -> dict[tuple[Any, ...], datetime]:
-    """key -> ``_row_expires_at`` for every key of ``keys`` currently present in the row cache. A
-    key absent from the result is simply not cached yet (never an error)."""
+    """key -> landed-at (``_row_cached_at``) for every key of ``keys`` currently present in the row
+    cache -- the OLDEST stamp when a key column repeats, so a key is fresh only while every cached
+    row of it is (REQ-1907). A key absent from the result is simply not cached yet (never an
+    error)."""
     from sqlalchemy import select, tuple_
 
     if not keys:
         return {}
     pk_cols = [table.c[c] for c in pk_columns]
     cond = pk_cols[0].in_([k[0] for k in keys]) if len(pk_cols) == 1 else tuple_(*pk_cols).in_(keys)
-    stmt = select(*pk_cols, table.c["_row_expires_at"]).where(cond)
+    stmt = select(*pk_cols, table.c["_row_cached_at"]).where(cond)
     result = await conn.execute_core(stmt)
     out: dict[tuple[Any, ...], datetime] = {}
     for row in result.fetchall():
-        expires_at = row[len(pk_columns)]
+        cached_at = row[len(pk_columns)]
         # SQLite (a supported store dialect) has no true timezone-aware column type -- a
-        # DateTime(timezone=True) round-trips as a naive value there. Every _row_expires_at this
+        # DateTime(timezone=True) round-trips as a naive value there. Every _row_cached_at this
         # module ever writes is UTC (land_rows stamps datetime.now(UTC)), so a naive value read
         # back is always UTC too; normalize it before comparing against an aware `now`.
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=UTC)
-        out[tuple(row[: len(pk_columns)])] = expires_at
+        if cached_at.tzinfo is None:
+            cached_at = cached_at.replace(tzinfo=UTC)
+        key = tuple(row[: len(pk_columns)])
+        out[key] = min(out[key], cached_at) if key in out else cached_at
     return out
+
+
+def _row_stale(cached_at: datetime, now: datetime, reader_ttl: int, change_fed: bool) -> bool:
+    """A cached row is re-fetched for a reader only when its landed-at stamp is older than the
+    reader's effective TTL AND its freshness check does not report it fresh (REQ-1907). A row of a
+    pushed-change table is kept current by the CDC background refresh (REQ-1865 section 5), which
+    is its freshness check; any other row has none and is judged on the TTL alone."""
+    return (now - cached_at).total_seconds() > reader_ttl and not change_fed
 
 
 async def _tombstone_keys(
@@ -505,7 +639,12 @@ def resolve_landing_args_for(source: Any, table: Any, dialect: str | None) -> An
 
 
 async def pushdown_row_materialize(
-    state: Any, physical_sql: str, dialect: str, params: list[Any] | None = None
+    state: Any,
+    physical_sql: str,
+    dialect: str,
+    params: list[Any] | None = None,
+    *,
+    reader_role: str | None,
 ) -> set[str]:
     """REQ-1865 key pushdown: land exactly the rows a JOIN-reached row_materialize table needs,
     without a full-table land, and without hand-walking the join graph symbolically.
@@ -640,12 +779,8 @@ async def pushdown_row_materialize(
                 continue
             real_pk = pk_columns[0]
             args = resolve_landing_args_for(source, table, backend.dialect)
-            resolved_ttl = table.cache_ttl if table.cache_ttl is not None else source.cache_ttl
-            if resolved_ttl is None:
-                raise ValueError(
-                    f"row-materialize table {table.table_name!r}: no resolved cache_ttl at fetch "
-                    "time (registration should have rejected this — REQ-1865)"
-                )
+            reader_ttl, reap_horizon = _row_cache_ttls(table, source, reader_role)
+            change_fed = change_signal_of(table, source) in _PUSH_SIGNALS
             store_schema = _env_store_schema(engine.engine.materialize_store())
             schema, cache_name = backend.landing_target(
                 store_schema=store_schema,
@@ -675,7 +810,11 @@ async def pushdown_row_materialize(
                 [(v,) for v in values],
             )
             now = datetime.now(UTC)
-            stale_or_missing = [v for v in values if (v,) not in cached or cached[(v,)] < now]
+            stale_or_missing = [
+                v
+                for v in values
+                if (v,) not in cached or _row_stale(cached[(v,)], now, reader_ttl, change_fed)
+            ]
             if not stale_or_missing:
                 landed_this_call.add(name)
                 made_progress = True
@@ -700,7 +839,7 @@ async def pushdown_row_materialize(
                 [real_pk],
                 args.columns,
                 fetched,
-                resolved_ttl,
+                reap_horizon,
             )
             landed_this_call.add(name)
             made_progress = True
@@ -849,10 +988,11 @@ async def _land_row_cache_arrow(
     pk_columns: list[str],
     columns: list[tuple[str, str]],
     data: Any,
-    resolved_ttl: int,
+    reap_horizon: int,
 ) -> None:
     """``_land_row_cache`` for an Arrow fetch: the same row stamps (``_row_cached_at`` now,
-    ``_row_expires_at`` now + ttl), added as Arrow columns, and on a DuckDB store the same upsert
+    ``_row_expires_at`` now + ``reap_horizon``, the longest TTL any reader accepts, REQ-1907),
+    added as Arrow columns, and on a DuckDB store the same upsert
     by ``pk_columns`` landed columnar through the broker -- never per-row events (REQ-1865; ~3M
     keyed rows spent ~45s as Python rows live). A declared column the fetch did not return lands
     NULL, as ``_land_row_cache``'s ``row.get`` does. Stamps are naive UTC: the DuckDB store's
@@ -867,7 +1007,7 @@ async def _land_row_cache_arrow(
     stamp = pa.timestamp("us")
     arrays += [
         pa.array([now.replace(tzinfo=None)] * n, stamp),
-        pa.array([(now + timedelta(seconds=resolved_ttl)).replace(tzinfo=None)] * n, stamp),
+        pa.array([(now + timedelta(seconds=reap_horizon)).replace(tzinfo=None)] * n, stamp),
     ]
     full_columns = list(columns) + [(_ROW_CACHED_AT, "timestamp"), (_ROW_EXPIRES_AT, "timestamp")]
     stamped = pa.Table.from_arrays(arrays, names=[c for c, _ in full_columns])
@@ -886,7 +1026,7 @@ async def _land_row_cache_arrow(
         pk_columns,
         columns,
         data.to_pylist(),
-        resolved_ttl,
+        reap_horizon,
     )
 
 
@@ -900,8 +1040,10 @@ async def _land_row_cache(
     pk_columns: list[str],
     columns: list[tuple[str, str]],
     rows: list[dict],
-    resolved_ttl: int,
+    reap_horizon: int,
 ) -> None:
+    """Upsert fetched rows, stamped landed-at now and ``_row_expires_at`` now + ``reap_horizon``
+    (the reaper's horizon; freshness is judged per reader off ``_row_cached_at``, REQ-1907)."""
     if not rows:
         return
     if _is_duckdb_store(backend, state):
@@ -914,7 +1056,7 @@ async def _land_row_cache(
         runtime = _duckdb_runtime(backend, state)
         runtime.ensure_materialize_attached()  # REQ-1901: resolves runtime._store_broker
         now = datetime.now(UTC)
-        expires_at = now + timedelta(seconds=resolved_ttl)
+        expires_at = now + timedelta(seconds=reap_horizon)
         stamped = [{**r, _ROW_CACHED_AT: now, _ROW_EXPIRES_AT: expires_at} for r in rows]
         full_columns = list(columns) + [
             (_ROW_CACHED_AT, "timestamp"),
@@ -932,7 +1074,7 @@ async def _land_row_cache(
 
     async with store_writer.store_connection(dsn) as conn:
         await require_store_replica_table(conn, schema, name, action="write the row-level replica")
-        await land_rows(conn, cache_table, pk_columns, rows, resolved_cache_ttl=resolved_ttl)
+        await land_rows(conn, cache_table, pk_columns, rows, resolved_cache_ttl=reap_horizon)
 
 
 async def _tombstone_row_cache(
@@ -963,7 +1105,7 @@ async def _tombstone_row_cache(
 
 
 async def ensure_rows_resident(
-    state: Any, pk_bounds: Iterable[Any], *, force: bool = False
+    state: Any, pk_bounds: Iterable[Any], *, reader_role: str | None, force: bool = False
 ) -> list[tuple[str, str, int]]:
     """Serve exactly the rows ``pk_bounds`` names from the row cache, fetching from source only the
     missing/stale ones (REQ-1865). Returns (source_id, table_name, n_rows_fetched) per bound
@@ -971,9 +1113,11 @@ async def ensure_rows_resident(
     when the named table is not ``row_materialize`` (defensive: a stale/mismatched bound is just
     skipped, since the compiler is the sole authority on which tables qualify). ``force=True`` (used
     only by the CDC background-refresh caller, section 5/6b) treats every ALREADY-CACHED key in the
-    bound as stale regardless of its ``_row_expires_at``, without ever adding a key that isn't
-    already cached -- the one behavioral difference between a query-driven call and a CDC-driven
-    one."""
+    bound as stale regardless of its age, without ever adding a key that isn't already cached --
+    the one behavioral difference between a query-driven call and a CDC-driven one.
+
+    A cached row is fresh for ``reader_role`` while its landed-at stamp (``_row_cached_at``) is
+    within the reader's effective TTL on the table, max(cache_ttl, role_ttl(role)) (REQ-1907)."""
     from contextlib import AsyncExitStack
 
     from provisa.events.app_wiring import build_adapter_loaders, build_keyed_adapter_loaders
@@ -1012,12 +1156,8 @@ async def ensure_rows_resident(
             continue
 
         args = resolve_landing_args(source, table, platform=backend.dialect)
-        resolved_ttl = table.cache_ttl if table.cache_ttl is not None else source.cache_ttl
-        if resolved_ttl is None:
-            raise ValueError(
-                f"row-materialize table {table.table_name!r}: no resolved cache_ttl at fetch "
-                "time (registration should have rejected this — REQ-1865)"
-            )
+        reader_ttl, reap_horizon = _row_cache_ttls(table, source, reader_role)
+        change_fed = change_signal_of(table, source) in _PUSH_SIGNALS
 
         schema, name = backend.landing_target(
             store_schema=store_schema,
@@ -1033,7 +1173,9 @@ async def ensure_rows_resident(
         )
 
         stale_or_missing = [
-            key for key in bound.values if key not in cached or force or cached[key] < now
+            key
+            for key in bound.values
+            if key not in cached or force or _row_stale(cached[key], now, reader_ttl, change_fed)
         ]
         if not stale_or_missing:
             results.append((source.id, table.table_name, 0))
@@ -1057,7 +1199,9 @@ async def ensure_rows_resident(
                 engine, backend, state, schema, name, cache_table, pk_columns, stale_or_missing
             )
             still_needed = [
-                k for k in stale_or_missing if force or k not in recheck or recheck[k] < now
+                k
+                for k in stale_or_missing
+                if force or k not in recheck or _row_stale(recheck[k], now, reader_ttl, change_fed)
             ]
             if not still_needed:
                 results.append((source.id, table.table_name, 0))
@@ -1079,7 +1223,7 @@ async def ensure_rows_resident(
                 pk_columns,
                 args.columns,
                 fetched,
-                resolved_ttl,
+                reap_horizon,
             )
             await _tombstone_row_cache(
                 engine, backend, state, schema, name, cache_table, pk_columns, tombstoned
@@ -1108,8 +1252,12 @@ async def prepare_engine_residency(state: Any, plan: Any) -> None:
     already imports ``provisa.pgwire._pipeline``; a pgwire import of ``provisa.api.flight.server``
     would create a mutual package dependency import-linter has no contract for today but the
     layering does not want)."""
-    await ensure_rows_resident(state, plan.pk_bounds)
+    await ensure_rows_resident(state, plan.pk_bounds, reader_role=plan.role_id)
     await pushdown_row_materialize(
-        state, plan.physical_sql, state.federation_engine.dialect, plan.exec_params
+        state,
+        plan.physical_sql,
+        state.federation_engine.dialect,
+        plan.exec_params,
+        reader_role=plan.role_id,
     )
-    await ensure_resident(state, plan.sources)
+    await ensure_resident(state, plan.sources, reader_role=plan.role_id)

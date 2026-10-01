@@ -191,6 +191,13 @@ def _build_registered_tables(registered: list[dict], cfg_by: dict) -> list[Any]:
                     if rt.get("cache_ttl") is not None
                     else getattr(cfg, "cache_ttl", None)
                 ),
+                # REQ-1907: the operator's per-role TTLs live on the registry row (config upsert
+                # and the admin mutation both write it there).
+                role_ttl=dict(rt["role_ttl"]),
+                # REQ-826/REQ-1141 per-table overrides (None = inherit the source's): a table that
+                # resolves to either is read via its replica even on an attach-capable engine.
+                prefer_materialized=rt["prefer_materialized"],
+                load_protected=rt["load_protected"],
                 probe_type=getattr(cfg, "probe_type", None),  # REQ-982
                 # REQ-1443: a checker table's rows are the results of running its contract, so
                 # the registered contract rides with the table into make_dq_loader.

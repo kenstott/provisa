@@ -388,10 +388,10 @@ def read_row_cache_duckdb_native(
     table: str,
     pk_columns: list[str],
     keys: list[tuple[Any, ...]],
-    expires_column: str = "_row_expires_at",
 ) -> dict[tuple[Any, ...], Any]:
-    """key -> ``_row_expires_at`` for every key of ``keys`` currently present in the row-materialize
-    cache, through the engine's own DuckDB connection (REQ-989/REQ-1865) -- the duckdb-native mirror
+    """key -> landed-at (``_row_cached_at``) for every key of ``keys`` currently present in the
+    row-materialize cache (REQ-1907: freshness is judged per reader off the landed-at stamp),
+    through the engine's own DuckDB connection (REQ-989/REQ-1865) -- the duckdb-native mirror
     of ``query_residency._read_cached`` for a store the engine itself holds the file handle for.
     Returns ``{}`` (never raises) when the table does not exist yet (first-ever fetch for this
     table) -- the same "absent means simply not cached" posture ``_read_cached`` has for a missing
@@ -407,7 +407,7 @@ def read_row_cache_duckdb_native(
         # The keys join as a registered frame, never a bound IN list: confirmed live, a 1M-key
         # IN (?, ...) took ~18s to bind and plan for large_federated_join. The key columns may
         # repeat in the cache (a keyed fetch on a non-PK join column, e.g. order_events.order_id),
-        # so each key reports its EARLIEST expiry -- it is fresh only while every cached row is.
+        # so each key reports its OLDEST landed-at stamp -- fresh only while every cached row is.
         import uuid
 
         import pandas as pd
@@ -416,23 +416,23 @@ def read_row_cache_duckdb_native(
         cur.register(keys_view, pd.DataFrame(list(keys), columns=pd.Index(pk_columns)))
         try:
             rows = cur.execute(
-                f'SELECT {pk_list}, min("{expires_column}") FROM {qualified} '
+                f'SELECT {pk_list}, min("_row_cached_at") FROM {qualified} '
                 f'WHERE ({pk_list}) IN (SELECT {pk_list} FROM "{keys_view}") GROUP BY {pk_list}'
             ).fetchall()
         finally:
             cur.unregister(keys_view)
-        # DuckDB's TIMESTAMP has no timezone of its own -- every _row_expires_at this module ever
+        # DuckDB's TIMESTAMP has no timezone of its own -- every _row_cached_at this module ever
         # writes is UTC (query_residency._land_row_cache stamps datetime.now(UTC)), so a naive
         # value read back is always UTC too; normalize it before the caller compares it against an
         # aware `now` (same posture query_residency._read_cached already has for SQLite/Postgres).
         out: dict[tuple[Any, ...], Any] = {}
         for r in rows:
-            expires_at = r[len(pk_columns)]
-            if expires_at.tzinfo is None:
+            cached_at = r[len(pk_columns)]
+            if cached_at.tzinfo is None:
                 from datetime import UTC
 
-                expires_at = expires_at.replace(tzinfo=UTC)
-            out[tuple(r[: len(pk_columns)])] = expires_at
+                cached_at = cached_at.replace(tzinfo=UTC)
+            out[tuple(r[: len(pk_columns)])] = cached_at
         return out
     finally:
         cur.close()

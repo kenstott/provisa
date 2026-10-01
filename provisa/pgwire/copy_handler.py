@@ -379,7 +379,8 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
         # the identical ENGINE-route bypass fixes elsewhere (pgwire/server.py, api/flight/server.py,
         # api/airport/query.py).
         run_on_connection_loop(
-            ensure_resident(state, plan.sources), timeout=request_timeout_for("pgwire")
+            ensure_resident(state, plan.sources, reader_role=plan.role_id),
+            timeout=request_timeout_for("pgwire"),
         )
         # Arrow Flight is an advertised, engine-specific transport (REQ-825): route through the
         # bound engine, which fails closed if the engine lacks ARROW or the proxy is unconfigured.

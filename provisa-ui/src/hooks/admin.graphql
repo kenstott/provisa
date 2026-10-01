@@ -76,6 +76,9 @@ query SourcesQuery {
     loadProtected
     offPeakWindow
     offPeakTz
+    sentinelPath
+    freshnessGate
+    maxLiveConcurrency
     gqlNamingConvention
     path
     allowedDomains
@@ -170,6 +173,10 @@ query TablesQuery {
     alias
     description
     cacheTtl
+    roleTtl {
+      role
+      ttl
+    }
     preferMaterialized
     loadProtected
     offPeakWindow
@@ -868,6 +875,12 @@ mutation UpdateSourceCache($sourceId: String!, $cacheEnabled: Boolean!, $cacheTt
 
 mutation UpdateTableCache($tableId: Int!, $cacheTtl: Int) {
   updateTableCache(tableId: $tableId, cacheTtl: $cacheTtl) {
+    ...MutationResult
+  }
+}
+
+mutation UpdateTableRoleTtl($tableId: Int!, $roleTtl: [RoleTtlInput!]!) {
+  updateTableRoleTtl(tableId: $tableId, roleTtl: $roleTtl) {
     ...MutationResult
   }
 }

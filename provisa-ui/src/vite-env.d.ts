@@ -85,6 +85,7 @@ declare module "*.graphql" {
   export const PurgeCache: DocumentNode;
   export const UpdateSourceCache: DocumentNode;
   export const UpdateTableCache: DocumentNode;
+  export const UpdateTableRoleTtl: DocumentNode;
   export const ForceRegen: DocumentNode;
   export const UpdateSourcePreferMaterialized: DocumentNode;
   export const UpdateTablePreferMaterialized: DocumentNode;
@@ -183,6 +184,7 @@ declare module "*.gql" {
   export const PurgeCache: DocumentNode;
   export const UpdateSourceCache: DocumentNode;
   export const UpdateTableCache: DocumentNode;
+  export const UpdateTableRoleTtl: DocumentNode;
   export const ForceRegen: DocumentNode;
   export const UpdateSourcePreferMaterialized: DocumentNode;
   export const UpdateTablePreferMaterialized: DocumentNode;

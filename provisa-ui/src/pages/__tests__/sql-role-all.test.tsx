@@ -120,9 +120,14 @@ describe("SQL Explorer under Role: All (REQ-1620)", () => {
     // Mantine Select portals its listbox; jsdom applies no layout so it reads as hidden.
     const combobox = screen.getByTestId("view-domain-select");
     await userEvent.click(combobox);
-    const listboxId = combobox.getAttribute("aria-controls");
-    const listbox = listboxId ? document.getElementById(listboxId) : null;
-    if (!listbox) throw new Error("no listbox for the domain select");
+    // The dropdown mounts after the click resolves; under a loaded suite run aria-controls is not
+    // yet set when the click returns, so wait for it rather than reading it once.
+    const listbox = await waitFor(() => {
+      const id = combobox.getAttribute("aria-controls");
+      const el = id ? document.getElementById(id) : null;
+      if (!el) throw new Error("no listbox for the domain select");
+      return el;
+    });
     await userEvent.click(
       await within(listbox).findByRole("option", { name: /pet-store/, hidden: true }),
     );

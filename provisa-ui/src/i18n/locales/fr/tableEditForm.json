@@ -8,6 +8,18 @@
     "cacheTtlLabel": "TTL du cache (secondes)",
     "cacheTtlHelp": "Durée pendant laquelle les résultats de requête de cette table sont conservés en mémoire. 0 désactive le cache. Laissez vide pour hériter du TTL défini au niveau de la source. Réduit la charge sur la base source pour les tables fréquemment interrogées.",
     "cacheTtlPlaceholder": "hériter",
+    "roleTtlLabel": "TTL par rôle",
+    "roleTtlHelp": "Tolérance aux données obsolètes par rôle pour cette table, en secondes. Le TTL effectif d'un rôle est la plus grande valeur entre le TTL du cache et son entrée ici : une entrée peut seulement permettre à ce rôle d'accepter des données plus anciennes, jamais des données plus récentes que ne l'autorise le TTL du cache.",
+    "roleTtlRole": "Rôle",
+    "roleTtlSeconds": "TTL (secondes)",
+    "roleTtlRemove": "Supprimer le TTL du rôle {{role}}",
+    "roleTtlAdd": "Ajouter un TTL de rôle",
+    "roleTtlEffective": "TTL effectif : {{sec}} s",
+    "roleTtlBelowFloor": "(inférieur au TTL du cache de {{floor}} s, cette entrée est donc sans effet)",
+    "roleTtlUnlisted": "Les rôles non listés utilisent le TTL du cache ({{sec}} s).",
+    "roleTtlInvalidTtl": "Saisissez un nombre entier de secondes, 0 ou plus.",
+    "roleTtlDuplicateRole": "Ce rôle est déjà listé.",
+    "roleTtlFixErrors": "Corrigez les lignes TTL par rôle avant d'enregistrer.",
     "preferMaterializedLabel": "Préférer la matérialisation",
     "preferMaterializedHelp": "Force la matérialisation de cette table dans le magasin et sa fédération depuis celui-ci, au lieu d'un accès en direct. À utiliser quand le connecteur convient mal aux requêtes de cette table. Hériter = suivre la valeur par défaut de la source.",
     "loadProtectedLabel": "Protection de charge",
@@ -216,6 +228,12 @@
     "save": "Enregistrer",
     "ttlViewRefreshes": "Rafraîchissement toutes les {{sec}} s (d'après l'intervalle de rafraîchissement de la vue matérialisée).",
     "ttlViewNeedsMv": "ttl nécessite une vue matérialisée — activez",
-    "ttlViewNeedsMvPost": "ci-dessus et définissez un intervalle de rafraîchissement."
+    "ttlViewNeedsMvPost": "ci-dessus et définissez un intervalle de rafraîchissement.",
+    "loadManagementTitle": "Gestion de la charge et fraîcheur",
+    "loadManagementHelp": "Le degré de fraîcheur des données requis pour chaque lecteur, mis en balance avec la charge sur la plateforme et les sources en amont.",
+    "loadManagementInfoLabel": "À propos de la gestion de la charge et de la fraîcheur",
+    "loadManagementInfo": "Met en balance la fraîcheur des données de chaque lecteur et la charge sur la plateforme et les sources en amont. Idéalement, la source en amont gère sa propre charge ; l'opérateur protège la plateforme, et la source lorsqu'elle ne peut pas se protéger. Ces réglages sont le plancher de l'opérateur : aucune requête ni indication de requête ne peut obtenir des données plus récentes ni charger une source davantage qu'ils ne le permettent. Les lecteurs peuvent seulement choisir d'accepter des données plus anciennes pour gagner en rapidité. Une source que le moteur lit en direct ignore les réglages TTL, sauf si « Préférer matérialisé » ou « Protégé contre la charge » est activé.",
+    "cacheTtlRequiredForSignal": "Le signal de changement {{signal}} évalue la fraîcheur selon le TTL du cache ; définissez donc un TTL du cache ici ou sur la source.",
+    "loadManagementFixErrors": "Corrigez les réglages de Gestion de la charge et fraîcheur avant d'enregistrer."
   }
 }

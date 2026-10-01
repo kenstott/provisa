@@ -85,6 +85,21 @@
     "reconnectIntervalSeconds": "Intervallo di riconnessione (secondi)",
     "subscribePayload": "Payload di sottoscrizione (JSON, facoltativo)",
     "feedUrlOverride": "URL del feed (override facoltativo)",
-    "pollIntervalSeconds": "Intervallo di polling (secondi)"
+    "pollIntervalSeconds": "Intervallo di polling (secondi)",
+    "loadManagementTitle": "Gestione del carico e tempestività",
+    "loadManagementHelp": "Quanto devono essere aggiornati i dati per ogni lettore, bilanciato con il carico sulla piattaforma e sulle sorgenti upstream.",
+    "loadManagementInfoLabel": "Informazioni su gestione del carico e tempestività",
+    "loadManagementInfo": "Bilancia quanto sono aggiornati i dati di ogni lettore rispetto al carico sulla piattaforma e sulle sorgenti upstream. Idealmente la sorgente upstream gestisce il proprio carico; l'operatore protegge la piattaforma, e la sorgente quando non può proteggersi da sola. Queste impostazioni sono la soglia minima dell'operatore: nessuna query o indicazione nella richiesta può ottenere dati più recenti o caricare una sorgente più di quanto consentano. I lettori possono solo scegliere di accettare dati più vecchi in cambio di velocità. Una sorgente che il motore legge in tempo reale ignora le impostazioni TTL, a meno che non sia impostato «Preferisci materializzato» o «Protetto dal carico».",
+    "sentinelPath": "Percorso sentinella",
+    "sentinelPathTooltip": "URL di un file marcatore che il produttore aggiorna quando i dati cambiano (file:, ftp:, sftp:, http:, https:). Con un segnale di modifica a sonda, Provisa controlla solo questo marcatore per decidere se i dati sono aggiornati. Lasciare vuoto per nessuna sentinella.",
+    "sentinelPathInvalid": "Usa un URL file:, ftp:, sftp:, http: o https:, oppure lascia vuoto.",
+    "freshnessGate": "Controllo di aggiornamento",
+    "freshnessGateTooltip": "Verifica l'aggiornamento (dal segnale di modifica e dal TTL della cache) prima di ogni lettura delle tabelle di questa sorgente e aggiorna prima se i dati non sono recenti. Richiede un TTL della cache per i segnali ttl; i segnali push non possono controllare.",
+    "maxLiveConcurrency": "Max query live simultanee",
+    "maxLiveConcurrencyHelp": "Limite di query che leggono questa sorgente in tempo reale contemporaneamente, su tutte le istanze Provisa che condividono questo Redis. Le query oltre il limite attendono fino alla propria scadenza, poi falliscono. Vuoto = nessun limite. Nessun effetto quando la sorgente è letta dalla replica (preferisci materializzato / protetto dal carico).",
+    "maxLiveConcurrencyPlaceholder": "nessun limite",
+    "maxLiveConcurrencyInvalid": "Inserisci un numero intero pari o superiore a 1, oppure lascia vuoto per nessun limite.",
+    "loadManagementFixErrors": "Correggi le impostazioni di Gestione del carico e tempestività prima di salvare.",
+    "cacheTtlRequiredForSignal": "Il segnale di modifica {{signal}} valuta l'aggiornamento in base al TTL della cache, quindi imposta un TTL della cache."
   }
 }

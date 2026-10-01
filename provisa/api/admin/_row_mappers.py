@@ -113,6 +113,9 @@ def _source_from_row(row, *, connection: bool) -> SourceType:
         load_protected=bool(row.get("load_protected", False)),  # REQ-1141
         off_peak_window=row.get("off_peak_window"),  # REQ-1141
         off_peak_tz=row.get("off_peak_tz") or "UTC",  # REQ-1141
+        max_live_concurrency=row.get("max_live_concurrency"),  # REQ-1909
+        sentinel_path=row.get("sentinel_path"),  # REQ-1148
+        freshness_gate=bool(row.get("freshness_gate", False)),  # REQ-860
         gql_naming_convention=row.get("gql_naming_convention"),
         path=row.get("path") if connection else None,
         allowed_domains=list(row.get("allowed_domains") or []),

@@ -118,7 +118,8 @@ def _no_real_pipeline():
 
 def _stream(server, cached=None):
     """One ticket through the engine route: (cached_table, schema, batches)."""
-    plan = SimpleNamespace(physical_sql="SELECT 1")
+    # REQ-1909: as _Plan — no capped live source bound at mint.
+    plan = SimpleNamespace(physical_sql="SELECT 1", live_caps=(), live_caps_org=None)
     _cache_answer.table = cached
     try:
         return run_rpc(lambda: server._engine_arrow_through_cache(plan, []))

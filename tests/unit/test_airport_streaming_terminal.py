@@ -88,11 +88,14 @@ def _plan(route, **kwargs):
         sources=frozenset({"wh"}),
         exec_params=[],
         pk_bounds=(),  # REQ-1865: row-materialize residency reads this on every plan
+        role_id="analyst",  # REQ-1907: residency judges freshness for the plan's reader role
         audit=None,
         audit_written=False,
         row_count=None,  # the terminal's delivered rows; unset on a streamed scan until its drain
         audit_deferred=None,
         writes_tables=False,  # REQ-1897: finalize_audit invalidates a write's tables
+        live_caps=(),  # REQ-1909: the capped live sources the pipeline binds at mint (none here)
+        live_caps_org=None,
         **kwargs,
     )
 

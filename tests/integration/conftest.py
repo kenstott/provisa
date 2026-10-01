@@ -58,7 +58,7 @@ _INTEGRATION_GROUP_PATTERNS: list[tuple[str, re.Pattern]] = [
             r"|two_org_trino_isolation"
             r"|embedded_pg_duckdb_engine_e2e|embedded_pg_duckdb_iceberg_e2e"
             r"|embedded_pg_fdw_engine_e2e|embedded_pg_sqlite_fdw_e2e"
-            r"|duckdb_sqlite_control_plane_e2e|adbc|cross_vendor_parity_e2e"
+            r"|duckdb_sqlite_control_plane_e2e|adbc|cross_vendor_parity_e2e|live_concurrency_cap_e2e"
             r"|engine_runtime_binding|execution_routing|direct_exec|operator_floor_e2e"
             r"|federation_integration|databricks_external_link_e2e"
             r")\.py$"

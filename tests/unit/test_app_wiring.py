@@ -102,6 +102,9 @@ def _state(*, ready=True):
             "table_name": "events",
             "columns": [_rcol("id", "bigint", pk=True)],
             "dq_contract": None,
+            "role_ttl": {},  # REQ-1907
+            "prefer_materialized": None,
+            "load_protected": None,
         }
     ]
     registry = SimpleNamespace(get_enabled=lambda: [])
@@ -201,6 +204,9 @@ async def test_registered_checker_table_carries_its_contract_to_the_loop(monkeyp
                 "table_name": "pets_scan",
                 "columns": [_rcol("scan_id", "varchar", pk=True)],
                 "dq_contract": contract,
+                "role_ttl": {},  # REQ-1907
+                "prefer_materialized": None,
+                "load_protected": None,
             }
         ]
     )

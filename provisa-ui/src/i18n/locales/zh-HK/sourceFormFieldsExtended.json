@@ -85,6 +85,21 @@
     "reconnectIntervalSeconds": "重新連線間隔（秒）",
     "subscribePayload": "訂閱承載（JSON，選填）",
     "feedUrlOverride": "摘要 URL（選填覆寫）",
-    "pollIntervalSeconds": "輪詢間隔（秒）"
+    "pollIntervalSeconds": "輪詢間隔（秒）",
+    "loadManagementTitle": "負載管理與時效性",
+    "loadManagementHelp": "每位讀者所需數據的時效性，與平台及上游數據來源的負載相權衡。",
+    "loadManagementInfoLabel": "關於負載管理與時效性",
+    "loadManagementInfo": "在每位讀者數據的時效性與平台及上游數據來源的負載之間取得平衡。理想情況下由上游自行管理負載；營運人員保護平台，並在上游無法自我保護時保護上游。這些設定是營運人員設定的下限——任何查詢或請求提示都無法取得比其允許的更新的數據，也無法為數據來源帶來更多負載。讀者只能選擇為速度接受較舊的數據。引擎即時讀取的數據來源會忽略 TTL 設定，除非設定了「優先物化」或「負載保護」。",
+    "sentinelPath": "哨兵路徑",
+    "sentinelPathTooltip": "生產方在數據變化時更新的標記檔案 URL（file:、ftp:、sftp:、http:、https:）。使用探測型變更訊號時，Provisa 只檢查此標記來判斷數據是否最新。無哨兵時留空。",
+    "sentinelPathInvalid": "請使用 file:、ftp:、sftp:、http: 或 https: URL，或留空。",
+    "freshnessGate": "時效性閘門",
+    "freshnessGateTooltip": "每次讀取此數據來源的表之前，根據變更訊號和快取 TTL 檢查時效性，過期時先刷新。ttl 訊號需要快取 TTL；推送訊號無法作為閘門。",
+    "maxLiveConcurrency": "最大並行即時查詢數",
+    "maxLiveConcurrencyHelp": "在共用此 Redis 的所有 Provisa 實例中，同時即時讀取此數據來源的查詢上限。超出的查詢等待至各自的截止時間後失敗。留空 = 不限制。當數據來源從其副本讀取時（優先物化 / 負載保護）無效。",
+    "maxLiveConcurrencyPlaceholder": "不限制",
+    "maxLiveConcurrencyInvalid": "請輸入不小於 1 的整數，或留空表示不限制。",
+    "loadManagementFixErrors": "儲存前請修正「負載管理與時效性」設定。",
+    "cacheTtlRequiredForSignal": "變更訊號 {{signal}} 根據快取 TTL 判斷數據是否過期，因此請設定快取 TTL。"
   }
 }

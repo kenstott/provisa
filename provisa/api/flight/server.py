@@ -1007,9 +1007,14 @@ class ProvisaFlightServer(
         if cached is not None:
             raw_rows = [dict(zip(cached.column_names, row, strict=False)) for row in cached.rows]
         else:
+            from provisa.federation.live_concurrency import acquire_plan_permits
+
             # REQ-1905: a MISS reaches the engine — hold a stream slot for the read.
             _release_slot = self._acquire_stream_slot()
+            _permits = None
             try:
+                # REQ-1909: this buffered drain holds the plan's live-read permits end to end.
+                _permits = acquire_plan_permits(self._state, plan)
                 # REQ-1882: the sync engine terminal runs on this handler thread (not a raw cursor,
                 # and not a second thread).
                 res = engine.execute_engine_sync(physical_sql, resolved_params or [])
@@ -1025,6 +1030,8 @@ class ProvisaFlightServer(
                 self._finalize_audit(plan, 500)  # REQ-074/REQ-1386
                 raise
             finally:
+                if _permits is not None:
+                    _permits.release()
                 _release_slot()
             plan.row_count = len(raw_rows)
             self._finalize_audit(plan, 200)  # REQ-074/REQ-1386
@@ -1315,17 +1322,29 @@ class ProvisaFlightServer(
         # lazy stream below is drained (pyarrow pulls it after do_get has returned).
         from provisa.api.flight.stream_slots import SlotHeldBatches
 
+        from provisa.federation.live_concurrency import acquire_plan_permits
+
         release = self._acquire_stream_slot()
+        try:
+            # REQ-1909: the permits ride the batch generator until pyarrow finishes pulling it.
+            permits = acquire_plan_permits(self._state, plan)
+        except BaseException:
+            release()
+            raise
         try:
             arrow_schema, batch_gen = self._state.federation_engine.execute_engine_stream(
                 plan.physical_sql, params
             )
         except RuntimeError as exc:
+            permits.release()
             release()
             raise _flight_error(str(exc), exc) from exc
         except BaseException:
+            permits.release()
             release()
             raise
+        if permits.count:  # an uncapped read keeps the engine's own stream object (and its close)
+            batch_gen = permits.guard(batch_gen)
         batch_gen = SlotHeldBatches(release, batch_gen)
         tee = response_cache_tee(plan, self._state, run=run_on_connection_loop)
         if tee is not None:

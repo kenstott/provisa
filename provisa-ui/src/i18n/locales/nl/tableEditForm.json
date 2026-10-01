@@ -8,6 +8,18 @@
     "cacheTtlLabel": "Cache-TTL (seconden)",
     "cacheTtlHelp": "Hoe lang queryresultaten voor deze tabel in het geheugen worden gecachet. 0 schakelt caching uit. Laat leeg om de TTL op bronniveau over te nemen. Vermindert de belasting van de brondatabase voor veelbevraagde tabellen.",
     "cacheTtlPlaceholder": "overnemen",
+    "roleTtlLabel": "Rol-TTL",
+    "roleTtlHelp": "Tolerantie voor verouderde gegevens per rol voor deze tabel, in seconden. De effectieve TTL van een rol is de grootste van de Cache-TTL en de waarde hier. Een waarde kan een rol dus alleen oudere gegevens laten accepteren; ze levert nooit recentere gegevens dan de Cache-TTL toestaat.",
+    "roleTtlRole": "Rol",
+    "roleTtlSeconds": "TTL (seconden)",
+    "roleTtlRemove": "Rol-TTL voor {{role}} verwijderen",
+    "roleTtlAdd": "Rol-TTL toevoegen",
+    "roleTtlEffective": "Effectieve TTL: {{sec}} s",
+    "roleTtlBelowFloor": "(lager dan de Cache-TTL van {{floor}} s, dus deze waarde heeft geen effect)",
+    "roleTtlUnlisted": "Rollen die niet in de lijst staan, gebruiken de Cache-TTL ({{sec}} s).",
+    "roleTtlInvalidTtl": "Voer een geheel aantal seconden in, 0 of meer.",
+    "roleTtlDuplicateRole": "Deze rol staat al in de lijst.",
+    "roleTtlFixErrors": "Corrigeer de rol-TTL-regels voordat u opslaat.",
     "preferMaterializedLabel": "Voorkeur voor materialisatie",
     "preferMaterializedHelp": "Dwing af dat deze tabel in de store wordt gematerialiseerd en van daaruit wordt gefedereerd, in plaats van live te worden benaderd. Gebruik dit wanneer de connector slecht past bij de query's op deze tabel. Overnemen = volg de standaard op bronniveau.",
     "loadProtectedLabel": "Belastingbeveiligd",
@@ -216,6 +228,12 @@
     "save": "Opslaan",
     "ttlViewRefreshes": "Ververst elke {{sec}}s (van het verversingsinterval van de gematerialiseerde view).",
     "ttlViewNeedsMv": "ttl vereist een gematerialiseerde view — schakel",
-    "ttlViewNeedsMvPost": "hierboven in en stel een verversingsinterval in."
+    "ttlViewNeedsMvPost": "hierboven in en stel een verversingsinterval in.",
+    "loadManagementTitle": "Belastingbeheer en actualiteit",
+    "loadManagementHelp": "Hoe actueel de gegevens voor elke lezer moeten zijn, afgewogen tegen de belasting van het platform en de upstreambronnen.",
+    "loadManagementInfoLabel": "Over belastingbeheer en actualiteit",
+    "loadManagementInfo": "Weegt af hoe actueel de gegevens van elke lezer zijn tegen de belasting van het platform en de upstreambronnen. Idealiter beheert de upstreambron haar eigen belasting; de operator beschermt het platform, en de bron wanneer die zichzelf niet kan beschermen. Deze instellingen zijn de ondergrens van de operator: geen query of verzoekhint kan actuelere gegevens krijgen of een bron zwaarder belasten dan zij toestaan. Lezers kunnen alleen kiezen om voor snelheid oudere gegevens te accepteren. Een bron die de engine live leest, negeert de TTL-instellingen tenzij 'Gematerialiseerd voorkeur' of 'Belastingbeveiligd' is ingesteld.",
+    "cacheTtlRequiredForSignal": "Het wijzigingssignaal {{signal}} beoordeelt de actualiteit op basis van de Cache-TTL; stel dus hier of op de bron een Cache-TTL in.",
+    "loadManagementFixErrors": "Corrigeer de instellingen voor Belastingbeheer en actualiteit voordat u opslaat."
   }
 }

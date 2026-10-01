@@ -79,7 +79,10 @@ def governed_table_scan_stream(
     """
     from provisa.transpiler.router import Route
 
+    from provisa.federation.live_concurrency import acquire_plan_permits
+
     plan = _plan_for_scan(state, sql, role_id)
+    permits = None
     try:
         if plan.route == Route.ENGINE:
             assert plan.physical_sql is not None
@@ -95,17 +98,24 @@ def governed_table_scan_stream(
             )
 
             async def _prep_residency() -> set[str]:
-                await ensure_rows_resident(state, plan.pk_bounds)
+                await ensure_rows_resident(state, plan.pk_bounds, reader_role=plan.role_id)
                 return await pushdown_row_materialize(
-                    state, plan.physical_sql, state.federation_engine.dialect, plan.exec_params
+                    state,
+                    plan.physical_sql,
+                    state.federation_engine.dialect,
+                    plan.exec_params,
+                    reader_role=plan.role_id,
                 )
 
             run_on_connection_loop(_prep_residency())
-            run_on_connection_loop(ensure_resident(state, plan.sources))
+            run_on_connection_loop(ensure_resident(state, plan.sources, reader_role=plan.role_id))
+            # REQ-1909: the permits ride the batch generator until the scan is fully pulled.
+            permits = acquire_plan_permits(state, plan)
             schema, batch_gen = state.federation_engine.execute_engine_stream(plan.physical_sql, [])
             _finalize_scan_audit(plan, 200, state)
-            return schema, _audited(plan, batch_gen)
+            return schema, permits.guard(_audited(plan, batch_gen))
         if plan.route == Route.DIRECT:
+            permits = acquire_plan_permits(state, plan)  # REQ-1909
             if state.source_pools.has(plan.source_id) and state.source_pools.supports_stream(
                 plan.source_id
             ):
@@ -130,8 +140,10 @@ def governed_table_scan_stream(
                 )
             typed = _direct_typed_schema(stream.column_names, stream.column_types)
             _finalize_scan_audit(plan, 200, state)
-            return typed, _audited(plan, _typed_batches_from_rows(stream, typed))
+            return typed, permits.guard(_audited(plan, _typed_batches_from_rows(stream, typed)))
     except Exception:
+        if permits is not None:
+            permits.release()
         _finalize_scan_audit(plan, 500, state)
         raise
     raise ValueError(f"Route {plan.route!r} is not supported for the airport service")
@@ -190,40 +202,52 @@ def governed_table_scan_schema(
         )
 
         async def _prep_residency() -> set[str]:
-            await ensure_rows_resident(state, plan.pk_bounds)
+            await ensure_rows_resident(state, plan.pk_bounds, reader_role=plan.role_id)
             return await pushdown_row_materialize(
-                state, plan.physical_sql, state.federation_engine.dialect, plan.exec_params
+                state,
+                plan.physical_sql,
+                state.federation_engine.dialect,
+                plan.exec_params,
+                reader_role=plan.role_id,
             )
 
         run_on_connection_loop(_prep_residency())
-        run_on_connection_loop(ensure_resident(state, plan.sources))
-        schema, batch_gen = state.federation_engine.execute_engine_stream(plan.physical_sql, [])
-        close = getattr(batch_gen, "close", None)
-        if close is not None:
-            close()
+        run_on_connection_loop(ensure_resident(state, plan.sources, reader_role=plan.role_id))
+        from provisa.federation.live_concurrency import acquire_plan_permits
+
+        # REQ-1909: binding the probe reads the live source too; held only while it opens.
+        with acquire_plan_permits(state, plan):
+            schema, batch_gen = state.federation_engine.execute_engine_stream(plan.physical_sql, [])
+            close = getattr(batch_gen, "close", None)
+            if close is not None:
+                close()
         return schema
     if plan.route == Route.DIRECT:
-        if state.source_pools.has(plan.source_id) and state.source_pools.supports_stream(
-            plan.source_id
-        ):
-            stream = state.federation_engine.execute_native_stream(
-                state.source_pools,
-                plan.source_id,
-                plan.sql,
-                plan.exec_params or [],
-                run=run_on_connection_loop,
+        from provisa.federation.live_concurrency import acquire_plan_permits
+
+        # REQ-1909: the probe opens a cursor on the live source; held only while it does.
+        with acquire_plan_permits(state, plan):
+            if state.source_pools.has(plan.source_id) and state.source_pools.supports_stream(
+                plan.source_id
+            ):
+                stream = state.federation_engine.execute_native_stream(
+                    state.source_pools,
+                    plan.source_id,
+                    plan.sql,
+                    plan.exec_params or [],
+                    run=run_on_connection_loop,
+                )
+                typed = _direct_typed_schema(stream.column_names, stream.column_types)
+                stream.close()  # release the eagerly-opened server-side cursor; no rows fetched
+                return typed
+            result = run_on_connection_loop(
+                state.federation_engine.execute_native(
+                    state.source_pools,
+                    plan.source_id,
+                    plan.sql,
+                    plan.exec_params or [],
+                )
             )
-            typed = _direct_typed_schema(stream.column_names, stream.column_types)
-            stream.close()  # release the eagerly-opened server-side cursor; no rows fetched
-            return typed
-        result = run_on_connection_loop(
-            state.federation_engine.execute_native(
-                state.source_pools,
-                plan.source_id,
-                plan.sql,
-                plan.exec_params or [],
-            )
-        )
         return _direct_typed_schema(result.column_names, result.column_types)
     raise ValueError(f"Route {plan.route!r} is not supported for the airport service")
 

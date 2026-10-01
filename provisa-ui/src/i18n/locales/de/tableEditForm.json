@@ -8,6 +8,18 @@
     "cacheTtlLabel": "Cache-TTL (Sekunden)",
     "cacheTtlHelp": "Wie lange Abfrageergebnisse dieser Tabelle im Speicher zwischengespeichert werden. 0 deaktiviert das Caching. Leer lassen, um das TTL der Quellebene zu erben. Reduziert die Last auf der Quelldatenbank bei häufig abgefragten Tabellen.",
     "cacheTtlPlaceholder": "erben",
+    "roleTtlLabel": "Rollen-TTL",
+    "roleTtlHelp": "Toleranz für veraltete Daten je Rolle für diese Tabelle, in Sekunden. Die effektive TTL einer Rolle ist der größere Wert aus Cache-TTL und ihrem Eintrag hier. Ein Eintrag kann eine Rolle also nur ältere Daten akzeptieren lassen; er liefert nie aktuellere Daten, als die Cache-TTL zulässt.",
+    "roleTtlRole": "Rolle",
+    "roleTtlSeconds": "TTL (Sekunden)",
+    "roleTtlRemove": "Rollen-TTL für {{role}} entfernen",
+    "roleTtlAdd": "Rollen-TTL hinzufügen",
+    "roleTtlEffective": "Effektive TTL: {{sec}} s",
+    "roleTtlBelowFloor": "(unter der Cache-TTL von {{floor}} s, daher hat dieser Eintrag keine Wirkung)",
+    "roleTtlUnlisted": "Nicht aufgeführte Rollen verwenden die Cache-TTL ({{sec}} s).",
+    "roleTtlInvalidTtl": "Geben Sie eine ganze Zahl von Sekunden ein, 0 oder mehr.",
+    "roleTtlDuplicateRole": "Diese Rolle ist bereits aufgeführt.",
+    "roleTtlFixErrors": "Korrigieren Sie die Rollen-TTL-Zeilen vor dem Speichern.",
     "preferMaterializedLabel": "Materialisierung bevorzugen",
     "preferMaterializedHelp": "Erzwingt, dass diese Tabelle in den Store materialisiert und von dort föderiert wird, statt live erreicht zu werden. Verwenden, wenn der Connector für die Abfragen dieser Tabelle schlecht geeignet ist. Erben = dem Standard der Quellebene folgen.",
     "loadProtectedLabel": "Lastgeschützt",
@@ -216,6 +228,12 @@
     "save": "Speichern",
     "ttlViewRefreshes": "Aktualisiert alle {{sec}} s (aus dem Aktualisierungsintervall der materialisierten Sicht).",
     "ttlViewNeedsMv": "ttl benötigt eine materialisierte Sicht — aktivieren Sie",
-    "ttlViewNeedsMvPost": "oben und setzen Sie ein Aktualisierungsintervall."
+    "ttlViewNeedsMvPost": "oben und setzen Sie ein Aktualisierungsintervall.",
+    "loadManagementTitle": "Laststeuerung und Aktualität",
+    "loadManagementHelp": "Wie aktuell die Daten für jeden Leser sein müssen, abgewogen gegen die Last auf der Plattform und den Upstream-Quellen.",
+    "loadManagementInfoLabel": "Über Laststeuerung und Aktualität",
+    "loadManagementInfo": "Wägt ab, wie aktuell die Daten jedes Lesers sind, gegenüber der Last auf der Plattform und auf den Upstream-Quellen. Idealerweise steuert die Upstream-Quelle ihre Last selbst; der Betreiber schützt die Plattform und die Upstream-Quelle, wenn sie sich nicht selbst schützen kann. Diese Einstellungen sind die Untergrenze des Betreibers – keine Abfrage und kein Anfragehinweis kann aktuellere Daten erhalten oder eine Quelle stärker belasten, als sie zulassen. Leser können nur wählen, für mehr Geschwindigkeit ältere Daten zu akzeptieren. Eine Quelle, die die Engine live liest, ignoriert die TTL-Einstellungen, es sei denn, „Materialisiert bevorzugen“ oder „Lastgeschützt“ ist gesetzt.",
+    "cacheTtlRequiredForSignal": "Das Änderungssignal {{signal}} bewertet die Aktualität anhand der Cache-TTL. Legen Sie daher hier oder an der Quelle eine Cache-TTL fest.",
+    "loadManagementFixErrors": "Korrigieren Sie die Einstellungen unter Laststeuerung und Aktualität vor dem Speichern."
   }
 }

@@ -43,6 +43,12 @@ def _source_values(source: Source) -> dict:
         "load_protected": getattr(source, "load_protected", False),  # REQ-1141
         "off_peak_window": getattr(source, "off_peak_window", None),  # REQ-1141
         "off_peak_tz": getattr(source, "off_peak_tz", "UTC"),  # REQ-1141
+        "cache_enabled": source.cache_enabled,
+        "cache_ttl": source.cache_ttl,
+        "prefer_materialized": source.prefer_materialized,  # REQ-826
+        "max_live_concurrency": source.max_live_concurrency,  # REQ-1909
+        "sentinel_path": source.sentinel_path,  # REQ-1148
+        "freshness_gate": source.freshness_gate,  # REQ-860
         # REQ-1695: the REFERENCE, never the credential. ``Source.password`` is documented as a
         # secret reference (provisa/core/models.py) and the mutation layer has already put any
         # literal a person typed into the org vault, so what arrives here is ``${provider:name}``

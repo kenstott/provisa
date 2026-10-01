@@ -33,6 +33,9 @@ export interface Source {
   loadProtected: boolean; // REQ-1141: scheduled-refresh-only load protection
   offPeakWindow: string | null; // REQ-1141: "HH:MM-HH:MM" maintenance window
   offPeakTz: string; // REQ-1141: IANA zone for the window
+  sentinelPath: string | null; // REQ-1148: freshness sentinel marker URL
+  freshnessGate: boolean; // REQ-860: gate reads on a freshness decision
+  maxLiveConcurrency: number | null; // cap on concurrent live reads; null = no cap
   gqlNamingConvention: string | null;
   path: string | null;
   allowedDomains: string[];
@@ -232,6 +235,12 @@ export interface LiveDeliveryConfig {
   outputs: LiveOutputConfig[];
 }
 
+// REQ-1907: one role's staleness tolerance on a table, in seconds.
+export interface RoleTtl {
+  role: string;
+  ttl: number;
+}
+
 export interface RegisteredTable {
   id: number;
   sourceId: string;
@@ -241,6 +250,7 @@ export interface RegisteredTable {
   alias: string | null;
   description: string | null;
   cacheTtl: number | null;
+  roleTtl: RoleTtl[]; // REQ-1907: role → TTL; effective = max(cache_ttl, role_ttl(role))
   preferMaterialized: boolean | null;
   loadProtected: boolean | null; // REQ-1141: null = inherit source
   offPeakWindow: string | null; // REQ-1141: "HH:MM-HH:MM" window override

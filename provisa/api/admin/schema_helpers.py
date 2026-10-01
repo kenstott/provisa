@@ -40,6 +40,7 @@ from provisa.api.admin.types import (
     ColumnPresetType,
     ImplicitMeasureType,
     RegisteredTableType,
+    RoleTtlType,
     UniqueConstraintType,
     TableColumnType,
 )
@@ -408,6 +409,9 @@ async def _fetch_table_with_columns(
         column_presets=presets,
         unique_constraints=unique_constraints,  # REQ-1093
         api_endpoint=api_endpoint,
+        role_ttl=[
+            RoleTtlType(role=role, ttl=ttl) for role, ttl in dict(row["role_ttl"]).items()
+        ],  # REQ-1907
         view_sql=view_sql,
         dq_contract=row.get("dq_contract"),  # REQ-1443
         query_template=_query_template_for(row["table_name"]),  # REQ-1670

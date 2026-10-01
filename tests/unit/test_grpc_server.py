@@ -318,6 +318,8 @@ class TestHandleQuery:
             response_cacheable=True,
             role_id="admin",
             table_ids=(),
+            live_caps=(),  # REQ-1909: the capped live sources the pipeline binds at mint (none here)
+            live_caps_org=None,
         )
         fake_result = SimpleNamespace(column_names=["id", "amount"], rows=[[1, 100.0], [2, 200.0]])
 
@@ -411,6 +413,8 @@ class TestHandleQuery:
             response_cacheable=True,
             role_id="admin",
             table_ids=(),
+            live_caps=(),  # REQ-1909: the capped live sources the pipeline binds at mint (none here)
+            live_caps_org=None,
         )
 
         with (

@@ -8,6 +8,18 @@
     "cacheTtlLabel": "Cache TTL (seconds)",
     "cacheTtlHelp": "How long query results for this table are cached in memory. 0 disables caching. Leave blank to inherit the source-level TTL. Reduces load on the source database for frequently-queried tables.",
     "cacheTtlPlaceholder": "inherit",
+    "roleTtlLabel": "Role TTL",
+    "roleTtlHelp": "Per-role staleness tolerance for this table, in seconds. A role's effective TTL is the larger of the Cache TTL and its entry here, so an entry can only let that role accept older data; it never makes data fresher than the Cache TTL allows.",
+    "roleTtlRole": "Role",
+    "roleTtlSeconds": "TTL (seconds)",
+    "roleTtlRemove": "Remove role TTL for {{role}}",
+    "roleTtlAdd": "Add role TTL",
+    "roleTtlEffective": "Effective TTL: {{sec}}s",
+    "roleTtlBelowFloor": "(below the Cache TTL of {{floor}}s, so this entry has no effect)",
+    "roleTtlUnlisted": "Roles not listed use the Cache TTL ({{sec}}s).",
+    "roleTtlInvalidTtl": "Enter a whole number of seconds, 0 or more.",
+    "roleTtlDuplicateRole": "This role is already listed.",
+    "roleTtlFixErrors": "Fix the Role TTL rows before saving.",
     "preferMaterializedLabel": "Prefer Materialized",
     "preferMaterializedHelp": "Force this table to be materialized into the store and federated from there, instead of reached live. Use when the connector is a poor fit for this table's queries. Inherit = follow the source-level default.",
     "loadProtectedLabel": "Load Protected",
@@ -216,6 +228,12 @@
     "save": "Save",
     "ttlViewRefreshes": "Refreshes every {{sec}}s (from the materialized view's Refresh Interval).",
     "ttlViewNeedsMv": "ttl needs a materialized view — enable",
-    "ttlViewNeedsMvPost": "above and set a Refresh Interval."
+    "ttlViewNeedsMvPost": "above and set a Refresh Interval.",
+    "loadManagementTitle": "Load Management and Timeliness",
+    "loadManagementHelp": "How current the data must be for each reader, balanced against load on the platform and upstream sources.",
+    "loadManagementInfoLabel": "About load management and timeliness",
+    "loadManagementInfo": "Balances how current each reader's data is against load on the platform and on upstream sources. Ideally the upstream manages its own load; the operator protects the platform, and the upstream when it can't protect itself. These settings are the operator's floor — no query or request hint can get fresher data or put more load on a source than they allow. Readers can only choose to accept older data for speed. A source the engine reads live ignores the TTL settings unless Prefer Materialized or Load Protected is set.",
+    "cacheTtlRequiredForSignal": "The {{signal}} change signal judges staleness by the Cache TTL, so set a Cache TTL here or on the source.",
+    "loadManagementFixErrors": "Fix the Load Management and Timeliness settings before saving."
   }
 }

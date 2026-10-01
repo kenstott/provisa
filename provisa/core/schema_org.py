@@ -78,6 +78,9 @@ sources = Table(
     Column("load_protected", Boolean, nullable=False, server_default=false()),  # REQ-1141
     Column("off_peak_window", Text),  # REQ-1141
     Column("off_peak_tz", Text, nullable=False, server_default="UTC"),  # REQ-1141
+    Column("max_live_concurrency", Integer),  # REQ-1909: NULL = no cap
+    Column("sentinel_path", Text),  # REQ-1148
+    Column("freshness_gate", Boolean, nullable=False, server_default=false()),  # REQ-860
     Column("gql_naming_convention", Text),
     Column("path", Text),
     Column("allowed_domains", JSON, nullable=False, default=list, server_default="[]"),
@@ -153,6 +156,8 @@ registered_tables = Table(
     Column("alias", Text),
     Column("description", Text),
     Column("cache_ttl", Integer),
+    # REQ-1907: role -> TTL seconds; effective TTL = max(cache_ttl, role_ttl(role)).
+    Column("role_ttl", JSON, nullable=False, default=dict, server_default="{}"),
     Column("prefer_materialized", Boolean),
     Column("load_protected", Boolean),  # REQ-1141: NULL = inherit source
     Column("off_peak_window", Text),  # REQ-1141

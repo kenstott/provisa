@@ -8,6 +8,18 @@
     "cacheTtlLabel": "快取 TTL（秒）",
     "cacheTtlHelp": "此數據表的查詢結果在記憶體中快取的時間長度。0 表示停用快取。留空則繼承數據來源層級的 TTL。可減少常被查詢的數據表對來源數據庫的負載。",
     "cacheTtlPlaceholder": "繼承",
+    "roleTtlLabel": "角色 TTL",
+    "roleTtlHelp": "此表按角色設定的數據陳舊容忍度，單位為秒。角色的實際 TTL 取快取 TTL 與此處項目中的較大值，因此項目只能讓該角色接受較舊的數據，絕不會提供比快取 TTL 允許的更新的數據。",
+    "roleTtlRole": "角色",
+    "roleTtlSeconds": "TTL（秒）",
+    "roleTtlRemove": "移除 {{role}} 的角色 TTL",
+    "roleTtlAdd": "新增角色 TTL",
+    "roleTtlEffective": "實際 TTL：{{sec}} 秒",
+    "roleTtlBelowFloor": "（低於 {{floor}} 秒的快取 TTL，因此此項目不起作用）",
+    "roleTtlUnlisted": "未列出的角色使用快取 TTL（{{sec}} 秒）。",
+    "roleTtlInvalidTtl": "請輸入不小於 0 的整數秒數。",
+    "roleTtlDuplicateRole": "該角色已在列表中。",
+    "roleTtlFixErrors": "儲存前請修正角色 TTL 行。",
     "preferMaterializedLabel": "優先具體化",
     "preferMaterializedHelp": "強制將此數據表具體化到儲存區並由該處聯邦查詢，而非即時連線存取。當連接器不適合此數據表的查詢時使用。繼承 = 遵循數據來源層級的預設值。",
     "loadProtectedLabel": "負載保護",
@@ -216,6 +228,12 @@
     "save": "儲存",
     "ttlViewRefreshes": "每 {{sec}} 秒重新整理（來自具體化檢視的重新整理間隔）。",
     "ttlViewNeedsMv": "ttl 需要具體化檢視 — 請在上方啟用",
-    "ttlViewNeedsMvPost": "並設定重新整理間隔。"
+    "ttlViewNeedsMvPost": "並設定重新整理間隔。",
+    "loadManagementTitle": "負載管理與時效性",
+    "loadManagementHelp": "每位讀者所需數據的時效性，與平台及上游數據來源的負載相權衡。",
+    "loadManagementInfoLabel": "關於負載管理與時效性",
+    "loadManagementInfo": "在每位讀者數據的時效性與平台及上游數據來源的負載之間取得平衡。理想情況下由上游自行管理負載；營運人員保護平台，並在上游無法自我保護時保護上游。這些設定是營運人員設定的下限——任何查詢或請求提示都無法取得比其允許的更新的數據，也無法為數據來源帶來更多負載。讀者只能選擇為速度接受較舊的數據。引擎即時讀取的數據來源會忽略 TTL 設定，除非設定了「優先物化」或「負載保護」。",
+    "cacheTtlRequiredForSignal": "變更訊號 {{signal}} 根據快取 TTL 判斷數據是否過期，因此請在此處或數據來源上設定快取 TTL。",
+    "loadManagementFixErrors": "儲存前請修正「負載管理與時效性」設定。"
   }
 }

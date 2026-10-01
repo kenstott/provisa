@@ -85,6 +85,21 @@
     "reconnectIntervalSeconds": "Herverbindingsinterval (seconden)",
     "subscribePayload": "Subscribe-payload (JSON, optioneel)",
     "feedUrlOverride": "Feed-URL (optionele overschrijving)",
-    "pollIntervalSeconds": "Pollinginterval (seconden)"
+    "pollIntervalSeconds": "Pollinginterval (seconden)",
+    "loadManagementTitle": "Belastingbeheer en actualiteit",
+    "loadManagementHelp": "Hoe actueel de gegevens voor elke lezer moeten zijn, afgewogen tegen de belasting van het platform en de upstreambronnen.",
+    "loadManagementInfoLabel": "Over belastingbeheer en actualiteit",
+    "loadManagementInfo": "Weegt af hoe actueel de gegevens van elke lezer zijn tegen de belasting van het platform en de upstreambronnen. Idealiter beheert de upstreambron haar eigen belasting; de operator beschermt het platform, en de bron wanneer die zichzelf niet kan beschermen. Deze instellingen zijn de ondergrens van de operator: geen query of verzoekhint kan actuelere gegevens krijgen of een bron zwaarder belasten dan zij toestaan. Lezers kunnen alleen kiezen om voor snelheid oudere gegevens te accepteren. Een bron die de engine live leest, negeert de TTL-instellingen tenzij 'Gematerialiseerd voorkeur' of 'Belastingbeveiligd' is ingesteld.",
+    "sentinelPath": "Sentinelpad",
+    "sentinelPathTooltip": "URL van een markeringsbestand dat de producent bijwerkt wanneer de gegevens veranderen (file:, ftp:, sftp:, http:, https:). Met een probe-wijzigingssignaal controleert Provisa alleen deze markering om te bepalen of de gegevens actueel zijn. Laat leeg voor geen sentinel.",
+    "sentinelPathInvalid": "Gebruik een file:-, ftp:-, sftp:-, http:- of https:-URL, of laat leeg.",
+    "freshnessGate": "Actualiteitspoort",
+    "freshnessGateTooltip": "Controleert de actualiteit (op basis van het wijzigingssignaal en de Cache-TTL) vóór elke lezing van de tabellen van deze bron en ververst eerst als ze verouderd zijn. Vereist een Cache-TTL voor ttl-signalen; pushsignalen kunnen niet poorten.",
+    "maxLiveConcurrency": "Max. gelijktijdige live-query's",
+    "maxLiveConcurrencyHelp": "Bovengrens voor query's die deze bron tegelijk live lezen, over alle Provisa-instanties die deze Redis delen. Query's daarboven wachten tot hun eigen deadline en mislukken dan. Leeg = geen limiet. Geen effect wanneer de bron uit haar replica wordt gelezen (gematerialiseerd voorkeur / belastingbeveiligd).",
+    "maxLiveConcurrencyPlaceholder": "geen limiet",
+    "maxLiveConcurrencyInvalid": "Voer een geheel getal van 1 of meer in, of laat leeg voor geen limiet.",
+    "loadManagementFixErrors": "Corrigeer de instellingen voor Belastingbeheer en actualiteit voordat u opslaat.",
+    "cacheTtlRequiredForSignal": "Het wijzigingssignaal {{signal}} beoordeelt de actualiteit op basis van de Cache-TTL; stel dus een Cache-TTL in."
   }
 }

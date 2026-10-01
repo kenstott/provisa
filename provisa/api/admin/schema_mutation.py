@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Optional, cast
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 import strawberry
 from sqlalchemy import select, update
@@ -25,6 +25,7 @@ from provisa.core.schema_org import (
     registered_tables,
     relationship_candidates,
     relationships,
+    roles,
     sources,
     tracked_webhooks,
 )
@@ -54,6 +55,7 @@ from provisa.api.admin.types import (
     RelationshipInput,
     RLSRuleInput,
     RoleInput,
+    RoleTtlInput,
     SourceInput,
     TableInput,
     TagAssignmentInput,
@@ -68,6 +70,7 @@ from provisa.api.admin.schema_helpers import (
     _rebuild_schemas,
 )
 from provisa.api.admin._live_mappers import table_model_from_input as _table_model_from_input
+from provisa.api.admin._landing_ttl import SourceTtl, TableTtl, landing_ttl_refusal  # REQ-1907
 from provisa.api.admin._table_ops import _build_columns_for_input
 from provisa.api.admin import schema_mutation_ops as _ops
 
@@ -375,6 +378,66 @@ def _validate_load_protection(
     return None
 
 
+def _validate_source_load_management(input: SourceInput) -> "MutationResult | None":  # REQ-1909
+    """The "Load Management and Timeliness" panel's source settings, validated at write time by the
+    same rules the config loader and the query path apply: a known change_signal (REQ-929), a
+    non-negative cache_ttl, a live cap of at least 1 (REQ-1909), a sentinel URL with a supported
+    scheme (REQ-1148), a freshness gate the source's signal can build (REQ-860), a parseable
+    off-peak window (REQ-1141), and at least one refresh gate when load protected (REQ-1141).
+    Returns a failing MutationResult naming the rule, else None."""
+    from provisa.core.change_signal import resolve as _resolve_signal
+
+    def _fail(code: str, message: str) -> MutationResult:
+        return MutationResult(
+            success=False,
+            message=f"Source {input.id!r}: {message}",
+            code=code,
+            params={"source": input.id},
+        )
+
+    try:
+        _resolve_signal(None, input.change_signal)
+    except ValueError as e:
+        return _fail("schema.invalid_change_signal", str(e))
+    if input.cache_ttl is not None and input.cache_ttl < 0:
+        return _fail("schema.invalid_cache_ttl", "cache_ttl must be 0 or more seconds")
+    if input.max_live_concurrency is not None and input.max_live_concurrency < 1:
+        return _fail(
+            "schema.max_live_concurrency_invalid",
+            "max_live_concurrency must be 1 or more (leave it empty for no cap; to stop live "
+            "reads use prefer_materialized or load_protected)",
+        )
+    if input.sentinel_path:
+        from provisa.events.sentinel_probe import build_sentinel_probe
+
+        try:
+            build_sentinel_probe(input.sentinel_path)
+        except ValueError as e:
+            return _fail("schema.invalid_sentinel_path", str(e))
+    if input.freshness_gate:
+        from types import SimpleNamespace
+
+        from provisa.freshness.source_gate import source_strategy
+
+        try:
+            source_strategy(
+                cast(
+                    Any,
+                    SimpleNamespace(
+                        id=input.id, change_signal=input.change_signal, cache_ttl=input.cache_ttl
+                    ),
+                )
+            )
+        except ValueError as e:
+            return _fail("schema.invalid_freshness_gate", str(e))
+    window_err = _parsed_off_peak(input.off_peak_window, input.off_peak_tz)
+    if window_err is not None:
+        return window_err
+    return _validate_load_protection(
+        input.load_protected, input.off_peak_window, input.cache_ttl, input.change_signal, input.id
+    )
+
+
 def _snapshot_load_protection_conflict(
     load_protected: bool | None,
     off_peak_window: str | None,
@@ -679,9 +742,29 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         require_capability(info, "source_registration")
         from provisa.core.models import Source as SourceModel, SourceType as SourceTypeEnum
 
+        # REQ-1907: a ttl / ttl_probe signal needs a cache_ttl on the source or on each table
+        # already registered under this id.
+        async with (await _get_pool()).acquire() as _ttl_conn:
+            _ttl_refusal = await landing_ttl_refusal(
+                _ttl_conn,
+                input.id,
+                source=SourceTtl(
+                    input.change_signal,
+                    input.cache_ttl,
+                    input.prefer_materialized,
+                    input.load_protected,
+                ),
+            )
+        if _ttl_refusal is not None:
+            return _ttl_refusal
+
         _limit_refusal = await _refuse_over_source_limit(input.id)
         if _limit_refusal is not None:
             return _limit_refusal
+
+        _load_mgmt_refusal = _validate_source_load_management(input)  # REQ-1909
+        if _load_mgmt_refusal is not None:
+            return _load_mgmt_refusal
 
         _soda_refusal = _refuse_soda_on_hosted_plane(input.type)
         if _soda_refusal is not None:
@@ -763,6 +846,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             load_protected=input.load_protected,  # REQ-1141
             off_peak_window=input.off_peak_window,  # REQ-1141
             off_peak_tz=input.off_peak_tz,  # REQ-1141
+            cache_enabled=input.cache_enabled,
+            cache_ttl=input.cache_ttl,
+            prefer_materialized=input.prefer_materialized,  # REQ-826
+            max_live_concurrency=input.max_live_concurrency,  # REQ-1909
+            sentinel_path=input.sentinel_path,  # REQ-1148
+            freshness_gate=input.freshness_gate,  # REQ-860
             cdc=_cdc_model_from_input(input),
         )
 
@@ -1012,6 +1101,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         _soda_refusal = _refuse_soda_on_hosted_plane(input.type)
         if _soda_refusal is not None:
             return _soda_refusal
+        _load_mgmt_refusal = _validate_source_load_management(input)  # REQ-1909
+        if _load_mgmt_refusal is not None:
+            return _load_mgmt_refusal
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
@@ -1024,6 +1116,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.source_not_found",
                     params={"source": input.id},
                 )
+            _ttl_refusal = await landing_ttl_refusal(  # REQ-1907
+                _conn,
+                input.id,
+                source=SourceTtl(
+                    input.change_signal,
+                    input.cache_ttl,
+                    input.prefer_materialized,
+                    input.load_protected,
+                ),
+            )
+            if _ttl_refusal is not None:
+                return _ttl_refusal
             # REQ-1695: the literal a person retyped into the form replaces the vault entry under
             # the same name -- a rotation, not a second secret -- and the row keeps the reference.
             password_ref = await persist_source_password(info, input.id, input.password)
@@ -1043,6 +1147,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 load_protected=input.load_protected,  # REQ-1141
                 off_peak_window=input.off_peak_window,  # REQ-1141
                 off_peak_tz=input.off_peak_tz,  # REQ-1141
+                cache_enabled=input.cache_enabled,
+                cache_ttl=input.cache_ttl,
+                prefer_materialized=input.prefer_materialized,  # REQ-826
+                max_live_concurrency=input.max_live_concurrency,  # REQ-1909
+                sentinel_path=input.sentinel_path,  # REQ-1148
+                freshness_gate=input.freshness_gate,  # REQ-860
                 cdc=_cdc_model_from_input(input),
             )
             if input.allowed_domains is not None:
@@ -2131,6 +2241,44 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
             if _owner_conflict:
                 return MutationResult(success=False, message=_owner_conflict)
+            # REQ-1907: TableInput carries no cache_ttl / role_ttl / row_materialize -- they are
+            # saved through updateTableCache / updateTableRoleTtl -- so the upsert keeps the
+            # stored values instead of resetting them.
+            _kept = await _conn.execute_core(
+                select(
+                    registered_tables.c.cache_ttl,
+                    registered_tables.c.role_ttl,
+                    registered_tables.c.row_materialize,
+                    registered_tables.c.prefer_materialized,
+                ).where(
+                    (registered_tables.c.source_id == model.source_id)
+                    & (registered_tables.c.schema_name == model.schema_name)
+                    & (registered_tables.c.table_name == model.table_name)
+                )
+            )
+            _kept_row = _kept.fetchone()
+            if _kept_row is not None:
+                model.cache_ttl = _kept_row.cache_ttl
+                model.role_ttl = dict(_kept_row.role_ttl)
+                model.row_materialize = bool(_kept_row.row_materialize)
+            _ttl_refusal = await landing_ttl_refusal(
+                _conn,
+                model.source_id,
+                table=TableTtl(
+                    model.schema_name,
+                    model.table_name,
+                    model.change_signal,
+                    model.cache_ttl,
+                    model.materialize,
+                    model.row_materialize,
+                    # prefer_materialized is saved through updateTablePreferMaterialized, never
+                    # by this upsert: judge the stored value.
+                    _kept_row.prefer_materialized if _kept_row is not None else None,
+                    model.load_protected,
+                ),
+            )
+            if _ttl_refusal is not None:
+                return _ttl_refusal
             try:
                 table_id = await table_repo.upsert(_conn, model)
             except table_repo.ViewLoopRefused as _loop:
@@ -2631,6 +2779,25 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         require_capability(info, "source_registration")
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            _sig = await conn.execute_core(
+                select(
+                    sources.c.change_signal, sources.c.prefer_materialized, sources.c.load_protected
+                ).where(sources.c.id == source_id)
+            )
+            _sig_row = _sig.fetchone()
+            if _sig_row is not None:
+                _ttl_refusal = await landing_ttl_refusal(  # REQ-1907
+                    conn,
+                    source_id,
+                    source=SourceTtl(
+                        _sig_row.change_signal,
+                        cache_ttl,
+                        _sig_row.prefer_materialized,
+                        _sig_row.load_protected,
+                    ),
+                )
+                if _ttl_refusal is not None:
+                    return _ttl_refusal
             result = await conn.execute_core(
                 update(sources)
                 .where(sources.c.id == source_id)
@@ -2658,6 +2825,36 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         require_capability(info, "table_registration")
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            _t = await conn.execute_core(
+                select(
+                    registered_tables.c.source_id,
+                    registered_tables.c.schema_name,
+                    registered_tables.c.table_name,
+                    registered_tables.c.change_signal,
+                    registered_tables.c.materialize,
+                    registered_tables.c.row_materialize,
+                    registered_tables.c.prefer_materialized,
+                    registered_tables.c.load_protected,
+                ).where(registered_tables.c.id == table_id)
+            )
+            _t_row = _t.fetchone()
+            if _t_row is not None:
+                _ttl_refusal = await landing_ttl_refusal(  # REQ-1907
+                    conn,
+                    _t_row.source_id,
+                    table=TableTtl(
+                        _t_row.schema_name,
+                        _t_row.table_name,
+                        _t_row.change_signal,
+                        cache_ttl,
+                        _t_row.materialize,
+                        _t_row.row_materialize,
+                        _t_row.prefer_materialized,
+                        _t_row.load_protected,
+                    ),
+                )
+                if _ttl_refusal is not None:
+                    return _ttl_refusal
             result = await conn.execute_core(
                 update(registered_tables)
                 .where(registered_tables.c.id == table_id)
@@ -2674,6 +2871,64 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             success=True,
             message=f"Cache TTL updated for table {table_id}",
             code="schema.table_cache_updated",
+            params={"table": table_id},
+        )
+
+    @strawberry.mutation
+    async def update_table_role_ttl(
+        self, table_id: int, role_ttl: list[RoleTtlInput]
+    ) -> MutationResult:  # REQ-1907
+        """Full-replace a table's role -> TTL list. Every role must exist, appear once, and carry a
+        non-negative TTL; any violation rejects the whole list."""
+        seen: set[str] = set()
+        for entry in role_ttl:
+            if entry.role in seen:
+                return MutationResult(
+                    success=False,
+                    message=f"Role {entry.role!r} appears more than once",
+                    code="schema.role_ttl_duplicate_role",
+                    params={"role": entry.role},
+                )
+            seen.add(entry.role)
+            if entry.ttl < 0:
+                return MutationResult(
+                    success=False,
+                    message=f"TTL for role {entry.role!r} must be >= 0, got {entry.ttl}",
+                    code="schema.role_ttl_negative",
+                    params={"role": entry.role, "ttl": entry.ttl},
+                )
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            known = {
+                r[0]
+                for r in (
+                    await conn.execute_core(select(roles.c.id).where(roles.c.id.in_(seen)))
+                ).fetchall()
+            }
+            for entry in role_ttl:
+                if entry.role not in known:
+                    return MutationResult(
+                        success=False,
+                        message=f"Role {entry.role!r} does not exist",
+                        code="schema.role_ttl_unknown_role",
+                        params={"role": entry.role},
+                    )
+            result = await conn.execute_core(
+                update(registered_tables)
+                .where(registered_tables.c.id == table_id)
+                .values(role_ttl={e.role: e.ttl for e in role_ttl})
+            )
+            if (result.rowcount or 0) == 0:
+                return MutationResult(
+                    success=False,
+                    message=f"Table {table_id} not found",
+                    code="schema.table_not_found",
+                    params={"table": table_id},
+                )
+        return MutationResult(
+            success=True,
+            message=f"Role TTLs updated for table {table_id}",
+            code="schema.table_role_ttl_updated",
             params={"table": table_id},
         )
 

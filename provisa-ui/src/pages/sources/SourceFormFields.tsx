@@ -31,6 +31,9 @@ export interface SourceFormState {
   offPeakWindow: string; // REQ-1141: "HH:MM-HH:MM" maintenance window ("" = none)
   offPeakTz: string; // REQ-1141: IANA zone for the window
   changeSignal: string;
+  sentinelPath: string; // REQ-1148: freshness sentinel marker URL ("" = none)
+  freshnessGate: boolean; // REQ-860
+  maxLiveConcurrency: string; // concurrent live reads cap ("" = no cap)
   path: string;
   allowedDomains: string;
   description: string;

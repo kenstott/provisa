@@ -63,8 +63,12 @@ class _NoEngineCalls:
 @pytest.fixture
 def registry(monkeypatch):
     sources = [
-        SimpleNamespace(id="docs", type=SimpleNamespace(value="mongodb")),  # DuckDB attaches
-        SimpleNamespace(id="graph", type=SimpleNamespace(value="neo4j")),  # DuckDB cannot
+        SimpleNamespace(
+            id="docs", type=SimpleNamespace(value="mongodb"), cache_ttl=None, change_signal="ttl"
+        ),  # DuckDB attaches
+        SimpleNamespace(
+            id="graph", type=SimpleNamespace(value="neo4j"), cache_ttl=None, change_signal="ttl"
+        ),  # DuckDB cannot
     ]
     tables = [_table("docs", "order_docs"), _table("graph", "order_node")]
 
@@ -98,7 +102,7 @@ def test_a_declared_attach_table_runs_no_key_pushdown(registry):
     engine = _NoEngineCalls()
     state = SimpleNamespace(federation_engine=engine)
     sql = 'SELECT o.id FROM "s"."orders" AS o JOIN "s"."order_docs" AS d ON d.id = o.id'
-    assert asyncio.run(pushdown_row_materialize(state, sql, "duckdb")) == set()
+    assert asyncio.run(pushdown_row_materialize(state, sql, "duckdb", reader_role=None)) == set()
     assert engine.calls == []  # no probe query at all
 
 
@@ -108,7 +112,7 @@ def test_a_non_attachable_row_materialize_join_still_probes(registry):
     engine = _NoEngineCalls()
     state = SimpleNamespace(federation_engine=engine)
     sql = 'SELECT o.id FROM "s"."orders" AS o JOIN "s"."order_node" AS n ON n.id = o.id'
-    asyncio.run(pushdown_row_materialize(state, sql, "duckdb"))
+    asyncio.run(pushdown_row_materialize(state, sql, "duckdb", reader_role=None))
     assert len(engine.calls) == 1
 
 
@@ -152,7 +156,7 @@ def test_a_failed_key_pushdown_probe_raises(registry):
     state = SimpleNamespace(federation_engine=_FailingProbe())
     sql = 'SELECT o.id FROM "s"."orders" AS o JOIN "s"."order_node" AS n ON n.id = o.id'
     with pytest.raises(RuntimeError, match="probe boom"):
-        asyncio.run(pushdown_row_materialize(state, sql, "duckdb"))
+        asyncio.run(pushdown_row_materialize(state, sql, "duckdb", reader_role=None))
 
 
 class _ProbeFindsKeys(_NoEngineCalls):
@@ -179,8 +183,12 @@ def test_a_failed_keyed_fetch_raises(registry, monkeypatch):
     monkeypatch.setattr(qr, "_ensure_and_read_row_cache", _nothing_cached)
     monkeypatch.setattr(SourceRowLoader, "load_keys", _fetch_fails)
     sources = [
-        SimpleNamespace(id="docs", type=SimpleNamespace(value="mongodb"), cache_ttl=300),
-        SimpleNamespace(id="graph", type=SimpleNamespace(value="neo4j"), cache_ttl=300),
+        SimpleNamespace(
+            id="docs", type=SimpleNamespace(value="mongodb"), cache_ttl=300, change_signal="ttl"
+        ),
+        SimpleNamespace(
+            id="graph", type=SimpleNamespace(value="neo4j"), cache_ttl=300, change_signal="ttl"
+        ),
     ]
 
     async def _sources(state):
@@ -190,4 +198,4 @@ def test_a_failed_keyed_fetch_raises(registry, monkeypatch):
     state = SimpleNamespace(federation_engine=_ProbeFindsKeys())
     sql = 'SELECT o.id FROM "s"."orders" AS o JOIN "s"."order_node" AS n ON n.id = o.id'
     with pytest.raises(RuntimeError, match="Max query size exceeded"):
-        asyncio.run(pushdown_row_materialize(state, sql, "duckdb"))
+        asyncio.run(pushdown_row_materialize(state, sql, "duckdb", reader_role=None))

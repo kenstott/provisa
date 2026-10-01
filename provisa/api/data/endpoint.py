@@ -748,229 +748,240 @@ async def _execute_one_field(
         )
         return root_field, field_rows, None, ck, cached
 
-    if decision.route == Route.API and decision.source_id:
-        return await _exec_api_route(
+    # REQ-1909: a capped source this field reads live (DIRECT, an engine attach, or an API
+    # source's upstream) is held to its concurrency cap for everything below that touches it.
+    from provisa.federation.live_concurrency import acquire_for_route
+
+    _live_permits = await acquire_for_route(
+        state, decision.route, decision.source_id or "", compiled.sources
+    )
+    try:
+        if decision.route == Route.API and decision.source_id:
+            return await _exec_api_route(
+                compiled,
+                ctx,
+                state,
+                decision,
+                root_field,
+                output_format,
+                ck,
+                response_cache_ttl,
+                cache_opt_in=not _cache_off,
+                org_id=org_id,
+                role_id=role_id,
+            )
+
+        if (
+            force_redirect
+            and is_engine_native_format(effective_redirect_format)
+            and state.engine_conn is not None
+        ):
+            try:
+                redirect_info = await _exec_ctas_route(
+                    compiled, ctx, state, effective_redirect_format, redirect_config
+                )
+                _record_per_source_stats(
+                    root_field,
+                    compiled.sources,
+                    (_time.perf_counter() - _t0) * 1000,
+                    redirect_info["row_count"],
+                    ctx,
+                    state,
+                )
+                return root_field, None, redirect_info, ck, None
+            except Exception:
+                log.exception("CTAS redirect failed for %s, falling back", root_field)
+
+        # Standard execution
+        session_hints: dict[str, str] = {}
+        _dataloader_srcs: set = set()
+        _hydration_rows: dict[str, int] = {}
+        _hydration_cache_hits: set = set()
+        _per_source_ms: dict[str, float] = {}
+        _engine_ms: float = 0.0
+        physical_sql: str = ""
+
+        async def _dispatch():
+            if (
+                decision.route == Route.DIRECT
+                and decision.source_id
+                and state.source_pools.has(decision.source_id)
+            ):
+                return (
+                    await state.federation_engine.execute_native(
+                        state.source_pools,
+                        decision.source_id,
+                        _direct_exec_sql(state, role_id, compiled.sql, ctx, decision, probe_limit),
+                        compiled.params,
+                    ),
+                    "",
+                    0.0,
+                    {},
+                    set(),
+                    {},
+                    set(),
+                    {},
+                )
+            (
+                _result,
+                _physical_sql,
+                _eng_ms,
+                _psms,
+                _dl_srcs,
+                _,
+                _hyd_rows,
+                _hyd_hits,
+                _hints,
+            ) = await _execute_engine_standard(
+                compiled,
+                ctx,
+                state,
+                role_id,
+                root_field,
+                probe_limit,
+                query_session_props,
+                query_text,
+            )
+            return (
+                _result,
+                _physical_sql,
+                _eng_ms,
+                _psms,
+                _dl_srcs,
+                _hyd_rows,
+                _hyd_hits,
+                _hints,
+            )
+
+        try:
+            try:
+                (
+                    result,
+                    physical_sql,
+                    _engine_ms,
+                    _per_source_ms,
+                    _dataloader_srcs,
+                    _hydration_rows,
+                    _hydration_cache_hits,
+                    session_hints,
+                ) = await _dispatch()
+            except Exception as exc:
+                # REQ-1448: the coordinator this query dialed may have been replaced while the wake's
+                # recheck window still recorded its address. Re-resolve; redispatch only if it moved.
+                if not await readdress_lost_coordinator(exc, state):
+                    raise
+                (
+                    result,
+                    physical_sql,
+                    _engine_ms,
+                    _per_source_ms,
+                    _dataloader_srcs,
+                    _hydration_rows,
+                    _hydration_cache_hits,
+                    session_hints,
+                ) = await _dispatch()
+        except HTTPException:
+            raise
+        except (MemoryError, ConnectionError) as e:
+            log.error("Query resource error for %s: %s", root_field, e)
+            raise HTTPException(status_code=503, detail=str(e))
+        except Exception as e:
+            # REQ-1905: the request's deadline passing mid-statement is the request timing out, not
+            # a server fault — it goes up as the timeout it is, and the caller's handler answers 504
+            # naming the transport and the setting. Any other timeout (a source's own) stays a 500.
+            _deadline = request_deadline.current()
+            if isinstance(e, TimeoutError) and _deadline is not None and _deadline.fired:
+                raise
+            log.exception("Query execution failed for %s", root_field)
+            raise HTTPException(status_code=500, detail=str(e))
+
+        if probe_limit is not None and len(result.rows) >= probe_limit:
+            log.info(
+                "[QUERY %s] Probe returned %d rows (threshold %d) — redirecting",
+                root_field,
+                len(result.rows),
+                redirect_config.threshold,
+            )
+            try:
+                redirect_info = await _exec_probe_redirect(
+                    compiled,
+                    ctx,
+                    state,
+                    decision,
+                    session_hints,
+                    effective_redirect_format,
+                    redirect_config,
+                    role_id,
+                )
+                _record_per_source_stats(
+                    root_field,
+                    compiled.sources,
+                    (_time.perf_counter() - _t0) * 1000,
+                    redirect_info.get("row_count", 0),
+                    ctx,
+                    state,
+                    decision,
+                )
+                return root_field, None, redirect_info, ck, None
+            except (asyncio.TimeoutError, HTTPException):
+                # The request's deadline passing while the redirect's query runs is a timeout, and an
+                # error already shaped for the client is that error: neither is a redirect failure.
+                raise
+            except Exception as e:
+                # A redirect that cannot be delivered fails the request (REQ-171), as the forced
+                # redirect below does — it does not fall through to an inline result.
+                raise ApiError(
+                    502, "data.redirect_upload_failed", f"Redirect upload failed: {e}", error=str(e)
+                ) from e
+
+        if force_redirect:
+            try:
+                redirect_info = await upload_and_presign(
+                    result,
+                    redirect_config,
+                    output_format=effective_redirect_format,
+                    columns=compiled.columns,
+                    role=role_id,
+                )
+                _record_per_source_stats(
+                    root_field,
+                    compiled.sources,
+                    (_time.perf_counter() - _t0) * 1000,
+                    redirect_info.get("row_count", 0),
+                    ctx,
+                    state,
+                    decision,
+                )
+                return root_field, None, redirect_info, ck, None
+            except (asyncio.TimeoutError, HTTPException):
+                raise  # a timeout or an already-shaped error is not a redirect failure (see above)
+            except Exception as e:
+                raise ApiError(
+                    502, "data.redirect_upload_failed", f"Redirect upload failed: {e}", error=str(e)
+                ) from e
+
+        return await _exec_inline_result(
             compiled,
             ctx,
             state,
             decision,
             root_field,
+            result,
             output_format,
             ck,
             response_cache_ttl,
-            cache_opt_in=not _cache_off,
+            not _cache_off,
+            _t0,
+            _dataloader_srcs,
+            _per_source_ms,
+            _engine_ms,
+            _hydration_rows,
+            _hydration_cache_hits,
+            physical_sql,
             org_id=org_id,
         )
-
-    if (
-        force_redirect
-        and is_engine_native_format(effective_redirect_format)
-        and state.engine_conn is not None
-    ):
-        try:
-            redirect_info = await _exec_ctas_route(
-                compiled, ctx, state, effective_redirect_format, redirect_config
-            )
-            _record_per_source_stats(
-                root_field,
-                compiled.sources,
-                (_time.perf_counter() - _t0) * 1000,
-                redirect_info["row_count"],
-                ctx,
-                state,
-            )
-            return root_field, None, redirect_info, ck, None
-        except Exception:
-            log.exception("CTAS redirect failed for %s, falling back", root_field)
-
-    # Standard execution
-    session_hints: dict[str, str] = {}
-    _dataloader_srcs: set = set()
-    _hydration_rows: dict[str, int] = {}
-    _hydration_cache_hits: set = set()
-    _per_source_ms: dict[str, float] = {}
-    _engine_ms: float = 0.0
-    physical_sql: str = ""
-
-    async def _dispatch():
-        if (
-            decision.route == Route.DIRECT
-            and decision.source_id
-            and state.source_pools.has(decision.source_id)
-        ):
-            return (
-                await state.federation_engine.execute_native(
-                    state.source_pools,
-                    decision.source_id,
-                    _direct_exec_sql(state, role_id, compiled.sql, ctx, decision, probe_limit),
-                    compiled.params,
-                ),
-                "",
-                0.0,
-                {},
-                set(),
-                {},
-                set(),
-                {},
-            )
-        (
-            _result,
-            _physical_sql,
-            _eng_ms,
-            _psms,
-            _dl_srcs,
-            _,
-            _hyd_rows,
-            _hyd_hits,
-            _hints,
-        ) = await _execute_engine_standard(
-            compiled,
-            ctx,
-            state,
-            role_id,
-            root_field,
-            probe_limit,
-            query_session_props,
-            query_text,
-        )
-        return (
-            _result,
-            _physical_sql,
-            _eng_ms,
-            _psms,
-            _dl_srcs,
-            _hyd_rows,
-            _hyd_hits,
-            _hints,
-        )
-
-    try:
-        try:
-            (
-                result,
-                physical_sql,
-                _engine_ms,
-                _per_source_ms,
-                _dataloader_srcs,
-                _hydration_rows,
-                _hydration_cache_hits,
-                session_hints,
-            ) = await _dispatch()
-        except Exception as exc:
-            # REQ-1448: the coordinator this query dialed may have been replaced while the wake's
-            # recheck window still recorded its address. Re-resolve; redispatch only if it moved.
-            if not await readdress_lost_coordinator(exc, state):
-                raise
-            (
-                result,
-                physical_sql,
-                _engine_ms,
-                _per_source_ms,
-                _dataloader_srcs,
-                _hydration_rows,
-                _hydration_cache_hits,
-                session_hints,
-            ) = await _dispatch()
-    except HTTPException:
-        raise
-    except (MemoryError, ConnectionError) as e:
-        log.error("Query resource error for %s: %s", root_field, e)
-        raise HTTPException(status_code=503, detail=str(e))
-    except Exception as e:
-        # REQ-1905: the request's deadline passing mid-statement is the request timing out, not
-        # a server fault — it goes up as the timeout it is, and the caller's handler answers 504
-        # naming the transport and the setting. Any other timeout (a source's own) stays a 500.
-        _deadline = request_deadline.current()
-        if isinstance(e, TimeoutError) and _deadline is not None and _deadline.fired:
-            raise
-        log.exception("Query execution failed for %s", root_field)
-        raise HTTPException(status_code=500, detail=str(e))
-
-    if probe_limit is not None and len(result.rows) >= probe_limit:
-        log.info(
-            "[QUERY %s] Probe returned %d rows (threshold %d) — redirecting",
-            root_field,
-            len(result.rows),
-            redirect_config.threshold,
-        )
-        try:
-            redirect_info = await _exec_probe_redirect(
-                compiled,
-                ctx,
-                state,
-                decision,
-                session_hints,
-                effective_redirect_format,
-                redirect_config,
-                role_id,
-            )
-            _record_per_source_stats(
-                root_field,
-                compiled.sources,
-                (_time.perf_counter() - _t0) * 1000,
-                redirect_info.get("row_count", 0),
-                ctx,
-                state,
-                decision,
-            )
-            return root_field, None, redirect_info, ck, None
-        except (asyncio.TimeoutError, HTTPException):
-            # The request's deadline passing while the redirect's query runs is a timeout, and an
-            # error already shaped for the client is that error: neither is a redirect failure.
-            raise
-        except Exception as e:
-            # A redirect that cannot be delivered fails the request (REQ-171), as the forced
-            # redirect below does — it does not fall through to an inline result.
-            raise ApiError(
-                502, "data.redirect_upload_failed", f"Redirect upload failed: {e}", error=str(e)
-            ) from e
-
-    if force_redirect:
-        try:
-            redirect_info = await upload_and_presign(
-                result,
-                redirect_config,
-                output_format=effective_redirect_format,
-                columns=compiled.columns,
-                role=role_id,
-            )
-            _record_per_source_stats(
-                root_field,
-                compiled.sources,
-                (_time.perf_counter() - _t0) * 1000,
-                redirect_info.get("row_count", 0),
-                ctx,
-                state,
-                decision,
-            )
-            return root_field, None, redirect_info, ck, None
-        except (asyncio.TimeoutError, HTTPException):
-            raise  # a timeout or an already-shaped error is not a redirect failure (see above)
-        except Exception as e:
-            raise ApiError(
-                502, "data.redirect_upload_failed", f"Redirect upload failed: {e}", error=str(e)
-            ) from e
-
-    return await _exec_inline_result(
-        compiled,
-        ctx,
-        state,
-        decision,
-        root_field,
-        result,
-        output_format,
-        ck,
-        response_cache_ttl,
-        not _cache_off,
-        _t0,
-        _dataloader_srcs,
-        _per_source_ms,
-        _engine_ms,
-        _hydration_rows,
-        _hydration_cache_hits,
-        physical_sql,
-        org_id=org_id,
-    )
+    finally:
+        _live_permits.release()
 
 
 def _direct_exec_sql(

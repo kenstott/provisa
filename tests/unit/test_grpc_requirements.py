@@ -363,6 +363,8 @@ class TestREQ617RoleSelectionViaMetadata:
             response_cacheable=True,
             role_id="admin",
             table_ids=(),
+            live_caps=(),  # REQ-1909: the capped live sources the pipeline binds at mint (none here)
+            live_caps_org=None,
         )
         fake_result = SimpleNamespace(
             column_names=["id", "amount"], rows=[[1, 10.0], [2, 20.0], [3, 30.0]]

@@ -20,13 +20,11 @@ import {
   Stack,
   Text,
   TextInput,
-  Tooltip,
 } from "@mantine/core";
 import { MultiSelect } from "../../components/MultiSelect";
-import { cdcTransportApplicable, sourceChangeSignals } from "../../liveCapability";
+import { cdcTransportApplicable } from "../../liveCapability";
 import {
   API_AUTH_TYPES,
-  CHANGE_SIGNAL_LABELS,
   FILE_TRANSPORTS,
   GOVDATA_SUBJECTS,
   KAFKA_AUTH_TYPES,
@@ -37,6 +35,7 @@ import { OpenApiFormSection } from "./OpenApiFormSection";
 import { KaggleFormSection } from "./KaggleFormSection";
 import { PushFeedFormSection } from "./PushFeedFormSection";
 import { SparqlFormSection } from "./SparqlFormSection";
+import { SourceLoadManagementPanel } from "./SourceLoadManagementPanel";
 import type { SourceFormFieldsProps } from "./SourceFormFields";
 
 export function SourceFormFieldsExtended({
@@ -844,76 +843,7 @@ export function SourceFormFieldsExtended({
             allowDeselect={false}
             data-testid="naming-convention-select"
           />
-          <Group gap="lg" style={{ gridColumn: "1 / -1" }} wrap="wrap">
-            <Checkbox
-              label={t("sourceFormFieldsExtended.cacheEnabled")}
-              checked={form.cacheEnabled}
-              onChange={(e) => setForm({ ...form, cacheEnabled: e.currentTarget.checked })}
-              data-testid="cache-enabled-checkbox"
-            />
-            <Tooltip
-              label={t("sourceFormFieldsExtended.preferMaterializedTooltip")}
-              multiline
-              w={280}
-            >
-              <Checkbox
-                label={t("sourceFormFieldsExtended.preferMaterialized")}
-                checked={form.preferMaterialized}
-                onChange={(e) => setForm({ ...form, preferMaterialized: e.currentTarget.checked })}
-                data-testid="prefer-materialized-checkbox"
-              />
-            </Tooltip>
-          </Group>
-          <NumberInput
-            label={t("sourceFormFieldsExtended.cacheTtlSeconds")}
-            min={0}
-            value={form.cacheTtl === "" ? "" : Number(form.cacheTtl)}
-            onChange={(v) => setForm({ ...form, cacheTtl: v === "" ? "" : String(v) })}
-            placeholder={t("sourceFormFieldsExtended.cacheTtlPlaceholder")}
-            data-testid="cache-ttl-input"
-          />
-          <Tooltip label={t("sourceFormFieldsExtended.changeSignalTooltip")} multiline w={280}>
-            <Select
-              label={t("sourceFormFieldsExtended.changeSignal")}
-              value={form.changeSignal}
-              onChange={(v) => setForm({ ...form, changeSignal: v ?? "" })}
-              data={sourceChangeSignals(form.type).map((cs) => ({
-                value: cs,
-                label: CHANGE_SIGNAL_LABELS[cs] ?? cs,
-              }))}
-              allowDeselect={false}
-              data-testid="change-signal-select"
-            />
-          </Tooltip>
-          {/* REQ-1141: source-level load protection (scheduled-refresh-only, off-peak window). */}
-          <Group gap="lg" style={{ gridColumn: "1 / -1" }} wrap="wrap" align="flex-end">
-            <Tooltip label={t("sourceFormFieldsExtended.loadProtectedTooltip")} multiline w={280}>
-              <Checkbox
-                label={t("sourceFormFieldsExtended.loadProtected")}
-                checked={form.loadProtected}
-                onChange={(e) => setForm({ ...form, loadProtected: e.currentTarget.checked })}
-                data-testid="load-protected-checkbox"
-              />
-            </Tooltip>
-            {form.loadProtected && (
-              <>
-                <TextInput
-                  label={t("sourceFormFieldsExtended.offPeakWindow")}
-                  value={form.offPeakWindow}
-                  onChange={(e) => setForm({ ...form, offPeakWindow: e.currentTarget.value })}
-                  placeholder="01:00-05:00"
-                  data-testid="off-peak-window-input"
-                />
-                <TextInput
-                  label={t("sourceFormFieldsExtended.offPeakTz")}
-                  value={form.offPeakTz}
-                  onChange={(e) => setForm({ ...form, offPeakTz: e.currentTarget.value })}
-                  placeholder="UTC"
-                  data-testid="off-peak-tz-input"
-                />
-              </>
-            )}
-          </Group>
+          <SourceLoadManagementPanel form={form} setForm={setForm} />
           {domainsEnabled && (
             <Stack gap={4} style={{ gridColumn: "1 / -1" }}>
               <MultiSelect

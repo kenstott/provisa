@@ -85,6 +85,21 @@
     "reconnectIntervalSeconds": "Intervalo de reconexão (segundos)",
     "subscribePayload": "Payload de assinatura (JSON, opcional)",
     "feedUrlOverride": "URL do feed (substituição opcional)",
-    "pollIntervalSeconds": "Intervalo de polling (segundos)"
+    "pollIntervalSeconds": "Intervalo de polling (segundos)",
+    "loadManagementTitle": "Gestão de carga e atualidade",
+    "loadManagementHelp": "Quão atuais os dados precisam ser para cada leitor, equilibrado com a carga sobre a plataforma e as fontes de origem.",
+    "loadManagementInfoLabel": "Sobre gestão de carga e atualidade",
+    "loadManagementInfo": "Equilibra quão atuais são os dados de cada leitor com a carga sobre a plataforma e as fontes de origem. Idealmente a fonte gerencia a própria carga; o operador protege a plataforma, e a fonte quando ela não consegue se proteger. Estas configurações são o piso do operador — nenhuma consulta ou dica de requisição pode obter dados mais recentes ou colocar mais carga numa fonte do que elas permitem. Os leitores só podem optar por aceitar dados mais antigos em troca de velocidade. Uma fonte que o mecanismo lê ao vivo ignora as configurações de TTL, a menos que \"Preferir materializado\" ou \"Protegido contra carga\" esteja definido.",
+    "sentinelPath": "Caminho sentinela",
+    "sentinelPathTooltip": "URL de um arquivo marcador que o produtor atualiza quando seus dados mudam (file:, ftp:, sftp:, http:, https:). Com um sinal de alteração por sondagem, o Provisa verifica apenas esse marcador para decidir se os dados estão atualizados. Deixe vazio para nenhum sentinela.",
+    "sentinelPathInvalid": "Use uma URL file:, ftp:, sftp:, http: ou https:, ou deixe vazio.",
+    "freshnessGate": "Controle de atualidade",
+    "freshnessGateTooltip": "Verifica a atualidade (pelo sinal de alteração e pelo TTL do cache) antes de cada leitura das tabelas desta fonte e atualiza primeiro se estiverem desatualizadas. Requer um TTL do cache para sinais ttl; sinais push não podem controlar.",
+    "maxLiveConcurrency": "Máx. de consultas ao vivo simultâneas",
+    "maxLiveConcurrencyHelp": "Limite de consultas lendo esta fonte ao vivo ao mesmo tempo, em todas as instâncias do Provisa que compartilham este Redis. Consultas além dele aguardam até o próprio prazo e depois falham. Vazio = sem limite. Sem efeito quando a fonte é lida da réplica (preferir materializado / protegido contra carga).",
+    "maxLiveConcurrencyPlaceholder": "sem limite",
+    "maxLiveConcurrencyInvalid": "Insira um número inteiro igual ou maior que 1, ou deixe vazio para sem limite.",
+    "loadManagementFixErrors": "Corrija as configurações de Gestão de carga e atualidade antes de salvar.",
+    "cacheTtlRequiredForSignal": "O sinal de alteração {{signal}} avalia a atualidade pelo TTL do cache, então defina um TTL do cache."
   }
 }

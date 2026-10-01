@@ -125,23 +125,27 @@ async def route_and_execute(compiled, state) -> Any:  # REQ-027, REQ-028
         operator_floor=await operator_floor(state),
     )
 
+    from provisa.federation.live_concurrency import acquire_for_route
+
     engine = state.federation_engine
+    # REQ-1909: a capped source this read reaches live holds its permit for the execution.
+    with await acquire_for_route(state, decision.route, decision.source_id or "", compiled.sources):
+        if decision.route == Route.DIRECT and decision.source_id:
+            target_sql = transpile(compiled.sql, decision.dialect or "postgres")
+            return await engine.execute_native(
+                state.source_pools,
+                decision.source_id,
+                target_sql,
+                compiled.params,
+            )
 
-    if decision.route == Route.DIRECT and decision.source_id:
-        target_sql = transpile(compiled.sql, decision.dialect or "postgres")
-        return await engine.execute_native(
-            state.source_pools,
-            decision.source_id,
-            target_sql,
-            compiled.params,
-        )
+        # ENGINE terminal — execute_engine guards its own connection/availability, and the physical
+        # dialect comes from the bound engine (engine.transpile_physical), so no engine specifics.
+        physical_sql = engine.transpile_physical(compiled.sql)
+        # REQ-1661/030: a MATERIALIZED (incl. operator-floored) source is landed before the engine
+        # reads it — the same residency prep every other ENGINE terminal runs. This helper carries
+        # no governed role, so each table is judged on its cache_ttl (REQ-1907: no reader).
+        from provisa.federation.query_residency import ensure_resident
 
-    # ENGINE terminal — execute_engine guards its own connection/availability, and the physical
-    # dialect comes from the bound engine (engine.transpile_physical), so no engine specifics here.
-    physical_sql = engine.transpile_physical(compiled.sql)
-    # REQ-1661/030: a MATERIALIZED (incl. operator-floored) source is landed before the engine
-    # reads it — the same residency prep every other ENGINE terminal runs.
-    from provisa.federation.query_residency import ensure_resident
-
-    await ensure_resident(state, compiled.sources)
-    return await engine.execute_engine(physical_sql, compiled.params)
+        await ensure_resident(state, compiled.sources, reader_role=None)
+        return await engine.execute_engine(physical_sql, compiled.params)

@@ -841,7 +841,11 @@ export function RegisterTableForm({
                             component="span"
                             style={{ display: "inline-block", verticalAlign: "bottom" }}
                           >
-                            <Tooltip label={col.name} disabled={col.name.length <= 28} openDelay={300}>
+                            <Tooltip
+                              label={col.name}
+                              disabled={col.name.length <= 28}
+                              openDelay={300}
+                            >
                               <span>{col.name}</span>
                             </Tooltip>
                           </Text>

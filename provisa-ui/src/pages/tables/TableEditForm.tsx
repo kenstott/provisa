@@ -44,6 +44,8 @@ import { CollapsibleSection } from "./CollapsibleSection";
 import { DataQualityPanel } from "./DataQualityPanel";
 import { ColumnGlossaryHover } from "./ColumnGlossaryHover";
 import { useLivePolicyPreview } from "./useLivePolicyPreview";
+import { RoleTtlField } from "./RoleTtlField";
+import { tableTtlSignalError } from "./roleTtl";
 
 interface CacheTtlEdit {
   value: string;
@@ -131,6 +133,21 @@ export function TableEditForm({
   // View" checkbox, not prefer_materialized. Hide those fields for a view to avoid contradictory knobs.
   const isView = editingTable.viewSql != null;
 
+  // REQ-1907/REQ-930: the table's resolved landing cache_ttl — the staged Cache TTL edit, else the
+  // saved table value, else the source's. The global default is the response-cache TTL, not a
+  // landing clock, so it is not part of this chain. null = neither sets one.
+  const stagedCacheTtl = cacheTtlEdits[editingTable.id]?.value;
+  const tableCacheTtl =
+    stagedCacheTtl === undefined
+      ? editingTable.cacheTtl
+      : stagedCacheTtl === ""
+        ? null
+        : Number(stagedCacheTtl);
+  const floorTtl = tableCacheTtl ?? editSource?.cacheTtl ?? null;
+  // A ttl/ttl_probe signal (the table's own, else inherited from its source) with no resolved
+  // landing TTL has no staleness clock; the save refuses it (tableTtlSignalError).
+  const ttlSignalError = !isView && tableTtlSignalError(editingTable, editSource, floorTtl);
+
   return (
     <>
       {shownPolicy && (
@@ -202,159 +219,182 @@ export function TableEditForm({
           allowDeselect={false}
         />
         {!isView && (
-          <NumberInput
-            label={
-              <FieldLabel
-                text={t("tableEditForm.cacheTtlLabel")}
-                help={t("tableEditForm.cacheTtlHelp")}
-              />
-            }
-            min={0}
-            value={
-              cacheTtlEdits[editingTable.id]?.value ??
-              (editingTable.cacheTtl != null ? editingTable.cacheTtl : "")
-            }
-            onChange={(v) =>
-              setCacheTtlEdits((prev) => ({
-                ...prev,
-                [editingTable.id]: {
-                  ...prev[editingTable.id],
-                  value: v === "" ? "" : String(v),
-                  dirty: true,
-                },
-              }))
-            }
-            placeholder={t("tableEditForm.cacheTtlPlaceholder")}
-          />
-        )}
-        {!isView && (
-          <Select
-            label={
-              <FieldLabel
-                text={t("tableEditForm.preferMaterializedLabel")}
-                help={t("tableEditForm.preferMaterializedHelp")}
-              />
-            }
-            data={[
-              { value: "inherit", label: t("tableEditForm.inheritSource") },
-              { value: "on", label: t("tableEditForm.on") },
-              { value: "off", label: t("tableEditForm.off") },
-            ]}
-            value={
-              editingTable.preferMaterialized == null
-                ? "inherit"
-                : editingTable.preferMaterialized
-                  ? "on"
-                  : "off"
-            }
-            onChange={(v) =>
-              setEditingTable({
-                ...editingTable,
-                preferMaterialized: v === "inherit" ? null : v === "on",
-              })
-            }
-            comboboxProps={{ withinPortal: true }}
-            allowDeselect={false}
-          />
-        )}
-        {!isView && (
-          <Select
-            // REQ-1141: load protection — scheduled-refresh-only; the query path never pulls the source.
-            label={
-              <FieldLabel
-                text={t("tableEditForm.loadProtectedLabel")}
-                help={t("tableEditForm.loadProtectedHelp")}
-              />
-            }
-            data={[
-              { value: "inherit", label: t("tableEditForm.inheritSource") },
-              { value: "on", label: t("tableEditForm.on") },
-              { value: "off", label: t("tableEditForm.off") },
-            ]}
-            value={
-              editingTable.loadProtected == null
-                ? "inherit"
-                : editingTable.loadProtected
-                  ? "on"
-                  : "off"
-            }
-            onChange={(v) =>
-              setEditingTable({
-                ...editingTable,
-                loadProtected: v === "inherit" ? null : v === "on",
-              })
-            }
-            comboboxProps={{ withinPortal: true }}
-            allowDeselect={false}
-          />
-        )}
-        {!isView && effLoadProtected && (
           <CollapsibleSection
-            title={t("tableEditForm.sourceProtectionPanel")}
-            testId="mv-protection-panel"
-            defaultOpen
+            title={t("tableEditForm.loadManagementTitle")}
+            testId="load-management-panel"
+            info={{
+              label: t("tableEditForm.loadManagementInfoLabel"),
+              text: t("tableEditForm.loadManagementInfo"),
+            }}
           >
-            {/* REQ-1141: off-peak window "HH:MM-HH:MM"; the scheduler refreshes only while it is
-                open. Two time widgets (opens/closes) compose the string; both blank = no window. */}
-            <div data-testid="off-peak-window">
-              <FieldLabel
-                text={t("tableEditForm.offPeakWindowLabel")}
-                help={t("tableEditForm.offPeakWindowHelp")}
-              />
-              <Group gap="xs" grow>
-                <TimeInput
-                  aria-label={t("tableEditForm.offPeakOpensAria")}
-                  data-testid="off-peak-opens"
-                  label={t("tableEditForm.offPeakOpens")}
-                  value={(editingTable.offPeakWindow ?? "").split("-")[0] ?? ""}
-                  onChange={(e) => {
-                    const end = (editingTable.offPeakWindow ?? "").split("-")[1] ?? "";
-                    const start = e.currentTarget.value;
-                    setEditingTable({
-                      ...editingTable,
-                      offPeakWindow: start || end ? `${start}-${end}` : null,
-                    });
-                  }}
-                />
-                <TimeInput
-                  aria-label={t("tableEditForm.offPeakClosesAria")}
-                  data-testid="off-peak-closes"
-                  label={t("tableEditForm.offPeakCloses")}
-                  value={(editingTable.offPeakWindow ?? "").split("-")[1] ?? ""}
-                  onChange={(e) => {
-                    const start = (editingTable.offPeakWindow ?? "").split("-")[0] ?? "";
-                    const end = e.currentTarget.value;
-                    setEditingTable({
-                      ...editingTable,
-                      offPeakWindow: start || end ? `${start}-${end}` : null,
-                    });
-                  }}
-                />
-              </Group>
-            </div>
-            <Select
-              // REQ-1141: IANA zone for the off-peak window. Picklist of the runtime's supported zones
-              // (Intl.supportedValuesOf) — the same identifiers ZoneInfo accepts server-side — so the
-              // window can never be saved against an unparseable zone.
+            {/* The operator's load and recency controls, grouped: cache TTL (the floor), the per-role
+                TTL list (REQ-1907), materialization and load protection (REQ-826/1141). */}
+            <Text size="xs" c="dimmed" data-testid="load-management-help">
+              {t("tableEditForm.loadManagementHelp")}
+            </Text>
+            <NumberInput
               label={
                 <FieldLabel
-                  text={t("tableEditForm.offPeakTzLabel")}
-                  help={t("tableEditForm.offPeakTzHelp")}
+                  text={t("tableEditForm.cacheTtlLabel")}
+                  help={t("tableEditForm.cacheTtlHelp")}
                 />
               }
-              data={IANA_TIME_ZONES}
-              value={editingTable.offPeakTz ?? ""}
+              min={0}
+              value={
+                cacheTtlEdits[editingTable.id]?.value ??
+                (editingTable.cacheTtl != null ? editingTable.cacheTtl : "")
+              }
+              onChange={(v) =>
+                setCacheTtlEdits((prev) => ({
+                  ...prev,
+                  [editingTable.id]: {
+                    ...prev[editingTable.id],
+                    value: v === "" ? "" : String(v),
+                    dirty: true,
+                  },
+                }))
+              }
+              placeholder={t("tableEditForm.cacheTtlPlaceholder")}
+              error={
+                ttlSignalError
+                  ? t("tableEditForm.cacheTtlRequiredForSignal", {
+                      signal: editingTable.changeSignal ?? editSource?.changeSignal,
+                    })
+                  : undefined
+              }
+            />
+            <RoleTtlField
+              rows={editingTable.roleTtl}
+              onChange={(roleTtl) => setEditingTable({ ...editingTable, roleTtl })}
+              roles={roles}
+              floorTtl={floorTtl}
+            />
+            <Select
+              label={
+                <FieldLabel
+                  text={t("tableEditForm.preferMaterializedLabel")}
+                  help={t("tableEditForm.preferMaterializedHelp")}
+                />
+              }
+              data={[
+                { value: "inherit", label: t("tableEditForm.inheritSource") },
+                { value: "on", label: t("tableEditForm.on") },
+                { value: "off", label: t("tableEditForm.off") },
+              ]}
+              value={
+                editingTable.preferMaterialized == null
+                  ? "inherit"
+                  : editingTable.preferMaterialized
+                    ? "on"
+                    : "off"
+              }
               onChange={(v) =>
                 setEditingTable({
                   ...editingTable,
-                  offPeakTz: v || null,
+                  preferMaterialized: v === "inherit" ? null : v === "on",
                 })
               }
-              searchable
-              clearable
-              placeholder="UTC"
               comboboxProps={{ withinPortal: true }}
+              allowDeselect={false}
             />
+            <Select
+              // REQ-1141: load protection — scheduled-refresh-only; the query path never pulls the source.
+              label={
+                <FieldLabel
+                  text={t("tableEditForm.loadProtectedLabel")}
+                  help={t("tableEditForm.loadProtectedHelp")}
+                />
+              }
+              data={[
+                { value: "inherit", label: t("tableEditForm.inheritSource") },
+                { value: "on", label: t("tableEditForm.on") },
+                { value: "off", label: t("tableEditForm.off") },
+              ]}
+              value={
+                editingTable.loadProtected == null
+                  ? "inherit"
+                  : editingTable.loadProtected
+                    ? "on"
+                    : "off"
+              }
+              onChange={(v) =>
+                setEditingTable({
+                  ...editingTable,
+                  loadProtected: v === "inherit" ? null : v === "on",
+                })
+              }
+              comboboxProps={{ withinPortal: true }}
+              allowDeselect={false}
+            />
+            {effLoadProtected && (
+              <CollapsibleSection
+                title={t("tableEditForm.sourceProtectionPanel")}
+                testId="mv-protection-panel"
+                defaultOpen
+              >
+                {/* REQ-1141: off-peak window "HH:MM-HH:MM"; the scheduler refreshes only while it is
+                  open. Two time widgets (opens/closes) compose the string; both blank = no window. */}
+                <div data-testid="off-peak-window">
+                  <FieldLabel
+                    text={t("tableEditForm.offPeakWindowLabel")}
+                    help={t("tableEditForm.offPeakWindowHelp")}
+                  />
+                  <Group gap="xs" grow>
+                    <TimeInput
+                      aria-label={t("tableEditForm.offPeakOpensAria")}
+                      data-testid="off-peak-opens"
+                      label={t("tableEditForm.offPeakOpens")}
+                      value={(editingTable.offPeakWindow ?? "").split("-")[0] ?? ""}
+                      onChange={(e) => {
+                        const end = (editingTable.offPeakWindow ?? "").split("-")[1] ?? "";
+                        const start = e.currentTarget.value;
+                        setEditingTable({
+                          ...editingTable,
+                          offPeakWindow: start || end ? `${start}-${end}` : null,
+                        });
+                      }}
+                    />
+                    <TimeInput
+                      aria-label={t("tableEditForm.offPeakClosesAria")}
+                      data-testid="off-peak-closes"
+                      label={t("tableEditForm.offPeakCloses")}
+                      value={(editingTable.offPeakWindow ?? "").split("-")[1] ?? ""}
+                      onChange={(e) => {
+                        const start = (editingTable.offPeakWindow ?? "").split("-")[0] ?? "";
+                        const end = e.currentTarget.value;
+                        setEditingTable({
+                          ...editingTable,
+                          offPeakWindow: start || end ? `${start}-${end}` : null,
+                        });
+                      }}
+                    />
+                  </Group>
+                </div>
+                <Select
+                  // REQ-1141: IANA zone for the off-peak window. Picklist of the runtime's supported zones
+                  // (Intl.supportedValuesOf) — the same identifiers ZoneInfo accepts server-side — so the
+                  // window can never be saved against an unparseable zone.
+                  label={
+                    <FieldLabel
+                      text={t("tableEditForm.offPeakTzLabel")}
+                      help={t("tableEditForm.offPeakTzHelp")}
+                    />
+                  }
+                  data={IANA_TIME_ZONES}
+                  value={editingTable.offPeakTz ?? ""}
+                  onChange={(v) =>
+                    setEditingTable({
+                      ...editingTable,
+                      offPeakTz: v || null,
+                    })
+                  }
+                  searchable
+                  clearable
+                  placeholder="UTC"
+                  comboboxProps={{ withinPortal: true }}
+                />
+              </CollapsibleSection>
+            )}
           </CollapsibleSection>
         )}
         <div style={{ gridColumn: "1 / -1" }}>

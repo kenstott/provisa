@@ -273,7 +273,7 @@ async def test_key_pushdown_never_touches_a_row_materialize_clickhouse_table(mon
         f'SELECT o.order_id FROM "pg"."public"."orders" AS o JOIN {_PHYS} AS order_events '
         "ON o.order_id = order_events.order_id"
     )
-    assert await pushdown_row_materialize(state, sql, "duckdb") == set()
+    assert await pushdown_row_materialize(state, sql, "duckdb", reader_role=None) == set()
 
 
 def _runtime_with_relation(base_url: str):

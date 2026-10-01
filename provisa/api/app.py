@@ -304,6 +304,11 @@ class AppState:
         # (which run before any request sets the ContextVar) always have a target.
         self.org_registry = OrgRegistry()
         self.org_registry.set(self.org_id, OrgRuntime(org_id=self.org_id))
+        # REQ-1909: every AppState is born with its live-read permit store — embedded (per process)
+        # until startup rebinds it to the deployment's Redis once redis_url is resolved.
+        from provisa.federation.live_concurrency import LivePermitStore
+
+        self.live_permit_store = LivePermitStore(None)
 
         # The registry must exist first: federation_engine is a routed property (REQ-1244) and
         # this assignment lands on the default-org runtime — the SHARED engine every org without
@@ -1000,6 +1005,10 @@ async def _load_and_build(
     # Default enabled=True: a store always exists — RedisCacheStore(None) falls back to
     # embedded fakeredis when no Redis URL is set, so there is never a "no cache" state.
     # Set cache.enabled: false explicitly to opt into the NoopCacheStore.
+    # REQ-1909: live-read permits share the deployment's Redis (cluster-wide cap), or fakeredis.
+    from provisa.federation.live_concurrency import LivePermitStore
+
+    state.live_permit_store = LivePermitStore(state.redis_url)
     if settings_registry.value("cache.enabled"):
         # REQ-829: RedisCacheStore(None) transparently uses embedded fakeredis, so
         # desktop exercises the same result-cache code path as production.

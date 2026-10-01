@@ -67,6 +67,7 @@ import {
   uiType,
 } from "./sources/sourceHelpers";
 import type { CdcState, SourceFormFieldsProps, SourceFormState } from "./sources/SourceFormFields";
+import { sourceLoadFieldsValid } from "./sources/loadManagement";
 import { SourceFormFields } from "./sources/SourceFormFields";
 import { SourceDetailPanel } from "./sources/SourceDetailPanel";
 import { PageLoading } from "../components/PageLoading";
@@ -126,6 +127,9 @@ export function SourcesPage() {
     offPeakWindow: "",
     offPeakTz: "UTC",
     changeSignal: "ttl",
+    sentinelPath: "",
+    freshnessGate: false,
+    maxLiveConcurrency: "",
     path: "" as string,
     allowedDomains: "" as string,
     description: "" as string,
@@ -433,6 +437,9 @@ export function SourcesPage() {
       offPeakWindow: s.offPeakWindow ?? "",
       offPeakTz: s.offPeakTz ?? "UTC",
       changeSignal: s.changeSignal || "ttl",
+      sentinelPath: s.sentinelPath ?? "",
+      freshnessGate: s.freshnessGate,
+      maxLiveConcurrency: s.maxLiveConcurrency != null ? String(s.maxLiveConcurrency) : "",
       path: s.type === "files" ? parseFilesPath(s.path ?? "").path : (s.path ?? ""),
       allowedDomains: (s.allowedDomains ?? []).join(", "),
       description: s.description ?? "",
@@ -642,6 +649,9 @@ export function SourcesPage() {
       offPeakWindow: "",
       offPeakTz: "UTC",
       changeSignal: "ttl",
+      sentinelPath: "",
+      freshnessGate: false,
+      maxLiveConcurrency: "",
       path: "",
       allowedDomains: "",
       description: "",
@@ -667,6 +677,12 @@ export function SourcesPage() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    // The Load Management and Timeliness panel's inputs show their own errors; an invalid one
+    // blocks the save before any mutation runs.
+    if (!sourceLoadFieldsValid(form)) {
+      setError(t("sourceFormFieldsExtended.loadManagementFixErrors"));
+      return;
+    }
     setSubmitting(true);
     try {
       const {
@@ -827,6 +843,10 @@ export function SourcesPage() {
         ...authCredentials,
         type: backendType(form.type),
         offPeakWindow: coreForm.offPeakWindow?.trim() || null,
+        // SourceInput is a full upsert: every load/timeliness field is sent with its current value.
+        sentinelPath: coreForm.sentinelPath.trim() || null,
+        maxLiveConcurrency:
+          coreForm.maxLiveConcurrency.trim() === "" ? null : Number(coreForm.maxLiveConcurrency),
         path:
           // REQ-1736: DuckDBFirebirdConnector.details() (connector_duckdb.py) builds its DSN from
           // source.path, not source.database — but firebird is SIMPLE_RDBMS, whose single shared

@@ -14,6 +14,9 @@ CREATE TABLE IF NOT EXISTS sources (
     load_protected BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-1141: scheduled-refresh-only; query path never pulls the source
     off_peak_window TEXT,  -- REQ-1141: "HH:MM-HH:MM" maintenance window for the scheduler; NULL = no window gate
     off_peak_tz   TEXT NOT NULL DEFAULT 'UTC',  -- REQ-1141: IANA zone the off_peak_window is evaluated in
+    max_live_concurrency INTEGER,  -- REQ-1909: cap on concurrent LIVE reads of this source; NULL = no cap
+    sentinel_path TEXT,  -- REQ-1148: freshness marker URL (file/ftp/sftp/http(s))
+    freshness_gate BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-860: gate reads on the source's freshness decision
     change_signal TEXT NOT NULL DEFAULT 'ttl',  -- REQ-929/1149: source default change signal (ttl|probe|ttl_probe|native|debezium|kafka|signal)
     gql_naming_convention TEXT,
     federation_hints JSONB NOT NULL DEFAULT '{}',  -- connection extras the typed columns can't carry
@@ -114,6 +117,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     alias       TEXT,
     description TEXT,
     cache_ttl   INTEGER,
+    role_ttl    JSONB NOT NULL DEFAULT '{}',  -- REQ-1907: role -> TTL seconds; effective = max(cache_ttl, role_ttl)
     prefer_materialized BOOLEAN,  -- NULL = inherit source; overrides federation strategy to MATERIALIZED
     load_protected BOOLEAN,  -- REQ-1141: NULL = inherit source; overrides scheduled-refresh-only load protection
     off_peak_window TEXT,    -- REQ-1141: per-table "HH:MM-HH:MM" window override; NULL = inherit source

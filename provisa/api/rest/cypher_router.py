@@ -798,6 +798,7 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     # REQ-074/REQ-1386: these dispatchers reach the engine/source terminal directly, never
     # _execute_plan, so the audit row is written here.
     from provisa.pgwire._pipeline import finalize_audit
+    from provisa.federation.live_concurrency import acquire_plan_permits
 
     # REQ-1897: an opted-in plan's HIT is served (and audited) without dialling anything. A
     # Route.CACHE plan was answered before routing — it names no source — and the pipeline
@@ -813,6 +814,15 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     else:
         _hit = await cached_cypher_hit(plan, state)
     _cached_rows = None if _hit is None else _hit[0]
+    _live_permits = None
+    try:
+        # REQ-1909: the plan's capped live sources are held to their cap for this execution. A
+        # response-cache hit dials no source and holds no permit.
+        if _cached_rows is None:
+            _live_permits = acquire_plan_permits(state, plan)
+    except Exception:
+        await finalize_audit(plan, 500, state)
+        raise
     try:
         if _cached_rows is not None:
             _exec_result = _cached_rows
@@ -836,11 +846,15 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             )
 
             async def _land_sources() -> None:
-                await ensure_rows_resident(state, plan.pk_bounds)
+                await ensure_rows_resident(state, plan.pk_bounds, reader_role=plan.role_id)
                 await pushdown_row_materialize(
-                    state, physical_sql, state.federation_engine.dialect, resolved_params
+                    state,
+                    physical_sql,
+                    state.federation_engine.dialect,
+                    resolved_params,
+                    reader_role=plan.role_id,
                 )
-                await ensure_resident(state, plan.sources)
+                await ensure_resident(state, plan.sources, reader_role=plan.role_id)
 
             # REQ-778: landing runs inside execution's error classification — a source that
             # cannot be landed (e.g. an unreachable broker) answers with the typed `error` field.
@@ -850,6 +864,9 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     except Exception:
         await finalize_audit(plan, 500, state)
         raise
+    finally:
+        if _live_permits is not None:
+            _live_permits.release()
     if isinstance(_exec_result, Response):
         await finalize_audit(plan, _exec_result.status_code, state)
         return _exec_result

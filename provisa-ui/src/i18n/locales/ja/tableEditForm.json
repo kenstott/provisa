@@ -8,6 +8,18 @@
     "cacheTtlLabel": "キャッシュTTL（秒）",
     "cacheTtlHelp": "このテーブルのクエリ結果をメモリにキャッシュする期間です。0でキャッシュを無効化します。空欄の場合はソースレベルのTTLを継承します。頻繁にクエリされるテーブルについて、ソースデータベースへの負荷を軽減します。",
     "cacheTtlPlaceholder": "継承",
+    "roleTtlLabel": "ロール別TTL",
+    "roleTtlHelp": "このテーブルのロールごとの鮮度許容時間（秒）。ロールの実効TTLはキャッシュTTLとここでの値の大きい方です。そのため、この値はそのロールに古いデータを許容させることしかできず、キャッシュTTLが許すより新しいデータを提供することはありません。",
+    "roleTtlRole": "ロール",
+    "roleTtlSeconds": "TTL（秒）",
+    "roleTtlRemove": "{{role}} のロール別TTLを削除",
+    "roleTtlAdd": "ロール別TTLを追加",
+    "roleTtlEffective": "実効TTL：{{sec}}秒",
+    "roleTtlBelowFloor": "（キャッシュTTLの{{floor}}秒を下回るため、この値は効果がありません）",
+    "roleTtlUnlisted": "一覧にないロールはキャッシュTTL（{{sec}}秒）を使用します。",
+    "roleTtlInvalidTtl": "0以上の整数の秒数を入力してください。",
+    "roleTtlDuplicateRole": "このロールはすでに一覧にあります。",
+    "roleTtlFixErrors": "保存する前にロール別TTLの行を修正してください。",
     "preferMaterializedLabel": "マテリアライズ優先",
     "preferMaterializedHelp": "このテーブルをライブで参照する代わりに、ストアへマテリアライズしてそこからフェデレーションするよう強制します。コネクタがこのテーブルのクエリに適していない場合に使用します。継承 = ソースレベルのデフォルトに従います。",
     "loadProtectedLabel": "負荷保護",
@@ -216,6 +228,12 @@
     "save": "保存",
     "ttlViewRefreshes": "{{sec}}秒ごとに更新されます（マテリアライズドビューの更新間隔から）。",
     "ttlViewNeedsMv": "ttlにはマテリアライズドビューが必要です — 上の",
-    "ttlViewNeedsMvPost": "を有効にして更新間隔を設定してください。"
+    "ttlViewNeedsMvPost": "を有効にして更新間隔を設定してください。",
+    "loadManagementTitle": "負荷管理と鮮度",
+    "loadManagementHelp": "各読み手にとってデータがどれだけ新しくなければならないかを、プラットフォームと上流ソースへの負荷と比較して調整します。",
+    "loadManagementInfoLabel": "負荷管理と鮮度について",
+    "loadManagementInfo": "各読み手のデータの新しさと、プラットフォームおよび上流ソースへの負荷とのバランスをとります。本来は上流が自らの負荷を管理します。オペレーターはプラットフォームを保護し、上流が自らを保護できない場合は上流も保護します。これらの設定はオペレーターの下限です。どのクエリやリクエストのヒントも、これらが許すより新しいデータを得たり、ソースにより多くの負荷をかけたりすることはできません。読み手が選べるのは、速度のために古いデータを受け入れることだけです。エンジンがライブで読むソースは、「マテリアライズを優先」または「負荷保護」が設定されていない限り、TTL設定を無視します。",
+    "cacheTtlRequiredForSignal": "変更シグナル {{signal}} はキャッシュTTLで鮮度を判断するため、ここかソースでキャッシュTTLを設定してください。",
+    "loadManagementFixErrors": "保存する前に「負荷管理と鮮度」の設定を修正してください。"
   }
 }

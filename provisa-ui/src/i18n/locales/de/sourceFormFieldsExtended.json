@@ -85,6 +85,21 @@
     "reconnectIntervalSeconds": "Wiederverbindungsintervall (Sekunden)",
     "subscribePayload": "Subscribe-Payload (JSON, optional)",
     "feedUrlOverride": "Feed-URL (optionale Überschreibung)",
-    "pollIntervalSeconds": "Abfrageintervall (Sekunden)"
+    "pollIntervalSeconds": "Abfrageintervall (Sekunden)",
+    "loadManagementTitle": "Laststeuerung und Aktualität",
+    "loadManagementHelp": "Wie aktuell die Daten für jeden Leser sein müssen, abgewogen gegen die Last auf der Plattform und den Upstream-Quellen.",
+    "loadManagementInfoLabel": "Über Laststeuerung und Aktualität",
+    "loadManagementInfo": "Wägt ab, wie aktuell die Daten jedes Lesers sind, gegenüber der Last auf der Plattform und auf den Upstream-Quellen. Idealerweise steuert die Upstream-Quelle ihre Last selbst; der Betreiber schützt die Plattform und die Upstream-Quelle, wenn sie sich nicht selbst schützen kann. Diese Einstellungen sind die Untergrenze des Betreibers – keine Abfrage und kein Anfragehinweis kann aktuellere Daten erhalten oder eine Quelle stärker belasten, als sie zulassen. Leser können nur wählen, für mehr Geschwindigkeit ältere Daten zu akzeptieren. Eine Quelle, die die Engine live liest, ignoriert die TTL-Einstellungen, es sei denn, „Materialisiert bevorzugen“ oder „Lastgeschützt“ ist gesetzt.",
+    "sentinelPath": "Sentinel-Pfad",
+    "sentinelPathTooltip": "URL einer Markierungsdatei, die der Produzent bei Datenänderungen aktualisiert (file:, ftp:, sftp:, http:, https:). Mit einem Probe-Änderungssignal prüft Provisa nur diese Markierung, um zu entscheiden, ob die Daten aktuell sind. Leer lassen für keinen Sentinel.",
+    "sentinelPathInvalid": "Verwenden Sie eine file:-, ftp:-, sftp:-, http:- oder https:-URL oder lassen Sie das Feld leer.",
+    "freshnessGate": "Aktualitätsprüfung",
+    "freshnessGateTooltip": "Prüft vor jedem Lesen der Tabellen dieser Quelle die Aktualität (anhand des Änderungssignals und der Cache-TTL) und aktualisiert zuerst, wenn die Daten veraltet sind. Erfordert eine Cache-TTL für ttl-Signale; Push-Signale können nicht prüfen.",
+    "maxLiveConcurrency": "Max. gleichzeitige Live-Abfragen",
+    "maxLiveConcurrencyHelp": "Obergrenze für Abfragen, die diese Quelle gleichzeitig live lesen, über alle Provisa-Instanzen, die diesen Redis teilen. Weitere Abfragen warten bis zu ihrer eigenen Frist und schlagen dann fehl. Leer = keine Begrenzung. Ohne Wirkung, wenn die Quelle aus ihrem Replikat gelesen wird (Materialisiert bevorzugen / Lastgeschützt).",
+    "maxLiveConcurrencyPlaceholder": "keine Begrenzung",
+    "maxLiveConcurrencyInvalid": "Geben Sie eine ganze Zahl ab 1 ein oder lassen Sie das Feld leer für keine Begrenzung.",
+    "loadManagementFixErrors": "Korrigieren Sie die Einstellungen unter Laststeuerung und Aktualität vor dem Speichern.",
+    "cacheTtlRequiredForSignal": "Das Änderungssignal {{signal}} bewertet die Aktualität anhand der Cache-TTL. Legen Sie daher eine Cache-TTL fest."
   }
 }

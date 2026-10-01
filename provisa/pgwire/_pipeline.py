@@ -185,6 +185,11 @@ class _Plan:
     # lifetime (None = the operator-resolved TTL).
     cache_opt_in: bool = field(default=False)
     cache_ttl: int | None = field(default=None)
+    # REQ-1909: ((source_id, max_live_concurrency), ...) for every capped source this plan reads
+    # LIVE, and the org whose permit sets they draw from — bound when the plan is minted
+    # (_attach_live_caps), so every terminal acquires them without another loop dispatch.
+    live_caps: tuple[tuple[str, int], ...] = field(default=())
+    live_caps_org: str | None = field(default=None)
 
 
 # --------------------------------------------------------------------------- #
@@ -755,6 +760,16 @@ async def extend_trace_scope_to_sources(  # REQ-1910
         set_trace_detail("debug")
 
 
+async def _attach_live_caps(plan: _Plan, state: Any) -> _Plan:
+    """Bind the capped sources this plan reads live (REQ-1909) — at the top of the pipeline, the
+    one place every surface passes through, so no terminal can skip the cap."""
+    from provisa.federation.live_concurrency import live_caps_for_plan
+
+    org_id, capped = await live_caps_for_plan(state, plan)
+    plan.live_caps, plan.live_caps_org = tuple(capped), org_id
+    return plan
+
+
 async def _wake_before_governing(state: Any) -> None:
     """REQ-1448: the shard the active org queries is serving before this statement is planned.
 
@@ -884,7 +899,7 @@ async def _govern_and_route(
         serve_cached=serve_cached,
         wire_formats=wire_formats,
     )
-    return await _attach_tier_caps(plan, state)
+    return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
 
 
 async def _govern_and_route_planned(
@@ -2066,7 +2081,7 @@ async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-0
     # some reached only via FK (bench_contains_edge) -- the pushdown probe's LEFT-preserved
     # "known" side must already be real data, or a query where EVERY table in the chain is
     # row_materialize would probe an empty replica end to end and always resolve zero keys.
-    await ensure_rows_resident(state, plan.pk_bounds)
+    await ensure_rows_resident(state, plan.pk_bounds, reader_role=plan.role_id)
     # REQ-1865 key pushdown: a row-materialize table reached only through a JOIN (no literal
     # predicate naming it directly, e.g. cypher_cross_engine's bench_contains_edge) has no PK bound
     # for ensure_rows_resident to key off -- narrow its fetch to the keys this query's OTHER,
@@ -2076,9 +2091,13 @@ async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-0
     # physical_sql to probe.
     if plan.route == Route.ENGINE and plan.physical_sql is not None:
         await pushdown_row_materialize(
-            state, plan.physical_sql, state.federation_engine.dialect, plan.exec_params
+            state,
+            plan.physical_sql,
+            state.federation_engine.dialect,
+            plan.exec_params,
+            reader_role=plan.role_id,
         )
-    await ensure_resident(state, plan.sources)
+    await ensure_resident(state, plan.sources, reader_role=plan.role_id)
     # REQ-1897: the result cache is GraphQL's Route.CACHE candidate route, extended here so every
     # other raw-SQL surface that reaches this one chokepoint (Bolt, pgwire's non-COPY path) gets
     # the same served-without-touching-the-engine hit -- with the same audit row and tier/egress
@@ -2089,17 +2108,22 @@ async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-0
     _t0 = _time.perf_counter()
     # REQ-074/REQ-1386: one audit row per executed statement, with the terminal's real outcome —
     # written here rather than in each transport, so no surface can omit it.
+    from provisa.federation.live_concurrency import acquire_plan_permits
+
     try:
-        try:
-            result = await _run_plan_terminal(plan, state)
-        except Exception as exc:
-            # REQ-1448: a dial that reached nothing can mean the coordinator moved while this
-            # process held its address. Only re-resolving says which, and only a shard that
-            # actually moved earns the second dispatch — the executor's own retries cannot help
-            # here, because they rebuild the connection at the same dead address.
-            if not await readdress_lost_coordinator(exc, state):
-                raise
-            result = await _run_plan_terminal(plan, state)
+        # REQ-1909: a capped source this plan reads live is held to its concurrency cap for the
+        # whole execution; acquiring fails the statement (audited below) once the deadline passes.
+        with acquire_plan_permits(state, plan):
+            try:
+                result = await _run_plan_terminal(plan, state)
+            except Exception as exc:
+                # REQ-1448: a dial that reached nothing can mean the coordinator moved while this
+                # process held its address. Only re-resolving says which, and only a shard that
+                # actually moved earns the second dispatch — the executor's own retries cannot
+                # help here, because they rebuild the connection at the same dead address.
+                if not await readdress_lost_coordinator(exc, state):
+                    raise
+                result = await _run_plan_terminal(plan, state)
     except Exception as exc:
         # REQ-1044: the engine kills a query that breached a scan-side ceiling with its own
         # EXCEEDED_* error, which says nothing about the customer's plan. Restate it as the tier
@@ -2479,7 +2503,10 @@ def serve_stream_through_cache(  # REQ-1897
     checked, e.g. pgwire's ENGINE route inside its residency dispatch), else runs ``open_rows()``
     teed into a ``rows`` entry. ``run`` runs a coroutine on the terminal's loop. With caching
     disabled (a store that keeps nothing) no read is dispatched and nothing is wrapped."""
+    from provisa.federation.live_concurrency import acquire_plan_permits
+
     caching = state.response_cache_store.stores_results
+    permits = None  # REQ-1909: taken on the first live open, held until the stream ends
     if passthrough is not None:
         wire_formats, open_passthrough = passthrough
         if caching:
@@ -2488,20 +2515,33 @@ def serve_stream_through_cache(  # REQ-1897
                 return replay
         from provisa.pgwire.pg_passthrough import PassthroughError
 
+        permits = acquire_plan_permits(state, plan)
         try:
             stream = open_passthrough()
         except PassthroughError:
             log.debug("[PGWIRE] passthrough declined; decoded path", exc_info=True)
+        except BaseException:
+            permits.release()
+            raise
         else:
             tee = _cache_tee(plan, state, run, wire_formats)
-            return stream if tee is None else tee.datarows(stream, wire_formats)
+            stream = stream if tee is None else tee.datarows(stream, wire_formats)
+            return permits.wrap_stream(stream)
     if check_rows and caching:
         hit = run(check_response_cache(plan, state))
         if hit is not None:
+            if permits is not None:
+                permits.release()
             return hit
-    stream = open_rows()
+    if permits is None:
+        permits = acquire_plan_permits(state, plan)
+    try:
+        stream = open_rows()
+    except BaseException:
+        permits.release()
+        raise
     tee = response_cache_tee(plan, state, run=run)
-    return stream if tee is None else tee.rows(stream)
+    return permits.wrap_stream(stream if tee is None else tee.rows(stream))
 
 
 async def serve_buffered_through_cache(  # REQ-1897
@@ -2512,7 +2552,10 @@ async def serve_buffered_through_cache(  # REQ-1897
     hit = await check_response_cache(plan, state)
     if hit is not None:
         return hit
-    result = await execute()
+    from provisa.federation.live_concurrency import acquire_plan_permits
+
+    with acquire_plan_permits(state, plan):  # REQ-1909: held for the whole buffered execution
+        result = await execute()
     await store_executed_result(plan, state, result)
     return result
 
@@ -2820,7 +2863,7 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
         cache_hint=cache_hint,
         serve_cached=serve_cached,
     )
-    return await _attach_tier_caps(plan, state)
+    return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
 
 
 async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-266
@@ -3446,7 +3489,7 @@ async def plan_pgwire_statement(  # REQ-589
     plan = await route_governed(
         governed, params=params, serve_cached=True, wire_formats=wire_formats
     )
-    return await _attach_tier_caps(plan, state)
+    return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
 
 
 async def execute_pgwire_sql(sql: str, role_id: str) -> QueryResult:  # REQ-266, REQ-267, REQ-272

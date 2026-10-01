@@ -137,7 +137,7 @@ class TestExecuteApiSource:
         compiled = _compiled()
         state = SimpleNamespace(contexts={"admin": ctx}, api_endpoints={})
         with pytest.raises(HTTPException) as exc_info:
-            await _execute_api_source(compiled, ctx, state, "api1", "pets", "json")
+            await _execute_api_source(compiled, ctx, state, "api1", "pets", "json", role_id=None)
         assert exc_info.value.status_code == 400
 
     async def test_hot_table_bypass(self):
@@ -184,7 +184,9 @@ class TestExecuteApiSource:
                 phase2_ms,
                 physical_sql,
                 from_cache,
-            ) = await _execute_api_source(compiled, ctx, state, "api1", "pets", "json")
+            ) = await _execute_api_source(
+                compiled, ctx, state, "api1", "pets", "json", role_id=None
+            )
         assert phase1_ms == 0.0
         assert from_cache is True
 
@@ -233,7 +235,9 @@ class TestExecuteApiSource:
                 phase2_ms,
                 physical_sql,
                 from_cache,
-            ) = await _execute_api_source(compiled, ctx, state, "api1", "pets", "json")
+            ) = await _execute_api_source(
+                compiled, ctx, state, "api1", "pets", "json", role_id=None
+            )
         assert phase1_ms == 0.0
         assert from_cache is True
 
@@ -290,7 +294,9 @@ class TestExecuteApiSource:
                 phase2_ms,
                 physical_sql,
                 from_cache,
-            ) = await _execute_api_source(compiled, ctx, state, "api1", "pets", "json")
+            ) = await _execute_api_source(
+                compiled, ctx, state, "api1", "pets", "json", role_id=None
+            )
         assert from_cache is False
 
 
@@ -309,7 +315,9 @@ class TestExecuteGrpcRemoteSource:
         compiled = _compiled()
         state = SimpleNamespace(grpc_remote_sources={}, contexts={"admin": ctx})
         with pytest.raises(HTTPException) as exc_info:
-            await _execute_grpc_remote_source(compiled, ctx, state, "grpc1", "pets", "json")
+            await _execute_grpc_remote_source(
+                compiled, ctx, state, "grpc1", "pets", "json", role_id=None
+            )
         assert exc_info.value.status_code == 400
 
     async def test_no_matching_query_raises_400(self):
@@ -322,7 +330,9 @@ class TestExecuteGrpcRemoteSource:
         reg = {"namespace": "", "queries": []}
         state = SimpleNamespace(grpc_remote_sources={"grpc1": reg}, contexts={"admin": ctx})
         with pytest.raises(HTTPException) as exc_info:
-            await _execute_grpc_remote_source(compiled, ctx, state, "grpc1", "pets", "json")
+            await _execute_grpc_remote_source(
+                compiled, ctx, state, "grpc1", "pets", "json", role_id=None
+            )
         assert exc_info.value.status_code == 400
 
     async def test_cache_hit_rewrites_and_skips_fetch(self):
@@ -367,7 +377,7 @@ class TestExecuteGrpcRemoteSource:
                 physical_sql,
                 from_cache,
             ) = await _execute_grpc_remote_source(
-                compiled, ctx, state, "grpc1", "Svc__GetPets", "json"
+                compiled, ctx, state, "grpc1", "Svc__GetPets", "json", role_id=None
             )
         assert phase1_ms == 0.0
 
@@ -428,7 +438,7 @@ class TestExecuteGrpcRemoteSource:
                 physical_sql,
                 from_cache,
             ) = await _execute_grpc_remote_source(
-                compiled, ctx, state, "grpc1", "Svc__GetPets", "json"
+                compiled, ctx, state, "grpc1", "Svc__GetPets", "json", role_id=None
             )
         assert from_cache is False
 
@@ -491,7 +501,7 @@ class TestExecuteGrpcRemoteSource:
                 physical_sql,
                 from_cache,
             ) = await _execute_grpc_remote_source(
-                compiled, ctx, state, "grpc1", "Svc__GetPets", "json"
+                compiled, ctx, state, "grpc1", "Svc__GetPets", "json", role_id=None
             )
         assert from_cache is False
 
@@ -784,7 +794,7 @@ class TestExecApiRoute:
             patch("provisa.api.data.endpoint_executors.store_result", new=AsyncMock()),
         ):
             root_field, field_rows, _, ck, _ = await _exec_api_route(
-                compiled, ctx, state, decision, "pets", "json", "ck1", None, False
+                compiled, ctx, state, decision, "pets", "json", "ck1", None, False, role_id=None
             )
         assert root_field == "pets"
         assert field_rows == [{"id": 1}]
@@ -813,7 +823,7 @@ class TestExecApiRoute:
             patch("provisa.api.data.endpoint_executors.store_result", new=AsyncMock()),
         ):
             root_field, field_rows, _, ck, _ = await _exec_api_route(
-                compiled, ctx, state, decision, "pets", "json", "ck1", None, False
+                compiled, ctx, state, decision, "pets", "json", "ck1", None, False, role_id=None
             )
         assert field_rows == [{"id": 1}]
 
@@ -832,7 +842,7 @@ class TestExecApiRoute:
         ):
             with pytest.raises(HTTPException) as exc_info:
                 await _exec_api_route(
-                    compiled, ctx, state, decision, "pets", "json", "ck1", None, False
+                    compiled, ctx, state, decision, "pets", "json", "ck1", None, False, role_id=None
                 )
         assert exc_info.value.status_code == 400
 
@@ -851,7 +861,7 @@ class TestExecApiRoute:
         ):
             with pytest.raises(HTTPException) as exc_info:
                 await _exec_api_route(
-                    compiled, ctx, state, decision, "pets", "json", "ck1", None, False
+                    compiled, ctx, state, decision, "pets", "json", "ck1", None, False, role_id=None
                 )
         assert exc_info.value.status_code == 503
 
@@ -870,7 +880,7 @@ class TestExecApiRoute:
         ):
             with pytest.raises(HTTPException) as exc_info:
                 await _exec_api_route(
-                    compiled, ctx, state, decision, "pets", "json", "ck1", None, False
+                    compiled, ctx, state, decision, "pets", "json", "ck1", None, False, role_id=None
                 )
         assert exc_info.value.status_code == 500
 
@@ -899,7 +909,7 @@ class TestExecApiRoute:
             ) as mock_store,
         ):
             await _exec_api_route(
-                compiled, ctx, state, decision, "pets", "json", "ck1", None, False
+                compiled, ctx, state, decision, "pets", "json", "ck1", None, False, role_id=None
             )
         mock_store.assert_not_called()
 

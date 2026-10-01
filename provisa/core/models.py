@@ -244,6 +244,10 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # cache_ttl cadence, or a probing change_signal) is REQUIRED; a load-protected source with no
     # gate is a config error (validated at registration), not a frozen snapshot.
     load_protected: bool = False
+    # REQ-1909: cap on queries reading this source LIVE at once (DIRECT, or an engine reading it in
+    # place through its attach connector), across every instance sharing one Redis. None = no cap.
+    # A read served from the replica (prefer_materialized / load_protected) takes no permit.
+    max_live_concurrency: int | None = Field(default=None, ge=1)
     # REQ-1141: optional off-peak/maintenance window as "HH:MM-HH:MM" in ``off_peak_tz``; the
     # scheduler refreshes a load-protected source only while this window is open. None = no window
     # gate (the cadence/probe gates drive the refresh instead).
@@ -946,6 +950,9 @@ class Table(
     alias: str | None = None  # GraphQL type/field name override
     description: str | None = None  # GraphQL type description
     cache_ttl: int | None = None  # overrides source-level; None = inherit
+    # REQ-1907: operator-set role -> TTL seconds. A reader's effective TTL on this table is
+    # max(cache_ttl, role_ttl(role)); an unlisted role uses cache_ttl. Empty = every role uses it.
+    role_ttl: dict[str, int] = Field(default_factory=dict)
     prefer_materialized: bool | None = None  # overrides source-level; None = inherit (REQ-826)
     # REQ-1141: per-table load-protection override; None = inherit the source's load_protected.
     load_protected: bool | None = None
@@ -1078,6 +1085,18 @@ class Table(
                 f"table {self.table_name!r}: modeling_role must be 'fact' or "
                 f"'dimension', got {self.modeling_role!r} (REQ-1320)"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_role_ttl(self) -> "Table":
+        # REQ-1907: a TTL is a non-negative number of seconds. Role existence is checked where the
+        # role set is known (config_loader._validate_role_ttl, the admin mutation).
+        for role, ttl in self.role_ttl.items():
+            if ttl < 0:
+                raise ValueError(
+                    f"table {self.table_name!r}: role_ttl for role {role!r} must be >= 0, got "
+                    f"{ttl} (REQ-1907)"
+                )
         return self
 
     @model_validator(mode="after")

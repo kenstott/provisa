@@ -442,6 +442,59 @@ class TestCacheAndMaterializedSettings:
         assert result["message"] == "Table 999999999 not found"
 
 
+class TestTableRoleTtl:
+    """REQ-1907: the admin API reads and full-replaces a table's role_ttl list."""
+
+    async def _pets_id(self, client) -> int:
+        tables = await _gql(client, "{ tables { id tableName } }")
+        return next(t["id"] for t in tables["data"]["tables"] if t["tableName"] == "pets")
+
+    async def _set(self, client, table_id, entries: str):
+        data = await _gql(
+            client,
+            f"mutation {{ updateTableRoleTtl(tableId: {table_id}, roleTtl: [{entries}]) "
+            "{ success message code } }",
+        )
+        return data["data"]["updateTableRoleTtl"]
+
+    async def test_round_trip_full_replace(self, client):
+        pets_id = await self._pets_id(client)
+        result = await self._set(client, pets_id, '{role: "analyst", ttl: 360}')
+        assert result["success"] is True, result
+        tables = await _gql(client, "{ tables { id roleTtl { role ttl } } }")
+        pets = next(t for t in tables["data"]["tables"] if t["id"] == pets_id)
+        assert pets["roleTtl"] == [{"role": "analyst", "ttl": 360}]
+
+        assert (await self._set(client, pets_id, ""))["success"] is True
+        tables = await _gql(client, "{ tables { id roleTtl { role ttl } } }")
+        pets = next(t for t in tables["data"]["tables"] if t["id"] == pets_id)
+        assert pets["roleTtl"] == []
+
+    async def test_unknown_role_is_rejected(self, client):
+        result = await self._set(client, await self._pets_id(client), '{role: "ghost", ttl: 1}')
+        assert result["success"] is False
+        assert result["code"] == "schema.role_ttl_unknown_role"
+
+    async def test_duplicate_role_is_rejected(self, client):
+        result = await self._set(
+            client,
+            await self._pets_id(client),
+            '{role: "analyst", ttl: 1}, {role: "analyst", ttl: 2}',
+        )
+        assert result["success"] is False
+        assert result["code"] == "schema.role_ttl_duplicate_role"
+
+    async def test_negative_ttl_is_rejected(self, client):
+        result = await self._set(client, await self._pets_id(client), '{role: "analyst", ttl: -1}')
+        assert result["success"] is False
+        assert result["code"] == "schema.role_ttl_negative"
+
+    async def test_missing_table(self, client):
+        result = await self._set(client, 999999999, '{role: "analyst", ttl: 1}')
+        assert result["success"] is False
+        assert result["code"] == "schema.table_not_found"
+
+
 class TestNamingConvention:
     async def test_update_gql_naming_convention_invalid(self, client):
         data = await _gql(

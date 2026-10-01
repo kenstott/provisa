@@ -513,6 +513,8 @@ function registerDqChecker(
     const editBtn = page.getByTestId("table-read-view-edit").first();
     await editBtn.waitFor({ timeout: 10000 });
     await editBtn.click();
+    // Cache TTL lives in the collapsed "Load Management and Timeliness" panel.
+    await page.getByTestId("load-management-panel-toggle").click();
     await page.getByLabel(/^Cache TTL/).fill("5");
     await page.getByTestId("table-edit-save").click();
     await expect(page.getByTestId("table-edit-save")).toBeHidden({ timeout: 15000 });
@@ -1404,6 +1406,8 @@ export async function registerRss(page: Page): Promise<Registration> {
   const editBtn = page.getByTestId("table-read-view-edit").first();
   await editBtn.waitFor({ timeout: 10000 });
   await editBtn.click();
+  // Cache TTL lives in the collapsed "Load Management and Timeliness" panel.
+  await page.getByTestId("load-management-panel-toggle").click();
   await page.getByLabel(/^Cache TTL/).fill("5");
   await page.getByTestId("table-edit-save").click();
   await expect(page.getByTestId("table-edit-save")).toBeHidden({ timeout: 15000 });

@@ -151,6 +151,14 @@ def _deadline_bounded_pool_class() -> type:
     return _DeadlineBoundedPool
 
 
+def watch_error() -> type[Exception]:
+    """The client's optimistic-transaction conflict (``redis.WatchError``), for a caller running a
+    WATCH/MULTI transaction on the shared client without importing the driver itself."""
+    from redis.exceptions import WatchError
+
+    return WatchError
+
+
 def make_redis(url: str | None, *, decode_responses: bool) -> SharedRedis:
     """Return the shared Redis client (sync, thread-safe, awaitable call surface).
 

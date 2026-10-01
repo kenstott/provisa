@@ -8,6 +8,18 @@
     "cacheTtlLabel": "TTL della cache (secondi)",
     "cacheTtlHelp": "Durata di conservazione in memoria dei risultati delle query per questa tabella. 0 disabilita la cache. Lasciare vuoto per ereditare il TTL a livello di origine. Riduce il carico sul database di origine per le tabelle interrogate di frequente.",
     "cacheTtlPlaceholder": "eredita",
+    "roleTtlLabel": "TTL per ruolo",
+    "roleTtlHelp": "Tolleranza ai dati non aggiornati per ruolo per questa tabella, in secondi. Il TTL effettivo di un ruolo è il maggiore tra il TTL della cache e la sua voce qui: una voce può solo consentire a quel ruolo di accettare dati più vecchi, mai dati più recenti di quanto consenta il TTL della cache.",
+    "roleTtlRole": "Ruolo",
+    "roleTtlSeconds": "TTL (secondi)",
+    "roleTtlRemove": "Rimuovi il TTL del ruolo {{role}}",
+    "roleTtlAdd": "Aggiungi TTL per ruolo",
+    "roleTtlEffective": "TTL effettivo: {{sec}} s",
+    "roleTtlBelowFloor": "(inferiore al TTL della cache di {{floor}} s, quindi questa voce non ha effetto)",
+    "roleTtlUnlisted": "I ruoli non elencati usano il TTL della cache ({{sec}} s).",
+    "roleTtlInvalidTtl": "Inserisci un numero intero di secondi, 0 o più.",
+    "roleTtlDuplicateRole": "Questo ruolo è già elencato.",
+    "roleTtlFixErrors": "Correggi le righe del TTL per ruolo prima di salvare.",
     "preferMaterializedLabel": "Preferisci materializzata",
     "preferMaterializedHelp": "Forza la materializzazione di questa tabella nello store e la sua federazione da lì, invece dell'accesso live. Da usare quando il connettore non è adatto alle query di questa tabella. Eredita = segue l'impostazione predefinita a livello di origine.",
     "loadProtectedLabel": "Protezione dal carico",
@@ -216,6 +228,12 @@
     "save": "Salva",
     "ttlViewRefreshes": "Si aggiorna ogni {{sec}} s (dall'intervallo di aggiornamento della vista materializzata).",
     "ttlViewNeedsMv": "ttl richiede una vista materializzata — abilitare",
-    "ttlViewNeedsMvPost": "sopra e impostare un intervallo di aggiornamento."
+    "ttlViewNeedsMvPost": "sopra e impostare un intervallo di aggiornamento.",
+    "loadManagementTitle": "Gestione del carico e tempestività",
+    "loadManagementHelp": "Quanto devono essere aggiornati i dati per ogni lettore, bilanciato con il carico sulla piattaforma e sulle sorgenti upstream.",
+    "loadManagementInfoLabel": "Informazioni su gestione del carico e tempestività",
+    "loadManagementInfo": "Bilancia quanto sono aggiornati i dati di ogni lettore rispetto al carico sulla piattaforma e sulle sorgenti upstream. Idealmente la sorgente upstream gestisce il proprio carico; l'operatore protegge la piattaforma, e la sorgente quando non può proteggersi da sola. Queste impostazioni sono la soglia minima dell'operatore: nessuna query o indicazione nella richiesta può ottenere dati più recenti o caricare una sorgente più di quanto consentano. I lettori possono solo scegliere di accettare dati più vecchi in cambio di velocità. Una sorgente che il motore legge in tempo reale ignora le impostazioni TTL, a meno che non sia impostato «Preferisci materializzato» o «Protetto dal carico».",
+    "cacheTtlRequiredForSignal": "Il segnale di modifica {{signal}} valuta l'aggiornamento in base al TTL della cache, quindi imposta un TTL della cache qui o sulla sorgente.",
+    "loadManagementFixErrors": "Correggi le impostazioni di Gestione del carico e tempestività prima di salvare."
   }
 }

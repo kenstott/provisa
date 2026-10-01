@@ -123,7 +123,7 @@ async def test_missing_keys_are_fetched_and_landed(sqlite_dsn, patched_registry)
         pk_columns=("id",),
         values=((1,),),
     )
-    results = await ensure_rows_resident(state, [bound])
+    results = await ensure_rows_resident(state, [bound], reader_role=None)
     assert results == [("pg1", "orders", 1)]
     assert patched_registry.loader.calls == [[(1,)]]
 
@@ -146,11 +146,11 @@ async def test_fresh_keys_are_not_refetched(sqlite_dsn, patched_registry):
         pk_columns=("id",),
         values=((1,),),
     )
-    await ensure_rows_resident(state, [bound])
+    await ensure_rows_resident(state, [bound], reader_role=None)
     assert patched_registry.loader.calls == [[(1,)]]
 
     # Second call, same key, not yet expired (cache_ttl=60s) -- no re-fetch.
-    results = await ensure_rows_resident(state, [bound])
+    results = await ensure_rows_resident(state, [bound], reader_role=None)
     assert results == [("pg1", "orders", 0)]
     assert patched_registry.loader.calls == [[(1,)]]  # unchanged -- no second fetch
 
@@ -173,11 +173,11 @@ async def test_force_refetches_already_cached_key(sqlite_dsn, patched_registry):
         pk_columns=("id",),
         values=((1,),),
     )
-    await ensure_rows_resident(state, [bound])
+    await ensure_rows_resident(state, [bound], reader_role=None)
     assert len(patched_registry.loader.calls) == 1
 
     patched_registry.loader.rows_by_key[(1,)] = {"id": 1, "status": "shipped"}
-    results = await ensure_rows_resident(state, [bound], force=True)
+    results = await ensure_rows_resident(state, [bound], reader_role=None, force=True)
     assert results == [("pg1", "orders", 1)]
     assert len(patched_registry.loader.calls) == 2
 
@@ -201,7 +201,7 @@ async def test_key_source_returns_nothing_for_is_tombstoned(sqlite_dsn, patched_
         pk_columns=("id",),
         values=((1,), (2,)),
     )
-    results = await ensure_rows_resident(state, [bound])
+    results = await ensure_rows_resident(state, [bound], reader_role=None)
     assert results == [("pg1", "orders", 1)]  # only 1 row actually fetched/landed
 
     # Re-querying key (2,) alone still finds it missing (never landed as a tombstone placeholder,
@@ -214,7 +214,7 @@ async def test_key_source_returns_nothing_for_is_tombstoned(sqlite_dsn, patched_
         pk_columns=("id",),
         values=((2,),),
     )
-    results_2 = await ensure_rows_resident(state, [bound_2])
+    results_2 = await ensure_rows_resident(state, [bound_2], reader_role=None)
     assert results_2 == [("pg1", "orders", 0)]  # loader still returns nothing for (2,)
 
 
@@ -230,7 +230,7 @@ async def test_empty_bound_values_is_noop(sqlite_dsn, patched_registry):
         pk_columns=("id",),
         values=(),
     )
-    assert await ensure_rows_resident(state, [bound]) == []
+    assert await ensure_rows_resident(state, [bound], reader_role=None) == []
 
 
 @pytest.mark.asyncio
@@ -252,7 +252,7 @@ async def test_table_not_row_materialize_is_skipped(sqlite_dsn, patched_registry
         pk_columns=("id",),
         values=((1,),),
     )
-    assert await ensure_rows_resident(state, [bound]) == []
+    assert await ensure_rows_resident(state, [bound], reader_role=None) == []
 
 
 @pytest.mark.asyncio
@@ -275,4 +275,4 @@ async def test_no_resolved_cache_ttl_raises(sqlite_dsn, patched_registry):
         values=((1,),),
     )
     with pytest.raises(ValueError, match="no resolved cache_ttl"):
-        await ensure_rows_resident(state, [bound])
+        await ensure_rows_resident(state, [bound], reader_role=None)

@@ -85,6 +85,9 @@ class SourceType:  # REQ-012
     load_protected: bool = False  # REQ-1141: scheduled-refresh-only load protection
     off_peak_window: str | None = None  # REQ-1141: "HH:MM-HH:MM" maintenance window
     off_peak_tz: str = "UTC"  # REQ-1141: IANA zone for the window
+    max_live_concurrency: int | None = None  # REQ-1909: None = no cap on concurrent live reads
+    sentinel_path: str | None = None  # REQ-1148: freshness marker URL
+    freshness_gate: bool = False  # REQ-860: gate reads on the source's freshness decision
     gql_naming_convention: str | None = None
     path: str | None = None
     allowed_domains: list[str] = strawberry.field(default_factory=list)
@@ -254,6 +257,12 @@ class ImplicitMeasureType:  # REQ-1360: metadata-only Kimball measure annotation
 
 
 @strawberry.type
+class RoleTtlType:  # REQ-1907
+    role: str
+    ttl: int
+
+
+@strawberry.type
 class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     id: int
     source_id: str
@@ -275,6 +284,8 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
         default_factory=list
     )  # REQ-1093
     api_endpoint: str | None = None
+    # REQ-1907: operator-set role -> TTL seconds (effective = max(cache_ttl, ttl)); empty = none.
+    role_ttl: list[RoleTtlType] = strawberry.field(default_factory=list)
     view_sql: str | None = None
     view_metrics: ViewMetricsType | None = None  # REQ-1318: metric-composed view spec
     # REQ-1443: the data-quality contract this table's rows are the scan results of, verbatim.
@@ -583,6 +594,12 @@ class RLSRuleType:  # REQ-041, REQ-402, REQ-1679
 
 
 @strawberry.input
+class RoleTtlInput:  # REQ-1907
+    role: str
+    ttl: int
+
+
+@strawberry.input
 class SourceCdcConfigInput:  # REQ-824
     bootstrap_servers: str
     topic_prefix: str
@@ -614,6 +631,14 @@ class SourceInput:  # REQ-012
     load_protected: bool = False  # REQ-1141: scheduled-refresh-only load protection
     off_peak_window: str | None = None  # REQ-1141: "HH:MM-HH:MM" maintenance window
     off_peak_tz: str = "UTC"  # REQ-1141: IANA zone for the window
+    # The "Load Management and Timeliness" panel's other settings (REQ-1909), carried by the same
+    # create/update input as every other source field.
+    cache_enabled: bool = True
+    cache_ttl: int | None = None
+    prefer_materialized: bool = False  # REQ-826
+    max_live_concurrency: int | None = None  # REQ-1909: None = no cap; else >= 1
+    sentinel_path: str | None = None  # REQ-1148
+    freshness_gate: bool = False  # REQ-860
     cdc: SourceCdcConfigInput | None = None  # REQ-824: source-level CDC transport
 
 

@@ -8,6 +8,18 @@
     "cacheTtlLabel": "TTL do cache (segundos)",
     "cacheTtlHelp": "Por quanto tempo os resultados de consulta desta tabela são mantidos em cache na memória. 0 desativa o cache. Deixe em branco para herdar o TTL definido na fonte. Reduz a carga no banco de dados de origem para tabelas consultadas com frequência.",
     "cacheTtlPlaceholder": "herdar",
+    "roleTtlLabel": "TTL por função",
+    "roleTtlHelp": "Tolerância a dados desatualizados por função para esta tabela, em segundos. O TTL efetivo de uma função é o maior entre o TTL do cache e sua entrada aqui, então uma entrada só pode permitir que essa função aceite dados mais antigos; ela nunca fornece dados mais recentes do que o TTL do cache permite.",
+    "roleTtlRole": "Função",
+    "roleTtlSeconds": "TTL (segundos)",
+    "roleTtlRemove": "Remover TTL da função {{role}}",
+    "roleTtlAdd": "Adicionar TTL por função",
+    "roleTtlEffective": "TTL efetivo: {{sec}} s",
+    "roleTtlBelowFloor": "(abaixo do TTL do cache de {{floor}} s, então esta entrada não tem efeito)",
+    "roleTtlUnlisted": "Funções não listadas usam o TTL do cache ({{sec}} s).",
+    "roleTtlInvalidTtl": "Insira um número inteiro de segundos, 0 ou mais.",
+    "roleTtlDuplicateRole": "Esta função já está na lista.",
+    "roleTtlFixErrors": "Corrija as linhas de TTL por função antes de salvar.",
     "preferMaterializedLabel": "Preferir materializada",
     "preferMaterializedHelp": "Força esta tabela a ser materializada no repositório e federada a partir dele, em vez de acessada ao vivo. Use quando o conector não atende bem às consultas desta tabela. Herdar = seguir o padrão definido na fonte.",
     "loadProtectedLabel": "Protegida contra carga",
@@ -216,6 +228,12 @@
     "save": "Salvar",
     "ttlViewRefreshes": "Atualiza a cada {{sec}}s (do Intervalo de atualização da exibição materializada).",
     "ttlViewNeedsMv": "ttl precisa de uma exibição materializada — habilite",
-    "ttlViewNeedsMvPost": "acima e defina um Intervalo de atualização."
+    "ttlViewNeedsMvPost": "acima e defina um Intervalo de atualização.",
+    "loadManagementTitle": "Gestão de carga e atualidade",
+    "loadManagementHelp": "Quão atuais os dados precisam ser para cada leitor, equilibrado com a carga sobre a plataforma e as fontes de origem.",
+    "loadManagementInfoLabel": "Sobre gestão de carga e atualidade",
+    "loadManagementInfo": "Equilibra quão atuais são os dados de cada leitor com a carga sobre a plataforma e as fontes de origem. Idealmente a fonte gerencia a própria carga; o operador protege a plataforma, e a fonte quando ela não consegue se proteger. Estas configurações são o piso do operador — nenhuma consulta ou dica de requisição pode obter dados mais recentes ou colocar mais carga numa fonte do que elas permitem. Os leitores só podem optar por aceitar dados mais antigos em troca de velocidade. Uma fonte que o mecanismo lê ao vivo ignora as configurações de TTL, a menos que \"Preferir materializado\" ou \"Protegido contra carga\" esteja definido.",
+    "cacheTtlRequiredForSignal": "O sinal de alteração {{signal}} avalia a atualidade pelo TTL do cache, então defina um TTL do cache aqui ou na fonte.",
+    "loadManagementFixErrors": "Corrija as configurações de Gestão de carga e atualidade antes de salvar."
   }
 }

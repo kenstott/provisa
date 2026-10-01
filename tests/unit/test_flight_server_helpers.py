@@ -212,6 +212,8 @@ class TestFlightSqlDispatchHopCount:
             cache_opt_in=False,
             cache_hit=None,  # as _Plan: not answered before routing
             cache_missed=(),
+            live_caps=(),  # REQ-1909: the capped live sources the pipeline binds at mint (none here)
+            live_caps_org=None,
         )
         monkeypatch.setattr(
             _pipeline, "govern_batch_final_plan_with_fn", AsyncMock(return_value=plan)
@@ -249,6 +251,8 @@ class TestFlightSqlDispatchHopCount:
             exec_params=None,
             stamp="governed",
             audit_deferred=None,  # as _Plan: no audit record held back for the drain
+            live_caps=(),  # REQ-1909: the capped live sources the pipeline binds at mint (none here)
+            live_caps_org=None,
         )
         monkeypatch.setattr(
             _pipeline, "govern_batch_final_plan_with_fn", AsyncMock(return_value=plan)

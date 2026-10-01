@@ -190,16 +190,17 @@ def test_apply_cdc_lands_a_large_batch_set_based(store_con):
     ).fetchone() == (200_000, 200_000, "new", "new")
 
 
-def test_read_row_cache_reports_each_present_key_at_its_earliest_expiry(store_con):
+def test_read_row_cache_reports_each_present_key_at_its_oldest_landed_at(store_con):
     """REQ-1865: keys join as a registered frame (a 1M-key bound IN list took ~18s live); a key
-    repeated in the cache (keyed on a non-PK join column) is fresh only while every row is."""
+    repeated in the cache (keyed on a non-PK join column) is fresh only while every row is.
+    REQ-1907: freshness is judged per reader off the landed-at stamp, so that is what is read."""
     from datetime import UTC, datetime
 
     from provisa.federation.store_connection import read_row_cache_duckdb_native
 
     store_con.execute("CREATE SCHEMA mat_store.rc")
     store_con.execute(
-        'CREATE TABLE mat_store.rc.ev (event_id BIGINT, order_id BIGINT, "_row_expires_at" TIMESTAMP)'
+        'CREATE TABLE mat_store.rc.ev (event_id BIGINT, order_id BIGINT, "_row_cached_at" TIMESTAMP)'
     )
     early, late = datetime(2026, 1, 1), datetime(2026, 1, 2)
     store_con.execute(

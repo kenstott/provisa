@@ -122,7 +122,9 @@ async def process_row_refresh_events(
             pk_columns=tuple(pk_columns),
             values=tuple(keys),
         )
-        await ensure_rows_resident(state, [bound], force=True)
+        # No reader: a CDC-driven refresh re-fetches the already-cached keys (force=True), so no
+        # reader's TTL is consulted (REQ-1907).
+        await ensure_rows_resident(state, [bound], reader_role=None, force=True)
 
     completed = 0
     async with db.acquire() as conn:

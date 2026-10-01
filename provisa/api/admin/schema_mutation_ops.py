@@ -269,6 +269,24 @@ async def register_table(
             _, model.schema_name = _mv_state.federation_engine.materialize_store_target(
                 _mv_state.org_id
             )
+        from provisa.api.admin._landing_ttl import TableTtl, landing_ttl_refusal
+
+        _ttl_refusal = await landing_ttl_refusal(  # REQ-1907
+            _conn,
+            model.source_id,
+            table=TableTtl(
+                model.schema_name,
+                model.table_name,
+                model.change_signal,
+                model.cache_ttl,
+                model.materialize,
+                model.row_materialize,
+                model.prefer_materialized,
+                model.load_protected,
+            ),
+        )
+        if _ttl_refusal is not None:
+            return _ttl_refusal
         _conflict = await _domain_table_conflict(
             _conn, model.domain_id, model.table_name, model.source_id, model.schema_name, alias
         )

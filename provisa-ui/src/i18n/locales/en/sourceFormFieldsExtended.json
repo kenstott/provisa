@@ -85,6 +85,21 @@
     "reconnectIntervalSeconds": "Reconnect Interval (seconds)",
     "subscribePayload": "Subscribe Payload (JSON, optional)",
     "feedUrlOverride": "Feed URL (optional override)",
-    "pollIntervalSeconds": "Poll Interval (seconds)"
+    "pollIntervalSeconds": "Poll Interval (seconds)",
+    "loadManagementTitle": "Load Management and Timeliness",
+    "loadManagementHelp": "How current the data must be for each reader, balanced against load on the platform and upstream sources.",
+    "loadManagementInfoLabel": "About load management and timeliness",
+    "loadManagementInfo": "Balances how current each reader's data is against load on the platform and on upstream sources. Ideally the upstream manages its own load; the operator protects the platform, and the upstream when it can't protect itself. These settings are the operator's floor — no query or request hint can get fresher data or put more load on a source than they allow. Readers can only choose to accept older data for speed. A source the engine reads live ignores the TTL settings unless Prefer Materialized or Load Protected is set.",
+    "sentinelPath": "Sentinel path",
+    "sentinelPathTooltip": "URL of a marker file the producer touches when its data changes (file:, ftp:, sftp:, http:, https:). With a probe change signal, Provisa checks only this marker to decide whether the data is fresh. Leave empty for no sentinel.",
+    "sentinelPathInvalid": "Use a file:, ftp:, sftp:, http: or https: URL, or leave empty.",
+    "freshnessGate": "Freshness gate",
+    "freshnessGateTooltip": "Check freshness (from the change signal and Cache TTL) before each read of this source's tables, and refresh first when stale. Needs a Cache TTL for ttl signals; push signals can't gate.",
+    "maxLiveConcurrency": "Max concurrent live queries",
+    "maxLiveConcurrencyHelp": "Upper bound on queries reading this source live at once, across every Provisa instance sharing this Redis. Queries beyond it wait up to their own deadline, then fail. Empty = no cap. Has no effect when the source is read from its replica (prefer materialized / load protected).",
+    "maxLiveConcurrencyPlaceholder": "no cap",
+    "maxLiveConcurrencyInvalid": "Enter a whole number of 1 or more, or leave empty for no cap.",
+    "loadManagementFixErrors": "Fix the Load Management and Timeliness settings before saving.",
+    "cacheTtlRequiredForSignal": "The {{signal}} change signal judges staleness by the Cache TTL, so set a Cache TTL."
   }
 }

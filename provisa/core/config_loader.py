@@ -890,6 +890,8 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     _validate_watermark_columns(config)
     _validate_neo4j_sources(config)
     _validate_row_materialize(config)
+    _validate_role_ttl(config)
+    _validate_landing_ttl(config)
     await _upsert_tables(conn, engine, config, openapi_specs, catalog_names=catalog_names)
 
     # 6. Relationships (tables must exist first)
@@ -1182,6 +1184,51 @@ def _validate_probe_type(config) -> None:  # REQ-982
             )
         except ValueError as exc:
             raise ValueError(f"Table {table.table_name!r}: {exc}") from exc
+
+
+def _validate_role_ttl(config) -> None:  # REQ-1907
+    """Every role a table's role_ttl names must be a declared (or system) role — a TTL for a role
+    that does not exist is an operator typo, never silently ignored."""
+    known = {r.id for r in config.roles} | set(SYSTEM_ROLE_IDS)
+    for table in config.tables:
+        unknown = sorted(set(table.role_ttl) - known)
+        if unknown:
+            raise ValueError(
+                f"table {table.table_name!r}: role_ttl names unknown role(s) {unknown} (REQ-1907)"
+            )
+
+
+def _validate_landing_ttl(config) -> None:  # REQ-1907
+    """A table config guarantees will land (materialize, row_materialize, or a resolved
+    prefer_materialized / load_protected) with change_signal ttl / ttl_probe (table's own, else its
+    source's) needs a cache_ttl on the table or its source: it is that signal's refresh clock
+    (REQ-930), and the global response-cache default_ttl is never a landing clock (REQ-1907,
+    amended 2026-09-30). A table that lands only because the engine cannot reach its source is
+    judged on the read path (role_ttl.require_landing_ttl)."""
+    from provisa.federation.role_ttl import lands_from_config, missing_landing_ttl
+
+    sources_by_id = {s.id: s for s in config.sources}
+    for table in config.tables:
+        source = sources_by_id.get(table.source_id)
+        if source is None:
+            # A table whose source is registered outside this file (_upsert_single_table takes
+            # src=None): its source's signal and cache_ttl are not known here; the read path
+            # (role_ttl.require_landing_ttl) enforces the same rule against the registered source.
+            continue
+        if not lands_from_config(
+            materialize=table.materialize,
+            row_materialize=table.row_materialize,
+            table_prefer_materialized=table.prefer_materialized,
+            source_prefer_materialized=source.prefer_materialized,
+            table_load_protected=table.load_protected,
+            source_load_protected=source.load_protected,
+        ):
+            continue
+        err = missing_landing_ttl(
+            table.change_signal, source.change_signal, table.cache_ttl, source.cache_ttl
+        )
+        if err is not None:
+            raise ValueError(f"table {table.table_name!r} (source {source.id!r}): {err}")
 
 
 def _validate_row_materialize(config) -> None:  # REQ-1865

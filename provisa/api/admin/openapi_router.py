@@ -104,18 +104,23 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
         from provisa.core.models import Source, SourceType
         from provisa.core.repositories import source as source_repo
 
-        await source_repo.upsert(
-            cast("Connection", _conn),
-            Source(
-                id=source_id,
-                type=SourceType.openapi,
-                host="",
-                port=0,
-                database="",
-                username="",
-                path=spec_path if spec_path else ":inline:",
-            ),
+        _existing = await source_repo.get(cast("Connection", _conn), source_id)
+        _spec_source = Source(
+            id=source_id,
+            type=SourceType.openapi,
+            host="",
+            port=0,
+            database="",
+            username="",
+            path=spec_path if spec_path else ":inline:",
         )
+        if _existing is not None:
+            # REQ-1909: re-importing a spec replaces the spec, not the operator's Load Management
+            # and Timeliness settings the upsert now persists (cache, live cap, gates).
+            _spec_source = source_repo.source_from_row(_existing).model_copy(
+                update={"type": SourceType.openapi, "path": _spec_source.path}
+            )
+        await source_repo.upsert(cast("Connection", _conn), _spec_source)
 
     queries, mutations = parse_spec(spec, operation_overrides=operation_overrides)
 

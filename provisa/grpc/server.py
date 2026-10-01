@@ -720,25 +720,37 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 pushdown_row_materialize,
             )
 
-            await ensure_rows_resident(state, plan.pk_bounds)
+            await ensure_rows_resident(state, plan.pk_bounds, reader_role=plan.role_id)
             await pushdown_row_materialize(
-                state, plan.physical_sql, state.federation_engine.dialect, plan.exec_params
+                state,
+                plan.physical_sql,
+                state.federation_engine.dialect,
+                plan.exec_params,
+                reader_role=plan.role_id,
             )
-            await ensure_resident(state, plan.sources)
+            await ensure_resident(state, plan.sources, reader_role=plan.role_id)
             # REQ-1897: this streaming terminal bypasses _execute_plan_in_org entirely. A HIT was
             # served above from the plan itself; a plan that reaches here is a MISS (or did not
             # opt in), so the engine runs and an opted-in result is written through.
+            from provisa.federation.live_concurrency import acquire_plan_permits
             from provisa.pgwire._pipeline import finalize_audit, response_cache_tee
 
-            stream = state.federation_engine.execute_engine_sync(
-                plan.physical_sql, plan.exec_params, session_hints=plan.session_hints
-            )
+            # REQ-1909: held from execution until the stream drains, fails or closes.
+            permits = acquire_plan_permits(state, plan)
+            try:
+                stream = state.federation_engine.execute_engine_sync(
+                    plan.physical_sql, plan.exec_params, session_hints=plan.session_hints
+                )
+            except BaseException:
+                permits.release()
+                raise
             # REQ-1897: write-through to the raw-SQL response cache — batches still stream as
             # they arrive; this RPC is already on its loop, so the entry is committed below,
             # after a complete drain. None when the result is not cacheable.
             tee = response_cache_tee(plan, state, run=None)
             if tee is not None:
                 stream = tee.rows(stream)
+            stream = permits.wrap_stream(stream)
             self._emit_license_nag(context)  # REQ-1137: trailing-metadata nag before the row stream
             _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
             out_cols = [_proto_by_norm.get(_norm(c), c) for c in stream.column_names]
@@ -783,93 +795,102 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 store_executed_result,
             )
 
-            # REQ-544/REQ-1897: this terminal bypasses _execute_plan too. A HIT was served above
-            # from the plan itself; a plan that reaches here is a MISS (or did not opt in), and an
-            # opted-in result is written through the pipeline's own write after a complete drain.
-            # None when this plan's result is not cacheable (no opt-in, no store, policy TTL 0):
-            # nothing is captured.
-            tee = response_cache_tee(plan, state, run=None)
+            from provisa.federation.live_concurrency import acquire_plan_permits
 
-            # REQ-1898: execute_native (below) fully materializes every row of the DIRECT read
-            # into one Python QueryResult before a single message is sent — fine for a point
-            # lookup (REQ-1891's original target), catastrophic for a large scan. Live-measured on
-            # the perf-bench VM: large_scan (2,000,000 rows) via grpc took 190.7s for iteration 1
-            # alone, ~9.4x flight's ~20.2s for the identical query — a real scaling defect, not the
-            # intended behavior. state.source_pools.open_stream/fetch (REQ-1190) is a genuinely
-            # ASYNC-NATIVE primitive (plain awaits, no run_coroutine_threadsafe/executor hop needed
-            # — safe to drive directly from this loop-resident generator, unlike
-            # execute_native_stream, which is documented synchronous-for-a-worker-thread and would
-            # deadlock here), so a source whose driver supports streaming (postgresql today) gets
-            # the same bounded-batch treatment as the ENGINE route above instead of buffering the
-            # whole result. A source without a streaming driver still falls through to
-            # execute_native unchanged — no regression for those.
-            if state.source_pools.supports_stream(plan.source_id):
-                from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
+            # REQ-1909: the DIRECT source's live-read permit is held until the stream ends.
+            _live_permits = acquire_plan_permits(state, plan)
+            try:
+                # REQ-544/REQ-1897: this terminal bypasses _execute_plan too. A HIT was served above
+                # from the plan itself; a plan that reaches here is a MISS (or did not opt in), and an
+                # opted-in result is written through the pipeline's own write after a complete drain.
+                # None when this plan's result is not cacheable (no opt-in, no store, policy TTL 0):
+                # nothing is captured.
+                tee = response_cache_tee(plan, state, run=None)
 
-                ds = await state.source_pools.open_stream(
-                    plan.source_id, plan.sql, plan.exec_params or []
+                # REQ-1898: execute_native (below) fully materializes every row of the DIRECT read
+                # into one Python QueryResult before a single message is sent — fine for a point
+                # lookup (REQ-1891's original target), catastrophic for a large scan. Live-measured on
+                # the perf-bench VM: large_scan (2,000,000 rows) via grpc took 190.7s for iteration 1
+                # alone, ~9.4x flight's ~20.2s for the identical query — a real scaling defect, not the
+                # intended behavior. state.source_pools.open_stream/fetch (REQ-1190) is a genuinely
+                # ASYNC-NATIVE primitive (plain awaits, no run_coroutine_threadsafe/executor hop needed
+                # — safe to drive directly from this loop-resident generator, unlike
+                # execute_native_stream, which is documented synchronous-for-a-worker-thread and would
+                # deadlock here), so a source whose driver supports streaming (postgresql today) gets
+                # the same bounded-batch treatment as the ENGINE route above instead of buffering the
+                # whole result. A source without a streaming driver still falls through to
+                # execute_native unchanged — no regression for those.
+                if state.source_pools.supports_stream(plan.source_id):
+                    from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
+
+                    ds = await state.source_pools.open_stream(
+                        plan.source_id, plan.sql, plan.exec_params or []
+                    )
+                    self._emit_license_nag(context)
+                    _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
+                    out_cols = [_proto_by_norm.get(_norm(c), c) for c in ds.column_names]
+                    col_fields = _col_fields_for(out_cols)
+                    _delivered = 0  # query_audit_log.row_count
+                    # The copy an opted-in MISS writes back, held only within the cache's own row
+                    # bound: a result past it is still streamed, and is not cached.
+                    _kept: list[tuple] | None = [] if tee is not None else None
+                    try:
+                        while True:
+                            batch = await ds.fetch(_STREAM_BATCH_ROWS)
+                            if not batch:
+                                break
+                            _delivered += len(batch)
+                            if _kept is not None and tee is not None:
+                                if _delivered > tee.bound:
+                                    _kept = None
+                                else:
+                                    _kept.extend(batch)
+                            for row in batch:
+                                yield msg_cls(**_kwargs_for(col_fields, row))
+                    except Exception as exc:
+                        await finalize_audit(plan, 500, state)
+                        await context.abort(_status_for_exception(exc), str(exc))
+                        return
+                    finally:
+                        await ds.close()
+                    plan.row_count = _delivered
+                    await finalize_audit(plan, 200, state)
+                    if _kept is not None:
+                        await store_executed_result(
+                            plan,
+                            state,
+                            QueryResult(
+                                rows=_kept,
+                                column_names=list(ds.column_names),
+                                column_types=ds.column_types,
+                            ),
+                        )
+                    return
+
+                result = await state.federation_engine.execute_native(
+                    state.source_pools, plan.source_id, plan.sql, plan.exec_params or []
                 )
-                self._emit_license_nag(context)
+                self._emit_license_nag(
+                    context
+                )  # REQ-1137: trailing-metadata nag before the row stream
                 _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
-                out_cols = [_proto_by_norm.get(_norm(c), c) for c in ds.column_names]
+                out_cols = [_proto_by_norm.get(_norm(c), c) for c in result.column_names]
                 col_fields = _col_fields_for(out_cols)
-                _delivered = 0  # query_audit_log.row_count
-                # The copy an opted-in MISS writes back, held only within the cache's own row
-                # bound: a result past it is still streamed, and is not cached.
-                _kept: list[tuple] | None = [] if tee is not None else None
+
                 try:
-                    while True:
-                        batch = await ds.fetch(_STREAM_BATCH_ROWS)
-                        if not batch:
-                            break
-                        _delivered += len(batch)
-                        if _kept is not None and tee is not None:
-                            if _delivered > tee.bound:
-                                _kept = None
-                            else:
-                                _kept.extend(batch)
-                        for row in batch:
-                            yield msg_cls(**_kwargs_for(col_fields, row))
+                    for row in result.rows:
+                        yield msg_cls(**_kwargs_for(col_fields, row))
                 except Exception as exc:
                     await finalize_audit(plan, 500, state)
                     await context.abort(_status_for_exception(exc), str(exc))
                     return
-                finally:
-                    await ds.close()
-                plan.row_count = _delivered
+                plan.row_count = len(result.rows)
                 await finalize_audit(plan, 200, state)
-                if _kept is not None:
-                    await store_executed_result(
-                        plan,
-                        state,
-                        QueryResult(
-                            rows=_kept,
-                            column_names=list(ds.column_names),
-                            column_types=ds.column_types,
-                        ),
-                    )
+                if tee is not None:
+                    await store_executed_result(plan, state, result)
                 return
-
-            result = await state.federation_engine.execute_native(
-                state.source_pools, plan.source_id, plan.sql, plan.exec_params or []
-            )
-            self._emit_license_nag(context)  # REQ-1137: trailing-metadata nag before the row stream
-            _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
-            out_cols = [_proto_by_norm.get(_norm(c), c) for c in result.column_names]
-            col_fields = _col_fields_for(out_cols)
-
-            try:
-                for row in result.rows:
-                    yield msg_cls(**_kwargs_for(col_fields, row))
-            except Exception as exc:
-                await finalize_audit(plan, 500, state)
-                await context.abort(_status_for_exception(exc), str(exc))
-                return
-            plan.row_count = len(result.rows)
-            await finalize_audit(plan, 200, state)
-            if tee is not None:
-                await store_executed_result(plan, state, result)
-            return
+            finally:
+                _live_permits.release()
 
         # Bounded routes (CACHE / API) buffer via the materializing terminal — async-native, memory
         # bounded by the route's own contract.
