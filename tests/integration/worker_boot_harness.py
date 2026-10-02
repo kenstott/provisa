@@ -31,6 +31,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -103,6 +104,21 @@ def _config(pg_host: str, pg_port: int, database: str) -> dict:
             {"id": "analyst", "capabilities": ["query_development"], "domain_access": ["*"]},
         ],
     }
+
+
+def _group_members(pgid: int) -> list[int]:
+    """Live processes in process group ``pgid``. Listed and signalled one by one rather than with
+    ``killpg``: darwin answers EPERM for a group whose only remaining members are exited
+    processes not yet collected, which is the normal state right after a clean stop."""
+    listed = subprocess.run(
+        ["ps", "-axo", "pid=,pgid=,stat="], capture_output=True, text=True, check=True
+    )
+    members = []
+    for line in listed.stdout.splitlines():
+        pid, group, state = line.split()
+        if int(group) == pgid and not state.startswith("Z"):
+            members.append(int(pid))
+    return members
 
 
 class WorkerBoot:
@@ -248,6 +264,9 @@ class WorkerBoot:
             env=env,
             stdout=self._log,
             stderr=subprocess.STDOUT,
+            # Its own session, so the launch is one process group — the supervisor and every
+            # worker it spawns — and stop() can end all of it (see stop()).
+            start_new_session=True,
         )
 
     def _bind_args(self) -> list[str]:
@@ -256,13 +275,26 @@ class WorkerBoot:
         return ["--host", "127.0.0.1", f"--port={self.ports['http']}"]
 
     def stop(self) -> None:
+        """End the launch: the supervisor is asked to stop (it stops its workers), and then
+        whatever is left of the launch's process group is killed.
+
+        Killing the supervisor alone — what a stop that outlasted its wait used to do — leaves
+        its workers running: a worker does not exit when its supervisor dies. Each orphan then
+        retried this launch's dropped database at the session's Postgres port for as long as the
+        machine stayed up, and later sessions leased that port number for something else."""
         if self._proc is not None:
+            launch = self._proc.pid  # start_new_session: the supervisor leads the launch's group
             self._proc.terminate()
             try:
                 self._proc.wait(timeout=20)
             except subprocess.TimeoutExpired:
-                self._proc.kill()
-                self._proc.wait(timeout=20)
+                pass  # still running: it is ended with the rest of its group below
+            for pid in _group_members(launch):
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    continue  # ended between the listing and now
+            self._proc.wait(timeout=20)
             self._proc = None
             self._log.close()
 

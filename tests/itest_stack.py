@@ -43,6 +43,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import time
 
@@ -160,6 +161,71 @@ def reap_orphaned_projects() -> None:
         )
         # The dead session's Trino config directory goes with its containers.
         shutil.rmtree(os.path.join(_REPO_ROOT, ".itest-trino", name), ignore_errors=True)
+
+
+# A server launch a test harness starts is recognisable by the data directory it was given: the
+# multi-worker harness (tests/integration/worker_boot_harness.py) makes one per launch with this
+# prefix and exports it to the supervisor and every worker.
+_HARNESS_LAUNCH = re.compile(r"PROVISA_DATA_DIR=\S*/provisa-wboot-")
+
+
+def _orphaned_harness_processes() -> list[int]:
+    """PIDs of harness-launched server processes whose parent is gone (reparented to init)."""
+    listed = subprocess.run(
+        ["ps", "-axo", "pid=,ppid=,command="], capture_output=True, text=True, check=False
+    )
+    orphans = []
+    for line in listed.stdout.splitlines():
+        pid, ppid, command = line.split(None, 2)
+        if ppid != "1" or not ("multiprocessing" in command or "uvicorn" in command):
+            continue
+        # `e` appends the process's environment to its command line.
+        shown = subprocess.run(
+            ["ps", "eww", "-o", "command=", "-p", pid], capture_output=True, text=True, check=False
+        )
+        if _HARNESS_LAUNCH.search(shown.stdout):
+            orphans.append(int(pid))
+    return orphans
+
+
+def reap_orphaned_server_processes() -> list[int]:
+    """Kill the harness-launched servers whose launching session is gone; return their PIDs.
+
+    ``uvicorn --workers N`` is a supervisor and N spawned workers. A session killed before its
+    teardown leaves all of them running, and a supervisor that is itself killed leaves its workers
+    — a worker does not exit when its supervisor dies. Each of those workers then retries its
+    control-plane Postgres for ever, at the port its own (long gone) session's stack published:
+    the FIRST port of a lease block (tests/port_lease.py). The next session to lease that block
+    publishes its own Postgres there, and whatever a session is given at the first port of a
+    second block — a server's pgwire listener, say — receives those connections instead. Seen as
+    hundreds of pgwire connections a minute to a server no test was talking to.
+
+    Only a process reparented to init is touched, so a live session's launch never is; and only
+    one carrying the harness's data-directory prefix, so nothing outside the test instance is.
+    Two passes: killing an orphaned supervisor is what orphans its workers.
+
+    NOT called by the test session: ending processes another session started is the operator's
+    decision. Run it by hand (``python -c "from tests.itest_stack import
+    reap_orphaned_server_processes as r; print(r())"``) or wire it in beside
+    ``reap_orphaned_projects`` in tests/conftest.py.
+    """
+    reaped: list[int] = []
+    for _ in range(2):
+        found = _orphaned_harness_processes()
+        _end(found)
+        reaped += found
+        if not found:
+            break
+        time.sleep(0.5)
+    return reaped
+
+
+def _end(pids: list[int]) -> None:
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass  # ended between the listing and now
 
 
 # ---------------------------------------------------------------------------

@@ -184,6 +184,42 @@ def test_every_worker_serves_flight_on_the_one_advertised_port(four_workers):
     assert _error_lines(boot.log_text()) == []
 
 
+def _running(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def test_stopping_a_launch_ends_its_workers_even_when_the_supervisor_was_killed():
+    """A uvicorn worker does not exit when its supervisor dies. A stop that killed only the
+    supervisor (what it did when the supervisor outlasted its wait) therefore left every worker
+    running, retrying a database that was then dropped, for as long as the machine stayed up —
+    and dialling a port later sessions were leased for something else. stop() ends the launch's
+    whole process group."""
+    boot = WorkerBoot(2, pg_host=_PG_HOST, pg_port=_PG_PORT)
+    boot.create_database()
+    try:
+        boot.start()
+        boot.wait_all_ready(timeout=300)
+        workers = boot.worker_pids()
+        assert len(workers) == 2
+        assert boot._proc is not None
+        os.kill(boot._proc.pid, signal.SIGKILL)  # the supervisor alone
+        boot._proc.wait(timeout=20)
+        assert [pid for pid in workers if _running(pid)] == workers  # they outlive it
+
+        boot.stop()
+
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline and any(_running(pid) for pid in workers):
+            time.sleep(0.1)
+        assert [pid for pid in workers if _running(pid)] == []
+    finally:
+        boot.cleanup()
+
+
 def _rows_on_fresh_connections(boot, n: int) -> list[int]:
     """Row counts of a GraphQL query with no limit, run as a role the default row limit applies
     to (no ``full_results``), each over a NEW connection so the requests are spread over the
