@@ -257,7 +257,14 @@ async def test_the_mutation_refuses_with_the_list_and_removes_nothing(plane, ser
     assert result.params == {
         "table": orders,
         "name": "orders",
-        "dependents": [{"kind": "table", "id": view, "via": ["registered_tables.view_sql"]}],
+        "dependents": [
+            {
+                "kind": "table",
+                "id": view,
+                "name": "open_orders",
+                "via": ["registered_tables.view_sql"],
+            }
+        ],
     }
     assert await _count(plane, registered_tables) == 2 and served == []
 

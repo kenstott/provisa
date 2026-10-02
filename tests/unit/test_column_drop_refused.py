@@ -156,6 +156,7 @@ async def test_dropping_a_column_a_relationship_is_keyed_on_is_refused_and_nothi
             {
                 "kind": "relationship",
                 "id": "orders_customers",
+                "name": "orders_customers",
                 "via": ["relationships.source_column"],
             }
         ]

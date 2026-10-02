@@ -163,6 +163,7 @@ async def test_a_table_the_remote_no_longer_has_is_kept_and_reported_while_somet
                 {
                     "kind": "relationship",
                     "id": f"{pets}_{owners}",
+                    "name": f"{pets}_{owners}",
                     "via": ["relationships.target_table_id"],
                 }
             ],

@@ -148,7 +148,9 @@ async def test_the_mutation_refuses_with_the_list(plane, monkeypatch):
     assert (refused.success, refused.code) == (False, "schema.metric_has_dependents")
     assert refused.params == {
         "metric": "margin",
-        "dependents": [{"kind": "table", "id": view, "via": ["registered_tables.view_sql"]}],
+        "dependents": [
+            {"kind": "table", "id": view, "name": "margins", "via": ["registered_tables.view_sql"]}
+        ],
     }
     assert rebuilds == []
     deleted = await schema_mutation.Mutation().delete_metric(info, "unused")

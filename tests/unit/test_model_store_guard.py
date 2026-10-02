@@ -503,3 +503,44 @@ async def test_a_role_parent_loop_is_named_as_a_circle(plane):
             roles.update().where(roles.c.id == "r1").values(parent_role_id="r2")
         )
     assert await plane.circle(ObjectRef("role", "r1")) == [ObjectRef("role", "r2")]
+
+
+# --- a dependent is named as an operator knows it -------------------------------------------------
+
+
+async def test_each_dependent_carries_the_name_an_operator_knows_it_by(plane):
+    orders = await plane.table("orders")
+    column = await plane.add(
+        "table_columns", table_id=orders.id, column_name="amount", visible_to=["seller"]
+    )
+    await plane.add("roles", id="seller", capabilities=[], domain_access=["sales"])
+    assignment = await plane.add(
+        "user_role_assignments", user_id="alice", role_id="seller", domain_id="*"
+    )
+    rule = await plane.add("rls_rules", role_id="seller", domain_id="sales", filter_expr=b"1=1")
+    term = await plane.add("glossary_terms", name="Order")
+    await plane.add("glossary_term_domains", term_id=term, domain_id="sales")
+    await plane.add("data_products", id="dp", domain_id="sales", name="Sales product")
+
+    async with plane.db.acquire() as conn:
+        of_role = {d.ref: d.name for d in await integrity.guard(conn, ObjectRef("role", "seller"))}
+        of_domain = {
+            d.ref: d.name for d in await integrity.guard(conn, ObjectRef("domain", "sales"))
+        }
+        reported = (await integrity.guard(conn, ObjectRef("role", "seller")))[0].as_dict()
+
+    assert of_role == {
+        ObjectRef("column", column): "orders.amount",
+        ObjectRef("role_assignment", assignment): "alice holds seller",
+    }
+    assert of_domain[orders] == "orders"
+    assert of_domain[ObjectRef("row_filter", rule)] == "seller on sales"
+    assert of_domain[ObjectRef("glossary_term", term)] == "Order"
+    assert of_domain[ObjectRef("data_product", "dp")] == "Sales product"
+    assert of_domain[ObjectRef("role", "seller")] == "seller"
+    assert reported == {
+        "kind": "column",
+        "id": column,
+        "name": "orders.amount",
+        "via": ["table_columns.visible_to"],
+    }

@@ -279,10 +279,7 @@ async def delete_role(role_id: str, request: Request):  # REQ-042, REQ-059, REQ-
                     str(refused),
                     role=role_id,
                     count=len(refused.dependents),
-                    dependents=[
-                        {"kind": d.ref.kind, "id": d.ref.id, "via": list(d.via)}
-                        for d in refused.dependents
-                    ],
+                    dependents=[d.as_dict() for d in refused.dependents],
                 ) from refused
             raise ApiError(
                 400, "roles.cannot_delete_system", "Cannot delete system roles"

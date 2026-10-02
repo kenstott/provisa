@@ -653,10 +653,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     params={
                         "calendar": name,
                         "count": len(refused.dependents),
-                        "dependents": [
-                            {"kind": d.ref.kind, "id": d.ref.id, "via": list(d.via)}
-                            for d in refused.dependents
-                        ],
+                        "dependents": [d.as_dict() for d in refused.dependents],
                     },
                 )
         if removed == 0:
@@ -1217,10 +1214,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     ),
                     params={
                         "source": id,
-                        "dependents": [
-                            {"kind": d.ref.kind, "id": d.ref.id, "via": list(d.via)}
-                            for d in refused.dependents
-                        ],
+                        "dependents": [d.as_dict() for d in refused.dependents],
                     },
                 )
         if deleted:
@@ -1326,10 +1320,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     ),
                     params={
                         "domain": id,
-                        "dependents": [
-                            {"kind": d.ref.kind, "id": d.ref.id, "via": list(d.via)}
-                            for d in refused.dependents
-                        ],
+                        "dependents": [d.as_dict() for d in refused.dependents],
                     },
                 )
         if deleted:
@@ -1415,10 +1406,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.data_product_has_dependents",
                     params={
                         "data_product": id,
-                        "dependents": [
-                            {"kind": d.ref.kind, "id": d.ref.id, "via": list(d.via)}
-                            for d in refused.dependents
-                        ],
+                        "dependents": [d.as_dict() for d in refused.dependents],
                     },
                 )
         if deleted:
@@ -2067,10 +2055,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.metric_has_dependents",
                     params={
                         "metric": name,
-                        "dependents": [
-                            {"kind": d.ref.kind, "id": d.ref.id, "via": list(d.via)}
-                            for d in refused.dependents
-                        ],
+                        "dependents": [d.as_dict() for d in refused.dependents],
                     },
                 )
         if deleted:
@@ -2275,10 +2260,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     params={
                         "table": id,
                         "name": refused.name,
-                        "dependents": [
-                            {"kind": d.ref.kind, "id": d.ref.id, "via": list(d.via)}
-                            for d in refused.dependents
-                        ],
+                        "dependents": [d.as_dict() for d in refused.dependents],
                     },
                 )
         if deleted:
@@ -2329,10 +2311,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     ),
                     params={
                         "role": id,
-                        "dependents": [
-                            {"kind": d.ref.kind, "id": d.ref.id, "via": list(d.via)}
-                            for d in refused.dependents
-                        ],
+                        "dependents": [d.as_dict() for d in refused.dependents],
                     },
                 )
         if deleted:
@@ -2620,10 +2599,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.relationship_has_dependents",
                     params={
                         "relationship": id,
-                        "dependents": [
-                            {"kind": d.ref.kind, "id": d.ref.id, "via": list(d.via)}
-                            for d in refused.dependents
-                        ],
+                        "dependents": [d.as_dict() for d in refused.dependents],
                     },
                 )
         if deleted:

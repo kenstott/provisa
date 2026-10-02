@@ -123,9 +123,12 @@ def test_a_view_another_view_reads_is_deleted_only_after_its_reader(served):
     refused = _delete(srv, base)
     assert (refused["success"], refused["code"]) == (False, "schema.table_has_dependents"), refused
     assert refused["params"]["name"] == "base_view"
-    assert {"kind": "table", "id": reader, "via": ["registered_tables.view_sql"]} in refused[
-        "params"
-    ]["dependents"]
+    assert {
+        "kind": "table",
+        "id": reader,
+        "name": "reader_view",
+        "via": ["registered_tables.view_sql"],
+    } in refused["params"]["dependents"]
     assert "base_view" in _views(srv)
 
     assert _delete(srv, reader)["success"] is True

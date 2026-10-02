@@ -200,7 +200,14 @@ async def test_the_mutation_refuses_with_the_view_and_removes_nothing(plane, ser
     assert (result.success, result.code) == (False, "schema.relationship_has_dependents")
     assert result.params == {
         "relationship": "orders_customers",
-        "dependents": [{"kind": "table", "id": view, "via": ["registered_tables.view_sql"]}],
+        "dependents": [
+            {
+                "kind": "table",
+                "id": view,
+                "name": "order_names",
+                "via": ["registered_tables.view_sql"],
+            }
+        ],
     }
     assert await _relationship_ids(plane) == {"orders_customers"} and served == []
 

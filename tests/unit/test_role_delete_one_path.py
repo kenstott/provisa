@@ -223,7 +223,9 @@ async def test_rest_refuses_a_parent_naming_its_heirs(plane, rebuilds):
     assert err.value.params == {
         "role": "base",
         "count": 1,
-        "dependents": [{"kind": "role", "id": "derived", "via": ["roles.parent_role_id"]}],
+        "dependents": [
+            {"kind": "role", "id": "derived", "name": "derived", "via": ["roles.parent_role_id"]}
+        ],
     }
     assert "base" in await _ids(plane) and rebuilds == []
 
@@ -233,7 +235,9 @@ async def test_graphql_refuses_a_parent_naming_its_heirs(plane, graphql_pool, re
     assert (result.success, result.code) == (False, "schema.role_has_dependents")
     assert result.params == {
         "role": "base",
-        "dependents": [{"kind": "role", "id": "derived", "via": ["roles.parent_role_id"]}],
+        "dependents": [
+            {"kind": "role", "id": "derived", "name": "derived", "via": ["roles.parent_role_id"]}
+        ],
     }
     assert "base" in await _ids(plane) and rebuilds == []
 

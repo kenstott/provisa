@@ -126,8 +126,7 @@ class ColumnDropRefused(ValueError):
 
     def report(self) -> dict[str, list[dict]]:
         return {
-            column: [{"kind": d.ref.kind, "id": d.ref.id, "via": list(d.via)} for d in dependents]
-            for column, dependents in self.columns.items()
+            column: [d.as_dict() for d in dependents] for column, dependents in self.columns.items()
         }
 
 
@@ -554,9 +553,7 @@ def kept_report(kept: list[TableDeleteRefused]) -> list[dict]:
         {
             "id": refused.table_id,
             "name": refused.name,
-            "dependents": [
-                {"kind": d.ref.kind, "id": d.ref.id, "via": list(d.via)} for d in refused.dependents
-            ],
+            "dependents": [d.as_dict() for d in refused.dependents],
         }
         for refused in kept
     ]

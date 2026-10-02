@@ -113,6 +113,11 @@ class Reference:
 class Dependent:
     ref: ObjectRef
     via: tuple[str, ...]  # the referring columns, as "table.column"
+    name: str = ""  # what an operator knows it by: a table's name, "table.column", a holder
+
+    def as_dict(self) -> dict[str, Any]:
+        """The dependent as a refusal reports it."""
+        return {"kind": self.ref.kind, "id": self.ref.id, "name": self.name, "via": list(self.via)}
 
 
 KINDS: dict[str, Kind] = {
@@ -351,6 +356,54 @@ async def _referring_rows(
     return [r._mapping for r in rows if _matches(reference, r._mapping[reference.column], wanted)]
 
 
+async def _name_of(conn: "Connection", ref: ObjectRef) -> str:
+    """What an operator knows an object by, for the list a refusal shows. Kinds identified by a
+    surrogate id are named from their row; the others are known by their id."""
+
+    async def row(table: str, key: str, *columns: str):
+        tbl = metadata.tables[table]
+        found = await conn.execute_core(
+            select(*(tbl.c[c] for c in columns)).where(tbl.c[key] == ref.id)
+        )
+        return found.fetchone()
+
+    if ref.kind == "table":
+        found = await row("registered_tables", "id", "table_name")
+        return found[0] if found else str(ref.id)
+    if ref.kind == "column":
+        found = await row("table_columns", "id", "table_id", "column_name")
+        if found is None:
+            return str(ref.id)
+        return f"{await _name_of(conn, ObjectRef('table', found[0]))}.{found[1]}"
+    if ref.kind == "role_assignment":
+        found = await row("user_role_assignments", "id", "user_id", "role_id")
+        return f"{found[0]} holds {found[1]}" if found else str(ref.id)
+    if ref.kind == "row_filter":
+        found = await row("rls_rules", "id", "role_id", "table_id", "domain_id", "action_name")
+        if found is None:
+            return str(ref.id)
+        role_id, table_id, domain_id, action_name = found
+        if table_id is not None:
+            on = await _name_of(conn, ObjectRef("table", table_id))
+        else:
+            on = domain_id or action_name or ""
+        return f"{role_id} on {on}"
+    if ref.kind in ("glossary_term", "data_product"):
+        table = "glossary_terms" if ref.kind == "glossary_term" else "data_products"
+        found = await row(table, "id", "name")
+        return found[0] if found else str(ref.id)
+    return str(ref.id)
+
+
+async def _dependents(conn: "Connection", blocking: dict[ObjectRef, set[str]]) -> list[Dependent]:
+    """``blocking`` (object → the columns it refers through) as the sorted, named list."""
+    named = [
+        Dependent(referrer, tuple(sorted(via)), await _name_of(conn, referrer))
+        for referrer, via in blocking.items()
+    ]
+    return sorted(named, key=lambda d: (d.ref.kind, str(d.ref.id)))
+
+
 def _is_its_own(reference: Reference, row: Mapping[str, Any], ref: ObjectRef) -> bool:
     """True when the referring row is the object's reference to ITSELF, which never blocks it:
     the row is the object, or it is a link row every end of which is the object."""
@@ -381,10 +434,7 @@ async def guard(conn: "Connection", ref: ObjectRef) -> list[Dependent]:
             blocking.setdefault(ObjectRef("table", view_id), set()).add(
                 "registered_tables.view_sql"
             )
-    return sorted(
-        (Dependent(referrer, tuple(sorted(via))) for referrer, via in blocking.items()),
-        key=lambda d: (d.ref.kind, str(d.ref.id)),
-    )
+    return await _dependents(conn, blocking)
 
 
 async def _views_published_over(conn: "Connection", rel_id: str) -> list[int]:
@@ -554,10 +604,7 @@ async def column_dependents(conn: "Connection", table_id: int, column: str) -> l
                 "rls_rules.filter_expr"
             )
 
-    return sorted(
-        (Dependent(referrer, tuple(sorted(via))) for referrer, via in blocking.items()),
-        key=lambda d: (d.ref.kind, str(d.ref.id)),
-    )
+    return await _dependents(conn, blocking)
 
 
 async def view_loop(conn: "Connection", name: str, view_sql: str) -> list[str]:
