@@ -14,6 +14,9 @@ from __future__ import annotations
 
 import asyncio
 import re
+from collections.abc import AsyncGenerator
+from dataclasses import dataclass
+from typing import Any
 
 import httpx
 
@@ -120,7 +123,16 @@ async def _request_with_retry(
     raise ApiCallError("Unreachable: retry loop exhausted")
 
 
-async def _paginate(
+@dataclass
+class Paging:
+    """What the transport knows, after each page, about whether the endpoint has more: True or
+    False where the answer itself says (a next link, a next cursor), None where only the size
+    of the page can (offset and page-number paging, judged by whoever counts its rows)."""
+
+    more: bool | None = None
+
+
+async def _pages(
     client: httpx.AsyncClient,
     endpoint: ApiEndpoint,
     url: str,
@@ -129,8 +141,10 @@ async def _paginate(
     body: dict | None,
     timeout: float,
     form_body: dict | None = None,
-) -> list[dict]:
-    """Follow pagination, collecting all pages."""
+    paging: Paging | None = None,
+) -> AsyncGenerator[Any, None]:
+    """Follow pagination, yielding each page as it arrives: a reader that takes them one at a
+    time holds one page, not the collection."""
     # REQ-1882: `resp.json()` runs a synchronous json.loads over the full buffered body -- for a
     # large source response (confirmed live: neo4j_materialize_cold's 2M-row/485MB unfiltered
     # land) that's tens of milliseconds to double-digit seconds of pure CPU. call_api is reached
@@ -153,9 +167,9 @@ async def _paginate(
             form_body=form_body,
             timeout=timeout,
         )
-        return [await loop.run_in_executor(None, resp.json)]
+        yield await loop.run_in_executor(None, resp.json)
+        return
 
-    pages: list[dict] = []
     max_pages = pagination.max_pages
 
     if pagination.type == PaginationType.link_header:
@@ -173,11 +187,14 @@ async def _paginate(
                 form_body=form_body,
                 timeout=timeout,
             )
-            pages.append(await loop.run_in_executor(None, resp.json))
+            page = await loop.run_in_executor(None, resp.json)
             link = resp.headers.get("link", "")
             match = re.search(r'<([^>]+)>;\s*rel="next"', link)
             next_url = match.group(1) if match else None
             params = {}  # subsequent pages use full URL from link
+            if paging is not None:
+                paging.more = next_url is not None
+            yield page
 
     elif pagination.type == PaginationType.cursor:
         cursor_param = pagination.cursor_param or "cursor"
@@ -194,8 +211,10 @@ async def _paginate(
                 timeout=timeout,
             )
             data = await loop.run_in_executor(None, resp.json)
-            pages.append(data)
             cursor = data.get(cursor_field) if isinstance(data, dict) else None
+            if paging is not None:
+                paging.more = bool(cursor)
+            yield data
             if not cursor:
                 break
             params = dict(params or {})
@@ -221,7 +240,7 @@ async def _paginate(
                 timeout=timeout,
             )
             data = await loop.run_in_executor(None, resp.json)
-            pages.append(data)
+            yield data
             # Heuristic: if response is a list shorter than page_size, we're done
             if isinstance(data, list) and len(data) < page_size:
                 break
@@ -246,11 +265,28 @@ async def _paginate(
                 timeout=timeout,
             )
             data = await loop.run_in_executor(None, resp.json)
-            pages.append(data)
+            yield data
             if isinstance(data, list) and len(data) < page_size:
                 break
 
-    return pages
+
+async def _paginate(
+    client: httpx.AsyncClient,
+    endpoint: ApiEndpoint,
+    url: str,
+    params: dict,
+    headers: dict,
+    body: dict | None,
+    timeout: float,
+    form_body: dict | None = None,
+) -> list[dict]:
+    """Follow pagination, collecting all pages."""
+    return [
+        page
+        async for page in _pages(
+            client, endpoint, url, params, headers, body, timeout, form_body=form_body
+        )
+    ]
 
 
 def _apply_auth(auth, headers: dict, query_params: dict) -> None:  # REQ-320
@@ -335,20 +371,24 @@ def _fetch_oauth2_token(oauth) -> str:  # REQ-320
     return token
 
 
-async def call_api(  # REQ-295, REQ-297, REQ-298, REQ-316
-    endpoint: ApiEndpoint,
-    resolved_params: dict,
-    base_url: str = "",
-    auth=None,
-    timeout: float = _DEFAULT_TIMEOUT,
-    total_timeout: float = _DEFAULT_TOTAL_TIMEOUT,
-) -> list[dict]:
-    """Make the API call and return raw response data (list of page responses).
+@dataclass(frozen=True)
+class PreparedCall:
+    """One API call as it is sent: where, with what, and how its body is encoded."""
 
-    ``timeout`` bounds each individual connect/read/write op (httpx semantics); ``total_timeout``
-    bounds the whole call's wall-clock time, including every paginated page, so a response that
-    streams continuously without ever idling still fails explicitly instead of outrunning a
-    caller's own external deadline (see module docstring on ``_DEFAULT_TOTAL_TIMEOUT``)."""
+    method: str
+    url: str
+    params: dict
+    headers: dict
+    json_body: dict | None
+    form_body: dict | None
+
+
+def prepare_call(
+    endpoint: ApiEndpoint, resolved_params: dict, base_url: str = "", auth: Any = None
+) -> PreparedCall:
+    """The HTTP call ``endpoint`` makes with ``resolved_params``: its URL under ``base_url``,
+    its auth applied, its body encoded as the endpoint declares. Not for a gRPC endpoint
+    (``method == "RPC"``), which is not an HTTP call."""
     url, query_params, headers, body = _build_request_parts(endpoint, resolved_params)
 
     # Prepend base_url if path is relative
@@ -363,8 +403,6 @@ async def call_api(  # REQ-295, REQ-297, REQ-298, REQ-316
     if endpoint.method == "QUERY":
         body = body or {}
         json_body = {"query": endpoint.path, "variables": body}
-    elif endpoint.method == "RPC":
-        return await _call_grpc(endpoint, resolved_params, base_url)
     elif endpoint.body_encoding == "neo4j_tx":
         # REQ-1668: Neo4j HTTP transaction API (/db/{db}/tx/commit) — the endpoint every 5.x
         # server exposes; the Query API v2 (/query/v2) is absent (404) on the community images.
@@ -385,29 +423,78 @@ async def call_api(  # REQ-295, REQ-297, REQ-298, REQ-316
             form_body.update(body)
     else:
         json_body = body
+    return PreparedCall(endpoint.method, url, query_params, headers, json_body, form_body)
+
+
+async def call_api(  # REQ-295, REQ-297, REQ-298, REQ-316
+    endpoint: ApiEndpoint,
+    resolved_params: dict,
+    base_url: str = "",
+    auth=None,
+    timeout: float = _DEFAULT_TIMEOUT,
+    total_timeout: float = _DEFAULT_TOTAL_TIMEOUT,
+) -> list[dict]:
+    """Make the API call and return raw response data (list of page responses).
+
+    ``timeout`` bounds each individual connect/read/write op (httpx semantics); ``total_timeout``
+    bounds the whole call's wall-clock time, including every paginated page, so a response that
+    streams continuously without ever idling still fails explicitly instead of outrunning a
+    caller's own external deadline (see module docstring on ``_DEFAULT_TOTAL_TIMEOUT``)."""
+    if endpoint.method == "RPC":
+        return await _call_grpc(endpoint, resolved_params, base_url)
+    call = prepare_call(endpoint, resolved_params, base_url, auth)
 
     async def _run() -> list[dict]:
         async with httpx.AsyncClient() as client:
             return await _paginate(
                 client,
                 endpoint,
-                url,
-                query_params,
-                headers,
-                body=json_body,
+                call.url,
+                call.params,
+                call.headers,
+                body=call.json_body,
                 timeout=timeout,
-                form_body=form_body,
+                form_body=call.form_body,
             )
 
     try:
         return await asyncio.wait_for(_run(), timeout=total_timeout)
     except asyncio.TimeoutError as exc:
         raise ApiCallError(
-            f"API call to {url!r} exceeded total_timeout={total_timeout}s "
+            f"API call to {call.url!r} exceeded total_timeout={total_timeout}s "
             f"(source={endpoint.source_id!r}, table={endpoint.table_name!r}) -- "
             f"response kept streaming without idling past a single connect/read op, so httpx's "
             f"per-op timeout={timeout}s never tripped"
         ) from exc
+
+
+async def iter_api_pages(  # REQ-1915
+    endpoint: ApiEndpoint,
+    resolved_params: dict,
+    base_url: str = "",
+    auth: Any = None,
+    timeout: float = _DEFAULT_TIMEOUT,
+    paging: Paging | None = None,
+) -> AsyncGenerator[Any, None]:
+    """The pages of a paginated HTTP call, one at a time as each arrives, for a reader that
+    copies a whole collection (a replica build). It holds one page at a time, and has no total
+    time limit: a build is not under a request's deadline, and each page is under ``timeout``.
+    It stops at the endpoint's ``max_pages`` like every call; ``paging`` tells the reader
+    whether the endpoint had more."""
+    call = prepare_call(endpoint, resolved_params, base_url, auth)
+    async with httpx.AsyncClient() as client:
+        async for page in _pages(
+            client,
+            endpoint,
+            call.url,
+            call.params,
+            call.headers,
+            call.json_body,
+            timeout,
+            form_body=call.form_body,
+            paging=paging,
+        ):
+            yield page
 
 
 async def _call_grpc(  # REQ-322, REQ-325

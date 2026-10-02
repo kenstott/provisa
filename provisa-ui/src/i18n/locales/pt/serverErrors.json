@@ -201,6 +201,15 @@
       "role_header_required": "Cabeçalho X-Provisa-Role necessário para criar o perfil de uma exibição",
       "table_not_found": "Tabela {{table_id}} não encontrada"
     },
+    "replication": {
+      "spool_full": "A compilação da réplica de {{table}} foi recusada: armazenar em spool a resposta da origem exige {{needed}} bytes do diretório de spool deste nó, acima do limite de {{limit}} (replication.spool_max_bytes).",
+      "answer_not_json": "A resposta lida para a réplica de {{table}} não é JSON válido: {{cause}} (nos {{kib}} KiB anteriores ao byte {{before_byte}} da resposta).",
+      "no_whole_copy": "A tabela {{schema}}.{{table}} da origem {{source}} não tem uma cópia completa para compilar: ela é replicada linha a linha ou tem uma coluna de parâmetro.",
+      "table_gone": "A tabela {{schema}}.{{table}} da origem {{source}} não está mais registrada, portanto sua réplica não é compilada.",
+      "page_limit_reached": "A réplica de {{table}} não foi compilada: a paginação do endpoint para em max_pages={{max_pages}}, e o endpoint tinha mais dados após a página {{max_pages}} ({{rows}} linhas lidas). Uma réplica é a tabela inteira, portanto não é cortada no limite. Aumente max_pages ou o tamanho de página do endpoint.",
+      "waiting_engine_jobs": "o mecanismo está no limite de tarefas em segundo plano (replication.engine_jobs)",
+      "waiting_source_cap": "a origem está no limite de leituras ao vivo (max_live_concurrency)"
+    },
     "roles": {
       "cannot_delete_system": "Não é possível excluir funções do sistema",
       "cannot_modify_administrative": "Não é possível modificar funções administrativas",

@@ -290,6 +290,25 @@ async def test_row_materialize_table_is_never_built_whole(wiring, plane):
 
 
 @pytest.mark.asyncio
+async def test_a_table_with_a_parameter_column_is_never_built_whole(wiring, plane):
+    """A table with a parameter column is a function of its arguments: there is no whole to
+    copy. A statement that reaches it asks for no build — the runner would call the endpoint
+    with no arguments — while its plain sibling is built as ever."""
+    by_id = _table(
+        "api",
+        "get_pet_by_id",
+        columns=[
+            SimpleNamespace(name="id", native_filter_type=None),
+            SimpleNamespace(name="pet_id", native_filter_type="path_param"),
+        ],
+    )
+    pets = _table("api", "list_pets", columns=[SimpleNamespace(name="id", native_filter_type=None)])
+    state = _state([_source("api", cache_ttl=60)], [by_id, pets], _Backend(), plane)
+    built = await _ensure(state, ["api"])
+    assert built == [("api", "list_pets")] and wiring.built == [_key(pets)]
+    assert await _record(plane, by_id) is None
+
+
 async def test_a_source_whose_tables_are_all_row_level_costs_nothing(wiring, plane):
     """REQ-1915: a table replicated row by row is read by key only, so there is no whole-table
     path for it: nothing is requested and no control-plane statement is issued, and the function
@@ -299,7 +318,7 @@ async def test_a_source_whose_tables_are_all_row_level_costs_nothing(wiring, pla
         "bench_order_node",
         schema="neo4j",
         row_materialize=True,
-        columns=[SimpleNamespace(name="order_id", is_primary_key=True)],
+        columns=[SimpleNamespace(name="order_id", is_primary_key=True, native_filter_type=None)],
     )
     state = _state([_source("bench-neo4j")], [order], _Backend(), plane)
     assert await _ensure(state, {"bench-neo4j"}) == []
@@ -541,7 +560,9 @@ async def test_a_row_materialize_flag_is_ignored_when_the_engine_attaches_the_so
                 "order_docs",
                 schema="provisa_bench",
                 row_materialize=True,
-                columns=[SimpleNamespace(name="order_id", is_primary_key=True)],
+                columns=[
+                    SimpleNamespace(name="order_id", is_primary_key=True, native_filter_type=None)
+                ],
             )
         ],
         backend,
@@ -566,7 +587,9 @@ async def test_the_flag_applies_when_the_engine_cannot_attach_the_source(wiring,
                 "order_docs",
                 schema="provisa_bench",
                 row_materialize=True,
-                columns=[SimpleNamespace(name="order_id", is_primary_key=True)],
+                columns=[
+                    SimpleNamespace(name="order_id", is_primary_key=True, native_filter_type=None)
+                ],
             ),
             _table("mongo", "order_tags", schema="provisa_bench"),
         ],

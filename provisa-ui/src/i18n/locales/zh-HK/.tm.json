@@ -4663,11 +4663,18 @@
   "zh-HK/replicaBuild.json::replicaBuild.building": "Replica building: {{rows}} rows copied, {{rate}} rows/s ({{how}}).",
   "zh-HK/replicaBuild.json::replicaBuild.buildingNoRate": "Replica building ({{how}}).",
   "zh-HK/replicaBuild.json::replicaBuild.built": "Replica built {{when}}: {{rows}} rows ({{how}}).",
-  "zh-HK/replicaBuild.json::replicaBuild.failed": "Replica build failed: {{error}}",
+  "zh-HK/replicaBuild.json::replicaBuild.failed": "Replica build failed (attempt {{attempts}}; it is tried again): {{error}}",
   "zh-HK/replicaBuild.json::replicaBuild.retired": "This table is no longer replicated; its replica is being removed.",
   "zh-HK/replicaBuild.json::replicaBuild.convergenceError": "Replicas are not being brought in line with the model: {{error}}",
   "zh-HK/replicaBuild.json::replicaBuild.method.engine_statement": "copied by the engine",
   "zh-HK/replicaBuild.json::replicaBuild.method.stream_batches": "streamed in batches",
   "zh-HK/replicaBuild.json::replicaBuild.loadKind.bulk_stream": "bulk stream",
-  "zh-HK/replicaBuild.json::replicaBuild.loadKind.row_copy": "row copy"
+  "zh-HK/replicaBuild.json::replicaBuild.loadKind.row_copy": "row copy",
+  "zh-HK/serverErrors.json::serverErrors.replication.spool_full": "The replica build of {{table}} was refused: spooling its source's answer needs {{needed}} bytes of this node's spool directory, over the limit of {{limit}} (replication.spool_max_bytes).",
+  "zh-HK/serverErrors.json::serverErrors.replication.answer_not_json": "The answer read for the replica of {{table}} is not valid JSON: {{cause}} (in the {{kib}} KiB before byte {{before_byte}} of the answer).",
+  "zh-HK/serverErrors.json::serverErrors.replication.no_whole_copy": "Table {{schema}}.{{table}} of source {{source}} has no whole copy to build: it is replicated row by row, or it has a parameter column.",
+  "zh-HK/serverErrors.json::serverErrors.replication.table_gone": "Table {{schema}}.{{table}} of source {{source}} is no longer registered, so its replica is not built.",
+  "zh-HK/serverErrors.json::serverErrors.replication.page_limit_reached": "The replica of {{table}} was not built: its endpoint's paging stops at max_pages={{max_pages}}, and the endpoint had more after page {{max_pages}} ({{rows}} rows read). A replica is the whole table, so it is not cut at the cap. Raise the endpoint's max_pages or its page size.",
+  "zh-HK/serverErrors.json::serverErrors.replication.waiting_engine_jobs": "the engine is at its background job cap (replication.engine_jobs)",
+  "zh-HK/serverErrors.json::serverErrors.replication.waiting_source_cap": "the source is at its live-read cap (max_live_concurrency)"
 }

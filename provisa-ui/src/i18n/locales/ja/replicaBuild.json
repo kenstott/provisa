@@ -6,7 +6,7 @@
     "building": "レプリカをビルド中: {{rows}} 行をコピー済み、{{rate}} 行/秒 ({{how}})。",
     "buildingNoRate": "レプリカをビルド中 ({{how}})。",
     "built": "レプリカは {{when}} にビルドされました: {{rows}} 行 ({{how}})。",
-    "failed": "レプリカのビルドに失敗しました: {{error}}",
+    "failed": "レプリカのビルドに失敗しました（{{attempts}} 回目。再試行されます）: {{error}}",
     "retired": "このテーブルはレプリケートされなくなりました。レプリカを削除しています。",
     "convergenceError": "レプリカがモデルに合わせて更新されていません: {{error}}",
     "method": {

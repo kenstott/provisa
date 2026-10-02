@@ -6,7 +6,7 @@
     "building": "Build della replica in corso: {{rows}} righe copiate, {{rate}} righe/s ({{how}}).",
     "buildingNoRate": "Build della replica in corso ({{how}}).",
     "built": "Replica creata {{when}}: {{rows}} righe ({{how}}).",
-    "failed": "Build della replica non riuscita: {{error}}",
+    "failed": "Build della replica non riuscita (tentativo {{attempts}}; viene ritentata): {{error}}",
     "retired": "Questa tabella non è più replicata; la sua replica è in fase di rimozione.",
     "convergenceError": "Le repliche non vengono allineate al modello: {{error}}",
     "method": {

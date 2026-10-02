@@ -1193,8 +1193,17 @@ class ReplicaBuildType:  # REQ-1915
     rows_per_second: float | None  # a running build's rate so far
     completed_at: str | None  # None: there is no replica yet
     next_refresh_at: str | None
+    # The last failure: its English text, and (REQ-1350) the code and params the UI renders
+    # in its own language when the cause is one Provisa names.
     last_error: str | None
-    waiting_on: str | None  # why a requested build has not started
+    last_error_code: str | None
+    last_error_params: JsonScalar | None
+    # Builds that have failed in a row since the last one that completed. A failing build is
+    # tried again every ``replication.retry_interval``.
+    failed_attempts: int
+    # Why a requested build has not started: English text and its code.
+    waiting_on: str | None
+    waiting_on_code: str | None
 
 
 @strawberry.type

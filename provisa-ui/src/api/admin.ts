@@ -1487,8 +1487,15 @@ export interface ReplicaBuild {
   /** null: there is no replica yet. */
   completedAt: string | null;
   nextRefreshAt: string | null;
+  /** The last failure, in English; with (REQ-1350) its code and params when the cause is a named one. */
   lastError: string | null;
+  lastErrorCode: string | null;
+  lastErrorParams: Record<string, unknown> | null;
+  /** Builds that have failed in a row since the last one that completed. */
+  failedAttempts: number;
+  /** Why a requested build has not started: English text and its code. */
   waitingOn: string | null;
+  waitingOnCode: string | null;
 }
 
 export interface ReplicaBuilds {

@@ -11,8 +11,11 @@
 // REQ-1915: what the table form says about a table's replica build, as one line.
 
 import type { ReplicaBuild } from "../../api/admin";
+import type { ServerMessageShape } from "../../i18n/serverMessage";
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
+/** A server message in the reader's language: its code when the catalog has it, else its English text. */
+type ServerText = (body: ServerMessageShape, fallback: string) => string;
 
 /** How a build copies, in words: "streamed in batches, row copy". */
 function how(build: ReplicaBuild, t: Translate): string {
@@ -28,6 +31,7 @@ export function replicaBuildLine(
   t: Translate,
   formatNumber: (n: number) => string,
   formatWhen: (iso: string) => string,
+  serverText: ServerText,
 ): string {
   if (!build) return t("replicaBuild.none");
   const rows = formatNumber(build.rowsCopied ?? 0);
@@ -35,10 +39,18 @@ export function replicaBuildLine(
     case "retired":
       return t("replicaBuild.retired");
     case "failed":
-      return t("replicaBuild.failed", { error: build.lastError ?? "" });
+      return t("replicaBuild.failed", {
+        attempts: formatNumber(build.failedAttempts),
+        error: serverText(
+          { code: build.lastErrorCode, params: build.lastErrorParams, message: build.lastError },
+          "",
+        ),
+      });
     case "requested":
       return build.waitingOn
-        ? t("replicaBuild.waiting", { waitingOn: build.waitingOn })
+        ? t("replicaBuild.waiting", {
+            waitingOn: serverText({ code: build.waitingOnCode, message: build.waitingOn }, ""),
+          })
         : t("replicaBuild.requested");
     case "building":
       return build.rowsPerSecond !== null

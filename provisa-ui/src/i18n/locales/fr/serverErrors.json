@@ -201,6 +201,15 @@
       "role_header_required": "En-tête X-Provisa-Role requis pour profiler une vue",
       "table_not_found": "Table {{table_id}} introuvable"
     },
+    "replication": {
+      "spool_full": "La construction de la réplique de {{table}} a été refusée : la mise en spool de la réponse de sa source nécessite {{needed}} octets du répertoire de spool de ce nœud, au-delà de la limite de {{limit}} (replication.spool_max_bytes).",
+      "answer_not_json": "La réponse lue pour la réplique de {{table}} n'est pas du JSON valide : {{cause}} (dans les {{kib}} Kio précédant l'octet {{before_byte}} de la réponse).",
+      "no_whole_copy": "La table {{schema}}.{{table}} de la source {{source}} n'a pas de copie complète à construire : elle est répliquée ligne par ligne ou comporte une colonne de paramètre.",
+      "table_gone": "La table {{schema}}.{{table}} de la source {{source}} n'est plus enregistrée ; sa réplique n'est donc pas construite.",
+      "page_limit_reached": "La réplique de {{table}} n'a pas été construite : la pagination de son point de terminaison s'arrête à max_pages={{max_pages}}, et le point de terminaison avait encore des données après la page {{max_pages}} ({{rows}} lignes lues). Une réplique est la table entière ; elle n'est donc pas tronquée à la limite. Augmentez max_pages ou la taille de page du point de terminaison.",
+      "waiting_engine_jobs": "le moteur a atteint sa limite de tâches d'arrière-plan (replication.engine_jobs)",
+      "waiting_source_cap": "la source a atteint sa limite de lectures en direct (max_live_concurrency)"
+    },
     "roles": {
       "cannot_delete_system": "Impossible de supprimer les rôles système",
       "cannot_modify_administrative": "Impossible de modifier les rôles administratifs",

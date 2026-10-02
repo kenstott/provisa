@@ -201,6 +201,15 @@
       "role_header_required": "X-Provisa-Role-header vereist om een view te profileren",
       "table_not_found": "Tabel {{table_id}} niet gevonden"
     },
+    "replication": {
+      "spool_full": "De replica-build van {{table}} is geweigerd: het spoolen van het antwoord van de bron vereist {{needed}} bytes in de spoolmap van dit knooppunt, boven de limiet van {{limit}} (replication.spool_max_bytes).",
+      "answer_not_json": "Het antwoord dat voor de replica van {{table}} is gelezen, is geen geldige JSON: {{cause}} (in de {{kib}} KiB vóór byte {{before_byte}} van het antwoord).",
+      "no_whole_copy": "Tabel {{schema}}.{{table}} van bron {{source}} heeft geen volledige kopie om te bouwen: ze wordt rij voor rij gerepliceerd of heeft een parameterkolom.",
+      "table_gone": "Tabel {{schema}}.{{table}} van bron {{source}} is niet meer geregistreerd, dus de replica ervan wordt niet gebouwd.",
+      "page_limit_reached": "De replica van {{table}} is niet gebouwd: de paginering van het endpoint stopt bij max_pages={{max_pages}}, en het endpoint had meer gegevens na pagina {{max_pages}} ({{rows}} rijen gelezen). Een replica is de hele tabel en wordt dus niet afgekapt bij de limiet. Verhoog max_pages of de paginagrootte van het endpoint.",
+      "waiting_engine_jobs": "de engine zit aan zijn limiet voor achtergrondtaken (replication.engine_jobs)",
+      "waiting_source_cap": "de bron zit aan zijn limiet voor live-leesbewerkingen (max_live_concurrency)"
+    },
     "roles": {
       "cannot_delete_system": "Systeemrollen kunnen niet worden verwijderd",
       "cannot_modify_administrative": "Beheerdersrollen kunnen niet worden gewijzigd",

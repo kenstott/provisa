@@ -94,6 +94,31 @@ def still_answers(built_columns: list | None, columns: list[tuple[str, str]]) ->
     return all((name, ir_type) in have for name, ir_type in columns)
 
 
+def _field(holder: Any, name: str) -> Any:
+    return holder[name] if isinstance(holder, dict) else getattr(holder, name)
+
+
+def whole_copy(source: Any, table: Any, engine: Any) -> bool:
+    """Whether the replica of ``table`` is a whole copy of it, the kind a build makes. Two
+    kinds of table are served from the store and never built whole:
+
+    - one replicated row by row (REQ-1865, where the engine cannot attach its source): its rows
+      are fetched by key when a statement asks for them, never ahead of one;
+    - one with a parameter column: it is a function of its arguments, with no whole to copy.
+
+    The one answer for convergence (no build is requested), the read backstop (no build is
+    requested or awaited) and the build itself (it refuses). ``table`` is a registered table as
+    the registry gives it, a row or a model; ``engine`` the runtime or the federation engine."""
+    from provisa.federation.strategy import engine_attaches
+
+    if any(_field(c, "native_filter_type") is not None for c in _field(table, "columns")):
+        return False
+    row_level = _field(table, "row_materialize") and not engine_attaches(
+        engine, _plain(source.type)
+    )
+    return not row_level
+
+
 def builds_here(state: Any, key: ReplicaKey) -> bool:
     """Whether this node builds the replica ``key``: the one question both convergence and the
     runner's claim ask. Every node that does background work builds every replica; a table
@@ -131,15 +156,21 @@ async def converge_replicas(state: Any) -> Converged:
     store = replica_builds.store_identity(state)
     org_id = _org()
 
-    declared = {
-        (src.id, reg["schema_name"], reg["table_name"])
+    served = [
+        ((src.id, reg["schema_name"], reg["table_name"]), src, reg)
         for src, reg in await replica_tables(engine, state)
-    }
+    ]
+    declared = {key for key, _src, _reg in served}
+    # Of those, the ones a build makes: a row-level or parameterized table is declared (its
+    # table at the resolver's address is never retired) and never built.
+    whole = {key for key, src, reg in served if whole_copy(src, reg, engine)}
     # The tables of those whose columns are all resolved: what a build needs. One whose type
     # is not resolved yet is declared (never retired) and built once it is.
     shapes: dict[ReplicaKey, tuple[str, list[tuple[str, str]]]] = {}
     for src, schema_name, table_name, columns, pk_columns in await landing_worklist(engine, state):
         key = (src.id, schema_name, table_name)
+        if key not in whole:
+            continue
         address = backend.replica_address(
             state, source_id=src.id, schema_name=schema_name, table_name=table_name
         )
