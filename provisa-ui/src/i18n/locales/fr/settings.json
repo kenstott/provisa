@@ -140,6 +140,10 @@
       "retry_interval": {
         "label": "Intervalle de nouvelle tentative de construction de réplique",
         "help": "Après l'échec de la construction d'une réplique, une lecture ne demande pas d'autre construction avant que ce délai soit écoulé."
+      },
+      "spool_max_bytes": {
+        "label": "Limite de disque pour le stockage temporaire des répliques",
+        "help": "L'espace disque maximal que ce nœud utilise pour conserver la réponse d'une source dans un fichier temporaire pendant la construction de sa réplique. S'applique aux sources qui répondent par un seul document et ne peuvent pas être lues par un curseur. Une construction qui dépasserait la limite échoue ; rien n'est tronqué."
       }
     },
     "security": {

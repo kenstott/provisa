@@ -208,6 +208,19 @@ DECLARED: list[Setting] = [
         min=0,
         unit="seconds",
     ),
+    Setting(
+        key="replication.spool_max_bytes",
+        card="limits",
+        type="int",
+        effect="live",  # read when a build opens its spool
+        # 2 GiB: the most disk a node's spool directory holds for single-document sources being
+        # replicated; a build that would pass it fails by name.
+        req="REQ-1915",
+        env="PROVISA_REPLICATION_SPOOL_MAX_BYTES",
+        default=2 * 1024**3,
+        min=0,
+        unit="bytes",
+    ),
     # --- Concurrency -----------------------------------------------------------------------------
     Setting(
         key="concurrency.background_workers",

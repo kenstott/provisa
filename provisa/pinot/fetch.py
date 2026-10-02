@@ -31,6 +31,7 @@ shape kafka's schema-registry-URL resolution already uses (REQ-1730's own kafka 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Iterator
 from typing import Any
 
 import httpx
@@ -142,6 +143,28 @@ def fetch_rows(conn: PinotConnection, table: str, columns: list[str]) -> list[di
     result = body.get("resultTable", {})
     names = result.get("dataSchema", {}).get("columnNames", [])
     return [dict(zip(names, row, strict=False)) for row in result.get("rows", [])]
+
+
+def iter_rows_spooled(
+    conn: PinotConnection, table: str, columns: list[str], spooled: Any
+) -> Iterator[dict]:  # REQ-1915
+    """:func:`fetch_rows`, with the broker's answer written to a spool file as it arrives and
+    parsed from the file: first its ``exceptions`` (a failed query is refused before any row is
+    read), then the column names, then the rows one at a time."""
+    from provisa.federation.replica_spool import json_items
+
+    select = ", ".join(f'"{c}"' for c in columns) if columns else "*"
+    sql = f'SELECT {select} FROM "{table}" LIMIT {_MAX_ROWS}'
+    with httpx.Client(timeout=60.0) as c:
+        with spooled(
+            lambda: c.stream("POST", f"{conn.broker_url}/query/sql", json={"sql": sql})
+        ) as body:
+            exceptions = list(json_items(body, "exceptions.item"))
+            if exceptions:
+                raise ValueError(f"Pinot query {sql!r} failed: {exceptions}")
+            names = [str(n) for n in json_items(body, "resultTable.dataSchema.columnNames.item")]
+            for row in json_items(body, "resultTable.rows.item"):
+                yield dict(zip(names, row, strict=False))
 
 
 def _sql_literal(value: Any) -> str:

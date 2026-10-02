@@ -59,6 +59,8 @@ class SourceRead(str, Enum):
     ARROW_STREAM = "arrow_stream"  # the driver yields Arrow record batches
     CURSOR = "cursor"  # the driver yields bounded batches of rows from a cursor
     SINGLE_DOCUMENT = "single_document"  # the source answers with one document, held whole
+    # one document, written to a file on this node as it arrives and parsed from it in batches
+    SINGLE_DOCUMENT_SPOOLED = "single_document_spooled"
 
 
 class TargetWrite(str, Enum):
@@ -93,8 +95,16 @@ class Method(str, Enum):
 
 
 _STREAMED_READS = frozenset(
-    {SourceRead.ARROW_STREAM, SourceRead.CURSOR, SourceRead.SINGLE_DOCUMENT}
+    {
+        SourceRead.ARROW_STREAM,
+        SourceRead.CURSOR,
+        SourceRead.SINGLE_DOCUMENT,
+        SourceRead.SINGLE_DOCUMENT_SPOOLED,
+    }
 )
+#: Reads the admin page and the documentation mark as not optimal: the source has no cursor
+#: and produces its whole answer for every build, in memory or in a file on the node.
+NOT_OPTIMAL_READS = frozenset({SourceRead.SINGLE_DOCUMENT, SourceRead.SINGLE_DOCUMENT_SPOOLED})
 _STREAMED_WRITES = frozenset({TargetWrite.COPY_STREAM, TargetWrite.BULK_BATCH})
 
 

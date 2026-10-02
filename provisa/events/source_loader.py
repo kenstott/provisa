@@ -586,6 +586,20 @@ def make_pinot_loader() -> AdapterLoader:
         conn = PinotConnection.build(source.host, source.port, hints.get("pinot_broker_url"))
         return await asyncio.to_thread(fetch_rows, conn, table.table_name, columns)
 
+    def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        from provisa.federation.replica_spool import SpooledDocumentSource
+        from provisa.pinot.fetch import iter_rows_spooled
+
+        hints = getattr(source, "federation_hints", None) or {}
+        conn = PinotConnection.build(source.host, source.port, hints.get("pinot_broker_url"))
+        names = [name for name, _ in columns]
+        return SpooledDocumentSource(
+            lambda spooled: iter_rows_spooled(conn, table.table_name, names, spooled),
+            columns,
+            table=f"{source.id}.{table.table_name}",
+        )
+
+    _load.replica_source = _replica_source  # type: ignore[attr-defined]
     return _load
 
 
@@ -620,6 +634,19 @@ def make_druid_loader() -> AdapterLoader:
         conn = DruidConnection.build(source.host, source.port)
         return await asyncio.to_thread(fetch_rows, conn, table.table_name, columns)
 
+    def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        from provisa.druid.fetch import iter_rows_spooled
+        from provisa.federation.replica_spool import SpooledDocumentSource
+
+        conn = DruidConnection.build(source.host, source.port)
+        names = [name for name, _ in columns]
+        return SpooledDocumentSource(
+            lambda spooled: iter_rows_spooled(conn, table.table_name, names, spooled),
+            columns,
+            table=f"{source.id}.{table.table_name}",
+        )
+
+    _load.replica_source = _replica_source  # type: ignore[attr-defined]
     return _load
 
 
@@ -1292,6 +1319,25 @@ def make_prometheus_loader() -> AdapterLoader:
             return []
         return await asyncio.to_thread(fetch_rows, conn, mapping, table.table_name, names)
 
+    def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        from provisa.federation.replica_spool import SpooledDocumentSource
+        from provisa.prometheus.fetch import iter_rows_spooled
+
+        mapping = getattr(source, "mapping", None) or {}
+        conn = PrometheusConnection.build(
+            resolve_secrets(
+                endpoint_url(getattr(source, "host", None), getattr(source, "port", None), mapping)
+            ),
+            token=resolve_secrets(getattr(source, "password", "") or "") or None,
+        )
+        names = [name for name, _ in columns]
+        return SpooledDocumentSource(
+            lambda spooled: iter_rows_spooled(conn, mapping, table.table_name, names, spooled),
+            columns,
+            table=f"{source.id}.{table.table_name}",
+        )
+
+    _load.replica_source = _replica_source  # type: ignore[attr-defined]
     return _load
 
 
@@ -1329,6 +1375,18 @@ def make_rss_loader() -> AdapterLoader:
         events = await provider.poll_once(table.table_name)
         return [event.row for event in events]
 
+    def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        from provisa.federation.replica_spool import SpooledDocumentSource
+        from provisa.subscriptions.rss_provider import iter_rows_spooled
+
+        url = _feed_url(source)
+        return SpooledDocumentSource(
+            lambda spooled: iter_rows_spooled(url, spooled),
+            columns,
+            table=f"{source.id}.{table.table_name}",
+        )
+
+    _load.replica_source = _replica_source  # type: ignore[attr-defined]
     return _load
 
 
@@ -1393,9 +1451,9 @@ def make_graphql_remote_loader(gql_sources: dict[str, Any]) -> AdapterLoader:
     its name for nested object fields). A table with no matching registration raises
     :class:`UnsupportedSourceFetch`."""
 
-    async def _load(source: Any, table: Any) -> list[dict]:
+    def _request(source: Any, table: Any) -> dict:
+        """The remote call for ``table``: url, auth, field name and column selections."""
         from provisa.compiler.naming import apply_gql_name, apply_sql_name
-        from provisa.graphql_remote.executor import execute_remote
 
         normalised = apply_sql_name(table.table_name)
         for reg in gql_sources.values():
@@ -1416,15 +1474,35 @@ def make_graphql_remote_loader(gql_sources: dict[str, Any]) -> AdapterLoader:
                         return gql_field if sql_name == gql_field else f"{sql_name}: {gql_field}"
 
                     col_selections = [_selection(c) for c in cols]
-                    return await execute_remote(
-                        url=reg["url"],
-                        auth=reg.get("auth"),
-                        field_name=tbl.get("field_name") or tbl["name"],
-                        columns=col_selections,
-                    )
+                    return {
+                        "url": reg["url"],
+                        "auth": reg.get("auth"),
+                        "field_name": tbl.get("field_name") or tbl["name"],
+                        "columns": col_selections,
+                    }
         raise UnsupportedSourceFetch(
             f"graphql_remote source {source.id!r} table {table.table_name!r}: no matching "
             f"registration in graphql_remote_sources"
         )
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        from provisa.graphql_remote.executor import execute_remote
+
+        return await execute_remote(**_request(source, table))
+
+    def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        from provisa.federation.replica_spool import SpooledDocumentSource
+        from provisa.graphql_remote.executor import iter_remote_rows_spooled
+
+        request = _request(source, table)
+        return SpooledDocumentSource(
+            lambda spooled: iter_remote_rows_spooled(
+                request["url"], request["auth"], request["field_name"], request["columns"], spooled
+            ),
+            columns,
+            table=f"{source.id}.{table.table_name}",
+        )
+
+    _load.replica_source = _replica_source  # type: ignore[attr-defined]
 
     return _load

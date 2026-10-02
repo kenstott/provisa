@@ -23,6 +23,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from collections.abc import Iterator
 from typing import Any
 
 import httpx
@@ -102,34 +103,61 @@ def table_metric(mapping: dict, table_name: str) -> tuple[str, str, str]:  # REQ
     )
 
 
-def fetch_rows(
-    conn: PrometheusConnection, mapping: dict, table_name: str, columns: list[str]
-) -> list[dict]:  # REQ-1689
-    """Every sample of the metric over the table's range as a row of ``columns``: ``timestamp``
-    (UTC), the value column (float), and each other column from the sample's labels."""
+def _range_params(mapping: dict, table_name: str) -> tuple[dict, str]:
+    """The ``query_range`` parameters for the table's metric over its range, and its value
+    column."""
     metric, value_column, spec = table_metric(mapping, table_name)
     seconds = range_seconds(spec)
     end = datetime.now(UTC).timestamp()
     start = end - seconds
     step = max(1, seconds // _MAX_POINTS + (1 if seconds % _MAX_POINTS else 0), 15)
+    return {"query": metric, "start": start, "end": end, "step": step}, value_column
+
+
+def _series_rows(series: dict, columns: list[str], value_column: str) -> Iterator[dict]:
+    """One series' samples as rows of ``columns``: ``timestamp`` (UTC), the value column
+    (float), and each other column from the series' labels."""
+    labels = series.get("metric", {})
+    for ts, val in series.get("values", []):
+        row: dict = {}
+        for col in columns:
+            if col == "timestamp":
+                row[col] = datetime.fromtimestamp(float(ts), tz=UTC)
+            elif col == value_column:
+                row[col] = float(val)
+            else:
+                row[col] = labels.get(col)
+        yield row
+
+
+def fetch_rows(
+    conn: PrometheusConnection, mapping: dict, table_name: str, columns: list[str]
+) -> list[dict]:  # REQ-1689
+    """Every sample of the metric over the table's range as a row of ``columns``: ``timestamp``
+    (UTC), the value column (float), and each other column from the sample's labels."""
+    params, value_column = _range_params(mapping, table_name)
     with conn._client() as c:
-        result = _data(
-            c.get(
-                "/api/v1/query_range",
-                params={"query": metric, "start": start, "end": end, "step": step},
-            )
-        )
+        result = _data(c.get("/api/v1/query_range", params=params))
     rows: list[dict] = []
     for series in (result or {}).get("result", []):
-        labels = series.get("metric", {})
-        for ts, val in series.get("values", []):
-            row: dict = {}
-            for col in columns:
-                if col == "timestamp":
-                    row[col] = datetime.fromtimestamp(float(ts), tz=UTC)
-                elif col == value_column:
-                    row[col] = float(val)
-                else:
-                    row[col] = labels.get(col)
-            rows.append(row)
+        rows.extend(_series_rows(series, columns, value_column))
     return rows
+
+
+def iter_rows_spooled(
+    conn: PrometheusConnection, mapping: dict, table_name: str, columns: list[str], spooled: Any
+) -> Iterator[dict]:  # REQ-1915
+    """:func:`fetch_rows`, with the API's answer written to a spool file as it arrives and
+    parsed from the file: first its status (an error answer is refused before any row is read),
+    then one series at a time. A single series' samples are read whole."""
+    from provisa.federation.replica_spool import json_items
+
+    params, value_column = _range_params(mapping, table_name)
+    with conn._client() as c:
+        with spooled(lambda: c.stream("GET", "/api/v1/query_range", params=params)) as body:
+            if next(json_items(body, "status"), None) != "success":
+                kind = next(json_items(body, "errorType"), None)
+                error = next(json_items(body, "error"), None)
+                raise ValueError(f"Prometheus API error: {kind}: {error}")
+            for series in json_items(body, "data.result.item"):
+                yield from _series_rows(series, columns, value_column)

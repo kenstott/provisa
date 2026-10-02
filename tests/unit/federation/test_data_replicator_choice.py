@@ -130,7 +130,12 @@ def test_a_stream_is_the_method_when_the_engine_cannot_copy_and_both_ends_stream
             continue
         if chosen is Method.STREAM_BATCHES:
             assert target.atomic_swap
-            assert source.reads & {R.ARROW_STREAM, R.CURSOR, R.SINGLE_DOCUMENT}
+            assert source.reads & {
+                R.ARROW_STREAM,
+                R.CURSOR,
+                R.SINGLE_DOCUMENT,
+                R.SINGLE_DOCUMENT_SPOOLED,
+            }
             assert target.writes & {W.COPY_STREAM, W.BULK_BATCH}
 
 

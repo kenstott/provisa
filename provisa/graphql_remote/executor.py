@@ -13,6 +13,9 @@
 from __future__ import annotations
 import json
 import re
+from collections.abc import Iterator
+from typing import Any
+
 import httpx
 from provisa.graphql_remote.introspect import _build_headers
 
@@ -137,3 +140,47 @@ async def execute_remote(  # REQ-309, REQ-307, REQ-310, REQ-313
     rows = rows if isinstance(rows, list) else [rows]
     _flatten_scalar_projections(rows, selected_cols)
     return rows
+
+
+def iter_remote_rows_spooled(  # REQ-1915
+    url: str, auth: dict | None, field_name: str, columns: list[str], spooled: Any
+) -> Iterator[dict]:
+    """The whole-collection read of :func:`execute_remote` (no variables, no paging), with the
+    endpoint's answer written to a spool file as it arrives and parsed from the file: first its
+    ``errors`` (same one retry without the fields that need a subselection), then the rows of
+    ``data.<field_name>`` one at a time.
+
+    The document is parsed as the endpoint sent it: the repair :func:`_safe_json` makes to an
+    invalid ``\\u`` escape needs the whole text in memory and is not applied, so such an answer
+    fails the read with the parser's error."""
+    from provisa.federation.replica_spool import json_items, json_starts
+
+    selected = list(columns)
+    headers = {"Content-Type": "application/json", **_build_headers(auth)}
+    with httpx.Client(timeout=30.0) as client:
+        for attempt in range(2):
+            selection = "\n".join(selected) if selected else "__typename"
+            payload = {"query": f"query {{ {field_name} {{ {selection} }} }}"}
+            with spooled(
+                lambda: client.stream("POST", url, json=payload, headers=headers)  # noqa: B023
+            ) as body:
+                errors = list(json_items(body, "errors.item"))
+                if errors:
+                    object_fields = _object_fields_from_errors(errors)
+                    if object_fields and attempt == 0:
+                        selected = [c for c in selected if c.split()[0] not in object_fields]
+                        continue
+                    raise ValueError(f"Remote GraphQL errors: {errors}")
+                at = f"data.{field_name}"
+                # A list field is read an element at a time; a single object is one row.
+                rows = (
+                    json_items(body, f"{at}.item")
+                    if json_starts(body, at) == "start_array"
+                    else json_items(body, at)
+                )
+                for row in rows:
+                    if row is None:
+                        continue
+                    _flatten_scalar_projections([row], selected)
+                    yield row
+            return

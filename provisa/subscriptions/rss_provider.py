@@ -22,9 +22,11 @@ import logging
 import xml.etree.ElementTree as ET
 
 from defusedxml.ElementTree import fromstring as _safe_fromstring
+from defusedxml.ElementTree import iterparse as _safe_iterparse
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from typing import AsyncGenerator
+from collections.abc import Iterator
+from typing import IO, Any, AsyncGenerator
 
 from provisa.subscriptions.base import ChangeEvent, NotificationProvider
 
@@ -73,43 +75,82 @@ def _child_text(el: ET.Element, *tags: str) -> str | None:
     return None
 
 
+def _rss_item(item: ET.Element) -> dict:  # REQ-343
+    return {
+        "title": _child_text(item, "title"),
+        "link": _child_text(item, "link"),
+        "description": _child_text(item, "description"),
+        "published": _parse_date(_child_text(item, "pubDate")),
+        "id": _child_text(item, "guid") or _child_text(item, "link"),
+    }
+
+
+def _atom_entry(entry: ET.Element) -> dict:  # REQ-343
+    link_el = entry.find("{http://www.w3.org/2005/Atom}link")
+    if link_el is None:
+        link_el = entry.find("link")
+    link = link_el.get("href") if link_el is not None else None
+    return {
+        "title": _child_text(entry, "title"),
+        "link": link,
+        "description": _child_text(entry, "summary", "content"),
+        "published": _parse_date(_child_text(entry, "updated", "published")),
+        "id": _child_text(entry, "id") or link,
+    }
+
+
 def _parse_rss(root: ET.Element) -> list[dict]:  # REQ-343
     channel = root.find("channel")
     if channel is None:
         return []
-    items = []
-    for item in channel.findall("item"):
-        items.append(
-            {
-                "title": _child_text(item, "title"),
-                "link": _child_text(item, "link"),
-                "description": _child_text(item, "description"),
-                "published": _parse_date(_child_text(item, "pubDate")),
-                "id": _child_text(item, "guid") or _child_text(item, "link"),
-            }
-        )
-    return items
+    return [_rss_item(item) for item in channel.findall("item")]
 
 
 def _parse_atom(root: ET.Element) -> list[dict]:  # REQ-343
-    items = []
-    for child in root:
-        if _strip_ns(child.tag) != "entry":
+    return [_atom_entry(child) for child in root if _strip_ns(child.tag) == "entry"]
+
+
+def stored_row(item: dict) -> dict:
+    """A feed item as the row a replica stores: unset fields left out, and ``published`` as a
+    naive UTC timestamp (the column is inferred as a timestamp without a zone, REQ-1730)."""
+    row = {k: v for k, v in item.items() if v is not None}
+    row["published"] = item["published"].astimezone(timezone.utc).replace(tzinfo=None)
+    return row
+
+
+def iter_feed_items(body: IO[bytes]) -> Iterator[dict]:  # REQ-1915
+    """The items of the RSS 2.0 or Atom feed in ``body``, parsed incrementally: one item's
+    element is held at a time. The same parser policy as :func:`parse_feed` (no entities, no
+    DTD). A document that is neither kind of feed has no items."""
+    kind: str | None = None
+    depth = 0
+    for event, element in _safe_iterparse(body, events=("start", "end")):
+        if event == "start":
+            depth += 1
+            if depth == 1:
+                kind = _strip_ns(element.tag).lower()
+                if kind not in ("rss", "feed"):
+                    return
             continue
-        link_el = child.find("{http://www.w3.org/2005/Atom}link")
-        if link_el is None:
-            link_el = child.find("link")
-        link = link_el.get("href") if link_el is not None else None
-        items.append(
-            {
-                "title": _child_text(child, "title"),
-                "link": link,
-                "description": _child_text(child, "summary", "content"),
-                "published": _parse_date(_child_text(child, "updated", "published")),
-                "id": _child_text(child, "id") or link,
-            }
-        )
-    return items
+        depth -= 1
+        local = _strip_ns(element.tag)
+        if kind == "rss" and depth == 2 and local == "item":
+            yield _rss_item(element)
+            element.clear()
+        elif kind == "feed" and depth == 1 and local == "entry":
+            yield _atom_entry(element)
+            element.clear()
+
+
+def iter_rows_spooled(url: str, spooled: Any) -> Iterator[dict]:  # REQ-1915
+    """Every current item of the feed at ``url`` as a stored row, the feed's body written to a
+    spool file as it arrives and parsed from the file an item at a time."""
+    import httpx
+
+    with httpx.Client(follow_redirects=True, timeout=30.0) as client:
+        with spooled(lambda: client.stream("GET", url)) as body:
+            for item in iter_feed_items(body):
+                yield stored_row(item)
 
 
 def parse_feed(xml_bytes: bytes) -> list[dict]:  # REQ-343
@@ -172,19 +213,9 @@ class RSSNotificationProvider(NotificationProvider):  # REQ-342, REQ-343, REQ-34
             pub: datetime = item["published"]  # already datetime from parse_feed
             if pub <= watermark:
                 continue
-            row = {k: v for k, v in item.items() if v is not None}
-            # REQ-1730: the landed "published" column is inferred (at registration-time discovery)
-            # as a naive TIMESTAMP, not TIMESTAMPTZ — but every value this provider produces
-            # carries tzinfo=utc (both real parses and _UNPARSEABLE_DATE), and asyncpg's binary
-            # COPY path (store_writer.land -> materialize_exec._bulk_insert) cannot bind a
-            # timezone-aware datetime into a naive column: it raises
-            # `TypeError: can't subtract offset-naive and offset-aware datetimes` internally,
-            # which _bulk_insert never gets to (so `land()` appears to succeed — it reaches
-            # store_writer.land() and even store_writer.land_replace()'s own DELETE — while the
-            # subsequent INSERT silently never lands a single row, reproduced live). The watermark
-            # comparison above still needs a real tz-aware `pub` (kept as `pub`); only the STORED
-            # copy is normalized to match the naive column shape.
-            row["published"] = pub.astimezone(timezone.utc).replace(tzinfo=None)
+            # The stored copy: unset fields left out, ``published`` naive UTC (see stored_row).
+            # The watermark comparison above needs the zone-aware ``pub``, kept as it is.
+            row = stored_row(item)
             events.append(
                 ChangeEvent(
                     operation="insert",

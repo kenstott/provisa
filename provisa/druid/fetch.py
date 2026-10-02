@@ -20,6 +20,7 @@ separate controller/broker address split is needed here: one host:port answers e
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Iterator
 from typing import Any
 
 import httpx
@@ -74,6 +75,23 @@ def fetch_rows(conn: DruidConnection, table: str, columns: list[str]) -> list[di
     safe_table = table.replace('"', '""')
     select = ", ".join(f'"{c}"' for c in columns) if columns else "*"
     return _sql(conn, f'SELECT {select} FROM "druid"."{safe_table}"')
+
+
+def iter_rows_spooled(
+    conn: DruidConnection, table: str, columns: list[str], spooled: Any
+) -> Iterator[dict]:  # REQ-1915
+    """:func:`fetch_rows`, with the broker's answer written to a spool file as it arrives and
+    its rows parsed from the file one at a time (``spooled``: ``replica_spool.Spooler``)."""
+    from provisa.federation.replica_spool import json_items
+
+    safe_table = table.replace('"', '""')
+    select = ", ".join(f'"{c}"' for c in columns) if columns else "*"
+    query = f'SELECT {select} FROM "druid"."{safe_table}"'
+    with httpx.Client(timeout=_TIMEOUT) as c:
+        with spooled(
+            lambda: c.stream("POST", f"{conn.base_url}/druid/v2/sql", json={"query": query})
+        ) as body:
+            yield from json_items(body, "item")
 
 
 def _sql_literal(value: Any) -> str:

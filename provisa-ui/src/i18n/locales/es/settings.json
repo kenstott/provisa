@@ -140,6 +140,10 @@
       "retry_interval": {
         "label": "Intervalo de reintento de compilación de réplicas",
         "help": "Después de que falle la compilación de una réplica, una lectura no solicita otra compilación hasta que haya pasado este tiempo."
+      },
+      "spool_max_bytes": {
+        "label": "Límite de disco para el almacenamiento temporal de réplicas",
+        "help": "El máximo espacio en disco que este nodo usa para guardar la respuesta de un origen en un archivo temporal mientras se compila su réplica. Se aplica a los orígenes que responden con un único documento y no pueden leerse mediante un cursor. Una compilación que superaría el límite falla; no se trunca nada."
       }
     },
     "security": {

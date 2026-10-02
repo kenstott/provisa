@@ -4647,5 +4647,7 @@
   "pt/settings.json::settings.replication.engine_jobs.label": "Background jobs per engine",
   "pt/settings.json::settings.replication.engine_jobs.help": "The most background jobs (replica builds) running on one engine at once, across every node. Requests are not counted.",
   "pt/settings.json::settings.replication.retry_interval.label": "Replica build retry interval",
-  "pt/settings.json::settings.replication.retry_interval.help": "After a replica build fails, a read does not ask for another build until this long has passed."
+  "pt/settings.json::settings.replication.retry_interval.help": "After a replica build fails, a read does not ask for another build until this long has passed.",
+  "pt/settings.json::settings.replication.spool_max_bytes.label": "Replica spool disk limit",
+  "pt/settings.json::settings.replication.spool_max_bytes.help": "The most disk space this node uses to hold a source's answer in a temporary file while its replica is built. It applies to sources that answer with one document and cannot be read through a cursor. A build that would pass the limit fails; nothing is truncated."
 }
