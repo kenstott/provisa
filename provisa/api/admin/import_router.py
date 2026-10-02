@@ -104,15 +104,13 @@ class ImportPreviewResponse(BaseModel):
 
 
 class ImportApplyRequest(BaseModel):
+    # An import is always a merge into what the org already has (REQ-1919): what the imported
+    # model does not mention is not the import's to remove.
     config_yaml: str
-    # replace=False merges the import into what the org already has; replace=True is the full
-    # replace semantics load_config implements — everything absent from this config is deleted.
-    replace: bool = False
 
 
 class ImportApplyResponse(BaseModel):
     summary: ImportSummary
-    replace: bool
 
 
 def _decode(content_b64: str) -> bytes:
@@ -272,7 +270,6 @@ async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApply
             config,
             conn,
             state.federation_engine,
-            replace=req.replace,
             catalog_names=state.source_catalogs,
             origin="admin",
         )
@@ -281,10 +278,9 @@ async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApply
     await _rebuild_schemas()
 
     log.info(
-        "hasura import applied: %d sources, %d tables, %d roles (replace=%s)",
+        "hasura import applied: %d sources, %d tables, %d roles",
         len(config.sources),
         len(config.tables),
         len(config.roles),
-        req.replace,
     )
-    return ImportApplyResponse(summary=_summarize(config), replace=req.replace)
+    return ImportApplyResponse(summary=_summarize(config))

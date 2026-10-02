@@ -498,6 +498,7 @@ query AllRelationshipsQuery {
 query RLSRulesQuery {
   rlsRules {
     id
+    origin
     tableId
     domainId
     actionName

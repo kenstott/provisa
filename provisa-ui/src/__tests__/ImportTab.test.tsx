@@ -71,7 +71,7 @@ describe("ImportTab", () => {
     mockPreview.mockReset();
     mockApply.mockReset();
     mockPreview.mockResolvedValue(preview());
-    mockApply.mockResolvedValue({ summary: preview().summary, replace: false });
+    mockApply.mockResolvedValue({ summary: preview().summary });
   });
 
   // REQ-1483: the conversion is a guess in places, so what it produced is shown before anything
@@ -108,21 +108,20 @@ describe("ImportTab", () => {
     fireEvent.click(screen.getByRole("button", { name: "Apply to this organization" }));
 
     await waitFor(() => expect(mockApply).toHaveBeenCalled());
-    expect(mockApply).toHaveBeenCalledWith("sources:\n  - id: edited\n", false);
+    expect(mockApply).toHaveBeenCalledWith("sources:\n  - id: edited\n");
   });
 
-  // Replace is destructive, so it is off unless the administrator turns it on.
-  it("sends replace only when checked", async () => {
+  // REQ-1919: an import is always a merge; there is nothing to opt into that removes.
+  it("offers no way to replace what the organization already has", async () => {
     render(<ImportTab />);
     pickFile();
     fireEvent.click(screen.getByRole("button", { name: "Convert and preview" }));
     await waitFor(() => expect(screen.getByText("Tables")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByLabelText("Replace the existing semantic layer"));
+    expect(screen.queryByRole("checkbox")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Apply to this organization" }));
-
     await waitFor(() => expect(mockApply).toHaveBeenCalled());
-    expect(mockApply.mock.calls[0][1]).toBe(true);
+    expect(mockApply.mock.calls[0]).toHaveLength(1);
   });
 
   // The names to map are the ones the upload turned out to carry, so the mapping appears with the

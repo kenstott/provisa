@@ -97,14 +97,13 @@ export async function previewImport(body: ImportPreviewRequest): Promise<ImportP
   return resp.json();
 }
 
-export async function applyImport(
-  configYaml: string,
-  replace: boolean,
-): Promise<{ summary: ImportSummary; replace: boolean }> {
+/** An import is always a merge into what the organization already has (REQ-1919): what the
+ *  imported model does not mention is not the import's to remove. */
+export async function applyImport(configYaml: string): Promise<{ summary: ImportSummary }> {
   const resp = await fetch(`${API_BASE}/admin/import/hasura/apply`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ config_yaml: configYaml, replace }),
+    body: JSON.stringify({ config_yaml: configYaml }),
   });
   if (!resp.ok) throw new Error(requestFailed("Import apply", resp.status));
   return resp.json();

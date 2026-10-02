@@ -63,11 +63,8 @@ async def client():
 
     # Point the app at the fixture config so _load_and_build uses it instead of
     # the production config (which has a different analyst role domain_access).
-    # PROVISA_CONFIG_REPLACE=1 ensures stale rows from other test modules are cleared.
     _prev_config = os.environ.get("PROVISA_CONFIG")
-    _prev_replace = os.environ.get("PROVISA_CONFIG_REPLACE")
     os.environ["PROVISA_CONFIG"] = str(_FIXTURE_CONFIG)
-    os.environ["PROVISA_CONFIG_REPLACE"] = "1"
 
     app = create_app()
 
@@ -81,10 +78,6 @@ async def client():
             os.environ.pop("PROVISA_CONFIG", None)
         else:
             os.environ["PROVISA_CONFIG"] = _prev_config
-        if _prev_replace is None:
-            os.environ.pop("PROVISA_CONFIG_REPLACE", None)
-        else:
-            os.environ["PROVISA_CONFIG_REPLACE"] = _prev_replace
 
 
 class TestCompileBasic:

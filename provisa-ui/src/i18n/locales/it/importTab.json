@@ -31,8 +31,6 @@
     "warningLocation": "Posizione",
     "configHeading": "Configurazione generata",
     "configHelp": "Modificala prima di applicarla se la conversione ha sbagliato: dati di connessione, nomi di dominio, nomi dei ruoli. Ciò che applichi è esattamente quanto mostrato qui.",
-    "replace": "Sostituisci il livello semantico esistente",
-    "replaceHelp": "Elimina ogni origine dati, tabella, ruolo e regola non presente in questa configurazione. Lascia disattivato per unire l'importazione a ciò che l'organizzazione già possiede.",
     "apply": "Applica a questa organizzazione",
     "applied": "Applicato: {{sources}} origini dati, {{tables}} tabelle, {{roles}} ruoli.",
     "domainNew": "nuovo dominio",

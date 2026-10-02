@@ -31,8 +31,6 @@
     "warningLocation": "位置",
     "configHeading": "生成的配置",
     "configHelp": "若转换推断有误，请在应用前编辑——连接信息、域名称、角色名称。您所应用的内容与此处显示的完全一致。",
-    "replace": "替换现有语义层",
-    "replaceHelp": "删除此配置中不存在的每个数据源、表、角色和规则。保持关闭可将导入内容合并到组织已有的配置中。",
     "apply": "应用到本组织",
     "applied": "已应用：{{sources}} 个数据源、{{tables}} 张表、{{roles}} 个角色。",
     "domainNew": "新域",

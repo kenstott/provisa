@@ -64,7 +64,7 @@ async def _restore_config_after_module(tenant_db, _init_schema):
     yield
     domain_policy.reset()
     async with tenant_db.acquire() as conn:
-        await load_config_from_yaml(MAIN_CONFIG, conn, replace=True)
+        await load_config_from_yaml(MAIN_CONFIG, conn)
 
 
 @pytest_asyncio.fixture(autouse=True)

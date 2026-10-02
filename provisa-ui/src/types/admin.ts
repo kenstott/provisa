@@ -516,6 +516,7 @@ export interface RLSRule {
   actionName?: string | null; // REQ-1679: a tracked function/webhook target, by name
   roleId: string;
   filterExpr: string;
+  origin: Origin; // REQ-1919: a config's rule is removed when the file stops declaring it
 }
 
 // REQ-1484: an artifact that references a column the administrator is about to rename or drop.

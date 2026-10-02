@@ -31,8 +31,6 @@
     "warningLocation": "Emplacement",
     "configHeading": "Configuration générée",
     "configHelp": "Modifiez-la avant application si la conversion s'est trompée — informations de connexion, noms de domaine, noms de rôle. Ce que vous appliquez correspond exactement à ce qui s'affiche ici.",
-    "replace": "Remplacer la couche sémantique existante",
-    "replaceHelp": "Supprime toutes les sources de données, tables, rôles et règles absents de cette configuration. Laissez désactivé pour fusionner l'import avec ce que possède déjà l'organisation.",
     "apply": "Appliquer à cette organisation",
     "applied": "Appliqué : {{sources}} sources de données, {{tables}} tables, {{roles}} rôles.",
     "domainNew": "nouveau domaine",

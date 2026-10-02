@@ -95,7 +95,6 @@ def airport_server_port():
         # registered (config/provisa.yaml's r2-orders `orders` beside sample_config's sales-pg
         # `orders`), and startup failed "Ambiguous table name 'orders'" — only when run after it.
         "ORG_ID": _ORG,
-        "PROVISA_CONFIG_REPLACE": "true",
         "FLIGHT_PORT": str(flight_port),
         "PROVISA_AIRPORT_PORT": str(airport_port),
         # Source-side pushdown trace — the server appends each translated pushdown SQL here so the

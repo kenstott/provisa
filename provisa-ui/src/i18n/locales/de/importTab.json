@@ -31,8 +31,6 @@
     "warningLocation": "Ort",
     "configHeading": "Erzeugte Konfiguration",
     "configHelp": "Bearbeiten Sie sie vor dem Übernehmen, falls die Umwandlung falsch geraten hat — Verbindungsdaten, Domänennamen, Rollennamen. Übernommen wird genau das, was hier steht.",
-    "replace": "Bestehende semantische Schicht ersetzen",
-    "replaceHelp": "Löscht jede Datenquelle, Tabelle, Rolle und Regel, die in dieser Konfiguration nicht vorkommt. Ausgeschaltet lassen, um den Import in den bestehenden Bestand der Organisation einzufügen.",
     "apply": "Auf diese Organisation anwenden",
     "applied": "Übernommen: {{sources}} Datenquellen, {{tables}} Tabellen, {{roles}} Rollen.",
     "domainNew": "neue Domäne",

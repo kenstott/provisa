@@ -923,7 +923,12 @@ export function SecurityRlsPage() {
                       (tableLabelById[r.tableId!] ?? String(r.tableId))
                     )}
                   </Table.Td>
-                  <Table.Td>{r.roleId}</Table.Td>
+                  <Table.Td>
+                    <Group gap="0.35rem" wrap="nowrap">
+                      {r.roleId}
+                      <OriginBadge origin={r.origin} />
+                    </Group>
+                  </Table.Td>
                   <Table.Td>
                     <Text component="code">{r.filterExpr}</Text>
                   </Table.Td>

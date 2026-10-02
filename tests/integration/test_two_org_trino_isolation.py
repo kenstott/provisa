@@ -51,7 +51,6 @@ async def app_state():
     mp = MonkeyPatch()
     mp.setenv("PROVISA_ENGINE", "trino")
     mp.setenv("PROVISA_CONFIG", _CONFIG)
-    mp.setenv("PROVISA_CONFIG_REPLACE", "1")
     mp.setenv("TRINO_HOST", os.environ.get("TRINO_HOST", "localhost"))
     mp.setenv("TRINO_PORT", os.environ.get("TRINO_PORT", "8080"))
     mp.setenv("PG_PASSWORD", os.environ.get("PG_PASSWORD", "provisa"))

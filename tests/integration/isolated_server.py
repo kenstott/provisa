@@ -212,7 +212,6 @@ class IsolatedServer:
             "ORG_ID": self.org_id,
             "PROVISA_ENGINE": self._engine,
             "PROVISA_CONFIG": self._cfg_path,
-            "PROVISA_CONFIG_REPLACE": "true",
             "PROVISA_IDP": "",
             "PG_PASSWORD": os.environ.get("PG_PASSWORD", "provisa"),
             "FLIGHT_PORT": str(self.flight_port),

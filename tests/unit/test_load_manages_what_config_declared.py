@@ -122,7 +122,10 @@ def _file(
     domains: tuple[str, ...] = ("sales",),
     sources: tuple[str, ...] = ("cfg",),
     relationships: list[dict] | None = None,
+    **more: list[dict],
 ):
+    """A config file. ``more`` carries any other list a config declares (functions, metrics,
+    rls_rules, tags, tag_assignments, glossary_terms, data_products, webhooks)."""
     return parse_config_dict(
         {
             "sources": [
@@ -133,13 +136,28 @@ def _file(
             "roles": [{"id": r, "capabilities": [], "domain_access": ["sales"]} for r in roles],
             "tables": [_table("orders")] if tables is None else tables,
             "relationships": relationships or [],
+            **more,
         }
     )
 
 
-async def _load(db: Database, config, *, replace: bool = False, origin: str = "config") -> None:
+def _command(name: str, domain: str = "sales") -> dict:
+    return {
+        "name": name,
+        "source_id": "cfg",
+        "function_name": name,
+        "returns": "cfg.public.orders",
+        "domain_id": domain,
+    }
+
+
+def _metric(name: str) -> dict:
+    return {"name": name, "expression": "SUM(orders.id)"}
+
+
+async def _load(db: Database, config, *, origin: str = "config") -> None:
     async with db.acquire() as conn:
-        await load_config(config, conn, replace=replace, origin=origin)
+        await load_config(config, conn, origin=origin)
 
 
 async def _rows(db: Database, table: str, *columns: str) -> list[tuple]:
@@ -194,13 +212,12 @@ async def test_what_a_load_creates_is_the_configs(db):
     assert await _origins(db, "registered_tables", "table_name") == {"orders": "config"}
 
 
-@pytest.mark.parametrize("replace", [False, True])
-async def test_a_load_never_removes_what_the_admin_made(db, replace):
-    await _load(db, _file(), replace=replace)
+async def test_a_load_never_removes_what_the_admin_made(db):
+    await _load(db, _file())
     await _admin_makes_its_own(db)
 
-    await _load(db, _file(), replace=replace)
-    await _load(db, _file(tables=[], roles=(), domains=("sales",)), replace=replace)
+    await _load(db, _file())
+    await _load(db, _file(tables=[], roles=(), domains=("sales",)))
 
     assert (await _origins(db, "sources"))["mine"] == "admin"
     assert (await _origins(db, "domains"))["lab"] == "admin"
@@ -246,12 +263,9 @@ async def test_a_file_that_declares_an_admin_made_object_takes_it_over(db, caplo
 # --- what the file dropped ------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("replace", [False, True])
-async def test_a_config_role_dropped_from_the_file_is_removed_when_nothing_depends_on_it(
-    db, replace
-):
-    await _load(db, _file(roles=("seller", "auditor")), replace=replace)
-    await _load(db, _file(), replace=replace)
+async def test_a_config_role_dropped_from_the_file_is_removed_when_nothing_depends_on_it(db):
+    await _load(db, _file(roles=("seller", "auditor")))
+    await _load(db, _file())
     assert "auditor" not in await _origins(db, "roles")
     assert "seller" in await _origins(db, "roles")
 
@@ -309,26 +323,24 @@ async def test_every_refusal_is_reported_in_the_one_error(db):
     ]
 
 
-@pytest.mark.parametrize("replace", [False, True])
-async def test_a_load_dropping_a_table_with_its_relationship_succeeds(db, replace):
+async def test_a_load_dropping_a_table_with_its_relationship_succeeds(db):
     both = [_table("orders"), _table("customers")]
-    await _load(db, _file(tables=both, relationships=[_ORDERS_TO_CUSTOMERS]), replace=replace)
+    await _load(db, _file(tables=both, relationships=[_ORDERS_TO_CUSTOMERS]))
     assert await _rows(db, "relationships", "id") == [("orders-to-customers",)]
 
-    await _load(db, _file(tables=[_table("customers")]), replace=replace)
+    await _load(db, _file(tables=[_table("customers")]))
 
     assert await _origins(db, "registered_tables", "table_name") == {"customers": "config"}
     assert await _rows(db, "relationships", "id") == []
     assert await _rows(db, "table_columns", "column_name") == [("id",)]
 
 
-@pytest.mark.parametrize("replace", [False, True])
-async def test_a_load_dropping_a_table_a_remaining_view_reads_fails_naming_the_view(db, replace):
+async def test_a_load_dropping_a_table_a_remaining_view_reads_fails_naming_the_view(db):
     view = _view("big_orders", "SELECT id FROM orders")
-    await _load(db, _file(tables=[_table("orders"), view]), replace=replace)
+    await _load(db, _file(tables=[_table("orders"), view]))
 
     with pytest.raises(ConfigDropRefused) as err:
-        await _load(db, _file(tables=[view]), replace=replace)
+        await _load(db, _file(tables=[view]))
 
     report = err.value.report()
     assert [(r["kind"], r["name"]) for r in report] == [("table", "cfg.public.orders")]
@@ -392,11 +404,212 @@ async def test_a_config_domain_a_role_still_reaches_is_refused_naming_the_role(d
     assert [(d["kind"], d["name"]) for d in report[0]["dependents"]] == [("role", "tester")]
 
 
+# --- every kind a config can declare (REQ-1919) ----------------------------------------------
+
+
+async def test_a_file_that_no_longer_declares_a_domain_or_its_command_removes_both(db):
+    """The action-governance sequence: a file declared a domain and a command in it; the next
+    file declares neither. Both are the config's, both are dropped, so neither blocks the other."""
+    await _load(
+        db,
+        _file(
+            domains=("sales", "analytics"),
+            tables=[_table("orders")],
+            functions=[_command("enrich_orders", "analytics")],
+        ),
+    )
+    assert "enrich_orders" in await _origins(db, "tracked_functions", "name")
+
+    await _load(db, _file())
+
+    assert "enrich_orders" not in await _origins(db, "tracked_functions", "name")
+    assert "analytics" not in await _origins(db, "domains")
+
+
+async def test_dropping_a_domain_with_its_command_relationship_and_metric_loads_cleanly(db):
+    both = [_table("orders"), _table("customers", domain_id="analytics")]
+    await _load(
+        db,
+        _file(
+            domains=("sales", "analytics"),
+            tables=both,
+            relationships=[_ORDERS_TO_CUSTOMERS],
+            functions=[_command("enrich_orders", "analytics")],
+            metrics=[_metric("order_count")],
+        ),
+    )
+
+    await _load(db, _file(tables=[_table("orders")]))
+
+    assert "analytics" not in await _origins(db, "domains")
+    assert await _rows(db, "relationships", "id") == []
+    assert await _origins(db, "metrics", "name") == {}
+    assert await _origins(db, "tracked_functions", "name") == {}
+
+
+async def test_dropping_a_domain_while_still_declaring_its_command_is_refused_naming_it(db):
+    await _load(
+        db,
+        _file(domains=("sales", "analytics"), functions=[_command("enrich_orders", "analytics")]),
+    )
+
+    with pytest.raises(ConfigDropRefused) as err:
+        await _load(db, _file(functions=[_command("enrich_orders", "analytics")]))
+
+    report = err.value.report()
+    assert [(r["kind"], r["id"]) for r in report] == [("domain", "analytics")]
+    assert [(d["kind"], d["name"]) for d in report[0]["dependents"]] == [
+        ("command", "enrich_orders")
+    ]
+
+
+async def test_what_the_admin_made_of_every_kind_survives_a_load(db):
+    """A relationship, metric, command, webhook, data product, tag, tag assignment, row filter
+    and glossary term made through the admin are none of the file's business."""
+    from provisa.core.models import (
+        DataProduct,
+        Function,
+        Metric,
+        Relationship,
+        RLSRule,
+        Tag,
+        TagAssignment,
+        Webhook,
+    )
+    from provisa.core.repositories import data_product as data_product_repo
+    from provisa.core.repositories import function as function_repo
+    from provisa.core.repositories import glossary as glossary_repo
+    from provisa.core.repositories import metric as metric_repo
+    from provisa.core.repositories import relationship as relationship_repo
+    from provisa.core.repositories import rls as rls_repo
+    from provisa.core.repositories import tag as tag_repo
+
+    await _load(db, _file(tables=[_table("orders"), _table("customers")]))
+    async with db.acquire() as conn:
+        await relationship_repo.upsert(
+            conn,
+            Relationship(
+                id="mine",
+                source_table_id="orders",
+                target_table_id="customers",
+                source_column="id",
+                target_column="id",
+                cardinality="many-to-one",
+            ),
+            origin="admin",
+        )
+        await metric_repo.upsert(
+            conn, Metric(name="my_count", expression="SUM(orders.id)"), origin="admin"
+        )
+        await function_repo.upsert_function(
+            conn,
+            Function(
+                name="mine", source_id="cfg", function_name="mine", returns="", domain_id="sales"
+            ),
+            origin="admin",
+        )
+        await function_repo.upsert_webhook(
+            conn, Webhook(name="hook", url="http://x", domain_id="sales"), origin="admin"
+        )
+        await data_product_repo.upsert(
+            conn, DataProduct(id="core", domain_id="sales", name="Core"), origin="admin"
+        )
+        await tag_repo.upsert(conn, Tag(id="finance"), origin="admin")
+        orders_id = dict(await _rows(db, "registered_tables", "table_name", "id"))["orders"]
+        await tag_repo.assign(
+            conn,
+            TagAssignment(tag_id="pii", object_type="column", table_id=orders_id, column_name="id"),
+            origin="admin",
+        )
+        await rls_repo.upsert(
+            conn, RLSRule(table_id="orders", role_id="seller", filter="id > 0"), origin="admin"
+        )
+        await glossary_repo.create_abstract_term(conn, "Revenue", domains=set())
+
+    await _load(db, _file(tables=[_table("orders"), _table("customers")]))
+
+    assert await _rows(db, "relationships", "id", "origin") == [("mine", "admin")]
+    assert await _origins(db, "metrics", "name") == {"my_count": "admin"}
+    assert await _origins(db, "tracked_functions", "name") == {"mine": "admin"}
+    assert await _origins(db, "tracked_webhooks", "name") == {"hook": "admin"}
+    assert await _origins(db, "data_products") == {"core": "admin"}
+    assert await _origins(db, "tags") == {"finance": "admin"}
+    assert [o for (o,) in await _rows(db, "tag_assignments", "origin")] == ["admin"]
+    assert [o for (o,) in await _rows(db, "rls_rules", "origin")] == ["admin"]
+    assert (await _origins(db, "glossary_terms", "name"))["revenue"] == "admin"
+
+
+async def test_a_tag_assignment_the_file_drops_is_removed_while_its_tag_and_table_stay(db):
+    tagged = [{"tag_id": "pii", "object_type": "table", "table_ref": "cfg.public.orders"}]
+    await _load(db, _file(tag_assignments=tagged))
+    assert [o for (o,) in await _rows(db, "tag_assignments", "origin")] == ["config"]
+
+    await _load(db, _file())
+
+    assert await _rows(db, "tag_assignments", "id") == []
+    assert await _origins(db, "registered_tables", "table_name") == {"orders": "config"}
+
+
+async def test_a_row_filter_the_file_drops_is_removed_loudly(db, caplog):
+    """Removing it widens what the role reads, so the load says so: a WARNING naming the role,
+    the table and the rule's id, never the predicate, and an entry in the org's trail."""
+    rule = {"table_id": "orders", "role_id": "seller", "filter": "region = 'eu-secret'"}
+    await _load(db, _file(rls_rules=[rule]))
+    ((rule_id,),) = await _rows(db, "rls_rules", "id")
+
+    with caplog.at_level("WARNING", logger="provisa.core.config_loader"):
+        await _load(db, _file())
+
+    assert await _rows(db, "rls_rules", "id") == []
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert warnings == [
+        f"config load removes row filter {rule_id} (seller on table orders): the config no "
+        "longer declares it, so role 'seller' now reads what it filtered"
+    ]
+    assert "eu-secret" not in warnings[0]
+    trail = await _rows(db, "admin_audit_log", "action", "actor_id", "subject_id")
+    assert trail == [("row_filter.removed_by_config_load", "config-load", "seller")]
+
+
+async def test_a_glossary_term_the_file_drops_goes_while_abstract_and_stays_once_rooted(db):
+    await _load(
+        db,
+        _file(
+            # A capital letter in the file: the catalog's names are lowercase (REQ-1844).
+            glossary_terms=[
+                {"name": "Bookings", "domains": ["sales"], "edges": [{"to": "ID"}]},
+                {"name": "id", "domains": ["sales"], "definition": "the row's key"},
+            ]
+        ),
+    )
+    # "id" is also the column of orders: it is rooted, derived from the column as well.
+    terms = await _origins(db, "glossary_terms", "name")
+    assert terms["bookings"] == "config"
+
+    await _load(db, _file())
+
+    terms = await _origins(db, "glossary_terms", "name")
+    assert "bookings" not in terms
+    assert terms.get("id") in (None, "seed")
+
+
+async def test_the_loader_removes_nothing_during_the_load():
+    """Relationships, metrics, commands and webhooks are no longer deleted as a set while the
+    load runs: everything a file dropped is judged at its end."""
+    source = Path(config_loader.__file__).read_text()
+    for call in (
+        "rel_repo.remove_where(",
+        "metric_repo.remove_where(",
+        "function_repo.remove_all(",
+    ):
+        assert call not in source, call
+    assert "_replace_mode_cleanup" not in source
+
+
 # --- an import through the admin is not a load of the deployment's file -----------------------
 
 
-@pytest.mark.parametrize("replace", [False, True])
-async def test_an_import_through_the_admin_removes_nothing_and_changes_no_origin(db, replace):
+async def test_an_import_through_the_admin_removes_nothing_and_changes_no_origin(db):
     """An import adds and updates. What the deployment's file declared and the import does not
     mention stays; an admin-made object the import names is not taken over; what the import
     creates is the admin's."""
@@ -424,7 +637,7 @@ async def test_an_import_through_the_admin_removes_nothing_and_changes_no_origin
     imported = _file(
         roles=("tester",), domains=("sales",), tables=[_table("orders"), _table("imported")]
     )
-    await _load(db, imported, replace=replace, origin="admin")
+    await _load(db, imported, origin="admin")
 
     after = {
         table: await _origins(db, table, key)
@@ -453,8 +666,7 @@ async def test_the_load_refuses_an_origin_it_does_not_know(db):
 # --- a secondary worker only upserts (REQ-1229) ---------------------------------------------------
 
 
-@pytest.mark.parametrize("replace", [False, True])
-async def test_a_secondarys_load_removes_nothing_and_raises_nothing(db, monkeypatch, replace):
+async def test_a_secondarys_load_removes_nothing_and_raises_nothing(db, monkeypatch):
     """Only the primary's load removes what the file dropped. A secondary — whose file may be
     older than the primary's — upserts, and neither removes a dropped object nor refuses one
     that is still depended on."""
@@ -468,7 +680,7 @@ async def test_a_secondarys_load_removes_nothing_and_raises_nothing(db, monkeypa
 
     monkeypatch.setenv("PROVISA_ROLE", "secondary")
     # Drops a role and a domain nothing depends on, and a table a remaining view reads.
-    await _load(db, _file(tables=[view]), replace=replace)
+    await _load(db, _file(tables=[view]))
 
     assert {"seller", "auditor"} <= set(await _origins(db, "roles"))
     assert "spare" in await _origins(db, "domains")
@@ -480,7 +692,7 @@ async def test_a_secondarys_load_removes_nothing_and_raises_nothing(db, monkeypa
     # The primary's load of the same file is the one that judges it.
     monkeypatch.setenv("PROVISA_ROLE", "primary")
     with pytest.raises(ConfigDropRefused):
-        await _load(db, _file(tables=[view]), replace=replace)
+        await _load(db, _file(tables=[view]))
 
 
 def test_a_worker_is_the_primary_unless_started_as_a_secondary():
@@ -492,14 +704,13 @@ def test_a_worker_is_the_primary_unless_started_as_a_secondary():
 # --- a table whose schema the file corrected ------------------------------------------------------
 
 
-@pytest.mark.parametrize("replace", [False, True])
-async def test_a_table_the_file_moved_to_another_schema_is_the_same_table(db, replace):
+async def test_a_table_the_file_moved_to_another_schema_is_the_same_table(db):
     both = [_table("orders"), _table("customers")]
-    await _load(db, _file(tables=both, relationships=[_ORDERS_TO_CUSTOMERS]), replace=replace)
+    await _load(db, _file(tables=both, relationships=[_ORDERS_TO_CUSTOMERS]))
     before = dict(await _rows(db, "registered_tables", "table_name", "id"))
 
     moved = [_table("orders", schema="sales"), _table("customers")]
-    await _load(db, _file(tables=moved, relationships=[_ORDERS_TO_CUSTOMERS]), replace=replace)
+    await _load(db, _file(tables=moved, relationships=[_ORDERS_TO_CUSTOMERS]))
 
     assert await _rows(db, "registered_tables", "table_name", "schema_name") == [
         ("customers", "public"),
@@ -513,13 +724,13 @@ async def test_a_table_the_file_moved_to_another_schema_is_the_same_table(db, re
 
 
 async def test_the_install_configuration_loads_again_with_admin_made_objects_present(db):
-    """The boot's own load: replace mode, the configuration the installer ships, run a second
+    """The boot's own load: the configuration the installer ships, run a second
     time over a control plane that also holds objects made through the admin."""
     config = parse_config(_REPO / "config" / "provisa-install.yaml")
-    await _load(db, config, replace=True)
+    await _load(db, config)
     await _admin_makes_its_own_beside(db, config)
 
-    await _load(db, parse_config(_REPO / "config" / "provisa-install.yaml"), replace=True)
+    await _load(db, parse_config(_REPO / "config" / "provisa-install.yaml"))
 
     assert (await _origins(db, "sources"))["mine"] == "admin"
     assert (await _origins(db, "domains"))["lab"] == "admin"

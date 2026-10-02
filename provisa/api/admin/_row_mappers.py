@@ -239,6 +239,7 @@ def _rls_from_row(row) -> RLSRuleType:
         domain_id=row["domain_id"],
         role_id=row["role_id"],
         filter_expr=row["filter_expr"],
+        origin=row["origin"],  # REQ-1919
         action_name=row.get("action_name"),  # REQ-1679
     )
 

@@ -592,6 +592,14 @@ async def create_abstract_term(
     return term_id
 
 
+async def release_declared_term(conn: "Connection", term_id: int) -> None:  # REQ-1919
+    """A term the config file declared and no longer does, that is rooted in columns: it stays
+    as the term derived from them, the system's own — its definition kept."""
+    await conn.execute_core(
+        update(glossary_terms).where(glossary_terms.c.id == term_id).values(origin=SEED)
+    )
+
+
 async def upsert_declared_term(
     conn: "Connection",
     name: str,

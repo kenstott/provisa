@@ -31,8 +31,6 @@
     "warningLocation": "Ubicación",
     "configHeading": "Configuración generada",
     "configHelp": "Edítela antes de aplicarla si la conversión se equivocó: datos de conexión, nombres de dominio, nombres de rol. Lo que aplique es exactamente lo que se muestra aquí.",
-    "replace": "Reemplazar la capa semántica existente",
-    "replaceHelp": "Elimina todas las fuentes de datos, tablas, roles y reglas que no estén en esta configuración. Déjelo desactivado para fusionar la importación con lo que ya tiene la organización.",
     "apply": "Aplicar a esta organización",
     "applied": "Aplicado: {{sources}} fuentes de datos, {{tables}} tablas, {{roles}} roles.",
     "domainNew": "dominio nuevo",

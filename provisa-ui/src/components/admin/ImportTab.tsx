@@ -15,7 +15,6 @@ import {
   Autocomplete,
   Badge,
   Button,
-  Checkbox,
   Code,
   FileButton,
   Group,
@@ -91,7 +90,6 @@ export function ImportTab() {
   const existingDomainIds = existingDomains.map((d) => d.id);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [yamlText, setYamlText] = useState("");
-  const [replace, setReplace] = useState(false);
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
@@ -146,7 +144,7 @@ export function ImportTab() {
     setError("");
     setMsg("");
     try {
-      const result = await applyImport(yamlText, replace);
+      const result = await applyImport(yamlText);
       setMsg(
         t("importTab.applied", {
           sources: result.summary.sources,
@@ -392,18 +390,8 @@ export function ImportTab() {
             styles={{ input: { fontFamily: "monospace" } }}
           />
 
-          <Checkbox
-            label={t("importTab.replace")}
-            description={t("importTab.replaceHelp")}
-            checked={replace}
-            onChange={(e) => setReplace(e.currentTarget.checked)}
-          />
           <Group>
-            <Button
-              onClick={runApply}
-              loading={busy === "apply"}
-              color={replace ? "red" : undefined}
-            >
+            <Button onClick={runApply} loading={busy === "apply"}>
               {t("importTab.apply")}
             </Button>
           </Group>

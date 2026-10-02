@@ -65,7 +65,6 @@ os.environ.setdefault(
     "PROVISA_CONFIG",
     os.path.join(_REPO_ROOT, "tests", "fixtures", "sample_config.yaml"),
 )
-os.environ.setdefault("PROVISA_CONFIG_REPLACE", "1")
 # Provision the e2e core stack under a DEDICATED compose project, isolated from
 # the default `provisa` project used by the dev stack / installer. Without this
 # the fixture's teardown (`down`) would tear down the developer's running stack,
@@ -251,9 +250,7 @@ def _disable_auth_for_e2e(tmp_path_factory):  # pyright: ignore
     so the first create_app() call loads that config into the DB."""
     sample_cfg = os.path.join(_REPO_ROOT, "tests", "fixtures", "sample_config.yaml")
     prev_config = os.environ.get("PROVISA_CONFIG")
-    prev_replace = os.environ.get("PROVISA_CONFIG_REPLACE")
     os.environ["PROVISA_CONFIG"] = sample_cfg
-    os.environ["PROVISA_CONFIG_REPLACE"] = "1"
     try:
         yield from pin_no_auth_config(tmp_path_factory.mktemp("noauth-cfg"))
     finally:
@@ -261,7 +258,3 @@ def _disable_auth_for_e2e(tmp_path_factory):  # pyright: ignore
             os.environ.pop("PROVISA_CONFIG", None)
         else:
             os.environ["PROVISA_CONFIG"] = prev_config
-        if prev_replace is None:
-            os.environ.pop("PROVISA_CONFIG_REPLACE", None)
-        else:
-            os.environ["PROVISA_CONFIG_REPLACE"] = prev_replace

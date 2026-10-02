@@ -345,7 +345,6 @@ async def restore_shared_terminal(state: Any, shard: str) -> None:
                 config,
                 conn,
                 state.federation_engine,
-                replace=False,
                 catalog_names=default.source_catalogs,
                 origin="config",
             )
