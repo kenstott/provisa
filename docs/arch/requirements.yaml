@@ -70019,7 +70019,20 @@
     work at once on different jobs. Three operator limits bound the total -- builds per node, background
     jobs per engine across all nodes, and reads per source (REQ-1915, REQ-1909). Work that must fire
     exactly once per deployment, such as deciding that a refresh is due or running a scheduled trigger,
-    still goes to one holder at a time, taken over by another when it stops.'
+    still goes to one holder at a time, taken over by another when it stops.
+    (Amended 2026-10-02, SCALING AND MEMBERSHIP:) Capacity is added in either of two ways, and the operator
+    chooses by workload. The simple way is to add more every-mode nodes -- each adds request capacity and
+    background capacity together. The designed way is to run some number of query nodes and some number
+    of coordinator nodes, sized separately for request load and for replication and refresh load. Both
+    may be mixed in one cluster. A cluster is the set of processes started against one control plane.
+    A node joins by starting against that control plane and leaves by stopping -- no other node is restarted
+    or reconfigured, and nothing is registered by hand, so capacity is added and removed while the cluster
+    serves. A joining node loads the current configuration (REQ-1914) and must hold the deployment encryption
+    key (REQ-684) before it serves. A leaving query node finishes or times out the requests it holds.
+    A leaving coordinator releases the jobs it holds -- the control plane frees its locks when its session
+    ends, and another node claims and restarts those jobs (REQ-1915). The admin pages and the health
+    endpoint list the nodes now in the cluster with each one mode, so an operator sees what capacity
+    is present and whether any node is doing coordinator work.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
