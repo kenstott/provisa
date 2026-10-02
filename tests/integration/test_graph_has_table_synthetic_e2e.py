@@ -29,15 +29,23 @@ pytestmark = [pytest.mark.e2e, pytest.mark.asyncio(loop_scope="session")]
 async def client():
     os.environ.setdefault("PG_PASSWORD", "provisa")
     _store = os.path.join(tempfile.mkdtemp(prefix="has_table_mat_"), "mat.duckdb")
+    # Restored below, not removed: the session exports a store (tests/conftest.py) that every
+    # server started after this module inherits.
+    _session_store = os.environ.get("PROVISA_MATERIALIZE_URL")
     os.environ["PROVISA_MATERIALIZE_URL"] = f"duckdb:///{_store}"
-    from provisa.api.app import create_app
+    try:
+        from provisa.api.app import create_app
 
-    app = create_app()
-    async with app.router.lifespan_context(app):
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
-            yield c
-    os.environ.pop("PROVISA_MATERIALIZE_URL", None)
+        app = create_app()
+        async with app.router.lifespan_context(app):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as c:
+                yield c
+    finally:
+        if _session_store is None:
+            os.environ.pop("PROVISA_MATERIALIZE_URL", None)
+        else:
+            os.environ["PROVISA_MATERIALIZE_URL"] = _session_store
 
 
 async def _admin(client, query: str):

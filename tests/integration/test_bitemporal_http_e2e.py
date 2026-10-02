@@ -27,20 +27,28 @@ async def client():
     os.environ.setdefault("PG_PASSWORD", "provisa")
     # Materialize into an embedded DuckDB file — no external store needed for the in-process app.
     _store = os.path.join(tempfile.mkdtemp(prefix="bt_mat_"), "mat.duckdb")
+    # Restored below, not removed: the session exports a store (tests/conftest.py) that every
+    # server started after this module inherits.
+    _session_store = os.environ.get("PROVISA_MATERIALIZE_URL")
     os.environ["PROVISA_MATERIALIZE_URL"] = f"duckdb:///{_store}"
-    from provisa.api.app import create_app
+    try:
+        from provisa.api.app import create_app
 
-    app = create_app()
-    async with app.router.lifespan_context(app):
-        transport = ASGITransport(app=app)
-        async with AsyncClient(
-            # REQ-273: the header carries the role; a body role must match it.
-            transport=transport,
-            base_url="http://test",
-            headers={"X-Provisa-Role": "org_admin"},
-        ) as c:
-            yield c
-    os.environ.pop("PROVISA_MATERIALIZE_URL", None)
+        app = create_app()
+        async with app.router.lifespan_context(app):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(
+                # REQ-273: the header carries the role; a body role must match it.
+                transport=transport,
+                base_url="http://test",
+                headers={"X-Provisa-Role": "org_admin"},
+            ) as c:
+                yield c
+    finally:
+        if _session_store is None:
+            os.environ.pop("PROVISA_MATERIALIZE_URL", None)
+        else:
+            os.environ["PROVISA_MATERIALIZE_URL"] = _session_store
 
 
 async def _admin(client, query: str):
