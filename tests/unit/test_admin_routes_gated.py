@@ -178,9 +178,29 @@ def _walk(routes, prefix=""):
 
 @pytest.fixture(scope="module")
 def app():
-    from provisa.api.app import create_app
+    """The mounted application, built so that building it leaves nothing behind.
 
-    return create_app()
+    ``create_app()`` binds the process-global settings registry to the config file
+    (``settings_registry.bind_config``, called from ``setup_otel`` at otel_setup.py) and records the
+    attached exporter (``otel_setup._attached``). Tests that read those afterwards (the OTEL
+    endpoint tests) expect an unbound registry, so the values in force before the build are put
+    back when the module's tests finish.
+    """
+    from provisa.api import otel_setup
+    from provisa.api.app import create_app
+    from provisa.core import settings_registry
+
+    saved = pytest.MonkeyPatch()
+    for module, name in (
+        (settings_registry, "_config"),
+        (settings_registry, "_frozen"),
+        (otel_setup, "_attached"),
+    ):
+        saved.setattr(module, name, getattr(module, name))
+    try:
+        yield create_app()
+    finally:
+        saved.undo()
 
 
 def _rest_handlers(app) -> dict[tuple[str, str], bool]:
