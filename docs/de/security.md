@@ -183,6 +183,23 @@ Der NL-Abfragedienst (`POST /query/nl`) hat ein unabhängiges Limit über `nl.ra
 
 Der Zustand der Ratenbegrenzung liegt in Redis (`cache.redis_url`) als gleitender Fensterzähler vor — kein Zustand pro Instanz — sodass die Limits über alle horizontal skalierten Provisa-Instanzen hinweg gelten. (REQ-371)
 
+## Limit für Abfragekomplexität
+
+Ein Ratenlimit begrenzt, wie viele Anfragen eine Rolle sendet. Das Komplexitätslimit begrenzt, was eine einzelne Anweisung anfordern darf. (REQ-1174)
+
+Jede Anweisung hat einen Komplexitätswert: die Relationen, die sie liest, ihre Joins, die ausgewählten Spalten (ein `*` zählt als die Spalten, für die es steht) und die in ihr verschachtelten Abfragen. Eine Relation aus einer entfernten API-Quelle (OpenAPI, Remote-GraphQL, Remote-gRPC) zählt 10, weil jeder Lesevorgang ein Budget verbraucht, das das entfernte System für alle Nutzer dieser Quelle festlegt.
+
+Das Limit ist `max_query_complexity` im `rate_limit` einer Rolle. Die organisationsweite Einstellung `limits.max_query_complexity` ist die Obergrenze für jede Rolle: Eine Rolle kann ein niedrigeres Limit setzen, ein höheres hat keine Wirkung. Standardmäßig ist keines von beiden gesetzt.
+
+```yaml
+roles:
+  - id: analyst
+    rate_limit:
+      max_query_complexity: 200
+```
+
+Der Wert wird gemessen, nachdem eine Anfrage geparst wurde und bevor sie der Governance unterzogen oder ausgeführt wird. Deshalb gilt ein Limit auf jeder Schnittstelle, über die eine Anweisung eintreffen kann: GraphQL, SQL über HTTP, pgwire, Arrow Flight, gRPC, Cypher, JSON:API und MCP. Eine Anweisung über dem Limit wird mit ihrem Wert, dem Limit und dem Angeforderten abgelehnt. HTTP-Schnittstellen antworten mit 413. Die Ablehnung wird als Richtlinienverweigerung protokolliert.
+
 ## Authentifizierung
 Austauschbare Authentifizierungsanbieter: (REQ-120)
 

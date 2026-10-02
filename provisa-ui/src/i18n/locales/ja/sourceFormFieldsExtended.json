@@ -85,6 +85,9 @@
     "reconnectIntervalSeconds": "再接続間隔(秒)",
     "subscribePayload": "サブスクライブペイロード(JSON、任意)",
     "feedUrlOverride": "フィード URL(任意の上書き)",
-    "pollIntervalSeconds": "ポーリング間隔(秒)"
+    "pollIntervalSeconds": "ポーリング間隔(秒)",
+    "accessToken": "アクセストークン",
+    "accessTokenHint": "シークレットボールトに保存されます。${secret:NAME} または ${env:NAME} の参照も指定できます。",
+    "brandNamespaceHint": "このソースのテーブル名の接頭辞。既定値を使う場合は空欄のままにします。"
   }
 }

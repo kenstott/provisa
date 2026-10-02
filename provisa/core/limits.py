@@ -163,6 +163,15 @@ def default_row_limit() -> int:
     return settings_registry.value("limits.default_row_limit")
 
 
+def max_query_complexity() -> int | None:  # REQ-1174
+    """The org-wide ceiling on one statement's complexity score, or None when the org sets none.
+    A role's own ``max_query_complexity`` may be tighter, never looser
+    (provisa.compiler.complexity)."""
+    from provisa.core import settings_registry
+
+    return settings_registry.value("limits.max_query_complexity")
+
+
 def flight_stream_default_limit() -> int:  # REQ-1905
     """The per-worker default for the Flight stream limit: the host's Flight budget — a third of
     ``min(32, cpus + 4)``, the figure the limit has always defaulted to for one process — divided

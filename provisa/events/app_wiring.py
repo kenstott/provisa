@@ -177,7 +177,9 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
         loaders["sparql"] = make_openapi_loader(api_endpoints, api_sources)  # REQ-1683
     gql_sources = getattr(state, "graphql_remote_sources", None)
     if gql_sources:
-        loaders["graphql_remote"] = make_graphql_remote_loader(gql_sources)
+        loaders["graphql_remote"] = make_graphql_remote_loader(
+            gql_sources, state.config.graphql_remote.max_rows
+        )
     dq_loader = make_dq_loader(state)
     loaders["soda"] = dq_loader
     loaders["great_expectations"] = dq_loader

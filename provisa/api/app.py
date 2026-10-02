@@ -2528,6 +2528,25 @@ def create_app() -> FastAPI:
 
     from provisa.core.operator_floor import OperatorFloorError as _OperatorFloorError
 
+    from provisa.compiler.complexity import ComplexityLimitExceeded as _ComplexityLimitExceeded
+
+    @app.exception_handler(_ComplexityLimitExceeded)
+    async def _complexity_limit_handler(_req: _Request, exc: _ComplexityLimitExceeded):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1174: a statement over the role's complexity limit. A route that does not answer
+        # the refusal itself answers it here: 413, the query asks for too much.
+        return _JSONResponse(
+            status_code=413,
+            content={
+                "detail": str(exc),
+                "code": "data.query_too_complex",
+                "params": {
+                    "score": exc.complexity.score,
+                    "limit": exc.limit,
+                    "limit_of": exc.limit_of,
+                },
+            },
+        )
+
     from provisa.compiler.definitions import DefinitionNotAvailable as _DefinitionNotAvailable
 
     @app.exception_handler(_DefinitionNotAvailable)

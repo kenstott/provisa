@@ -85,6 +85,9 @@
     "reconnectIntervalSeconds": "पुनः कनेक्ट अंतराल (सेकंड)",
     "subscribePayload": "सब्सक्राइब पेलोड (JSON, वैकल्पिक)",
     "feedUrlOverride": "फ़ीड URL (वैकल्पिक ओवरराइड)",
-    "pollIntervalSeconds": "पोल अंतराल (सेकंड)"
+    "pollIntervalSeconds": "पोल अंतराल (सेकंड)",
+    "accessToken": "एक्सेस टोकन",
+    "accessTokenHint": "सीक्रेट वॉल्ट में संग्रहीत होता है। ${secret:NAME} या ${env:NAME} संदर्भ भी स्वीकार्य है।",
+    "brandNamespaceHint": "इस स्रोत की टेबल के नामों का उपसर्ग। डिफ़ॉल्ट के लिए खाली छोड़ें।"
   }
 }

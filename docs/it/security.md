@@ -219,6 +219,23 @@ Il servizio di query in linguaggio naturale (`POST /query/nl`) ha un limite indi
 
 Lo stato del rate limiting risiede in Redis (`cache.redis_url`) come contatore a finestra scorrevole — nessuno stato per istanza — cosicché i limiti si mantengono su tutte le istanze Provisa orizzontali. (REQ-371)
 
+## Limite di complessità delle query
+
+Un limite di frequenza stabilisce quante richieste un ruolo può inviare. Il limite di complessità stabilisce che cosa può chiedere una singola istruzione. (REQ-1174)
+
+Ogni istruzione ha un punteggio di complessità: le relazioni che legge, i suoi join, le colonne che seleziona (un `*` conta quanto le colonne che rappresenta) e le query annidate al suo interno. Una relazione letta da un'origine API remota (OpenAPI, GraphQL remoto, gRPC remoto) conta 10, perché ogni lettura consuma un budget che il sistema remoto fissa per tutti coloro che usano quell'origine.
+
+Il limite è `max_query_complexity` nel `rate_limit` di un ruolo. L'impostazione a livello di organizzazione `limits.max_query_complexity` è il tetto per ogni ruolo: un ruolo può fissare un limite più basso, e uno più alto non ha effetto. Per impostazione predefinita nessuno dei due è impostato.
+
+```yaml
+roles:
+  - id: analyst
+    rate_limit:
+      max_query_complexity: 200
+```
+
+Il punteggio viene misurato dopo l'analisi della richiesta e prima che sia governata o eseguita, quindi lo stesso limite vale su ogni interfaccia da cui può arrivare un'istruzione: GraphQL, SQL su HTTP, pgwire, Arrow Flight, gRPC, Cypher, JSON:API e MCP. Un'istruzione oltre il limite viene rifiutata con il suo punteggio, il limite e ciò che chiedeva. Le interfacce HTTP rispondono 413. Il rifiuto viene registrato come diniego di policy.
+
 ## Autenticazione
 
 Provider di autenticazione collegabili: (REQ-120)

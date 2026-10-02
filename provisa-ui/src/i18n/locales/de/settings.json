@@ -32,6 +32,10 @@
           "grpc": "gRPC",
           "mcp": "MCP"
         }
+      },
+      "max_query_complexity": {
+        "label": "Max. Abfragekomplexität",
+        "help": "Der höchste Komplexitätswert, den eine Anweisung haben darf, für jede Rolle. Eine Rolle kann eine eigene, niedrigere Grenze setzen. Leer lassen für keine Grenze."
       }
     },
     "sampling": {
@@ -538,6 +542,10 @@
       "max_list_items": {
         "label": "Listenelemente bei Remote-GraphQL",
         "help": "Die maximale Anzahl Elemente, die aus einer Liste einer Remote-GraphQL-Quelle gelesen werden."
+      },
+      "max_rows": {
+        "label": "Zeilen pro Lesevorgang bei Remote-GraphQL",
+        "help": "Die maximale Anzahl Zeilen, die ein Lesevorgang einer seitenweise gelesenen Remote-GraphQL-Tabelle holt."
       }
     },
     "provisioning": {

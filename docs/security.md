@@ -219,6 +219,23 @@ The NL query service (`POST /query/nl`) has an independent limit via `nl.rate_li
 
 Rate limit state lives in Redis (`cache.redis_url`) as a sliding-window counter — no per-instance state — so limits hold across all horizontal Provisa instances. (REQ-371)
 
+## Query Complexity Limit
+
+A rate limit caps how many requests a role sends. The complexity limit caps what one statement may ask for. (REQ-1174)
+
+Every statement has a complexity score: the relations it reads, its joins, the columns it selects (a `*` counts as the columns it stands for), and the queries nested inside it. A relation read from a remote API source (OpenAPI, remote GraphQL, remote gRPC) counts as 10, because each read spends a budget the remote system sets for everyone using that source.
+
+The limit is `max_query_complexity` in a role's `rate_limit`. The org-wide setting `limits.max_query_complexity` is a ceiling for every role: a role may set a lower limit, and a higher one has no effect. Neither is set by default.
+
+```yaml
+roles:
+  - id: analyst
+    rate_limit:
+      max_query_complexity: 200
+```
+
+The score is measured after a request is parsed and before it is governed or run, so one limit holds on every interface a statement can arrive on: GraphQL, SQL over HTTP, pgwire, Arrow Flight, gRPC, Cypher, JSON:API and MCP. A statement over the limit is refused with its score, the limit and what it asked for. HTTP interfaces answer 413. The refusal is recorded as a policy denial.
+
 ## Authentication
 
 Pluggable auth providers: (REQ-120)

@@ -85,6 +85,9 @@
     "reconnectIntervalSeconds": "Intervalo de reconexión (segundos)",
     "subscribePayload": "Carga de suscripción (JSON, opcional)",
     "feedUrlOverride": "URL del feed (reemplazo opcional)",
-    "pollIntervalSeconds": "Intervalo de sondeo (segundos)"
+    "pollIntervalSeconds": "Intervalo de sondeo (segundos)",
+    "accessToken": "Token de acceso",
+    "accessTokenHint": "Se guarda en el almacén de secretos. También se acepta una referencia ${secret:NAME} o ${env:NAME}.",
+    "brandNamespaceHint": "Prefijo de los nombres de tabla de este origen. Déjelo en blanco para usar el predeterminado."
   }
 }

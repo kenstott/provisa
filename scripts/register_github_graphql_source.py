@@ -8,14 +8,13 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Register GitHub's public GraphQL API as a graphql_remote source (REQ-307).
+"""Add GitHub as a source through the admin API (REQ-1923).
 
-No new connector: graphql_remote's generic introspect/execute path (REQ-307/309)
-already handles GitHub's bearer-token auth. This just POSTs a registration to the
-running admin API.
+GitHub is a branded source carried by the remote GraphQL source: the request names the brand
+and supplies a token. Adding it registers no tables; register the ones wanted from the Tables
+page, or with the registerTable mutation.
 
-Requires GITHUB_TOKEN (a GitHub PAT with at least `read:user` scope) in the
-environment — raises if unset, never falls back silently.
+Requires GITHUB_TOKEN in the environment.
 
 Usage:
     GITHUB_TOKEN=$(gh auth token) python3 scripts/register_github_graphql_source.py
@@ -34,11 +33,10 @@ ADMIN_URL = (
 def main() -> None:
     token = os.environ["GITHUB_TOKEN"]
     payload = {
-        "source_id": "github-graphql",
-        "url": "https://api.github.com/graphql",
-        "namespace": "gh",
+        "source_id": "github",
+        "brand": "github",
         "auth": {"type": "bearer", "token": token},
-        "description": "GitHub public GraphQL API",
+        "description": "GitHub",
     }
     resp = httpx.post(ADMIN_URL, json=payload, timeout=60.0)
     resp.raise_for_status()

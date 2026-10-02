@@ -50,6 +50,19 @@ DECLARED: list[Setting] = [
         unit="rows",
     ),
     Setting(
+        key="limits.max_query_complexity",
+        card="limits",
+        type="int",
+        effect="live",  # read when a statement is governed
+        req="REQ-1174",  # unset as shipped: an org states its ceiling, none is assumed for it
+        env="PROVISA_MAX_QUERY_COMPLEXITY",
+        config_path=("server", "limits", "max_query_complexity"),
+        default=None,
+        nullable=True,
+        min=1,
+        unit="points",
+    ),
+    Setting(
         key="limits.engine_query_timeout",
         card="limits",
         type="int",

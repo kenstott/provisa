@@ -219,6 +219,23 @@ O serviço de consulta NL (`POST /query/nl`) tem um limite independente via `nl.
 
 O estado do limite de taxa fica no Redis (`cache.redis_url`) como um contador de janela deslizante — sem estado por instância — de modo que os limites valem em todas as instâncias horizontais do Provisa. (REQ-371)
 
+## Limite de complexidade de consulta
+
+Um limite de taxa restringe quantas requisições um papel envia. O limite de complexidade restringe o que uma única instrução pode pedir. (REQ-1174)
+
+Cada instrução tem uma pontuação de complexidade: as relações que lê, seus joins, as colunas que seleciona (um `*` conta como as colunas que representa) e as consultas aninhadas nela. Uma relação lida de uma fonte de API remota (OpenAPI, GraphQL remoto, gRPC remoto) conta 10, porque cada leitura consome um orçamento que o sistema remoto define para todos que usam essa fonte.
+
+O limite é `max_query_complexity` no `rate_limit` de um papel. A configuração de toda a organização `limits.max_query_complexity` é o teto para todos os papéis: um papel pode definir um limite mais baixo, e um mais alto não tem efeito. Nenhum dos dois é definido por padrão.
+
+```yaml
+roles:
+  - id: analyst
+    rate_limit:
+      max_query_complexity: 200
+```
+
+A pontuação é medida depois que a requisição é analisada e antes de ser governada ou executada, de modo que o mesmo limite vale em toda interface pela qual uma instrução pode chegar: GraphQL, SQL sobre HTTP, pgwire, Arrow Flight, gRPC, Cypher, JSON:API e MCP. Uma instrução acima do limite é recusada com sua pontuação, o limite e o que pedia. As interfaces HTTP respondem 413. A recusa é registrada como negação de política.
+
 ## Autenticação
 
 Provedores de autenticação plugáveis: (REQ-120)

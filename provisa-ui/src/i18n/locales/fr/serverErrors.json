@@ -84,7 +84,8 @@
       "sql_generation_failed": "Impossible de générer du SQL valide après 3 tentatives : {{error}}",
       "table_not_found": "Table « {{table}} » introuvable",
       "unknown_action_field": "Champ d'action inconnu : « {{field}} »",
-      "unknown_command": "Commande « {{name}} » inconnue"
+      "unknown_command": "Commande « {{name}} » inconnue",
+      "query_too_complex": "La complexité de la requête ({{score}}) dépasse la limite de {{limit}} ({{limit_of}})."
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adaptateur pour « {{source_type}} » n'implémente pas discover_schema",
@@ -294,7 +295,10 @@
       "view_spans_sources": "la vue s'étend sur plusieurs sources : {{sources}}",
       "webhook_approved": "Webhook « {{webhook}} » approuvé",
       "webhook_name_required": "webhook_name est requis pour un déclencheur webhook",
-      "webhook_not_found": "Webhook « {{webhook}} » introuvable"
+      "webhook_not_found": "Webhook « {{webhook}} » introuvable",
+      "table_registered_fields_omitted": "Table « {{table}} » enregistrée (id={{id}}). Omis, car les identifiants de la source ne permettent pas de les lire : {{fields}}",
+      "table_not_readable": "Les identifiants de cette source ne permettent pas de lire {{table}} : {{reason}}",
+      "table_too_complex": "La table « {{table}} » n'a pas été enregistrée avec les colonnes sélectionnées : {{reason}}. Choisissez moins de colonnes."
     },
     "security": {
       "unknown_mode": "mode de sécurité « {{mode}} » inconnu"

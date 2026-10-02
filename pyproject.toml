@@ -271,6 +271,8 @@ include = ["provisa", "provisa.*", "buenavista", "buenavista.*"]
 # scripts/build-wheel.sh) and the runtime config/ files (staged into provisa/_config/) ship in
 # the wheel so the delivery is self-contained on a Python-only, npm/Node-free host.
 "provisa" = ["_ui/**/*", "_config/*.yaml", "_config/demo/files/*"]
+# REQ-1923: the shipped schema of each branded GraphQL source (scripts/bake_graphql_brand_schema.py).
+"provisa.graphql_remote" = ["_known_schemas/*.json.gz"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "tests/steps"]

@@ -1,6 +1,6 @@
 # Remote Schemas
 
-A remote schema source connects an external API — GraphQL, gRPC, or REST (OpenAPI) — to the Provisa semantic layer. Once registered, the external API's operations become first-class Provisa tables and functions. (REQ-308, REQ-316, REQ-325) Every governance rule, query interface, and security layer applies automatically. (REQ-310, REQ-319, REQ-328) The remote service never sees Provisa's governance rules. (REQ-310, REQ-319, REQ-328)
+A remote schema source connects an external API — GraphQL (including GitHub), gRPC, or REST (OpenAPI) — to the Provisa semantic layer. Once registered, the external API's operations become first-class Provisa tables and functions. (REQ-308, REQ-316, REQ-325) Every governance rule, query interface, and security layer applies automatically. (REQ-310, REQ-319, REQ-328) The remote service never sees Provisa's governance rules. (REQ-310, REQ-319, REQ-328)
 
 ---
 
@@ -36,6 +36,15 @@ Auth options: `none`, `bearer` (Authorization header), `basic` (Base64 username:
 
 **Table naming.** Tables are named `{namespace}__{field_name}`. With namespace `petstore` and a `pets` query field: table name is `petstore__pets`. (REQ-312) [tool-verified: `provisa/graphql_remote/mapper.py:250`]
 
+**Relay connections.** Many APIs return lists as Relay connections: an object with `nodes` (or `edges { node }`) beside `pageInfo`. Provisa maps a connection to a table of its nodes, and reads it page by page. (REQ-308, REQ-309) [tool-verified: `provisa/graphql_remote/mapper.py` `_is_connection`, `_map_connection_table`]
+
+- A root field that returns a connection (`securityAdvisories`) becomes one table of its nodes.
+- A connection on the single object a root field returns becomes its own table. The table takes the root field's required arguments. With `repository(owner, name)` and a connection `issues` on `Repository`, the table is `repositoryIssues`, SQL name `gh__repository_issues` under namespace `gh`. Filter it through the `_nf_owner` and `_nf_name` columns: `WHERE _nf_owner = 'acme' AND _nf_name = 'widgets'`.
+- A connection is never a column. A row would otherwise carry a read the remote computes per row, for every connection its type has.
+- A connection is a table only if its field takes `first` and `after`, so it can be read page by page. One that needs an argument of its own is not a table. Neither is a connection of a union, or any connection under a root field that returns a list.
+
+[tool-verified: `provisa/graphql_remote/mapper.py` `_map_connection_table`, `_map_child_connection_tables`; `tests/unit/test_graphql_remote_relay.py` `test_child_connection_table_takes_the_root_fields_arguments`]
+
 **Type mapping (REQ-308).** Scalar fields map to Provisa types directly. OBJECT fields split into two cases depending on whether the target type is governed (see "Governed tables" below). [tool-verified: `provisa/graphql_remote/mapper.py:14–36`, `provisa/api/data/endpoint.py:655–671`, `provisa/compiler/schema_gen.py:481–485`]
 
 | GraphQL type | Provisa type |
@@ -60,6 +69,8 @@ When an OBJECT-typed column on a governed table points to another governed type,
 
 OBJECT types that are NOT reachable as root Query fields (inline types such as `ContactInfo` or `Address`) follow different rules: they are fetched as `jsonb` blob columns and appear in the SDL as nested-object fields. Sub-fields are accessible via `-->>` extraction in SQL.
 
+**Fields that need an argument are not columns.** A field with a required argument cannot be selected bare, so it is left out of the table's columns and out of nested selections. [tool-verified: `provisa/graphql_remote/mapper.py` `_build_columns`, `_build_gql_field_selection`]
+
 **Required arguments.** When a root query field has non-null arguments with no default value, those become `native_filter_type: query_param` columns on the table (prefixed `_nf_` at injection time). The executor passes them as GraphQL variables. (REQ-555) [tool-verified: `provisa/graphql_remote/mapper.py:110–120`, `provisa/api/app.py:1280–1303`]
 
 **Relationships detected automatically.** Provisa scans each table's OBJECT-typed columns. When the referenced GQL type is also registered as a table in the same source, a relationship is emitted. Many-to-one relationships infer source and target columns from naming conventions (`breedName` on the source type → `name` on the `Breed` target type). One-to-many (LIST) fields emit relationships with empty column references — the FK lives on the target side. (REQ-554) [tool-verified: `provisa/graphql_remote/mapper.py:162–202`]
@@ -71,10 +82,75 @@ OBJECT types that are NOT reachable as root Query fields (inline types such as `
 **Limitations.**
 
 - Scalar and ENUM root query fields (return type is not OBJECT) become tracked functions, not virtual tables. Their `return_schema` is a single `value` column of the mapped scalar type. [tool-verified: `provisa/graphql_remote/mapper.py:254–279`]
-- Object nesting is resolved at registration time up to `graphql_remote.max_object_depth` (default: 5). Both the remote fetch selection and the sub-field metadata are built to that depth; fields beyond the limit are not fetched and are not available for SQL extraction. (REQ-556) [tool-verified: `provisa/graphql_remote/mapper.py:38–52`]
-- LIST-typed nested OBJECT fields (e.g. `breed.awards: [Award]`) are included in the fetch selection up to `graphql_remote.max_list_depth` nesting levels (default: 2). Within that limit, the list is fetched as a `jsonb` array on the parent column, and the GQL selection injects `first: N` where N is `graphql_remote.max_list_items` (default: 100) to cap array size. Beyond `max_list_depth`, the LIST field is excluded entirely to prevent unbounded data expansion. In SQL, the array is accessed via `json_array_elements(column_name)` or `->>` index extraction. If the list's item type has its own root query, register it as a separate table and create a relationship instead — the join path is more efficient and bypasses the blob. (REQ-556) [tool-verified: `provisa/graphql_remote/mapper.py:43–70`]
+- Object nesting is resolved at registration time up to `graphql_remote.max_object_depth` (default: 5). Both the remote fetch selection and the sub-field metadata are built to that depth; fields beyond the limit are not fetched and are not available for SQL extraction. A type is entered once along any one path: a field whose type is already on the way down is left out, so a schema whose types refer back to each other is walked once per type, not once per depth level. (REQ-556) [tool-verified: `provisa/graphql_remote/mapper.py` `_build_gql_field_selection`, `tests/unit/test_graphql_remote_relay.py` `test_a_type_is_entered_once_along_a_path`]
+- LIST-typed nested OBJECT fields (e.g. `breed.awards: [Award]`) are included in the fetch selection up to `graphql_remote.max_list_depth` nesting levels (default: 2). Within that limit, the list is fetched as a `jsonb` array on the parent column. When the list field declares a `first` argument (Relay, PostGraphile, pg_graphql) or a `limit` argument (Hasura), the selection passes it as `first: N` or `limit: N`, where N is `graphql_remote.max_list_items` (default: 100). A list field that declares neither gets no argument, because a remote rejects an argument the field does not declare. Beyond `max_list_depth`, the LIST field is excluded entirely to prevent unbounded data expansion. In SQL, the array is accessed via `json_array_elements(column_name)` or `->>` index extraction. If the list's item type has its own root query, register it as a separate table and create a relationship instead — the join path is more efficient and bypasses the blob. (REQ-556) [tool-verified: `provisa/graphql_remote/mapper.py` `_list_limit_arg`, `_build_gql_field_selection`; `tests/unit/test_graphql_remote_relay.py` `test_a_plain_list_takes_no_first_and_a_list_that_declares_first_gets_it`]
 - For SQL queries, non-governed OBJECT-typed columns are fetched in full from the remote (all sub-fields up to the configured depth) and cached as `jsonb`. Sub-field access in SQL is handled via `->>`  extraction against the blob; the remote request is not narrowed to only the fields the SQL query selects. When the LIST-item type has no root query and the blob representation is insufficient, write the query in GraphQL SDL directly — Provisa faithfully reproduces the GQL field selection, so the remote sees exactly the fields requested. [tool-verified: `provisa/compiler/sql_gen.py:1332–1368`]
-- If the remote server rejects an OBJECT-typed field because it requires subfield selection (which should not occur when `gql_selection` is available), the executor retries once with those fields removed so scalar columns are still returned. [tool-verified: `provisa/graphql_remote/executor.py:76–80`]
+- If the remote server rejects an OBJECT-typed field because it requires subfield selection (which should not occur when `gql_selection` is available), the executor retries once with those fields removed so scalar columns are still returned. This applies to tables read off a root field. A connection table does not take this path. [tool-verified: `provisa/graphql_remote/executor.py` `execute_remote` (`for attempt in range(2)`), `_execute_connection`]
+
+**Paged reads.** A connection table is read by cursor. Each page asks for `first: N, after: $pageCursor` with `pageInfo { hasNextPage endCursor }`, and the read follows `endCursor` until the remote reports no next page. (REQ-309) [tool-verified: `provisa/graphql_remote/executor.py` `_connection_query`, `_execute_connection`]
+
+| Setting | Default | Effect |
+| --- | --- | --- |
+| `graphql_remote.max_list_items` | `100` | Rows per page. [tool-verified: `provisa/api/data/materialization.py` passes `limit=max_items` to `execute_remote`] |
+| `graphql_remote.max_rows` | `10000` | The most rows one read of a connection table takes. A read that reaches it stops and logs a warning. [tool-verified: `provisa/core/models.py` `GraphQLRemoteConfig`] |
+
+```yaml
+graphql_remote:
+  max_list_items: 100
+  max_rows: 10000
+```
+
+Two responses make the executor retry:
+
+- **Page too heavy.** When the remote answers 502 or 504, the same page is asked again at half the size, down to one row. [tool-verified: `_PAGE_TOO_HEAVY = (502, 504)`, `page_size = max(1, page_size // 2)`]
+- **Rate limit with a wait time.** When the remote answers 403 or 429 with a `Retry-After` of 120 seconds or less, the executor waits that long and sends the request again, up to three attempts. A refusal with no `Retry-After`, or one asking for a longer wait, is raised as an error. This applies to every read, connection or not. [tool-verified: `_post`, `_RETRY_AFTER_STATUSES`, `_RETRY_AFTER_ATTEMPTS`, `_RETRY_AFTER_MAX_SECONDS`]
+
+Any other error in the response fails the read, unless the source type declares otherwise (see GitHub below). A connection whose parent came back null has no rows. [tool-verified: `_accept_row_field_errors`, `_execute_connection`]
+
+---
+
+### GitHub (REQ-1923)
+
+GitHub is an ordinary source type. Its API is GraphQL, so its tables behave as described above, including connection tables such as `gh__repository_issues`. [tool-verified: `provisa/graphql_remote/brands.py` `BRANDS["github"]`]
+
+**Add the source.**
+
+1. Open Sources and add a source of type **GitHub**.
+2. Enter a GitHub access token. Optionally enter a namespace, the prefix of the table names; the default is `gh`.
+3. Save. Provisa checks the token against GitHub. A token GitHub rejects fails the add with GitHub's message.
+
+Adding the source registers no tables. [tool-verified: `provisa/api/admin/graphql_remote_router.py` `_register_branded_source` (`"tables": 0`, `verify_query="query { viewer { login } }"`)]
+
+**Register tables.** Open Tables, then Register Table. Pick the GitHub source, pick schema `graphql`, then pick the tables you want. Every table GitHub offers is listed; the registration is your choice of which to expose. [tool-verified: `provisa/api/admin/_graphql_brand_registration.py` `offered_tables`] [inferred: picker labels and the `graphql` schema name from the task brief; the UI strings were not read]
+
+**Token scopes.** When you register a table, Provisa checks it once against GitHub with your token.
+
+- A field the token's scopes do not cover is left out of the table. The result names each field left out: `Left out, because the source's credential may not read them: projectsV2`. [tool-verified: `provisa/api/admin/schema_mutation_ops.py`]
+- A table the token cannot read at all is refused, with GitHub's reason: `GitHub does not let this source's credential read gh__repository_issues: ...`. [tool-verified: `provisa/api/admin/_table_ops.py` `_branded_columns_for_input`]
+
+**Rows the token may not see.** GitHub answers `FORBIDDEN` for a field the token may not see on one particular row, such as a repository's collaborators without push access, and `NOT_ORG_OWNED_REPO` for a field that exists only on organization-owned repositories. That field is null in that row, the rest of the read stands, and Provisa logs a warning. An error against the table itself fails the read. [tool-verified: `provisa/graphql_remote/brands.py` `error_policy`, `provisa/graphql_remote/executor.py` `_accept_row_field_errors`]
+
+**Heavy pages.** When GitHub answers `RESOURCE_LIMITS_EXCEEDED` because a page costs too much to compute, the page is asked again at half the size. [tool-verified: `brands.py` `overload`, `executor.py` `_execute_connection`]
+
+**Nested objects.** GitHub tables use their own nesting depth of 0 (`max_object_depth=0` for this source type), not `graphql_remote.max_object_depth`. A nested object column is selected with its own scalar fields only; objects inside it show as `__typename`. [tool-verified: `brands.py`]
+
+**Token storage.** The token goes to the secrets vault and the source row keeps a reference, so a restart reads the source again without re-entering the token. [tool-verified: `provisa/api/admin/graphql_remote_router.py` `_persist_source` docstring: "The credential goes to the org's vault and the row carries the reference"]
+
+**How it works (operators).** GitHub's schema ships with Provisa, so adding the source makes no introspection call and a large schema costs nothing at registration. Tables are mapped from it one at a time as you register them. The refresh endpoint refuses this source type; a new GitHub schema arrives with a Provisa release. [tool-verified: `brands.py` module docstring, `brand_schema`; REQ-1923 "there is no refresh" in `docs/arch/requirements.yaml` REQ-1875 supersession note] [tool-verified: refresh handler returns code `graphql_remote.branded_source_not_refreshed`]
+
+---
+
+### GitLab (REQ-1923)
+
+GitLab is an ordinary source type and is added and registered the same way as GitHub: add a source of type **GitLab** with an access token, then register the tables you want from schema `graphql`. The default table-name prefix is `gl`. The source reaches `gitlab.com`. [tool-verified: `provisa/graphql_remote/brands.py` `BRANDS["gitlab"]`]
+
+**Choose columns.** GitLab prices every query and refuses one that costs too much: 200 points for an anonymous caller, 250 with a token. A wide table with every column selected is over that price, so register a GitLab table with the columns you want. [tool-verified: live against gitlab.com 2026-10-02, `project.issues` with all 63 columns answered "Query has complexity of 1733, which exceeds max complexity of 200"; with 14 chosen columns it registered and read]
+
+- When you register a table, Provisa asks GitLab once whether it will serve the selection at the page size reads use. If GitLab answers that the query is too complex or too large, the table is not registered and the result carries GitLab's message: `Table 'gl__project_issues' was not registered with the columns selected: Query has complexity of 1733, which exceeds max complexity of 200. Choose fewer columns.` [tool-verified: `provisa/graphql_remote/probe.py` `QueryTooComplex`; `provisa/api/admin/_table_ops.py` code `schema.table_too_complex`]
+- What a column costs depends on its kind. A plain value costs about a point; a nested-object column costs many times that. Dropping nested-object columns frees the most. [tool-verified: live, five scalar columns scored 26 at 100 rows a page; two small object columns added 18]
+- The page size is part of the price. It is `graphql_remote.max_list_items`. [tool-verified: live, the same five columns scored 15 at 5 rows a page and 26 at 100]
+
+**Token check.** GitLab answers an unrecognized token with an empty result, not an error. Provisa treats that as a rejected token and does not add the source. [tool-verified: `provisa/api/admin/graphql_remote_router.py` `_verify_live_auth`]
 
 ---
 

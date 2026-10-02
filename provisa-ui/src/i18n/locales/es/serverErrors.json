@@ -84,7 +84,8 @@
       "sql_generation_failed": "No se pudo generar SQL válido después de 3 intentos: {{error}}",
       "table_not_found": "No se encontró la tabla '{{table}}'",
       "unknown_action_field": "Campo de acción desconocido: '{{field}}'",
-      "unknown_command": "Comando desconocido: '{{name}}'"
+      "unknown_command": "Comando desconocido: '{{name}}'",
+      "query_too_complex": "La complejidad de la consulta ({{score}}) supera el límite de {{limit}} ({{limit_of}})."
     },
     "discovery": {
       "adapter_missing_discover_schema": "El adaptador para '{{source_type}}' no implementa discover_schema",
@@ -294,7 +295,10 @@
       "view_spans_sources": "la vista abarca varios orígenes: {{sources}}",
       "webhook_approved": "Webhook '{{webhook}}' aprobado",
       "webhook_name_required": "webhook_name es obligatorio para un desencadenador de webhook",
-      "webhook_not_found": "No se encontró el webhook '{{webhook}}'"
+      "webhook_not_found": "No se encontró el webhook '{{webhook}}'",
+      "table_registered_fields_omitted": "Tabla '{{table}}' registrada (id={{id}}). Se omitieron, porque la credencial del origen no puede leerlos: {{fields}}",
+      "table_not_readable": "La credencial de este origen no puede leer {{table}}: {{reason}}",
+      "table_too_complex": "La tabla '{{table}}' no se registró con las columnas seleccionadas: {{reason}}. Elija menos columnas."
     },
     "security": {
       "unknown_mode": "modo de seguridad desconocido: '{{mode}}'"

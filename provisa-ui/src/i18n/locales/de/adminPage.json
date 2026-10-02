@@ -189,6 +189,8 @@
     "policyResetApply": "Zurücksetzen & Anwenden",
     "policyApplied": "Domänenrichtlinie angewendet. Der Katalog dieser Organisation wurde zurückgesetzt.",
     "policyApplyFailed": "Anwenden der Domänenrichtlinie fehlgeschlagen",
-    "settingsPanel": "Einstellungen"
+    "settingsPanel": "Einstellungen",
+    "maxRows": "Max. Zeilen pro Lesevorgang",
+    "maxRowsHint": "Die maximale Anzahl Zeilen, die ein Lesevorgang einer seitenweise gelesenen entfernten Tabelle holt, indem er ihrem Cursor Seite für Seite folgt."
   }
 }

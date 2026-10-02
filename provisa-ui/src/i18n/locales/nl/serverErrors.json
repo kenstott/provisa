@@ -84,7 +84,8 @@
       "sql_generation_failed": "Kon na 3 pogingen geen geldige SQL genereren: {{error}}",
       "table_not_found": "Tabel '{{table}}' niet gevonden",
       "unknown_action_field": "Onbekend actieveld: '{{field}}'",
-      "unknown_command": "Onbekende opdracht '{{name}}'"
+      "unknown_command": "Onbekende opdracht '{{name}}'",
+      "query_too_complex": "De complexiteit van de query ({{score}}) overschrijdt de limiet van {{limit}} ({{limit_of}})."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter voor '{{source_type}}' implementeert discover_schema niet",
@@ -294,7 +295,10 @@
       "view_spans_sources": "view omvat meerdere bronnen: {{sources}}",
       "webhook_approved": "Webhook '{{webhook}}' goedgekeurd",
       "webhook_name_required": "webhook_name is vereist voor een webhooktrigger",
-      "webhook_not_found": "Webhook '{{webhook}}' niet gevonden"
+      "webhook_not_found": "Webhook '{{webhook}}' niet gevonden",
+      "table_registered_fields_omitted": "Tabel '{{table}}' geregistreerd (id={{id}}). Weggelaten, omdat de inloggegevens van de bron ze niet mogen lezen: {{fields}}",
+      "table_not_readable": "De inloggegevens van deze bron mogen {{table}} niet lezen: {{reason}}",
+      "table_too_complex": "Tabel '{{table}}' is niet geregistreerd met de geselecteerde kolommen: {{reason}}. Kies minder kolommen."
     },
     "security": {
       "unknown_mode": "onbekende beveiligingsmodus '{{mode}}'"

@@ -85,6 +85,9 @@
     "reconnectIntervalSeconds": "Intervallo di riconnessione (secondi)",
     "subscribePayload": "Payload di sottoscrizione (JSON, facoltativo)",
     "feedUrlOverride": "URL del feed (override facoltativo)",
-    "pollIntervalSeconds": "Intervallo di polling (secondi)"
+    "pollIntervalSeconds": "Intervallo di polling (secondi)",
+    "accessToken": "Token di accesso",
+    "accessTokenHint": "Conservato nel vault dei segreti. È accettato anche un riferimento ${secret:NAME} o ${env:NAME}.",
+    "brandNamespaceHint": "Prefisso dei nomi delle tabelle di questa origine. Lasciare vuoto per il valore predefinito."
   }
 }

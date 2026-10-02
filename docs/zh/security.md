@@ -219,6 +219,23 @@ rls_rules:
 
 速率限制的状态存储于Redis（`cache.redis_url`）中，以滑动窗口计数器方式运作——并无按实例存储的状态——因此限制会在所有水平扩展的Provisa实例之间保持一致。（REQ-371）
 
+## 查询复杂度上限
+
+速率限制约束角色发送请求的数量；复杂度上限约束单条语句可以请求的内容。（REQ-1174）
+
+每条语句都有一个复杂度分数：它读取的关系、其连接、所选的列（`*` 按它所代表的列数计算），以及其中嵌套的查询。从远程 API 数据源（OpenAPI、远程 GraphQL、远程 gRPC）读取的关系计为 10，因为每次读取都会消耗远程系统为该数据源所有使用者设定的额度。
+
+上限是角色 `rate_limit` 中的 `max_query_complexity`。全组织设置 `limits.max_query_complexity` 是每个角色的上限天花板：角色可以设置更低的上限，更高的则不起作用。默认两者均未设置。
+
+```yaml
+roles:
+  - id: analyst
+    rate_limit:
+      max_query_complexity: 200
+```
+
+分数在请求解析之后、治理或执行之前测量，因此同一上限适用于语句可到达的每个接口：GraphQL、HTTP 上的 SQL、pgwire、Arrow Flight、gRPC、Cypher、JSON:API 和 MCP。超过上限的语句会被拒绝，并附上其分数、上限以及所请求的内容。HTTP 接口返回 413。该拒绝会记录为策略拒绝。
+
 ## 身份验证
 
 可插拔的身份验证提供程序：（REQ-120）

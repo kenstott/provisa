@@ -32,6 +32,10 @@
           "grpc": "gRPC",
           "mcp": "MCP"
         }
+      },
+      "max_query_complexity": {
+        "label": "Max query complexity",
+        "help": "The highest complexity score one statement may have, for every role. A role may set a lower limit of its own. Leave unset for no limit."
       }
     },
     "sampling": {
@@ -538,6 +542,10 @@
       "max_list_items": {
         "label": "Remote GraphQL list items",
         "help": "The most items read from one list of a remote GraphQL source."
+      },
+      "max_rows": {
+        "label": "Remote GraphQL rows per read",
+        "help": "The most rows one read of a paged remote GraphQL table takes."
       }
     },
     "provisioning": {

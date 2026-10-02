@@ -183,6 +183,23 @@ NL 查詢服務（`POST /query/nl`）經 `nl.rate_limit`（每角色每分鐘請
 
 速率限制狀態以滑動視窗計數器的形式存放在 Redis（`cache.redis_url`）——沒有逐執行個體的狀態——因此限制在所有水平擴展的 Provisa 執行個體之間都成立。（REQ-371）
 
+## 查詢複雜度上限
+
+速率限制約束角色發送請求的數量；複雜度上限約束單一陳述式可以要求的內容。（REQ-1174）
+
+每個陳述式都有一個複雜度分數：它讀取的關聯、其聯結、所選的欄位（`*` 按它所代表的欄位數計算），以及其中巢狀的查詢。從遠端 API 來源（OpenAPI、遠端 GraphQL、遠端 gRPC）讀取的關聯計為 10，因為每次讀取都會消耗遠端系統為該來源所有使用者設定的額度。
+
+上限是角色 `rate_limit` 中的 `max_query_complexity`。全組織設定 `limits.max_query_complexity` 是每個角色的天花板：角色可設定較低的上限，較高的則不起作用。預設兩者皆未設定。
+
+```yaml
+roles:
+  - id: analyst
+    rate_limit:
+      max_query_complexity: 200
+```
+
+分數在請求完成剖析之後、進行治理或執行之前量度，因此同一上限適用於陳述式可到達的每個介面：GraphQL、HTTP 上的 SQL、pgwire、Arrow Flight、gRPC、Cypher、JSON:API 與 MCP。超過上限的陳述式會被拒絕，並附上其分數、上限及所要求的內容。HTTP 介面回應 413。該拒絕會記錄為政策拒絕。
+
 ## 身份驗證
 可插拔的驗證提供者：（REQ-120）
 

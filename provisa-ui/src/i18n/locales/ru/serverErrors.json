@@ -84,7 +84,8 @@
       "sql_generation_failed": "Не удалось сгенерировать корректный SQL за 3 попытки: {{error}}",
       "table_not_found": "Таблица '{{table}}' не найдена",
       "unknown_action_field": "Неизвестное поле действия: '{{field}}'",
-      "unknown_command": "Неизвестная команда '{{name}}'"
+      "unknown_command": "Неизвестная команда '{{name}}'",
+      "query_too_complex": "Сложность запроса ({{score}}) превышает предел {{limit}} ({{limit_of}})."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Адаптер для '{{source_type}}' не реализует discover_schema",
@@ -294,7 +295,10 @@
       "view_spans_sources": "представление охватывает несколько источников: {{sources}}",
       "webhook_approved": "Вебхук '{{webhook}}' одобрен",
       "webhook_name_required": "для триггера-вебхука требуется webhook_name",
-      "webhook_not_found": "Вебхук '{{webhook}}' не найден"
+      "webhook_not_found": "Вебхук '{{webhook}}' не найден",
+      "table_registered_fields_omitted": "Таблица '{{table}}' зарегистрирована (id={{id}}). Пропущены, так как учётные данные источника не позволяют их читать: {{fields}}",
+      "table_not_readable": "Учётные данные этого источника не позволяют читать {{table}}: {{reason}}",
+      "table_too_complex": "Таблица '{{table}}' не зарегистрирована с выбранными столбцами: {{reason}}. Выберите меньше столбцов."
     },
     "security": {
       "unknown_mode": "неизвестный режим безопасности '{{mode}}'"

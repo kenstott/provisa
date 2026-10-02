@@ -577,6 +577,15 @@ async def _native_tables_graphql(  # REQ-307, REQ-308
 
     if schema_name != "graphql":
         return []
+    # REQ-1923: a branded source offers every table of its shipped schema, registered or not.
+    from provisa.api.admin._graphql_brand_registration import branded_registration, offered_tables
+
+    branded = branded_registration(state, source_id)
+    if branded is not None:
+        return [
+            AvailableTableType(name=t["name"], comment=t["description"])
+            for t in offered_tables(*branded)
+        ]
     gql_sources = getattr(state, "graphql_remote_sources", {})
     reg = gql_sources.get(source_id)
     if reg is not None:

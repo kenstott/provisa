@@ -189,6 +189,8 @@
     "policyResetApply": "Reimposta e applica",
     "policyApplied": "Criterio di dominio applicato. Il catalogo di questa organizzazione è stato reimpostato.",
     "policyApplyFailed": "Applicazione del criterio di dominio non riuscita",
-    "settingsPanel": "Impostazioni"
+    "settingsPanel": "Impostazioni",
+    "maxRows": "Numero massimo di righe per lettura",
+    "maxRowsHint": "Il numero massimo di righe che una lettura di una tabella remota paginata preleva, seguendone il cursore pagina per pagina."
   }
 }

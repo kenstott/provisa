@@ -1150,7 +1150,9 @@ def make_dq_loader(app_state: Any) -> AdapterLoader:
     return _load
 
 
-def make_graphql_remote_loader(gql_sources: dict[str, Any]) -> AdapterLoader:
+def make_graphql_remote_loader(
+    gql_sources: dict[str, Any], max_rows: int | None = None
+) -> AdapterLoader:
     """Build the graphql_remote adapter row-fetch (REQ-941/846): resolve the table's registration in
     ``state.graphql_remote_sources`` (by ``sql_name``), forward a minimal GraphQL query to the remote
     endpoint via :func:`execute_remote`, and return the rows. Refreshes from the remote source — the
@@ -1163,7 +1165,7 @@ def make_graphql_remote_loader(gql_sources: dict[str, Any]) -> AdapterLoader:
 
     async def _load(source: Any, table: Any) -> list[dict]:
         from provisa.compiler.naming import apply_gql_name, apply_sql_name
-        from provisa.graphql_remote.executor import execute_remote
+        from provisa.graphql_remote.executor import NO_POLICY, execute_remote
 
         normalised = apply_sql_name(table.table_name)
         for reg in gql_sources.values():
@@ -1189,6 +1191,9 @@ def make_graphql_remote_loader(gql_sources: dict[str, Any]) -> AdapterLoader:
                         auth=reg.get("auth"),
                         field_name=tbl.get("field_name") or tbl["name"],
                         columns=col_selections,
+                        rows_path=tbl.get("rows_path"),
+                        max_rows=max_rows,
+                        error_policy=reg.get("error_policy") or NO_POLICY,
                     )
         raise UnsupportedSourceFetch(
             f"graphql_remote source {source.id!r} table {table.table_name!r}: no matching "

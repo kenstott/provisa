@@ -4603,5 +4603,18 @@
   "zh-HK/viewDefinitionForm.json::viewDefinitionForm.save": "Save view",
   "zh-HK/viewDefinitionForm.json::viewDefinitionForm.saveFailed": "Save failed",
   "zh-HK/viewDefinitionForm.json::viewDefinitionForm.sqlCreateHint": "Free-hand views are authored in the SQL editor: write the SELECT, run it, then save it as a view.",
-  "zh-HK/viewDefinitionForm.json::viewDefinitionForm.sqlEditHint": "This view's SQL is edited in the SQL editor."
+  "zh-HK/viewDefinitionForm.json::viewDefinitionForm.sqlEditHint": "This view's SQL is edited in the SQL editor.",
+  "zh-HK/adminPage.json::adminPage.maxRows": "Max rows per read",
+  "zh-HK/adminPage.json::adminPage.maxRowsHint": "The most rows one read of a paged remote table takes, following its cursor page by page.",
+  "zh-HK/serverErrors.json::serverErrors.schema.table_registered_fields_omitted": "Table '{{table}}' registered (id={{id}}). Left out, because the source's credential may not read them: {{fields}}",
+  "zh-HK/serverErrors.json::serverErrors.schema.table_not_readable": "This source's credential may not read {{table}}: {{reason}}",
+  "zh-HK/settings.json::settings.graphql_remote.max_rows.label": "Remote GraphQL rows per read",
+  "zh-HK/settings.json::settings.graphql_remote.max_rows.help": "The most rows one read of a paged remote GraphQL table takes.",
+  "zh-HK/sourceFormFieldsExtended.json::sourceFormFieldsExtended.accessToken": "Access token",
+  "zh-HK/sourceFormFieldsExtended.json::sourceFormFieldsExtended.accessTokenHint": "Stored in the secrets vault. A ${secret:NAME} or ${env:NAME} reference is also accepted.",
+  "zh-HK/sourceFormFieldsExtended.json::sourceFormFieldsExtended.brandNamespaceHint": "Prefix of this source's table names. Leave blank for the default.",
+  "zh-HK/serverErrors.json::serverErrors.schema.table_too_complex": "Table '{{table}}' was not registered with the columns selected: {{reason}}. Choose fewer columns.",
+  "zh-HK/settings.json::settings.limits.max_query_complexity.label": "Max query complexity",
+  "zh-HK/settings.json::settings.limits.max_query_complexity.help": "The highest complexity score one statement may have, for every role. A role may set a lower limit of its own. Leave unset for no limit.",
+  "zh-HK/serverErrors.json::serverErrors.data.query_too_complex": "The query's complexity ({{score}}) exceeds the {{limit_of}} limit of {{limit}}."
 }

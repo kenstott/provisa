@@ -84,7 +84,8 @@
       "sql_generation_failed": "3 प्रयासों के बाद भी मान्य SQL उत्पन्न नहीं किया जा सका: {{error}}",
       "table_not_found": "टेबल '{{table}}' नहीं मिली",
       "unknown_action_field": "अज्ञात एक्शन फ़ील्ड: '{{field}}'",
-      "unknown_command": "अज्ञात कमांड '{{name}}'"
+      "unknown_command": "अज्ञात कमांड '{{name}}'",
+      "query_too_complex": "क्वेरी की जटिलता ({{score}}) सीमा {{limit}} ({{limit_of}}) से अधिक है।"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' का अडैप्टर discover_schema लागू नहीं करता",
@@ -294,7 +295,10 @@
       "view_spans_sources": "व्यू कई स्रोतों में फैला है: {{sources}}",
       "webhook_approved": "वेबहुक '{{webhook}}' अनुमोदित किया गया",
       "webhook_name_required": "वेबहुक ट्रिगर के लिए webhook_name आवश्यक है",
-      "webhook_not_found": "वेबहुक '{{webhook}}' नहीं मिला"
+      "webhook_not_found": "वेबहुक '{{webhook}}' नहीं मिला",
+      "table_registered_fields_omitted": "टेबल '{{table}}' पंजीकृत हुई (id={{id}})। छोड़े गए, क्योंकि स्रोत का क्रेडेंशियल इन्हें नहीं पढ़ सकता: {{fields}}",
+      "table_not_readable": "इस स्रोत का क्रेडेंशियल {{table}} को नहीं पढ़ सकता: {{reason}}",
+      "table_too_complex": "टेबल '{{table}}' चुने गए कॉलम के साथ पंजीकृत नहीं हुई: {{reason}}। कम कॉलम चुनें।"
     },
     "security": {
       "unknown_mode": "अज्ञात सुरक्षा मोड '{{mode}}'"

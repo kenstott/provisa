@@ -84,7 +84,8 @@
       "sql_generation_failed": "嘗試 3 次後仍無法產生有效的 SQL：{{error}}",
       "table_not_found": "找不到資料表「{{table}}」",
       "unknown_action_field": "未知的動作欄位：「{{field}}」",
-      "unknown_command": "未知命令「{{name}}」"
+      "unknown_command": "未知命令「{{name}}」",
+      "query_too_complex": "查詢的複雜度（{{score}}）超過上限 {{limit}}（{{limit_of}}）。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」的配接器未實作 discover_schema",
@@ -294,7 +295,10 @@
       "view_spans_sources": "檢視橫跨多個數據來源：{{sources}}",
       "webhook_approved": "已批准 Webhook「{{webhook}}」",
       "webhook_name_required": "Webhook 觸發程序必須提供 webhook_name",
-      "webhook_not_found": "找不到 Webhook「{{webhook}}」"
+      "webhook_not_found": "找不到 Webhook「{{webhook}}」",
+      "table_registered_fields_omitted": "資料表「{{table}}」已註冊（id={{id}}）。因來源的憑證無權讀取而略過：{{fields}}",
+      "table_not_readable": "此來源的憑證無權讀取 {{table}}：{{reason}}",
+      "table_too_complex": "資料表「{{table}}」未能以所選欄位註冊：{{reason}}。請選擇較少欄位。"
     },
     "security": {
       "unknown_mode": "未知的安全模式「{{mode}}」"

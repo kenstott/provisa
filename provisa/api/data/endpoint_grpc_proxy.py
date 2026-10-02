@@ -44,6 +44,7 @@ from provisa.grpc.query_ir import (
 from provisa.grpc.proto_gen import _to_proto_field_name
 from provisa.compiler.directives import cache_hint_from_grpc_metadata
 from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
+from provisa.compiler.complexity import ComplexityLimitExceeded
 
 log = logging.getLogger(__name__)
 
@@ -161,6 +162,8 @@ async def grpc_command(role_id: str, request: Request):  # REQ-1156
 
     try:
         rows = await invoke_tracked_function(name, args, state, role_id)
+    except ComplexityLimitExceeded:
+        raise  # REQ-1174: answered as 413 by the app's handler
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
 
@@ -360,6 +363,8 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
                 serve_cached=True,  # REQ-1897: _execute_plan serves the pre-route HIT
             )
             result = await _execute_plan(plan, state)
+        except ComplexityLimitExceeded:
+            raise  # REQ-1174: answered as 413 by the app's handler
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc))
         except Exception as exc:
@@ -388,6 +393,8 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
                         serve_cached=True,  # REQ-1897
                     )
                     nodes_result = await _execute_plan(nodes_plan, state)
+                except ComplexityLimitExceeded:
+                    raise  # REQ-1174: answered as 413 by the app's handler
                 except PermissionError as exc:
                     raise HTTPException(status_code=403, detail=str(exc))
                 except Exception as exc:
@@ -463,6 +470,8 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
             serve_cached=True,
         )
         result = await _execute_plan(plan, state)
+    except ComplexityLimitExceeded:
+        raise  # REQ-1174: answered as 413 by the app's handler
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
     except Exception as exc:

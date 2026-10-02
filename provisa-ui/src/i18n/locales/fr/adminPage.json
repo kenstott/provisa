@@ -189,6 +189,8 @@
     "policyResetApply": "Réinitialiser et appliquer",
     "policyApplied": "Politique de domaine appliquée. Le catalogue de cette organisation a été réinitialisé.",
     "policyApplyFailed": "Échec de l'application de la politique de domaine",
-    "settingsPanel": "Paramètres"
+    "settingsPanel": "Paramètres",
+    "maxRows": "Lignes max par lecture",
+    "maxRowsHint": "Le nombre maximal de lignes que prend une lecture d'une table distante paginée, en suivant son curseur page par page."
   }
 }

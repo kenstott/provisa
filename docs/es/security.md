@@ -197,6 +197,23 @@ El servicio de consulta en lenguaje natural (`POST /query/nl`) tiene un límite 
 
 El estado del límite de tasa reside en Redis (`cache.redis_url`) como un contador de ventana deslizante — sin estado por instancia — de modo que los límites se mantienen en todas las instancias horizontales de Provisa. (REQ-371)
 
+## Límite de complejidad de consulta
+
+Un límite de tasa acota cuántas solicitudes envía un rol. El límite de complejidad acota lo que puede pedir una sola sentencia. (REQ-1174)
+
+Cada sentencia tiene una puntuación de complejidad: las relaciones que lee, sus joins, las columnas que selecciona (un `*` cuenta como las columnas que representa) y las consultas anidadas en ella. Una relación leída de un origen de API remoto (OpenAPI, GraphQL remoto, gRPC remoto) cuenta 10, porque cada lectura gasta un presupuesto que el sistema remoto fija para todos los que usan ese origen.
+
+El límite es `max_query_complexity` en el `rate_limit` de un rol. El ajuste de toda la organización `limits.max_query_complexity` es el techo para todos los roles: un rol puede fijar un límite más bajo, y uno más alto no tiene efecto. Ninguno está definido de forma predeterminada.
+
+```yaml
+roles:
+  - id: analyst
+    rate_limit:
+      max_query_complexity: 200
+```
+
+La puntuación se mide después de analizar la solicitud y antes de gobernarla o ejecutarla, de modo que un mismo límite rige en toda interfaz por la que puede llegar una sentencia: GraphQL, SQL sobre HTTP, pgwire, Arrow Flight, gRPC, Cypher, JSON:API y MCP. Una sentencia que supera el límite se rechaza con su puntuación, el límite y lo que pedía. Las interfaces HTTP responden 413. El rechazo se registra como denegación de política.
+
 ## Autenticación
 Proveedores de autenticación conectables: (REQ-120)
 

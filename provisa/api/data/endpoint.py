@@ -332,19 +332,6 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
             )
             return JSONResponse({"data": result.data})
 
-        # REQ-1174: per-role query-complexity guard at the IR-compile boundary. Introspection
-        # above is exempt (schema meta — depth-limiting it breaks GraphQL tooling). Depth is
-        # measured on the AST (the normalized IR flattens nesting into joins, so it is not
-        # recoverable there); a query over a role's depth/node limit is rejected BEFORE any SQL is
-        # planned or run. 413 = "query too large".
-        from provisa.compiler.limits import QueryLimitError, enforce_limits, role_query_limits
-
-        _max_depth, _max_nodes, _ = role_query_limits(role)
-        try:
-            enforce_limits(document, max_depth=_max_depth, max_nodes=_max_nodes)
-        except QueryLimitError as e:
-            raise HTTPException(status_code=413, detail=str(e))
-        # (the role's max_query_time_ms is applied where execution is wrapped — _handle_query.)
     steward_hint = directives.steward_hint
 
     # REQ-1910: request entry for GraphQL over HTTP — the same resolution the pipeline's other
@@ -590,6 +577,20 @@ async def _prepare_compiled(
             status_code=403,
             detail={"violations": [{"code": v.code, "message": v.message} for v in _violations]},
         )
+
+    # REQ-1174: the complexity guard, on the semantic statement and before it is governed -- the
+    # same check the pipeline's other two governing stages make (pgwire._pipeline). 413: the
+    # query asks for too much, not for something the role may not see.
+    import sqlglot
+
+    from provisa.compiler.complexity import ComplexityLimitExceeded, guard_complexity
+
+    try:
+        guard_complexity(
+            sqlglot.parse_one(semantic_sql_for_validation, read="postgres"), gov_ctx, ctx, role
+        )
+    except ComplexityLimitExceeded as too_complex:
+        raise HTTPException(status_code=413, detail=str(too_complex)) from too_complex
 
     compiled.sql = apply_governance(semantic_sql_for_validation, gov_ctx)
     # REQ-1682: session-variable predicates resolve to the request's literals on every route —
@@ -1051,11 +1052,11 @@ async def _handle_query(
     # REQ-1174: cap execution wall-time at the tighter of this transport's request timeout
     # (REQ-1905: GraphQL's own value, else the default) and the role's max_query_time_ms (None →
     # the transport's only). Applied to every wait_for below.
-    from provisa.compiler.limits import role_query_limits as _rql
+    from provisa.compiler.limits import role_max_query_time_ms
     from provisa.core.limits import request_timeout_for, request_timeout_setting
 
     _transport_timeout = request_timeout_for("graphql")
-    _rt_ms = _rql(role)[2]
+    _rt_ms = role_max_query_time_ms(role)
     _role_timeout = (
         _transport_timeout if _rt_ms is None else min(_transport_timeout, _rt_ms / 1000.0)
     )

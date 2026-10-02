@@ -1019,10 +1019,51 @@ def _build_graphql_remote_table(tr: dict, col_rows: list[dict], source_id: str) 
     }
 
 
+async def _graphql_remote_auth(state, src: dict) -> dict | None:
+    """Rebuild a graphql_remote source's auth from its row: the scheme recorded in
+    ``federation_hints`` at registration (graphql_remote_router._persist_source) and the
+    credential its ``password_ref`` names, read from the org's vault (REQ-1695). None for a
+    source registered with no auth."""
+    from provisa.core import secrets_store
+    from provisa.core.secrets import resolve_secrets
+
+    auth_type = (src["federation_hints"] or {}).get("auth_type")
+    if not auth_type:
+        return None
+    ref = src["password_ref"] or ""
+    if "${secret:" in ref and secrets_store.bound_org_id() != state.active_org_id:
+        async with secrets_store.bound(state.admin_db, state.active_org_id):
+            secret = resolve_secrets(ref)
+    else:
+        secret = resolve_secrets(ref)
+    if auth_type == "bearer":
+        return {"type": "bearer", "token": secret}
+    if auth_type == "basic":
+        return {"type": "basic", "username": src["username"], "password": secret}
+    raise ValueError(f"graphql_remote source {src['id']!r}: unknown auth_type {auth_type!r}")
+
+
+def _apply_brand_table_spec(table: dict, brand, namespace: str) -> bool:
+    """Give a branded source's registered table the way it is read (REQ-1923): its root field,
+    row path, required arguments and page arguments come from the brand's shipped schema, which
+    is where they were taken from when the table was registered. False when that schema no
+    longer offers the table."""
+    from provisa.graphql_remote.brands import table_spec
+
+    spec = table_spec(brand, namespace, table["sql_name"])
+    if spec is None:
+        return False
+    for key in ("field_name", "gql_type_name", "required_args", "pagination", "rows_path"):
+        if key in spec:
+            table[key] = spec[key]
+    return True
+
+
 async def _load_graphql_remote_sources_from_db() -> None:
     """Load persisted graphql_remote sources from DB into state.graphql_remote_sources."""
     from provisa.api.app import state
     from provisa.core.secrets import resolve_secrets
+    from provisa.graphql_remote.brands import NAMESPACE_HINT, brand_of
 
     if state.tenant_db is None:
         log.warning("[GQL REMOTE] tenant_db is None — skipping DB load")
@@ -1035,9 +1076,13 @@ async def _load_graphql_remote_sources_from_db() -> None:
                 dict(_r._mapping)
                 for _r in (
                     await _conn.execute_core(
-                        select(_sources_t.c.id, _sources_t.c.path).where(
-                            _sources_t.c.type == "graphql_remote"
-                        )
+                        select(
+                            _sources_t.c.id,
+                            _sources_t.c.path,
+                            _sources_t.c.username,
+                            _sources_t.c.password_ref,
+                            _sources_t.c.federation_hints,
+                        ).where(_sources_t.c.type == "graphql_remote")
                     )
                 ).fetchall()
             ]
@@ -1046,7 +1091,13 @@ async def _load_graphql_remote_sources_from_db() -> None:
                 # A config-declared path may be a secret reference (${env:...}); the loader posts
                 # to the resolved endpoint (REQ-1685).
                 url = resolve_secrets(src["path"] or "")
-                if source_id in getattr(state, "graphql_remote_sources", {}):
+                hints = src["federation_hints"] or {}
+                brand = brand_of(hints)
+                # A plain source registers all its tables in one request, which leaves the full
+                # registration in state; it is loaded here only when this process never saw it.
+                # A branded source's tables are registered one at a time afterwards (REQ-1923),
+                # so its entry is rebuilt from the registry every time.
+                if brand is None and source_id in getattr(state, "graphql_remote_sources", {}):
                     continue
                 tbl_rows = [
                     dict(_r._mapping)
@@ -1064,6 +1115,7 @@ async def _load_graphql_remote_sources_from_db() -> None:
                         )
                     ).fetchall()
                 ]
+                namespace = hints.get(NAMESPACE_HINT, "")
                 tables: list[dict] = []
                 for tr in tbl_rows:
                     col_rows = [
@@ -1080,22 +1132,39 @@ async def _load_graphql_remote_sources_from_db() -> None:
                             )
                         ).fetchall()
                     ]
-                    tables.append(_build_graphql_remote_table(tr, col_rows, source_id))
-                if not tables:
+                    table = _build_graphql_remote_table(tr, col_rows, source_id)
+                    if brand is not None and not _apply_brand_table_spec(table, brand, namespace):
+                        log.error(
+                            "[GQL REMOTE] %s source %s: registered table %s is not in the "
+                            "shipped schema and cannot be read",
+                            brand.label,
+                            source_id,
+                            tr["table_name"],
+                        )
+                        continue
+                    tables.append(table)
+                if not tables and brand is None:
                     continue
-                namespace = ""
                 if not hasattr(state, "graphql_remote_sources"):
                     state.graphql_remote_sources = {}
                 state.graphql_remote_sources[source_id] = {
                     "source_id": source_id,
                     "url": url,
                     "namespace": namespace,
-                    "domain_id": tables[0]["domain_id"],
-                    "auth": None,
+                    "domain_id": tables[0]["domain_id"] if tables else "",
+                    "auth": await _graphql_remote_auth(state, src),
                     "cache_ttl": 300,
                     "tables": tables,
                     "functions": [],
                     "relationships": [],
+                    **(
+                        {
+                            "brand": brand.id,
+                            "error_policy": brand.error_policy,
+                        }
+                        if brand is not None
+                        else {}
+                    ),
                 }
                 log.warning(
                     "[GQL REMOTE] Loaded source %s from DB (%d tables)", source_id, len(tables)

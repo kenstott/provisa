@@ -96,6 +96,8 @@ def _lookup_api_endpoint(state: AppState, table_name: str):
 
 def _lookup_gql_remote_table(state: AppState, table_name: str) -> dict | None:
     """Look up graphql_remote source info by SQL table name (snake_case)."""
+    from provisa.graphql_remote.executor import NO_POLICY
+
     for reg in getattr(state, "graphql_remote_sources", {}).values():
         for t in reg.get("tables", []):
             if t["sql_name"] == table_name:
@@ -106,6 +108,8 @@ def _lookup_gql_remote_table(state: AppState, table_name: str) -> dict | None:
                     "field_name": t.get("field_name", t["name"]),
                     "columns": t.get("columns", []),
                     "required_args": t.get("required_args", []),
+                    "rows_path": t.get("rows_path"),
+                    "error_policy": reg.get("error_policy") or NO_POLICY,
                     "cache_ttl": reg.get("cache_ttl", 300),
                     "cache_catalog": reg.get("cache_catalog", "provisa_admin"),
                 }
@@ -401,6 +405,9 @@ async def _execute_with_gql_remote(
                 columns=col_selections,
                 variables=gql_vars or None,
                 required_args=required_args or None,
+                rows_path=info["rows_path"],
+                max_rows=state.config.graphql_remote.max_rows,
+                error_policy=info["error_policy"],
             )
             await loop.run_in_executor(None, _check_or_create_cache, fetched_rows)
             # REQ-1688: statistics where the table lives, off the query's critical path.

@@ -85,6 +85,9 @@
     "reconnectIntervalSeconds": "重连间隔（秒）",
     "subscribePayload": "订阅负载（JSON，可选）",
     "feedUrlOverride": "订阅源 URL（可选覆盖）",
-    "pollIntervalSeconds": "轮询间隔（秒）"
+    "pollIntervalSeconds": "轮询间隔（秒）",
+    "accessToken": "访问令牌",
+    "accessTokenHint": "存储在密钥保管库中。也接受 ${secret:NAME} 或 ${env:NAME} 引用。",
+    "brandNamespaceHint": "此数据源表名的前缀。留空则使用默认值。"
   }
 }

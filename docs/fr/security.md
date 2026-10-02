@@ -219,6 +219,23 @@ Le service de requêtes en langage naturel (`POST /query/nl`) dispose d'une limi
 
 L'état de la limitation de débit vit dans Redis (`cache.redis_url`) sous forme de compteur à fenêtre glissante — sans état par instance — de sorte que les limites tiennent sur toutes les instances Provisa réparties horizontalement. (REQ-371)
 
+## Limite de complexité des requêtes
+
+Une limite de débit plafonne le nombre de requêtes qu'un rôle envoie. La limite de complexité plafonne ce qu'une seule instruction peut demander. (REQ-1174)
+
+Chaque instruction a un score de complexité : les relations qu'elle lit, ses jointures, les colonnes qu'elle sélectionne (un `*` compte pour les colonnes qu'il représente) et les requêtes qui y sont imbriquées. Une relation lue depuis une source d'API distante (OpenAPI, GraphQL distant, gRPC distant) compte pour 10, car chaque lecture consomme un budget que le système distant fixe pour tous les utilisateurs de cette source.
+
+La limite est `max_query_complexity` dans le `rate_limit` d'un rôle. Le paramètre `limits.max_query_complexity`, à l'échelle de l'organisation, est le plafond de chaque rôle : un rôle peut fixer une limite plus basse, et une limite plus haute est sans effet. Aucun des deux n'est défini par défaut.
+
+```yaml
+roles:
+  - id: analyst
+    rate_limit:
+      max_query_complexity: 200
+```
+
+Le score est mesuré après l'analyse de la requête et avant qu'elle soit gouvernée ou exécutée ; une même limite vaut donc sur toute interface par laquelle une instruction peut arriver : GraphQL, SQL sur HTTP, pgwire, Arrow Flight, gRPC, Cypher, JSON:API et MCP. Une instruction au-dessus de la limite est refusée avec son score, la limite et ce qu'elle demandait. Les interfaces HTTP répondent 413. Le refus est enregistré comme un refus de politique.
+
 ## Authentification
 
 Fournisseurs d'authentification enfichables : (REQ-120)

@@ -84,7 +84,8 @@
       "sql_generation_failed": "尝试 3 次后仍无法生成有效的 SQL：{{error}}",
       "table_not_found": "未找到表 '{{table}}'",
       "unknown_action_field": "未知操作字段：'{{field}}'",
-      "unknown_command": "未知命令 '{{name}}'"
+      "unknown_command": "未知命令 '{{name}}'",
+      "query_too_complex": "查询的复杂度（{{score}}）超过上限 {{limit}}（{{limit_of}}）。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' 的适配器未实现 discover_schema",
@@ -294,7 +295,10 @@
       "view_spans_sources": "视图跨越多个数据源：{{sources}}",
       "webhook_approved": "已批准 Webhook '{{webhook}}'",
       "webhook_name_required": "Webhook 触发器需要 webhook_name",
-      "webhook_not_found": "未找到 Webhook '{{webhook}}'"
+      "webhook_not_found": "未找到 Webhook '{{webhook}}'",
+      "table_registered_fields_omitted": "表 '{{table}}' 已注册（id={{id}}）。因数据源的凭据无权读取而略过：{{fields}}",
+      "table_not_readable": "此数据源的凭据无权读取 {{table}}：{{reason}}",
+      "table_too_complex": "表 '{{table}}' 未能以所选列注册：{{reason}}。请选择更少的列。"
     },
     "security": {
       "unknown_mode": "未知的安全模式 '{{mode}}'"

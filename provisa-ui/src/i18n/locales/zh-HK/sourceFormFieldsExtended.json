@@ -85,6 +85,9 @@
     "reconnectIntervalSeconds": "重新連線間隔（秒）",
     "subscribePayload": "訂閱承載（JSON，選填）",
     "feedUrlOverride": "摘要 URL（選填覆寫）",
-    "pollIntervalSeconds": "輪詢間隔（秒）"
+    "pollIntervalSeconds": "輪詢間隔（秒）",
+    "accessToken": "存取權杖",
+    "accessTokenHint": "儲存於密鑰保管庫。亦接受 ${secret:NAME} 或 ${env:NAME} 參照。",
+    "brandNamespaceHint": "此來源資料表名稱的前綴。留空則使用預設值。"
   }
 }

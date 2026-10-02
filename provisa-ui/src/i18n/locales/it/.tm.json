@@ -4603,5 +4603,18 @@
   "orgEngineTab.json::orgEngineTab.hostedStateStopped": "This engine is idle. It starts on the next query.",
   "serverErrors.json::serverErrors.schema.source_limit_reached": "This organization holds {{held}} of the {{limit}} data sources its {{plan}} plan admits. Change the plan on the Billing page, or remove a source.",
   "tablesPage.json::tablesPage.modelingRole.impliedDimensionTitle": "Implied dimension — Enable Group By is on for this table",
-  "tablesPage.json::tablesPage.modelingRole.impliedFactTitle": "Implied fact — Enable Aggregates is on for this table"
+  "tablesPage.json::tablesPage.modelingRole.impliedFactTitle": "Implied fact — Enable Aggregates is on for this table",
+  "it/adminPage.json::adminPage.maxRows": "Max rows per read",
+  "it/adminPage.json::adminPage.maxRowsHint": "The most rows one read of a paged remote table takes, following its cursor page by page.",
+  "it/serverErrors.json::serverErrors.schema.table_registered_fields_omitted": "Table '{{table}}' registered (id={{id}}). Left out, because the source's credential may not read them: {{fields}}",
+  "it/serverErrors.json::serverErrors.schema.table_not_readable": "This source's credential may not read {{table}}: {{reason}}",
+  "it/settings.json::settings.graphql_remote.max_rows.label": "Remote GraphQL rows per read",
+  "it/settings.json::settings.graphql_remote.max_rows.help": "The most rows one read of a paged remote GraphQL table takes.",
+  "it/sourceFormFieldsExtended.json::sourceFormFieldsExtended.accessToken": "Access token",
+  "it/sourceFormFieldsExtended.json::sourceFormFieldsExtended.accessTokenHint": "Stored in the secrets vault. A ${secret:NAME} or ${env:NAME} reference is also accepted.",
+  "it/sourceFormFieldsExtended.json::sourceFormFieldsExtended.brandNamespaceHint": "Prefix of this source's table names. Leave blank for the default.",
+  "it/serverErrors.json::serverErrors.schema.table_too_complex": "Table '{{table}}' was not registered with the columns selected: {{reason}}. Choose fewer columns.",
+  "it/settings.json::settings.limits.max_query_complexity.label": "Max query complexity",
+  "it/settings.json::settings.limits.max_query_complexity.help": "The highest complexity score one statement may have, for every role. A role may set a lower limit of its own. Leave unset for no limit.",
+  "it/serverErrors.json::serverErrors.data.query_too_complex": "The query's complexity ({{score}}) exceeds the {{limit_of}} limit of {{limit}}."
 }

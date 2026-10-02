@@ -727,17 +727,26 @@ async def persist_source_password(info: StrawberryInfo, source_id: str, password
     The vault is the org's, so a rotation through this door is the same ``put`` a rotation through
     the Secrets screen is: the name is the identity and the new value replaces the old.
     """
+    from provisa.api.admin.capabilities import _identity_from_info
+
+    identity = _identity_from_info(info)
+    return await store_source_password(
+        getattr(identity, "user_id", None) if identity is not None else None, source_id, password
+    )
+
+
+async def store_source_password(actor: str | None, source_id: str, password: str) -> str:
+    """:func:`persist_source_password` for a caller that is not a GraphQL resolver -- a REST
+    admin router names the acting user itself. The same three cases."""
     if not password:
         return ""
     if "${" in password:
         return password
-    from provisa.api.admin.capabilities import _identity_from_info
     from provisa.api.app import state
     from provisa.core import secrets_store
     from provisa.core.request_context import current_org
 
     assert state.admin_db is not None, "the platform control plane holds every org's vault"
-    identity = _identity_from_info(info)
     name = source_password_secret_name(source_id)
     await secrets_store.put(
         state.admin_db,
@@ -745,7 +754,7 @@ async def persist_source_password(info: StrawberryInfo, source_id: str, password
         name,
         password,
         owner_id=secrets_store.ORG_OWNER,
-        actor=getattr(identity, "user_id", None) if identity is not None else None,
+        actor=actor,
         description=f"password for source {source_id}",
     )
     return f"${{secret:{name}}}"

@@ -31,6 +31,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from provisa.compiler.complexity import ComplexityLimitExceeded
 
 log = logging.getLogger(__name__)
 
@@ -148,6 +149,8 @@ async def neo4j_query_v2(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-35
             # REQ-544: the Cypher statement's own `// @provisa cache` opt-in.
             cache_hint=cache_hint_for("cypher", body.statement),
         )
+    except ComplexityLimitExceeded:
+        raise  # REQ-1174: answered as 413 by the app's handler
     except PermissionError as exc:
         return _error_response(str(exc), "Forbidden")
     except Exception as exc:

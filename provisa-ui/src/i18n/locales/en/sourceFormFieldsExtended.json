@@ -85,6 +85,9 @@
     "reconnectIntervalSeconds": "Reconnect Interval (seconds)",
     "subscribePayload": "Subscribe Payload (JSON, optional)",
     "feedUrlOverride": "Feed URL (optional override)",
-    "pollIntervalSeconds": "Poll Interval (seconds)"
+    "pollIntervalSeconds": "Poll Interval (seconds)",
+    "accessToken": "Access token",
+    "accessTokenHint": "Stored in the secrets vault. A ${secret:NAME} or ${env:NAME} reference is also accepted.",
+    "brandNamespaceHint": "Prefix of this source's table names. Leave blank for the default."
   }
 }

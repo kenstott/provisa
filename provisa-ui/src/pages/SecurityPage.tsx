@@ -99,8 +99,7 @@ const EMPTY_ROLE = {
   parentRoleId: "" as string, // REQ-1677: "" = no parent
   // REQ-1174: per-role rate + query-complexity limits ("" = unlimited on that dimension).
   reqPerSec: "" as number | "",
-  maxDepth: "" as number | "",
-  maxNodes: "" as number | "",
+  maxComplexity: "" as number | "",
   maxTimeMs: "" as number | "",
 };
 const EMPTY_RULE = {
@@ -186,8 +185,7 @@ export function SecurityRolesPage() {
       const _n = (v: number | "") => (v === "" ? null : Number(v));
       const rateLimit = {
         requestsPerSecond: _n(roleForm.reqPerSec),
-        maxQueryDepth: _n(roleForm.maxDepth),
-        maxQueryNodes: _n(roleForm.maxNodes),
+        maxQueryComplexity: _n(roleForm.maxComplexity),
         maxQueryTimeMs: _n(roleForm.maxTimeMs),
       };
       const hasLimit = Object.values(rateLimit).some((v) => v !== null);
@@ -239,8 +237,7 @@ export function SecurityRolesPage() {
       domainAccess: [...role.domain_access],
       parentRoleId: role.parentRoleId ?? "", // REQ-1677
       reqPerSec: role.rateLimit?.requestsPerSecond ?? "",
-      maxDepth: role.rateLimit?.maxQueryDepth ?? "",
-      maxNodes: role.rateLimit?.maxQueryNodes ?? "",
+      maxComplexity: role.rateLimit?.maxQueryComplexity ?? "",
       maxTimeMs: role.rateLimit?.maxQueryTimeMs ?? "",
     });
     setEditingRoleInRow(role.id);
@@ -359,27 +356,21 @@ export function SecurityRolesPage() {
               }
             />
             <NumberInput
-              label={t("securityPage.maxQueryDepth", "Max query depth")}
+              label={t("securityPage.maxQueryComplexity", "Max query complexity")}
+              description={t(
+                "securityPage.maxQueryComplexityHint",
+                "Relations, joins, columns and nested queries of one statement, on every interface. The org limit still applies.",
+              )}
               placeholder={t("securityPage.unlimited", "unlimited")}
               min={1}
-              data-testid="role-max-depth"
-              value={roleForm.maxDepth}
+              data-testid="role-max-complexity"
+              value={roleForm.maxComplexity}
               onChange={(v) =>
-                setRoleForm({ ...roleForm, maxDepth: typeof v === "number" ? v : "" })
+                setRoleForm({ ...roleForm, maxComplexity: typeof v === "number" ? v : "" })
               }
             />
           </Group>
           <Group grow>
-            <NumberInput
-              label={t("securityPage.maxQueryNodes", "Max query nodes")}
-              placeholder={t("securityPage.unlimited", "unlimited")}
-              min={1}
-              data-testid="role-max-nodes"
-              value={roleForm.maxNodes}
-              onChange={(v) =>
-                setRoleForm({ ...roleForm, maxNodes: typeof v === "number" ? v : "" })
-              }
-            />
             <NumberInput
               label={t("securityPage.maxQueryTimeMs", "Max query time (ms)")}
               placeholder={t("securityPage.unlimited", "unlimited")}

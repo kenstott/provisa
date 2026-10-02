@@ -85,6 +85,9 @@
     "reconnectIntervalSeconds": "Herverbindingsinterval (seconden)",
     "subscribePayload": "Subscribe-payload (JSON, optioneel)",
     "feedUrlOverride": "Feed-URL (optionele overschrijving)",
-    "pollIntervalSeconds": "Pollinginterval (seconden)"
+    "pollIntervalSeconds": "Pollinginterval (seconden)",
+    "accessToken": "Toegangstoken",
+    "accessTokenHint": "Opgeslagen in de geheimenkluis. Een verwijzing ${secret:NAME} of ${env:NAME} wordt ook geaccepteerd.",
+    "brandNamespaceHint": "Voorvoegsel van de tabelnamen van deze bron. Laat leeg voor de standaardwaarde."
   }
 }

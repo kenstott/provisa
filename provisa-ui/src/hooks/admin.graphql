@@ -54,8 +54,7 @@ query RolesQuery {
     parentRoleId
     rateLimit {
       requestsPerSecond
-      maxQueryDepth
-      maxQueryNodes
+      maxQueryComplexity
       maxQueryTimeMs
     }
   }

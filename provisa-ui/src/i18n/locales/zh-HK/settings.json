@@ -32,6 +32,10 @@
           "grpc": "gRPC",
           "mcp": "MCP"
         }
+      },
+      "max_query_complexity": {
+        "label": "查詢複雜度上限",
+        "help": "單一陳述式可有的最高複雜度分數，適用於所有角色。角色可自行設定較低的上限。留空則不設限。"
       }
     },
     "sampling": {
@@ -538,6 +542,10 @@
       "max_list_items": {
         "label": "遠端 GraphQL 清單項目數",
         "help": "從遠端 GraphQL 來源的單一清單讀取的項目數上限。"
+      },
+      "max_rows": {
+        "label": "遠端 GraphQL 每次讀取的資料列數",
+        "help": "對分頁的遠端 GraphQL 資料表進行一次讀取時所取得的資料列上限。"
       }
     },
     "provisioning": {

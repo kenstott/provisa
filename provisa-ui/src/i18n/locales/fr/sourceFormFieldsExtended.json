@@ -85,6 +85,9 @@
     "reconnectIntervalSeconds": "Intervalle de reconnexion (secondes)",
     "subscribePayload": "Charge utile d'abonnement (JSON, facultatif)",
     "feedUrlOverride": "URL du flux (remplacement facultatif)",
-    "pollIntervalSeconds": "Intervalle d'interrogation (secondes)"
+    "pollIntervalSeconds": "Intervalle d'interrogation (secondes)",
+    "accessToken": "Jeton d'accès",
+    "accessTokenHint": "Stocké dans le coffre de secrets. Une référence ${secret:NAME} ou ${env:NAME} est également acceptée.",
+    "brandNamespaceHint": "Préfixe des noms de table de cette source. Laissez vide pour la valeur par défaut."
   }
 }

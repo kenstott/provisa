@@ -84,7 +84,8 @@
       "sql_generation_failed": "לא ניתן היה להפיק SQL תקין לאחר 3 ניסיונות: {{error}}",
       "table_not_found": "הטבלה '{{table}}' לא נמצאה",
       "unknown_action_field": "שדה פעולה לא מוכר: '{{field}}'",
-      "unknown_command": "פקודה לא מוכרת '{{name}}'"
+      "unknown_command": "פקודה לא מוכרת '{{name}}'",
+      "query_too_complex": "מורכבות השאילתה ({{score}}) חורגת מהמגבלה {{limit}} ({{limit_of}})."
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",
@@ -294,7 +295,10 @@
       "view_spans_sources": "התצוגה (View) משתרעת על פני מספר מקורות: {{sources}}",
       "webhook_approved": "ה-Webhook '{{webhook}}' אושר",
       "webhook_name_required": "webhook_name נדרש עבור טריגר webhook",
-      "webhook_not_found": "ה-Webhook '{{webhook}}' לא נמצא"
+      "webhook_not_found": "ה-Webhook '{{webhook}}' לא נמצא",
+      "table_registered_fields_omitted": "הטבלה '{{table}}' נרשמה (id={{id}}). הושמטו, מפני שאישורי הגישה של המקור אינם רשאים לקרוא אותם: {{fields}}",
+      "table_not_readable": "אישורי הגישה של מקור זה אינם רשאים לקרוא את {{table}}: {{reason}}",
+      "table_too_complex": "הטבלה '{{table}}' לא נרשמה עם העמודות שנבחרו: {{reason}}. בחרו פחות עמודות."
     },
     "security": {
       "unknown_mode": "מצב אבטחה לא מוכר '{{mode}}'"

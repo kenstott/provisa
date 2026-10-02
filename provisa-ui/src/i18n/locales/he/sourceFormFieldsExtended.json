@@ -85,6 +85,9 @@
     "reconnectIntervalSeconds": "מרווח התחברות מחדש (שניות)",
     "subscribePayload": "מטען הרשמה (JSON, אופציונלי)",
     "feedUrlOverride": "כתובת Feed (עקיפה אופציונלית)",
-    "pollIntervalSeconds": "מרווח דגימה (שניות)"
+    "pollIntervalSeconds": "מרווח דגימה (שניות)",
+    "accessToken": "אסימון גישה",
+    "accessTokenHint": "נשמר בכספת הסודות. מתקבלת גם הפניה מסוג ${secret:NAME} או ${env:NAME}.",
+    "brandNamespaceHint": "קידומת לשמות הטבלאות של מקור זה. השאירו ריק לברירת המחדל."
   }
 }

@@ -26,6 +26,7 @@ import { MultiSelect } from "../../components/MultiSelect";
 import { cdcTransportApplicable, sourceChangeSignals } from "../../liveCapability";
 import {
   API_AUTH_TYPES,
+  BRAND_CARRIER,
   CHANGE_SIGNAL_LABELS,
   FILE_TRANSPORTS,
   GOVDATA_SUBJECTS,
@@ -220,6 +221,26 @@ export function SourceFormFieldsExtended({
           sourceIdHint={form.id}
           onSourcesRegistered={onKaggleSourcesRegistered ?? (() => {})}
         />
+      )}
+      {form.type in BRAND_CARRIER && (
+        <>
+          <PasswordInput
+            required
+            label={t("sourceFormFieldsExtended.accessToken")}
+            description={t("sourceFormFieldsExtended.accessTokenHint")}
+            value={authFields.token ?? ""}
+            onChange={(e) => setAuthFields({ ...authFields, token: e.target.value })}
+            style={{ gridColumn: "1 / -1" }}
+            data-testid="brand-token-input"
+          />
+          <TextInput
+            label={t("sourceFormFieldsExtended.namespace")}
+            description={t("sourceFormFieldsExtended.brandNamespaceHint")}
+            value={gqlNamespace}
+            onChange={(e) => setGqlNamespace(e.target.value)}
+            data-testid="brand-namespace-input"
+          />
+        </>
       )}
       {form.type === "graphql" && (
         <>

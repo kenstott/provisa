@@ -47,27 +47,93 @@ def _build_gql_field_selection(
     max_depth: int = 5,
     max_list_depth: int = 2,
     max_list_items: int = 100,
+    path: frozenset[str] = frozenset(),
 ) -> str:
-    """Recursively build a GQL selection string for object type fields."""
+    """Recursively build a GQL selection string for object type fields.
+
+    ``path`` holds the types already entered on the way down: a field whose type is one of them
+    is left out, so a schema whose types refer back to each other is walked once per type along
+    any one path instead of once per depth level."""
     if depth > max_depth:
         return "__typename"
     parts = []
     for f in fields or []:
+        if _build_required_args(f):
+            continue  # cannot be selected without an argument nothing here supplies
         is_list = _is_list_type(f["type"])
         if is_list and depth >= max_list_depth:
             continue
         kind, name = _unwrap_type(f["type"])
         if kind in ("SCALAR", "ENUM"):
             parts.append(f["name"])
-        elif kind == "OBJECT" and name:
+        elif kind in _COMPOSITE_KINDS and name:
             sub_type = _find_type(types, name)
+            if _is_connection(sub_type):
+                continue  # a connection is a table of its own (_map_connection_table)
+            if name in path:
+                continue
             if sub_type and sub_type.get("fields"):
                 sub_sel = _build_gql_field_selection(
-                    sub_type["fields"], types, depth + 1, max_depth, max_list_depth, max_list_items
+                    sub_type["fields"],
+                    types,
+                    depth + 1,
+                    max_depth,
+                    max_list_depth,
+                    max_list_items,
+                    path | {name},
                 )
-                field_ref = f"{f['name']}(first: {max_list_items})" if is_list else f["name"]
+                field_ref = f["name"] + (_list_limit_arg(f, max_list_items) if is_list else "")
                 parts.append(f"{field_ref} {{ {sub_sel} }}")
     return " ".join(parts) if parts else "__typename"
+
+
+# Kinds selected with a sub-selection. An INTERFACE is selected by the fields it declares.
+_COMPOSITE_KINDS = ("OBJECT", "INTERFACE")
+
+
+def _has_field(type_def: dict | None, name: str) -> bool:
+    return any(f["name"] == name for f in (type_def or {}).get("fields") or [])
+
+
+def _list_limit_arg(field: dict, max_list_items: int) -> str:
+    """The row-limit argument a list field takes, as ``(arg: N)``: ``first`` (Relay,
+    PostGraphile, pg_graphql) or ``limit`` (Hasura). Empty when the field declares neither -- a
+    field given an argument it does not declare is rejected by the remote. A field whose
+    introspection carries no ``args`` at all keeps ``first``."""
+    if "args" not in field:
+        return f"(first: {max_list_items})"
+    arg_names = {a["name"] for a in field.get("args") or []}
+    for arg in ("first", "limit"):
+        if arg in arg_names:
+            return f"({arg}: {max_list_items})"
+    return ""
+
+
+def _is_connection(type_def: dict | None) -> bool:
+    """Whether a type is a Relay connection: page information beside a row list."""
+    return _has_field(type_def, "pageInfo") and (
+        _has_field(type_def, "nodes") or _has_field(type_def, "edges")
+    )
+
+
+def _connection_rows(type_def: dict | None, types: list[dict]) -> tuple[list[str], str] | None:
+    """For a Relay connection type, the path from the connection to its rows and the row type's
+    name -- ``(["nodes"], "Issue")``, or ``(["edges", "node"], "Issue")`` where the connection has
+    no ``nodes`` shorthand. None when the type is not a connection, or its rows are not a type with
+    fields of its own (a union)."""
+    if not type_def or not _is_connection(type_def):
+        return None
+    by_name = {f["name"]: f for f in type_def.get("fields") or []}
+    if "nodes" in by_name:
+        kind, name = _unwrap_type(by_name["nodes"]["type"])
+        return (["nodes"], name) if kind in _COMPOSITE_KINDS and name else None
+    _, edge_name = _unwrap_type(by_name["edges"]["type"])
+    edge_type = _find_type(types, edge_name)
+    node = next((f for f in (edge_type or {}).get("fields") or [] if f["name"] == "node"), None)
+    if node is None:
+        return None
+    kind, name = _unwrap_type(node["type"])
+    return (["edges", "node"], name) if kind in _COMPOSITE_KINDS and name else None
 
 
 def _is_list_type(type_ref: dict) -> bool:
@@ -84,22 +150,36 @@ def _build_object_fields_recursive(
     max_depth: int = 5,
     max_list_depth: int = 2,
     max_list_items: int = 100,
+    path: frozenset[str] = frozenset(),
 ) -> list[dict]:
-    """Build structured object field dicts (with nested 'fields') from GQL type fields."""
+    """Build structured object field dicts (with nested 'fields') from GQL type fields. ``path``
+    is as in :func:`_build_gql_field_selection`; the two walk the same fields."""
     if depth > max_depth:
         return []
     result = []
     for f in fields or []:
+        if _build_required_args(f):
+            continue
         if _is_list_type(f["type"]) and depth >= max_list_depth:
             continue
         kind, name = _unwrap_type(f["type"])
         if kind in ("SCALAR", "ENUM"):
             result.append({"name": f["name"], "type": _gql_to_provisa_type(f["type"])})
-        elif kind == "OBJECT" and name:
+        elif kind in _COMPOSITE_KINDS and name:
             obj_type = _find_type(types, name)
+            if _is_connection(obj_type):
+                continue
+            if name in path:
+                continue
             if obj_type and obj_type.get("fields"):
                 sub_fields = _build_object_fields_recursive(
-                    obj_type["fields"], types, depth + 1, max_depth, max_list_depth, max_list_items
+                    obj_type["fields"],
+                    types,
+                    depth + 1,
+                    max_depth,
+                    max_list_depth,
+                    max_list_items,
+                    path | {name},
                 )
                 if sub_fields:
                     result.append(
@@ -119,26 +199,55 @@ def _build_columns(
     max_list_depth: int = 2,
     max_list_items: int = 100,
 ) -> list[dict]:
+    from provisa.compiler.naming import apply_sql_name as _apply_sql_name
+
     result = []
     for f in fields or []:
+        if _build_required_args(f):
+            continue  # a column is selected bare; one that needs an argument cannot be
         kind, name = _unwrap_type(f["type"])
         col: dict = {
             "name": f["name"],
             "type": _gql_to_provisa_type(f["type"]),
             "description": f.get("description") or None,
         }
-        if kind == "OBJECT" and types is not None and name:
+        if kind == "UNION" and types is not None:
+            col["gql_selection"] = f"{f['name']} {{ __typename }}"
+        elif kind in _COMPOSITE_KINDS and types is not None and name:
             obj_type = _find_type(types, name)
+            if _is_connection(obj_type):
+                # A connection is a table of its own (_map_connection_table), never a column: a
+                # row would otherwise carry, for every connection its type has, a read the
+                # remote must compute per row.
+                continue
             if obj_type and obj_type.get("fields"):
                 sub_sel = _build_gql_field_selection(
-                    obj_type["fields"], types, 0, max_object_depth, max_list_depth, max_list_items
+                    obj_type["fields"],
+                    types,
+                    0,
+                    max_object_depth,
+                    max_list_depth,
+                    max_list_items,
+                    frozenset({name}),
                 )
                 col["gql_selection"] = f"{f['name']} {{ {sub_sel} }}"
                 col["gql_object_fields"] = _build_object_fields_recursive(
-                    obj_type["fields"], types, 0, max_object_depth, max_list_depth, max_list_items
+                    obj_type["fields"],
+                    types,
+                    0,
+                    max_object_depth,
+                    max_list_depth,
+                    max_list_items,
+                    frozenset({name}),
                 )
                 col["gql_object_type"] = name
                 col["gql_is_list"] = _is_list_type(f["type"])
+        if col.get("gql_selection"):
+            # The store lands the column under its sql name. Alias the selection to it, so the
+            # response is keyed as the store expects whichever process reads the table.
+            sql_name = _apply_sql_name(f["name"])
+            if sql_name != f["name"]:
+                col["gql_selection"] = f"{sql_name}: {col['gql_selection']}"
         result.append(col)
     return result
 
@@ -196,11 +305,19 @@ def _build_return_schema(fields: list[dict]) -> list[dict]:
     return [{"name": f["name"], "type": _gql_to_provisa_type(f["type"])} for f in (fields or [])]
 
 
+# The types list last searched and its index by name. A schema's mapping looks types up
+# many thousands of times over the same list; one list is held at a time.
+_type_index: tuple[list[dict], dict[str | None, dict]] | None = None
+
+
 def _find_type(types: list[dict], name: str) -> dict | None:
-    for t in types:
-        if t.get("name") == name:
-            return t
-    return None
+    global _type_index  # noqa: PLW0603 -- a one-entry cache, replaced whole
+    if _type_index is None or _type_index[0] is not types:
+        by_name: dict[str | None, dict] = {}
+        for t in types:
+            by_name.setdefault(t.get("name"), t)  # the first of a name, as a scan would find
+        _type_index = (types, by_name)
+    return _type_index[1].get(name)
 
 
 def _infer_fk_columns(
@@ -349,20 +466,25 @@ def _map_query_field_as_table(  # REQ-308
     max_object_depth: int,
     max_list_depth: int,
     max_list_items: int,
+    only: set[str] | None = None,
 ) -> dict:
     """Map a single query field to a virtual-table entry."""
     _, ret_name = _unwrap_type(field["type"])
     return_type = _find_type(types, ret_name)
-    columns = _build_columns(
-        (return_type or {}).get("fields") or [],
-        types,
-        max_object_depth,
-        max_list_depth,
-        max_list_items,
-    )
     from provisa.compiler.naming import apply_sql_name as _apply_sql_name
 
     table_name = _qualify_name(namespace, field["name"])
+    columns = (
+        _build_columns(
+            (return_type or {}).get("fields") or [],
+            types,
+            max_object_depth,
+            max_list_depth,
+            max_list_items,
+        )
+        if only is None or table_name in only
+        else []
+    )
     return {
         "name": table_name,
         "sql_name": _apply_sql_name(table_name),
@@ -375,6 +497,98 @@ def _map_query_field_as_table(  # REQ-308
         "required_args": _build_required_args(field),
         "pagination": _detect_pagination_args(field.get("args") or []),
     }
+
+
+def _map_connection_table(  # REQ-308
+    root_field: dict,
+    conn_field: dict | None,
+    namespace: str,
+    source_id: str,
+    domain_id: str,
+    types: list[dict],
+    max_object_depth: int,
+    max_list_depth: int,
+    max_list_items: int,
+    only: set[str] | None = None,
+) -> dict | None:
+    """Map a Relay connection to a table whose rows are the connection's nodes.
+
+    ``conn_field`` is None when the root query field returns the connection itself
+    (``securityAdvisories``); otherwise it is a connection field on the object the root field
+    returns (``repository`` -> ``issues``), and the table takes the root field's required
+    arguments as its own. ``rows_path`` is the walk from the root field's value to the rows.
+    None when the field is not a connection.
+    """
+    holder = conn_field or root_field
+    _, conn_name = _unwrap_type(holder["type"])
+    rows = _connection_rows(_find_type(types, conn_name), types)
+    arg_names = {a["name"] for a in holder.get("args") or []}
+    if rows is None or not {"first", "after"} <= arg_names:
+        return None  # not a connection of rows, or one that cannot be read page by page
+    rows_path, node_name = rows
+    node_type = _find_type(types, node_name) or {}
+    from provisa.compiler.naming import apply_sql_name as _apply_sql_name
+
+    if conn_field is None:
+        field_name = root_field["name"]
+    else:
+        field_name = root_field["name"] + conn_field["name"][0].upper() + conn_field["name"][1:]
+    table_name = _qualify_name(namespace, field_name)
+    return {
+        "name": table_name,
+        "sql_name": _apply_sql_name(table_name),
+        "field_name": root_field["name"],
+        "gql_type_name": node_name,
+        "source_id": source_id,
+        "columns": _build_columns(
+            node_type.get("fields") or [], types, max_object_depth, max_list_depth, max_list_items
+        )
+        if only is None or table_name in only
+        else [],
+        "domain_id": domain_id,
+        "description": holder.get("description") or node_type.get("description") or None,
+        "required_args": _build_required_args(root_field),
+        "pagination": _detect_pagination_args(holder.get("args") or []),
+        "rows_path": ([conn_field["name"]] if conn_field else []) + rows_path,
+    }
+
+
+def _map_child_connection_tables(  # REQ-308
+    root_field: dict,
+    namespace: str,
+    source_id: str,
+    domain_id: str,
+    types: list[dict],
+    max_object_depth: int,
+    max_list_depth: int,
+    max_list_items: int,
+    only: set[str] | None = None,
+) -> list[dict]:
+    """One table per connection on the single object a root field returns (``repository`` ->
+    ``repositoryIssues``, ``repositoryPullRequests``, ...). A connection that itself needs an
+    argument is left out, as is any connection under a root field returning a list."""
+    if _is_list_type(root_field["type"]):
+        return []
+    _, ret_name = _unwrap_type(root_field["type"])
+    tables = []
+    for f in (_find_type(types, ret_name) or {}).get("fields") or []:
+        if _build_required_args(f):
+            continue
+        table = _map_connection_table(
+            root_field,
+            f,
+            namespace,
+            source_id,
+            domain_id,
+            types,
+            max_object_depth,
+            max_list_depth,
+            max_list_items,
+            only,
+        )
+        if table is not None:
+            tables.append(table)
+    return tables
 
 
 def _type_has_list(type_ref: dict) -> bool:
@@ -489,6 +703,7 @@ def _process_query_fields(
     max_object_depth: int,
     max_list_depth: int,
     max_list_items: int,
+    only: set[str] | None = None,
 ) -> tuple[list[dict], list[dict]]:
     """Partition query fields into tables and functions."""
     tables: list[dict] = []
@@ -500,20 +715,27 @@ def _process_query_fields(
             functions.append(
                 _map_query_field_as_function(field, namespace, source_id, domain_id, types)
             )
-        else:
-            tables.append(
-                _map_query_field_as_table(
-                    field,
-                    namespace,
-                    source_id,
-                    domain_id,
-                    types,
-                    max_object_depth,
-                    max_list_depth,
-                    max_list_items,
-                )
-            )
-    return tables, functions
+            continue
+        shape = (namespace, source_id, domain_id, types)
+        depths = (max_object_depth, max_list_depth, max_list_items, only)
+        _, ret_name = _unwrap_type(field["type"])
+        if _is_connection(_find_type(types, ret_name)):
+            # A root connection is a table of its nodes; one whose nodes are a union has no
+            # columns to offer and is not a table.
+            connection = _map_connection_table(field, None, *shape, *depths)
+            if connection is not None:
+                tables.append(connection)
+            continue
+        tables.append(_map_query_field_as_table(field, *shape, *depths))
+        tables.extend(_map_child_connection_tables(field, *shape, *depths))
+    # A child connection's derived name never displaces a root field of the same name.
+    seen: set[str] = set()
+    unique = []
+    for t in sorted(tables, key=lambda t: "rows_path" in t):
+        if t["name"] not in seen:
+            seen.add(t["name"])
+            unique.append(t)
+    return unique, functions
 
 
 def _process_mutation_fields(
@@ -543,8 +765,13 @@ def map_schema(  # REQ-308, REQ-312, REQ-313
     max_list_depth: int = 2,
     max_list_items: int = 100,
     field_overrides: dict[str, str] | None = None,
+    only: set[str] | None = None,
 ) -> tuple[list[dict], list[dict], list[dict]]:
     """Map __schema to (virtual_tables, tracked_functions, relationships).
+
+    ``only`` names the tables wanted in full. Every table is still returned, so a caller can list
+    what the schema offers, but a table not named comes back with no columns -- walking the
+    columns is nearly all of the work on a large schema. None maps every table in full.
 
     Names use the GQL field name directly; source_id provides disambiguation.
     Query fields with OBJECT return type → virtual tables.
@@ -572,6 +799,7 @@ def map_schema(  # REQ-308, REQ-312, REQ-313
         max_object_depth,
         max_list_depth,
         max_list_items,
+        only,
     )
     functions.extend(
         _process_mutation_fields(

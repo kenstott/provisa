@@ -84,7 +84,8 @@
       "sql_generation_failed": "Could not generate valid SQL after 3 attempts: {{error}}",
       "table_not_found": "Table '{{table}}' not found",
       "unknown_action_field": "Unknown action field: '{{field}}'",
-      "unknown_command": "Unknown command '{{name}}'"
+      "unknown_command": "Unknown command '{{name}}'",
+      "query_too_complex": "The query's complexity ({{score}}) exceeds the {{limit_of}} limit of {{limit}}."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter for '{{source_type}}' does not implement discover_schema",
@@ -294,7 +295,10 @@
       "view_spans_sources": "view spans multiple sources: {{sources}}",
       "webhook_approved": "Approved webhook '{{webhook}}'",
       "webhook_name_required": "webhook_name is required for a webhook trigger",
-      "webhook_not_found": "Webhook '{{webhook}}' not found"
+      "webhook_not_found": "Webhook '{{webhook}}' not found",
+      "table_registered_fields_omitted": "Table '{{table}}' registered (id={{id}}). Left out, because the source's credential may not read them: {{fields}}",
+      "table_not_readable": "This source's credential may not read {{table}}: {{reason}}",
+      "table_too_complex": "Table '{{table}}' was not registered with the columns selected: {{reason}}. Choose fewer columns."
     },
     "security": {
       "unknown_mode": "unknown security mode '{{mode}}'"

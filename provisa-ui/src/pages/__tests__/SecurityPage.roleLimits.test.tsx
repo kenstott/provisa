@@ -76,8 +76,11 @@ describe("SecurityPage — per-role rate & query-complexity limits (REQ-1174)", 
     renderPage();
     fireEvent.click(screen.getByTestId("toggle-role-form"));
     expect(screen.getByTestId("role-req-per-sec")).toBeInTheDocument();
-    expect(screen.getByTestId("role-max-depth")).toBeInTheDocument();
-    expect(screen.getByTestId("role-max-nodes")).toBeInTheDocument();
+    expect(screen.getByTestId("role-max-complexity")).toBeInTheDocument();
+    // REQ-1174: the depth and node limits measured a GraphQL document; one complexity limit
+    // measured on the statement replaced them.
+    expect(screen.queryByTestId("role-max-depth")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("role-max-nodes")).not.toBeInTheDocument();
     expect(screen.getByTestId("role-max-time-ms")).toBeInTheDocument();
   });
 
@@ -88,8 +91,7 @@ describe("SecurityPage — per-role rate & query-complexity limits (REQ-1174)", 
 
     fireEvent.change(input("role-id-input"), { target: { value: "analyst" } });
     fireEvent.change(input("role-req-per-sec"), { target: { value: "5" } });
-    fireEvent.change(input("role-max-depth"), { target: { value: "6" } });
-    fireEvent.change(input("role-max-nodes"), { target: { value: "200" } });
+    fireEvent.change(input("role-max-complexity"), { target: { value: "200" } });
     fireEvent.change(input("role-max-time-ms"), { target: { value: "3000" } });
     await chooseAllDomains();
 
@@ -101,8 +103,7 @@ describe("SecurityPage — per-role rate & query-complexity limits (REQ-1174)", 
         id: "analyst",
         rateLimit: {
           requestsPerSecond: 5,
-          maxQueryDepth: 6,
-          maxQueryNodes: 200,
+          maxQueryComplexity: 200,
           maxQueryTimeMs: 3000,
         },
       }),

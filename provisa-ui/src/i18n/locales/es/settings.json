@@ -32,6 +32,10 @@
           "grpc": "gRPC",
           "mcp": "MCP"
         }
+      },
+      "max_query_complexity": {
+        "label": "Complejidad máxima de consulta",
+        "help": "La puntuación de complejidad más alta que puede tener una sentencia, para todos los roles. Un rol puede fijar un límite propio más bajo. Déjelo sin definir para no limitar."
       }
     },
     "sampling": {
@@ -538,6 +542,10 @@
       "max_list_items": {
         "label": "Elementos de lista de GraphQL remoto",
         "help": "El máximo de elementos que se leen de una lista de un origen GraphQL remoto."
+      },
+      "max_rows": {
+        "label": "Filas por lectura de GraphQL remoto",
+        "help": "El máximo de filas que toma una lectura de una tabla paginada de GraphQL remoto."
       }
     },
     "provisioning": {

@@ -148,8 +148,7 @@ def _role_from_row(row, *, detail: bool = True) -> RoleType:
     if isinstance(rl, dict):
         rate_limit = RoleRateLimitType(
             requests_per_second=rl.get("requests_per_second"),
-            max_query_depth=rl.get("max_query_depth"),
-            max_query_nodes=rl.get("max_query_nodes"),
+            max_query_complexity=rl.get("max_query_complexity"),
             max_query_time_ms=rl.get("max_query_time_ms"),
         )
     return RoleType(

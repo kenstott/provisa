@@ -85,6 +85,9 @@
     "reconnectIntervalSeconds": "Wiederverbindungsintervall (Sekunden)",
     "subscribePayload": "Subscribe-Payload (JSON, optional)",
     "feedUrlOverride": "Feed-URL (optionale Überschreibung)",
-    "pollIntervalSeconds": "Abfrageintervall (Sekunden)"
+    "pollIntervalSeconds": "Abfrageintervall (Sekunden)",
+    "accessToken": "Zugriffstoken",
+    "accessTokenHint": "Wird im Secrets-Tresor gespeichert. Ein Verweis der Form ${secret:NAME} oder ${env:NAME} wird ebenfalls akzeptiert.",
+    "brandNamespaceHint": "Präfix der Tabellennamen dieser Quelle. Für den Standardwert leer lassen."
   }
 }

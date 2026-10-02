@@ -972,6 +972,24 @@ def governed_statement_is_current(governed: _Governed, state: Any) -> bool:
     )
 
 
+async def _guard_complexity(
+    sql: str, role_id: str, tree: Any, gov_ctx: Any, ctx: Any, state: Any
+) -> None:  # REQ-1174
+    """The complexity guard, at the semantic layer of the pipeline: the statement is parsed and
+    its governance context built, and nothing has been governed or routed. Both governing stages
+    call it, so every surface that lowers to a statement is held to the same limit by the same
+    measure (provisa.compiler.complexity). A statement over the limit is a refusal like any
+    other: it is recorded as a denial and raised."""
+    from provisa.audit.pipeline import write_denial
+    from provisa.compiler.complexity import ComplexityLimitExceeded, guard_complexity
+
+    try:
+        guard_complexity(tree, gov_ctx, ctx, getattr(state, "roles", {}).get(role_id))
+    except ComplexityLimitExceeded:
+        await write_denial(sql, role_id, tree, gov_ctx, state)  # REQ-1386
+        raise
+
+
 async def govern_statement(
     sql: str,
     role_id: str,
@@ -1066,6 +1084,7 @@ async def govern_statement(
         source_types=state.source_types,
         engine=getattr(state, "federation_engine", None),
     )
+    await _guard_complexity(sql, role_id, _parsed_input, gov_ctx, ctx, state)
 
     from provisa.security.rights import Capability, has_capability
 
@@ -1993,10 +2012,10 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  
     # scheduled jobs, rebuilds) and runs unbounded by a request budget, as it always has.
     if plan.audit is None:
         return await _execute_plan_bound(plan, state)
-    from provisa.compiler.limits import role_query_limits
+    from provisa.compiler.limits import role_max_query_time_ms
 
     # REQ-1174: the role's own limit, on every transport, when it is the tighter one.
-    _role_ms = role_query_limits(getattr(state, "roles", {}).get(plan.role_id))[2]
+    _role_ms = role_max_query_time_ms(getattr(state, "roles", {}).get(plan.role_id))
     outer = request_deadline.current()
     if outer is not None:
         if _role_ms is None or _role_ms / 1000.0 >= outer.remaining():
@@ -3013,6 +3032,7 @@ async def _govern_compiled(
         source_types=state.source_types,
         engine=getattr(state, "federation_engine", None),
     )
+    await _guard_complexity(sql, role_id, _compiled_tree, gov_ctx, ctx, state)
 
     _table_ids = tuple(resolve_table_ids(_compiled_tree, gov_ctx))  # REQ-1897
 
