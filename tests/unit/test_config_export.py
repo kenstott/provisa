@@ -413,3 +413,33 @@ async def test_junction_relationship_projects_its_via_declaration():  # REQ-1586
         "column",
     )
     assert "via_table_id" not in r
+
+
+async def test_a_role_that_reaches_no_domain_exports_a_config_the_loader_accepts():
+    """The config schema requires a role's capability and domain lists. A role holding an empty one
+    (the control-plane role reaches no data domain) must export it as an empty list: dropped, the
+    exported config fails validation on the next load."""
+    from provisa.core.models import Role
+
+    cfg = await _run(
+        base={},
+        tables=[],
+        roles=[
+            {
+                "id": "platform_admin",
+                "capabilities": ["platform_settings", "cross_org"],
+                "domain_access": [],
+            },
+            {"id": "bare", "capabilities": [], "domain_access": ["sales"]},
+        ],
+    )
+    assert cfg["roles"] == [
+        {
+            "id": "platform_admin",
+            "capabilities": ["platform_settings", "cross_org"],
+            "domain_access": [],
+        },
+        {"id": "bare", "capabilities": [], "domain_access": ["sales"]},
+    ]
+    for role in cfg["roles"]:
+        Role.model_validate(role)

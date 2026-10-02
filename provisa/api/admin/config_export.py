@@ -90,6 +90,8 @@ _REL_KEYS = frozenset(
     }
 )
 _ROLE_KEYS = frozenset({"id", "capabilities", "domain_access"})
+# Required by the config schema (models.Role): exported even when empty.
+_ROLE_REQUIRED_LISTS = frozenset({"capabilities", "domain_access"})
 _RLS_KEYS = frozenset({"table_id", "domain_id", "role_id", "filter"})
 _DOMAIN_KEYS = frozenset({"id", "description", "steward"})  # REQ-609
 _DATA_PRODUCT_KEYS = frozenset(
@@ -113,13 +115,24 @@ def _plain(obj: Any) -> Any:
     return json.loads(json.dumps(obj, default=str))
 
 
-def _project(row: dict, allowed: frozenset[str], *, id_to_name: dict[int, str]) -> dict:
+def _project(
+    row: dict,
+    allowed: frozenset[str],
+    *,
+    id_to_name: dict[int, str],
+    keep_empty: frozenset[str] = frozenset(),
+) -> dict:
     """Keep only config-schema keys; drop null/empty; resolve integer ``*_table_id`` refs to the table
-    name the config uses (the DB stores int ids, the config stores names)."""
+    name the config uses (the DB stores int ids, the config stores names).
+
+    ``keep_empty`` names the keys the config schema REQUIRES: an empty list there is the value (a role
+    that reaches no domain), and dropping it produces a config the loader refuses."""
     out: dict[str, Any] = {}
     for k, v in row.items():
         key = str(k)
-        if key not in allowed or v is None or v == [] or v == "":
+        if key not in allowed or v is None:
+            continue
+        if (v == [] or v == "") and key not in keep_empty:
             continue
         if key.endswith("_table_id"):
             try:
@@ -243,7 +256,10 @@ async def build_live_config() -> dict:
         for r in rels
         if not _refs_internal(r)
     ]
-    base["roles"] = [_project(r, _ROLE_KEYS, id_to_name=id_to_name) for r in roles]
+    base["roles"] = [
+        _project(r, _ROLE_KEYS, id_to_name=id_to_name, keep_empty=_ROLE_REQUIRED_LISTS)
+        for r in roles
+    ]
     base["rls_rules"] = [
         _project(r, _RLS_KEYS, id_to_name=id_to_name)
         for r in rls
