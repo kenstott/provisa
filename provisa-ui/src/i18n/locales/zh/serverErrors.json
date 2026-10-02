@@ -313,6 +313,7 @@
       "docker_not_found": "在 PATH 中未找到 docker",
       "docker_restart_timeout": "docker 重启超时",
       "domain_policy_catalog_exists": "本组织存在目录时无法更改域策略：{{tables}} 个表、{{sources}} 个数据源、{{domains}} 个域。请先删除它们。",
+      "domain_policy_catalog_in_config": "无法在此更改域策略：本组织的目录在配置中声明（{{tables}} 个表、{{sources}} 个数据源、{{domains}} 个域）。请在配置文件中设置策略。",
       "encryption_provider_unavailable": "加密提供程序 '{{provider}}' 不可用（其 SDK/运行时未安装）",
       "invalid_body": "设置请求无效。",
       "invalid_value": "{{field}} 的值被拒绝。",

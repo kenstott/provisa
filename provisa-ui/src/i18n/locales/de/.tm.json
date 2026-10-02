@@ -3070,6 +3070,7 @@
   "de/serverErrors.json::serverErrors.settings.docker_not_found": "docker not found on PATH",
   "de/serverErrors.json::serverErrors.settings.docker_restart_timeout": "docker restart timed out",
   "de/serverErrors.json::serverErrors.settings.domain_policy_catalog_exists": "The domain policy cannot change while this organization has a catalog: {{tables}} table(s), {{sources}} source(s), {{domains}} domain(s). Delete them first.",
+  "de/serverErrors.json::serverErrors.settings.domain_policy_catalog_in_config": "The domain policy cannot change here: this organization's catalog is declared in the config ({{tables}} table(s), {{sources}} source(s), {{domains}} domain(s)). Set the policy in the config file.",
   "de/serverErrors.json::serverErrors.settings.encryption_provider_unavailable": "encryption provider '{{provider}}' is not available (its SDK/runtime is not installed)",
   "de/serverErrors.json::serverErrors.settings.invalid_body": "The settings request is not valid.",
   "de/serverErrors.json::serverErrors.settings.invalid_value": "The value for {{field}} was refused.",

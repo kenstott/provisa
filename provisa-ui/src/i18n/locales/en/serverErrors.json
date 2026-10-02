@@ -313,6 +313,7 @@
       "docker_not_found": "docker not found on PATH",
       "docker_restart_timeout": "docker restart timed out",
       "domain_policy_catalog_exists": "The domain policy cannot change while this organization has a catalog: {{tables}} table(s), {{sources}} source(s), {{domains}} domain(s). Delete them first.",
+      "domain_policy_catalog_in_config": "The domain policy cannot change here: this organization's catalog is declared in the config ({{tables}} table(s), {{sources}} source(s), {{domains}} domain(s)). Set the policy in the config file.",
       "encryption_provider_unavailable": "encryption provider '{{provider}}' is not available (its SDK/runtime is not installed)",
       "invalid_body": "The settings request is not valid.",
       "invalid_value": "The value for {{field}} was refused.",

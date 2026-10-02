@@ -313,6 +313,7 @@
       "docker_not_found": "docker introuvable dans le PATH",
       "docker_restart_timeout": "le redémarrage de docker a expiré",
       "domain_policy_catalog_exists": "La politique de domaines ne peut pas changer tant que cette organisation possède un catalogue : {{tables}} table(s), {{sources}} source(s), {{domains}} domaine(s). Supprimez-les d'abord.",
+      "domain_policy_catalog_in_config": "La politique de domaines ne peut pas être modifiée ici : le catalogue de cette organisation est déclaré dans la configuration ({{tables}} table(s), {{sources}} source(s), {{domains}} domaine(s)). Définissez la politique dans le fichier de configuration.",
       "encryption_provider_unavailable": "le fournisseur de chiffrement « {{provider}} » n'est pas disponible (son SDK/runtime n'est pas installé)",
       "invalid_body": "La requête de paramètres n'est pas valide.",
       "invalid_value": "La valeur de {{field}} a été refusée.",

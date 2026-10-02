@@ -313,6 +313,7 @@
       "docker_not_found": "PATH 上找不到 docker",
       "docker_restart_timeout": "docker 重新啟動逾時",
       "domain_policy_catalog_exists": "本機構存在目錄時無法更改網域政策：{{tables}} 個資料表、{{sources}} 個資料來源、{{domains}} 個網域。請先刪除它們。",
+      "domain_policy_catalog_in_config": "無法在此更改網域政策：本機構的目錄於設定中宣告（{{tables}} 個資料表、{{sources}} 個資料來源、{{domains}} 個網域）。請在設定檔中設定政策。",
       "encryption_provider_unavailable": "加密提供者「{{provider}}」不可用（其 SDK／執行環境未安裝）",
       "invalid_body": "設定請求無效。",
       "invalid_value": "{{field}} 的值被拒絕。",

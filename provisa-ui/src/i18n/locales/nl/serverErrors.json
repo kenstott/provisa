@@ -313,6 +313,7 @@
       "docker_not_found": "docker niet gevonden op PATH",
       "docker_restart_timeout": "time-out bij docker-herstart",
       "domain_policy_catalog_exists": "Het domeinbeleid kan niet worden gewijzigd zolang deze organisatie een catalogus heeft: {{tables}} tabel(len), {{sources}} bron(nen), {{domains}} domein(en). Verwijder deze eerst.",
+      "domain_policy_catalog_in_config": "Het domeinbeleid kan hier niet worden gewijzigd: de catalogus van deze organisatie is gedeclareerd in de configuratie ({{tables}} tabel(len), {{sources}} bron(nen), {{domains}} domein(en)). Stel het beleid in het configuratiebestand in.",
       "encryption_provider_unavailable": "encryptieprovider '{{provider}}' is niet beschikbaar (de bijbehorende SDK/runtime is niet geïnstalleerd)",
       "invalid_body": "Het instellingenverzoek is ongeldig.",
       "invalid_value": "De waarde voor {{field}} is geweigerd.",

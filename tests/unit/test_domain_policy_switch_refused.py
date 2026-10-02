@@ -102,10 +102,13 @@ async def test_the_switch_is_refused_while_a_catalog_exists_and_removes_nothing(
             _request({"use_domains": False, "default_domain": "main"})
         )
 
+    # One of the domains is a config's: the operator is sent to the file, not told to empty a
+    # catalog the next load would restore.
     assert (err.value.status_code, err.value.code) == (
         409,
-        "settings.domain_policy_catalog_exists",
+        "settings.domain_policy_catalog_in_config",
     )
+    assert "Set the policy in the config file" in err.value.detail
     assert err.value.params == {"tables": 1, "sources": 1, "domains": 2}
     assert [await _count(db, t) for t in (sources, domains, registered_tables)] == kept
     assert "naming" not in await read_org_overrides(db)
@@ -129,6 +132,9 @@ async def test_one_source_or_one_domain_is_enough_to_refuse(db, leftover, counts
             await conn.execute_core(insert(domains).values(id="sales", origin="admin"))
     with pytest.raises(ApiError) as err:
         await settings_router.set_domain_policy(_request({"use_domains": True}))
+    # Made through the admin: the operator deletes it and switches then.
+    assert err.value.code == "settings.domain_policy_catalog_exists"
+    assert "Delete them first" in err.value.detail
     assert err.value.params == counts
 
 

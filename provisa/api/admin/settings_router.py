@@ -634,26 +634,26 @@ async def update_settings(request: Request):  # REQ-165, REQ-253, REQ-303, REQ-4
     return {"success": True, "updated": updated, "restart_required": restart_required}
 
 
-async def _catalog_counts(conn) -> dict[str, int]:  # REQ-1919
-    """How much catalog the acting org holds: its registered tables (views among them), sources
-    and domains, leaving out what the deployment seeds — the built-in sources and their tables,
-    the system domains, the demo's own."""
-    from sqlalchemy import func, select
+async def _catalog_counts(conn) -> tuple[dict[str, int], bool]:  # REQ-1919
+    """How much catalog the acting org holds — its registered tables (views among them), sources
+    and domains, leaving out what the deployment seeds (the built-in sources and their tables,
+    the system domains, the demo's own) — and whether a config file declares any of it."""
+    from sqlalchemy import select
 
     from provisa.core.schema_org import domains, registered_tables, sources
 
-    return {
-        kind: (
-            await conn.execute_core(
-                select(func.count()).select_from(table).where(table.c.origin != "seed")
-            )
-        ).scalar_one()
-        for kind, table in (
-            ("tables", registered_tables),
-            ("sources", sources),
-            ("domains", domains),
-        )
-    }
+    counts: dict[str, int] = {}
+    declared = False
+    for kind, table in (("tables", registered_tables), ("sources", sources), ("domains", domains)):
+        origins = [
+            row[0]
+            for row in (
+                await conn.execute_core(select(table.c.origin).where(table.c.origin != "seed"))
+            ).fetchall()
+        ]
+        counts[kind] = len(origins)
+        declared = declared or "config" in origins
+    return counts, declared
 
 
 @router.post("/admin/domain-policy")
@@ -698,14 +698,29 @@ async def set_domain_policy(request: Request):  # REQ-165, REQ-1266, REQ-1349
 
     # 1. Refused while the org has a catalog, before anything is written.
     async with tenant_db.acquire() as conn:
-        existing = await _catalog_counts(conn)
+        existing, declared_in_config = await _catalog_counts(conn)
     if any(existing.values()):
+        held = (
+            f"{existing['tables']} table(s), {existing['sources']} source(s), "
+            f"{existing['domains']} domain(s)"
+        )
+        if declared_in_config:
+            # Emptying a catalog the next load restores is no way forward: such a deployment
+            # declares its policy where it declares its catalog.
+            raise ApiError(
+                409,
+                "settings.domain_policy_catalog_in_config",
+                "The domain policy cannot change here: this organization's catalog is declared "
+                f"in the config ({held}). Set the policy in the config file.",
+                tables=existing["tables"],
+                sources=existing["sources"],
+                domains=existing["domains"],
+            )
         raise ApiError(
             409,
             "settings.domain_policy_catalog_exists",
             "The domain policy cannot change while the organization has a catalog: "
-            f"{existing['tables']} table(s), {existing['sources']} source(s), "
-            f"{existing['domains']} domain(s). Delete them first.",
+            f"{held}. Delete them first.",
             tables=existing["tables"],
             sources=existing["sources"],
             domains=existing["domains"],

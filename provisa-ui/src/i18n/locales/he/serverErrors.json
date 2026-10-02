@@ -313,6 +313,7 @@
       "docker_not_found": "docker לא נמצא ב-PATH",
       "docker_restart_timeout": "הפעלה מחדש של docker חרגה מהזמן הקצוב",
       "domain_policy_catalog_exists": "לא ניתן לשנות את מדיניות הדומיינים כל עוד לארגון יש קטלוג: {{tables}} טבלאות, {{sources}} מקורות, {{domains}} דומיינים. יש למחוק אותם תחילה.",
+      "domain_policy_catalog_in_config": "לא ניתן לשנות כאן את מדיניות הדומיינים: הקטלוג של ארגון זה מוצהר בתצורה ({{tables}} טבלאות, {{sources}} מקורות, {{domains}} דומיינים). יש להגדיר את המדיניות בקובץ התצורה.",
       "encryption_provider_unavailable": "ספק ההצפנה '{{provider}}' אינו זמין (ה-SDK/סביבת הריצה שלו אינם מותקנים)",
       "invalid_body": "בקשת ההגדרות אינה תקינה.",
       "invalid_value": "הערך של {{field}} נדחה.",

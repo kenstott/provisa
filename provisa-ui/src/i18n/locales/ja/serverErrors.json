@@ -313,6 +313,7 @@
       "docker_not_found": "PATH 上に docker が見つかりません",
       "docker_restart_timeout": "docker の再起動がタイムアウトしました",
       "domain_policy_catalog_exists": "この組織にカタログがある間はドメインポリシーを変更できません: テーブル {{tables}} 件、ソース {{sources}} 件、ドメイン {{domains}} 件。先に削除してください。",
+      "domain_policy_catalog_in_config": "ここではドメインポリシーを変更できません: この組織のカタログは設定で宣言されています (テーブル {{tables}} 件、ソース {{sources}} 件、ドメイン {{domains}} 件)。ポリシーは設定ファイルで指定してください。",
       "encryption_provider_unavailable": "暗号化プロバイダー「{{provider}}」は利用できません（SDK／ランタイムがインストールされていません）",
       "invalid_body": "設定リクエストが無効です。",
       "invalid_value": "{{field}} の値は拒否されました。",

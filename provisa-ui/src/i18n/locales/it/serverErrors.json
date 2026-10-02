@@ -313,6 +313,7 @@
       "docker_not_found": "docker non trovato nel PATH",
       "docker_restart_timeout": "riavvio di docker scaduto",
       "domain_policy_catalog_exists": "Il criterio dei domini non può cambiare finché questa organizzazione ha un catalogo: {{tables}} tabella/e, {{sources}} sorgente/i, {{domains}} dominio/i. Eliminali prima.",
+      "domain_policy_catalog_in_config": "Il criterio dei domini non può essere cambiato qui: il catalogo di questa organizzazione è dichiarato nella configurazione ({{tables}} tabella/e, {{sources}} sorgente/i, {{domains}} dominio/i). Imposta il criterio nel file di configurazione.",
       "encryption_provider_unavailable": "il provider di crittografia '{{provider}}' non è disponibile (il suo SDK/runtime non è installato)",
       "invalid_body": "La richiesta delle impostazioni non è valida.",
       "invalid_value": "Il valore di {{field}} è stato rifiutato.",

@@ -638,7 +638,7 @@ The selection is written to the platform config. It takes effect after the next 
 
 Change the acting org's domain policy (`use_domains` / `default_domain`). (REQ-165, REQ-1266, REQ-1349) [tool-verified: `provisa/api/admin/settings_router.py:632`]
 
-The switch removes nothing. It is refused with `409` and code `settings.domain_policy_catalog_exists` while the acting org has a catalog: a registered table, a source or a domain the deployment did not seed. The refusal's `params` count each kind (`tables`, `sources`, `domains`). Delete those objects first, each through its own action, then switch. (REQ-1919)
+The switch removes nothing. It is refused with `409` and code `settings.domain_policy_catalog_exists` while the acting org has a catalog: a registered table, a source or a domain the deployment did not seed. The refusal's `params` count each kind (`tables`, `sources`, `domains`). Delete those objects first, each through its own action, then switch. When a config file declares any of that catalog the code is `settings.domain_policy_catalog_in_config`: the next load would restore it, so the policy is set in the config file. (REQ-1919)
 
 **Request body:**
 

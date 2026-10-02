@@ -313,6 +313,7 @@
       "docker_not_found": "docker nicht im PATH gefunden",
       "docker_restart_timeout": "Zeitüberschreitung beim Docker-Neustart",
       "domain_policy_catalog_exists": "Die Domänenrichtlinie kann nicht geändert werden, solange diese Organisation einen Katalog hat: {{tables}} Tabelle(n), {{sources}} Quelle(n), {{domains}} Domäne(n). Löschen Sie diese zuerst.",
+      "domain_policy_catalog_in_config": "Die Domänenrichtlinie kann hier nicht geändert werden: Der Katalog dieser Organisation ist in der Konfiguration deklariert ({{tables}} Tabelle(n), {{sources}} Quelle(n), {{domains}} Domäne(n)). Legen Sie die Richtlinie in der Konfigurationsdatei fest.",
       "encryption_provider_unavailable": "Verschlüsselungsanbieter '{{provider}}' ist nicht verfügbar (SDK/Laufzeit nicht installiert)",
       "invalid_body": "Die Einstellungsanfrage ist ungültig.",
       "invalid_value": "Der Wert für {{field}} wurde abgelehnt.",

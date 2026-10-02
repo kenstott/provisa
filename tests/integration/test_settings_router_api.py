@@ -374,7 +374,8 @@ class TestDomainPolicyRefusedWhileACatalogExists:
         resp = await client.post("/admin/domain-policy", json={"use_domains": True})
         assert resp.status_code == 409, resp.text
         body = resp.json()
-        assert body["code"] == "settings.domain_policy_catalog_exists", body
+        # The booted catalog is the config file's, so the operator is sent to the file.
+        assert body["code"] == "settings.domain_policy_catalog_in_config", body
         params = body["params"]
         assert params["tables"] > 0 and params["sources"] > 0 and params["domains"] > 0, body
 
