@@ -35,6 +35,7 @@ watermark tracking lets SSE keep advancing even while the Kafka output lags.
 from __future__ import annotations
 
 import asyncio
+import threading
 
 import pytest
 from pytest_bdd import given, scenarios, then, when
@@ -56,6 +57,56 @@ scenarios("../features/REQ-286.feature")
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+class _SseSubscriber:
+    """An SSE client as the server has one: on its own thread, with its own running event loop.
+
+    ``SSEFanout.subscribe`` pairs a client's queue with the loop it was called on, and a poll —
+    running on another loop — fills that queue through it (REQ-1882). A step is not inside a
+    loop, and the loop of one ``asyncio.run`` is gone by the next, so the subscriber here has
+    what a real one has: a loop that lives as long as it does."""
+
+    def __init__(self, fanout: SSEFanout) -> None:
+        self._loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(target=self._loop.run_forever, daemon=True)
+        self._thread.start()
+
+        async def _subscribe() -> asyncio.Queue:
+            return fanout.subscribe()
+
+        self._queue = asyncio.run_coroutine_threadsafe(_subscribe(), self._loop).result(5)
+
+    def received(self) -> list:
+        """Every batch delivered so far, in order (read on the subscriber's own loop, after the
+        deliveries a poll scheduled onto it have run)."""
+
+        async def _drain() -> list:
+            out = []
+            while not self._queue.empty():
+                out.append(self._queue.get_nowait())
+            return out
+
+        return asyncio.run_coroutine_threadsafe(_drain(), self._loop).result(5)
+
+    def close(self) -> None:
+        self._loop.call_soon_threadsafe(self._loop.stop)
+        self._thread.join(5)
+        self._loop.close()
+
+
+@pytest.fixture
+def sse_subscriber():
+    """Opens subscribers for a scenario and closes them when it ends."""
+    opened: list[_SseSubscriber] = []
+
+    def _open(fanout: SSEFanout) -> _SseSubscriber:
+        opened.append(_SseSubscriber(fanout))
+        return opened[-1]
+
+    yield _open
+    for subscriber in opened:
+        subscriber.close()
 
 
 @pytest.fixture
@@ -187,7 +238,7 @@ class _RecordingKafkaSink:
 @given(
     "a table configured for poll-based delivery with both SSE subscription and Kafka sink outputs"
 )
-def configure_dual_output_table(shared_data: dict) -> None:
+def configure_dual_output_table(shared_data: dict, sse_subscriber) -> None:
     source_rows = [
         {"id": 1, "updated_at": "2026-01-01T00:00:00", "val": "alpha"},
         {"id": 2, "updated_at": "2026-01-01T00:00:01", "val": "beta"},
@@ -196,7 +247,7 @@ def configure_dual_output_table(shared_data: dict) -> None:
     pool = _FakePool(conn)
 
     fanout = SSEFanout("req-282-orders")
-    sse_queue = fanout.subscribe()
+    sse_queue = sse_subscriber(fanout)
     kafka_sink = _RecordingKafkaSink()
 
     # Single registered live query, poll-based, feeding both outputs.
@@ -263,7 +314,9 @@ def assert_single_query_dual_delivery(shared_data: dict) -> None:
     assert "WHERE updated_at IS NOT NULL" in shared_data["incremental_sql"]
 
     # SSE subscriber received the result set.
-    sse_rows = shared_data["sse_queue"].get_nowait()
+    received = shared_data["sse_queue"].received()
+    assert len(received) == 1, received
+    sse_rows = received[0]
     assert sse_rows == delivered
 
     # Kafka sink received the same result set, exactly once.
@@ -352,7 +405,7 @@ async def _open_wm_db(dsn: str):
 
 
 @given("a table with both sse_subscription and kafka_sink outputs configured")
-def configure_dual_output_watermarks(shared_data: dict, tmp_path) -> None:
+def configure_dual_output_watermarks(shared_data: dict, tmp_path, sse_subscriber) -> None:
     source = "req-286-orders"
     # File-backed sqlite so the store survives the separate asyncio.run() calls in later steps.
     dsn = f"sqlite+pysqlite:///{tmp_path / 'watermarks.db'}"
@@ -367,7 +420,7 @@ def configure_dual_output_watermarks(shared_data: dict, tmp_path) -> None:
     ]
 
     fanout = SSEFanout(source)
-    sse_queue = fanout.subscribe()
+    sse_queue = sse_subscriber(fanout)
 
     shared_data["wm_dsn"] = dsn
     shared_data["source"] = source
@@ -433,10 +486,7 @@ def assert_sse_unaffected_by_kafka_lag(shared_data: dict) -> None:
     assert shared_data["sse_deliveries"] == len(poll_watermarks)
 
     # The SSE subscriber actually received every batch.
-    sse_queue = shared_data["sse_queue"]
-    received = []
-    while not sse_queue.empty():
-        received.append(sse_queue.get_nowait())
+    received = shared_data["sse_queue"].received()
     assert len(received) == len(poll_watermarks)
     assert [r[0]["updated_at"] for r in received] == poll_watermarks
 

@@ -1714,7 +1714,11 @@ def _req417_then(shared_data):
     assert len(remotes) == 1
     src = remotes[0]
     assert src.id == "countries_api"  # name preserved
-    assert src.base_url == "https://countries.trevorblades.com/"  # URL preserved
+    # URL preserved — on ``path``, the field a graphql_remote source's endpoint is read from at
+    # runtime (app_loaders._load_graphql_remote_sources_from_db; REQ-1681). ``base_url`` is the
+    # OpenAPI sources' field and stays unset for a remote GraphQL source.
+    assert src.path == "https://countries.trevorblades.com/"
+    assert src.base_url is None
     assert src.mapping["headers"] == {"X-Api-Key": "secret"}  # headers/auth preserved
     assert src.mapping["forward_client_headers"] is True
     assert src.mapping["timeout_seconds"] == 60
@@ -1955,8 +1959,24 @@ def _req635_list(shared_data):
         results["openapi"] = await native_schemas(
             "api1", "openapi", cast(SourcePool, _NoPool()), MagicMock()
         )
+
+        # A kafka source's schema follows what the control plane holds for it (REQ-147,
+        # REQ-1766): "kafka" when topics are declared for it, the "default" placeholder when it
+        # has none yet. The lookup is a control-plane read, so the connection is awaited.
+        class _ControlPlane:
+            def __init__(self, topic_row):
+                self._topic_row = topic_row
+
+            async def execute_core(self, _stmt):
+                result = MagicMock()
+                result.fetchone.return_value = self._topic_row
+                return result
+
         results["kafka"] = await native_schemas(
-            "k1", "kafka", cast(SourcePool, _NoPool()), MagicMock()
+            "k1", "kafka", cast(SourcePool, _NoPool()), _ControlPlane((1,))
+        )
+        results["kafka_without_topics"] = await native_schemas(
+            "k2", "kafka", cast(SourcePool, _NoPool()), _ControlPlane(None)
         )
         return results
 
@@ -1975,6 +1995,8 @@ def _req635_then(shared_data):
     assert cases["graphql"] == ["graphql"]
     assert cases["openapi"] == ["openapi"]
     assert cases["kafka"] == ["kafka"]
+    # ... and a kafka source with no declared topic yet is listed under the placeholder.
+    assert cases["kafka_without_topics"] == ["default"]
 
 
 # ---------------------------------------------------------------------------

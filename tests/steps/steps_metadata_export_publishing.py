@@ -44,7 +44,7 @@ def shared_data():
     data = {"loop": loop, "engines": []}
     yield data
     for engine in data["engines"]:
-        loop.run_until_complete(engine.dispose())
+        engine.dispose()  # the control-plane engine is synchronous: nothing to await
     loop.close()
 
 

@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
@@ -44,6 +45,12 @@ class _FakeConn:
         self.product_row = product_row
         self.upsert = AsyncMock()
         self.upsert_returning = AsyncMock(return_value=7)
+
+    @asynccontextmanager
+    async def transaction(self):
+        """``table_repo.upsert`` writes a table and its columns in one transaction (REQ-1914);
+        nothing here commits, so the block is only entered and left."""
+        yield
 
     async def execute_core(self, stmt, *args, **kwargs):
         del args, kwargs
@@ -78,6 +85,33 @@ def _table(*, domain_id: str, product_id: str | None) -> Table:
 @pytest.fixture
 def shared_data() -> dict:
     return {}
+
+
+# The generated feature (tests/features/REQ-1634.feature, built from the requirement's own
+# scenario text) states the whole scenario — its givens, whens and thens — as ONE Given
+# sentence. The steps below are that sentence's parts; this step is the sentence, and runs them
+# in the order it names them, so the scenario asserts both outcomes it describes.
+_REQ_1634_SCENARIO = (
+    'a DataProduct "customer_360" owned by "alice" in domain "sales", and two tables in domain '
+    '"sales" both set product_id="customer_360", when metadata is exported, then both tables '
+    'publish as one data product named "customer_360" attributed to owner "alice" instead of two '
+    'separate products; given an attempt to set product_id="customer_360" on a table in domain '
+    '"marketing", when saved, then it is rejected because the table\'s domain_id does not match '
+    "the DataProduct's domain_id."
+)
+
+
+@given(_REQ_1634_SCENARIO)
+def the_whole_scenario_as_the_requirement_states_it(shared_data: dict) -> None:
+    dataproduct_exists(shared_data)
+    tables_assigned_to_product(shared_data)
+    metadata_export_runs(shared_data)
+    tables_published_as_single_product(shared_data)
+
+    table_in_marketing_domain(shared_data)
+    attempt_cross_domain_product_assignment(shared_data)
+    change_saved(shared_data)
+    cross_domain_assignment_rejected(shared_data)
 
 
 @given('a DataProduct "customer_360" owned by "alice" in domain "sales"')

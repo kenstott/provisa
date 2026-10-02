@@ -1169,23 +1169,58 @@ def rest_same_governance_as_graphql(shared_data):
         f"REST and GraphQL must select the same typed columns: {rest_fields} vs {direct_fields}"
     )
 
-    # Governance/routing is applied by the SAME function for both entry points.
-    # The REST router (provisa/api/rest/generator.py) and the GraphQL/pgwire
-    # pipeline both route compiled SQL through _govern_and_route_compiled, which
-    # applies RLS (rls_contexts), masking (masking_rules), and routing
-    # (decide_route). Verify that shared function exists and applies all three.
+    # Governance is applied to both entry points by the SAME stage of the one pipeline:
+    # ``_govern_and_route_compiled`` -> ``_govern_and_route_compiled_planned`` -> ``_govern_compiled``
+    # (provisa/pgwire/_pipeline.py), where ``build_governance_context`` takes the role's row
+    # filters (``state.rls_contexts``) and masks (``state.masking_rules``) and
+    # ``compiler.stage2.apply_governance`` writes them into the statement. Proven by behaviour,
+    # not by what the source text mentions: the REST-derived statement and the hand-written
+    # GraphQL one are each governed as a role that has a row filter on orders, and as one that
+    # has none.
+    from types import SimpleNamespace
+
+    from provisa.compiler.rls import RLSContext
     from provisa.pgwire import _pipeline
 
-    assert hasattr(_pipeline, "_govern_and_route_compiled"), (
-        "REST + GraphQL must share _govern_and_route_compiled for governance"
+    ctx = shared_data["ctx"]
+    state = SimpleNamespace(
+        contexts={"filtered": ctx, "unfiltered": ctx},
+        rls_contexts={"filtered": RLSContext(rules={1: "amount > 100"})},  # table 1 = orders
+        masking_rules={},
+        roles={"filtered": {"id": "filtered"}, "unfiltered": {"id": "unfiltered"}},
+        source_types={"sales-pg": "postgresql"},
+        metrics={},
+        tables=[],
+        relationships=[],
+        federation_engine=None,
     )
-    # `_govern_and_route_compiled` wakes the engine, delegates the planning to
-    # `_govern_and_route_compiled_planned`, and binds the tier ceilings to what comes back; the
-    # governance stages live in the planned half, so the pair is what "the shared pipeline" means.
-    src = inspect.getsource(_pipeline._govern_and_route_compiled) + inspect.getsource(
-        _pipeline._govern_and_route_compiled_planned
+
+    def _governed(sql: str, role_id: str) -> str:
+        return asyncio.run(_pipeline._govern_compiled(sql, role_id, state, {})).governed_sql
+
+    for name, compiled in (("REST", rest_compiled), ("GraphQL", direct_compiled)):
+        filtered = _governed(compiled.sql, "filtered")
+        unfiltered = _governed(compiled.sql, "unfiltered")
+        assert "amount" in filtered and "> 100" in filtered, (
+            f"{name}: the role's row filter must be in the governed statement, got {filtered}"
+        )
+        assert "> 100" not in unfiltered, (
+            f"{name}: a role with no row filter must not be given one, got {unfiltered}"
+        )
+        # The filter is ANDed with the request's own predicate, never in place of it.
+        assert "US" in filtered or "US" in str(compiled.params), filtered
+    # One stage, one result: the same filter lands on both entry points' statements.
+    assert ("> 100" in _governed(rest_compiled.sql, "filtered")) == (
+        "> 100" in _governed(direct_compiled.sql, "filtered")
     )
-    assert "rls" in src, "shared pipeline must apply RLS"
+
+    # Masking and routing are applied by the same pipeline the REST route calls.
+    src = (
+        inspect.getsource(_pipeline._govern_and_route_compiled)
+        + inspect.getsource(_pipeline._govern_and_route_compiled_planned)
+        + inspect.getsource(_pipeline._govern_compiled)  # where the masks are taken
+        + inspect.getsource(_pipeline._route_compiled)  # where the route is decided
+    )
     assert "masking_rules" in src, "shared pipeline must apply masking"
     assert "decide_route" in src, "shared pipeline must apply routing"
 
@@ -1420,9 +1455,16 @@ def post_exposed_as_query(shared_data):
 
 
 @given('a subscription request with the header "X-Provisa-Sink" set to a Kafka target')
-def subscription_request_with_sink_header(shared_data):
-    """Build a real subscription document + FastAPI Request carrying the header."""
+def subscription_request_with_sink_header(shared_data, monkeypatch):
+    """Build a real subscription document + FastAPI Request carrying the header.
+
+    The deployment this scenario runs in is one whose operator configured the Kafka cluster the
+    sink names (REQ-030: a sink writes to the operator's ``KAFKA_BOOTSTRAP_SERVERS``; a request
+    may repeat that broker and no other). The step states it, instead of depending on whatever
+    broker the session's environment happens to hold."""
     from starlette.requests import Request as StarletteRequest
+
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 
     schema, ctx, si = _build_orders_schema_ctx()
     orders_field = _resolve_orders_field(schema)
