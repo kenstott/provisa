@@ -28,7 +28,6 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
-from sqlalchemy.exc import SQLAlchemyError
 
 from provisa.core.config_location import config_path_str
 from provisa.core.connection_loop import CrossLoopLock, LongLived, run_lifecycle_work
@@ -3001,38 +3000,12 @@ def create_app() -> FastAPI:
 
     @app.api_route("/health", methods=["GET", "HEAD"])
     async def health():  # noqa: F841  # pyright: ignore[reportUnusedFunction]
-        pg_status = "unavailable"
-        if state.tenant_db is not None:
-            try:
-                async with state.tenant_db.acquire() as conn:
-                    await conn.fetchval("SELECT 1")
-                pg_status = "ok"
-            except (SQLAlchemyError, OSError, asyncio.TimeoutError):
-                pg_status = "unavailable"
-        # REQ-1900: a `--workers N` launch answers from its first ready worker while the rest are
-        # still starting. The count is the launch's roll call in the control plane — the same
-        # answer whichever worker takes the request — so a deployment (or a benchmark) that needs
-        # every worker waits for ready == expected.
-        from provisa.core.boot_lock import expected_workers, launch_id, ready_worker_count
+        # The worker's health report: dependencies, the launch's worker roll call (REQ-1900) and
+        # the config stamps loaded beside the ones stored (REQ-1914). One function, so this route
+        # and Arrow Flight's `healthcheck` action answer the same thing.
+        from provisa.api.health_report import health_report
 
-        _launch = launch_id()
-        if _launch is None:
-            ready = 1
-        else:
-            assert state.admin_db is not None
-            ready = await ready_worker_count(state.admin_db, _launch)
-        # REQ-1914: the config stamps this worker has loaded beside the ones the control plane
-        # stores, so a worker that is behind is visible.
-        from provisa.api.model_reload import health as _config_health
-
-        return {
-            "status": "ok",
-            "dependencies": {
-                "postgres": pg_status,
-            },
-            "workers": {"ready": ready, "expected": expected_workers()},
-            "config": await _config_health() if pg_status == "ok" else None,
-        }
+        return await health_report(state)
 
     @app.api_route("/live", methods=["GET", "HEAD"])
     async def liveness():  # noqa: F841  # pyright: ignore[reportUnusedFunction]
