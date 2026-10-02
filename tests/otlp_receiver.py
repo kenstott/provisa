@@ -160,3 +160,28 @@ class OtlpReceiver:
                 return self.snapshot()
         latest = [f"{s.name} [{s.scope}]" for s in self.snapshot()[-8:]]
         raise TimeoutError(f"spans were still arriving after {timeout}s; the latest were {latest}")
+
+
+def start_discarding_receiver(port: int) -> str:
+    """Start an OTLP/HTTP endpoint on ``port`` that accepts every export and keeps nothing; return
+    its URL. The test session points in-process applications at it (tests/conftest.py), so what
+    they export never leaves the test process.
+
+    HTTP, on plain ``http.server`` threads: a gRPC server living in the test process for the whole
+    session would run gRPC's fork handlers on every subprocess a test starts."""
+
+    class _Discard(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802 (http.server's name)
+            self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-protobuf")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, format: str, *args: Any) -> None:  # noqa: A002, ARG002
+            pass
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", port), _Discard)
+    httpd.daemon_threads = True
+    threading.Thread(target=httpd.serve_forever, daemon=True, name="otlp-discard").start()
+    return f"http://127.0.0.1:{port}"

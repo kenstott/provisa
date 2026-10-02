@@ -8,6 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
+import logging
 import os
 import subprocess
 import sys
@@ -26,6 +27,7 @@ from tests.itest_stack import (
     reap_orphaned_projects,
     release_stack_slot,
 )
+from tests.otlp_receiver import start_discarding_receiver
 from tests.port_lease import lease_port, lease_ports
 
 # Instance isolation (test vs local-dev): the encryption master key is read from the OS keyring,
@@ -51,6 +53,18 @@ os.environ["PROVISA_LICENSING_SANDBOX_DIR"] = os.path.join(
     os.environ["PROVISA_DATA_DIR"], "licensing"
 )
 os.makedirs(os.environ["PROVISA_LICENSING_SANDBOX_DIR"], exist_ok=True)
+
+# Telemetry gets the same isolation. An application built in this process resolves its OTLP
+# endpoint from the environment and then from PROVISA_CONFIG, and the session's default config
+# (below) is the dev-local one, whose endpoint is local-dev's collector on localhost:4319 — so a
+# test run exported its spans, metrics and logs toward the maintainer's own instance whenever that
+# collector was up. The session owns its endpoint instead: a receiver in this process that accepts
+# every export and keeps nothing. Forced, and inherited by subprocesses, for the same reasons as
+# PROVISA_DATA_DIR; a test that measures what a server exports starts its own receiver and names it
+# in that server's environment. Guarded by tests/unit/test_tests_do_not_write_local_dev_home.py.
+os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = start_discarding_receiver(lease_ports(1)[0])
+# The transport is declared, never read off the URL (REQ-549), and the receiver speaks OTLP/HTTP.
+os.environ["OTEL_EXPORTER_OTLP_PROTOCOL"] = "http/protobuf"
 
 # Before ANY test module is imported: the cloud-DW e2es gate on os.environ inside module-level
 # skipif conditions evaluated at collection time, so live .env creds must be present now or those
@@ -781,6 +795,21 @@ def _audit_writer_lives_with_the_session():
     yield
     unwritten = shutdown_audit_writer(2.0)
     assert unwritten == 0, f"{unwritten} audit record(s) were never written by session end"
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _otlp_log_handlers_end_with_their_module():
+    """An application built in this process adds an OTLP log handler to the ROOT logger when it
+    sets up telemetry (provisa/api/otel_setup.py) and never removes it — in production the process
+    ends with its application. Here one process builds application after application, so the
+    handlers accumulated: every later log record was handed to one exporter per application ever
+    built. A module's handlers are removed when the module is done."""
+    yield
+    from opentelemetry.sdk._logs import LoggingHandler
+
+    root = logging.getLogger()
+    for handler in [h for h in root.handlers if isinstance(h, LoggingHandler)]:
+        root.removeHandler(handler)
 
 
 @pytest.fixture(autouse=True)

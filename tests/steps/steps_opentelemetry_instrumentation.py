@@ -19,6 +19,14 @@ def shared_data() -> dict:
     return {}
 
 
+@pytest.fixture(autouse=True)
+def _no_transport_is_declared_by_the_environment(monkeypatch):
+    """Several tests here are about an endpoint whose transport NOTHING declares. The test session
+    declares one for its own receiver (tests/conftest.py), as an operator's shell might; a test
+    that wants a declared transport passes it explicitly."""
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_PROTOCOL", raising=False)
+
+
 @scenario(
     "../features/REQ-549.feature",
     "REQ-549 default behaviour",

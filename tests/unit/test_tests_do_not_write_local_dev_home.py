@@ -18,7 +18,11 @@ maintainer's own installation. Two rules hold together:
   if it also moved the anchors, setting it would start a fresh trial.
 * The test session sets ``PROVISA_LICENSING_SANDBOX_DIR``. Under it licensing still READS the
   real anchors and high-water mark — so the trial clock is the real one, and the variable cannot
-  be used to reset it — but WRITES only inside the sandbox directory."""
+  be used to reset it — but WRITES only inside the sandbox directory.
+
+Telemetry is the same kind of write: an application built in the test process exports its spans,
+metrics and logs to whatever OTLP endpoint it resolves, and the dev-local config names local-dev's
+collector. The test session exports to a receiver of its own instead."""
 
 # Requirements: REQ-1135, REQ-1136
 
@@ -163,3 +167,36 @@ def test_a_spawned_test_server_inherits_the_sandbox():
     assert '"PROVISA_LICENSING_SANDBOX_DIR": os.path.join(self.data_dir' in inspect.getsource(
         worker_boot_harness.WorkerBoot.start
     )
+
+
+def test_an_app_built_in_the_test_process_exports_to_the_sessions_receiver(monkeypatch):
+    """The session's default config is the dev-local one (tests/conftest.py), whose OTLP endpoint
+    is local-dev's collector. What an in-process application resolves on that config is the test
+    session's own receiver — a port leased by this session, answering in this process."""
+    import urllib.request
+    from urllib.parse import urlparse
+
+    import yaml
+
+    from provisa.api.otel_setup import exporter_settings
+    from provisa.core import settings_registry
+    from tests.port_lease import LEASE_FIRST, LEASE_LAST
+
+    repo = Path(__file__).resolve().parents[2]
+    dev_config = yaml.safe_load((repo / "config" / "provisa.yaml").read_text())
+    local_dev_endpoint = dev_config["observability"]["endpoint"]
+    assert urlparse(local_dev_endpoint).port == 4319  # the endpoint this guard is about
+
+    monkeypatch.setattr(settings_registry, "_config", dev_config)
+    endpoint, _service, protocol = exporter_settings()
+
+    assert endpoint == os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"]
+    assert endpoint != local_dev_endpoint
+    session = urlparse(endpoint)
+    assert session.hostname == "127.0.0.1"
+    assert LEASE_FIRST <= (session.port or 0) <= LEASE_LAST
+    assert protocol == "http/protobuf"
+    # Something of this session's answers there, so an export is accepted and goes nowhere else.
+    request = urllib.request.Request(f"{endpoint}/v1/traces", data=b"", method="POST")
+    with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310 - loopback
+        assert response.status == 200

@@ -381,12 +381,15 @@ def test_support_endpoint_enabled_via_config(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_transport_is_declared_not_read_off_the_url_scheme():
+def test_transport_is_declared_not_read_off_the_url_scheme(monkeypatch):
     # REQ-549. http://collector:4317 is how the OTLP spec writes a gRPC endpoint, and it is what
     # scripts/provisa, start-ui.sh and the Helm chart all export. Deciding from the scheme built
     # an HTTP exporter that POSTed to the gRPC port, so every batch was reset and dropped.
     from provisa.api.otel_setup import _is_http_endpoint
 
+    # Nothing declares a transport here; the test session declares one for its own receiver
+    # (tests/conftest.py), which is not what this asserts about.
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_PROTOCOL", raising=False)
     assert _is_http_endpoint("http://otel-collector:4317") is False
     assert _is_http_endpoint("https://collector.example.com:4318") is False
 
