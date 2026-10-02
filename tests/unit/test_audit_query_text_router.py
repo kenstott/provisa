@@ -83,7 +83,7 @@ async def test_an_admin_reads_the_decrypted_text_of_one_statement(audit_id, monk
 
 
 @pytest.mark.asyncio
-async def test_the_read_is_gated_on_the_admin_capability(audit_id, monkeypatch):
+async def test_the_read_is_gated_on_view_governance(audit_id, monkeypatch):
     asked: list[str] = []
 
     def _refuse(_request, capability):
@@ -94,7 +94,7 @@ async def test_the_read_is_gated_on_the_admin_capability(audit_id, monkeypatch):
     with pytest.raises(ApiError) as exc:
         await router.read_statement_text(_request(), audit_id)
     assert exc.value.status_code == 403
-    assert asked == ["admin"]
+    assert asked == ["view_governance"]
 
 
 @pytest.mark.asyncio

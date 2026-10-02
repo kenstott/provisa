@@ -111,6 +111,10 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     DATA_PRODUCT_RW = "data_product_rw"
     IGNORE_RELATIONSHIPS = "ignore_relationships"
     WRITE = "write"  # REQ-868: global mutation-execute capability (alias EXECUTE_MUTATION)
+    # The two rights the wire surfaces read off a role's list by name. Members here so that the
+    # vocabulary a role may be given (unknown_capabilities) is the vocabulary the code consults.
+    DDL = "ddl"  # CREATE TABLE AS / DDL over pgwire (executor/ctas.py, pgwire/ddl_handler.py)
+    NO_AGGREGATIONS = "no_aggregations"  # REQ-197: withholds the _aggregate root fields
 
 
 # REQ-1297: the four system role ids are the whole role vocabulary — every org schema seeds
@@ -251,23 +255,79 @@ def domain_access_for_capability(  # REQ-1592
     return out
 
 
-# REQ-1297: the two capability strings that mean "unrestricted". Only platform_admin carries them
-# (see the schema.sql seed), but they are CAPABILITIES, not role ids — which is the whole point:
-# a gate names the right, and the seed decides which role holds it. check_capability/has_capability
-# above treat ADMIN the same way.
-PLATFORM_BYPASS_CAPABILITIES: frozenset[str] = frozenset(
-    {Capability.ADMIN.value, Capability.SUPERADMIN.value}
+# REQ-1337: the two PLATFORM rights. Holding either is authority over the deployment rather than over
+# an org's data: ``platform_settings`` reaches the deployment-wide settings, ``cross_org`` reaches
+# orgs the principal is not a member of. Nothing stands in for them — there is no capability that
+# means "every right", so a gate is passed by the right it names and by nothing else.
+PLATFORM_RIGHTS: frozenset[str] = frozenset(
+    {Capability.PLATFORM_SETTINGS.value, Capability.CROSS_ORG.value}
 )
 
+#: The deployment acting on its own behalf: the bootstrap claim, seating an org's creator, and
+#: redeeming an invitation whose issue was already checked against its inviter. It holds both
+#: platform rights by definition — it is the thing they are rights over.
+DEPLOYMENT_GRANTER: frozenset[str] = PLATFORM_RIGHTS
 
-def has_platform_bypass(capabilities: Iterable[str]) -> bool:  # REQ-1297, REQ-1337
-    """True when a RESOLVED CAPABILITY set carries platform authority.
 
-    Reads RIGHTS ONLY — the platform_admin role id is deliberately not consulted here, and no gate
-    anywhere may substitute it (REQ-1337). A surface holding raw role CLAIMS resolves them through
-    ``capabilities_for_claims`` first.
+def platform_rights_in(capabilities: Iterable[str] | None) -> set[str]:  # REQ-1337
+    """The platform rights present in a capability list."""
+    return set(capabilities or ()) & PLATFORM_RIGHTS
+
+
+def unknown_capabilities(capabilities: Iterable[str] | None) -> list[str]:  # REQ-042
+    """The strings in a capability list that name no right at all.
+
+    A role's capabilities are a closed vocabulary — :class:`Capability`. A string outside it is
+    read by no gate, so storing one records a grant that means nothing today and whatever a later
+    release happens to make of the word.
     """
-    return bool(set(capabilities) & PLATFORM_BYPASS_CAPABILITIES)
+    known = {c.value for c in Capability}
+    return sorted({c for c in (capabilities or ()) if c not in known})
+
+
+class PlatformRoleGrantError(Exception):
+    """A role carrying platform rights was granted by someone who does not hold them."""
+
+    def __init__(self, role_id: str, missing: Iterable[str]):
+        self.role_id = role_id
+        self.missing = sorted(missing)
+        super().__init__(
+            f"role {role_id!r} carries platform rights the granter does not hold: "
+            + ", ".join(self.missing)
+        )
+
+
+def check_role_grant(  # REQ-1337
+    role_id: str,
+    role_capabilities: Iterable[str] | None,
+    granter_capabilities: Iterable[str],
+) -> None:
+    """The ONE rule for conferring a role: a platform right is granted only by its holder.
+
+    Every path that writes a role assignment asks this — the users surface, an invitation, an
+    auto-join, an environment redemption, the bootstrap claim. ``user_management`` lets an org
+    administrator manage their org's people; it must not let them hand out authority over the
+    deployment, which they do not hold. A role carrying no platform right passes for any granter:
+    whether the granter may manage users at all is the calling surface's gate, not this one.
+
+    Raises :class:`PlatformRoleGrantError` naming the rights the granter lacks.
+    """
+    missing = platform_rights_in(role_capabilities) - set(granter_capabilities)
+    if missing:
+        raise PlatformRoleGrantError(role_id, missing)
+
+
+def carries_platform_right(role_id: str, roles: dict[str, dict] | None) -> bool:  # REQ-1337
+    """True when a role carries ANY platform right — ``cross_org`` or ``platform_settings``.
+
+    Wider than :func:`is_control_plane_role`, and used for one thing: deciding which assignments a
+    TENANT org ignores. Platform authority is conferred in the root org only, so a tenant org's
+    schema naming a role that carries it resolves to nothing there. It is not the test for "has no
+    data plane": a single-tenant deployment grants ``platform_settings`` to org_admin, which is the
+    data-plane administrator and must keep its schema and its acting role.
+    """
+    role = (roles or {}).get(role_id) or {}
+    return bool(platform_rights_in(role.get("capabilities")))
 
 
 def is_control_plane_role(role_id: str, roles: dict[str, dict] | None) -> bool:  # REQ-1337
@@ -285,8 +345,7 @@ def is_control_plane_role(role_id: str, roles: dict[str, dict] | None) -> bool: 
 
 def can_act_cross_org(capabilities: Iterable[str]) -> bool:  # REQ-1337
     """True when a resolved capability set may act in an org the principal is not a member of."""
-    caps = set(capabilities)
-    return Capability.CROSS_ORG.value in caps or has_platform_bypass(caps)
+    return Capability.CROSS_ORG.value in set(capabilities)
 
 
 class InsufficientRightsError(Exception):

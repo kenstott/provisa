@@ -20,6 +20,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import delete as _delete, insert, or_, select, update
 
+from provisa.api.admin._platform_guard import role_definition_problem
 from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.errors import ApiError
 from provisa.core.schema_org import roles
@@ -107,6 +108,7 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
     pool = _pool(request)
     async with pool.acquire() as conn:
         await _check_parent(conn, body.id, body.parent_role_id)  # REQ-1677
+        await _check_definition(conn, request, body.capabilities, body.parent_role_id)
         await conn.execute_core(
             insert(roles).values(
                 id=body.id,
@@ -123,6 +125,25 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
         "org_id": org_id,
         "parent_role_id": body.parent_role_id,
     }
+
+
+async def _check_definition(  # REQ-042, REQ-1337
+    conn, request: Request, capabilities: list[str], parent_id: str | None
+) -> None:
+    """Refuse a definition naming an unknown capability, or carrying a platform right — its own
+    or one its parent chain hands down (REQ-1677 folds a parent's rights into the role) — that the
+    caller may not define. See ``role_definition_problem``."""
+    inherited: list[str] = []
+    if parent_id is not None:
+        from provisa.security.inheritance import effective_capabilities
+
+        result = await conn.execute_core(
+            select(roles.c.id, roles.c.capabilities, roles.c.parent_role_id)
+        )
+        inherited = effective_capabilities(parent_id, [dict(r._mapping) for r in result.fetchall()])
+    problem = role_definition_problem(request, capabilities, inherited)
+    if problem is not None:
+        raise problem
 
 
 async def _check_parent(conn, role_id: str, parent_id: str | None) -> None:  # REQ-1677
@@ -173,6 +194,7 @@ async def update_role(
         )
         if new_parent != existing["parent_role_id"]:
             await _check_parent(conn, role_id, new_parent)  # REQ-1677
+        await _check_definition(conn, request, new_caps, new_parent)
         await conn.execute_core(
             update(roles)
             .where(roles.c.id == role_id)

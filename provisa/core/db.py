@@ -188,7 +188,9 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
     # visitor confer roles or admit more people; org_glossary_rw is the override over terms the org's
     # own people authored.
     ("sandbox", sorted(set(_ORG_ADMIN_CAPABILITIES) - _SANDBOX_DENIED)),
-    ("platform_admin", ["admin", "superadmin", "platform_settings", "cross_org"]),
+    # REQ-1327/REQ-1337: the two platform rights and nothing else — no data capability, and no
+    # capability that stands in for one.
+    ("platform_admin", ["platform_settings", "cross_org"]),
 )
 
 # REQ-1602/REQ-1608: rights a role is SHOWN but does not hold. Three of the sandbox's four withheld

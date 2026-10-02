@@ -117,7 +117,7 @@ def planes(monkeypatch):
         app_state,
         "roles",
         {
-            "platform_admin": {"capabilities": ["cross_org", "admin", "superadmin"]},
+            "platform_admin": {"capabilities": ["cross_org", "platform_settings"]},
             "org_admin": {"capabilities": ["user_management", "source_registration"]},
             "analyst": {"capabilities": ["query_development"]},
         },

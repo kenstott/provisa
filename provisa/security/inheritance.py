@@ -109,6 +109,17 @@ def flatten_role_dicts(roles: list[dict]) -> list[dict]:
     return out
 
 
+def effective_capabilities(role_id: str, roles: Iterable[dict]) -> list[str]:
+    """What ``role_id`` holds once its ancestors' capabilities are folded in — the list the built
+    registry carries for it. ``roles`` are rows with ``id``, ``capabilities``, ``parent_role_id``.
+    Raises KeyError for a role (or a parent) the rows do not contain."""
+    by_id = {r["id"]: r for r in roles}
+    caps: set[str] = set()
+    for rid in role_chain(role_id, parent_map(by_id.values())):
+        caps.update(by_id[rid].get("capabilities") or [])
+    return sorted(caps)
+
+
 def expand_grants(items: Iterable[dict], chains: dict[str, list[str]]) -> None:
     """Add each role to every grant list on ``items`` that names one of its ancestors."""
     for item in items:

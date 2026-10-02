@@ -20,7 +20,7 @@ TWO VAULTS, ONE ROUTER (REQ-1560). ``/secrets`` is the ORG vault -- shared, org_
 what an org_admin stores there is what every member resolves. ``/my-secrets`` is the acting
 person's own; its owner is taken from the authenticated identity and never from the path, so there
 is no request that names another person's vault and therefore nothing to authorize. No right
-reaches into a personal vault: not org_settings, not cross_org, not the platform bypass.
+reaches into a personal vault: not org_settings, not cross_org, not platform_settings.
 
 Secrets are the ORG'S. A platform admin operates the control plane and has no read of any org's
 secret values (REQ-1361) -- and in fact nobody does, because nothing reads them out by name.
@@ -59,7 +59,7 @@ async def _org_guard(request: Request, org_id: str) -> str | None:
     org_settings saw the surface and was refused by the API. The right is ORG_SETTINGS, the same
     one the route and the nav entry are gated on, held in THIS org.
 
-    REQ-1361/REQ-1558: cross_org and the platform bypass do NOT open it. Administering an org's
+    REQ-1361/REQ-1558: cross_org and platform_settings do NOT open it. Administering an org's
     lifecycle is not a read of the credentials that org keeps, and a platform operator who could
     list them has the tenant separation the deployment was sold on only on paper.
     """

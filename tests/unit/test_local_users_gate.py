@@ -26,7 +26,7 @@ _ROLES = {
     "people_admin": {"capabilities": ["user_management"], "domain_access": ["*"]},
     "nobody": {"capabilities": ["observability"], "domain_access": ["*"]},
     "platform_admin": {
-        "capabilities": ["admin", "superadmin", "platform_settings", "cross_org"],
+        "capabilities": ["platform_settings", "cross_org"],
         "domain_access": ["*"],
     },
 }
@@ -103,12 +103,24 @@ async def test_user_management_cannot_grant_a_platform_role(past_gate):
     assert err.value.code == "users.platform_role_requires_platform_admin"
 
 
-async def test_a_platform_administrator_may_grant_a_platform_role(past_gate):
-    req = _request("root", "platform_admin")
+async def test_a_holder_of_the_platform_rights_may_grant_a_platform_role(past_gate):
+    # Two questions, two rights: user_management admits the caller to the surface, and the
+    # platform rights are what a role carrying them is granted WITH.
+    req = _request("root", "platform_admin", "people_admin")
     with pytest.raises(RuntimeError, match="past the gate"):
         await router.add_assignment(
             "u1", router.AssignmentBody(role_id="platform_admin", domain_id="d"), req
         )
+
+
+async def test_the_platform_rights_alone_do_not_manage_an_orgs_users(past_gate):
+    # REQ-1327: managing an org's people is that org's data plane.
+    req = _request("root", "platform_admin")
+    with pytest.raises(ApiError) as err:
+        await router.add_assignment(
+            "u1", router.AssignmentBody(role_id="platform_admin", domain_id="d"), req
+        )
+    assert (err.value.status_code, err.value.code) == (403, "auth.missing_capability")
 
 
 async def test_the_self_change_refusal_stands_behind_the_gate(past_gate):

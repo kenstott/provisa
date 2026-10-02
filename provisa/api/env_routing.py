@@ -71,13 +71,8 @@ class EnvironmentRightError(Exception):
 
 
 def may_switch(capabilities: set[str]) -> bool:
-    """Whether a principal holding ``capabilities`` may be served by a non-prod environment.
-
-    The platform administrator bypasses this as they bypass every capability gate (REQ-1297).
-    """
-    from provisa.security.rights import has_platform_bypass
-
-    return SWITCH_CAPABILITY in capabilities or has_platform_bypass(capabilities)
+    """Whether a principal holding ``capabilities`` may be served by a non-prod environment."""
+    return SWITCH_CAPABILITY in capabilities
 
 
 def env_header_value(headers) -> str | None:

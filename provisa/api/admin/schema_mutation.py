@@ -1780,6 +1780,23 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 code="schema.role_parent_invalid",
                 params={"role": input.id, "parent": parent_id, "reason": problem},
             )
+        # REQ-042/REQ-1337: the same two refusals the REST surface makes — an unknown capability,
+        # and a platform right (the role's own or its parent chain's) defined by a caller who is
+        # not a platform administrator.
+        from provisa.api.admin._platform_guard import role_definition_problem
+        from provisa.security.inheritance import effective_capabilities
+
+        inherited = effective_capabilities(parent_id, existing) if parent_id is not None else []
+        definition_problem = role_definition_problem(
+            info.context["request"], input.capabilities, inherited
+        )
+        if definition_problem is not None:
+            return MutationResult(
+                success=False,
+                message=str(definition_problem.detail),
+                code=definition_problem.code,
+                params={"role": input.id, **definition_problem.params},
+            )
         model = RoleModel(
             id=input.id,
             capabilities=input.capabilities,

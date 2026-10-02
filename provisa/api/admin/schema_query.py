@@ -537,7 +537,7 @@ class Query:  # REQ-021, REQ-042
             else:
                 caps = _resolved_capabilities(identity, _state)
                 # REQ-1337: rights only, never the platform_admin role id.
-                user_can_deploy = bool(caps & {"table_registration", "admin", "superadmin"})
+                user_can_deploy = "table_registration" in caps
 
             pool = await _get_pool()
             async with pool.acquire() as conn:
@@ -629,17 +629,16 @@ class Query:  # REQ-021, REQ-042
     async def roles(
         self, info: StrawberryInfo
     ) -> list[RoleType]:  # REQ-042, REQ-059, REQ-060, REQ-215
-        active_org_id, is_admin = _resolve_admin_context(info)
+        active_org_id = _resolve_admin_context(info)
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            if is_admin:
-                _res = await conn.execute_core(select(roles).order_by(roles.c.id))
-            else:
-                _res = await conn.execute_core(
-                    select(roles)
-                    .where(or_(roles.c.org_id.is_(None), roles.c.org_id == active_org_id))
-                    .order_by(roles.c.id)
-                )
+            # The acting org's roles and the system roles, for every caller: no right widens this
+            # to another org's rows, which is what GET /admin/roles answers too.
+            _res = await conn.execute_core(
+                select(roles)
+                .where(or_(roles.c.org_id.is_(None), roles.c.org_id == active_org_id))
+                .order_by(roles.c.id)
+            )
             return [_role_from_row(dict(r._mapping)) for r in _res.fetchall()]
 
     @strawberry.field

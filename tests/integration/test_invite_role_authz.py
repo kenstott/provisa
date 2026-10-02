@@ -63,7 +63,7 @@ _SEEDED_ROLE_CAPS: dict[str, list[str]] = {
     "org_admin": ["user_management", "source_registration", "access_config", "query_development"],
     "analyst": ["usage", "query_development"],
     "developer": ["query_development", "create_view", "create_relationship", "write"],
-    "platform_admin": ["admin", "superadmin", "platform_settings", "cross_org"],
+    "platform_admin": ["platform_settings", "cross_org"],
 }
 
 
@@ -87,17 +87,25 @@ def _prepare_sync():
         conn.execute(insert(orgs).values(id=_ROOT_ORG, name="Root", created_by="bob"))
         conn.execute(insert(user_org_memberships).values(user_id="alice", org_id="acme"))
         conn.execute(insert(user_org_memberships).values(user_id="bob", org_id=_ROOT_ORG))
+        conn.execute(insert(user_org_memberships).values(user_id="dana", org_id=_ROOT_ORG))
 
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
         org_metadata.create_all(conn, tables=[roles, user_role_assignments, user_directory])
         for role_id, caps in _SEEDED_ROLE_CAPS.items():
             conn.execute(insert(roles).values(id=role_id, capabilities=caps))
-        for user_id in ("alice", "bob"):
+        for user_id in ("alice", "bob", "dana"):
             conn.execute(
                 insert(user_role_assignments).values(
                     user_id=user_id, role_id="org_admin", domain_id="*"
                 )
             )
+        # dana is the deployment's platform administrator as well as root's org_admin — the two
+        # seats the bootstrap claim confers. bob administers root's data plane and nothing above it.
+        conn.execute(
+            insert(user_role_assignments).values(
+                user_id="dana", role_id="platform_admin", domain_id="*"
+            )
+        )
     return engine
 
 
@@ -154,7 +162,7 @@ def _make_app(admin_db: Database, tenant_db: Database) -> FastAPI:
     app.add_middleware(
         AuthMiddleware,
         provider=_FirebaseLikeProvider(
-            {"tok-alice": "alice", "tok-bob": "bob", "tok-carol": "carol"}
+            {"tok-alice": "alice", "tok-bob": "bob", "tok-carol": "carol", "tok-dana": "dana"}
         ),
         admin_pool=admin_db,
         db_pool=tenant_db,
@@ -240,13 +248,26 @@ def test_org_admin_cannot_confer_platform_admin_in_their_own_org(planes):
 
 def test_platform_admin_may_be_conferred_by_an_invitation_into_root(planes):
     # REQ-1298: a root invitation followed by that assignment is the sole path to a backup
-    # platform administrator, so this case must stay open.
+    # platform administrator, so this case must stay open — for an inviter who holds the platform
+    # rights the role carries (REQ-1337).
     admin_db, tenant_db, sync_engine = planes
     with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
-        resp = _create(client, "tok-bob", {"org_id": _ROOT_ORG, "role_id": "platform_admin"})
+        resp = _create(client, "tok-dana", {"org_id": _ROOT_ORG, "role_id": "platform_admin"})
     assert resp.status_code == 200, resp.text
     assert resp.json()["role_id"] == "platform_admin"
     assert [r[1] for r in _invite_rows(sync_engine)] == ["platform_admin"]
+
+
+def test_roots_org_admin_cannot_confer_platform_admin(planes):
+    # REQ-1337: a platform right is conferred only by its holder. Administering the root org's data
+    # plane is not holding authority over the deployment, so root's org_admin is refused exactly as
+    # another org's is — by the rights they lack, not by which org they are in.
+    admin_db, tenant_db, sync_engine = planes
+    with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
+        resp = _create(client, "tok-bob", {"org_id": _ROOT_ORG, "role_id": "platform_admin"})
+    assert resp.status_code == 403, resp.text
+    assert "platform rights" in resp.json()["detail"]
+    assert _invite_rows(sync_engine) == []
 
 
 def test_redemption_refuses_a_role_dropped_since_the_invitation_was_written(planes):

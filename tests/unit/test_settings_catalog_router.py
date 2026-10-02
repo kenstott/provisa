@@ -163,8 +163,12 @@ async def test_the_platform_administrator_reads_the_catalog(caller):
     assert "test.limit" in _by_key(payload)
 
 
-async def test_the_platform_bypass_right_reads_the_catalog(caller):
-    assert await catalog.get_catalog(caller("admin"))
+@pytest.mark.parametrize("rights", [("admin",), ("superadmin",), ("admin", "superadmin")])
+async def test_a_retired_wildcard_string_does_not_read_the_catalog(caller, rights):
+    # REQ-1327: the catalog needs platform_settings AND cross_org; no string stands in for them.
+    with pytest.raises(ApiError) as err:
+        await catalog.get_catalog(caller(*rights))
+    assert (err.value.status_code, err.value.code) == (403, "platform.control_plane_role_required")
 
 
 async def test_a_single_tenant_org_administrator_is_refused_the_catalog(caller):

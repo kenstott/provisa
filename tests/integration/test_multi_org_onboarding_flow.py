@@ -165,9 +165,9 @@ def planes(monkeypatch):
         default_rt,
         "roles",
         {
-            # REQ-1297: the platform role is platform_admin; "admin"/"superadmin" survive only as
-            # capability keywords inside it, never as a role id.
-            "platform_admin": {"capabilities": ["admin", "superadmin"]},
+            # REQ-1297/REQ-1337: the platform role is platform_admin, holding the two platform
+            # rights; "admin"/"superadmin" are neither role ids nor capabilities.
+            "platform_admin": {"capabilities": ["platform_settings", "cross_org"]},
             "org_admin": {"capabilities": ["user_management", "source_registration"]},
             "analyst": {"capabilities": ["query_development"]},
         },
@@ -211,6 +211,12 @@ def planes(monkeypatch):
     sync_engine.dispose()
 
 
+def _root_org_id() -> str:
+    from provisa.api.app import state as app_state
+
+    return app_state.org_id
+
+
 def _make_app(admin_db: Database, tenant_db: Database) -> FastAPI:
     app = FastAPI()
     app.add_middleware(
@@ -222,7 +228,11 @@ def _make_app(admin_db: Database, tenant_db: Database) -> FastAPI:
         default_assignments=[],
         multitenancy=True,
         bootstrap_superadmin=True,
-        default_org_id="root",
+        # The root org is ONE value in a running deployment (REQ-1286): the org the bootstrap claim
+        # seats its claimant in (state.org_id) is the org the middleware treats as root. Naming two
+        # here would seat the claimant's platform_admin in what the middleware reads as a tenant
+        # org, where a role carrying platform rights resolves to nothing (REQ-1297).
+        default_org_id=_root_org_id(),
     )
     app.include_router(auth_router)
     app.include_router(orgs_router)

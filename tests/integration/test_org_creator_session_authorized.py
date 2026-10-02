@@ -145,7 +145,7 @@ def planes(monkeypatch):
         default_rt,
         "roles",
         {
-            "platform_admin": {"capabilities": ["admin", "superadmin"]},
+            "platform_admin": {"capabilities": ["platform_settings", "cross_org"]},
             "org_admin": {"capabilities": ["user_management", "source_registration"]},
             "analyst": {"capabilities": ["query_development"]},
         },

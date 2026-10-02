@@ -50,19 +50,19 @@ data:
         governance: pre-approved
         columns:
           - name: id
-            visible_to: [platform_admin, analyst]
+            visible_to: [org_admin, analyst]
           - name: customer_id
-            visible_to: [platform_admin, analyst]
+            visible_to: [org_admin, analyst]
           - name: product_id
-            visible_to: [platform_admin]
+            visible_to: [org_admin]
           - name: amount
-            visible_to: [platform_admin]
+            visible_to: [org_admin]
           - name: region
-            visible_to: [platform_admin, analyst]
+            visible_to: [org_admin, analyst]
           - name: status
-            visible_to: [platform_admin, analyst]
+            visible_to: [org_admin, analyst]
           - name: created_at
-            visible_to: [platform_admin, analyst]
+            visible_to: [org_admin, analyst]
       - source_id: sales-pg
         domain_id: sales-analytics
         schema: public
@@ -70,13 +70,13 @@ data:
         governance: pre-approved
         columns:
           - name: id
-            visible_to: [platform_admin, analyst]
+            visible_to: [org_admin, analyst]
           - name: name
-            visible_to: [platform_admin, analyst]
+            visible_to: [org_admin, analyst]
           - name: email
-            visible_to: [platform_admin]
+            visible_to: [org_admin]
           - name: region
-            visible_to: [platform_admin, analyst]
+            visible_to: [org_admin, analyst]
       - source_id: sales-pg
         domain_id: product-catalog
         schema: public
@@ -84,13 +84,13 @@ data:
         governance: registry-required
         columns:
           - name: id
-            visible_to: [platform_admin, analyst]
+            visible_to: [org_admin, analyst]
           - name: name
-            visible_to: [platform_admin, analyst]
+            visible_to: [org_admin, analyst]
           - name: price
-            visible_to: [platform_admin]
+            visible_to: [org_admin]
           - name: category
-            visible_to: [platform_admin, analyst]
+            visible_to: [org_admin, analyst]
       {{- if .Values.mongodb.enabled }}
       - source_id: reviews-mongo
         domain_id: product-catalog
@@ -99,13 +99,13 @@ data:
         governance: pre-approved
         columns:
           - name: product_id
-            visible_to: [platform_admin, analyst]
+            visible_to: [org_admin, analyst]
           - name: reviewer
-            visible_to: [platform_admin, analyst]
+            visible_to: [org_admin, analyst]
           - name: rating
-            visible_to: [platform_admin, analyst]
+            visible_to: [org_admin, analyst]
           - name: comment
-            visible_to: [platform_admin]
+            visible_to: [org_admin]
       {{- end }}
       - source_id: analytics-pg
         domain_id: customer-insights
@@ -114,11 +114,11 @@ data:
         governance: pre-approved
         columns:
           - name: customer_id
-            visible_to: [platform_admin, analyst]
+            visible_to: [org_admin, analyst]
           - name: segment
-            visible_to: [platform_admin, analyst]
+            visible_to: [org_admin, analyst]
           - name: score
-            visible_to: [platform_admin]
+            visible_to: [org_admin]
 
     relationships:
       - id: orders-to-customers
@@ -143,9 +143,8 @@ data:
       {{- end }}
 
     roles:
-      - id: platform_admin
-        capabilities: [source_registration, table_registration, create_relationship, access_config, query_development, approve_view, full_results, admin]
-        domain_access: ["*"]
+      # platform_admin and org_admin are seeded by the schema and are not redefined here: the
+      # loader refuses a write to either. The data-plane administrator is org_admin.
       - id: analyst
         capabilities: [query_development]
         domain_access: [sales-analytics]

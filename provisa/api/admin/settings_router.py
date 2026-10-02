@@ -1503,14 +1503,10 @@ async def get_recent_traces(request: Request, limit: int = 50):  # REQ-302, REQ-
     from provisa.api.admin.capabilities import _resolved_capabilities
     from provisa.api.app import state
     from provisa.api.otel_setup import span_buffer
-    from provisa.security.rights import Capability, has_platform_bypass
+    from provisa.security.rights import can_act_cross_org
 
     require_observability(request)
     identity = getattr(request.state, "identity", None)
     caps = _resolved_capabilities(identity, state) if identity is not None else set()
-    org_scope = (
-        None
-        if (has_platform_bypass(caps) or Capability.CROSS_ORG.value in caps)
-        else getattr(request.state, "active_org_id", None)
-    )
+    org_scope = None if can_act_cross_org(caps) else getattr(request.state, "active_org_id", None)
     return {"traces": span_buffer.recent(min(limit, 200), org_id=org_scope)}

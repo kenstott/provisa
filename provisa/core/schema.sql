@@ -1098,7 +1098,7 @@ END $$;
 -- populates the process-global state.roles["org_admin"] so its capabilities resolve for any
 -- org. org_admin is org-SCOPED admin: it manages members/invites/sources/governance WITHIN
 -- its org (confinement comes from membership + active_org_id + per-schema assignments), and
--- deliberately EXCLUDES the platform-bypass 'admin'/'superadmin' capabilities. org_id = NULL
+-- deliberately EXCLUDES the platform rights 'platform_settings'/'cross_org' here. org_id = NULL
 -- marks it a system role (identical caps in every org; non-editable via roles_router).
 INSERT INTO roles (id, capabilities, domain_access, org_id)
 VALUES (
@@ -1208,11 +1208,10 @@ WHERE id = 'sandbox'
   AND NOT (capabilities @> '["org_settings","observability"]'::jsonb);
 
 -- REQ-1297: platform_admin is the deployment-wide administrator and the last system
--- template role. It is the role the bootstrap claim grants (REQ-1296) and the only one carrying the
--- platform-bypass capabilities 'admin' and 'superadmin'.
+-- template role. It is the role the bootstrap claim grants (REQ-1296).
 --
--- Its capability list is those two plus the two REQ-1337 rights held explicitly so that every gate
--- reads a RIGHT and never a role name: platform_settings (the deployment-wide settings surface) and
+-- Its capability list is the two REQ-1337 platform rights, so that every gate reads a RIGHT and
+-- never a role name, and no capability stands in for another: platform_settings (the deployment-wide settings surface) and
 -- cross_org (acting in an org one is not a member of, which is also what marks a role CONTROL-PLANE
 -- and therefore off the data plane everywhere). NOTHING else. The org-scoped data capabilities it used to
 -- enumerate (source_registration, table_registration, query_development, column_grant, write, …)
@@ -1228,17 +1227,15 @@ WHERE id = 'sandbox'
 INSERT INTO roles (id, capabilities, domain_access, org_id)
 VALUES (
     'platform_admin',
-    '["admin","superadmin","platform_settings","cross_org"]'::jsonb,
+    '["platform_settings","cross_org"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 )
 ON CONFLICT (id) DO NOTHING;
 
--- REQ-1297: a deployment seeded before the capability list was narrowed still holds the wide row
--- (ON CONFLICT DO NOTHING leaves it alone), so correct it in place. V1 has no migrations; this is the
--- seed asserting the system role's definition on every init_schema, the same way the retired-id
--- rewrite below does.
-UPDATE roles SET capabilities = '["admin","superadmin","platform_settings","cross_org"]'::jsonb WHERE id = 'platform_admin';
+-- REQ-1297: the seed asserts the system role's definition on every init_schema (ON CONFLICT DO
+-- NOTHING above leaves an existing row alone), the same way the retired-id rewrite below does.
+UPDATE roles SET capabilities = '["platform_settings","cross_org"]'::jsonb WHERE id = 'platform_admin';
 
 -- REQ-1573: the two environment rights arrived after these system roles were seeded, and
 -- ON CONFLICT DO NOTHING leaves an existing row alone, so assert them here the same way

@@ -47,7 +47,10 @@ _SALES_DEV = {
         "capabilities": ["create_view", "table_registration"],
         "domain_access": ["*"],
     },
-    "platform_admin": {"capabilities": ["admin"], "domain_access": ["sales"]},
+    "platform_admin": {
+        "capabilities": ["platform_settings", "cross_org"],
+        "domain_access": ["sales"],
+    },
 }
 
 
@@ -88,9 +91,11 @@ class TestRequireDomain:
     def test_an_unnarrowed_member_may_act_anywhere(self, multi_domain, registry):
         caps_mod.require_domain(_Info(_Identity(["unlimited_developer"])), "finance")
 
-    def test_the_platform_administrator_bypasses_it(self, multi_domain, registry):
-        # REQ-1297: the bypass is the same one require_capability honours.
-        caps_mod.require_domain(_Info(_Identity(["platform_admin"])), "finance")
+    def test_the_platform_administrator_is_scoped_like_anyone_else(self, multi_domain, registry):
+        # REQ-1327: the platform rights reach no domain the role's own domain_access does not.
+        caps_mod.require_domain(_Info(_Identity(["platform_admin"])), "sales")
+        with pytest.raises(PermissionError, match="finance"):
+            caps_mod.require_domain(_Info(_Identity(["platform_admin"])), "finance")
 
     def test_dev_mode_with_no_identity_is_not_gated(self, multi_domain, registry):
         caps_mod.require_domain(_Info(None), "finance")

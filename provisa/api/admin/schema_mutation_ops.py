@@ -152,9 +152,8 @@ async def register_table(
         identity = _identity_from_info(info)
         if identity is not None and getattr(identity, "user_id", "anonymous") != "anonymous":
             caps = _resolved_capabilities(identity, _cap_state)
-            # REQ-1337: rights only — the platform_admin role id was listed here as a pseudo-right;
-            # the role carries admin/superadmin, which is what the gate must read.
-            if not (caps & {"create_view", "query_development", "admin", "superadmin"}):
+            # REQ-1337: rights only — the two rights that author a view, and nothing in their place.
+            if not (caps & {"create_view", "query_development"}):
                 # REQ-434/366: lacking view-create authority queues a request.
                 return await _queue_creation_request(info, "view", "create_view", input)
         # REQ-1531: the view gate has TWO halves. The domain it is registered INTO, and every table

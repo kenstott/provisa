@@ -35,7 +35,7 @@ from pathlib import Path
 import pytest
 
 from provisa.api.errors import ApiError
-from provisa.security.rights import Capability, has_platform_bypass
+from provisa.security.rights import Capability, platform_rights_in
 
 _ROUTER = Path(__file__).resolve().parents[2] / "provisa/api/admin/glossary_router.py"
 _SCHEMA_SQL = Path(__file__).resolve().parents[2] / "provisa/core/schema.sql"
@@ -45,7 +45,7 @@ def test_the_glossary_rights_exist_and_are_not_platform_bypass():
     assert Capability.GLOSSARY_READ.value == "glossary_read"
     assert Capability.GLOSSARY_RW.value == "glossary_rw"
     assert Capability.GLOSSARY_READ.value != Capability.GLOSSARY_RW.value
-    assert not has_platform_bypass({"glossary_read", "glossary_rw"})
+    assert not platform_rights_in({"glossary_read", "glossary_rw"})
 
 
 # --- which right each endpoint names -------------------------------------------------------------
@@ -123,9 +123,16 @@ class TestGlossaryGates:
         resolve_caps({right})
         self._gate(gate_name)(_request({right}))
 
-    def test_admits_platform_bypass(self, gate_name, right, other, resolve_caps):
-        resolve_caps({"admin"})
-        self._gate(gate_name)(_request({"admin"}))
+    @pytest.mark.parametrize(
+        "held", [{"admin"}, {"superadmin"}, {"platform_settings", "cross_org"}]
+    )
+    def test_nothing_stands_in_for_the_right(self, gate_name, right, other, resolve_caps, held):
+        # REQ-1327: reading or curating an org's glossary is that org's data plane. The platform
+        # rights do not reach it, and no capability string means "every right".
+        resolve_caps(held)
+        with pytest.raises(ApiError) as err:
+            self._gate(gate_name)(_request(held))
+        assert err.value.status_code == 403
 
     def test_rejects_the_other_glossary_right(self, gate_name, right, other, resolve_caps):
         # The two are checked independently: neither implies the other. Holding RW alone leaves the
@@ -191,7 +198,7 @@ def test_no_seeded_role_curates_without_reading(role_id):
 def test_the_org_glossary_right_is_a_third_and_distinct_right():
     assert Capability.ORG_GLOSSARY_RW.value == "org_glossary_rw"
     assert Capability.ORG_GLOSSARY_RW.value != Capability.GLOSSARY_RW.value
-    assert not has_platform_bypass({"org_glossary_rw"})
+    assert not platform_rights_in({"org_glossary_rw"})
 
 
 @pytest.mark.parametrize("role_id", ["analyst", "developer", "modeler"])

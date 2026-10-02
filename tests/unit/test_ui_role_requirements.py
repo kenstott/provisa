@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import inspect
 
+import pytest
+
 
 # ---------------------------------------------------------------------------
 # REQ-058: Branded, custom React-based UI — rendered surface determined
@@ -80,8 +82,8 @@ def test_require_capability_skips_for_none_identity():
         assert result is None
 
 
-def test_admin_capability_bypasses_all_checks():
-    # REQ-059: Admin role bypasses all specific capability checks.
+def test_the_admin_string_passes_no_capability_check():
+    # REQ-059/REQ-1327: the retired wildcard string grants nothing.
     from unittest.mock import MagicMock, patch
 
     from provisa.api.admin.capabilities import require_capability
@@ -96,13 +98,13 @@ def test_admin_capability_bypasses_all_checks():
         patch("provisa.api.admin.capabilities._resolved_capabilities", return_value={"admin"}),
         patch("provisa.api.app.state", MagicMock()),
     ):
-        # admin bypasses — should not raise even without explicit capability
-        result = require_capability(info, "relationship_registration")
-        assert result is None
+        # REQ-1327: no capability string means "every right" — the gate names its right.
+        with pytest.raises(PermissionError, match="relationship_registration"):
+            require_capability(info, "relationship_registration")
 
 
-def test_superadmin_capability_bypasses_all_checks():
-    # REQ-059: superadmin also bypasses all capability checks.
+def test_the_superadmin_string_passes_no_capability_check():
+    # REQ-059/REQ-1327: nor does the other retired string.
     from unittest.mock import MagicMock, patch
 
     from provisa.api.admin.capabilities import require_capability
@@ -117,8 +119,8 @@ def test_superadmin_capability_bypasses_all_checks():
         patch("provisa.api.admin.capabilities._resolved_capabilities", return_value={"superadmin"}),
         patch("provisa.api.app.state", MagicMock()),
     ):
-        result = require_capability(info, "security_configuration")
-        assert result is None
+        with pytest.raises(PermissionError, match="security_configuration"):
+            require_capability(info, "security_configuration")
 
 
 def test_source_registration_capability_string_used_in_codebase():

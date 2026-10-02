@@ -36,6 +36,7 @@ from provisa.security.rights import (
     ORG_ADMIN_ROLE,
     PLATFORM_ADMIN_ROLE,  # GRANTED (bootstrap/recovery assignment) — never read as a gate
     can_act_cross_org as _can_act_cross_org,
+    carries_platform_right as _carries_platform_right,
     capabilities_for_claims as _capabilities_for_claims,
     is_control_plane_role as _is_control_plane_role,
     is_tenant_org as _is_tenant_org,
@@ -606,7 +607,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         # runtime while current_org is unset). For a default-org member this IS their assignment set;
         # for a member of a NON-default org it is empty, since user_role_assignments is tenant-plane
         # and their grant lives in the org_<id> schema. It still tells us whether the user is a
-        # platform admin (admin/superadmin), which the org gate below needs before an org is bound.
+        # platform admin (holds cross_org), which the org gate below needs before an org is bound.
         if self._assignments_source == "provisa" and self._db_pool:
             platform_assignments = await self._read_assignments(identity)
         else:
@@ -800,10 +801,12 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             # control plane's own org and platform_admin is what confers control-plane capability
             # there — but it is still never the acting DATA role (see the acting-role rule below).
             if _is_tenant_org(active_org_id, self._default_org_id):
-                # REQ-1337: identified by the cross_org RIGHT the role carries, not by its name.
+                # REQ-1337: identified by the PLATFORM RIGHTS the role carries, not by its name —
+                # cross_org or platform_settings. Platform authority is conferred in root only, so
+                # a tenant schema naming a role that carries either resolves to nothing here.
                 _roles = _loaded_roles()
                 assignments = [
-                    a for a in assignments if not _is_control_plane_role(a.role_id, _roles)
+                    a for a in assignments if not _carries_platform_right(a.role_id, _roles)
                 ]
 
         role = resolve_role(identity, self._mapping_rules, self._default_role)

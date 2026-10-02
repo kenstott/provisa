@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -33,8 +34,9 @@ from provisa.core.schema_admin import (
     orgs,
     user_org_memberships,
 )
-from provisa.core.schema_org import admin_audit_log, user_role_assignments
-from provisa.security.rights import ORG_ADMIN_ROLE
+from provisa.core.schema_org import admin_audit_log, roles, user_role_assignments
+from provisa.security.inheritance import effective_capabilities
+from provisa.security.rights import DEPLOYMENT_GRANTER, ORG_ADMIN_ROLE, check_role_grant
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
@@ -207,15 +209,35 @@ async def acknowledge_membership(  # REQ-1478
         )
 
 
-async def grant_org_role(tenant_db: "Database", user_id: str, role_id: str) -> None:
+async def grant_org_role(
+    tenant_db: "Database", user_id: str, role_id: str, *, granter_capabilities: Iterable[str]
+) -> None:
     """Record the tenant-plane role assignment inside the org's schema. Idempotent.
 
     ``tenant_db`` MUST be scoped (search_path) to the target org's schema — the assignment lands
     in whatever ``org_<id>`` schema this Database points at. The role row it references must already
     exist in that schema (schema.sql seeds ``org_admin``), so for a freshly created org this runs
     only after the schema is provisioned.
+
+    REQ-1337: ``granter_capabilities`` is what the grant is made WITH, and it is required — a role
+    carrying a platform right is conferred only by a holder of that right
+    (``rights.check_role_grant``, raising ``PlatformRoleGrantError``). The role's capabilities are
+    read here, from the schema the assignment lands in and with its parent chain folded in, so the
+    answer is about the row being granted rather than a registry a caller happened to hold. A
+    grant the deployment makes on its own behalf passes ``rights.DEPLOYMENT_GRANTER``; a grant
+    nobody stands behind — an auto-join — passes an empty set.
     """
     async with tenant_db.acquire() as conn:
+        result = await conn.execute_core(
+            select(roles.c.id, roles.c.capabilities, roles.c.parent_role_id)
+        )
+        role_rows = [dict(r._mapping) for r in result.fetchall()]
+        if role_id not in {r["id"] for r in role_rows}:
+            raise ValueError(
+                f"role {role_id!r} does not exist in the org schema the grant lands in: a role is "
+                "granted out of the roles that schema holds, and its rights are read from that row"
+            )
+        check_role_grant(role_id, effective_capabilities(role_id, role_rows), granter_capabilities)
         await conn.upsert(
             user_role_assignments,
             {"user_id": user_id, "role_id": role_id, "domain_id": "*"},
@@ -230,7 +252,9 @@ async def grant_org_admin(
     """Make ``user_id`` the org_admin of ``org_id``: membership (admin plane) + org_admin role
     assignment (tenant plane, scoped to the org's schema)."""
     await grant_membership(admin_db, user_id, org_id, joined_via=joined_via)
-    await grant_org_role(tenant_db, user_id, "org_admin")
+    # The deployment seats an org's administrator on its own behalf: in a single-tenant deployment
+    # org_admin carries platform_settings, and the creator of the org is who that is for.
+    await grant_org_role(tenant_db, user_id, "org_admin", granter_capabilities=DEPLOYMENT_GRANTER)
 
 
 async def resolve_auto_join_orgs(

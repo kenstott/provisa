@@ -26,7 +26,7 @@ _ROLES = {
     "org_admin": {"id": "org_admin", "capabilities": [MANAGE, SWITCH, "user_management"]},
     "developer": {"id": "developer", "capabilities": [MANAGE, SWITCH, "create_model"]},
     "analyst": {"id": "analyst", "capabilities": ["usage", "query_development"]},
-    "platform_admin": {"id": "platform_admin", "capabilities": ["admin", "cross_org"]},
+    "platform_admin": {"id": "platform_admin", "capabilities": ["platform_settings", "cross_org"]},
 }
 
 

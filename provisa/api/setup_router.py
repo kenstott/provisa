@@ -129,7 +129,7 @@ async def _auto_configure_idp(provider: str, pool) -> None:
     else:
         # basic and every other IdP: the configured principal is org_admin (REQ-1297: 'admin' is a
         # retired role id). Single-tenant apply_tenancy_role_grants also grants org_admin
-        # platform_settings, so this one role covers both control-plane and data-plane rights.
+        # platform_settings, so this one role reaches the deployment settings as well as the org's data.
         auth_section["default_assignments"] = [{"role_id": "org_admin", "domain_id": "*"}]
 
     # REQ-124: same signing key the wizard writes — PROVISA_IDP=basic skips the wizard entirely,

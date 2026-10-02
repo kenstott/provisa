@@ -287,9 +287,12 @@ class TestSwitchRight:
         monkeypatch.setattr("provisa.core.env_store.get_env", _get_env)
         assert await select_environment(db, "acme", "feature") == "feature"
 
-    def test_platform_authority_carries_the_right(self):
-        assert may_switch({"superadmin"})
-        assert may_switch({"admin"})
+    def test_only_the_right_itself_carries_it(self):
+        # REQ-1327: being served by a non-prod environment is the org's data plane. Nothing stands
+        # in for the right — not the platform rights, and not the retired wildcard strings.
+        assert not may_switch({"superadmin"})
+        assert not may_switch({"admin"})
+        assert not may_switch({"platform_settings", "cross_org"})
         assert may_switch({SWITCH_CAPABILITY})
         assert not may_switch({"read", "query", "create_model"})
 

@@ -47,7 +47,7 @@ def _seeded_roles(monkeypatch):
         lambda: {
             "platform_admin": {
                 "id": "platform_admin",
-                "capabilities": ["admin", "superadmin", "platform_settings", "cross_org"],
+                "capabilities": ["platform_settings", "cross_org"],
             },
             "org_admin": {"id": "org_admin", "capabilities": ["user_management"]},
             "developer": {"id": "developer", "capabilities": ["query_development"]},

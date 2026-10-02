@@ -115,7 +115,8 @@ async def test_only_platform_admin_holds_cross_org_in_either_mode(tenant_db, mul
     await apply_tenancy_role_grants(tenant_db, _ORG_ID, multitenancy=multitenancy)
 
     caps = await _caps(tenant_db)
-    assert caps["platform_admin"] >= {"cross_org", "platform_settings", "admin", "superadmin"}
+    # REQ-1327: exactly the two platform rights — no data capability, and nothing standing in for one.
+    assert caps["platform_admin"] == {"cross_org", "platform_settings"}
     for role_id in ("org_admin", "developer", "analyst"):
         assert "cross_org" not in caps[role_id], role_id
 
@@ -161,9 +162,11 @@ async def test_org_scoped_rights_are_held_in_either_mode(tenant_db, multitenancy
 
     caps = await _caps(tenant_db)
     assert {"org_settings", "observability"} <= caps["org_admin"]
-    # The org-scoped pair is not the platform wildcard; holding it must not admit the caller to the
-    # deployment surfaces that platform bypass opens.
-    assert not ({"admin", "superadmin"} & caps["org_admin"])
+    # The org-scoped pair is not a platform right; holding it must not admit the caller to the
+    # deployment surfaces. cross_org is never org_admin's, and no role carries a wildcard string.
+    assert "cross_org" not in caps["org_admin"]
+    for role_id, held in caps.items():
+        assert not ({"admin", "superadmin"} & held), role_id
 
 
 @pytest.mark.parametrize("multitenancy", [True, False])

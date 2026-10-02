@@ -30,7 +30,7 @@ import pytest
 from fastapi import HTTPException
 
 from provisa.core.org_settings import ORG_OVERRIDABLE_KEYS, merge_org_overrides
-from provisa.security.rights import Capability, has_platform_bypass
+from provisa.security.rights import Capability, platform_rights_in
 
 # --- the rights themselves ----------------------------------------------------------------------
 
@@ -38,9 +38,8 @@ from provisa.security.rights import Capability, has_platform_bypass
 def test_the_org_scoped_rights_exist_and_are_not_platform_bypass():
     assert Capability.ORG_SETTINGS.value == "org_settings"
     assert Capability.OBSERVABILITY.value == "observability"
-    # Holding either must not open the deployment-wide surfaces. The whole point of minting them
-    # was to stop needing the `admin` wildcard to make the Admin tab useful to an org.
-    assert not has_platform_bypass({"org_settings", "observability"})
+    # Holding either must not open the deployment-wide surfaces: neither is a platform right.
+    assert not platform_rights_in({"org_settings", "observability"})
 
 
 def test_org_settings_is_not_platform_settings():
@@ -84,10 +83,23 @@ class TestOrgScopedGates:
         resolve_caps({right})
         self._gate(gate_name)(_request({right}))  # no raise
 
-    def test_platform_bypass_admits(self, gate_name, right, resolve_caps):
-        # platform_admin carries the wildcard and never needs the org-scoped right enumerated.
-        resolve_caps({"admin", "superadmin"})
-        self._gate(gate_name)(_request({"admin"}))
+    @pytest.mark.parametrize(
+        "held",
+        [
+            {"platform_settings", "cross_org"},  # platform_admin's whole capability list
+            {"admin"},
+            {"superadmin"},
+            {"admin", "superadmin", "platform_settings", "cross_org"},
+        ],
+    )
+    def test_nothing_stands_in_for_the_named_right(self, gate_name, right, resolve_caps, held):
+        # REQ-1327: the platform rights are over the deployment, not over an org's settings or its
+        # performance data, and no capability string means "every right".
+        resolve_caps(held)
+        with pytest.raises(HTTPException) as exc:
+            self._gate(gate_name)(_request(held))
+        assert exc.value.status_code == 403
+        assert right in exc.value.detail
 
     def test_a_data_plane_right_is_rejected(self, gate_name, right, resolve_caps):
         # An analyst holds `usage` and a developer `query_development`; neither administers the org.

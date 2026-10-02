@@ -30,8 +30,12 @@ from provisa.security.rights import (
     Capability,
     can_act_cross_org,
     capabilities_for_claims,
-    has_platform_bypass,
+    carries_platform_right,
+    check_role_grant,
     is_control_plane_role,
+    platform_rights_in,
+    PlatformRoleGrantError,
+    unknown_capabilities,
     role_ids_from_claims,
 )
 
@@ -40,7 +44,7 @@ from provisa.security.rights import (
 SEEDED_ROLES: dict[str, dict] = {
     "platform_admin": {
         "id": "platform_admin",
-        "capabilities": ["admin", "superadmin", "platform_settings", "cross_org"],
+        "capabilities": ["platform_settings", "cross_org"],
     },
     "org_admin": {
         "id": "org_admin",
@@ -74,13 +78,53 @@ def test_an_unknown_role_grants_nothing():
     assert capabilities_for_claims(["platform_admin"], None) == set()
 
 
-def test_platform_bypass_reads_capabilities_not_the_role_id():
-    assert has_platform_bypass({"admin"})
-    assert has_platform_bypass({"superadmin"})
-    assert not has_platform_bypass({"platform_admin"}), (
+def test_platform_rights_are_the_two_named_rights_and_nothing_else():
+    assert platform_rights_in({"platform_settings", "cross_org", "usage"}) == {
+        "platform_settings",
+        "cross_org",
+    }
+    # No capability string means "every right", and a role id is never one.
+    assert platform_rights_in({"admin"}) == set()
+    assert platform_rights_in({"superadmin"}) == set()
+    assert platform_rights_in({"platform_admin"}) == set(), (
         "the role id must never be accepted as a right"
     )
-    assert not has_platform_bypass({"user_management", "table_registration"})
+    assert platform_rights_in({"user_management", "table_registration"}) == set()
+    assert platform_rights_in(None) == set()
+
+
+def test_a_tenant_org_ignores_a_role_carrying_either_platform_right():
+    # Wider than is_control_plane_role: a role minted with platform_settings alone has a data
+    # plane, but a tenant org still resolves it to nothing.
+    minted = {
+        **SEEDED_ROLES,
+        "settings_only": {"capabilities": ["platform_settings", "usage"]},
+        "fleet_operator": {"capabilities": ["cross_org"]},
+    }
+    assert carries_platform_right("platform_admin", minted)
+    assert carries_platform_right("settings_only", minted)
+    assert carries_platform_right("fleet_operator", minted)
+    assert not is_control_plane_role("settings_only", minted)
+    assert not carries_platform_right("org_admin", minted)
+    assert not carries_platform_right("unknown", minted)
+
+
+def test_a_platform_right_is_granted_only_by_its_holder():
+    platform = ["platform_settings", "cross_org"]
+    check_role_grant("platform_admin", platform, {"platform_settings", "cross_org", "usage"})
+    check_role_grant("analyst", ["usage"], set())  # no platform right: any granter
+    with pytest.raises(PlatformRoleGrantError) as err:
+        check_role_grant("platform_admin", platform, {"user_management", "platform_settings"})
+    assert err.value.missing == ["cross_org"]
+    with pytest.raises(PlatformRoleGrantError) as err:
+        check_role_grant("platform_admin", platform, {"admin", "superadmin", "user_management"})
+    assert err.value.missing == ["cross_org", "platform_settings"]
+
+
+def test_a_capability_outside_the_vocabulary_is_named():
+    assert unknown_capabilities(["usage", "write", "ddl", "no_aggregations"]) == []
+    assert unknown_capabilities(["usage", "root", "everything"]) == ["everything", "root"]
+    assert unknown_capabilities(None) == []
 
 
 def test_control_plane_is_decided_by_cross_org():
@@ -95,7 +139,9 @@ def test_control_plane_is_decided_by_cross_org():
 
 def test_can_act_cross_org():
     assert can_act_cross_org({"cross_org"})
-    assert can_act_cross_org({"admin"})  # platform bypass subsumes it
+    assert not can_act_cross_org({"admin"})  # nothing stands in for the right
+    assert not can_act_cross_org({"superadmin"})
+    assert not can_act_cross_org({"platform_settings"})
     assert not can_act_cross_org({"user_management"})
     assert not can_act_cross_org(set())
 

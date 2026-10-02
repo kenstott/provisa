@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
@@ -157,7 +158,9 @@ def _check_env_policy(body: CreateInviteBody) -> None:
         raise ApiError(400, "invites.invalid_max_uses", "max_uses must be at least 1, or null")
 
 
-async def resolve_invite_role(org_id: str, role_id: str | None) -> str:
+async def resolve_invite_role(
+    org_id: str, role_id: str | None, *, granter_capabilities: Iterable[str]
+) -> str:
     """The role an invitation into ``org_id`` confers, validated against that org's roles table.
 
     REQ-1313: ``org_invites.role_id`` is a plain Text column with no foreign key (it references the
@@ -166,32 +169,58 @@ async def resolve_invite_role(org_id: str, role_id: str | None) -> str:
     ``platform_admin``, whose capabilities resolve deployment-wide regardless of which org schema
     the assignment sits in. Raises 403/422 rather than returning a substitute: silently downgrading
     an unconferrable role would grant access the inviter did not intend to describe.
+
+    REQ-1337: two rules about a role carrying a PLATFORM right, both read off the rights the role
+    holds in that org's schema (its parent chain folded in), never off its name. It is conferred
+    into the root org only — REQ-1298 makes an invitation into root the sole path to a backup
+    platform administrator — and only by an inviter who holds those rights
+    (``rights.check_role_grant``). ``granter_capabilities`` is the inviter's at issue; a redemption
+    passes ``DEPLOYMENT_GRANTER``, the issue having been the inviter's act and already checked.
     """
     from provisa.api.app import ensure_org_runtime, state
     from provisa.core.schema_org import roles as org_roles
+    from provisa.security.inheritance import effective_capabilities
+    from provisa.security.rights import (
+        PlatformRoleGrantError,
+        check_role_grant,
+        platform_rights_in,
+    )
 
     resolved = role_id if role_id is not None else DEFAULT_INVITE_ROLE
-    # platform_admin confers deployment-wide administration, so it may only be conferred into the
-    # root org — REQ-1298 makes an invitation into root followed by that assignment the sole path
-    # to a backup platform administrator, and this is what stops an org_admin minting one at home.
-    if resolved == "platform_admin" and org_id != state.org_id:
-        raise ApiError(
-            403,
-            "invites.platform_admin_root_only",
-            "platform_admin may only be conferred by an invitation into the root org",
-        )
     rt = await ensure_org_runtime(org_id)
     assert rt.tenant_db is not None
     async with rt.tenant_db.acquire() as conn:
-        found = await conn.execute_core(select(org_roles.c.id).where(org_roles.c.id == resolved))
-        if found.fetchone() is None:
-            raise ApiError(
-                422,
-                "invites.role_not_in_org",
-                f"Role '{resolved}' does not exist in org '{org_id}'",
-                role_id=resolved,
-                org_id=org_id,
-            )
+        result = await conn.execute_core(
+            select(org_roles.c.id, org_roles.c.capabilities, org_roles.c.parent_role_id)
+        )
+        role_rows = [dict(r._mapping) for r in result.fetchall()]
+    if resolved not in {r["id"] for r in role_rows}:
+        raise ApiError(
+            422,
+            "invites.role_not_in_org",
+            f"Role '{resolved}' does not exist in org '{org_id}'",
+            role_id=resolved,
+            org_id=org_id,
+        )
+    capabilities = effective_capabilities(resolved, role_rows)
+    if platform_rights_in(capabilities) and org_id != state.org_id:
+        raise ApiError(
+            403,
+            "invites.platform_admin_root_only",
+            f"role {resolved!r} carries platform rights and may only be conferred by an "
+            "invitation into the root org",
+            role_id=resolved,
+        )
+    try:
+        check_role_grant(resolved, capabilities, granter_capabilities)
+    except PlatformRoleGrantError as exc:
+        raise ApiError(
+            403,
+            "users.platform_role_requires_platform_admin",
+            f"role {resolved!r} carries platform rights; only a holder of them may confer it",
+            role=resolved,
+            rights=exc.missing,
+        ) from exc
     return resolved
 
 
@@ -240,7 +269,11 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
     # REQ-1313/REQ-1314: resolve the default and validate against the target org's roles BEFORE the
     # insert, so a refused role leaves no invitation row behind and the inviter sees the refusal
     # rather than the invitee hitting it at redemption.
-    role_id = await resolve_invite_role(body.org_id, body.role_id)
+    from provisa.api.admin._platform_guard import granter_capabilities
+
+    role_id = await resolve_invite_role(
+        body.org_id, body.role_id, granter_capabilities=granter_capabilities(request)
+    )
     async with pool.acquire() as conn:
         result = await conn.execute_core(
             org_invites.insert()

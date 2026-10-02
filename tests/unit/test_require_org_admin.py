@@ -93,18 +93,23 @@ async def test_anonymous_dev_mode_allowed(patch):
 
 
 @pytest.mark.asyncio
-async def test_superadmin_allowed_any_org(patch):
-    patch(caps={"superadmin"}, membership_row=None)
-    await inv._require_org_admin(
-        _request(identity=_identity("root", ["superadmin"]), active_org="other"), "acme"
-    )
+@pytest.mark.parametrize("retired", ["superadmin", "admin"])
+async def test_a_retired_wildcard_string_reaches_no_org(patch, retired):
+    # REQ-1327: no capability string means "every right". Acting in an org one does not administer
+    # is the cross_org right and nothing else.
+    patch(caps={retired}, membership_row=None)
+    with pytest.raises(HTTPException) as err:
+        await inv._require_org_admin(
+            _request(identity=_identity("root", [retired]), active_org="other"), "acme"
+        )
+    assert err.value.status_code == 403
 
 
 @pytest.mark.asyncio
-async def test_platform_admin_allowed_any_org(patch):
-    patch(caps={"admin"}, membership_row=None)
+async def test_cross_org_allowed_any_org(patch):
+    patch(caps={"cross_org"}, membership_row=None)
     await inv._require_org_admin(
-        _request(identity=_identity("p", ["admin"]), active_org=None), "acme"
+        _request(identity=_identity("p", ["platform_admin"]), active_org=None), "acme"
     )
 
 

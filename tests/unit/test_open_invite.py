@@ -458,11 +458,15 @@ class TestTheVisitorAlsoHoldsTheNameTheGrantsCarry:
     async def _seat(self, role_id):
         import provisa.core.org_membership as om
         from provisa.api.invite_env import seat_redeemed_roles
+        from provisa.security.rights import DEPLOYMENT_GRANTER
 
         rec = self._Recorder()
         original = om.grant_org_role
 
-        async def fake(tenant_db, user_id, rid):
+        async def fake(tenant_db, user_id, rid, *, granter_capabilities):
+            # REQ-1337: a redemption grants as the deployment — the invitation's role was
+            # checked against its inviter when it was issued.
+            assert granter_capabilities == DEPLOYMENT_GRANTER
             rec.granted.append((user_id, rid))
 
         om.grant_org_role = fake

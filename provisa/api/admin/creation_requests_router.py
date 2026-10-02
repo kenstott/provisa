@@ -22,7 +22,6 @@ from pydantic import BaseModel
 from sqlalchemy import and_, func, select, update
 
 from provisa.core.schema_org import creation_requests
-from provisa.security.rights import has_platform_bypass
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection, Database
@@ -100,14 +99,9 @@ def _require_capability(request: Request, capability: str) -> None:
     # Dev / no-auth mode — skip enforcement
     if not user_id or user_id == "anonymous":
         return
-    roles: dict[str, dict] = getattr(state, "roles", {})
-    caps: set[str] = set()
-    for claim in getattr(identity, "roles", []):
-        role_id = claim.strip().split(":")[0] if ":" in claim.strip() else claim.strip()
-        role = roles.get(role_id) or {}
-        for c in role.get("capabilities") or []:
-            caps.add(c)
-    if not has_platform_bypass(caps) and capability not in caps:
+    from provisa.api.admin.capabilities import _resolved_capabilities
+
+    if capability not in _resolved_capabilities(identity, state):
         raise HTTPException(status_code=403, detail=f"Missing capability: {capability!r}")
 
 

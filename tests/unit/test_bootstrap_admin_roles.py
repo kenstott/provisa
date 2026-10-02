@@ -159,7 +159,7 @@ async def test_the_wizard_in_multi_mode_is_unchanged(wizard):
 # apply_tenancy_role_grants: org_admin is granted platform_settings, never cross_org).
 SINGLE_TENANT_ROLES = {
     "platform_admin": {
-        "capabilities": ["admin", "superadmin", "platform_settings", "cross_org"],
+        "capabilities": ["platform_settings", "cross_org"],
         "domain_access": ["*"],
     },
     "org_admin": {

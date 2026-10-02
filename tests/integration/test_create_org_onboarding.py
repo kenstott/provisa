@@ -135,7 +135,7 @@ def planes(monkeypatch):
 
         return _types.SimpleNamespace(tenant_db=admin_db, org_id=org_id)
 
-    async def _fake_grant_org_role(_tenant_db, user_id, role_id):
+    async def _fake_grant_org_role(_tenant_db, user_id, role_id, *, granter_capabilities):
         grants.append((user_id, role_id))
 
     monkeypatch.setattr(org_provisioning, "provision_org", _fake_provision_org)

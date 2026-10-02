@@ -39,7 +39,7 @@ from provisa.core.schema_admin import (
     user_org_memberships,
     user_profiles,
 )
-from provisa.security.rights import has_platform_bypass
+from provisa.security.rights import can_act_cross_org
 
 log = logging.getLogger(__name__)
 
@@ -51,7 +51,8 @@ _provisioning_tasks: set[concurrent.futures.Future[None]] = set()
 
 
 def _require_platform_admin(request: Request) -> None:  # REQ-042, REQ-125, REQ-1297
-    """Raise 403 if the caller is not a platform_admin. Dev mode (anonymous) is allowed."""
+    """Raise 403 unless the caller holds ``cross_org`` — the right over org lifecycle (REQ-1337).
+    Dev mode (anonymous) is allowed."""
     from provisa.api.app import state as _app_state
     from provisa.api.admin.capabilities import _resolved_capabilities
 
@@ -59,7 +60,7 @@ def _require_platform_admin(request: Request) -> None:  # REQ-042, REQ-125, REQ-
     if identity is None or getattr(identity, "user_id", "anonymous") == "anonymous":
         return  # dev mode — no auth configured
     caps = _resolved_capabilities(identity, _app_state)
-    if not has_platform_bypass(caps):
+    if not can_act_cross_org(caps):
         raise ApiError(403, "orgs.platform_admin_required", "platform_admin required")
 
 
@@ -172,6 +173,20 @@ def _validate_org_policy(
             ) from exc
     if auto_join and not auto_join_role:
         raise ApiError(400, "orgs.auto_join_requires_role", "auto_join requires auto_join_role")
+    if auto_join and auto_join_role:
+        # REQ-1337: an auto-join is a grant nobody stands behind, so it cannot confer a platform
+        # right (auto_join.join_org_automatically refuses it at the grant). Said here, where the
+        # rule is written, rather than left for the first matching address to discover at sign-in.
+        from provisa.api.app import state as _app_state
+        from provisa.security.rights import carries_platform_right
+
+        if carries_platform_right(auto_join_role, getattr(_app_state, "roles", {})):
+            raise ApiError(
+                403,
+                "orgs.auto_join_role_carries_platform_right",
+                f"role {auto_join_role!r} carries platform rights and cannot be an auto-join role",
+                role=auto_join_role,
+            )
     if auto_join:
         # REQ-1477: auto-join treats a matching address as proof of belonging, which only holds for
         # a domain the org controls. A consumer mailbox is issued to anyone who asks for one.
@@ -403,7 +418,12 @@ async def _provision_org_task(
         # the schema + seeded org_admin row exist. Membership (admin plane) was granted synchronously.
         if created_by is not None:
             assert rt.tenant_db is not None
-            await grant_org_role(rt.tenant_db, created_by, "org_admin")
+            from provisa.security.rights import DEPLOYMENT_GRANTER
+
+            # The deployment seats the org's creator; see grant_org_admin for why that is its act.
+            await grant_org_role(
+                rt.tenant_db, created_by, "org_admin", granter_capabilities=DEPLOYMENT_GRANTER
+            )
         # REQ-1524: the repository is created by the act that produces an organization, not lazily
         # by its first change, and with the same failure semantics as the schema — ensure_repo
         # raises, so an org whose repository could not be created does not reach "ready". Prod's
@@ -616,7 +636,7 @@ async def org_status(org_id: str, request: Request):  # REQ-1266
         from provisa.api.admin.capabilities import _resolved_capabilities
 
         caps = _resolved_capabilities(identity, _app_state)
-        if not has_platform_bypass(caps):
+        if not can_act_cross_org(caps):
             raise ApiError(403, "orgs.view_not_permitted", "Not permitted to view this org")
     return record
 

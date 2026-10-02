@@ -21,7 +21,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import delete as _delete, func, insert, select, update
 
-from provisa.api.admin._platform_guard import has_deployment_settings
+from provisa.api.admin._platform_guard import require_role_grantable
 from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.errors import ApiError
 from provisa.auth.scram_store import delete_verifier, write_verifier
@@ -86,39 +86,22 @@ def _admin_pool(_request: Request) -> Database:  # pyright: ignore[reportUnusedP
     return state.admin_db
 
 
-_PLATFORM_RIGHTS = frozenset(
-    {
-        Capability.ADMIN.value,
-        Capability.SUPERADMIN.value,
-        Capability.PLATFORM_SETTINGS.value,
-        Capability.CROSS_ORG.value,
-    }
-)
-
-
 def _require_user_management(request: Request) -> None:
     require_capability_request(request, Capability.USER_MANAGEMENT.value)
 
 
 def _refuse_platform_role(request: Request, role_ids: list[str]) -> None:
-    """Granting or removing a role that carries platform rights is the platform administrator's.
+    """Granting or removing a role that carries platform rights is its holder's act.
 
     user_management lets an org administrator manage their org's people; it must not let them mint
-    a platform administrator. A role is platform-bearing when its resolved capabilities hold a
-    platform right, so no role name is tested.
+    a platform administrator. The rule is ``rights.check_role_grant`` — the one every grant path
+    asks — read against the role's resolved capabilities, so no role name is tested.
     """
     from provisa.api.app import state
 
     roles = getattr(state, "roles", {})
     for role_id in role_ids:
-        caps = set((roles.get(role_id) or {}).get("capabilities") or [])
-        if caps & _PLATFORM_RIGHTS and not has_deployment_settings(request):
-            raise ApiError(
-                403,
-                "users.platform_role_requires_platform_admin",
-                f"role {role_id!r} carries platform rights; only a platform administrator may grant or remove it",
-                role=role_id,
-            )
+        require_role_grantable(request, role_id, (roles.get(role_id) or {}).get("capabilities"))
 
 
 @router.post("/")

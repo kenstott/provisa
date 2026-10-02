@@ -13,7 +13,8 @@
 The report is a view over ``query_audit_log`` and exposes the statement's hash, never its text:
 the text is stored encrypted and a view cannot decrypt it. One statement's text is read here, by
 its audit row id, through the audit log's own read path (``provisa.audit.query_log.read_query_text``)
-and gated on the org ``admin`` capability.
+and gated on ``view_governance`` — the right to see an org's security posture, which the
+statements its members ran are part of.
 """
 
 # Requirements: REQ-1910, REQ-689
@@ -41,7 +42,7 @@ def _tenant_pool():
 
 @router.get("/admin/audit/queries/{audit_id}/text")
 async def read_statement_text(request: Request, audit_id: int) -> dict:
-    require_capability_request(request, Capability.ADMIN.value)
+    require_capability_request(request, Capability.VIEW_GOVERNANCE.value)
     text = await read_query_text(_tenant_pool(), audit_id, encryption_service())
     if text is None:
         raise ApiError(404, "audit.statement_not_found", f"No audited statement {audit_id}")

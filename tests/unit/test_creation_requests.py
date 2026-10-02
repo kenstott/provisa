@@ -149,12 +149,21 @@ class TestHasCapability:
         anon = types.SimpleNamespace(user_id="anonymous", roles=[])
         assert has_capability(_info(anon), "create_relationship") is True
 
-    async def test_admin_bypasses(self, monkeypatch):
+    async def test_nothing_stands_in_for_the_right(self, monkeypatch):
+        # REQ-1327: the retired wildcard strings and the platform rights hold no data right, so a
+        # governed create from such a caller is queued like anyone else's.
         from provisa.api.admin.capabilities import has_capability
 
-        self._setup_roles(monkeypatch, {"admin": {"capabilities": ["admin"]}})
-        ident = types.SimpleNamespace(user_id="u1", roles=["admin"])
-        assert has_capability(_info(ident), "create_view") is True
+        self._setup_roles(
+            monkeypatch,
+            {
+                "admin": {"capabilities": ["admin", "superadmin"]},
+                "platform_admin": {"capabilities": ["platform_settings", "cross_org"]},
+            },
+        )
+        for role_id in ("admin", "platform_admin"):
+            ident = types.SimpleNamespace(user_id="u1", roles=[role_id])
+            assert has_capability(_info(ident), "create_view") is False
 
     async def test_holder_true_nonholder_false(self, monkeypatch):
         from provisa.api.admin.capabilities import has_capability

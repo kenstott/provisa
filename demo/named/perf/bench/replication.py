@@ -188,7 +188,7 @@ class AdminReplication:
     """Sets the declared replication through ``/admin/graphql`` and restores the previous values.
 
     ``client`` is an httpx.Client for the deployment (its credential header set); ``role`` must hold
-    the admin capability."""
+    ``source_registration`` and ``table_registration``, the rights those mutations are gated on."""
 
     def __init__(self, client: Any, role: str) -> None:
         self._client = client

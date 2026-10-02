@@ -104,12 +104,12 @@ async def me(request: Request):
     # state.roles predates the seed would drop it. Keep it alongside real tenant roles so the
     # platform administrator surfaces to the UI (otherwise /me returns []: the onboarding gate then
     # traps them, since they may hold 0 org memberships).
-    _PLATFORM_BYPASS = {PLATFORM_ADMIN_ROLE}
+    _CONTROL_PLANE_ROLES = {PLATFORM_ADMIN_ROLE}
     raw = resolve_assignments(identity)
     assignments = [
         {"role_id": a.role_id, "domain_id": a.domain_id}
         for a in raw
-        if a.role_id in all_role_ids or a.role_id in _PLATFORM_BYPASS
+        if a.role_id in all_role_ids or a.role_id in _CONTROL_PLANE_ROLES
     ]
 
     # user_org_memberships/orgs/user_profiles live in the platform control plane.
@@ -361,12 +361,20 @@ async def _seat_claimant_in_root(user_id: str) -> None:  # REQ-1296
     # org's runtime — the same org the membership names.
     tenant_db = state.tenant_db
     assert tenant_db is not None, "the bootstrap org's tenant plane must be up before a claim"
-    await grant_org_role(tenant_db, user_id, PLATFORM_ADMIN_ROLE)
-    # REQ-1297: platform_admin carries only the control-plane bypass — no column grants name it and it
+    from provisa.security.rights import DEPLOYMENT_GRANTER
+
+    # REQ-1337: the claim is the deployment seating its first administrator — there is no one else
+    # yet to grant with.
+    await grant_org_role(
+        tenant_db, user_id, PLATFORM_ADMIN_ROLE, granter_capabilities=DEPLOYMENT_GRANTER
+    )
+    # REQ-1297: platform_admin carries only the two platform rights — no column grants name it and it
     # holds no data capabilities. The claimant is also the bootstrap org's data-plane administrator, so
     # seat them as its org_admin too. Without this the claim lands on "No roles configured" again: the
     # welcome modal would hand them a deployment whose own org they cannot query.
-    await grant_org_role(tenant_db, user_id, ORG_ADMIN_ROLE)
+    await grant_org_role(
+        tenant_db, user_id, ORG_ADMIN_ROLE, granter_capabilities=DEPLOYMENT_GRANTER
+    )
     # REQ-1599: and in the sandbox org, which is a tenant org their platform_admin reaches no
     # further into than any other. A no-op while it is still building — that build seats them.
     from provisa.api.sandbox_org import seat_platform_admins
@@ -663,7 +671,11 @@ async def register(body: RegisterRequest):
         # REQ-1313: the same validation /redeem-invite performs. Reading `role_id` straight off the
         # invite here was the two paths disagreeing about what an invitation may confer -- a column
         # with no foreign key, fed to a grant, is exactly the string an inviter chose to write.
-        role_id = await resolve_invite_role(invite["org_id"], invite["role_id"])
+        from provisa.security.rights import DEPLOYMENT_GRANTER
+
+        role_id = await resolve_invite_role(
+            invite["org_id"], invite["role_id"], granter_capabilities=DEPLOYMENT_GRANTER
+        )
         # Mint the environment (REQ-1595) - must bind current_org so state.tenant_db resolves correctly
         token = set_current_org(invite["org_id"])
         try:
@@ -756,7 +768,11 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
             # REQ-1313: validate the role exists before burning the invite
             from provisa.api.admin.invites_router import resolve_invite_role
 
-            role_id = await resolve_invite_role(invite["org_id"], invite["role_id"])
+            from provisa.security.rights import DEPLOYMENT_GRANTER
+
+            role_id = await resolve_invite_role(
+                invite["org_id"], invite["role_id"], granter_capabilities=DEPLOYMENT_GRANTER
+            )
             # REQ-1595: minted before the membership names it — see /register for why the other order
             # would serve a sandbox visitor production for the length of a provisioning run.
             redeemed = await redeem_env(invite, user_id)

@@ -32,7 +32,6 @@ from provisa.core.schema_org import (
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
-from provisa.security.rights import has_platform_bypass
 from provisa.api.admin._guards import require_active_org_id
 from provisa.api.admin.types import (
     MutationResult,
@@ -143,17 +142,13 @@ async def _queue_creation_request(  # REQ-434
     )
 
 
-def _resolve_admin_context(info: StrawberryInfo) -> tuple[str, bool]:
-    """Return (active_org_id, is_admin) for the current request identity."""
-    from provisa.api.admin.capabilities import _resolved_capabilities
-    from provisa.api.app import state as _state
+def _resolve_admin_context(info: StrawberryInfo) -> str:
+    """The org the request acts in — raises when none is bound.
 
-    request = info.context["request"]
-    active_org_id = require_active_org_id(request)
-    identity = getattr(request.state, "identity", None)
-    caps = _resolved_capabilities(identity, _state) if identity else set()
-    is_admin = has_platform_bypass(caps)  # REQ-1337: rights only, never the platform_admin role id
-    return active_org_id, is_admin
+    It answers WHERE and nothing else. What the caller may do there is the resolver's own
+    capability gate; no right widens a resolver's rows beyond the org it returns.
+    """
+    return require_active_org_id(info.context["request"])
 
 
 async def _validate_govdata_api_key(input: SourceInput) -> Optional[MutationResult]:

@@ -181,12 +181,19 @@ async def seat_redeemed_roles(tenant_db, user_id: str, role_id: str) -> None:
     row's own capabilities (``define_role_from``), and capabilities resolve as the union over the
     holder's roles -- so the union here is the sandbox definition exactly. Prod's ``org_admin`` is
     untouched, and REQ-1596's pin is what keeps the member out of any environment where it is not.
+
+    REQ-1337: both are granted as the deployment. The invitation's role was checked against its
+    INVITER when it was issued and again at this redemption (``resolve_invite_role``); what is
+    granted here is what that check let through.
     """
     from provisa.core.org_membership import grant_org_role
+    from provisa.security.rights import DEPLOYMENT_GRANTER
 
-    await grant_org_role(tenant_db, user_id, role_id)
+    await grant_org_role(tenant_db, user_id, role_id, granter_capabilities=DEPLOYMENT_GRANTER)
     if role_id == SANDBOX_ROLE:
-        await grant_org_role(tenant_db, user_id, "org_admin")
+        await grant_org_role(
+            tenant_db, user_id, "org_admin", granter_capabilities=DEPLOYMENT_GRANTER
+        )
 
 
 async def release_env(invite: dict, redeemed: RedeemedEnv) -> None:

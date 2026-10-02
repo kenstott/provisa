@@ -185,13 +185,23 @@ async def tenant_dbs(monkeypatch):
     org's schema, and the org_admin assignment it WRITES lands in the sandbox's. Sharing one would
     let the read see what the write put there.
     """
+    from provisa.core.db import _SEED_ROLES
     from provisa.core.schema_org import metadata as org_metadata
+    from provisa.core.schema_org import roles as org_roles
 
     made = []
     for _ in range(2):
         engine = create_engine_from_url("sqlite+pysqlite:///:memory:")
         with engine.begin() as conn:
             org_metadata.create_all(conn)
+            # Every org schema holds the system roles (the seed); a grant reads the role it
+            # confers out of the schema it lands in.
+            for role_id, capabilities in _SEED_ROLES:
+                conn.execute(
+                    org_roles.insert().values(
+                        id=role_id, capabilities=capabilities, domain_access=["*"]
+                    )
+                )
         made.append((engine, Database(engine, "test")))
     root, sandbox = made[0][1], made[1][1]
 

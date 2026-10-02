@@ -118,14 +118,14 @@ def plane(monkeypatch):
         "provisa.api.app.state", types.SimpleNamespace(admin_db=admin_db), raising=False
     )
 
-    async def _resolve_invite_role(org_id, role_id):
+    async def _resolve_invite_role(org_id, role_id, *, granter_capabilities):
         return role_id
 
     async def _ensure_org_runtime(org_id):
         state.bound_org = org_id
         return types.SimpleNamespace(tenant_db=object())
 
-    async def _grant_org_role(tenant_db, user_id, role_id):
+    async def _grant_org_role(tenant_db, user_id, role_id, *, granter_capabilities):
         state.roles.append((user_id, role_id))
 
     async def _bind_member_to_org_trial(db, org_id, email):

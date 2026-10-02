@@ -20,7 +20,6 @@ from provisa.security.rights import (
     capabilities_for_claims,
     domain_access_for_capability,
     domain_access_for_claims,
-    has_platform_bypass,
 )
 
 if TYPE_CHECKING:
@@ -99,9 +98,6 @@ def require_capability(  # REQ-042, REQ-060
         return
 
     caps = _resolved_capabilities(identity, state)
-    if has_platform_bypass(caps):
-        return  # the platform administrator bypasses all capability checks (REQ-1297)
-
     if capability not in caps:
         raise PermissionError(f"Missing capability: {capability!r}")
 
@@ -115,16 +111,14 @@ def require_domain(info: "strawberry.types.Info", domain_id: str) -> None:  # RE
     Separate from :func:`require_capability` because some acts are permitted by more than one
     right — registering a view is allowed to a holder of ``create_view`` OR ``query_development`` —
     and the question "which domains may you touch" has one answer regardless of which of those
-    rights carried the caller in. Both functions honour the same three exemptions: dev/no-auth,
-    the platform administrator's bypass, and single-domain mode where a domain gates nothing.
+    rights carried the caller in. Both functions honour the same two exemptions: dev/no-auth, and
+    single-domain mode where a domain gates nothing.
     """
     from provisa.api.app import state
     from provisa.core import domain_policy
 
     identity = _identity_from_info(info)
     if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
-        return
-    if has_platform_bypass(_resolved_capabilities(identity, state)):
         return
     if domain_policy.single_domain():
         return  # single-domain mode: domain is not a gate
@@ -141,7 +135,7 @@ def require_capability_request(request, capability: str) -> None:  # REQ-1531
     reaching the same table enforced nothing. A role carries both capabilities and domain_access
     (REQ-1530), which makes minting one the way a member would widen their own scope — so the REST
     path must ask the same question the mutation asks. Raises ``ApiError(403)`` because that is what
-    a router's caller can render; the dev/no-auth and platform-bypass exemptions are unchanged.
+    a router's caller can render; the dev/no-auth exemption is unchanged.
     """
     from provisa.api.app import state
     from provisa.api.errors import ApiError
@@ -150,8 +144,6 @@ def require_capability_request(request, capability: str) -> None:  # REQ-1531
     if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
         return
     caps = _resolved_capabilities(identity, state)
-    if has_platform_bypass(caps):
-        return
     if capability not in caps:
         raise ApiError(403, "auth.missing_capability", f"Missing capability: {capability!r}")
 
@@ -159,8 +151,8 @@ def require_capability_request(request, capability: str) -> None:  # REQ-1531
 def allowed_domains_request(request) -> frozenset[str] | None:  # REQ-1591
     """The domains a REST caller may act in, or ``None`` when domains gate nothing for it.
 
-    ``None`` is an answer, not a missing value: it is returned for the same three exemptions the
-    GraphQL gate honours — dev/no-auth, the platform bypass, and single-domain mode — and for a
+    ``None`` is an answer, not a missing value: it is returned for the same two exemptions the
+    GraphQL gate honours — dev/no-auth and single-domain mode — and for a
     role whose ``domain_access`` is ``["*"]``. Callers narrow a query with the frozenset and skip
     narrowing entirely on ``None``, which keeps "unlimited" distinct from "limited to nothing".
     """
@@ -170,8 +162,6 @@ def allowed_domains_request(request) -> frozenset[str] | None:  # REQ-1591
 
     identity = getattr(request.state, "identity", None)
     if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
-        return None
-    if has_platform_bypass(_resolved_capabilities(identity, state)):
         return None
     if domain_policy.single_domain():
         return None
@@ -186,7 +176,7 @@ def has_capability_request(request, capability: str) -> bool:  # REQ-1592
     For a right that WIDENS what a caller may do rather than admitting them to a surface:
     ``org_glossary_rw`` overrides the glossary's domain and stewardship rules, so the router asks
     whether the caller holds it and takes a different path, instead of refusing. Honours the same
-    dev/no-auth and platform-bypass exemptions as :func:`require_capability_request`.
+    dev/no-auth exemption as :func:`require_capability_request`.
     """
     from provisa.api.errors import ApiError
 
@@ -203,7 +193,7 @@ def allowed_domains_for_capability_request(  # REQ-1592
     """The domains a REST caller may exercise ``capability`` in — :func:`allowed_domains_request`
     narrowed to the roles that actually carry the right.
 
-    Same three exemptions and the same ``None``-means-unlimited contract; the difference is which
+    Same two exemptions and the same ``None``-means-unlimited contract; the difference is which
     roles contribute scope. Use this wherever the act being authorized is the named right itself,
     so that holding a right in one domain and a different right in another cannot compose into the
     first right in the second domain.
@@ -214,8 +204,6 @@ def allowed_domains_for_capability_request(  # REQ-1592
 
     identity = getattr(request.state, "identity", None)
     if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
-        return None
-    if has_platform_bypass(_resolved_capabilities(identity, state)):
         return None
     if domain_policy.single_domain():
         return None
@@ -238,8 +226,7 @@ def require_domain_request(request, domain_id: str) -> None:  # REQ-1591
 def has_capability(info: "strawberry.types.Info", capability: str) -> bool:  # REQ-434
     """Non-raising capability check (REQ-434 gating).
 
-    Returns True when the caller holds the capability — including dev/no-auth mode
-    and admins (who bypass all checks). Used to decide whether a governed create
+    Returns True when the caller holds the capability — including dev/no-auth mode. Used to decide whether a governed create
     proceeds or is queued as a creation request.
     """
     try:
