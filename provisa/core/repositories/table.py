@@ -101,6 +101,12 @@ async def upsert(
 
 async def _upsert(conn: "Connection", table: Table) -> int | None:
     domain_id = domain_policy.resolve_domain_id(table.domain_id)
+    if getattr(table, "row_materialize", False):
+        # A table a materialized view reads may not become row-level: refused here, the last
+        # write gate, naming the views (provisa/mv/readable_inputs.py).
+        from provisa.mv.readable_inputs import require_row_level_switch_allowed
+
+        await require_row_level_switch_allowed(conn, table)
     # REQ-1634: a DataProduct's member tables must all share its domain_id — a table cannot
     # reference a DataProduct in a different domain. Enforced at the last write gate so every
     # caller (config load, admin GraphQL, introspection) is covered, not only the picker UI.

@@ -176,3 +176,107 @@ async def require_views_readable(state: Any, views: list[MVDefinition]) -> None:
     once the registry its views are checked against (tables, API endpoints) is loaded."""
     for mv in views:
         await require_readable_inputs(mv, state)
+
+
+class ViewsReadTable(ValueError):
+    """A table cannot become an input no view may read while materialized views read it."""
+
+    def __init__(self, table: str, kind: str, reason: str, views: list[str]) -> None:
+        self.table = table
+        self.views = views
+        named = ", ".join(repr(v) for v in views)
+        super().__init__(
+            f"table {table!r} cannot become a {kind}: materialized view(s) {named} read it, "
+            f"and {reason}. Remove or change those views first."
+        )
+
+
+async def _views_reading(conn: Any, names: set[str]) -> list[str]:
+    """The materialized views — saved in the control plane, or held in memory from the config —
+    whose inputs include one of ``names``."""
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from provisa.api.app import state  # noqa: PLC0415
+    from provisa.compiler.naming import apply_sql_name  # noqa: PLC0415
+    from provisa.core.schema_org import registered_tables  # noqa: PLC0415
+    from provisa.events.lineage import extract_inputs  # noqa: PLC0415
+
+    wanted = names | {apply_sql_name(n) for n in names}
+
+    def _reads(inputs: list[str]) -> bool:
+        return any(i.split(".")[-1] in wanted for i in inputs)
+
+    saved = await conn.execute_core(
+        select(registered_tables.c.table_name, registered_tables.c.view_sql).where(
+            registered_tables.c.materialize, registered_tables.c.view_sql.is_not(None)
+        )
+    )
+    reading = {
+        f"view-{row.table_name}"
+        for row in saved.fetchall()
+        if _reads(sorted(extract_inputs(row.view_sql, "postgres")))
+    }
+    reading |= {mv.id for mv in state.mv_registry.all() if _reads(view_inputs(mv))}
+    return sorted(reading)
+
+
+async def require_row_level_switch_allowed(conn: Any, table: Any) -> None:
+    """Refuse storing ``table`` as row-level replicated when it was not stored so before and a
+    materialized view reads it: that view's next refresh could only fail. Called where a table
+    is persisted, so every way of changing a table is covered.
+
+    A table the bound engine attaches live is not row-level whatever its flag says
+    (``query_residency.active_row_materialize_tables``), so its switch is not one."""
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from provisa.api.app import state  # noqa: PLC0415
+    from provisa.core.schema_org import registered_tables  # noqa: PLC0415
+    from provisa.federation.registry_view import registered_sources  # noqa: PLC0415
+    from provisa.federation.strategy import engine_attaches  # noqa: PLC0415
+
+    stored = await conn.execute_core(
+        select(registered_tables.c.row_materialize).where(
+            registered_tables.c.source_id == table.source_id,
+            registered_tables.c.schema_name == table.schema_name,
+            registered_tables.c.table_name == table.table_name,
+        )
+    )
+    row = stored.fetchone()
+    if row is not None and row.row_materialize:
+        return  # already row-level: not a switch
+    names = {n for n in (table.table_name, table.alias) if n}
+    views = await _views_reading(conn, names)
+    if not views:
+        return
+    sources = {s.id: s for s in await registered_sources(state, conn)}
+    if engine_attaches(state.federation_engine, sources[table.source_id].type.value):
+        return
+    raise ViewsReadTable(
+        table.table_name, _ROW_LEVEL, "it would hold only the rows requests have fetched", views
+    )
+
+
+async def require_argument_switch_allowed(conn: Any, endpoint: Any) -> None:
+    """Refuse storing an API endpoint that needs arguments over one that did not while a
+    materialized view reads its table."""
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from provisa.core.schema_org import api_endpoints  # noqa: PLC0415
+
+    needed = _needed_path_arguments(endpoint)
+    if not needed:
+        return
+    stored = await conn.execute_core(
+        select(api_endpoints.c.path).where(api_endpoints.c.table_name == endpoint.table_name)
+    )
+    row = stored.fetchone()
+    if row is None or _PATH_PLACEHOLDER.search(row.path):
+        return  # a new endpoint, or one that already needed arguments: not a switch
+    views = await _views_reading(conn, {endpoint.table_name})
+    if views:
+        raise ViewsReadTable(
+            endpoint.table_name,
+            _PARAMETERIZED,
+            f"it would have no rows without the arguments a request supplies ({', '.join(needed)})",
+            views,
+        )
