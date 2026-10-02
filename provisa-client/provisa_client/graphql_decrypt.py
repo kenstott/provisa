@@ -84,7 +84,7 @@ class GraphQLDecryptClient:
         self,
         url: str = "http://localhost:8001",
         *,
-        role: str = "admin",
+        role: str | None = None,
         token: str | None = None,
         kms_provider: str | None = None,
         kms_key_arn: str | None = None,
@@ -106,7 +106,10 @@ class GraphQLDecryptClient:
         self._encrypted_fields: set[str] | None = None
 
     def _headers(self) -> dict[str, str]:
-        h = {"Content-Type": "application/json", "X-Role": self._role}
+        h = {"Content-Type": "application/json"}
+        # REQ-273: the role header the server validates; sent only when a role was chosen.
+        if self._role:
+            h["X-Provisa-Role"] = self._role
         if self._token:
             h["Authorization"] = f"Bearer {self._token}"
         if self._kms_key_arn:

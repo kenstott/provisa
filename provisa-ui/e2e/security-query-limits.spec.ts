@@ -29,7 +29,7 @@ test("REQ-1174: over-depth query is rejected with HTTP 413 at the compile bounda
     data: { query: DEEP_QUERY },
     headers: {
       "Content-Type": "application/json",
-      "X-Role": "DEV",
+      "X-Provisa-Role": "org_admin",
     },
   });
 
@@ -52,7 +52,7 @@ test("REQ-1174: a shallow query within limits is not rejected with 413", async (
     data: { query: "query { __typename }" },
     headers: {
       "Content-Type": "application/json",
-      "X-Role": "DEV",
+      "X-Provisa-Role": "org_admin",
     },
   });
 
@@ -72,7 +72,7 @@ test("REQ-1174: introspection is exempt from the complexity guard", async ({ req
     },
     headers: {
       "Content-Type": "application/json",
-      "X-Role": "DEV",
+      "X-Provisa-Role": "org_admin",
     },
   });
 

@@ -592,7 +592,7 @@ def when_post_neo4j_export(shared_data: dict) -> dict:
             response = client.post(
                 "/data/neo4j-export",
                 json=payload,
-                headers={"X-Role": "DEV"},
+                headers={"X-Provisa-Role": "DEV"},
             )
 
         shared_data["response_status"] = response.status_code
@@ -824,7 +824,7 @@ def when_single_node_exported(shared_data: dict) -> None:
             response = client.post(
                 "/data/neo4j-export",
                 json=payload,
-                headers={"X-Role": "DEV"},
+                headers={"X-Provisa-Role": "DEV"},
             )
 
         shared_data["response_status"] = response.status_code

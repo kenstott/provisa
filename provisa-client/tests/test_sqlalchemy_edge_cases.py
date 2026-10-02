@@ -388,12 +388,12 @@ class TestCursorInitialState:
 
 class TestGetBaseUrlAndRole:
     def test_falls_back_to_defaults_when_no_attributes(self):
-        """Returns ('http://localhost:8001', 'admin') when raw connection lacks attrs."""
+        """Returns the default URL and names no role when the raw connection lacks attrs."""
         dialect = ProvisaDialect()
         mock_conn = MagicMock(spec=[])  # no attributes at all
         base_url, role = dialect._get_base_url_and_role(mock_conn)
         assert base_url == "http://localhost:8001"
-        assert role == "admin"
+        assert role is None
 
     def test_reads_from_connection_direct_attributes(self):
         """Reads _base_url and _role from connection.connection directly."""

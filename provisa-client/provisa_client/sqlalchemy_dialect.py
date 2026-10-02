@@ -73,17 +73,17 @@ class ProvisaDialect(DefaultDialect):
             opts["dek_cache_ttl"] = float(query["dek_cache_ttl"])
         return [], opts
 
-    def _get_base_url_and_role(self, connection: Any) -> tuple[str, str]:
+    def _get_base_url_and_role(self, connection: Any) -> tuple[str, str | None]:
         """Extract base_url and role from a live DBAPI connection."""
         if not hasattr(connection, "connection"):
-            return "http://localhost:8001", "admin"
+            return "http://localhost:8001", None
         raw = connection.connection
         # raw may be a Connection or wrapped by SQLAlchemy
         if hasattr(raw, "_role"):
             return raw._base_url, raw._role
         if hasattr(raw, "connection") and hasattr(raw.connection, "_role"):
             return raw.connection._base_url, raw.connection._role
-        return "http://localhost:8001", "admin"
+        return "http://localhost:8001", None
 
     _TIMEOUT = 10.0  # seconds
 
@@ -110,17 +110,21 @@ class ProvisaDialect(DefaultDialect):
             type_info = type_info.get("ofType")
         return None
 
-    def _fetch_schema(self, base_url: str, role: str) -> dict:
+    def _fetch_schema(self, base_url: str, role: str | None) -> dict:
         """Fetch and cache the role-scoped schema via /data/graphql introspection."""
         if not hasattr(self, "_schema_cache"):
             self._schema_cache: dict = {}
         key = (base_url, role)
         if key not in self._schema_cache:
             try:
+                headers = {"Content-Type": "application/json"}
+                # REQ-273: the role header the server validates; sent only when one was chosen.
+                if role:
+                    headers["X-Provisa-Role"] = role
                 r = httpx.post(
                     f"{base_url}/data/graphql",
                     json={"query": self._INTROSPECT_GQL},
-                    headers={"Content-Type": "application/json", "X-Role": role},
+                    headers=headers,
                     timeout=self._TIMEOUT,
                 )
                 r.raise_for_status()

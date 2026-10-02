@@ -101,7 +101,7 @@ tables_df = client.list_tables()
 | ----------- | --------- | ------------- |
 | `url` | `http://localhost:8001` | Provisa server base URL |
 | `token` | `None` | Bearer credential — a provider token or a personal access token; omit for password auth (REQ-606, REQ-1263) |
-| `role` | `"admin"` | Role sent with every request (REQ-273) |
+| `role` | `None` | Role to act as, sent as `X-Provisa-Role` and honored only when assigned to the user; omit to run as the identity's own role (REQ-273) |
 | `flight_port` | `8815` | Arrow Flight gRPC port (REQ-143) |
 
 ### Error Handling

@@ -111,7 +111,7 @@ test("impute-relationships API returns integer startNode/endNode ids", async ({ 
   // Get a few Meta nodes from a real query first
   const queryResp = await request.post(`${BACKEND_URL}/data/cypher`, {
     data: { query: "MATCH (n:Meta) RETURN n LIMIT 10" },
-    headers: { "Content-Type": "application/json", "X-Role": "DEV" },
+    headers: { "Content-Type": "application/json", "X-Provisa-Role": "org_admin" },
   });
   expect(queryResp.status()).toBe(200);
   const queryBody = await queryResp.json();
@@ -128,7 +128,7 @@ test("impute-relationships API returns integer startNode/endNode ids", async ({ 
   // Now impute with all 10 nodes (using stable integer ids as the frontend sends)
   const imputeResp = await request.post(`${BACKEND_URL}/data/impute-relationships`, {
     data: { nodes },
-    headers: { "Content-Type": "application/json", "X-Role": "DEV" },
+    headers: { "Content-Type": "application/json", "X-Provisa-Role": "org_admin" },
   });
   expect(imputeResp.status()).toBe(200);
   const imputeBody = await imputeResp.json();

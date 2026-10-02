@@ -20,7 +20,7 @@ LIMIT 25`;
 test("UNION ALL query with email filter executes without SYNTAX_ERROR", async ({ request }) => {
   const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
     data: { query: QUERY },
-    headers: { "Content-Type": "application/json", "X-Role": "DEV" },
+    headers: { "Content-Type": "application/json", "X-Provisa-Role": "org_admin" },
   });
 
   const body = await resp.json();

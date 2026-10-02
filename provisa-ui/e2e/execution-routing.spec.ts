@@ -33,7 +33,7 @@ test("single-source query transpiles via SQLGlot to target dialect", async ({
     data: {
       query: `{ ps__pets { id } }`,
     },
-    headers: { "Content-Type": "application/json", "X-Role": "DEV" },
+    headers: { "Content-Type": "application/json", "X-Provisa-Role": "org_admin" },
   });
 
   expect(resp.ok()).toBeTruthy();
@@ -49,7 +49,7 @@ test("cross-source query routes to Trino", async ({ request }) => {
       // pets -> assignments is one-to-many, so the field is the plural list `assignments`.
       query: `{ ps__pets { id assignments { id } } }`,
     },
-    headers: { "Content-Type": "application/json", "X-Role": "DEV" },
+    headers: { "Content-Type": "application/json", "X-Provisa-Role": "org_admin" },
   });
 
   expect(resp.ok()).toBeTruthy();
@@ -117,7 +117,7 @@ test("mutation query compiles with direct routing enforcement", async ({
         __typename
       }`,
     },
-    headers: { "Content-Type": "application/json", "X-Role": "DEV" },
+    headers: { "Content-Type": "application/json", "X-Provisa-Role": "org_admin" },
   });
 
   expect(resp.ok()).toBeTruthy();
@@ -310,7 +310,7 @@ test("Arrow Flight endpoint enforces authentication and authorization", async ({
     headers: {
       "Content-Type": "application/json",
       Accept: "application/vnd.apache.arrow.stream",
-      "X-Role": "DEV",
+      "X-Provisa-Role": "org_admin",
     },
   });
 
@@ -327,7 +327,7 @@ test("routing decision endpoint exposes route selection reasoning", async ({
     data: {
       query: `{ ps__pets { id } }`,
     },
-    headers: { "Content-Type": "application/json", "X-Role": "DEV" },
+    headers: { "Content-Type": "application/json", "X-Provisa-Role": "org_admin" },
   });
 
   expect(resp.ok()).toBeTruthy();

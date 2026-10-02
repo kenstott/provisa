@@ -209,7 +209,7 @@ def test_get_table_names_uses_data_endpoint_not_admin():
         dialect.get_table_names(mock_conn)
 
     assert route.called
-    assert route.calls[0].request.headers["x-role"] == "analyst"
+    assert route.calls[0].request.headers["x-provisa-role"] == "analyst"
 
 
 # ── has_table() ───────────────────────────────────────────────────────────────

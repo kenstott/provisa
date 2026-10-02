@@ -43,7 +43,7 @@ def test_query_sends_auth_and_role_headers(client):
     client.query("{ x { id } }")
     req = route.calls[0].request
     assert req.headers["authorization"] == "Bearer tok"
-    assert req.headers["x-role"] == "analyst"
+    assert req.headers["x-provisa-role"] == "analyst"
 
 
 @respx.mock
@@ -129,7 +129,7 @@ async def test_aquery_sends_role_header(client):
         return_value=httpx.Response(200, json={"data": {"x": []}})
     )
     await client.aquery("{ x { id } }")
-    assert route.calls[0].request.headers["x-role"] == "analyst"
+    assert route.calls[0].request.headers["x-provisa-role"] == "analyst"
 
 
 # ── _flight_ticket() ─────────────────────────────────────────────────────────

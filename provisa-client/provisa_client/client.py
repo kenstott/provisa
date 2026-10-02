@@ -25,7 +25,9 @@ class ProvisaClient:
     Args:
         url: Base URL of the Provisa server (default: http://localhost:8001).
         token: Bearer token for authentication.
-        role: Role name sent with every request (default: "admin").
+        role: The role to act as, sent as ``X-Provisa-Role`` (REQ-273). The server honours it
+            only when the authenticated identity is assigned it. ``None`` (the default) names
+            none, and the request runs as the identity's own role.
         flight_port: Port of the Arrow Flight server (default: 8815).
     """
 
@@ -34,7 +36,7 @@ class ProvisaClient:
         url: str = "http://localhost:8001",
         *,
         token: str | None = None,
-        role: str = "admin",
+        role: str | None = None,
         flight_port: int = 8815,
     ) -> None:
         self._base = url.rstrip("/")
@@ -45,7 +47,10 @@ class ProvisaClient:
     # ── HTTP / GraphQL ────────────────────────────────────────────────────
 
     def _http_headers(self) -> dict[str, str]:
-        headers: dict[str, str] = {"Content-Type": "application/json", "X-Role": self._role}
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        # REQ-273: the role header the server validates; sent only when a role was chosen.
+        if self._role:
+            headers["X-Provisa-Role"] = self._role
         if self._token:
             headers["Authorization"] = f"Bearer {self._token}"
         return headers
@@ -112,7 +117,9 @@ class ProvisaClient:
         return fl.connect(f"grpc://{host}:{self._flight_port}")  # pyright: ignore[reportPrivateImportUsage]
 
     def _flight_ticket(self, query: str, variables: dict[str, Any] | None) -> fl.Ticket:  # pyright: ignore[reportPrivateImportUsage]
-        data: dict[str, Any] = {"query": query, "role": self._role}
+        data: dict[str, Any] = {"query": query}
+        if self._role:
+            data["role"] = self._role
         if variables:
             data["variables"] = variables
         # REQ-1263: Flight authenticates every ticket. Without the credential here the HTTP path
