@@ -294,8 +294,9 @@ async def _init_schema_portable(pool: "Database") -> None:
                         id=role_id,
                         capabilities=capabilities,
                         demonstrated=demonstrated,
-                        # The control plane reaches no data domain (REQ-1337).
-                        domain_access=[] if role_id == "platform_admin" else ["*"],
+                        # A role holding the cross-org right is the control plane, which reaches
+                        # no data domain (REQ-1337).
+                        domain_access=[] if "cross_org" in capabilities else ["*"],
                         org_id=None,
                     )
                 )
