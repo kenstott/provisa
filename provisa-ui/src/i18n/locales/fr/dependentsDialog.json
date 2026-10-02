@@ -20,7 +20,10 @@
       "source": "Sources",
       "remote_registration": "Enregistrements distants",
       "domain": "Domaines",
-      "glossary_term": "Termes du glossaire"
+      "glossary_term": "Termes du glossaire",
+      "membership": "Membres qui y sont attachés",
+      "invitation": "Invitations encore ouvertes",
+      "environment": "Environnements dérivés de celui-ci"
     }
   }
 }

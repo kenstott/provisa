@@ -20,7 +20,10 @@
       "source": "स्रोत",
       "remote_registration": "रिमोट पंजीकरण",
       "domain": "डोमेन",
-      "glossary_term": "शब्दावली शब्द"
+      "glossary_term": "शब्दावली शब्द",
+      "membership": "इससे पिन किए गए सदस्य",
+      "invitation": "अब भी खुले आमंत्रण",
+      "environment": "इससे शाखित परिवेश"
     }
   }
 }

@@ -101,6 +101,9 @@
       "table_id_required": "table_id für den Tabellen-Geltungsbereich erforderlich",
       "unknown_source_type": "Unbekannter Quellentyp: {{type}}"
     },
+    "environments": {
+      "in_use": "Auf {{env}} verweisen noch {{count}} Element(e). Entfernen oder ändern Sie jedes davon und löschen Sie dann erneut."
+    },
     "front_door": {
       "coordinator_waking": "Die Umgebung wird gestartet. Sie ist in etwa zwei Minuten bereit."
     },

@@ -20,7 +20,10 @@
       "source": "ソース",
       "remote_registration": "リモート登録",
       "domain": "ドメイン",
-      "glossary_term": "用語集の用語"
+      "glossary_term": "用語集の用語",
+      "membership": "この環境に固定されたメンバー",
+      "invitation": "まだ有効な招待",
+      "environment": "この環境から分岐した環境"
     }
   }
 }

@@ -20,7 +20,10 @@
       "source": "מקורות",
       "remote_registration": "רישומים מרוחקים",
       "domain": "דומיינים",
-      "glossary_term": "מונחי מילון"
+      "glossary_term": "מונחי מילון",
+      "membership": "חברים המוצמדים אליה",
+      "invitation": "הזמנות שעדיין פתוחות",
+      "environment": "סביבות שהסתעפו ממנה"
     }
   }
 }

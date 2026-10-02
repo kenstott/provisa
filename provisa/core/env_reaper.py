@@ -43,7 +43,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from sqlalchemy import select
 
-from provisa.core.env_retire import retire_environment
+from provisa.core.env_retire import EnvironmentInUse, retire_environment
 from provisa.core.schema_admin import environments
 
 if TYPE_CHECKING:
@@ -112,6 +112,12 @@ async def reap_expired(
     for org_id, name in await expired_envs(admin_db, at):
         try:
             outcome = await retire_environment(pool, admin_db, org_id, name, drop_branch=True)
+        except EnvironmentInUse as refused:
+            # REQ-1918: an expiry does not override what still refers to the environment. It is
+            # left in place, expired (and so refused by routing), until that is removed; the
+            # sweep says so each time and carries on.
+            log.info("expired environment %s/%s not reaped: %s", org_id, name, refused)
+            continue
         except Exception as exc:  # re-raised together below; see the module docstring
             log.exception("reaping expired environment %s/%s failed", org_id, name)
             failures.append((org_id, name, exc))

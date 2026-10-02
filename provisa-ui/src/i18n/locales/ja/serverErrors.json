@@ -101,6 +101,9 @@
       "table_id_required": "table スコープには table_id が必要です",
       "unknown_source_type": "不明なソースタイプ：{{type}}"
     },
+    "environments": {
+      "in_use": "{{env}} はまだ {{count}} 件から参照されています。それぞれを削除または変更してから、もう一度削除してください。"
+    },
     "front_door": {
       "coordinator_waking": "環境を起動しています。約 2 分で準備が整います。"
     },

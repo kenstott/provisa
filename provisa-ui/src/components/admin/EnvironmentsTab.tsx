@@ -48,7 +48,9 @@ import {
   pushEnvironment,
   requestReview,
 } from "../../api/environments";
-import { isBase } from "../../api/environments";
+import { EnvironmentInUse, isBase } from "../../api/environments";
+import { DependentsDialog } from "../DependentsDialog";
+import type { Dependent } from "../../lib/dependents";
 import type { BranchSync, Conflict, CopyReport, Environment } from "../../api/environments";
 import type { NotificationData } from "@mantine/notifications";
 import { MergeRequestsPanel } from "./MergeRequestsPanel";
@@ -139,6 +141,7 @@ export function EnvironmentsTab() {
   // REQ-1550: deleting an environment asks the same two questions a merge that retires its source
   // asks, so it is a dialog rather than a button that acts on the way down.
   const [deleteTarget, setDeleteTarget] = useState<Environment | null>(null);
+  const [inUse, setInUse] = useState<{ env: string; dependents: Dependent[] } | null>(null);
   const [deleteBranch, setDeleteBranch] = useState(false);
   const [deleteRemote, setDeleteRemote] = useState(false);
 
@@ -220,7 +223,14 @@ export function EnvironmentsTab() {
       setDeleteTarget(null);
       reload();
     } catch (err) {
-      fail(err as Error);
+      if (err instanceof EnvironmentInUse) {
+        // REQ-1918: refused, nothing removed. What still refers to it is listed in its own
+        // dialog, in place of the confirmation the person just answered.
+        setDeleteTarget(null);
+        setInUse({ env: env.name, dependents: err.dependents });
+      } else {
+        fail(err as Error);
+      }
     } finally {
       setBusy(null);
     }
@@ -788,6 +798,13 @@ export function EnvironmentsTab() {
         </Stack>
       </Modal>
 
+      {inUse && (
+        <DependentsDialog
+          subject={inUse.env}
+          dependents={inUse.dependents}
+          onClose={() => setInUse(null)}
+        />
+      )}
       <Modal
         opened={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}

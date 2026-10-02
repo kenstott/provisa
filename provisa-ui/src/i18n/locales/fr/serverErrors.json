@@ -101,6 +101,9 @@
       "table_id_required": "table_id requis pour la portée table",
       "unknown_source_type": "Type de source inconnu : {{type}}"
     },
+    "environments": {
+      "in_use": "{{env}} est encore référencé par {{count}} élément(s). Retirez ou modifiez chacun, puis supprimez de nouveau."
+    },
     "front_door": {
       "coordinator_waking": "L'environnement démarre. Il sera prêt dans environ deux minutes."
     },

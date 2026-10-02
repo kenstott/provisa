@@ -101,6 +101,9 @@
       "table_id_required": "table_id richiesto per l'ambito tabella",
       "unknown_source_type": "Tipo di origine sconosciuto: {{type}}"
     },
+    "environments": {
+      "in_use": "{{env}} è ancora riferito da {{count}} elemento/i. Rimuovi o modifica ciascuno, poi elimina di nuovo."
+    },
     "front_door": {
       "coordinator_waking": "L'ambiente si sta avviando. Sarà pronto tra circa due minuti."
     },

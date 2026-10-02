@@ -20,7 +20,10 @@
       "source": "数据源",
       "remote_registration": "远程注册",
       "domain": "域",
-      "glossary_term": "术语表术语"
+      "glossary_term": "术语表术语",
+      "membership": "固定到它的成员",
+      "invitation": "仍然有效的邀请",
+      "environment": "从它分支出的环境"
     }
   }
 }

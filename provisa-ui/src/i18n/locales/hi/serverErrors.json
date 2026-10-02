@@ -101,6 +101,9 @@
       "table_id_required": "table स्कोप के लिए table_id आवश्यक है",
       "unknown_source_type": "अज्ञात स्रोत प्रकार: {{type}}"
     },
+    "environments": {
+      "in_use": "{{env}} को अब भी {{count}} आइटम संदर्भित करते हैं। हर एक को हटाएँ या बदलें, फिर दोबारा हटाएँ।"
+    },
     "front_door": {
       "coordinator_waking": "वातावरण शुरू हो रहा है। यह लगभग दो मिनट में तैयार हो जाएगा।"
     },

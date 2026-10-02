@@ -13,6 +13,7 @@
 // router — every path here hangs off /admin/orgs/{org}/environments.
 
 import { serverMessage, requestFailed } from "../i18n/serverMessage";
+import type { Dependent } from "../lib/dependents";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -188,9 +189,25 @@ export async function deleteEnvironment(
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(serverMessage(data, requestFailed("deleteEnvironment", res.status)));
+    const message = serverMessage(data, requestFailed("deleteEnvironment", res.status));
+    if (data?.code === "environments.in_use") {
+      throw new EnvironmentInUse(message, (data.params?.dependents ?? []) as Dependent[]);
+    }
+    throw new Error(message);
   }
   announceEnvironmentsChanged();
+}
+
+/** REQ-1918: an environment is deleted only when nothing still refers to it — a membership
+ *  pinned to it, an invitation that can still be redeemed into it, an environment branched from
+ *  it. The refusal carries each one. */
+export class EnvironmentInUse extends Error {
+  readonly dependents: Dependent[];
+  constructor(message: string, dependents: Dependent[]) {
+    super(message);
+    this.name = "EnvironmentInUse";
+    this.dependents = dependents;
+  }
 }
 
 export async function patchEnvironment(

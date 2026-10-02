@@ -101,6 +101,9 @@
       "table_id_required": "表范围需要 table_id",
       "unknown_source_type": "未知数据源类型：{{type}}"
     },
+    "environments": {
+      "in_use": "仍有 {{count}} 项引用 {{env}}。请移除或更改每一项，然后再次删除。"
+    },
     "front_door": {
       "coordinator_waking": "环境正在启动，大约两分钟后就绪。"
     },

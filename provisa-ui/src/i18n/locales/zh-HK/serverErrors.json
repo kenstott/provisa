@@ -101,6 +101,9 @@
       "table_id_required": "資料表範圍需要 table_id",
       "unknown_source_type": "未知的數據來源類型：{{type}}"
     },
+    "environments": {
+      "in_use": "仍有 {{count}} 項引用 {{env}}。請移除或更改每一項，然後再次刪除。"
+    },
     "front_door": {
       "coordinator_waking": "環境正在啟動，大約兩分鐘後就緒。"
     },

@@ -32,7 +32,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
-from sqlalchemy import delete as sql_delete, func, select
+from sqlalchemy import func, select
 
 from provisa.api.env_routing import SWITCH_CAPABILITY
 from provisa.api.errors import ApiError
@@ -46,7 +46,7 @@ from provisa.core.env_deploy import (
     plan_deploy,
     report_touches_connectivity,
 )
-from provisa.core.env_retire import RetirementError, retire_environment
+from provisa.core.env_retire import EnvironmentInUse, RetirementError, retire_environment
 from provisa.core.env_store import (
     EnvironmentLimitError,
     get_env,
@@ -488,6 +488,19 @@ async def create_environment(request: Request, org_id: str, body: CreateEnvBody)
     }
 
 
+def _in_use(refused: EnvironmentInUse) -> ApiError:  # REQ-1918
+    """The refusal for an environment other things still refer to: each one named, nothing removed."""
+    return ApiError(
+        409,
+        "environments.in_use",
+        str(refused),
+        org=refused.org_id,
+        env=refused.env,
+        count=len(refused.dependents),
+        dependents=[d.as_dict() for d in refused.dependents],
+    )
+
+
 @router.delete("/{name}")
 async def delete_environment(
     request: Request,
@@ -507,6 +520,10 @@ async def delete_environment(
     the remote is where the work survives a lost volume -- so it happens only when named, and only
     after the local retirement succeeded: an org left with the remote copy of an environment it
     could not retire still has its work.
+
+    REQ-1918: refused while a membership is pinned to it, an invitation can still seat or deploy a
+    redeemer from it, or an environment is branched from it; each is named. A visitor's own
+    environment takes the visitor's membership with it (``env_retire``'s inventory says so).
     """
     await _confined(request, org_id, name)
     actor = await _guard(request, org_id)
@@ -515,6 +532,8 @@ async def delete_environment(
         outcome = await retire_environment(
             _pool(), _admin_pool(), org_id, name, drop_branch=delete_branch
         )
+    except EnvironmentInUse as refused:
+        raise _in_use(refused) from refused
     except RetirementError as exc:
         raise ApiError(409, "environments.prod_immutable", str(exc), org=org_id, env=name) from exc
     remote_deleted = None
@@ -542,32 +561,6 @@ async def delete_environment(
         name,
         {**outcome, "remote_branch_deleted": remote_deleted},
     )
-
-    # REQ-EPHEMERAL: if deleting ephemeral_*, find users whose only membership was this env and delete them
-    if name.startswith("ephemeral_"):
-        pool = _admin_pool()
-        async with pool.acquire() as conn:
-            # Find users pinned to this ephemeral environment (env_name column)
-            stmt = select(user_org_memberships.c.user_id).where(
-                (user_org_memberships.c.env_name == name)
-                & (user_org_memberships.c.org_id == org_id)
-            )
-            result = await conn.execute_core(stmt)
-            users_to_delete = [row[0] for row in result.fetchall()]
-
-            # Delete each user who only had this ephemeral env
-            for user_id in users_to_delete:
-                # Verify this is their only membership before deleting
-                count_stmt = (
-                    select(func.count())
-                    .select_from(user_org_memberships)
-                    .where(user_org_memberships.c.user_id == user_id)
-                )
-                count_result = await conn.execute_core(count_stmt)
-                if (count_result.scalar() or 0) <= 1:
-                    await conn.execute_core(
-                        sql_delete(user_profiles).where(user_profiles.c.user_id == user_id)
-                    )
 
     return {
         "deleted": name,
@@ -786,6 +779,8 @@ async def _retire(org_id: str, actor: str | None, name: str, *, remote: bool = F
     """
     try:
         outcome = await retire_environment(_pool(), _admin_pool(), org_id, name, drop_branch=True)
+    except EnvironmentInUse as refused:
+        raise _in_use(refused) from refused
     except RetirementError as exc:
         raise ApiError(409, "environments.prod_immutable", str(exc), org=org_id, env=name) from exc
     remote_deleted = None

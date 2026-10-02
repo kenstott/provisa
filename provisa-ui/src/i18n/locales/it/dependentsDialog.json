@@ -20,7 +20,10 @@
       "source": "Origini",
       "remote_registration": "Registrazioni remote",
       "domain": "Domini",
-      "glossary_term": "Termini del glossario"
+      "glossary_term": "Termini del glossario",
+      "membership": "Membri vincolati a esso",
+      "invitation": "Inviti ancora aperti",
+      "environment": "Ambienti derivati da esso"
     }
   }
 }

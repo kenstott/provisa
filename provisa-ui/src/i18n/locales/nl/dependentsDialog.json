@@ -20,7 +20,10 @@
       "source": "Bronnen",
       "remote_registration": "Externe registraties",
       "domain": "Domeinen",
-      "glossary_term": "Woordenlijsttermen"
+      "glossary_term": "Woordenlijsttermen",
+      "membership": "Leden die eraan zijn vastgemaakt",
+      "invitation": "Uitnodigingen die nog open staan",
+      "environment": "Omgevingen die ervan zijn afgetakt"
     }
   }
 }

@@ -101,6 +101,9 @@
       "table_id_required": "table_id required for table scope",
       "unknown_source_type": "Unknown source type: {{type}}"
     },
+    "environments": {
+      "in_use": "{{env}} is still referred to by {{count}} item(s). Remove or change each one, then delete it again."
+    },
     "front_door": {
       "coordinator_waking": "The environment is starting. It will be ready in about two minutes."
     },

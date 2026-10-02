@@ -28,6 +28,14 @@ vi.mock("../api/environments", () => ({
   // isBase is a pure derivation over a row, not a call — the component reads it the way it reads
   // any other field, so the mock keeps the real one.
   isBase: (e: { branched_from: string | null }) => e.branched_from === null,
+  // The refusal's error class, as the tab tells it apart by `instanceof` (REQ-1918).
+  EnvironmentInUse: class EnvironmentInUse extends Error {
+    dependents: unknown[];
+    constructor(message: string, dependents: unknown[]) {
+      super(message);
+      this.dependents = dependents;
+    }
+  },
   fetchEnvironments: vi.fn(),
   createEnvironment: vi.fn(),
   deleteEnvironment: vi.fn(),
@@ -66,6 +74,7 @@ vi.mock("../api/environments", () => ({
 import {
   createEnvironment,
   deleteEnvironment,
+  EnvironmentInUse,
   fetchEnvironments,
   fetchMergeRequests,
   fetchRemoteBranches,
@@ -170,6 +179,29 @@ describe("EnvironmentsTab", () => {
         deleteRemoteBranch: false,
       }),
     );
+  });
+
+  it("shows what still refers to an environment whose delete was refused", async () => {
+    // REQ-1918: nothing was removed; each thing that blocks it is listed under its kind.
+    mockDelete.mockRejectedValue(
+      new EnvironmentInUse("dev is still referred to by 2 item(s).", [
+        { kind: "membership", id: "viv", name: "viv", via: ["user_org_memberships.env_name"] },
+        {
+          kind: "environment",
+          id: "feature-x",
+          name: "feature-x",
+          via: ["environments.branched_from"],
+        },
+      ]),
+    );
+    render(<EnvironmentsTab />);
+    fireEvent.click(await screen.findByTestId("env-delete-dev"));
+    fireEvent.click(await screen.findByTestId("env-delete-run"));
+
+    expect(await screen.findByText("Cannot delete dev yet")).toBeInTheDocument();
+    expect(screen.getByTestId("dependents-membership")).toHaveTextContent("Members pinned to it");
+    expect(screen.getByTestId("dependents-membership")).toHaveTextContent("viv");
+    expect(screen.getByTestId("dependents-environment")).toHaveTextContent("feature-x");
   });
 
   it("deletes the remote branch only alongside the local one", async () => {

@@ -101,6 +101,9 @@
       "table_id_required": "table_id vereist voor tabelbereik",
       "unknown_source_type": "Onbekend brontype: {{type}}"
     },
+    "environments": {
+      "in_use": "Naar {{env}} wordt nog verwezen door {{count}} item(s). Verwijder of wijzig elk daarvan en verwijder daarna opnieuw."
+    },
     "front_door": {
       "coordinator_waking": "De omgeving wordt gestart. Deze is over ongeveer twee minuten gereed."
     },

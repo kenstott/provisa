@@ -20,7 +20,10 @@
       "source": "Sources",
       "remote_registration": "Remote registrations",
       "domain": "Domains",
-      "glossary_term": "Glossary terms"
+      "glossary_term": "Glossary terms",
+      "membership": "Members pinned to it",
+      "invitation": "Invitations still open",
+      "environment": "Environments branched from it"
     }
   }
 }

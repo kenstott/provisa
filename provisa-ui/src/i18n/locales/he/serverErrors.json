@@ -101,6 +101,9 @@
       "table_id_required": "table_id נדרש עבור היקף table",
       "unknown_source_type": "סוג מקור לא מוכר: {{type}}"
     },
+    "environments": {
+      "in_use": "{{count}} פריטים עדיין מפנים אל {{env}}. יש להסיר או לשנות כל אחד מהם ואז למחוק שוב."
+    },
     "front_door": {
       "coordinator_waking": "הסביבה מופעלת. היא תהיה מוכנה בעוד כשתי דקות."
     },
