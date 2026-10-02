@@ -47,6 +47,7 @@ from buenavista.postgres import (
     ServerResponse,
 )
 
+from provisa.core import request_deadline
 from provisa.core.egress import CountingWriter
 from provisa.core.limits import request_timeout_for  # REQ-1905: pgwire's own request timeout
 from provisa.otel_compat import annotate_request as _annotate_request
@@ -1212,13 +1213,37 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
     # Held, not a block: the cycle's messages are dispatched one by one by the vendor's loop.
     # Opened by each message handler below, closed at ReadyForQuery (and when the connection ends).
     _request: HeldRequestSpan
+    # REQ-1905: the request deadline of that same cycle — pgwire's own request timeout, ONE for
+    # the cycle: describe, governance, execution, the fetch and the row send all draw on it. Held
+    # as the span is, and bound in this connection thread's context while the cycle is open, so
+    # every run on the connection loop (``cl.run(..., timeout=...)`` keeps the tighter deadline)
+    # and every stream this thread drains sees it.
+    _deadline: "request_deadline.Deadline | None" = None
+
+    def _open_request(self) -> None:
+        self._request.open()
+        if self._deadline is None:
+            self._deadline = request_deadline.open_request("pgwire")
+            request_deadline.bind(self._deadline)
+
+    def _close_request(self) -> None:
+        self._request.close()
+        deadline, self._deadline = self._deadline, None
+        if deadline is not None:
+            request_deadline.unbind()
+            deadline.stop()
+
+    def _send_request_timeout(self, exc: TimeoutError) -> None:
+        # 57014 query_canceled: what PostgreSQL itself reports for a statement its
+        # statement_timeout ended. The message names the transport and the setting.
+        self._send_pg_error("ERROR", "57014", str(exc))
 
     def handle_parse(self, ctx: BVContext, payload: bytes) -> None:
-        self._request.open()
+        self._open_request()
         super().handle_parse(ctx, payload)
 
     def handle_bind(self, ctx: BVContext, payload: bytes) -> None:
-        self._request.open()
+        self._open_request()
         super().handle_bind(ctx, payload)
 
     def send_ready_for_query(self, ctx: Optional[BVContext]) -> None:
@@ -1226,9 +1251,14 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         try:
             super().send_ready_for_query(ctx)
         finally:
-            self._request.close()
+            self._close_request()
 
     def send_data_rows(self, query_result: BVQueryResult, limit: int = 0) -> int:
+        # REQ-1905: the request's deadline covers the row send. A result that is ready only after
+        # the deadline has passed is not sent; a stream is checked again at every batch it pulls
+        # (provisa.executor.result). Either ends the statement with the timeout, raised to the
+        # message handler below.
+        request_deadline.check()
         # REQ-1910: rows are pulled from the result and encoded onto the socket here.
         with _stage(_tracer, "pgwire.encode", name="encode"):
             sent = super().send_data_rows(query_result, limit)
@@ -1246,7 +1276,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             try:
                 super().handle()
             finally:
-                self._request.close()  # a connection that died mid-cycle still ends its span
+                self._close_request()  # a connection that died mid-cycle still ends its span
                 # A CancelRequest from another connection may have asked this session to close;
                 # its cursors are released here, on the thread that owns their loop.
                 session = self._session
@@ -1712,7 +1742,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         self.handle_post_auth(ctx)
 
     def handle_describe(self, ctx: BVContext, payload: bytes) -> None:
-        self._request.open()
+        self._open_request()
         ba = bytearray(payload)
         if ba[0] == ord("P"):
             portal = ba[1 : len(ba) - 1].decode("utf-8")
@@ -1783,7 +1813,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         super().handle_describe(ctx, payload)
 
     def handle_execute(self, ctx: BVContext, payload: bytes) -> None:
-        self._request.open()
+        self._open_request()
         ba = bytearray(payload)
         portal_idx = ba.index(0)
         portal = ba[:portal_idx].decode("utf-8")
@@ -1791,10 +1821,16 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         if stmt_name is not None and not ctx.stmts.get(stmt_name, ("x",))[0].strip():
             self.wfile.write(struct.pack("!ci", ServerResponse.EMPTY_QUERY_RESPONSE, 4))
             return
-        super().handle_execute(ctx, payload)
+        try:
+            super().handle_execute(ctx, payload)
+        except request_deadline.RequestTimedOut as exc:
+            # REQ-1905: the deadline passed while rows were being sent. The statement ends with
+            # an ErrorResponse and the rest of the cycle is skipped up to its Sync.
+            self._send_request_timeout(exc)
+            ctx.mark_error()
 
     def handle_query(self, ctx: BVContext, payload: bytes) -> None:
-        self._request.open()
+        self._open_request()
         from provisa.compiler.sql_rewrite import split_sql_statements
 
         decoded = payload.decode("utf-8").rstrip("\x00")
@@ -1818,6 +1854,11 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             _org_token = set_current_org(_org_id)
         try:
             self._process_query_stmts(ctx, stmts)
+        except request_deadline.RequestTimedOut as exc:
+            # REQ-1905: the deadline passed while rows were being sent — the Query ends with an
+            # ErrorResponse and ReadyForQuery, as any failed statement does.
+            self._send_request_timeout(exc)
+            self.send_ready_for_query(ctx)
         finally:
             if _org_token is not None:
                 from provisa.core.request_context import reset_current_org

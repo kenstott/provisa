@@ -24,12 +24,16 @@ from provisa.auth.throttle import LockedOut
 from provisa.bolt.packstream import pack_message
 from provisa.bolt.websocket import BoltWriter
 from provisa.compiler.directives import NO_CACHE_HINT, cache_hint_for
+from provisa.core import request_deadline
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import in_request_span as _in_request_span
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
+
+# Records sent between two looks at the request's deadline while a PULL streams (REQ-1905).
+_DEADLINE_CHECK_ROWS = 256
 
 _BOLT_VERSION = "5.4"
 _SERVER_AGENT = f"Neo4j/{_BOLT_VERSION} (Provisa)"
@@ -94,6 +98,10 @@ class BoltSession:
         # REQ-1194/REQ-1195: a materialize handle when the last RUN redirected to a sink instead of
         # buffering rows. Surfaced in the trailing PULL SUCCESS metadata — Bolt's side-channel.
         self._result_redirect: dict | None = None
+        # REQ-1905: the request deadline of the RUN in flight — Bolt's own request timeout, ONE
+        # for the request: opened when RUN starts executing, held while its records are pulled,
+        # ended with the last PULL/DISCARD, a RESET or a failure.
+        self._deadline: request_deadline.Deadline | None = None
         self._pull_offset: int = 0
 
     # ── Response helpers ───────────────────────────────────────────────────────
@@ -128,6 +136,21 @@ class BoltSession:
     def send_failure(self, code: str, message: str) -> None:
         self._send(pack_message(msg.FAILURE, {"code": code, "message": message}))
         self.state = State.FAILED
+        self._end_request()
+
+    def _end_request(self) -> None:
+        deadline, self._deadline = self._deadline, None
+        if deadline is not None:
+            deadline.stop()
+
+    def _fail_timed_out(self, deadline: request_deadline.Deadline) -> None:
+        """REQ-1905: the request outran Bolt's request timeout — a FAILURE naming the transport
+        and the setting, and nothing more of its result."""
+        self._result_rows = []
+        self._pull_offset = 0
+        self.send_failure(
+            "Neo.ClientError.Transaction.TransactionTimedOut", str(deadline.expired_error())
+        )
 
     def send_ignored(self) -> None:
         self._send(pack_message(msg.IGNORED))
@@ -358,6 +381,7 @@ class BoltSession:
         self.send_success({})
 
     def handle_reset(self) -> None:
+        self._end_request()
         self._result_columns = []
         self._result_rows = []
         self._result_redirect = None
@@ -501,8 +525,10 @@ class BoltSession:
         # Bolt executes on the event loop (no thread hop), so a plain scope binds it. A connection
         # that named no principal (an unsecured deployment) is audited as the anonymous one.
         _audit_scope = audit_identity_scope(self.user_id or ANONYMOUS_USER, "bolt")
+        self._end_request()  # a RUN over a result that was never drained ends that request
+        deadline = request_deadline.open_request("bolt")
         try:
-            with _audit_scope:
+            with _audit_scope, request_deadline.bound(deadline):
                 columns, rows, redirect = await _execute_cypher(
                     cypher,
                     parameters,
@@ -511,10 +537,17 @@ class BoltSession:
                     roles=self.roles,
                     deliver=delivery,
                 )
-        except PermissionError as exc:
-            self.send_failure("Neo.ClientError.Security.Forbidden", str(exc))
-            return
+                # The result is ready only now: not handed over once the deadline has passed.
+                deadline.check()
         except Exception as exc:
+            deadline.stop()
+            if deadline.fired and not deadline.ended_early:
+                # REQ-1905: whatever the RUN failed with, its deadline has passed.
+                self._fail_timed_out(deadline)
+                return
+            if isinstance(exc, PermissionError):
+                self.send_failure("Neo.ClientError.Security.Forbidden", str(exc))
+                return
             import logging as _logging
             import traceback as _tb
 
@@ -531,6 +564,7 @@ class BoltSession:
         self._result_rows = rows
         self._result_redirect = redirect
         self._pull_offset = 0
+        self._deadline = deadline  # held until the records have been pulled
 
         in_tx = self.state in (State.TX_READY, State.TX_STREAMING)
         self.state = State.TX_STREAMING if in_tx else State.STREAMING
@@ -586,9 +620,20 @@ class BoltSession:
         # egress-meter lock per row. The per-row DEBUG log is gated the same way _send gates its own.
         rows_sent = 0
         batch_bytes = 0
+        deadline = self._deadline
+        timed_out = False
         try:
             while self._pull_offset < len(self._result_rows):
                 if n != -1 and rows_sent >= n:
+                    break
+                # REQ-1905: the record stream is part of the request. Checked as each run of
+                # records starts, so a PULL that arrives late sends none.
+                if (
+                    deadline is not None
+                    and rows_sent % _DEADLINE_CHECK_ROWS == 0
+                    and deadline.fired
+                ):
+                    timed_out = True
                     break
                 row = self._result_rows[self._pull_offset]
                 if _dbg.isEnabledFor(logging.DEBUG):
@@ -604,10 +649,15 @@ class BoltSession:
 
                 report(self.org_id, batch_bytes)
 
+        if timed_out and deadline is not None:
+            self._fail_timed_out(deadline)
+            return
+
         has_more = self._pull_offset < len(self._result_rows)
         in_tx = self.state == State.TX_STREAMING
         if not has_more:
             self.state = State.TX_READY if in_tx else State.READY
+            self._end_request()
         summary: dict = {"has_more": has_more, "t_last": 0, "type": "r"}
         if not has_more and self._result_redirect is not None:
             summary["redirect"] = self._result_redirect  # REQ-1194/REQ-1195
@@ -627,6 +677,7 @@ class BoltSession:
         has_more = self._pull_offset < len(self._result_rows)
         if not has_more:
             self.state = State.TX_READY if in_tx else State.READY
+            self._end_request()
         self.send_success({"has_more": has_more})
 
     def handle_route(self) -> None:

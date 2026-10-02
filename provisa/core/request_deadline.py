@@ -12,19 +12,34 @@
 
 Every request runs on its own thread, and its driver calls block that thread (REQ-1882). An
 asyncio timer cannot fire while the thread is inside a blocking call, so a request's budget is a
-:class:`Deadline`: a watchdog ``threading.Timer`` that, at expiry, invokes the cancel callback of
-whatever blocking statement the request is running (``psycopg2`` ``conn.cancel()``, ``oracledb``
-``conn.cancel()``, ``pyodbc`` ``cursor.cancel()``, ...). Drivers wrap each blocking call in
-:func:`cancel_on_deadline`; the cancelled call raises in its own thread and the request fails with
-``TimeoutError``. :func:`remaining` gives drivers that take a timeout argument (httpx) the budget
-left."""
+:class:`Deadline`, watched by ONE watchdog thread for the whole process (:class:`_Watchdog`): at
+expiry it invokes the cancel callback of whatever blocking statement the request is running
+(``psycopg`` ``conn.cancel()``, ``oracledb`` ``conn.cancel()``, ``pyodbc`` ``cursor.cancel()``,
+...). Drivers wrap each blocking call in :func:`cancel_on_deadline`; the cancelled call raises in
+its own thread and the request fails with ``TimeoutError``. :func:`remaining` gives drivers that
+take a timeout argument (httpx) the budget left.
 
-# Requirements: REQ-1882
+ONE DEADLINE PER REQUEST (REQ-1905). A transport binds it where its request begins and ends —
+:func:`request` for a request that is one block, :func:`open_request` for one that is several
+protocol messages long — so the wait for a slot, governance, execution, the fetch, shaping,
+encoding and the send all draw on the same budget, the transport's own request timeout
+(``provisa.core.limits.request_timeout_for``). Its expiry is :class:`RequestTimedOut`, naming the
+transport and the setting. A tighter budget inside it (a role's ``max_query_time_ms``) is
+:func:`within`.
+
+WHERE EXPIRY IS NOTICED. A blocking driver call is cancelled by the watchdog, and one that
+returns after expiry raises on its way out (:meth:`Deadline._registered`). A stream checks
+between batches (``provisa.executor.result.StreamingQueryResult``). The transport checks before
+it answers (:func:`check`, :meth:`Deadline.check`): a request whose deadline has passed is
+answered with the timeout and nothing else."""
+
+# Requirements: REQ-1882, REQ-1905
 
 from __future__ import annotations
 
 import contextlib
 import contextvars
+import heapq
 import logging
 import signal
 import threading
@@ -51,23 +66,29 @@ class RequestTimedOut(TimeoutError):
 
 
 class Deadline:
-    """One request's budget: expires ``timeout`` seconds after construction."""
+    """One request's budget: expires ``timeout`` seconds after construction.
 
-    def __init__(self, timeout: float) -> None:
+    ``transport`` and ``setting`` are what its expiry names (REQ-1905): the transport the request
+    arrived on and the operator setting the timeout comes from. A deadline that names neither is
+    a budget inside a request (:func:`within`), whose owner words its own error."""
+
+    def __init__(
+        self, timeout: float, *, transport: str | None = None, setting: str | None = None
+    ) -> None:
         self.timeout = timeout
         self.expires = time.monotonic() + timeout
+        self.transport = transport
+        self.setting = setting
         self._lock = threading.Lock()
         self._cancels: dict[int, Callable[[], None]] = {}
         self._next = 0
-        # The watchdog is armed by the first statement that registers a cancel (``_registered``),
-        # not here: a budgeted run that makes no blocking driver call has nothing for it to
-        # cancel, and expiry itself is read off the clock (``fired``).
-        self._timer: threading.Timer | None = None
         self._stopped = False
         # Why the budget ended early, when it was not the clock (the process is stopping).
         self._ended: str | None = None
         with _live_lock:
             _live.add(self)
+        # Watched from creation: expiry is acted on whatever the request is doing at that moment.
+        _watchdog.watch(self)
 
     @property
     def fired(self) -> bool:
@@ -88,17 +109,36 @@ class Deadline:
                 # failure is reported and that statement ends at its own driver's limit.
                 log.exception("request deadline: cancelling an in-flight statement failed")
 
+    def _at_expiry(self) -> None:
+        """What the watchdog does when the budget runs out, in order. Each step ends work the
+        request's own thread cannot end by itself. Runs on the watchdog thread; a request that
+        has already ended is left alone."""
+        with self._lock:
+            if self._stopped:
+                return
+        # 1. The blocking statement in flight, through its driver's cancel.
+        self._fire()
+
     def stop(self) -> None:
         with self._lock:
+            if self._stopped:
+                return
             self._stopped = True
-            timer = self._timer
-        if timer is not None:
-            timer.cancel()
+        _watchdog.forget()
 
     def expired_error(self) -> TimeoutError:
         if self._ended is not None:
             return TimeoutError(f"request cancelled: {self._ended}")
+        if self.transport is not None and self.setting is not None:
+            return RequestTimedOut(self.transport, self.timeout, self.setting)
         return TimeoutError(f"request exceeded its {self.timeout:g}s budget")
+
+    def check(self) -> None:
+        """Raise the expiry error if the budget has passed. For the points where a request can
+        be ended between two pieces of its own work: a stream between batches, a transport
+        before it answers."""
+        if self.fired:
+            raise self.expired_error()
 
     @property
     def ended_early(self) -> bool:
@@ -125,23 +165,94 @@ class Deadline:
             key = self._next
             self._next += 1
             self._cancels[key] = cancel
-            if self._timer is None and not self._stopped:
-                # A second thread by necessity (REQ-1882): the request thread is about to enter a
-                # blocking driver call and cannot time itself out when the budget expires. The
-                # timer runs none of the request's work — at expiry it only calls the in-flight
-                # statement's cancel.
-                self._timer = threading.Timer(self.remaining(), self._fire)
-                self._timer.daemon = True
-                self._timer.start()
         try:
-            yield
-        except Exception as exc:
-            if self.fired:
-                raise self.expired_error() from exc
-            raise
+            try:
+                yield
+            except Exception as exc:
+                if self.fired:
+                    raise self.expired_error() from exc
+                raise
+            # A call that came back after the budget passed — a driver whose cancel arrived too
+            # late to interrupt it, or work a cancel does not reach (rows already received being
+            # converted) — ends the request here rather than handing it more to do.
+            self.check()
         finally:
             with self._lock:
                 self._cancels.pop(key, None)
+
+
+class _Watchdog:
+    """The one thread that watches every live deadline of this process.
+
+    A second thread by necessity (REQ-1882): a request thread inside a blocking driver call
+    cannot time itself out. It runs none of any request's work — at a deadline's expiry it only
+    carries out that deadline's :meth:`Deadline._at_expiry`. One thread and a heap, rather than a
+    timer thread per request: watching a deadline is a heap push, and a request that makes no
+    blocking call costs no thread."""
+
+    # Ended deadlines are dropped from the heap in bulk once this many are waiting to be.
+    _COMPACT_AT = 256
+
+    def __init__(self) -> None:
+        self._wake = threading.Condition()
+        self._heap: list[tuple[float, int, Deadline]] = []
+        self._seq = 0
+        self._ended = 0
+        self._thread: threading.Thread | None = None
+
+    def watch(self, dl: Deadline) -> None:
+        with self._wake:
+            self._seq += 1
+            heapq.heappush(self._heap, (dl.expires, self._seq, dl))
+            if self._thread is None or not self._thread.is_alive():
+                self._thread = threading.Thread(
+                    target=self._run, name="provisa-deadline-watchdog", daemon=True
+                )
+                self._thread.start()
+            elif self._heap[0][2] is dl:
+                self._wake.notify()  # it is now the next to expire
+
+    def forget(self) -> None:
+        """A watched deadline has ended. Its entry stays until it reaches the top of the heap or
+        ended entries are half of it — then they are all dropped, so a long timeout does not
+        keep every request it ever timed in memory until that timeout passes."""
+        with self._wake:
+            self._ended += 1
+            if self._ended >= self._COMPACT_AT and self._ended * 2 >= len(self._heap):
+                self._heap = [entry for entry in self._heap if not entry[2]._stopped]  # noqa: SLF001
+                heapq.heapify(self._heap)
+                self._ended = 0
+
+    def watched(self) -> int:
+        """Entries in the heap (ended ones not yet dropped included)."""
+        with self._wake:
+            return len(self._heap)
+
+    def _next_expired(self) -> Deadline:
+        with self._wake:
+            while True:
+                while self._heap and self._heap[0][2]._stopped:  # noqa: SLF001
+                    heapq.heappop(self._heap)
+                    self._ended = max(0, self._ended - 1)
+                if not self._heap:
+                    self._wake.wait()
+                    continue
+                wait = self._heap[0][0] - time.monotonic()
+                if wait <= 0:
+                    return heapq.heappop(self._heap)[2]
+                self._wake.wait(wait)
+
+    def _run(self) -> None:
+        while True:
+            dl = self._next_expired()
+            try:
+                dl._at_expiry()  # noqa: SLF001 - module-private collaborator
+            except Exception:
+                # One request's expiry failing must not stop every other request being watched.
+                log.exception("request deadline: acting on an expired deadline failed")
+
+
+_watchdog = _Watchdog()
 
 
 # Every deadline still in use, so a stopping process can end the requests that hold them. Weak:
@@ -234,6 +345,55 @@ def remaining() -> float | None:
     """Seconds left in the current request's budget, or ``None`` outside a request."""
     dl = _current.get()
     return None if dl is None else dl.remaining()
+
+
+def check() -> None:
+    """Raise if the current request's deadline has passed (:meth:`Deadline.check`). Outside a
+    request there is no deadline and nothing to raise."""
+    dl = _current.get()
+    if dl is not None:
+        dl.check()
+
+
+def open_request(transport: str) -> Deadline:
+    """THE deadline of a request arriving on ``transport`` (REQ-1905): that transport's own
+    request timeout, its expiry naming the transport and the setting. Not bound: for a request
+    that is several protocol messages long, whose handler binds it around each message
+    (:func:`bound`) and stops it when the request ends. A request that is one block uses
+    :func:`request`."""
+    from provisa.core.limits import request_timeout_for, request_timeout_setting
+
+    return Deadline(
+        request_timeout_for(transport),
+        transport=transport,
+        setting=request_timeout_setting(transport),
+    )
+
+
+@contextlib.contextmanager
+def request(transport: str) -> Generator[Deadline]:
+    """Bind the deadline of a request arriving on ``transport`` for the whole of it (REQ-1905).
+
+    Whatever the request then fails with, once its deadline has passed the failure it reports is
+    the timeout: the enclosed work ends in :class:`RequestTimedOut`. A deadline the caller has
+    already bound that is at least as tight is kept."""
+    from provisa.core.limits import request_timeout_for
+
+    outer = _current.get()
+    if outer is not None and outer.remaining() <= request_timeout_for(transport):
+        yield outer
+        return
+    dl = open_request(transport)
+    token = _current.set(dl)
+    try:
+        yield dl
+    except Exception as exc:
+        if dl.fired and not dl.ended_early and not isinstance(exc, RequestTimedOut):
+            raise dl.expired_error() from exc
+        raise
+    finally:
+        _current.reset(token)
+        dl.stop()
 
 
 @contextlib.contextmanager

@@ -488,7 +488,14 @@ def _forget_inflight(fut: concurrent.futures.Future[Any]) -> None:
 
 
 def _caller_context() -> contextvars.Context:
-    return contextvars.copy_context()
+    """A copy of the caller's context for work that OUTLIVES it: its org binding and audit
+    identity travel, its request deadline does not (REQ-1905). Every request now carries one
+    deadline for its whole life; detached work that kept it would have its statements refused
+    once that request's timeout had passed — a TTL drop scheduled hours ahead, a cache write
+    finishing after the response left."""
+    ctx = contextvars.copy_context()
+    ctx.run(request_deadline.unbind)
+    return ctx
 
 
 def spawn_background(

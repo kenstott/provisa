@@ -35,6 +35,7 @@ import grpc
 from google.protobuf.descriptor import FieldDescriptor
 
 from provisa.compiler.directives import cache_hint_from_grpc_metadata
+from provisa.core import request_deadline
 from provisa.core.ir_types import iso8601_duration
 
 log = logging.getLogger(__name__)
@@ -200,25 +201,54 @@ class _RpcContext:
         return getattr(self._context, name)
 
 
+async def _unary_within_deadline(call):
+    """One unary RPC as a request (REQ-1905): under gRPC's own request deadline, and answered
+    with the timeout once that deadline has passed, whatever the call had produced."""
+    with request_deadline.request("grpc") as deadline:
+        result = await call
+        deadline.check()
+        return result
+
+
 def _unary(body):
     """A unary handler: ``body(request, context)`` runs to completion on the RPC's own loop."""
     from provisa.grpc.rpc_scope import rpc_scope
 
     def handler(request, context):
         with rpc_scope() as rpc:
-            return rpc.run(body(request, _RpcContext(context)))
+            try:
+                return rpc.run(_unary_within_deadline(body(request, _RpcContext(context))))
+            except request_deadline.RequestTimedOut as exc:
+                context.abort(grpc.StatusCode.DEADLINE_EXCEEDED, str(exc))
 
     return handler
 
 
 def _streaming(body):
     """A response-streaming handler: the async generator ``body(request, context)`` is advanced
-    one message at a time on the RPC's own loop, on the RPC's thread."""
+    one message at a time on the RPC's own loop, on the RPC's thread.
+
+    REQ-1905: the RPC has one request deadline, gRPC's own, held for the whole stream — every
+    step of the generator runs under it (its statements are cancellable, its batches checked),
+    and no message is handed to the client once it has passed: the stream ends
+    DEADLINE_EXCEEDED, naming the transport and the setting."""
     from provisa.grpc.rpc_scope import rpc_scope
 
     def handler(request, context):
         with rpc_scope() as rpc:
-            yield from rpc.iterate(body(request, _RpcContext(context)))
+            deadline = request_deadline.open_request("grpc")
+            try:
+                with rpc.entered(request_deadline.bound(deadline)):
+                    for message in rpc.iterate(body(request, _RpcContext(context))):
+                        deadline.check()
+                        yield message
+            except Exception:
+                if not deadline.fired or deadline.ended_early:
+                    raise
+                # Whatever the stream failed with, its deadline has passed: that is the answer.
+                context.abort(grpc.StatusCode.DEADLINE_EXCEEDED, str(deadline.expired_error()))
+            finally:
+                deadline.stop()
 
     return handler
 

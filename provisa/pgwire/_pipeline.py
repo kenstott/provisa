@@ -1980,24 +1980,33 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  
         return await cached_result(plan, state)
     from provisa.core import request_deadline
 
-    # REQ-1905: every user-initiated statement runs inside a request deadline. The GraphQL
-    # endpoint, the Cypher HTTP router and the pgwire/Flight connection loops bind their own;
-    # /data/sql, REST, JSON:API, MCP and Bolt arrive here with none, and this is the one place
-    # they all pass through. A plan with no audit record is background work (seeding, scheduled
-    # jobs, rebuilds) and runs unbounded by a request budget, as it always has.
-    if plan.audit is None or request_deadline.current() is not None:
+    # REQ-1905: every user-initiated statement runs inside a request deadline. A transport binds
+    # its request's deadline at its own boundary (provisa.core.request_deadline.request /
+    # open_request), around the whole request; a statement that arrives here with none (a route
+    # that is not a transport of its own) is given its transport's budget here, the one place
+    # every surface passes through. A plan with no audit record is background work (seeding,
+    # scheduled jobs, rebuilds) and runs unbounded by a request budget, as it always has.
+    if plan.audit is None:
         return await _execute_plan_bound(plan, state)
-    # REQ-1905: the timeout of the transport the statement arrived on — its HTTP route's, or
-    # its protocol's — and the setting that value comes from, for the error below.
-    from provisa.core.limits import statement_timeout
-
-    budget = statement_budget(plan.audit.surface)
-    _, transport, setting = statement_timeout(plan.audit.surface)
     from provisa.compiler.limits import role_query_limits
 
+    # REQ-1174: the role's own limit, on every transport, when it is the tighter one.
     _role_ms = role_query_limits(getattr(state, "roles", {}).get(plan.role_id))[2]
-    if _role_ms is not None and _role_ms / 1000.0 < budget:  # REQ-1174: the role's own limit
+    outer = request_deadline.current()
+    if outer is not None:
+        if _role_ms is None or _role_ms / 1000.0 >= outer.remaining():
+            return await _execute_plan_bound(plan, state)
+        transport = outer.transport or plan.audit.surface
         budget, setting = _role_ms / 1000.0, f"role {plan.role_id!r} max_query_time_ms"
+    else:
+        # The timeout of the transport the statement arrived on — its HTTP route's, or its
+        # protocol's — and the setting that value comes from, for the error below.
+        from provisa.core.limits import statement_timeout
+
+        budget = statement_budget(plan.audit.surface)
+        _, transport, setting = statement_timeout(plan.audit.surface)
+        if _role_ms is not None and _role_ms / 1000.0 < budget:
+            budget, setting = _role_ms / 1000.0, f"role {plan.role_id!r} max_query_time_ms"
     with request_deadline.within(budget) as deadline:
         try:
             return await _execute_plan_bound(plan, state)

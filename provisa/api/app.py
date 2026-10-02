@@ -3074,8 +3074,15 @@ def create_app() -> FastAPI:
     # governance, execution and response streaming all run on the request thread; the front
     # (uvicorn) loop only accepts, parses and relays receive/send.
     # REQ-1905: name the transport an HTTP request is on (its data route: graphql, sql_http,
-    # cypher_http, rest, jsonapi) for whatever binds its request deadline further in. Registered
-    # just before RequestThreadMiddleware, so it runs on the request's own thread and context.
+    # cypher_http, rest, jsonapi) and bind that transport's request deadline around the WHOLE
+    # request — routing, auth, governance, execution, shaping, encoding and the send. This is the
+    # transport's boundary: a response that reaches it after the deadline is answered with the
+    # timeout (provisa.api.request_timeout). A route that is not a transport of its own binds
+    # none here; its statements are timed where they run (pgwire._pipeline._execute_plan).
+    # Registered just before RequestThreadMiddleware, so it runs on the request's own thread and
+    # context.
+    from provisa.api.request_timeout import serve_within_deadline
+    from provisa.core import request_deadline as _request_deadline
     from provisa.core.limits import bound_request_transport, http_transport_for_path
 
     class _RequestTransportMiddleware:
@@ -3086,8 +3093,16 @@ def create_app() -> FastAPI:
             if scope["type"] != "http":
                 await self._inner(scope, receive, send)
                 return
-            with bound_request_transport(http_transport_for_path(scope.get("path", ""))):
-                await self._inner(scope, receive, send)
+            transport = http_transport_for_path(scope.get("path", ""))
+            if transport is None:
+                with bound_request_transport(None):
+                    await self._inner(scope, receive, send)
+                return
+            with (
+                bound_request_transport(transport),
+                _request_deadline.request(transport) as deadline,
+            ):
+                await serve_within_deadline(self._inner, scope, receive, send, deadline)
 
     app.add_middleware(_RequestTransportMiddleware)
 

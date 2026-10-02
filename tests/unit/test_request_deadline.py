@@ -104,24 +104,30 @@ def test_a_budget_timeout_at_an_await_point_names_the_budget() -> None:
 
 
 @pytest.fixture
-def timer_starts(monkeypatch) -> list[float]:
-    """Every watchdog Timer the deadline module starts, by its delay."""
-    started: list[float] = []
-    real = threading.Timer
+def thread_starts(monkeypatch) -> list[str]:
+    """Every thread the deadline module starts once its one watchdog is running, by name."""
+    with request_deadline.within(60):
+        pass  # the process's watchdog thread exists from the first deadline on
+    started: list[str] = []
+    real = threading.Thread
 
-    class _CountingTimer(real):  # type: ignore[misc, valid-type]
+    class _CountingThread(real):  # type: ignore[misc, valid-type]
         def start(self) -> None:
-            started.append(self.interval)
+            started.append(self.name)
             super().start()
 
-    monkeypatch.setattr(request_deadline.threading, "Timer", _CountingTimer)
+    monkeypatch.setattr(request_deadline.threading, "Thread", _CountingThread)
     return started
 
 
-def test_runs_that_register_no_blocking_statement_start_no_watchdog_thread(timer_starts) -> None:
-    """The watchdog exists to cancel an in-flight driver call. A pgwire point lookup makes four
-    budgeted runs (describe, plan, cache check, audit) and none of them holds one — so none of
-    them starts a thread. The budget still holds at the await points and by the clock."""
+def _watchdog_threads() -> list[threading.Thread]:
+    return [t for t in threading.enumerate() if t.name == "provisa-deadline-watchdog"]
+
+
+def test_budgeted_runs_start_no_thread_of_their_own(thread_starts) -> None:
+    """One watchdog thread watches every deadline of the process. A pgwire point lookup makes four
+    budgeted runs (describe, plan, cache check, audit): none of them starts a thread. The budget
+    holds at the await points and by the clock."""
 
     async def _cpu_only() -> float | None:
         await asyncio.sleep(0)
@@ -131,10 +137,11 @@ def test_runs_that_register_no_blocking_statement_start_no_watchdog_thread(timer
         for budget in (120, 120, 30, 30):
             left = cl.run(_cpu_only(), timeout=budget)
             assert left is not None and left <= budget
-    assert timer_starts == []
+    assert thread_starts == []
+    assert len(_watchdog_threads()) == 1
 
 
-def test_the_watchdog_is_armed_once_by_the_first_registered_statement(timer_starts) -> None:
+def test_a_request_of_several_statements_is_watched_by_the_one_watchdog(thread_starts) -> None:
     async def _request() -> list[str]:
         out = []
         for _ in range(3):
@@ -145,7 +152,8 @@ def test_the_watchdog_is_armed_once_by_the_first_registered_statement(timer_star
 
     with connection_loop() as cl:
         assert cl.run(_request(), timeout=2.0) == ["done"] * 3
-    assert len(timer_starts) == 1 and 1.5 < timer_starts[0] <= 2.0  # armed for what was left
+    assert thread_starts == []
+    assert len(_watchdog_threads()) == 1
 
 
 def test_a_statement_registered_late_is_still_cancelled_at_the_deadline() -> None:
@@ -162,9 +170,9 @@ def test_a_statement_registered_late_is_still_cancelled_at_the_deadline() -> Non
     assert 0.9 <= time.monotonic() - t0 < 2.0
 
 
-def test_expiry_is_by_the_clock_when_nothing_was_registered(timer_starts) -> None:
+def test_expiry_is_by_the_clock_when_nothing_was_registered(thread_starts) -> None:
     with request_deadline.within(0.05) as dl:
         assert not dl.fired
         time.sleep(0.1)
         assert dl.fired
-    assert timer_starts == []
+    assert thread_starts == []

@@ -56,8 +56,9 @@ _CONCURRENT = 6
 # - the ASGI receive/send relay to the front loop, where the server's socket transport lives
 #   (provisa/core/request_thread.py): the complete response in one relay, and a relay per message
 #   for a streamed response, a large/chunked body, a receive() after the body and a WebSocket;
-# - the request's deadline watchdog, a timer thread that runs none of the request's work — it only
-#   calls the in-flight statement's cancel at expiry (provisa/core/request_deadline.py).
+# - the deadline watchdog, ONE thread for the process, started by the first deadline it is asked
+#   to watch. It runs none of any request's work — it only calls the in-flight statement's cancel
+#   at expiry (provisa/core/request_deadline.py).
 # - work that OUTLIVES the request, detached onto the background pool and never awaited by it
 #   (provisa/core/connection_loop.py spawn_background/spawn_after: a hot-cache promote, a TTL drop).
 # Each entry: (file, function) of the frame that makes the hand-off.
@@ -65,7 +66,7 @@ _SANCTIONED_HOPS = (
     ("provisa/core/request_thread.py", "thread_send"),
     ("provisa/core/request_thread.py", "thread_receive"),
     ("provisa/core/request_thread.py", "relayed_receive"),
-    ("provisa/core/request_deadline.py", "_registered"),
+    ("provisa/core/request_deadline.py", "watch"),
     ("provisa/core/connection_loop.py", "_submit"),
 )
 

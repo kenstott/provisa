@@ -33,6 +33,8 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol, runtime_checkable
 
+from provisa.core import request_deadline
+
 
 @dataclass
 class StreamStats:  # REQ-028
@@ -174,6 +176,19 @@ class StreamingQueryResult:  # REQ-028
         self._batches = None
         assert source is not None  # guarded by _begin
         for batch in source:
+            # REQ-1905: the one seam every stream on every transport is pulled through. A request
+            # whose deadline has passed gets no further batch — its stream ends with the timeout,
+            # whichever terminal feeds it and whichever transport drains it.
+            try:
+                request_deadline.check()
+            except TimeoutError:
+                # The source (server-side cursor, pooled connection) is released now: nothing
+                # will drain this stream to the end.
+                source_close = getattr(source, "close", None)
+                if source_close is not None:
+                    source_close()
+                self._finish()
+                raise
             self.stats.row_count += len(batch)
             yield batch
         self._finish()

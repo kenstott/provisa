@@ -34,6 +34,7 @@ from typing import Any
 
 from provisa.api.mcp import tools
 from provisa.api.org_resolve import OrgResolutionError
+from provisa.core import request_deadline
 from provisa.core.request_context import reset_current_org, set_current_org
 from provisa.core.request_thread import run_on_request_thread
 from provisa.otel_compat import get_tracer as _get_tracer
@@ -164,6 +165,17 @@ def _pinned_stdio_role() -> str:
     return role.strip()
 
 
+async def _within_request(make_coro: Any) -> Any:
+    """One MCP tool call as a request (REQ-1905): its work — governance, execution, shaping the
+    result — runs under MCP's own request deadline, on the call's request thread. Once that
+    deadline has passed the call is answered with the timeout, naming the transport and the
+    setting, whatever it had produced."""
+    with request_deadline.request("mcp") as deadline:
+        result = await make_coro()
+        deadline.check()
+        return result
+
+
 def build_mcp_server(state: Any):
     """Build a FastMCP server whose tools are bound to ``state``.
 
@@ -214,7 +226,9 @@ def build_mcp_server(state: Any):
             # Async on the MCP loop by necessity: the MCP SDK dispatches tools as coroutines on
             # its own loop, which must keep serving other calls while this one runs.
             with _request_span(_tracer, f"mcp.{fn.__name__}", transport="mcp"):  # REQ-1910
-                return await run_on_request_thread(lambda: fn(*args, **kwargs))
+                return await run_on_request_thread(
+                    lambda: _within_request(lambda: fn(*args, **kwargs))
+                )
 
         return mcp.tool()(_on_request_thread)
 
@@ -280,7 +294,9 @@ def build_mcp_server(state: Any):
         # REQ-1882: governance and execution run on this call's request thread; the license nag
         # below writes to the MCP session, whose streams belong to the MCP loop, so it stays here.
         result = await run_on_request_thread(
-            lambda: tools.run_sql(state, _role(role), sql, limit=limit, offset=offset)
+            lambda: _within_request(
+                lambda: tools.run_sql(state, _role(role), sql, limit=limit, offset=offset)
+            )
         )
         await _emit_mcp_nag(ctx)  # REQ-1137: out-of-band license nag, once per session
         return result

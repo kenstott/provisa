@@ -78,7 +78,16 @@ def request_budget(timeout: float) -> Generator[None]:
     if outer is not None and outer.remaining() <= timeout:
         budget = _Budget(outer, owned=False)
     else:
-        budget = _Budget(request_deadline.Deadline(timeout), owned=True)
+        from provisa.core.limits import request_timeout_setting
+
+        # The same kind of deadline every transport's request has: its expiry names Flight and
+        # the setting. Flight words its own error (FlightDeadlineExceeded) from it.
+        budget = _Budget(
+            request_deadline.Deadline(
+                timeout, transport="flight", setting=request_timeout_setting("flight")
+            ),
+            owned=True,
+        )
     token = _budget.set(budget)
     try:
         with request_deadline.bound(budget.deadline):

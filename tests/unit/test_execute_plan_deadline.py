@@ -152,3 +152,22 @@ async def test_background_work_is_not_given_a_request_deadline(monkeypatch):
     engine = _Engine(seconds=0.1)
     result = await _pipeline._execute_plan(_plan(surface=None), _state(engine))
     assert result.rows == [(1,)] and engine.deadline_seen is None
+
+
+async def test_the_roles_limit_still_tightens_a_request_whose_transport_bound_its_deadline(
+    monkeypatch,
+):
+    """Every transport now binds its request's deadline at its own boundary (REQ-1905), so the
+    statement arrives here with one. The role's own limit (REQ-1174) is the tighter budget on
+    top of it, and its expiry names the role's setting."""
+    called: list[str] = []
+    monkeypatch.setattr(_pipeline, "statement_budget", lambda t: called.append(t) or 30.0)
+    engine = _Engine(seconds=3.0)
+    roles = {"analyst": {"id": "analyst", "rate_limit": {"max_query_time_ms": 200}}}
+    started = time.monotonic()
+    with request_deadline.within(30.0):
+        with pytest.raises(TimeoutError) as failed:
+            await _pipeline._execute_plan(_plan(), _state(engine, roles))
+    assert time.monotonic() - started < 1.5
+    assert "max_query_time_ms" in str(failed.value) and "0.2" in str(failed.value)
+    assert called == [], "the transport's budget is the bound deadline, not asked for again"
