@@ -46,6 +46,7 @@ from typing import Any
 
 from provisa.core import process_mode, request_deadline
 from provisa.federation import replica_state as build_state
+from provisa.federation.data_replicator import BuildOutcome, Progress
 from provisa.federation.replica_locks import BuildClaim, BuildLocks
 from provisa.federation.replica_state import ReplicaKey
 
@@ -58,18 +59,6 @@ WAITING_SOURCE = "the source is at its live-read cap (max_live_concurrency)"
 _CANDIDATES_PER_PASS = 16
 # The running build's progress is written to the record no more often than this.
 _PROGRESS_EVERY_S = 1.0
-
-#: Called by a build as it copies: the rows copied so far.
-Progress = Callable[[int], Awaitable[None]]
-
-
-@dataclass(frozen=True)
-class BuildOutcome:
-    """What a finished build reports."""
-
-    rows_copied: int
-    method: str
-    content_hash: str | None = None
 
 
 def engine_job_key(kind: str, address: str | None) -> str:

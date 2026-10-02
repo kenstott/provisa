@@ -169,6 +169,57 @@ class SourceRowLoader:
             )
         return await engine_table_rows(self._engine, source, table)
 
+    def replica_source(
+        self, state: Any, source: Any, table: Any, columns: list[tuple[str, str]]
+    ) -> Any:
+        """``table`` as a stream of Arrow record batches for a replica build (REQ-1915): the
+        one place each source type's read is chosen, with the same precedence as :meth:`load`.
+
+        - A source the operator floors, whose driver has a server-side cursor, is read through
+          that cursor.
+        - A type with a registered adapter loader is read by it. An adapter returns its whole
+          answer at once, so it is declared a single document.
+        - Any other type is read by the engine, which streams Arrow batches; where the engine
+          attaches the source in place it is also declared engine-reachable.
+
+        A type with no engine-scannable table and no adapter raises
+        :class:`UnsupportedSourceFetch`."""
+        import sqlglot.expressions as exp
+
+        from provisa.compiler.naming import source_to_catalog
+        from provisa.core.operator_floor import floor_setting
+        from provisa.executor.direct import open_direct_stream
+        from provisa.federation.replica_source import (
+            DirectTableSource,
+            DocumentSource,
+            EngineTableSource,
+        )
+        from provisa.federation.strategy import engine_attaches
+
+        stype = _source_type(source)
+        pools = getattr(state, "source_pools", None)
+        if (
+            floor_setting(source) is not None
+            and pools is not None
+            and pools.supports_stream(source.id)
+        ):
+            sql = (
+                exp.select("*")
+                .from_(exp.table_(table.table_name, db=table.schema_name))
+                .sql(dialect=state.source_dialects[source.id] or None)
+            )
+            return DirectTableSource(lambda: open_direct_stream(pools, source.id, sql, []), columns)
+        loader = self._adapter_loaders.get(stype)
+        if loader is not None:
+            return DocumentSource(lambda: loader(source, table), columns)
+        if stype in _ADAPTER_FETCH_ONLY:
+            raise UnsupportedSourceFetch(
+                f"source type {stype!r} has no engine-scannable table and no adapter row-fetch "
+                f"is wired (source {source.id!r})"
+            )
+        ref = f'"{source_to_catalog(source.id)}"."{table.schema_name}"."{table.table_name}"'
+        return EngineTableSource(self._engine, ref, in_place=engine_attaches(self._engine, stype))
+
     async def load_keys(
         self, source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
     ) -> list[dict]:

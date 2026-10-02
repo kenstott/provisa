@@ -43,8 +43,13 @@ the requests that ask for its rows.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from enum import Enum
+from typing import TYPE_CHECKING, Any, Protocol
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 
 class SourceRead(str, Enum):
@@ -158,3 +163,131 @@ def choose_method(source: SourceCaps, target: TargetCaps, engine: EngineCaps) ->
         elif TargetWrite.STATEMENT_COPY not in target.writes:
             missing.append("the store takes no statement-level copy from the engine")
     raise NoReplicationMethod(missing)
+
+
+# -- the job -----------------------------------------------------------------------------------
+
+#: Called by a job as it copies: the rows copied so far.
+Progress = Callable[[int], Awaitable[None]]
+
+
+@dataclass(frozen=True)
+class BuildOutcome:
+    """What a finished build reports. ``changed`` is False when the copy's content hash equals
+    the previous build's: the build table was discarded and the replica left as it was."""
+
+    rows_copied: int
+    method: str
+    content_hash: str | None = None
+    changed: bool = True
+
+
+class _Source(Protocol):
+    caps: SourceCaps
+
+    def batches(self, batch_rows: int) -> AsyncIterator["pa.RecordBatch"]: ...
+
+
+class _Target(Protocol):
+    caps: TargetCaps
+
+    async def begin(self) -> None: ...
+
+    async def write(self, batch: "pa.RecordBatch", rows: list[dict]) -> None: ...
+
+    async def swap(self) -> None: ...
+
+    async def abort(self) -> None: ...
+
+
+class _Engine(Protocol):
+    caps: EngineCaps
+
+    async def copy(self) -> int:
+        """Run the copy as the engine's own statement, swap included; return the rows copied."""
+        ...
+
+    async def after_swap(self) -> None:
+        """What the engine must do once a new replica stands in the store."""
+        ...
+
+
+class ReplicaJob:
+    """The build of one replica by the method its parties allow. Run it once."""
+
+    def __init__(
+        self,
+        method: Method,
+        source: _Source,
+        target: _Target,
+        engine: _Engine,
+        *,
+        batch_rows: int,
+        prior_hash: str | None,
+    ) -> None:
+        self.method = method
+        self._source = source
+        self._target = target
+        self._engine = engine
+        self._batch_rows = batch_rows
+        self._prior_hash = prior_hash
+
+    async def run(self, progress: Progress) -> BuildOutcome:
+        if self.method is Method.ENGINE_STATEMENT:
+            copied = await self._engine.copy()
+            await self._engine.after_swap()
+            return BuildOutcome(rows_copied=copied, method=self.method.value)
+        return await self._stream(progress)
+
+    async def _stream(self, progress: Progress) -> BuildOutcome:
+        """Stream the source into the build table a bounded batch at a time, then swap it in.
+        Only one batch is held at any moment; the content hash is accumulated as the batches
+        pass, and a copy whose hash equals the previous build's is discarded unswapped."""
+        from provisa.events.content_hash import RowSetHash
+
+        digest = RowSetHash()
+        copied = 0
+        swapped = False
+        try:
+            # Inside the try: a target that fails while opening is aborted like any other.
+            await self._target.begin()
+            async for batch in self._source.batches(self._batch_rows):
+                rows = batch.to_pylist()
+                digest.update(rows)
+                await self._target.write(batch, rows)
+                copied += len(rows)
+                await progress(copied)
+            content_hash = digest.hexdigest()
+            if content_hash == self._prior_hash:
+                return BuildOutcome(
+                    rows_copied=copied,
+                    method=self.method.value,
+                    content_hash=content_hash,
+                    changed=False,
+                )
+            await self._target.swap()
+            swapped = True
+        finally:
+            if not swapped:
+                await self._target.abort()
+        await self._engine.after_swap()
+        return BuildOutcome(rows_copied=copied, method=self.method.value, content_hash=content_hash)
+
+
+def data_replicator(
+    source: Any,
+    target: Any,
+    engine: Any,
+    *,
+    batch_rows: int,
+    prior_hash: str | None = None,
+) -> ReplicaJob:
+    """The job that builds one replica from ``source`` into ``target`` on ``engine``.
+
+    Each party carries its declared capabilities (``caps``) and the operations the methods use:
+    the source its ``batches``, the target its ``begin / write / swap / abort``, the engine its
+    ``copy`` and ``after_swap``. The method is :func:`choose_method` of the three declarations;
+    a combination no method serves raises :class:`NoReplicationMethod`. ``prior_hash`` is the
+    content hash of the replica's last build, when it has one."""
+    method = choose_method(source.caps, target.caps, engine.caps)
+    return ReplicaJob(method, source, target, engine, batch_rows=batch_rows, prior_hash=prior_hash)

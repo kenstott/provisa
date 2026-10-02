@@ -46,26 +46,6 @@ log = logging.getLogger(__name__)
 # gate — a batch this size or larger takes COPY INTO whenever a stage is configured, never a fallback.
 COPY_INTO_ROW_THRESHOLD = 1000
 
-# Canonical IR name → pyarrow type for the staged Parquet batch. COPY INTO coerces to the Delta column
-# types (_IR_TO_DATABRICKS); these fix the on-disk Parquet spelling so an all-NULL column is not
-# inferred as the null type. JSON lands as a STRING column (source's serialized text).
-_IR_TO_ARROW: dict[str, str] = {
-    "smallint": "int16",
-    "integer": "int32",
-    "bigint": "int64",
-    "text": "string",
-    "boolean": "bool",
-    "float": "float32",
-    "double": "float64",
-    "numeric": "decimal",
-    "date": "date32",
-    "timestamp": "timestamp",
-    "time": "string",
-    "uuid": "string",
-    "bytea": "binary",
-    "json": "string",
-}
-
 # Canonical IR name → Databricks/Delta SQL type. Delta has no unsigned/serial spellings; a landed
 # replica carries the source's own key values, so integers/decimals map to their widest safe Delta
 # type. JSON is stored as STRING (Databricks parses on read via from_json / : path access).
@@ -204,32 +184,27 @@ class DatabricksStage:
     uc_token: str
 
 
-def _arrow_type(ir_type: str) -> Any:
-    """pyarrow type for a canonical IR type — raises on an unknown type (never a silent widen)."""
+# The staged Parquet's column types come from the shared IR → Arrow map; a ``numeric`` column is
+# staged as the Delta DECIMAL(38,9) it lands into. JSON lands as a STRING column (source's
+# serialized text).
+def _stage_decimal() -> Any:
     import pyarrow as pa
 
-    spelling = _IR_TO_ARROW.get(to_ir(ir_type))
-    if spelling is None:
-        raise ValueError(f"no Databricks-stage Arrow type for IR type {ir_type!r}")
-    if spelling == "decimal":
-        return pa.decimal128(38, 9)  # matches the Delta DECIMAL(38,9) landing type
-    if spelling == "timestamp":
-        return pa.timestamp("us")
-    return getattr(pa, spelling)()
+    return pa.decimal128(38, 9)  # matches the Delta DECIMAL(38,9) landing type
+
+
+def _arrow_type(ir_type: str) -> Any:
+    """pyarrow type for a canonical IR type — raises on an unknown type (never a silent widen)."""
+    from provisa.core.ir_arrow import arrow_type
+
+    return arrow_type(ir_type, decimal=_stage_decimal())
 
 
 def _arrow_value(value: Any, ir_type: str) -> Any:
     """A row value coerced to what its Arrow column type accepts: JSON → text, numeric → Decimal."""
-    if value is None:
-        return None
-    canonical = to_ir(ir_type)
-    if canonical == "json" and not isinstance(value, str):
-        return json.dumps(value)
-    if canonical == "numeric":
-        from decimal import Decimal
+    from provisa.core.ir_arrow import arrow_value
 
-        return Decimal(str(value))
-    return value
+    return arrow_value(value, ir_type, decimal=_stage_decimal())
 
 
 def _rows_to_arrow(columns: list[tuple[str, str]], rows: list[dict]) -> Any:

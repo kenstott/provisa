@@ -75,3 +75,31 @@ def content_hash(rows: list[dict], pk_columns: list[str] | None = None) -> str:
         h.update(b":")
         h.update(encoded)
     return h.hexdigest()
+
+
+class RowSetHash:
+    """The content hash of a row set that arrives in batches (REQ-981, REQ-1915).
+
+    :func:`content_hash` sorts the whole set, so it needs every row at once. This is the same
+    kind of digest for a stream: each row's own sha256, combined by addition, together with the
+    row count. Addition does not depend on order, so the same rows hash alike however the
+    source returns them, and only the running sum is held. The two digests are not comparable
+    with each other."""
+
+    _MODULUS = 1 << 256
+
+    def __init__(self) -> None:
+        self._sum = 0
+        self._count = 0
+
+    def update(self, rows: list[dict]) -> None:
+        """Add a batch of rows."""
+        for row in rows:
+            encoded = json.dumps(_canonical(row), sort_keys=True, separators=(",", ":")).encode()
+            digest = int.from_bytes(hashlib.sha256(encoded).digest(), "big")
+            self._sum = (self._sum + digest) % self._MODULUS
+        self._count += len(rows)
+
+    def hexdigest(self) -> str:
+        """The digest so far: the row count and the combined row hashes."""
+        return f"{self._count:x}:{self._sum:064x}"

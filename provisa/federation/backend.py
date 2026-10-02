@@ -203,6 +203,40 @@ class EngineBackend:
             table_name=table_name,
         )
 
+    # -- replica builds (REQ-1915): this engine and its store as parties to a build ----------
+
+    def replica_engine(
+        self, state: Any, source: Any, table: Any, *, address: ReplicaAddress, args: Any
+    ) -> Any:
+        """This engine's part in building the replica of ``table`` at ``address``: what it
+        declares it can do and, where it can copy, the copy. The base engine copies nothing
+        itself and reads the finished replica from its store."""
+        del source, table, address, args
+        from provisa.federation.replica_parties import StoreReadingEngine
+
+        return StoreReadingEngine(self, state)
+
+    def replica_target(self, state: Any, *, address: ReplicaAddress, args: Any, engine: Any) -> Any:
+        """The write face of the replica at ``address`` in this engine's store, chosen by the
+        store. ``engine`` is this engine's party to the build (``replica_engine``)."""
+        del state
+        from provisa.federation.data_replicator import EngineRun
+        from provisa.federation.replica_parties import store_target
+
+        return store_target(
+            self.engine.replica_store_backend(),
+            self.engine.materialize_store(),
+            address=address,
+            columns=args.columns,
+            pk_columns=list(args.pk_columns or ()),
+            engine_writes_store=EngineRun.STATEMENT in engine.caps.runs,
+        )
+
+    async def after_replica_swap(self, state: Any) -> None:
+        """What this engine must do once a new replica stands in its store. Nothing for an
+        engine that reads its store's tables as they are."""
+        del state
+
     def replica_read_catalog(self, state: Any) -> str | None:
         """The catalog a statement names this engine's store by when it reads a replica, or None
         on an engine whose SQL has no catalog (the replicas schema is then addressed alone).
@@ -968,6 +1002,11 @@ class TrinoBackend(EngineBackend):
             )
             reconciled.append((src.id, table_name))
         return reconciled
+
+    async def after_replica_swap(self, state: Any) -> None:
+        """Trino reads the store through its ``provisa_admin`` catalog, whose metadata it may
+        cache: flush it, so the swapped-in table is the one the next statement resolves."""
+        await self.refresh_landed_views(state)
 
     async def refresh_landed_views(self, state: Any) -> None:  # REQ-1730
         """Flush Trino's ``provisa_admin`` catalog metadata cache after ``reconcile_landed_tables``

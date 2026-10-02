@@ -90,6 +90,28 @@ class PgBackend(NativeEngineBackend):
         await replica_build.build_once(replica, _build, budget=request_deadline.remaining())
         return True
 
+    def replica_engine(
+        self, state: Any, source: Any, table: Any, *, address: Any, args: Any
+    ) -> Any:
+        """A full-refresh replica of a table this engine reaches through postgres_fdw is copied
+        by the engine itself, as one statement; any other is streamed into the store."""
+        from provisa.core.change_signal import REPLACE, select_landing_shape
+        from provisa.federation.replica_parties import PgStatementCopy
+
+        if select_landing_shape(args.change_signal, args.watermark_column) != REPLACE:
+            return super().replica_engine(state, source, table, address=address, args=args)
+        merged = self._merged_source(source, table.schema_name, table.table_name)
+        if "server_ddl_for_copy" not in self._runtime_for(state)._engine.resolve(merged).details:
+            return super().replica_engine(state, source, table, address=address, args=args)
+        return PgStatementCopy(
+            self,
+            state,
+            merged,
+            address=address,
+            columns=args.columns,
+            pk_columns=list(args.pk_columns or ()),
+        )
+
     def transpile_physical(self, pg_sql: str) -> str:  # REQ-902
         """Postgres physical SQL, then collapse JSON_OBJECT colon syntax into flat json_build_object so
         nested-relationship queries survive pg_duckdb's transparent DuckDB execution path (REQ-902).
