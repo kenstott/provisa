@@ -72,6 +72,10 @@ async def proto_endpoint(role_id: str, domains: str = ""):  # REQ-525
         role = state.roles.get(role_id)
         if role is None:
             raise ApiError(404, "data.no_role", f"No role {role_id!r}", role_id=role_id)
+        from provisa.api.data.sdl import require_reached_domains
+
+        # A requested domain narrows the role's proto; it never adds a domain the role lacks.
+        require_reached_domains(role_id, role, domain_list)
         if not state.schema_build_cache:
             raise ApiError(503, "data.schema_cache_not_ready", "Schema build cache not ready")
         from provisa.api.data.sdl import _reachable_table_ids
@@ -87,12 +91,6 @@ async def proto_endpoint(role_id: str, domains: str = ""):  # REQ-525
             seed_ids |= {t["id"] for t in tables if t["domain_id"] == domain_id}
         reachable |= seed_ids
         filtered_tables = [t for t in tables if t["id"] in reachable]
-        existing = role.get("domain_access") or []
-        if "*" not in existing:
-            role = {
-                **role,
-                "domain_access": list(set(existing) | set(domain_list)),
-            }
         si = SchemaInput(
             tables=filtered_tables,
             root_table_ids=seed_ids,

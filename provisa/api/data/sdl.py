@@ -60,6 +60,25 @@ def _reachable_table_ids(domain_id: str, tables: list[dict], relationships: list
 _ALWAYS_VISIBLE_DOMAINS = {"meta", "ops"}
 
 
+def require_reached_domains(role_id: str, role: dict, domain_ids: list[str]) -> None:  # REQ-039
+    """Refuse a request for a per-domain schema naming a domain the role does not reach.
+
+    A requested domain NARROWS what a role is shown; it never adds to it. Refused by name rather
+    than answered with an empty schema, which would read as "that domain has nothing in it".
+    """
+    from provisa.security.rights import reaches_domain
+
+    for domain_id in domain_ids:
+        if not reaches_domain(role["domain_access"], domain_id):
+            raise ApiError(
+                403,
+                "data.domain_not_accessible",
+                f"Role {role_id!r} does not reach domain {domain_id!r}",
+                role_id=role_id,
+                domain=domain_id,
+            )
+
+
 def _build_domain_schema(role: dict, domain_ids: list[str], cache: dict):
     from provisa.api.app import state
     from provisa.compiler.schema_gen import SchemaInput, generate_schema
@@ -75,14 +94,8 @@ def _build_domain_schema(role: dict, domain_ids: list[str], cache: dict):
     reachable |= seed_ids
     filtered_tables = [t for t in tables if t["id"] in reachable]
     root_ids = seed_ids
-    # Ensure always-visible domains and the requested domains bypass per-role
-    # domain_access check in _build_visible_tables (which skips inaccessible domains).
-    existing = role.get("domain_access") or []
-    if "*" not in existing:
-        role = {
-            **role,
-            "domain_access": list(set(existing) | _ALWAYS_VISIBLE_DOMAINS | set(domain_ids)),
-        }
+    # The role is passed as it is: its own domain_access decides which of these tables it is
+    # shown (_build_visible_tables). The requested domains only chose the roots above.
     si = SchemaInput(
         tables=filtered_tables,
         root_table_ids=root_ids,
@@ -166,6 +179,7 @@ async def get_sdl(  # REQ-039, REQ-363
         role = state.roles.get(role_id)
         if role is None:
             raise ApiError(404, "data.no_role", f"No role {role_id!r}", role_id=role_id)
+        require_reached_domains(role_id, role, domain_list)
         if not state.schema_build_cache:
             raise ApiError(503, "data.schema_cache_not_ready", "Schema build cache not ready")
         schema = _build_domain_schema(role, domain_list, state.schema_build_cache)
@@ -238,6 +252,7 @@ async def get_introspection(  # REQ-039, REQ-363
         role = state.roles.get(role_id)
         if role is None:
             raise ApiError(404, "data.no_role", f"No role {role_id!r}", role_id=role_id)
+        require_reached_domains(role_id, role, domain_list)
         if not state.schema_build_cache:
             raise ApiError(503, "data.schema_cache_not_ready", "Schema build cache not ready")
         schema = _build_domain_schema(role, domain_list, state.schema_build_cache)
