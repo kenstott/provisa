@@ -70,8 +70,11 @@ import type { CdcState, SourceFormFieldsProps, SourceFormState } from "./sources
 import { SourceFormFields } from "./sources/SourceFormFields";
 import { SourceDetailPanel } from "./sources/SourceDetailPanel";
 import { PageLoading } from "../components/PageLoading";
+import { useDependentsDialog } from "../hooks/useDependentsDialog";
 
 export function SourcesPage() {
+  // REQ-1918: a delete is refused while anything depends on the object; this lists them.
+  const refusal = useDependentsDialog();
   const { t } = useTranslation();
   // REQ-1739: `billing` is true only where the commercial plugin is mounted (REQ-1469) — the same
   // hosted-vs-self-hosted signal provisa/api/admin/schema_mutation.py's
@@ -1553,7 +1556,8 @@ export function SourcesPage() {
                                 navigate(`/tables?source=${encodeURIComponent(s.id)}`)
                               }
                               onDelete={async () => {
-                                await deleteSource(s.id);
+                                const result = await deleteSource(s.id);
+                                if (refusal.refused(result, s.id)) return;
                                 if (expanded === s.id) updateExpanded(null);
                                 load();
                               }}
@@ -1648,6 +1652,7 @@ export function SourcesPage() {
           }}
         />
       )}
+      {refusal.dialog}
     </div>
   );
 }

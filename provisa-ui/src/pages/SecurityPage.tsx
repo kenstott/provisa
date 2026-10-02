@@ -43,6 +43,7 @@ import type { RLSRule } from "../types/admin";
 import { fetchActions } from "../api/actions";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { PageLoading } from "../components/PageLoading";
+import { useDependentsDialog } from "../hooks/useDependentsDialog";
 
 const ALL_CAPABILITIES: Capability[] = [
   "source_registration",
@@ -140,6 +141,8 @@ function CapabilityGrid({
 }
 
 export function SecurityRolesPage() {
+  // REQ-1918: a delete is refused while anything depends on the object; this lists them.
+  const refusal = useDependentsDialog();
   const { t } = useTranslation();
   const { setDomains: setContextDomains, setSelectedDomain } = useDomainFilter();
   const { roles, loading: rolesLoading, refetch: refetchRoles } = useRoles();
@@ -214,7 +217,12 @@ export function SecurityRolesPage() {
     setSaving(true);
     setError("");
     try {
-      await deleteRole(id);
+      const result = await deleteRole(id);
+      if (refusal.refused(result, id)) return;
+      if (!result.success) {
+        setError(result.message);
+        return;
+      }
       if (expandedRole === id) setExpandedRole(null);
       await reload();
     } catch (e) {
@@ -544,6 +552,7 @@ export function SecurityRolesPage() {
           </Table.Tbody>
         </Table>
       </Table.ScrollContainer>
+      {refusal.dialog}
     </Stack>
   );
 }

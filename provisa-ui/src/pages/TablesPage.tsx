@@ -69,8 +69,11 @@ import { NativeParamsModal } from "../components/NativeParamsModal";
 import { previewSql, requiredParamColumns } from "../components/nativeParams";
 import { TagControl } from "../components/TagControl";
 import { TableEditForm } from "./tables/TableEditForm";
+import { useDependentsDialog } from "../hooks/useDependentsDialog";
 
 export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) {
+  // REQ-1918: a delete is refused while anything depends on the object; this lists them.
+  const refusal = useDependentsDialog();
   const { t: translate } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -331,7 +334,13 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const handleDelete = async (id: number) => {
     if (!confirm("Delete this table registration?")) return;
     try {
-      await deleteTable(id);
+      const result = await deleteTable(id);
+      const name = tables.find((tbl) => tbl.id === id)?.tableName ?? String(id);
+      if (refusal.refused(result, name)) return;
+      if (!result.success) {
+        setError(result.message);
+        return;
+      }
       reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -1381,6 +1390,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           if (tbl) void handleProfile(tbl.id, values);
         }}
       />
+      {refusal.dialog}
     </div>
   );
 }

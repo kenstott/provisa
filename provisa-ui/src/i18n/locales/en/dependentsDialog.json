@@ -1,0 +1,26 @@
+{
+  "dependentsDialog": {
+    "title": "Cannot delete {{name}} yet",
+    "intro": "These still refer to it. Remove or change each one, then delete again.",
+    "open": "Open the page",
+    "close": "Close",
+    "kind": {
+      "table": "Tables and views",
+      "column": "Column grants",
+      "tag_assignment": "Tag assignments",
+      "relationship": "Relationships",
+      "role": "Roles",
+      "role_assignment": "Role assignments",
+      "row_filter": "Row filters",
+      "metric": "Metrics",
+      "materialized_view": "Materialized views",
+      "command": "Commands",
+      "webhook": "Webhooks",
+      "data_product": "Data products",
+      "source": "Sources",
+      "remote_registration": "Remote registrations",
+      "domain": "Domains",
+      "glossary_term": "Glossary terms"
+    }
+  }
+}

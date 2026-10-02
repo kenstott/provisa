@@ -1,0 +1,26 @@
+{
+  "dependentsDialog": {
+    "title": "Impossibile eliminare {{name}} per ora",
+    "intro": "Questi oggetti vi fanno ancora riferimento. Rimuovere o modificare ciascuno, quindi eliminare di nuovo.",
+    "open": "Apri la pagina",
+    "close": "Chiudi",
+    "kind": {
+      "table": "Tabelle e viste",
+      "column": "Autorizzazioni di colonna",
+      "tag_assignment": "Assegnazioni di tag",
+      "relationship": "Relazioni",
+      "role": "Ruoli",
+      "role_assignment": "Assegnazioni di ruoli",
+      "row_filter": "Filtri di riga",
+      "metric": "Metriche",
+      "materialized_view": "Viste materializzate",
+      "command": "Comandi",
+      "webhook": "Webhook",
+      "data_product": "Prodotti di dati",
+      "source": "Origini",
+      "remote_registration": "Registrazioni remote",
+      "domain": "Domini",
+      "glossary_term": "Termini del glossario"
+    }
+  }
+}

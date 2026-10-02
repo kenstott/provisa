@@ -31,6 +31,7 @@ import type { Metric, RegisteredTable } from "../types/admin";
 import { OssieInterchangePanel } from "./metrics/OssieInterchangePanel";
 import { HelpBubble } from "../components/HelpBubble";
 import { MetricDetailPanel } from "./metrics/MetricDetailPanel";
+import { useDependentsDialog } from "../hooks/useDependentsDialog";
 
 interface MetricForm {
   name: string;
@@ -214,6 +215,8 @@ function MetricFormCard({
 // REQ-1323: detail-then-edit — row click expands the detail panel; Edit/Delete
 // live inside it and edit swaps the panel for the inline form (no modals).
 export function MetricsPage() {
+  // REQ-1918: a delete is refused while anything depends on the object; this lists them.
+  const refusal = useDependentsDialog();
   const { t } = useTranslation();
   const { metrics, loading, error } = useMetrics();
   const { tables } = useTables();
@@ -302,6 +305,7 @@ export function MetricsPage() {
     if (!deleteTarget) return;
     const result = await deleteMetric(deleteTarget);
     setDeleteTarget(null);
+    if (refusal.refused(result, deleteTarget)) return;
     if (expanded === deleteTarget) setExpanded(null);
     if (!result.success) setMsg(result.message || t("metricsPage.deleteFailed"));
   };
@@ -493,6 +497,7 @@ export function MetricsPage() {
           </Button>
         </Group>
       </Modal>
+      {refusal.dialog}
     </div>
   );
 }

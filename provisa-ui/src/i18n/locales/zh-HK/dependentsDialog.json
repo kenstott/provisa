@@ -1,0 +1,26 @@
+{
+  "dependentsDialog": {
+    "title": "暫時無法刪除 {{name}}",
+    "intro": "這些物件仍在引用它。請移除或更改每一個，然後再次刪除。",
+    "open": "開啟頁面",
+    "close": "關閉",
+    "kind": {
+      "table": "資料表和檢視",
+      "column": "欄位授權",
+      "tag_assignment": "標籤指派",
+      "relationship": "關係",
+      "role": "角色",
+      "role_assignment": "角色指派",
+      "row_filter": "資料列篩選器",
+      "metric": "指標",
+      "materialized_view": "具體化檢視",
+      "command": "指令",
+      "webhook": "Webhook",
+      "data_product": "資料產品",
+      "source": "資料來源",
+      "remote_registration": "遠端註冊",
+      "domain": "網域",
+      "glossary_term": "詞彙表詞彙"
+    }
+  }
+}

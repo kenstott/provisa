@@ -51,8 +51,11 @@ import {
 } from "../components/relationships/RelationshipModals";
 import { CandidatesTable } from "../components/relationships/CandidatesTable";
 import { PageLoading } from "../components/PageLoading";
+import { useDependentsDialog } from "../hooks/useDependentsDialog";
 
 export function RelationshipsPage() {
+  // REQ-1918: a delete is refused while anything depends on the object; this lists them.
+  const refusal = useDependentsDialog();
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { relationships: rels, loading: relsLoading, refetch: refetchRels } = useRelationships();
@@ -151,11 +154,12 @@ export function RelationshipsPage() {
 
   const handleDelete = useCallback(
     async (id: string) => {
-      await deleteRelationship(id);
+      const result = await deleteRelationship(id);
+      if (refusal.refused(result, id)) return;
       setExpanded((prev) => (prev === id ? null : prev));
       setEditingRel(null);
     },
-    [deleteRelationship],
+    [deleteRelationship, refusal],
   );
 
   const handleAdd = useCallback(async () => {
@@ -1035,6 +1039,7 @@ export function RelationshipsPage() {
           onClose={() => setShowErd(false)}
         />
       )}
+      {refusal.dialog}
     </div>
   );
 }

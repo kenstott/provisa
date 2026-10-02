@@ -1,0 +1,26 @@
+{
+  "dependentsDialog": {
+    "title": "暂时无法删除 {{name}}",
+    "intro": "这些对象仍在引用它。请移除或更改每一个，然后再次删除。",
+    "open": "打开页面",
+    "close": "关闭",
+    "kind": {
+      "table": "表和视图",
+      "column": "列授权",
+      "tag_assignment": "标签分配",
+      "relationship": "关系",
+      "role": "角色",
+      "role_assignment": "角色分配",
+      "row_filter": "行筛选器",
+      "metric": "指标",
+      "materialized_view": "物化视图",
+      "command": "命令",
+      "webhook": "Webhook",
+      "data_product": "数据产品",
+      "source": "数据源",
+      "remote_registration": "远程注册",
+      "domain": "域",
+      "glossary_term": "术语表术语"
+    }
+  }
+}

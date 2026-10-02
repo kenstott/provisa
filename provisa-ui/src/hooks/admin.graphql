@@ -1,8 +1,12 @@
 # Reusable fragments
 
+# code + params: the stable code and its values (REQ-1350) — a refused delete lists what still
+# refers to the object in params.dependents (REQ-1918).
 fragment MutationResult on MutationResult {
   success
   message
+  code
+  params
 }
 
 fragment ColumnFields on TableColumnType {

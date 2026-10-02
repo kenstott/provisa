@@ -51,6 +51,7 @@ import { fetchRelatedGlossaryTerms, type RelatedGlossaryTerm } from "../api/glos
 import { domainToSqlName } from "../naming";
 import { columnDescriber } from "../components/lineage/column-descriptions";
 import { CustomPropertiesEditor } from "./data-products/CustomPropertiesEditor";
+import { useDependentsDialog } from "../hooks/useDependentsDialog";
 
 interface DataProductForm {
   id: string;
@@ -305,6 +306,8 @@ function DataProductFormCard({
 // Follows the MetricsPage detail-then-edit pattern (REQ-1323) — row click expands the
 // detail panel; Edit/Delete live inside it and edit swaps the panel for the inline form.
 export function DataProductsPage() {
+  // REQ-1918: a delete is refused while anything depends on the object; this lists them.
+  const refusal = useDependentsDialog();
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
@@ -705,6 +708,7 @@ export function DataProductsPage() {
     if (!deleteTarget) return;
     const result = await deleteDataProduct(deleteTarget);
     setDeleteTarget(null);
+    if (refusal.refused(result, deleteTarget)) return;
     if (expanded === deleteTarget) setExpanded(null);
     if (!result.success) setMsg(result.message || t("dataProductsTab.deleteFailed"));
   };
@@ -938,6 +942,7 @@ export function DataProductsPage() {
           </Button>
         </Group>
       </Modal>
+      {refusal.dialog}
     </div>
   );
 }
