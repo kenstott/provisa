@@ -2196,17 +2196,23 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             try:
                 deleted = await role_repo.delete(cast("Connection", conn), id)
             except role_repo.RoleDeleteRefused as refused:
-                # REQ-1677: a role other roles inherit from cannot go; name them. Nor can a role
-                # the deployment defines.
+                # REQ-1918: refused while anything depends on the role, naming each dependent;
+                # and for a role the deployment defines.
                 return MutationResult(
                     success=False,
                     message=str(refused),
                     code=(
-                        "schema.role_has_heirs"
-                        if refused.reason == "heirs"
+                        "schema.role_has_dependents"
+                        if refused.reason == "dependents"
                         else "schema.role_is_system"
                     ),
-                    params={"role": id, "heirs": refused.heirs},
+                    params={
+                        "role": id,
+                        "dependents": [
+                            {"kind": d.ref.kind, "id": d.ref.id, "via": list(d.via)}
+                            for d in refused.dependents
+                        ],
+                    },
                 )
         if deleted:
             # state.contexts/schemas[role_id] must not survive a deleted role — see create_role's

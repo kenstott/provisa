@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import delete as _delete, select
 
 from provisa.core.models import Role
+from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import roles
 from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
 
@@ -25,17 +26,19 @@ if TYPE_CHECKING:
 
 
 class RoleDeleteRefused(Exception):
-    """A role that may not be deleted, and why. ``reason`` is ``"system"`` (a role the seed
-    defines) or ``"heirs"`` (other roles inherit from it; ``heirs`` names them)."""
+    """A role that may not be deleted, and why. ``reason`` is ``"system"`` (a role the
+    deployment defines) or ``"dependents"`` (other objects refer to it; ``dependents`` lists
+    them: whoever holds it, the roles that inherit from it, every grant that names it)."""
 
-    def __init__(self, role_id: str, reason: str, heirs: list[str] | None = None) -> None:
+    def __init__(
+        self, role_id: str, reason: str, dependents: "list[Dependent] | None" = None
+    ) -> None:
         self.role_id = role_id
         self.reason = reason
-        self.heirs = heirs or []
-        if reason == "heirs":
-            message = (
-                f"Role {role_id!r} is inherited by {', '.join(self.heirs)}; reparent them first"
-            )
+        self.dependents = dependents or []
+        if reason == "dependents":
+            named = ", ".join(f"{d.ref.kind} {d.ref.id}" for d in self.dependents)
+            message = f"Role {role_id!r} is still referred to by: {named}"
         else:
             message = f"Role {role_id!r} is a system role and cannot be deleted"
         super().__init__(message)
@@ -93,23 +96,34 @@ async def list_all(conn: "Connection") -> list[dict]:  # REQ-042, REQ-059
     return [dict(r._mapping) for r in result.fetchall()]
 
 
-async def delete(conn: "Connection", role_id: str) -> bool:  # REQ-042, REQ-1677
-    """Delete one role: THE delete path, for every surface. False when there is no such role.
+async def delete(conn: "Connection", role_id: str) -> bool:  # REQ-042, REQ-1677, REQ-1918
+    """Delete one role: THE delete, for every surface. False when there is no such role.
 
     Refused (:class:`RoleDeleteRefused`) for a role the deployment defines — its row carries no
-    org, which is how the seed marks it — and for a role other roles inherit from, whose heirs
-    would be left naming a parent that is gone.
+    org, which is how the seed marks it — and while anything depends on it (REQ-1918): a user
+    who holds it, a role that inherits from it, a grant or ownership that names it. Its row
+    filters go with it. One transaction; no database cascade is relied on.
     """
-    from provisa.security.inheritance import children_of
-
+    ref = ObjectRef("role", role_id)
     async with conn.transaction():
         row = await get(conn, role_id)
         if row is None:
             return False
         if row["org_id"] is None:
             raise RoleDeleteRefused(role_id, "system")
-        heirs = children_of(role_id, await list_all(conn))
-        if heirs:
-            raise RoleDeleteRefused(role_id, "heirs", heirs)
+        blocking = await guard(conn, ref)
+        if blocking:
+            raise RoleDeleteRefused(role_id, "dependents", blocking)
+        await remove_parts(conn, ref)
         await conn.execute_core(_delete(roles).where(roles.c.id == role_id))
     return True
+
+
+async def delete_all_except(conn: "Connection", keep: list[str]) -> None:
+    """Remove every role not named in ``keep``: the config loader's full replace, which empties
+    the model of whatever the new config does not declare. Like the deletion of a whole org it
+    is outside the one-object rule and does not ask the guard."""
+    statement = _delete(roles)
+    if keep:
+        statement = statement.where(roles.c.id.not_in(keep))
+    await conn.execute_core(statement)

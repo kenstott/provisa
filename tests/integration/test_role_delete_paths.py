@@ -119,7 +119,7 @@ def test_a_seeded_role_is_refused_on_both_entry_points(server):
         assert (answer["success"], answer["code"]) == (False, "schema.role_is_system"), answer
         resp = _delete_rest(c, "analyst")
         assert resp.status_code == 400, resp.text
-        assert resp.json()["detail"]["code"] == "roles.cannot_delete_system", resp.text
+        assert resp.json()["code"] == "roles.cannot_delete_system", resp.text
         assert "analyst" in _role_ids(c)
 
 
@@ -133,12 +133,17 @@ def test_a_parent_is_refused_on_both_entry_points_then_goes_after_its_heir(serve
         create(c, heir, parent)
 
         answer = _delete_graphql(c, parent)
-        assert (answer["success"], answer["code"]) == (False, "schema.role_has_heirs"), answer
+        assert (answer["success"], answer["code"]) == (False, "schema.role_has_dependents"), answer
         assert heir in answer["message"]
         resp = _delete_rest(c, parent)
         assert resp.status_code == 409, resp.text
-        detail = resp.json()["detail"]
-        assert detail["code"] == "roles.has_heirs" and detail["params"]["heirs"] == [heir], detail
+        refusal = resp.json()
+        assert refusal["code"] == "roles.has_dependents", refusal
+        assert refusal["params"] == {
+            "role": parent,
+            "count": 1,
+            "dependents": [{"kind": "role", "id": heir, "via": ["roles.parent_role_id"]}],
+        }, refusal
         assert {parent, heir} <= _role_ids(c)
 
         # The heir through one entry point, the parent through the other.
@@ -160,6 +165,9 @@ def test_a_created_role_is_deleted_through_the_other_entry_point(
     with _client(server) as c:
         create(c, role_id)
         assert role_id in _role_ids(c)
+        if create is _create_graphql:  # createRole rebuilds, so the role is served at once
+            served = c.get("/data/sdl", headers={"x-provisa-role": role_id})
+            assert served.status_code == 200, served.text[:300]
         if delete_through_rest:
             resp = _delete_rest(c, role_id)
             assert resp.status_code == 200, resp.text
@@ -167,9 +175,11 @@ def test_a_created_role_is_deleted_through_the_other_entry_point(
             answer = _delete_graphql(c, role_id)
             assert answer["success"] is True, answer
         assert role_id not in _role_ids(c)
-        # The rebuild both paths run: the role is no longer served a schema.
+        # The rebuild both paths run: the runtime no longer knows the role at all, so a request
+        # naming it is refused before any schema is looked for.
         served = c.get("/data/sdl", headers={"x-provisa-role": role_id})
-        assert served.status_code != 200, served.text[:300]
+        assert served.status_code == 403, served.text[:300]
+        assert f"unknown role {role_id!r}" in served.json()["detail"], served.text[:300]
         # Deleting it again finds nothing, on either path.
         assert _delete_rest(c, role_id).status_code == 404
         assert _delete_graphql(c, role_id)["code"] == "schema.role_not_found"

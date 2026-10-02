@@ -195,7 +195,7 @@
     "roles": {
       "cannot_delete_system": "Impossibile eliminare i ruoli di sistema",
       "cannot_modify_administrative": "Impossibile modificare i ruoli amministrativi",
-      "has_heirs": "Il ruolo {{role}} è ereditato da {{heirs}}; assegnare prima a questi un altro ruolo padre",
+      "has_dependents": "Il ruolo {{role}} è ancora referenziato da {{count}} oggetto/i; rimuovere prima tali riferimenti",
       "not_found": "Ruolo non trovato",
       "org_selection_required": "Selezione dell'organizzazione richiesta"
     },

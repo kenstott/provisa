@@ -8,35 +8,31 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""What refers to an object in an org's control plane, and what that means for deleting it (REQ-1918).
+"""The model store's dependency guard: what refers to an object, and whether it may go (REQ-1918).
 
 An object has PARTS and DEPENDENTS. A part exists only as part of it and goes with it. A
 dependent is another object that refers to it, and blocks its deletion. A reference from an
-object to itself never blocks. Objects that refer to each other in a circle form a cycle, which
-no single deletion can remove.
+object to itself never blocks. Dependents are chosen so that something can always be deleted
+first — a relationship stands on its own and goes before the tables it joins — so no legitimate
+circle of objects blocking each other exists; views that read each other, the one way to make
+one, are refused when a view is saved.
 
-This module holds the ONE inventory of those references and answers three questions from it:
+``REFERENCES`` is the inventory: every column that refers to an object, whether or not the
+schema declares a foreign key for it, with its standing. It is data. A test holds that every
+declared foreign key is listed. The answers are computed in code from rows read through the
+control-plane connection, so they are the same on PostgreSQL and SQLite and rely on no database
+cascade.
 
-* :func:`dependents` — which objects block this one;
-* :func:`parts` — which rows go with it;
-* :func:`cycle_of` — which other objects it forms a cycle with.
+A kind's delete in the model store calls :func:`guard` first and refuses while it returns
+anything; then :func:`remove_parts` and the row itself, in one transaction. A change of an
+object's domain will ask the same inventory.
 
-Nothing here deletes anything, and no delete path calls it yet.
-
-**The inventory is data.** ``REFERENCES`` lists every column that refers to an object, whether or
-not the schema declares a foreign key for it; a test holds that every declared foreign key is
-listed. The answers are computed in code from rows read through the control-plane connection, so
-they are the same on PostgreSQL and SQLite and rely on no database cascade.
-
-**A reference whose standing is not yet ruled is UNDECIDED.** ``PENDING_CHOICES`` names each open
-choice and its alternatives. The functions take the rulings as an argument; a reference whose
-choice is not among them raises :class:`PendingChoice` when a row actually matches it. There is
-no default standing.
-
-**Not covered here.** Objects kept in the platform plane (org, environment, user, secret,
-personal access token, invite) and their references; ``tracked_functions.returns``,
+Not covered here: objects kept in the platform plane (org, environment, user, secret, personal
+access token, invite) and their references; ``tracked_functions.returns``,
 ``kafka_sinks.query_stable_id`` and the config file's scheduled triggers, which name a table in
-forms not yet established; data held outside the control plane (replicas, view storage, caches).
+forms not yet established; a materialized view's reliance on the relationships its SQL joins
+over, which is by joined columns and not by a relationship's id; data held outside the control
+plane (replicas, view storage, caches).
 """
 
 # Requirements: REQ-1917, REQ-1918
@@ -49,7 +45,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 import sqlglot
-from sqlalchemy import select
+from sqlalchemy import and_, func, or_, select
 from sqlglot import exp
 from sqlglot.errors import SqlglotError
 
@@ -62,7 +58,6 @@ if TYPE_CHECKING:
 class Standing(Enum):
     PART = "part"
     DEPENDENT = "dependent"
-    UNDECIDED = "undecided"
 
 
 class Match(Enum):
@@ -92,10 +87,11 @@ class Reference:
     """One column that refers to objects of kind ``to``.
 
     ``by`` is which attribute of the referred object the column holds (``"key"``, ``"name"``, or
-    for a table ``"view_mv_id"``). A DEPENDENT or UNDECIDED reference names the object the
-    referring row is, or belongs to: its kind ``of`` and the column ``owner`` holding that
-    object's key. ``ends`` groups the columns of one row that are the ends of a link; a row all
-    of whose ends are the same object is that object's reference to itself, and is its part.
+    for a table ``"view_mv_id"``). A DEPENDENT reference names the object the referring row is,
+    or belongs to: its kind ``of`` and the column ``owner`` holding that object's key. A PART
+    reference names them only when the part is itself an object with parts of its own, which
+    then go too. ``ends`` groups the columns of one row that are the ends of a link; a row all
+    of whose ends are the same object is that object's reference to itself, and goes with it.
     """
 
     table: str
@@ -106,7 +102,6 @@ class Reference:
     by: str = "key"
     of: str | None = None
     owner: str | None = None
-    choice: str | None = None
     path: str | None = None
     ends: tuple[str, ...] = ()
 
@@ -115,25 +110,6 @@ class Reference:
 class Dependent:
     ref: ObjectRef
     via: tuple[str, ...]  # the referring columns, as "table.column"
-
-
-@dataclass(frozen=True)
-class PartRows:
-    table: str
-    column: str
-    count: int
-
-
-class PendingChoice(Exception):
-    """A row matches a reference whose standing has not been ruled."""
-
-    def __init__(self, choice: str, reference: Reference) -> None:
-        self.choice = choice
-        self.reference = reference
-        super().__init__(
-            f"{reference.table}.{reference.column} refers to a {reference.to}, and whether that "
-            f"is a part or a dependent is not ruled: {choice} — {PENDING_CHOICES[choice]}"
-        )
 
 
 KINDS: dict[str, Kind] = {
@@ -160,39 +136,7 @@ KINDS: dict[str, Kind] = {
     "event": Kind("events", "id"),
 }
 
-# Each open choice and its alternatives. A choice leaves this table when it is ruled: its
-# references take the ruled standing and lose their ``choice``.
-PENDING_CHOICES: dict[str, str] = {
-    "source.tables": "a source's registered tables block its deletion, or go with it",
-    "table.row_filters": "a row filter on the table goes with it, or blocks its deletion",
-    "table.outgoing_relationships": (
-        "a relationship FROM the table blocks its deletion, or goes with it"
-    ),
-    "role.assignments": "a role's assignments block its deletion, or go with it",
-    "role.grant_lists": (
-        "an object naming the role in a grant or ownership list blocks its deletion, or the "
-        "role is removed from the list"
-    ),
-    "data_product.members": (
-        "a data product's member tables and commands block its deletion, or are detached"
-    ),
-    "tag.assignments": "a tag's assignments go with it, or block its deletion",
-    "glossary_term.edges": "an edge from another term goes with the term, or blocks its deletion",
-}
-
-# A kind whose objects may be PARTS of another object: the owner's kind, the column of the kind's
-# own table holding the owner's key, and the open choice that decides it (None: decided, a part).
-# A dependent of such a kind is reported as its owner — what refers to the object is then the
-# owner, through its part. This is what makes two tables each holding a relationship to the other
-# a cycle of the two tables: each table's relationship is its part and refers to the other table.
-# A row whose owner column is empty has no owner and stands for itself.
-OWNED: dict[str, tuple[str, str, str | None]] = {
-    "relationship": ("table", "source_table_id", "table.outgoing_relationships"),
-    "row_filter": ("table", "table_id", "table.row_filters"),
-    "role_assignment": ("role", "role_id", "role.assignments"),
-}
-
-_P, _D, _U = Standing.PART, Standing.DEPENDENT, Standing.UNDECIDED
+_P, _D = Standing.PART, Standing.DEPENDENT
 _ENDS = ("source_table_id", "target_table_id", "via_table_id")
 
 
@@ -203,14 +147,6 @@ def _part(table: str, column: str, to: str, **kw: Any) -> Reference:
 def _dep(table: str, column: str, to: str, of: str, owner: str, **kw: Any) -> Reference:
     return Reference(table, column, to, _D, of=of, owner=owner, **kw)
 
-
-def _open(
-    table: str, column: str, to: str, of: str, owner: str, choice: str, **kw: Any
-) -> Reference:
-    return Reference(table, column, to, _U, of=of, owner=owner, choice=choice, **kw)
-
-
-_GRANTS = "role.grant_lists"
 
 REFERENCES: tuple[Reference, ...] = (
     # --- to a domain: it removes only itself (REQ-1917), so everything in it blocks -------------
@@ -226,12 +162,12 @@ REFERENCES: tuple[Reference, ...] = (
     _dep("provisa_sources", "domain_id", "domain", "remote_registration", "id"),
     _dep("user_role_assignments", "domain_id", "domain", "role_assignment", "id"),
     # --- to a source ---------------------------------------------------------------------------
-    _open("registered_tables", "source_id", "source", "table", "id", "source.tables"),
+    _dep("registered_tables", "source_id", "source", "table", "id"),
     _dep("tracked_functions", "source_id", "source", "command", "name"),
     _part("tag_assignments", "source_id", "source"),
     _part("provisa_sources", "source_id", "source"),
-    _part("api_sources", "id", "source"),
-    _part("kafka_sources", "id", "source"),
+    _part("api_sources", "id", "source", of="api_source", owner="id"),
+    _part("kafka_sources", "id", "source", of="kafka_source", owner="id"),
     # --- to a registered table (a view is one) -------------------------------------------------
     _part("table_columns", "table_id", "table"),
     _part("file_source_mtimes", "table_id", "table"),
@@ -241,17 +177,11 @@ REFERENCES: tuple[Reference, ...] = (
     _part("tag_assignments", "table_id", "table"),
     _part("relationship_candidates", "source_table_id", "table"),
     _part("relationship_candidates", "target_table_id", "table"),
-    _part("materialized_views", "id", "table", by="view_mv_id"),
-    _open("rls_rules", "table_id", "table", "row_filter", "id", "table.row_filters"),
-    _open(
-        "relationships",
-        "source_table_id",
-        "table",
-        "relationship",
-        "id",
-        "table.outgoing_relationships",
-        ends=_ENDS,
-    ),
+    _part("materialized_views", "id", "table", by="view_mv_id", of="materialized_view", owner="id"),
+    _part("rls_rules", "table_id", "table"),
+    # A relationship stands on its own: it blocks every table it takes part in, at either end
+    # or as the table it goes through, and nothing refers to it, so it can always go first.
+    _dep("relationships", "source_table_id", "table", "relationship", "id", ends=_ENDS),
     _dep("relationships", "target_table_id", "table", "relationship", "id", ends=_ENDS),
     _dep("relationships", "via_table_id", "table", "relationship", "id", ends=_ENDS),
     _dep("registered_tables", "view_sql", "table", "table", "id", match=Match.MENTIONS, by="name"),
@@ -280,22 +210,20 @@ REFERENCES: tuple[Reference, ...] = (
     # --- to a role -----------------------------------------------------------------------------
     _dep("roles", "parent_role_id", "role", "role", "id"),
     _dep("roles", "defined_from", "role", "role", "id"),
-    _open("user_role_assignments", "role_id", "role", "role_assignment", "id", "role.assignments"),
+    # Anyone who holds the role, and every grant or ownership that names it, blocks it: nothing
+    # may be left naming a deleted role.
+    _dep("user_role_assignments", "role_id", "role", "role_assignment", "id"),
     _part("rls_rules", "role_id", "role"),
-    _open("table_columns", "visible_to", "role", "column", "id", _GRANTS, match=Match.MEMBER),
-    _open("table_columns", "writable_by", "role", "column", "id", _GRANTS, match=Match.MEMBER),
-    _open("table_columns", "unmasked_to", "role", "column", "id", _GRANTS, match=Match.MEMBER),
-    _open("metrics", "visible_to", "role", "metric", "name", _GRANTS, match=Match.MEMBER),
-    _open(
-        "tracked_functions", "visible_to", "role", "command", "name", _GRANTS, match=Match.MEMBER
-    ),
-    _open(
-        "tracked_functions", "writable_by", "role", "command", "name", _GRANTS, match=Match.MEMBER
-    ),
-    _open("tracked_webhooks", "visible_to", "role", "webhook", "name", _GRANTS, match=Match.MEMBER),
-    _open("data_products", "owner_role", "role", "data_product", "id", _GRANTS),
-    _open("data_products", "team_role", "role", "data_product", "id", _GRANTS),
-    _open("domains", "steward", "role", "domain", "id", _GRANTS),
+    _dep("table_columns", "visible_to", "role", "column", "id", match=Match.MEMBER),
+    _dep("table_columns", "writable_by", "role", "column", "id", match=Match.MEMBER),
+    _dep("table_columns", "unmasked_to", "role", "column", "id", match=Match.MEMBER),
+    _dep("metrics", "visible_to", "role", "metric", "name", match=Match.MEMBER),
+    _dep("tracked_functions", "visible_to", "role", "command", "name", match=Match.MEMBER),
+    _dep("tracked_functions", "writable_by", "role", "command", "name", match=Match.MEMBER),
+    _dep("tracked_webhooks", "visible_to", "role", "webhook", "name", match=Match.MEMBER),
+    _dep("data_products", "owner_role", "role", "data_product", "id"),
+    _dep("data_products", "team_role", "role", "data_product", "id"),
+    _dep("domains", "steward", "role", "domain", "id"),
     # --- to a metric ---------------------------------------------------------------------------
     _dep(
         "registered_tables",
@@ -319,48 +247,25 @@ REFERENCES: tuple[Reference, ...] = (
     _part("rls_rules", "action_name", "webhook"),
     _part("tag_assignments", "command_name", "webhook"),
     # --- to a data product ---------------------------------------------------------------------
-    _open("registered_tables", "product_id", "data_product", "table", "id", "data_product.members"),
-    _open(
-        "tracked_functions", "product_id", "data_product", "command", "name", "data_product.members"
-    ),
+    _dep("registered_tables", "product_id", "data_product", "table", "id"),
+    _dep("tracked_functions", "product_id", "data_product", "command", "name"),
     _part("tag_assignments", "product_id", "data_product"),
     # --- to a glossary term --------------------------------------------------------------------
     _part("glossary_term_refs", "term_id", "glossary_term"),
     _part("glossary_term_domains", "term_id", "glossary_term"),
     _part("glossary_term_experts", "term_id", "glossary_term"),
     _part("glossary_term_edges", "from_term_id", "glossary_term"),
-    _open(
-        "glossary_term_edges",
-        "to_term_id",
-        "glossary_term",
-        "glossary_term",
-        "from_term_id",
-        "glossary_term.edges",
-    ),
+    _part("glossary_term_edges", "to_term_id", "glossary_term"),
     # --- to a tag ------------------------------------------------------------------------------
     _part("tag_param_values", "tag_id", "tag"),
-    _open("tag_assignments", "base_tag_id", "tag", "tag_assignment", "id", "tag.assignments"),
+    # A tag takes its assignments with it.
+    _part("tag_assignments", "base_tag_id", "tag"),
     # --- to a remote source registration, and runtime rows -------------------------------------
     _part("api_endpoints", "source_id", "api_source"),
     _part("api_endpoint_candidates", "source_id", "api_source"),
     _part("kafka_topics", "source_id", "kafka_source"),
     _part("event_status", "event_id", "event"),
 )
-
-Rulings = Mapping[str, Standing]
-NO_RULINGS: Rulings = {}
-
-
-def _standing(reference: Reference, rulings: Rulings) -> Standing:
-    """The reference's standing: its own, or — for an open choice — the ruling given for it.
-    Raises :class:`PendingChoice` for an open choice with no ruling."""
-    if reference.standing is not Standing.UNDECIDED:
-        return reference.standing
-    assert reference.choice is not None
-    ruled = rulings.get(reference.choice)
-    if ruled is None or ruled is Standing.UNDECIDED:
-        raise PendingChoice(reference.choice, reference)
-    return ruled
 
 
 def names_in_sql(sql: str) -> tuple[set[str], set[str]]:
@@ -404,16 +309,16 @@ def _matches(reference: Reference, value: Any, wanted: Any) -> bool:
     return wanted in (metric_names if reference.to == "metric" else relations)
 
 
-async def _attributes(conn: "Connection", ref: ObjectRef) -> dict[str, Any] | None:
-    """What other rows may hold to refer to this object, or ``None`` when there is no such
-    object: its key, its name when its kind has one, and for a table the id its view storage
-    row is kept under."""
+async def _attributes(conn: "Connection", ref: ObjectRef) -> dict[str, Any]:
+    """What other rows may hold to refer to this object: its key, its name when its kind has
+    one, and for a table the id its view storage row is kept under. ``LookupError`` when there
+    is no such object."""
     kind = KINDS[ref.kind]
     table = metadata.tables[kind.table]
     columns = [table.c[kind.key]] + ([table.c[kind.name]] if kind.name else [])
     row = (await conn.execute_core(select(*columns).where(table.c[kind.key] == ref.id))).fetchone()
     if row is None:
-        return None
+        raise LookupError(f"no {ref.kind} {ref.id!r}")
     attributes: dict[str, Any] = {"key": row[0]}
     if kind.name:
         attributes["name"] = row[1]
@@ -430,8 +335,6 @@ async def _referring_rows(
     names = {reference.column, *reference.ends}
     if reference.owner is not None:
         names.add(reference.owner)
-    if reference.of in OWNED:
-        names.add(OWNED[reference.of][1])
     statement = select(*(table.c[name] for name in sorted(names)))
     if reference.match is Match.EQUALS:
         statement = statement.where(table.c[reference.column] == wanted)
@@ -439,95 +342,92 @@ async def _referring_rows(
     return [r._mapping for r in rows if _matches(reference, r._mapping[reference.column], wanted)]
 
 
-def _referrer(reference: Reference, row: Mapping[str, Any], rulings: Rulings) -> ObjectRef:
-    """The object a referring row stands for: the object the row is, or — when objects of that
-    kind are parts of another — the object it is part of."""
-    assert reference.of is not None and reference.owner is not None
-    itself = ObjectRef(reference.of, row[reference.owner])
-    if reference.of not in OWNED:
-        return itself
-    owner_kind, owner_column, choice = OWNED[reference.of]
-    if row[owner_column] is None:
-        return itself
-    if choice is not None:
-        ruled = rulings.get(choice)
-        if ruled is None or ruled is Standing.UNDECIDED:
-            raise PendingChoice(choice, reference)
-        if ruled is Standing.DEPENDENT:
-            return itself
-    return ObjectRef(owner_kind, row[owner_column])
+def _is_its_own(reference: Reference, row: Mapping[str, Any], ref: ObjectRef) -> bool:
+    """True when the referring row is the object's reference to ITSELF, which never blocks it:
+    the row is the object, or it is a link row every end of which is the object."""
+    if reference.of == ref.kind and reference.owner is not None and row[reference.owner] == ref.id:
+        return True
+    return bool(reference.ends) and all(row[end] in (None, ref.id) for end in reference.ends)
 
 
-def _refers_only_to_itself(reference: Reference, row: Mapping[str, Any], key: Any) -> bool:
-    """True when every end of a link row is the one object: the object's reference to itself."""
-    return bool(reference.ends) and all(row[end] in (None, key) for end in reference.ends)
+async def guard(conn: "Connection", ref: ObjectRef) -> list[Dependent]:
+    """The objects that block ``ref``'s deletion — empty when it may go.
 
-
-async def _scan(
-    conn: "Connection", ref: ObjectRef, rulings: Rulings
-) -> tuple[dict[ObjectRef, list[str]], list[PartRows]] | None:
-    """Every row that refers to ``ref``, sorted into the objects that block it and the rows that
-    go with it; ``None`` when there is no such object."""
+    Direct dependents only: its parts and its references to itself are not among them.
+    ``LookupError`` when there is no such object.
+    """
     attributes = await _attributes(conn, ref)
-    if attributes is None:
-        return None
-    blocking: dict[ObjectRef, list[str]] = {}
-    going: list[PartRows] = []
+    blocking: dict[ObjectRef, set[str]] = {}
     for reference in REFERENCES:
-        if reference.to != ref.kind:
+        if reference.to != ref.kind or reference.standing is not Standing.DEPENDENT:
             continue
-        rows = await _referring_rows(conn, reference, attributes[reference.by])
-        if not rows:
-            continue
-        own = [r for r in rows if _refers_only_to_itself(reference, r, attributes["key"])]
-        others = [r for r in rows if r not in own]
-        standing = _standing(reference, rulings) if others else Standing.PART
-        if standing is Standing.PART:
-            going.append(PartRows(reference.table, reference.column, len(rows)))
-            continue
-        if own:
-            going.append(PartRows(reference.table, reference.column, len(own)))
-        for row in others:
-            referrer = _referrer(reference, row, rulings)
-            if referrer == ref:
-                continue  # a reference from an object to itself never blocks it
-            blocking.setdefault(referrer, []).append(f"{reference.table}.{reference.column}")
-    return blocking, going
-
-
-async def dependents(
-    conn: "Connection", ref: ObjectRef, rulings: Rulings = NO_RULINGS
-) -> list[Dependent]:
-    """The objects that refer to ``ref`` and block its deletion: direct only, its parts and its
-    references to itself excluded. Raises ``LookupError`` when there is no such object and
-    :class:`PendingChoice` when a row matches a reference whose standing is not ruled."""
-    scanned = await _scan(conn, ref, rulings)
-    if scanned is None:
-        raise LookupError(f"no {ref.kind} {ref.id!r}")
-    blocking, _ = scanned
+        assert reference.of is not None and reference.owner is not None
+        for row in await _referring_rows(conn, reference, attributes[reference.by]):
+            if _is_its_own(reference, row, ref):
+                continue
+            referrer = ObjectRef(reference.of, row[reference.owner])
+            blocking.setdefault(referrer, set()).add(f"{reference.table}.{reference.column}")
     return sorted(
-        (Dependent(referrer, tuple(sorted(set(via)))) for referrer, via in blocking.items()),
+        (Dependent(referrer, tuple(sorted(via))) for referrer, via in blocking.items()),
         key=lambda d: (d.ref.kind, str(d.ref.id)),
     )
 
 
-async def parts(
-    conn: "Connection", ref: ObjectRef, rulings: Rulings = NO_RULINGS
-) -> list[PartRows]:
-    """The rows that exist only as part of ``ref`` and go with it, by table and column."""
-    scanned = await _scan(conn, ref, rulings)
-    if scanned is None:
-        raise LookupError(f"no {ref.kind} {ref.id!r}")
-    return sorted(scanned[1], key=lambda p: (p.table, p.column))
+def _part_statements(ref: ObjectRef, attributes: Mapping[str, Any]):
+    """One (reference, WHERE clause) per kind of row that goes with ``ref``: its PART rows, and
+    the link rows that are its reference to itself."""
+    for reference in REFERENCES:
+        if reference.to != ref.kind:
+            continue
+        table = metadata.tables[reference.table]
+        refers = table.c[reference.column] == attributes[reference.by]
+        if reference.standing is Standing.PART:
+            # Every PART reference holds the object's key or name outright (a test holds this),
+            # so the rows are found by equality.
+            yield reference, refers
+        elif reference.ends:
+            own = [or_(table.c[end].is_(None), table.c[end] == ref.id) for end in reference.ends]
+            yield reference, and_(refers, *own)
 
 
-async def cycle_of(
-    conn: "Connection", ref: ObjectRef, rulings: Rulings = NO_RULINGS
-) -> list[ObjectRef]:
-    """The OTHER members of the cycle ``ref`` is in — empty when it is in none.
+async def parts(conn: "Connection", ref: ObjectRef) -> dict[str, int]:
+    """How many rows go with ``ref``, by ``table.column`` — only the columns that have any."""
+    attributes = await _attributes(conn, ref)
+    counts: dict[str, int] = {}
+    for reference, where in _part_statements(ref, attributes):
+        table = metadata.tables[reference.table]
+        found = (
+            await conn.execute_core(select(func.count()).select_from(table).where(where))
+        ).scalar_one()
+        if found:
+            counts[f"{reference.table}.{reference.column}"] = found
+    return counts
 
-    The cycle is the strongly connected component of the blocking graph that contains ``ref``:
-    every object that blocks ``ref`` (directly or through others) and is in turn blocked by it.
+
+async def remove_parts(conn: "Connection", ref: ObjectRef) -> None:
+    """Delete the rows that go with ``ref``. The caller holds the transaction, has asked
+    :func:`guard`, and deletes the object's own row after this."""
+    attributes = await _attributes(conn, ref)
+    for reference, where in _part_statements(ref, attributes):
+        table = metadata.tables[reference.table]
+        if reference.standing is Standing.PART and reference.of is not None:
+            # A part that is itself an object: its own parts go first.
+            assert reference.owner is not None
+            keys = (
+                await conn.execute_core(select(table.c[reference.owner]).where(where))
+            ).fetchall()
+            for (key,) in keys:
+                await remove_parts(conn, ObjectRef(reference.of, key))
+        await conn.execute_core(table.delete().where(where))
+
+
+async def circle_of(conn: "Connection", ref: ObjectRef) -> list[ObjectRef]:
+    """The OTHER objects that block ``ref`` and are in turn blocked by it — empty when there
+    are none, which is the case on any control plane written through the model store.
+
+    Only a damaged control plane holds such a circle (views saved reading each other before that
+    was refused, a role parent loop written around the save check). A deletion is refused there
+    like any other; this names the members so that the operator can edit one of them.
     """
     blocked_by: dict[ObjectRef, list[ObjectRef]] = {}
     frontier = [ref]
@@ -535,11 +435,10 @@ async def cycle_of(
         current = frontier.pop()
         if current in blocked_by:
             continue
-        found = await dependents(conn, current, rulings)
-        blocked_by[current] = [d.ref for d in found]
+        blocked_by[current] = [d.ref for d in await guard(conn, current)]
         frontier.extend(blocked_by[current])
-    # ``blocked_by`` now holds everything that blocks ref, at any distance. A member of ref's
-    # cycle is one of those that ref blocks in turn: one from which ref is reachable.
+    # ``blocked_by`` holds everything that blocks ref, at any distance. A member of ref's circle
+    # is one of those that ref blocks in turn: one from which ref is reachable.
     reaches_ref = {ref}
     grew = True
     while grew:

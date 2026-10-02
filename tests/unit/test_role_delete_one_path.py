@@ -12,7 +12,8 @@
 
 The GraphQL ``deleteRole`` mutation and REST ``DELETE /admin/roles/{id}`` both call
 ``role_repo.delete``, so both refuse a role the deployment defines and a role other roles
-inherit from, and both rebuild the schemas when a role goes. A role the deployment defines is
+inherit from, holds, or names in a grant (REQ-1918), and both rebuild the schemas when a role
+goes. A role the deployment defines is
 one whose row carries no org — what the seed writes; a role an administrator creates records
 the org it was created in.
 
@@ -113,13 +114,51 @@ async def test_a_role_the_deployment_defines_is_refused(plane, role_id):
     assert role_id in await _ids(plane)
 
 
+def _named(refused: role_repo.RoleDeleteRefused) -> list[tuple[str, object, tuple[str, ...]]]:
+    return [(d.ref.kind, d.ref.id, d.via) for d in refused.dependents]
+
+
 async def test_a_role_others_inherit_from_is_refused_naming_them(plane):
     async with plane.acquire() as conn:
         with pytest.raises(role_repo.RoleDeleteRefused) as err:
             await role_repo.delete(conn, "base")
-    assert (err.value.reason, err.value.heirs) == ("heirs", ["derived"])
-    assert "derived" in str(err.value)
+    assert err.value.reason == "dependents"
+    assert _named(err.value) == [("role", "derived", ("roles.parent_role_id",))]
+    assert "role derived" in str(err.value)
     assert "base" in await _ids(plane)
+
+
+async def test_a_role_someone_holds_or_a_grant_names_is_refused_naming_each(plane):
+    from provisa.core.schema_org import metrics, rls_rules, user_role_assignments
+
+    async with plane.acquire() as conn:
+        await conn.execute_core(
+            user_role_assignments.insert().values(user_id="u1", role_id="loose", domain_id="*")
+        )
+        await conn.execute_core(
+            metrics.insert().values(name="revenue", expression="SUM(o.a)", visible_to=["loose"])
+        )
+        await conn.execute_core(rls_rules.insert().values(role_id="loose", filter_expr=b"1=1"))
+        with pytest.raises(role_repo.RoleDeleteRefused) as err:
+            await role_repo.delete(conn, "loose")
+        assert [(kind, via) for kind, _, via in _named(err.value)] == [
+            ("metric", ("metrics.visible_to",)),
+            ("role_assignment", ("user_role_assignments.role_id",)),
+        ]
+        assert "loose" in await _ids(plane)
+
+        # Once nobody holds it and no grant names it, it goes, and its row filter with it.
+        await conn.execute_core(user_role_assignments.delete())
+        await conn.execute_core(metrics.delete())
+        assert await role_repo.delete(conn, "loose") is True
+        left = (await conn.execute_core(select(rls_rules.c.role_id))).fetchall()
+    assert [r[0] for r in left if r[0] == "loose"] == []
+
+
+async def test_a_full_replace_removes_every_role_it_is_not_told_to_keep(plane):
+    async with plane.acquire() as conn:
+        await role_repo.delete_all_except(conn, ["org_admin", "analyst", "base"])
+    assert await _ids(plane) == {"org_admin", "analyst", "base"}
 
 
 async def test_a_created_role_nothing_inherits_from_is_deleted(plane):
@@ -180,15 +219,22 @@ async def test_graphql_refuses_a_role_the_deployment_defines(
 async def test_rest_refuses_a_parent_naming_its_heirs(plane, rebuilds):
     with pytest.raises(ApiError) as err:
         await _rest("base")
-    assert (err.value.status_code, err.value.code) == (409, "roles.has_heirs")
-    assert err.value.params == {"role": "base", "heirs": ["derived"]}
+    assert (err.value.status_code, err.value.code) == (409, "roles.has_dependents")
+    assert err.value.params == {
+        "role": "base",
+        "count": 1,
+        "dependents": [{"kind": "role", "id": "derived", "via": ["roles.parent_role_id"]}],
+    }
     assert "base" in await _ids(plane) and rebuilds == []
 
 
 async def test_graphql_refuses_a_parent_naming_its_heirs(plane, graphql_pool, rebuilds):
     result = await _graphql("base")
-    assert (result.success, result.code) == (False, "schema.role_has_heirs")
-    assert result.params == {"role": "base", "heirs": ["derived"]}
+    assert (result.success, result.code) == (False, "schema.role_has_dependents")
+    assert result.params == {
+        "role": "base",
+        "dependents": [{"kind": "role", "id": "derived", "via": ["roles.parent_role_id"]}],
+    }
     assert "base" in await _ids(plane) and rebuilds == []
 
 

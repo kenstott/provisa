@@ -192,7 +192,7 @@ class TestRoleInheritance:  # REQ-1677
         )
         res = result["data"]["deleteRole"]
         assert res["success"] is False
-        assert res["code"] == "schema.role_has_heirs"
+        assert res["code"] == "schema.role_has_dependents"
         assert "member_1677" in res["message"]
         for role_id in ("member_1677", "lead_1677", "junior_analyst_1677"):
             gone = await _gql(client, f'mutation {{ deleteRole(id: "{role_id}") {{ success }} }}')

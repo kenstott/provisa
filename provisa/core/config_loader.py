@@ -41,7 +41,6 @@ from provisa.core.schema_org import (
     naming_rules,
     registered_tables,
     relationships,
-    roles,
     sources,
     table_columns,
     tracked_functions,
@@ -225,10 +224,7 @@ async def _replace_mode_cleanup(
     await conn.execute_core(_delete(sources).where(sources.c.id.not_in(keep_sources)))
     keep_domains = new_domain_ids if new_domain_ids else domain_policy.system_domain_ids()
     await conn.execute_core(_delete(domains).where(domains.c.id.not_in(keep_domains)))
-    if new_role_ids:
-        await conn.execute_core(_delete(roles).where(roles.c.id.not_in(new_role_ids)))
-    else:
-        await conn.execute_core(_delete(roles))
+    await role_repo.delete_all_except(conn, new_role_ids)
     await conn.execute_core(_delete(relationships).where(relationships.c.id.notlike("meta:%")))
     await conn.execute_core(_delete(tracked_functions))
     await conn.execute_core(_delete(tracked_webhooks))

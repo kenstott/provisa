@@ -195,7 +195,7 @@
     "roles": {
       "cannot_delete_system": "No se pueden eliminar los roles del sistema",
       "cannot_modify_administrative": "No se pueden modificar los roles administrativos",
-      "has_heirs": "El rol {{role}} es heredado por {{heirs}}; asígneles primero otro rol principal",
+      "has_dependents": "El rol {{role}} todavía es referenciado por {{count}} objeto(s); elimine primero esas referencias",
       "not_found": "No se encontró el rol",
       "org_selection_required": "Se requiere seleccionar una organización"
     },

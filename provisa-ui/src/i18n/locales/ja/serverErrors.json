@@ -195,7 +195,7 @@
     "roles": {
       "cannot_delete_system": "システムロールは削除できません",
       "cannot_modify_administrative": "管理ロールは変更できません",
-      "has_heirs": "ロール {{role}} は {{heirs}} に継承されています。先にそれらの親ロールを変更してください",
+      "has_dependents": "ロール {{role}} はまだ {{count}} 個のオブジェクトから参照されています。先にそれらの参照を削除してください",
       "not_found": "ロールが見つかりません",
       "org_selection_required": "組織の選択が必要です"
     },

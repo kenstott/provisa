@@ -271,9 +271,18 @@ async def delete_role(role_id: str, request: Request):  # REQ-042, REQ-059, REQ-
         try:
             deleted = await role_repo.delete(conn, role_id)
         except role_repo.RoleDeleteRefused as refused:
-            if refused.reason == "heirs":
+            if refused.reason == "dependents":
+                # REQ-1918: nothing is removed; every dependent is named.
                 raise ApiError(
-                    409, "roles.has_heirs", str(refused), role=role_id, heirs=refused.heirs
+                    409,
+                    "roles.has_dependents",
+                    str(refused),
+                    role=role_id,
+                    count=len(refused.dependents),
+                    dependents=[
+                        {"kind": d.ref.kind, "id": d.ref.id, "via": list(d.via)}
+                        for d in refused.dependents
+                    ],
                 ) from refused
             raise ApiError(
                 400, "roles.cannot_delete_system", "Cannot delete system roles"

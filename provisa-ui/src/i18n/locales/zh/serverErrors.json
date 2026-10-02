@@ -195,7 +195,7 @@
     "roles": {
       "cannot_delete_system": "无法删除系统角色",
       "cannot_modify_administrative": "无法修改管理角色",
-      "has_heirs": "角色 {{role}} 被 {{heirs}} 继承；请先为它们指定其他父角色",
+      "has_dependents": "仍有 {{count}} 个对象引用角色 {{role}}；请先移除这些引用",
       "not_found": "未找到角色",
       "org_selection_required": "需要先选择组织"
     },

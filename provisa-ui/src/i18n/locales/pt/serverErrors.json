@@ -195,7 +195,7 @@
     "roles": {
       "cannot_delete_system": "Não é possível excluir funções do sistema",
       "cannot_modify_administrative": "Não é possível modificar funções administrativas",
-      "has_heirs": "O papel {{role}} é herdado por {{heirs}}; atribua-lhes primeiro outro papel principal",
+      "has_dependents": "O papel {{role}} ainda é referenciado por {{count}} objeto(s); remova primeiro essas referências",
       "not_found": "Função não encontrada",
       "org_selection_required": "Seleção de organização necessária"
     },

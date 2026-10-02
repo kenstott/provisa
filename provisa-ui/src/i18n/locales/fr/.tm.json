@@ -2930,7 +2930,7 @@
   "fr/serverErrors.json::serverErrors.profile.table_not_found": "Table {{table_id}} not found",
   "fr/serverErrors.json::serverErrors.roles.cannot_delete_system": "Cannot delete system roles",
   "fr/serverErrors.json::serverErrors.roles.cannot_modify_administrative": "Cannot modify administrative roles",
-  "fr/serverErrors.json::serverErrors.roles.has_heirs": "Role {{role}} is inherited by {{heirs}}; reparent them first",
+  "fr/serverErrors.json::serverErrors.roles.has_dependents": "Role {{role}} is still referred to by {{count}} object(s); remove those references first",
   "fr/serverErrors.json::serverErrors.roles.not_found": "Role not found",
   "fr/serverErrors.json::serverErrors.roles.org_selection_required": "Org selection required",
   "fr/serverErrors.json::serverErrors.schema.allowed_domains_updated": "Allowed domains updated for source '{{source}}'",
