@@ -328,7 +328,6 @@ def test_every_caller_facing_surface_binds_an_acting_principal(surface, module, 
         ("cypher REST exec", "provisa/api/rest/cypher_exec.py"),
         ("cypher REST router", "provisa/api/rest/cypher_router.py"),
         ("airport", "provisa/api/airport/query.py"),
-        ("ctas", "provisa/executor/ctas.py"),
     ],
 )
 def test_every_govern_then_stream_terminal_finalizes_its_audit(surface, module):
@@ -370,7 +369,6 @@ def test_require_governed_plan_callers_are_the_known_surface_set():
         "provisa/api/rest/cypher_exec.py",
         "provisa/api/rest/cypher_router.py",
         "provisa/grpc/server.py",
-        "provisa/executor/ctas.py",
     }
     assert set(out) - known == set(), (
         "a new surface verifies a governed plan but is not in the audited set"

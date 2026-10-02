@@ -183,3 +183,20 @@ def test_airport_definition_actions_answer_the_same_refusal():
     source = inspect.getsource(server)
     assert "DefinitionNotAvailable(definition)" in source
     assert "_do_create_table" not in source and "_do_create_schema" not in source
+
+
+def test_the_client_ctas_module_is_gone():
+    """``provisa.executor.ctas`` existed to run a client's ``CREATE TABLE … AS SELECT``. With the
+    statement refused it had no caller, and it is removed rather than kept unreachable."""
+    import importlib.util
+    import pathlib
+
+    import provisa
+
+    assert importlib.util.find_spec("provisa.executor.ctas") is None
+    root = pathlib.Path(provisa.__file__).parent
+    assert not [
+        str(path.relative_to(root))
+        for path in root.rglob("*.py")
+        if "run_ctas" in path.read_text(errors="replace")
+    ]
