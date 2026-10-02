@@ -259,3 +259,63 @@ async def test_the_domain_list_is_the_acting_roles(monkeypatch):
     with pytest.raises(ApiError) as err:
         await sdl.get_domains(_acting(None), x_provisa_role=none, x_role=none)
     assert (err.value.status_code, err.value.code) == (422, "data.missing_x_provisa_role_header")
+
+
+# --- the admin compile: a role named in the input -------------------------------------------------
+
+DEVELOPER, INSPECTOR = "developer", "inspector"
+
+
+@pytest.fixture
+def compiled_as(monkeypatch):
+    """Roles for the compile cases, and the role the compiler was asked to compile as."""
+    from provisa.api.admin import dev_queries
+
+    roles = dict(appmod.state.roles)
+    roles[DEVELOPER] = {
+        "id": DEVELOPER,
+        "capabilities": ["query_development"],
+        "domain_access": ["*"],
+    }
+    roles[INSPECTOR] = {
+        "id": INSPECTOR,
+        "capabilities": ["query_development", "access_config"],
+        "domain_access": ["*"],
+    }
+    monkeypatch.setattr(appmod.state, "roles", roles, raising=False)
+    seen: list[str] = []
+
+    async def _compile(role_id, *_args, **_kwargs):
+        seen.append(role_id)
+        return []
+
+    monkeypatch.setattr(dev_queries, "compile_query", _compile)
+    return seen
+
+
+async def _compile_as(role_id: str, *held: str) -> None:
+    from provisa.api.admin import schema_mutation
+    from provisa.api.admin.types import CompileQueryInput
+
+    info = types.SimpleNamespace(context={"request": _request(*held)})
+    await schema_mutation.Mutation().compile_query(
+        info,  # type: ignore[arg-type]
+        CompileQueryInput(query="{ x }", role=role_id),
+    )
+
+
+async def test_a_compile_as_a_held_role_runs(compiled_as):
+    await _compile_as(A, DEVELOPER, A)
+    assert compiled_as == [A]
+
+
+async def test_a_compile_as_a_role_the_caller_does_not_hold_is_refused(compiled_as):
+    with pytest.raises(ApiError) as err:
+        await _compile_as(B, DEVELOPER, A)
+    _refused(err, B)
+    assert compiled_as == []
+
+
+async def test_the_holder_of_access_config_compiles_as_any_role(compiled_as):
+    await _compile_as(B, INSPECTOR)
+    assert compiled_as == [B]

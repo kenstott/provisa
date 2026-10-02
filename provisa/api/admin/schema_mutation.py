@@ -3204,7 +3204,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     ) -> list[CompileQueryResult]:  # REQ-161
         require_capability(info, "query_development")
         from provisa.api.admin import dev_queries
+        from provisa.api.admin.capabilities import require_inspectable_role
 
+        require_inspectable_role(info, input.role)
         variables = cast(dict, input.variables) if input.variables else None
         results = await dev_queries.compile_query(
             input.role,
