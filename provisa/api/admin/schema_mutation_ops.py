@@ -63,7 +63,7 @@ async def _apply_mv_relationship_gate(
         return None
 
     from provisa.api.admin.capabilities import has_capability
-    from provisa.api.admin.mv_relationship_gate import evaluate_gate
+    from provisa.mv.relationship_gate import evaluate_gate
     from provisa.core.models import Cardinality, Relationship
     from provisa.core.repositories import relationship as relationship_repo
     from provisa.core.repositories import table as table_repo

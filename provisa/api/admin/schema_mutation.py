@@ -2574,7 +2574,22 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             domains = await relationship_domains(cast("Connection", conn), id)
             if domains is not None:
                 require_domains(info, domains)
-            deleted = await rel_repo.delete(cast("Connection", conn), id)
+            try:
+                deleted = await rel_repo.delete(cast("Connection", conn), id)
+            except rel_repo.RelationshipDeleteRefused as refused:
+                # REQ-1918: a published view relies on it; nothing is removed, each is named.
+                return MutationResult(
+                    success=False,
+                    message=str(refused),
+                    code="schema.relationship_has_dependents",
+                    params={
+                        "relationship": id,
+                        "dependents": [
+                            {"kind": d.ref.kind, "id": d.ref.id, "via": list(d.via)}
+                            for d in refused.dependents
+                        ],
+                    },
+                )
         if deleted:
             await _rebuild_schemas()
             return MutationResult(

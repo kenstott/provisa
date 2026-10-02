@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import pytest
 
-from provisa.api.admin.mv_relationship_gate import (
+from provisa.mv.relationship_gate import (
     JoinDep,
     evaluate_gate,
     extract_join_deps,

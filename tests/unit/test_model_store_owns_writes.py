@@ -45,6 +45,7 @@ CONVERTED: dict[str, set[str]] = {
     "domains": {"delete"},
     "registered_tables": {"delete"},
     "sources": {"delete"},
+    "relationships": {"delete"},
 }
 
 _CONSTRUCTORS = {

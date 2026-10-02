@@ -222,7 +222,7 @@ async def _replace_mode_cleanup(
     keep_domains = new_domain_ids if new_domain_ids else domain_policy.system_domain_ids()
     await domain_repo.delete_all_except(conn, list(keep_domains))
     await role_repo.delete_all_except(conn, new_role_ids)
-    await conn.execute_core(_delete(relationships).where(relationships.c.id.notlike("meta:%")))
+    await rel_repo.remove_where(conn, relationships.c.id.notlike("meta:%"))
     await conn.execute_core(_delete(tracked_functions))
     await conn.execute_core(_delete(tracked_webhooks))
 
@@ -748,19 +748,15 @@ async def _upsert_relationships(
         .exists()
     )
     if current_rel_ids:
-        await conn.execute_core(
-            _delete(relationships).where(
-                relationships.c.id.not_in(current_rel_ids),
-                relationships.c.id.notlike("meta:%"),
-                ~graphql_remote_exists,
-            )
+        await rel_repo.remove_where(
+            conn,
+            relationships.c.id.not_in(current_rel_ids),
+            relationships.c.id.notlike("meta:%"),
+            ~graphql_remote_exists,
         )
     else:
-        await conn.execute_core(
-            _delete(relationships).where(
-                relationships.c.id.notlike("meta:%"),
-                ~graphql_remote_exists,
-            )
+        await rel_repo.remove_where(
+            conn, relationships.c.id.notlike("meta:%"), ~graphql_remote_exists
         )
     for rel in config.relationships:
         try:

@@ -30,9 +30,12 @@ object's domain will ask the same inventory.
 Not covered here: objects kept in the platform plane (org, environment, user, secret, personal
 access token, invite) and their references — among them the sources and configuration that
 name an org secret; ``kafka_sinks.query_stable_id`` and the config file's scheduled triggers,
-which name a table in forms not yet established; a materialized view's reliance on the relationships its SQL joins
-over, which is by joined columns and not by a relationship's id; data held outside the control
-plane (replicas, view storage, caches).
+which name a table in forms not yet established; data held outside the control plane (replicas, view storage,
+caches).
+
+One reference is in no column: a materialized view relies on the relationships its SQL joins
+over, matched by the joined tables and columns. :func:`guard` works it out for a relationship
+with the publish gate's own matcher (``provisa.mv.relationship_gate``).
 """
 
 # Requirements: REQ-1917, REQ-1918
@@ -373,10 +376,55 @@ async def guard(conn: "Connection", ref: ObjectRef) -> list[Dependent]:
                 continue
             referrer = ObjectRef(reference.of, row[reference.owner])
             blocking.setdefault(referrer, set()).add(f"{reference.table}.{reference.column}")
+    if ref.kind == "relationship":
+        for view_id in await _views_published_over(conn, ref.id):
+            blocking.setdefault(ObjectRef("table", view_id), set()).add(
+                "registered_tables.view_sql"
+            )
     return sorted(
         (Dependent(referrer, tuple(sorted(via))) for referrer, via in blocking.items()),
         key=lambda d: (d.ref.kind, str(d.ref.id)),
     )
+
+
+async def _views_published_over(conn: "Connection", rel_id: str) -> list[int]:
+    """The materialized views that rely on a relationship: published views whose SQL joins the
+    two tables on the relationship's columns, where no other relationship approves that join.
+
+    A materialized view is published only over approved relationships (REQ-1140), and the
+    approval is matched by the joined tables and columns, not by a relationship's id — so this
+    reference is in no column, and is worked out with the publish gate's own matcher.
+    """
+    from provisa.mv.relationship_gate import (  # noqa: PLC0415 — only this answer needs it
+        extract_join_deps,
+        relationship_present,
+    )
+
+    relationships = metadata.tables["relationships"]
+    rows = [dict(r._mapping) for r in (await conn.execute_core(select(relationships))).fetchall()]
+    this = [r for r in rows if r["id"] == rel_id]
+    others = [r for r in rows if r["id"] != rel_id]
+
+    tables = metadata.tables["registered_tables"]
+    listed = (
+        await conn.execute_core(
+            select(tables.c.id, tables.c.table_name, tables.c.view_sql, tables.c.materialize)
+        )
+    ).fetchall()
+    id_of = {name: table_id for table_id, name, _, _ in listed}
+    relying: list[int] = []
+    for view_id, _, view_sql, materialize in listed:
+        if not view_sql or not materialize:
+            continue
+        for dep in extract_join_deps(view_sql):
+            left, right = id_of.get(dep.left_table), id_of.get(dep.right_table)
+            if left is None or right is None:
+                continue
+            join = (left, dep.left_column, right, dep.right_column)
+            if relationship_present(this, *join) and not relationship_present(others, *join):
+                relying.append(view_id)
+                break
+    return relying
 
 
 def _part_statements(ref: ObjectRef, attributes: Mapping[str, Any]):

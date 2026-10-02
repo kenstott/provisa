@@ -19,6 +19,7 @@ from sqlalchemy import delete as _delete, func, or_, select, update
 from provisa.compiler.sql_types import key_list
 from provisa.core.models import Relationship
 from provisa.core.repositories import table as table_repo
+from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import relationships, table_columns
 
 if TYPE_CHECKING:
@@ -196,9 +197,42 @@ async def list_all(conn: "Connection") -> list[dict]:  # REQ-018, REQ-019
     return [dict(r._mapping) for r in result.fetchall()]
 
 
-async def delete(conn: "Connection", rel_id: str) -> bool:  # REQ-019
-    result = await conn.execute_core(_delete(relationships).where(relationships.c.id == rel_id))
-    return (result.rowcount or 0) > 0
+class RelationshipDeleteRefused(Exception):
+    """A relationship that may not be deleted because published views rely on it;
+    ``dependents`` lists them."""
+
+    def __init__(self, rel_id: str, dependents: list[Dependent]) -> None:
+        self.rel_id = rel_id
+        self.dependents = dependents
+        named = ", ".join(f"{d.ref.kind} {d.ref.id}" for d in dependents)
+        super().__init__(f"Relationship {rel_id!r} is still relied on by: {named}")
+
+
+async def delete(conn: "Connection", rel_id: str) -> bool:  # REQ-019, REQ-1918
+    """Delete one relationship: THE delete, for every surface. False when there is none.
+
+    A relationship stands on its own — it goes before the tables it joins. It is refused
+    (:class:`RelationshipDeleteRefused`) only while a materialized view is published over it:
+    a view joins on the relationship's columns and no other relationship approves that join
+    (REQ-1140). Its tag assignments go with it. One transaction; no cascade is relied on.
+    """
+    ref = ObjectRef("relationship", rel_id)
+    async with conn.transaction():
+        if await get(conn, rel_id) is None:
+            return False
+        blocking = await guard(conn, ref)
+        if blocking:
+            raise RelationshipDeleteRefused(rel_id, blocking)
+        await remove_parts(conn, ref)
+        await conn.execute_core(_delete(relationships).where(relationships.c.id == rel_id))
+    return True
+
+
+async def remove_where(conn: "Connection", *where) -> None:
+    """Remove every relationship matching ``where`` (clauses on ``relationships``) — for the
+    config loader, which declares relationships as a set and replaces that set. It is not a
+    deletion of one object and does not ask the dependency guard."""
+    await conn.execute_core(_delete(relationships).where(*where))
 
 
 async def mark_relationships_for_review(  # REQ-020
