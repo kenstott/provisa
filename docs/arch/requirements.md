@@ -20529,3 +20529,17 @@ Process roles. A deployment runs the same code in two roles, chosen when a proce
 **Code:** —
 
 **Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-1917 · Domains {#REQ-1917}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Deleting a domain is one explicit operation that the operator approves after seeing its complete impact. Before anything is removed the operator is shown everything the deletion would remove or change -- the registered tables and their columns, relationships, row filters, masking rules, metrics, materialized views and plain views, commands and webhooks, data products, glossary links, tag assignments, the roles and role assignments that name the domain, the sources that list it as an allowed domain, and the replicas and view storage held for its tables, each with a count and the names. The operator approves on the strength of that list or cancels. On approval the removal runs as one operation in dependency order, in one control-plane transaction, written as explicit deletes so that it behaves the same on every control plane and does not depend on database cascades. Replicas and view storage for the removed tables are removed by background jobs the coordinator runs ([REQ-1915](#REQ-1915), [REQ-1916](#REQ-1916)), and their progress is visible. Nothing that referred to the domain is left referring to it. The deletion is refused, naming the role, when it would leave a data role with no domain, because a role always lists one or more domains or all of them; the operator gives that role another domain or removes it first. The impact list shown is the list acted on -- if the domain changed between the preview and the approval the operator is shown the new list and asked again. The approval, the list and the outcome are recorded in the audit trail. A plain delete that removes a domain without this preview does not exist.
+
+**Use case:** A domain owns tables, rules and data, and many other objects point at it. Deleting it silently either destroyed a great deal without warning or left objects pointing at a domain that no longer existed, depending on the control plane in use. The operator must be able to see the full cost and decide.
+
+**Code:** —
+
+**Tests:** —
