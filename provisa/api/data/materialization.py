@@ -145,14 +145,16 @@ async def _promote_joined_from_pg(
         if 0 < len(rows) <= hot_threshold:
             from provisa.cache.hot_tables import HotTableEntry
 
-            hot_mgr._hot_tables[tn] = HotTableEntry(
-                table_name=tn,
-                catalog=cache_loc.catalog,
-                schema=cache_loc.schema,
-                pk_column=col_names[0] if col_names else "id",
-                rows=rows,
-                column_names=col_names,
-                is_api=True,
+            hot_mgr.hold(
+                HotTableEntry(
+                    table_name=tn,
+                    catalog=cache_loc.catalog,
+                    schema=cache_loc.schema,
+                    pk_column=col_names[0] if col_names else "id",
+                    rows=rows,
+                    column_names=col_names,
+                    is_api=True,
+                )
             )
             log.warning(
                 "[MAT] promoted %s → hot_mgr (%d rows) for next-request Values CTE", tn, len(rows)
@@ -373,7 +375,7 @@ async def _mat_gql_remote_table(
             is_api=True,
         )
         if hot_mgr is not None:
-            hot_mgr._hot_tables[tn] = entry
+            hot_mgr.hold(entry)
         values_cte_entries[tn] = entry
         log.warning("[GQL REMOTE] VALUES CTE inline for %s (%d rows)", tn, len(gql_rows))
     else:
@@ -490,7 +492,7 @@ async def _mat_grpc_remote_table(
             is_api=True,
         )
         if hot_mgr is not None:
-            hot_mgr._hot_tables[tn] = entry
+            hot_mgr.hold(entry)
         values_cte_entries[tn] = entry
         log.warning("[GRPC REMOTE] VALUES CTE inline for %s (%d rows)", tn, len(rows))
     else:
@@ -613,7 +615,7 @@ async def _mat_openapi_table(
             is_api=True,
         )
         if hot_mgr is not None:
-            hot_mgr._hot_tables[tn] = hot_entry
+            hot_mgr.hold(hot_entry)
         values_cte_entries[tn] = hot_entry
         log.warning("[OPENAPI] VALUES CTE inline for %s (%d rows)", tn, len(rows))
     else:
@@ -757,7 +759,7 @@ def _mat_store_rows(
             is_api=True,
         )
         if hot_mgr is not None:
-            hot_mgr._hot_tables[tn] = entry
+            hot_mgr.hold(entry)
         values_cte_entries[tn] = entry
         log.warning("[MAT] + hot VALUES CTE inline for %s (%d rows)", tn, len(rows))
     else:

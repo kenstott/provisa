@@ -184,3 +184,38 @@ def test_the_scope_is_read_from_the_acting_runtime():
     finally:
         current_org.reset(token)
         runtime.model_stamp = held
+
+
+async def test_rows_a_caller_hands_over_follow_the_same_rule(manager, acting):
+    """A caller that has just fetched a table's rows hands them to the tier with ``hold``; it
+    cannot make a name hot that two relations claim."""
+    from provisa.cache.hot_tables import HotTableEntry
+
+    def entry(catalog: str, rows: list[dict]) -> HotTableEntry:
+        return HotTableEntry("customers", catalog, "public", "id", rows=rows, column_names=["id"])
+
+    assert manager.hold(entry("pg", ACME_ROWS)) is True
+    assert manager.get_entry("customers").rows == ACME_ROWS
+    assert manager.hold(entry("warehouse", GLOBEX_ROWS)) is False
+    assert not manager.is_hot("customers") and manager.get_entry("customers") is None
+    assert manager.hold(entry("pg", ACME_ROWS)) is False
+
+    acting.place = "globex"  # another org's same name is its own
+    assert manager.hold(entry("warehouse", GLOBEX_ROWS)) is True
+
+
+def test_nothing_outside_the_manager_writes_its_registry():
+    import pathlib
+    import re
+
+    root = pathlib.Path(hot_tables.__file__).resolve().parents[1]
+    offenders = [
+        f"{path.relative_to(root)}:{n}"
+        for path in sorted(root.rglob("*.py"))
+        if path.name != "hot_tables.py"
+        for n, line in enumerate(path.read_text().splitlines(), 1)
+        if re.search(
+            r"\._hot_tables\s*(\[[^\]]*\]\s*=[^=]|\.(pop|clear|update|setdefault)\()", line
+        )
+    ]
+    assert offenders == []

@@ -105,6 +105,11 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
     relation — and are promoted again from their candidates by the next small read. A Redis
     blob's key carries the org, the environment, the model stamp and the table's catalog, schema
     and name.
+
+    The remaining limit: callers (the compiler's VALUES-CTE lookup among them) address the tier
+    by a table's bare name, so within one model it cannot tell two relations of the same name
+    apart. A name two relations have claimed is therefore never hot. Every write to the registry
+    goes through :meth:`_store_rows` or :meth:`hold`, which apply that refusal.
     """
 
     def __init__(
@@ -167,6 +172,33 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
 
             self._redis = make_redis(self._redis_url, decode_responses=True)
 
+    def _claim(
+        self, place: _Place, table_name: str, catalog: str, schema: str
+    ) -> tuple[bool, HotTableEntry | None]:
+        """Whether ``table_name`` may be hot for the relation ``catalog.schema``, and the entry
+        dropped when it may not. It may not once two relations of this model have claimed the
+        name: callers address the hot tier by name alone, so serving either's rows would hand
+        them to readers of the other. The name then stays cold."""
+        held = place.tables.get(table_name)
+        if table_name not in place.ambiguous and (
+            held is None or (held.catalog, held.schema) == (catalog, schema)
+        ):
+            return True, None
+        place.ambiguous.add(table_name)
+        place.tables.pop(table_name, None)
+        log.warning("Hot table name %s is claimed by two relations; not cached", table_name)
+        return False, held
+
+    def hold(self, entry: HotTableEntry) -> bool:
+        """Make ``entry`` the hot rows of its table in this process — for rows a caller has just
+        fetched and wants substituted on the next request, without a Redis blob. Returns False,
+        holding nothing, when the name is claimed by two relations."""
+        place = self._place()
+        allowed, _ = self._claim(place, entry.table_name, entry.catalog, entry.schema)
+        if allowed:
+            place.tables[entry.table_name] = entry
+        return allowed
+
     async def _store_rows(
         self,
         table_name: str,
@@ -180,17 +212,12 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         assert self._redis is not None
 
         place = self._place()
-        held = place.tables.get(table_name)
-        if table_name in place.ambiguous or (
-            held is not None and (held.catalog, held.schema) != (catalog, schema)
-        ):
-            # Two relations of this model carry the name. Callers address the hot tier by name
-            # alone, so serving either's rows would hand them to readers of the other.
-            place.ambiguous.add(table_name)
-            if held is not None:
-                del place.tables[table_name]
-                await self._redis.delete(self._blob_key(table_name, held.catalog, held.schema))
-            log.warning("Hot table name %s is claimed by two relations; not cached", table_name)
+        allowed, dropped = self._claim(place, table_name, catalog, schema)
+        if not allowed:
+            if dropped is not None:
+                await self._redis.delete(
+                    self._blob_key(table_name, dropped.catalog, dropped.schema)
+                )
             return len(rows)
 
         columns = list(rows[0].keys()) if rows else []

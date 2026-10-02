@@ -50,6 +50,18 @@ from provisa.api_source.models import ApiColumn, ApiColumnType, ParamType
 # ---------------------------------------------------------------------------
 
 
+def _hot_manager() -> SimpleNamespace:
+    """A stand-in hot-table manager: ``hold`` keeps the entry, as the real one does for a name
+    one relation claims."""
+    held: dict = {}
+
+    def hold(entry) -> bool:
+        held[entry.table_name] = entry
+        return True
+
+    return SimpleNamespace(_hot_tables=held, hold=hold)
+
+
 class TestLookupEp:
     def test_found(self):
         ep = object()
@@ -331,7 +343,7 @@ class TestMatStoreRows:
         values_cte_entries: dict = {}
         loc = CacheLocation("cat", "sch", "relational")
         response_cols = [_col("id")]
-        hot_mgr = SimpleNamespace(_hot_tables={})
+        hot_mgr = _hot_manager()
 
         with (
             patch("provisa.api_source.engine_cache.create_and_insert"),
@@ -367,7 +379,7 @@ class TestPromoteJoinedFromPg:
         conn.fetch = AsyncMock(return_value=[{"id": 1, "name": "Fido", "_cached_at": "x"}])
         tenant_db = SimpleNamespace(acquire=lambda: _FakeAcquireCtx(conn))
         state = SimpleNamespace(tenant_db=tenant_db)
-        hot_mgr = SimpleNamespace(_hot_tables={})
+        hot_mgr = _hot_manager()
         loc = CacheLocation("cat", "sch", "relational")
         ep = SimpleNamespace(table_name="pets")
 
@@ -383,7 +395,7 @@ class TestPromoteJoinedFromPg:
         conn.fetch = AsyncMock(return_value=rows)
         tenant_db = SimpleNamespace(acquire=lambda: _FakeAcquireCtx(conn))
         state = SimpleNamespace(tenant_db=tenant_db)
-        hot_mgr = SimpleNamespace(_hot_tables={})
+        hot_mgr = _hot_manager()
         loc = CacheLocation("cat", "sch", "relational")
         ep = SimpleNamespace(table_name="pets")
 
@@ -393,7 +405,7 @@ class TestPromoteJoinedFromPg:
     async def test_fetch_failure_swallowed(self):
         tenant_db = SimpleNamespace(acquire=MagicMock(side_effect=RuntimeError("down")))
         state = SimpleNamespace(tenant_db=tenant_db)
-        hot_mgr = SimpleNamespace(_hot_tables={})
+        hot_mgr = _hot_manager()
         loc = CacheLocation("cat", "sch", "relational")
         ep = SimpleNamespace(table_name="pets")
 
@@ -544,7 +556,7 @@ class TestMatApiEpTable:
         cache_rewrites: dict = {}
         values_cte_entries: dict = {}
         loc = CacheLocation("cat", "sch", "relational")
-        hot_mgr = SimpleNamespace(_hot_tables={})
+        hot_mgr = _hot_manager()
         with (
             patch("provisa.api_source.engine_cache.cache_location", return_value=loc),
             patch("provisa.api_source.engine_cache.cache_table_name", return_value="r_x"),
