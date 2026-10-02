@@ -118,7 +118,7 @@ for _name in _MODEL_METADATA_READS:
 # caller's reachable domains (allowed_domains_request) rather than refused.
 EXEMPT[("graphql:query", "tagAssignments")] = (
     "returns only assignments on objects in the caller's reachable domains (table/column by the "
-    "table's domain, relationship by its source table, command by its domain, source by "
+    "table's domain, relationship by both its tables, command by its domain, source by "
     "allowed_domains); unrestricted scope sees all"
 )
 EXEMPT[("graphql:query", "schemaVersion")] = "identifier hash only; no model content"

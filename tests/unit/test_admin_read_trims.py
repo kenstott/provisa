@@ -169,6 +169,30 @@ _ASSIGNMENTS = [
     },
     {
         "tag_id": "t",
+        "object_type": "relationship",
+        "table_id": None,
+        "source_id": None,
+        "column_name": None,
+        "relationship_id": "r3",
+        "command_name": None,
+        "table_ref": None,
+        "reason": None,
+        "expires_on": None,
+    },
+    {
+        "tag_id": "t",
+        "object_type": "relationship",
+        "table_id": None,
+        "source_id": None,
+        "column_name": None,
+        "relationship_id": "r4",
+        "command_name": None,
+        "table_ref": None,
+        "reason": None,
+        "expires_on": None,
+    },
+    {
+        "tag_id": "t",
         "object_type": "command",
         "table_id": None,
         "source_id": None,
@@ -248,7 +272,14 @@ class _TagConn(_Conn):
         if "FROM registered_tables" in text:
             return _Rows([{"id": 1, "domain_id": "sales"}, {"id": 2, "domain_id": "hr"}])
         if "FROM relationships" in text:
-            return _Rows([{"id": "r1", "source_table_id": 1}, {"id": "r2", "source_table_id": 2}])
+            return _Rows(
+                [
+                    {"id": "r1", "source_table_id": 1, "target_table_id": 1},
+                    {"id": "r2", "source_table_id": 2, "target_table_id": 2},
+                    {"id": "r3", "source_table_id": 1, "target_table_id": 2},
+                    {"id": "r4", "source_table_id": 1, "target_table_id": None},
+                ]
+            )
         if "FROM sources" in text:
             return _Rows(
                 [
@@ -307,4 +338,6 @@ async def test_a_domain_scoped_caller_sees_only_objects_in_their_domains(monkeyp
     seen = await _assignments(monkeypatch, ["sales"])
     # sales table and its relationship, the sales command, the command with no domain, the source
     # allowed in sales and the source with no allowed_domains; not hr's table/column/webhook/source.
-    assert _keys(seen) == [1, "r1", "fn_sales", "fn_nodomain", "s_sales", "s_open"]
+    # r1 (both ends in sales) and r4 (function target, no second table) are shown; r3 (target in hr)
+    # is hidden although its source is in scope, and r2 (both ends in hr) is hidden.
+    assert _keys(seen) == [1, "r1", "r4", "fn_sales", "fn_nodomain", "s_sales", "s_open"]

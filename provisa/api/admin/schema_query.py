@@ -252,7 +252,7 @@ async def _assignments_in_scope(conn, rows: list[dict], scope: frozenset[str]) -
     """The tag assignments whose object sits in a domain the caller reaches.
 
     An assignment's domain comes from its object: a table or column from the registered table's
-    domain; a relationship from its SOURCE table's domain; a command (tracked function or webhook)
+    domain; a relationship only when BOTH its source and target tables' domains are reachable; a command (tracked function or webhook)
     from its own domain; a source from its ``allowed_domains`` (reachable when any of them is). An
     object with no domain (an empty domain id, or a source with no ``allowed_domains``) is not
     restricted by a domain scope and stays visible. An assignment whose object cannot be found is
@@ -264,10 +264,16 @@ async def _assignments_in_scope(conn, rows: list[dict], scope: frozenset[str]) -
             await conn.execute_core(select(registered_tables.c.id, registered_tables.c.domain_id))
         ).fetchall()
     }
-    rel_table = {
-        r.id: r.source_table_id
+    rel_tables = {
+        r.id: [t for t in (r.source_table_id, r.target_table_id) if t is not None]
         for r in (
-            await conn.execute_core(select(relationships.c.id, relationships.c.source_table_id))
+            await conn.execute_core(
+                select(
+                    relationships.c.id,
+                    relationships.c.source_table_id,
+                    relationships.c.target_table_id,
+                )
+            )
         ).fetchall()
     }
     source_domains = {
@@ -291,8 +297,12 @@ async def _assignments_in_scope(conn, rows: list[dict], scope: frozenset[str]) -
         if kind in ("table", "column"):
             return row["table_id"] in table_domain and reachable(table_domain[row["table_id"]])
         if kind == "relationship":
-            table_id = rel_table.get(row["relationship_id"])
-            return table_id in table_domain and reachable(table_domain[table_id])
+            # A relationship names both its tables, so both must be in scope (a function target
+            # has no table and adds none).
+            ends = rel_tables.get(row["relationship_id"])
+            return ends is not None and all(
+                t in table_domain and reachable(table_domain[t]) for t in ends
+            )
         if kind == "source":
             allowed = source_domains.get(row["source_id"])
             return allowed is not None and (not allowed or any(d in scope for d in allowed))
