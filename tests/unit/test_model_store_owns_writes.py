@@ -42,6 +42,7 @@ MODEL_STORE = ROOT / "core" / "repositories"
 # model table -> the operations only the model store may perform on it.
 CONVERTED: dict[str, set[str]] = {
     "roles": {"delete"},
+    "domains": {"delete"},
 }
 
 _CONSTRUCTORS = {

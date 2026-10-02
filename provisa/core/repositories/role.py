@@ -120,9 +120,10 @@ async def delete(conn: "Connection", role_id: str) -> bool:  # REQ-042, REQ-1677
 
 
 async def delete_all_except(conn: "Connection", keep: list[str]) -> None:
-    """Remove every role not named in ``keep``: the config loader's full replace, which empties
-    the model of whatever the new config does not declare. Like the deletion of a whole org it
-    is outside the one-object rule and does not ask the guard."""
+    """Remove every role not named in ``keep``: the config loader's full replace.
+
+    A replace load declares the whole model; it is not a deletion of one object, so it does not
+    ask the dependency guard, as the deletion of a whole org does not."""
     statement = _delete(roles)
     if keep:
         statement = statement.where(roles.c.id.not_in(keep))

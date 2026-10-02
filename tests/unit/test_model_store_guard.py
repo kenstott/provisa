@@ -52,7 +52,10 @@ def test_every_reference_names_columns_that_exist():
         for name in (r.column, *r.ends, *([r.owner] if r.owner else [])):
             assert name in table.c, f"{r.table}.{name}"
         kind = integrity.KINDS[r.to]
-        assert r.by in ("key", "view_mv_id") or (r.by == "name" and kind.name), (r.table, r.column)
+        assert r.by in ("key", "view_mv_id", "schema_table") or (r.by == "name" and kind.name), (
+            r.table,
+            r.column,
+        )
     for kind in integrity.KINDS.values():
         table = metadata.tables[kind.table]
         assert kind.key in table.c and (kind.name is None or kind.name in table.c), kind
@@ -265,12 +268,17 @@ async def test_a_table_is_blocked_by_what_reads_it_and_by_every_relationship_it_
         target_schema="s",
         target_table="daily",
     )
+    await plane.add("tracked_functions", name="recent_orders", returns="public.orders")
+    await plane.add("tracked_webhooks", name="notify", url="http://x", returns="public.orders")
+    await plane.add("tracked_functions", name="elsewhere", returns="archive.orders")
     assert await plane.blocking(orders) == {
         out,
         incoming,
         view,
         ObjectRef("metric", "revenue"),
         ObjectRef("materialized_view", "mv-daily"),
+        ObjectRef("command", "recent_orders"),
+        ObjectRef("webhook", "notify"),
     }
     assert await plane.blocking(customers) == {out}
     # Nothing refers to a relationship, so it can always go first.
@@ -487,6 +495,11 @@ async def test_a_view_that_reads_itself_is_not_blocked_by_that(plane):
 
 
 async def test_a_role_parent_loop_is_named_as_a_circle(plane):
-    await plane.add("roles", id="r1", capabilities=[], domain_access=["*"], parent_role_id="r2")
+    await plane.add("roles", id="r1", capabilities=[], domain_access=["*"])
     await plane.add("roles", id="r2", capabilities=[], domain_access=["*"], parent_role_id="r1")
+    async with plane.db.acquire() as conn:
+        roles = metadata.tables["roles"]
+        await conn.execute_core(
+            roles.update().where(roles.c.id == "r1").values(parent_role_id="r2")
+        )
     assert await plane.circle(ObjectRef("role", "r1")) == [ObjectRef("role", "r2")]

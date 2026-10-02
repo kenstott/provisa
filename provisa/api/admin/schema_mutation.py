@@ -1286,8 +1286,30 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            deleted = await domain_repo.delete(cast("Connection", conn), id)
+            try:
+                deleted = await domain_repo.delete(cast("Connection", conn), id)
+            except domain_repo.DomainDeleteRefused as refused:
+                # REQ-1917: a domain is deleted only when nothing refers to it; every
+                # dependent is named and nothing is removed.
+                return MutationResult(
+                    success=False,
+                    message=str(refused),
+                    code=(
+                        "schema.domain_has_dependents"
+                        if refused.reason == "dependents"
+                        else "schema.domain_is_system"
+                    ),
+                    params={
+                        "domain": id,
+                        "dependents": [
+                            {"kind": d.ref.kind, "id": d.ref.id, "via": list(d.via)}
+                            for d in refused.dependents
+                        ],
+                    },
+                )
         if deleted:
+            # The domain's catalog entry and alias must not outlive it in the built schemas.
+            await _rebuild_schemas()
             return MutationResult(
                 success=True,
                 message=f"Domain {id!r} deleted",

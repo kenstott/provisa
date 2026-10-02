@@ -28,9 +28,9 @@ anything; then :func:`remove_parts` and the row itself, in one transaction. A ch
 object's domain will ask the same inventory.
 
 Not covered here: objects kept in the platform plane (org, environment, user, secret, personal
-access token, invite) and their references; ``tracked_functions.returns``,
-``kafka_sinks.query_stable_id`` and the config file's scheduled triggers, which name a table in
-forms not yet established; a materialized view's reliance on the relationships its SQL joins
+access token, invite) and their references — among them the sources and configuration that
+name an org secret; ``kafka_sinks.query_stable_id`` and the config file's scheduled triggers,
+which name a table in forms not yet established; a materialized view's reliance on the relationships its SQL joins
 over, which is by joined columns and not by a relationship's id; data held outside the control
 plane (replicas, view storage, caches).
 """
@@ -87,7 +87,7 @@ class Reference:
     """One column that refers to objects of kind ``to``.
 
     ``by`` is which attribute of the referred object the column holds (``"key"``, ``"name"``, or
-    for a table ``"view_mv_id"``). A DEPENDENT reference names the object the referring row is,
+    for a table ``"view_mv_id"`` or ``"schema_table"``). A DEPENDENT reference names the object the referring row is,
     or belongs to: its kind ``of`` and the column ``owner`` holding that object's key. A PART
     reference names them only when the part is itself an object with parts of its own, which
     then go too. ``ends`` groups the columns of one row that are the ends of a link; a row all
@@ -205,6 +205,9 @@ REFERENCES: tuple[Reference, ...] = (
     ),
     _dep("metrics", "expression", "table", "metric", "name", match=Match.MENTIONS, by="name"),
     _dep("metrics", "from_fact", "table", "metric", "name", by="name"),
+    # A command or webhook that returns the table's rows names it as "schema.table".
+    _dep("tracked_functions", "returns", "table", "command", "name", by="schema_table"),
+    _dep("tracked_webhooks", "returns", "table", "webhook", "name", by="schema_table"),
     # --- to a relationship ---------------------------------------------------------------------
     _part("tag_assignments", "relationship_id", "relationship"),
     # --- to a role -----------------------------------------------------------------------------
@@ -316,6 +319,8 @@ async def _attributes(conn: "Connection", ref: ObjectRef) -> dict[str, Any]:
     kind = KINDS[ref.kind]
     table = metadata.tables[kind.table]
     columns = [table.c[kind.key]] + ([table.c[kind.name]] if kind.name else [])
+    if ref.kind == "table":
+        columns.append(table.c.schema_name)
     row = (await conn.execute_core(select(*columns).where(table.c[kind.key] == ref.id))).fetchone()
     if row is None:
         raise LookupError(f"no {ref.kind} {ref.id!r}")
@@ -324,6 +329,7 @@ async def _attributes(conn: "Connection", ref: ObjectRef) -> dict[str, Any]:
         attributes["name"] = row[1]
     if ref.kind == "table":
         attributes["view_mv_id"] = f"view-{row[1]}"
+        attributes["schema_table"] = f"{row[2]}.{row[1]}"
     return attributes
 
 
