@@ -38,7 +38,7 @@
     "no": "否",
     "none": "—",
     "expandUser": "顯示 {{username}} 的指派",
-    "deleteUser": "刪除使用者 {{username}}",
+    "deleteUser": "刪除 {{username}} 的帳戶",
     "assignmentsHeading": "角色:網域指派",
     "noAssignments": "沒有指派",
     "removeAssignment": "移除指派 {{role}}:{{domain}}",
@@ -59,6 +59,15 @@
     "created": "已建立「{{username}}」",
     "deleted": "已刪除「{{username}}」",
     "createFailed": "建立失敗",
-    "assignmentFailed": "指派失敗"
+    "assignmentFailed": "指派失敗",
+    "removeFromOrg": "將 {{username}} 從本機構移除",
+    "removedFromOrg": "已將「{{username}}」從本機構移除",
+    "removeFailed": "無法移除該使用者",
+    "confirmRemoveTitle": "從本機構移除？",
+    "confirmRemoveBody": "{{username}} 將失去在本機構的角色。其帳戶及在其他機構的成員身分不受影響。",
+    "confirmRemoveButton": "從機構移除",
+    "confirmDeleteTitle": "刪除此帳戶？",
+    "confirmDeleteBody": "{{username}} 將退出所有機構，其個人資料將被刪除。其所屬的機構會保留。此操作無法復原。",
+    "confirmDeleteButton": "刪除帳戶"
   }
 }

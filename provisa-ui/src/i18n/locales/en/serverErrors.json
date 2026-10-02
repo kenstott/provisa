@@ -347,6 +347,9 @@
     },
     "users": {
       "assignment_not_found": "Assignment not found",
+      "last_org_admin": "{{user}} is the last org admin of: {{orgs}}. Promote another org admin in each, or delete the organization, first.",
+      "last_platform_admin": "{{user}} is the last platform admin of this deployment. Grant the platform admin role to another user first.",
+      "no_active_org": "No organization is bound to this request. Sign in to an organization first.",
       "no_fields_to_update": "No fields to update",
       "self_role_change": "A user cannot change their own role. Ask another administrator (REQ-1308).",
       "user_not_found": "User not found"

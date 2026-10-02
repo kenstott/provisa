@@ -1555,9 +1555,17 @@ export async function createLocalUser(body: {
   return res.json();
 }
 
-export async function deleteLocalUser(userId: string): Promise<void> {
+/** What removing a user did: an org administrator removes the person from their org; the holder
+ *  of the cross-org right deletes the account everywhere. The server decides, and says which. */
+export type UserRemovalScope = "org" | "account";
+
+export async function deleteLocalUser(userId: string): Promise<UserRemovalScope> {
   const res = await fetch(`${API_BASE}/admin/users/${userId}`, { method: "DELETE" });
-  if (!res.ok) throw httpError("delete user", res.status);
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(serverMessage(body, requestFailed("delete user", res.status)));
+  }
+  return ((await res.json()) as { scope: UserRemovalScope }).scope;
 }
 
 export interface UserAssignment {

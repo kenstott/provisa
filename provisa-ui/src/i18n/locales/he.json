@@ -38,7 +38,7 @@
     "no": "לא",
     "none": "—",
     "expandUser": "הצגת שיוכים עבור {{username}}",
-    "deleteUser": "מחיקת המשתמש {{username}}",
+    "deleteUser": "מחיקת החשבון של {{username}}",
     "assignmentsHeading": "שיוכי תפקיד:דומיין",
     "noAssignments": "אין שיוכים",
     "removeAssignment": "הסרת השיוך {{role}}:{{domain}}",
@@ -59,6 +59,15 @@
     "created": "\"{{username}}\" נוצר",
     "deleted": "\"{{username}}\" נמחק",
     "createFailed": "היצירה נכשלה",
-    "assignmentFailed": "השיוך נכשל"
+    "assignmentFailed": "השיוך נכשל",
+    "removeFromOrg": "הסרת {{username}} מארגון זה",
+    "removedFromOrg": "\"{{username}}\" הוסר מארגון זה",
+    "removeFailed": "לא ניתן היה להסיר את המשתמש",
+    "confirmRemoveTitle": "להסיר מארגון זה?",
+    "confirmRemoveBody": "{{username}} מאבד את התפקידים שלו בארגון זה. החשבון שלו ומקומו בארגונים אחרים אינם מושפעים.",
+    "confirmRemoveButton": "הסרה מהארגון",
+    "confirmDeleteTitle": "למחוק חשבון זה?",
+    "confirmDeleteBody": "{{username}} עוזב את כל הארגונים והפרופיל שלו נמחק. הארגונים שהוא חבר בהם נשארים. לא ניתן לבטל פעולה זו.",
+    "confirmDeleteButton": "מחיקת חשבון"
   }
 }

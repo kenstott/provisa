@@ -347,6 +347,9 @@
     },
     "users": {
       "assignment_not_found": "Affectation introuvable",
+      "last_org_admin": "{{user}} est le dernier administrateur d'organisation de : {{orgs}}. Promouvez d'abord un autre administrateur dans chacune, ou supprimez l'organisation.",
+      "last_platform_admin": "{{user}} est le dernier administrateur de plateforme de ce déploiement. Accordez d'abord ce rôle à un autre utilisateur.",
+      "no_active_org": "Aucune organisation n'est liée à cette requête. Connectez-vous d'abord à une organisation.",
       "no_fields_to_update": "Aucun champ à mettre à jour",
       "self_role_change": "Un utilisateur ne peut pas changer son propre rôle. Demandez à un autre administrateur (REQ-1308).",
       "user_not_found": "Utilisateur introuvable"

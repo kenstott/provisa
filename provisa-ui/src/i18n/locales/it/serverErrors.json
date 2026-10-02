@@ -347,6 +347,9 @@
     },
     "users": {
       "assignment_not_found": "Assegnazione non trovata",
+      "last_org_admin": "{{user}} è l'ultimo amministratore dell'organizzazione di: {{orgs}}. Promuovi prima un altro amministratore in ciascuna, oppure elimina l'organizzazione.",
+      "last_platform_admin": "{{user}} è l'ultimo amministratore della piattaforma di questa installazione. Assegna prima il ruolo a un altro utente.",
+      "no_active_org": "Nessuna organizzazione è associata a questa richiesta. Accedi prima a un'organizzazione.",
       "no_fields_to_update": "Nessun campo da aggiornare",
       "self_role_change": "Un utente non può modificare il proprio ruolo. Chiedere a un altro amministratore (REQ-1308).",
       "user_not_found": "Utente non trovato"

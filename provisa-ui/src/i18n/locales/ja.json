@@ -38,7 +38,7 @@
     "no": "いいえ",
     "none": "—",
     "expandUser": "{{username}} の割り当てを表示",
-    "deleteUser": "ユーザー {{username}} を削除",
+    "deleteUser": "{{username}} のアカウントを削除",
     "assignmentsHeading": "ロール:ドメイン割り当て",
     "noAssignments": "割り当てがありません",
     "removeAssignment": "割り当て {{role}}:{{domain}} を削除",
@@ -59,6 +59,15 @@
     "created": "「{{username}}」を作成しました",
     "deleted": "「{{username}}」を削除しました",
     "createFailed": "作成に失敗しました",
-    "assignmentFailed": "割り当てに失敗しました"
+    "assignmentFailed": "割り当てに失敗しました",
+    "removeFromOrg": "{{username}} をこの組織から削除",
+    "removedFromOrg": "「{{username}}」をこの組織から削除しました",
+    "removeFailed": "ユーザーを削除できませんでした",
+    "confirmRemoveTitle": "この組織から削除しますか?",
+    "confirmRemoveBody": "{{username}} はこの組織でのロールを失います。アカウントと他の組織での所属には影響しません。",
+    "confirmRemoveButton": "組織から削除",
+    "confirmDeleteTitle": "このアカウントを削除しますか?",
+    "confirmDeleteBody": "{{username}} はすべての組織から外れ、プロフィールが削除されます。所属していた組織は残ります。この操作は元に戻せません。",
+    "confirmDeleteButton": "アカウントを削除"
   }
 }

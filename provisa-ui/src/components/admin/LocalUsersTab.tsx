@@ -16,6 +16,7 @@ import {
   Button,
   Collapse,
   Group,
+  Modal,
   Pagination,
   Select,
   Stack,
@@ -36,6 +37,7 @@ import {
   removeUserAssignment,
 } from "../../api/admin";
 import type { LocalUser, UserAssignment } from "../../api/admin";
+import { useCapability } from "../../hooks/useCapability";
 
 const PAGE_SIZE = 50;
 
@@ -91,11 +93,36 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
     }
   };
 
-  const handleDeleteUser = async (userId: string, username: string) => {
-    await deleteLocalUser(userId);
-    setLocalUsers((prev) => prev.filter((u) => u.id !== userId));
-    if (expandedUserId === userId) setExpandedUserId(null);
-    notifications.show({ message: t("localUsers.deleted", { username }) });
+  // The holder of the cross-org right deletes the ACCOUNT, everywhere; an org administrator
+  // removes the person from THIS org. The server decides by the same right; the page says which
+  // before the person confirms, and again from the server's answer afterwards.
+  const deletesAccount = useCapability("cross_org");
+  const [removing, setRemoving] = useState<{ id: string; username: string } | null>(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
+
+  const handleDeleteUser = async () => {
+    if (removing === null) return;
+    const { id: userId, username } = removing;
+    setRemoveBusy(true);
+    try {
+      const scope = await deleteLocalUser(userId);
+      setLocalUsers((prev) => prev.filter((u) => u.id !== userId));
+      if (expandedUserId === userId) setExpandedUserId(null);
+      notifications.show({
+        message: t(scope === "account" ? "localUsers.deleted" : "localUsers.removedFromOrg", {
+          username,
+        }),
+      });
+    } catch (e: unknown) {
+      notifications.show({
+        color: "red",
+        autoClose: false,
+        message: e instanceof Error ? e.message : t("localUsers.removeFailed"),
+      });
+    } finally {
+      setRemoveBusy(false);
+      setRemoving(null);
+    }
   };
 
   const handleExpandUser = async (userId: string) => {
@@ -253,8 +280,12 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
                     <ActionIcon
                       variant="subtle"
                       color="red"
-                      aria-label={t("localUsers.deleteUser", { username: u.username })}
-                      onClick={() => handleDeleteUser(u.id, u.username)}
+                      aria-label={t(
+                        deletesAccount ? "localUsers.deleteUser" : "localUsers.removeFromOrg",
+                        { username: u.username },
+                      )}
+                      data-testid={`remove-user-${u.username}`}
+                      onClick={() => setRemoving({ id: u.id, username: u.username })}
                     >
                       <Trash2 size={14} />
                     </ActionIcon>
@@ -270,6 +301,43 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
           <Pagination total={totalPages} value={userPage} onChange={setUserPage} size="sm" />
         </Group>
       )}
+
+      <Modal
+        opened={removing !== null}
+        onClose={() => setRemoving(null)}
+        title={t(
+          deletesAccount ? "localUsers.confirmDeleteTitle" : "localUsers.confirmRemoveTitle",
+        )}
+        centered
+        closeOnClickOutside={!removeBusy}
+        closeOnEscape={!removeBusy}
+        data-testid="remove-user-modal"
+      >
+        <Stack gap="md">
+          <Text>
+            {t(deletesAccount ? "localUsers.confirmDeleteBody" : "localUsers.confirmRemoveBody", {
+              username: removing?.username,
+            })}
+          </Text>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setRemoving(null)} disabled={removeBusy}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              color="red"
+              onClick={handleDeleteUser}
+              loading={removeBusy}
+              data-testid="remove-user-confirm"
+            >
+              {t(
+                deletesAccount
+                  ? "localUsers.confirmDeleteButton"
+                  : "localUsers.confirmRemoveButton",
+              )}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
 
       <Title order={4}>{t("localUsers.createHeading")}</Title>
       <Stack gap="sm" maw={480}>

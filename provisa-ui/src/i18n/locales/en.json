@@ -38,7 +38,7 @@
     "no": "No",
     "none": "—",
     "expandUser": "Show assignments for {{username}}",
-    "deleteUser": "Delete user {{username}}",
+    "deleteUser": "Delete {{username}}'s account",
     "assignmentsHeading": "Role:Domain Assignments",
     "noAssignments": "No assignments",
     "removeAssignment": "Remove assignment {{role}}:{{domain}}",
@@ -59,6 +59,15 @@
     "created": "Created \"{{username}}\"",
     "deleted": "Deleted \"{{username}}\"",
     "createFailed": "Create failed",
-    "assignmentFailed": "Assignment failed"
+    "assignmentFailed": "Assignment failed",
+    "removeFromOrg": "Remove {{username}} from this organization",
+    "removedFromOrg": "Removed \"{{username}}\" from this organization",
+    "removeFailed": "Could not remove the user",
+    "confirmRemoveTitle": "Remove from this organization?",
+    "confirmRemoveBody": "{{username}} loses their roles in this organization. Their account and their place in other organizations are not affected.",
+    "confirmRemoveButton": "Remove from organization",
+    "confirmDeleteTitle": "Delete this account?",
+    "confirmDeleteBody": "{{username}} leaves every organization and their profile is deleted. Organizations they belong to stay. This cannot be undone.",
+    "confirmDeleteButton": "Delete account"
   }
 }

@@ -24,7 +24,7 @@ from sqlalchemy import delete as _delete, func, insert, select, update
 from provisa.api.admin._platform_guard import require_role_grantable
 from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.errors import ApiError
-from provisa.auth.scram_store import delete_verifier, write_verifier
+from provisa.auth.scram_store import write_verifier
 from provisa.core.database import Database
 from provisa.core.schema_admin import local_users
 from provisa.core.org_membership import SELF_ROLE_CHANGE_MESSAGE, is_self_role_change
@@ -231,21 +231,113 @@ async def change_password(user_id: str, body: ChangePasswordBody, request: Reque
     return {"id": row[0]}
 
 
+def _acts_across_orgs(request: Request) -> bool:
+    """Whether the caller holds the cross-org right (or is the unauthenticated dev identity,
+    which holds every right)."""
+    from provisa.api.admin.capabilities import _resolved_capabilities
+    from provisa.api.app import state
+    from provisa.security.rights import can_act_cross_org
+
+    identity = getattr(request.state, "identity", None)
+    if identity is None or getattr(identity, "user_id", "anonymous") == "anonymous":
+        return True
+    return can_act_cross_org(_resolved_capabilities(identity, state))
+
+
 @router.delete("/{user_id}")
-async def delete_user(user_id: str, request: Request):
-    _require_user_management(request)
-    pool = _admin_pool(request)
-    async with pool.acquire() as conn:
-        result = await conn.execute_core(
-            _delete(local_users).where(local_users.c.id == user_id).returning(local_users.c.id)
+async def delete_user(user_id: str, request: Request):  # REQ-1302, REQ-1305, REQ-1307, REQ-1918
+    """Remove a user. What that means depends on who asks, and the answer's ``scope`` says which.
+
+    The holder of the cross-org right deletes the ACCOUNT, everywhere (``scope: "account"``):
+    the same removal the person could ask for themselves, ``org_membership.remove_account``.
+    An org administrator removes the person FROM THEIR ORG (``scope: "org"``): the account, and
+    the person's place in any other org, are not theirs to end. Either way the last org_admin
+    of an org is refused, and so is the deployment's last platform_admin.
+    """
+    from provisa.api.admin.orgs_router import _caller_user_id, _org_tenant_db
+    from provisa.core.org_membership import (
+        AccountRemovalRefused,
+        LastOrgAdminError,
+        assert_not_last_org_admin,
+        record_admin_action,
+        remove_account,
+        remove_from_org,
+    )
+
+    across_orgs = _acts_across_orgs(request)
+    if not across_orgs:
+        _require_user_management(request)
+    admin_db = _admin_pool(request)
+    if across_orgs:
+        if not await _account_exists(admin_db, user_id):
+            raise ApiError(404, "users.user_not_found", "User not found")
+        try:
+            removed = await remove_account(
+                admin_db, _pool(request), user_id, tenant_db_of=_org_tenant_db
+            )
+        except AccountRemovalRefused as refused:
+            if refused.reason == "last_org_admin":
+                raise ApiError(
+                    409,
+                    "users.last_org_admin",
+                    f"{refused}. Promote another org_admin in each, or delete the "
+                    "organization, first.",
+                    user=user_id,
+                    orgs=", ".join(refused.orgs),
+                ) from refused
+            raise ApiError(
+                409,
+                "users.last_platform_admin",
+                f"{refused}. Grant platform_admin to another user first.",
+                user=user_id,
+            ) from refused
+        return {"scope": "account", **removed}
+
+    org_id = getattr(request.state, "active_org_id", None)
+    if org_id is None:
+        raise ApiError(
+            409, "users.no_active_org", "no org is bound to this request; sign in to an org first"
         )
-        row = result.fetchone()
-    if row is None:
+    tenant_db = await _org_tenant_db(org_id)
+    try:
+        await assert_not_last_org_admin(tenant_db, user_id, org_id)
+    except LastOrgAdminError as exc:
+        raise ApiError(
+            409,
+            "users.last_org_admin",
+            f"{user_id} is the last org_admin of: {org_id}. Promote another org_admin in each, "
+            "or delete the organization, first.",
+            user=user_id,
+            orgs=org_id,
+        ) from exc
+    if not await remove_from_org(admin_db, tenant_db, user_id, org_id):
         raise ApiError(404, "users.user_not_found", "User not found")
-    # REQ-1394: the verifier outlives no user. Left behind, it would keep a deleted name
-    # negotiable over pgwire and would collide with the next user given that username.
-    await delete_verifier(pool, user_id)
-    return {"deleted": row[0]}
+    await record_admin_action(
+        tenant_db,
+        action="remove_member",
+        actor_id=_caller_user_id(request) or "anonymous",
+        subject_id=user_id,
+        detail={"org_id": org_id},
+    )
+    return {"scope": "org", "removed": {"user_id": user_id, "org_id": org_id}}
+
+
+async def _account_exists(admin_db: Database, user_id: str) -> bool:
+    """Whether anything of the person's is recorded: a credential row, a profile or a membership."""
+    from provisa.core.schema_admin import user_org_memberships, user_profiles
+
+    async with admin_db.acquire() as conn:
+        for table, column in (
+            (local_users, local_users.c.id),
+            (user_profiles, user_profiles.c.user_id),
+            (user_org_memberships, user_org_memberships.c.user_id),
+        ):
+            found = await conn.execute_core(
+                select(column).select_from(table).where(column == user_id)
+            )
+            if found.fetchone() is not None:
+                return True
+    return False
 
 
 @router.get("/{user_id}/assignments")

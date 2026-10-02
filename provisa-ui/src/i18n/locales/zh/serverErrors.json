@@ -347,6 +347,9 @@
     },
     "users": {
       "assignment_not_found": "未找到分配",
+      "last_org_admin": "{{user}} 是以下组织的最后一位组织管理员：{{orgs}}。请先在每个组织中提升另一位组织管理员，或删除该组织。",
+      "last_platform_admin": "{{user}} 是此部署的最后一位平台管理员。请先将该角色授予其他用户。",
+      "no_active_org": "此请求未绑定任何组织。请先登录某个组织。",
       "no_fields_to_update": "没有要更新的字段",
       "self_role_change": "用户不能更改自己的角色。请联系另一位管理员（REQ-1308）。",
       "user_not_found": "未找到用户"

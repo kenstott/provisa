@@ -38,7 +38,7 @@
     "no": "Нет",
     "none": "—",
     "expandUser": "Показать назначения для {{username}}",
-    "deleteUser": "Удалить пользователя {{username}}",
+    "deleteUser": "Удалить учётную запись {{username}}",
     "assignmentsHeading": "Назначения роль:домен",
     "noAssignments": "Нет назначений",
     "removeAssignment": "Удалить назначение {{role}}:{{domain}}",
@@ -59,6 +59,15 @@
     "created": "Создан «{{username}}»",
     "deleted": "Удалён «{{username}}»",
     "createFailed": "Не удалось создать",
-    "assignmentFailed": "Не удалось выполнить назначение"
+    "assignmentFailed": "Не удалось выполнить назначение",
+    "removeFromOrg": "Удалить {{username}} из этой организации",
+    "removedFromOrg": "«{{username}}» удалён из этой организации",
+    "removeFailed": "Не удалось удалить пользователя",
+    "confirmRemoveTitle": "Удалить из этой организации?",
+    "confirmRemoveBody": "{{username}} потеряет свои роли в этой организации. Учётная запись и участие в других организациях не затрагиваются.",
+    "confirmRemoveButton": "Удалить из организации",
+    "confirmDeleteTitle": "Удалить эту учётную запись?",
+    "confirmDeleteBody": "{{username}} покинет все организации, а профиль будет удалён. Сами организации останутся. Это действие нельзя отменить.",
+    "confirmDeleteButton": "Удалить учётную запись"
   }
 }

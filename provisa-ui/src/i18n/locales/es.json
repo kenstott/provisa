@@ -38,7 +38,7 @@
     "no": "No",
     "none": "—",
     "expandUser": "Mostrar asignaciones de {{username}}",
-    "deleteUser": "Eliminar usuario {{username}}",
+    "deleteUser": "Eliminar la cuenta de {{username}}",
     "assignmentsHeading": "Asignaciones rol:dominio",
     "noAssignments": "Sin asignaciones",
     "removeAssignment": "Quitar asignación {{role}}:{{domain}}",
@@ -59,6 +59,15 @@
     "created": "Se creó \"{{username}}\"",
     "deleted": "Se eliminó \"{{username}}\"",
     "createFailed": "Error al crear",
-    "assignmentFailed": "Error en la asignación"
+    "assignmentFailed": "Error en la asignación",
+    "removeFromOrg": "Quitar a {{username}} de esta organización",
+    "removedFromOrg": "Se quitó a \"{{username}}\" de esta organización",
+    "removeFailed": "No se pudo quitar al usuario",
+    "confirmRemoveTitle": "¿Quitar de esta organización?",
+    "confirmRemoveBody": "{{username}} pierde sus roles en esta organización. Su cuenta y su lugar en otras organizaciones no se ven afectados.",
+    "confirmRemoveButton": "Quitar de la organización",
+    "confirmDeleteTitle": "¿Eliminar esta cuenta?",
+    "confirmDeleteBody": "{{username}} sale de todas las organizaciones y su perfil se elimina. Las organizaciones a las que pertenece se conservan. Esto no se puede deshacer.",
+    "confirmDeleteButton": "Eliminar cuenta"
   }
 }

@@ -21,7 +21,7 @@ from pydantic import BaseModel
 from sqlalchemy import delete, func, insert, select, update
 
 from provisa.api.errors import ApiError
-from provisa.auth.scram_store import delete_verifier, write_verifier
+from provisa.auth.scram_store import write_verifier
 from provisa.core.schema_admin import (
     local_users,
     org_invites,
@@ -933,12 +933,12 @@ async def delete_account(request: Request, confirm: str | None = None):
 
     ``confirm`` must repeat the user id, the same typed ceremony org deletion carries (REQ-1300).
 
-    REQ-1263 personal access tokens are not revoked here because no PAT table exists yet; when one
-    lands, its rows for this user are deleted alongside the profile.
+    The removal itself is ``org_membership.remove_account`` — the one an administrator with the
+    cross-org right uses too. The person's tokens for each org are revoked with the membership.
     """
     from provisa.api.admin.orgs_router import _admin_pool, _org_tenant_db
-    from provisa.core.org_membership import org_admin_user_ids, remove_from_org, tombstone_id
-    from provisa.core.schema_org import admin_audit_log, query_audit_log, user_role_assignments
+    from provisa.api.app import state
+    from provisa.core.org_membership import AccountRemovalRefused, remove_account
 
     identity = getattr(request.state, "identity", None)
     user_id = getattr(identity, "user_id", None) if identity is not None else None
@@ -954,54 +954,24 @@ async def delete_account(request: Request, confirm: str | None = None):
                 "proceed."
             ),
         )
-    admin_db = _admin_pool()
-    async with admin_db.acquire() as conn:
-        result = await conn.execute_core(
-            select(user_org_memberships.c.org_id).where(user_org_memberships.c.user_id == user_id)
-        )
-        member_org_ids = sorted(r[0] for r in result.fetchall())
-
-    # Name EVERY org that blocks the deletion rather than refusing on the first one — one refusal
-    # per handoff is a queue the user has to discover by repetition.
-    tenant_dbs = {}
-    blocking: list[str] = []
-    for org_id in member_org_ids:
-        tenant_dbs[org_id] = await _org_tenant_db(org_id)
-        admins = await org_admin_user_ids(tenant_dbs[org_id])
-        if user_id in admins and len(admins) == 1:
-            blocking.append(org_id)
-    if blocking:
-        raise ApiError(
-            409,
-            "auth.last_org_admin",
-            (
-                f"You are the last org_admin of: {', '.join(blocking)}. Promote another org_admin "
-                f"in each, or delete the organization, before deleting your account."
-            ),
-            orgs=", ".join(blocking),
-        )
-
-    # The deployment must not be left without a platform administrator either. platform_admin is
-    # held either by a role assignment in the platform-plane schema or by the bootstrap claimant.
-    from provisa.api.app import state
-
-    platform_admins: set[str] = set()
     assert state.tenant_db is not None
-    async with state.tenant_db.acquire() as conn:
-        result = await conn.execute_core(
-            select(user_role_assignments.c.user_id).where(
-                user_role_assignments.c.role_id == PLATFORM_ADMIN_ROLE
-            )
+    try:
+        return await remove_account(
+            _admin_pool(), state.tenant_db, user_id, tenant_db_of=_org_tenant_db
         )
-        platform_admins = {r[0] for r in result.fetchall()}
-    async with admin_db.acquire() as conn:
-        result = await conn.execute_core(
-            select(superadmin_bootstrap.c.user_id).where(superadmin_bootstrap.c.id == 1)
-        )
-        claimant = result.scalar()
-    if claimant is not None:
-        platform_admins.add(claimant)
-    if user_id in platform_admins and len(platform_admins) == 1:
+    except AccountRemovalRefused as refused:
+        if refused.reason == "last_org_admin":
+            # Every blocking org is named: one refusal per handoff is a queue the user has to
+            # discover by repetition.
+            raise ApiError(
+                409,
+                "auth.last_org_admin",
+                (
+                    f"You are the last org_admin of: {', '.join(refused.orgs)}. Promote another "
+                    f"org_admin in each, or delete the organization, before deleting your account."
+                ),
+                orgs=", ".join(refused.orgs),
+            ) from refused
         raise ApiError(
             409,
             "auth.last_platform_admin",
@@ -1009,48 +979,4 @@ async def delete_account(request: Request, confirm: str | None = None):
                 "You are the last platform_admin of this deployment. Grant platform_admin to "
                 "another user before deleting your account."
             ),
-        )
-
-    for org_id in member_org_ids:
-        await remove_from_org(admin_db, tenant_dbs[org_id], user_id, org_id)
-
-    tombstone = tombstone_id(user_id)
-    async with admin_db.acquire() as conn:
-        # Tombstone rather than NULL: org_invites.created_by is NOT NULL, and a dangling id is
-        # worse than an explicit one. The row stays referentially intact and stops naming anyone.
-        await conn.execute_core(
-            update(orgs).where(orgs.c.created_by == user_id).values(created_by=tombstone)
-        )
-        await conn.execute_core(
-            update(org_invites)
-            .where(org_invites.c.created_by == user_id)
-            .values(created_by=tombstone)
-        )
-        await conn.execute_core(
-            update(org_invites).where(org_invites.c.used_by == user_id).values(used_by=tombstone)
-        )
-        await conn.execute_core(delete(user_profiles).where(user_profiles.c.user_id == user_id))
-        await conn.execute_core(delete(local_users).where(local_users.c.id == user_id))
-    # REQ-1394: the verifier outlives no user. Left behind it would keep a deleted name negotiable
-    # over pgwire and would collide with the next user given that username.
-    await delete_verifier(admin_db, user_id)
-    # Audit attributions carry the tombstone too. Audit entries are NEVER deleted (REQ-1312) — a
-    # trail that erases on request is not a trail.
-    for org_id in member_org_ids:
-        async with tenant_dbs[org_id].acquire() as conn:
-            await conn.execute_core(
-                update(query_audit_log)
-                .where(query_audit_log.c.user_id == user_id)
-                .values(user_id=tombstone)
-            )
-            await conn.execute_core(
-                update(admin_audit_log)
-                .where(admin_audit_log.c.actor_id == user_id)
-                .values(actor_id=tombstone)
-            )
-            await conn.execute_core(
-                update(admin_audit_log)
-                .where(admin_audit_log.c.subject_id == user_id)
-                .values(subject_id=tombstone)
-            )
-    return {"deleted": user_id, "tombstone": tombstone, "left_orgs": member_org_ids}
+        ) from refused

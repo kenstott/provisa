@@ -38,7 +38,7 @@
     "no": "否",
     "none": "—",
     "expandUser": "显示 {{username}} 的分配",
-    "deleteUser": "删除用户 {{username}}",
+    "deleteUser": "删除 {{username}} 的账户",
     "assignmentsHeading": "角色:域 分配",
     "noAssignments": "暂无分配",
     "removeAssignment": "移除分配 {{role}}:{{domain}}",
@@ -59,6 +59,15 @@
     "created": "已创建“{{username}}”",
     "deleted": "已删除“{{username}}”",
     "createFailed": "创建失败",
-    "assignmentFailed": "分配失败"
+    "assignmentFailed": "分配失败",
+    "removeFromOrg": "将 {{username}} 从本组织移除",
+    "removedFromOrg": "已将“{{username}}”从本组织移除",
+    "removeFailed": "无法移除该用户",
+    "confirmRemoveTitle": "从本组织移除？",
+    "confirmRemoveBody": "{{username}} 将失去在本组织中的角色。其账户及在其他组织中的成员身份不受影响。",
+    "confirmRemoveButton": "从组织移除",
+    "confirmDeleteTitle": "删除此账户？",
+    "confirmDeleteBody": "{{username}} 将退出所有组织，其个人资料将被删除。其所属的组织会保留。此操作无法撤销。",
+    "confirmDeleteButton": "删除账户"
   }
 }

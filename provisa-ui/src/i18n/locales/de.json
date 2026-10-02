@@ -38,7 +38,7 @@
     "no": "Nein",
     "none": "—",
     "expandUser": "Zuweisungen für {{username}} anzeigen",
-    "deleteUser": "Benutzer {{username}} löschen",
+    "deleteUser": "Konto von {{username}} löschen",
     "assignmentsHeading": "Rolle:Domäne-Zuweisungen",
     "noAssignments": "Keine Zuweisungen",
     "removeAssignment": "Zuweisung {{role}}:{{domain}} entfernen",
@@ -59,6 +59,15 @@
     "created": "\"{{username}}\" erstellt",
     "deleted": "\"{{username}}\" gelöscht",
     "createFailed": "Erstellen fehlgeschlagen",
-    "assignmentFailed": "Zuweisung fehlgeschlagen"
+    "assignmentFailed": "Zuweisung fehlgeschlagen",
+    "removeFromOrg": "{{username}} aus dieser Organisation entfernen",
+    "removedFromOrg": "„{{username}}“ wurde aus dieser Organisation entfernt",
+    "removeFailed": "Der Benutzer konnte nicht entfernt werden",
+    "confirmRemoveTitle": "Aus dieser Organisation entfernen?",
+    "confirmRemoveBody": "{{username}} verliert die Rollen in dieser Organisation. Das Konto und die Mitgliedschaft in anderen Organisationen bleiben unberührt.",
+    "confirmRemoveButton": "Aus Organisation entfernen",
+    "confirmDeleteTitle": "Dieses Konto löschen?",
+    "confirmDeleteBody": "{{username}} verlässt alle Organisationen und das Profil wird gelöscht. Die Organisationen selbst bleiben bestehen. Dies kann nicht rückgängig gemacht werden.",
+    "confirmDeleteButton": "Konto löschen"
   }
 }

@@ -79,6 +79,16 @@ async def test_user_management_passes_the_gate(past_gate):
         await router.list_users(_request("alice", "people_admin"))
 
 
+@pytest.mark.parametrize("role", ["people_admin", "platform_admin"])
+async def test_removing_a_user_is_open_to_user_management_and_to_the_cross_org_right(
+    past_gate, role
+):
+    """An org administrator removes a person from their org; the holder of the cross-org right
+    deletes the account. Either passes the gate; which of the two happens is the route's."""
+    with pytest.raises(RuntimeError, match="past the gate"):
+        await router.delete_user("u1", _request("alice", role))
+
+
 async def test_a_user_may_change_their_own_password_without_user_management(past_gate):
     with pytest.raises(RuntimeError, match="past the gate"):
         await router.change_password(

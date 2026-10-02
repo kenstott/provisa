@@ -29,12 +29,15 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, delete, insert, select, text
 
+from provisa.api.admin.local_users_router import router as users_router
 from provisa.api.admin.orgs_router import router as orgs_router
 from provisa.api.org_runtime import ActiveOrgPool
 from provisa.api.auth_router import router as auth_router
+from provisa.api.errors import ApiError
 from provisa.auth.middleware import AuthMiddleware
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_admin import REGISTRY_TABLES
@@ -281,6 +284,18 @@ def _make_app(planes) -> FastAPI:
     )
     app.include_router(orgs_router)
     app.include_router(auth_router)
+    app.include_router(users_router)
+
+    # The coded-error rendering the real application installs (provisa/api/app.py): the English
+    # detail with the stable code and its params.
+    @app.exception_handler(ApiError)
+    async def _api_error(_request, exc: ApiError):  # pyright: ignore[reportUnusedFunction]
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail, "code": exc.code, "params": exc.params},
+            headers=exc.headers,
+        )
+
     return app
 
 
@@ -728,6 +743,121 @@ def test_a_second_platform_admin_unblocks_deletion(planes):  # REQ-1307
     assert _rows(
         planes.sync, _ADMIN_SCHEMA, select(orgs.c.created_by).where(orgs.c.id == "root")
     ) == [(tombstone_id("pat"),)]
+
+
+# --- an administrator removes a user: one removal path, two scopes (REQ-1918, REQ-1919) -----------
+
+
+def _memberships(planes, user_id: str) -> list[str]:
+    rows = _rows(
+        planes.sync,
+        _ADMIN_SCHEMA,
+        select(user_org_memberships.c.org_id).where(user_org_memberships.c.user_id == user_id),
+    )
+    return sorted(r[0] for r in rows)
+
+
+def _profile(planes, user_id: str) -> list:
+    return _rows(
+        planes.sync,
+        _ADMIN_SCHEMA,
+        select(user_profiles.c.user_id).where(user_profiles.c.user_id == user_id),
+    )
+
+
+def _give_profile(planes, user_id: str) -> None:
+    with planes.sync.begin() as conn:
+        conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
+        conn.execute(insert(user_profiles).values(user_id=user_id, email=f"{user_id}@example.com"))
+
+
+def test_a_tenant_admins_delete_removes_the_user_from_that_org_only(planes):
+    """An org administrator's delete of a user is "remove from my org": the account, and the
+    person's place in any other org, are not theirs to end."""
+    _give_profile(planes, "dana")
+    with TestClient(_make_app(planes)) as client:
+        resp = client.delete("/admin/users/dana", headers=_auth("tok-alice"))
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"scope": "org", "removed": {"user_id": "dana", "org_id": "acme"}}
+
+    assert _memberships(planes, "dana") == ["sandbox"]
+    assert _profile(planes, "dana") != []
+    # Her standing in the other org is untouched.
+    assert _rows(
+        planes.sync,
+        _ORG_SCHEMAS["sandbox"],
+        select(user_role_assignments.c.role_id).where(user_role_assignments.c.user_id == "dana"),
+    ) == [("analyst",)]
+    audit = _rows(
+        planes.sync,
+        _ORG_SCHEMAS["acme"],
+        select(admin_audit_log.c.action, admin_audit_log.c.actor_id, admin_audit_log.c.subject_id),
+    )
+    assert ("remove_member", "alice", "dana") in [tuple(r) for r in audit]
+
+
+def test_a_tenant_admin_cannot_remove_someone_who_is_not_in_their_org(planes):
+    with TestClient(_make_app(planes)) as client:
+        resp = client.delete("/admin/users/viv", headers=_auth("tok-alice"))
+    assert resp.status_code == 404, resp.text
+    assert _memberships(planes, "viv") == ["sandbox"]
+
+
+def test_the_holder_of_the_cross_org_right_deletes_the_account_everywhere(planes):
+    """The same removal the person could ask for themselves: every membership, the profile, and
+    a tombstone wherever the id is recorded."""
+    _give_profile(planes, "dana")
+    with TestClient(_make_app(planes)) as client:
+        resp = client.delete("/admin/users/dana", headers=_auth("tok-pat"))
+    assert resp.status_code == 200, resp.text
+    from provisa.core.org_membership import tombstone_id
+
+    assert resp.json() == {
+        "scope": "account",
+        "deleted": "dana",
+        "tombstone": tombstone_id("dana"),
+        "left_orgs": ["acme", "sandbox"],
+    }
+    assert _memberships(planes, "dana") == []
+    assert _profile(planes, "dana") == []
+    for org in ("acme", "sandbox"):
+        assert (
+            _rows(
+                planes.sync,
+                _ORG_SCHEMAS[org],
+                select(user_role_assignments.c.role_id).where(
+                    user_role_assignments.c.user_id == "dana"
+                ),
+            )
+            == []
+        )
+
+
+def test_an_administrator_cannot_delete_the_last_org_admin_of_an_org(planes):
+    with TestClient(_make_app(planes)) as client:
+        resp = client.delete("/admin/users/alice", headers=_auth("tok-pat"))
+    assert resp.status_code == 409, resp.text
+    body = resp.json()
+    assert body["code"] == "users.last_org_admin", body
+    assert body["params"]["orgs"] == "acme"
+    assert _memberships(planes, "alice") == ["acme"]
+
+
+def test_an_administrator_cannot_delete_the_last_platform_admin(planes):
+    with TestClient(_make_app(planes)) as client:
+        resp = client.delete("/admin/users/pat", headers=_auth("tok-pat"))
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["code"] == "users.last_platform_admin", resp.text
+    assert _memberships(planes, "pat") == ["root"]
+
+
+def test_a_tenant_admins_delete_of_the_last_org_admin_is_refused(planes):
+    """The one org_admin of acme is alice herself; the rule that protects the org from losing
+    its last administrator applies to this route as to the members route."""
+    with TestClient(_make_app(planes)) as client:
+        resp = client.delete("/admin/users/alice", headers=_auth("tok-alice"))
+    assert resp.status_code == 409, resp.text
+    assert _memberships(planes, "alice") == ["acme"]
 
 
 def test_sandbox_account_deletion_deletes_membership_and_firebase_user(

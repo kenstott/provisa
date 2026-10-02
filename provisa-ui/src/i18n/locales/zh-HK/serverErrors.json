@@ -347,6 +347,9 @@
     },
     "users": {
       "assignment_not_found": "找不到指派",
+      "last_org_admin": "{{user}} 是以下機構的最後一位機構管理員：{{orgs}}。請先在每個機構中提升另一位機構管理員，或刪除該機構。",
+      "last_platform_admin": "{{user}} 是此部署的最後一位平台管理員。請先將該角色授予其他使用者。",
+      "no_active_org": "此請求未綁定任何機構。請先登入某個機構。",
       "no_fields_to_update": "沒有可更新的欄位",
       "self_role_change": "使用者不可更改自己的角色。請要求另一位管理員處理（REQ-1308）。",
       "user_not_found": "找不到使用者"

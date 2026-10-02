@@ -38,7 +38,7 @@
     "no": "नहीं",
     "none": "—",
     "expandUser": "{{username}} के असाइनमेंट दिखाएँ",
-    "deleteUser": "उपयोगकर्ता {{username}} हटाएँ",
+    "deleteUser": "{{username}} का खाता हटाएँ",
     "assignmentsHeading": "भूमिका:डोमेन असाइनमेंट",
     "noAssignments": "कोई असाइनमेंट नहीं",
     "removeAssignment": "असाइनमेंट {{role}}:{{domain}} हटाएँ",
@@ -59,6 +59,15 @@
     "created": "\"{{username}}\" बनाया गया",
     "deleted": "\"{{username}}\" हटाया गया",
     "createFailed": "बनाना विफल रहा",
-    "assignmentFailed": "असाइनमेंट विफल रहा"
+    "assignmentFailed": "असाइनमेंट विफल रहा",
+    "removeFromOrg": "{{username}} को इस संगठन से हटाएँ",
+    "removedFromOrg": "\"{{username}}\" को इस संगठन से हटा दिया गया",
+    "removeFailed": "उपयोगकर्ता को हटाया नहीं जा सका",
+    "confirmRemoveTitle": "इस संगठन से हटाएँ?",
+    "confirmRemoveBody": "{{username}} इस संगठन में अपनी भूमिकाएँ खो देगा। उसका खाता और अन्य संगठनों में उसकी जगह प्रभावित नहीं होगी।",
+    "confirmRemoveButton": "संगठन से हटाएँ",
+    "confirmDeleteTitle": "यह खाता हटाएँ?",
+    "confirmDeleteBody": "{{username}} सभी संगठन छोड़ देगा और उसकी प्रोफ़ाइल हटा दी जाएगी। जिन संगठनों में वह है वे बने रहेंगे। इसे पूर्ववत नहीं किया जा सकता।",
+    "confirmDeleteButton": "खाता हटाएँ"
   }
 }

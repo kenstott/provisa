@@ -38,7 +38,7 @@
     "no": "Não",
     "none": "—",
     "expandUser": "Mostrar atribuições de {{username}}",
-    "deleteUser": "Excluir usuário {{username}}",
+    "deleteUser": "Excluir a conta de {{username}}",
     "assignmentsHeading": "Atribuições função:domínio",
     "noAssignments": "Nenhuma atribuição",
     "removeAssignment": "Remover atribuição {{role}}:{{domain}}",
@@ -59,6 +59,15 @@
     "created": "\"{{username}}\" criado",
     "deleted": "\"{{username}}\" excluído",
     "createFailed": "Falha ao criar",
-    "assignmentFailed": "Falha na atribuição"
+    "assignmentFailed": "Falha na atribuição",
+    "removeFromOrg": "Remover {{username}} desta organização",
+    "removedFromOrg": "\"{{username}}\" foi removido desta organização",
+    "removeFailed": "Não foi possível remover o usuário",
+    "confirmRemoveTitle": "Remover desta organização?",
+    "confirmRemoveBody": "{{username}} perde seus papéis nesta organização. A conta e a participação em outras organizações não são afetadas.",
+    "confirmRemoveButton": "Remover da organização",
+    "confirmDeleteTitle": "Excluir esta conta?",
+    "confirmDeleteBody": "{{username}} sai de todas as organizações e seu perfil é excluído. As organizações de que faz parte permanecem. Isso não pode ser desfeito.",
+    "confirmDeleteButton": "Excluir conta"
   }
 }

@@ -347,6 +347,9 @@
     },
     "users": {
       "assignment_not_found": "Zuweisung nicht gefunden",
+      "last_org_admin": "{{user}} ist der letzte Organisationsadministrator von: {{orgs}}. Befördern Sie dort jeweils einen weiteren Organisationsadministrator oder löschen Sie die Organisation zuerst.",
+      "last_platform_admin": "{{user}} ist der letzte Plattformadministrator dieser Bereitstellung. Weisen Sie die Rolle zuerst einem anderen Benutzer zu.",
+      "no_active_org": "An diese Anfrage ist keine Organisation gebunden. Melden Sie sich zuerst bei einer Organisation an.",
       "no_fields_to_update": "Keine Felder zu aktualisieren",
       "self_role_change": "Ein Benutzer kann seine eigene Rolle nicht ändern. Bitten Sie einen anderen Administrator (REQ-1308).",
       "user_not_found": "Benutzer nicht gefunden"

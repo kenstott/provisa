@@ -347,6 +347,9 @@
     },
     "users": {
       "assignment_not_found": "Atribuição não encontrada",
+      "last_org_admin": "{{user}} é o último administrador de organização de: {{orgs}}. Promova primeiro outro administrador em cada uma, ou exclua a organização.",
+      "last_platform_admin": "{{user}} é o último administrador de plataforma desta implantação. Conceda primeiro o papel a outro usuário.",
+      "no_active_org": "Nenhuma organização está vinculada a esta solicitação. Entre primeiro em uma organização.",
       "no_fields_to_update": "Nenhum campo para atualizar",
       "self_role_change": "Um usuário não pode alterar a própria função. Peça a outro administrador (REQ-1308).",
       "user_not_found": "Usuário não encontrado"

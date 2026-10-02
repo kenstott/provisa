@@ -411,6 +411,129 @@ async def remove_from_org(  # REQ-1305
     return (result.rowcount or 0) > 0
 
 
+class AccountRemovalRefused(Exception):  # REQ-1302, REQ-1307
+    """An account that may not be removed yet, and why. ``reason`` is ``"last_org_admin"`` —
+    ``orgs`` names every org the person is the only org_admin of — or ``"last_platform_admin"``.
+    Nothing was removed. The route words the refusal for whoever asked."""
+
+    def __init__(self, user_id: str, reason: str, orgs: list[str] | None = None) -> None:
+        self.user_id = user_id
+        self.reason = reason
+        self.orgs = orgs or []
+        if reason == "last_org_admin":
+            message = f"{user_id} is the last org_admin of: {', '.join(self.orgs)}"
+        else:
+            message = f"{user_id} is the last platform_admin of this deployment"
+        super().__init__(message)
+
+
+async def remove_account(  # REQ-1307, REQ-1312, REQ-1918
+    admin_db: "Database", platform_db: "Database", user_id: str, *, tenant_db_of
+) -> dict:
+    """Remove a person's account from the deployment: THE removal, for the person themselves
+    and for an administrator who holds the cross-org right.
+
+    Refused (:class:`AccountRemovalRefused`) while they are the last org_admin of any org — every
+    such org is named, not only the first — or the last platform_admin of the deployment. When
+    it may go: they leave every org in both planes (their tokens for each are revoked with the
+    membership), their profile, credential row and SCRAM verifier are deleted, and every
+    remaining reference to their id — orgs and invites they created or used, audit entries —
+    carries a tombstone instead. Audit entries are never deleted. The orgs and everything
+    registered in them stay: they are the org's, not the person's.
+
+    ``platform_db`` is the control plane that holds the platform_admin assignments;
+    ``tenant_db_of`` returns the control plane of one org.
+    """
+    from provisa.auth.scram_store import delete_verifier
+    from provisa.core.schema_admin import (
+        local_users,
+        org_invites,
+        superadmin_bootstrap,
+        user_profiles,
+    )
+    from provisa.core.schema_org import query_audit_log
+    from provisa.security.rights import PLATFORM_ADMIN_ROLE
+
+    async with admin_db.acquire() as conn:
+        result = await conn.execute_core(
+            select(user_org_memberships.c.org_id).where(user_org_memberships.c.user_id == user_id)
+        )
+        member_org_ids = sorted(r[0] for r in result.fetchall())
+
+    tenant_dbs = {}
+    blocking: list[str] = []
+    for org_id in member_org_ids:
+        tenant_dbs[org_id] = await tenant_db_of(org_id)
+        admins = await org_admin_user_ids(tenant_dbs[org_id])
+        if user_id in admins and len(admins) == 1:
+            blocking.append(org_id)
+    if blocking:
+        raise AccountRemovalRefused(user_id, "last_org_admin", blocking)
+
+    # The deployment must not be left without a platform administrator either. platform_admin is
+    # held either by a role assignment in the platform-plane schema or by the bootstrap claimant.
+    async with platform_db.acquire() as conn:
+        result = await conn.execute_core(
+            select(user_role_assignments.c.user_id).where(
+                user_role_assignments.c.role_id == PLATFORM_ADMIN_ROLE
+            )
+        )
+        platform_admins = {r[0] for r in result.fetchall()}
+    async with admin_db.acquire() as conn:
+        result = await conn.execute_core(
+            select(superadmin_bootstrap.c.user_id).where(superadmin_bootstrap.c.id == 1)
+        )
+        claimant = result.scalar()
+    if claimant is not None:
+        platform_admins.add(claimant)
+    if user_id in platform_admins and len(platform_admins) == 1:
+        raise AccountRemovalRefused(user_id, "last_platform_admin")
+
+    for org_id in member_org_ids:
+        await remove_from_org(admin_db, tenant_dbs[org_id], user_id, org_id)
+
+    tombstone = tombstone_id(user_id)
+    async with admin_db.acquire() as conn:
+        # Tombstone rather than NULL: org_invites.created_by is NOT NULL, and a dangling id is
+        # worse than an explicit one. The row stays referentially intact and stops naming anyone.
+        await conn.execute_core(
+            update(orgs).where(orgs.c.created_by == user_id).values(created_by=tombstone)
+        )
+        await conn.execute_core(
+            update(org_invites)
+            .where(org_invites.c.created_by == user_id)
+            .values(created_by=tombstone)
+        )
+        await conn.execute_core(
+            update(org_invites).where(org_invites.c.used_by == user_id).values(used_by=tombstone)
+        )
+        await conn.execute_core(delete(user_profiles).where(user_profiles.c.user_id == user_id))
+        await conn.execute_core(delete(local_users).where(local_users.c.id == user_id))
+    # REQ-1394: the verifier outlives no user. Left behind it would keep a deleted name negotiable
+    # over pgwire and would collide with the next user given that username.
+    await delete_verifier(admin_db, user_id)
+    # Audit attributions carry the tombstone too. Audit entries are NEVER deleted (REQ-1312) — a
+    # trail that erases on request is not a trail.
+    for org_id in member_org_ids:
+        async with tenant_dbs[org_id].acquire() as conn:
+            await conn.execute_core(
+                update(query_audit_log)
+                .where(query_audit_log.c.user_id == user_id)
+                .values(user_id=tombstone)
+            )
+            await conn.execute_core(
+                update(admin_audit_log)
+                .where(admin_audit_log.c.actor_id == user_id)
+                .values(actor_id=tombstone)
+            )
+            await conn.execute_core(
+                update(admin_audit_log)
+                .where(admin_audit_log.c.subject_id == user_id)
+                .values(subject_id=tombstone)
+            )
+    return {"deleted": user_id, "tombstone": tombstone, "left_orgs": member_org_ids}
+
+
 def tombstone_id(user_id: str) -> str:  # REQ-1312
     """The opaque token replacing a deleted user's id in rows that must stay referentially intact.
 

@@ -17,8 +17,15 @@ import type { LocalUser } from "../api/admin";
 const t = i18n.getFixedT("en");
 
 const createSpy = vi.fn(async () => ({ id: "u2" }));
-const deleteSpy = vi.fn(async () => undefined);
+const deleteSpy = vi.fn(async (): Promise<"org" | "account"> => "org");
 let mockUsers: LocalUser[] = [];
+// Whether the caller holds the cross-org right: it deletes accounts; an org administrator
+// removes a person from their org.
+let holdsCrossOrg = false;
+
+vi.mock("../hooks/useCapability", () => ({
+  useCapability: (cap: string) => cap === "cross_org" && holdsCrossOrg,
+}));
 
 vi.mock("../api/admin", () => ({
   fetchLocalUsers: () => Promise.resolve(mockUsers),
@@ -31,7 +38,10 @@ vi.mock("../api/admin", () => ({
 
 // @mantine/notifications renders into a portal driven by a store; stub show()
 // so the component under test doesn't require the <Notifications/> host.
-vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
+const showSpy = vi.fn();
+vi.mock("@mantine/notifications", () => ({
+  notifications: { show: (...a: unknown[]) => showSpy(...a) },
+}));
 
 function makeUser(over: Partial<LocalUser> = {}): LocalUser {
   return {
@@ -47,8 +57,11 @@ function makeUser(over: Partial<LocalUser> = {}): LocalUser {
 describe("LocalUsersTab", () => {
   beforeEach(() => {
     createSpy.mockClear();
-    deleteSpy.mockClear();
+    deleteSpy.mockReset();
+    deleteSpy.mockResolvedValue("org");
+    showSpy.mockClear();
     mockUsers = [];
+    holdsCrossOrg = false;
   });
 
   it("renders the empty state when there are no users", async () => {
@@ -56,14 +69,75 @@ describe("LocalUsersTab", () => {
     expect(await screen.findByText(t("localUsers.empty"))).toBeInTheDocument();
   });
 
-  it("exposes an accessible delete control per user (role + name, not CSS class)", async () => {
+  it("an org administrator removes a user from the organization, and is told so first", async () => {
     mockUsers = [makeUser()];
     render(<LocalUsersTab allRoles={["admin"]} allDomains={["sales"]} />);
-    const del = await screen.findByRole("button", {
-      name: t("localUsers.deleteUser", { username: "alice" }),
+    // Accessible control: role + name, not a CSS class.
+    const control = await screen.findByRole("button", {
+      name: t("localUsers.removeFromOrg", { username: "alice" }),
     });
-    fireEvent.click(del);
+    fireEvent.click(control);
+
+    // Nothing happens until the person confirms what the page says it will do.
+    expect(deleteSpy).not.toHaveBeenCalled();
+    expect(await screen.findByText(t("localUsers.confirmRemoveTitle"))).toBeInTheDocument();
+    expect(
+      screen.getByText(t("localUsers.confirmRemoveBody", { username: "alice" })),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: t("localUsers.confirmRemoveButton") }));
     await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith("u1"));
+    await waitFor(() =>
+      expect(showSpy).toHaveBeenCalledWith({
+        message: t("localUsers.removedFromOrg", { username: "alice" }),
+      }),
+    );
+  });
+
+  it("the holder of the cross-org right deletes the account, and is told so first", async () => {
+    holdsCrossOrg = true;
+    deleteSpy.mockResolvedValue("account");
+    mockUsers = [makeUser()];
+    render(<LocalUsersTab allRoles={["admin"]} allDomains={["sales"]} />);
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: t("localUsers.deleteUser", { username: "alice" }),
+      }),
+    );
+
+    expect(await screen.findByText(t("localUsers.confirmDeleteTitle"))).toBeInTheDocument();
+    expect(
+      screen.getByText(t("localUsers.confirmDeleteBody", { username: "alice" })),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: t("localUsers.confirmDeleteButton") }));
+    await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith("u1"));
+    await waitFor(() =>
+      expect(showSpy).toHaveBeenCalledWith({
+        message: t("localUsers.deleted", { username: "alice" }),
+      }),
+    );
+  });
+
+  it("shows the refusal and keeps the user when the removal is refused", async () => {
+    const refusal =
+      "alice is the last org admin of: acme. Promote another org admin in each, or delete the organization, first.";
+    deleteSpy.mockRejectedValue(new Error(refusal));
+    mockUsers = [makeUser()];
+    render(<LocalUsersTab allRoles={["admin"]} allDomains={["sales"]} />);
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: t("localUsers.removeFromOrg", { username: "alice" }),
+      }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: t("localUsers.confirmRemoveButton") }),
+    );
+
+    await waitFor(() =>
+      expect(showSpy).toHaveBeenCalledWith({ color: "red", autoClose: false, message: refusal }),
+    );
+    expect(screen.getByText("alice")).toBeInTheDocument();
   });
 
   it("creates a user via the required fields and clears the form", async () => {

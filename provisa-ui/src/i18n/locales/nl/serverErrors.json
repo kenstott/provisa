@@ -347,6 +347,9 @@
     },
     "users": {
       "assignment_not_found": "Toewijzing niet gevonden",
+      "last_org_admin": "{{user}} is de laatste organisatiebeheerder van: {{orgs}}. Bevorder eerst in elk daarvan een andere organisatiebeheerder, of verwijder de organisatie.",
+      "last_platform_admin": "{{user}} is de laatste platformbeheerder van deze installatie. Ken de rol eerst aan een andere gebruiker toe.",
+      "no_active_org": "Er is geen organisatie aan dit verzoek gekoppeld. Meld u eerst aan bij een organisatie.",
       "no_fields_to_update": "Geen velden om bij te werken",
       "self_role_change": "Een gebruiker kan de eigen rol niet wijzigen. Vraag een andere beheerder (REQ-1308).",
       "user_not_found": "Gebruiker niet gevonden"

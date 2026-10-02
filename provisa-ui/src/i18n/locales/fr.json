@@ -38,7 +38,7 @@
     "no": "Non",
     "none": "—",
     "expandUser": "Afficher les affectations de {{username}}",
-    "deleteUser": "Supprimer l'utilisateur {{username}}",
+    "deleteUser": "Supprimer le compte de {{username}}",
     "assignmentsHeading": "Affectations rôle:domaine",
     "noAssignments": "Aucune affectation",
     "removeAssignment": "Retirer l'affectation {{role}}:{{domain}}",
@@ -59,6 +59,15 @@
     "created": "« {{username}} » créé",
     "deleted": "« {{username}} » supprimé",
     "createFailed": "Échec de la création",
-    "assignmentFailed": "Échec de l'affectation"
+    "assignmentFailed": "Échec de l'affectation",
+    "removeFromOrg": "Retirer {{username}} de cette organisation",
+    "removedFromOrg": "« {{username}} » a été retiré de cette organisation",
+    "removeFailed": "Impossible de retirer l'utilisateur",
+    "confirmRemoveTitle": "Retirer de cette organisation ?",
+    "confirmRemoveBody": "{{username}} perd ses rôles dans cette organisation. Son compte et sa place dans d'autres organisations ne sont pas affectés.",
+    "confirmRemoveButton": "Retirer de l'organisation",
+    "confirmDeleteTitle": "Supprimer ce compte ?",
+    "confirmDeleteBody": "{{username}} quitte toutes les organisations et son profil est supprimé. Les organisations dont il fait partie sont conservées. Cette action est irréversible.",
+    "confirmDeleteButton": "Supprimer le compte"
   }
 }
