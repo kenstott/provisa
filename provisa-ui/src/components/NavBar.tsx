@@ -359,7 +359,6 @@ export function NavBar() {
                 ) : (
                   <CapabilityGate
                     capability={item.capability}
-                    strict={item.strict}
                     orCapability={item.orCapability}
                     navigable
                   >

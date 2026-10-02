@@ -42,7 +42,7 @@ vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
         roles: [
           {
             id: "platform_admin",
-            capabilities: ["admin", "superadmin", "platform_settings", "cross_org"],
+            capabilities: ["platform_settings", "cross_org"],
             demonstrated: [],
             domain_access: ["*"],
           },

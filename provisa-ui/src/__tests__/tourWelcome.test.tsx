@@ -21,11 +21,13 @@ vi.mock("../pageChunks", () => ({ prefetchAllPageChunks: () => Promise.resolve()
 vi.mock("../hooks/useAdminQueries", () => ({ useTourPrefetch: () => () => Promise.resolve() }));
 
 // TourProvider now reads the signed-in rights to decide which steps this viewer is shown. These
-// suites are about the offer and the recovery behaviour, not about gating, so the viewer holds the
-// platform wildcard — the whole tour is on the itinerary and nothing is dropped.
-vi.mock("../context/AuthContext", () => ({
-  useAuth: () => ({ loading: false, capabilities: ["admin"] }),
-}));
+// suites are about the offer and the recovery behaviour, not about gating, so the viewer holds
+// every right the tour's steps name — the whole tour is on the itinerary and nothing is dropped.
+vi.mock("../context/AuthContext", async () => {
+  const { TOUR_STEPS } = await import("../tour/tourSteps");
+  const capabilities = [...new Set(TOUR_STEPS.flatMap((s) => (s.capability ? [s.capability] : [])))];
+  return { useAuth: () => ({ loading: false, capabilities }) };
+});
 
 const {
   TourProvider,

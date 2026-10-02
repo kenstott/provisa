@@ -33,14 +33,13 @@ interface Props extends CapabilityRequirement {
  */
 export function CapabilityGate({
   capability,
-  strict,
   orCapability,
   children,
   fallback,
   navigable,
 }: Props) {
   const { loading, capabilities, demonstrated } = useAuth();
-  const req = { capability, strict, orCapability };
+  const req = { capability, orCapability };
   const allowed = meetsRequirement(capabilities, req);
   // A gate with a fallback owns a whole region — a route body — and has to show something there.
   // A gate without one contributes a nav link or a button to a larger layout: it renders nothing

@@ -68,7 +68,7 @@ describe("CapabilityGate", () => {
     holding("usage");
 
     const { container } = render(
-      <CapabilityGate capability={"admin" as Capability}>
+      <CapabilityGate capability={"access_config" as Capability}>
         <span>Admin Only</span>
       </CapabilityGate>,
     );
@@ -96,7 +96,7 @@ describe("CapabilityGate", () => {
   });
 
   it("renders children when the capability is allowed", () => {
-    holding("admin");
+    holding("query_development");
 
     render(
       <CapabilityGate capability={"query_development" as Capability}>
@@ -111,7 +111,7 @@ describe("CapabilityGate", () => {
     holding("usage");
 
     const { container } = render(
-      <CapabilityGate capability={"admin" as Capability}>
+      <CapabilityGate capability={"access_config" as Capability}>
         <span>Admin Only</span>
       </CapabilityGate>,
     );
@@ -139,7 +139,7 @@ describe("CapabilityGate", () => {
   });
 
   it("does not render fallback when capability is allowed", () => {
-    holding("admin");
+    holding("source_registration");
 
     render(
       <CapabilityGate
@@ -166,27 +166,31 @@ describe("CapabilityGate", () => {
     expect(screen.queryByText("Approvals")).not.toBeInTheDocument();
   });
 
-  // REQ-1361: `strict` refuses the platform wildcard, and `orCapability` opens the same entry on a
-  // second right. An org's secrets are the case both exist for: the server refuses `admin` there by
-  // name, and what a platform admin does reach at that route is the deployment's secrets service.
-  it("refuses the platform wildcard on a strict gate", () => {
-    holding("admin");
+  // REQ-1327/REQ-1361: no right stands in for another, on any gate. The retired wildcard strings
+  // open nothing, and neither do the platform rights on an org's surface; `orCapability` is how
+  // one entry opens on a second right. An org's secrets are the case: what a platform admin does
+  // reach at that route is the deployment's secrets service.
+  it.each([["admin"], ["superadmin"], ["platform_settings", "cross_org"]])(
+    "refuses a caller holding %s on a gate naming another right",
+    (...held) => {
+      holding(...held);
 
-    const { container } = render(
-      <CapabilityGate capability={"org_settings" as Capability} strict>
-        <span>Org Secrets</span>
-      </CapabilityGate>,
-    );
+      const { container } = render(
+        <CapabilityGate capability={"org_settings" as Capability}>
+          <span>Org Secrets</span>
+        </CapabilityGate>,
+      );
 
-    expect(screen.queryByText("Org Secrets")).not.toBeInTheDocument();
-    expect(container.querySelectorAll(":not(style)")).toHaveLength(0);
-  });
+      expect(screen.queryByText("Org Secrets")).not.toBeInTheDocument();
+      expect(container.querySelectorAll(":not(style)")).toHaveLength(0);
+    },
+  );
 
-  it("admits the literal right on a strict gate", () => {
+  it("admits the right itself", () => {
     holding("org_settings");
 
     render(
-      <CapabilityGate capability={"org_settings" as Capability} strict>
+      <CapabilityGate capability={"org_settings" as Capability}>
         <span>Org Secrets</span>
       </CapabilityGate>,
     );
@@ -350,7 +354,6 @@ describe("CapabilityGate", () => {
       render(
         <CapabilityGate
           capability={"org_settings" as Capability}
-          strict
           orCapability={"platform_settings" as Capability}
         >
           <span>Secrets service</span>
@@ -362,13 +365,12 @@ describe("CapabilityGate", () => {
     });
   });
 
-  it("opens on the second right when the strict one is absent", () => {
-    holding("admin", "platform_settings");
+  it("opens on the second right when the first is absent", () => {
+    holding("platform_settings", "cross_org");
 
     render(
       <CapabilityGate
         capability={"org_settings" as Capability}
-        strict
         orCapability={"platform_settings" as Capability}
       >
         <span>Secrets service</span>

@@ -68,9 +68,13 @@ describe("REQ-058: CapabilityGate hides content from users lacking the capabilit
     expect(cap).toBe("query_development");
   });
 
-  it("REQ-058: Capability type includes admin", () => {
-    const cap: import("../types/auth").Capability = "admin";
-    expect(cap).toBe("admin");
+  it("REQ-058/REQ-1327: Capability type has no wildcard member", () => {
+    // No capability stands in for another, so the vocabulary names none that would.
+    // @ts-expect-error "admin" is not a capability
+    const admin: import("../types/auth").Capability = "admin";
+    // @ts-expect-error "superadmin" is not a capability
+    const superadmin: import("../types/auth").Capability = "superadmin";
+    expect([admin, superadmin]).toEqual(["admin", "superadmin"]);
   });
 });
 
@@ -84,7 +88,7 @@ describe("REQ-059: Capability type represents independently assignable building 
       "create_relationship",
       "access_config",
       "query_development",
-      "admin",
+      "user_management",
     ];
     const unique = new Set(caps);
     expect(unique.size).toBe(caps.length);

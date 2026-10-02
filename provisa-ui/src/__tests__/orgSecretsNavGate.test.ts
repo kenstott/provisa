@@ -26,16 +26,17 @@ const admin = NAV_GROUPS.find((g) => g.id === "admin")!;
 const secrets = admin.items.find((i) => i.to === "/admin/secrets")!;
 
 describe("the Org Secrets nav entry", () => {
-  it("is not opened by the platform wildcard on the org right", () => {
-    expect(
-      meetsRequirement(["admin"], { capability: secrets.capability, strict: secrets.strict }),
-    ).toBe(false);
+  it("is not opened on the org right by anything but the org right", () => {
+    for (const held of [["admin"], ["superadmin"], ["platform_settings", "cross_org"]]) {
+      expect(meetsRequirement(held, { capability: secrets.capability }), held.join()).toBe(false);
+    }
   });
 
   it("names the deployment's half for a caller who holds only platform authority", () => {
-    // platform_admin carries the wildcard AND platform_settings; the entry survives on the latter.
-    expect(meetsRequirement(["admin", "platform_settings"], secrets)).toBe(true);
-    expect(labelKeyFor(secrets, ["admin", "platform_settings"])).toBe("navBar.itemPlatformSecrets");
+    // platform_admin holds platform_settings and cross_org; the entry survives on the former.
+    const platformAdmin = ["platform_settings", "cross_org"];
+    expect(meetsRequirement(platformAdmin, secrets)).toBe(true);
+    expect(labelKeyFor(secrets, platformAdmin)).toBe("navBar.itemPlatformSecrets");
   });
 
   it("names the org's half for the administrator of that org", () => {
@@ -47,14 +48,28 @@ describe("the Org Secrets nav entry", () => {
     expect(meetsRequirement(["usage"], secrets)).toBe(false);
   });
 
-  it("leaves every other entry answered by the wildcard as before", () => {
-    // The strictness is one entry's, not a policy change across the nav: the server lets the
-    // wildcard stand in everywhere else, and a client that stopped would hide surfaces a platform
-    // admin genuinely operates.
-    const others = admin.items.filter((i) => i.to !== "/admin/secrets");
-    for (const item of others) {
-      expect(meetsRequirement(["admin"], item), item.to).toBe(true);
-      expect(labelKeyFor(item, ["admin"]), item.to).toBe(item.labelKey);
+  it("opens every admin entry on the right it names and on nothing in its place", () => {
+    // REQ-1327: the rule is the nav's, not one entry's. The retired wildcard strings open no
+    // entry, and each entry opens for a caller holding exactly its own right.
+    for (const item of admin.items) {
+      expect(meetsRequirement(["admin", "superadmin"], item), item.to).toBe(false);
+      expect(meetsRequirement([item.capability], item), item.to).toBe(true);
+      expect(labelKeyFor(item, [item.capability]), item.to).toBe(item.labelKey);
+    }
+  });
+
+  it("shows a platform administrator only the entries the platform rights open", () => {
+    const platformAdmin = ["platform_settings", "cross_org"];
+    const dataRights = ["org_settings", "observability", "user_management", "usage"];
+    for (const item of admin.items) {
+      const opens = meetsRequirement(platformAdmin, item);
+      const namesPlatformRight =
+        platformAdmin.includes(item.capability) ||
+        (item.orCapability !== undefined && platformAdmin.includes(item.orCapability));
+      expect(opens, item.to).toBe(namesPlatformRight);
+      if (dataRights.includes(item.capability) && item.orCapability === undefined) {
+        expect(opens, item.to).toBe(false);
+      }
     }
   });
 

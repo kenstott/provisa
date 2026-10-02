@@ -12,7 +12,7 @@ import { useAuth } from "../context/AuthContext";
 import { hasCapability, isDemonstrated } from "../lib/capabilities";
 import type { Capability } from "../types/auth";
 
-/** Check if unioned capabilities include a capability (admin has all). */
+/** Check if unioned capabilities include a capability. Nothing stands in for it (REQ-1327). */
 export function useCapability(cap: Capability): boolean {
   const { capabilities } = useAuth();
   return hasCapability(capabilities, cap);
@@ -32,6 +32,5 @@ export function useDemonstrated(cap: Capability): boolean {
 export function useCapabilities(caps: Capability[]): boolean {
   const { capabilities } = useAuth();
   if (capabilities.length === 0) return false;
-  if (capabilities.includes("admin")) return true;
   return caps.every((c) => capabilities.includes(c));
 }

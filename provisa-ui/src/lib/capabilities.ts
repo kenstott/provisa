@@ -11,36 +11,28 @@
 import type { Capability } from "../types/auth";
 
 /**
- * Does this capability set confer `cap`? `admin` is the platform wildcard (rights.py
- * PLATFORM_BYPASS_CAPABILITIES), which only platform_admin carries.
+ * Does this capability set confer `cap`? Only by holding it: no capability stands in for another
+ * (REQ-1327), exactly as on the server, where every gate names the right it reads.
  *
  * A plain function rather than only the `useCapability` hook because the same question has to be
  * answered outside a render — choosing which route to ENTER a nav group on cannot call a hook per
  * candidate item.
  */
 export function hasCapability(capabilities: string[], cap: Capability): boolean {
-  if (capabilities.length === 0) return false;
-  return capabilities.includes(cap) || capabilities.includes("admin");
+  return capabilities.includes(cap);
 }
 
 /**
- * REQ-1361: a gate that the platform wildcard may not answer, and/or that a second right also
- * opens.
+ * REQ-1361: a gate that a second right also opens.
  *
- * `admin` is platform authority, and platform authority is not org authority. Most surfaces are
- * happy to let it stand in — the server lets it stand in too — but a few refuse it by name on the
- * server (an org's secrets answer to the administrator of that org and to nobody above it), and a
- * client gate that keeps saying yes there only buys a page that 403s, or worse, a menu entry that
- * announces the surface exists for this caller when it does not. `strict` makes the client say
- * exactly what the server says.
- *
- * `orCapability` is the other half of the same honesty: a surface can carry two things gated
- * differently — the org's vault under `org_settings`, the deployment's choice of secrets service
- * under `platform_settings` — and the entry belongs in the menu when EITHER is reachable.
+ * A surface can carry two things gated differently — the org's vault under `org_settings`, the
+ * deployment's choice of secrets service under `platform_settings` — and the entry belongs in the
+ * menu when EITHER is reachable. Platform authority is not org authority: a platform administrator
+ * reaches the second half and never the first, because the client says exactly what the server
+ * says and neither lets one right answer for another.
  */
 export interface CapabilityRequirement {
   capability: Capability;
-  strict?: boolean;
   orCapability?: Capability;
 }
 
@@ -74,10 +66,6 @@ export function unionDemonstrated(
 
 /** Does this capability set open a surface described by `req`? */
 export function meetsRequirement(capabilities: string[], req: CapabilityRequirement): boolean {
-  if (capabilities.length === 0) return false;
-  const primary = req.strict
-    ? capabilities.includes(req.capability)
-    : hasCapability(capabilities, req.capability);
-  if (primary) return true;
+  if (hasCapability(capabilities, req.capability)) return true;
   return req.orCapability !== undefined && hasCapability(capabilities, req.orCapability);
 }

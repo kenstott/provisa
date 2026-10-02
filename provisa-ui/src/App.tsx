@@ -558,8 +558,11 @@ function App() {
                                     ["/admin/auth", "platform_settings"],
                                     ["/admin/system-health", "observability"],
                                     ["/admin/observability", "observability"],
-                                    ["/admin/mcp-server", "admin"],
-                                    ["/admin/local-users", "admin"],
+                                    // Deep-links onto the dashboard beside system health
+                                    // (REQ-1008), so it opens on the dashboard's own right.
+                                    ["/admin/mcp-server", "observability"],
+                                    // The right the users surface is gated on server-side.
+                                    ["/admin/local-users", "user_management"],
                                     ["/admin/orgs", "cross_org"],
                                     ["/admin/ai-models", "org_settings"],
                                     ["/admin/metadata-export", "org_settings"],

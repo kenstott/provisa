@@ -40,9 +40,12 @@ describe("useCapability", () => {
     expect(renderHook(() => useCapability("query_development")).result.current).toBe(false);
   });
 
-  it("treats admin as having every capability", () => {
-    setCaps(["admin"]);
-    expect(renderHook(() => useCapability("source_registration")).result.current).toBe(true);
+  it("lets nothing stand in for the capability", () => {
+    // REQ-1327: the retired wildcard strings and the platform rights hold no data right.
+    for (const held of [["admin"], ["superadmin"], ["platform_settings", "cross_org"]]) {
+      setCaps(held as unknown as Capability[]);
+      expect(renderHook(() => useCapability("source_registration")).result.current).toBe(false);
+    }
   });
 });
 
@@ -60,8 +63,12 @@ describe("useCapabilities", () => {
     expect(renderHook(() => useCapabilities(["usage", "approve_view"])).result.current).toBe(false);
   });
 
-  it("admin short-circuits to true for any requested set", () => {
-    setCaps(["admin"]);
+  it("has no short-circuit: every requested capability must be held", () => {
+    setCaps(["admin", "superadmin", "usage"] as unknown as Capability[]);
+    expect(
+      renderHook(() => useCapabilities(["usage", "approve_view", "masking_config"])).result.current,
+    ).toBe(false);
+    setCaps(["usage", "approve_view", "masking_config"]);
     expect(
       renderHook(() => useCapabilities(["usage", "approve_view", "masking_config"])).result.current,
     ).toBe(true);

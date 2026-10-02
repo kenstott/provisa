@@ -167,7 +167,7 @@ describe("AuthProvider role resolution (REQ-1295)", () => {
     refetchRoles.mockResolvedValue({
       data: {
         roles: [
-          { id: "platform_admin", capabilities: ["admin", "superadmin"], demonstrated: [], domainAccess: ["*"] },
+          { id: "platform_admin", capabilities: ["platform_settings", "cross_org"], demonstrated: [], domainAccess: ["*"] },
           { id: "org_admin", capabilities: ["user_management"], demonstrated: [], domainAccess: ["*"] },
         ],
       },

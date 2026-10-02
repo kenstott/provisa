@@ -39,8 +39,14 @@ describe("entryItem", () => {
     expect(entryItem(admin, ["org_settings"])?.to).toBe("/admin/domains");
   });
 
-  it("gives the platform wildcard the first-listed item", () => {
-    expect(entryItem(admin, ["admin"])?.to).toBe("/admin/orgs");
+  it("gives a platform administrator the first-listed item, on cross_org", () => {
+    expect(entryItem(admin, ["platform_settings", "cross_org"])?.to).toBe("/admin/orgs");
+  });
+
+  it("gives the retired wildcard strings no admin surface at all", () => {
+    // REQ-1327: no capability stands in for another.
+    expect(entryItem(admin, ["admin"])).toBeUndefined();
+    expect(entryItem(admin, ["superadmin"])).toBeUndefined();
   });
 
   it("returns undefined when the caller holds no admin surface", () => {

@@ -49,7 +49,6 @@ export function AdminRail() {
             <CapabilityGate
               key={item.to}
               capability={item.capability}
-              strict={item.strict}
               orCapability={item.orCapability}
               navigable
             >

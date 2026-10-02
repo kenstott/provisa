@@ -32,15 +32,19 @@ vi.mock("../../context/DomainFilterContext", async (importOriginal) => ({
 }));
 
 // Spread the real module (shared registry — see the react-router-dom mock above).
-vi.mock("../../context/AuthContext", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../context/AuthContext")>()),
-  useAuth: () => ({
-    role: "admin",
-    selectedRoles: ["admin"],
-    capabilities: ["admin"],
-    domainAccess: ["*"],
-  }),
-}));
+vi.mock("../../context/AuthContext", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../context/AuthContext")>();
+  return {
+    ...actual,
+    useAuth: () => ({
+      role: "admin",
+      selectedRoles: ["admin"],
+      // The org administrator's rights: no capability stands in for them (REQ-1327).
+      capabilities: actual.DEFAULT_ADMIN_ROLE.capabilities,
+      domainAccess: ["*"],
+    }),
+  };
+});
 
 vi.mock("../../components/admin/FilterInput", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../components/admin/FilterInput")>()),

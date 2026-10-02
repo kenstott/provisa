@@ -292,12 +292,17 @@ describe("EnvSwitcher", () => {
     expect(screen.queryByTestId("env-switcher-trigger")).not.toBeInTheDocument();
   });
 
-  it("is shown to the platform administrator, who bypasses every right", async () => {
-    auth.capabilities = ["admin"];
-    mockFetch.mockResolvedValue([env("prod"), env("dev")]);
-    render(<EnvSwitcher />);
-    expect(await screen.findByTestId("env-switcher-trigger")).toBeInTheDocument();
-  });
+  it.each([[["platform_settings", "cross_org"]], [["admin"]], [["superadmin"]]])(
+    "is not shown to a caller holding %s: nothing stands in for the right",
+    async (held) => {
+      // REQ-1327: being served by another environment is the org's data plane.
+      auth.capabilities = held;
+      mockFetch.mockResolvedValue([env("prod"), env("dev")]);
+      render(<EnvSwitcher />);
+      await waitFor(() => expect(mockFetch).not.toHaveBeenCalled());
+      expect(screen.queryByTestId("env-switcher-trigger")).not.toBeInTheDocument();
+    },
+  );
 
   it("drops a selection made before the right was withdrawn", async () => {
     // Every request would otherwise keep carrying the name, and the server answers each one 403.

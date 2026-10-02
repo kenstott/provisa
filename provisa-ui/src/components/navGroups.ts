@@ -31,10 +31,6 @@ export interface DropdownItem {
   // hosted this entry could only report a setting nobody may change or accept one the next deploy
   // overwrites. Resolved from the same `billing` flag, which is what says a deployment is hosted.
   installedOnly?: boolean;
-  // REQ-1361: the platform wildcard (`admin`) does not answer this entry's capability -- the caller
-  // must hold it literally. For a surface the server refuses the wildcard on, a menu entry the
-  // wildcard opens is a claim the surface is theirs, and clicking it proves otherwise.
-  strict?: boolean;
   // A second right that also opens the entry, for a surface that carries two things gated
   // differently.
   orCapability?: Capability;
@@ -48,10 +44,7 @@ export interface DropdownItem {
 /** The label an entry wears for this caller (REQ-1361) -- see `orLabelKey`. */
 export function labelKeyFor(item: DropdownItem, capabilities: string[]): string {
   if (item.orLabelKey === undefined) return item.labelKey;
-  const primary = meetsRequirement(capabilities, {
-    capability: item.capability,
-    strict: item.strict,
-  });
+  const primary = meetsRequirement(capabilities, { capability: item.capability });
   return primary ? item.labelKey : item.orLabelKey;
 }
 
@@ -178,16 +171,14 @@ export const NAV_GROUPS: NavGroup[] = [
       // each: the org vault is an administrator's list of what the org connects to (org_settings),
       // and a person's own vault is nobody's to grant -- every member has one, so `usage`, the right
       // every seeded role carries. This supersedes REQ-1558's single sub-tab under Security.
-      // REQ-1361: STRICT. The wildcard is platform authority, and an org's secrets answer to the
-      // administrator of that org and to nobody above it -- the server refuses the same call, and
-      // the page renders no org half without a literal `org_settings`. What a platform admin does
-      // reach here is the deployment's choice of secrets SERVICE, which is why the entry survives
-      // on `platform_settings` instead of vanishing.
+      // REQ-1361: an org's secrets answer to the administrator of that org and to nobody above it
+      // -- the page renders no org half without `org_settings`, and no right stands in for it.
+      // What a platform admin does reach here is the deployment's choice of secrets SERVICE,
+      // which is why the entry survives on `platform_settings` instead of vanishing.
       {
         to: "/admin/secrets",
         labelKey: "navBar.itemOrgSecrets",
         capability: "org_settings",
-        strict: true,
         orCapability: "platform_settings",
         orLabelKey: "navBar.itemPlatformSecrets",
       },

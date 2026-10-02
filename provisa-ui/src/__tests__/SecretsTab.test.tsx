@@ -363,13 +363,12 @@ describe("MySecretsTab", () => {
   });
 });
 
-// REQ-1560, REQ-1361: `admin` is the platform wildcard and satisfies every other capability gate in
-// this UI. The org vault is the exception, and it has to be: the names an org keeps are themselves
-// a statement about what that org connects to. The server refuses the same call, so the wildcard
-// bought a page that 403s — this asserts the browser does not even ask.
-describe("SecretsTab and the platform wildcard", () => {
+// REQ-1560, REQ-1361, REQ-1327: the platform rights are over the deployment, never over an org's
+// data, and the names an org keeps are themselves a statement about what that org connects to.
+// The server refuses the same call — this asserts the browser does not even ask.
+describe("SecretsTab and the platform administrator", () => {
   it("shows a platform admin the service chooser and none of the org's names", async () => {
-    auth.capabilities = ["admin", "platform_settings"];
+    auth.capabilities = ["platform_settings", "cross_org"];
     render(<SecretsTab />);
     expect(await screen.findByTestId("secrets-service-toggle")).toBeInTheDocument();
     expect(mockFetch).not.toHaveBeenCalled();
@@ -400,8 +399,8 @@ describe("SecretsTab org-key panel", () => {
     expect(screen.queryByTestId("org-key-toggle")).toBeNull();
   });
 
-  it("never offers it to the platform wildcard", async () => {
-    auth.capabilities = ["admin", "platform_settings"];
+  it("never offers it to the platform administrator", async () => {
+    auth.capabilities = ["platform_settings", "cross_org"];
     render(<SecretsTab />);
     expect(await screen.findByTestId("secrets-service-toggle")).toBeInTheDocument();
     expect(screen.queryByTestId("org-key-toggle")).toBeNull();

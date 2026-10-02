@@ -52,7 +52,6 @@ const ALL_CAPABILITIES: Capability[] = [
   "query_development",
   "approve_view",
   "full_results",
-  "admin",
   "usage",
   "read_restricted",
   "approve_relationship",
@@ -63,7 +62,6 @@ const ALL_CAPABILITIES: Capability[] = [
   // REQ-1590: granted and revoked here like any other right — read opens the glossary, rw curates it.
   "glossary_read",
   "glossary_rw",
-  "superadmin",
 ];
 
 const EMPTY_ROLE = {
