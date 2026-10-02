@@ -19,7 +19,14 @@ schema of the org, and of the org's own rows in the platform plane. The columns 
 schema's own definitions (``schema_org.metadata``, ``schema_admin.metadata``), so a column added
 later is searched without anything being registered for it. It runs only when a secret is being
 deleted. It compares stored text with the reference's literal text; it never resolves a
-reference, and it reads no secret's value.
+reference.
+
+Two columns hold what they store ENCRYPTED and are resolved for references at the moment they
+are used: an API source's auth config and an org's own service keys. A reference can therefore
+live inside them, so for these two — and only these — the check decrypts each value in memory,
+as the server already does at call time, and looks for the literal. Nothing decrypted is
+returned, logged or put in a refusal: a hit names the row like any other. A value that cannot be
+decrypted is never read as "no reference": that row is named in the refusal as unreadable.
 """
 
 # Requirements: REQ-1918, REQ-1558
@@ -39,10 +46,20 @@ if TYPE_CHECKING:
 
     from provisa.core.database import Connection, Database
 
-#: Columns that are NOT searched, each with why. They hold ciphertext: the stored bytes are an
-#: envelope, so the reference's text cannot be found in them by comparison, and finding it would
-#: mean decrypting values this search must not read. Two of them CAN hold a reference inside
-#: what they encrypt — a secret named only there is not seen, and its delete is not refused.
+#: Encrypted columns whose plaintext is resolved for secret references when it is used, so a
+#: reference CAN live inside them. These are decrypted in memory by the check and searched.
+SEARCHED_DECRYPTED: dict[tuple[str, str], str] = {
+    ("api_sources", "auth"): (
+        "an API source's auth config; its fields are resolved at call time "
+        "(provisa/api_source/caller.py)"
+    ),
+    ("org_secrets", "value_enc"): (
+        "an org's own service keys; the value is resolved when read (provisa/core/org_secrets.py)"
+    ),
+}
+
+#: Columns that are NOT searched, each with why. They hold ciphertext or bytes that are never
+#: resolved as a secret reference, so none can take effect there.
 NOT_SEARCHED: dict[tuple[str, str], str] = {
     # --- an environment's schema ---
     ("rls_rules", "filter_expr"): (
@@ -52,14 +69,6 @@ NOT_SEARCHED: dict[tuple[str, str], str] = {
     ("query_audit_log", "query_text_enc"): (
         "the text of a statement someone ran, encrypted at rest; a record of the past, never "
         "resolved"
-    ),
-    ("api_sources", "auth"): (
-        "an API source's auth config, encrypted at rest; its fields are resolved at call time, "
-        "so a reference CAN live inside it and is not seen by this search"
-    ),
-    ("org_secrets", "value_enc"): (
-        "an org's own service keys, encrypted at rest; the value is resolved when read, so a "
-        "reference CAN live inside it and is not seen by this search"
     ),
     # --- the platform plane ---
     ("secrets_store", "value"): "the vault's own envelope: the secrets themselves",
@@ -89,6 +98,9 @@ class SecretReference:
     name: str
     column: str
     environment: str | None
+    #: The value is encrypted and could not be decrypted, so whether it names the secret is not
+    #: known. It blocks the delete: an unreadable value is never taken for "no reference".
+    unreadable: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -97,6 +109,7 @@ class SecretReference:
             "name": self.name,
             "column": self.column,
             "environment": self.environment,
+            "unreadable": self.unreadable,
         }
 
 
@@ -114,6 +127,11 @@ def searched_columns(table: SATable) -> list[Any]:
         if isinstance(column.type, (Text, String, JSON))
         and (table.name, column.name) not in NOT_SEARCHED
     ]
+
+
+def decrypted_columns(table: SATable) -> list[Any]:
+    """The encrypted columns of ``table`` the check decrypts in memory and searches."""
+    return [c for c in table.columns if (table.name, c.name) in SEARCHED_DECRYPTED]
 
 
 def binary_columns(metadata: Any) -> set[tuple[str, str]]:
@@ -152,7 +170,45 @@ async def _in_table(
                     environment=environment,
                 )
             )
+    for column in decrypted_columns(table):
+        statement = select(*key, *([named] if named is not None else []), column).where(
+            column.is_not(None)
+        )
+        if where is not None:
+            statement = statement.where(where)
+        for row in (await conn.execute_core(statement)).fetchall():
+            ident = row[0] if len(key) == 1 else list(row[: len(key)])
+            verdict = _names_it(row[-1], literal)
+            if verdict is False:
+                continue
+            found.append(
+                SecretReference(
+                    table=table.name,
+                    id=ident,
+                    name=str(row[len(key)]) if named is not None else str(ident),
+                    column=column.name,
+                    environment=environment,
+                    unreadable=verdict is None,
+                )
+            )
     return found
+
+
+def _names_it(ciphertext: Any, literal: str) -> bool | None:
+    """Whether the encrypted value names the secret: True or False, or None when it cannot be
+    decrypted. The plaintext lives only inside this function; nothing of it leaves."""
+    from cryptography.exceptions import InvalidTag
+
+    from provisa.encryption.runtime import encryption_service
+
+    try:
+        plaintext = encryption_service().decrypt(bytes(ciphertext)).decode("utf-8")
+    except (ValueError, InvalidTag, RuntimeError):
+        # What a blob this worker cannot open raises: an envelope naming a key it does not hold
+        # or malformed (ValueError, which UnicodeDecodeError is too), a failed authentication tag
+        # (InvalidTag), an org on the key roster with no ring loaded (RuntimeError).
+        return None
+    return literal in plaintext
 
 
 async def references(
@@ -164,12 +220,20 @@ async def references(
     name. The org's platform-plane rows are those carrying its ``org_id`` (and its own row in
     ``orgs``).
     """
+    from provisa.core.request_context import reset_current_org, set_current_org
+
     literal = reference_text(name)
     found: list[SecretReference] = []
-    for environment in sorted(environments):
-        async with environments[environment].acquire() as conn:
-            for table in schema_org.metadata.sorted_tables:
-                found.extend(await _in_table(conn, table, literal, environment=environment))
+    # The org is bound while its environments are read: the two encrypted columns are written
+    # under the ORG's key when it holds one, and the encryption service follows the bound org.
+    token = set_current_org(org_id)
+    try:
+        for environment in sorted(environments):
+            async with environments[environment].acquire() as conn:
+                for table in schema_org.metadata.sorted_tables:
+                    found.extend(await _in_table(conn, table, literal, environment=environment))
+    finally:
+        reset_current_org(token)
     async with admin_db.acquire() as conn:
         for table in schema_admin.metadata.sorted_tables:
             if table.name in _VAULT_TABLES:

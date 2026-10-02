@@ -120,6 +120,9 @@ export interface SecretReference {
   name: string;
   column: string;
   environment: string | null;
+  /** The value is encrypted and could not be decrypted, so whether it names the secret is not
+   *  known; it blocks the delete all the same. */
+  unreadable: boolean;
 }
 
 /** REQ-1918: an org secret is deleted only when nothing stored in the org names it. The

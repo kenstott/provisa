@@ -208,8 +208,24 @@ describe("SecretsTab", () => {
           name: "warehouse",
           column: "password_ref",
           environment: "dev",
+          unreadable: false,
         },
-        { kind: "orgs", id: "acme", name: "acme", column: "repo_remote", environment: null },
+        {
+          kind: "api_sources",
+          id: "billing",
+          name: "billing",
+          column: "auth",
+          environment: "prod",
+          unreadable: true,
+        },
+        {
+          kind: "orgs",
+          id: "acme",
+          name: "acme",
+          column: "repo_remote",
+          environment: null,
+          unreadable: false,
+        },
       ]),
     );
     render(<SecretsTab />);
@@ -219,6 +235,10 @@ describe("SecretsTab", () => {
     const listed = await screen.findByTestId("secret-references");
     expect(listed).toHaveTextContent("sources warehouse (password_ref), in environment dev");
     expect(listed).toHaveTextContent("orgs acme (repo_remote), in the organization's own records");
+    // An encrypted value the server could not open blocks too, and the row says so.
+    expect(listed).toHaveTextContent(
+      "api_sources billing (auth), in environment prod (could not be read to check)",
+    );
     expect(screen.getByText("GIT_TOKEN is still named by 2 stored value(s).")).toBeInTheDocument();
     // Still listed: the secret was not deleted.
     expect(screen.getByTestId("secret-delete-GIT_TOKEN")).toBeInTheDocument();

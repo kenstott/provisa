@@ -269,6 +269,7 @@ class TestWhatIsRefused:
                 "name": "warehouse",
                 "column": "password_ref",
                 "environment": "prod",
+                "unreadable": False,
             },
             {
                 "kind": "sources",
@@ -276,6 +277,7 @@ class TestWhatIsRefused:
                 "name": "lake",
                 "column": "federation_hints",
                 "environment": "dev",
+                "unreadable": False,
             },
         ]
         assert store["audit"] == []

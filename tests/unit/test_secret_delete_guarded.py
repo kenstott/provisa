@@ -29,12 +29,13 @@ import os
 from dataclasses import dataclass
 
 import pytest
-from sqlalchemy import insert, update
+from sqlalchemy import insert, select, update
 
 from provisa.core import schema_admin, schema_org, secret_references, secrets_store
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.db import _init_schema_portable
 from provisa.core.secrets import resolve_secrets
+from provisa.encryption.runtime import configure_encryption, reset_encryption
 from provisa.core.secrets_runtime import configure_secrets, reset_secrets
 from provisa.core.secrets_store import ORG_OWNER, SecretDeleteRefused
 
@@ -61,7 +62,11 @@ def a_master_key(tmp_path, monkeypatch):
     monkeypatch.setenv("PROVISA_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("PROVISA_ENCRYPTION_KEY", base64.b64encode(os.urandom(32)).decode())
     configure_secrets("provisa")
+    # A real envelope service, so the encrypted columns hold ciphertext the check has to open
+    # (the passthrough service would store plaintext and prove nothing).
+    configure_encryption("local")
     yield
+    reset_encryption()
     reset_secrets()
     keyring.set_keyring(previous)
 
@@ -134,6 +139,7 @@ async def test_a_source_that_names_the_secret_blocks_its_delete(planes):
         "name": "warehouse",
         "column": "password_ref",
         "environment": "prod",
+        "unreadable": False,
     }
     assert "Secret 'DB_PW' is still named by: sources 'warehouse' in prod" in str(err.value)
     assert await _still_there(planes)
@@ -230,28 +236,113 @@ async def test_deleting_an_org_secret_needs_the_orgs_environments(planes):
 # --- what the search reads --------------------------------------------------------------------
 
 
-def test_every_binary_column_is_accounted_for_and_none_is_searched():
-    """Binary columns hold ciphertext. Each is listed with why it is not searched, so a new one
-    cannot be added without deciding; and the search reads none of them."""
+def test_every_binary_column_is_accounted_for():
+    """Binary columns hold ciphertext or bytes. Each is either decrypted in memory and searched
+    (the two whose plaintext is resolved for references when used) or listed with why it is not,
+    so a new one cannot be added without deciding."""
     binary = secret_references.binary_columns(
         schema_org.metadata
     ) | secret_references.binary_columns(schema_admin.metadata)
-    assert set(secret_references.NOT_SEARCHED) == binary
+    decrypted = set(secret_references.SEARCHED_DECRYPTED)
+    not_searched = set(secret_references.NOT_SEARCHED)
+    assert decrypted == {("api_sources", "auth"), ("org_secrets", "value_enc")}
+    assert len(not_searched) == 10 and not (decrypted & not_searched)
+    assert decrypted | not_searched == binary
     for metadata in (schema_org.metadata, schema_admin.metadata):
         for table in metadata.tables.values():
             for column in secret_references.searched_columns(table):
                 assert (table.name, column.name) not in binary
 
 
-def test_the_two_encrypted_columns_a_reference_can_hide_in_are_named_as_such():
-    hidden = {
-        key for key, why in secret_references.NOT_SEARCHED.items() if "CAN live inside" in why
-    }
-    assert hidden == {("api_sources", "auth"), ("org_secrets", "value_enc")}
+# --- the two encrypted columns a reference can live in ----------------------------------------
+
+
+def _encrypted(text: str) -> bytes:
+    from provisa.encryption.runtime import encryption_service
+
+    return encryption_service().encrypt(text.encode("utf-8"))
+
+
+async def _api_source(planes: Planes, env: str, source_id: str, auth: bytes) -> None:
+    async with planes.environments[env].acquire() as conn:
+        await conn.execute_core(
+            insert(schema_org.api_sources).values(
+                id=source_id, type="openapi", base_url="https://api.example", auth=auth
+            )
+        )
+
+
+async def test_a_reference_inside_an_api_sources_encrypted_auth_blocks(planes):
+    await _secret(planes)
+    await _api_source(
+        planes, "dev", "billing", _encrypted('{"type": "bearer", "bearer": "${secret:DB_PW}"}')
+    )
+    await _api_source(planes, "dev", "crm", _encrypted('{"type": "bearer", "bearer": "literal"}'))
+
+    with pytest.raises(SecretDeleteRefused) as err:
+        await _delete(planes)
+
+    assert _named(err.value) == [("dev", "api_sources", "billing", "auth")]
+    assert err.value.references[0].unreadable is False
+    # What is stored really is ciphertext: the reference's text is not in the stored bytes.
+    async with planes.environments["dev"].acquire() as conn:
+        stored = (
+            await conn.execute_core(
+                select(schema_org.api_sources.c.auth).where(
+                    schema_org.api_sources.c.id == "billing"
+                )
+            )
+        ).scalar_one()
+    assert b"${secret:DB_PW}" not in bytes(stored)
+    # Nothing decrypted leaves the check: the refusal names the row and no value.
+    assert "bearer" not in str(err.value) + str([r.as_dict() for r in err.value.references])
+
+
+async def test_a_reference_inside_an_orgs_encrypted_service_key_blocks(planes):
+    await _secret(planes)
+    async with planes.environments["prod"].acquire() as conn:
+        await conn.execute_core(
+            insert(schema_org.org_secrets).values(
+                key="anthropic_api_key", value_enc=_encrypted("${secret:DB_PW}")
+            )
+        )
+        await conn.execute_core(
+            insert(schema_org.org_secrets).values(
+                key="openai_api_key", value_enc=_encrypted("sk-a-literal-key")
+            )
+        )
+
+    with pytest.raises(SecretDeleteRefused) as err:
+        await _delete(planes)
+
+    assert _named(err.value) == [("prod", "org_secrets", "anthropic_api_key", "value_enc")]
+    assert "sk-a-literal-key" not in str(err.value)
+
+
+async def test_an_encrypted_value_that_cannot_be_read_blocks_naming_its_row(planes):
+    """An unreadable value is never taken for "no reference": the delete is refused, the row is
+    named, and the refusal says it could not be read."""
+    await _secret(planes)
+    await _api_source(planes, "prod", "broken", b"not an envelope this worker can open")
+
+    with pytest.raises(SecretDeleteRefused) as err:
+        await _delete(planes)
+
+    assert _named(err.value) == [("prod", "api_sources", "broken", "auth")]
+    assert err.value.references[0].as_dict()["unreadable"] is True
+    assert "api_sources 'broken' in prod (could not be read to check)" in str(err.value)
+    assert await _still_there(planes)
+
+
+async def test_encrypted_values_that_name_no_secret_do_not_block(planes):
+    await _secret(planes)
+    await _api_source(planes, "prod", "crm", _encrypted('{"type": "bearer", "bearer": "x"}'))
+    await _api_source(planes, "dev", "other", _encrypted('{"bearer": "${secret:OTHER}"}'))
+    assert await _delete(planes) is True
 
 
 async def test_the_search_never_touches_the_vault(planes, monkeypatch):
-    """It compares stored text with the reference's text: it decrypts nothing."""
+    """It compares stored text with the reference's text: no secret's value is read."""
     await _secret(planes)
     await _source(planes, "prod", "warehouse", password_ref="${secret:DB_PW}")
 

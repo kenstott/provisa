@@ -342,7 +342,9 @@ class SecretDeleteRefused(ValueError):  # REQ-1918
         self.name = name
         self.references = references
         named = ", ".join(
-            f"{r.table} {r.name!r}" + (f" in {r.environment}" if r.environment else "")
+            f"{r.table} {r.name!r}"
+            + (f" in {r.environment}" if r.environment else "")
+            + (" (could not be read to check)" if r.unreadable else "")
             for r in references
         )
         super().__init__(f"Secret {name!r} is still named by: {named}")

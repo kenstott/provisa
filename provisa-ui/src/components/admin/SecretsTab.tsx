@@ -325,6 +325,7 @@ function SecretsVault({ vault, header }: VaultProps) {
                         column: r.column,
                         environment: r.environment,
                       })}
+                  {r.unreadable && ` ${t("secretsTab.referenceUnreadable")}`}
                 </List.Item>
               ))}
             </List>
