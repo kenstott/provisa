@@ -20581,3 +20581,17 @@ The state store. Provisa keeps three kinds of data in its control plane and trea
 **Code:** —
 
 **Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-1921 · Data Residency {#REQ-1921}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Data residency. A source, or a single table of it, can be declared resident -- its data is subject to rules about where it may be held. Two things then hold. First, a reader gets only what the rules allow -- row filters and column rules written on user attributes, such as the country a user is in, decide what each request may see, exactly as for any other table, and the statement sent to the source already carries them, so nothing a reader may not see is read. Second, a resident table takes no part in anything that keeps a copy automatically -- it is never replicated, whatever the replicate setting says ([REQ-826](#REQ-826)); a response read from it is never kept in the response cache, even when the request asks for caching ([REQ-544](#REQ-544)); it is never kept as a hot table; and no per-request cache table is kept for it. It is always read live. A setting that would require a copy of a resident table -- replicate Always or a hot threshold, load protection -- is refused when saved, naming the conflict, and an engine that cannot read the source in place cannot serve the table at all rather than copying it. Readers outside the country are served the same way, live, and receive what the rules allow them. Where live reads are not fast enough, the operator builds a materialized view over the resident table that holds only what may be kept where the view is stored -- that view is a deliberate declaration in the model, its compliance is the operator's responsibility, and it is the only way a copy of resident data comes to exist. The declaration is inherited by a table from its source unless the table says otherwise, is shown in the admin pages beside the replicate setting, and the record of each request notes that resident data was read ([REQ-1920](#REQ-1920)). Further steps -- nodes, stores and caches that declare the region they are in, so that a copy may be kept where a reader in that place could see it, and traffic directed to an in-country address -- are possible later and are not part of this requirement.
+
+**Use case:** A regulated enterprise holds data that must stay in a country but still wants one governed layer over the whole estate, in which most data may be read from anywhere. Rules on user attributes already limit who sees what; what was missing was a guarantee that the platform itself never quietly places a copy of restricted data somewhere it may not be.
+
+**Code:** —
+
+**Tests:** —
