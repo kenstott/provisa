@@ -510,3 +510,26 @@ def test_the_export_writes_no_origin():
         config_export._TABLE_KEYS,
     ):
         assert "origin" not in keys
+
+
+def test_every_row_the_schema_seeds_states_its_origin():
+    """The PostgreSQL schema seeds roles and domains by INSERT, some several rows at a time; the
+    column has no default, so each row of each statement says "seed"."""
+    import re
+
+    sql = (_REPO / "provisa" / "core" / "schema.sql").read_text()
+    statements = list(
+        re.finditer(
+            r"INSERT INTO (roles|domains|sources|registered_tables) \(([^)]*)\)\s*VALUES(.*?);",
+            sql,
+            re.S,
+        )
+    )
+    assert statements, "no seed statements found"
+    for statement in statements:
+        columns = [c.strip() for c in statement.group(2).split(",")]
+        assert columns[-1] == "origin", statement.group(0)[:80]
+        body = statement.group(3).split("ON CONFLICT")[0]
+        rows = re.findall(r"\(\s*'[^']*',", body)
+        seeded = re.findall(r"'seed'\s*\)", body)
+        assert rows and len(rows) == len(seeded), statement.group(0)[:80]

@@ -1161,14 +1161,16 @@ VALUES (
       "usage","environment_management","environment_switch","glossary_read",
       "data_product_read"]'::jsonb,
     '["*"]'::jsonb,
-    NULL
+    NULL,
+    'seed'
 ),
 (
     'modeler',
     '["query_development","create_relationship","create_view","ignore_relationships",
       "full_results","usage","glossary_read","glossary_rw","data_product_read"]'::jsonb,
     '["*"]'::jsonb,
-    NULL
+    NULL,
+    'seed'
 )
 ON CONFLICT (id) DO NOTHING;
 
