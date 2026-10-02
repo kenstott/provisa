@@ -41,6 +41,7 @@ sources:
   - id: remote-gql
     type: graphql_remote
     path: ${env:PROVISA_TEST_GQL_REMOTE_URL}
+    cache_ttl: 300  # REQ-1907: a replicated table on the ttl change signal declares its TTL
 tables:
   - source_id: remote-gql
     table: good_items
