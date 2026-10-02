@@ -282,6 +282,22 @@ async def update_function(
     return {"success": True, "name": name}
 
 
+async def _require_its_domain(request: Request, conn, table, name: str) -> None:  # REQ-1531
+    """Gate an act on a command or webhook named by ``name`` on the domain it sits in.
+
+    A row with no domain (``""``) is in none — every role reaching the commands surface sees it
+    (``actions_schema``) — so there is no domain to hold. A name with no row is the caller's
+    not-found, answered by the act itself.
+    """
+    from provisa.api.admin.capabilities import require_domain_request
+
+    row = (
+        await conn.execute_core(select(table.c.domain_id).where(table.c.name == name))
+    ).fetchone()
+    if row is not None and row[0]:
+        require_domain_request(request, row[0])
+
+
 @router.delete("/functions/{name}")
 async def delete_function(request: Request, name: str):  # REQ-205, REQ-253
     """Delete a tracked DB function by name."""
@@ -292,6 +308,7 @@ async def delete_function(request: Request, name: str):  # REQ-205, REQ-253
         raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
     async with state.tenant_db.acquire() as conn:
+        await _require_its_domain(request, conn, tracked_functions, name)
         result = await conn.execute_core(
             _delete(tracked_functions).where(tracked_functions.c.name == name)
         )
@@ -427,6 +444,7 @@ async def delete_webhook(request: Request, name: str):  # REQ-209, REQ-253
         raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
     async with state.tenant_db.acquire() as conn:
+        await _require_its_domain(request, conn, tracked_webhooks, name)
         result = await conn.execute_core(
             _delete(tracked_webhooks).where(tracked_webhooks.c.name == name)
         )

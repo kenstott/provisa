@@ -1956,8 +1956,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.core.repositories import metric as metric_repo
 
         require_capability(info, "table_registration")
+        from provisa.api.admin.domain_guard import metric_domains, require_domains
+
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            # REQ-1531: a metric is an object of every domain its expression reads from.
+            domains = await metric_domains(cast("Connection", conn), name)
+            if domains is not None:
+                require_domains(info, domains)
             deleted = await metric_repo.delete(cast("Connection", conn), name)
         if deleted:
             await _rebuild_schemas()  # republish state.metrics + schema metric blocks
@@ -2437,10 +2443,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
     async def delete_relationship(self, info: StrawberryInfo, id: str) -> MutationResult:
         require_capability(info, "create_relationship")
+        from provisa.api.admin.domain_guard import relationship_domains, require_domains
         from provisa.core.repositories import relationship as rel_repo
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            # REQ-1531: a relationship belongs to the domains of both tables it joins.
+            domains = await relationship_domains(cast("Connection", conn), id)
+            if domains is not None:
+                require_domains(info, domains)
             deleted = await rel_repo.delete(cast("Connection", conn), id)
         if deleted:
             await _rebuild_schemas()
