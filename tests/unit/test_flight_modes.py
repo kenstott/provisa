@@ -169,10 +169,17 @@ class TestCatalogFlightInfo:
         info = catalog_table_to_flight_info(table)
         assert info.schema.names == ["id", "customer_name", "total"]
 
-    def test_no_endpoints_without_location(self):
+    def test_one_endpoint_with_its_ticket_and_no_location(self):
+        """An empty location list: redeem on the service that issued it (the advertised port,
+        which every worker of a launch accepts on)."""
         table = _make_table()
         info = catalog_table_to_flight_info(table)
-        assert len(info.endpoints) == 0
+        assert len(info.endpoints) == 1
+        assert list(info.endpoints[0].locations) == []
+        assert json.loads(info.endpoints[0].ticket.ticket.decode()) == {
+            "domain": "sales",
+            "table": "orders",
+        }
 
     def test_ticket_has_no_mode_key(self):
         """Ticket JSON must not contain a 'mode' key."""

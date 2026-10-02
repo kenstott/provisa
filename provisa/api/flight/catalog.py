@@ -234,6 +234,19 @@ def build_catalog_tables_from_context(state) -> list[CatalogTable]:  # REQ-127, 
     return tables
 
 
+def _endpoint(
+    ticket: flight.Ticket,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    location: flight.Location | None,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+) -> flight.FlightEndpoint:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """The one endpoint a FlightInfo carries: its ticket, redeemable where it was issued.
+
+    With no ``location`` the endpoint's location list is EMPTY, which in the Flight protocol
+    means "redeem on the service that gave you this" — the advertised port. Every worker of a
+    launch accepts on that port (provisa/api/flight/relay.py, REQ-1900) and a ticket names what
+    to return and nothing about who issued it, so whichever worker takes the DoGet redeems it."""
+    return flight.FlightEndpoint(ticket, [location] if location else [])  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+
+
 def command_to_flight_info(  # REQ-1156
     command: dict,
     location: flight.Location | None = None,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -260,13 +273,10 @@ def command_to_flight_info(  # REQ-1156
         command.get("domain", ""),
         command["name"],
     )
-    endpoints = []
-    if location:
-        ticket = flight.Ticket(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-            f'{{"command":"{command["name"]}"}}'.encode("utf-8"),
-        )
-        endpoints = [flight.FlightEndpoint(ticket, [location])]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    return flight.FlightInfo(schema, descriptor, endpoints, -1, -1)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ticket = flight.Ticket(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        f'{{"command":"{command["name"]}"}}'.encode("utf-8"),
+    )
+    return flight.FlightInfo(schema, descriptor, [_endpoint(ticket, location)], -1, -1)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
 
 def catalog_table_to_arrow_schema(table: CatalogTable) -> pa.Schema:  # REQ-143
@@ -305,13 +315,10 @@ def catalog_table_to_flight_info(  # REQ-143
         table.table_name,
     )
     schema = catalog_table_to_arrow_schema(table)
-    endpoints = []
-    if location:
-        ticket = flight.Ticket(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-            f'{{"domain":"{table.domain_id}","table":"{table.table_name}"}}'.encode("utf-8"),
-        )
-        endpoints = [flight.FlightEndpoint(ticket, [location])]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    return flight.FlightInfo(schema, descriptor, endpoints, -1, -1)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ticket = flight.Ticket(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        f'{{"domain":"{table.domain_id}","table":"{table.table_name}"}}'.encode("utf-8"),
+    )
+    return flight.FlightInfo(schema, descriptor, [_endpoint(ticket, location)], -1, -1)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
 
 def metric_to_flight_info(  # REQ-1319
@@ -339,10 +346,7 @@ def metric_to_flight_info(  # REQ-1319
     descriptor = flight.FlightDescriptor.for_path(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         "metrics", metric_name, *dimensions
     )
-    endpoints = []
-    if location:
-        ticket = flight.Ticket(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-            json.dumps({"query": metric_semantic_sql(metric_name, dimensions)}).encode("utf-8")
-        )
-        endpoints = [flight.FlightEndpoint(ticket, [location])]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    return flight.FlightInfo(schema, descriptor, endpoints, -1, -1)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ticket = flight.Ticket(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        json.dumps({"query": metric_semantic_sql(metric_name, dimensions)}).encode("utf-8")
+    )
+    return flight.FlightInfo(schema, descriptor, [_endpoint(ticket, location)], -1, -1)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
