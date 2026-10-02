@@ -142,34 +142,29 @@ def _governance_context(
     from provisa.compiler.stage2 import GovernanceContext, resolve_row_cap
     from provisa.security.inheritance import holds_grant
     from provisa.security.masking import MaskingRule, MaskType, validate_masking_rule
-    from provisa.security.rights import Capability, has_capability
 
     name = action["name"]
     tid = synthetic_table_id(name)
     rel = relation_name(name)
     role = state.roles.get(role_id) or {}
     chains = getattr(state, "role_chains", None) or {}
-    is_admin = has_capability(role, Capability.ADMIN)
     enforcement = ActionEnforcement(role_used=role_id)
 
     gov = GovernanceContext()
     gov.table_map[rel] = tid
     gov.all_columns[tid] = [(c["name"], c.get("type") or "varchar") for c in cols]
 
-    if is_admin:
-        gov.visible_columns[tid] = None
-    else:
-        visible: set[str] = set()
-        for c in cols:
-            granted = c.get("visible_to")
-            # A contract column that declares no visible_to is visible: the contract is the
-            # action's public shape, and an undeclared grant list restricts nothing (unlike a
-            # registered table's column, which is seeded with an explicit list).
-            if granted is None or holds_grant(role_id, granted, chains):
-                visible.add(c["name"])
-            else:
-                enforcement.columns_excluded.append(c["name"])
-        gov.visible_columns[tid] = frozenset(visible)
+    visible: set[str] = set()
+    for c in cols:
+        granted = c.get("visible_to")
+        # A contract column that declares no visible_to is visible: the contract is the
+        # action's public shape, and an undeclared grant list restricts nothing (unlike a
+        # registered table's column, which is seeded with an explicit list).
+        if granted is None or holds_grant(role_id, granted, chains):
+            visible.add(c["name"])
+        else:
+            enforcement.columns_excluded.append(c["name"])
+    gov.visible_columns[tid] = frozenset(visible)
 
     for c in cols:
         if not c.get("mask_type"):

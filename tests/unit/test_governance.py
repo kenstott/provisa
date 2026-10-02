@@ -64,9 +64,19 @@ class TestCapabilityEnforcement:
         result = check_capability(role, Capability.SOURCE_REGISTRATION)  # no raise
         assert result is None
 
-    def test_admin_bypasses_all_rights(self):
-        # REQ-002/125: admin override — admin satisfies any capability check.
-        role = _role(Capability.ADMIN)
+    @pytest.mark.parametrize(
+        "held", [["admin"], ["superadmin"], ["platform_settings", "cross_org"]]
+    )
+    def test_nothing_overrides_the_named_rights(self, held):
+        # REQ-002/REQ-1327: no capability satisfies a check for another.
+        role = {"id": "r", "capabilities": held}
+        for cap in NAMED_RIGHTS.values():
+            assert not has_capability(role, cap)
+            with pytest.raises(InsufficientRightsError):
+                check_capability(role, cap)
+
+    def test_a_role_holding_every_named_right_passes_every_check(self):
+        role = _role(*NAMED_RIGHTS.values())
         for cap in NAMED_RIGHTS.values():
             assert has_capability(role, cap)
             check_capability(role, cap)  # no raise

@@ -30,6 +30,7 @@ from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.context import build_context
 from provisa.executor.direct import execute_direct
 from provisa.executor.pool import SourcePool
+from tests.helpers import ALL_DATA_CAPABILITIES
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
@@ -76,7 +77,7 @@ def _build_schema_and_ctx():
             _col("status", "varchar(20)", nullable=True),
         ],
     }
-    role = {"id": "admin", "capabilities": ["admin", "query_development"], "domain_access": ["*"]}
+    role = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
     domains = [{"id": "sales", "description": "Sales"}]
     si = SchemaInput(
         tables=tables,

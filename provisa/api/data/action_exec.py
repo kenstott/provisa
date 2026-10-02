@@ -27,12 +27,12 @@ from provisa.security.mutation_authz import (
 )
 
 
-def require_mutation_write(action: dict, role, field_name: str, *, admin_bypass: bool) -> None:
+def require_mutation_write(action: dict, role, field_name: str) -> None:
     """The security gate rendered as the API's 403 (REQ-869, REQ-1678)."""
     from provisa.api.errors import ApiError
 
     try:
-        _require_mutation_write(action, role, field_name, admin_bypass=admin_bypass)
+        _require_mutation_write(action, role, field_name)
     except MutationNotPermitted as exc:
         raise ApiError(
             403,
@@ -105,7 +105,7 @@ async def invoke_tracked_function(name: str, args: dict, state, role_id: str | N
     role = state.roles.get(role_id) if role_id is not None else None
     fn = state.tracked_functions.get(name)
     if fn:
-        require_mutation_write(fn, role, name, admin_bypass=not state.ephemeral)
+        require_mutation_write(fn, role, name)
         rows = await dispatch_function(fn, args, state, role_id)
         return await _governed(rows, fn, state, role_id)
     # A webhook is a governed command too (REQ-872): every surface routes here, so a webhook is
@@ -140,7 +140,7 @@ async def invoke_tracked_webhook(name: str, args: dict, state, role_id: str | No
     wh = (getattr(state, "tracked_webhooks", None) or {}).get(name)
     if not wh:
         raise HTTPException(status_code=400, detail=f"Unknown webhook: {name!r}")
-    require_mutation_write(wh, role, name, admin_bypass=not state.ephemeral)
+    require_mutation_write(wh, role, name)
     timeout = wh["timeout_ms"] / 1000
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.request(wh["method"].upper(), wh["url"], json=_webhook_body(wh, args))

@@ -48,9 +48,10 @@ from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical  # noqa: E
 from provisa.compiler.stage2 import apply_governance, build_governance_context  # noqa: E402
 from provisa.federation.connector_duckdb import FileFdwConnector, PostgresFdwConnector  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
+from tests.helpers import ALL_DATA_CAPABILITIES  # noqa: E402
 
 _FILES = Path(__file__).parent.parent.parent / "demo" / "files"
-_ADMIN = {"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]}
+_ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
 _PG_VERSION = "16.2"  # must match the embedded PG major; minor is ABI-compatible within 16
 _FDWS = ("file_fdw", "postgres_fdw")  # core contrib — no external deps
 _CACHE = Path(os.environ.get("PROVISA_FDW_CACHE", Path.home() / ".cache" / "provisa-fdw"))

@@ -124,11 +124,9 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         for col_name, (rule, dtype) in col_map.items():
             gov.masking_rules[(table_id, col_name)] = (rule, dtype)
 
-    # An admin-capability role sees EVERY column regardless of per-column visible_to — admins
-    # always see everything (governance directive). This also makes the semantic meta/ops domains
-    # (seeded visible_to: [] = visible to no role) traversable by admins, while non-admins still
-    # need an explicit grant. Non-admin per-role meta scoping (metadata follows table-query rights)
-    # is tracked separately.
+    # Column visibility is each column's visible_to grant and nothing above it: no capability sees
+    # every column regardless (REQ-1327). The lockdown domains (ops) need an explicit grant; the
+    # meta domain is governed by the tiered rule below.
     from provisa.security.rights import (
         GOVERNANCE_META_COLUMNS,
         META_DOMAIN_ID,
@@ -138,7 +136,6 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         has_capability,
     )
 
-    _is_admin = bool(role) and has_capability(role, Capability.ADMIN)
     _has_view_gov = bool(role) and has_capability(role, Capability.VIEW_GOVERNANCE)
     # table_id → domain_id, so meta (catalog) tables can be governed by the tiered rule (REQ-1132)
     # rather than their static seed (meta columns are seeded visible_to: [] = nobody).
@@ -158,9 +155,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         ]
 
         # visible_columns — None means "all visible" (no V003 filtering for this table)
-        if _is_admin:
-            gov.visible_columns[table_id] = None
-        elif _domain_by_tid.get(table_id) == META_DOMAIN_ID:
+        if _domain_by_tid.get(table_id) == META_DOMAIN_ID:
             # Meta (catalog) domain: CORE/structural columns are visible for discovery; GOVERNANCE
             # columns (visible_to, masks, view_sql, …) require the view_governance capability. Which
             # META ROWS a role sees (its readable tables + 1-hop neighbours vs the whole catalog with

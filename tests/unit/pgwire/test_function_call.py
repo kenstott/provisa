@@ -53,11 +53,12 @@ def _state(**over):
         "writable_by": ["ops"],
     }
     return SimpleNamespace(
-        roles={"ops": {"id": "ops", "capabilities": [Capability.ADMIN.value]}},
+        # Named in the function's writable_by and holding WRITE: the two things a write needs.
+        roles={"ops": {"id": "ops", "capabilities": [Capability.WRITE.value]}},
         tracked_functions={"createOrder": fn},
         source_pools=over.get("pools") or _FakePools(),
-        # REQ-1621: every runtime states whether its environment expires; an environment that
-        # does withholds the admin mutation bypass. This stand-in is a durable one.
+        # REQ-1621: every runtime states whether its environment expires. This stand-in is a
+        # durable one.
         ephemeral=over.get("ephemeral", False),
     )
 

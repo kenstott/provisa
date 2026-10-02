@@ -41,6 +41,7 @@ from provisa.core.repositories import (
     domain as domain_repo,
     table as table_repo,
 )
+from tests.helpers import ALL_DATA_CAPABILITIES
 
 pytestmark = [pytest.mark.integration]
 
@@ -106,7 +107,7 @@ def _config(naming: dict, domains: list, table_domain: str) -> dict:
                 "columns": [{"name": "id", "data_type": "integer", "visible_to": ["admin"]}],
             }
         ],
-        "roles": [{"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]}],
+        "roles": [{"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}],
     }
 
 

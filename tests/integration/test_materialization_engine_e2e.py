@@ -38,9 +38,10 @@ from provisa.compiler.stage2 import apply_governance, build_governance_context  
 from provisa.core.database import Database, create_engine_from_url  # noqa: E402
 from provisa.federation.materialize_exec import build_table, land_replace  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
+from tests.helpers import ALL_DATA_CAPABILITIES  # noqa: E402
 
 _CSV = str(Path(__file__).parent.parent.parent / "demo" / "files" / "customers.csv")
-_ADMIN = {"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]}
+_ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
 
 
 def _dsn(driver: str = "") -> str:

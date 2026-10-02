@@ -120,68 +120,76 @@ def test_write_cap_and_listed_allowed():
     assert ok is True
 
 
-def test_admin_bypasses_writable_by():
-    ok, _ = authorize_mutation(_role("root", Capability.ADMIN.value), [])
-    assert ok is True
+# --- nothing stands above the ACL (REQ-1327, REQ-1621) -------------------------
+#
+# The ACL is the author's own statement of who may write through the mutation, and it is the
+# whole answer in every environment: no capability string means "every right", and the platform
+# rights are over the deployment, not over an org's writes.
+
+_UNLISTED = [
+    ["admin"],
+    ["superadmin"],
+    ["admin", "superadmin"],
+    ["platform_settings", "cross_org"],
+    ["admin", "superadmin", "platform_settings", "cross_org", Capability.WRITE.value],
+]
 
 
-def test_superadmin_bypasses_writable_by():
-    ok, _ = authorize_mutation(_role("root", Capability.SUPERADMIN.value), [])
-    assert ok is True
-
-
-def test_admin_without_write_still_allowed():
-    # ADMIN implies all capabilities including WRITE (check_capability convention).
-    ok, _ = authorize_mutation(_role("root", Capability.ADMIN.value), ["someone-else"])
-    assert ok is True
-
-
-# --- the bypass an expiring environment withholds (REQ-1621) --------------------
-
-
-def test_admin_bypass_withheld_denies_unlisted_admin():
-    ok, reason = authorize_mutation(
-        _role("root", Capability.ADMIN.value), ["someone-else"], admin_bypass=False
-    )
-    assert ok is False and "writable_by" in reason
-
-
-def test_superadmin_bypass_withheld_denies_unlisted():
-    ok, _ = authorize_mutation(_role("root", Capability.SUPERADMIN.value), [], admin_bypass=False)
+@pytest.mark.parametrize("held", _UNLISTED)
+def test_no_capability_bypasses_an_empty_writable_by(held):
+    ok, _ = authorize_mutation(_role("root", *held), [])
     assert ok is False
 
 
-def test_admin_bypass_withheld_still_allows_a_listed_role():
-    # Withholding the bypass leaves the ACL as the whole answer -- it does not deny outright.
-    ok, _ = authorize_mutation(_role("root", Capability.ADMIN.value), ["root"], admin_bypass=False)
+@pytest.mark.parametrize("held", _UNLISTED)
+def test_no_capability_bypasses_a_list_naming_someone_else(held):
+    ok, reason = authorize_mutation(_role("root", *held), ["someone-else"])
+    assert ok is False
+    assert ("writable_by" in reason) or ("WRITE" in reason)
+
+
+@pytest.mark.parametrize("held", [["admin"], ["superadmin"], ["platform_settings", "cross_org"]])
+def test_a_listed_role_still_needs_the_write_capability(held):
+    # Being named in the list is half the answer; WRITE is the other, and nothing implies it.
+    ok, reason = authorize_mutation(_role("root", *held), ["root"])
+    assert ok is False and "WRITE" in reason
+
+
+def test_a_listed_role_holding_write_is_allowed():
+    # The ACL is the whole answer -- it does not deny outright.
+    ok, _ = authorize_mutation(_role("root", Capability.WRITE.value), ["root"])
     assert ok is True
 
 
-def test_require_mutation_write_honours_withheld_bypass():
+def test_require_mutation_write_refuses_an_unlisted_role():
     # REQ-1678: the security gate raises its own error; the API layer renders it as the 403.
     from provisa.security.mutation_authz import MutationNotPermitted
 
     action = {"kind": "mutation", "writable_by": ["someone-else"]}
-    role = _role("root", Capability.ADMIN.value)
-    require_mutation_write(action, role, "editThing")  # bypass granted: allowed
-    with pytest.raises(MutationNotPermitted) as excinfo:
-        require_mutation_write(action, role, "editThing", admin_bypass=False)
-    assert excinfo.value.field_name == "editThing"
+    for held in _UNLISTED:
+        with pytest.raises(MutationNotPermitted) as excinfo:
+            require_mutation_write(action, _role("root", *held), "editThing")
+        assert excinfo.value.field_name == "editThing"
+    require_mutation_write(
+        {"kind": "mutation", "writable_by": ["root"]},
+        _role("root", Capability.WRITE.value),
+        "editThing",
+    )
 
 
-def test_api_renders_withheld_bypass_as_403():  # REQ-1678
+def test_api_renders_the_refusal_as_403():  # REQ-1678
     from provisa.api.data.action_exec import require_mutation_write as api_gate
     from provisa.api.errors import ApiError
 
     action = {"kind": "mutation", "writable_by": ["someone-else"]}
-    role = _role("root", Capability.ADMIN.value)
-    with pytest.raises(ApiError) as excinfo:
-        api_gate(action, role, "editThing", admin_bypass=False)
-    assert excinfo.value.status_code == 403
+    for held in _UNLISTED:
+        with pytest.raises(ApiError) as excinfo:
+            api_gate(action, _role("root", *held), "editThing")
+        assert excinfo.value.status_code == 403
 
 
-def test_require_mutation_write_leaves_reads_alone_without_the_bypass():
-    require_mutation_write({"kind": "query"}, None, "thing", admin_bypass=False)
+def test_require_mutation_write_leaves_reads_alone():
+    require_mutation_write({"kind": "query"}, None, "thing")
 
 
 # --- admin-only reclassification (REQ-870) -------------------------------------
@@ -192,9 +200,11 @@ def test_access_config_role_can_demote_mutation_to_read():
     assert kind == "query"
 
 
-def test_admin_can_demote_mutation_to_read():
-    # ADMIN bypasses the ACCESS_CONFIG requirement (has_capability convention).
-    assert reclassify_kind(_role("root", Capability.ADMIN.value), "mutation", "query") == "query"
+@pytest.mark.parametrize("held", [["admin"], ["superadmin"], ["platform_settings", "cross_org"]])
+def test_nothing_stands_in_for_access_config(held):
+    # REQ-1327: reclassification is ACCESS_CONFIG's, and no other string or right implies it.
+    with pytest.raises(InsufficientRightsError):
+        reclassify_kind(_role("root", *held), "mutation", "query")
 
 
 def test_non_privileged_role_cannot_reclassify():
@@ -207,10 +217,10 @@ def test_no_role_cannot_reclassify():
         reclassify_kind(None, "mutation", "query")
 
 
-def test_promotion_read_to_write_is_rejected_even_for_admin():
+def test_promotion_read_to_write_is_rejected_even_for_the_right_holder():
     # Only demotion to read-safe is allowed; a read can never be promoted to a write.
     with pytest.raises(ValueError):
-        reclassify_kind(_role("root", Capability.ADMIN.value), "query", "mutation")
+        reclassify_kind(_role("root", Capability.ACCESS_CONFIG.value), "query", "mutation")
 
 
 def test_reclassify_noop_is_idempotent_without_privilege():

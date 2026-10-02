@@ -38,6 +38,7 @@ from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import compile_query
 from provisa.compiler.context import build_context
 from provisa.transpiler.transpile import transpile, SUPPORTED_DIALECTS
+from tests.helpers import ALL_DATA_CAPABILITIES
 
 pytestmark = [pytest.mark.integration]
 
@@ -125,7 +126,7 @@ def _make_schema_input(
             _col("region", "varchar(50)", nullable=True),
         ],
     }
-    role = {"id": "admin", "capabilities": ["admin", "query_development"], "domain_access": ["*"]}
+    role = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
     domains = [{"id": "sales", "description": "Sales"}]
     return SchemaInput(
         tables=tables,

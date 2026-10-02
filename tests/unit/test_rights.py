@@ -32,15 +32,25 @@ class TestCheckCapability:
         with pytest.raises(InsufficientRightsError, match="query_development"):
             check_capability(role, Capability.QUERY_DEVELOPMENT)
 
-    def test_admin_has_all_capabilities(self):
-        role = {"id": "admin", "capabilities": ["admin"]}
-        check_capability(role, Capability.QUERY_DEVELOPMENT)
-        check_capability(role, Capability.SOURCE_REGISTRATION)
-        check_capability(role, Capability.ACCESS_CONFIG)
-        # has_capability must also return True for all capabilities
-        assert has_capability(role, Capability.QUERY_DEVELOPMENT) is True
-        assert has_capability(role, Capability.SOURCE_REGISTRATION) is True
-        assert has_capability(role, Capability.ACCESS_CONFIG) is True
+    @pytest.mark.parametrize(
+        "held", [["admin"], ["superadmin"], ["platform_settings", "cross_org"]]
+    )
+    def test_no_string_stands_in_for_a_capability(self, held):
+        # REQ-1327: there is no capability that means "every right".
+        role = {"id": "admin", "capabilities": held}
+        for cap in (
+            Capability.QUERY_DEVELOPMENT,
+            Capability.SOURCE_REGISTRATION,
+            Capability.ACCESS_CONFIG,
+        ):
+            with pytest.raises(InsufficientRightsError, match=cap.value):
+                check_capability(role, cap)
+            assert has_capability(role, cap) is False
+
+    def test_the_retired_strings_are_not_capabilities(self):
+        values = {c.value for c in Capability}
+        assert "admin" not in values
+        assert "superadmin" not in values
 
     def test_each_capability_independent(self):
         role = {"id": "reg", "capabilities": ["source_registration"]}
@@ -53,7 +63,7 @@ class TestCheckCapability:
         check_capability(role, Capability.QUERY_DEVELOPMENT)
         check_capability(role, Capability.APPROVE_VIEW)
         with pytest.raises(InsufficientRightsError):
-            check_capability(role, Capability.ADMIN)
+            check_capability(role, Capability.SOURCE_REGISTRATION)
 
 
 class TestHasCapability:
@@ -65,8 +75,10 @@ class TestHasCapability:
         role = {"id": "viewer", "capabilities": []}
         assert not has_capability(role, Capability.QUERY_DEVELOPMENT)
 
-    def test_admin_always_true(self):
+    def test_a_role_named_admin_holds_only_what_it_is_given(self):
         role = {"id": "admin", "capabilities": ["admin"]}
+        assert not has_capability(role, Capability.SOURCE_REGISTRATION)
+        role = {"id": "admin", "capabilities": ["source_registration"]}
         assert has_capability(role, Capability.SOURCE_REGISTRATION)
 
 

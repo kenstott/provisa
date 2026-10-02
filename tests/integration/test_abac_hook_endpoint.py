@@ -29,6 +29,7 @@ import asyncpg
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from tests.helpers import ALL_DATA_CAPABILITIES
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio(loop_scope="session")]
 
@@ -83,7 +84,7 @@ def _build_schema():
             ColumnMetadata(column_name="amount", data_type="numeric", is_nullable=False),
         ]
     }
-    role = {"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]}
+    role = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
     si = SchemaInput(
         tables=tables,
         relationships=[],

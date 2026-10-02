@@ -40,9 +40,10 @@ from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical  # noqa: E
 from provisa.compiler.stage2 import apply_governance, build_governance_context  # noqa: E402
 from provisa.federation.connector_duckdb import SqliteFdwConnector  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
+from tests.helpers import ALL_DATA_CAPABILITIES  # noqa: E402
 
 _SQLITE = Path(__file__).parent.parent.parent / "demo" / "files" / "orders.sqlite"
-_ADMIN = {"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]}
+_ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
 _CACHE = Path.home() / ".cache" / "provisa-fdw" / "pg162"
 _SQLITE_FDW = _CACHE / "lib" / "postgresql" / "sqlite_fdw.dylib"
 

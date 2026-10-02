@@ -71,6 +71,7 @@ from provisa.security.visibility import (
     visible_column_names,
     visible_tables,
 )
+from tests.helpers import ALL_DATA_CAPABILITIES
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
@@ -330,15 +331,30 @@ class TestGovernanceAsOnlyGate:
             check_capability(role, Capability.SOURCE_REGISTRATION)
         assert "source_registration" in str(exc.value)
 
-    async def test_admin_capability_grants_all(self):
-        # REQ-042: admin capability must satisfy any capability check.
-        role = {"id": ROLE_ADMIN, "capabilities": ["admin"]}
+    async def test_no_capability_stands_in_for_another(self):
+        # REQ-042/REQ-1327: every capability is checked by name; the retired wildcard strings and
+        # the platform rights satisfy no other check.
+        checked = (
+            Capability.SOURCE_REGISTRATION,
+            Capability.TABLE_REGISTRATION,
+            Capability.CREATE_RELATIONSHIP,
+            Capability.MASKING_CONFIG,
+        )
+        for held in (["admin"], ["superadmin"], ["platform_settings", "cross_org"]):
+            role = {"id": ROLE_ADMIN, "capabilities": held}
+            for cap in checked:
+                with pytest.raises(InsufficientRightsError):
+                    check_capability(role, cap)
+                assert not has_capability(role, cap)
+
+    async def test_a_role_holding_each_capability_passes_each_check(self):
+        # REQ-042: an administrator's role names the rights it holds.
+        role = {"id": ROLE_ADMIN, "capabilities": ALL_DATA_CAPABILITIES}
         # check_capability returns None on success; any failure raises InsufficientRightsError.
         assert check_capability(role, Capability.SOURCE_REGISTRATION) is None
         assert check_capability(role, Capability.TABLE_REGISTRATION) is None
         assert check_capability(role, Capability.CREATE_RELATIONSHIP) is None
         assert check_capability(role, Capability.MASKING_CONFIG) is None
-        # Verify via has_capability that admin is recognised for each checked capability.
         assert has_capability(role, Capability.SOURCE_REGISTRATION)
         assert has_capability(role, Capability.TABLE_REGISTRATION)
         assert has_capability(role, Capability.CREATE_RELATIONSHIP)
@@ -515,7 +531,7 @@ class TestTwoStageCompiler:
                 "max_rows": None,
             }
         ]
-        role = {"id": ROLE_ADMIN, "capabilities": ["admin"]}
+        role = {"id": ROLE_ADMIN, "capabilities": ALL_DATA_CAPABILITIES}
 
         gov = build_governance_context(ROLE_ADMIN, rls, masking_rules, ctx, tables, role)
 
@@ -535,7 +551,7 @@ class TestTwoStageCompiler:
         # REQ-263: role with FULL_RESULTS capability must receive no row cap.
         from provisa.compiler.stage2 import resolve_row_cap
 
-        role_full = {"id": ROLE_ADMIN, "capabilities": ["admin", "full_results"], "max_rows": None}
+        role_full = {"id": ROLE_ADMIN, "capabilities": ["full_results"], "max_rows": None}
         cap = resolve_row_cap(role_full, None)
         assert cap is None, "REQ-263: role with FULL_RESULTS must not be capped"
 

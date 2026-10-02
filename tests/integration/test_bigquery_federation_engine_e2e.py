@@ -40,9 +40,10 @@ from provisa.compiler.sql_rewrite import rewrite_semantic_to_catalog_physical  #
 from provisa.compiler.stage2 import apply_governance, build_governance_context  # noqa: E402
 from provisa.federation.bigquery_runtime import BigQueryFederationRuntime  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
+from tests.helpers import ALL_DATA_CAPABILITIES  # noqa: E402
 
 _PROJ = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
-_ADMIN = {"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]}
+_ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
 _SRC = "bq-e2e"
 _DS = "provisa_e2e_it"
 

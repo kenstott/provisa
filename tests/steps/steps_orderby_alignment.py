@@ -25,6 +25,7 @@ from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import compile_query
 from provisa.compiler.context import build_context
+from tests.helpers import ALL_DATA_CAPABILITIES
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +107,7 @@ def _build_schema_with_relationship():
         relationships=relationships,
         column_types=column_types,
         naming_rules=[],
-        role={"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]},
+        role={"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]},
         domains=[{"id": "sales", "description": "Sales"}],
         source_types={"sales-pg": "postgresql"},
     )

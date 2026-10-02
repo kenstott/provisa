@@ -208,8 +208,19 @@ class TestHasCapability:
         assert has_capability(role, Capability.FULL_RESULTS) is True
         assert has_capability(role, Capability.SOURCE_REGISTRATION) is False
 
-    def test_admin_capability_grants_everything(self):
-        role = {"id": "sysadmin", "capabilities": ["admin"]}
+    def test_no_capability_string_grants_another(self):
+        # REQ-1327: sampling is lifted by full_results and by nothing in its place.
+        for held in (["admin"], ["superadmin"], ["platform_settings", "cross_org"]):
+            role = {"id": "sysadmin", "capabilities": held}
+            assert has_capability(role, Capability.FULL_RESULTS) is False
+            assert has_capability(role, Capability.ACCESS_CONFIG) is False
+            assert has_capability(role, Capability.TABLE_REGISTRATION) is False
+
+    def test_a_role_given_each_right_holds_each(self):
+        role = {
+            "id": "sysadmin",
+            "capabilities": ["full_results", "access_config", "table_registration"],
+        }
         assert has_capability(role, Capability.FULL_RESULTS) is True
         assert has_capability(role, Capability.ACCESS_CONFIG) is True
         assert has_capability(role, Capability.TABLE_REGISTRATION) is True

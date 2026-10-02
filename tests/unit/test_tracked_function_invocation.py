@@ -67,8 +67,6 @@ def _state(*, role_caps=(), writable_by=("ops",), connected=True, pools=None):
         roles={"ops": role, "reader": {"id": "reader", "capabilities": []}},
         tracked_functions={"createOrder": _fn(writable_by=list(writable_by))},
         source_pools=pools,
-        # REQ-1621: a runtime states whether its environment expires; a durable one keeps the
-        # administrator's mutation bypass.
         ephemeral=False,
     )
 
@@ -104,15 +102,21 @@ async def test_role_not_in_writable_by_is_403():
 
 
 @pytest.mark.asyncio
-async def test_admin_bypasses_acl():
-    st = _state(role_caps=[Capability.ADMIN.value], writable_by=[])
-    rows = await invoke_tracked_function("createOrder", {}, st, "ops")
-    assert rows == [{"id": 1, "name": "ada"}]
+@pytest.mark.parametrize(
+    "held", [["admin"], ["superadmin"], ["platform_settings", "cross_org"], ["write"]]
+)
+async def test_nothing_bypasses_an_empty_acl(held):
+    # REQ-1327: the ACL is the whole answer; no capability stands above it.
+    st = _state(role_caps=held, writable_by=[])
+    with pytest.raises(HTTPException) as ei:
+        await invoke_tracked_function("createOrder", {}, st, "ops")
+    assert ei.value.status_code == 403
+    assert st.source_pools.calls == []
 
 
 @pytest.mark.asyncio
 async def test_unknown_function_is_400():
-    st = _state(role_caps=[Capability.ADMIN.value])
+    st = _state(role_caps=[Capability.WRITE.value])
     with pytest.raises(HTTPException) as ei:
         await invoke_tracked_function("nope", {}, st, "ops")
     assert ei.value.status_code == 400
@@ -120,7 +124,7 @@ async def test_unknown_function_is_400():
 
 @pytest.mark.asyncio
 async def test_disconnected_source_is_503():
-    st = _state(role_caps=[Capability.ADMIN.value], connected=False)
+    st = _state(role_caps=[Capability.WRITE.value], connected=False)
     with pytest.raises(HTTPException) as ei:
         await invoke_tracked_function("createOrder", {}, st, "ops")
     assert ei.value.status_code == 503
@@ -144,7 +148,7 @@ def test_parse_call_literal_types():
 
 
 def test_detect_registered_call_with_yield():
-    st = _state(role_caps=[Capability.ADMIN.value])
+    st = _state(role_caps=[Capability.WRITE.value])
     got = detect_registered_call("CALL createOrder(7, 'x') YIELD id, name AS n", st, {})
     assert got is not None
     name, args, yields = got
@@ -154,12 +158,12 @@ def test_detect_registered_call_with_yield():
 
 
 def test_detect_registered_call_binds_params():
-    st = _state(role_caps=[Capability.ADMIN.value])
+    st = _state(role_caps=[Capability.WRITE.value])
     _n, args, _y = detect_registered_call("CALL createOrder($cid)", st, {"cid": 99})
     assert list(args.values()) == [99]
 
 
 def test_detect_ignores_unregistered_name():
-    st = _state(role_caps=[Capability.ADMIN.value])
+    st = _state(role_caps=[Capability.WRITE.value])
     assert detect_registered_call("CALL db.labels()", st, {}) is None
     assert detect_registered_call("CALL somethingElse(1)", st, {}) is None

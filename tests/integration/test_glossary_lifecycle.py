@@ -26,6 +26,7 @@ import pytest_asyncio
 from provisa.core import domain_policy
 from provisa.core.config_loader import load_config, parse_config_dict
 from provisa.core.repositories import glossary as glossary_repo
+from tests.helpers import ALL_DATA_CAPABILITIES
 
 pytestmark = [pytest.mark.integration]
 
@@ -89,7 +90,7 @@ def _config(tables: dict) -> dict:
             }
             for name, columns in tables.items()
         ],
-        "roles": [{"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]}],
+        "roles": [{"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}],
     }
 
 

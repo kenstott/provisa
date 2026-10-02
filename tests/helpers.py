@@ -11,6 +11,18 @@ from __future__ import annotations
 import re
 
 from provisa.federation import store_writer
+from provisa.security.rights import PLATFORM_RIGHTS, Capability
+
+#: Every data-plane right a role can be GIVEN, named one by one — for a test role that is to be
+#: limited by nothing but the grants the test itself writes (``visible_to``, ``writable_by``,
+#: ``domain_access``). No capability stands in for another (REQ-1327), so a role that holds them
+#: all lists them all. Left out: the two platform rights, which are over the deployment and not
+#: over data; ``ddl``, which a test grants on purpose; and ``no_aggregations``, which withholds.
+ALL_DATA_CAPABILITIES: list[str] = sorted(
+    c.value
+    for c in Capability
+    if c.value not in PLATFORM_RIGHTS and c not in (Capability.DDL, Capability.NO_AGGREGATIONS)
+)
 
 _ALIAS_RE = re.compile(r"\b(t|a|j|n|sub|cte)\d+\b", re.IGNORECASE)
 _QUOTED_ALIAS_RE = re.compile(r'"(t|a|j|n|sub|cte)\d+"', re.IGNORECASE)

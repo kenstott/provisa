@@ -380,6 +380,9 @@ REFUSED_DEFINITIONS = [
     (["usage"], "settings_only", 403, "roles.platform_right_requires_platform_admin"),
     (["usage", "everything"], None, 422, "roles.unknown_capability"),
     (["root"], None, 422, "roles.unknown_capability"),
+    # The retired wildcard strings are outside the vocabulary like any other unknown word.
+    (["admin"], None, 422, "roles.unknown_capability"),
+    (["usage", "superadmin"], None, 422, "roles.unknown_capability"),
 ]
 
 

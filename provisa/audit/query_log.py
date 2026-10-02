@@ -148,7 +148,7 @@ async def read_query_text(  # REQ-689
 ) -> str | None:
     """Decrypt and return the query text for one audit row (authorised admin read).
 
-    Callers MUST gate this on an admin capability; decryption is only meaningful with
+    Callers MUST gate this on ``view_governance``; decryption is only meaningful with
     the provider/key that wrote the row. Returns None when the row or column is absent.
     """
     async with pool.acquire() as conn:

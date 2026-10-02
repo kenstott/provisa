@@ -30,6 +30,7 @@ from provisa.compiler.mutation_gen import compile_mutation, inject_rls_into_muta
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.context import build_context
 from provisa.executor.direct import _WRITE_RE
+from tests.helpers import ALL_DATA_CAPABILITIES
 
 
 scenarios("../features/REQ-032.feature")
@@ -74,7 +75,7 @@ def _build_schema_and_ctx():
         relationships=[],
         column_types=column_types,
         naming_rules=[],
-        role={"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]},
+        role={"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]},
         domains=[{"id": "sales", "description": "Sales"}],
         source_types={"sales-pg": "postgresql"},
     )
@@ -354,7 +355,7 @@ def _build_rls_schema_and_ctx():
         relationships=[],
         column_types=column_types,
         naming_rules=[],
-        role={"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]},
+        role={"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]},
         domains=[{"id": "sales", "description": "Sales"}],
         source_types={"sales-pg": "postgresql"},
     )

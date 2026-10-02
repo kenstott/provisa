@@ -34,8 +34,8 @@ async def redirect_unwrap(  # REQ-687
     Bulk results are envelope-encrypted before upload, so the S3 object is ciphertext and
     the presigned URL alone (or the bucket admin) cannot read it. The client presents the
     ``grant`` it received in the redirect response; the server opens it under the master key
-    (which never leaves the MasterKeyProvider), verifies the caller is the creating role —
-    or holds ADMIN/SUPERADMIN — and returns the DEK the client uses to AES-256-GCM decrypt
+    (which never leaves the MasterKeyProvider), verifies the caller is the creating role,
+    and returns the DEK the client uses to AES-256-GCM decrypt
     the downloaded blob. A grant issued to one role cannot be redeemed by another.
     """
     import base64
@@ -45,7 +45,6 @@ async def redirect_unwrap(  # REQ-687
 
     from provisa.api.app import state
     from provisa.encryption import EnvelopeEncryption, encryption_service
-    from provisa.security.mutation_authz import Capability
 
     auth_role = getattr(raw_request.state, "role", None)
     role_id = auth_role or x_provisa_role
@@ -62,9 +61,6 @@ async def redirect_unwrap(  # REQ-687
         payload = json.loads(svc.decrypt(grant_bytes))
     except (ValueError, InvalidTag):
         raise HTTPException(status_code=400, detail="grant could not be opened")
-    role = state.roles.get(role_id)
-    caps = (role or {}).get("capabilities") or []
-    is_admin = Capability.ADMIN.value in caps or Capability.SUPERADMIN.value in caps
-    if payload.get("role") != role_id and not is_admin:
+    if payload.get("role") != role_id:
         raise HTTPException(status_code=403, detail="grant is scoped to another role")
     return JSONResponse({"dek": payload["dek"]})

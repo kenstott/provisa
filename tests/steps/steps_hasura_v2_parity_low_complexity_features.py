@@ -57,6 +57,7 @@ from provisa.compiler.sql_gen import CompilationContext, TableMeta, compile_quer
 from provisa.compiler.context import build_context
 from provisa.core.models import Role, ScheduledTrigger, flatten_roles
 from provisa.scheduler.jobs import _execute_webhook, build_scheduler
+from tests.helpers import ALL_DATA_CAPABILITIES
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +147,7 @@ def _build_schema_input(source_type: str = "postgresql") -> SchemaInput:
         relationships=[],
         column_types=col_types,
         naming_rules=[],
-        role={"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]},
+        role={"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]},
         domains=[{"id": "sales", "description": "Sales"}],
         source_types={"sales-pg": source_type},
     )
@@ -199,7 +200,7 @@ def _build_batch_schema_and_ctx() -> tuple:
         relationships=[],
         column_types=col_types,
         naming_rules=[],
-        role={"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]},
+        role={"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]},
         domains=[{"id": "sales", "description": "Sales"}],
         source_types={"sales-pg": "postgresql"},
     )

@@ -53,7 +53,7 @@ async def _apply_mv_relationship_gate(
     Returns None to let publication proceed, or a queued ``MutationResult`` to BLOCK it. A materialized
     view (``view_sql`` + ``materialize``) may publish only if every relationship its SQL joins over is
     approved (present in ``relationships``). Missing relationships split on the caller's rights:
-    - holds ``create_relationship`` (or admin) → auto-create + approve each missing relationship now,
+    - holds ``create_relationship`` → auto-create + approve each missing relationship now,
       then proceed (returns None);
     - otherwise → queue a ``relationship`` creation request per missing dependency AND the ``view``
       creation request, and block publication (returns the queued result). Re-executing the queued

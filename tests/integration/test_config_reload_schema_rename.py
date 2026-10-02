@@ -28,6 +28,7 @@ import pytest
 import pytest_asyncio
 
 from provisa.core.config_loader import load_config, parse_config_dict
+from tests.helpers import ALL_DATA_CAPABILITIES
 
 pytestmark = [pytest.mark.integration]
 
@@ -73,7 +74,7 @@ def _config(schema: str) -> dict:
                 "columns": [{"name": "id", "data_type": "integer", "visible_to": ["admin"]}],
             }
         ],
-        "roles": [{"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]}],
+        "roles": [{"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}],
     }
 
 

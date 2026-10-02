@@ -29,6 +29,7 @@ Covered REQ-IDs:
 from __future__ import annotations
 
 import pytest
+from tests.helpers import ALL_DATA_CAPABILITIES
 
 pytestmark = [pytest.mark.integration]
 
@@ -189,7 +190,7 @@ class TestDistinctOn:
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
             }
         ]
-        role = {"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]}
+        role = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
         inp = SchemaInput(
             tables=tables,
             relationships=[],
@@ -231,7 +232,7 @@ class TestDistinctOn:
                 ],
             }
         ]
-        role = {"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]}
+        role = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
         inp = SchemaInput(
             tables=tables,
             relationships=[],
@@ -370,7 +371,7 @@ class TestInheritedRoles:
         # REQ-215: parent role is not mutated by child inheritance
         from provisa.core.models import Role, flatten_roles
 
-        parent = Role(id="base", capabilities=["admin"], domain_access=["*"])
+        parent = Role(id="base", capabilities=["source_registration"], domain_access=["*"])
         child = Role(
             id="analyst",
             capabilities=["custom_cap"],
@@ -381,7 +382,7 @@ class TestInheritedRoles:
         flattened = flatten_roles([parent, child])
         parent_flat = next(r for r in flattened if r.id == "base")
 
-        assert parent_flat.capabilities == ["admin"]
+        assert parent_flat.capabilities == ["source_registration"]
 
     def test_wildcard_domain_wins_over_explicit(self):
         # REQ-215: if either parent or child holds "*", result is ["*"]

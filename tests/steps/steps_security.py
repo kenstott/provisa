@@ -62,6 +62,7 @@ from provisa.security.masking import (
 )
 
 from provisa.auth.middleware import AuthMiddleware, _SKIP_PATHS
+from tests.helpers import ALL_DATA_CAPABILITIES
 
 scenarios("../features/REQ-039.feature")
 scenarios("../features/REQ-040.feature")
@@ -473,6 +474,9 @@ def request_to_skip_path(shared_data: dict) -> None:
         "/billing/signup",
         "/billing/webhook",
         "/health",
+        # REQ-1913: the UI server (its own process, no identity) asks for the operator settings
+        # it runs on. The answer is its proxy timeout — a number, no data.
+        "/internal/ui-server-settings",
         "/live",
         "/ready",
         "/data/openapi/docs",
@@ -1086,7 +1090,7 @@ def role_with_specific_capability(shared_data: dict) -> None:
         "id": "developer",
         "capabilities": [Capability.QUERY_DEVELOPMENT.value],
     }
-    shared_data["role_admin"] = {"id": "root", "capabilities": [Capability.ADMIN.value]}
+    shared_data["role_admin"] = {"id": "root", "capabilities": ALL_DATA_CAPABILITIES}
     assert has_capability(shared_data["role_qd"], Capability.QUERY_DEVELOPMENT)
     assert not has_capability(shared_data["role_qd"], Capability.SOURCE_REGISTRATION)
 
@@ -1180,7 +1184,11 @@ def two_remote_same_source_tables(shared_data: dict) -> None:
     gov.table_map["gql_shop.products"] = 1
     gov.table_map["gql_shop.categories"] = 2
     shared_data["gov_747"] = gov
-    shared_data["role_747"] = {"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]}
+    shared_data["role_747"] = {
+        "id": "admin",
+        "capabilities": ALL_DATA_CAPABILITIES,
+        "domain_access": ["*"],
+    }
 
     shared_data["sql_same_source_747"] = (
         'SELECT "p"."id", "c"."name" '

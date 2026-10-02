@@ -35,12 +35,13 @@ from provisa.compiler.context import build_context  # noqa: E402
 from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical  # noqa: E402
 from provisa.compiler.stage2 import apply_governance, build_governance_context  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
+from tests.helpers import ALL_DATA_CAPABILITIES  # noqa: E402
 
 _FILES = Path(__file__).parent.parent.parent / "demo" / "files"
 _CSV = str(_FILES / "customers.csv")
 _ORDERS_SQLITE = str(_FILES / "orders.sqlite")
 
-_ADMIN = {"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]}
+_ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
 
 
 def _col(n: str, d: str = "varchar", nl: bool = True) -> ColumnMetadata:

@@ -57,10 +57,11 @@ from provisa.compiler.sql_rewrite import (
 from provisa.compiler.stage2 import apply_governance, build_governance_context
 from provisa.federation.conformance import compare_governed_results
 from provisa.transpiler.transpile import transpile
+from tests.helpers import ALL_DATA_CAPABILITIES
 
 pytestmark = [pytest.mark.integration]
 
-_ADMIN = {"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]}
+_ADMIN = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
 _SCHEMA = "public"
 _TABLE = "orders"
 

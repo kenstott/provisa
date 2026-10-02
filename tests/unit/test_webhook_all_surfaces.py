@@ -44,6 +44,8 @@ def _webhook() -> dict:
         "inline_return_type": [{"name": "id", "type": "Int"}, {"name": "name", "type": "String"}],
         "arguments": [{"name": "name", "type": "String"}, {"name": "status", "type": "String"}],
         "visible_to": ["admin"],
+        # A write is authorized by the ACL naming the role AND the role holding WRITE.
+        "writable_by": ["admin"],
         "domain_id": "pet-store",
         "description": "Add a pet",
         "kind": "mutation",
@@ -74,11 +76,9 @@ def _state() -> SimpleNamespace:
         role_chains={},
         federation_engine=_Engine(),
         roles={
-            "admin": {"id": "admin", "domain_access": ["*"], "capabilities": ["admin"]},
+            "admin": {"id": "admin", "domain_access": ["*"], "capabilities": ["write"]},
             "guest": {"id": "guest", "domain_access": ["*"], "capabilities": []},
         },
-        # REQ-1621: a runtime states whether its environment expires; a durable one keeps the
-        # administrator's mutation bypass.
         ephemeral=False,
     )
 

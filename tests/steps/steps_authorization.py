@@ -384,12 +384,12 @@ def then_access_config_may_demote_no_one_may_promote(shared_data: dict) -> None:
         f"ACCESS_CONFIG role should be able to demote mutation to read; got {new_kind!r}"
     )
 
-    # --- 2. ADMIN role can also demote (bypasses capability check) ---
-    admin_role = _make_role("root", Capability.ADMIN.value)
-    new_kind_admin = reclassify_kind(admin_role, "mutation", "query")
-    assert new_kind_admin == "query", (
-        f"ADMIN role should be able to demote mutation to read; got {new_kind_admin!r}"
-    )
+    # --- 2. Nothing stands in for ACCESS_CONFIG (REQ-1327): the retired wildcard strings and
+    # the platform rights cannot demote ---
+    for held in (("admin",), ("superadmin",), ("platform_settings", "cross_org")):
+        with pytest.raises(InsufficientRightsError):
+            reclassify_kind(_make_role("root", *held), "mutation", "query")
+    admin_role = access_config_role
 
     # --- 3. No-op (mutation → mutation) is idempotent ---
     noop_result = reclassify_kind(admin_role, "mutation", "mutation")
@@ -403,7 +403,7 @@ def then_access_config_may_demote_no_one_may_promote(shared_data: dict) -> None:
         f"No-op read transition should return 'query'; got {noop_read_result!r}"
     )
 
-    # --- 5. Nobody may promote a read back to a write (even ADMIN) ---
+    # --- 5. Nobody may promote a read back to a write (even the ACCESS_CONFIG holder) ---
     with pytest.raises(ValueError, match="read cannot be promoted"):
         reclassify_kind(admin_role, "query", "mutation")
 

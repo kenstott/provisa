@@ -24,7 +24,7 @@ from enum import Enum
 # low-level rights module so every query surface (schema build, cypher, SQL validation) shares ONE
 # source of truth — the meta visibility rules must be identical across all languages. CORE meta columns
 # are structural (names/types/keys) and drive discovery; GOVERNANCE columns expose the security posture
-# (visible_to, masking secrets, view SQL) and require the view_governance capability (or admin).
+# (visible_to, masking secrets, view SQL) and require the view_governance capability.
 META_DOMAIN_ID = "meta"
 GOVERNANCE_META_COLUMNS: frozenset[str] = frozenset(
     {
@@ -51,7 +51,6 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     QUERY_DEVELOPMENT = "query_development"
     APPROVE_VIEW = "approve_view"
     FULL_RESULTS = "full_results"  # bypass sampling mode
-    ADMIN = "admin"
     USAGE = "usage"
     READ_RESTRICTED = "read_restricted"
     APPROVE_RELATIONSHIP = "approve_relationship"
@@ -62,7 +61,6 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     VIEW_GOVERNANCE = (
         "view_governance"  # REQ-1134: see meta GOVERNANCE columns (visible_to, masks, grants)
     )
-    SUPERADMIN = "superadmin"
     # REQ-1337: read/modify DEPLOYMENT-WIDE settings — federation engine, cache storage, encryption
     # provider, auth provider, the config file itself, query-engine lifecycle. Distinct from ADMIN so
     # the surface is gated by a RIGHT rather than by a role name: platform_admin always holds it,
@@ -119,10 +117,10 @@ class Capability(str, Enum):  # REQ-042, REQ-060
 
 # REQ-1297: the four system role ids are the whole role vocabulary — every org schema seeds
 # exactly these, all with org_id NULL and identical capabilities everywhere. The former role ids
-# 'admin' and 'superadmin' are retired: they survive only as CAPABILITY strings (Capability.ADMIN /
-# Capability.SUPERADMIN above, which check_capability treats as the wildcard), and platform_admin is
-# the only role carrying them. Nothing resolves the retired ROLE ids — seed time rewrites existing
-# assignments naming them to platform_admin.
+# 'admin' and 'superadmin' are retired, and neither word is a capability: no string stands in for
+# another right (REQ-1327), so check_capability reads the right it is asked about and nothing else.
+# Nothing resolves the retired ROLE ids — seed time rewrites existing assignments naming them to
+# platform_admin.
 PLATFORM_ADMIN_ROLE = "platform_admin"
 ORG_ADMIN_ROLE = "org_admin"
 DEVELOPER_ROLE = "developer"
@@ -368,7 +366,7 @@ def check_capability(  # REQ-002, REQ-003, REQ-042
     capabilities = role.get("capabilities", [])
     if not isinstance(capabilities, (list, tuple, set, frozenset)):
         capabilities = []
-    if required.value not in capabilities and Capability.ADMIN.value not in capabilities:
+    if required.value not in capabilities:
         role_id = role["id"]
         raise InsufficientRightsError(str(role_id), required)
 
@@ -380,7 +378,7 @@ def has_capability(
     capabilities = role.get("capabilities", [])
     if not isinstance(capabilities, (list, tuple, set, frozenset)):
         capabilities = []
-    return capability.value in capabilities or Capability.ADMIN.value in capabilities
+    return capability.value in capabilities
 
 
 # The two meta views whose ROWS describe registered tables/columns and are therefore subject to
@@ -400,8 +398,8 @@ def compute_meta_row_scope(
     """REQ-1132: the set of DESCRIBED table ids whose meta rows a role may see, or ``None`` when
     NO row filter applies (all rows visible).
 
-    ``None`` (unfiltered) is returned for the two tiers that see the whole catalog: an ADMIN role,
-    and a role holding the meta DOMAIN GRANT (or global ``*``/empty domain access). Every other
+    ``None`` (unfiltered) is returned for the tier that sees the whole catalog: a role holding
+    the meta DOMAIN GRANT (or global ``*``/empty domain access). Every other
     (DEFAULT-tier) role is confined to its directly-accessible tables — those in a domain the role
     can access — PLUS 1-hop neighbours over user-defined/semantic relationships (the ``relationships``
     registry holds only user relationships; auto-derived FK/catalog edges are never stored there, so
@@ -411,8 +409,6 @@ def compute_meta_row_scope(
     target table and contribute no neighbour.
     """
     if role is None:
-        return None
-    if has_capability(role, Capability.ADMIN):
         return None
     accessible = role.get("domain_access") or []
     if not isinstance(accessible, (list, tuple, set, frozenset)):

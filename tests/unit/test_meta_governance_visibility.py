@@ -6,7 +6,7 @@
 """REQ-1134: the `view_governance` capability gates the GOVERNANCE column class of the
 meta (catalog) domain. A role with a plain meta grant sees CORE (structural) columns for
 discovery but NOT the GOVERNANCE columns (visible_to, masking rules, view_sql, …) — those
-require view_governance (or admin) independently.
+require view_governance independently; no other capability stands in for it.
 
 Enforcement lives in build_governance_context (SQL endpoint / cypher column projection),
 sharing the GOVERNANCE_META_COLUMNS + META_DOMAIN_ID source of truth in provisa.security.rights.
@@ -75,10 +75,15 @@ class TestREQ1134GovernanceColumnVisibility:
         assert _CORE_COL in visible
         assert GOVERNANCE_META_COLUMNS <= set(visible)
 
-    def test_admin_sees_all_meta_columns(self):
-        # REQ-1134 — admin bypass: no per-column meta filtering (None == all visible).
-        gov = _build({"id": "admin", "capabilities": ["admin"]})
-        assert gov.visible_columns[1] is None
+    def test_no_capability_stands_in_for_view_governance(self):
+        # REQ-1134/REQ-1327 — the retired wildcard strings and the platform rights are the
+        # default tier here: CORE visible, GOVERNANCE hidden, exactly as for a role holding nothing.
+        for held in (["admin"], ["superadmin"], ["platform_settings", "cross_org"]):
+            gov = _build({"id": "admin", "capabilities": held})
+            visible = gov.visible_columns[1]
+            assert visible is not None, held
+            assert _CORE_COL in visible
+            assert not (set(visible) & GOVERNANCE_META_COLUMNS), held
 
     def test_meta_grant_alone_does_not_auto_grant_governance(self):
         # REQ-1134 — a meta DOMAIN grant must NOT imply view_governance.
@@ -195,11 +200,15 @@ class TestREQ1132RowScope:
         assert _RT_META_TID not in gov.rls_rules
         assert _TC_META_TID not in gov.rls_rules
 
-    def test_admin_sees_all_rows(self):
-        # REQ-1132 — admin bypass: no meta row filter.
-        gov = _row_gov({"id": "admin", "capabilities": ["admin"], "domain_access": ["sales"]})
-        assert _RT_META_TID not in gov.rls_rules
-        assert _TC_META_TID not in gov.rls_rules
+    def test_no_capability_lifts_the_row_filter(self):
+        # REQ-1132/REQ-1327 — the whole catalog is the meta DOMAIN GRANT's (above), never a
+        # capability's: a sales-scoped role holding the retired strings is scoped like any other.
+        for held in (["admin"], ["superadmin"], ["platform_settings", "cross_org"]):
+            gov = _row_gov({"id": "admin", "capabilities": held, "domain_access": ["sales"]})
+            assert gov.rls_rules[_RT_META_TID] == f"id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})"
+            assert gov.rls_rules[_TC_META_TID] == (
+                f"table_id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})"
+            )
 
     def test_role_with_no_reachable_tables_sees_no_rows(self):
         # REQ-1132 — a role whose domain has no tables gets a match-nothing predicate (fail-closed).

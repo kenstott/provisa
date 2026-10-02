@@ -134,18 +134,13 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
         # Filter columns by role visibility; split native filter cols from regular cols.
         # visible_to=[] means unrestricted (visible to all roles). REQ-1132/REQ-1134: in the meta
         # (catalog) domain, GOVERNANCE columns (visible_to, masks, view_sql, …) are hidden unless the
-        # role holds view_governance (or admin) — enforced HERE so every query surface (GraphQL, SQL,
+        # role holds view_governance — enforced HERE so every query surface (GraphQL, SQL,
         # cypher) that derives from this per-role schema sees the same governed catalog.
-        _hide_meta_gov = (
-            table["domain_id"] == META_DOMAIN_ID
-            and not has_capability(role, Capability.VIEW_GOVERNANCE)
-            and not has_capability(role, Capability.ADMIN)
+        _hide_meta_gov = table["domain_id"] == META_DOMAIN_ID and not has_capability(
+            role, Capability.VIEW_GOVERNANCE
         )
-        # REQ-1133: lockdown domains (e.g. ops) require an explicit visible_to grant —
-        # admins bypass this via the admin capability override.
-        _lockdown_admin_override = table["domain_id"] in _LOCKDOWN_DOMAINS and has_capability(
-            role, Capability.ADMIN
-        )
+        # REQ-1133: lockdown domains (e.g. ops) require an explicit visible_to grant; no
+        # capability stands in for one (REQ-1327).
         visible_cols = [
             c
             for c in table["columns"]
@@ -158,7 +153,6 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
                 # even after a successful visible_to=["*"] grant.
                 or "*" in c["visible_to"]
                 or role["id"] in c["visible_to"]
-                or _lockdown_admin_override
             )
             and not c.get("native_filter_type")
             and not (_hide_meta_gov and c["column_name"] in GOVERNANCE_META_COLUMNS)

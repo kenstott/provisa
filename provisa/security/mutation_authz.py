@@ -20,8 +20,8 @@ OpenAPI, gRPC, Hasura):
 
 2. AUTHORIZE a write: a role may invoke a mutation only when it holds the global WRITE
    capability (REQ-868) AND appears in that specific mutation's ``writable_by`` list —
-   which is empty by default, i.e. default-deny (REQ-867). ADMIN/SUPERADMIN bypass, the
-   same convention as ``check_capability``.
+   which is empty by default, i.e. default-deny (REQ-867). Nothing bypasses the list: the
+   ACL is the author's statement of who may write, and it is the whole answer.
 
 Execute-time enforcement (wiring this into the action executor) lives in the endpoint;
 this module is pure and unit-testable with no I/O.
@@ -140,29 +140,18 @@ def classify_kind(kind: str | None) -> MutationKind:
 def authorize_mutation(
     role: dict[str, object] | None,
     writable_by: list[str] | None,
-    *,
-    admin_bypass: bool = True,
 ) -> tuple[bool, str]:  # REQ-867, REQ-868, REQ-1621
     """Decide whether ``role`` may invoke a write whose ACL is ``writable_by``.
 
     Returns ``(allowed, reason)``. Allowed only when the role holds the global WRITE
-    capability AND its id is in ``writable_by`` (empty = default-deny). ADMIN/SUPERADMIN
-    bypass, consistent with ``check_capability``. A missing role is denied.
+    capability AND its id is in ``writable_by`` (empty = default-deny). A missing role is denied.
 
-    ``admin_bypass=False`` withdraws that bypass and leaves the ACL as the whole answer (REQ-1621).
-    An ephemeral environment is the case: everything it holds is a copy that is thrown away, so its
-    visitor is deliberately given ``org_admin`` -- but the mutations reached through it are calls to
-    a REMOTE system the environment does not own and cannot copy, and an admin who is admin of a
-    throwaway is not an admin of that. The ACL is the author's own statement of who may write to it,
-    and here it stands with nobody above it.
+    No capability stands above the list (REQ-1327, REQ-1621): the ACL is the author's own
+    statement of who may write through the mutation — often a call to a REMOTE system the
+    deployment does not own — and it stands with nobody above it, in every environment.
     """
     if role is None:
         return False, "no role in context"
-    caps = role.get("capabilities", [])
-    if not isinstance(caps, (list, tuple, set, frozenset)):
-        caps = []
-    if admin_bypass and (Capability.ADMIN.value in caps or Capability.SUPERADMIN.value in caps):
-        return True, ""
     if not has_capability(role, Capability.WRITE):
         return False, "role lacks the WRITE capability"
     if role.get("id") not in (writable_by or []):
@@ -176,7 +165,7 @@ def reclassify_kind(
     """Admin-only reclassification of a mutation to read-safe. Returns the new stored kind.
 
     Governance — not callers — controls classification (REQ-870). Only a role holding the
-    ACCESS_CONFIG capability (ADMIN bypasses, per ``has_capability``) may reclassify, and
+    ACCESS_CONFIG capability may reclassify, and
     only the demotion mutation → read is allowed: a write can be declared read-safe by an
     admin, but nothing can promote a read to a write and no caller-supplied ``read_only``
     flag exists. A no-op (target already equals current) is idempotent and returns the
@@ -196,21 +185,16 @@ def reclassify_kind(
 
 
 def require_mutation_write(
-    action: dict, role: dict | None, field_name: str, *, admin_bypass: bool = True
+    action: dict, role: dict | None, field_name: str
 ) -> None:  # REQ-869, REQ-1621
     """Execute-time gate for a tracked function/webhook action.
 
     A ``kind=mutation`` action (or any unknown kind) is a write and is authorized via
     ``authorize_mutation``; a read (``kind=query``) passes untouched — read visibility is
     enforced elsewhere. Raises HTTP 403 when a write is not permitted (default-deny).
-
-    ``admin_bypass`` is the caller's answer to REQ-1621: every call site passes
-    ``not state.ephemeral``, so an environment carrying an expiry withholds the bypass.
     """
     if classify_kind(action.get("kind")) is MutationKind.READ:
         return
-    allowed, reason = authorize_mutation(
-        role, action.get("writable_by") or [], admin_bypass=admin_bypass
-    )
+    allowed, reason = authorize_mutation(role, action.get("writable_by") or [])
     if not allowed:
         raise MutationNotPermitted(field_name, reason)

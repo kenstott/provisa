@@ -49,17 +49,22 @@ class TestInsufficientRightsErrorPropagates:
         result = check_capability(role, Capability.APPROVE_VIEW)
         assert result is None
 
-    def test_admin_capability_satisfies_any_requirement(self):
-        """Admin capability acts as a wildcard — satisfies any check."""
-        role = {"id": "superuser", "capabilities": ["admin"]}
+    def test_no_capability_string_satisfies_another_requirement(self):
+        """There is no wildcard: "admin"/"superadmin" are not capabilities and satisfy nothing."""
+        role = {"id": "superuser", "capabilities": ["admin", "superadmin"]}
         for cap in Capability:
-            result = check_capability(role, cap)
-            assert result is None
+            with pytest.raises(InsufficientRightsError):
+                check_capability(role, cap)
+
+    def test_a_role_holding_every_capability_satisfies_every_requirement(self):
+        role = {"id": "superuser", "capabilities": [c.value for c in Capability]}
+        for cap in Capability:
+            assert check_capability(role, cap) is None
 
     def test_empty_capabilities_raises_for_any_requirement(self):
         """Role with no capabilities raises for every capability check."""
         role = {"id": "noop", "capabilities": []}
-        for cap in (Capability.QUERY_DEVELOPMENT, Capability.APPROVE_VIEW, Capability.ADMIN):
+        for cap in (Capability.QUERY_DEVELOPMENT, Capability.APPROVE_VIEW, Capability.WRITE):
             with pytest.raises(InsufficientRightsError):
                 check_capability(role, cap)
 
