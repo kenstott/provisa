@@ -23,7 +23,7 @@ How a write is found, in every ``.py`` under ``provisa/`` outside the model stor
 * a method call ``T.delete()`` / ``T.insert()`` / ``T.update()``;
 * ``conn.upsert(T, ...)`` (an insert and an update);
 * a string holding ``DELETE FROM T`` / ``INSERT INTO T`` / ``UPDATE T``, with or without a
-  schema prefix.
+  schema prefix — a docstring excepted.
 """
 
 # Requirements: REQ-1919
@@ -44,6 +44,7 @@ CONVERTED: dict[str, set[str]] = {
     "roles": {"delete"},
     "domains": {"delete"},
     "registered_tables": {"delete"},
+    "sources": {"delete"},
 }
 
 _CONSTRUCTORS = {
@@ -112,7 +113,18 @@ def writes_in(source: str, table: str) -> list[tuple[int, str]]:
     tree = ast.parse(source)
     names = _names_bound_to(tree, table)
     found: list[tuple[int, str]] = []
+    # A docstring describes; it issues nothing. (core/database.py's shows a DELETE as usage.)
+    docstrings = {
+        id(holder.body[0].value)
+        for holder in ast.walk(tree)
+        if isinstance(holder, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef)
+        and holder.body
+        and isinstance(holder.body[0], ast.Expr)
+        and isinstance(holder.body[0].value, ast.Constant)
+    }
     for node in ast.walk(tree):
+        if id(node) in docstrings:
+            continue
         if isinstance(node, ast.Call):
             func = node.func
             called = (
@@ -161,6 +173,7 @@ def writes_in(source: str, table: str) -> list[tuple[int, str]]:
         ("x = debug_trace_hint_roles.delete()", []),
         ("q = 'DELETE FROM user_roles WHERE x'", []),
         ("identity.roles.update(extra)", []),  # an attribute that shares the table's name
+        ('def f():\n    """Example: DELETE FROM roles WHERE id = 1"""\n', []),  # a docstring
     ],
 )
 def test_the_scan_finds_a_write(source, expected):

@@ -116,11 +116,10 @@ async def client():
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
             yield c
+            from tests.helpers import delete_source_and_its_tables
+
             for sid in _REGISTERED_SOURCE_IDS:
-                await c.post(
-                    "/admin/graphql",
-                    json={"query": f'mutation {{ deleteSource(id: "{sid}") {{ success }} }}'},
-                )
+                await delete_source_and_its_tables(c, sid)
 
 
 class TestGraphQLRemoteSourceRegistration:

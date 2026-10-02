@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { test, expect, BACKEND_URL, TRINO_BACKEND_URL, UI_URL } from "./coverage";
 import { runSqlOnPage, typeSql } from "./source-to-query-helpers";
 import type { Page } from "./coverage";
+import { deleteSourceAndItsTables, type AdminGql } from "./delete-source";
 
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -526,7 +527,7 @@ export async function requeryOnEngine(page: Page, engine: EngineTarget, registra
       continue;
     }
     const deadline = Date.now() + reg.pollTimeoutMs;
-    let rows: string[][] = [];
+    let rows: string[][];
     for (;;) {
       rows = await trySqlOnPage(page, reg.sql);
       if (rows.length > 0 || Date.now() > deadline) break;
@@ -878,7 +879,7 @@ export async function killRebootBackend(proc: ChildProcess): Promise<void> {
  * Error: catalog not yet attached), gone on the next attempt a few hundred ms later. */
 export async function queryRebootBackend(sql: string, timeoutMs = 30000): Promise<string[][]> {
   const deadline = Date.now() + timeoutMs;
-  let lastError = "";
+  let lastError: string;
   for (;;) {
     const res = await fetch(`${REBOOT_BACKEND_URL}/data/sql`, {
       method: "POST",
@@ -942,15 +943,17 @@ export async function sweepRebootZombieSources(): Promise<void> {
   if (!res.ok) return; // nothing registered yet on a brand-new org — nothing to sweep
   const sources: Array<{ id: string }> = (await res.json()).data?.sources ?? [];
   const zombies = sources.filter((s) => /^e2e_swap_[a-z0-9_]+_?\d{10,}$/.test(s.id));
+  // A source goes only after the tables registered against it (REQ-1918).
+  const admin: AdminGql = async (query, variables = {}) =>
+    (
+      await fetch(`${REBOOT_BACKEND_URL}/admin/graphql`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, variables }),
+      })
+    ).json();
   for (const { id } of zombies) {
-    await fetch(`${REBOOT_BACKEND_URL}/admin/graphql`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query: `mutation D($id: String!) { deleteSource(id: $id) { success } }`,
-        variables: { id },
-      }),
-    });
+    await deleteSourceAndItsTables(admin, id);
   }
 }
 
@@ -1201,7 +1204,7 @@ export async function runRebootCase(
     const pollFor = async (): Promise<string[][]> => {
       if (!registration.pollTimeoutMs) return queryRebootBackend(registration.sql);
       const deadline = Date.now() + registration.pollTimeoutMs;
-      let rows: string[][] = [];
+      let rows: string[][];
       for (;;) {
         rows = await queryRebootBackend(registration.sql);
         if (rows.length > 0 || Date.now() > deadline) return rows;
@@ -1281,15 +1284,17 @@ export async function sweepZombieSwapSources(): Promise<void> {
   // purpose (a real ingest-only physical-table-naming gap — see that registrar's own comment), so
   // the trailing underscore here is optional rather than required, matching both shapes.
   const zombies = sources.filter((s) => /^e2e_swap_[a-z0-9_]+_?\d{10,}$/.test(s.id));
+  // A source goes only after the tables registered against it (REQ-1918).
+  const admin: AdminGql = async (query, variables = {}) =>
+    (
+      await fetch(`${BACKEND_URL}/admin/graphql`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, variables }),
+      })
+    ).json();
   for (const { id } of zombies) {
-    await fetch(`${BACKEND_URL}/admin/graphql`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query: `mutation D($id: String!) { deleteSource(id: $id) { success } }`,
-        variables: { id },
-      }),
-    });
+    await deleteSourceAndItsTables(admin, id);
   }
 }
 

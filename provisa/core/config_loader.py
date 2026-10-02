@@ -218,7 +218,7 @@ async def _replace_mode_cleanup(
     new_role_ids = list({r.id for r in config.roles} | SYSTEM_ROLE_IDS)
     keep_sources = new_source_ids if new_source_ids else _SYSTEM_SOURCE_IDS
     await table_repo.remove_registrations(conn, registered_tables.c.source_id.not_in(keep_sources))
-    await conn.execute_core(_delete(sources).where(sources.c.id.not_in(keep_sources)))
+    await source_repo.remove_where(conn, sources.c.id.not_in(keep_sources))
     keep_domains = new_domain_ids if new_domain_ids else domain_policy.system_domain_ids()
     await domain_repo.delete_all_except(conn, list(keep_domains))
     await role_repo.delete_all_except(conn, new_role_ids)

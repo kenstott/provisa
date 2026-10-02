@@ -1197,7 +1197,26 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             # REQ-1695: read the reference before the row goes, so the vault entry it names can be
             # removed with it. A source whose credential outlived it is a credential nothing owns.
             _existing = await source_repo.get(_conn, id)
-            deleted = await source_repo.delete(_conn, id)
+            try:
+                deleted = await source_repo.delete(_conn, id)
+            except source_repo.SourceDeleteRefused as refused:
+                # REQ-1918: nothing is removed; every dependent is named.
+                return MutationResult(
+                    success=False,
+                    message=str(refused),
+                    code=(
+                        "schema.source_has_dependents"
+                        if refused.reason == "dependents"
+                        else "schema.source_is_system"
+                    ),
+                    params={
+                        "source": id,
+                        "dependents": [
+                            {"kind": d.ref.kind, "id": d.ref.id, "via": list(d.via)}
+                            for d in refused.dependents
+                        ],
+                    },
+                )
         if deleted:
             assert _existing is not None  # delete reported a row, so get found one
             await forget_source_password(id, _existing["password_ref"])

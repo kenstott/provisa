@@ -61,6 +61,7 @@ import {
   runSqlOnPage,
   submitSourceAndExpectListed,
 } from "./source-to-query-helpers";
+import { deleteSourceAndItsTables } from "./delete-source";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const PROVISION = path.join(ROOT, "demo", "sources", "provision.py");
@@ -210,7 +211,7 @@ async function trinoTableName(sourceId: string): Promise<string> {
 }
 
 async function cleanupTrinoSource(sourceId: string) {
-  await trinoGql(`mutation D($id: String!) { deleteSource(id: $id) { success } }`, { id: sourceId });
+  await deleteSourceAndItsTables(trinoGql, sourceId);
 }
 
 // ---------------------------------------------------------------------------------------------

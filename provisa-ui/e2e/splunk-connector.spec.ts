@@ -8,6 +8,7 @@
 import https from "https";
 import { spawnSync } from "child_process";
 import { test, expect, UI_URL, TRINO_BACKEND_URL } from "./coverage";
+import { deleteSourceAndItsTables } from "./delete-source";
 
 const SOURCE_ID = "e2e-splunk";
 // Trino backend: register_source() creates a real Trino catalog so the schema dropdown populates.
@@ -106,9 +107,7 @@ async function getDomainId(): Promise<string> {
 }
 
 async function cleanupSource() {
-  await gql(`mutation D($id: String!) { deleteSource(id: $id) { success } }`, {
-    id: SOURCE_ID,
-  });
+  await deleteSourceAndItsTables(gql, SOURCE_ID);
 }
 
 test.beforeAll(async () => {

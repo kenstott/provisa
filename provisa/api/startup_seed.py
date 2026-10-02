@@ -50,6 +50,7 @@ from provisa.api._catalog_descriptions import (
 )
 from provisa.core.db import init_schema
 from provisa.core.environments import org_schema
+from provisa.core.repositories import source as _source_repo
 from provisa.core.repositories import table as _table_repo
 from provisa.core.schema_org import (
     domains as _domains_t,
@@ -858,7 +859,7 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
         # configured the last time it was written. Nothing registers tables against it — this
         # seed is the only writer either id ever had — so retiring the row here is the rename
         # finishing, not a data migration.
-        await _conn.execute_core(_delete(_sources_t).where(_sources_t.c.id == "__provisa__"))
+        await _source_repo.remove_where(_conn, _sources_t.c.id == "__provisa__")
         # REQ-1900: `--workers N` runs this whole boot sequence in N processes concurrently
         # against the SAME control-plane Postgres, each with its own connection/session. Every
         # step below (view DDL, then reflect_columns on that same view to register its columns)
