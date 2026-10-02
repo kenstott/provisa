@@ -73,6 +73,7 @@ async def _db(
                 change_signal=source_signal,
                 cache_ttl=source_ttl,
                 replicate=source_replicate,
+                origin="admin",
             )
         )
         await conn.execute_core(
@@ -86,6 +87,7 @@ async def _db(
                 role_ttl={"analyst": 360},
                 row_materialize=False,
                 replicate=table_replicate,
+                origin="admin",
             )
         )
     try:
