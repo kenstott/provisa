@@ -167,9 +167,7 @@ async def test_hydration_parent_lookup_quotes_its_names():
 
     await _hydrate_dataloader(
         src=None,
-        endpoint=None,
-        pg_table="child",
-        pg_schema="default",
+        endpoint=SimpleNamespace(table_name="child"),
         ttl=300,
         source_id="src",
         dataloader_col=None,

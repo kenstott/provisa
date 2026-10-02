@@ -14,10 +14,8 @@ FreshnessPredicate. Behaviour-preserving unification — no I/O, no DB, no docke
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock
+import time
 
-import pytest
 
 from provisa.freshness import FreshnessSubject, Ttl, evaluate
 from provisa.freshness.adapters import StateSubject
@@ -92,34 +90,51 @@ def test_mv_never_refreshed_is_not_fresh():
     assert _mv(refreshed_at=None).is_fresh_at(1050) is False
 
 
-# --- pg cache conforms (REQ-859) — the wired _is_fresh path ---------------------
+# --- API fills conform (REQ-859) — the wired stale_hashes path ----------------------
 
 
-@pytest.mark.asyncio
-async def test_pg_cache_is_fresh_true_for_recent_cached_at():
-    from provisa.openapi import pg_cache
+class _FillConn:
+    """An engine session whose fill table exists and holds one fetch time per argument set."""
 
-    pg_cache._mem_fresh.clear()
-    conn = AsyncMock()
-    conn.fetchval = AsyncMock(return_value=datetime.now(UTC) - timedelta(seconds=10))
-    assert await pg_cache._is_fresh(conn, "sch", "tbl", "hash", ttl=300) is True
+    dialect = "duckdb"
+
+    def __init__(self, cached: dict[str, float]) -> None:
+        self._cached = cached
+        self._last = ""
+
+    def execute(self, sql, params=None):
+        self._last = sql
+        return self
+
+    def fetchall(self):
+        if self._last.startswith("SELECT 1 "):
+            return [(1,)]
+        return list(self._cached.items())
 
 
-@pytest.mark.asyncio
-async def test_pg_cache_is_fresh_false_for_expired_cached_at():
-    from provisa.openapi import pg_cache
+def _fill_table():
+    from provisa.api_source import fill_cache
+    from provisa.api_source.engine_cache import CacheLocation
 
-    pg_cache._mem_fresh.clear()
-    conn = AsyncMock()
-    conn.fetchval = AsyncMock(return_value=datetime.now(UTC) - timedelta(seconds=600))
-    assert await pg_cache._is_fresh(conn, "sch", "tbl", "hash", ttl=300) is False
+    fill_cache._mem_fresh.clear()
+    return fill_cache.FillTable(CacheLocation("c", "sch", "relational"), "tbl", ())
 
 
-@pytest.mark.asyncio
-async def test_pg_cache_is_fresh_false_when_no_row():
-    from provisa.openapi import pg_cache
+def test_a_fill_fetched_recently_is_fresh():
+    from provisa.api_source import fill_cache
 
-    pg_cache._mem_fresh.clear()
-    conn = AsyncMock()
-    conn.fetchval = AsyncMock(return_value=None)
-    assert await pg_cache._is_fresh(conn, "sch", "tbl", "hash", ttl=300) is False
+    conn = _FillConn({"hash": time.time() - 10})
+    assert fill_cache.stale_hashes(conn, _fill_table(), ["hash"], ttl=300) == []
+
+
+def test_a_fill_fetched_before_its_ttl_is_stale():
+    from provisa.api_source import fill_cache
+
+    conn = _FillConn({"hash": time.time() - 600})
+    assert fill_cache.stale_hashes(conn, _fill_table(), ["hash"], ttl=300) == ["hash"]
+
+
+def test_an_argument_set_never_fetched_is_stale():
+    from provisa.api_source import fill_cache
+
+    assert fill_cache.stale_hashes(_FillConn({}), _fill_table(), ["hash"], ttl=300) == ["hash"]

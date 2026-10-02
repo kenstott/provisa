@@ -117,31 +117,14 @@ def _lookup_openapi_table(state, table_name: str):
     return None, None, None
 
 
-async def _promote_joined_from_pg(
+async def _promote_joined_from_fills(
     state, ep, tn, hot_mgr, col_names, meta_cols, cache_loc, hot_threshold
 ) -> None:
-    """Fetch joined API table rows from PG and store in hot_mgr for next-request Values CTE."""
-    import json as _json
-
+    """Read a joined API table's fills from the store and hold them in hot_mgr for the next
+    request's Values CTE. Best effort: the hot copy is an optimization of a later request, and
+    this request already has its answer."""
     try:
-        async with state.tenant_db.acquire() as _pg_conn:
-            _raw = await _pg_conn.fetch(f'SELECT * FROM "default"."{ep.table_name}"')
-        _col_set = set(col_names)
-        rows = []
-        for r in _raw:
-            row = {}
-            for k, v in dict(r).items():
-                if k in meta_cols or k not in _col_set:
-                    continue
-                if isinstance(v, (dict, list)):
-                    row[k] = _json.dumps(v)
-                elif v is None:
-                    row[k] = None
-                elif not isinstance(v, (int, float, bool)):
-                    row[k] = str(v)
-                else:
-                    row[k] = v
-            rows.append(row)
+        rows = await _mat_fetch_rows_from_fills(ep, col_names, meta_cols, state)
         if 0 < len(rows) <= hot_threshold:
             from provisa.cache.hot_tables import HotTableEntry
 
@@ -160,7 +143,7 @@ async def _promote_joined_from_pg(
                 "[MAT] promoted %s → hot_mgr (%d rows) for next-request Values CTE", tn, len(rows)
             )
     except Exception as exc:
-        log.warning("[MAT] _promote_joined_from_pg failed for %s: %s", tn, exc)
+        log.warning("[MAT] _promote_joined_from_fills failed for %s: %s", tn, exc)
 
 
 def _normalize_mat_value(v):
@@ -629,35 +612,19 @@ async def _mat_openapi_table(
         )
 
 
-async def _mat_fetch_rows_from_pg(ep, col_names: list, _META_COLS: set, state) -> list[dict]:
-    """Fetch rows for an API endpoint from the PG cache table -- ``[]`` when there is no tenant
-    database or the cache holds no rows (a miss the caller fills live). A failed read raises: it
-    is never a cue to fetch from REST instead (REQ-1661, amended 2026-09-30)."""
-    from sqlalchemy.exc import NoSuchTableError
+async def _mat_fetch_rows_from_fills(ep, col_names: list, _META_COLS: set, state) -> list[dict]:
+    """The rows this API table's fills hold in the store (``api_source.fill_cache``) -- ``[]``
+    when no fill has made its table yet (a miss the caller fills live). A failed read raises:
+    it is never a cue to fetch from REST instead (REQ-1661, amended 2026-09-30)."""
+    from provisa.api_source import fill_cache
 
-    from provisa.openapi.pg_cache import _relation
-
-    if getattr(state, "tenant_db", None) is None:
-        return []
-    async with state.tenant_db.acquire() as _pg_conn:
-        # The cache table exists only once pg_cache created it (at config load, which logs and
-        # moves on when the endpoint's first fetch fails; never for an endpoint registered
-        # without one) -- its absence is a miss, checked explicitly, not a failed read.
-        try:
-            await _pg_conn.reflect_columns(ep.table_name, "default")
-        except NoSuchTableError:
-            return []
-        _raw = await _pg_conn.fetch(
-            f"SELECT * FROM {_relation(_pg_conn, 'default', ep.table_name)}"
-        )
+    table = fill_cache.fill_table(state, ep, getattr(state, "api_sources", {}).get(ep.source_id))
+    with state.federation_engine.isolated_sync() as conn:
+        raw = fill_cache.read_rows(conn, table)
     col_set = set(col_names)
     return [
-        {
-            k: _normalize_mat_value(v)
-            for k, v in dict(r).items()
-            if k not in _META_COLS and k in col_set
-        }
-        for r in _raw
+        {k: _normalize_mat_value(v) for k, v in r.items() if k not in _META_COLS and k in col_set}
+        for r in raw
     ]
 
 
@@ -779,27 +746,20 @@ async def _mat_api_ep_table(
 ) -> None:
     """Materialize a REST API endpoint-backed table into the engine cache or VALUES CTE."""
     from provisa.api_source.engine_cache import (
-        cache_location,
         cache_table_name,
         ensure_cache_schema,
         table_exists,
         table_known_live,
     )
-    from provisa.api_source.engine_cache import org_cache_schema
     from provisa.executor.redirect import RedirectConfig
 
     source_id = ep.source_id
     api_source = getattr(state, "api_sources", {}).get(source_id)
 
-    # REQ-1730: state.source_catalogs (catalog_name_for_source's resolution) beats
-    # engine.cache_catalog()'s per-ENGINE default for an adapter-fetched source under Trino —
-    # see cypher_exec.py's identical fix for why.
-    _cc = (getattr(api_source, "cache_catalog", None) if api_source else None) or (
-        getattr(state, "source_catalogs", {}).get(source_id)
-    )
-    _default_cs = org_cache_schema(state)  # REQ-1623
-    _cs = getattr(api_source, "cache_schema", _default_cs) if api_source else _default_cs
-    _cache_loc = cache_location(source_id, _cc, _cs, engine=state.federation_engine)
+    # REQ-1730/REQ-1623: the source's API cache, where its fills are too.
+    from provisa.api_source.fill_cache import source_cache_location
+
+    _cache_loc = source_cache_location(state, source_id, api_source)
     cache_tbl = cache_table_name(source_id, tn, {})
     ttl = (
         getattr(state, "source_cache", {}).get(source_id, {}).get("cache_ttl")
@@ -829,9 +789,9 @@ async def _mat_api_ep_table(
             cache_tbl,
         )
         cache_rewrites[tn] = (_cache_loc, cache_tbl)
-        if hot_mgr is not None and getattr(state, "tenant_db", None) is not None:
+        if hot_mgr is not None:
             spawn_background(
-                _promote_joined_from_pg(
+                _promote_joined_from_fills(
                     state, ep, tn, hot_mgr, col_names, _META_COLS, _cache_loc, _hot_threshold
                 )
             )
@@ -849,16 +809,16 @@ async def _mat_api_ep_table(
             cache_tbl,
         )
         cache_rewrites[tn] = (_cache_loc, cache_tbl)
-        if hot_mgr is not None and getattr(state, "tenant_db", None) is not None:
+        if hot_mgr is not None:
             spawn_background(
-                _promote_joined_from_pg(
+                _promote_joined_from_fills(
                     state, ep, tn, hot_mgr, col_names, _META_COLS, _cache_loc, _hot_threshold
                 )
             )
         return
 
-    # Priority 3: cache miss — hydrate from PG then REST fallback
-    rows = await _mat_fetch_rows_from_pg(ep, col_names, _META_COLS, state)
+    # Priority 3: cache miss — the fills in the store, then REST
+    rows = await _mat_fetch_rows_from_fills(ep, col_names, _META_COLS, state)
 
     if not rows:
         path_cols = [c for c in ep.columns if c.param_type == "path"]
@@ -930,11 +890,9 @@ def would_materialize_optimize(exec_sql: str, state) -> bool:
     IMPORTANT: `find_api_table_names` returns every table name in the query's FROM/JOIN clauses,
     not only API-backed ones — an ordinary multi-table SQL query is NOT "no candidates" just
     because it has tables; it only returns False here once every one of those tables is checked
-    and none is hot, row_materialize-skipped-with-a-pg-pool, or registered as an API/graphql_remote/
-    grpc_remote/openapi table. A table registered as a (non-hot) API endpoint is ALWAYS live here
-    (its TTL cache can go stale between calls) except in the one case
-    `_materialize_api_to_engine_cache` itself treats as a no-op: no PG pool to read the landed
-    cache from at all (`state.tenant_db is None`).
+    and none is hot or registered as an API/graphql_remote/grpc_remote/openapi table (a
+    row_materialize table is skipped). A table registered as a (non-hot) API endpoint is ALWAYS
+    live here: its TTL cache can go stale between calls.
     """
     from provisa.compiler.nf_extractor import find_api_table_names
 
@@ -942,7 +900,6 @@ def would_materialize_optimize(exec_sql: str, state) -> bool:
     if not table_names:
         return False
     hot_mgr = getattr(state, "hot_manager", None)
-    has_pg_pool = getattr(state, "tenant_db", None) is not None
     row_materialize_table_names = {
         t.get("table_name")
         for t in (getattr(state, "tables", None) or [])
@@ -953,11 +910,8 @@ def would_materialize_optimize(exec_sql: str, state) -> bool:
             continue
         if hot_mgr is not None and hot_mgr.is_hot(tn):
             return True
-        ep = _lookup_ep(state, tn)
-        if ep is not None:
-            if has_pg_pool:
-                return True
-            continue
+        if _lookup_ep(state, tn) is not None:
+            return True
         gql_reg, _gql_tbl = _lookup_gql_remote_table(state, tn)
         if gql_reg is not None:
             return True
@@ -981,7 +935,7 @@ async def _materialize_api_to_engine_cache(
     Avoids INVALID_CAST_ARGUMENT: the engine's PG connector exposes JSONB as json type;
     cache tables store all columns as VARCHAR/scalar types instead.
 
-    Reads from the PG cache populated by _hydrate_api_tables_before_engine — no HTTP call.
+    Reads the fills _hydrate_api_tables_before_engine keeps in the store — no HTTP call.
     Returns (cache_rewrites, values_cte_entries, dropped_tables):
       cache_rewrites: {physical_table_name: (CacheLocation, cache_tbl)}
       values_cte_entries: {physical_table_name: HotTableEntry} — inlined as VALUES CTEs
@@ -1001,7 +955,6 @@ async def _materialize_api_to_engine_cache(
     if not table_names:
         return cache_rewrites, values_cte_entries, dropped_tables
 
-    _has_pg_pool = getattr(state, "tenant_db", None) is not None
     _META_COLS = {"_params_hash", "_cached_at"}
     _hot_threshold = hot_mgr.auto_threshold if hot_mgr is not None else 500
     # REQ-1865: a row_materialize=True table's residency is governed EXCLUSIVELY by the
@@ -1122,10 +1075,6 @@ async def _materialize_api_to_engine_cache(
                     values_cte_entries,
                     nf_args=nf_args,
                 )
-            continue
-
-        if not _has_pg_pool:
-            log.warning("[MAT] tenant_db is None — skipping API table %s", tn)
             continue
 
         await _mat_api_ep_table(

@@ -105,7 +105,7 @@ def _schema_to_columns(schema: dict | None) -> list[dict]:
     props = schema.get("properties", {})
     if not props and isinstance(schema.get("additionalProperties"), dict):
         # Map-shaped response (e.g. {"available": 3, "sold": 12}) has no fixed property
-        # names — pg_cache._normalize_rows flattens it to {"status": k, "count": v} rows,
+        # names — api_source.flattener.flatten_response flattens it to {"status": k, "count": v} rows,
         # so the registered columns must match.
         value_type = schema["additionalProperties"].get("type")
         return [

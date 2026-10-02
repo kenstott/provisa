@@ -437,7 +437,6 @@ async def _handle_openapi_table(
     spec: dict,
 ) -> None:
     from provisa.openapi.mapper import parse_spec
-    from provisa.openapi.pg_cache import cache_openapi_table
 
     assert src.base_url is not None
     resolved_base_url = resolve_secrets(src.base_url)
@@ -458,20 +457,8 @@ async def _handle_openapi_table(
         )
         return
     default_params = _default_params_from_spec(spec, match.path)
-    fallback_cols = [(c.name, "TEXT") for c in tbl.columns] if tbl.columns else None
-    try:
-        await cache_openapi_table(
-            resolved_base_url,
-            match.path,
-            default_params,
-            conn,
-            tbl.schema_name,
-            tbl.table_name,
-            match.response_schema,
-            fallback_cols,
-        )
-    except Exception as _e:
-        log.warning("OpenAPI cache failed for %s.%s: %s", tbl.source_id, tbl.table_name, _e)
+    # REQ-1915: nothing is fetched here. The collection's rows are its replica's, built by the
+    # runner; a request's calls are fills in the store's API cache (api_source.fill_cache).
     # Register in api_sources + api_endpoints for runtime hydration
     try:
         api_columns, _ = _build_api_columns(match)

@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock
 
 import pytest
 from pytest_bdd import given, scenarios, then, when
@@ -16,7 +15,8 @@ from pytest_bdd import given, scenarios, then, when
 from provisa.freshness import FreshnessSubject, Ttl, evaluate
 from provisa.freshness.adapters import StateSubject
 from provisa.mv.models import MVDefinition, MVStatus
-from provisa.openapi import pg_cache
+from provisa.api_source import fill_cache
+from provisa.api_source.engine_cache import CacheLocation
 
 scenarios("../features/REQ-859.feature")
 
@@ -200,34 +200,42 @@ def then_both_are_freshness_subjects_with_unified_predicate(shared_data):
         "REFRESHING status must short-circuit to False"
     )
 
-    # 4. pg_cache._is_fresh delegates TTL to evaluate() — verified via mock conn
-    #    (sync wrapper around the async function, run with pytest-asyncio)
-    _verify_pg_cache_delegates(shared_data)
+    # 4. The API cache's freshness check (its parameter-set fills, api_source.fill_cache)
+    #    delegates the TTL decision to evaluate() — verified over a stand-in engine session.
+    _verify_api_fills_delegate(shared_data)
 
 
-def _verify_pg_cache_delegates(shared_data):
-    """
-    Synchronous helper that spins up a tiny event-loop slice via
-    asyncio.run() to call the async pg_cache._is_fresh and confirm it
-    delegates the TTL decision to the shared evaluate() without I/O.
-    """
-    import asyncio
+class _FillConn:
+    """An engine session whose fill table exists and holds one fetch time per argument set."""
 
-    pg_cache._mem_fresh.clear()
+    dialect = "duckdb"
 
-    async def _run_fresh():
-        conn = AsyncMock()
-        conn.fetchval = AsyncMock(return_value=shared_data["pg_cached_at_fresh"])
-        return await pg_cache._is_fresh(conn, "sch", "tbl", "phash_f", ttl=300)
+    def __init__(self, cached_at) -> None:
+        self._cached_at = cached_at
+        self._last = ""
 
-    async def _run_stale():
-        conn = AsyncMock()
-        conn.fetchval = AsyncMock(return_value=shared_data["pg_cached_at_stale"])
-        return await pg_cache._is_fresh(conn, "sch", "tbl", "phash_s", ttl=300)
+    def execute(self, sql, params=None):
+        self._last = sql
+        return self
 
-    result_fresh = asyncio.run(_run_fresh())
-    assert result_fresh is True, "pg_cache._is_fresh must return True for a recently cached entry"
+    def fetchall(self):
+        if self._last.startswith("SELECT 1 "):
+            return [(1,)]
+        return [("phash", self._cached_at.timestamp())]
 
-    pg_cache._mem_fresh.clear()
-    result_stale = asyncio.run(_run_stale())
-    assert result_stale is False, "pg_cache._is_fresh must return False for an expired cache entry"
+
+def _verify_api_fills_delegate(shared_data):
+    """``fill_cache.stale_hashes`` reads each argument set's fetch time and leaves the TTL
+    decision to the shared evaluate()."""
+    table = fill_cache.FillTable(CacheLocation("c", "sch", "relational"), "tbl", ())
+    fill_cache._mem_fresh.clear()
+    fresh = _FillConn(shared_data["pg_cached_at_fresh"])
+    assert fill_cache.stale_hashes(fresh, table, ["phash"], ttl=300) == [], (
+        "a recently fetched API fill must be fresh"
+    )
+    fill_cache._mem_fresh.clear()
+    stale = _FillConn(shared_data["pg_cached_at_stale"])
+    assert fill_cache.stale_hashes(stale, table, ["phash"], ttl=300) == ["phash"], (
+        "an API fill fetched before its TTL must be stale"
+    )
+    fill_cache._mem_fresh.clear()

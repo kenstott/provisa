@@ -63,10 +63,11 @@ def _build_request_parts(
     body_parts: dict = {}
 
     for col in endpoint.columns:
-        if col.param_type is None or col.param_name is None:
+        if col.param_type is None:
             continue
-        param_key = col.param_name
-        value = resolved_params.get(col.param_name) or resolved_params.get(col.name)
+        # A parameter is sent under its declared name, else under the column's own.
+        param_key = col.param_name or col.name
+        value = resolved_params.get(param_key) or resolved_params.get(col.name)
         if value is None:
             continue
 

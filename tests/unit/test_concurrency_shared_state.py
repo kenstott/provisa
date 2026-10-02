@@ -282,7 +282,7 @@ async def test_source_pool_add_creates_one_driver_under_concurrency():
         P.create_driver = orig  # type: ignore[assignment]
 
 
-# ── 6. openapi.pg_cache._mem_fresh — prune must not race the writers ────────────
+# ── 6. api_source.fill_cache._mem_fresh — prune must not race the writers ──────────
 
 
 class TestMemFreshPruneRace:
@@ -290,7 +290,11 @@ class TestMemFreshPruneRace:
     trip 'dict changed size during iteration' (a loud crash) nor lose the just-written key."""
 
     def test_concurrent_mark_fresh_is_safe(self):
-        from provisa.openapi import pg_cache
+        from provisa.api_source import fill_cache
+        from provisa.api_source.engine_cache import CacheLocation
+
+        def _table(name):
+            return fill_cache.FillTable(CacheLocation("c", "s", "relational"), name, ())
 
         def worker(barrier, sink):
             barrier.wait()
@@ -300,14 +304,14 @@ class TestMemFreshPruneRace:
                     # has entries to delete while peers keep inserting — maximises the iterate/mutate
                     # overlap that would crash an unguarded prune.
                     ttl = 5 if i % 2 else -1
-                    pg_cache._mark_fresh("s", f"t{threading.get_ident()}_{i}", "h", ttl)
+                    fill_cache._mark_fresh(_table(f"t{threading.get_ident()}_{i}"), "h", ttl)
             except Exception as exc:  # noqa: BLE001 — a raced prune surfaces as RuntimeError here
                 sink.append(repr(exc))
 
-        rounds = _hammer(worker, n_threads=32, trials=5, setup=pg_cache._mem_fresh.clear)
+        rounds = _hammer(worker, n_threads=32, trials=5, setup=fill_cache._mem_fresh.clear)
         # INVARIANT: no iteration-vs-mutation crash on any thread, any round.
         assert all(not s for s in rounds), f"prune raced a writer: {rounds}"
-        pg_cache._mem_fresh.clear()
+        fill_cache._mem_fresh.clear()
 
 
 # ── 7. api_source.engine_cache._TABLE_EXISTS_CACHE — atomic get/set/pop ─────────
