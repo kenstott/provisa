@@ -46,6 +46,7 @@ class ReplicaStateView:
         self._guard = threading.Lock()
         self._records: dict[_Scoped, tuple[ReplicaRecord | None, float]] = {}
         self._locks: dict[_Scoped, CrossLoopLock] = {}
+        self._awaited: dict[_Scoped, str] = {}
 
     def known(self, org_id: str | None, key: ReplicaKey) -> tuple[bool, ReplicaRecord | None]:
         """``(True, record)`` when this process has read the replica's record (None: it has no
@@ -64,6 +65,23 @@ class ReplicaStateView:
         """What the control plane just returned for this replica."""
         with self._guard:
             self._records[(org_id, key)] = (record, time.monotonic())
+
+    def await_definition(self, org_id: str | None, key: ReplicaKey, wanted: str | None) -> None:
+        """Convergence found that the standing replica cannot answer the model any more (a
+        column was added or retyped): until a build of the definition ``wanted`` completes, a
+        read treats the table as having no replica. None: the standing replica serves."""
+        with self._guard:
+            if wanted is None:
+                self._awaited.pop((org_id, key), None)
+            else:
+                self._awaited[(org_id, key)] = wanted
+
+    def serves(self, org_id: str | None, key: ReplicaKey, record: ReplicaRecord | None) -> bool:
+        """Whether the replica ``record`` describes can answer the model this process has
+        loaded: it is not waiting for a definition, or the record is of that definition."""
+        with self._guard:
+            wanted = self._awaited.get((org_id, key))
+        return wanted is None or (record is not None and record.definition_hash == wanted)
 
     def lock(self, org_id: str | None, key: ReplicaKey) -> CrossLoopLock:
         """The lock one replica's re-read and build request are made under, across the request

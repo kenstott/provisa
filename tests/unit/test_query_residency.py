@@ -146,8 +146,10 @@ class _Runner:
     async def run(self) -> None:
         now = datetime.now(UTC)
         async with self._db.acquire() as conn:
-            for key in await replica_state.candidates(conn, now=now, limit=50):
-                if not await replica_state.claim(conn, key, holder="test:1", now=now):
+            for key in await replica_state.candidates(conn, retry_interval=60, now=now, limit=50):
+                if not await replica_state.claim(
+                    conn, key, holder="test:1", retry_interval=60, now=now
+                ):
                     continue
                 if self.fail is not None:
                     await replica_state.record_failed(conn, key, error=self.fail, now=now)
@@ -238,8 +240,8 @@ async def _built(plane, table, *, at: datetime | None = None, store: str = STORE
     """Record ``table``'s replica as built at ``at`` (now by default) in ``store``."""
     when = at if at is not None else datetime.now(UTC)
     async with plane.acquire() as conn:
-        await replica_state.request_build(conn, _key(table), "boot", now=when)
-        await replica_state.claim(conn, _key(table), holder="test:1", now=when)
+        await replica_state.request_build(conn, _key(table), "model", now=when)
+        await replica_state.claim(conn, _key(table), holder="test:1", retry_interval=60, now=when)
         await replica_state.record_completed(
             conn,
             _key(table),

@@ -206,6 +206,10 @@ class BuildOutcome:
     method: str
     content_hash: str | None = None
     changed: bool = True
+    #: What the replica was built from and the columns it has, when the builder tracks them
+    #: (``replica_converge.definition_hash``); recorded with the build's completion.
+    definition_hash: str | None = None
+    built_columns: list | None = None
 
 
 class _Source(Protocol):
@@ -253,6 +257,7 @@ class ReplicaJob:
         batch_rows: int,
         batch_bytes: int = BATCH_BYTES,
         prior_hash: str | None,
+        still_wanted: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self.method = method
         self._source = source
@@ -261,6 +266,7 @@ class ReplicaJob:
         self._batch_rows = batch_rows
         self._batch_bytes = batch_bytes
         self._prior_hash = prior_hash
+        self._still_wanted = still_wanted
 
     async def run(self, progress: Progress) -> BuildOutcome:
         if self.method is Method.ENGINE_STATEMENT:
@@ -299,6 +305,10 @@ class ReplicaJob:
                     content_hash=content_hash,
                     changed=False,
                 )
+            if self._still_wanted is not None:
+                # Raises when the model stopped declaring the table while it was copied: the
+                # build table is removed (the finally below) and nothing is swapped.
+                await self._still_wanted()
             await self._target.swap()
             swapped = True
         finally:
@@ -329,6 +339,7 @@ def data_replicator(
     batch_rows: int,
     batch_bytes: int = BATCH_BYTES,
     prior_hash: str | None = None,
+    still_wanted: Callable[[], Awaitable[None]] | None = None,
 ) -> ReplicaJob:
     """The job that builds one replica from ``source`` into ``target`` on ``engine``.
 
@@ -336,7 +347,8 @@ def data_replicator(
     the source its ``batches``, the target its ``begin / write / swap / abort``, the engine its
     ``copy`` and ``after_swap``. The method is :func:`choose_method` of the three declarations;
     a combination no method serves raises :class:`NoReplicationMethod`. ``prior_hash`` is the
-    content hash of the replica's last build, when it has one."""
+    content hash of the replica's last build, when it has one. ``still_wanted`` is awaited
+    just before a streamed build swaps and raises when the table is no longer declared."""
     method = choose_method(source.caps, target.caps, engine.caps)
     return ReplicaJob(
         method,
@@ -346,4 +358,5 @@ def data_replicator(
         batch_rows=batch_rows,
         batch_bytes=batch_bytes,
         prior_hash=prior_hash,
+        still_wanted=still_wanted,
     )

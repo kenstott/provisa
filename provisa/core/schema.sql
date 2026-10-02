@@ -1386,7 +1386,7 @@ CREATE TABLE IF NOT EXISTS replica_state (
         CONSTRAINT replica_state_build_state_check
         CHECK (build_state IN ('idle','requested','building','failed')),
     requested_at     TIMESTAMPTZ,
-    requested_reason TEXT,          -- save | boot | hot | refresh | operator | read
+    requested_reason TEXT,          -- model | definition | hot | refresh | operator | read
     build_started_at TIMESTAMPTZ,
     build_holder     TEXT,          -- host:pid of the process building it
     build_method     TEXT,          -- engine_statement | stream_batches
@@ -1395,6 +1395,11 @@ CREATE TABLE IF NOT EXISTS replica_state (
     next_refresh_at  TIMESTAMPTZ,   -- NULL: refreshed only on request
     content_hash     TEXT,          -- order-independent hash of the last completed build
     built_store      TEXT,          -- the store the last completed build was written into
+    definition_hash  TEXT,          -- what the last completed build was built from
+    built_columns    JSONB,         -- the columns the standing replica has
+    model_stamp      BIGINT,        -- the model stamp of the process that asked for the build
+    load_kind        TEXT,          -- bulk_stream | row_copy, of the running or last build
+    retired_at       TIMESTAMPTZ,   -- set when the model stops declaring it; dropped after a grace
     last_error       TEXT,
     failed_at        TIMESTAMPTZ,
     waiting_on       TEXT,          -- why a requested build did not start on the last pass

@@ -82,7 +82,8 @@ class ReplicaRunner:
     ``build`` runs one replica's build and returns its outcome; it is the data replicator's
     job for that replica. ``source_cap`` gives a replica's source's live-read cap (None: no
     cap). ``next_refresh_at`` gives when a replica completed now is next due (None: only on
-    request). ``store`` identifies the store the builds write into. ``spawn`` runs a build detached from the pass that claimed it."""
+    request). ``store`` identifies the store the builds write into. ``housekeeping`` runs at
+    the start of each pass (dropping retired replicas whose wait is over). ``spawn`` runs a build detached from the pass that claimed it."""
 
     def __init__(
         self,
@@ -96,6 +97,8 @@ class ReplicaRunner:
         permits: Any,
         next_refresh_at: Callable[[ReplicaKey, datetime], Awaitable[datetime | None]],
         store: Callable[[], str],
+        retry_interval: Callable[[], float],
+        housekeeping: Callable[[BuildLocks, str], Awaitable[Any]] | None = None,
         builds_per_node: Callable[[], int],
         engine_jobs: Callable[[], int],
         spawn: Callable[..., Any],
@@ -109,6 +112,8 @@ class ReplicaRunner:
         self._permits = permits
         self._next_refresh_at = next_refresh_at
         self._store = store
+        self._retry_interval = retry_interval
+        self._housekeeping = housekeeping
         self._builds_per_node = builds_per_node
         self._engine_jobs = engine_jobs
         self._spawn = spawn
@@ -118,6 +123,13 @@ class ReplicaRunner:
         """Start as many requested builds as the limits allow. Returns how many it started."""
         if not process_mode.runs_background_work():
             return 0
+        if self._housekeeping is not None:
+            # What the pass does besides building: dropping the replicas the model retired,
+            # once their wait is over. A failure there must not stop the builds.
+            try:
+                await self._housekeeping(self._locks, self._org_id)
+            except Exception as exc:  # allow-ble: logged with its cause; the next pass tries again, and builds must not wait on a drop
+                log.error("replica housekeeping failed: %s", exc, exc_info=exc)
         started = 0
         while True:
             slot = self._locks.try_node_slot(self._builds_per_node())
@@ -140,7 +152,9 @@ class ReplicaRunner:
         """Claim one build: the engine's slot, a replica's lock and row, its source's permit."""
         now = datetime.now(UTC)
         async with self._db.acquire() as conn:
-            keys = await build_state.candidates(conn, now=now, limit=_CANDIDATES_PER_PASS)
+            keys = await build_state.candidates(
+                conn, now=now, limit=_CANDIDATES_PER_PASS, retry_interval=self._retry_interval()
+            )
         if not keys:
             return None
         # Every runner sees the same oldest candidates; a shuffle keeps them from all trying
@@ -168,7 +182,9 @@ class ReplicaRunner:
         started = False
         try:
             async with self._db.acquire() as conn:
-                if not await build_state.claim(conn, key, holder=self._holder, now=now):
+                if not await build_state.claim(
+                    conn, key, holder=self._holder, now=now, retry_interval=self._retry_interval()
+                ):
                     return None  # built by another runner since this pass selected it
                 cap = await self._source_cap(key)
                 permit: tuple[str, str] | None = None
@@ -221,6 +237,8 @@ class ReplicaRunner:
                         method=outcome.method,
                         content_hash=outcome.content_hash,
                         store=self._store(),
+                        definition_hash=outcome.definition_hash,
+                        built_columns=outcome.built_columns,
                         next_refresh_at=due,
                         now=now,
                     )

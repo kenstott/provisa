@@ -62,6 +62,11 @@ class ReplicaTarget(Protocol):
         """Discard the build table and release the store. The replica is untouched."""
         ...
 
+    async def drop(self) -> None:
+        """Remove the replica and anything a build of it left beside it (REQ-1915): the model
+        no longer declares it. Not part of a build; called on a target that was never begun."""
+        ...
+
 
 def build_table_name(table: str) -> str:
     """The name of the build table of the replica ``table``: short and fixed, so a long replica
@@ -119,6 +124,14 @@ class DuckDBStoreTarget:
     async def swap(self) -> None:
         self._broker.replica_swap(self._schema, self._table, self._build)
         self._begun = False
+
+    async def drop(self) -> None:
+        """Remove the replica and any build table left beside it."""
+        from provisa.federation.replica_guard import require_replicas_schema
+
+        require_replicas_schema(self._schema, self._table, action="drop the replica at")
+        self._broker.replica_abort(self._schema, self._build)
+        self._broker.replica_abort(self._schema, self._table)
 
     async def abort(self) -> None:
         if self._begun:
@@ -221,6 +234,19 @@ class ClickHouseStoreTarget:
     async def swap(self) -> None:
         await self._run(self._swap)
         self._begun = False
+
+    async def drop(self) -> None:
+        """Remove the replica and any build table left beside it."""
+        from provisa.federation.clickhouse_store import qualified
+        from provisa.federation.replica_guard import require_replicas_schema
+
+        require_replicas_schema(self._database, self._table, action="drop the replica at")
+
+        def _drop() -> None:
+            for name in (self._build, self._table):
+                self._backend.command(f"DROP TABLE IF EXISTS {qualified((self._database, name))}")
+
+        await self._run(_drop)
 
     async def abort(self) -> None:
         from provisa.federation.clickhouse_store import qualified
@@ -563,6 +589,18 @@ class SqlAlchemyStoreTarget:
             with self._sa.begin() as fresh:
                 self._drop_if_present(fresh, self._build)
 
+    def _drop(self) -> None:
+        with self._sa.begin() as conn:
+            for name in (self._build, self._previous, self._table):
+                self._drop_if_present(conn, name)
+
+    async def drop(self) -> None:
+        """Remove the replica and any build table left beside it."""
+        from provisa.federation.replica_guard import require_replicas_schema
+
+        require_replicas_schema(self._schema, self._table, action="drop the replica at")
+        await asyncio.to_thread(self._drop)
+
     async def abort(self) -> None:
         await asyncio.to_thread(self._abort)
 
@@ -762,6 +800,27 @@ class PostgresStoreTarget:
             with shield.lock:
                 shield.settle()
                 self._close()
+
+    async def drop(self) -> None:
+        """Remove the replica and any build table left beside it, in one transaction."""
+        import psycopg
+
+        from provisa.federation.replica_guard import require_replicas_schema
+
+        require_replicas_schema(self._schema, self._table, action="drop the replica at")
+        shield = request_deadline.shielded()
+        with shield.lock:
+            shield.settle()
+            conn = psycopg.connect(self._dsn)
+        try:
+            cur: Any = conn.cursor()
+            for name in (self._build, self._table):
+                cur.execute(f"DROP TABLE IF EXISTS {_q(self._schema)}.{_q(name)}")
+            conn.commit()
+        finally:
+            with shield.lock:
+                shield.settle()
+                conn.close()
 
     async def abort(self) -> None:
         shield = request_deadline.shielded()

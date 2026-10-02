@@ -1,0 +1,21 @@
+{
+  "replicaBuild": {
+    "none": "このテーブルのレプリカはまだビルドされていません。",
+    "requested": "レプリカのビルドが要求されました。",
+    "waiting": "レプリカのビルドが要求されました。待機中: {{waitingOn}}。",
+    "building": "レプリカをビルド中: {{rows}} 行をコピー済み、{{rate}} 行/秒 ({{how}})。",
+    "buildingNoRate": "レプリカをビルド中 ({{how}})。",
+    "built": "レプリカは {{when}} にビルドされました: {{rows}} 行 ({{how}})。",
+    "failed": "レプリカのビルドに失敗しました: {{error}}",
+    "retired": "このテーブルはレプリケートされなくなりました。レプリカを削除しています。",
+    "convergenceError": "レプリカがモデルに合わせて更新されていません: {{error}}",
+    "method": {
+      "engine_statement": "エンジンがコピー",
+      "stream_batches": "バッチでストリーム"
+    },
+    "loadKind": {
+      "bulk_stream": "バルクストリーム",
+      "row_copy": "行コピー"
+    }
+  }
+}

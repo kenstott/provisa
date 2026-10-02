@@ -10,7 +10,8 @@
 
 """Integration: replicating a table costs the worker a bounded amount of memory, and one copy.
 
-The first read of a replicated source builds its replica. That build read the whole source table
+A replicated source's replica is built when the model declares it (a read that arrives first
+waits for that build). That build read the whole source table
 into the worker's heap (a row tuple, a dict per row, then a tuple per row again for the INSERT) —
 about 3 KB of resident memory per row of a 26-column table — and every worker that received a
 read started its own copy. A 20M-row table took the workers down.
@@ -240,20 +241,21 @@ def test_two_workers_asked_at_once_read_the_source_once(databases):
 
 
 def test_a_read_that_cannot_wait_for_the_build_fails_by_name_and_the_build_goes_on(databases):
-    """The source table is locked, so the copy cannot finish inside the read's 3-second deadline.
-    The read fails saying the replica is still being built; the build is not cancelled and not
-    started again — once the source is released the next read is served, and the source was
-    read once."""
+    """The source table is locked, so the copy cannot finish inside a read's 3-second deadline.
+    The build starts when the model declares the replica (at boot here), so the table is locked
+    before the server starts. A read fails saying the replica is still being built; the build
+    is not cancelled and not started again — once the source is released the next read is
+    served, and the source was read once."""
     import psycopg
 
     pg = databases
     with tempfile.TemporaryDirectory() as workdir:
         srv = _server(pg, workdir, request_timeout="3")
+        blocker = psycopg.connect(pg.url(pg.source_port, "shop"))
         try:
-            srv.start()
-            blocker = psycopg.connect(pg.url(pg.source_port, "shop"))
+            blocker.execute("LOCK TABLE wide IN ACCESS EXCLUSIVE MODE")
             try:
-                blocker.execute("LOCK TABLE wide IN ACCESS EXCLUSIVE MODE")
+                srv.start()
                 for _ in range(2):  # the second read joins the running build; it starts no copy
                     refused = httpx.post(
                         f"{srv.base_url}/data/graphql",
@@ -266,6 +268,7 @@ def test_a_read_that_cannot_wait_for_the_build_fails_by_name_and_the_build_goes_
             finally:
                 blocker.rollback()  # releases the lock: the build can now read the source
                 blocker.close()
+                blocker = None
             deadline = time.monotonic() + 120
             while True:
                 served = httpx.post(
@@ -282,5 +285,7 @@ def test_a_read_that_cannot_wait_for_the_build_fails_by_name_and_the_build_goes_
             assert served.json()["data"]["wide"] == [{"id": 1}]
             assert _replica_rows(pg) == _ROWS
         finally:
+            if blocker is not None:
+                blocker.close()
             srv.stop_process()
     assert len(_source_table_reads(pg)) == 1, _source_table_reads(pg)

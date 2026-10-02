@@ -1,0 +1,21 @@
+{
+  "replicaBuild": {
+    "none": "No se ha compilado ninguna réplica para esta tabla.",
+    "requested": "Compilación de réplica solicitada.",
+    "waiting": "Compilación de réplica solicitada; en espera: {{waitingOn}}.",
+    "building": "Compilando réplica: {{rows}} filas copiadas, {{rate}} filas/s ({{how}}).",
+    "buildingNoRate": "Compilando réplica ({{how}}).",
+    "built": "Réplica compilada {{when}}: {{rows}} filas ({{how}}).",
+    "failed": "La compilación de la réplica falló: {{error}}",
+    "retired": "Esta tabla ya no se replica; su réplica se está eliminando.",
+    "convergenceError": "Las réplicas no se están alineando con el modelo: {{error}}",
+    "method": {
+      "engine_statement": "copiada por el motor",
+      "stream_batches": "transmitida por lotes"
+    },
+    "loadKind": {
+      "bulk_stream": "flujo masivo",
+      "row_copy": "copia por filas"
+    }
+  }
+}

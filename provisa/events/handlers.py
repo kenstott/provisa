@@ -31,7 +31,8 @@ computes the SELECT). A very large MV is the separate MPP-native materialization
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from typing import Any
 
 from provisa.core.change_signal import APPEND, REPLACE
@@ -85,6 +86,17 @@ async def _apply_preflight(
         ctx.warn(verdict.reason)  # CONTINUE with a note → advisory warn, still lands
 
 
+@asynccontextmanager
+async def _held(write_lock: Callable[[], Any] | None) -> AsyncIterator[None]:
+    """``write_lock()`` held for the block; nothing for a caller that has no replica lock to
+    take (a land outside a wired event loop: a test of the handle alone)."""
+    if write_lock is None:
+        yield
+        return
+    async with write_lock():
+        yield
+
+
 def make_source_land(
     engine: Any,
     *,
@@ -96,6 +108,7 @@ def make_source_land(
     pk_columns: list[str] | None,
     fetch: Callable[[list[dict]], Awaitable[list[dict]]],
     probe_type: str = "none",
+    write_lock: Callable[[], Any] | None = None,
 ) -> Callable[..., Awaitable[tuple[str, dict, str | None] | None]]:
     """Build ``SourceTableProcessor.land``: from the claimed events, ``fetch`` the source's current
     rows and land them through the write face. REQ-982: the landing shape is the AUTHORITATIVE
@@ -131,7 +144,9 @@ def make_source_land(
             digest = content_hash(rows, pk_columns)
             if not forced and digest == prior_hash:
                 return None
-        async with land_lock(f"{schema}.{table}"):  # REQ-1661: never two lands on one replica
+        # REQ-1661: never two lands on one replica in this process; REQ-1915: and never a land
+        # under a build of it in any process (``write_lock``: the replica's own lock).
+        async with land_lock(f"{schema}.{table}"), _held(write_lock):
             loc = await engine.land_source_table(
                 schema=schema,
                 table=table,
@@ -144,6 +159,61 @@ def make_source_land(
             )
         return _SHAPE_TO_EVENT.get(shape, "replace"), {"rows": len(rows), "landed": loc}, digest
 
+    return land
+
+
+def make_source_build(
+    *,
+    db: Any,
+    key: tuple[str, str, str],
+    store_of: Callable[[], str],
+    kick: Callable[[], None],
+) -> Callable[..., Awaitable[tuple[str, dict, str | None] | None]]:
+    """Build ``SourceTableProcessor.land`` for a source table whose replica is a whole copy
+    (REQ-1915): the node neither fetches nor writes. The data replicator builds the replica —
+    in any process that does background work — and this node's part is the two ends:
+
+    - an event that says the table may have changed (a poll or probe, the boot seed, a forced
+      regen) asks for a build in the state store and ripples nothing;
+    - the event the build runner posts when a build that CHANGED the replica completes
+      (``payload.built``) is this node's own change: it is re-posted to the dependents, with
+      the build's content hash as the node's output hash (REQ-981: a build whose content is
+      unchanged posts nothing, so nothing ripples).
+
+    ``key`` is the replica's key; ``store_of`` identifies the store this engine reads;
+    ``kick`` starts this process's build pass now."""
+    from provisa.federation import replica_state
+
+    async def land(
+        pending: list[dict],
+        *,
+        prior_hash: str | None = None,
+        ctx: NodeContext | None = None,
+        preprocess: Callable[..., Any] | None = None,
+        forced: bool = False,
+    ) -> tuple[str, dict, str | None] | None:
+        del ctx, preprocess
+        built = any((event.get("payload") or {}).get("built") for event in pending)
+        async with db.acquire() as conn:
+            record = await replica_state.read(conn, key)
+            if built and record is not None and record.exists_in(store_of()):
+                if (
+                    not forced
+                    and record.content_hash is not None
+                    and record.content_hash == prior_hash
+                ):
+                    return None
+                return (
+                    "replace",
+                    {"rows": record.rows_copied, "built": ".".join(key)},
+                    record.content_hash,
+                )
+            reason = replica_state.REASON_OPERATOR if forced else replica_state.REASON_REFRESH
+            await replica_state.request_build(conn, key, reason)
+        kick()
+        return None
+
+    land.replica_key = key  # type: ignore[attr-defined]
     return land
 
 

@@ -1,0 +1,21 @@
+{
+  "replicaBuild": {
+    "none": "Für diese Tabelle wurde noch kein Replikat gebaut.",
+    "requested": "Replikat-Build angefordert.",
+    "waiting": "Replikat-Build angefordert; wartet: {{waitingOn}}.",
+    "building": "Replikat wird gebaut: {{rows}} Zeilen kopiert, {{rate}} Zeilen/s ({{how}}).",
+    "buildingNoRate": "Replikat wird gebaut ({{how}}).",
+    "built": "Replikat gebaut {{when}}: {{rows}} Zeilen ({{how}}).",
+    "failed": "Replikat-Build fehlgeschlagen: {{error}}",
+    "retired": "Diese Tabelle wird nicht mehr repliziert; ihr Replikat wird entfernt.",
+    "convergenceError": "Die Replikate werden nicht mit dem Modell in Einklang gebracht: {{error}}",
+    "method": {
+      "engine_statement": "von der Engine kopiert",
+      "stream_batches": "in Batches gestreamt"
+    },
+    "loadKind": {
+      "bulk_stream": "Bulk-Stream",
+      "row_copy": "Zeilenkopie"
+    }
+  }
+}

@@ -4655,5 +4655,18 @@
   "he/settings.json::settings.replication.retry_interval.label": "Replica build retry interval",
   "he/settings.json::settings.replication.retry_interval.help": "After a replica build fails, a read does not ask for another build until this long has passed.",
   "he/settings.json::settings.replication.spool_max_bytes.label": "Replica spool disk limit",
-  "he/settings.json::settings.replication.spool_max_bytes.help": "The most disk space this node uses to hold a source's answer in a temporary file while its replica is built. It applies to sources that answer with one document and cannot be read through a cursor. A build that would pass the limit fails; nothing is truncated."
+  "he/settings.json::settings.replication.spool_max_bytes.help": "The most disk space this node uses to hold a source's answer in a temporary file while its replica is built. It applies to sources that answer with one document and cannot be read through a cursor. A build that would pass the limit fails; nothing is truncated.",
+  "he/replicaBuild.json::replicaBuild.none": "No replica has been built for this table.",
+  "he/replicaBuild.json::replicaBuild.requested": "Replica build requested.",
+  "he/replicaBuild.json::replicaBuild.waiting": "Replica build requested; waiting: {{waitingOn}}.",
+  "he/replicaBuild.json::replicaBuild.building": "Replica building: {{rows}} rows copied, {{rate}} rows/s ({{how}}).",
+  "he/replicaBuild.json::replicaBuild.buildingNoRate": "Replica building ({{how}}).",
+  "he/replicaBuild.json::replicaBuild.built": "Replica built {{when}}: {{rows}} rows ({{how}}).",
+  "he/replicaBuild.json::replicaBuild.failed": "Replica build failed: {{error}}",
+  "he/replicaBuild.json::replicaBuild.retired": "This table is no longer replicated; its replica is being removed.",
+  "he/replicaBuild.json::replicaBuild.convergenceError": "Replicas are not being brought in line with the model: {{error}}",
+  "he/replicaBuild.json::replicaBuild.method.engine_statement": "copied by the engine",
+  "he/replicaBuild.json::replicaBuild.method.stream_batches": "streamed in batches",
+  "he/replicaBuild.json::replicaBuild.loadKind.bulk_stream": "bulk stream",
+  "he/replicaBuild.json::replicaBuild.loadKind.row_copy": "row copy"
 }

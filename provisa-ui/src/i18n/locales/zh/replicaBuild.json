@@ -1,0 +1,21 @@
+{
+  "replicaBuild": {
+    "none": "此表尚未构建副本。",
+    "requested": "已请求构建副本。",
+    "waiting": "已请求构建副本；等待中：{{waitingOn}}。",
+    "building": "副本构建中：已复制 {{rows}} 行，{{rate}} 行/秒（{{how}}）。",
+    "buildingNoRate": "副本构建中（{{how}}）。",
+    "built": "副本已于 {{when}} 构建：{{rows}} 行（{{how}}）。",
+    "failed": "副本构建失败：{{error}}",
+    "retired": "此表不再复制；其副本正在移除。",
+    "convergenceError": "副本未与模型保持一致：{{error}}",
+    "method": {
+      "engine_statement": "由引擎复制",
+      "stream_batches": "分批流式传输"
+    },
+    "loadKind": {
+      "bulk_stream": "批量流",
+      "row_copy": "逐行复制"
+    }
+  }
+}

@@ -326,6 +326,58 @@ def build_keyed_adapter_loaders(state: Any, engine: Any = None) -> dict[str, Any
     return keyed_loaders
 
 
+def _replica_build_factory(state: Any, db: Any) -> Callable[[tuple[str, str, str]], Any]:
+    """What gives a whole-copy source node its handle (REQ-1915): the node asks the data
+    replicator for the build and re-posts the change once the build has completed."""
+    from provisa.core.request_context import current_org
+    from provisa.events.handlers import make_source_build
+    from provisa.federation import replica_builds
+
+    org_id = current_org.get(None)
+
+    def build(key: tuple[str, str, str]) -> Any:
+        return make_source_build(
+            db=db,
+            key=key,
+            store_of=lambda: replica_builds.store_identity(state),
+            kick=lambda: replica_builds.kick(org_id),
+        )
+
+    return build
+
+
+def replica_write_lock_factory(state: Any) -> Callable[[tuple[str, str, str]], Any]:
+    """What gives a writer of deltas (an append land, a batch of change events) the lock of the
+    replica it writes: the one a build of that replica holds (REQ-1915). The control plane and
+    the org are resolved when a delta first takes a lock, in the org the wiring ran under."""
+    from provisa.core.request_context import current_org
+
+    org_bound = current_org.get(None)
+    resolved: list[tuple[str, str]] = []
+
+    def lock(key: tuple[str, str, str]) -> Any:
+        from provisa.core.config_loader import load_control_plane
+        from provisa.core.config_location import config_path_str
+        from provisa.federation.replica_locks import replica_write_lock
+
+        if not resolved:
+            platform_url = load_control_plane(config_path_str()).resolved_platform_url()
+            resolved.append((platform_url, org_bound if org_bound is not None else state.org_id))
+        return replica_write_lock(*resolved[0], key)
+
+    return lock
+
+
+def _replica_nodes(specs: list[Any]) -> dict[tuple[str, str, str], str]:
+    """The event-loop node of each replica a source node asks the replicator to build: the
+    build runner posts a completed, changed build to that node so its dependents ripple."""
+    return {
+        spec.handle.replica_key: spec.node
+        for spec in specs
+        if spec.kind == "source" and hasattr(spec.handle, "replica_key")
+    }
+
+
 def _wire_replica_builds(scheduler: Any, state: Any, log: Any) -> None:
     """Register this process's replica build pass (REQ-1915). Its own step, so the event loop
     and the build runner do not take each other down: a failure here is logged at ERROR, naming
@@ -526,6 +578,8 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
             mv_columns=mv_columns,
             mv_run_query=mv_run_query,
             probe_scalar=probe_scalar,
+            replica_build=_replica_build_factory(state, db),  # REQ-1915
+            write_lock=replica_write_lock_factory(state),  # REQ-1915
             subscribers_of=subscribers_of,  # REQ-965 demand routing
             calendar_registry=calendar_registry,  # REQ-962 periodic boundary source
             freshness_of=freshness_of,  # REQ-961 per-input freshness contract reader
@@ -559,6 +613,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         # A node recorded here already has its poll job registered (or is a push node, not this
         # mechanism's job) — wire_new_poll_jobs skips anything in this set, mirroring
         # wire_push_listeners' own state.push_listener_disconnects idempotency.
+        state.replica_nodes = _replica_nodes(specs)
         state.poll_jobs_registered = {
             spec.node
             for spec in specs
@@ -692,10 +747,17 @@ async def wire_new_poll_jobs(*, state: Any, log: Any) -> int:
                 engine_runtime=engine,
                 source_fetch=source_fetch,
                 probe_scalar=probe_scalar,
+                replica_build=_replica_build_factory(state, db),  # REQ-1915
+                write_lock=replica_write_lock_factory(state),  # REQ-1915
             )
             if spec is None:
                 continue  # not a landed MATERIALIZED source (or not yet type-resolved) — skip for now
             state.poll_jobs_registered.add(node)  # never revisit, whether wired below or not
+            replica_key = getattr(spec.handle, "replica_key", None)
+            if replica_key is not None:  # REQ-1915: a whole-copy source node
+                if getattr(state, "replica_nodes", None) is None:
+                    state.replica_nodes = {}
+                state.replica_nodes[replica_key] = node
             if spec.poll_seconds is None or spec.probe_factory is None:
                 # push node (owned by wire_push_listeners) or no cadence configured yet.
                 continue

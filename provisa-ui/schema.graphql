@@ -498,6 +498,7 @@ type Query {
   cacheStats: CacheStatsType!
   cacheTableStats: [CacheTableStatType!]!
   hotTables: [HotTableStatType!]!
+  replicaBuilds: ReplicaBuildsType!
   materializeStoreInfo: MaterializeStoreInfoType!
   systemHealth: SystemHealthType!
   scheduledTasks: [ScheduledTaskType!]!
@@ -526,6 +527,29 @@ type RefreshPolicySummaryType {
   text: String!
   serving: String!
   warning: String
+}
+
+type ReplicaBuildType {
+  sourceId: String!
+  schemaName: String!
+  tableName: String!
+  state: String!
+  requestedReason: String
+  method: String
+  loadKind: String
+  startedAt: String
+  rowsCopied: Float
+  rowsPerSecond: Float
+  completedAt: String
+  nextRefreshAt: String
+  lastError: String
+  waitingOn: String
+}
+
+type ReplicaBuildsType {
+  builds: [ReplicaBuildType!]!
+  convergenceError: String
+  convergenceErrorAt: String
 }
 
 type RegisteredTableType {

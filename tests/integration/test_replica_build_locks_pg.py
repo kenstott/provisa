@@ -104,6 +104,7 @@ class _Node:
             permits=_NoCap(),
             next_refresh_at=_async(lambda _key, _now: None),
             store=lambda: "store-a",
+            retry_interval=lambda: 60.0,
             builds_per_node=lambda: 1,
             engine_jobs=lambda: engine_jobs,
             spawn=lambda coro, name: self.tasks.append(asyncio.ensure_future(coro)),
@@ -118,7 +119,7 @@ class _Node:
 async def _request(db, *keys):
     async with db.acquire() as conn:
         for key in keys:
-            assert await build_state.request_build(conn, key, build_state.REASON_SAVE)
+            assert await build_state.request_build(conn, key, build_state.REASON_MODEL)
 
 
 async def _records(db):
@@ -212,7 +213,9 @@ async def test_a_killed_builder_frees_its_engine_slot_and_replica_and_the_row_is
     async with db.acquire() as conn:
         from datetime import UTC, datetime
 
-        assert await build_state.claim(conn, _key(0), holder="gone:1", now=datetime.now(UTC))
+        assert await build_state.claim(
+            conn, _key(0), holder="gone:1", retry_interval=60, now=datetime.now(UTC)
+        )
 
     other = BuildLocks(url).claim()
     try:

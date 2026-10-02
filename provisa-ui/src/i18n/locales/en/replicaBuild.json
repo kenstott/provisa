@@ -1,0 +1,21 @@
+{
+  "replicaBuild": {
+    "none": "No replica has been built for this table.",
+    "requested": "Replica build requested.",
+    "waiting": "Replica build requested; waiting: {{waitingOn}}.",
+    "building": "Replica building: {{rows}} rows copied, {{rate}} rows/s ({{how}}).",
+    "buildingNoRate": "Replica building ({{how}}).",
+    "built": "Replica built {{when}}: {{rows}} rows ({{how}}).",
+    "failed": "Replica build failed: {{error}}",
+    "retired": "This table is no longer replicated; its replica is being removed.",
+    "convergenceError": "Replicas are not being brought in line with the model: {{error}}",
+    "method": {
+      "engine_statement": "copied by the engine",
+      "stream_batches": "streamed in batches"
+    },
+    "loadKind": {
+      "bulk_stream": "bulk stream",
+      "row_copy": "row copy"
+    }
+  }
+}

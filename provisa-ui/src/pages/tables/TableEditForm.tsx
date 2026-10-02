@@ -47,6 +47,7 @@ import { useLivePolicyPreview } from "./useLivePolicyPreview";
 import { RoleTtlField } from "./RoleTtlField";
 import { tableTtlSignalError } from "./roleTtl";
 import { ReplicateSelect } from "../../components/admin/ReplicateSelect";
+import { ReplicaBuildLine } from "./ReplicaBuildLine";
 
 interface CacheTtlEdit {
   value: string;
@@ -276,6 +277,11 @@ export function TableEditForm({
               scope="table"
               loadProtected={editingTable.loadProtected ?? editSource?.loadProtected ?? false}
               testId="table-replicate-select"
+            />
+            <ReplicaBuildLine
+              sourceId={editingTable.sourceId}
+              schemaName={editingTable.schemaName}
+              tableName={editingTable.tableName}
             />
             <Select
               // REQ-1141: load protection — scheduled-refresh-only; the query path never pulls the source.

@@ -1,0 +1,21 @@
+{
+  "replicaBuild": {
+    "none": "Voor deze tabel is nog geen replica gebouwd.",
+    "requested": "Replica-build aangevraagd.",
+    "waiting": "Replica-build aangevraagd; wacht: {{waitingOn}}.",
+    "building": "Replica wordt gebouwd: {{rows}} rijen gekopieerd, {{rate}} rijen/s ({{how}}).",
+    "buildingNoRate": "Replica wordt gebouwd ({{how}}).",
+    "built": "Replica gebouwd {{when}}: {{rows}} rijen ({{how}}).",
+    "failed": "Replica-build mislukt: {{error}}",
+    "retired": "Deze tabel wordt niet meer gerepliceerd; de replica wordt verwijderd.",
+    "convergenceError": "De replica's worden niet in lijn gebracht met het model: {{error}}",
+    "method": {
+      "engine_statement": "gekopieerd door de engine",
+      "stream_batches": "in batches gestreamd"
+    },
+    "loadKind": {
+      "bulk_stream": "bulkstream",
+      "row_copy": "rijkopie"
+    }
+  }
+}

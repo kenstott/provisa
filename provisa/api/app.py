@@ -2093,6 +2093,19 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     state.schema_version += 1
     _stamped_runtime.model_stamp = _model_stamp  # REQ-1914
     await _finalize_rebuild_state(_rebuild_log)
+    # REQ-1915: replicas converge to the model just built — a build is requested for every
+    # declared replica that has none (or whose definition changed), and a replica the model no
+    # longer declares is retired. This is the one place: the boot build, the build after this
+    # worker's own change, and the reload of another worker's change all pass here, so no save
+    # or delete path asks for a build or a drop itself. Detached: the model build must not
+    # wait on, or be stopped by, a replica store or a source.
+    from provisa.core import process_mode as _process_mode
+
+    if _process_mode.runs_background_work():
+        from provisa.core.connection_loop import spawn_background as _spawn_background
+        from provisa.federation.replica_converge import converge_logged as _converge_replicas
+
+        _spawn_background(_converge_replicas(state), name="replica-converge")
     # REQ-1072: the governed model just changed, so the external catalog is now stale. This is
     # the one chokepoint every model mutation passes through, which is why the event is posted
     # here rather than at each mutation — a new mutation cannot forget to publish.

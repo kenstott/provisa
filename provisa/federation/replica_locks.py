@@ -29,8 +29,12 @@ The node slot is always a ``flock`` on the host. Every attempt is a try: nothing
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import random
+import threading
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -161,3 +165,52 @@ class BuildLocks:
     def claim(self) -> BuildClaim:
         """A new claim: the connection a build holds its engine slot and replica lock on."""
         return BuildClaim(self._url)
+
+
+# -- writers of deltas (REQ-1915) ----------------------------------------------------------------
+
+#: How often a delta writer that found its replica being built looks again.
+_DELTA_POLL_S = 0.5
+
+_delta_claims: dict[str, BuildClaim] = {}
+_delta_guard = threading.Lock()
+
+
+def _delta_claim(platform_url: str) -> BuildClaim:
+    """This process's one claim for its delta writers on ``platform_url``, opened on first use
+    and kept: a delta is small and frequent, and a connection per delta would cost more than
+    the delta. The locks on it are released one by one as each delta ends; the control plane
+    releases whatever is left if the process dies."""
+    claim = _delta_claims.get(platform_url)
+    if claim is None:
+        claim = _delta_claims[platform_url] = BuildClaim(platform_url)
+    return claim
+
+
+@asynccontextmanager
+async def replica_write_lock(
+    platform_url: str, org_id: str, key: ReplicaKey
+) -> AsyncIterator[None]:
+    """Hold the replica ``key``'s lock for a write of deltas into it: an append past the
+    cursor, or a batch of change events applied by key.
+
+    The same lock a build holds, so a delta is never written into a table a build is about to
+    replace (it would be lost with the table) and a build never starts under a delta. A delta
+    that finds a build running waits for it — the delta then lands in the new table. The wait
+    is on the event loop's or a listener's own task, never on a request's thread. Writers of
+    one replica in one process are already one at a time (``events.land_lock``)."""
+    waited = 0.0
+    while True:
+        with _delta_guard:
+            held = _delta_claim(platform_url).try_replica(org_id, key)
+        if held:
+            break
+        if waited == 0.0:
+            log.info("a delta for %s waits for the replica's build to finish", ".".join(key))
+        await asyncio.sleep(_DELTA_POLL_S)
+        waited += _DELTA_POLL_S
+    try:
+        yield
+    finally:
+        with _delta_guard:
+            _delta_claim(platform_url).release_replica(org_id, key)

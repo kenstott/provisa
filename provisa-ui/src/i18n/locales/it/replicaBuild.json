@@ -1,0 +1,21 @@
+{
+  "replicaBuild": {
+    "none": "Per questa tabella non è stata creata alcuna replica.",
+    "requested": "Build della replica richiesta.",
+    "waiting": "Build della replica richiesta; in attesa: {{waitingOn}}.",
+    "building": "Build della replica in corso: {{rows}} righe copiate, {{rate}} righe/s ({{how}}).",
+    "buildingNoRate": "Build della replica in corso ({{how}}).",
+    "built": "Replica creata {{when}}: {{rows}} righe ({{how}}).",
+    "failed": "Build della replica non riuscita: {{error}}",
+    "retired": "Questa tabella non è più replicata; la sua replica è in fase di rimozione.",
+    "convergenceError": "Le repliche non vengono allineate al modello: {{error}}",
+    "method": {
+      "engine_statement": "copiata dal motore",
+      "stream_batches": "trasmessa a batch"
+    },
+    "loadKind": {
+      "bulk_stream": "flusso bulk",
+      "row_copy": "copia per righe"
+    }
+  }
+}
