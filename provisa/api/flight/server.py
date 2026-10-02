@@ -262,6 +262,10 @@ def _parse_limit_value(value: int | bool | None) -> int | None:
     return value
 
 
+# The do_action type that answers the worker's health report.
+_HEALTHCHECK_ACTION = "healthcheck"
+
+
 class ProvisaFlightServer(
     flight.FlightServerBase
 ):  # REQ-045, REQ-051, REQ-143, REQ-369  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -672,12 +676,33 @@ class ProvisaFlightServer(
                 run_on_connection_loop(limiter.release(key))  # type: ignore[attr-defined]
         return self._execute_query(request)
 
+    def list_actions(
+        self,
+        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage, reportUnusedParameter]  # lib omits __all__
+    ) -> list[tuple[str, str]]:
+        """The actions this server answers by name."""
+        return [
+            (
+                _HEALTHCHECK_ACTION,
+                "The health of the worker answering, as GET /health reports it (JSON).",
+            )
+        ]
+
     def do_action(  # REQ-608
         self,
         context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage, reportUnusedParameter]  # lib omits __all__
         action: flight.Action,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     ) -> list[flight.Result]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Handle a Flight action request."""
+        """Handle a Flight action request.
+
+        ``healthcheck``: one result, the JSON report ``GET /health`` answers with
+        (``provisa.api.health_report``) — for a client or a load balancer that reaches this
+        server over Flight only. It needs no credential, as ``/health`` needs none."""
+        if action.type == _HEALTHCHECK_ACTION:
+            from provisa.api.health_report import health_report
+
+            report = _run_rpc(lambda: run_on_connection_loop(health_report(self._state)))
+            return [flight.Result(json.dumps(report).encode("utf-8"))]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         try:
             body = json.loads(action.body.to_pybytes().decode("utf-8")) if action.body else {}
         except (json.JSONDecodeError, UnicodeDecodeError):
