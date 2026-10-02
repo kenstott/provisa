@@ -217,7 +217,13 @@ class TestInitSchema:
 
         sa_conn = mock_pool.engine.begin.return_value.__enter__.return_value
         add_missing.assert_called_once_with(sa_conn, schema_org.metadata.sorted_tables, expected)
-        install_stamp.assert_called_once_with(sa_conn, config_stamp.TENANT_TABLES, expected)
+        # ...seeding the kinds no trigger advances beside the trigger-advanced ones (REQ-826).
+        install_stamp.assert_called_once_with(
+            sa_conn,
+            config_stamp.TENANT_TABLES,
+            expected,
+            advanced=config_stamp.TENANT_ADVANCED,
+        )
 
     @pytest.mark.asyncio
     async def test_create_org_role_grants_each_environment_to_the_one_org_role(self):  # REQ-1488

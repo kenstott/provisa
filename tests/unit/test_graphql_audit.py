@@ -79,6 +79,7 @@ def audited(monkeypatch):
     monkeypatch.setattr("provisa.encryption.runtime.encryption_service", NullEncryption)
     harness = _endpoint_harness(monkeypatch)
     harness.state.tenant_db = object()
+    harness.state.hot_counts = None  # REQ-826: no Hot-count store; counting has its own tests
     harness.state.org_id = "acme"
     harness.state.contexts = {"analyst": _CTX}
 

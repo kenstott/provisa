@@ -22,21 +22,30 @@ Kinds, and where their row lives:
 * ``model`` — the tenant plane (one per org and environment): the governed model and its rules.
 * ``settings`` — the tenant plane (``org_settings``) and the platform plane
   (``deployment_settings``), each with its own row.
+* ``replica`` — the tenant plane: which tables are served from a replica because they are busy
+  (REQ-826). It has no trigger. ``replica_state`` is state, written on every build and refresh;
+  only two of its changes move a table between live and its replica, and the code that makes
+  each advances the row itself (:func:`advance`, called by ``federation/replica_state.py``).
 """
 
-# Requirements: REQ-1914
+# Requirements: REQ-1914, REQ-826, REQ-1920
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import text
+from sqlalchemy import text, update
 
 if TYPE_CHECKING:
-    from provisa.core.database import Database
+    from provisa.core.database import Connection, Database
 
 MODEL = "model"
 SETTINGS = "settings"
+REPLICA = "replica"
+
+# Tenant-plane kinds no trigger advances: the code that makes the change calls :func:`advance`
+# in the same transaction. Seeded beside the trigger-advanced kinds of TENANT_TABLES.
+TENANT_ADVANCED: tuple[str, ...] = (REPLICA,)
 
 # Tenant-plane tables and the kind a write to each advances. ``model`` is every table the governed
 # model is built from (what ``_rebuild_schemas`` reads). Tables a reload itself writes, and runtime
@@ -197,10 +206,13 @@ def _install_sqlite(conn: Any, tables: dict[str, str]) -> None:
             )
 
 
-def install(conn: Any, tables: dict[str, str], schema: str | None = None) -> None:
+def install(
+    conn: Any, tables: dict[str, str], schema: str | None = None, *, advanced: tuple[str, ...] = ()
+) -> None:
     """Seed the stamp rows and create the triggers that advance them, for ``tables`` (table name →
     kind) in ``schema``. Idempotent. ``conn`` is a SQLAlchemy connection inside a transaction, on
-    which ``config_stamp`` and every one of ``tables`` already exist.
+    which ``config_stamp`` and every one of ``tables`` already exist. ``advanced``: the kinds of
+    this plane that have a row and no trigger (``TENANT_ADVANCED``).
 
     An embedded DuckDB control plane (REQ-828) gets the rows and no triggers: DuckDB has none,
     and a DuckDB file admits one process, so there is no second process for a change to reach —
@@ -209,14 +221,34 @@ def install(conn: Any, tables: dict[str, str], schema: str | None = None) -> Non
     dialect = conn.dialect.name
     if dialect == "postgresql":
         _install_postgresql(conn, tables, schema)
+        if schema is None:
+            schema = conn.execute(text("SELECT current_schema()")).scalar_one()
+        _seed(conn, f'"{schema}".config_stamp', set(advanced))
     elif dialect == "sqlite":
         _install_sqlite(conn, tables)
+        _seed(conn, "config_stamp", set(advanced))
     elif dialect == "duckdb":
-        _seed(conn, "config_stamp", set(tables.values()))
+        _seed(conn, "config_stamp", set(tables.values()) | set(advanced))
     else:
         raise NotImplementedError(
             f"the config stamp (REQ-1914) is not implemented for a {dialect} control plane; "
             "PostgreSQL, SQLite and (single-process) DuckDB are supported"
+        )
+
+
+async def advance(conn: "Connection", kind: str) -> None:
+    """Advance the stamp of ``kind`` on ``conn``'s plane, for a kind no trigger advances
+    (``TENANT_ADVANCED``). Called inside the transaction of the change it announces, so the
+    change and its stamp are stored together or not at all."""
+    from provisa.core.schema_org import config_stamp as stamps
+
+    result = await conn.execute_core(
+        update(stamps).where(stamps.c.kind == kind).values(stamp=stamps.c.stamp + 1)
+    )
+    if result.rowcount != 1:
+        raise RuntimeError(
+            f"config stamp {kind!r} has no row on this control plane (REQ-1914): the plane was "
+            "set up without it, so no process would learn of this change"
         )
 
 

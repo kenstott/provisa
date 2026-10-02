@@ -40,11 +40,12 @@
       "rows": "Lignes",
       "kind": "Type",
       "unknown": "—",
-      "warmTables": "Tables tièdes",
+      "busyReplicas": "Répliquées par activité",
       "kind_hot": "chaude",
       "kind_hot_candidate": "candidate chaude",
-      "kind_warm": "tiède",
-      "warmDescription": "Les tables tièdes sont des tables volumineuses interrogées assez souvent pour obtenir une copie Iceberg dans le moteur de fédération ; les requêtes lisent la copie, supprimée dès que le trafic repasse sous le seuil."
+      "kind_replica": "répliquée (active)",
+      "kind_replica_building": "réplique en construction",
+      "busyDescription": "Une table dont le réglage Répliquer est « Par défaut » ou un seuil Hot est répliquée dès que les instructions qui la lisent dépassent son seuil ; les lectures viennent alors de la réplique et reviennent à la source lorsque le trafic passe sous la moitié du seuil. Tant que sa première réplique est en construction, la table reste lue en direct."
     },
     "materialized": {
       "description": "Stockage durable où atterrissent les sources non attachables et où sont écrites les vues matérialisées. Distinct du cache de réponses et du niveau chaud ; une requête peut combiner les trois.",

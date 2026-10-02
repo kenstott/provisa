@@ -40,11 +40,12 @@
       "rows": "Rows",
       "kind": "Kind",
       "unknown": "—",
-      "warmTables": "Warm Tables",
+      "busyReplicas": "Replicated When Busy",
       "kind_hot": "hot",
       "kind_hot_candidate": "hot candidate",
-      "kind_warm": "warm",
-      "warmDescription": "Warm tables are larger tables queried often enough to earn a landed Iceberg copy in the federation engine; queries read the copy, and it is dropped again when traffic falls below the threshold."
+      "kind_replica": "replicated (busy)",
+      "kind_replica_building": "replica being built",
+      "busyDescription": "A table whose Replicate setting is Default or a Hot threshold is replicated once the statements that read it pass its threshold; reads then come from the replica, and return to the source when traffic falls below half the threshold. While its first replica is being built the table is still read live."
     },
     "materialized": {
       "description": "Durable store where non-attachable sources land and materialized views are written. Distinct from the response cache and the hot tier; a query can use any combination of the three.",

@@ -95,7 +95,11 @@ async def _summarize(
         off_peak_tz=off_peak_tz,
         change_signal=change_signal,
     )
-    summary = describe_refresh_policy(source, tbl, engine, default_ttl)
+    from provisa.federation.replica_hot import hot_view
+
+    summary = describe_refresh_policy(
+        source, tbl, engine, default_ttl, hot=hot_view(state, source, tbl)
+    )
     return RefreshPolicySummaryType(
         text=summary.text, serving=summary.serving.value, warning=summary.warning
     )

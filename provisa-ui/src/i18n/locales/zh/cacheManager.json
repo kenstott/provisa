@@ -40,11 +40,12 @@
       "rows": "行数",
       "kind": "类型",
       "unknown": "—",
-      "warmTables": "温表",
+      "busyReplicas": "繁忙时复制",
       "kind_hot": "热",
       "kind_hot_candidate": "热候选",
-      "kind_warm": "温",
-      "warmDescription": "温表是查询足够频繁、从而在联邦引擎中获得 Iceberg 副本的较大表；查询读取该副本，流量低于阈值时副本会被删除。"
+      "kind_replica": "已复制（繁忙）",
+      "kind_replica_building": "副本构建中",
+      "busyDescription": "“复制”设置为“默认”或某个 Hot 阈值的表，在读取它的语句超过其阈值后会被复制；此后读取来自副本，当流量降到阈值的一半以下时回到数据源。在其第一个副本构建期间，该表仍被实时读取。"
     },
     "materialized": {
       "description": "持久存储，用于存放不可挂载的数据源并写入物化视图。它与响应缓存和热层不同；一个查询可以任意组合使用这三者。",

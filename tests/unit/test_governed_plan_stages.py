@@ -331,13 +331,17 @@ def test_a_cache_key_parses_a_statement_text_once(monkeypatch):
 
     monkeypatch.setattr(stage_trace, "redact_sql", _counting)
     sql = "SELECT o.id FROM sales.orders o WHERE o.id = 7"
-    first = cqc.routing_cache_key(sql, "analyst", "boot", 1)
+    first = cqc.routing_cache_key(sql, "analyst", "boot", 1, 0)
     for _ in range(25):
-        assert cqc.routing_cache_key(sql, "analyst", "boot", 1) == first
+        assert cqc.routing_cache_key(sql, "analyst", "boot", 1, 0) == first
         cqc.compiled_query_cache_key(sql, "analyst", None, "boot", 1, False)
     assert parses["n"] == 1
     # The shape still collapses literal-only differences onto one entry.
-    assert cqc.routing_cache_key(sql.replace("7", "8"), "analyst", "boot", 1) == first
+    assert cqc.routing_cache_key(sql.replace("7", "8"), "analyst", "boot", 1, 0) == first
+    # REQ-826: a route is decided under one set of replica-served tables; when that set changes
+    # (a busy table promoted or demoted, a replica completed) the generation moves and the
+    # route is decided again — with no schema build.
+    assert cqc.routing_cache_key(sql, "analyst", "boot", 1, 1) != first
 
 
 # -- the ENGINE route's statement-only work is kept with the plan ---------------------------------

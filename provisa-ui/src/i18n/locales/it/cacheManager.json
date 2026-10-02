@@ -40,11 +40,12 @@
       "rows": "Righe",
       "kind": "Tipo",
       "unknown": "—",
-      "warmTables": "Tabelle tiepide",
+      "busyReplicas": "Replicate per attività",
       "kind_hot": "calda",
       "kind_hot_candidate": "candidata calda",
-      "kind_warm": "tiepida",
-      "warmDescription": "Le tabelle tiepide sono tabelle grandi interrogate abbastanza spesso da ottenere una copia Iceberg nel motore di federazione; le query leggono la copia, che viene eliminata quando il traffico scende sotto la soglia."
+      "kind_replica": "replicata (attiva)",
+      "kind_replica_building": "replica in costruzione",
+      "busyDescription": "Una tabella la cui impostazione Replicare è «Predefinito» o una soglia Hot viene replicata quando le istruzioni che la leggono superano la sua soglia; le letture arrivano allora dalla replica e tornano all'origine quando il traffico scende sotto la metà della soglia. Finché la sua prima replica è in costruzione, la tabella continua a essere letta in tempo reale."
     },
     "materialized": {
       "description": "Store durevole in cui vengono scritte le origini non collegabili e le viste materializzate. Distinto dalla cache delle risposte e dal livello hot; una query può usare qualsiasi combinazione dei tre.",

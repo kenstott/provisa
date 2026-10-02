@@ -40,11 +40,12 @@
       "rows": "Rijen",
       "kind": "Soort",
       "unknown": "—",
-      "warmTables": "Warme tabellen",
+      "busyReplicas": "Gerepliceerd bij drukte",
       "kind_hot": "heet",
       "kind_hot_candidate": "heet-kandidaat",
-      "kind_warm": "warm",
-      "warmDescription": "Warme tabellen zijn grotere tabellen die vaak genoeg worden bevraagd om een Iceberg-kopie in de federatie-engine te krijgen; queries lezen de kopie, die weer wordt verwijderd zodra het verkeer onder de drempel zakt."
+      "kind_replica": "gerepliceerd (druk)",
+      "kind_replica_building": "replica wordt gebouwd",
+      "busyDescription": "Een tabel waarvan de instelling Repliceren 'Standaard' of een Hot-drempel is, wordt gerepliceerd zodra de statements die haar lezen haar drempel overschrijden; leesacties komen dan uit de replica en gaan terug naar de bron wanneer het verkeer onder de helft van de drempel zakt. Zolang haar eerste replica wordt gebouwd, wordt de tabel nog live gelezen."
     },
     "materialized": {
       "description": "Duurzame opslag waar niet-koppelbare bronnen landen en gematerialiseerde views worden weggeschreven. Verschilt van de responscache en de hot-laag; een query kan elke combinatie van de drie gebruiken.",

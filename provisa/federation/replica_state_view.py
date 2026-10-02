@@ -83,6 +83,14 @@ class ReplicaStateView:
             wanted = self._awaited.get((org_id, key))
         return wanted is None or (record is not None and record.definition_hash == wanted)
 
+    def forget(self, org_id: str | None) -> None:
+        """Drop every copy held for ``org_id`` (REQ-826): the replica-state stamp moved — a busy
+        table was promoted or demoted, or a promoted table's first replica completed — so the
+        next read of each replica re-reads its record rather than trust a copy taken before."""
+        with self._guard:
+            for scoped in [s for s in self._records if s[0] == org_id]:
+                del self._records[scoped]
+
     def lock(self, org_id: str | None, key: ReplicaKey) -> CrossLoopLock:
         """The lock one replica's re-read and build request are made under, across the request
         threads of this process."""

@@ -64,10 +64,17 @@ class RegisteredNames:
         return f'"src"."public"."{table_name}"'
 
 
-async def no_promoted_tables(_conn) -> frozenset:
-    """Stands in for ``replica_state.promoted_keys`` on a faked control plane: no table has been
-    promoted. A test that fakes the registry read fakes this read of the same connection."""
-    return frozenset()
+def no_engine_store(_state) -> str:
+    """Stands in for ``replica_builds.store_identity`` for a faked state with no engine bound:
+    the store the (absent) promoted tables would have been built in."""
+    return "no-engine-store"
+
+
+async def no_promoted_tables(_conn, _store) -> tuple[frozenset, frozenset]:
+    """Stands in for ``replica_state.promotion`` on a faked control plane: no table has been
+    promoted, so none is served from a replica for being busy. A test that fakes the registry
+    read fakes this read of the same connection."""
+    return frozenset(), frozenset()
 
 
 class DsnEngine:

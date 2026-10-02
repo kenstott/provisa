@@ -288,3 +288,45 @@ def test_another_sources_statement_is_not_floored_by_it():
     state = _published()
     assert operator_floor(state, [_OTHER_SOURCE_TABLE]) == {}
     assert _route(state, [_OTHER_SOURCE_TABLE], {"crm"}).route == Route.DIRECT
+
+
+# -- promoted, not yet built (REQ-826) -------------------------------------------------------------
+
+
+async def test_a_promoted_table_is_the_replicators_before_its_reads_go_to_the_replica(monkeypatch):
+    """From its promotion the table is in the set the replicator builds, keeps and retires by
+    (``replica_tables``) — so it is built and is not retired — while reads keep going to the
+    source until its first build completes (the serving set routing reads)."""
+    from provisa.federation import replica_routing
+
+    reg = {
+        "id": 1,
+        "source_id": "pg",
+        "schema_name": "public",
+        "table_name": "orders",
+        "replicate": 500,
+        "load_protected": None,
+        "columns": [{"column_name": "id", "native_filter_type": None}],
+    }
+    key = ("pg", "public", "orders")
+    registry = replica_routing._Registry(
+        [reg], {"pg": _attachable()}, serving=frozenset(), promoted=frozenset({key})
+    )
+
+    async def _registry(_state):
+        return registry
+
+    monkeypatch.setattr(replica_routing, "_registry", _registry)
+    assert [r["table_name"] for _s, r in await replica_routing.replica_tables(_ENGINE, None)] == [
+        "orders"
+    ]
+    # reads: not yet
+    assert replica_routing._served_from_replica(_ENGINE, registry, registry.serving) == []
+    assert replica_routing._floored(registry) == {}
+    # once built in this engine's store, both
+    built = registry._replace(serving=frozenset({key}))
+    assert [
+        r["table_name"]
+        for _s, r in replica_routing._served_from_replica(_ENGINE, built, built.serving)
+    ] == ["orders"]
+    assert replica_routing._floored(built) == {1: ("pg", "replicate")}

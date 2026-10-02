@@ -200,6 +200,16 @@ class ReplicaRoutes:
     #: puts its reads on a replica, so an engine that reads its source in place reads it live.
     #: With ``floored`` it says, for one statement, which of its sources it reads live.
     unfloored: Mapping[int, str] = field(default_factory=dict)
+    #: The tables that passed their Hot threshold (REQ-826), by (source_id, schema, table), and
+    #: those of them whose replica exists and serves their reads. A promoted table that is not
+    #: yet serving is read live while its replica is built. What the admin summary states.
+    promoted: frozenset[tuple[str, str, str]] = frozenset()
+    serving: frozenset[tuple[str, str, str]] = frozenset()
+    #: How many times this runtime's routes have CHANGED since it was built (REQ-826). Not part
+    #: of what the routes say (two publications that say the same are equal whatever their
+    #: generation): it is part of the routing-cache key, so a cached route never outlives the
+    #: routes it was decided under. Advanced by ``model_reload.publish_replica_routes``.
+    generation: int = field(default=0, compare=False)
 
     def __bool__(self) -> bool:
         return bool(self.routes) or bool(self.ambiguous)

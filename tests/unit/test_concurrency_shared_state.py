@@ -17,7 +17,7 @@ to reproduce. Hermetic (in-process, fakeredis); no docker, no Trino.
 
 Covers the shared-state points enumerated for the wedge path:
   - ingest.engine.get_engine      lazy per-source engine cache      (was found-race → hardened)
-  - warm_tables.QueryCounter      per-table frequency counter       (lock — verify no lost updates)
+  - replica_hot.HotCounts         per-table statement count         (store increment — verify no lost updates)
   - source_adapters.get_adapter   lazy adapter-module cache         (verify single module)
   - cache.hot_tables.HotTableMgr  hot-cache entry map               (verify entry coherence)
 """
@@ -125,32 +125,37 @@ class TestIngestEngineCacheRace:
             assert len({id(e) for e in sink}) == 1, "get_engine handed out >1 engine for one source"
 
 
-# ── 2. warm_tables.QueryCounter — no lost updates ───────────────────────────────
+# ── 2. replica_hot.HotCounts — no lost updates ──────────────────────────────────
 
 
-class TestQueryCounterNoLostUpdates:
-    """The lock must make increment atomic: N threads each incrementing M times must total N*M with
-    no lost read-modify-writes."""
+class TestHotCountsNoLostUpdates:
+    """The count is incremented in the store (INCRBY), never read-modified-written here: N threads
+    each adding M batches must total N*M. One client is shared by every thread, as in a server."""
 
     def test_count_is_exact_under_contention(self):
-        from provisa.cache.warm_tables import QueryCounter
+        import uuid
 
-        n_threads, per_thread = 32, 500
-        for _ in range(10):
-            counter = QueryCounter()
+        from provisa.federation.replica_hot import HotCounts
+
+        n_threads, per_thread, interval = 16, 100, 60
+        for _ in range(3):
+            scope = f"org-{uuid.uuid4().hex}:prod"
+            counts = HotCounts(None, clock=lambda: 6_000_000.0)
             barrier = threading.Barrier(n_threads)
 
             def w():
                 barrier.wait()
                 for _ in range(per_thread):
-                    counter.increment("t")
+                    counts.add({(scope, 7): 1}, interval)
 
             ts = [threading.Thread(target=w) for _ in range(n_threads)]
             for t in ts:
                 t.start()
             for t in ts:
                 t.join()
-            assert counter.get_count("t") == n_threads * per_thread, "lost update in QueryCounter"
+            assert counts.counts(scope, [7], interval)[7] == n_threads * per_thread, (
+                "lost update in HotCounts"
+            )
 
 
 # ── 3. source_adapters.get_adapter — single module per type ─────────────────────

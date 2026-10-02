@@ -159,6 +159,14 @@ def watch_error() -> type[Exception]:
     return WatchError
 
 
+def redis_error() -> type[Exception]:
+    """The client's base error (``redis.RedisError``: connection, timeout, response), for a caller
+    that must tell a store failure from its own without importing the driver itself."""
+    from redis.exceptions import RedisError
+
+    return RedisError
+
+
 def make_redis(url: str | None, *, decode_responses: bool) -> SharedRedis:
     """Return the shared Redis client (sync, thread-safe, awaitable call surface).
 

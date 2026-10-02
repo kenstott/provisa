@@ -155,6 +155,7 @@ def test_the_server_gives_its_shared_loops_the_holder():
     # The hot-table refresh rewrites Redis: shared when a Redis is configured, this process's own
     # embedded one when it is not — only the shared case is the holder's.
     assert "state.redis_url is not None and not _holder.holds()" in src
-    # The warm-table sweep creates and drops shared tables in the engine's store: the holder's.
-    warm = src[src.index("_warm_sweep_loop(") :]
-    assert "should_run=_holder.holds," in warm[: warm.index('name="warm-tables"')]
+    # REQ-826: which busy tables are replicated is decided once per deployment — it writes the
+    # shared replica state and requests builds: the holder's.
+    hot = src[src.index("_hot_evaluation_loop(") :]
+    assert "should_run=_holder.holds," in hot[: hot.index('name="replica-hot"')]

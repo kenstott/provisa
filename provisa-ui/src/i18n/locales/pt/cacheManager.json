@@ -40,11 +40,12 @@
       "rows": "Linhas",
       "kind": "Tipo",
       "unknown": "—",
-      "warmTables": "Tabelas mornas",
+      "busyReplicas": "Replicadas por atividade",
       "kind_hot": "quente",
       "kind_hot_candidate": "candidata a quente",
-      "kind_warm": "morna",
-      "warmDescription": "Tabelas mornas são tabelas maiores consultadas com frequência suficiente para ganhar uma cópia Iceberg no motor de federação; as consultas leem a cópia, que é descartada quando o tráfego cai abaixo do limite."
+      "kind_replica": "replicada (ativa)",
+      "kind_replica_building": "réplica em construção",
+      "busyDescription": "Uma tabela cuja configuração Replicar é 'Padrão' ou um limite Hot é replicada quando as instruções que a leem ultrapassam o seu limite; as leituras passam a vir da réplica e voltam à fonte quando o tráfego cai abaixo da metade do limite. Enquanto a sua primeira réplica está em construção, a tabela continua sendo lida ao vivo."
     },
     "materialized": {
       "description": "Armazenamento durável onde as fontes não anexáveis são gravadas e as exibições materializadas são escritas. Distinto do cache de respostas e da camada quente; uma consulta pode usar qualquer combinação dos três.",

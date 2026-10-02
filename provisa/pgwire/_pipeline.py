@@ -365,13 +365,15 @@ async def _optimize_and_route(
 
 
 @functools.lru_cache(maxsize=4096)
-def _routing_key(exec_sql: str, role_id: str, schema_boot_id: str, schema_version: int) -> str:
+def _routing_key(
+    exec_sql: str, role_id: str, schema_boot_id: str, schema_version: int, replica_generation: int
+) -> str:
     """``routing_cache_key`` for these inputs, derived once: the key is a pure function of them,
     and deriving it parses and re-generates the statement — on every execution, to look up a
     cache whose point is to skip per-execution work."""
     from provisa.compiler.compiled_query_cache import routing_cache_key
 
-    return routing_cache_key(exec_sql, role_id, schema_boot_id, schema_version)
+    return routing_cache_key(exec_sql, role_id, schema_boot_id, schema_version, replica_generation)
 
 
 async def _kept_lowering(memo: dict[str, Any], lower: Callable[[], str]) -> str:
@@ -519,7 +521,13 @@ async def _optimize_and_route_cached(
 
     from provisa.compiler.compiled_query_cache import RoutingOutcome
 
-    _rt_key = _routing_key(exec_sql, role_id, state.schema_boot_id, state.schema_version)
+    _rt_key = _routing_key(
+        exec_sql,
+        role_id,
+        state.schema_boot_id,
+        state.schema_version,
+        state.replica_routes.generation,
+    )
     _cached = state.routing_cache.get(_rt_key)
     if _cached is not None:
         from provisa.transpiler.router import Route, RouteDecision

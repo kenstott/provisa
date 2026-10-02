@@ -50,7 +50,7 @@ def test_a_module_error_is_printed_once_in_uvicorns_format():
     lines = _stderr(
         """
         send_module_logs_to_server_log()
-        logging.getLogger("provisa.cache.warm_tables").error("promotion failed for %s", "orders")
+        logging.getLogger("provisa.federation.replica_hot").error("promotion failed for %s", "orders")
         logging.getLogger("uvicorn.error").error("a server line")
         """
     )
@@ -61,7 +61,7 @@ def test_without_it_the_same_error_never_reaches_stderr():
     """The defect: this is what a started server did with every provisa module's errors."""
     lines = _stderr(
         """
-        logging.getLogger("provisa.cache.warm_tables").error("promotion failed")
+        logging.getLogger("provisa.federation.replica_hot").error("promotion failed")
         assert _RootSink.seen == ["promotion failed"]
         """
     )

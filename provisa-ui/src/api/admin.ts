@@ -1088,10 +1088,10 @@ export interface CacheStorageState {
     max_bytes: number;
     refresh_interval: number | null;
   };
+  // REQ-826: when a busy table is replicated (Default threshold, window, size ceiling).
+  replication: { hot_threshold: number; hot_interval: number; hot_max_rows: number };
+  // REQ-238: the engine's filesystem read cache.
   warm_tables: {
-    query_threshold: number;
-    max_rows: number;
-    refresh_interval: number | null;
     fs_cache_enabled: boolean;
     fs_cache_directories: string;
     fs_cache_max_sizes: string;
@@ -1111,6 +1111,7 @@ export async function setCacheStorage(
   body: Partial<{
     cache: Partial<CacheStorageState["cache"]>;
     hot_tables: Partial<CacheStorageState["hot_tables"]>;
+    replication: Partial<CacheStorageState["replication"]>;
     warm_tables: Partial<CacheStorageState["warm_tables"]>;
     materialized_views: Partial<CacheStorageState["materialized_views"]>;
     materialize: { store_url: string };
@@ -1511,8 +1512,10 @@ export interface HotTableStat {
   schemaName: string;
   rowCount: number;
   // What is being kept for this table: a registered promotion candidate with nothing mirrored yet
-  // ("hot_candidate"), a mirrored hot copy ("hot"), or an Iceberg warm copy ("warm").
-  kind: "hot_candidate" | "hot" | "warm";
+  // ("hot_candidate"), a mirrored hot copy ("hot"), a table past its Hot threshold and served
+  // from its replica ("replica", REQ-826), or one past its threshold whose replica is still
+  // being built and which is read live meanwhile ("replica_building").
+  kind: "hot_candidate" | "hot" | "replica" | "replica_building";
 }
 
 export interface MaterializeStoreInfo {
