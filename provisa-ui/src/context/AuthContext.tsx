@@ -33,6 +33,7 @@ import { normalizeRole, type RawRole } from "../lib/roles";
 // instead of removing a tab.
 export const DEFAULT_ADMIN_ROLE: Role = {
   id: "org_admin",
+  origin: "seed",
   capabilities: [
     "source_registration",
     "table_registration",

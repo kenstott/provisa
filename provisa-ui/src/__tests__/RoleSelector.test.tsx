@@ -26,6 +26,7 @@ const mockUseAuth = vi.mocked(useAuth);
 
 const ADMIN_ROLE: Role = {
   id: "admin",
+  origin: "admin",
   capabilities: ["user_management", "access_config"] as Capability[],
   demonstrated: [],
   domain_access: ["*"],
@@ -33,6 +34,7 @@ const ADMIN_ROLE: Role = {
 
 const ANALYST_ROLE: Role = {
   id: "analyst",
+  origin: "admin",
   capabilities: ["query_development", "full_results"] as Capability[],
   demonstrated: [],
   domain_access: ["sales"],

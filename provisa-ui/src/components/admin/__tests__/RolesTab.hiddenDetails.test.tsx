@@ -17,17 +17,17 @@ vi.mock("../../../api/admin", async (orig) => ({
 
 describe("normalizeRole", () => {
   it("marks a role arriving as an id alone as hidden", () => {
-    expect(normalizeRole({ id: "org_admin" })).toMatchObject({
+    expect(normalizeRole({ id: "org_admin", origin: "admin" })).toMatchObject({
       id: "org_admin",
       detailsHidden: true,
     });
-    expect(normalizeRole({ id: "x", capabilities: null, domainAccess: null }).detailsHidden).toBe(
+    expect(normalizeRole({ id: "x", origin: "admin", capabilities: null, domainAccess: null }).detailsHidden).toBe(
       true,
     );
   });
 
   it("keeps a full definition and reads either spelling of domain access", () => {
-    const role = normalizeRole({ id: "a", capabilities: ["usage"], domainAccess: ["sales"] });
+    const role = normalizeRole({ id: "a", origin: "admin", capabilities: ["usage"], domainAccess: ["sales"] });
     expect(role.detailsHidden).toBeUndefined();
     expect(role.capabilities).toEqual(["usage"]);
     expect(role.domain_access).toEqual(["sales"]);
@@ -37,8 +37,8 @@ describe("normalizeRole", () => {
 describe("RolesTab", () => {
   it("shows a hidden role by id with a note and no controls", async () => {
     vi.mocked(api.fetchOrgRoles).mockResolvedValue([
-      normalizeRole({ id: "analyst", capabilities: ["usage"], domain_access: ["sales"] }),
-      normalizeRole({ id: "org_admin" }),
+      normalizeRole({ id: "analyst", origin: "admin", capabilities: ["usage"], domain_access: ["sales"] }),
+      normalizeRole({ id: "org_admin", origin: "admin" }),
     ]);
     render(<RolesTab orgId="acme" />);
 

@@ -46,6 +46,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
   return {
     id: 1,
     sourceId: "src1",
+    origin: "admin",
     domainId: "sales",
     schemaName: "public",
     tableName: "orders",
@@ -134,8 +135,8 @@ function makeRel(overrides: Partial<Relationship> = {}): Relationship {
   };
 }
 
-const DOMAIN_SALES: Domain = { id: "sales", description: "Sales domain", isSystem: false };
-const DOMAIN_HR: Domain = { id: "hr", description: "HR domain", isSystem: false };
+const DOMAIN_SALES: Domain = { id: "sales", origin: "admin", description: "Sales domain", isSystem: false };
+const DOMAIN_HR: Domain = { id: "hr", origin: "admin", description: "HR domain", isSystem: false };
 const NO_HIDDEN = new Set<string>();
 
 // ── buildTableLabel ───────────────────────────────────────────────────────────
