@@ -19,6 +19,8 @@ dependencies = [
     # declared or actually used anywhere in the app — FastAPI's default response class still used
     # stdlib json. Declared explicitly now that provisa.api.app wires it in as the default.
     "orjson",
+    # The response cache's stored-entry encoding (provisa/cache/codec.py, REQ-1896).
+    "msgpack",
     "asyncpg",
     "pydantic>=2",
     "strawberry-graphql[fastapi]",
