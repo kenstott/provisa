@@ -634,23 +634,45 @@ async def update_settings(request: Request):  # REQ-165, REQ-253, REQ-303, REQ-4
     return {"success": True, "updated": updated, "restart_required": restart_required}
 
 
+async def _catalog_counts(conn) -> dict[str, int]:  # REQ-1919
+    """How much catalog the acting org holds: its registered tables (views among them), sources
+    and domains, leaving out what the deployment seeds — the built-in sources and their tables,
+    the system domains, the demo's own."""
+    from sqlalchemy import func, select
+
+    from provisa.core.schema_org import domains, registered_tables, sources
+
+    return {
+        kind: (
+            await conn.execute_core(
+                select(func.count()).select_from(table).where(table.c.origin != "seed")
+            )
+        ).scalar_one()
+        for kind, table in (
+            ("tables", registered_tables),
+            ("sources", sources),
+            ("domains", domains),
+        )
+    }
+
+
 @router.post("/admin/domain-policy")
 async def set_domain_policy(request: Request):  # REQ-165, REQ-1266, REQ-1349
     """Change the ACTING ORG's domain policy (use_domains / default_domain).
 
-    DESTRUCTIVE, and destructive for this org only: every registered table's domain_id is bound to
-    the policy, so the org's sources, tables, domains and relationships are purged and its schemas
-    rebuilt. The policy is stored as the org's ``naming`` override — one org modelling a single
-    domain says nothing about the next, and on a shared shard rewriting the deployment YAML here
-    would reset every other org's catalog along with this one's.
+    Every registered table's domain_id is bound to the policy, so the switch is REFUSED while the
+    org has a catalog (REQ-1919): a registered table, a source or a domain the deployment did not
+    seed. The refusal counts each kind and nothing is removed; the operator deletes them, each
+    through its own action, and switches then. The policy is stored as the org's ``naming``
+    override — one org modelling a single domain says nothing about the next, and on a shared
+    shard rewriting the deployment YAML here would reset every other org's catalog with it.
     """
     require_org_settings(request)  # REQ-1349
     from provisa.api.app import _rebuild_schemas, state
-    from provisa.api.app_loaders import _build_source_pools_and_enums
     from provisa.core import domain_policy
-    from provisa.core.config_loader import load_config, parse_config_dict
+    from provisa.core.models import Domain
     from provisa.core.org_settings import read_org_overrides, write_org_overrides
-    from provisa.core.repositories import role as role_repo
+    from provisa.core.repositories import domain as domain_repo
 
     body = await request.json()
     use_domains = body.get("use_domains", None)
@@ -674,7 +696,22 @@ async def set_domain_policy(request: Request):  # REQ-165, REQ-1266, REQ-1349
             "no org is bound to this request; sign in to an org first",
         )
 
-    # 1. Persist the org's policy. `None` means "inherit the deployment's", which is the same value
+    # 1. Refused while the org has a catalog, before anything is written.
+    async with tenant_db.acquire() as conn:
+        existing = await _catalog_counts(conn)
+    if any(existing.values()):
+        raise ApiError(
+            409,
+            "settings.domain_policy_catalog_exists",
+            "The domain policy cannot change while the organization has a catalog: "
+            f"{existing['tables']} table(s), {existing['sources']} source(s), "
+            f"{existing['domains']} domain(s). Delete them first.",
+            tables=existing["tables"],
+            sources=existing["sources"],
+            domains=existing["domains"],
+        )
+
+    # 2. Persist the org's policy. `None` means "inherit the deployment's", which is the same value
     #    that clears the override row outright.
     naming: dict | None = None
     if use_domains is not None:
@@ -687,46 +724,20 @@ async def set_domain_policy(request: Request):  # REQ-165, REQ-1266, REQ-1349
     )
     state.settings_overrides = await read_org_overrides(tenant_db)
 
-    # 2. Apply it to this org's policy scope before anything re-registers against it. A cleared
-    #    override (use_domains=None) resolves to the deployment's own naming block — the value the
-    #    org inherits — so the scope never reads as inert when the deployment namespaces domains.
+    # 3. Apply it to this org's policy scope. A cleared override (use_domains=None) resolves to
+    #    the deployment's own naming block — the value the org inherits — so the scope never reads
+    #    as inert when the deployment namespaces domains.
     deployment = read_config().get("naming", {}) or {}
-    effective = {
-        "use_domains": use_domains if use_domains is not None else deployment.get("use_domains"),
-        "default_domain": default_domain
-        if use_domains is False
-        else deployment.get("default_domain", "default"),
-    }
-    domain_policy.configure(effective["use_domains"], effective["default_domain"])
-
-    # 3. Purge THIS org's catalog: an empty config in replace mode deletes the sources, tables,
-    #    domains and relationships bound to the old policy. Same config→org sequence the import
-    #    surface runs — load into the org's tenant_db, then rebuild its pools and schemas.
-    async with tenant_db.acquire() as conn:
-        # Roles are org auth, not catalog: replace mode deletes every role absent from the config it
-        # is handed, so the org's own roles are read back and handed to it unchanged.
-        existing_roles = await role_repo.list_all(conn)
-    empty = parse_config_dict(
-        {
-            "sources": [],
-            "domains": [],
-            "tables": [],
-            "relationships": [],
-            "roles": existing_roles,
-            # The effective policy, not the raw override: load_config re-configures the scope from
-            # whatever naming block it is handed, so handing it the cleared form would undo step 2.
-            "naming": effective,
-        }
+    domain_policy.configure(
+        use_domains if use_domains is not None else deployment.get("use_domains"),
+        default_domain if use_domains is False else deployment.get("default_domain", "default"),
     )
-    async with tenant_db.acquire() as conn:
-        await load_config(
-            empty,
-            conn,
-            state.federation_engine,
-            replace=True,
-            catalog_names=state.source_catalogs,
-        )
-    await _build_source_pools_and_enums(empty)
+
+    # 4. A single-domain org's one domain is the deployment's own: seeded here so the first
+    #    registration under the new policy has it to sit in.
+    if domain_policy.single_domain():
+        async with tenant_db.acquire() as conn:
+            await domain_repo.upsert(conn, Domain(id=domain_policy.default_domain()), origin="seed")
     await _rebuild_schemas()
 
     return {"success": True, "use_domains": use_domains}

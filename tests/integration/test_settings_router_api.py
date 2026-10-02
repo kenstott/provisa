@@ -351,8 +351,7 @@ class TestRecentTraces:
 
 
 class TestDomainPolicyValidation:
-    """Validation-only branches — the success path is destructive (resets the live config)
-    and is exercised last, in its own class, so it doesn't disturb earlier tests."""
+    """Validation-only branches."""
 
     async def test_invalid_use_domains_type(self, client):
         resp = await client.post("/admin/domain-policy", json={"use_domains": "yes"})
@@ -365,25 +364,22 @@ class TestDomainPolicyValidation:
         assert resp.status_code == 400
 
 
-class TestDomainPolicyApply:
-    """Runs last: exercises the destructive success path of POST /admin/domain-policy."""
+class TestDomainPolicyRefusedWhileACatalogExists:
+    """REQ-1919: the switch is refused while the org has a catalog, and removes nothing."""
 
-    async def test_set_domain_policy_success(self, client):
-        resp = await client.post("/admin/domain-policy", json={"use_domains": True})
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["success"] is True
-        assert body["use_domains"] is True
-
-        # Config is now reset (no user sources/domains/tables/relationships) — verify via
-        # GraphQL. Sources still includes provisa's own bootstrap-internal sources (e.g.
-        # "__derived__", the OTel self-monitoring source), and domains still includes the
-        # internal "meta"/"ops" domains (config_export._INTERNAL_DOMAINS) — both are seeded
-        # independently of config.yaml and are not cleared by this endpoint.
-        gql_resp = await client.post(
-            "/admin/graphql", json={"query": "{ sources { id } domains { id } }"}
+    async def test_the_switch_is_refused_counting_what_exists(self, client):
+        before = await client.post(
+            "/admin/graphql", json={"query": "{ sources { id } domains { id } tables { id } }"}
         )
-        assert gql_resp.status_code == 200
-        gql_body = gql_resp.json()["data"]
-        assert "pet-store-pg" not in {s["id"] for s in gql_body["sources"]}
-        assert {"meta", "ops"} >= {d["id"] for d in gql_body["domains"]}
+        resp = await client.post("/admin/domain-policy", json={"use_domains": True})
+        assert resp.status_code == 409, resp.text
+        body = resp.json()
+        assert body["code"] == "settings.domain_policy_catalog_exists", body
+        params = body["params"]
+        assert params["tables"] > 0 and params["sources"] > 0 and params["domains"] > 0, body
+
+        after = await client.post(
+            "/admin/graphql", json={"query": "{ sources { id } domains { id } tables { id } }"}
+        )
+        assert after.json()["data"] == before.json()["data"]
+        assert "pet-store-pg" in {s["id"] for s in after.json()["data"]["sources"]}
