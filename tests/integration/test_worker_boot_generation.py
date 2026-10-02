@@ -336,7 +336,7 @@ def test_the_request_timeout_is_each_transports_own():
                 "limits.request_timeout"
             ]
             status, body, elapsed = _graphql_big()
-            assert status == 504, (status, body)
+            assert status == 504, (status, f"{elapsed:.1f}s", body)
             assert "graphql" in body and "limits.request_timeout" in body, body
             assert 1.5 < elapsed < 8.0
             assert _flight("SELECT id, region FROM sales.big").num_rows == 6_000_000
