@@ -20,8 +20,6 @@
     "roleTtlInvalidTtl": "请输入不小于 0 的整数秒数。",
     "roleTtlDuplicateRole": "该角色已在列表中。",
     "roleTtlFixErrors": "保存前请修正角色 TTL 行。",
-    "preferMaterializedLabel": "优先物化",
-    "preferMaterializedHelp": "强制将此表物化到存储中并从那里参与联邦查询，而不是实时访问。当连接器不适合此表的查询时使用。继承 = 遵循数据源级默认值。",
     "loadProtectedLabel": "负载保护",
     "loadProtectedHelp": "保护对负载敏感的数据源：完全通过计划快照提供此表的数据，使查询永不触达数据源。至少需要一个刷新门控——非高峰时段窗口、缓存 TTL 节奏或探测式变更信号。继承 = 遵循数据源级默认值。",
     "offPeakWindowLabel": "非高峰时段窗口",
@@ -38,7 +36,7 @@
     "descriptionPlaceholder": "显示在 SDL 文档中",
     "materializedViewLabel": "物化视图",
     "materializedViewDesc": "（CTAS 写入 mv_cache，定期刷新）",
-    "materializedViewHelp": "按下面的刷新间隔将此视图的 SQL 预计算到存储的缓存表中（CTAS 写入 mv_cache）。区别于上面的“优先物化”——后者是将原始源表拉入存储，而这里物化的是 Provisa 定义的视图。",
+    "materializedViewHelp": "按下面的刷新间隔将此视图的 SQL 预计算到存储的缓存表中（CTAS 写入 mv_cache）。区别于上面的“复制”——后者是在存储中保留一份原始源表的拷贝，而这里物化的是 Provisa 定义的视图。",
     "refreshIntervalLabel": "刷新间隔（秒）",
     "refreshIntervalHelp": "物化视图重建的频率（CTAS 写入 mv_cache）。决定查询所读取的存储表的新鲜度。区别于缓存 TTL（缓存查询结果）和轮询间隔（控制向订阅者推送实时变更流的节奏）。",
     "nrtDebounceTitle": "NRT 防抖：上游的一波密集变更合并为一次重算。静默 = 触发前的平静秒数（0 = 实时）。最大延迟 = 持续变更下的硬性陈旧上限。",
@@ -232,7 +230,7 @@
     "loadManagementTitle": "负载管理与时效性",
     "loadManagementHelp": "每位读者所需数据的时效性，与平台及上游数据源的负载相权衡。",
     "loadManagementInfoLabel": "关于负载管理与时效性",
-    "loadManagementInfo": "在每位读者数据的时效性与平台及上游数据源的负载之间取得平衡。理想情况下由上游自行管理负载；运维人员保护平台，并在上游无法自我保护时保护上游。这些设置是运维人员设定的下限——任何查询或请求提示都无法获得比其允许的更新的数据，也无法给数据源带来更多负载。读者只能选择为速度接受更旧的数据。引擎实时读取的数据源会忽略 TTL 设置，除非设置了“优先物化”或“负载保护”。",
+    "loadManagementInfo": "在每位读者数据的时效性与平台及上游数据源的负载之间取得平衡。理想情况下由上游自行管理负载；运维人员保护平台，并在上游无法自我保护时保护上游。这些设置是运维人员设定的下限——任何查询或请求提示都无法获得比其允许的更新的数据，也无法给数据源带来更多负载。读者只能选择为速度接受更旧的数据。引擎实时读取的表会忽略 TTL 设置；当该表由其副本提供时（“复制”或“负载保护”），这些设置才生效。",
     "cacheTtlRequiredForSignal": "变更信号 {{signal}} 根据缓存 TTL 判断数据是否过期，因此请在此处或数据源上设置缓存 TTL。",
     "loadManagementFixErrors": "保存前请修正“负载管理与时效性”设置。"
   }

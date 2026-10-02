@@ -268,7 +268,7 @@
       "source_naming_updated": "Convención de nomenclatura actualizada para el origen '{{source}}'",
       "source_no_connection": "el origen '{{source}}' no tiene conexión activa",
       "source_not_found": "No se encontró el origen '{{source}}'",
-      "source_prefer_materialized_set": "prefer_materialized establecido para el origen '{{source}}'",
+      "source_replicate_set": "Replicar establecido para el origen '{{source}}'",
       "source_renamed": "Origen renombrado '{{old}}' → '{{new}}'",
       "source_type_not_sqlite": "El tipo de origen '{{type}}' no es sqlite",
       "source_updated": "Origen '{{source}}' actualizado",
@@ -278,7 +278,7 @@
       "table_load_protection_set": "protección de carga establecida para la tabla {{table}}",
       "table_naming_updated": "Convención de nomenclatura actualizada para la tabla {{table}}",
       "table_not_found": "No se encontró la tabla {{table}}",
-      "table_prefer_materialized_set": "prefer_materialized establecido para la tabla {{table}}",
+      "table_replicate_set": "Replicar establecido para la tabla {{table}}",
       "table_registered": "Tabla '{{table}}' registrada (id={{id}})",
       "table_updated": "Tabla '{{table}}' actualizada (id={{id}})",
       "task_deleted": "Tarea '{{task}}' eliminada",
@@ -294,7 +294,9 @@
       "view_spans_sources": "la vista abarca varios orígenes: {{sources}}",
       "webhook_approved": "Webhook '{{webhook}}' aprobado",
       "webhook_name_required": "webhook_name es obligatorio para un desencadenador de webhook",
-      "webhook_not_found": "No se encontró el webhook '{{webhook}}'"
+      "webhook_not_found": "No se encontró el webhook '{{webhook}}'",
+      "replicate_invalid": "Replicar debe ser «Predeterminado», «Nunca», «Siempre» o un umbral superior a 0; se recibió {{value}}",
+      "replicate_contradicts_load_protected": "La protección de carga no puede combinarse con Replicar = «Nunca»: una tabla protegida contra carga nunca se lee en vivo"
     },
     "security": {
       "unknown_mode": "modo de seguridad desconocido: '{{mode}}'"

@@ -73,7 +73,7 @@ function table(
     description: null,
     cacheTtl: null,
     roleTtl: [],
-    preferMaterialized: null,
+    replicate: null,
     loadProtected: null,
     offPeakWindow: null,
     offPeakTz: null,

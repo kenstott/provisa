@@ -14,6 +14,11 @@
 
 import type { RegisteredTable, RoleTtl, Source } from "../../types/admin";
 import { ttlSignalMissingCacheTtl } from "../sources/loadManagement";
+import {
+  REPLICATE_ALWAYS,
+  resolvedReplicate,
+  saysReplicated,
+} from "../../components/admin/replicate";
 
 /** The per-row validation error key for a role TTL list, or null when the row is valid. */
 export function roleTtlRowError(rows: RoleTtl[], index: number): string | null {
@@ -32,22 +37,25 @@ export function roleTtlValid(rows: RoleTtl[]): boolean {
 
 /**
  * True when a table's effective change signal (its own, else its source's) is ttl/ttl_probe, no
- * landing cache_ttl resolves (table, else source — REQ-930), and the table lands: materialize, or
- * Prefer Materialized / Load Protected (its own, else its source's). Such a save is refused.
+ * landing cache_ttl resolves (table, else source — REQ-930), and the settings say the table is
+ * replicated: materialize, a source floored as a whole (its Replicate = Always or its Load
+ * Protected), or the table's resolved Replicate (Always or a Hot threshold) / Load Protected.
+ * Such a save is refused, as the server's lands_from_config judges it.
  * row_materialize is not exposed to the admin UI, so that case is enforced by the server alone.
  */
 export function tableTtlSignalError(
-  table: Pick<
-    RegisteredTable,
-    "changeSignal" | "materialize" | "preferMaterialized" | "loadProtected"
-  >,
-  source: Pick<Source, "changeSignal" | "preferMaterialized" | "loadProtected"> | undefined,
+  table: Pick<RegisteredTable, "changeSignal" | "materialize" | "replicate" | "loadProtected">,
+  source: Pick<Source, "changeSignal" | "replicate" | "loadProtected"> | undefined,
   resolvedCacheTtl: number | null,
 ): boolean {
   const signal = table.changeSignal ?? source?.changeSignal ?? null;
+  const sourceFloored = (source?.loadProtected ?? false) || source?.replicate === REPLICATE_ALWAYS;
   const landed =
     table.materialize ||
-    (table.preferMaterialized ?? source?.preferMaterialized ?? false) ||
-    (table.loadProtected ?? source?.loadProtected ?? false);
+    sourceFloored ||
+    saysReplicated(
+      resolvedReplicate(table.replicate, source?.replicate),
+      table.loadProtected ?? source?.loadProtected ?? false,
+    );
   return ttlSignalMissingCacheTtl(signal, resolvedCacheTtl, landed);
 }

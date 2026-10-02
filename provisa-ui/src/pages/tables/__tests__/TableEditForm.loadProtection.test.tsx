@@ -39,7 +39,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     description: null,
     cacheTtl: null,
     roleTtl: [],
-    preferMaterialized: null,
+    replicate: null,
     loadProtected: null,
     offPeakWindow: null,
     offPeakTz: null,
@@ -140,7 +140,7 @@ describe("TableEditForm — load protection + refresh-policy summary (REQ-1141/1
         refreshPolicySummary: {
           text: "Live — reached directly, always fresh.",
           serving: "live",
-          warning: "prefer_materialized has no effect on this engine: served live.",
+          warning: "This setting has no effect on this engine: the source is served live.",
         },
       }),
     );
@@ -161,6 +161,16 @@ describe("TableEditForm — load protection + refresh-policy summary (REQ-1141/1
     expect(setEditingTable).toHaveBeenCalledWith(
       expect.objectContaining({ offPeakWindow: "00:00-05:00" }),
     );
+  });
+
+  it("edits Replicate through the shared drop-down and keeps a non-standard stored value", () => {
+    const setEditingTable = renderForm(makeTable({ replicate: 750 }));
+    const select = screen.getByTestId("table-replicate-select");
+    expect(select).toHaveValue("Hot-750");
+    fireEvent.click(select);
+    const listbox = document.getElementById(select.getAttribute("aria-controls") as string);
+    fireEvent.click(within(listbox as HTMLElement).getByText("Never"));
+    expect(setEditingTable).toHaveBeenLastCalledWith(expect.objectContaining({ replicate: -1 }));
   });
 
   it("hides the off-peak window/zone when load protection resolves off", () => {

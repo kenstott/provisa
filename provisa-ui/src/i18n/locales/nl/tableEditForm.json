@@ -20,8 +20,6 @@
     "roleTtlInvalidTtl": "Voer een geheel aantal seconden in, 0 of meer.",
     "roleTtlDuplicateRole": "Deze rol staat al in de lijst.",
     "roleTtlFixErrors": "Corrigeer de rol-TTL-regels voordat u opslaat.",
-    "preferMaterializedLabel": "Voorkeur voor materialisatie",
-    "preferMaterializedHelp": "Dwing af dat deze tabel in de store wordt gematerialiseerd en van daaruit wordt gefedereerd, in plaats van live te worden benaderd. Gebruik dit wanneer de connector slecht past bij de query's op deze tabel. Overnemen = volg de standaard op bronniveau.",
     "loadProtectedLabel": "Belastingbeveiligd",
     "loadProtectedHelp": "Bescherm een belastinggevoelige bron: bedien deze tabel volledig vanuit een geplande snapshot, zodat query's de bron nooit raken. Vereist ten minste één verversingspoort — een dalurenvenster, een cache-TTL-cadans of een sonderend wijzigingssignaal. Overnemen = volg de standaard op bronniveau.",
     "offPeakWindowLabel": "Dalurenvenster",
@@ -38,7 +36,7 @@
     "descriptionPlaceholder": "Verschijnt in SDL-documentatie",
     "materializedViewLabel": "Gematerialiseerde view",
     "materializedViewDesc": "(CTAS naar mv_cache, periodiek ververst)",
-    "materializedViewHelp": "Bereken de SQL van DEZE view vooraf naar een opgeslagen cachetabel (CTAS naar mv_cache) volgens het onderstaande verversingsinterval. Anders dan 'Voorkeur voor materialisatie' hierboven, dat een ruwe brontabel naar de store haalt — dit materialiseert een door Provisa gedefinieerde view.",
+    "materializedViewHelp": "Bereken de SQL van DEZE view vooraf naar een opgeslagen cachetabel (CTAS naar mv_cache) volgens het onderstaande verversingsinterval. Anders dan 'Repliceren' hierboven, dat een kopie van een ruwe brontabel in de store bewaart — dit materialiseert een door Provisa gedefinieerde view.",
     "refreshIntervalLabel": "Verversingsinterval (seconden)",
     "refreshIntervalHelp": "Hoe vaak de gematerialiseerde view opnieuw wordt opgebouwd (CTAS naar mv_cache). Bepaalt de versheid van de opgeslagen tabel die QUERY'S lezen. Anders dan Cache-TTL (dat queryresultaten cachet) en dan het pollinterval (dat het tempo van de live wijzigingsstroom naar abonnees bepaalt).",
     "nrtDebounceTitle": "NRT-debounce: een reeks upstream-wijzigingen wordt samengevoegd tot één herberekening. Stil = seconden rust voordat wordt gestart (0 = realtime). Max. vertraging = de harde limiet op veroudering bij continue wijzigingen.",
@@ -232,7 +230,7 @@
     "loadManagementTitle": "Belastingbeheer en actualiteit",
     "loadManagementHelp": "Hoe actueel de gegevens voor elke lezer moeten zijn, afgewogen tegen de belasting van het platform en de upstreambronnen.",
     "loadManagementInfoLabel": "Over belastingbeheer en actualiteit",
-    "loadManagementInfo": "Weegt af hoe actueel de gegevens van elke lezer zijn tegen de belasting van het platform en de upstreambronnen. Idealiter beheert de upstreambron haar eigen belasting; de operator beschermt het platform, en de bron wanneer die zichzelf niet kan beschermen. Deze instellingen zijn de ondergrens van de operator: geen query of verzoekhint kan actuelere gegevens krijgen of een bron zwaarder belasten dan zij toestaan. Lezers kunnen alleen kiezen om voor snelheid oudere gegevens te accepteren. Een bron die de engine live leest, negeert de TTL-instellingen tenzij 'Gematerialiseerd voorkeur' of 'Belastingbeveiligd' is ingesteld.",
+    "loadManagementInfo": "Weegt af hoe actueel de gegevens van elke lezer zijn tegen de belasting van het platform en de upstreambronnen. Idealiter beheert de upstreambron haar eigen belasting; de operator beschermt het platform, en de bron wanneer die zichzelf niet kan beschermen. Deze instellingen zijn de ondergrens van de operator: geen query of verzoekhint kan actuelere gegevens krijgen of een bron zwaarder belasten dan zij toestaan. Lezers kunnen alleen kiezen om voor snelheid oudere gegevens te accepteren. Een tabel die de engine live leest, negeert de TTL-instellingen; ze gelden zodra de tabel vanuit haar replica wordt bediend ('Repliceren' of 'Belastingbeveiligd').",
     "cacheTtlRequiredForSignal": "Het wijzigingssignaal {{signal}} beoordeelt de actualiteit op basis van de Cache-TTL; stel dus hier of op de bron een Cache-TTL in.",
     "loadManagementFixErrors": "Corrigeer de instellingen voor Belastingbeheer en actualiteit voordat u opslaat."
   }

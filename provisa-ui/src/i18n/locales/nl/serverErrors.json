@@ -268,7 +268,7 @@
       "source_naming_updated": "Naamgevingsconventie bijgewerkt voor bron '{{source}}'",
       "source_no_connection": "bron '{{source}}' heeft geen actieve verbinding",
       "source_not_found": "Bron '{{source}}' niet gevonden",
-      "source_prefer_materialized_set": "prefer_materialized ingesteld voor bron '{{source}}'",
+      "source_replicate_set": "Repliceren ingesteld voor bron '{{source}}'",
       "source_renamed": "Bron hernoemd '{{old}}' → '{{new}}'",
       "source_type_not_sqlite": "Brontype '{{type}}' is geen sqlite",
       "source_updated": "Bron '{{source}}' bijgewerkt",
@@ -278,7 +278,7 @@
       "table_load_protection_set": "belastingsbescherming ingesteld voor tabel {{table}}",
       "table_naming_updated": "Naamgevingsconventie bijgewerkt voor tabel {{table}}",
       "table_not_found": "Tabel {{table}} niet gevonden",
-      "table_prefer_materialized_set": "prefer_materialized ingesteld voor tabel {{table}}",
+      "table_replicate_set": "Repliceren ingesteld voor tabel {{table}}",
       "table_registered": "Tabel '{{table}}' geregistreerd (id={{id}})",
       "table_updated": "Tabel '{{table}}' bijgewerkt (id={{id}})",
       "task_deleted": "Taak '{{task}}' verwijderd",
@@ -294,7 +294,9 @@
       "view_spans_sources": "view omvat meerdere bronnen: {{sources}}",
       "webhook_approved": "Webhook '{{webhook}}' goedgekeurd",
       "webhook_name_required": "webhook_name is vereist voor een webhooktrigger",
-      "webhook_not_found": "Webhook '{{webhook}}' niet gevonden"
+      "webhook_not_found": "Webhook '{{webhook}}' niet gevonden",
+      "replicate_invalid": "Repliceren moet 'Standaard', 'Nooit', 'Altijd' of een drempel boven 0 zijn; ontvangen: {{value}}",
+      "replicate_contradicts_load_protected": "Belastingsbescherming kan niet worden gecombineerd met Repliceren = 'Nooit': een tabel met belastingsbescherming wordt nooit live gelezen"
     },
     "security": {
       "unknown_mode": "onbekende beveiligingsmodus '{{mode}}'"

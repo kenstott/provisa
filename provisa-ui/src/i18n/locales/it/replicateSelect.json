@@ -1,0 +1,12 @@
+{
+  "replicateSelect": {
+    "label": "Replicare",
+    "helpTable": "Quando questa tabella viene servita dalla sua replica: una copia conservata nello store del motore e aggiornata secondo le impostazioni di tempestività della tabella (TTL, controllo di aggiornamento, flusso di modifiche). Non è un flusso continuo di modifiche. «Predefinito» usa il valore dell'origine oppure, se l'origine non ne ha, la soglia globale. Solo «Sempre» è una garanzia; «Predefinito», «Mai» e le voci Hot si applicano per quanto possibile.",
+    "helpSource": "Quando le tabelle di questa origine vengono servite dalle loro repliche: copie conservate nello store del motore e aggiornate secondo le impostazioni di tempestività di ciascuna tabella. Una tabella senza un proprio valore usa questo. «Predefinito» applica la soglia globale. Solo «Sempre» è una garanzia; «Predefinito», «Mai» e le voci Hot si applicano per quanto possibile.",
+    "default": "Predefinito",
+    "never": "Mai",
+    "always": "Sempre",
+    "hot": "Hot-{{threshold}}",
+    "neverWithLoadProtection": "«Mai» non può essere combinato con la protezione dal carico: una tabella protetta dal carico non viene mai letta in tempo reale."
+  }
+}

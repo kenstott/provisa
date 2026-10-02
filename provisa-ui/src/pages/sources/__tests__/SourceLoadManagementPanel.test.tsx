@@ -13,7 +13,7 @@
 
 import { useState } from "react";
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "../../../test-utils/render";
+import { render, screen, fireEvent, within } from "../../../test-utils/render";
 import userEvent from "@testing-library/user-event";
 import { SourceLoadManagementPanel } from "../SourceLoadManagementPanel";
 import type { SourceFormState } from "../SourceFormFields";
@@ -29,7 +29,7 @@ const FORM: SourceFormState = {
   gqlNamingConvention: "",
   cacheTtl: "60",
   cacheEnabled: true,
-  preferMaterialized: false,
+  replicate: null,
   loadProtected: false,
   offPeakWindow: "",
   offPeakTz: "UTC",
@@ -98,7 +98,7 @@ describe("SourceLoadManagementPanel", () => {
     const icon = screen.getByTestId("source-load-management-panel-info");
     await userEvent.hover(icon);
     expect(
-      await screen.findByText(/A source the engine reads live ignores the TTL settings/),
+      await screen.findByText(/A table the engine reads live ignores the TTL settings/),
     ).toBeInTheDocument();
     await userEvent.click(icon);
     expect(toggle).toHaveAttribute("aria-expanded", "false");
@@ -118,6 +118,37 @@ describe("SourceLoadManagementPanel", () => {
     expect(onForm).toHaveBeenLastCalledWith(expect.objectContaining({ maxLiveConcurrency: "4" }));
   });
 
+  it("sets Replicate through the shared drop-down, in place of the old checkbox", async () => {
+    const onForm = vi.fn();
+    render(<Harness onForm={onForm} />);
+    await userEvent.click(screen.getByTestId("source-load-management-panel-toggle"));
+    const select = await screen.findByTestId("source-replicate-select");
+    expect(select).toHaveValue("Default");
+    expect(screen.queryByTestId("prefer-materialized-checkbox")).toBeNull();
+    fireEvent.click(select);
+    const listbox = document.getElementById(select.getAttribute("aria-controls") as string);
+    fireEvent.click(within(listbox as HTMLElement).getByText("Always"));
+    expect(onForm).toHaveBeenLastCalledWith(expect.objectContaining({ replicate: 0 }));
+  });
+
+  it("flags Never on a load-protected source", async () => {
+    function Contradictory() {
+      const [form, setForm] = useState<SourceFormState>({
+        ...FORM,
+        replicate: -1,
+        loadProtected: true,
+      });
+      return <SourceLoadManagementPanel form={form} setForm={setForm} />;
+    }
+    render(<Contradictory />);
+    await userEvent.click(screen.getByTestId("source-load-management-panel-toggle"));
+    expect(
+      await screen.findByText(
+        "Never cannot be combined with load protection: a load-protected table is never read live.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("flags a sentinel path with an unsupported scheme", async () => {
     render(<Harness />);
     await userEvent.click(screen.getByTestId("source-load-management-panel-toggle"));
@@ -132,7 +163,7 @@ describe("SourceLoadManagementPanel", () => {
       const [form, setForm] = useState<SourceFormState>({
         ...FORM,
         cacheTtl: "",
-        preferMaterialized: true,
+        replicate: 0,
       });
       return <SourceLoadManagementPanel form={form} setForm={setForm} />;
     }

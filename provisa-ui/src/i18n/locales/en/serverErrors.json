@@ -268,7 +268,7 @@
       "source_naming_updated": "Naming convention updated for source '{{source}}'",
       "source_no_connection": "source '{{source}}' has no active connection",
       "source_not_found": "Source '{{source}}' not found",
-      "source_prefer_materialized_set": "prefer_materialized set for source '{{source}}'",
+      "source_replicate_set": "Replicate set for source '{{source}}'",
       "source_renamed": "Source renamed '{{old}}' → '{{new}}'",
       "source_type_not_sqlite": "Source type '{{type}}' is not sqlite",
       "source_updated": "Source '{{source}}' updated",
@@ -278,7 +278,7 @@
       "table_load_protection_set": "load protection set for table {{table}}",
       "table_naming_updated": "Naming convention updated for table {{table}}",
       "table_not_found": "Table {{table}} not found",
-      "table_prefer_materialized_set": "prefer_materialized set for table {{table}}",
+      "table_replicate_set": "Replicate set for table {{table}}",
       "table_registered": "Table '{{table}}' registered (id={{id}})",
       "table_updated": "Table '{{table}}' updated (id={{id}})",
       "task_deleted": "Task '{{task}}' deleted",
@@ -294,7 +294,9 @@
       "view_spans_sources": "view spans multiple sources: {{sources}}",
       "webhook_approved": "Approved webhook '{{webhook}}'",
       "webhook_name_required": "webhook_name is required for a webhook trigger",
-      "webhook_not_found": "Webhook '{{webhook}}' not found"
+      "webhook_not_found": "Webhook '{{webhook}}' not found",
+      "replicate_invalid": "Replicate must be Default, Never, Always or a threshold above 0; got {{value}}",
+      "replicate_contradicts_load_protected": "Load protection cannot be combined with Replicate = Never: a load-protected table is never read live"
     },
     "security": {
       "unknown_mode": "unknown security mode '{{mode}}'"

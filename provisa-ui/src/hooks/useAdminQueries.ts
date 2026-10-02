@@ -90,8 +90,8 @@ import {
   UpdateSourceCache,
   UpdateTableCache,
   ForceRegen,
-  UpdateSourcePreferMaterialized,
-  UpdateTablePreferMaterialized,
+  UpdateSourceReplicate,
+  UpdateTableReplicate,
   UpdateSourceLoadProtection,
   UpdateTableLoadProtection,
   UpdateSourceNaming,
@@ -319,7 +319,7 @@ export interface RefreshPolicyPreviewVars {
   schemaName: string;
   tableName: string;
   cacheTtl?: number | null;
-  preferMaterialized?: boolean | null;
+  replicate?: number | null;
   loadProtected?: boolean | null;
   offPeakWindow?: string | null;
   offPeakTz?: string | null;
@@ -701,16 +701,16 @@ export function useForceRegen() {
   };
 }
 
-export function useUpdateSourcePreferMaterialized() {
-  const [updateSourcePreferMaterialized, { loading }] = useMutation<{
-    updateSourcePreferMaterialized: MutationResult;
-  }>(UpdateSourcePreferMaterialized);
+export function useUpdateSourceReplicate() {
+  const [updateSourceReplicate, { loading }] = useMutation<{
+    updateSourceReplicate: MutationResult;
+  }>(UpdateSourceReplicate);
   return {
-    updateSourcePreferMaterialized: async (sourceId: string, preferMaterialized: boolean) => {
-      const result = await updateSourcePreferMaterialized({
-        variables: { sourceId, preferMaterialized },
+    updateSourceReplicate: async (sourceId: string, replicate: number | null) => {
+      const result = await updateSourceReplicate({
+        variables: { sourceId, replicate },
       });
-      return (result.data?.updateSourcePreferMaterialized ?? {
+      return (result.data?.updateSourceReplicate ?? {
         success: false,
         message: "",
       }) as MutationResult;
@@ -719,16 +719,16 @@ export function useUpdateSourcePreferMaterialized() {
   };
 }
 
-export function useUpdateTablePreferMaterialized() {
-  const [updateTablePreferMaterialized, { loading }] = useMutation<{
-    updateTablePreferMaterialized: MutationResult;
-  }>(UpdateTablePreferMaterialized);
+export function useUpdateTableReplicate() {
+  const [updateTableReplicate, { loading }] = useMutation<{
+    updateTableReplicate: MutationResult;
+  }>(UpdateTableReplicate);
   return {
-    updateTablePreferMaterialized: async (tableId: number, preferMaterialized: boolean | null) => {
-      const result = await updateTablePreferMaterialized({
-        variables: { tableId, preferMaterialized },
+    updateTableReplicate: async (tableId: number, replicate: number | null) => {
+      const result = await updateTableReplicate({
+        variables: { tableId, replicate },
       });
-      return (result.data?.updateTablePreferMaterialized ?? {
+      return (result.data?.updateTableReplicate ?? {
         success: false,
         message: "",
       }) as MutationResult;

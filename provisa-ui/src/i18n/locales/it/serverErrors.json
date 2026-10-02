@@ -268,7 +268,7 @@
       "source_naming_updated": "Convenzione di denominazione aggiornata per l'origine '{{source}}'",
       "source_no_connection": "l'origine '{{source}}' non ha una connessione attiva",
       "source_not_found": "Origine '{{source}}' non trovata",
-      "source_prefer_materialized_set": "prefer_materialized impostato per l'origine '{{source}}'",
+      "source_replicate_set": "Replicare impostato per l'origine '{{source}}'",
       "source_renamed": "Origine rinominata '{{old}}' → '{{new}}'",
       "source_type_not_sqlite": "Il tipo di origine '{{type}}' non è sqlite",
       "source_updated": "Origine '{{source}}' aggiornata",
@@ -278,7 +278,7 @@
       "table_load_protection_set": "protezione dal carico impostata per la tabella {{table}}",
       "table_naming_updated": "Convenzione di denominazione aggiornata per la tabella {{table}}",
       "table_not_found": "Tabella {{table}} non trovata",
-      "table_prefer_materialized_set": "prefer_materialized impostato per la tabella {{table}}",
+      "table_replicate_set": "Replicare impostato per la tabella {{table}}",
       "table_registered": "Tabella '{{table}}' registrata (id={{id}})",
       "table_updated": "Tabella '{{table}}' aggiornata (id={{id}})",
       "task_deleted": "Attività '{{task}}' eliminata",
@@ -294,7 +294,9 @@
       "view_spans_sources": "la vista copre più origini: {{sources}}",
       "webhook_approved": "Webhook '{{webhook}}' approvato",
       "webhook_name_required": "webhook_name è obbligatorio per un trigger webhook",
-      "webhook_not_found": "Webhook '{{webhook}}' non trovato"
+      "webhook_not_found": "Webhook '{{webhook}}' non trovato",
+      "replicate_invalid": "Replicare deve essere «Predefinito», «Mai», «Sempre» o una soglia superiore a 0; ricevuto {{value}}",
+      "replicate_contradicts_load_protected": "La protezione dal carico non può essere combinata con Replicare = «Mai»: una tabella protetta dal carico non viene mai letta in tempo reale"
     },
     "security": {
       "unknown_mode": "modalità di sicurezza '{{mode}}' sconosciuta"

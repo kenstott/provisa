@@ -268,7 +268,7 @@
       "source_naming_updated": "स्रोत '{{source}}' के लिए नामकरण परंपरा अपडेट की गई",
       "source_no_connection": "स्रोत '{{source}}' का कोई सक्रिय कनेक्शन नहीं है",
       "source_not_found": "स्रोत '{{source}}' नहीं मिला",
-      "source_prefer_materialized_set": "स्रोत '{{source}}' के लिए prefer_materialized सेट किया गया",
+      "source_replicate_set": "स्रोत '{{source}}' के लिए रेप्लिकेट सेट किया गया",
       "source_renamed": "स्रोत का नाम बदला गया '{{old}}' → '{{new}}'",
       "source_type_not_sqlite": "स्रोत प्रकार '{{type}}' sqlite नहीं है",
       "source_updated": "स्रोत '{{source}}' अपडेट किया गया",
@@ -278,7 +278,7 @@
       "table_load_protection_set": "टेबल {{table}} के लिए लोड सुरक्षा सेट की गई",
       "table_naming_updated": "टेबल {{table}} के लिए नामकरण परंपरा अपडेट की गई",
       "table_not_found": "टेबल {{table}} नहीं मिली",
-      "table_prefer_materialized_set": "टेबल {{table}} के लिए prefer_materialized सेट किया गया",
+      "table_replicate_set": "टेबल {{table}} के लिए रेप्लिकेट सेट किया गया",
       "table_registered": "टेबल '{{table}}' पंजीकृत हुई (id={{id}})",
       "table_updated": "टेबल '{{table}}' अपडेट हुई (id={{id}})",
       "task_deleted": "टास्क '{{task}}' हटाया गया",
@@ -294,7 +294,9 @@
       "view_spans_sources": "व्यू कई स्रोतों में फैला है: {{sources}}",
       "webhook_approved": "वेबहुक '{{webhook}}' अनुमोदित किया गया",
       "webhook_name_required": "वेबहुक ट्रिगर के लिए webhook_name आवश्यक है",
-      "webhook_not_found": "वेबहुक '{{webhook}}' नहीं मिला"
+      "webhook_not_found": "वेबहुक '{{webhook}}' नहीं मिला",
+      "replicate_invalid": "रेप्लिकेट 'डिफ़ॉल्ट', 'कभी नहीं', 'हमेशा' या 0 से बड़ा थ्रेशोल्ड होना चाहिए; मिला {{value}}",
+      "replicate_contradicts_load_protected": "लोड सुरक्षा को रेप्लिकेट = 'कभी नहीं' के साथ नहीं जोड़ा जा सकता: लोड-सुरक्षित टेबल कभी लाइव नहीं पढ़ी जाती"
     },
     "security": {
       "unknown_mode": "अज्ञात सुरक्षा मोड '{{mode}}'"

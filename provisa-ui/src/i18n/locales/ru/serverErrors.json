@@ -268,7 +268,7 @@
       "source_naming_updated": "Соглашение об именовании обновлено для источника '{{source}}'",
       "source_no_connection": "источник '{{source}}' не имеет активного подключения",
       "source_not_found": "Источник '{{source}}' не найден",
-      "source_prefer_materialized_set": "prefer_materialized задан для источника '{{source}}'",
+      "source_replicate_set": "Репликация задана для источника '{{source}}'",
       "source_renamed": "Источник переименован '{{old}}' → '{{new}}'",
       "source_type_not_sqlite": "Тип источника '{{type}}' не является sqlite",
       "source_updated": "Источник '{{source}}' обновлен",
@@ -278,7 +278,7 @@
       "table_load_protection_set": "защита от нагрузки задана для таблицы {{table}}",
       "table_naming_updated": "Соглашение об именовании обновлено для таблицы {{table}}",
       "table_not_found": "Таблица {{table}} не найдена",
-      "table_prefer_materialized_set": "prefer_materialized задан для таблицы {{table}}",
+      "table_replicate_set": "Репликация задана для таблицы {{table}}",
       "table_registered": "Таблица '{{table}}' зарегистрирована (id={{id}})",
       "table_updated": "Таблица '{{table}}' обновлена (id={{id}})",
       "task_deleted": "Задача '{{task}}' удалена",
@@ -294,7 +294,9 @@
       "view_spans_sources": "представление охватывает несколько источников: {{sources}}",
       "webhook_approved": "Вебхук '{{webhook}}' одобрен",
       "webhook_name_required": "для триггера-вебхука требуется webhook_name",
-      "webhook_not_found": "Вебхук '{{webhook}}' не найден"
+      "webhook_not_found": "Вебхук '{{webhook}}' не найден",
+      "replicate_invalid": "Репликация должна быть «По умолчанию», «Никогда», «Всегда» или порогом больше 0; получено {{value}}",
+      "replicate_contradicts_load_protected": "Защиту от нагрузки нельзя сочетать с репликацией = «Никогда»: таблица с защитой от нагрузки никогда не читается напрямую"
     },
     "security": {
       "unknown_mode": "неизвестный режим безопасности '{{mode}}'"

@@ -72,7 +72,7 @@ query SourcesQuery {
     dialect
     cacheEnabled
     cacheTtl
-    preferMaterialized
+    replicate
     loadProtected
     offPeakWindow
     offPeakTz
@@ -177,7 +177,7 @@ query TablesQuery {
       role
       ttl
     }
-    preferMaterialized
+    replicate
     loadProtected
     offPeakWindow
     offPeakTz
@@ -267,7 +267,7 @@ query RefreshPolicyPreview(
   $schemaName: String!
   $tableName: String!
   $cacheTtl: Int
-  $preferMaterialized: Boolean
+  $replicate: Int
   $loadProtected: Boolean
   $offPeakWindow: String
   $offPeakTz: String
@@ -279,7 +279,7 @@ query RefreshPolicyPreview(
     schemaName: $schemaName
     tableName: $tableName
     cacheTtl: $cacheTtl
-    preferMaterialized: $preferMaterialized
+    replicate: $replicate
     loadProtected: $loadProtected
     offPeakWindow: $offPeakWindow
     offPeakTz: $offPeakTz
@@ -891,14 +891,14 @@ mutation ForceRegen($tableId: Int!, $reason: String!) {
   }
 }
 
-mutation UpdateSourcePreferMaterialized($sourceId: String!, $preferMaterialized: Boolean!) {
-  updateSourcePreferMaterialized(sourceId: $sourceId, preferMaterialized: $preferMaterialized) {
+mutation UpdateSourceReplicate($sourceId: String!, $replicate: Int) {
+  updateSourceReplicate(sourceId: $sourceId, replicate: $replicate) {
     ...MutationResult
   }
 }
 
-mutation UpdateTablePreferMaterialized($tableId: Int!, $preferMaterialized: Boolean) {
-  updateTablePreferMaterialized(tableId: $tableId, preferMaterialized: $preferMaterialized) {
+mutation UpdateTableReplicate($tableId: Int!, $replicate: Int) {
+  updateTableReplicate(tableId: $tableId, replicate: $replicate) {
     ...MutationResult
   }
 }

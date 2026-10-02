@@ -20,8 +20,6 @@
     "roleTtlInvalidTtl": "Enter a whole number of seconds, 0 or more.",
     "roleTtlDuplicateRole": "This role is already listed.",
     "roleTtlFixErrors": "Fix the Role TTL rows before saving.",
-    "preferMaterializedLabel": "Prefer Materialized",
-    "preferMaterializedHelp": "Force this table to be materialized into the store and federated from there, instead of reached live. Use when the connector is a poor fit for this table's queries. Inherit = follow the source-level default.",
     "loadProtectedLabel": "Load Protected",
     "loadProtectedHelp": "Shield a load-sensitive source: serve this table entirely from a scheduled snapshot so queries never hit the source. Requires at least one refresh gate — an off-peak window, a cache TTL cadence, or a probing change signal. Inherit = follow the source-level default.",
     "offPeakWindowLabel": "Off-Peak Window",
@@ -38,7 +36,7 @@
     "descriptionPlaceholder": "Appears in SDL docs",
     "materializedViewLabel": "Materialized View",
     "materializedViewDesc": "(CTAS into mv_cache, refreshed periodically)",
-    "materializedViewHelp": "Precompute THIS view's SQL into a stored cache table (CTAS into mv_cache) on the Refresh Interval below. Distinct from 'Prefer Materialized' above, which pulls a raw source table into the store — this materializes a Provisa-defined view.",
+    "materializedViewHelp": "Precompute THIS view's SQL into a stored cache table (CTAS into mv_cache) on the Refresh Interval below. Distinct from 'Replicate' above, which keeps a copy of a raw source table in the store — this materializes a Provisa-defined view.",
     "refreshIntervalLabel": "Refresh Interval (seconds)",
     "refreshIntervalHelp": "How often the materialized view is rebuilt (CTAS into mv_cache). Governs freshness of the stored table that QUERIES read. Distinct from Cache TTL (which caches query results) and from Poll interval (which paces the live change stream to subscribers).",
     "nrtDebounceTitle": "NRT debounce: a burst of upstream changes collapses into one recompute. Quiet = seconds of calm before firing (0 = real-time). Max delay = the hard staleness cap under continuous churn.",
@@ -232,7 +230,7 @@
     "loadManagementTitle": "Load Management and Timeliness",
     "loadManagementHelp": "How current the data must be for each reader, balanced against load on the platform and upstream sources.",
     "loadManagementInfoLabel": "About load management and timeliness",
-    "loadManagementInfo": "Balances how current each reader's data is against load on the platform and on upstream sources. Ideally the upstream manages its own load; the operator protects the platform, and the upstream when it can't protect itself. These settings are the operator's floor — no query or request hint can get fresher data or put more load on a source than they allow. Readers can only choose to accept older data for speed. A source the engine reads live ignores the TTL settings unless Prefer Materialized or Load Protected is set.",
+    "loadManagementInfo": "Balances how current each reader's data is against load on the platform and on upstream sources. Ideally the upstream manages its own load; the operator protects the platform, and the upstream when it can't protect itself. These settings are the operator's floor — no query or request hint can get fresher data or put more load on a source than they allow. Readers can only choose to accept older data for speed. A table the engine reads live ignores the TTL settings; they apply once it is served from its replica (Replicate, or Load Protected).",
     "cacheTtlRequiredForSignal": "The {{signal}} change signal judges staleness by the Cache TTL, so set a Cache TTL here or on the source.",
     "loadManagementFixErrors": "Fix the Load Management and Timeliness settings before saving."
   }

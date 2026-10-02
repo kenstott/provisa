@@ -1,0 +1,12 @@
+{
+  "replicateSelect": {
+    "label": "Replizieren",
+    "helpTable": "Wann diese Tabelle aus ihrem Replikat bedient wird: einer Kopie im Store der Engine, die nach den Aktualitätseinstellungen der Tabelle aufgefrischt wird (TTL, Aktualitätsprüfung, Change Feed). Es ist kein kontinuierlicher Änderungsstrom. „Standard“ übernimmt den Wert der Quelle oder, wenn die Quelle keinen hat, den globalen Schwellenwert. Nur „Immer“ ist eine Garantie; „Standard“, „Nie“ und die Hot-Einträge gelten nach bestem Bemühen.",
+    "helpSource": "Wann die Tabellen dieser Quelle aus ihren Replikaten bedient werden: Kopien im Store der Engine, die nach den Aktualitätseinstellungen der jeweiligen Tabelle aufgefrischt werden. Eine Tabelle ohne eigenen Wert übernimmt diesen. „Standard“ wendet den globalen Schwellenwert an. Nur „Immer“ ist eine Garantie; „Standard“, „Nie“ und die Hot-Einträge gelten nach bestem Bemühen.",
+    "default": "Standard",
+    "never": "Nie",
+    "always": "Immer",
+    "hot": "Hot-{{threshold}}",
+    "neverWithLoadProtection": "„Nie“ lässt sich nicht mit Lastschutz kombinieren: Eine lastgeschützte Tabelle wird nie live gelesen."
+  }
+}

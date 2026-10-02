@@ -1,0 +1,12 @@
+{
+  "replicateSelect": {
+    "label": "Replicar",
+    "helpTable": "Cuándo se sirve esta tabla desde su réplica: una copia guardada en el almacén del motor que se actualiza según los ajustes de actualidad de la tabla (TTL, comprobación de frescura, flujo de cambios). No es un flujo continuo de cambios. «Predeterminado» usa el valor del origen o, si el origen no tiene ninguno, el umbral global. Solo «Siempre» es una garantía; «Predeterminado», «Nunca» y las entradas Hot se aplican en la medida de lo posible.",
+    "helpSource": "Cuándo se sirven las tablas de este origen desde sus réplicas: copias guardadas en el almacén del motor que se actualizan según los ajustes de actualidad de cada tabla. Una tabla sin valor propio usa este. «Predeterminado» aplica el umbral global. Solo «Siempre» es una garantía; «Predeterminado», «Nunca» y las entradas Hot se aplican en la medida de lo posible.",
+    "default": "Predeterminado",
+    "never": "Nunca",
+    "always": "Siempre",
+    "hot": "Hot-{{threshold}}",
+    "neverWithLoadProtection": "«Nunca» no puede combinarse con la protección de carga: una tabla protegida contra carga nunca se lee en vivo."
+  }
+}

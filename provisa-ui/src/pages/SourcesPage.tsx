@@ -34,7 +34,7 @@ import {
   useRenameSource,
   useDeleteSource,
   useUpdateSourceCache,
-  useUpdateSourcePreferMaterialized,
+  useUpdateSourceReplicate,
   useUpdateSourceLoadProtection,
   useUpdateSourceNaming,
   useUpdateSourceAllowedDomains,
@@ -92,7 +92,7 @@ export function SourcesPage() {
   const { renameSource } = useRenameSource();
   const { deleteSource } = useDeleteSource();
   const { updateSourceCache } = useUpdateSourceCache();
-  const { updateSourcePreferMaterialized } = useUpdateSourcePreferMaterialized();
+  const { updateSourceReplicate } = useUpdateSourceReplicate();
   const { updateSourceLoadProtection } = useUpdateSourceLoadProtection();
   const { updateSourceNaming } = useUpdateSourceNaming();
   const { updateSourceAllowedDomains } = useUpdateSourceAllowedDomains();
@@ -122,7 +122,7 @@ export function SourcesPage() {
     gqlNamingConvention: "",
     cacheTtl: "",
     cacheEnabled: true,
-    preferMaterialized: false,
+    replicate: null,
     loadProtected: false,
     offPeakWindow: "",
     offPeakTz: "UTC",
@@ -432,7 +432,7 @@ export function SourcesPage() {
       gqlNamingConvention: s.gqlNamingConvention ?? "",
       cacheTtl: s.cacheTtl != null ? String(s.cacheTtl) : "",
       cacheEnabled: s.cacheEnabled,
-      preferMaterialized: s.preferMaterialized ?? false,
+      replicate: s.replicate,
       loadProtected: s.loadProtected ?? false,
       offPeakWindow: s.offPeakWindow ?? "",
       offPeakTz: s.offPeakTz ?? "UTC",
@@ -644,7 +644,7 @@ export function SourcesPage() {
       gqlNamingConvention: "",
       cacheTtl: "",
       cacheEnabled: true,
-      preferMaterialized: false,
+      replicate: null,
       loadProtected: false,
       offPeakWindow: "",
       offPeakTz: "UTC",
@@ -689,7 +689,7 @@ export function SourcesPage() {
         gqlNamingConvention: _nc,
         cacheTtl: _ct,
         cacheEnabled: _ce,
-        preferMaterialized: _pm,
+        replicate: _rep,
         ...coreForm
       } = form;
       // Data-lake storage is a config choice, not a separate source type: the object store its tables
@@ -911,18 +911,29 @@ export function SourcesPage() {
         if (ttlValue !== null && isNaN(ttlValue)) throw new Error("TTL must be a number");
         const cacheResult = await updateSourceCache(effectiveId, form.cacheEnabled, ttlValue);
         if (!cacheResult.success) throw new Error(cacheResult.message);
-        const preferResult = await updateSourcePreferMaterialized(
-          effectiveId,
-          form.preferMaterialized,
-        );
-        if (!preferResult.success) throw new Error(preferResult.message);
-        const loadProtResult = await updateSourceLoadProtection(
-          effectiveId,
-          form.loadProtected,
-          form.offPeakWindow.trim() || null,
-          form.offPeakTz.trim() || "UTC",
-        );
-        if (!loadProtResult.success) throw new Error(loadProtResult.message);
+        // REQ-826: the server refuses load protection with Replicate = Never, judged against what
+        // is stored at each save. Turning load protection off goes first, so a following Never is
+        // accepted; turning it on goes last, after the Replicate value it is compatible with.
+        const saveReplicate = async () => {
+          const replicateResult = await updateSourceReplicate(effectiveId, form.replicate);
+          if (!replicateResult.success) throw new Error(replicateResult.message);
+        };
+        const saveLoadProtection = async () => {
+          const loadProtResult = await updateSourceLoadProtection(
+            effectiveId,
+            form.loadProtected,
+            form.offPeakWindow.trim() || null,
+            form.offPeakTz.trim() || "UTC",
+          );
+          if (!loadProtResult.success) throw new Error(loadProtResult.message);
+        };
+        if (form.loadProtected) {
+          await saveReplicate();
+          await saveLoadProtection();
+        } else {
+          await saveLoadProtection();
+          await saveReplicate();
+        }
         const namingResult = await updateSourceNaming(
           effectiveId,
           form.gqlNamingConvention === "" ? null : form.gqlNamingConvention,

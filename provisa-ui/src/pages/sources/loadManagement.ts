@@ -11,6 +11,11 @@
 // Client-side mirrors of the server's source load/timeliness validation (the server re-checks
 // every rule; these only stop an obviously bad value before the save round trip).
 
+import {
+  replicateContradictsLoadProtection,
+  saysReplicated,
+} from "../../components/admin/replicate";
+
 /** Empty (no cap) or a whole number >= 1 (schema.max_live_concurrency_invalid). */
 export function maxLiveConcurrencyValid(value: string): boolean {
   if (value.trim() === "") return true;
@@ -33,12 +38,13 @@ export function sourceLoadFieldsValid(form: {
   sentinelPath: string;
   changeSignal: string;
   cacheTtl: string;
-  preferMaterialized: boolean;
+  replicate: number | null;
   loadProtected: boolean;
 }): boolean {
   return (
     maxLiveConcurrencyValid(form.maxLiveConcurrency) &&
     sentinelPathValid(form.sentinelPath) &&
+    !replicateContradictsLoadProtection(form.replicate, form.loadProtected) &&
     !ttlSignalMissingCacheTtl(
       form.changeSignal,
       sourceFormCacheTtl(form.cacheTtl),
@@ -53,8 +59,8 @@ const TTL_CLOCK_SIGNALS = ["ttl", "ttl_probe"];
 /**
  * A ttl/ttl_probe change signal with no resolved landing Cache TTL (the table's own, else its
  * source's — the global response-cache default is not a landing clock) is refused only when the
- * data is landed: `landed` is true for materialize / row_materialize / Prefer Materialized / Load
- * Protected. A live-read ttl table saves normally; the server raises on read if it ever lands
+ * data is replicated: `landed` is true for materialize / row_materialize / Replicate set to
+ * Always or a Hot threshold / Load Protected. A live-read ttl table saves normally; the server raises on read if it ever lands
  * without a TTL. Returns true when the save must be refused.
  */
 export function ttlSignalMissingCacheTtl(
@@ -75,7 +81,7 @@ export function sourceFormCacheTtl(cacheTtl: string): number | null {
   return cacheTtl.trim() === "" ? null : Number(cacheTtl);
 }
 
-/** A source's tables land by default when it prefers materialization or is load-protected. */
-export function sourceFormLanded(form: { preferMaterialized: boolean; loadProtected: boolean }) {
-  return form.preferMaterialized || form.loadProtected;
+/** A source's settings say its tables are replicated: Always, a Hot threshold, or load protection. */
+export function sourceFormLanded(form: { replicate: number | null; loadProtected: boolean }) {
+  return saysReplicated(form.replicate, form.loadProtected);
 }

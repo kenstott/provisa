@@ -71,7 +71,7 @@ function table(
     description: null,
     cacheTtl: 60,
     roleTtl,
-    preferMaterialized: null,
+    replicate: null,
     loadProtected: null,
     offPeakWindow: null,
     offPeakTz: null,
@@ -121,7 +121,7 @@ function table(
 const TABLES = [
   table(7, "orders", [{ role: "analyst", ttl: 360 }]),
   // REQ-930: a ttl signal with no Cache TTL on the table or its source (the source sets none).
-  table(9, "ticks", [], { cacheTtl: null, changeSignal: "ttl", preferMaterialized: true }),
+  table(9, "ticks", [], { cacheTtl: null, changeSignal: "ttl", replicate: 0 }),
   // Read live: a ttl table with no Cache TTL saves; the server raises if it ever lands.
   table(14, "live_ticks", [], { cacheTtl: null, changeSignal: "ttl" }),
   table(15, "mv_ticks", [], { cacheTtl: null, changeSignal: "ttl_probe", materialize: true }),
@@ -152,7 +152,7 @@ const ok = { success: true, message: "" };
 const updateTable = vi.fn();
 const updateTableNaming = vi.fn();
 const updateTableCache = vi.fn();
-const updateTablePreferMaterialized = vi.fn();
+const updateTableReplicate = vi.fn();
 const updateTableLoadProtection = vi.fn();
 const updateTableRoleTtl = vi.fn();
 
@@ -175,7 +175,7 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   useUpdateTable: () => ({ updateTable, loading: false }),
   useUpdateTableNaming: () => ({ updateTableNaming, loading: false }),
   useUpdateTableCache: () => ({ updateTableCache, loading: false }),
-  useUpdateTablePreferMaterialized: () => ({ updateTablePreferMaterialized, loading: false }),
+  useUpdateTableReplicate: () => ({ updateTableReplicate, loading: false }),
   useUpdateTableLoadProtection: () => ({ updateTableLoadProtection, loading: false }),
 }));
 
@@ -204,7 +204,7 @@ describe("TablesPage — Role TTL save (REQ-1907)", () => {
       updateTable,
       updateTableNaming,
       updateTableCache,
-      updateTablePreferMaterialized,
+      updateTableReplicate,
       updateTableLoadProtection,
       updateTableRoleTtl,
     ]) {

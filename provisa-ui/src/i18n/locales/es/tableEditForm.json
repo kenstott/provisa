@@ -20,8 +20,6 @@
     "roleTtlInvalidTtl": "Introduzca un número entero de segundos, 0 o más.",
     "roleTtlDuplicateRole": "Este rol ya está en la lista.",
     "roleTtlFixErrors": "Corrija las filas de TTL por rol antes de guardar.",
-    "preferMaterializedLabel": "Preferir materializada",
-    "preferMaterializedHelp": "Fuerza que esta tabla se materialice en el almacén y se federe desde allí, en lugar de consultarse en vivo. Úselo cuando el conector no se ajuste bien a las consultas de esta tabla. Heredar = seguir el valor predeterminado a nivel de origen.",
     "loadProtectedLabel": "Protección de carga",
     "loadProtectedHelp": "Protege un origen sensible a la carga: sirve esta tabla íntegramente desde una instantánea programada, de modo que las consultas nunca lleguen al origen. Requiere al menos una condición de actualización: una ventana de baja actividad, una cadencia de TTL de caché o una señal de cambio por sondeo. Heredar = seguir el valor predeterminado a nivel de origen.",
     "offPeakWindowLabel": "Ventana de baja actividad",
@@ -38,7 +36,7 @@
     "descriptionPlaceholder": "Aparece en la documentación SDL",
     "materializedViewLabel": "Vista materializada",
     "materializedViewDesc": "(CTAS en mv_cache, actualizada periódicamente)",
-    "materializedViewHelp": "Precalcula el SQL de ESTA vista en una tabla de caché almacenada (CTAS en mv_cache) según el intervalo de actualización indicado abajo. Es distinto de 'Preferir materializada' arriba, que copia una tabla de origen sin procesar al almacén: esto materializa una vista definida en Provisa.",
+    "materializedViewHelp": "Precalcula el SQL de ESTA vista en una tabla de caché almacenada (CTAS en mv_cache) según el intervalo de actualización indicado abajo. Es distinto de 'Replicar' arriba, que mantiene en el almacén una copia de una tabla de origen sin procesar: esto materializa una vista definida en Provisa.",
     "refreshIntervalLabel": "Intervalo de actualización (segundos)",
     "refreshIntervalHelp": "Con qué frecuencia se reconstruye la vista materializada (CTAS en mv_cache). Gobierna la frescura de la tabla almacenada que leen las CONSULTAS. Es distinto del TTL de caché (que almacena resultados de consulta) y del intervalo de sondeo (que marca el ritmo del flujo de cambios en vivo hacia los suscriptores).",
     "nrtDebounceTitle": "Antirrebote NRT: una ráfaga de cambios ascendentes se colapsa en un solo recálculo. Silencio = segundos de calma antes de disparar (0 = tiempo real). Retardo máximo = el tope estricto de desactualización bajo cambios continuos.",
@@ -232,7 +230,7 @@
     "loadManagementTitle": "Gestión de carga y actualidad",
     "loadManagementHelp": "Qué tan actuales deben ser los datos para cada lector, en equilibrio con la carga sobre la plataforma y los orígenes.",
     "loadManagementInfoLabel": "Acerca de la gestión de carga y la actualidad",
-    "loadManagementInfo": "Equilibra lo actuales que son los datos de cada lector con la carga sobre la plataforma y los orígenes. Lo ideal es que el origen gestione su propia carga; el operador protege la plataforma, y el origen cuando no puede protegerse. Estos ajustes son el límite mínimo del operador: ninguna consulta ni sugerencia de la solicitud puede obtener datos más recientes ni cargar un origen más de lo que permiten. Los lectores solo pueden optar por aceptar datos más antiguos a cambio de velocidad. Un origen que el motor lee en vivo ignora los ajustes de TTL salvo que se active «Preferir materializado» o «Protegido contra carga».",
+    "loadManagementInfo": "Equilibra lo actuales que son los datos de cada lector con la carga sobre la plataforma y los orígenes. Lo ideal es que el origen gestione su propia carga; el operador protege la plataforma, y el origen cuando no puede protegerse. Estos ajustes son el límite mínimo del operador: ninguna consulta ni sugerencia de la solicitud puede obtener datos más recientes ni cargar un origen más de lo que permiten. Los lectores solo pueden optar por aceptar datos más antiguos a cambio de velocidad. Una tabla que el motor lee en vivo ignora los ajustes de TTL; se aplican cuando se sirve desde su réplica («Replicar» o «Protegido contra carga»).",
     "cacheTtlRequiredForSignal": "La señal de cambio {{signal}} evalúa la actualidad según el TTL de caché, así que defina un TTL de caché aquí o en el origen.",
     "loadManagementFixErrors": "Corrija los ajustes de Gestión de carga y actualidad antes de guardar."
   }

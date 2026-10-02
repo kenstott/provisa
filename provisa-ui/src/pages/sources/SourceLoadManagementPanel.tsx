@@ -10,13 +10,14 @@
 
 // The source form's "Load Management and Recency Controls" panel: every operator setting that
 // governs how hard Provisa leans on this source and how fresh its data is — caching, the change
-// signal, materialization and load protection (REQ-826/1141), grouped and collapsed by default.
+// signal, replication and load protection (REQ-826/1141), grouped and collapsed by default.
 
 import { useTranslation } from "react-i18next";
 import { Checkbox, Group, NumberInput, Select, Text, TextInput, Tooltip } from "@mantine/core";
 import { sourceChangeSignals } from "../../liveCapability";
 import { CHANGE_SIGNAL_LABELS } from "./constants";
 import { CollapsibleSection } from "../tables/CollapsibleSection";
+import { ReplicateSelect } from "../../components/admin/ReplicateSelect";
 import type { SourceFormFieldsProps } from "./SourceFormFields";
 import {
   maxLiveConcurrencyValid,
@@ -41,7 +42,7 @@ export function SourceLoadManagementPanel({
       }}
     >
       {/* The operator's load and recency controls for this source, grouped: caching, the
-            change signal, materialization and load protection (REQ-826/1141). */}
+            change signal, replication and load protection (REQ-826/1141). */}
       <Text size="xs" c="dimmed" data-testid="source-load-management-help">
         {t("sourceFormFieldsExtended.loadManagementHelp")}
       </Text>
@@ -52,15 +53,14 @@ export function SourceLoadManagementPanel({
           onChange={(e) => setForm({ ...form, cacheEnabled: e.currentTarget.checked })}
           data-testid="cache-enabled-checkbox"
         />
-        <Tooltip label={t("sourceFormFieldsExtended.preferMaterializedTooltip")} multiline w={280}>
-          <Checkbox
-            label={t("sourceFormFieldsExtended.preferMaterialized")}
-            checked={form.preferMaterialized}
-            onChange={(e) => setForm({ ...form, preferMaterialized: e.currentTarget.checked })}
-            data-testid="prefer-materialized-checkbox"
-          />
-        </Tooltip>
       </Group>
+      <ReplicateSelect
+        value={form.replicate}
+        onChange={(replicate) => setForm({ ...form, replicate })}
+        scope="source"
+        loadProtected={form.loadProtected}
+        testId="source-replicate-select"
+      />
       <NumberInput
         label={t("sourceFormFieldsExtended.cacheTtlSeconds")}
         min={0}

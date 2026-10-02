@@ -20,8 +20,6 @@
     "roleTtlInvalidTtl": "Insira um número inteiro de segundos, 0 ou mais.",
     "roleTtlDuplicateRole": "Esta função já está na lista.",
     "roleTtlFixErrors": "Corrija as linhas de TTL por função antes de salvar.",
-    "preferMaterializedLabel": "Preferir materializada",
-    "preferMaterializedHelp": "Força esta tabela a ser materializada no repositório e federada a partir dele, em vez de acessada ao vivo. Use quando o conector não atende bem às consultas desta tabela. Herdar = seguir o padrão definido na fonte.",
     "loadProtectedLabel": "Protegida contra carga",
     "loadProtectedHelp": "Protege uma fonte sensível à carga: serve esta tabela inteiramente a partir de um snapshot agendado, de modo que as consultas nunca atinjam a fonte. Requer pelo menos um gatilho de atualização — uma janela fora de pico, uma cadência de TTL de cache ou um sinal de mudança por sondagem. Herdar = seguir o padrão definido na fonte.",
     "offPeakWindowLabel": "Janela fora de pico",
@@ -38,7 +36,7 @@
     "descriptionPlaceholder": "Aparece nos docs SDL",
     "materializedViewLabel": "Exibição materializada",
     "materializedViewDesc": "(CTAS em mv_cache, atualizada periodicamente)",
-    "materializedViewHelp": "Pré-computa o SQL DESTA exibição em uma tabela de cache armazenada (CTAS em mv_cache) no Intervalo de atualização abaixo. Diferente de 'Preferir materializada' acima, que traz uma tabela bruta da fonte para o repositório — isto materializa uma exibição definida no Provisa.",
+    "materializedViewHelp": "Pré-computa o SQL DESTA exibição em uma tabela de cache armazenada (CTAS em mv_cache) no Intervalo de atualização abaixo. Diferente de 'Replicar' acima, que mantém no repositório uma cópia de uma tabela bruta da fonte — isto materializa uma exibição definida no Provisa.",
     "refreshIntervalLabel": "Intervalo de atualização (segundos)",
     "refreshIntervalHelp": "Com que frequência a exibição materializada é reconstruída (CTAS em mv_cache). Governa a atualidade da tabela armazenada que as CONSULTAS leem. Diferente do TTL do cache (que armazena resultados de consulta) e do intervalo de sondagem (que ritma o fluxo de mudanças ao vivo para os assinantes).",
     "nrtDebounceTitle": "Debounce NRT: uma rajada de mudanças upstream é condensada em um único recálculo. Silêncio = segundos de calma antes de disparar (0 = tempo real). Atraso máximo = o limite rígido de desatualização sob mudança contínua.",
@@ -232,7 +230,7 @@
     "loadManagementTitle": "Gestão de carga e atualidade",
     "loadManagementHelp": "Quão atuais os dados precisam ser para cada leitor, equilibrado com a carga sobre a plataforma e as fontes de origem.",
     "loadManagementInfoLabel": "Sobre gestão de carga e atualidade",
-    "loadManagementInfo": "Equilibra quão atuais são os dados de cada leitor com a carga sobre a plataforma e as fontes de origem. Idealmente a fonte gerencia a própria carga; o operador protege a plataforma, e a fonte quando ela não consegue se proteger. Estas configurações são o piso do operador — nenhuma consulta ou dica de requisição pode obter dados mais recentes ou colocar mais carga numa fonte do que elas permitem. Os leitores só podem optar por aceitar dados mais antigos em troca de velocidade. Uma fonte que o mecanismo lê ao vivo ignora as configurações de TTL, a menos que \"Preferir materializado\" ou \"Protegido contra carga\" esteja definido.",
+    "loadManagementInfo": "Equilibra quão atuais são os dados de cada leitor com a carga sobre a plataforma e as fontes de origem. Idealmente a fonte gerencia a própria carga; o operador protege a plataforma, e a fonte quando ela não consegue se proteger. Estas configurações são o piso do operador — nenhuma consulta ou dica de requisição pode obter dados mais recentes ou colocar mais carga numa fonte do que elas permitem. Os leitores só podem optar por aceitar dados mais antigos em troca de velocidade. Uma tabela que o motor lê ao vivo ignora as configurações de TTL; elas se aplicam quando a tabela é servida a partir da sua réplica (\"Replicar\" ou \"Protegido contra carga\").",
     "cacheTtlRequiredForSignal": "O sinal de alteração {{signal}} avalia a atualidade pelo TTL do cache, então defina um TTL do cache aqui ou na fonte.",
     "loadManagementFixErrors": "Corrija as configurações de Gestão de carga e atualidade antes de salvar."
   }

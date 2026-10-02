@@ -268,7 +268,7 @@
       "source_naming_updated": "Convention de nommage mise à jour pour la source « {{source}} »",
       "source_no_connection": "la source « {{source}} » n'a pas de connexion active",
       "source_not_found": "Source « {{source}} » introuvable",
-      "source_prefer_materialized_set": "prefer_materialized défini pour la source « {{source}} »",
+      "source_replicate_set": "Répliquer défini pour la source « {{source}} »",
       "source_renamed": "Source renommée « {{old}} » → « {{new}} »",
       "source_type_not_sqlite": "Le type de source « {{type}} » n'est pas sqlite",
       "source_updated": "Source « {{source}} » mise à jour",
@@ -278,7 +278,7 @@
       "table_load_protection_set": "protection de charge définie pour la table {{table}}",
       "table_naming_updated": "Convention de nommage mise à jour pour la table {{table}}",
       "table_not_found": "Table {{table}} introuvable",
-      "table_prefer_materialized_set": "prefer_materialized défini pour la table {{table}}",
+      "table_replicate_set": "Répliquer défini pour la table {{table}}",
       "table_registered": "Table « {{table}} » enregistrée (id={{id}})",
       "table_updated": "Table « {{table}} » mise à jour (id={{id}})",
       "task_deleted": "Tâche « {{task}} » supprimée",
@@ -294,7 +294,9 @@
       "view_spans_sources": "la vue s'étend sur plusieurs sources : {{sources}}",
       "webhook_approved": "Webhook « {{webhook}} » approuvé",
       "webhook_name_required": "webhook_name est requis pour un déclencheur webhook",
-      "webhook_not_found": "Webhook « {{webhook}} » introuvable"
+      "webhook_not_found": "Webhook « {{webhook}} » introuvable",
+      "replicate_invalid": "Répliquer doit être « Par défaut », « Jamais », « Toujours » ou un seuil supérieur à 0 ; reçu : {{value}}",
+      "replicate_contradicts_load_protected": "La protection de charge ne peut pas être combinée avec Répliquer = « Jamais » : une table protégée contre la charge n'est jamais lue en direct"
     },
     "security": {
       "unknown_mode": "mode de sécurité « {{mode}} » inconnu"

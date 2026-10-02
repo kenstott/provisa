@@ -268,7 +268,7 @@
       "source_naming_updated": "מוסכמת השמות עודכנה עבור המקור '{{source}}'",
       "source_no_connection": "למקור '{{source}}' אין חיבור פעיל",
       "source_not_found": "המקור '{{source}}' לא נמצא",
-      "source_prefer_materialized_set": "prefer_materialized הוגדר עבור המקור '{{source}}'",
+      "source_replicate_set": "שכפול הוגדר עבור המקור '{{source}}'",
       "source_renamed": "שם המקור שונה '{{old}}' → '{{new}}'",
       "source_type_not_sqlite": "סוג המקור '{{type}}' אינו sqlite",
       "source_updated": "המקור '{{source}}' עודכן",
@@ -278,7 +278,7 @@
       "table_load_protection_set": "הגנת עומס הוגדרה עבור הטבלה {{table}}",
       "table_naming_updated": "מוסכמת השמות עודכנה עבור הטבלה {{table}}",
       "table_not_found": "הטבלה {{table}} לא נמצאה",
-      "table_prefer_materialized_set": "prefer_materialized הוגדר עבור הטבלה {{table}}",
+      "table_replicate_set": "שכפול הוגדר עבור הטבלה {{table}}",
       "table_registered": "הטבלה '{{table}}' נרשמה (id={{id}})",
       "table_updated": "הטבלה '{{table}}' עודכנה (id={{id}})",
       "task_deleted": "המשימה '{{task}}' נמחקה",
@@ -294,7 +294,9 @@
       "view_spans_sources": "התצוגה (View) משתרעת על פני מספר מקורות: {{sources}}",
       "webhook_approved": "ה-Webhook '{{webhook}}' אושר",
       "webhook_name_required": "webhook_name נדרש עבור טריגר webhook",
-      "webhook_not_found": "ה-Webhook '{{webhook}}' לא נמצא"
+      "webhook_not_found": "ה-Webhook '{{webhook}}' לא נמצא",
+      "replicate_invalid": "שכפול חייב להיות 'ברירת מחדל', 'אף פעם', 'תמיד' או סף גדול מ-0; התקבל {{value}}",
+      "replicate_contradicts_load_protected": "אי אפשר לשלב הגנת עומס עם שכפול = 'אף פעם': טבלה מוגנת עומס אף פעם אינה נקראת בזמן אמת"
     },
     "security": {
       "unknown_mode": "מצב אבטחה לא מוכר '{{mode}}'"

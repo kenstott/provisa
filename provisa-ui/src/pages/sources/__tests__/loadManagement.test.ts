@@ -58,7 +58,7 @@ describe("source load/timeliness client validation", () => {
       sentinelPath: "",
       changeSignal: "ttl",
       cacheTtl: "60",
-      preferMaterialized: true,
+      replicate: 0,
       loadProtected: false,
     };
     expect(sourceLoadFieldsValid(ok)).toBe(true);
@@ -69,12 +69,17 @@ describe("source load/timeliness client validation", () => {
       sourceLoadFieldsValid({
         ...ok,
         cacheTtl: "",
-        preferMaterialized: false,
+        replicate: null,
         loadProtected: true,
       }),
     ).toBe(false);
     // Read live: a ttl source with no Cache TTL saves; the server raises if it ever lands.
-    expect(sourceLoadFieldsValid({ ...ok, cacheTtl: "", preferMaterialized: false })).toBe(true);
+    expect(sourceLoadFieldsValid({ ...ok, cacheTtl: "", replicate: null })).toBe(true);
+    // REQ-826: a Hot threshold says the tables are replicated once busy, so the clock is needed;
+    // Never does not; and Never with load protection is refused outright.
+    expect(sourceLoadFieldsValid({ ...ok, cacheTtl: "", replicate: 500 })).toBe(false);
+    expect(sourceLoadFieldsValid({ ...ok, cacheTtl: "", replicate: -1 })).toBe(true);
+    expect(sourceLoadFieldsValid({ ...ok, replicate: -1, loadProtected: true })).toBe(false);
     for (const signal of ["probe", "native", "debezium", "kafka"]) {
       expect(sourceLoadFieldsValid({ ...ok, cacheTtl: "", changeSignal: signal })).toBe(true);
     }

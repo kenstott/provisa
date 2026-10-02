@@ -69,7 +69,7 @@ function table(overrides: Partial<RegisteredTable>): RegisteredTable {
     alias: null,
     description: null,
     cacheTtl: null,
-    preferMaterialized: null,
+    replicate: null,
     loadProtected: null,
     offPeakWindow: null,
     offPeakTz: null,

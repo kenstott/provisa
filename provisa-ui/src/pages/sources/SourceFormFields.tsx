@@ -26,7 +26,7 @@ export interface SourceFormState {
   gqlNamingConvention: string;
   cacheTtl: string;
   cacheEnabled: boolean;
-  preferMaterialized: boolean;
+  replicate: number | null; // REQ-826: null = Default
   loadProtected: boolean; // REQ-1141: scheduled-refresh-only load protection (source default)
   offPeakWindow: string; // REQ-1141: "HH:MM-HH:MM" maintenance window ("" = none)
   offPeakTz: string; // REQ-1141: IANA zone for the window

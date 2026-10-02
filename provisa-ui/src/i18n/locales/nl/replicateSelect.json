@@ -1,0 +1,12 @@
+{
+  "replicateSelect": {
+    "label": "Repliceren",
+    "helpTable": "Wanneer deze tabel vanuit haar replica wordt bediend: een kopie in de store van de engine die wordt ververst volgens de actualiteitsinstellingen van de tabel (TTL, versheidscontrole, change feed). Het is geen doorlopende wijzigingsstroom. 'Standaard' gebruikt de waarde van de bron of, als de bron er geen heeft, de globale drempel. Alleen 'Altijd' is een garantie; 'Standaard', 'Nooit' en de Hot-waarden gelden naar beste vermogen.",
+    "helpSource": "Wanneer de tabellen van deze bron vanuit hun replica's worden bediend: kopieën in de store van de engine die worden ververst volgens de actualiteitsinstellingen van elke tabel. Een tabel zonder eigen waarde gebruikt deze. 'Standaard' past de globale drempel toe. Alleen 'Altijd' is een garantie; 'Standaard', 'Nooit' en de Hot-waarden gelden naar beste vermogen.",
+    "default": "Standaard",
+    "never": "Nooit",
+    "always": "Altijd",
+    "hot": "Hot-{{threshold}}",
+    "neverWithLoadProtection": "'Nooit' kan niet worden gecombineerd met belastingsbescherming: een tabel met belastingsbescherming wordt nooit live gelezen."
+  }
+}

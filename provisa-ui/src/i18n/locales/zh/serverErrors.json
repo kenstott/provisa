@@ -268,7 +268,7 @@
       "source_naming_updated": "已更新数据源 '{{source}}' 的命名约定",
       "source_no_connection": "数据源 '{{source}}' 没有活跃连接",
       "source_not_found": "未找到数据源 '{{source}}'",
-      "source_prefer_materialized_set": "已为数据源 '{{source}}' 设置 prefer_materialized",
+      "source_replicate_set": "已为数据源 '{{source}}' 设置复制",
       "source_renamed": "数据源已重命名 '{{old}}' → '{{new}}'",
       "source_type_not_sqlite": "数据源类型 '{{type}}' 不是 sqlite",
       "source_updated": "数据源 '{{source}}' 已更新",
@@ -278,7 +278,7 @@
       "table_load_protection_set": "已为表 {{table}} 设置负载保护",
       "table_naming_updated": "已更新表 {{table}} 的命名约定",
       "table_not_found": "未找到表 {{table}}",
-      "table_prefer_materialized_set": "已为表 {{table}} 设置 prefer_materialized",
+      "table_replicate_set": "已为表 {{table}} 设置复制",
       "table_registered": "表 '{{table}}' 已注册（id={{id}}）",
       "table_updated": "表 '{{table}}' 已更新（id={{id}}）",
       "task_deleted": "任务 '{{task}}' 已删除",
@@ -294,7 +294,9 @@
       "view_spans_sources": "视图跨越多个数据源：{{sources}}",
       "webhook_approved": "已批准 Webhook '{{webhook}}'",
       "webhook_name_required": "Webhook 触发器需要 webhook_name",
-      "webhook_not_found": "未找到 Webhook '{{webhook}}'"
+      "webhook_not_found": "未找到 Webhook '{{webhook}}'",
+      "replicate_invalid": "复制必须是“默认”“从不”“始终”或大于 0 的阈值；收到 {{value}}",
+      "replicate_contradicts_load_protected": "负载保护不能与复制 =“从不”同时使用：受负载保护的表从不被实时读取"
     },
     "security": {
       "unknown_mode": "未知的安全模式 '{{mode}}'"

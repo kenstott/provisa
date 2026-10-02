@@ -20,8 +20,6 @@
     "roleTtlInvalidTtl": "請輸入不小於 0 的整數秒數。",
     "roleTtlDuplicateRole": "該角色已在列表中。",
     "roleTtlFixErrors": "儲存前請修正角色 TTL 行。",
-    "preferMaterializedLabel": "優先具體化",
-    "preferMaterializedHelp": "強制將此數據表具體化到儲存區並由該處聯邦查詢，而非即時連線存取。當連接器不適合此數據表的查詢時使用。繼承 = 遵循數據來源層級的預設值。",
     "loadProtectedLabel": "負載保護",
     "loadProtectedHelp": "保護對負載敏感的數據來源：此數據表完全由排程快照提供服務，查詢永不觸及來源。需要至少一個重新整理閘門 — 離峰時段、快取 TTL 週期或探測式變更訊號。繼承 = 遵循數據來源層級的預設值。",
     "offPeakWindowLabel": "離峰時段",
@@ -38,7 +36,7 @@
     "descriptionPlaceholder": "顯示於 SDL 文件中",
     "materializedViewLabel": "具體化檢視",
     "materializedViewDesc": "（CTAS 寫入 mv_cache，定期重新整理）",
-    "materializedViewHelp": "依下方的重新整理間隔，將此檢視的 SQL 預先計算並存入快取數據表（CTAS 寫入 mv_cache）。與上方的「優先具體化」不同 — 該項將原始來源數據表拉入儲存區，此項則具體化由 Provisa 定義的檢視。",
+    "materializedViewHelp": "依下方的重新整理間隔，將此檢視的 SQL 預先計算並存入快取數據表（CTAS 寫入 mv_cache）。與上方的「複製」不同 — 該項在儲存區中保留一份原始來源數據表的副本，此項則具體化由 Provisa 定義的檢視。",
     "refreshIntervalLabel": "重新整理間隔（秒）",
     "refreshIntervalHelp": "具體化檢視重建的頻率（CTAS 寫入 mv_cache）。決定查詢所讀取的儲存數據表的新鮮度。與快取 TTL（快取查詢結果）及輪詢間隔（控制向訂閱者傳送即時變更串流的節奏）不同。",
     "nrtDebounceTitle": "NRT 防抖：上游的一連串變更會合併為一次重新計算。靜默 = 觸發前的平靜秒數（0 = 即時）。最大延遲 = 持續變動下的硬性過時上限。",
@@ -232,7 +230,7 @@
     "loadManagementTitle": "負載管理與時效性",
     "loadManagementHelp": "每位讀者所需數據的時效性，與平台及上游數據來源的負載相權衡。",
     "loadManagementInfoLabel": "關於負載管理與時效性",
-    "loadManagementInfo": "在每位讀者數據的時效性與平台及上游數據來源的負載之間取得平衡。理想情況下由上游自行管理負載；營運人員保護平台，並在上游無法自我保護時保護上游。這些設定是營運人員設定的下限——任何查詢或請求提示都無法取得比其允許的更新的數據，也無法為數據來源帶來更多負載。讀者只能選擇為速度接受較舊的數據。引擎即時讀取的數據來源會忽略 TTL 設定，除非設定了「優先物化」或「負載保護」。",
+    "loadManagementInfo": "在每位讀者數據的時效性與平台及上游數據來源的負載之間取得平衡。理想情況下由上游自行管理負載；營運人員保護平台，並在上游無法自我保護時保護上游。這些設定是營運人員設定的下限——任何查詢或請求提示都無法取得比其允許的更新的數據，也無法為數據來源帶來更多負載。讀者只能選擇為速度接受較舊的數據。引擎即時讀取的數據表會忽略 TTL 設定；當該數據表由其複本提供時（「複製」或「負載保護」），這些設定才生效。",
     "cacheTtlRequiredForSignal": "變更訊號 {{signal}} 根據快取 TTL 判斷數據是否過期，因此請在此處或數據來源上設定快取 TTL。",
     "loadManagementFixErrors": "儲存前請修正「負載管理與時效性」設定。"
   }

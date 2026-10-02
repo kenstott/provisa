@@ -46,6 +46,7 @@ import { ColumnGlossaryHover } from "./ColumnGlossaryHover";
 import { useLivePolicyPreview } from "./useLivePolicyPreview";
 import { RoleTtlField } from "./RoleTtlField";
 import { tableTtlSignalError } from "./roleTtl";
+import { ReplicateSelect } from "../../components/admin/ReplicateSelect";
 
 interface CacheTtlEdit {
   value: string;
@@ -128,9 +129,9 @@ export function TableEditForm({
       : editingTable.loadProtected;
 
   // A __derived__ virtual view has no external source, so the source-freshness controls (cache TTL,
-  // prefer_materialized, load protection, off-peak) don't apply — the view/MV rebuild path reads only
+  // replicate, load protection, off-peak) don't apply — the view/MV rebuild path reads only
   // materialize + mv_refresh_interval + change_signal. Materialization is driven by the "Materialized
-  // View" checkbox, not prefer_materialized. Hide those fields for a view to avoid contradictory knobs.
+  // View" checkbox, not replicate. Hide those fields for a view to avoid contradictory knobs.
   const isView = editingTable.viewSql != null;
 
   // REQ-1907/REQ-930: the table's resolved landing cache_ttl — the staged Cache TTL edit, else the
@@ -154,8 +155,8 @@ export function TableEditForm({
         <div style={{ paddingInline: "1.5rem" }}>
           <Alert
             // REQ-1143: effective refresh/serving policy, live-previewed from the draft knobs (server-
-            // derived). `serving` drives the color; a non-null `warning` flags an inert
-            // prefer_materialized or an accidental frozen table.
+            // derived). `serving` drives the color; a non-null `warning` flags a setting that
+            // has no effect on this engine or an accidental frozen table.
             color={
               shownPolicy.warning
                 ? "yellow"
@@ -269,33 +270,12 @@ export function TableEditForm({
               roles={roles}
               floorTtl={floorTtl}
             />
-            <Select
-              label={
-                <FieldLabel
-                  text={t("tableEditForm.preferMaterializedLabel")}
-                  help={t("tableEditForm.preferMaterializedHelp")}
-                />
-              }
-              data={[
-                { value: "inherit", label: t("tableEditForm.inheritSource") },
-                { value: "on", label: t("tableEditForm.on") },
-                { value: "off", label: t("tableEditForm.off") },
-              ]}
-              value={
-                editingTable.preferMaterialized == null
-                  ? "inherit"
-                  : editingTable.preferMaterialized
-                    ? "on"
-                    : "off"
-              }
-              onChange={(v) =>
-                setEditingTable({
-                  ...editingTable,
-                  preferMaterialized: v === "inherit" ? null : v === "on",
-                })
-              }
-              comboboxProps={{ withinPortal: true }}
-              allowDeselect={false}
+            <ReplicateSelect
+              value={editingTable.replicate}
+              onChange={(replicate) => setEditingTable({ ...editingTable, replicate })}
+              scope="table"
+              loadProtected={editingTable.loadProtected ?? editSource?.loadProtected ?? false}
+              testId="table-replicate-select"
             />
             <Select
               // REQ-1141: load protection — scheduled-refresh-only; the query path never pulls the source.

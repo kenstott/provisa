@@ -1,0 +1,12 @@
+{
+  "replicateSelect": {
+    "label": "Replicar",
+    "helpTable": "Quando esta tabela é servida a partir da sua réplica: uma cópia mantida no repositório do motor e atualizada conforme as configurações de atualidade da tabela (TTL, verificação de atualidade, feed de alterações). Não é um fluxo contínuo de alterações. 'Padrão' usa o valor da fonte ou, se a fonte não tiver nenhum, o limite global. Apenas 'Sempre' é uma garantia; 'Padrão', 'Nunca' e as entradas Hot são aplicados na medida do possível.",
+    "helpSource": "Quando as tabelas desta fonte são servidas a partir das suas réplicas: cópias mantidas no repositório do motor e atualizadas conforme as configurações de atualidade de cada tabela. Uma tabela sem valor próprio usa este. 'Padrão' aplica o limite global. Apenas 'Sempre' é uma garantia; 'Padrão', 'Nunca' e as entradas Hot são aplicados na medida do possível.",
+    "default": "Padrão",
+    "never": "Nunca",
+    "always": "Sempre",
+    "hot": "Hot-{{threshold}}",
+    "neverWithLoadProtection": "'Nunca' não pode ser combinado com a proteção de carga: uma tabela protegida contra carga nunca é lida ao vivo."
+  }
+}

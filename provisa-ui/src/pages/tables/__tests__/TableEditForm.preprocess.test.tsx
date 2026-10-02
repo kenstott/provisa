@@ -39,7 +39,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     description: null,
     cacheTtl: null,
     roleTtl: [],
-    preferMaterialized: null,
+    replicate: null,
     loadProtected: null,
     offPeakWindow: null,
     offPeakTz: null,

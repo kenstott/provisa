@@ -1,0 +1,12 @@
+{
+  "replicateSelect": {
+    "label": "Répliquer",
+    "helpTable": "Quand cette table est servie depuis sa réplique : une copie conservée dans le magasin du moteur et rafraîchie selon les réglages d'actualité de la table (TTL, contrôle de fraîcheur, flux de changements). Ce n'est pas un flux de changements continu. « Par défaut » reprend la valeur de la source ou, si la source n'en a pas, le seuil global. Seul « Toujours » est une garantie ; « Par défaut », « Jamais » et les entrées Hot s'appliquent au mieux.",
+    "helpSource": "Quand les tables de cette source sont servies depuis leurs répliques : des copies conservées dans le magasin du moteur et rafraîchies selon les réglages d'actualité de chaque table. Une table sans valeur propre utilise celle-ci. « Par défaut » applique le seuil global. Seul « Toujours » est une garantie ; « Par défaut », « Jamais » et les entrées Hot s'appliquent au mieux.",
+    "default": "Par défaut",
+    "never": "Jamais",
+    "always": "Toujours",
+    "hot": "Hot-{{threshold}}",
+    "neverWithLoadProtection": "« Jamais » ne peut pas être combiné avec la protection de charge : une table protégée contre la charge n'est jamais lue en direct."
+  }
+}

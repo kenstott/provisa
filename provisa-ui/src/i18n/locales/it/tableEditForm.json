@@ -20,8 +20,6 @@
     "roleTtlInvalidTtl": "Inserisci un numero intero di secondi, 0 o più.",
     "roleTtlDuplicateRole": "Questo ruolo è già elencato.",
     "roleTtlFixErrors": "Correggi le righe del TTL per ruolo prima di salvare.",
-    "preferMaterializedLabel": "Preferisci materializzata",
-    "preferMaterializedHelp": "Forza la materializzazione di questa tabella nello store e la sua federazione da lì, invece dell'accesso live. Da usare quando il connettore non è adatto alle query di questa tabella. Eredita = segue l'impostazione predefinita a livello di origine.",
     "loadProtectedLabel": "Protezione dal carico",
     "loadProtectedHelp": "Protegge un'origine sensibile al carico: questa tabella viene servita interamente da uno snapshot pianificato, così le query non raggiungono mai l'origine. Richiede almeno un criterio di aggiornamento: una finestra fuori picco, una cadenza TTL della cache o un segnale di modifica tramite probe. Eredita = segue l'impostazione predefinita a livello di origine.",
     "offPeakWindowLabel": "Finestra fuori picco",
@@ -38,7 +36,7 @@
     "descriptionPlaceholder": "Appare nella documentazione SDL",
     "materializedViewLabel": "Vista materializzata",
     "materializedViewDesc": "(CTAS in mv_cache, aggiornata periodicamente)",
-    "materializedViewHelp": "Precalcola l'SQL di QUESTA vista in una tabella di cache persistente (CTAS in mv_cache) secondo l'intervallo di aggiornamento sottostante. Diversa da 'Preferisci materializzata' sopra, che copia una tabella di origine grezza nello store: qui viene materializzata una vista definita in Provisa.",
+    "materializedViewHelp": "Precalcola l'SQL di QUESTA vista in una tabella di cache persistente (CTAS in mv_cache) secondo l'intervallo di aggiornamento sottostante. Diversa da 'Replicare' sopra, che conserva nello store una copia di una tabella di origine grezza: qui viene materializzata una vista definita in Provisa.",
     "refreshIntervalLabel": "Intervallo di aggiornamento (secondi)",
     "refreshIntervalHelp": "Frequenza di ricostruzione della vista materializzata (CTAS in mv_cache). Governa la freschezza della tabella persistente letta dalle QUERY. Diversa dal TTL della cache (che memorizza i risultati delle query) e dall'intervallo di polling (che scandisce il flusso di modifiche live verso i sottoscrittori).",
     "nrtDebounceTitle": "Debounce NRT: una raffica di modifiche a monte si condensa in un unico ricalcolo. Quiete = secondi di calma prima dell'attivazione (0 = tempo reale). Ritardo massimo = il limite rigido di obsolescenza in caso di modifiche continue.",
@@ -232,7 +230,7 @@
     "loadManagementTitle": "Gestione del carico e tempestività",
     "loadManagementHelp": "Quanto devono essere aggiornati i dati per ogni lettore, bilanciato con il carico sulla piattaforma e sulle sorgenti upstream.",
     "loadManagementInfoLabel": "Informazioni su gestione del carico e tempestività",
-    "loadManagementInfo": "Bilancia quanto sono aggiornati i dati di ogni lettore rispetto al carico sulla piattaforma e sulle sorgenti upstream. Idealmente la sorgente upstream gestisce il proprio carico; l'operatore protegge la piattaforma, e la sorgente quando non può proteggersi da sola. Queste impostazioni sono la soglia minima dell'operatore: nessuna query o indicazione nella richiesta può ottenere dati più recenti o caricare una sorgente più di quanto consentano. I lettori possono solo scegliere di accettare dati più vecchi in cambio di velocità. Una sorgente che il motore legge in tempo reale ignora le impostazioni TTL, a meno che non sia impostato «Preferisci materializzato» o «Protetto dal carico».",
+    "loadManagementInfo": "Bilancia quanto sono aggiornati i dati di ogni lettore rispetto al carico sulla piattaforma e sulle sorgenti upstream. Idealmente la sorgente upstream gestisce il proprio carico; l'operatore protegge la piattaforma, e la sorgente quando non può proteggersi da sola. Queste impostazioni sono la soglia minima dell'operatore: nessuna query o indicazione nella richiesta può ottenere dati più recenti o caricare una sorgente più di quanto consentano. I lettori possono solo scegliere di accettare dati più vecchi in cambio di velocità. Una tabella che il motore legge in tempo reale ignora le impostazioni TTL; si applicano quando viene servita dalla sua replica («Replicare» o «Protezione dal carico»).",
     "cacheTtlRequiredForSignal": "Il segnale di modifica {{signal}} valuta l'aggiornamento in base al TTL della cache, quindi imposta un TTL della cache qui o sulla sorgente.",
     "loadManagementFixErrors": "Correggi le impostazioni di Gestione del carico e tempestività prima di salvare."
   }

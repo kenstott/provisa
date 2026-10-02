@@ -41,7 +41,7 @@ import {
   useUpdateTable,
   useDeleteTable,
   useUpdateTableCache,
-  useUpdateTablePreferMaterialized,
+  useUpdateTableReplicate,
   useUpdateTableLoadProtection,
   useUpdateTableNaming,
   useDeployViewToDb,
@@ -71,6 +71,10 @@ import { TagControl } from "../components/TagControl";
 import { TableEditForm } from "./tables/TableEditForm";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { roleTtlValid, tableTtlSignalError } from "./tables/roleTtl";
+import {
+  replicateContradictsLoadProtection,
+  resolvedReplicate,
+} from "../components/admin/replicate";
 
 export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
@@ -100,7 +104,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { deleteTable } = useDeleteTable();
   const { updateTableCache } = useUpdateTableCache();
   const { updateTableRoleTtl } = useUpdateTableRoleTtl();
-  const { updateTablePreferMaterialized } = useUpdateTablePreferMaterialized();
+  const { updateTableReplicate } = useUpdateTableReplicate();
   const { updateTableLoadProtection } = useUpdateTableLoadProtection();
   const { updateTableNaming } = useUpdateTableNaming();
   const { purgeCacheByTable } = usePurgeCacheByTable();
@@ -461,14 +465,25 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       setError(translate("tableEditForm.roleTtlFixErrors"));
       return;
     }
+    const source = sources.find((s) => s.id === editingTable.sourceId);
+    const effectiveLoadProtected = editingTable.loadProtected ?? source?.loadProtected ?? false;
     // REQ-930: a ttl/ttl_probe signal needs a landing Cache TTL (table, else source) as its clock.
     if (editingTable.viewSql == null) {
       const staged = cacheTtlEdits[editingTable.id]?.value;
       const tableTtl =
         staged === undefined ? editingTable.cacheTtl : staged === "" ? null : Number(staged);
-      const source = sources.find((s) => s.id === editingTable.sourceId);
       if (tableTtlSignalError(editingTable, source, tableTtl ?? source?.cacheTtl ?? null)) {
         setError(translate("tableEditForm.loadManagementFixErrors"));
+        return;
+      }
+      // REQ-826: load protection with Replicate = Never is contradictory.
+      if (
+        replicateContradictsLoadProtection(
+          resolvedReplicate(editingTable.replicate, source?.replicate),
+          effectiveLoadProtected,
+        )
+      ) {
+        setError(translate("replicateSelect.neverWithLoadProtection"));
         return;
       }
     }
@@ -504,24 +519,27 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           return;
         }
       }
-      const preferResult = await updateTablePreferMaterialized(
-        editingTable.id,
-        editingTable.preferMaterialized,
-      );
-      if (!preferResult.success) {
-        setError(preferResult.message);
-        return;
-      }
-      // REQ-1141: persist load protection + off-peak window (validated server-side ≥1-gate rule).
-      const lpResult = await updateTableLoadProtection(
-        editingTable.id,
-        editingTable.loadProtected,
-        editingTable.offPeakWindow,
-        editingTable.offPeakTz,
-      );
-      if (!lpResult.success) {
-        setError(lpResult.message);
-        return;
+      // REQ-826 / REQ-1141: persist Replicate and load protection + off-peak window (the ≥1-gate
+      // rule is validated server-side). The server refuses load protection with Replicate = Never,
+      // judged against what is stored at each save, so the one that is being turned off goes
+      // first: load protection off before a Never, a non-Never Replicate before load protection.
+      const saveReplicate = () => updateTableReplicate(editingTable.id, editingTable.replicate);
+      const saveLoadProtection = () =>
+        updateTableLoadProtection(
+          editingTable.id,
+          editingTable.loadProtected,
+          editingTable.offPeakWindow,
+          editingTable.offPeakTz,
+        );
+      const saves = effectiveLoadProtected
+        ? [saveReplicate, saveLoadProtection]
+        : [saveLoadProtection, saveReplicate];
+      for (const save of saves) {
+        const saved = await save();
+        if (!saved.success) {
+          setError(saved.message);
+          return;
+        }
       }
       // Await the reload before clearing the form. The refetches are otherwise fire-and-forget, so
       // the read view (and any editor re-opened from it) would render off the pre-save cache entry

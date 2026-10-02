@@ -14,8 +14,8 @@
 import { describe, it, expect } from "vitest";
 import { tableTtlSignalError } from "../roleTtl";
 
-const LIVE = { materialize: false, preferMaterialized: null, loadProtected: null };
-const SRC = { changeSignal: "ttl", preferMaterialized: false, loadProtected: false };
+const LIVE = { materialize: false, replicate: null, loadProtected: null };
+const SRC = { changeSignal: "ttl", replicate: null, loadProtected: false };
 
 describe("tableTtlSignalError", () => {
   it("refuses a landed ttl/ttl_probe table with no Cache TTL", () => {
@@ -23,9 +23,7 @@ describe("tableTtlSignalError", () => {
       expect(tableTtlSignalError({ ...LIVE, changeSignal, materialize: true }, SRC, null)).toBe(
         true,
       );
-      expect(
-        tableTtlSignalError({ ...LIVE, changeSignal, preferMaterialized: true }, SRC, null),
-      ).toBe(true);
+      expect(tableTtlSignalError({ ...LIVE, changeSignal, replicate: 0 }, SRC, null)).toBe(true);
       expect(tableTtlSignalError({ ...LIVE, changeSignal, loadProtected: true }, SRC, null)).toBe(
         true,
       );
@@ -34,19 +32,42 @@ describe("tableTtlSignalError", () => {
 
   it("inherits the signal and the landing mode from the source", () => {
     const table = { ...LIVE, changeSignal: null };
-    expect(tableTtlSignalError(table, { ...SRC, preferMaterialized: true }, null)).toBe(true);
+    expect(tableTtlSignalError(table, { ...SRC, replicate: 0 }, null)).toBe(true);
     expect(tableTtlSignalError(table, { ...SRC, loadProtected: true }, null)).toBe(true);
     expect(tableTtlSignalError(table, SRC, null)).toBe(false);
   });
 
-  it("a table's own off setting overrides a landing source", () => {
+  it("a table set to Never under a source that replicates only when busy is not refused", () => {
     expect(
       tableTtlSignalError(
-        { ...LIVE, changeSignal: "ttl", preferMaterialized: false, loadProtected: false },
-        { ...SRC, preferMaterialized: true, loadProtected: true },
+        { ...LIVE, changeSignal: "ttl", replicate: -1 },
+        { ...SRC, replicate: 500 },
         null,
       ),
     ).toBe(false);
+  });
+
+  it("a Hot threshold says the table is replicated once busy, so it needs its clock", () => {
+    expect(tableTtlSignalError({ ...LIVE, changeSignal: "ttl", replicate: 500 }, SRC, null)).toBe(
+      true,
+    );
+    expect(
+      tableTtlSignalError({ ...LIVE, changeSignal: "ttl" }, { ...SRC, replicate: 500 }, null),
+    ).toBe(true);
+  });
+
+  it("a table cannot opt out of a source floored as a whole", () => {
+    // Always or Load Protected on the source: it has no live attach, so every table of it is
+    // served from its replica whatever the table says for itself.
+    for (const floor of [{ replicate: 0 }, { loadProtected: true }]) {
+      expect(
+        tableTtlSignalError(
+          { ...LIVE, changeSignal: "ttl", loadProtected: false },
+          { ...SRC, ...floor },
+          null,
+        ),
+      ).toBe(true);
+    }
   });
 
   it("saves a live-read ttl table, any Cache TTL, and every self-clocked signal", () => {

@@ -20,8 +20,6 @@
     "roleTtlInvalidTtl": "Geben Sie eine ganze Zahl von Sekunden ein, 0 oder mehr.",
     "roleTtlDuplicateRole": "Diese Rolle ist bereits aufgeführt.",
     "roleTtlFixErrors": "Korrigieren Sie die Rollen-TTL-Zeilen vor dem Speichern.",
-    "preferMaterializedLabel": "Materialisierung bevorzugen",
-    "preferMaterializedHelp": "Erzwingt, dass diese Tabelle in den Store materialisiert und von dort föderiert wird, statt live erreicht zu werden. Verwenden, wenn der Connector für die Abfragen dieser Tabelle schlecht geeignet ist. Erben = dem Standard der Quellebene folgen.",
     "loadProtectedLabel": "Lastgeschützt",
     "loadProtectedHelp": "Schützt eine lastempfindliche Quelle: Diese Tabelle wird vollständig aus einem geplanten Snapshot bedient, sodass Abfragen die Quelle nie treffen. Erfordert mindestens ein Aktualisierungstor — ein Nebenzeitenfenster, einen Cache-TTL-Takt oder ein Probe-Änderungssignal. Erben = dem Standard der Quellebene folgen.",
     "offPeakWindowLabel": "Nebenzeitenfenster",
@@ -38,7 +36,7 @@
     "descriptionPlaceholder": "Erscheint in SDL-Dokumenten",
     "materializedViewLabel": "Materialisierte Sicht",
     "materializedViewDesc": "(CTAS in mv_cache, periodisch aktualisiert)",
-    "materializedViewHelp": "Berechnet das SQL DIESER Sicht im unten festgelegten Aktualisierungsintervall in eine gespeicherte Cache-Tabelle vor (CTAS in mv_cache). Nicht zu verwechseln mit „Materialisierung bevorzugen“ oben, das eine rohe Quelltabelle in den Store zieht — hier wird eine in Provisa definierte Sicht materialisiert.",
+    "materializedViewHelp": "Berechnet das SQL DIESER Sicht im unten festgelegten Aktualisierungsintervall in eine gespeicherte Cache-Tabelle vor (CTAS in mv_cache). Nicht zu verwechseln mit „Replizieren“ oben, das eine Kopie einer rohen Quelltabelle im Store hält — hier wird eine in Provisa definierte Sicht materialisiert.",
     "refreshIntervalLabel": "Aktualisierungsintervall (Sekunden)",
     "refreshIntervalHelp": "Wie oft die materialisierte Sicht neu aufgebaut wird (CTAS in mv_cache). Bestimmt die Frische der gespeicherten Tabelle, die ABFRAGEN lesen. Nicht zu verwechseln mit dem Cache-TTL (das Abfrageergebnisse zwischenspeichert) und dem Poll-Intervall (das den Live-Änderungsstrom zu Abonnenten taktet).",
     "nrtDebounceTitle": "NRT-Debounce: Ein Schub von Upstream-Änderungen wird zu einer Neuberechnung zusammengefasst. Ruhe = Sekunden ohne Änderungen vor dem Auslösen (0 = Echtzeit). Max. Verzögerung = die harte Veraltungsgrenze bei anhaltender Änderungslast.",
@@ -232,7 +230,7 @@
     "loadManagementTitle": "Laststeuerung und Aktualität",
     "loadManagementHelp": "Wie aktuell die Daten für jeden Leser sein müssen, abgewogen gegen die Last auf der Plattform und den Upstream-Quellen.",
     "loadManagementInfoLabel": "Über Laststeuerung und Aktualität",
-    "loadManagementInfo": "Wägt ab, wie aktuell die Daten jedes Lesers sind, gegenüber der Last auf der Plattform und auf den Upstream-Quellen. Idealerweise steuert die Upstream-Quelle ihre Last selbst; der Betreiber schützt die Plattform und die Upstream-Quelle, wenn sie sich nicht selbst schützen kann. Diese Einstellungen sind die Untergrenze des Betreibers – keine Abfrage und kein Anfragehinweis kann aktuellere Daten erhalten oder eine Quelle stärker belasten, als sie zulassen. Leser können nur wählen, für mehr Geschwindigkeit ältere Daten zu akzeptieren. Eine Quelle, die die Engine live liest, ignoriert die TTL-Einstellungen, es sei denn, „Materialisiert bevorzugen“ oder „Lastgeschützt“ ist gesetzt.",
+    "loadManagementInfo": "Wägt ab, wie aktuell die Daten jedes Lesers sind, gegenüber der Last auf der Plattform und auf den Upstream-Quellen. Idealerweise steuert die Upstream-Quelle ihre Last selbst; der Betreiber schützt die Plattform und die Upstream-Quelle, wenn sie sich nicht selbst schützen kann. Diese Einstellungen sind die Untergrenze des Betreibers – keine Abfrage und kein Anfragehinweis kann aktuellere Daten erhalten oder eine Quelle stärker belasten, als sie zulassen. Leser können nur wählen, für mehr Geschwindigkeit ältere Daten zu akzeptieren. Eine Tabelle, die die Engine live liest, ignoriert die TTL-Einstellungen; sie gelten, sobald die Tabelle aus ihrem Replikat bedient wird („Replizieren“ oder „Lastgeschützt“).",
     "cacheTtlRequiredForSignal": "Das Änderungssignal {{signal}} bewertet die Aktualität anhand der Cache-TTL. Legen Sie daher hier oder an der Quelle eine Cache-TTL fest.",
     "loadManagementFixErrors": "Korrigieren Sie die Einstellungen unter Laststeuerung und Aktualität vor dem Speichern."
   }

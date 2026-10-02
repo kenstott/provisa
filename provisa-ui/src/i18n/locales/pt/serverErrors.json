@@ -268,7 +268,7 @@
       "source_naming_updated": "Convenção de nomenclatura atualizada para a fonte '{{source}}'",
       "source_no_connection": "a fonte '{{source}}' não tem conexão ativa",
       "source_not_found": "Fonte '{{source}}' não encontrada",
-      "source_prefer_materialized_set": "prefer_materialized definido para a fonte '{{source}}'",
+      "source_replicate_set": "Replicar definido para a fonte '{{source}}'",
       "source_renamed": "Fonte renomeada '{{old}}' → '{{new}}'",
       "source_type_not_sqlite": "O tipo de fonte '{{type}}' não é sqlite",
       "source_updated": "Fonte '{{source}}' atualizada",
@@ -278,7 +278,7 @@
       "table_load_protection_set": "proteção de carga definida para a tabela {{table}}",
       "table_naming_updated": "Convenção de nomenclatura atualizada para a tabela {{table}}",
       "table_not_found": "Tabela {{table}} não encontrada",
-      "table_prefer_materialized_set": "prefer_materialized definido para a tabela {{table}}",
+      "table_replicate_set": "Replicar definido para a tabela {{table}}",
       "table_registered": "Tabela '{{table}}' registrada (id={{id}})",
       "table_updated": "Tabela '{{table}}' atualizada (id={{id}})",
       "task_deleted": "Tarefa '{{task}}' excluída",
@@ -294,7 +294,9 @@
       "view_spans_sources": "a exibição abrange várias fontes: {{sources}}",
       "webhook_approved": "Webhook '{{webhook}}' aprovado",
       "webhook_name_required": "webhook_name é obrigatório para um gatilho de webhook",
-      "webhook_not_found": "Webhook '{{webhook}}' não encontrado"
+      "webhook_not_found": "Webhook '{{webhook}}' não encontrado",
+      "replicate_invalid": "Replicar deve ser 'Padrão', 'Nunca', 'Sempre' ou um limite acima de 0; recebido {{value}}",
+      "replicate_contradicts_load_protected": "A proteção de carga não pode ser combinada com Replicar = 'Nunca': uma tabela protegida contra carga nunca é lida ao vivo"
     },
     "security": {
       "unknown_mode": "modo de segurança desconhecido '{{mode}}'"

@@ -268,7 +268,7 @@
       "source_naming_updated": "ソース「{{source}}」の命名規則を更新しました",
       "source_no_connection": "ソース「{{source}}」にアクティブな接続がありません",
       "source_not_found": "ソース「{{source}}」が見つかりません",
-      "source_prefer_materialized_set": "ソース「{{source}}」に prefer_materialized を設定しました",
+      "source_replicate_set": "ソース「{{source}}」にレプリケートを設定しました",
       "source_renamed": "ソース名を「{{old}}」から「{{new}}」に変更しました",
       "source_type_not_sqlite": "ソースタイプ「{{type}}」は sqlite ではありません",
       "source_updated": "ソース「{{source}}」を更新しました",
@@ -278,7 +278,7 @@
       "table_load_protection_set": "テーブル {{table}} に負荷保護を設定しました",
       "table_naming_updated": "テーブル {{table}} の命名規則を更新しました",
       "table_not_found": "テーブル {{table}} が見つかりません",
-      "table_prefer_materialized_set": "テーブル {{table}} に prefer_materialized を設定しました",
+      "table_replicate_set": "テーブル {{table}} にレプリケートを設定しました",
       "table_registered": "テーブル「{{table}}」を登録しました（id={{id}}）",
       "table_updated": "テーブル「{{table}}」を更新しました（id={{id}}）",
       "task_deleted": "タスク「{{task}}」を削除しました",
@@ -294,7 +294,9 @@
       "view_spans_sources": "ビューが複数のソースにまたがっています：{{sources}}",
       "webhook_approved": "Webhook「{{webhook}}」を承認しました",
       "webhook_name_required": "Webhook トリガーには webhook_name が必要です",
-      "webhook_not_found": "Webhook「{{webhook}}」が見つかりません"
+      "webhook_not_found": "Webhook「{{webhook}}」が見つかりません",
+      "replicate_invalid": "レプリケートは「デフォルト」「しない」「常に」または 0 より大きいしきい値である必要があります（指定値: {{value}}）",
+      "replicate_contradicts_load_protected": "負荷保護はレプリケート =「しない」と併用できません。負荷保護されたテーブルはライブで読まれることがありません"
     },
     "security": {
       "unknown_mode": "不明なセキュリティモード「{{mode}}」です"

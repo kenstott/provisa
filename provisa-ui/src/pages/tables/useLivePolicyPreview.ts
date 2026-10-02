@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { RefreshPolicySummary, RegisteredTable } from "../../types/admin";
 import { useRefreshPolicyPreview } from "../../hooks/useAdminQueries";
+import { REPLICATE_NEVER } from "../../components/admin/replicate";
 
 // REQ-1143: keep the top-of-form refresh-policy summary in sync with the draft knobs. The tree is
 // never re-derived client-side — a debounced preview query re-runs describe_refresh_policy server-
@@ -37,7 +38,7 @@ export function useLivePolicyPreview(
     domainId,
     schemaName,
     tableName,
-    preferMaterialized,
+    replicate,
     loadProtected,
     offPeakWindow,
     offPeakTz,
@@ -50,7 +51,11 @@ export function useLivePolicyPreview(
   useEffect(() => {
     previewRef.current = previewPolicy;
   });
+  // REQ-826: Never with load protection on the table itself is refused by the server (the form
+  // shows that error on the Replicate control), so there is no policy to preview for that draft.
+  const contradictory = replicate === REPLICATE_NEVER && loadProtected === true;
   useEffect(() => {
+    if (contradictory) return;
     let cancelled = false;
     const handle = setTimeout(() => {
       previewRef
@@ -60,7 +65,7 @@ export function useLivePolicyPreview(
           schemaName,
           tableName,
           cacheTtl: effCacheTtl,
-          preferMaterialized,
+          replicate,
           loadProtected,
           offPeakWindow,
           offPeakTz,
@@ -108,12 +113,13 @@ export function useLivePolicyPreview(
     schemaName,
     tableName,
     effCacheTtl,
-    preferMaterialized,
+    replicate,
     loadProtected,
     offPeakWindow,
     offPeakTz,
     changeSignal,
     refreshPolicySummary,
+    contradictory,
   ]);
   return livePolicy ?? refreshPolicySummary;
 }
