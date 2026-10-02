@@ -19,6 +19,7 @@ directly rather than routing through a Connector/runtime.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterator
 
 
 def table_names(path: str) -> list[str]:
@@ -54,6 +55,23 @@ def execute_sync(path: str, sql: str) -> list[dict]:  # REQ-229
     try:
         cursor = conn.execute(sql)
         return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def iter_row_batches(path: str, sql: str, batch_rows: int) -> Iterator[list[dict]]:  # REQ-1915
+    """The rows of ``sql`` against a SQLite file in batches of at most ``batch_rows``, fetched
+    from the statement's cursor a batch at a time: only one batch is held. The connection may
+    be stepped from more than one thread, one at a time."""
+    conn = sqlite3.connect(path, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    try:
+        cursor = conn.execute(sql)
+        while True:
+            chunk = cursor.fetchmany(batch_rows)
+            if not chunk:
+                return
+            yield [dict(row) for row in chunk]
     finally:
         conn.close()
 

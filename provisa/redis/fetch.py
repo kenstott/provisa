@@ -21,7 +21,9 @@ a thread.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
+from typing import Any
 
 import redis
 
@@ -125,12 +127,9 @@ def prefix_columns(
     return [(key_column, "varchar")] + [(f, "varchar") for f in fields]
 
 
-def fetch_rows(
-    conn: RedisConnection, mapping: dict, table_name: str, columns: list[str]
-) -> list[dict]:  # REQ-1675
-    """Every key of the table's pattern as a row of ``columns``: the key column carries the full
-    key; a hash table's other columns are its fields (a mapping DSL column may name its ``field``);
-    a string table's ``value`` column is the value."""
+def _readable_spec(mapping: dict, table_name: str) -> tuple[str, str, str, dict[str, str]]:
+    """The table's key pattern, key column, value type and column → hash-field names; raises for
+    a value type that is not read natively."""
     entry = _table_entry(mapping, table_name)
     pattern, key_column, value_type = table_spec(mapping, table_name)
     field_of = {c["name"]: (c.get("field") or c["name"]) for c in (entry or {}).get("columns", [])}
@@ -139,21 +138,58 @@ def fetch_rows(
             f"Redis table {table_name!r}: value_type {value_type!r} is not readable natively "
             "(hash and string are)"
         )
+    return pattern, key_column, value_type, field_of
+
+
+def _key_row(
+    c: Any, key: str, columns: list[str], key_column: str, value_type: str, field_of: dict
+) -> dict | None:
+    """The row of one key, or None when the key's own type is not the table's."""
+    if value_type == ValueType.HASH:
+        if c.type(key) != "hash":
+            return None
+        h = c.hgetall(key)
+        return {
+            col: (key if col == key_column else h.get(field_of.get(col, col))) for col in columns
+        }
+    # ValueType.STRING — the only other readable type (checked by _readable_spec)
+    if c.type(key) != "string":
+        return None
+    v = c.get(key)
+    return {col: (key if col == key_column else v) for col in columns}
+
+
+def fetch_rows(
+    conn: RedisConnection, mapping: dict, table_name: str, columns: list[str]
+) -> list[dict]:  # REQ-1675
+    """Every key of the table's pattern as a row of ``columns``: the key column carries the full
+    key; a hash table's other columns are its fields (a mapping DSL column may name its ``field``);
+    a string table's ``value`` column is the value."""
+    pattern, key_column, value_type, field_of = _readable_spec(mapping, table_name)
     rows: list[dict] = []
     with conn.client() as c:
         for key in sorted(c.scan_iter(match=pattern, count=_SCAN_COUNT)):
-            if value_type == ValueType.HASH:
-                if c.type(key) != "hash":
-                    continue
-                h = c.hgetall(key)
-                row = {
-                    col: (key if col == key_column else h.get(field_of.get(col, col)))
-                    for col in columns
-                }
-            else:  # ValueType.STRING — the only other readable type (checked above)
-                if c.type(key) != "string":
-                    continue
-                v = c.get(key)
-                row = {col: (key if col == key_column else v) for col in columns}
-            rows.append(row)
+            row = _key_row(c, key, columns, key_column, value_type, field_of)
+            if row is not None:
+                rows.append(row)
     return rows
+
+
+def iter_row_batches(
+    conn: RedisConnection, mapping: dict, table_name: str, columns: list[str], batch_rows: int
+) -> Iterator[list[dict]]:  # REQ-1915
+    """The table's keys as rows in batches of at most ``batch_rows``, off one SCAN cursor in the
+    order the server returns them: only one batch is held."""
+    pattern, key_column, value_type, field_of = _readable_spec(mapping, table_name)
+    with conn.client() as c:
+        batch: list[dict] = []
+        for key in c.scan_iter(match=pattern, count=_SCAN_COUNT):
+            row = _key_row(c, key, columns, key_column, value_type, field_of)
+            if row is None:
+                continue
+            batch.append(row)
+            if len(batch) >= batch_rows:
+                yield batch
+                batch = []
+        if batch:
+            yield batch

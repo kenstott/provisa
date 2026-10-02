@@ -16,7 +16,9 @@ batches and declares, in one place, the capability it is (``data_replicator.Sour
 
 - :class:`EngineTableSource` — the engine reads the table and streams Arrow batches;
 - :class:`DirectTableSource` — the source's own driver, through a server-side cursor;
-- :class:`CursorSource` — an adapter that yields bounded batches of rows;
+- :class:`CursorSource` / :class:`BlockingCursorSource` — an adapter that yields bounded
+  batches of rows off its client's own cursor;
+- :class:`ArrowStreamSource` — a driver that yields Arrow batches itself;
 - :class:`DocumentSource` — an adapter whose answer is one document, held whole and then cut
   into batches. It is declared as what it is: the memory it needs is the document's size.
 
@@ -28,7 +30,9 @@ declared columns.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Awaitable, Callable
+import asyncio
+from contextlib import aclosing
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Iterator
 from typing import Any, Protocol
 
 import pyarrow as pa
@@ -128,6 +132,75 @@ class CursorSource:
         async for rows in self._row_batches(batch_rows):
             for start in range(0, len(rows), batch_rows):
                 yield rows_to_batch(rows[start : start + batch_rows], self._columns, schema)
+
+
+async def _stepped(make: Callable[[], Iterator[Any]]) -> AsyncGenerator[Any, None]:
+    """A blocking generator's items, each produced off the event loop, and the generator closed
+    (its client and cursor released) however the iteration ends."""
+    iterator = make()
+    try:
+        while True:
+            item = await asyncio.to_thread(next, iterator, _DONE)
+            if item is _DONE:
+                return
+            yield item
+    finally:
+        close = getattr(iterator, "close", None)
+        if close is not None:
+            await asyncio.to_thread(close)
+
+
+_DONE: Any = object()
+
+
+class BlockingCursorSource:
+    """A driver whose cursor is a blocking iterator of row batches: ``row_batches(batch_rows)``
+    returns it. Each batch is fetched off the event loop; only one is held."""
+
+    caps = SourceCaps(frozenset({SourceRead.CURSOR}))
+
+    def __init__(
+        self,
+        row_batches: Callable[[int], Iterator[list[dict]]],
+        columns: list[tuple[str, str]],
+    ) -> None:
+        self._row_batches = row_batches
+        self._columns = columns
+
+    async def batches(self, batch_rows: int) -> AsyncIterator[pa.RecordBatch]:
+        schema = arrow_schema(self._columns)
+        # aclosing: a reader that stops early closes the cursor now, not when it is collected.
+        async with aclosing(_stepped(lambda: self._row_batches(batch_rows))) as stepped:
+            async for rows in stepped:
+                for start in range(0, len(rows), batch_rows):
+                    yield rows_to_batch(rows[start : start + batch_rows], self._columns, schema)
+
+
+class ArrowStreamSource:
+    """A driver that yields Arrow record batches itself. ``open_stream()`` connects and returns
+    the blocking iterator of batches and the call that closes the driver; batches pass through
+    as they are, cut to the batch bound."""
+
+    caps = SourceCaps(frozenset({SourceRead.ARROW_STREAM}))
+
+    def __init__(
+        self,
+        open_stream: Callable[
+            [],
+            Awaitable[tuple[Callable[[], Iterator[pa.RecordBatch]], Callable[[], Awaitable[None]]]],
+        ],
+    ) -> None:
+        self._open = open_stream
+
+    async def batches(self, batch_rows: int) -> AsyncIterator[pa.RecordBatch]:
+        record_batches, close = await self._open()
+        try:
+            async with aclosing(_stepped(record_batches)) as stepped:
+                async for batch in stepped:
+                    for part in _bounded(batch, batch_rows):
+                        yield part
+        finally:
+            await close()
 
 
 class DocumentSource:

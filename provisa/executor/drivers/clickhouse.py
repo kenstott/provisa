@@ -25,7 +25,7 @@ runs the query on the request's own thread.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 
 from provisa.core import request_deadline
@@ -147,6 +147,23 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
         with self._require_pool().connection(is_broken=_is_broken) as client:
             with request_deadline.cancel_on_deadline(lambda: self._kill_query(query_id)):
                 return client.query_arrow(sql, use_strings=True, settings={"query_id": query_id})
+
+    def iter_arrow_batches(self, sql: str) -> Iterator[Any]:
+        """Run fully formed ``sql`` and yield its result as Arrow record batches while the
+        server streams them (REQ-1915): one block is held at a time. The pooled client is kept
+        for the life of the iteration and returned when it ends or is closed."""
+        import pyarrow as pa
+
+        query_id = uuid.uuid4().hex
+        with self._require_pool().connection(is_broken=_is_broken) as client:
+            with client.query_arrow_stream(
+                sql, use_strings=True, settings={"query_id": query_id}
+            ) as stream:
+                for chunk in stream:
+                    if isinstance(chunk, pa.Table):
+                        yield from chunk.to_batches()
+                    else:
+                        yield chunk
 
     # Async only for the DirectDriver awaitable contract; closes synchronously in-thread.
     async def close(self) -> None:

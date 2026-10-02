@@ -33,6 +33,7 @@ itself is the row.
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 _DRAIN_TIMEOUT_MS = 5000
@@ -68,6 +69,14 @@ async def fetch_rows(
 ) -> list[dict]:  # REQ-1730
     """Every message currently on ``topic``, from the earliest offset until the broker answers an
     empty batch, ``columns`` projected. ``[]`` when the topic does not exist or is empty."""
+    return [row async for batch in iter_row_batches(conn, topic, columns) for row in batch]
+
+
+async def iter_row_batches(
+    conn: KafkaConnection, topic: str, columns: list[str]
+) -> AsyncIterator[list[dict]]:  # REQ-1915
+    """The messages currently on ``topic`` a consumer poll at a time, until the broker answers
+    an empty batch: only one poll's messages are held."""
     from aiokafka import AIOKafkaConsumer
 
     consumer = AIOKafkaConsumer(
@@ -78,17 +87,18 @@ async def fetch_rows(
         group_id=None,
     )
     await consumer.start()
-    rows: list[dict] = []
     try:
         while True:
             batch = await consumer.getmany(timeout_ms=_DRAIN_TIMEOUT_MS)
             if not batch:
                 break
+            rows: list[dict] = []
             for messages in batch.values():
                 for msg in messages:
                     row = _decode_row(msg.value)
                     if row is not None:
                         rows.append({c: row.get(c) for c in columns})
+            if rows:
+                yield rows
     finally:
         await consumer.stop()
-    return rows

@@ -121,16 +121,32 @@ def fetch_rows(
     conn: CassandraConnection, keyspace: str, table: str, columns: list[str]
 ) -> list[dict]:  # REQ-1676
     """Every row of the table, ``columns`` projected, read page by page."""
+    return [
+        row
+        for batch in iter_row_batches(conn, keyspace, table, columns, _PAGE_SIZE)
+        for row in batch
+    ]
+
+
+def iter_row_batches(
+    conn: CassandraConnection, keyspace: str, table: str, columns: list[str], batch_rows: int
+) -> Iterator[list[dict]]:  # REQ-1915
+    """The table's rows in batches of at most ``batch_rows``, the driver paging the result that
+    many rows at a time: only one batch is held."""
     from cassandra.query import SimpleStatement
 
     cols = ", ".join(f'"{c}"' for c in columns)
-    stmt = SimpleStatement(f'SELECT {cols} FROM "{keyspace}"."{table}"', fetch_size=_PAGE_SIZE)
-    rows: list[dict] = []
+    stmt = SimpleStatement(f'SELECT {cols} FROM "{keyspace}"."{table}"', fetch_size=batch_rows)
     with conn.cluster() as cluster:
         session = cluster.connect()
+        batch: list[dict] = []
         for row in session.execute(stmt):
-            rows.append({c: getattr(row, c) for c in columns})
-    return rows
+            batch.append({c: getattr(row, c) for c in columns})
+            if len(batch) >= batch_rows:
+                yield batch
+                batch = []
+        if batch:
+            yield batch
 
 
 def fetch_rows_by_keys(
