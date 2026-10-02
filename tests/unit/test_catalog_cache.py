@@ -167,3 +167,22 @@ class TestInvalidateSource:
         compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
         assert "DELETE" in compiled.upper()
         assert "src-to-delete" in compiled
+
+
+def test_ensure_table_on_a_control_plane_without_schemas(tmp_path):
+    """A SQLite control plane has one namespace. Its ``Database`` still carries the org's schema
+    name; naming that schema to SQLite asks for a database that is not attached
+    (``no such table: org_x.sqlite_master``) and the server does not start."""
+    import asyncio
+
+    import sqlalchemy as sa
+
+    from provisa.core.database import Database
+    from provisa.discovery.catalog_cache import ensure_table
+
+    engine = sa.create_engine(f"sqlite+pysqlite:///{tmp_path / 'cp.db'}")
+    db = Database(engine, name="org", search_path="org_acme")
+    asyncio.run(ensure_table(db))
+    asyncio.run(ensure_table(db))  # a second start finds it
+    assert "source_catalog_cache" in sa.inspect(engine).get_table_names()
+    engine.dispose()

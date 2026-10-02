@@ -30,13 +30,25 @@ log = logging.getLogger(__name__)
 
 
 async def ensure_table(pool) -> None:
-    """Create the source catalog cache table from the portable metadata, in the org's own schema:
-    the one ``read_cache``/``write_cache`` reach through ``pool.acquire()``. A raw engine connection
-    carries no search_path, so the reconciliation scopes it (``core.db.add_missing_columns``)."""
+    """Create the source catalog cache table from the portable metadata, in the org's own
+    namespace: the one ``read_cache``/``write_cache`` reach through ``pool.acquire()``.
+
+    A raw engine connection carries no org scope. On PostgreSQL the reconciliation scopes it to
+    the org schema (``core.db.add_missing_columns``). Elsewhere the connection enters the org's
+    namespace the way an acquired one does (``Capabilities.enter_org_sql``: MySQL's database,
+    Oracle's schema) and a plane with no schemas at all (SQLite) has the one namespace — naming
+    a schema there asks SQLite for a database that is not attached."""
+    from sqlalchemy import text
+
     from provisa.core.db import add_missing_columns
 
     with pool.engine.begin() as conn:
-        add_missing_columns(conn, [source_catalog_cache], pool.search_path)
+        if pool.dialect == "postgresql":
+            add_missing_columns(conn, [source_catalog_cache], pool.search_path)
+            return
+        if pool.search_path and (sql := pool.capabilities.enter_org_sql(pool.search_path)):
+            conn.execute(text(sql))
+        add_missing_columns(conn, [source_catalog_cache])
 
 
 @dataclass
