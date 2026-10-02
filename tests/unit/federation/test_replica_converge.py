@@ -75,6 +75,19 @@ class _Store:
         return _Target()
 
 
+class _Connectors:
+    """The engine's connectors by source type: one that reads in place for the types the model
+    says the engine attaches, none for the rest."""
+
+    def __init__(self, model) -> None:
+        self._model = model
+
+    def get(self, source_type):
+        if source_type in self._model.attaches:
+            return SimpleNamespace(reads_in_place=True)
+        return None
+
+
 class _Model:
     """What this process's model declares: the tables served from a replica, with their
     columns, and the model stamp it was loaded at."""
@@ -84,6 +97,9 @@ class _Model:
         self.store = _Store()
         self.tables: dict[tuple, tuple] = {}  # key -> (source, columns, pk)
         self.unresolved: set[tuple] = set()  # declared, a column's type not resolved yet
+        self.row_level: set[tuple] = set()  # replicated row by row
+        self.parameters: dict[tuple, tuple] = {}  # key -> its parameter columns
+        self.attaches: set[str] = set()  # source types the engine reads in place
         self.kicks = 0
         model = self
         backend = SimpleNamespace(
@@ -93,15 +109,29 @@ class _Model:
             replica_target=lambda state, *, address, args, engine: model.store.target(address),
         )
         self.state = SimpleNamespace(
-            federation_engine=SimpleNamespace(engine=SimpleNamespace(backend=backend, name="e")),
+            federation_engine=SimpleNamespace(
+                engine=SimpleNamespace(backend=backend, name="e", connectors=_Connectors(self))
+            ),
             tenant_db=self.db,
             model_stamp=stamp,
         )
 
         async def replica_tables(engine, state):
             return [
-                (src, {"schema_name": key[1], "table_name": key[2]})
-                for key, (src, _cols, _pk) in model.tables.items()
+                (
+                    src,
+                    {
+                        "schema_name": key[1],
+                        "table_name": key[2],
+                        "row_materialize": key in model.row_level,
+                        "columns": [{"name": name, "native_filter_type": None} for name, _ in cols]
+                        + [
+                            {"name": name, "native_filter_type": "query_param"}
+                            for name in model.parameters.get(key, ())
+                        ],
+                    },
+                )
+                for key, (src, cols, _pk) in model.tables.items()
             ]
 
         async def landing_worklist(engine, state):
@@ -206,6 +236,29 @@ async def test_a_table_whose_types_are_not_resolved_is_declared_but_not_built_ye
     done = await converge_replicas(model.state)
     assert done.requested == [] and done.retired == []
     assert await model.record(key) is None
+
+
+async def test_a_row_level_table_is_declared_and_never_built_whole(model):
+    """REQ-1865: rows of a row-level table are fetched by key when a statement asks, never
+    ahead of one. Convergence asks for no whole build of it and never retires its table."""
+    key = model.declare("edges")
+    model.row_level.add(key)
+    done = await converge_replicas(model.state)
+    assert done.requested == [] and done.retired == [] and await model.record(key) is None
+    # Where the engine reads the source in place the flag is ignored, and a table the operator
+    # puts on its replica is built whole.
+    model.attaches.add("postgresql")
+    assert (await converge_replicas(model.state)).requested == [key]
+
+
+async def test_a_parameterized_table_is_declared_and_never_built(model):
+    """A table with a parameter column is a function of its arguments: there is no whole to
+    copy, so no build is asked for (a build would call the remote with no arguments)."""
+    key = model.declare("pet_by_id")
+    model.parameters[key] = ("pet_id",)
+    plain = model.declare("pets")
+    done = await converge_replicas(model.state)
+    assert done.requested == [plain] and await model.record(key) is None
 
 
 def test_the_standing_replica_serves_only_while_it_can_answer_the_model():
