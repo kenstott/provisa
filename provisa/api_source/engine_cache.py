@@ -94,6 +94,20 @@ def cache_location(  # REQ-318, REQ-309, REQ-327
     return CacheLocation(catalog, cache_schema, backend)
 
 
+def org_cache_schema(state: Any, suffix: str = "_api_cache") -> str:  # REQ-1623, REQ-595
+    """The schema the ACTING org's cache tables are written to, in the environment it is acting
+    in: ``org_<id>[_env_<env>]<suffix>``. It is the acting org's and not the deployment's own
+    (``state.org_id``), so an org's cache tables sit with the rest of its stores — counted
+    against its quota, and dropped with the org or the environment. ``suffix`` is one of the
+    org's store suffixes (``core.environments.SCHEMA_SUFFIXES``): rows fetched from an OpenAPI
+    or a gRPC remote source are API cache tables and go to ``_api_cache``; a GraphQL remote's
+    go to ``_gql_cache``."""
+    from provisa.core.environments import active_org_schema
+    from provisa.core.request_context import current_org
+
+    return active_org_schema(current_org.get() or state.org_id, suffix)
+
+
 def resolved_cache_catalog(engine: Any) -> str:  # REQ-318
     """The bound engine's cache catalog: a native/ephemeral engine (DuckDB) → its attached
     materialization store; a broad federator (Trino) → the writable ``provisa_admin`` config catalog.
@@ -101,12 +115,33 @@ def resolved_cache_catalog(engine: Any) -> str:  # REQ-318
     return engine.cache_catalog() or "provisa_admin"
 
 
+def _scope() -> str:
+    """The acting org, environment and loaded model: the scope every cache is kept under."""
+    from provisa.cache import tenancy
+
+    return tenancy.acting_scope()
+
+
 def cache_table_name(  # REQ-318, REQ-309, REQ-327
     source_id: str, operation_id: str, native_args: dict
 ) -> str:
-    """Stable table name for a given API call signature."""
+    """Stable table name for a given API call signature, in the acting org, environment and
+    model.
+
+    The scope is part of the name because the call alone does not say whose rows these are: a
+    source id is an org's own, a branch may bind it to another host, and the endpoint's
+    definition (path, response root, columns) is model that can change under the same
+    operation. An endpoint definition is a model row, so changing it advances the model stamp
+    and, with it, this name. Callers pass only the call; nothing else may name a cache table.
+    """
     key = json.dumps(
-        {"s": source_id, "o": operation_id, "a": sorted(native_args.items()), "v": 2},
+        {
+            "scope": _scope(),
+            "s": source_id,
+            "o": operation_id,
+            "a": sorted(native_args.items()),
+            "v": 3,
+        },
         sort_keys=True,
     )
     h = hashlib.sha256(key.encode()).hexdigest()[:16]

@@ -71,6 +71,7 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
     from provisa.api_source.engine_cache import (
         cache_location,
         ensure_cache_schema,
+        org_cache_schema,
         rewrite_from_cache,
     )
 
@@ -99,12 +100,8 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
     _cc = (getattr(api_source, "cache_catalog", None) if api_source else None) or (
         getattr(state, "source_catalogs", {}).get(source_id)
     )
-    _org_id = getattr(state, "org_id", "default")
-    _cs = (
-        getattr(api_source, "cache_schema", f"org_{_org_id}_api_cache")
-        if api_source
-        else f"org_{_org_id}_api_cache"
-    )
+    _org_cs = org_cache_schema(state)
+    _cs = getattr(api_source, "cache_schema", _org_cs) if api_source else _org_cs
     _cache_loc = cache_location(source_id, _cc, _cs, engine=state.federation_engine)
 
     # Resolve native filter args (path/query params) — may be "_"-prefixed on collision.
@@ -336,6 +333,7 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
         cache_table_name,
         ensure_cache_schema,
         land_api_cache,
+        org_cache_schema,
         resolved_cache_catalog,
         rewrite_from_cache,
         schedule_drop,
@@ -344,9 +342,8 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
     from provisa.cache.store import NoopCacheStore
     from provisa.executor.redirect import RedirectConfig
 
-    _org_id = getattr(state, "org_id", "default")
     _cache_cat = resolved_cache_catalog(state.federation_engine)
-    cache_loc = cache_location(source_id, _cache_cat, f"org_{_org_id}_grpc_cache")
+    cache_loc = cache_location(source_id, _cache_cat, org_cache_schema(state))
     cache_tbl = cache_table_name(source_id, table_name, nf_args)  # SHA-256(source+method+args)
     redirect_config = RedirectConfig.from_env()
     hot_mgr = getattr(state, "hot_manager", None)

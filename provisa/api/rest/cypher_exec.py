@@ -130,6 +130,7 @@ async def _execute_with_api(
     import asyncio
     from provisa.api_source.router_integration import handle_api_query
     from provisa.api_source.engine_cache import (
+        org_cache_schema,
         cache_table_name,
         cache_location,
         ensure_cache_schema,
@@ -227,7 +228,7 @@ async def _execute_with_api(
         _cc = (getattr(api_source, "cache_catalog", None) if api_source else None) or getattr(
             state, "source_catalogs", {}
         ).get(source_id)
-        _default_cs = f"org_{getattr(state, 'org_id', 'default')}_api_cache"
+        _default_cs = org_cache_schema(state)
         _cs = getattr(api_source, "cache_schema", _default_cs) if api_source else _default_cs
         _cache_loc = cache_location(source_id, _cc, _cs, engine=state.federation_engine)
         cache_tbl = cache_table_name(source_id, table_name, url_params)
@@ -285,6 +286,7 @@ async def _execute_with_gql_remote(
     from dataclasses import dataclass
     from provisa.graphql_remote.executor import execute_remote
     from provisa.api_source.engine_cache import (
+        org_cache_schema,
         cache_table_name,
         cache_location,
         ensure_cache_schema,
@@ -361,7 +363,7 @@ async def _execute_with_gql_remote(
             # isolated_sync attaches below; Trino → provisa_admin). Hardcoding provisa_admin
             # binder-errors on a native engine that never attaches it.
             state.federation_engine.cache_catalog() or info["cache_catalog"],
-            f"org_{getattr(state, 'org_id', 'default')}_gql_cache",
+            org_cache_schema(state, "_gql_cache"),
         )
         cache_tbl = cache_table_name(info["source_id"], tn, gql_vars)
         cache_rewrites[tn] = (cache_loc, cache_tbl)
