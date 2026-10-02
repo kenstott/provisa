@@ -415,17 +415,28 @@ async def test_a_tag_takes_its_assignments_and_values_with_it(plane):
     assert await plane.count("tag_assignments") == 0 and await plane.count("tag_param_values") == 0
 
 
-async def test_a_glossary_term_takes_its_edges_with_it(plane):
+async def test_a_glossary_term_is_blocked_by_its_refs_and_takes_its_edges_with_it(plane):
+    """Something that points a term at real data is a dependent; its edges, domain links and
+    experts are its parts."""
+    orders = await plane.table("orders")
     t1 = await plane.add("glossary_terms", name="Order")
     t2 = await plane.add("glossary_terms", name="Sale")
     await plane.add("glossary_term_edges", from_term_id=t1, to_term_id=t2, rel_type="RELATED_TO")
     await plane.add("glossary_term_edges", from_term_id=t2, to_term_id=t1, rel_type="RELATED_TO")
+    await plane.add("glossary_term_domains", term_id=t1, domain_id="sales")
+    await plane.add("glossary_term_refs", term_id=t1, table_id=orders.id, column_name="id")
     term = ObjectRef("glossary_term", t1)
-    assert await plane.blocking(term) == set() and await plane.circle(term) == []
+    assert await plane.via(term) == {orders: ("glossary_term_refs.term_id",)}
+    assert await plane.circle(term) == []
+
+    async with plane.db.acquire() as conn:
+        refs = metadata.tables["glossary_term_refs"]
+        await conn.execute_core(refs.delete())
+    assert await plane.blocking(term) == set()
     await plane.remove(term)
-    assert (
-        await plane.count("glossary_term_edges") == 0 and await plane.count("glossary_terms") == 1
-    )
+    assert await plane.count("glossary_term_edges") == 0
+    assert await plane.count("glossary_term_domains") == 0
+    assert await plane.count("glossary_terms") == 1
 
 
 # --- no circle: something can always go first ----------------------------------------------------

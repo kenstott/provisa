@@ -52,6 +52,7 @@ CONVERTED: dict[str, set[str]] = {
     "data_products": {"delete"},
     "tags": {"delete"},
     "calendars": {"delete"},
+    "glossary_terms": {"delete"},
 }
 
 _CONSTRUCTORS = {

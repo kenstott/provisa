@@ -262,7 +262,9 @@ REFERENCES: tuple[Reference, ...] = (
     _dep("tracked_functions", "product_id", "data_product", "command", "name"),
     _part("tag_assignments", "product_id", "data_product"),
     # --- to a glossary term --------------------------------------------------------------------
-    _part("glossary_term_refs", "term_id", "glossary_term"),
+    # A term's physical refs point it at real data, so they block it: the operator retires the
+    # term or moves its refs to another first. Its edges, domain links and experts go with it.
+    _dep("glossary_term_refs", "term_id", "glossary_term", "table", "table_id"),
     _part("glossary_term_domains", "term_id", "glossary_term"),
     _part("glossary_term_experts", "term_id", "glossary_term"),
     _part("glossary_term_edges", "from_term_id", "glossary_term"),

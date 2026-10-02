@@ -380,8 +380,14 @@ async def delete_term(request: Request, term_id: int) -> dict:
         await _require_term_curatable(_conn, term_id, request)
         try:
             deleted = await glossary_repo.delete_term(_conn, term_id)
-        except ValueError as exc:
-            raise ApiError(400, "glossary.invalid", str(exc)) from exc
+        except glossary_repo.TermDeleteRefused as refused:
+            # REQ-1918: the term's physical refs block it; each table it is rooted in is named.
+            raise ApiError(
+                400,
+                "glossary.invalid",
+                str(refused),
+                dependents=[d.as_dict() for d in refused.dependents],
+            ) from refused
     if not deleted:
         raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
     await _notify(org_id, "glossary term deleted")

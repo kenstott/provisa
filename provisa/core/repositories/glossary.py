@@ -36,6 +36,7 @@ from provisa.core.glossary import (
     normalize_term,
     readable_term,
 )
+from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import (
     glossary_term_domains,
     glossary_term_edges,
@@ -278,15 +279,9 @@ async def _settle_terms(
             await set_declared_domains(conn, term_id, domains_before.get(term_id, set()))
             node["deprecated"] = True
         else:
-            await conn.execute_core(
-                _delete(glossary_term_edges).where(
-                    (glossary_term_edges.c.from_term_id == term_id)
-                    | (glossary_term_edges.c.to_term_id == term_id)
-                )
-            )
-            await conn.execute_core(
-                _delete(glossary_term_experts).where(glossary_term_experts.c.term_id == term_id)
-            )
+            # The term lost its last ref, so nothing blocks it; its edges, domain links and
+            # experts go with it (the inventory's parts — no cascade is relied on).
+            await remove_parts(conn, ObjectRef("glossary_term", term_id))
             await conn.execute_core(_delete(glossary_terms).where(glossary_terms.c.id == term_id))
             graph.remove(term_id)
             removed.add(term_id)
@@ -664,29 +659,39 @@ async def set_export_excluded(conn: "Connection", term_id: int, excluded: bool) 
     return (result.rowcount or 0) > 0
 
 
-async def delete_term(conn: "Connection", term_id: int) -> bool:
-    """Delete a term with no physical refs (abstract or deprecated). Rooted terms are
-    lifecycle-managed: their removal happens only when the schema element departs."""
-    refs = (
-        await conn.execute_core(
-            select(glossary_term_refs.c.id).where(glossary_term_refs.c.term_id == term_id)
-        )
-    ).fetchall()
-    if refs:
-        raise ValueError(
+class TermDeleteRefused(ValueError):
+    """A term that may not be deleted because it has physical refs; ``dependents`` lists the
+    tables whose columns it is rooted in."""
+
+    def __init__(self, term_id: int, dependents: list[Dependent]) -> None:
+        self.term_id = term_id
+        self.dependents = dependents
+        super().__init__(
             "term has physical refs; retire it, or move its refs to another term, first"
         )
-    await conn.execute_core(
-        _delete(glossary_term_edges).where(
-            (glossary_term_edges.c.from_term_id == term_id)
-            | (glossary_term_edges.c.to_term_id == term_id)
+
+
+async def delete_term(conn: "Connection", term_id: int) -> bool:  # REQ-1918
+    """Delete a term with no physical refs (abstract or deprecated): THE delete, for every
+    surface. False when there is no such term.
+
+    Rooted terms are lifecycle-managed: their removal happens only when the schema element
+    departs. So a term's physical refs block it (:class:`TermDeleteRefused`, naming the tables)
+    — something that points an object at real data is a dependent, not a part. Its edges, in
+    either direction, its domain links and its experts go with it. One transaction."""
+    ref = ObjectRef("glossary_term", term_id)
+    async with conn.transaction():
+        found = await conn.execute_core(
+            select(glossary_terms.c.id).where(glossary_terms.c.id == term_id)
         )
-    )
-    await conn.execute_core(
-        _delete(glossary_term_experts).where(glossary_term_experts.c.term_id == term_id)
-    )
-    result = await conn.execute_core(_delete(glossary_terms).where(glossary_terms.c.id == term_id))
-    return (result.rowcount or 0) > 0
+        if found.fetchone() is None:
+            return False
+        blocking = await guard(conn, ref)
+        if blocking:
+            raise TermDeleteRefused(term_id, blocking)
+        await remove_parts(conn, ref)
+        await conn.execute_core(_delete(glossary_terms).where(glossary_terms.c.id == term_id))
+    return True
 
 
 async def move_ref(
