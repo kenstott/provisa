@@ -10,6 +10,7 @@
 
 """Control-plane org/tenant bootstrap: role hardening and schema seeding."""
 
+import re
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import insert, select, update
@@ -205,6 +206,31 @@ _DEMONSTRATED_ROLES: dict[str, list[str]] = {
 }
 
 
+_SCHEMA_NAME = re.compile(r"^[A-Za-z0-9_]+$")
+
+
+def _validate_schema_name(schema: str) -> None:
+    if not _SCHEMA_NAME.match(schema):
+        raise ValueError(f"not a schema name: {schema!r}")
+
+
+def _create_table_postgres(sync_conn, table) -> None:
+    """CREATE ``table`` in the connection's current schema with every JSON column as JSONB — what
+    ``schema.sql`` and the tables' own PostgreSQL DDL declare. Built from a copy, so the shared
+    metadata (which the portable backends create from as it is) is not changed."""
+    from sqlalchemy import MetaData
+    from sqlalchemy.dialects.postgresql import JSONB
+
+    scratch = MetaData()
+    # The whole metadata is copied so the table's foreign keys resolve in the copy.
+    copies = {t.name: t.to_metadata(scratch) for t in table.metadata.tables.values()}
+    copy = copies[table.name]
+    for column in copy.columns:
+        if column.type.compile(sync_conn.dialect).upper() == "JSON":
+            column.type = JSONB()
+    copy.create(sync_conn, checkfirst=True)
+
+
 def add_missing_columns(sync_conn, tables, schema: str | None = None) -> None:
     """Additive schema reconciliation: CREATE any metadata table absent from the live database, and
     ADD COLUMN any metadata column absent from a live table.
@@ -221,18 +247,34 @@ def add_missing_columns(sync_conn, tables, schema: str | None = None) -> None:
     and a forgotten one broke every upgrade at startup (cloud-dev: ``column "body_encoding" does not
     exist``; REQ-1742: ``provisa_sources`` added to schema_org.py's metadata but never to
     schema.sql's raw DDL, so it was never created for a Postgres deployment at all). Additive only:
-    drops and type changes stay out of scope. A missing table is created via SQLAlchemy Core
-    (``checkfirst=True``, on the SAME connection its own search_path/database already scopes) —
-    already has every column from the metadata, so it needs no further column diffing this pass.
+    drops and type changes stay out of scope.
+
+    A missing table is created WHERE ``schema`` SAYS and TYPED AS THE PLANE DECLARES IT. On
+    PostgreSQL the reconciling connection is scoped to ``schema`` for its transaction
+    (``SET LOCAL search_path``): a pooled engine connection carries no org search_path, and an
+    unqualified CREATE on it lands in the role's default schema (``public``), which no org-scoped
+    reader ever looks in. Its JSON columns are created JSONB, the rule the ADD COLUMN branch below
+    applies: a table with a later initializer of its own (``query_audit_log``,
+    ``audit.query_log.init_audit_schema``) is then already there as that initializer declares it,
+    and what is built on it (``ops_table_usage`` unnests ``table_ids`` with jsonb functions) works.
+    A created table has every metadata column, so it needs no column diffing this pass.
     """
     from sqlalchemy import inspect as _inspect
 
+    postgres = sync_conn.dialect.name == "postgresql"
+    if schema and postgres:
+        _validate_schema_name(schema)
+        # Transaction-scoped: nothing of it stays on the pooled connection.
+        sync_conn.exec_driver_sql(f'SET LOCAL search_path TO "{schema}"')
     inspector = _inspect(sync_conn)
     existing_tables = set(inspector.get_table_names(schema=schema))
     qualify = (lambda name: f'"{schema}"."{name}"') if schema else (lambda name: f'"{name}"')
     for table in tables:
         if table.name not in existing_tables:
-            table.create(sync_conn, checkfirst=True)
+            if postgres:
+                _create_table_postgres(sync_conn, table)
+            else:
+                table.create(sync_conn, checkfirst=True)
             continue
         live = {c["name"] for c in inspector.get_columns(table.name, schema=schema)}
         for column in table.columns:

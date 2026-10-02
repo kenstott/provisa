@@ -30,11 +30,13 @@ log = logging.getLogger(__name__)
 
 
 async def ensure_table(pool) -> None:
-    """Create the source catalog cache table via portable SQLAlchemy metadata."""
-    from provisa.core.schema_org import metadata
+    """Create the source catalog cache table from the portable metadata, in the org's own schema:
+    the one ``read_cache``/``write_cache`` reach through ``pool.acquire()``. A raw engine connection
+    carries no search_path, so the reconciliation scopes it (``core.db.add_missing_columns``)."""
+    from provisa.core.db import add_missing_columns
 
     with pool.engine.begin() as conn:
-        metadata.create_all(conn, tables=[source_catalog_cache])
+        add_missing_columns(conn, [source_catalog_cache], pool.search_path)
 
 
 @dataclass
