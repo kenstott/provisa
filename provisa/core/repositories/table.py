@@ -20,6 +20,13 @@ from provisa.core import domain_policy
 from provisa.core.models import Table
 from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories import glossary as glossary_repo
+from provisa.core.repositories.integrity import (
+    Dependent,
+    ObjectRef,
+    guard,
+    remove_parts,
+    view_loop,
+)
 from provisa.core.schema_org import registered_tables, roles, table_columns
 from provisa.security.rights import Capability
 
@@ -87,6 +94,30 @@ async def _load_columns(conn: "Connection", table_id: int) -> list[dict]:
     return [dict(r._mapping) for r in result.fetchall()]
 
 
+class TableDeleteRefused(Exception):
+    """A table or view that may not be deleted because other objects refer to it;
+    ``dependents`` lists them."""
+
+    def __init__(self, table_id: int, name: str, dependents: list[Dependent]) -> None:
+        self.table_id = table_id
+        self.name = name
+        self.dependents = dependents
+        named = ", ".join(f"{d.ref.kind} {d.ref.id}" for d in dependents)
+        super().__init__(f"Table {name!r} is still referred to by: {named}")
+
+
+class ViewLoopRefused(ValueError):
+    """A view whose SQL would read the view itself, directly or through other views;
+    ``loop`` is the view names in reading order, starting and ending at the view."""
+
+    def __init__(self, loop: list[str]) -> None:
+        self.loop = loop
+        super().__init__(
+            f"View {loop[0]!r} would read itself: {' -> '.join(loop)}. A view cannot read "
+            "itself through other views; change one of them."
+        )
+
+
 async def upsert(
     conn: "Connection", table: Table
 ) -> int | None:  # REQ-013, REQ-016, REQ-133, REQ-155, REQ-156, REQ-260, REQ-334, REQ-393, REQ-399
@@ -94,8 +125,18 @@ async def upsert(
 
     REQ-1914: one transaction. The table row, the wholesale column replace and the glossary refs
     commit together, so the config stamp they advance is seen only with the finished table —
-    another worker never reloads a table whose columns are deleted and not yet re-inserted."""
+    another worker never reloads a table whose columns are deleted and not yet re-inserted.
+
+    REQ-1918: a view whose SQL would read the view itself through other views is refused
+    (:class:`ViewLoopRefused`) — it cannot be evaluated, and it is the one way objects could come
+    to block each other's deletion in a circle. This is the write path the admin mutations and
+    the config loader share, so both refuse it."""
     async with conn.transaction():
+        view_sql = getattr(table, "view_sql", None)
+        if view_sql:
+            loop = await view_loop(conn, table.table_name, view_sql)
+            if loop:
+                raise ViewLoopRefused(loop)
         return await _upsert(conn, table)
 
 
@@ -389,14 +430,49 @@ async def list_all(conn: "Connection") -> list[dict]:  # REQ-013, REQ-016
     return out
 
 
-async def delete(conn: "Connection", table_id: int) -> bool:  # REQ-014
-    # REQ-1591: before the row goes. A term's domains are derived by joining its refs to this very
-    # table, so the sweep that follows the delete has nothing left to read them from.
-    domains_before = await glossary_repo.term_domains(conn)
-    result = await conn.execute_core(
-        _delete(registered_tables).where(registered_tables.c.id == table_id)
-    )
-    # REQ-1387: the FK cascade just removed this table's glossary refs; settle the terms
-    # that lost their last ref (remove, or deprecate when an abstract term hangs on them).
-    await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
-    return (result.rowcount or 0) > 0
+async def delete(conn: "Connection", table_id: int) -> bool:  # REQ-014, REQ-1918
+    """Delete one registered table or view: THE delete, for every surface. False when there is
+    no such table.
+
+    Refused (:class:`TableDeleteRefused`), naming each dependent, while a relationship takes
+    part in it — at either end, or through it — a view or materialized view reads it, a metric's
+    expression reads it, or a command or webhook returns it. When it may go, its parts go with
+    it: its columns, the row filters defined on it, its tag assignments, glossary references,
+    meta links, file mtimes, the discovery candidates naming it, and for a view its storage row
+    with its refresh log and delta ledger. One transaction; no database cascade is relied on.
+
+    Data kept for the table outside the control plane (replica, row-level rows, a view's
+    storage relation, cache entries) is not removed here; the caller runs what exists for it.
+    """
+    ref = ObjectRef("table", table_id)
+    async with conn.transaction():
+        row = await get(conn, table_id)
+        if row is None:
+            return False
+        blocking = await guard(conn, ref)
+        if blocking:
+            raise TableDeleteRefused(table_id, row["table_name"], blocking)
+        # REQ-1591: before the refs go. A term's domains are derived by joining its refs to this
+        # very table, so the sweep that follows has nothing left to read them from.
+        domains_before = await glossary_repo.term_domains(conn)
+        await remove_parts(conn, ref)
+        await conn.execute_core(
+            _delete(registered_tables).where(registered_tables.c.id == table_id)
+        )
+        # REQ-1387: settle the terms that lost their last ref (remove, or deprecate when an
+        # abstract term hangs on them).
+        await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
+    return True
+
+
+async def remove_registrations(conn: "Connection", *where) -> None:
+    """Remove every registered table matching ``where`` (clauses on ``registered_tables``) —
+    for the code that registers tables as a SET and replaces or retires that set: a remote
+    source's re-registration of its generated tables, the seed retiring rows it wrote, the
+    config loader dropping what the config no longer declares.
+
+    It declares a set; it is not a deletion of one object, so it does not ask the dependency
+    guard, as a full replace does not. What referred to those tables is left to the database, as
+    it was when each caller issued this statement itself: removed by the schema's cascades on
+    PostgreSQL, left in place on SQLite."""
+    await conn.execute_core(_delete(registered_tables).where(*where))

@@ -50,6 +50,7 @@ from provisa.api._catalog_descriptions import (
 )
 from provisa.core.db import init_schema
 from provisa.core.environments import org_schema
+from provisa.core.repositories import table as _table_repo
 from provisa.core.schema_org import (
     domains as _domains_t,
     registered_tables as _registered_tables_t,
@@ -215,16 +216,15 @@ async def _drop_sibling_environment_registrations(
     these rows, so the seed retires the ones it should never have written.
     """
     prod_schema = org_schema(org_id)
-    await conn.execute_core(
-        _delete(_registered_tables_t).where(
-            _registered_tables_t.c.source_id == "provisa-admin",
-            _registered_tables_t.c.domain_id == domain_id,
-            _registered_tables_t.c.schema_name != schema_name,
-            _sa_or(
-                _registered_tables_t.c.schema_name == prod_schema,
-                _registered_tables_t.c.schema_name.like(f"{prod_schema}_env_%"),
-            ),
-        )
+    await _table_repo.remove_registrations(
+        conn,
+        _registered_tables_t.c.source_id == "provisa-admin",
+        _registered_tables_t.c.domain_id == domain_id,
+        _registered_tables_t.c.schema_name != schema_name,
+        _sa_or(
+            _registered_tables_t.c.schema_name == prod_schema,
+            _registered_tables_t.c.schema_name.like(f"{prod_schema}_env_%"),
+        ),
     )
 
 
@@ -246,12 +246,11 @@ async def _seed_meta_domain(
 
     # Remove any stale view-named entries left by older code versions.
     for view_name in _META_TABLE_ALIAS.values():
-        await conn.execute_core(
-            _delete(_registered_tables_t).where(
-                _registered_tables_t.c.source_id == "provisa-admin",
-                _registered_tables_t.c.schema_name == schema_name,
-                _registered_tables_t.c.table_name == view_name,
-            )
+        await _table_repo.remove_registrations(
+            conn,
+            _registered_tables_t.c.source_id == "provisa-admin",
+            _registered_tables_t.c.schema_name == schema_name,
+            _registered_tables_t.c.table_name == view_name,
         )
 
     for tbl in _META_TABLES:
@@ -610,8 +609,8 @@ async def _seed_ops_pg(conn: "Connection") -> None:  # REQ-016
     those rows, so on an engine without the catalog it removes them — a deployment re-pinned from
     trino to a native engine carries them forward otherwise."""
     if not state.federation_engine.has_otel_catalog:
-        await conn.execute_core(
-            _delete(_registered_tables_t).where(_registered_tables_t.c.source_id == "provisa-otel")
+        await _table_repo.remove_registrations(
+            conn, _registered_tables_t.c.source_id == "provisa-otel"
         )
         return
 

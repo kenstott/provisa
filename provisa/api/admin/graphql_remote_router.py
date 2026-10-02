@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
-from sqlalchemy import and_, delete, select
+from sqlalchemy import and_, select
 
 from provisa.api.errors import ApiError
 from provisa.core.schema_org import domains, registered_tables, sources, table_columns
@@ -163,13 +163,12 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
         from provisa.core.repositories import glossary as glossary_repo
 
         domains_before = await glossary_repo.term_domains(conn)
-        await conn.execute_core(
-            delete(registered_tables).where(
-                and_(
-                    registered_tables.c.source_id == source_id,
-                    registered_tables.c.schema_name == "graphql",
-                )
-            )
+        from provisa.core.repositories import table as table_repo
+
+        await table_repo.remove_registrations(
+            conn,
+            registered_tables.c.source_id == source_id,
+            registered_tables.c.schema_name == "graphql",
         )
         for t in tables:
             _sql_name = apply_sql_name(t["name"])

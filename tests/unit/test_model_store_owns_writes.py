@@ -43,6 +43,7 @@ MODEL_STORE = ROOT / "core" / "repositories"
 CONVERTED: dict[str, set[str]] = {
     "roles": {"delete"},
     "domains": {"delete"},
+    "registered_tables": {"delete"},
 }
 
 _CONSTRUCTORS = {

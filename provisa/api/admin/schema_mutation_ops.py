@@ -300,7 +300,16 @@ async def register_table(
             _qa_precheck = await persist_query_api_registration(_conn, model)
             if _qa_precheck is not None:
                 return _qa_precheck
-        table_id = await table_repo.upsert(_conn, model)
+        try:
+            table_id = await table_repo.upsert(_conn, model)
+        except table_repo.ViewLoopRefused as _loop:
+            # REQ-1918: a view that would read itself through other views is refused at save.
+            return MutationResult(
+                success=False,
+                message=str(_loop),
+                code="schema.view_reads_itself",
+                params={"view": _loop.loop[0], "loop": _loop.loop},
+            )
         if model.query_template:
             _qa_err = await persist_query_api_registration(_conn, model)
             if _qa_err is not None:

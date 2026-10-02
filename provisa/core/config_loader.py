@@ -217,9 +217,7 @@ async def _replace_mode_cleanup(
     # and the rate-limit gate 403s the whole deployment.
     new_role_ids = list({r.id for r in config.roles} | SYSTEM_ROLE_IDS)
     keep_sources = new_source_ids if new_source_ids else _SYSTEM_SOURCE_IDS
-    await conn.execute_core(
-        _delete(registered_tables).where(registered_tables.c.source_id.not_in(keep_sources))
-    )
+    await table_repo.remove_registrations(conn, registered_tables.c.source_id.not_in(keep_sources))
     await conn.execute_core(_delete(sources).where(sources.c.id.not_in(keep_sources)))
     keep_domains = new_domain_ids if new_domain_ids else domain_policy.system_domain_ids()
     await domain_repo.delete_all_except(conn, list(keep_domains))
@@ -641,13 +639,12 @@ async def _purge_removed_tables(conn: "Connection", config: ProvisaConfig) -> No
     for tbl in config.tables:
         tables_by_source.setdefault(tbl.source_id, []).append((tbl.schema_name, tbl.table_name))
     for src_id, current_pairs in tables_by_source.items():
-        await conn.execute_core(
-            _delete(registered_tables).where(
-                registered_tables.c.source_id == src_id,
-                tuple_(registered_tables.c.schema_name, registered_tables.c.table_name).not_in(
-                    current_pairs
-                ),
-            )
+        await table_repo.remove_registrations(
+            conn,
+            registered_tables.c.source_id == src_id,
+            tuple_(registered_tables.c.schema_name, registered_tables.c.table_name).not_in(
+                current_pairs
+            ),
         )
 
 

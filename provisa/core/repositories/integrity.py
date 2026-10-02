@@ -427,6 +427,50 @@ async def remove_parts(conn: "Connection", ref: ObjectRef) -> None:
         await conn.execute_core(table.delete().where(where))
 
 
+async def view_loop(conn: "Connection", name: str, view_sql: str) -> list[str]:
+    """The loop saving view ``name`` with ``view_sql`` would close — the view names in reading
+    order, starting and ending at ``name`` — or ``[]`` when it closes none (REQ-1918).
+
+    A view that reads itself, directly or through other views, cannot be evaluated, and is the
+    one way objects could come to block each other's deletion in a circle; it is refused when the
+    view is saved. The views are the control plane's rows that carry view SQL, with the one being
+    saved taken as given. SQL that does not parse raises ``ValueError`` naming the view: what it
+    reads is unknown.
+    """
+    tables = metadata.tables["registered_tables"]
+    rows = await conn.execute_core(
+        select(tables.c.table_name, tables.c.view_sql).where(tables.c.view_sql.isnot(None))
+    )
+    views = {row[0]: row[1] for row in rows.fetchall() if row[1]}
+    views[name] = view_sql
+
+    def reads(view: str) -> list[str]:
+        try:
+            relations, _ = names_in_sql(views[view])
+        except ValueError as e:
+            raise ValueError(f"view {view!r}: {e}") from e
+        return sorted(r for r in relations if r in views)
+
+    path = [name]
+    seen: set[str] = set()
+
+    def walk(view: str) -> list[str]:
+        for read in reads(view):
+            if read == name:
+                return [*path, name]
+            if read in seen:
+                continue
+            seen.add(read)
+            path.append(read)
+            found = walk(read)
+            if found:
+                return found
+            path.pop()
+        return []
+
+    return walk(name)
+
+
 async def circle_of(conn: "Connection", ref: ObjectRef) -> list[ObjectRef]:
     """The OTHER objects that block ``ref`` and are in turn blocked by it — empty when there
     are none, which is the case on any control plane written through the model store.

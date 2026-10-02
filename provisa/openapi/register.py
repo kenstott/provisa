@@ -16,7 +16,6 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-from sqlalchemy import delete as _delete
 
 from provisa.core.schema_org import api_endpoints, api_sources, registered_tables
 from provisa.openapi.mapper import OpenAPIQuery, OpenAPIMutation, parse_spec
@@ -327,11 +326,12 @@ async def auto_register_openapi_source(  # REQ-314, REQ-316, REQ-317, REQ-321
     from provisa.core.repositories import glossary as glossary_repo
 
     domains_before = await glossary_repo.term_domains(conn)
-    await conn.execute_core(
-        _delete(registered_tables).where(
-            registered_tables.c.source_id == source_id,
-            registered_tables.c.schema_name == "openapi",
-        )
+    from provisa.core.repositories import table as table_repo
+
+    await table_repo.remove_registrations(
+        conn,
+        registered_tables.c.source_id == source_id,
+        registered_tables.c.schema_name == "openapi",
     )
     queries, mutations = parse_spec(spec)
     for q in queries:

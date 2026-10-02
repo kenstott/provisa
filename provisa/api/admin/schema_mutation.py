@@ -2091,7 +2091,16 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
             if _owner_conflict:
                 return MutationResult(success=False, message=_owner_conflict)
-            table_id = await table_repo.upsert(_conn, model)
+            try:
+                table_id = await table_repo.upsert(_conn, model)
+            except table_repo.ViewLoopRefused as _loop:
+                # REQ-1918: a view that would read itself through other views is refused at save.
+                return MutationResult(
+                    success=False,
+                    message=str(_loop),
+                    code="schema.view_reads_itself",
+                    params={"view": _loop.loop[0], "loop": _loop.loop},
+                )
             if model.query_template:
                 # REQ-1670/REQ-1683: an edited query re-persists the endpoint the table serves from.
                 from provisa.api.admin._query_api_registration import persist_query_api_registration
@@ -2191,8 +2200,35 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.table_not_found",
                     params={"table": id},
                 )
-            deleted = await table_repo.delete(cast("Connection", conn), id)
+            held = await table_repo.get(cast("Connection", conn), id)
+            try:
+                deleted = await table_repo.delete(cast("Connection", conn), id)
+            except table_repo.TableDeleteRefused as refused:
+                # REQ-1918: nothing is removed; every dependent is named.
+                return MutationResult(
+                    success=False,
+                    message=str(refused),
+                    code="schema.table_has_dependents",
+                    params={
+                        "table": id,
+                        "name": refused.name,
+                        "dependents": [
+                            {"kind": d.ref.kind, "id": d.ref.id, "via": list(d.via)}
+                            for d in refused.dependents
+                        ],
+                    },
+                )
         if deleted:
+            # Data kept for the table outside the control plane. What exists today is removed
+            # here: the response-cache entries indexed under it and its hot-tier rows. Its
+            # replica, row-level rows and a view's storage relation are not removed yet — that
+            # waits for the replica state's own removal path.
+            from provisa.api.app import state
+            from provisa.cache.tenancy import invalidate_tables
+
+            await invalidate_tables(state, [id])
+            if state.hot_manager is not None and held is not None:
+                await state.hot_manager.invalidate(held["table_name"])
             await _rebuild_schemas()
             return MutationResult(
                 success=True,
