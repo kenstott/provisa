@@ -178,6 +178,25 @@ async def require_views_readable(state: Any, views: list[MVDefinition]) -> None:
         await require_readable_inputs(mv, state)
 
 
+def config_table_views(state: Any, raw_config: dict) -> list[MVDefinition]:
+    """The materialized views a config declares as TABLE entries (``view_sql`` with
+    ``materialize: true``), as the schema build registered them. A config declares a view in
+    this spelling or under ``views:``; the load checks both the same way."""
+    views: list[MVDefinition] = []
+    for table in raw_config.get("tables") or []:
+        if not (table.get("view_sql") and table.get("materialize")):
+            continue
+        name = table.get("table") or table["table_name"]
+        mv = state.mv_registry.get(f"view-{name}")
+        if mv is None:
+            raise RuntimeError(
+                f"config view {name!r} (view_sql, materialize: true) was not registered by the "
+                "schema build"
+            )
+        views.append(mv)
+    return views
+
+
 class ViewsReadTable(ValueError):
     """A table cannot become an input no view may read while materialized views read it."""
 

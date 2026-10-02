@@ -1128,9 +1128,11 @@ async def _load_and_build(
     # A config view that reads an input the engine cannot read whole fails the load, naming the
     # view and the input. Checked here, not where the view is read from the config: the registry
     # it is checked against (tables, API endpoints) is loaded by the build above.
-    from provisa.mv.readable_inputs import require_views_readable
+    # Both spellings of a config view: a ``views:`` / ``materialized_views:`` / materialized
+    # relationship entry, and a table entry carrying ``view_sql`` with ``materialize: true``.
+    from provisa.mv.readable_inputs import config_table_views, require_views_readable
 
-    await require_views_readable(state, _config_views)
+    await require_views_readable(state, _config_views + config_table_views(state, raw_config))
 
     _mark("rebuild_schemas")
 
@@ -2113,9 +2115,9 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         # REQ-1865: re-wire the row-materialize background refresh drain + reaper on EVERY rebuild,
         # same posture as wire_push_listeners above (registered jobs are idempotent via
         # replace_existing=True, and the row_materialize table set is derived fresh each call, not
-        # incrementally like wire_new_poll_jobs) — so a row_materialize flag flipped on live via the
-        # admin UI (schema_mutation.py's registerTable/updateTable) gets its background jobs without
-        # requiring a restart.
+        # incrementally like wire_new_poll_jobs) — so a table that becomes row-level while the
+        # server runs (a config reload; no admin mutation or UI field sets the flag) gets its
+        # background jobs without requiring a restart.
         _scheduler = getattr(state, "_scheduler", None)
         if _scheduler is not None:
             from provisa.events.row_materialize_lifecycle import wire_row_materialize_background

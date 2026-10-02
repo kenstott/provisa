@@ -33,7 +33,7 @@ _REPO = os.path.join(os.path.dirname(__file__), "..", "..")
 _VIEW_SQL = f"SELECT region, count(*) AS n FROM rowlevel.{_TABLE} GROUP BY region"
 
 
-def _config(views: list[dict]) -> dict:
+def _config(views: list[dict], view_tables: list[dict] | None = None) -> dict:
     with open(os.path.join(_REPO, "tests/fixtures/sample_config.yaml")) as f:
         base = yaml.safe_load(f)
     return {
@@ -71,17 +71,18 @@ def _config(views: list[dict]) -> dict:
                     },
                     {"name": "region", "data_type": "varchar", "visible_to": [_ROLE]},
                 ],
-            }
+            },
+            *(view_tables or []),
         ],
         "views": views,
     }
 
 
-def _server(tmp_path_factory, org: str, views: list[dict]):
+def _server(tmp_path_factory, org: str, views: list[dict], view_tables: list[dict] | None = None):
     from tests.integration.isolated_server import IsolatedServer
 
     path = tmp_path_factory.mktemp(org) / "config.yaml"
-    path.write_text(yaml.safe_dump(_config(views)))
+    path.write_text(yaml.safe_dump(_config(views, view_tables)))
     return IsolatedServer(org, engine="duckdb", config=str(path), control_plane="sqlite")
 
 
@@ -182,4 +183,38 @@ def test_a_config_declaring_such_a_view_fails_the_load_naming_it(tmp_path_factor
     assert "materialized view 'view-clicks-by-region' cannot be built" in log, log[-3000:]
     # The load reads the view's SQL with its tables resolved to where they live.
     assert f".{_TABLE}' is a row-level replicated table" in log, log[-3000:]
+    assert "only the rows requests have fetched" in log, log[-3000:]
+
+
+def test_a_config_declaring_such_a_view_as_a_table_entry_fails_the_load_too(tmp_path_factory):
+    """The other spelling of a config view — a table entry with ``view_sql`` and
+    ``materialize: true`` — is refused the same way: a load does not accept in one spelling
+    what it refuses in another."""
+    srv = _server(
+        tmp_path_factory,
+        "view_input_refusal_tbl",
+        [],
+        [
+            {
+                "source_id": "__derived__",
+                "domain_id": "rowlevel",
+                "schema": "views",
+                "table": "clicks_by_region_t",
+                "view_sql": _VIEW_SQL,
+                "materialize": True,
+                "columns": [
+                    {"name": "region", "data_type": "varchar", "visible_to": [_ROLE]},
+                    {"name": "n", "data_type": "bigint", "visible_to": [_ROLE]},
+                ],
+            }
+        ],
+    )
+    try:
+        with pytest.raises(RuntimeError):
+            srv.start(timeout=240)
+        log = srv.dump_stderr_debug()
+    finally:
+        srv.stop_process()
+    assert "materialized view 'view-clicks_by_region_t' cannot be built" in log, log[-3000:]
+    assert f"{_TABLE}' is a row-level replicated table" in log, log[-3000:]
     assert "only the rows requests have fetched" in log, log[-3000:]

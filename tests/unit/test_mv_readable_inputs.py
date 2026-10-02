@@ -219,3 +219,28 @@ def test_refreshing_a_view_over_readable_inputs_reaches_the_engine(state, monkey
 
     assert engine.sqls != []
     assert view.last_error is None
+
+
+def test_a_config_view_declared_as_a_table_entry_is_checked_like_any_config_view(state):
+    """``view_sql`` with ``materialize: true`` on a table entry is a config view too: the load
+    takes the view the schema build registered for it and checks it the same way."""
+    state.mv_registry.register(_view("view-clicks_t", "SELECT region FROM web.clicks"))
+    state.mv_registry.register(_view("view-orders_t", "SELECT region FROM sales.orders"))
+    raw_config = {
+        "tables": [
+            {"table": "orders", "source_id": "sales"},  # an ordinary table
+            {"table": "inline_t", "view_sql": "SELECT 1 AS id"},  # an inline view: builds nothing
+            {
+                "table": "orders_t",
+                "view_sql": "SELECT region FROM sales.orders",
+                "materialize": True,
+            },
+            {"table": "clicks_t", "view_sql": "SELECT region FROM web.clicks", "materialize": True},
+        ]
+    }
+    views = readable_inputs.config_table_views(state, raw_config)
+    assert [v.id for v in views] == ["view-orders_t", "view-clicks_t"]
+    with pytest.raises(ViewInputNotReadable) as raised:
+        asyncio.run(readable_inputs.require_views_readable(state, views))
+    assert raised.value.view == "view-clicks_t"
+    assert "'web.clicks' is a row-level replicated table" in str(raised.value)
