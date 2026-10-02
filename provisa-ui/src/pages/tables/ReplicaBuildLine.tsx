@@ -15,6 +15,7 @@
 import { useTranslation } from "react-i18next";
 import { Text } from "@mantine/core";
 import { useReplicaBuilds } from "../../hooks/useAdminOpsQueries";
+import { serverMessage } from "../../i18n/serverMessage";
 import { replicaBuildLine } from "./replicaBuild";
 
 export function ReplicaBuildLine({
@@ -38,6 +39,7 @@ export function ReplicaBuildLine({
     t,
     (n) => numbers.format(n),
     (iso) => new Date(iso).toLocaleString(i18n.language),
+    serverMessage,
   );
   return (
     <>

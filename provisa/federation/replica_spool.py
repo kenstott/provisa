@@ -49,6 +49,7 @@ import pyarrow as pa
 from provisa.core import request_deadline
 from provisa.core.ir_arrow import arrow_schema, rows_to_batch
 from provisa.federation.data_replicator import SourceCaps, SourceRead
+from provisa.federation.replica_errors import BuildFailure
 from provisa.federation.replica_source import _stepped
 
 log = logging.getLogger(__name__)
@@ -63,13 +64,16 @@ _RECOUNT_BYTES = 16 << 20
 Spooler = Callable[[Callable[[], AbstractContextManager[Any]]], AbstractContextManager[IO[bytes]]]
 
 
-class ReplicaSpoolFull(Exception):
+class ReplicaSpoolFull(BuildFailure, Exception):
     """Spooling a source's answer would take the node's spool directory over its limit."""
+
+    code = "replication.spool_full"
 
     def __init__(self, table: str, needed: int, limit: int) -> None:
         self.table = table
         self.needed = needed
         self.limit = limit
+        self.params = {"table": table, "needed": needed, "limit": limit}
         super().__init__(
             f"the replica build of {table} was refused: spooling its source's answer needs "
             f"{needed:,} bytes of this node's spool directory, over the limit of {limit:,} "
@@ -226,16 +230,24 @@ def _json_parser() -> Any:
 _PARSE_BYTES = 64 * 1024
 
 
-class AnswerNotJson(ValueError):
+class AnswerNotJson(BuildFailure, ValueError):
     """A spooled answer the JSON parser cannot read: what is wrong with it and where.
 
     The message carries the parser's reason and the stretch of the answer it was in, and never
     the text around it: that is the source's data, and this message is recorded on the replica
     for an operator to read."""
 
+    code = "replication.answer_not_json"
+
     def __init__(self, cause: str, before_byte: int, table: str | None = None) -> None:
         self.cause = cause
         self.before_byte = before_byte
+        self.params = {
+            "table": table or "",
+            "cause": cause,
+            "kib": _PARSE_BYTES // 1024,
+            "before_byte": before_byte,
+        }
         of = f" read for the replica of {table}" if table else ""
         super().__init__(
             f"the answer{of} is not valid JSON: {cause} "

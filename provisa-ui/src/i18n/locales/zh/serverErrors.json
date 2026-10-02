@@ -201,6 +201,15 @@
       "role_header_required": "分析视图需要 X-Provisa-Role 请求头",
       "table_not_found": "未找到表 {{table_id}}"
     },
+    "replication": {
+      "spool_full": "{{table}} 的副本构建被拒绝：暂存其源的响应需要此节点暂存目录中的 {{needed}} 字节，超过了 {{limit}} 的上限 (replication.spool_max_bytes)。",
+      "answer_not_json": "为 {{table}} 的副本读取的响应不是有效的 JSON：{{cause}}（位于响应第 {{before_byte}} 字节之前的 {{kib}} KiB 内）。",
+      "no_whole_copy": "源 {{source}} 的表 {{schema}}.{{table}} 没有可构建的完整副本：它按行复制，或者带有参数列。",
+      "table_gone": "源 {{source}} 的表 {{schema}}.{{table}} 已不再注册，因此不会构建其副本。",
+      "page_limit_reached": "未构建 {{table}} 的副本：其端点的分页在 max_pages={{max_pages}} 处停止，而端点在第 {{max_pages}} 页之后仍有数据（已读取 {{rows}} 行）。副本是整张表，因此不会在上限处截断。请提高端点的 max_pages 或页面大小。",
+      "waiting_engine_jobs": "引擎已达到后台作业上限 (replication.engine_jobs)",
+      "waiting_source_cap": "源已达到实时读取上限 (max_live_concurrency)"
+    },
     "roles": {
       "cannot_delete_system": "无法删除系统角色",
       "cannot_modify_administrative": "无法修改管理角色",

@@ -666,7 +666,11 @@ query ReplicaBuilds {
       completedAt
       nextRefreshAt
       lastError
+      lastErrorCode
+      lastErrorParams
+      failedAttempts
       waitingOn
+      waitingOnCode
     }
     convergenceError
     convergenceErrorAt

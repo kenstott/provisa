@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Any
 
@@ -123,6 +123,15 @@ async def _request_with_retry(
     raise ApiCallError("Unreachable: retry loop exhausted")
 
 
+@dataclass
+class Paging:
+    """What the transport knows, after each page, about whether the endpoint has more: True or
+    False where the answer itself says (a next link, a next cursor), None where only the size
+    of the page can (offset and page-number paging, judged by whoever counts its rows)."""
+
+    more: bool | None = None
+
+
 async def _pages(
     client: httpx.AsyncClient,
     endpoint: ApiEndpoint,
@@ -132,7 +141,8 @@ async def _pages(
     body: dict | None,
     timeout: float,
     form_body: dict | None = None,
-) -> AsyncIterator[Any]:
+    paging: Paging | None = None,
+) -> AsyncGenerator[Any, None]:
     """Follow pagination, yielding each page as it arrives: a reader that takes them one at a
     time holds one page, not the collection."""
     # REQ-1882: `resp.json()` runs a synchronous json.loads over the full buffered body -- for a
@@ -177,11 +187,14 @@ async def _pages(
                 form_body=form_body,
                 timeout=timeout,
             )
-            yield await loop.run_in_executor(None, resp.json)
+            page = await loop.run_in_executor(None, resp.json)
             link = resp.headers.get("link", "")
             match = re.search(r'<([^>]+)>;\s*rel="next"', link)
             next_url = match.group(1) if match else None
             params = {}  # subsequent pages use full URL from link
+            if paging is not None:
+                paging.more = next_url is not None
+            yield page
 
     elif pagination.type == PaginationType.cursor:
         cursor_param = pagination.cursor_param or "cursor"
@@ -198,8 +211,10 @@ async def _pages(
                 timeout=timeout,
             )
             data = await loop.run_in_executor(None, resp.json)
-            yield data
             cursor = data.get(cursor_field) if isinstance(data, dict) else None
+            if paging is not None:
+                paging.more = bool(cursor)
+            yield data
             if not cursor:
                 break
             params = dict(params or {})
@@ -459,10 +474,13 @@ async def iter_api_pages(  # REQ-1915
     base_url: str = "",
     auth: Any = None,
     timeout: float = _DEFAULT_TIMEOUT,
-) -> AsyncIterator[Any]:
+    paging: Paging | None = None,
+) -> AsyncGenerator[Any, None]:
     """The pages of a paginated HTTP call, one at a time as each arrives, for a reader that
     copies a whole collection (a replica build). It holds one page at a time, and has no total
-    time limit: a build is not under a request's deadline, and each page is under ``timeout``."""
+    time limit: a build is not under a request's deadline, and each page is under ``timeout``.
+    It stops at the endpoint's ``max_pages`` like every call; ``paging`` tells the reader
+    whether the endpoint had more."""
     call = prepare_call(endpoint, resolved_params, base_url, auth)
     async with httpx.AsyncClient() as client:
         async for page in _pages(
@@ -474,6 +492,7 @@ async def iter_api_pages(  # REQ-1915
             call.json_body,
             timeout,
             form_body=call.form_body,
+            paging=paging,
         ):
             yield page
 

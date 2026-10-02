@@ -6,7 +6,7 @@
     "building": "Réplique en construction : {{rows}} lignes copiées, {{rate}} lignes/s ({{how}}).",
     "buildingNoRate": "Réplique en construction ({{how}}).",
     "built": "Réplique construite {{when}} : {{rows}} lignes ({{how}}).",
-    "failed": "La construction de la réplique a échoué : {{error}}",
+    "failed": "La construction de la réplique a échoué (tentative {{attempts}} ; elle est retentée) : {{error}}",
     "retired": "Cette table n'est plus répliquée ; sa réplique est en cours de suppression.",
     "convergenceError": "Les répliques ne sont pas mises en conformité avec le modèle : {{error}}",
     "method": {

@@ -25,7 +25,8 @@ from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_org import metadata, replica_state
 from provisa.federation import replica_state as build_state
 from provisa.federation.replica_locks import BuildLocks
-from provisa.federation.replica_runner import WAITING_ENGINE, BuildOutcome, ReplicaRunner
+from provisa.federation.replica_errors import WAITING_ENGINE
+from provisa.federation.replica_runner import BuildOutcome, ReplicaRunner
 
 pytestmark = [pytest.mark.integration]
 

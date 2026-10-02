@@ -6,7 +6,7 @@
     "building": "Replica building: {{rows}} rows copied, {{rate}} rows/s ({{how}}).",
     "buildingNoRate": "Replica building ({{how}}).",
     "built": "Replica built {{when}}: {{rows}} rows ({{how}}).",
-    "failed": "Replica build failed: {{error}}",
+    "failed": "Replica build failed (attempt {{attempts}}; it is tried again): {{error}}",
     "retired": "This table is no longer replicated; its replica is being removed.",
     "convergenceError": "Replicas are not being brought in line with the model: {{error}}",
     "method": {

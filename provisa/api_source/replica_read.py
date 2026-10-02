@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import AsyncIterator, Callable, Iterator
+from contextlib import aclosing
 from typing import IO, Any
 
 import httpx
@@ -38,18 +39,44 @@ from provisa.api_source.caller import (
     _RETRY_BACKOFF_BASE,
     ApiCallError,
     ApiNotFoundError,
+    Paging,
     PreparedCall,
     iter_api_pages,
     prepare_call,
 )
 from provisa.api_source.flattener import flatten_item, flatten_response
-from provisa.api_source.models import ApiEndpoint
+from provisa.api_source.models import ApiEndpoint, PaginationType
+from provisa.federation.replica_errors import BuildFailure
 
 #: Seconds each connect, read or write of the spooled call may take.
 _TIMEOUT = 30.0
 _NOT_FOUND = 404
 _TOO_MANY = 429
 _SERVER_ERROR = 500
+
+#: Paging whose answer does not say whether there is more: a page shorter than the page size
+#: is the last.
+_SIZED_PAGING = frozenset({PaginationType.offset, PaginationType.page_number})
+
+
+class PageLimitReached(BuildFailure, ApiCallError):
+    """A build read as many pages as the endpoint's paging allows and the endpoint had more.
+
+    A request that reaches the cap gets what was read. A replica is served as the whole table,
+    so a build never swaps in a table cut at the cap, and never reads past a cap the operator
+    declared: it fails, naming the cap."""
+
+    code = "replication.page_limit_reached"
+
+    def __init__(self, table: str, max_pages: int, rows: int) -> None:
+        self.params = {"table": table, "max_pages": max_pages, "rows": rows}
+        super().__init__(
+            f"the replica of {table} was not built: its endpoint's paging stops at "
+            f"max_pages={max_pages}, and the endpoint had more after page {max_pages} "
+            f"({rows:,} rows read). A replica is the whole table, so it is not cut at the cap. "
+            "Raise the endpoint's max_pages or its page size."
+        )
+
 
 #: The rows of one spooled answer, parsed from its file.
 RowReader = Callable[[IO[bytes], ApiEndpoint], Iterator[dict]]
@@ -176,15 +203,31 @@ def replica_source(
     params = dict(endpoint.default_params)
     base_url, auth = api_source.base_url, api_source.auth
 
-    if endpoint.pagination is not None:
+    pagination = endpoint.pagination
+    if pagination is not None:
+        sized = pagination.type in _SIZED_PAGING
 
         async def row_batches(_batch_rows: int) -> AsyncIterator[list[dict]]:
-            async for page in iter_api_pages(endpoint, params, base_url=base_url, auth=auth):
-                rows = flatten_response(
-                    page, endpoint.response_root, endpoint.columns, endpoint.response_normalizer
-                )
-                if rows:
-                    yield rows
+            paging = Paging()
+            pages = total = last = 0
+            async with aclosing(
+                iter_api_pages(endpoint, params, base_url=base_url, auth=auth, paging=paging)
+            ) as answer:
+                async for page in answer:
+                    rows = flatten_response(
+                        page,
+                        endpoint.response_root,
+                        endpoint.columns,
+                        endpoint.response_normalizer,
+                    )
+                    pages, last, total = pages + 1, len(rows), total + len(rows)
+                    if rows:
+                        yield rows
+                    if sized and last < pagination.page_size:
+                        break  # a short page is the last one
+            more = last >= pagination.page_size if sized else bool(paging.more)
+            if pages >= pagination.max_pages and more:
+                raise PageLimitReached(table, pagination.max_pages, total)
 
         return CursorSource(row_batches, columns)
 

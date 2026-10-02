@@ -201,6 +201,15 @@
       "role_header_required": "ビューをプロファイルするには X-Provisa-Role ヘッダーが必要です",
       "table_not_found": "テーブル {{table_id}} が見つかりません"
     },
+    "replication": {
+      "spool_full": "{{table}} のレプリカのビルドは拒否されました: ソースの応答をスプールするには、このノードのスプールディレクトリに {{needed}} バイトが必要で、上限の {{limit}} を超えます (replication.spool_max_bytes)。",
+      "answer_not_json": "{{table}} のレプリカ用に読み取った応答は有効な JSON ではありません: {{cause}}（応答のバイト {{before_byte}} より前の {{kib}} KiB 内）。",
+      "no_whole_copy": "ソース {{source}} のテーブル {{schema}}.{{table}} にはビルドする全体コピーがありません: 行単位でレプリケートされているか、パラメータ列があります。",
+      "table_gone": "ソース {{source}} のテーブル {{schema}}.{{table}} は登録されなくなったため、レプリカはビルドされません。",
+      "page_limit_reached": "{{table}} のレプリカはビルドされませんでした: エンドポイントのページングは max_pages={{max_pages}} で止まり、ページ {{max_pages}} の後にもデータがありました（{{rows}} 行を読み取り）。レプリカはテーブル全体であるため、上限で切り詰められることはありません。エンドポイントの max_pages またはページサイズを増やしてください。",
+      "waiting_engine_jobs": "エンジンがバックグラウンドジョブの上限に達しています (replication.engine_jobs)",
+      "waiting_source_cap": "ソースがライブ読み取りの上限に達しています (max_live_concurrency)"
+    },
     "roles": {
       "cannot_delete_system": "システムロールは削除できません",
       "cannot_modify_administrative": "管理ロールは変更できません",

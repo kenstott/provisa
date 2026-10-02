@@ -47,13 +47,12 @@ from typing import Any
 from provisa.core import process_mode, request_deadline
 from provisa.federation import replica_state as build_state
 from provisa.federation.data_replicator import BuildOutcome, Progress
+from provisa.federation.replica_errors import WAITING_ENGINE, WAITING_SOURCE, coded
 from provisa.federation.replica_locks import BuildClaim, BuildLocks
 from provisa.federation.replica_state import ReplicaKey
 
 log = logging.getLogger(__name__)
 
-WAITING_ENGINE = "the engine is at its background job cap (replication.engine_jobs)"
-WAITING_SOURCE = "the source is at its live-read cap (max_live_concurrency)"
 
 # How many of the oldest candidates one pass considers, per free slot it is filling.
 _CANDIDATES_PER_PASS = 16
@@ -220,9 +219,15 @@ class ReplicaRunner:
                 outcome = await self._build(job.key, progress)
             except BaseException as exc:  # allow-ble: a build's failure, whatever its type, is recorded on the replica for the operator and the next read; it is re-raised below when it is not an ordinary error
                 log.error("replica build of %s failed: %s", ".".join(job.key), exc, exc_info=exc)
+                code, params = coded(exc)
                 async with self._db.acquire() as conn:
                     await build_state.record_failed(
-                        conn, job.key, error=str(exc) or type(exc).__name__, now=datetime.now(UTC)
+                        conn,
+                        job.key,
+                        error=str(exc) or type(exc).__name__,
+                        code=code,
+                        params=params,
+                        now=datetime.now(UTC),
                     )
                 if not isinstance(exc, Exception):
                     raise

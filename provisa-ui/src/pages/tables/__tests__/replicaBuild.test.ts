@@ -12,12 +12,22 @@
 
 import { describe, it, expect } from "vitest";
 import type { ReplicaBuild } from "../../../api/admin";
+import type { ServerMessageShape } from "../../../i18n/serverMessage";
 import { replicaBuildLine } from "../replicaBuild";
 
 const t = (key: string, options?: Record<string, unknown>) =>
   options ? `${key} ${JSON.stringify(options)}` : key;
 const num = (n: number) => `#${n}`;
 const when = (iso: string) => `@${iso}`;
+// As serverMessage: the catalog's text for a code it has, else the server's English text.
+const catalog: Record<string, string> = {
+  "replication.spool_full": "spool full for {{table}}",
+  "replication.waiting_engine_jobs": "engine at its cap",
+};
+const msg = (body: ServerMessageShape, fallback: string) =>
+  body.code && catalog[body.code]
+    ? `${catalog[body.code]} ${JSON.stringify(body.params ?? {})}`
+    : (body.message ?? fallback);
 
 function build(over: Partial<ReplicaBuild>): ReplicaBuild {
   return {
@@ -34,15 +44,19 @@ function build(over: Partial<ReplicaBuild>): ReplicaBuild {
     completedAt: null,
     nextRefreshAt: null,
     lastError: null,
+    lastErrorCode: null,
+    lastErrorParams: null,
+    failedAttempts: 0,
     waitingOn: null,
+    waitingOnCode: null,
     ...over,
   };
 }
 
 describe("replicaBuildLine", () => {
   it("says there is no replica for a table with no record or no completed build", () => {
-    expect(replicaBuildLine(undefined, t, num, when)).toBe("replicaBuild.none");
-    expect(replicaBuildLine(build({}), t, num, when)).toBe("replicaBuild.none");
+    expect(replicaBuildLine(undefined, t, num, when, msg)).toBe("replicaBuild.none");
+    expect(replicaBuildLine(build({}), t, num, when, msg)).toBe("replicaBuild.none");
   });
 
   it("shows a running build's rows, rate and how it copies", () => {
@@ -57,6 +71,7 @@ describe("replicaBuildLine", () => {
       t,
       num,
       when,
+      msg,
     );
     expect(line).toBe(
       'replicaBuild.building {"rows":"#3800000","rate":"#38000","how":"replicaBuild.method.stream_batches, replicaBuild.loadKind.row_copy"}',
@@ -69,6 +84,7 @@ describe("replicaBuildLine", () => {
       t,
       num,
       when,
+      msg,
     );
     expect(line).toBe(
       'replicaBuild.buildingNoRate {"how":"replicaBuild.method.engine_statement, replicaBuild.loadKind.bulk_stream"}',
@@ -76,19 +92,50 @@ describe("replicaBuildLine", () => {
   });
 
   it("says why a requested build is waiting, when it is", () => {
-    expect(replicaBuildLine(build({ state: "requested" }), t, num, when)).toBe(
+    expect(replicaBuildLine(build({ state: "requested" }), t, num, when, msg)).toBe(
       "replicaBuild.requested",
     );
     expect(
-      replicaBuildLine(build({ state: "requested", waitingOn: "the engine is busy" }), t, num, when),
+      replicaBuildLine(build({ state: "requested", waitingOn: "the engine is busy" }), t, num, when, msg),
     ).toBe('replicaBuild.waiting {"waitingOn":"the engine is busy"}');
   });
 
   it("shows a failed build's error and a retired replica", () => {
     expect(
-      replicaBuildLine(build({ state: "failed", lastError: "source down" }), t, num, when),
-    ).toBe('replicaBuild.failed {"error":"source down"}');
-    expect(replicaBuildLine(build({ state: "retired" }), t, num, when)).toBe(
+      replicaBuildLine(build({ state: "failed", lastError: "source down" }), t, num, when, msg),
+    ).toBe('replicaBuild.failed {"attempts":"#0","error":"source down"}');
+    // A cause Provisa names is shown from the catalog, with how often the build has failed.
+    expect(
+      replicaBuildLine(
+        build({
+          state: "failed",
+          failedAttempts: 4,
+          lastError: "the replica build of src.orders was refused: ...",
+          lastErrorCode: "replication.spool_full",
+          lastErrorParams: { table: "src.orders" },
+        }),
+        t,
+        num,
+        when,
+        msg,
+      ),
+    ).toBe(
+      'replicaBuild.failed {"attempts":"#4","error":"spool full for {{table}} {\\"table\\":\\"src.orders\\"}"}',
+    );
+    expect(
+      replicaBuildLine(
+        build({
+          state: "requested",
+          waitingOn: "the engine is at its background job cap",
+          waitingOnCode: "replication.waiting_engine_jobs",
+        }),
+        t,
+        num,
+        when,
+        msg,
+      ),
+    ).toBe('replicaBuild.waiting {"waitingOn":"engine at its cap {}"}');
+    expect(replicaBuildLine(build({ state: "retired" }), t, num, when, msg)).toBe(
       "replicaBuild.retired",
     );
   });
@@ -104,6 +151,7 @@ describe("replicaBuildLine", () => {
       t,
       num,
       when,
+      msg,
     );
     expect(line).toBe(
       'replicaBuild.built {"when":"@2026-10-02T12:00:00+00:00","rows":"#500","how":"replicaBuild.method.engine_statement, replicaBuild.loadKind.bulk_stream"}',

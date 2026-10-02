@@ -129,6 +129,74 @@ async def test_a_page_wider_than_the_batch_bound_is_cut_to_it():
     assert [b.num_rows async for b in reader.batches(15)] == [15, 15, 10]
 
 
+@respx.mock
+async def test_a_build_that_reaches_the_page_cap_with_more_to_read_fails_by_name():
+    """A replica is served as the whole table: one cut at max_pages is never swapped in, and
+    the build does not read past the cap the operator declared."""
+    route = respx.get(f"{BASE}/pets").mock(
+        side_effect=[httpx.Response(200, json=_pets(100, 100 * i)) for i in range(5)]
+    )
+    reader = _reader(
+        _endpoint(pagination=PaginationConfig(type="offset", page_size=100, max_pages=3))
+    )
+    batches = []
+    with pytest.raises(replica_read.PageLimitReached) as failed:
+        async for batch in reader.batches(1000):
+            batches.append(batch.num_rows)
+    assert batches == [100, 100, 100] and route.call_count == 3  # nothing read past the cap
+    assert failed.value.code == "replication.page_limit_reached"
+    assert failed.value.params == {"table": "api.pets", "max_pages": 3, "rows": 300}
+    assert "max_pages=3" in str(failed.value) and "api.pets" in str(failed.value)
+
+
+@respx.mock
+async def test_a_collection_that_ends_at_or_before_the_cap_is_whole():
+    # Exactly max_pages pages, the last one short: the endpoint ended there.
+    respx.get(f"{BASE}/pets").mock(
+        side_effect=[httpx.Response(200, json=_pets(100)), httpx.Response(200, json=_pets(7, 100))]
+    )
+    paged = PaginationConfig(type="page_number", page_size=100, max_pages=2)
+    assert len(await _rows(_reader(_endpoint(pagination=paged)))) == 107
+
+
+@respx.mock
+async def test_a_page_wrapped_in_an_object_ends_the_read_when_it_is_short():
+    """The transport sees an object, not a list, and cannot tell a short page: the reader
+    counts the rows, so it stops asking instead of running to the cap."""
+    route = respx.get(f"{BASE}/pets").mock(
+        side_effect=[
+            httpx.Response(200, json={"items": _pets(100)}),
+            httpx.Response(200, json={"items": _pets(3, 100)}),
+            httpx.Response(200, json={"items": []}),
+        ]
+    )
+    paged = PaginationConfig(type="offset", page_size=100, max_pages=10)
+    rows = await _rows(_reader(_endpoint(response_root="items", pagination=paged)))
+    assert len(rows) == 103 and route.call_count == 2
+
+
+@respx.mock
+async def test_cursor_and_link_paging_know_from_the_answer_whether_there_is_more():
+    respx.get(f"{BASE}/pets").mock(
+        side_effect=[
+            httpx.Response(200, json={"items": _pets(2), "next_cursor": "a"}),
+            httpx.Response(200, json={"items": _pets(2, 2), "next_cursor": "b"}),
+        ]
+    )
+    cursor = PaginationConfig(type="cursor", page_size=2, max_pages=2)
+    with pytest.raises(replica_read.PageLimitReached, match="max_pages=2"):
+        await _rows(_reader(_endpoint(response_root="items", pagination=cursor)))
+
+    respx.get(f"{BASE}/pets").mock(
+        side_effect=[
+            httpx.Response(200, json=_pets(2), headers={"link": f'<{BASE}/pets?p=2>; rel="next"'}),
+            httpx.Response(200, json=_pets(2, 2)),
+        ]
+    )
+    link = PaginationConfig(type="link_header", page_size=2, max_pages=2)
+    assert len(await _rows(_reader(_endpoint(pagination=link)))) == 4  # no next link: the end
+
+
 # -- a one-document endpoint ---------------------------------------------------------------------
 
 

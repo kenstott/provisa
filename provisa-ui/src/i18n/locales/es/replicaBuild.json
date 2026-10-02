@@ -6,7 +6,7 @@
     "building": "Compilando réplica: {{rows}} filas copiadas, {{rate}} filas/s ({{how}}).",
     "buildingNoRate": "Compilando réplica ({{how}}).",
     "built": "Réplica compilada {{when}}: {{rows}} filas ({{how}}).",
-    "failed": "La compilación de la réplica falló: {{error}}",
+    "failed": "La compilación de la réplica falló (intento {{attempts}}; se vuelve a intentar): {{error}}",
     "retired": "Esta tabla ya no se replica; su réplica se está eliminando.",
     "convergenceError": "Las réplicas no se están alineando con el modelo: {{error}}",
     "method": {
