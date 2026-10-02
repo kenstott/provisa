@@ -70225,7 +70225,7 @@
   category: Data Residency
   priority: SHOULD
   type: behavioral
-  target: 2027-Q1
+  target: 2026-Q4
   description: Data residency (the rule in force is the SIMPLE RULE amendment at the end). [SUPERSEDED by the
     SIMPLE RULE amendment below, 2026-10-02 -- the maintainer reduced residency to regions, the row
     and column rules, and a region on a table for whole-table copies. Kept here for history; do not
@@ -70337,7 +70337,7 @@
   category: Regions
   priority: SHOULD
   type: structural
-  target: 2027-Q1
+  target: 2026-Q4
   description: Regions -- separate clusters on one shared model. A deployment may run more than one Provisa
     cluster off a single model store (REQ-1919). The model -- every source, table, relationship,
     role, rule, view, freshness setting and limit -- is declared once and is the same for every
