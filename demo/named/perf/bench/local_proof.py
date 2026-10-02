@@ -279,12 +279,12 @@ def start_auth_server(ports: dict[str, int], tmp: Path) -> Any:
 
 
 def start_replica_server(ports: dict[str, int], tmp: Path) -> Any:
-    """A server whose configuration makes ClickHouse a replica source (prefer_materialized, TTL 60):
+    """A server whose configuration makes ClickHouse a replica source (replicate 0, TTL 60):
     the only way to set it, since the admin API refuses to change a source the config declares."""
     fragment = yaml.safe_load((PERF / "fragment.yaml").read_text())
     for src in fragment["sources"]:
         if src["id"] == "bench-clickhouse":
-            src["prefer_materialized"] = True
+            src["replicate"] = 0
             src["cache_ttl"] = 60
     frag_path = tmp / "fragment-replica.yaml"
     frag_path.write_text(yaml.safe_dump(fragment))
@@ -341,7 +341,7 @@ def replica_phase(
         )
         result["mismatches"] = replication.mismatches(bound, resolved)
         result["registry_clickhouse"] = {
-            "prefer_materialized": resolved.sources["bench-clickhouse"]["prefer_materialized"],
+            "replicate": resolved.sources["bench-clickhouse"]["replicate"],
             "cache_ttl": resolved.sources["bench-clickhouse"]["cache_ttl"],
         }
         ep = ol.endpoints_from_setup(bound)
@@ -874,7 +874,7 @@ def replication_apply(
     def facts(r: lookup.Resolved) -> Any:
         return {
             "sources": dict(r.sources),
-            "tables": {k: (t.prefer_materialized, t.cache_ttl) for k, t in r.tables.items()},
+            "tables": {k: (t.replicate, t.cache_ttl) for k, t in r.tables.items()},
         }
 
     try:

@@ -241,6 +241,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         "probe_query": getattr(table, "probe_query", None),
         "probe_type": getattr(table, "probe_type", None),
         "load_protected": getattr(table, "load_protected", None),  # REQ-1141
+        "replicate": getattr(table, "replicate", None),  # REQ-826
         "off_peak_window": getattr(table, "off_peak_window", None),  # REQ-1141
         "off_peak_tz": getattr(table, "off_peak_tz", None),  # REQ-1141
         # REQ-1865: never written here despite fetch_tables() SELECTing both columns and
@@ -292,6 +293,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         "probe_query",
         "probe_type",
         "load_protected",  # REQ-1141
+        "replicate",  # REQ-826
         "off_peak_window",  # REQ-1141
         "off_peak_tz",  # REQ-1141
         "row_materialize",  # REQ-1865

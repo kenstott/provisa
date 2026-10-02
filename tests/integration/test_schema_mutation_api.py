@@ -423,21 +423,21 @@ class TestCacheAndMaterializedSettings:
         assert result["success"] is False
         assert result["message"] == "Table 999999999 not found"
 
-    async def test_update_source_prefer_materialized_not_found(self, client):
+    async def test_update_source_replicate_not_found(self, client):
         data = await _gql(
             client,
-            'mutation { updateSourcePreferMaterialized(sourceId: "no-such-source-xyz", preferMaterialized: true) { success message } }',
+            'mutation { updateSourceReplicate(sourceId: "no-such-source-xyz", replicate: 0) { success message } }',
         )
-        result = data["data"]["updateSourcePreferMaterialized"]
+        result = data["data"]["updateSourceReplicate"]
         assert result["success"] is False
         assert result["message"] == "Source 'no-such-source-xyz' not found"
 
-    async def test_update_table_prefer_materialized_not_found(self, client):
+    async def test_update_table_replicate_not_found(self, client):
         data = await _gql(
             client,
-            "mutation { updateTablePreferMaterialized(tableId: 999999999) { success message } }",
+            "mutation { updateTableReplicate(tableId: 999999999) { success message } }",
         )
-        result = data["data"]["updateTablePreferMaterialized"]
+        result = data["data"]["updateTableReplicate"]
         assert result["success"] is False
         assert result["message"] == "Table 999999999 not found"
 

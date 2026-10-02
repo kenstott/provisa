@@ -81,11 +81,10 @@ def test_same_source_different_strategy_per_engine():
     assert federate(fb, build_trino_engine()) is Strategy.MATERIALIZED
 
 
-def test_prefer_materialized_overrides_attachable():
-    # A live DB deliberately cached for latency → MATERIALIZED even though attachable.
-    strat = federate(
-        _src("pg", SourceType.postgresql), build_trino_engine(), prefer_materialized=True
-    )
+def test_a_replicated_read_overrides_attachable():
+    # A live DB whose reads the operator's settings put on the replica → MATERIALIZED even
+    # though attachable.
+    strat = federate(_src("pg", SourceType.postgresql), build_trino_engine(), replicated=True)
     assert strat is Strategy.MATERIALIZED
 
 

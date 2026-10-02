@@ -46,9 +46,9 @@ LANGS = ("sql", "cypher", "graphql", "grpc", "rest", "jsonapi")
 
 ADMIN_QUERY = """
 query BenchLookup {
-  sources { id type preferMaterialized cacheEnabled cacheTtl }
+  sources { id type replicate cacheEnabled cacheTtl }
   tables {
-    id sourceId domainId schemaName tableName alias cacheTtl preferMaterialized
+    id sourceId domainId schemaName tableName alias cacheTtl replicate
     graphqlFieldName dqDataset
     columns { columnName computedSqlAlias computedGqlAlias }
   }
@@ -119,7 +119,7 @@ class TableNames:
     jsonapi_type: str | None
     columns: Mapping[str, Mapping[str, str]]
     # the replication setting the registry holds for the table (None: inherits the source)
-    prefer_materialized: bool | None = None
+    replicate: int | None = None
     cache_ttl: int | None = None
     table_id: int | None = None  # the registry id the admin API addresses the table by
     domain_id: str | None = None  # the registered domain (what the audit log's domain_id holds)
@@ -439,7 +439,7 @@ def resolve(
             jsonapi_path=japi_path,
             jsonapi_type=japi_type,
             columns=spelled,
-            prefer_materialized=row.get("preferMaterialized"),
+            replicate=row["replicate"],
             cache_ttl=row.get("cacheTtl"),
             table_id=row["id"],
             domain_id=row["domainId"],
@@ -515,7 +515,7 @@ def resolve(
         sources={
             s["id"]: {
                 "type": s["type"],
-                "prefer_materialized": s["preferMaterialized"],
+                "replicate": s["replicate"],
                 "cache_enabled": s["cacheEnabled"],
                 "cache_ttl": s["cacheTtl"],
             }

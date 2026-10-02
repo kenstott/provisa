@@ -120,9 +120,9 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
     """Decide whether to route a query cached, direct, or through the engine.
 
     Args:
-        operator_floor: {source_id: operator setting} for every source the operator requires to
-            be read from the platform's landed copy (``load_protected``, ``prefer_materialized``)
-            — see ``registry_view.operator_floor``. Required, never defaulted: a caller that
+        operator_floor: {source_id: operator setting} for every source whose tables THIS
+            statement reads the operator requires to be read from their replicas
+            (``load_protected``, ``replicate``) — see ``registry_view.operator_floor``. Required, never defaulted: a caller that
             skipped it would route those sources live, beneath the floor (REQ-030, amended
             2026-09-30).
         sources: Set of source_ids involved in the query.
@@ -182,7 +182,7 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
             route=Route.ENGINE,
             source_id=None,
             dialect=None,
-            reason=f"operator floor: {setting} on {sid} (read from the landed copy)",
+            reason=f"operator floor: {setting} on {sid} (read from the replica)",
         )
 
     # Steward override

@@ -462,11 +462,11 @@ class FederationEngine:  # REQ-840
         """Expose a source by its connector's mechanism, or reject it as unreachable."""
         return self.connector_for(source.type.value).catalog_entry(source)
 
-    def federate(self, source: Source, *, prefer_materialized: bool = False):
+    def federate(self, source: Source, *, replicated: bool = False):
         """Resolve this source's federation strategy on this engine (REQ-826)."""
         from provisa.federation.strategy import federate as _federate
 
-        return _federate(source, self, prefer_materialized=prefer_materialized)
+        return _federate(source, self, replicated=replicated)
 
     # -- catalog projection / reconcile (REQ-843) ------------------------------
 

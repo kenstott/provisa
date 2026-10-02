@@ -173,7 +173,7 @@ def test_a_declared_ttl_that_is_not_the_deployments_is_a_mismatch() -> None:
 
 def test_a_table_value_beats_its_sources() -> None:
     tables = [dict(t) for t in fx.TABLES]
-    tables[0]["prefer_materialized"] = True  # orders replicated although its source is not
+    tables[0]["replicate"] = 0  # orders replicated although its source is not
     setup = _setup(
         lambda raw: raw["sources"]["bench-postgresql"]["tables"][0].update(
             replication={"setting": "replica", "ttl_seconds": 300}
@@ -203,22 +203,22 @@ class FakeAdmin:
     def __init__(
         self,
         mutations: tuple[str, ...] = (
-            "updateSourcePreferMaterialized",
-            "updateTablePreferMaterialized",
+            "updateSourceReplicate",
+            "updateTableReplicate",
             "updateSourceCache",
             "updateTableCache",
         ),
     ) -> None:
         self.sources = {
             s["id"]: {
-                "prefer": s["preferMaterialized"],
+                "prefer": s["replicate"],
                 "cache_enabled": True,
                 "ttl": s["cacheTtl"],
             }
             for s in fx.SOURCES
         }
         self.tables = {
-            t["id"]: {"prefer": t["prefer_materialized"], "ttl": t["cache_ttl"]} for t in fx.TABLES
+            t["id"]: {"prefer": t["replicate"], "ttl": t["cache_ttl"]} for t in fx.TABLES
         }
         self.mutations = mutations
         self.calls: list[tuple[str, dict[str, Any]]] = []
@@ -245,9 +245,9 @@ class FakeAdmin:
                     request=req,
                 )
             self.calls.append((name, variables))
-            if name == "updateSourcePreferMaterialized":
+            if name == "updateSourceReplicate":
                 self.sources[variables["sourceId"]]["prefer"] = variables["value"]
-            elif name == "updateTablePreferMaterialized":
+            elif name == "updateTableReplicate":
                 self.tables[variables["tableId"]]["prefer"] = variables["value"]
             elif name == "updateSourceCache":
                 self.sources[variables["sourceId"]].update(
@@ -273,10 +273,10 @@ def test_apply_sets_each_declared_source_and_restores_it_afterwards() -> None:
     before = (dict(admin.sources), dict(admin.tables))
     with _applier(admin).applied(setup, resolved):
         assert (
-            admin.sources["bench-postgresql"]["prefer"] is True
+            admin.sources["bench-postgresql"]["prefer"] == 0  # replica = Always
             and admin.sources["bench-postgresql"]["ttl"] == 120
         )
-        assert admin.sources["bench-clickhouse"]["prefer"] is False
+        assert admin.sources["bench-clickhouse"]["prefer"] == -1  # live = Never
     assert admin.sources["bench-postgresql"] == before[0]["bench-postgresql"]
     assert admin.sources["bench-clickhouse"] == before[0]["bench-clickhouse"]
     assert admin.tables == before[1]
@@ -289,7 +289,7 @@ def test_apply_restores_on_failure_inside_the_run() -> None:
         with _applier(admin).applied(setup, _resolved(setup)):
             raise RuntimeError("the run failed")
     assert (
-        admin.sources["bench-postgresql"]["prefer"] is False
+        admin.sources["bench-postgresql"]["prefer"] is None  # what the registry held before
         and admin.sources["bench-postgresql"]["ttl"] is None
     )
 
@@ -302,8 +302,8 @@ def test_apply_restores_what_it_changed_when_a_later_change_fails() -> None:
         with _applier(admin).applied(setup, _resolved(setup)):
             pass
     assert (
-        admin.sources["bench-postgresql"]["prefer"] is False
-        and admin.sources["bench-clickhouse"]["prefer"] is True
+        admin.sources["bench-postgresql"]["prefer"] is None
+        and admin.sources["bench-clickhouse"]["prefer"] == 0
     )
 
 
@@ -316,14 +316,15 @@ def test_a_table_level_declaration_sets_the_table() -> None:
 
     setup, admin = _setup(mutate), FakeAdmin()
     with _applier(admin).applied(setup, _resolved(setup)):
-        assert admin.tables[2]["prefer"] is True and admin.tables[2]["ttl"] == 60
+        assert admin.tables[2]["prefer"] == 0 and admin.tables[2]["ttl"] == 60
     assert admin.tables[2] == {"prefer": None, "ttl": None}
 
 
-def test_a_renamed_admin_mutation_is_named_in_the_error() -> None:
+def test_a_missing_admin_mutation_is_named_in_the_error() -> None:
     setup = _setup()
-    admin = FakeAdmin(mutations=("updateSourceReplicate",))
-    with pytest.raises(rp.ReplicationError, match="no updateSourcePreferMaterialized mutation"):
+    # a deployment that still has the setting's old mutation names
+    admin = FakeAdmin(mutations=("updateSourcePreferMaterialized",))
+    with pytest.raises(rp.ReplicationError, match="no updateSourceReplicate mutation"):
         with _applier(admin).applied(setup, _resolved(setup)):
             pass
 
@@ -609,14 +610,14 @@ def test_a_refusal_by_the_deployment_leaves_nothing_to_restore() -> None:
     def post(path: str, json: dict[str, Any], headers: dict[str, str]) -> Any:
         import httpx
 
-        if "updateSourcePreferMaterialized" in json["query"] and "__schema" not in json["query"]:
+        if "updateSourceReplicate" in json["query"] and "__schema" not in json["query"]:
             req = httpx.Request("POST", "http://x/admin/graphql")
             admin.calls.append(("refused", {}))
             return httpx.Response(
                 200,
                 json={
                     "data": {
-                        "updateSourcePreferMaterialized": {
+                        "updateSourceReplicate": {
                             "success": False,
                             "message": refused,
                             "code": "x",
@@ -630,7 +631,7 @@ def test_a_refusal_by_the_deployment_leaves_nothing_to_restore() -> None:
     admin.post = post  # type: ignore[method-assign]
     with pytest.raises(
         rp.ReplicationError,
-        match="updateSourcePreferMaterialized failed: Source 'bench-postgresql' is declared in the configuration file",
+        match="updateSourceReplicate failed: Source 'bench-postgresql' is declared in the configuration file",
     ):
         with _applier(admin).applied(setup, _resolved(setup)):
             pass

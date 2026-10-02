@@ -10,7 +10,7 @@
 
 """The operator's settings are the FLOOR of every read (REQ-030, amended 2026-09-30).
 
-A source the operator marked ``load_protected`` or ``prefer_materialized`` is read from the
+A source the operator marked ``load_protected`` or ``replicate`` is read from the
 platform's landed copy — never pulled live by a query. The one routing decision enforces it: with no
 hint such a source routes to the engine (which serves the landed copy), and a request hint that would
 read it live (``route=direct``) is rejected with an error naming the operator setting. A hint that
@@ -42,15 +42,13 @@ def test_a_load_protected_source_never_routes_direct():
     assert "load_protected" in decision.reason
 
 
-def test_a_prefer_materialized_source_never_routes_direct():
-    decision = decide_route(
-        {"pg-main"}, _TYPES, _DIALECTS, operator_floor={"pg-main": "prefer_materialized"}
-    )
+def test_a_replicate_source_never_routes_direct():
+    decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, operator_floor={"pg-main": "replicate"})
     assert decision.route == Route.ENGINE
-    assert "prefer_materialized" in decision.reason
+    assert "replicate" in decision.reason
 
 
-@pytest.mark.parametrize("setting", ["load_protected", "prefer_materialized"])
+@pytest.mark.parametrize("setting", ["load_protected", "replicate"])
 def test_a_direct_hint_below_the_floor_is_rejected_naming_the_setting(setting):
     with pytest.raises(OperatorFloorViolation) as exc:
         decide_route(
@@ -134,8 +132,8 @@ def test_a_direct_hint_never_sends_sql_to_a_neo4j_source():
     assert decision.route == Route.ENGINE
 
 
-def test_prefer_materialized_alone_is_a_floor():
-    """prefer_materialized blocks live reads on its own — no cache_ttl, window or probe needed
+def test_replicate_alone_is_a_floor():
+    """replicate blocks live reads on its own — no cache_ttl, window or probe needed
     (REQ-826 amended 2026-09-30); its refresh timing follows the normal rules (REQ-1907)."""
     from types import SimpleNamespace
 
@@ -143,10 +141,10 @@ def test_prefer_materialized_alone_is_a_floor():
 
     bare = SimpleNamespace(
         load_protected=False,
-        prefer_materialized=True,
+        replicate=0,
         cache_ttl=None,
         off_peak_window=None,
         change_signal="ttl",
     )
-    assert floor_setting(bare) == "prefer_materialized"
-    assert floor_setting(SimpleNamespace(load_protected=False, prefer_materialized=False)) is None
+    assert floor_setting(bare) == "replicate"
+    assert floor_setting(SimpleNamespace(load_protected=False, replicate=None)) is None

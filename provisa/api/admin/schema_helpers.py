@@ -399,7 +399,7 @@ async def _fetch_table_with_columns(
         alias=row.get("alias"),
         description=row.get("description"),
         cache_ttl=row.get("cache_ttl"),
-        prefer_materialized=row.get("prefer_materialized"),
+        replicate=row["replicate"],  # REQ-826
         load_protected=row.get("load_protected"),  # REQ-1141
         off_peak_window=row.get("off_peak_window"),  # REQ-1141
         off_peak_tz=row.get("off_peak_tz"),  # REQ-1141

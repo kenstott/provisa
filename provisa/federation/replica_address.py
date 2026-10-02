@@ -192,6 +192,14 @@ class ReplicaRoutes:
     ambiguous: Mapping[TableKey, tuple[str, ...]] = field(default_factory=dict)
     #: (source_id, table_name) -> why its replica could not be reconciled (REQ-826).
     unreconciled: Mapping[tuple[str, str], BaseException] = field(default_factory=dict)
+    #: registered table id -> (source_id, operator setting) for every table whose reads the
+    #: operator's settings put on its replica (REQ-030, ``replica_routing.floored_tables``). A
+    #: statement is floored by the tables it reads, never by its source's other tables.
+    floored: Mapping[int, tuple[str, str]] = field(default_factory=dict)
+    #: registered table id -> source_id for every other registered table: no operator setting
+    #: puts its reads on a replica, so an engine that reads its source in place reads it live.
+    #: With ``floored`` it says, for one statement, which of its sources it reads live.
+    unfloored: Mapping[int, str] = field(default_factory=dict)
 
     def __bool__(self) -> bool:
         return bool(self.routes) or bool(self.ambiguous)

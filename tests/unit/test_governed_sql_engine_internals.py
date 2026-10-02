@@ -28,6 +28,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from provisa.compiler.compiled_query_cache import CompiledQueryCache
+from provisa.federation.replica_address import ReplicaRoutes
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 
@@ -77,6 +78,8 @@ def _state(domain_access: list[str]) -> SimpleNamespace:
         schema_version=1,
         compiled_query_cache=CompiledQueryCache(),
         routing_cache=CompiledQueryCache(),
+        # as the schema build publishes it: no table is served from a replica (REQ-826)
+        replica_routes=ReplicaRoutes(),
     )
 
 

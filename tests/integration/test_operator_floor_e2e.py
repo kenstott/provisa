@@ -11,7 +11,7 @@
 """E2E (REQ-030, amended 2026-09-30): there is no getting around the operator's floor.
 
 A real Provisa server reads tables in the test stack's Postgres: one source ``load_protected``,
-the others ``prefer_materialized``. It runs once on the DuckDB engine (SQLite control plane, DuckDB
+the others ``replicate``. It runs once on the DuckDB engine (SQLite control plane, DuckDB
 materialize store) and once on the test stack's Trino (Postgres control plane and store). The
 first read lands each. The upstream tables are then RENAMED away, so any read that reaches the source
 live fails with "does not exist" -- the source's own proof it was hit. Every later read, over
@@ -42,6 +42,9 @@ _ISOLATED_ORG = "operator_floor_e2e"
 _CONFIG = "tests/fixtures/duckdb_operator_floor_config.yaml"
 _SCHEMA = "op_floor_e2e"
 _ROWS = [(1, "one"), (2, "two"), (3, "three")]
+# Every table an operator setting puts on its replica. mixed_always is one table of a source
+# with no floor of its own; its sibling mixed_live is read live (REQ-826, per statement).
+_FLOORED = ("lp_items", "pm_items", "bare_items", "mixed_always")
 
 
 async def _pg():
@@ -62,7 +65,7 @@ async def _seed() -> None:
     try:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.execute(f"CREATE SCHEMA {_SCHEMA}")
-        for table in ("lp_items", "pm_items", "bare_items"):
+        for table in (*_FLOORED, "mixed_live"):
             await conn.execute(f"CREATE TABLE {_SCHEMA}.{table} (id int PRIMARY KEY, name text)")
             await conn.executemany(f"INSERT INTO {_SCHEMA}.{table} VALUES ($1, $2)", _ROWS)
         # A table of the floored source that no config registers: admin discovery finds it and
@@ -82,8 +85,10 @@ async def _take_upstream_away() -> None:
     """Rename the upstream tables: from now on any live read of them fails at the source."""
     conn = await _pg()
     try:
-        for table in ("lp_items", "pm_items", "bare_items"):
+        for table in _FLOORED:
             await conn.execute(f"ALTER TABLE {_SCHEMA}.{table} RENAME TO {table}_gone")
+        # mixed_live stays where it is and gains a row: only a LIVE read of it can see id 4.
+        await conn.execute(f"INSERT INTO {_SCHEMA}.mixed_live VALUES (4, 'four')")
     finally:
         await conn.close()
 
@@ -117,7 +122,7 @@ async def floor_server(request):
     server.start()
     try:
         async with httpx.AsyncClient(base_url=server.base_url, timeout=120.0) as client:
-            for table in ("lp_items", "pm_items", "bare_items"):
+            for table in (*_FLOORED, "mixed_live"):
                 first = await _sql(client, f"SELECT id, name FROM {table} ORDER BY id")
                 assert first.status_code == 200, first.text
                 assert _ids(first) == [1, 2, 3], first.text
@@ -135,6 +140,14 @@ async def _sql(client: httpx.AsyncClient, sql: str) -> httpx.Response:
     return await client.post("/data/sql", json={"sql": sql, "role": "org_admin"})
 
 
+def _explain(server, resp: httpx.Response) -> str:
+    """The response, and for a 500 the end of the server's own log: the body of an unhandled
+    error names only its type, the traceback is in the log."""
+    if resp.status_code != 500:
+        return resp.text
+    return f"{resp.text}\n--- server log ---\n{server.dump_stderr_debug()[-6000:]}"
+
+
 def _ids(resp: httpx.Response) -> list[int]:
     body = resp.json()
     rows = body.get("data") or body.get("rows") or []
@@ -143,7 +156,7 @@ def _ids(resp: httpx.Response) -> list[int]:
     return sorted(int(r["id"]) for r in rows)
 
 
-@pytest.mark.parametrize("table", ["lp_items", "pm_items", "bare_items"])
+@pytest.mark.parametrize("table", _FLOORED)
 async def test_sql_reads_come_from_the_landed_copy_not_the_source(floor_server, table):
     async with httpx.AsyncClient(base_url=floor_server.base_url, timeout=120.0) as client:
         resp = await _sql(client, f"SELECT id, name FROM {table} ORDER BY id")
@@ -151,12 +164,12 @@ async def test_sql_reads_come_from_the_landed_copy_not_the_source(floor_server, 
     assert _ids(resp) == [1, 2, 3]
 
 
-@pytest.mark.parametrize("field", ["lpItems", "pmItems", "bareItems"])
+@pytest.mark.parametrize("field", ["lpItems", "pmItems", "bareItems", "mixedAlways"])
 async def test_graphql_reads_come_from_the_landed_copy_not_the_source(floor_server, field):
     async with httpx.AsyncClient(base_url=floor_server.base_url, timeout=120.0) as client:
         resp = await client.post("/data/graphql", json={"query": f"{{ {field} {{ id name }} }}"})
     body = resp.json()
-    assert resp.status_code == 200 and not body.get("errors"), resp.text
+    assert resp.status_code == 200 and not body.get("errors"), _explain(floor_server, resp)
     assert sorted(r["id"] for r in body["data"][field]) == [1, 2, 3]
 
 
@@ -164,8 +177,9 @@ async def test_graphql_reads_come_from_the_landed_copy_not_the_source(floor_serv
     ("field", "setting"),
     [
         ("lpItems", "load_protected"),
-        ("pmItems", "prefer_materialized"),
-        ("bareItems", "prefer_materialized"),
+        ("pmItems", "replicate"),
+        ("bareItems", "replicate"),
+        ("mixedAlways", "replicate"),
     ],
 )
 async def test_a_direct_route_hint_is_refused_naming_the_operator_setting(
@@ -174,7 +188,7 @@ async def test_a_direct_route_hint_is_refused_naming_the_operator_setting(
     query = f"# @provisa route=direct\n{{ {field} {{ id name }} }}"
     async with httpx.AsyncClient(base_url=floor_server.base_url, timeout=120.0) as client:
         resp = await client.post("/data/graphql", json={"query": query})
-    assert resp.status_code == 403, resp.text
+    assert resp.status_code == 403, _explain(floor_server, resp)
     assert resp.json()["code"] == "query.operator_floor", resp.text
     assert setting in resp.text
 
@@ -186,6 +200,45 @@ async def test_a_federated_route_hint_is_served_from_the_landed_copy(floor_serve
     body = resp.json()
     assert resp.status_code == 200 and not body.get("errors"), resp.text
     assert sorted(r["id"] for r in body["data"]["lpItems"]) == [1, 2, 3]
+
+
+async def test_a_statement_reading_only_the_live_table_of_that_source_is_read_live(floor_server):
+    """REQ-826: the floor is the statement's, not the source's. floor-mixed has an Always table,
+    but a statement that reads only its Default table reaches the source: it sees the row added
+    after the server's first read, and a ``route=direct`` hint on it is allowed."""
+    async with httpx.AsyncClient(base_url=floor_server.base_url, timeout=120.0) as client:
+        resp = await _sql(client, "SELECT id, name FROM mixed_live ORDER BY id")
+        assert resp.status_code == 200, resp.text
+        assert _ids(resp) == [1, 2, 3, 4], "the Default table was not read live"
+        hinted = await client.post(
+            "/data/graphql",
+            json={"query": "# @provisa route=direct\n{ mixedLive { id name } }"},
+        )
+    body = hinted.json()
+    assert hinted.status_code == 200 and not body.get("errors"), hinted.text
+    assert sorted(r["id"] for r in body["data"]["mixedLive"]) == [1, 2, 3, 4]
+
+
+async def test_a_statement_reading_both_tables_takes_each_from_where_it_is_served(floor_server):
+    """The Always table from its replica (its upstream is gone), the Default table live (the new
+    row), joined by the engine in one statement."""
+    async with httpx.AsyncClient(base_url=floor_server.base_url, timeout=120.0) as client:
+        resp = await _sql(
+            client,
+            "SELECT l.id AS id, a.name AS name FROM mixed_live l "
+            "LEFT JOIN mixed_always a ON a.id = l.id ORDER BY l.id",
+        )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    rows = body.get("data") or body.get("rows") or []
+    if isinstance(rows, dict):
+        rows = next(iter(rows.values()))
+    assert [(int(r["id"]), r["name"]) for r in rows] == [
+        (1, "one"),
+        (2, "two"),
+        (3, "three"),
+        (4, None),
+    ]
 
 
 async def test_pgwire_reads_come_from_the_landed_copy_not_the_source(floor_server):

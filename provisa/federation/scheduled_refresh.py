@@ -10,7 +10,7 @@
 
 """Load-protected scheduled refresh — the out-of-band trigger for SCHEDULED sources (REQ-1141).
 
-A load-protected source (``prefer_materialized`` + ``FreshnessMode.SCHEDULED``) is refreshed ONLY
+A load-protected source (replica-served + ``FreshnessMode.SCHEDULED``) is refreshed ONLY
 here, never on the query path (freshness_gate.py returns fresh-to-readers for SCHEDULED). This
 module is the pure decision: given wall-clock, the source's optional gates, and its last refresh,
 decide whether the scheduler should PUBLISH a new snapshot now.

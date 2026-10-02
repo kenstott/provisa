@@ -19,6 +19,7 @@ A real SQLite control plane (sources + registered_tables) through the admin muta
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -50,11 +51,12 @@ async def _db(
     source_ttl=None,
     table_signal=None,
     table_ttl=None,
-    table_prefer=True,
-    source_prefer=False,
+    table_replicate=0,
+    source_replicate=None,
 ):
-    """One source ``s`` with one table ``orders``. ``table_prefer`` (prefer_materialized, None =
-    inherit) makes config guarantee the table lands (REQ-1907 option B); False = it may not."""
+    """One source ``s`` with one table ``orders``. ``table_replicate`` 0 (always) says the table
+    is replicated (REQ-1907 option B); None = it inherits its source's value, which by default
+    is not set either."""
     engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cp.db'}")
     with engine.begin() as c:
         sources.metadata.create_all(c)
@@ -70,7 +72,7 @@ async def _db(
                 username="u",
                 change_signal=source_signal,
                 cache_ttl=source_ttl,
-                prefer_materialized=source_prefer,
+                replicate=source_replicate,
             )
         )
         await conn.execute_core(
@@ -83,7 +85,7 @@ async def _db(
                 cache_ttl=table_ttl,
                 role_ttl={"analyst": 360},
                 row_materialize=False,
-                prefer_materialized=table_prefer,
+                replicate=table_replicate,
             )
         )
     try:
@@ -133,15 +135,13 @@ def _mutation(db: Database):
 
 
 def _t(signal, ttl, **kw) -> TableTtl:
-    flags = dict(
-        materialize=False, row_materialize=False, prefer_materialized=None, load_protected=None
-    )
+    flags = dict(materialize=False, row_materialize=False, replicate=None, load_protected=None)
     flags.update(kw)
     return TableTtl("public", "orders", signal, ttl, **flags)
 
 
 def _s(signal, ttl, **kw) -> SourceTtl:
-    flags = dict(prefer_materialized=False, load_protected=False)
+    flags = dict(replicate=None, load_protected=False)
     flags.update(kw)
     return SourceTtl(signal, ttl, **flags)
 
@@ -149,8 +149,8 @@ def _s(signal, ttl, **kw) -> SourceTtl:
 _LANDING = [
     ({"materialize": True}, {}),
     ({"row_materialize": True}, {}),
-    ({"prefer_materialized": True}, {}),
-    ({}, {"prefer_materialized": True}),
+    ({"replicate": 0}, {}),
+    ({}, {"replicate": 0}),
     ({"load_protected": True}, {}),
     ({}, {"load_protected": True}),
 ]
@@ -191,7 +191,7 @@ async def test_the_check_accepts_a_ttl_table_config_does_not_force_to_land(tmp_p
     """Whether it lands depends on the engine's reach; the read path judges it."""
     from provisa.api.admin._landing_ttl import landing_ttl_refusal
 
-    async with _db(tmp_path, source_signal="kafka", table_prefer=None) as db:
+    async with _db(tmp_path, source_signal="kafka", table_replicate=None) as db:
         async with db.acquire() as conn:
             assert await landing_ttl_refusal(conn, "s", table=_t(signal, None)) is None
             assert (
@@ -384,7 +384,7 @@ async def test_register_table_refuses_inheriting_a_ttl_signal_with_no_cache_ttl(
     from provisa.api.admin import schema_mutation_ops as ops
     from provisa.core.models import Column
 
-    async with _db(tmp_path, source_signal="ttl", table_ttl=60, source_prefer=True) as db:
+    async with _db(tmp_path, source_signal="ttl", table_ttl=60, source_replicate=0) as db:
         with (
             patch.object(ops, "_get_pool", new=AsyncMock(return_value=_Pool(db))),
             patch("provisa.api.admin.capabilities.require_capability", return_value=None),
@@ -408,7 +408,7 @@ async def test_register_table_refuses_inheriting_a_ttl_signal_with_no_cache_ttl(
 async def test_update_table_cache_accepts_clearing_it_on_a_table_config_does_not_land(
     tmp_path, monkeypatch
 ):
-    async with _db(tmp_path, source_signal="ttl", table_ttl=60, table_prefer=None) as db:
+    async with _db(tmp_path, source_signal="ttl", table_ttl=60, table_replicate=None) as db:
         table_id = (await _table_row(db)).id
         m, p = _mutation(db)
         with p:
@@ -417,3 +417,152 @@ async def test_update_table_cache_accepts_clearing_it_on_a_table_config_does_not
             )
         assert result.success is True
         assert (await _table_row(db)).cache_ttl is None
+
+
+# --- the replicate setters (REQ-826) --------------------------------------------------------
+
+
+async def _replicate_of(db: Database):
+    async with db.acquire() as conn:
+        table = await conn.execute_core(
+            select(registered_tables.c.replicate).where(registered_tables.c.table_name == "orders")
+        )
+        source = await conn.execute_core(select(sources.c.replicate).where(sources.c.id == "s"))
+        return table.fetchone().replicate, source.fetchone().replicate
+
+
+def _replicate_mutation(db: Database):
+    """The mutation with the control plane pointed at ``db``, a state that declares no source in
+    config, and the schema rebuild recorded."""
+    from provisa.api.admin import schema_mutation
+
+    rebuild = AsyncMock()
+    state = SimpleNamespace(config=None, tables=[])
+    return (
+        schema_mutation.Mutation(),
+        rebuild,
+        (
+            patch.object(schema_mutation, "_get_pool", new=AsyncMock(return_value=_Pool(db))),
+            patch.object(schema_mutation, "_rebuild_schemas", new=rebuild),
+            patch("provisa.api.app.state", state),
+        ),
+        state,
+    )
+
+
+def _granted(monkeypatch, state):
+    from tests.unit.gate_identity import grant
+
+    return grant(monkeypatch, "source_registration", "table_registration", state=state)[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", [0, 500])
+async def test_update_table_replicate_refuses_a_ttl_table_with_no_cache_ttl(
+    tmp_path, monkeypatch, value
+):
+    """Saving Always or a Hot threshold on a ttl table that has no refresh clock used to succeed
+    and then fail every read of the table; it is refused at save."""
+    async with _db(tmp_path, source_signal="ttl", table_replicate=None) as db:
+        table_id = (await _table_row(db)).id
+        m, rebuild, patches, state = _replicate_mutation(db)
+        with patches[0], patches[1], patches[2]:
+            result = await m.update_table_replicate(
+                _granted(monkeypatch, state), table_id=table_id, replicate=value
+            )
+        assert result.success is False and result.code == "schema.landing_ttl_required"
+        assert "orders" in result.message
+        assert await _replicate_of(db) == (None, None)
+        rebuild.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_table_replicate_saves_and_rebuilds_so_the_value_routes(tmp_path, monkeypatch):
+    async with _db(tmp_path, source_signal="ttl", table_ttl=60, table_replicate=None) as db:
+        table_id = (await _table_row(db)).id
+        m, rebuild, patches, state = _replicate_mutation(db)
+        with patches[0], patches[1], patches[2]:
+            result = await m.update_table_replicate(
+                _granted(monkeypatch, state), table_id=table_id, replicate=0
+            )
+        assert result.success is True and result.code == "schema.table_replicate_set"
+        assert await _replicate_of(db) == (0, None)
+        rebuild.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_update_source_replicate_refuses_a_ttl_table_it_would_replicate_with_no_cache_ttl(
+    tmp_path, monkeypatch
+):
+    async with _db(tmp_path, source_signal="ttl", table_replicate=None) as db:
+        m, rebuild, patches, state = _replicate_mutation(db)
+        with patches[0], patches[1], patches[2]:
+            result = await m.update_source_replicate(
+                _granted(monkeypatch, state), source_id="s", replicate=0
+            )
+        assert result.success is False and result.code == "schema.landing_ttl_required"
+        assert await _replicate_of(db) == (None, None)
+        rebuild.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_never_is_refused_on_a_load_protected_source(tmp_path, monkeypatch):
+    """load_protected with replicate -1 is contradictory (REQ-826): refused at save, naming it."""
+    async with _db(tmp_path, source_signal="kafka", table_replicate=None) as db:
+        async with db.acquire() as conn:
+            await conn.execute_core(
+                sources.update().where(sources.c.id == "s").values(load_protected=True)
+            )
+        table_id = (await _table_row(db)).id
+        m, rebuild, patches, state = _replicate_mutation(db)
+        with patches[0], patches[1], patches[2]:
+            info = _granted(monkeypatch, state)
+            on_source = await m.update_source_replicate(info, source_id="s", replicate=-1)
+            on_table = await m.update_table_replicate(info, table_id=table_id, replicate=-1)
+        for result in (on_source, on_table):
+            assert result.success is False
+            assert result.code == "schema.replicate_contradicts_load_protected"
+            assert "contradictory" in result.message
+        assert await _replicate_of(db) == (None, None)
+        rebuild.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_load_protection_is_refused_on_a_source_set_to_never(tmp_path, monkeypatch):
+    async with _db(
+        tmp_path, source_signal="kafka", source_ttl=60, table_replicate=None, source_replicate=-1
+    ) as db:
+        m, rebuild, patches, state = _replicate_mutation(db)
+        with patches[0], patches[1], patches[2]:
+            result = await m.update_source_load_protection(
+                _granted(monkeypatch, state), source_id="s", load_protected=True
+            )
+        assert result.success is False
+        assert result.code == "schema.replicate_contradicts_load_protected"
+        rebuild.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", [-2, -50])
+async def test_a_value_the_setting_does_not_have_is_refused(tmp_path, monkeypatch, value):
+    async with _db(tmp_path, source_signal="kafka", table_replicate=None) as db:
+        m, _rebuild, patches, state = _replicate_mutation(db)
+        with patches[0], patches[1], patches[2]:
+            result = await m.update_source_replicate(
+                _granted(monkeypatch, state), source_id="s", replicate=value
+            )
+        assert result.success is False and result.code == "schema.replicate_invalid"
+        assert await _replicate_of(db) == (None, None)
+
+
+@pytest.mark.asyncio
+async def test_a_non_standard_threshold_is_kept_as_saved(tmp_path, monkeypatch):
+    """Any threshold above 0 is a legal value, not only the drop-down's standard ones."""
+    async with _db(tmp_path, source_signal="kafka", table_replicate=None) as db:
+        m, _rebuild, patches, state = _replicate_mutation(db)
+        with patches[0], patches[1], patches[2]:
+            result = await m.update_source_replicate(
+                _granted(monkeypatch, state), source_id="s", replicate=750
+            )
+        assert result.success is True
+        assert await _replicate_of(db) == (None, 750)

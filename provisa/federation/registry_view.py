@@ -23,6 +23,7 @@ declares the same id.
 from __future__ import annotations
 
 from types import SimpleNamespace
+from collections.abc import Iterable
 from typing import Any
 
 from provisa.core.models import BUILT_IN_SOURCE_IDS, Source
@@ -78,19 +79,24 @@ async def registered_sources(state: Any, conn: Any | None = None) -> list[Source
     return out
 
 
-async def operator_floor(state: Any) -> dict[str, str]:  # REQ-030, REQ-826, REQ-1141
-    """{source_id: operator setting} for every source whose reads the operator requires to come
-    from the platform's landed copy — the floor ``decide_route`` enforces (REQ-030, amended
-    2026-09-30). Read from the same registry the residency planner lands from
-    (``query_residency.ensure_resident``), so routing and landing never disagree about a source.
-    See ``core.operator_floor.floor_setting`` for which settings floor a source."""
-    from provisa.core.operator_floor import floor_setting
+def operator_floor(state: Any, table_ids: Iterable[int]) -> dict[str, str]:  # REQ-030, REQ-826
+    """{source_id: operator setting} for the sources a statement may not read live, judged by the
+    tables the STATEMENT reads (``table_ids``: the registered tables the pipeline resolved for
+    it) — the floor ``decide_route`` enforces (REQ-030, amended 2026-09-30).
 
+    A source is in the map when one of the statement's tables of it is put on its replica by the
+    operator's settings (``replica_routing.table_floor``: load_protected, ``replicate: 0``, a
+    promoted table, or a source floored as a whole). A statement that reads no such table keeps
+    its direct route even when its source has other replicated tables. Read from the floored
+    tables published with the replica routes at schema build, the same registry read the
+    replicas are reconciled from, so routing and replication never disagree about a table."""
+    floored = state.replica_routes.floored
     floor: dict[str, str] = {}
-    for s in await registered_sources(state):
-        setting = floor_setting(s)
-        if setting is not None:
-            floor[s.id] = setting
+    for table_id in table_ids:
+        entry = floored.get(table_id)
+        if entry is not None:
+            source_id, setting = entry
+            floor.setdefault(source_id, setting)
     return floor
 
 
@@ -194,9 +200,9 @@ def _build_registered_tables(registered: list[dict], cfg_by: dict) -> list[Any]:
                 # REQ-1907: the operator's per-role TTLs live on the registry row (config upsert
                 # and the admin mutation both write it there).
                 role_ttl=dict(rt["role_ttl"]),
-                # REQ-826/REQ-1141 per-table overrides (None = inherit the source's): a table that
-                # resolves to either is read via its replica even on an attach-capable engine.
-                prefer_materialized=rt["prefer_materialized"],
+                # REQ-826/REQ-1141 per-table settings (None = inherit the source's): a table they
+                # put on its replica is read there even on an attach-capable engine.
+                replicate=rt["replicate"],
                 load_protected=rt["load_protected"],
                 probe_type=getattr(cfg, "probe_type", None),  # REQ-982
                 # REQ-1443: a checker table's rows are the results of running its contract, so

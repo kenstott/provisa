@@ -14,7 +14,7 @@ REQ-1141, REQ-1912).
 On the Postgres federation engine a source read live is exposed as a VIEW named
 ``"<catalog>_<schema>"."<table>"`` over its postgres_fdw foreign table. A replica that shared that
 name was refreshed through the view: when a source that had been read live became one that is
-replicated (``prefer_materialized`` / ``load_protected`` newly set), the view was still there, the
+replicated (``replicate`` / ``load_protected`` newly set), the view was still there, the
 refresh's ``DELETE`` and ``INSERT`` were issued against it, and postgres_fdw carried them to the
 SOURCE database. A replica has its own address — the org's replicas schema — and the live view is
 removed when the table's reads move to it.
@@ -267,8 +267,8 @@ def _read_live_once(pg: _SourceAndEngine, workdir: str) -> None:
 
 @pytest.mark.parametrize(
     "setting",
-    [{"prefer_materialized": True, "cache_ttl": 3600}, {"load_protected": True, "cache_ttl": 3600}],
-    ids=["prefer_materialized", "load_protected"],
+    [{"replicate": 0, "cache_ttl": 3600}, {"load_protected": True, "cache_ttl": 3600}],
+    ids=["replicate", "load_protected"],
 )
 def test_a_source_that_starts_replicating_after_being_read_live_is_never_written(
     databases, setting
@@ -299,7 +299,7 @@ def test_replicating_a_narrower_registration_never_destroys_the_sources_other_co
     with tempfile.TemporaryDirectory() as workdir:
         _read_live_once(pg, workdir)
         since = pg.source_statement_count()
-        narrow = _config(pg, columns=("id", "amount"), prefer_materialized=True, cache_ttl=3600)
+        narrow = _config(pg, columns=("id", "amount"), replicate=0, cache_ttl=3600)
         with _server(pg, workdir, narrow) as read:
             assert read() == _ID_AMOUNT
             assert pg.replica_relation() == "table"
@@ -313,9 +313,7 @@ def test_a_source_read_live_again_after_being_replicated_reads_the_source(databa
     the source as it is now — not the replica as it was."""
     pg = databases
     with tempfile.TemporaryDirectory() as workdir:
-        replicated = _config(
-            pg, columns=("id", "amount", "note"), prefer_materialized=True, cache_ttl=3600
-        )
+        replicated = _config(pg, columns=("id", "amount", "note"), replicate=0, cache_ttl=3600)
         with _server(pg, workdir, replicated) as read:
             assert read() == _ID_AMOUNT
         assert pg.replica_relation() == "table"

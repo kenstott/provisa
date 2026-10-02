@@ -83,7 +83,7 @@ def _config(pg: _SourceAndEngine) -> dict:
                 "database": "shop",
                 "username": "provisa",
                 "password": "provisa",
-                "prefer_materialized": True,
+                "replicate": 0,
                 "cache_ttl": 300,
             }
         ],

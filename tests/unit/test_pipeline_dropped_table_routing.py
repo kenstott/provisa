@@ -30,6 +30,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from provisa.federation.replica_address import ReplicaRoutes
 from provisa.api_source.engine_cache import CacheLocation
 from provisa.api_source.models import ApiColumn, ApiColumnType, ParamType
 from provisa.compiler.sql_gen import CompilationContext
@@ -84,6 +85,8 @@ def _state() -> SimpleNamespace:
         source_dialects={SOURCE_ID: None},
         source_dsns={},
         source_pools=SimpleNamespace(source_ids={SOURCE_ID}, has=lambda _: False),
+        # as the schema build publishes it: no table is served from a replica (REQ-826)
+        replica_routes=ReplicaRoutes(),
     )
 
 
@@ -103,6 +106,7 @@ async def test_non_union_unmaterializable_api_table_routes_instead_of_raising():
         gov_ctx,
         ctx,
         state,
+        table_ids=(),
         nf_args={},
     )
 
@@ -177,6 +181,8 @@ def _openapi_state() -> SimpleNamespace:
         source_pools=SimpleNamespace(
             source_ids={API_SOURCE_ID, "pgsrc"}, has=lambda sid: sid == "pgsrc"
         ),
+        # none of the stand-in's tables carries an operator floor (REQ-030, REQ-826)
+        replica_routes=ReplicaRoutes(),
     )
 
 
@@ -207,11 +213,6 @@ async def test_openapi_path_param_table_routes_through_engine_cache_not_tenant_d
         ) as m_handle,
         patch("provisa.api_source.engine_cache.create_and_insert"),
         patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
-        # The stand-in state has no source registry; none of its sources carries an operator
-        # floor (REQ-030), which routing reads from it.
-        patch(
-            "provisa.federation.registry_view.registered_sources", new=AsyncMock(return_value=[])
-        ),
     ):
         exec_sql, decision, default_source, optimized, sources, _opts = await _optimize_and_route(
             "SELECT * FROM get_pet_by_id WHERE \"_nf_petId\" = '1'",
@@ -219,6 +220,7 @@ async def test_openapi_path_param_table_routes_through_engine_cache_not_tenant_d
             gov_ctx,
             ctx,
             state,
+            table_ids=(),
             nf_args={"petId": "1"},
         )
 

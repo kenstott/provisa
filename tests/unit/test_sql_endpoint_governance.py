@@ -81,6 +81,13 @@ async def sql_client(monkeypatch):
     _prev_tenant_db = app_mod.state.tenant_db
     app_mod.state.tenant_db = MagicMock()
 
+    # REQ-1909: every plan asks the registry which of its sources carry a live-read cap. The
+    # stand-in tenant database holds no registered source.
+    async def _no_registered_sources(_conn):
+        return []
+
+    monkeypatch.setattr("provisa.core.repositories.source.list_all", _no_registered_sources)
+
     # Pin unsecured auth BEFORE create_app(): wire_auth reads state.auth_config at
     # app-construction time. These governance tests post a `role` with no bearer
     # token, so a leaked secured auth_config from a prior test would install a

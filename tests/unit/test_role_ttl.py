@@ -135,7 +135,7 @@ def _landing_cfg(table_kw, source_kw):
         id="s",
         change_signal="kafka",
         cache_ttl=None,
-        prefer_materialized=False,
+        replicate=None,
         load_protected=False,
         freshness_gate=False,
     )
@@ -145,7 +145,7 @@ def _landing_cfg(table_kw, source_kw):
         source_id="s",
         cache_ttl=None,
         change_signal=None,
-        prefer_materialized=None,
+        replicate=None,
         load_protected=None,
         materialize=False,
         row_materialize=False,
@@ -157,8 +157,8 @@ def _landing_cfg(table_kw, source_kw):
 _LANDING_FLAGS = [
     ({"materialize": True}, {}),
     ({"row_materialize": True}, {}),
-    ({"prefer_materialized": True}, {}),
-    ({}, {"prefer_materialized": True}),
+    ({"replicate": 0}, {}),
+    ({}, {"replicate": 0}),
     ({"load_protected": True}, {}),
     ({}, {"load_protected": True}),
 ]
@@ -184,13 +184,23 @@ def test_config_accepts_a_ttl_table_config_does_not_force_to_land(signal):
     from provisa.core.config_loader import _validate_landing_ttl
 
     _validate_landing_ttl(_landing_cfg({"change_signal": signal}, {}))
-    # a table override of False beats a landing source default
+    # a table set to never under a source that replicates only when busy is not replicated
     _validate_landing_ttl(
-        _landing_cfg(
-            {"change_signal": signal, "prefer_materialized": False, "load_protected": False},
-            {"prefer_materialized": True, "load_protected": True},
-        )
+        _landing_cfg({"change_signal": signal, "replicate": -1}, {"replicate": 500})
     )
+
+
+@pytest.mark.parametrize("signal", ["ttl", "ttl_probe"])
+@pytest.mark.parametrize("floor", [{"replicate": 0}, {"load_protected": True}])
+def test_a_table_cannot_opt_out_of_a_source_floored_as_a_whole(signal, floor):
+    """A source set to always, or load-protected, has no live attach: every table of it is served
+    from its replica whatever the table says for itself, so each needs its refresh clock."""
+    from provisa.core.config_loader import _validate_landing_ttl
+
+    with pytest.raises(ValueError, match=r"orders.*add a cache_ttl"):
+        _validate_landing_ttl(
+            _landing_cfg({"change_signal": signal, "load_protected": False}, floor)
+        )
 
 
 @pytest.mark.parametrize(("table_flag", "source_flag"), _LANDING_FLAGS)

@@ -17,7 +17,7 @@ state and overlays them on the file base; file-only sections and source credenti
 
 Two things make the diff meaningful rather than noise:
   * Faithful projection — each DB row is projected to ONLY the config-schema fields (DB-only columns
-    like ``disable_cypher``/``version``/``prefer_materialized`` are dropped), and integer ``*_table_id``
+    like ``disable_cypher``/``version`` are dropped), and integer ``*_table_id``
     references are resolved back to the table NAMES the config uses (the DB stores int ids).
   * Normalization — both sides run through the SAME deep key-sort + stable entity-sort, so section /
     key / entity ORDER never differs.

@@ -27,6 +27,7 @@ import pytest
 
 from provisa.federation.backend import TrinoBackend
 from provisa.federation.engine import build_trino_engine
+from tests.helpers import no_promoted_tables
 
 
 def _rcol(name, data_type: str | None = "bigint", pk=False, nf=None):
@@ -45,7 +46,7 @@ def _rtbl(sid, schema, tname, cols):
         "table_name": tname,
         "columns": cols,
         # the per-table overrides every registry row carries (None = inherit the source's)
-        "prefer_materialized": None,
+        "replicate": None,
         "load_protected": None,
     }
 
@@ -55,7 +56,7 @@ def _src(sid, stype):
         id=sid,
         type=SimpleNamespace(value=stype),
         change_signal="ttl",
-        prefer_materialized=False,
+        replicate=None,
         load_protected=False,
     )
 
@@ -73,6 +74,7 @@ def _state(cfg, registered, monkeypatch):
         return registered
 
     monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _fetch_tables)
+    monkeypatch.setattr("provisa.federation.replica_state.promoted_keys", no_promoted_tables)
 
     async def _no_ui_sources(_conn):  # REQ-1674: the registry view also lists UI-created sources
         return []

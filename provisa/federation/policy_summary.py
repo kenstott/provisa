@@ -11,7 +11,7 @@
 """Plain-English refresh-policy summary, derived per (source, table, engine) (REQ-1143).
 
 The effective serving/refresh behaviour of a table is a decision tree over reachability (per
-ENGINE), prefer_materialized, load_protected, off-peak window, cadence, and probe. No steward can
+ENGINE), replicate, load_protected, off-peak window, cadence, and probe. No steward can
 read the raw config and know the outcome. This module derives a one-line human summary — and
 misconfiguration warnings — from the SAME resolution the planner uses: ``federate(source, engine)``
 (strategy.py) for reachability and ``resolve_refresh_policy`` (scheduled_refresh.py) for the gates.
@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 class Serving(str, Enum):  # REQ-1143 — machine tag for UI styling
     LIVE = "live"  # reached directly, always fresh
     SCHEDULED = "scheduled"  # load-protected snapshot, scheduler-refreshed, zero query-path load
-    CACHE = "cache"  # REQ-826 lazy read-through cache (query-triggered on staleness)
+    CACHE = "cache"  # REQ-826 served from its replica, refreshed on staleness
     FROZEN = "frozen"  # loaded once, never refreshed (unreachable + no refresh policy)
 
 
@@ -73,12 +73,12 @@ def _fmt_cadence(seconds: int) -> str:
 def _live_reachable(source: Source, engine: FederationEngine) -> bool:
     """Whether ``engine`` can serve ``source`` LIVE (VIRTUAL/SCAN) — reachability is engine-specific.
 
-    Resolves the strategy WITHOUT prefer_materialized (the question is capability, not policy). An
-    UnreachableSource means the engine has no connector at all for this source type."""
+    Resolves the strategy WITHOUT the replicate setting (the question is capability, not policy).
+    An UnreachableSource means the engine has no connector at all for this source type."""
     from provisa.federation.engine import UnreachableSource
 
     try:
-        strat = federate(source, engine, prefer_materialized=False)
+        strat = federate(source, engine, replicated=False)
     except UnreachableSource:
         return False
     return strat in (Strategy.VIRTUAL, Strategy.SCAN)
@@ -98,19 +98,27 @@ def _describe_scheduled(policy) -> str:
 
 
 def describe_refresh_policy(
-    source: Source, table: Table, engine: FederationEngine, default_ttl: int = 300
+    source: Source,
+    table: Table,
+    engine: FederationEngine,
+    default_ttl: int = 300,
+    *,
+    promoted: bool = False,
 ) -> PolicySummary:
     """Derive the plain-English refresh-policy summary for one (source, table, engine) (REQ-1143).
 
     Mirrors the planner's decision tree exactly; every branch below is the effective outcome, not a
-    restatement of the raw knobs. The two no-refresh-policy warnings are the SAME condition
-    resolving differently by engine-specific reachability (REQ-1141 boundary).
+    restatement of the raw knobs: the table's resolved ``replicate`` (REQ-826, ``core.replicate``)
+    and load protection, and what THIS engine can read in place. Only Always (0) and load
+    protection guarantee the replica; Never (-1) and the Hot values are best effort, and the text
+    says what they come to on this engine.
 
     ``default_ttl`` is the global response-cache TTL (``state.response_cache_default_ttl``). It is the
     read-through refresh cadence a table gets when it sets no explicit ``cache_ttl`` — the SAME chain
-    the Effective-TTL column resolves (table → source → global). Without it the summary called an
-    inheriting API/materialized table "frozen" while the query path actually refetched every
-    ``default_ttl`` seconds."""
+    the Effective-TTL column resolves (table → source → global). ``promoted``: the table passed its
+    threshold and is in the promoted set."""
+    from provisa.core.replicate import NEVER, floor_of, resolved_replicate
+
     policy = resolve_refresh_policy(source, table)
     live = _live_reachable(source, engine)
 
@@ -122,50 +130,57 @@ def describe_refresh_policy(
     if policy.load_protected and policy.armed:
         return PolicySummary(_describe_scheduled(policy), Serving.SCHEDULED)
 
-    prefer = (
-        source.prefer_materialized
-        if table.prefer_materialized is None
-        else table.prefer_materialized
-    ) or policy.load_protected
+    replicate = resolved_replicate(source, table)
 
-    # 2. Materialized with a cadence but not load-protected → REQ-826 lazy read-through cache.
-    if prefer and policy.cadence is not None:
-        return PolicySummary(
-            f"Cached — refreshed on access when older than {_fmt_cadence(policy.cadence)}.",
-            Serving.CACHE,
-        )
-
-    # 3/4/5. No refresh policy. Split on engine-specific reachability (REQ-1141 boundary).
-    if not prefer:
-        if live:
-            return PolicySummary("Live — reached directly, always fresh.", Serving.LIVE)
-        # Not live-reachable and not forced to materialize: served through the response cache, which
-        # re-fetches on access once older than the effective TTL (frozen only if caching is disabled).
-        if eff_ttl > 0:
+    # 2. The operator's setting puts reads on the replica: Always, load protection, or a table
+    # past its threshold. The source is not read by a query on any engine.
+    if floor_of(replicate, policy.load_protected, promoted=promoted) is not None:
+        if policy.cadence is not None:
             return PolicySummary(
-                f"Cached — re-fetched on access when older than {_fmt_cadence(eff_ttl)}.",
+                "Replicated — reads come from the replica, refreshed on access when older than "
+                f"{_fmt_cadence(policy.cadence)}.",
                 Serving.CACHE,
             )
         return PolicySummary(
-            "Snapshot — loaded on first access, never re-fetched (caching disabled).",
-            Serving.FROZEN,
+            "Replicated — reads come from the replica. It is built once and refreshed only "
+            "when the source reports a change or the scheduler runs.",
+            Serving.CACHE,
         )
 
-    # prefer_materialized set (or load_protected without a gate) but NO refresh policy:
+    # 3. Live on this engine: Never, Hot-N below its threshold, or Default.
     if live:
+        if replicate == NEVER:
+            return PolicySummary(
+                "Live — read directly from the source; never replicated.", Serving.LIVE
+            )
+        if replicate is not None:
+            return PolicySummary(
+                f"Live — read directly from the source until it passes {replicate} governed "
+                "statements per interval, then served from its replica (best effort: reads stay "
+                "live while the replica is built).",
+                Serving.LIVE,
+            )
+        return PolicySummary("Live — reached directly, always fresh.", Serving.LIVE)
+
+    # 4. This engine cannot read the source in place: the replica is the only way to reach it,
+    # whatever the setting. Never is best effort, and here it cannot be met.
+    if replicate == NEVER:
+        when = (
+            f"re-fetched on access when older than {_fmt_cadence(eff_ttl)}"
+            if eff_ttl > 0
+            else "loaded on first access and never re-fetched (caching disabled)"
+        )
         return PolicySummary(
-            "Live — reached directly, always fresh.",
-            Serving.LIVE,
-            warning=(
-                "prefer_materialized has no effect on this engine: the source is reachable live "
-                "and no refresh policy is set, so it is served live."
-            ),
+            "Replicated — this engine cannot read the source in place, so Never cannot apply "
+            f"here (it is best effort): reads come from the replica, {when}.",
+            Serving.CACHE if eff_ttl > 0 else Serving.FROZEN,
+        )
+    if eff_ttl > 0:
+        return PolicySummary(
+            f"Cached — re-fetched on access when older than {_fmt_cadence(eff_ttl)}.",
+            Serving.CACHE,
         )
     return PolicySummary(
-        "Frozen snapshot — loaded once, never refreshes.",
+        "Snapshot — loaded on first access, never re-fetched (caching disabled).",
         Serving.FROZEN,
-        warning=(
-            "This source cannot be served live on this engine and has no refresh policy, so it is "
-            "loaded once and never refreshed — valid only for static reference data."
-        ),
     )

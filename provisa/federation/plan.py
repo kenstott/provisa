@@ -82,7 +82,7 @@ def build_execution_plan(
     *,
     demand_of: Callable[[str], PushdownDemand] | None = None,
     estimate_of: Callable[[str], Estimate] | None = None,
-    prefer_materialized_of: Callable[[str], bool] | None = None,
+    replicated_of: Callable[[str], bool] | None = None,
     load_protected_of: Callable[[str], bool] | None = None,
     resident_of: Callable[[str], bool] | None = None,
     materialization_backend: str | None = None,
@@ -100,14 +100,14 @@ def build_execution_plan(
     promote a reachable-but-weak-pushdown large scan to MATERIALIZED. Both must be given to
     arm it; a promoted source then joins the prep phase like any other MATERIALIZED source.
 
-    ``prefer_materialized_of`` is the MANUAL counterpart to that automatic gate: a per-source
-    policy override forcing MATERIALIZED for a source the engine could reach live but that, for
-    this use case, serves better from the store (the connector is a poor fit). When it forces a
+    ``replicated_of`` is the operator's counterpart to that automatic gate: whether the tables of
+    this source that the statement reads are put on their replicas by the ``replicate`` setting
+    (REQ-826), forcing MATERIALIZED for a source the engine could reach live. When it forces a
     source to the store, ``materialization_backend`` MUST name a backend the engine can read back
     — else the override resolves to MATERIALIZED with nowhere to land. The guard fails loud here
     at plan time rather than silently at execute (see validate_materialization_backend, REQ-846).
 
-    ``load_protected_of`` marks a source LOAD-PROTECTED (REQ-1141): like prefer_materialized it
+    ``load_protected_of`` marks a source LOAD-PROTECTED (REQ-1141): like ``replicated_of`` it
     forces MATERIALIZED (removes the live route), but additionally the READ path must NOT pull the
     source — the scheduler is the sole writer. A load-protected source is therefore put in the prep
     phase ONLY when it is not yet resident (``resident_of(s.id)`` is False / unavailable); once a
@@ -129,17 +129,15 @@ def build_execution_plan(
         protected = load_protected_of(s.id) if load_protected_of is not None else False
         if protected:
             load_protected.add(s.id)
-        prefer = (
-            prefer_materialized_of(s.id) if prefer_materialized_of is not None else False
-        ) or protected
+        replicated = (replicated_of(s.id) if replicated_of is not None else False) or protected
         strategy = federate(
             s,
             engine,
-            prefer_materialized=prefer,
+            replicated=replicated,
             demand=demand_of(s.id) if demand_of is not None else None,
             estimate=estimate_of(s.id) if estimate_of is not None else None,
         )
-        if prefer and strategy is Strategy.MATERIALIZED:
+        if replicated and strategy is Strategy.MATERIALIZED:
             _require_materialization_backend(engine, materialization_backend, s.id)
         if strategy is Strategy.SCAN and not engine.file_native:
             # REQ-897: a SCAN resolves a file/object source read IN PLACE — only a file_native engine
@@ -197,7 +195,7 @@ def _needs_prep(
 def _require_materialization_backend(
     engine: FederationEngine, backend: str | None, source_id: str
 ) -> None:
-    """Guard a prefer_materialized override: the engine must have a store to land ``source_id`` into.
+    """Guard a replicated source: the engine must have a store to write ``source_id``'s replica into.
 
     A source forced to the store needs a backend the engine can READ BACK (REQ-846). None →
     the override has nowhere to land; a backend the engine has no ATTACH connector for is a
@@ -210,7 +208,7 @@ def _require_materialization_backend(
 
     if backend is None:
         raise InvalidMaterializationBackend(
-            f"source {source_id!r} is set prefer_materialized on engine {engine.name!r}, but no "
-            f"materialization backend is configured to land it into"
+            f"source {source_id!r} is replicated on engine {engine.name!r}, but no "
+            f"materialization backend is configured to hold its replica"
         )
     validate_materialization_backend(engine, backend)

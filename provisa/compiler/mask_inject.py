@@ -145,6 +145,7 @@ def inject_masking(  # REQ-040, REQ-263, REQ-264
             root_field=compiled.root_field,
             columns=compiled.columns,
             sources=compiled.sources,
+            table_ids=compiled.table_ids,
         )
 
 

@@ -44,7 +44,7 @@ sources:
     database: ${env:PG_DATABASE}
     username: ${env:PG_USER}
     password: ${env:PG_PASSWORD}
-    prefer_materialized: true
+    replicate: 0
     cache_ttl: 86400
 tables:
   - source_id: jp-live

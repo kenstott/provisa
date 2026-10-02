@@ -239,6 +239,8 @@ def buffered(monkeypatch):
 
 
 _LOOKUP = "SELECT o.id FROM sales.orders o WHERE o.id = $1 LIMIT $2"
+# The registered id ``sales.orders`` resolves to in the stand-in state (its compilation context).
+_ORDERS_TABLE_ID = 1
 
 
 async def _run(b, sql, params):
@@ -375,18 +377,19 @@ async def test_a_direct_read_issues_no_control_plane_statement(buffered, monkeyp
     source = SimpleNamespace(
         id="pg",
         type=SimpleNamespace(value="postgresql"),
-        prefer_materialized=False,
+        replicate=None,
         load_protected=False,
         max_live_concurrency=None,  # REQ-1909: no cap on live reads of this source
         model_dump_json=lambda: "{}",
     )
     table = SimpleNamespace(
+        id=_ORDERS_TABLE_ID,  # the id the statement's own table resolves to
         source_id="pg",
         schema_name="sales",
         table_name="orders",
         row_materialize=False,
         columns=[],
-        prefer_materialized=None,
+        replicate=None,
         load_protected=None,
     )
 
@@ -422,6 +425,7 @@ async def test_a_direct_read_issues_no_control_plane_statement(buffered, monkeyp
             plan = await buffered.mod._govern_and_route_compiled(
                 _LOOKUP, "analyst", exec_params=[7, 1], state=state, cache_hint=NO_CACHE_HINT
             )
+            assert plan.table_ids == (_ORDERS_TABLE_ID,)
             result = await buffered.mod._execute_plan(plan, state)
             assert result.rows == [(7,)]
     assert state.tenant_db.acquires == 0

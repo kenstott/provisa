@@ -19,7 +19,7 @@ place, or when the operator's setting says its reads come from the replica.
 with (``replica_address.address_replicas``).
 """
 
-# Requirements: REQ-826, REQ-1912, REQ-1141, REQ-030
+# Requirements: REQ-826, REQ-1912, REQ-1141, REQ-030, REQ-238
 
 from __future__ import annotations
 
@@ -55,29 +55,31 @@ def _source_type(source: Any) -> str:
     return stype.value if hasattr(stype, "value") else str(stype)
 
 
-def _setting_on(source: Any, table: Any, setting: str) -> bool:
-    """Whether ``setting`` is on for ``table``: the source's own value, or the table's override
-    turning it on (a table value of None inherits the source's, REQ-826/REQ-1141)."""
-    own = bool(getattr(source, setting))
-    if own:
-        return True
-    override = table[setting] if isinstance(table, dict) else getattr(table, setting)
-    return bool(override)
+def table_floor(source: Any, table: Any, *, promoted: bool) -> str | None:
+    """The operator setting that puts ``table``'s reads on its replica (REQ-030, REQ-826), or
+    None when they may be live: the floor of its source (``core.operator_floor.floor_setting`` —
+    a floored source has no live attach, so every table of it is served from its replica), else
+    the table's own resolved ``load_protected`` / ``replicate`` (``core.replicate.floor_of``).
+    ``promoted``: the table passed its threshold and is in the promoted set."""
+    from provisa.core.operator_floor import floor_setting
+    from provisa.core.replicate import floor_of, resolved_load_protected, resolved_replicate
 
-
-def floored(source: Any, table: Any) -> bool:
-    """Whether the operator requires ``table``'s reads to come from its replica (REQ-030): the
-    floor ``core.operator_floor.floor_setting`` names for its source, or a table override."""
-    return _setting_on(source, table, "load_protected") or _setting_on(
-        source, table, "prefer_materialized"
+    of_source = floor_setting(source)
+    if of_source is not None:
+        return of_source
+    return floor_of(
+        resolved_replicate(source, table),
+        resolved_load_protected(source, table),
+        promoted=promoted,
     )
 
 
-def reads_replica(source: Any, table: Any, engine: Any) -> bool:
+def reads_replica(source: Any, table: Any, engine: Any, *, promoted: bool) -> bool:
     """Whether reads of ``table`` on ``engine`` go to its replica.
 
-    True when the engine cannot read the source in place (the replica is the only way to reach
-    it) or the operator's setting floors the table. False for a table the engine reads live, for
+    True when the engine cannot read the source in place — the replica is then the only way to
+    reach it, whatever the table's setting, Never (-1) included — or when the operator's setting
+    puts the table on its replica (``table_floor``). False for a table the engine reads live, for
     a source the engine cannot reach at all, and for a source type that owns no replica.
     ``engine`` is the ``FederationEngine``."""
     from provisa.federation.engine import UnreachableSource
@@ -86,7 +88,9 @@ def reads_replica(source: Any, table: Any, engine: Any) -> bool:
     if _source_type(source) in _NO_REPLICA_TYPES:
         return False
     try:
-        strategy = federate(source, engine, prefer_materialized=floored(source, table))
+        strategy = federate(
+            source, engine, replicated=table_floor(source, table, promoted=promoted) is not None
+        )
     except UnreachableSource:
         return False
     return strategy is Strategy.MATERIALIZED
@@ -106,18 +110,24 @@ def has_live_attach(source: Any, engine: Any) -> bool:
     from provisa.federation.strategy import Strategy, federate
 
     try:
-        strategy = federate(source, engine, prefer_materialized=floor_setting(source) is not None)
+        strategy = federate(source, engine, replicated=floor_setting(source) is not None)
     except UnreachableSource:
         return False
     return strategy is not Strategy.MATERIALIZED
 
 
 def live_while_building(source: Any, table: Any, engine: Any) -> bool:
-    """Whether ``table`` may be read live while its replica is being built. Never for a table the
-    operator floors (its reads come from the replica, and a failed build is an error) or one the
-    engine cannot read in place (there is no live read to fall back on)."""
-    del source, table, engine
-    return False
+    """Whether ``table`` may be read live while its replica is being built (REQ-826): only a
+    table that is replicated because it is busy — Default or Hot-N, promoted — on a source the
+    engine holds a live attach of. Its promotion is best effort and never fails a read. Never
+    for a table the operator floors outright (load_protected, Always: its reads come from the
+    replica, and a failed build is an error) or one the engine cannot read in place (there is no
+    live read to fall back on)."""
+    from provisa.core.replicate import ALWAYS, resolved_load_protected, resolved_replicate
+
+    if not has_live_attach(source, engine) or resolved_load_protected(source, table):
+        return False
+    return resolved_replicate(source, table) != ALWAYS
 
 
 class UnknownRegisteredTable(LookupError):
@@ -176,22 +186,33 @@ def _data_columns(reg: dict) -> list[dict]:
     return [c for c in reg["columns"] if c["native_filter_type"] is None]
 
 
-async def replica_tables(engine: Any, state: Any) -> list[tuple[Any, dict]]:
-    """Every registered table served from a replica on ``engine``, as ``(source, registry row)``.
-
-    Read from the control plane's REGISTERED tables (REQ-1674), which hold the names the compiler
-    emits; a source created in the UI and a table registered at runtime count exactly like
-    config-declared ones."""
+async def _registry(state: Any) -> tuple[list[dict], dict[str, Any], frozenset]:
+    """The registered tables, their sources by id and the promoted set, read together from the
+    control plane (REQ-1674): the names the compiler emits; a source created in the UI and a
+    table registered at runtime count exactly like config-declared ones."""
     from provisa.api.admin.db_queries import fetch_tables
     from provisa.federation.registry_view import registered_sources
+    from provisa.federation.replica_state import promoted_keys
 
     config = getattr(state, "config", None)
     tdb = getattr(state, "tenant_db", None)
     if config is None or tdb is None:
-        return []
+        return [], {}, frozenset()
     async with tdb.acquire() as conn:
         registered = await fetch_tables(conn)
-        sources = {s.id: s for s in await registered_sources(state, conn)}  # REQ-1674
+        sources = {s.id: s for s in await registered_sources(state, conn)}
+        promoted = await promoted_keys(conn)
+    return registered, sources, promoted
+
+
+def _replica_key(reg: dict) -> tuple[str, str, str]:
+    return (reg["source_id"], reg["schema_name"], reg["table_name"])
+
+
+def _served_from_replica(
+    engine: Any, registry: tuple[list[dict], dict[str, Any], frozenset]
+) -> list[tuple[Any, dict]]:
+    registered, sources, promoted = registry
     out: list[tuple[Any, dict]] = []
     for reg in registered:
         src = sources.get(reg["source_id"])
@@ -199,9 +220,36 @@ async def replica_tables(engine: Any, state: Any) -> list[tuple[Any, dict]]:
             continue
         if not _data_columns(reg):
             continue
-        if reads_replica(src, reg, engine):
+        if reads_replica(src, reg, engine, promoted=_replica_key(reg) in promoted):
             out.append((src, reg))
     return out
+
+
+def _floored(registry: tuple[list[dict], dict[str, Any], frozenset]) -> dict[int, tuple[str, str]]:
+    registered, sources, promoted = registry
+    floored: dict[int, tuple[str, str]] = {}
+    for reg in registered:
+        src = sources.get(reg["source_id"])
+        if src is None or _source_type(src) in _NO_REPLICA_TYPES:
+            continue
+        setting = table_floor(src, reg, promoted=_replica_key(reg) in promoted)
+        if setting is not None:
+            floored[reg["id"]] = (src.id, setting)
+    return floored
+
+
+async def replica_tables(engine: Any, state: Any) -> list[tuple[Any, dict]]:
+    """Every registered table served from a replica on ``engine``, as ``(source, registry row)``
+    — by the one decision (``reads_replica``), with the promoted set the control plane holds."""
+    return _served_from_replica(engine, await _registry(state))
+
+
+async def floored_tables(state: Any) -> dict[int, tuple[str, str]]:
+    """Every registered table whose reads the operator's settings put on its replica (REQ-030,
+    REQ-826), as ``{registered table id: (source_id, setting)}`` — ``setting`` the one a refusal
+    names (``table_floor``). Published with the routes and consulted per statement, so a
+    statement is floored only by the tables it reads (``registry_view.operator_floor``)."""
+    return _floored(await _registry(state))
 
 
 async def export_view_addresses(state: Any) -> dict[tuple[str, str, str], tuple[str, str]]:
@@ -273,7 +321,8 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
     read_catalog: str | None = None
     routes: dict[TableKey, ReplicaRoute] = {}
     ambiguous: dict[TableKey, tuple[str, ...]] = {}
-    tables = await replica_tables(engine, state)
+    registry = await _registry(state)
+    tables = _served_from_replica(engine, registry)
     if tables:
         read_catalog = backend.replica_read_catalog(state)
     for src, reg in tables:
@@ -301,6 +350,8 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
         engine_name=engine.name,
         routes=routes,
         ambiguous=ambiguous,
+        floored=(floored := _floored(registry)),
+        unfloored={reg["id"]: reg["source_id"] for reg in registry[0] if reg["id"] not in floored},
         # The backend's own record, by reference: a later reconcile is seen without republishing.
         unreconciled=backend.unreconciled,
     )

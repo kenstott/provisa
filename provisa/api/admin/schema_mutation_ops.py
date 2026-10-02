@@ -281,7 +281,7 @@ async def register_table(
                 model.cache_ttl,
                 model.materialize,
                 model.row_materialize,
-                model.prefer_materialized,
+                model.replicate,
                 model.load_protected,
             ),
         )

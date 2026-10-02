@@ -178,6 +178,30 @@ class ColumnRef:
     is_agg: bool = False  # True when emitted as ARRAY_AGG correlated subquery
 
 
+class StatementSources(set[str]):
+    """The source ids a compiled statement reads — what routing takes — together with the
+    registered tables it reads them through (REQ-826). The compiler adds a table where it emits
+    one, so the statement's tables are known without a second reading of its SQL: the operator's
+    floor and the replica refresh are judged by the tables a statement reads, never by its
+    sources' other tables.
+
+    A compile-time accumulator only: ``CompiledQuery`` carries a plain ``set`` of the source ids
+    and a ``frozenset`` of the table ids, so a compiled query copies and pickles as plain data
+    (a kept GraphQL plan is a deep copy of its compiled queries)."""
+
+    def __init__(self, table: "TableMeta") -> None:
+        super().__init__({table.source_id})
+        self.table_ids: set[int] = {table.table_id}
+
+    def add_table(self, table: "TableMeta") -> None:
+        self.add(table.source_id)
+        self.table_ids.add(table.table_id)
+
+    def merge(self, other: "StatementSources") -> None:
+        self.update(other)
+        self.table_ids |= other.table_ids
+
+
 @dataclass
 class CompiledQuery:
     """Result of compiling a single GraphQL root query field."""
@@ -187,6 +211,9 @@ class CompiledQuery:
     root_field: str  # GraphQL root field name (alias if present, else schema name)
     columns: list[ColumnRef]
     sources: set[str]  # source_ids involved (for routing)
+    # REQ-826: the registered tables the statement reads (StatementSources.table_ids). Empty for
+    # a statement that reads none (rewritten onto a materialized view, a Kafka window).
+    table_ids: frozenset[int] = frozenset()
     canonical_field: str = ""  # original schema field name before alias substitution
     # Cursor pagination fields (connection queries only)
     is_connection: bool = False

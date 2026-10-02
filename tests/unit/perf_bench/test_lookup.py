@@ -207,11 +207,11 @@ def test_two_graphql_fields_reaching_the_target_are_refused() -> None:
 
 def test_replication_facts_are_carried() -> None:
     r = _resolve(ORDERS, EVENTS)
-    assert r.tables[ORDERS.key].prefer_materialized is None
-    assert (r.tables[EVENTS.key].prefer_materialized, r.tables[EVENTS.key].cache_ttl) == (True, 300)
+    assert r.tables[ORDERS.key].replicate is None
+    assert (r.tables[EVENTS.key].replicate, r.tables[EVENTS.key].cache_ttl) == (0, 300)
     assert r.sources["bench-clickhouse"] == {
         "type": "clickhouse",
-        "prefer_materialized": True,
+        "replicate": 0,
         "cache_enabled": True,
         "cache_ttl": 300,
     }

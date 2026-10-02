@@ -112,4 +112,5 @@ def expand_views(  # REQ-133, REQ-134, REQ-135, REQ-136
         root_field=compiled.root_field,
         columns=compiled.columns,
         sources=compiled.sources,
+        table_ids=compiled.table_ids,
     )

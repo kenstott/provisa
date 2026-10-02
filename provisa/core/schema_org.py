@@ -74,7 +74,7 @@ sources = Table(
     Column("dialect", Text, nullable=False, server_default=""),
     Column("cache_enabled", Boolean, nullable=False, server_default=true()),
     Column("cache_ttl", Integer),
-    Column("prefer_materialized", Boolean, nullable=False, server_default=false()),
+    Column("replicate", Integer),  # REQ-826: NULL = global threshold; -1 never, N hot, 0 always
     Column("load_protected", Boolean, nullable=False, server_default=false()),  # REQ-1141
     Column("off_peak_window", Text),  # REQ-1141
     Column("off_peak_tz", Text, nullable=False, server_default="UTC"),  # REQ-1141
@@ -158,7 +158,7 @@ registered_tables = Table(
     Column("cache_ttl", Integer),
     # REQ-1907: role -> TTL seconds; effective TTL = max(cache_ttl, role_ttl(role)).
     Column("role_ttl", JSON, nullable=False, default=dict, server_default="{}"),
-    Column("prefer_materialized", Boolean),
+    Column("replicate", Integer),  # REQ-826: NULL = inherit source
     Column("load_protected", Boolean),  # REQ-1141: NULL = inherit source
     Column("off_peak_window", Text),  # REQ-1141
     Column("off_peak_tz", Text),  # REQ-1141

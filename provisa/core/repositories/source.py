@@ -45,7 +45,7 @@ def _source_values(source: Source) -> dict:
         "off_peak_tz": getattr(source, "off_peak_tz", "UTC"),  # REQ-1141
         "cache_enabled": source.cache_enabled,
         "cache_ttl": source.cache_ttl,
-        "prefer_materialized": source.prefer_materialized,  # REQ-826
+        "replicate": source.replicate,  # REQ-826
         "max_live_concurrency": source.max_live_concurrency,  # REQ-1909
         "sentinel_path": source.sentinel_path,  # REQ-1148
         "freshness_gate": source.freshness_gate,  # REQ-860

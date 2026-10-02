@@ -11,7 +11,7 @@
 """A floored source is read from its replica on every engine (REQ-030, REQ-826, REQ-1141,
 REQ-1912).
 
-``prefer_materialized`` / ``load_protected`` remove the live read of a source: no request may reach
+``replicate`` / ``load_protected`` remove the live read of a source: no request may reach
 it live on any engine path. These cases take a source the engine CAN reach live and check what a
 read of it resolves to once the operator's setting is on:
 
@@ -33,14 +33,15 @@ from provisa.federation.engine import build_engine
 from provisa.federation.replica_address import address_replicas
 from provisa.federation.replica_routing import replica_routes
 from provisa.federation.strategy import Strategy, federate
+from tests.helpers import no_promoted_tables
 
 _SOURCE_HOST = "orders-db.internal"
 _ORG = "acme"
 
 _FLOORS = pytest.mark.parametrize(
     "settings",
-    [{"prefer_materialized": True}, {"load_protected": True, "cache_ttl": 3600}],
-    ids=["prefer_materialized", "load_protected"],
+    [{"replicate": 0}, {"load_protected": True, "cache_ttl": 3600}],
+    ids=["replicate", "load_protected"],
 )
 
 
@@ -63,7 +64,7 @@ def _registered(source_id: str, schema_name: str, table_name: str) -> dict:
         "source_id": source_id,
         "schema_name": schema_name,
         "table_name": table_name,
-        "prefer_materialized": None,
+        "replicate": None,
         "load_protected": None,
         "columns": [
             {
@@ -94,6 +95,7 @@ def _state(monkeypatch, engine, source, registered: list[dict], *, catalog: str)
         return []
 
     monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _fetch_tables)
+    monkeypatch.setattr("provisa.federation.replica_state.promoted_keys", no_promoted_tables)
     monkeypatch.setattr("provisa.core.repositories.source.list_all", _no_ui_sources)
     return SimpleNamespace(
         org_id=_ORG,
@@ -136,7 +138,7 @@ def test_trino_registers_no_catalog_for_a_floored_source(settings):
     engine = build_engine("trino")
     source = _postgres_source(**settings)
     assert floor_setting(source) is not None
-    assert federate(source, engine, prefer_materialized=True) is Strategy.MATERIALIZED
+    assert federate(source, engine, replicated=True) is Strategy.MATERIALIZED
     conn = _TrinoConn()
     state = SimpleNamespace(engine_conn=conn, engine_conn_kwargs=None)
 
@@ -285,7 +287,7 @@ async def test_duckdb_reads_the_replica_once_a_live_attached_table_is_floored(
 
     # The operator turns the setting on. The replica is reconciled and filled at its address —
     # with one row, so a read says which of the two answered.
-    state = _walk(_source(prefer_materialized=True))
+    state = _walk(_source(replicate=0))
     address = backend.replica_address(
         state, source_id="src", schema_name="main", table_name="orders"
     )

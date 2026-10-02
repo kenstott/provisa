@@ -25,7 +25,7 @@ Per transport:
 - concurrent requests: each one stays on one thread, and requests that overlap in time are on
   different threads.
 
-A landed (``prefer_materialized``) source on a DuckDB-file store is read through a land the
+A landed (``replicate``) source on a DuckDB-file store is read through a land the
 request itself triggers; that land must run on the request's thread too.
 """
 
@@ -204,7 +204,7 @@ def landed_server(tmp_path_factory):
     s = _start(
         work,
         org,
-        {"prefer_materialized": True, "cache_ttl": 1},
+        {"replicate": 0, "cache_ttl": 1},
         store_url=f"duckdb:///{work / 'materialize.duckdb'}",
     )
     try:
@@ -527,7 +527,7 @@ def test_sse_subscription_is_served_on_its_request_thread(server):
 
 
 def test_a_read_triggered_land_runs_on_the_request_thread(landed_server):
-    """The first read of a prefer_materialized source lands it (REQ-1661). The request triggers
+    """The first read of a replicate source lands it (REQ-1661). The request triggers
     that land, so the land — the store write included — is part of the request."""
     tag = 9102000
     time.sleep(2)  # past the source's 1 s cache_ttl: this read finds the copy stale and re-lands it

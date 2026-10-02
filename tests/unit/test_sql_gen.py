@@ -265,6 +265,32 @@ class TestSimpleSelect:
         results = compile_query(doc, ctx)
         assert results[0].sources == {"sales-pg"}
 
+    def test_the_tables_a_statement_reads_are_tracked(self, schema_and_ctx):
+        # REQ-826: the operator's floor and the replica refresh are judged by the registered
+        # tables a statement reads; the compiler records each as it emits it.
+        _, ctx = schema_and_ctx
+        root_only = compile_query(parse("{ orders { id } }"), ctx)[0]
+        assert root_only.table_ids == frozenset({1})
+        joined = compile_query(parse("{ orders { id customer { name } } }"), ctx)[0]
+        assert joined.table_ids == frozenset({1, 2})
+        assert joined.sources == {"sales-pg"}
+
+    def test_a_compiled_query_copies_as_plain_data(self, schema_and_ctx):
+        # A kept GraphQL plan is a deep copy of its compiled queries (graphql_plan.record), and
+        # an aggregate is compiled on its own path: neither may carry the compile-time
+        # accumulator, which cannot be rebuilt from its members.
+        import copy
+        import pickle
+
+        _, ctx = schema_and_ctx
+        for query in ("{ orders { id customer { name } } }", "{ orders_aggregate { count } }"):
+            for compiled in compile_query(parse(query), ctx):
+                assert type(compiled.sources) is set
+                assert type(compiled.table_ids) is frozenset
+                for clone in (copy.deepcopy(compiled), pickle.loads(pickle.dumps(compiled))):
+                    assert clone.sources == compiled.sources
+                    assert clone.table_ids == compiled.table_ids
+
 
 class TestWhereClause:
     def test_eq_filter(self, schema_and_ctx):

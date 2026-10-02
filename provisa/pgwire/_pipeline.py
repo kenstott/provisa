@@ -270,6 +270,7 @@ async def _optimize_and_route(
     ctx,
     state,
     *,
+    table_ids: tuple[int, ...],
     nf_args=None,
     has_json_extract=False,
     is_mutation=False,
@@ -279,7 +280,11 @@ async def _optimize_and_route(
     not the pre-optimization one. ``exec_sql`` is the caller's already-lowered SQL (catalog-
     qualified semantic, or compiled catalog-physical); ``governed_sql`` is the pre-optimization
     governed semantic used for source extraction. Returns the optimized exec SQL, the route
-    decision, the resolved default source, and whether optimization changed the SQL."""
+    decision, the resolved default source, and whether optimization changed the SQL.
+
+    ``table_ids`` are the registered tables the statement reads, as the pipeline resolved them
+    (``audit.pipeline.resolve_table_ids``): the operator's floor is judged by those tables
+    (REQ-826), so a statement that reads no replica-served table keeps its direct route."""
     from provisa.api.data.materialization import _materialize_api_to_engine_cache
     from provisa.api_source.engine_cache import rewrite_all_from_cache
     from provisa.cache.values_cte import build_values_cte_sql
@@ -339,7 +344,7 @@ async def _optimize_and_route(
         has_json_extract=has_json_extract,
         source_dsns=getattr(state, "source_dsns", None),
         is_mutation=is_mutation,
-        operator_floor=await operator_floor(state),
+        operator_floor=operator_floor(state, table_ids),
     )
     if _rewrites and decision.route != Route.ENGINE:
         # A cache rewrite points the SQL at a materialized table living in the engine's
@@ -475,6 +480,7 @@ async def _optimize_and_route_cached(
     state,
     role_id: str,
     *,
+    table_ids: tuple[int, ...],
     nf_args=None,
     has_json_extract=False,
     is_mutation=False,
@@ -504,6 +510,7 @@ async def _optimize_and_route_cached(
             gov_ctx,
             ctx,
             state,
+            table_ids=table_ids,
             nf_args=nf_args,
             has_json_extract=has_json_extract,
             is_mutation=is_mutation,
@@ -530,6 +537,7 @@ async def _optimize_and_route_cached(
         gov_ctx,
         ctx,
         state,
+        table_ids=table_ids,
         nf_args=nf_args,
         has_json_extract=has_json_extract,
         is_mutation=is_mutation,
@@ -1375,6 +1383,7 @@ async def route_governed(
         ctx,
         state,
         role_id,
+        table_ids=_table_ids,
         has_json_extract="->>" in governed_semantic,
         is_mutation=_is_mutation,
         nf_args=_nf_args,
@@ -2101,7 +2110,7 @@ async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-0
             plan.exec_params,
             reader_role=plan.role_id,
         )
-    await ensure_resident(state, plan.sources, reader_role=plan.role_id)
+    await ensure_resident(state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids)
     # REQ-1897: the result cache is GraphQL's Route.CACHE candidate route, extended here so every
     # other raw-SQL surface that reaches this one chokepoint (Bolt, pgwire's non-COPY path) gets
     # the same served-without-touching-the-engine hit -- with the same audit row and tier/egress
@@ -3139,7 +3148,14 @@ async def _route_compiled(
         sources,
         _opts,
     ) = await _optimize_and_route_cached(
-        _exec_sql, governed_sql, gov_ctx, ctx, state, role_id, nf_args=_nf_args
+        _exec_sql,
+        governed_sql,
+        gov_ctx,
+        ctx,
+        state,
+        role_id,
+        table_ids=_table_ids,
+        nf_args=_nf_args,
     )
     # REQ-1910: the sources are known now — a window opened on one of them covers this request.
     await extend_trace_scope_to_sources(state, role_id, frozenset(sources))

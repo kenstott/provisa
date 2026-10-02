@@ -107,7 +107,7 @@ async def test_registered_tables_carry_config_settings_only_where_declared(monke
             "table_name": "orders",
             "dq_contract": None,
             "role_ttl": {},  # REQ-1907
-            "prefer_materialized": None,
+            "replicate": None,
             "load_protected": None,
             "columns": [
                 {
@@ -125,7 +125,7 @@ async def test_registered_tables_carry_config_settings_only_where_declared(monke
             "table_name": "product_reviews",
             "dq_contract": None,
             "role_ttl": {},  # REQ-1907
-            "prefer_materialized": None,
+            "replicate": None,
             "load_protected": None,
             "columns": [
                 {

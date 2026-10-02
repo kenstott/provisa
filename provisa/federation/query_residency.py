@@ -206,21 +206,35 @@ def is_stale_of(
     return is_stale
 
 
-def _resolves_to(source: Any, tables: list[Any], setting: str) -> bool:
-    """Whether ``setting`` (prefer_materialized / load_protected) is on for this source's read: the
-    source's own value, or any of the tables the query reads overriding it on (a table value of None
-    inherits the source's, REQ-826/REQ-1141)."""
-    own = bool(getattr(source, setting))
-    return own or any(
-        getattr(t, setting) if getattr(t, setting) is not None else own for t in tables
-    )
+def _load_protected(source: Any, tables: list[Any]) -> bool:
+    """Whether this source's read is load-protected: the source's own value, or any of the tables
+    the statement reads turning it on (a table value of None inherits the source's, REQ-1141)."""
+    from provisa.core.replicate import resolved_load_protected
+
+    return bool(source.load_protected) or any(resolved_load_protected(source, t) for t in tables)
+
+
+def _replicated(state: Any, tables: list[Any]) -> bool:
+    """Whether the operator's settings put any of the tables the statement reads on its replica
+    (REQ-826): judged per table, from the floored tables published with the replica routes
+    (``replica_routing.table_floor``), the same answer routing gives for the statement."""
+    floored = state.replica_routes.floored
+    return any(t.id in floored for t in tables)
 
 
 async def ensure_resident(
-    state: Any, source_ids: Iterable[str], *, reader_role: str | None
+    state: Any,
+    source_ids: Iterable[str],
+    *,
+    reader_role: str | None,
+    table_ids: Iterable[int],
 ) -> list[tuple[str, str]]:
     """Land what a query reads and is not resident (REQ-1661). Returns the (source_id, table_name)
     pairs landed. A no-op without an engine, config or tenant store, or when nothing is stale.
+
+    ``table_ids`` are the registered tables the STATEMENT reads (REQ-826): only those are judged
+    and landed. A statement that reads one table of a source neither lands nor waits on the
+    source's other tables, and is not moved onto a replica by a setting on a table it does not read.
 
     ``reader_role`` is the governed role the query runs as (REQ-1907): staleness is judged against
     its effective TTL per table. None is a caller with no reader (it uses each table's cache_ttl).
@@ -259,19 +273,24 @@ async def ensure_resident(
         row-level consumer."""
         return bool(getattr(t, "row_materialize", False)) and not _attached_types[t.source_id]
 
+    read = frozenset(table_ids)
+    floored = state.replica_routes.floored
+
+    def _lands(t: Any) -> bool:
+        """Whether this statement's read of ``t`` is served from a whole-table replica (REQ-826,
+        judged per table): the operator's settings put it there, or the engine cannot read its
+        source in place. A table the engine reads live beside a replica-served sibling of the same
+        source is left alone — it is neither landed nor asked for a replication clock."""
+        return t.id in floored or not _attached_types[t.source_id]
+
     tables_by_source: dict[str, list[Any]] = {}
     for t in await registered_tables(state):
-        if t.source_id in wanted and not _row_level(t):
+        if t.source_id in wanted and t.id in read and not _row_level(t) and _lands(t):
             tables_by_source.setdefault(t.source_id, []).append(t)
-    # REQ-826 / REQ-1141: a table override (None inherits the source's) puts its source's read on
-    # the replica even where the engine could attach the source.
-    prefer_of = {
-        s.id: _resolves_to(s, tables_by_source.get(s.id, []), "prefer_materialized")
-        for s in sources
-    }
-    protected_of = {
-        s.id: _resolves_to(s, tables_by_source.get(s.id, []), "load_protected") for s in sources
-    }
+    # REQ-826 / REQ-1141: a table the operator's settings put on its replica moves its source's
+    # read there for this statement, even where the engine could attach the source.
+    replicated_by = {s.id: _replicated(state, tables_by_source.get(s.id, [])) for s in sources}
+    protected_of = {s.id: _load_protected(s, tables_by_source.get(s.id, [])) for s in sources}
 
     from provisa.events import queue
     from provisa.federation.role_ttl import require_landing_ttl
@@ -289,7 +308,7 @@ async def ensure_resident(
     # onto its replica (REQ-846), so the store is resolved only when one of these is.
     _materialization_backend = (
         engine.engine.replica_store_backend()
-        if any(prefer_of.values()) or any(protected_of.values())
+        if any(replicated_by.values()) or any(protected_of.values())
         else None
     )
 
@@ -313,7 +332,7 @@ async def ensure_resident(
             backend.pending_lands(
                 [source],
                 is_stale=is_stale,
-                prefer_materialized_of=lambda sid: prefer_of[sid],
+                replicated_of=lambda sid: replicated_by[sid],
                 load_protected_of=lambda sid: protected_of[sid],
                 resident_of=(None if states is None else lambda sid: stamps.get(sid) is not None),
                 materialization_backend=_materialization_backend,
@@ -331,7 +350,9 @@ async def ensure_resident(
         # left alone the same way. Only a STALE (or unknown) answer goes on to take the land locks
         # and read the persisted state, which is the truth the land is decided on.
         if not tables_by_source.get(source.id):
-            continue  # every table of the source is replicated row by row: nothing lands whole
+            # Nothing of this source lands whole for this statement: its tables are read live
+            # through the engine's attach, or are replicated row by row.
+            continue
         # REQ-1907 (amended 2026-09-30, direct attach is live): a source this engine reads in place
         # has no replica — cache_ttl, role_ttl and the freshness gate do not apply to it.
         if not _pending(source, None, time.time()):
@@ -393,10 +414,10 @@ async def ensure_resident(
                         loader=loader,
                         source_ids={source.id},
                         is_stale=is_stale,
-                        prefer_materialized_of=lambda sid: prefer_of[sid],
+                        replicated_of=lambda sid: replicated_by[sid],
                         load_protected_of=lambda sid: protected_of[sid],
                         resident_of=lambda sid: stamps.get(sid) is not None,
-                        # the engine's own store is what a prefer_materialized source lands into
+                        # the engine's own store is what a replicated source's replica is written into
                         materialization_backend=_materialization_backend,
                         # REQ-1907: folded into ``is_stale`` above; not re-decided by the plan.
                         freshness_subject_of=None,
@@ -1265,4 +1286,4 @@ async def prepare_engine_residency(state: Any, plan: Any) -> None:
         plan.exec_params,
         reader_role=plan.role_id,
     )
-    await ensure_resident(state, plan.sources, reader_role=plan.role_id)
+    await ensure_resident(state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids)

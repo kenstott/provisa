@@ -948,14 +948,14 @@ A write invalidates every cached entry the writing org holds for the tables it w
 Three parties have a say in how fresh a result is and how much load a query puts on the systems behind it. (REQ-030)
 
 - **The upstream source.** Ideally it manages its own backpressure: connection limits, statement timeouts, read replicas.
-- **The operator.** Protects the platform, Provisa itself, from backpressure. When an upstream cannot protect itself, the operator protects it too. The settings for this live on sources and tables: `load_protected`, `prefer_materialized`, source `federation_hints`, the large-result redirect threshold, the Kafka cluster sinks write to, and each table's registered watermark.
+- **The operator.** Protects the platform, Provisa itself, from backpressure. When an upstream cannot protect itself, the operator protects it too. The settings for this live on sources and tables: `load_protected`, `replicate`, source `federation_hints`, the large-result redirect threshold, the Kafka cluster sinks write to, and each table's registered watermark.
 - **The end user.** Trades speed against recency, one request at a time.
 
 The operator's settings are the floor. A request can move above it, toward older data or less load; opting into the response cache is the usual example. It can never go below it. A request hint that would is refused with an error that names the operator setting, never applied quietly and never dropped quietly. [tool-verified: `provisa/core/operator_floor.py`]
 
 | Request input | What it may do | Refused when |
 | --- | --- | --- |
-| `@route(engine: DIRECT)`, `-- @provisa route=direct` | Pick the direct driver for one source | the source is `load_protected` or `prefer_materialized` |
+| `@route(engine: DIRECT)`, `-- @provisa route=direct` | Pick the direct driver for one source | a table the statement reads is `load_protected` or `replicate: 0` |
 | `@join`, `@reorder`, `@broadcastSize`, `/*+ ... */` | Set an engine session property the source's `federation_hints` left open | it changes a property the operator set |
 | `X-Provisa-Redirect-Threshold`, `@redirect(threshold:)` | Redirect a result sooner | it is higher than the operator's threshold |
 | `@sink(broker:)`, `X-Provisa-Sink` broker | Repeat the operator's broker | it names another broker, or no `KAFKA_BOOTSTRAP_SERVERS` is configured |
@@ -964,7 +964,22 @@ The operator's settings are the floor. A request can move above it, toward older
 
 Refusals return HTTP 403 with code `query.operator_floor`, SQLSTATE `42501` over pgwire, and `PERMISSION_DENIED` over Flight and gRPC. (REQ-030) [tool-verified: `provisa/api/app.py` `_operator_floor_handler`]
 
-A `load_protected` or `prefer_materialized` source is never read live by a query on any transport. Queries read its landed copy. Only the land and its refreshes read the source: a refresh runs when a `cache_ttl` or freshness check calls for one, and with neither the copy lands once and then refreshes only through a change feed or the scheduler. (REQ-1907) (REQ-1141, REQ-826) [tool-verified: `tests/integration/test_operator_floor_e2e.py`]
+A table that is `load_protected` or `replicate: 0` is never read live by a query on any transport. Queries read its replica. Only the replication and its refreshes read the source: a refresh runs when a `cache_ttl` or freshness check calls for one, and with neither the replica is built once and then refreshed only through a change feed or the scheduler. (REQ-1907) (REQ-1141, REQ-826) [tool-verified: `tests/integration/test_operator_floor_e2e.py`]
+
+### The `replicate` setting
+
+`replicate` is an integer on a table. A table with no value takes its source's, and when neither is set the global threshold applies. A replica is a copy of a source table kept in the engine's store and refreshed on the table's timeliness settings; it is not a continuous change stream. (REQ-826) [tool-verified: `provisa/core/replicate.py`]
+
+| Value | Name | Meaning |
+| --- | --- | --- |
+| not set | Default | The global threshold applies |
+| `-1` | Never | Read live wherever a live path exists. Replicated only on an engine that cannot read the source in place |
+| `N` above 0 | Hot-N | Read live until the table passes N governed statements per interval, then served from its replica |
+| `0` | Always | Reads come from the replica |
+
+Only Always is a guarantee. Never and the Hot values are best effort. `load_protected` with `replicate: -1` is refused at config load and at save. A source with `replicate: 0` has no live attach on any engine, so every table of it is served from its replica.
+
+The floor is judged by the tables a statement reads. A statement that reads no replica-served table keeps its direct route even when its source has other replicated tables. [tool-verified: `provisa/federation/registry_view.py` `operator_floor`]
 
 ## Authentication
 

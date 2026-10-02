@@ -121,12 +121,12 @@ def server(tmp_path_factory):
 @pytest.fixture(scope="module")
 def landed_server(tmp_path_factory):
     """The same source, but the operator requires it be read from its landed copy
-    (``prefer_materialized``), refreshed only on its own hour-long cadence."""
+    (``replicate``), refreshed only on its own hour-long cadence."""
     org = _ORG + "_landed"
     srv = _start_server(
         tmp_path_factory.mktemp("rawsqlcache_landed"),
         org,
-        {"prefer_materialized": True, "cache_ttl": 3600},
+        {"replicate": 0, "cache_ttl": 3600},
     )
     try:
         yield srv

@@ -54,7 +54,7 @@ _ROW = {
     "table_name": "orders",
     "dq_contract": None,
     "role_ttl": {},  # REQ-1907
-    "prefer_materialized": None,
+    "replicate": None,
     "load_protected": None,
     "columns": [],
 }

@@ -234,10 +234,12 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     pgbouncer_port: int = Field(default=6432, alias="pgbouncer_port")
     cache_enabled: bool = True
     cache_ttl: int | None = None  # overrides global default; None = inherit
-    # Force MATERIALIZED federation for this source's tables even when it could be reached live —
-    # the manual counterpart to cost-based promotion, for when the connector is a poor fit (REQ-826).
-    prefer_materialized: bool = False
-    # REQ-1141: mark this source LOAD-PROTECTED. Implies prefer_materialized (removes the live route)
+    # REQ-826: when this source's tables are served from their replicas — the default a table with
+    # no value of its own inherits (provisa.core.replicate). Not set = the global threshold; -1 =
+    # never (live wherever a live path exists); N > 0 = once a table passes N governed statements
+    # per interval; 0 = always (the only guarantee; the source then has no live attach at all).
+    replicate: int | None = None
+    # REQ-1141: mark this source LOAD-PROTECTED. Like replicate 0 it removes the live route
     # AND selects the SCHEDULED freshness discipline: the query path NEVER pulls the source — reads
     # always serve the last materialized snapshot — and the source is refreshed ONLY by the
     # out-of-band scheduler on the configured gates below. At least one gate (off_peak_window, a
@@ -246,7 +248,7 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     load_protected: bool = False
     # REQ-1909: cap on queries reading this source LIVE at once (DIRECT, or an engine reading it in
     # place through its attach connector), across every instance sharing one Redis. None = no cap.
-    # A read served from the replica (prefer_materialized / load_protected) takes no permit.
+    # A read served from the replica (replicate / load_protected) takes no permit.
     max_live_concurrency: int | None = Field(default=None, ge=1)
     # REQ-1141: optional off-peak/maintenance window as "HH:MM-HH:MM" in ``off_peak_tz``; the
     # scheduler refreshes a load-protected source only while this window is open. None = no window
@@ -292,6 +294,16 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # REQ-824: source-level CDC transport (Debezium/Kafka), entered once per source.
     # Only meaningful for CDC-capable RDBMS sources; None for everything else.
     cdc: SourceCdcConfig | None = None
+
+    @model_validator(mode="after")
+    def _validate_replicate(self) -> "Source":  # REQ-826
+        from provisa.core.replicate import check_replicate, contradiction
+
+        check_replicate(self.replicate)
+        refused = contradiction(self.replicate, self.load_protected)
+        if refused is not None:
+            raise ValueError(f"source {self.id!r}: {refused}")
+        return self
 
     @property
     def connector(self) -> str | None:
@@ -953,7 +965,9 @@ class Table(
     # REQ-1907: operator-set role -> TTL seconds. A reader's effective TTL on this table is
     # max(cache_ttl, role_ttl(role)); an unlisted role uses cache_ttl. Empty = every role uses it.
     role_ttl: dict[str, int] = Field(default_factory=dict)
-    prefer_materialized: bool | None = None  # overrides source-level; None = inherit (REQ-826)
+    # REQ-826: when this table is served from its replica (provisa.core.replicate): -1 never,
+    # N > 0 once it passes N governed statements per interval, 0 always. None = its source's value.
+    replicate: int | None = None
     # REQ-1141: per-table load-protection override; None = inherit the source's load_protected.
     load_protected: bool | None = None
     # REQ-1141: per-table off-peak window override ("HH:MM-HH:MM"); None = inherit source window.
@@ -1097,6 +1111,18 @@ class Table(
                     f"table {self.table_name!r}: role_ttl for role {role!r} must be >= 0, got "
                     f"{ttl} (REQ-1907)"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_replicate(self) -> "Table":  # REQ-826
+        from provisa.core.replicate import check_replicate, contradiction
+
+        check_replicate(self.replicate)
+        # The table's own two values; a value it inherits is judged with its source at config
+        # load (config_loader._validate_replicate) and at save.
+        refused = contradiction(self.replicate, bool(self.load_protected))
+        if refused is not None:
+            raise ValueError(f"table {self.table_name!r}: {refused}")
         return self
 
     @model_validator(mode="after")

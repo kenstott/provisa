@@ -833,7 +833,7 @@ class ProvisaFlightServer(
             source_types=self._state.source_types,
             source_dialects=self._state.source_dialects,
             source_dsns=getattr(self._state, "source_dsns", None),
-            operator_floor=run_on_connection_loop(operator_floor(self._state)),
+            operator_floor=operator_floor(self._state, compiled.table_ids),
         )
 
         return document, ctx, rls, role, compiled, decision, variables

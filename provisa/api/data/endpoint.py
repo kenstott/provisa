@@ -723,7 +723,7 @@ async def _execute_one_field(
         source_dsns=state.source_dsns,
         cache_hit=cached is not None,
         cache_opt_in=not _cache_off,
-        operator_floor=await operator_floor(state),
+        operator_floor=operator_floor(state, compiled.table_ids),
     )
     # REQ-074: the route this field is answered by, for the request's audit row.
     note_request_route(
@@ -753,7 +753,7 @@ async def _execute_one_field(
     from provisa.federation.live_concurrency import acquire_for_route
 
     _live_permits = await acquire_for_route(
-        state, decision.route, decision.source_id or "", compiled.sources
+        state, decision.route, decision.source_id or "", compiled.sources, compiled.table_ids
     )
     try:
         if decision.route == Route.API and decision.source_id:

@@ -35,6 +35,7 @@ from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_org import node_freshness_state
 from provisa.events import queue
 from provisa.federation.query_residency import ensure_resident
+from provisa.federation.replica_address import ReplicaRoutes
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
@@ -104,6 +105,11 @@ class _RecordingBackend:
         return out
 
 
+# The registered id of the one table; a statement that reads it carries this id (REQ-826).
+_TABLE_ID = 1
+_READ = frozenset({_TABLE_ID})
+
+
 def _state(db: Database, backend: _RecordingBackend) -> SimpleNamespace:
     source = SimpleNamespace(
         id="s",
@@ -111,10 +117,11 @@ def _state(db: Database, backend: _RecordingBackend) -> SimpleNamespace:
         change_signal="ttl",
         cache_ttl=None,
         freshness_gate=False,
-        prefer_materialized=False,
+        replicate=None,
         load_protected=False,
     )
     table = SimpleNamespace(
+        id=_TABLE_ID,
         source_id="s",
         schema_name="sch",
         table_name="orders",
@@ -123,7 +130,7 @@ def _state(db: Database, backend: _RecordingBackend) -> SimpleNamespace:
         cache_ttl=60,
         role_ttl={"analyst": 360, "trader": 0},
         change_signal=None,
-        prefer_materialized=None,
+        replicate=None,
         load_protected=None,
     )
     engine = SimpleNamespace(
@@ -138,6 +145,9 @@ def _state(db: Database, backend: _RecordingBackend) -> SimpleNamespace:
         federation_engine=engine,
         config=SimpleNamespace(sources=[source], tables=[table]),
         tenant_db=db,
+        # as the schema build publishes it: no operator setting puts the table on its replica
+        # (it is replica-served because the engine cannot read an rss source in place)
+        replica_routes=ReplicaRoutes(),
     )
 
 
@@ -178,7 +188,10 @@ async def _age(db: Database) -> float:
 async def test_an_analyst_serves_a_200s_old_replica(db, registry):
     backend = _RecordingBackend()
     await _stamp(db, 200)
-    assert await ensure_resident(_state(db, backend), {"s"}, reader_role="analyst") == []
+    assert (
+        await ensure_resident(_state(db, backend), {"s"}, reader_role="analyst", table_ids=_READ)
+        == []
+    )
     assert backend.lands == 0
     assert await _age(db) >= 199  # the persisted stamp was not touched
 
@@ -186,11 +199,14 @@ async def test_an_analyst_serves_a_200s_old_replica(db, registry):
 async def test_a_trader_lands_only_past_the_cache_ttl_floor(db, registry):
     backend = _RecordingBackend()
     await _stamp(db, 30)
-    assert await ensure_resident(_state(db, backend), {"s"}, reader_role="trader") == []
+    assert (
+        await ensure_resident(_state(db, backend), {"s"}, reader_role="trader", table_ids=_READ)
+        == []
+    )
     await _stamp(db, 200)
-    assert await ensure_resident(_state(db, backend), {"s"}, reader_role="trader") == [
-        ("s", "orders")
-    ]
+    assert await ensure_resident(
+        _state(db, backend), {"s"}, reader_role="trader", table_ids=_READ
+    ) == [("s", "orders")]
     assert backend.lands == 1
     assert await _age(db) < 5  # the land re-stamped the persisted state
 
@@ -200,8 +216,8 @@ async def test_two_concurrent_trader_reads_share_one_land(db, registry):
     await _stamp(db, 200)
     state = _state(db, backend)
     first, second = await asyncio.gather(
-        ensure_resident(state, {"s"}, reader_role="trader"),
-        ensure_resident(state, {"s"}, reader_role="trader"),
+        ensure_resident(state, {"s"}, reader_role="trader", table_ids=_READ),
+        ensure_resident(state, {"s"}, reader_role="trader", table_ids=_READ),
     )
     assert backend.lands == 1
     assert sorted([first, second]) == [[], [("s", "orders")]]

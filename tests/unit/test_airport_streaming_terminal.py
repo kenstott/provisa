@@ -86,6 +86,7 @@ def _plan(route, **kwargs):
         sql="SELECT id FROM orders",
         source_id="wh",
         sources=frozenset({"wh"}),
+        table_ids=(),  # REQ-826: the registered tables the statement reads
         exec_params=[],
         pk_bounds=(),  # REQ-1865: row-materialize residency reads this on every plan
         role_id="analyst",  # REQ-1907: residency judges freshness for the plan's reader role

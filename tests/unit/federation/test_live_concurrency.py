@@ -143,14 +143,8 @@ def test_a_stream_releases_when_closed_early_or_failed(store, org):
     assert store.holders(key) == 0
 
 
-def _src(sid: str, typ: str, *, prefer=False, protected=False, cap=None):
-    return SimpleNamespace(
-        id=sid,
-        type=SimpleNamespace(value=typ),
-        prefer_materialized=prefer,
-        load_protected=protected,
-        max_live_concurrency=cap,
-    )
+def _src(sid: str, typ: str, *, cap=None):
+    return SimpleNamespace(id=sid, type=SimpleNamespace(value=typ), max_live_concurrency=cap)
 
 
 def _state(attaching: set[str]):
@@ -160,30 +154,68 @@ def _state(attaching: set[str]):
 
 def test_live_sources_direct_route_is_its_one_source():
     plan = SimpleNamespace(route=Route.DIRECT, source_id="pg", sources=frozenset({"pg"}))
-    assert lc._live_source_ids(_state(set()), plan, {"pg": _src("pg", "postgresql")}) == ["pg"]
+    by_id = {"pg": _src("pg", "postgresql")}
+    assert lc._live_source_ids(_state(set()), plan, by_id, set()) == ["pg"]
 
 
 def test_live_sources_engine_route_counts_only_attached_sources_not_on_their_replica():
     by_id = {
         "pg": _src("pg", "postgresql"),
-        "mongo": _src("mongo", "mongodb", prefer=True),
-        "ch": _src("ch", "clickhouse", protected=True),
+        "mongo": _src("mongo", "mongodb"),
+        "ch": _src("ch", "clickhouse"),
         "api": _src("api", "openapi"),
     }
     plan = SimpleNamespace(route=Route.ENGINE, source_id="", sources=frozenset(by_id))
-    live = lc._live_source_ids(_state({"postgresql", "mongodb", "clickhouse"}), plan, by_id)
+    # mongo and ch: the tables of them this statement reads are served from their replicas
+    # (the operator's floor for the statement, registry_view.operator_floor).
+    replicated = {"mongo", "ch"}
+    live = lc._live_source_ids(
+        _state({"postgresql", "mongodb", "clickhouse"}), plan, by_id, replicated
+    )
     assert live == ["pg"]
+
+
+@pytest.mark.asyncio
+async def test_a_source_holds_its_live_permit_unless_every_table_read_is_on_its_replica(
+    monkeypatch,
+):
+    """REQ-826 / REQ-1909, per statement: source ``pg`` has table 1 set to always and table 2 read
+    in place. A statement over table 1 alone reads nothing live; one that also reads table 2
+    reads ``pg`` live and is capped; so is one over table 2 alone."""
+    from provisa.federation import registry_view
+    from provisa.federation.replica_address import ReplicaRoutes
+
+    async def _sources(_state):
+        return [_src("pg", "postgresql", cap=3)]
+
+    monkeypatch.setattr(registry_view, "registered_sources", _sources)
+    state = _state({"postgresql"})
+    state.replica_routes = ReplicaRoutes(floored={1: ("pg", "replicate")}, unfloored={2: "pg"})
+
+    async def _caps(table_ids):
+        plan = SimpleNamespace(
+            route=Route.ENGINE,
+            source_id="",
+            sources=frozenset({"pg"}),
+            table_ids=frozenset(table_ids),
+        )
+        return (await lc.live_caps_for_plan(state, plan))[1]
+
+    assert await _caps({1}) == []
+    assert await _caps({1, 2}) == [("pg", 3)]
+    assert await _caps({2}) == [("pg", 3)]
 
 
 def test_live_sources_api_route_is_its_upstream():
     plan = SimpleNamespace(route=Route.API, source_id="petstore", sources=frozenset({"petstore"}))
     by_id = {"petstore": _src("petstore", "openapi")}
-    assert lc._live_source_ids(_state(set()), plan, by_id) == ["petstore"]
+    assert lc._live_source_ids(_state(set()), plan, by_id, set()) == ["petstore"]
 
 
 def test_live_sources_cache_route_reads_nothing_live():
     plan = SimpleNamespace(route=Route.CACHE, source_id="", sources=frozenset({"pg"}))
-    assert lc._live_source_ids(_state({"postgresql"}), plan, {"pg": _src("pg", "postgresql")}) == []
+    by_id = {"pg": _src("pg", "postgresql")}
+    assert lc._live_source_ids(_state({"postgresql"}), plan, by_id, set()) == []
 
 
 def test_a_plan_with_no_capped_live_source_takes_no_permit_and_touches_no_store():

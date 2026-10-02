@@ -148,7 +148,7 @@ async def fetch_tables(conn: "Connection") -> list[dict]:  # REQ-155, REQ-393, R
         "alias, description, column_presets, unique_constraints, l1_cluster, l2_cluster, l3_cluster, "
         "enable_aggregates, enable_group_by, view_sql, dq_contract, "  # REQ-1443
         "live, push_debounce_quiet, push_debounce_max_delay, cache_ttl, "  # REQ-1733, REQ-1730
-        "row_materialize, role_ttl, prefer_materialized, load_protected "  # REQ-1865/1907/826/1141
+        "row_materialize, role_ttl, replicate, load_protected "  # REQ-1865/1907/826/1141
         "FROM registered_tables ORDER BY id"
     )
     tables = []

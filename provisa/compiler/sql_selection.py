@@ -26,6 +26,7 @@ from provisa.compiler.sql_types import (
     ColumnRef,
     CompilationContext,
     JoinMeta,
+    StatementSources,
     TableMeta,
 )
 from provisa.compiler.sql_rewrite import (
@@ -120,7 +121,7 @@ def _emit_agg_subqueries(
     alias_counter: int,
     select_parts: list[str],
     columns: list[ColumnRef],
-    sources: set[str],
+    sources: StatementSources,
     variables: dict | None = None,
 ) -> int:
     """Emit correlated ARRAY_AGG subqueries for all scalars at any depth.
@@ -141,7 +142,7 @@ def _emit_agg_subqueries(
             sub_join_meta = ctx.joins[join_key]
             sub_alias = f"t{alias_counter}"
             alias_counter += 1
-            sources.add(sub_join_meta.target.source_id)
+            sources.add_table(sub_join_meta.target)
 
             if sub_join_meta.source_constant is not None:
                 sub_src = (
@@ -277,7 +278,7 @@ def _build_rel_json_kv(
     table_alias: str,
     use_catalog: bool,
     alias_counter: int,
-    sources: set[str],
+    sources: StatementSources,
     variables: dict | None,
     parent_src_val: str | None = None,
 ) -> tuple[list[str], int]:
@@ -302,7 +303,7 @@ def _build_rel_json_kv(
             sub_join_meta = ctx.joins[join_key]
             sub_alias = f"t{alias_counter}"
             alias_counter += 1
-            sources.add(sub_join_meta.target.source_id)
+            sources.add_table(sub_join_meta.target)
 
             if sub_join_meta.source_expr is not None:
                 if parent_src_val is not None:
@@ -398,7 +399,7 @@ def _build_rel_json_expr(
     agg_limit: int | None,
     use_catalog: bool,
     alias_counter: int,
-    sources: set[str],
+    sources: StatementSources,
     variables: dict | None = None,
     parent_src_val: str | None = None,
 ) -> tuple[str, int]:
@@ -475,7 +476,7 @@ def _collect_nested_columns(
     select_parts: list[str],
     columns: list[ColumnRef],
     join_clauses: list[str],
-    sources: set[str],
+    sources: StatementSources,
     alias_counter: int,
     use_catalog: bool,
     collector: ParamCollector,
@@ -496,7 +497,7 @@ def _collect_nested_columns(
             nested_join_meta = ctx.joins[nested_join_key]
             nested_alias = f"t{alias_counter}"
             alias_counter += 1
-            sources.add(nested_join_meta.target.source_id)
+            sources.add_table(nested_join_meta.target)
 
             if nested_join_meta.source_constant is not None:
                 src_expr = (

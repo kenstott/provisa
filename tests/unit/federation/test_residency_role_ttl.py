@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import types
 from datetime import UTC, datetime, timedelta
+import itertools
 from types import SimpleNamespace
 
 import pytest
@@ -26,6 +27,8 @@ import pytest
 from provisa.compiler.pk_bounds import PkBound
 from provisa.core.models import Column, Source, Table
 from provisa.federation.query_residency import ensure_resident, ensure_rows_resident, is_stale_of
+from provisa.federation.replica_address import ReplicaRoutes
+from provisa.federation.replica_routing import table_floor
 
 pytestmark = pytest.mark.unit
 
@@ -39,15 +42,19 @@ def _src(sid="s", cache_ttl=None, **kw):
         change_signal="ttl",
         cache_ttl=cache_ttl,
         freshness_gate=False,
-        prefer_materialized=False,
+        replicate=None,
         load_protected=False,
     )
     base.update(kw)
     return SimpleNamespace(**base)
 
 
+_IDS = itertools.count(1)
+
+
 def _tbl(name, sid="s", cache_ttl=60, role_ttl=None, **kw):
     base = dict(
+        id=next(_IDS),
         source_id=sid,
         schema_name="sch",
         table_name=name,
@@ -56,7 +63,7 @@ def _tbl(name, sid="s", cache_ttl=60, role_ttl=None, **kw):
         cache_ttl=cache_ttl,
         role_ttl=role_ttl if role_ttl is not None else {"analyst": 360, "trader": 0},
         change_signal=None,
-        prefer_materialized=None,
+        replicate=None,
         load_protected=None,
     )
     base.update(kw)
@@ -224,7 +231,7 @@ class _Backend:
         self.attaches = False  # set by _state: the engine reads the source in place
 
     def pending_lands(
-        self, sources, *, is_stale, prefer_materialized_of, load_protected_of, resident_of, **kw
+        self, sources, *, is_stale, replicated_of, load_protected_of, resident_of, **kw
     ):
         """As EngineBackend.pending_lands (plan.build_execution_plan): a source the engine reads
         in place lands only when a setting puts its read on the replica; a load-protected source
@@ -233,7 +240,7 @@ class _Backend:
         due = []
         for s in sources:
             protected = load_protected_of(s.id)
-            if self.attaches and not (protected or prefer_materialized_of(s.id)):
+            if self.attaches and not (protected or replicated_of(s.id)):
                 continue
             if protected:
                 if resident_of is None or not resident_of(s.id):
@@ -284,11 +291,24 @@ def _state(tables, backend, states, *, source=None, attaches=False):
             materialize_store=lambda: "postgresql://localhost/materialize",
         )
     )
+    src = source or _src()
+    floored = {}
+    for t in tables:
+        setting = table_floor(src, t, promoted=False)
+        if setting is not None:
+            floored[t.id] = (src.id, setting)
     return SimpleNamespace(
         federation_engine=engine,
-        config=SimpleNamespace(sources=[source or _src()], tables=tables),
+        config=SimpleNamespace(sources=[src], tables=tables),
         tenant_db=_Db(states),
+        # as the schema build publishes it: the tables the operator's settings put on a replica
+        replica_routes=ReplicaRoutes(floored=floored),
     )
+
+
+def _read(state) -> frozenset[int]:
+    """A statement that reads every registered table of the fixture."""
+    return frozenset(t.id for t in state.config.tables)
 
 
 @pytest.fixture
@@ -331,7 +351,7 @@ async def test_an_analyst_read_of_a_200s_old_replica_does_not_land(wiring):
     backend = _Backend()
     backend.mark_landed("s")
     state = _state([_tbl("orders")], backend, {"sch.orders": _st(200)})
-    assert await ensure_resident(state, {"s"}, reader_role="analyst") == []
+    assert await ensure_resident(state, {"s"}, reader_role="analyst", table_ids=_read(state)) == []
     assert backend.lands == 0
 
 
@@ -340,14 +360,16 @@ async def test_a_trader_read_lands_only_past_the_cache_ttl_floor(wiring, monkeyp
     backend = _Backend()
     backend.mark_landed("s")
     state = _state([_tbl("orders")], backend, {"sch.orders": _st(30)})
-    assert await ensure_resident(state, {"s"}, reader_role="trader") == []
+    assert await ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state)) == []
     # 170 s later the same replica is 200 s old: past the cache_ttl floor the trader is held to.
     # The clock moves, not the persisted stamp: the freshness state is decided from memory first
     # (REQ-1661 amended 2026-10-01), and a stamp ages there exactly as it does in the control plane.
     import time as _time
 
     monkeypatch.setattr(_time, "time", lambda: NOW + 170)
-    assert await ensure_resident(state, {"s"}, reader_role="trader") == [("s", "orders")]
+    assert await ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state)) == [
+        ("s", "orders")
+    ]
     assert backend.lands == 1
 
 
@@ -357,8 +379,8 @@ async def test_two_concurrent_trader_reads_share_one_land(wiring):
     backend.mark_landed("s")
     state = _state([_tbl("orders")], backend, {"sch.orders": _st(200)})
     first, second = await asyncio.gather(
-        ensure_resident(state, {"s"}, reader_role="trader"),
-        ensure_resident(state, {"s"}, reader_role="trader"),
+        ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state)),
+        ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state)),
     )
     assert backend.lands == 1
     assert sorted([first, second]) == [[], [("s", "orders")]]
@@ -370,19 +392,23 @@ async def test_a_direct_attached_table_is_read_live_with_no_staleness_evaluation
     a trader -- but the engine attaches the source, so nothing is evaluated and nothing lands."""
     backend = _Backend()
     state = _state([_tbl("orders")], backend, {"sch.orders": _st(10_000)}, attaches=True)
-    assert await ensure_resident(state, {"s"}, reader_role="trader") == []
+    assert await ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state)) == []
     assert backend.plans == 0 and backend.lands == 0
     assert state.tenant_db.reads == 0
 
 
 @pytest.mark.asyncio
-async def test_attach_capable_but_prefer_materialized_goes_through_the_replica_gate(wiring):
+async def test_attach_capable_but_replicate_goes_through_the_replica_gate(wiring):
     backend = _Backend()
     backend.mark_landed("s")
-    t = _tbl("orders", prefer_materialized=True)
+    t = _tbl("orders", replicate=0)
     state = _state([t], backend, {"sch.orders": _st(200)}, attaches=True)
-    assert await ensure_resident(state, {"s"}, reader_role="analyst") == []  # 200 < 360
-    assert await ensure_resident(state, {"s"}, reader_role="trader") == [("s", "orders")]
+    assert (
+        await ensure_resident(state, {"s"}, reader_role="analyst", table_ids=_read(state)) == []
+    )  # 200 < 360
+    assert await ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state)) == [
+        ("s", "orders")
+    ]
     assert backend.lands == 1
 
 
@@ -395,7 +421,7 @@ async def test_a_read_of_a_ttl_table_with_no_cache_ttl_fails_before_any_land(wir
     t = _tbl("orders", cache_ttl=None, role_ttl={"analyst": 360})
     state = _state([t], backend, {"sch.orders": _st(200)})
     with pytest.raises(ValueError, match=r"orders.*add a cache_ttl"):
-        await ensure_resident(state, {"s"}, reader_role="analyst")
+        await ensure_resident(state, {"s"}, reader_role="analyst", table_ids=_read(state))
     assert backend.plans == 0 and backend.lands == 0
     assert state.tenant_db.states == {"sch.orders": _st(200)}
 
@@ -408,7 +434,7 @@ async def test_a_directly_attached_ttl_table_with_no_cache_ttl_reads_live(wiring
     backend = _Backend()
     t = _tbl("orders", cache_ttl=None, change_signal=signal)
     state = _state([t], backend, {"sch.orders": _st(10_000)}, attaches=True)
-    assert await ensure_resident(state, {"s"}, reader_role="analyst") == []
+    assert await ensure_resident(state, {"s"}, reader_role="analyst", table_ids=_read(state)) == []
     assert backend.plans == 0 and backend.lands == 0
 
 
@@ -419,7 +445,7 @@ async def test_a_landed_no_ttl_freshness_signal_table_reads_without_a_cache_ttl(
     backend.mark_landed("s")
     t = _tbl("orders", cache_ttl=None, change_signal=signal)
     state = _state([t], backend, {"sch.orders": _st(10_000)})
-    assert await ensure_resident(state, {"s"}, reader_role="analyst") == []
+    assert await ensure_resident(state, {"s"}, reader_role="analyst", table_ids=_read(state)) == []
     assert backend.lands == 0
 
 
@@ -443,7 +469,7 @@ async def test_a_load_protected_table_is_never_landed_by_a_read_even_for_ttl_0(w
     backend.mark_landed("s")
     t = _tbl("orders", load_protected=True, role_ttl={"trader": 0})
     state = _state([t], backend, {"sch.orders": _st(10_000)}, attaches=True)
-    assert await ensure_resident(state, {"s"}, reader_role="trader") == []
+    assert await ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state)) == []
     assert backend.lands == 0
 
 

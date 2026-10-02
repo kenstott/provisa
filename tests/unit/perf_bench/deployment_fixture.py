@@ -72,7 +72,7 @@ TABLES: list[dict[str, Any]] = [
             _col("status", "status"),
             _col("amount", "amount"),
         ],
-        "prefer_materialized": None,
+        "replicate": None,
         "cache_ttl": None,
     },
     {
@@ -94,7 +94,7 @@ TABLES: list[dict[str, Any]] = [
             _col("sku", "sku"),
             _col("quantity", "quantity"),
         ],
-        "prefer_materialized": None,
+        "replicate": None,
         "cache_ttl": None,
     },
     {
@@ -118,7 +118,7 @@ TABLES: list[dict[str, Any]] = [
             _col("channel", "channel"),
             _col("device", "device"),
         ],
-        "prefer_materialized": True,
+        "replicate": 0,
         "cache_ttl": 300,
     },
     {
@@ -140,7 +140,7 @@ TABLES: list[dict[str, Any]] = [
             _col("status", "status"),
             _col("shipping_carrier", "shippingCarrier"),
         ],
-        "prefer_materialized": True,
+        "replicate": 0,
         "cache_ttl": 300,
     },
     {
@@ -162,7 +162,7 @@ TABLES: list[dict[str, Any]] = [
             _col("region", "region"),
             _col("status", "status"),
         ],
-        "prefer_materialized": True,
+        "replicate": 0,
         "cache_ttl": 300,
     },
 ]
@@ -178,28 +178,28 @@ SOURCES = [
     {
         "id": "bench-postgresql",
         "type": "postgresql",
-        "preferMaterialized": False,
+        "replicate": None,
         "cacheEnabled": True,
         "cacheTtl": None,
     },
     {
         "id": "bench-clickhouse",
         "type": "clickhouse",
-        "preferMaterialized": True,
+        "replicate": 0,
         "cacheEnabled": True,
         "cacheTtl": 300,
     },
     {
         "id": "bench-mongodb",
         "type": "mongodb",
-        "preferMaterialized": True,
+        "replicate": 0,
         "cacheEnabled": True,
         "cacheTtl": 300,
     },
     {
         "id": "bench-neo4j",
         "type": "neo4j",
-        "preferMaterialized": True,
+        "replicate": 0,
         "cacheEnabled": True,
         "cacheTtl": 300,
     },
@@ -242,7 +242,7 @@ def build(
                 "tableName": t["table"],
                 "alias": t["alias"],
                 "cacheTtl": t["cache_ttl"],
-                "preferMaterialized": t["prefer_materialized"],
+                "replicate": t["replicate"],
                 "graphqlFieldName": None if "graphql" in drop.get(t["table"], ()) else t["root"],
                 "dqDataset": f"pgwire/{t['sql'].split('.')[0]}/{t['sql'].split('.')[1]}",
                 "columns": [

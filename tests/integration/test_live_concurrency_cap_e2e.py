@@ -154,7 +154,7 @@ def test_the_cap_holds_across_two_instances_and_every_read_completes(servers):
 
 
 _SOURCE_FIELDS = """
-    id cacheEnabled cacheTtl changeSignal sentinelPath freshnessGate preferMaterialized
+    id cacheEnabled cacheTtl changeSignal sentinelPath freshnessGate replicate
     loadProtected offPeakWindow offPeakTz maxLiveConcurrency
 """
 
@@ -182,7 +182,7 @@ def test_admin_round_trips_every_load_management_field_and_refuses_a_zero_cap(se
         "changeSignal": "ttl_probe",
         "sentinelPath": "https://example.com/marker",
         "freshnessGate": True,
-        "preferMaterialized": True,
+        "replicate": 0,
         "loadProtected": True,
         "offPeakWindow": "01:00-05:00",
         "offPeakTz": "America/New_York",

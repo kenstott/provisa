@@ -12,8 +12,8 @@
 
 Three roles meet at a query. Ideally the upstream source manages its own backpressure. The
 operator protects the platform (Provisa itself) from backpressure, and the upstream too when it
-cannot protect itself — through source/table settings such as ``load_protected``,
-``prefer_materialized`` and the large-result redirect threshold. The end user trades performance
+cannot protect itself — through source/table settings such as ``load_protected``, ``replicate``
+and the large-result redirect threshold. The end user trades performance
 against recency, per request, above that floor: a request may accept staler data or lighter
 delivery, never fresher data or more load than the operator allows. A request hint that would go
 below the floor is rejected with this error, naming the setting — never silently ignored.
@@ -31,15 +31,18 @@ class OperatorFloorError(PermissionError):
 
 
 def floor_setting(source: object) -> str | None:  # REQ-030, REQ-826, REQ-1141
-    """The operator setting that floors ``source``'s reads to its landed copy, or None.
+    """The operator setting that floors EVERY read of ``source`` to its replicas, or None.
 
-    ``load_protected`` and ``prefer_materialized`` each block live reads on their own (REQ-826,
-    amended 2026-09-30). When the copy refreshes follows the normal rules (REQ-1907): read-triggered
-    only when a TTL and/or freshness check says so; with neither it lands once and then refreshes
-    only through a change feed or the scheduler. The one definition shared by routing, the engine
-    attach, the landing reconcile and the land loader, so they never disagree about a source."""
-    if getattr(source, "load_protected", False):
-        return "load_protected"
-    if getattr(source, "prefer_materialized", False):
-        return "prefer_materialized"
-    return None
+    ``load_protected`` and ``replicate: 0`` (always) on the source each do: the source then has no
+    live attach on any engine, so every table of it is served from its replica, whatever a table
+    says for itself. A table's own setting on a source that is not floored is judged per table
+    (``core.replicate.floor_of``). When a replica refreshes follows the normal rules (REQ-1907).
+    The one definition shared by the engine attach, admin discovery and the replica reconcile, so
+    they never disagree about a source."""
+    from provisa.core.replicate import floor_of
+
+    return floor_of(
+        getattr(source, "replicate", None),
+        bool(getattr(source, "load_protected", False)),
+        promoted=False,
+    )

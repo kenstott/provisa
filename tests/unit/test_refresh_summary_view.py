@@ -27,7 +27,7 @@ def _view_table() -> SimpleNamespace:
         schema_name="views",
         table_name="top_users",
         cache_ttl=None,
-        prefer_materialized=None,
+        replicate=None,
         load_protected=None,
         off_peak_window=None,
         off_peak_tz=None,

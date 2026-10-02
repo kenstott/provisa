@@ -80,7 +80,7 @@ def _source(source_id: str, kind: str) -> SimpleNamespace:
         path=None,
         federation_hints={},
         mapping={},
-        prefer_materialized=False,
+        replicate=None,
         load_protected=False,
         cache_ttl=None,
         off_peak_window=None,

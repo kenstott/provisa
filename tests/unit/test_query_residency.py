@@ -14,11 +14,14 @@ freshness state the event loop reads."""
 
 from __future__ import annotations
 
+import itertools
 from types import SimpleNamespace
 
 import pytest
 
 from provisa.federation.query_residency import ensure_resident, is_stale_of, stale_sources
+from provisa.federation.replica_address import ReplicaRoutes
+from provisa.federation.replica_routing import table_floor
 
 pytestmark = pytest.mark.unit
 
@@ -30,7 +33,7 @@ def _source(sid, **kw):
         change_signal="ttl",
         cache_ttl=None,
         freshness_gate=False,
-        prefer_materialized=False,
+        replicate=None,
         load_protected=False,
     )
     base.update(kw)
@@ -45,8 +48,12 @@ def _recent() -> float:
     return time.time() - 1.0
 
 
+_IDS = itertools.count(1)
+
+
 def _table(sid, name, schema="pet_store", row_materialize=False, columns=None, cache_ttl=300):
     return SimpleNamespace(
+        id=next(_IDS),
         source_id=sid,
         schema_name=schema,
         table_name=name,
@@ -55,7 +62,7 @@ def _table(sid, name, schema="pet_store", row_materialize=False, columns=None, c
         cache_ttl=cache_ttl,
         role_ttl={},  # REQ-1907
         change_signal=None,
-        prefer_materialized=None,
+        replicate=None,
         load_protected=None,
     )
 
@@ -123,11 +130,12 @@ class _Backend:
         self.dialect = "postgres"
         self._landed_this_process: set[str] = set()
         self.live = set(live)  # sources this engine reads in place: never landed
+        self.replicated: dict[str, bool] = {}  # what the last plan was told, per source
 
     def pending_lands(self, sources, *, is_stale, **kw):
         """As EngineBackend.pending_lands: the sources a read must land first. A source the engine
         reads live never is; a landed one is when its staleness oracle says so."""
-        del kw
+        self.replicated = {s.id: kw["replicated_of"](s.id) for s in sources}
         return [s.id for s in sources if s.id not in self.live and is_stale(s.id)]
 
     def is_first_touch(self, source_id: str) -> bool:
@@ -165,6 +173,7 @@ def _state(sources, tables, backend):
         engine=SimpleNamespace(
             backend=backend,
             native_store="snowflake",
+            replica_store_backend=lambda: "snowflake",  # as FederationEngine: its native store
             materialize_store=lambda: "postgresql://localhost/materialize",
         )
     )
@@ -172,7 +181,25 @@ def _state(sources, tables, backend):
         federation_engine=engine,
         config=SimpleNamespace(sources=sources, tables=tables),
         tenant_db=_Db({}),
+        replica_routes=ReplicaRoutes(floored=_floored(sources, tables)),
     )
+
+
+def _floored(sources, tables) -> dict[int, tuple[str, str]]:
+    """The floored tables as the schema build publishes them: each table the operator's
+    settings put on its replica, by the one decision."""
+    by_id = {s.id: s for s in sources}
+    out: dict[int, tuple[str, str]] = {}
+    for t in tables:
+        setting = table_floor(by_id[t.source_id], t, promoted=False)
+        if setting is not None:
+            out[t.id] = (t.source_id, setting)
+    return out
+
+
+def _read(state) -> frozenset[int]:
+    """A statement that reads every registered table of the fixture."""
+    return frozenset(t.id for t in state.config.tables)
 
 
 @pytest.fixture
@@ -211,7 +238,7 @@ def wiring(monkeypatch):
 async def test_a_never_landed_source_is_landed_and_stamped(wiring):
     backend = _Backend()
     state = _state([_source("pets-db")], [_table("pets-db", "pets")], backend)
-    landed = await ensure_resident(state, {"pets-db"}, reader_role=None)
+    landed = await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=_read(state))
     assert landed == [("pets-db", "pets")]
     assert backend.calls and backend.calls[0][0] == {"pets-db"}
     assert state.tenant_db.recorded == [("pet_store.pets", True)]
@@ -233,7 +260,7 @@ async def test_row_materialize_table_never_swept_into_the_whole_source_land(wiri
         ],
         backend,
     )
-    landed = await ensure_resident(state, {"bench-neo4j"}, reader_role=None)
+    landed = await ensure_resident(state, {"bench-neo4j"}, reader_role=None, table_ids=_read(state))
     assert landed == [("bench-neo4j", "bench_placed_edge")]
     assert ("bench-neo4j", "bench_order_node") not in landed
 
@@ -271,7 +298,10 @@ async def test_a_row_level_table_is_never_landed_whole(wiring, monkeypatch):
         ],
         backend,
     )
-    assert await ensure_resident(state, {"bench-neo4j"}, reader_role=None) == []
+    assert (
+        await ensure_resident(state, {"bench-neo4j"}, reader_role=None, table_ids=_read(state))
+        == []
+    )
     assert loaded == [] and backend.calls == []
     assert state.tenant_db.acquires == 0 and state.tenant_db.recorded == []
     with pytest.raises(TypeError):
@@ -297,7 +327,7 @@ async def test_a_resident_source_is_left_alone(wiring):
         "last_refresh_at": time.time(),
         "last_refresh_ok": True,
     }
-    assert await ensure_resident(state, {"pets-db"}, reader_role=None) == []
+    assert await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=_read(state)) == []
     assert state.tenant_db.recorded == []
 
 
@@ -307,9 +337,59 @@ async def test_only_the_sources_the_plan_names_are_considered(wiring):
     state = _state(
         [_source("a"), _source("b")], [_table("a", "pets"), _table("b", "vets")], backend
     )
-    assert await ensure_resident(state, {"b"}, reader_role=None) == [("b", "vets")]
-    assert await ensure_resident(state, set(), reader_role=None) == []
-    assert await ensure_resident(state, {"unknown"}, reader_role=None) == []
+    assert await ensure_resident(state, {"b"}, reader_role=None, table_ids=_read(state)) == [
+        ("b", "vets")
+    ]
+    assert await ensure_resident(state, set(), reader_role=None, table_ids=_read(state)) == []
+    assert await ensure_resident(state, {"unknown"}, reader_role=None, table_ids=_read(state)) == []
+
+
+@pytest.mark.asyncio
+async def test_only_the_tables_the_statement_reads_are_judged_and_stamped(wiring):
+    """REQ-826: a statement that reads one table of a source neither lands nor stamps the
+    source's other tables."""
+    backend = _Backend()
+    pets, vets = _table("pets-db", "pets"), _table("pets-db", "vets")
+    state = _state([_source("pets-db")], [pets, vets], backend)
+    await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids={pets.id})
+    assert state.tenant_db.recorded == [("pet_store.pets", True)]
+
+
+@pytest.mark.asyncio
+async def test_a_setting_on_a_table_the_statement_does_not_read_does_not_move_its_read(wiring):
+    """REQ-826: ``vets`` is set to always; a statement that reads only ``pets`` is not put on a
+    replica by it, and one that reads ``vets`` is."""
+    backend = _Backend(live={"pets-db"})
+    pets, vets = _table("pets-db", "pets"), _table("pets-db", "vets")
+    vets.replicate = 0
+    state = _state([_source("pets-db")], [pets, vets], backend)
+    await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids={pets.id})
+    assert backend.replicated == {"pets-db": False}
+    await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids={vets.id})
+    assert backend.replicated == {"pets-db": True}
+
+
+@pytest.mark.asyncio
+async def test_a_live_table_read_beside_its_replica_served_sibling_is_left_alone(wiring):
+    """REQ-826, per table: the engine reads the source in place, ``vets`` is set to always and
+    ``pets`` is not. One statement reads both: only ``vets`` is landed and stamped. ``pets`` is
+    read live through the engine's attach, so it is neither landed nor asked for a replication
+    clock (it has none here)."""
+    backend = _Backend()
+    pets = _table("pets-db", "pets", cache_ttl=None)
+    vets = _table("pets-db", "vets")
+    vets.replicate = 0
+    state = _state([_source("pets-db")], [pets, vets], backend)
+    # this engine reads the source's type in place
+    state.federation_engine.engine.connectors = {"sqlite": SimpleNamespace(reads_in_place=True)}
+    await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids={pets.id, vets.id})
+    assert backend.replicated == {"pets-db": True}
+    assert state.tenant_db.recorded == [("pet_store.vets", True)]
+    # and a statement that reads only the live table plans no land at all
+    backend.replicated = {}
+    await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids={pets.id})
+    assert backend.replicated == {}
+    assert state.tenant_db.recorded == [("pet_store.vets", True)]
 
 
 @pytest.mark.asyncio
@@ -319,13 +399,15 @@ async def test_a_failed_land_is_stamped_not_ok_and_fails_the_read(wiring):
     backend = _Backend(fail=True)
     state = _state([_source("pets-db")], [_table("pets-db", "pets")], backend)
     with pytest.raises(RuntimeError, match="adapter down"):
-        await ensure_resident(state, {"pets-db"}, reader_role=None)
+        await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=_read(state))
     assert state.tenant_db.recorded == [("pet_store.pets", False)]
 
 
 @pytest.mark.asyncio
 async def test_without_an_engine_or_store_nothing_happens():
-    assert await ensure_resident(SimpleNamespace(), {"pets-db"}, reader_role=None) == []
+    assert (
+        await ensure_resident(SimpleNamespace(), {"pets-db"}, reader_role=None, table_ids=()) == []
+    )
 
 
 # -- one land per stale table, shared by the requests that need it (REQ-1661, REQ-1882) ---------
@@ -402,8 +484,8 @@ def test_two_requests_reading_one_stale_table_share_one_land(wiring, monkeypatch
 
     results = _on_request_threads(
         [
-            lambda: ensure_resident(state, {"pets-db"}, reader_role=None),
-            lambda: ensure_resident(state, {"pets-db"}, reader_role=None),
+            lambda: ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=_read(state)),
+            lambda: ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=_read(state)),
         ]
     )
 
@@ -425,8 +507,8 @@ def test_two_requests_reading_different_stale_tables_land_at_the_same_time(wirin
 
     results = _on_request_threads(
         [
-            lambda: ensure_resident(state, {"pets-db"}, reader_role=None),
-            lambda: ensure_resident(state, {"vets-db"}, reader_role=None),
+            lambda: ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=_read(state)),
+            lambda: ensure_resident(state, {"vets-db"}, reader_role=None, table_ids=_read(state)),
         ]
     )
 
@@ -448,7 +530,7 @@ async def test_a_source_the_engine_reads_live_issues_no_control_plane_statement(
     backend = _Backend(live={"pg"})
     state = _state([_source("pg")], [_table("pg", "orders"), _table("pg", "customers")], backend)
     for _ in range(3):
-        assert await ensure_resident(state, {"pg"}, reader_role=None) == []
+        assert await ensure_resident(state, {"pg"}, reader_role=None, table_ids=_read(state)) == []
     assert state.tenant_db.acquires == 0, "a read that lands nothing read the control plane"
     assert backend.calls == []
     from provisa.events import land_lock
@@ -461,11 +543,16 @@ async def test_a_fresh_landed_source_is_decided_from_memory(wiring, monkeypatch)
     _stamping_refresh(monkeypatch)
     backend = _Backend()
     state = _state([_source("pets-db", cache_ttl=300)], [_table("pets-db", "pets")], backend)
-    assert await ensure_resident(state, {"pets-db"}, reader_role=None) == [("pets-db", "pets")]
+    assert await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=_read(state)) == [
+        ("pets-db", "pets")
+    ]
     read_and_stamp = state.tenant_db.acquires
     assert read_and_stamp >= 1
     for _ in range(5):
-        assert await ensure_resident(state, {"pets-db"}, reader_role=None) == []
+        assert (
+            await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=_read(state))
+            == []
+        )
     assert state.tenant_db.acquires == read_and_stamp, "a fresh landed source re-read its state"
     assert len(backend.calls) == 1
 
@@ -479,9 +566,9 @@ async def test_a_source_another_process_landed_is_read_once_then_decided_from_me
         "last_refresh_at": _recent(),
         "last_refresh_ok": True,
     }
-    assert await ensure_resident(state, {"pets-db"}, reader_role=None) == []
+    assert await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=_read(state)) == []
     assert state.tenant_db.acquires == 1
-    assert await ensure_resident(state, {"pets-db"}, reader_role=None) == []
+    assert await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=_read(state)) == []
     assert state.tenant_db.acquires == 1
 
 
@@ -501,9 +588,9 @@ async def test_the_in_memory_state_is_a_bounded_snapshot(wiring, monkeypatch):
     }
     clock = {"now": 1000.0}
     monkeypatch.setattr(view.time, "monotonic", lambda: clock["now"])
-    assert await ensure_resident(state, {"pets-db"}, reader_role=None) == []
+    assert await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=_read(state)) == []
     clock["now"] += view.BACKSTOP_SECONDS / 2
-    assert await ensure_resident(state, {"pets-db"}, reader_role=None) == []
+    assert await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=_read(state)) == []
     assert state.tenant_db.acquires == 1
     # another process's land of this table failed
     state.tenant_db.states["pet_store.pets"] = {
@@ -511,9 +598,9 @@ async def test_the_in_memory_state_is_a_bounded_snapshot(wiring, monkeypatch):
         "last_refresh_ok": False,
     }
     clock["now"] += view.BACKSTOP_SECONDS
-    assert await ensure_resident(state, {"pets-db"}, reader_role=None) == [("pets-db", "pets")], (
-        "the failed land was not retried once the snapshot expired"
-    )
+    assert await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=_read(state)) == [
+        ("pets-db", "pets")
+    ], "the failed land was not retried once the snapshot expired"
 
 
 @pytest.mark.asyncio
@@ -532,13 +619,15 @@ async def test_a_ttl_outrun_in_memory_goes_back_to_the_control_plane_and_lands(w
         "last_refresh_at": fresh_at,
         "last_refresh_ok": True,
     }
-    assert await ensure_resident(state, {"pets-db"}, reader_role=None) == []
-    assert await ensure_resident(state, {"pets-db"}, reader_role=None) == []
+    assert await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=_read(state)) == []
+    assert await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=_read(state)) == []
     assert state.tenant_db.acquires == 1 and backend.calls == [({"pets-db"}, backend.calls[0][1])]
     # the same snapshot, 100 s later: the ttl is outrun, so the truth is read and the table landed
     real_time = _time.time
     monkeypatch.setattr("provisa.federation.query_residency.time.time", lambda: real_time() + 100)
-    assert await ensure_resident(state, {"pets-db"}, reader_role=None) == [("pets-db", "pets")]
+    assert await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=_read(state)) == [
+        ("pets-db", "pets")
+    ]
     assert state.tenant_db.recorded == [("pet_store.pets", True)]
 
 
@@ -550,12 +639,14 @@ async def test_a_failed_land_is_retried_by_the_next_read(wiring, monkeypatch):
     backend = _Backend(fail=True)
     state = _state([_source("pets-db")], [_table("pets-db", "pets")], backend)
     with pytest.raises(RuntimeError, match="adapter down"):
-        await ensure_resident(state, {"pets-db"}, reader_role=None)
+        await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=_read(state))
     with pytest.raises(RuntimeError, match="adapter down"):
-        await ensure_resident(state, {"pets-db"}, reader_role=None)
+        await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=_read(state))
     assert len(backend.calls) == 2
     backend.fail = False
-    assert await ensure_resident(state, {"pets-db"}, reader_role=None) == [("pets-db", "pets")]
+    assert await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=_read(state)) == [
+        ("pets-db", "pets")
+    ]
 
 
 @pytest.mark.asyncio
@@ -568,11 +659,11 @@ async def test_a_new_schema_generation_drops_the_in_memory_state(wiring):
         "last_refresh_at": _recent(),
         "last_refresh_ok": True,
     }
-    await ensure_resident(state, {"pets-db"}, reader_role=None)
-    await ensure_resident(state, {"pets-db"}, reader_role=None)
+    await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=_read(state))
+    await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=_read(state))
     assert state.tenant_db.acquires == 1
     state.schema_version = 2  # a rebuild: a landed table may have been recreated
-    await ensure_resident(state, {"pets-db"}, reader_role=None)
+    await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=_read(state))
     assert state.tenant_db.acquires == 2
 
 
@@ -610,7 +701,9 @@ async def test_a_row_materialize_flag_is_ignored_when_the_engine_attaches_the_so
     # the bound engine declares a connector that reads mongodb in place
     state.federation_engine.engine.connectors = {"mongodb": SimpleNamespace(reads_in_place=True)}
     for _ in range(2):
-        assert await ensure_resident(state, {"mongo"}, reader_role=None) == []
+        assert (
+            await ensure_resident(state, {"mongo"}, reader_role=None, table_ids=_read(state)) == []
+        )
     assert landed_calls == [], "a table the engine attaches was landed into a row cache"
     assert state.tenant_db.acquires == 0 and backend.calls == []
 
@@ -635,4 +728,6 @@ async def test_the_flag_applies_when_the_engine_cannot_attach_the_source(wiring)
         backend,
     )
     state.federation_engine.engine.connectors = {}
-    assert await ensure_resident(state, {"mongo"}, reader_role=None) == [("mongo", "order_tags")]
+    assert await ensure_resident(state, {"mongo"}, reader_role=None, table_ids=_read(state)) == [
+        ("mongo", "order_tags")
+    ]

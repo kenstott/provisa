@@ -550,8 +550,6 @@ async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039
     results = []
     from provisa.federation.registry_view import operator_floor
 
-    floor = await operator_floor(state)
-
     for _compiled_orig in compiled_queries:
         pre_mv_sources = set(_compiled_orig.sources)
         compiled, mv_applied = _apply_pipeline_transforms(
@@ -560,7 +558,7 @@ async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039
 
         sampling = not has_capability(role, Capability.FULL_RESULTS) if role else True
         decision, engine_sql, direct_sql, route_str = _decide_transpile(
-            compiled, state, steward_hint, floor
+            compiled, state, steward_hint, operator_floor(state, compiled.table_ids)
         )
 
         enforcement = _build_enforcement_metadata(

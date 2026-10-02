@@ -151,7 +151,9 @@ async def _execute_api_source(
         await pushdown_row_materialize(
             state, physical_sql, state.federation_engine.dialect, _exec_params, reader_role=role_id
         )
-        await ensure_resident(state, compiled.sources, reader_role=role_id)
+        await ensure_resident(
+            state, compiled.sources, reader_role=role_id, table_ids=compiled.table_ids
+        )
         _loop = asyncio.get_running_loop()
         _t0 = _time.perf_counter()
         engine_result = await _loop.run_in_executor(
@@ -262,7 +264,9 @@ async def _execute_api_source(
     await pushdown_row_materialize(
         state, physical_sql, state.federation_engine.dialect, exec_params, reader_role=role_id
     )
-    await ensure_resident(state, compiled.sources, reader_role=role_id)
+    await ensure_resident(
+        state, compiled.sources, reader_role=role_id, table_ids=compiled.table_ids
+    )
     _t_phase2 = _time.perf_counter()
     engine_result = await _loop.run_in_executor(
         None, lambda: _engine.execute_engine_sync(physical_sql, exec_params)
@@ -440,7 +444,9 @@ async def _execute_grpc_remote_source(
     await pushdown_row_materialize(
         state, physical_sql, state.federation_engine.dialect, exec_params, reader_role=role_id
     )
-    await ensure_resident(state, compiled.sources, reader_role=role_id)
+    await ensure_resident(
+        state, compiled.sources, reader_role=role_id, table_ids=compiled.table_ids
+    )
     _loop = asyncio.get_running_loop()
     _t2 = _time.perf_counter()
     engine_result = await _loop.run_in_executor(
@@ -576,7 +582,9 @@ async def _execute_engine_standard(
     await pushdown_row_materialize(
         state, physical_sql, state.federation_engine.dialect, exec_params, reader_role=role_id
     )
-    await ensure_resident(state, compiled.sources, reader_role=role_id)
+    await ensure_resident(
+        state, compiled.sources, reader_role=role_id, table_ids=compiled.table_ids
+    )
 
     result = await state.federation_engine.execute_engine(
         physical_sql,

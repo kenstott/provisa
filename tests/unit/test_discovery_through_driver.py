@@ -196,10 +196,10 @@ async def test_a_type_with_no_driver_listing_of_keys_answers_none():
     ("settings", "attached"),
     [
         ({}, True),
-        ({"prefer_materialized": True, "cache_ttl": 60}, False),
+        ({"replicate": 0, "cache_ttl": 60}, False),
         ({"load_protected": True, "cache_ttl": 60}, False),
     ],
-    ids=["live", "prefer_materialized", "load_protected"],
+    ids=["live", "replicate", "load_protected"],
 )
 def test_a_floored_source_has_no_live_attach(settings, attached):
     for name in ("trino", "duckdb"):
@@ -212,7 +212,7 @@ def test_a_source_the_engine_only_replicates_has_no_live_attach():
 
 
 async def test_an_engine_listing_of_an_unattached_source_is_refused_naming_it(monkeypatch):
-    source = _source(prefer_materialized=True, cache_ttl=60)
+    source = _source(replicate=0, cache_ttl=60)
     state = _state(monkeypatch, source, _Pool({}), _Engine())
     assert await unattached_source(state, "orders-pg") is source
     with pytest.raises(SourceNotListable) as refused:
@@ -237,7 +237,7 @@ async def test_column_metadata_of_a_floored_source_never_asks_the_engine(monkeyp
 
     pool = _Pool({"information_schema.columns": _PG_COLUMNS, "PRIMARY KEY": [("id",)]})
     engine = _Engine()
-    _state(monkeypatch, _source(prefer_materialized=True, cache_ttl=60), pool, engine)
+    _state(monkeypatch, _source(replicate=0, cache_ttl=60), pool, engine)
 
     columns = await resolve_available_columns_metadata("orders-pg", "public", "orders")
 
@@ -255,7 +255,7 @@ async def test_a_floored_table_the_driver_cannot_list_is_refused_not_answered_em
     from provisa.api.admin import schema_query
 
     engine = _Engine()
-    _state(monkeypatch, _source(prefer_materialized=True, cache_ttl=60), _Pool({}), engine)
+    _state(monkeypatch, _source(replicate=0, cache_ttl=60), _Pool({}), engine)
 
     async def _no_listing(*args: Any, **kwargs: Any) -> None:
         del args, kwargs
@@ -276,7 +276,7 @@ async def test_table_search_of_a_floored_source_never_asks_the_engine(monkeypatc
         }
     )
     engine = _Engine()
-    state = _state(monkeypatch, _source(prefer_materialized=True, cache_ttl=60), pool, engine)
+    state = _state(monkeypatch, _source(replicate=0, cache_ttl=60), pool, engine)
 
     async def _pool() -> Any:
         return SimpleNamespace(acquire=lambda: _Acquire())
@@ -302,7 +302,7 @@ async def test_the_catalog_index_of_a_floored_source_never_asks_the_engine(monke
         }
     )
     engine = _Engine()
-    source = _source(prefer_materialized=True, cache_ttl=60)
+    source = _source(replicate=0, cache_ttl=60)
     state = _state(monkeypatch, source, pool, engine)
     written: list[tuple[str, str, list]] = []
 

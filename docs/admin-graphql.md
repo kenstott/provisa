@@ -59,7 +59,7 @@ All registered data sources. [tool-verified: `provisa/api/admin/schema_query.py:
 query {
   sources {
     id type host port database username dialect
-    cacheEnabled cacheTtl preferMaterialized
+    cacheEnabled cacheTtl replicate
     loadProtected offPeakWindow offPeakTz
     gqlNamingConvention path allowedDomains
     description mappingJson federationHintsJson
@@ -122,7 +122,7 @@ Each `RegisteredTableType` exposes computed sub-fields:
 
 Preview the effective refresh/serving summary for *draft* (unsaved) table knobs, so the top-of-form summary updates as fields change without persisting anything. Same derivation as `refreshPolicySummary` above. (REQ-1143) [tool-verified: `provisa/api/admin/schema_query.py:947-979`]
 
-Arguments: `sourceId`, `domainId`, `schemaName`, `tableName`, `cacheTtl`, `preferMaterialized`, `loadProtected`, `offPeakWindow`, `offPeakTz`, `changeSignal`.
+Arguments: `sourceId`, `domainId`, `schemaName`, `tableName`, `cacheTtl`, `replicate`, `loadProtected`, `offPeakWindow`, `offPeakTz`, `changeSignal`.
 
 #### `columnDependents(tableId: String!, renamed: [String!], removed: [String!]) → [ColumnDependentsType!]!`
 
@@ -358,9 +358,9 @@ Rename a source ID. [tool-verified: `provisa/api/admin/schema_mutation.py:1076-1
 
 Enable or disable query result caching for a source, and set the TTL in seconds. [tool-verified: `provisa/api/admin/schema_mutation.py:2327-2350`]
 
-#### `updateSourcePreferMaterialized(sourceId: String!, preferMaterialized: Boolean!) → MutationResult`
+#### `updateSourceReplicate(sourceId: String!, replicate: Int) → MutationResult`
 
-Force (or release) materialized federation for all tables on a source. (REQ-826) [tool-verified: `provisa/api/admin/schema_mutation.py:2379-2402`]
+Set when a source's tables are served from their replicas: `null` Default, `-1` Never, `N` above 0 once a table passes N governed statements per interval, `0` Always. A table with no value of its own inherits it. Refused when it would pair `load_protected` with `-1`, or leave a `ttl` table that it replicates without a `cache_ttl`. Requires `source_registration`. (REQ-826, REQ-1907) [tool-verified: `provisa/api/admin/schema_mutation.py` `update_source_replicate`]
 
 #### `updateSourceLoadProtection(sourceId, loadProtected, offPeakWindow, offPeakTz) → MutationResult`
 
@@ -406,9 +406,9 @@ Delete a registered table. Looks up the table's domain for the domain gate befor
 
 Override the cache TTL for one table. [tool-verified: `provisa/api/admin/schema_mutation.py:2353-2376`]
 
-#### `updateTablePreferMaterialized(tableId: Int!, preferMaterialized: Boolean) → MutationResult`
+#### `updateTableReplicate(tableId: Int!, replicate: Int) → MutationResult`
 
-Override materialized federation for one table. `null` = inherit the source default. (REQ-826) [tool-verified: `provisa/api/admin/schema_mutation.py:2405-2428`]
+Set when one table is served from its replica. `null` = inherit the source's value. Same values and refusals as `updateSourceReplicate`. Requires `table_registration`. (REQ-826, REQ-1907) [tool-verified: `provisa/api/admin/schema_mutation.py` `update_table_replicate`]
 
 #### `updateTableLoadProtection(tableId, loadProtected, offPeakWindow, offPeakTz) → MutationResult`
 

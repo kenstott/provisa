@@ -70,7 +70,12 @@ from provisa.api.admin.schema_helpers import (
     _rebuild_schemas,
 )
 from provisa.api.admin._live_mappers import table_model_from_input as _table_model_from_input
-from provisa.api.admin._landing_ttl import SourceTtl, TableTtl, landing_ttl_refusal  # REQ-1907
+from provisa.api.admin._landing_ttl import (  # REQ-1907, REQ-826
+    SourceTtl,
+    TableTtl,
+    landing_ttl_refusal,
+    replicate_contradiction_refusal,
+)
 from provisa.api.admin._table_ops import _build_columns_for_input
 from provisa.api.admin import schema_mutation_ops as _ops
 
@@ -405,7 +410,7 @@ def _validate_source_load_management(input: SourceInput) -> "MutationResult | No
         return _fail(
             "schema.max_live_concurrency_invalid",
             "max_live_concurrency must be 1 or more (leave it empty for no cap; to stop live "
-            "reads use prefer_materialized or load_protected)",
+            "reads use replicate 0 (always) or load_protected)",
         )
     if input.sentinel_path:
         from provisa.events.sentinel_probe import build_sentinel_probe
@@ -534,6 +539,22 @@ def _refuse_soda_on_hosted_plane(source_type: str) -> MutationResult | None:  # 
         code="schema.source_type_not_hosted",
         params={"type": source_type},
     )
+
+
+def _invalid_replicate(replicate: int | None) -> MutationResult | None:  # REQ-826
+    """The refusal for a ``replicate`` value that is not one the setting has, else None."""
+    from provisa.core.replicate import check_replicate
+
+    try:
+        check_replicate(replicate)
+    except ValueError as exc:
+        return MutationResult(
+            success=False,
+            message=str(exc),
+            code="schema.replicate_invalid",
+            params={"value": str(replicate)},
+        )
+    return None
 
 
 def _refuse_config_declared(source_id: str) -> MutationResult | None:  # REQ-826, REQ-030
@@ -751,7 +772,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 source=SourceTtl(
                     input.change_signal,
                     input.cache_ttl,
-                    input.prefer_materialized,
+                    input.replicate,
                     input.load_protected,
                 ),
             )
@@ -848,7 +869,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             off_peak_tz=input.off_peak_tz,  # REQ-1141
             cache_enabled=input.cache_enabled,
             cache_ttl=input.cache_ttl,
-            prefer_materialized=input.prefer_materialized,  # REQ-826
+            replicate=input.replicate,  # REQ-826
             max_live_concurrency=input.max_live_concurrency,  # REQ-1909
             sentinel_path=input.sentinel_path,  # REQ-1148
             freshness_gate=input.freshness_gate,  # REQ-860
@@ -1121,7 +1142,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 source=SourceTtl(
                     input.change_signal,
                     input.cache_ttl,
-                    input.prefer_materialized,
+                    input.replicate,
                     input.load_protected,
                 ),
             )
@@ -1148,7 +1169,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 off_peak_tz=input.off_peak_tz,  # REQ-1141
                 cache_enabled=input.cache_enabled,
                 cache_ttl=input.cache_ttl,
-                prefer_materialized=input.prefer_materialized,  # REQ-826
+                replicate=input.replicate,  # REQ-826
                 max_live_concurrency=input.max_live_concurrency,  # REQ-1909
                 sentinel_path=input.sentinel_path,  # REQ-1148
                 freshness_gate=input.freshness_gate,  # REQ-860
@@ -2248,7 +2269,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     registered_tables.c.cache_ttl,
                     registered_tables.c.role_ttl,
                     registered_tables.c.row_materialize,
-                    registered_tables.c.prefer_materialized,
+                    registered_tables.c.replicate,
                 ).where(
                     (registered_tables.c.source_id == model.source_id)
                     & (registered_tables.c.schema_name == model.schema_name)
@@ -2260,6 +2281,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 model.cache_ttl = _kept_row.cache_ttl
                 model.role_ttl = dict(_kept_row.role_ttl)
                 model.row_materialize = bool(_kept_row.row_materialize)
+                # replicate is saved through updateTableReplicate, never by this upsert: the
+                # stored value is kept (and is the one the checks below judge).
+                model.replicate = _kept_row.replicate
             _ttl_refusal = await landing_ttl_refusal(
                 _conn,
                 model.source_id,
@@ -2270,9 +2294,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     model.cache_ttl,
                     model.materialize,
                     model.row_materialize,
-                    # prefer_materialized is saved through updateTablePreferMaterialized, never
-                    # by this upsert: judge the stored value.
-                    _kept_row.prefer_materialized if _kept_row is not None else None,
+                    model.replicate,
                     model.load_protected,
                 ),
             )
@@ -2779,7 +2801,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         async with pool.acquire() as conn:
             _sig = await conn.execute_core(
                 select(
-                    sources.c.change_signal, sources.c.prefer_materialized, sources.c.load_protected
+                    sources.c.change_signal, sources.c.replicate, sources.c.load_protected
                 ).where(sources.c.id == source_id)
             )
             _sig_row = _sig.fetchone()
@@ -2790,7 +2812,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     source=SourceTtl(
                         _sig_row.change_signal,
                         cache_ttl,
-                        _sig_row.prefer_materialized,
+                        _sig_row.replicate,
                         _sig_row.load_protected,
                     ),
                 )
@@ -2831,7 +2853,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     registered_tables.c.change_signal,
                     registered_tables.c.materialize,
                     registered_tables.c.row_materialize,
-                    registered_tables.c.prefer_materialized,
+                    registered_tables.c.replicate,
                     registered_tables.c.load_protected,
                 ).where(registered_tables.c.id == table_id)
             )
@@ -2847,7 +2869,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         cache_ttl,
                         _t_row.materialize,
                         _t_row.row_materialize,
-                        _t_row.prefer_materialized,
+                        _t_row.replicate,
                         _t_row.load_protected,
                     ),
                 )
@@ -2932,43 +2954,63 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
-    async def update_source_prefer_materialized(
-        self, info: StrawberryInfo, source_id: str, prefer_materialized: bool
+    async def update_source_replicate(
+        self, info: StrawberryInfo, source_id: str, replicate: int | None = None
     ) -> MutationResult:  # REQ-826
-        """Force (or release) MATERIALIZED federation for a source's tables — the source-level default."""
+        """Set when a source's tables are served from their replicas — the default a table with
+        no value of its own inherits. None = Default (the global threshold), -1 = never, N > 0 =
+        once a table passes N governed statements per interval, 0 = always."""
         require_capability(info, "source_registration")
         refused = _refuse_config_declared(source_id)
         if refused is not None:
             return refused
+        invalid = _invalid_replicate(replicate)
+        if invalid is not None:
+            return invalid
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            result = await conn.execute_core(
-                update(sources)
-                .where(sources.c.id == source_id)
-                .values(prefer_materialized=prefer_materialized)
+            _row = await conn.execute_core(
+                select(
+                    sources.c.change_signal, sources.c.cache_ttl, sources.c.load_protected
+                ).where(sources.c.id == source_id)
             )
-            if (result.rowcount or 0) == 0:
+            row = _row.fetchone()
+            if row is None:
                 return MutationResult(
                     success=False,
                     message=f"Source {source_id!r} not found",
                     code="schema.source_not_found",
                     params={"source": source_id},
                 )
+            # REQ-826 / REQ-1907: judged with the value being saved — load_protected with never
+            # is contradictory, and a table this now says is replicated needs its refresh clock.
+            # A save that passed and then failed every read is refused here instead.
+            _refusal = await landing_ttl_refusal(
+                conn,
+                source_id,
+                source=SourceTtl(row.change_signal, row.cache_ttl, replicate, row.load_protected),
+            )
+            if _refusal is not None:
+                return _refusal
+            await conn.execute_core(
+                update(sources).where(sources.c.id == source_id).values(replicate=replicate)
+            )
         # The operator floor routing reads (REQ-030) is keyed on the schema generation; bump it so
         # the next read routes under the new setting instead of a cached decision.
         await _rebuild_schemas()
         return MutationResult(
             success=True,
-            message=f"prefer_materialized set for source {source_id!r}",
-            code="schema.source_prefer_materialized_set",
+            message=f"replicate set for source {source_id!r}",
+            code="schema.source_replicate_set",
             params={"source": source_id},
         )
 
     @strawberry.mutation
-    async def update_table_prefer_materialized(
-        self, info: StrawberryInfo, table_id: int, prefer_materialized: bool | None = None
+    async def update_table_replicate(
+        self, info: StrawberryInfo, table_id: int, replicate: int | None = None
     ) -> MutationResult:  # REQ-826
-        """Override MATERIALIZED federation for one table; None = inherit the source-level default."""
+        """Set when one table is served from its replica; None = inherit its source's value.
+        -1 = never, N > 0 = once it passes N governed statements per interval, 0 = always."""
         require_capability(info, "table_registration")
         from provisa.api.app import state
 
@@ -2976,24 +3018,60 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         refused = _refuse_config_declared(owner) if owner is not None else None
         if refused is not None:
             return refused
+        invalid = _invalid_replicate(replicate)
+        if invalid is not None:
+            return invalid
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            result = await conn.execute_core(
-                update(registered_tables)
-                .where(registered_tables.c.id == table_id)
-                .values(prefer_materialized=prefer_materialized)
+            _row = await conn.execute_core(
+                select(
+                    registered_tables.c.source_id,
+                    registered_tables.c.schema_name,
+                    registered_tables.c.table_name,
+                    registered_tables.c.change_signal,
+                    registered_tables.c.cache_ttl,
+                    registered_tables.c.materialize,
+                    registered_tables.c.row_materialize,
+                    registered_tables.c.load_protected,
+                ).where(registered_tables.c.id == table_id)
             )
-            if (result.rowcount or 0) == 0:
+            row = _row.fetchone()
+            if row is None:
                 return MutationResult(
                     success=False,
                     message=f"Table {table_id} not found",
                     code="schema.table_not_found",
                     params={"table": table_id},
                 )
+            # REQ-826 / REQ-1907: judged with the value being saved (see update_source_replicate).
+            _refusal = await landing_ttl_refusal(
+                conn,
+                row.source_id,
+                table=TableTtl(
+                    row.schema_name,
+                    row.table_name,
+                    row.change_signal,
+                    row.cache_ttl,
+                    row.materialize,
+                    row.row_materialize,
+                    replicate,
+                    row.load_protected,
+                ),
+            )
+            if _refusal is not None:
+                return _refusal
+            await conn.execute_core(
+                update(registered_tables)
+                .where(registered_tables.c.id == table_id)
+                .values(replicate=replicate)
+            )
+        # A saved value must route: the floored tables and the replica routes are published by
+        # the schema build.
+        await _rebuild_schemas()
         return MutationResult(
             success=True,
-            message=f"prefer_materialized set for table {table_id}",
-            code="schema.table_prefer_materialized_set",
+            message=f"replicate set for table {table_id}",
+            code="schema.table_replicate_set",
             params={"table": table_id},
         )
 
@@ -3015,7 +3093,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         pool = await _get_pool()
         async with pool.acquire() as conn:
             _res = await conn.execute_core(
-                select(sources.c.cache_ttl, sources.c.change_signal).where(
+                select(sources.c.cache_ttl, sources.c.change_signal, sources.c.replicate).where(
                     sources.c.id == source_id
                 )
             )
@@ -3035,6 +3113,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             _window = _parsed_off_peak(off_peak_window, off_peak_tz)
             if isinstance(_window, MutationResult):
                 return _window
+            # REQ-826: load_protected contradicts replicate -1 (never), on the source or on a
+            # table of it that inherits the value being saved.
+            _contradicted = await replicate_contradiction_refusal(
+                conn,
+                source_id,
+                source=SourceTtl(row.change_signal, row.cache_ttl, row.replicate, load_protected),
+            )
+            if _contradicted is not None:
+                return _contradicted
             await conn.execute_core(
                 update(sources)
                 .where(sources.c.id == source_id)
@@ -3077,6 +3164,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     registered_tables.c.change_signal,
                     registered_tables.c.off_peak_window,
                     registered_tables.c.mv_bitemporal_mode,
+                    registered_tables.c.replicate,
                 ).where(registered_tables.c.id == table_id)
             )
             row = _res.fetchone()
@@ -3109,6 +3197,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     sources.c.cache_ttl,
                     sources.c.change_signal,
                     sources.c.off_peak_window,
+                    sources.c.replicate,
                 ).where(sources.c.id == row.source_id)
             )
             src = _sres.fetchone()
@@ -3126,6 +3215,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             _window = _parsed_off_peak(off_peak_window, off_peak_tz or "UTC")
             if isinstance(_window, MutationResult):
                 return _window
+            # REQ-826: load_protected contradicts a resolved replicate of -1 (never).
+            from provisa.core.replicate import contradiction
+
+            _contradicted = contradiction(
+                row.replicate if row.replicate is not None else src.replicate, bool(effective_lp)
+            )
+            if _contradicted is not None:
+                return MutationResult(
+                    success=False,
+                    message=f"Table {table_id}: {_contradicted}",
+                    code="schema.replicate_contradicts_load_protected",
+                    params={"table": str(table_id)},
+                )
             await conn.execute_core(
                 update(registered_tables)
                 .where(registered_tables.c.id == table_id)
@@ -3135,6 +3237,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     off_peak_tz=off_peak_tz,
                 )
             )
+        # A saved value must route: the floored tables and the replica routes are published by
+        # the schema build.
+        await _rebuild_schemas()
         return MutationResult(
             success=True,
             message=f"load protection set for table {table_id}",

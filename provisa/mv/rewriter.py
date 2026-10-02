@@ -410,4 +410,6 @@ def _partial_rewrite_to_mv(
         root_field=compiled.root_field,
         columns=compiled.columns,
         sources=new_sources,
+        # A partial rewrite: the statement still reads its other tables (REQ-826).
+        table_ids=compiled.table_ids,
     )

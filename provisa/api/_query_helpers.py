@@ -122,14 +122,16 @@ async def route_and_execute(compiled, state) -> Any:  # REQ-027, REQ-028
         source_dialects=state.source_dialects,
         has_json_extract=has_json_extract,
         source_dsns=getattr(state, "source_dsns", None),
-        operator_floor=await operator_floor(state),
+        operator_floor=operator_floor(state, compiled.table_ids),
     )
 
     from provisa.federation.live_concurrency import acquire_for_route
 
     engine = state.federation_engine
     # REQ-1909: a capped source this read reaches live holds its permit for the execution.
-    with await acquire_for_route(state, decision.route, decision.source_id or "", compiled.sources):
+    with await acquire_for_route(
+        state, decision.route, decision.source_id or "", compiled.sources, compiled.table_ids
+    ):
         if decision.route == Route.DIRECT and decision.source_id:
             target_sql = transpile(compiled.sql, decision.dialect or "postgres")
             return await engine.execute_native(
@@ -147,5 +149,7 @@ async def route_and_execute(compiled, state) -> Any:  # REQ-027, REQ-028
         # no governed role, so each table is judged on its cache_ttl (REQ-1907: no reader).
         from provisa.federation.query_residency import ensure_resident
 
-        await ensure_resident(state, compiled.sources, reader_role=None)
+        await ensure_resident(
+            state, compiled.sources, reader_role=None, table_ids=compiled.table_ids
+        )
         return await engine.execute_engine(physical_sql, compiled.params)

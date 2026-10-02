@@ -1,7 +1,7 @@
 # REQ-030 (amended 2026-09-30): the operator's floor. A DuckDB + SQLite stack reading two tables in
-# the test stack's Postgres, one source marked load_protected and one prefer_materialized. Both must
+# the test stack's Postgres, one source marked load_protected and one replicate. Both must
 # be served from the platform's landed copy after the first land -- never pulled live by a query,
-# with or without a request route hint. floor-bare is prefer_materialized with nothing but the
+# with or without a request route hint. floor-bare is replicate with nothing but the
 # landing TTL its ttl change signal requires (REQ-1907) — no window, no probe: it is still never
 # read live (REQ-826, amended 2026-09-30).
 federation_engine: duckdb
@@ -47,7 +47,7 @@ sources:
     database: ${env:PG_DATABASE}
     username: ${env:PG_USER}
     password: ${env:PG_PASSWORD}
-    prefer_materialized: true
+    replicate: 0
     cache_ttl: 86400
   - id: floor-bare
     type: postgresql
@@ -56,8 +56,17 @@ sources:
     database: ${env:PG_DATABASE}
     username: ${env:PG_USER}
     password: ${env:PG_PASSWORD}
-    prefer_materialized: true
+    replicate: 0
     cache_ttl: 86400
+  # REQ-826: no floor on the source. One of its tables is set to Always, the other is left at
+  # Default and is read live: the floor is judged per statement, by the tables it reads.
+  - id: floor-mixed
+    type: postgresql
+    host: ${env:PG_HOST}
+    port: ${env:PG_PORT}
+    database: ${env:PG_DATABASE}
+    username: ${env:PG_USER}
+    password: ${env:PG_PASSWORD}
 tables:
   - source_id: floor-protected
     table: lp_items
@@ -92,3 +101,36 @@ tables:
       - name: name
         data_type: varchar
         visible_to: [org_admin]
+  - source_id: floor-mixed
+    table: mixed_always
+    schema: op_floor_e2e
+    domain_id: floor
+    replicate: 0
+    cache_ttl: 86400
+    columns:
+      - name: id
+        data_type: integer
+        visible_to: [org_admin]
+      - name: name
+        data_type: varchar
+        visible_to: [org_admin]
+  - source_id: floor-mixed
+    table: mixed_live
+    schema: op_floor_e2e
+    domain_id: floor
+    columns:
+      - name: id
+        data_type: integer
+        visible_to: [org_admin]
+      - name: name
+        data_type: varchar
+        visible_to: [org_admin]
+relationships:
+  # The approved join between the live table and its replica-served sibling (REQ-826: one
+  # statement reads each from where it is served).
+  - id: mixed-live-to-always
+    source_table_id: mixed_live
+    target_table_id: mixed_always
+    source_column: id
+    target_column: id
+    cardinality: one-to-one

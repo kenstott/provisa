@@ -46,6 +46,7 @@ from provisa.compiler.sql_types import (
     CompilationContext,
     CompiledQuery,
     JoinMeta,  # noqa: F401 — re-exported; many modules import JoinMeta from sql_gen
+    StatementSources,
     TableMeta,  # noqa: F401 — re-exported; many modules import TableMeta from sql_gen
 )
 from provisa.compiler.sql_rewrite import (
@@ -93,7 +94,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
     root_name = field_node.alias.value if field_node.alias else field_node.name.value
     table = ctx.tables[field_node.name.value]
     collector = ParamCollector()
-    sources: set[str] = {table.source_id}
+    sources = StatementSources(table)
 
     use_aliases = _has_joins(field_node, ctx, table.type_name)
     root_alias: str | None = "t0" if use_aliases else None
@@ -119,7 +120,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
             join_meta = ctx.joins[join_key]
             join_alias = f"t{alias_counter}"
             alias_counter += 1
-            sources.add(join_meta.target.source_id)
+            sources.add_table(join_meta.target)
 
             if join_meta.source_expr is not None:
                 src_expr = join_meta.source_expr.replace("{alias}", _q(root_alias))
@@ -528,7 +529,8 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
         root_field=root_name,
         canonical_field=field_node.name.value,
         columns=columns,
-        sources=sources,
+        sources=set(sources),
+        table_ids=frozenset(sources.table_ids),
         api_args=api_args,
         result_limit=result_limit,
         gql_remote_extra_selections=ctx.gql_remote_extra_selections,
@@ -589,6 +591,7 @@ def rewrite_hot_joins(  # REQ-230, REQ-232
             canonical_field=compiled.canonical_field,
             columns=compiled.columns,
             sources=compiled.sources,
+            table_ids=compiled.table_ids,
         )
     return compiled
 
@@ -619,7 +622,7 @@ def _compile_connection_field(  # REQ-218
     root_name = field_node.alias.value if field_node.alias else field_node.name.value
     table = ctx.tables[field_node.name.value]
     collector = ParamCollector()
-    sources: set[str] = {table.source_id}
+    sources = StatementSources(table)
 
     select_parts: list[str] = []
     columns: list[ColumnRef] = []
@@ -690,7 +693,8 @@ def _compile_connection_field(  # REQ-218
         root_field=root_name,
         canonical_field=field_node.name.value,
         columns=columns,
-        sources=sources,
+        sources=set(sources),
+        table_ids=frozenset(sources.table_ids),
         is_connection=True,
         is_backward=is_backward,
         sort_columns=sort_columns,

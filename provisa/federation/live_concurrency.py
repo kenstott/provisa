@@ -282,11 +282,14 @@ def acquire(
     return permits
 
 
-def _live_source_ids(state: Any, plan: Any, sources_by_id: dict[str, Any]) -> list[str]:
-    """The sources ``plan`` reads LIVE: the DIRECT / API route's one source, or the ENGINE route's sources
-    the bound engine reads in place through its attach connector and that no table resolves to
-    prefer_materialized / load_protected (those are served from the replica, REQ-826/REQ-1141).
-    The same classification query_residency.ensure_resident lands by, so the two never disagree."""
+def _live_source_ids(
+    state: Any, plan: Any, sources_by_id: dict[str, Any], replicated: set[str]
+) -> list[str]:
+    """The sources ``plan`` reads LIVE: the DIRECT / API route's one source, or the ENGINE route's
+    sources (of ``sources_by_id``) the bound engine reads in place through its attach connector
+    and that are not in ``replicated`` — the sources whose tables this statement reads are put on
+    their replicas by the operator's settings (REQ-826/REQ-1141). The same classification
+    query_residency.ensure_resident lands by, so the two never disagree."""
     from provisa.federation.strategy import engine_attaches
     from provisa.transpiler.router import Route
 
@@ -299,9 +302,7 @@ def _live_source_ids(state: Any, plan: Any, sources_by_id: dict[str, Any]) -> li
     out: list[str] = []
     for sid in plan.sources:
         src = sources_by_id.get(sid)
-        if src is None:
-            continue
-        if src.prefer_materialized or src.load_protected:
+        if src is None or sid in replicated:
             continue
         if engine_attaches(engine, src.type.value):
             out.append(sid)
@@ -312,35 +313,36 @@ async def live_caps_for_plan(state: Any, plan: Any) -> tuple[str | None, list[tu
     """``(org, [(source_id, cap), ...])`` for the capped sources ``plan`` reads live (REQ-1909).
     Async only for the registry reads; the (blocking) acquisition is :func:`acquire`, run on the
     request's own thread, so a synchronous terminal resolves the caps on its loop and then waits
-    for permits on its own thread under the request's deadline."""
+    for permits on its own thread under the request's deadline.
+
+    A source is read live unless the tables of it that the statement reads (``plan.table_ids``)
+    are served from their replicas (``registry_view.operator_floor``, the floor routing applied
+    to this same statement)."""
     from provisa.core.request_context import current_org
-    from provisa.federation.registry_view import registered_sources, registered_tables
+    from provisa.federation.registry_view import operator_floor, registered_sources
 
     org_id = current_org.get(None)
     wanted = set(plan.sources) | ({plan.source_id} if plan.source_id else set())
-    sources = [s for s in await registered_sources(state) if s.id in wanted]
-    capped_sources = {s.id: s for s in sources if s.max_live_concurrency is not None}
+    capped_sources = {
+        s.id: s
+        for s in await registered_sources(state)
+        if s.id in wanted and s.max_live_concurrency is not None
+    }
     if not capped_sources:
         return org_id, []
-    # A table override of prefer_materialized / load_protected moves that source's read onto its
-    # replica for this query (the same resolution ensure_resident applies, REQ-826/REQ-1141).
-    from provisa.federation.query_residency import _resolves_to
-
-    tables_by_source: dict[str, list[Any]] = {}
-    for t in await registered_tables(state):
-        if t.source_id in capped_sources:
-            tables_by_source.setdefault(t.source_id, []).append(t)
-    effective = {}
-    for sid, src in capped_sources.items():
-        tbls = tables_by_source.get(sid, [])
-        effective[sid] = src.model_copy(
-            update={
-                "prefer_materialized": _resolves_to(src, tbls, "prefer_materialized"),
-                "load_protected": _resolves_to(src, tbls, "load_protected"),
-            }
-        )
-    live = _live_source_ids(state, plan, effective)
-    return org_id, [(sid, int(effective[sid].max_live_concurrency)) for sid in live]
+    caps = {
+        sid: s.max_live_concurrency
+        for sid, s in capped_sources.items()
+        if s.max_live_concurrency is not None
+    }
+    # A source is off the live path for this statement only when EVERY table of it the statement
+    # reads is on its replica: a statement that also reads one of its tables in place still holds
+    # the source's live permit.
+    unfloored = state.replica_routes.unfloored
+    read_in_place = {unfloored[t] for t in plan.table_ids if t in unfloored}
+    replicated = set(operator_floor(state, plan.table_ids)) - read_in_place
+    live = _live_source_ids(state, plan, capped_sources, replicated)
+    return org_id, [(sid, caps[sid]) for sid in live if sid in caps]
 
 
 def acquire_plan_permits(state: Any, plan: Any) -> LivePermits:
@@ -354,14 +356,19 @@ def acquire_plan_permits(state: Any, plan: Any) -> LivePermits:
 
 
 async def acquire_for_route(
-    state: Any, route: Any, source_id: str, sources: Iterable[str]
+    state: Any, route: Any, source_id: str, sources: Iterable[str], table_ids: Iterable[int]
 ) -> LivePermits:
     """Acquire permits for a read that has a route decision but no pipeline plan (GraphQL's field
     executor, the REST / JSON:API helper): the caps are resolved here, then acquired on this
-    request thread (REQ-1909)."""
+    request thread (REQ-1909). ``table_ids``: the registered tables the statement reads."""
     from types import SimpleNamespace
 
-    view = SimpleNamespace(route=route, source_id=source_id or "", sources=frozenset(sources))
+    view = SimpleNamespace(
+        route=route,
+        source_id=source_id or "",
+        sources=frozenset(sources),
+        table_ids=frozenset(table_ids),
+    )
     org_id, capped = await live_caps_for_plan(state, view)
     if not capped:
         return LivePermits(None, [])

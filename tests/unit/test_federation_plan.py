@@ -103,17 +103,17 @@ def test_prep_respects_per_source_staleness():
     assert [p.source_id for p in plan.prep] == ["a1"]  # only the stale one
 
 
-# ---- prefer_materialized override (REQ-826 extension) -----------------------
+# ---- replicate override (REQ-826 extension) -----------------------
 
 
-def test_prefer_materialized_forces_a_live_source_to_the_store():
+def test_replicate_forces_a_live_source_to_the_store():
     # Trino would reach postgres live (VIRTUAL); the override lands it into a postgres backend.
     pg = _src("pg", SourceType.postgresql)
     plan = build_execution_plan(
         [pg],
         build_trino_engine(),
         _always_stale,
-        prefer_materialized_of=lambda sid: sid == "pg",
+        replicated_of=lambda sid: sid == "pg",
         materialization_backend="postgresql",
     )
     assert [p.source_id for p in plan.prep] == ["pg"]
@@ -121,15 +121,15 @@ def test_prefer_materialized_forces_a_live_source_to_the_store():
     assert plan.route is Route.ENGINE  # no longer a single live source
 
 
-def test_prefer_materialized_without_a_backend_fails_loud():
+def test_replicate_without_a_backend_fails_loud():
     pg = _src("pg", SourceType.postgresql)
     with pytest.raises(InvalidMaterializationBackend):
         build_execution_plan(
-            [pg], build_trino_engine(), _never_stale, prefer_materialized_of=lambda _sid: True
+            [pg], build_trino_engine(), _never_stale, replicated_of=lambda _sid: True
         )
 
 
-def test_prefer_materialized_rejects_backend_engine_cannot_read_back():
+def test_replicate_rejects_backend_engine_cannot_read_back():
     # Trino has no ATTACH connector for a raw-file backend → land-into-land regress.
     pg = _src("pg", SourceType.postgresql)
     with pytest.raises(InvalidMaterializationBackend):
@@ -137,6 +137,6 @@ def test_prefer_materialized_rejects_backend_engine_cannot_read_back():
             [pg],
             build_trino_engine(),
             _never_stale,
-            prefer_materialized_of=lambda _sid: True,
+            replicated_of=lambda _sid: True,
             materialization_backend="csv",
         )

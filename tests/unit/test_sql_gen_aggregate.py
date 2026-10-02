@@ -135,6 +135,9 @@ class TestAggregate:
         assert q.root_field == "orders_aggregate"
         assert "COUNT(*)" in q.sql
         assert 'FROM "public"."orders"' in q.sql
+        # REQ-826: an aggregate carries the registered tables it reads, like any statement
+        assert q.table_ids and all(isinstance(t, int) for t in q.table_ids)
+        assert q.table_ids == frozenset({ctx.tables["orders"].table_id})
 
     def test_aggregate_sum_only_numeric(self, schema_and_ctx):
         """sum fields should only include numeric columns (amount), not varchar (region)."""

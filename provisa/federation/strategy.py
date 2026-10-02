@@ -146,14 +146,14 @@ def federate(
     source: Source,
     engine: FederationEngine,
     *,
-    prefer_materialized: bool = False,
+    replicated: bool = False,
     demand: PushdownDemand | None = None,
     estimate: Estimate | None = None,
 ) -> Strategy:
     """Resolve a source's federation strategy on the given engine (REQ-826).
 
-    ``prefer_materialized`` forces MATERIALIZED for a source that could federate live but is
-    deliberately cached for latency. A source the engine can neither attach/scan nor
+    ``replicated`` forces MATERIALIZED for a source that could federate live: the operator's
+    settings put the read on its replica (``replica_routing.table_floor``, REQ-826). A source the engine can neither attach/scan nor
     materialize is rejected as unreachable (REQ-841).
 
     ``demand`` + ``estimate`` enable COST-BASED promotion: a VIRTUAL/SCAN source whose
@@ -164,7 +164,7 @@ def federate(
     source_type = source.type.value
     connector = engine.connectors.get(source_type)
 
-    if connector is not None and not prefer_materialized:
+    if connector is not None and not replicated:
         modes = connector.reach_modes
         # A source the engine reads LIVE in place: a SCAN reach (file/object read as a view, no copy)
         # is Strategy.SCAN; an ATTACH reach (live DB) is Strategy.VIRTUAL. The connector's declared
@@ -184,11 +184,7 @@ def federate(
     # No connector (or forced): only materializable sources federate via the store — API/NoSQL/stream
     # feeds and the connector-pgwire-replica types (files/sharepoint/splunk read via their Calcite
     # pgwire server as generic postgres, then landed).
-    if (
-        prefer_materialized
-        or source_type in _MATERIALIZE_ONLY
-        or source_type in _CONNECTOR_PGWIRE_REPLICA
-    ):
+    if replicated or source_type in _MATERIALIZE_ONLY or source_type in _CONNECTOR_PGWIRE_REPLICA:
         return Strategy.MATERIALIZED
 
     raise UnreachableSource(engine.name, source_type)

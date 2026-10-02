@@ -35,6 +35,7 @@ from provisa.compiler.sql_types import (
     CompilationContext,
     CompiledQuery,
     JoinMeta,
+    StatementSources,
     TableMeta,
 )
 
@@ -214,7 +215,7 @@ def _build_nodes_subquery(
     use_catalog: bool,
     by_cols: list[str] | None = None,
     phys_by_cols: list[str] | None = None,
-) -> tuple[str | None, list[ColumnRef] | None, list, set[str]]:
+) -> tuple[str | None, list[ColumnRef] | None, list, StatementSources]:
     """Build the nodes sub-query SQL, columns, and params (or Nones when not requested).
 
     Scalar fields are emitted as plain columns; relationship fields are emitted as
@@ -229,7 +230,7 @@ def _build_nodes_subquery(
             nodes_sel = sel
             break
     if nodes_sel is None or nodes_sel.selection_set is None:
-        return None, None, [], set()
+        return None, None, [], StatementSources(table)  # no nodes: nothing beyond the root table
 
     has_rel = any(
         isinstance(s, FieldNode) and (table.type_name, s.name.value) in ctx.joins
@@ -237,7 +238,7 @@ def _build_nodes_subquery(
     )
     root_alias: str | None = "t0" if has_rel else None
     alias_counter = 1
-    sources: set[str] = {table.source_id}
+    sources = StatementSources(table)
     _vvals = ctx.virtual_columns.get(table.table_id)
 
     nodes_select_parts: list[str] = []
@@ -256,7 +257,7 @@ def _build_nodes_subquery(
             join_meta = ctx.joins[join_key]
             join_alias = f"t{alias_counter}"
             alias_counter += 1
-            sources.add(join_meta.target.source_id)
+            sources.add_table(join_meta.target)
             src_expr, tgt_expr = _resolve_join_src_tgt(
                 join_meta, root_alias, join_alias, ctx, table
             )
@@ -378,7 +379,7 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
     root_name = field_node.alias.value if field_node.alias else field_node.name.value
     table = ctx.tables[field_node.name.value]
     collector = ParamCollector()
-    sources: set[str] = {table.source_id}
+    sources = StatementSources(table)
 
     args: dict = {}
     if field_node.arguments:
@@ -556,7 +557,7 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
         by_cols=by_cols,
         phys_by_cols=phys_by_cols,
     )
-    sources |= nodes_sources
+    sources.merge(nodes_sources)
 
     return CompiledQuery(
         sql=sql,
@@ -564,7 +565,8 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
         root_field=root_name,
         canonical_field=field_node.name.value,
         columns=columns,
-        sources=sources,
+        sources=set(sources),
+        table_ids=frozenset(sources.table_ids),
         is_group_by=True,
         group_by_columns=list(by_cols),
         nodes_sql=nodes_sql,
@@ -583,7 +585,7 @@ def _compile_aggregate_field(  # REQ-196, REQ-197, REQ-198, REQ-199
     root_name = field_node.alias.value if field_node.alias else field_node.name.value
     table = ctx.tables[field_node.name.value]
     collector = ParamCollector()
-    sources: set[str] = {table.source_id}
+    sources = StatementSources(table)
 
     has_count, cols_by_func, metric_names, has_nodes = _collect_requested_agg_funcs(field_node)
 
@@ -667,7 +669,7 @@ def _compile_aggregate_field(  # REQ-196, REQ-197, REQ-198, REQ-199
         nodes_sql, nodes_columns, nodes_params, nodes_sources = _build_nodes_subquery(
             field_node, ref, args, ctx, table, variables, use_catalog
         )
-        sources |= nodes_sources
+        sources.merge(nodes_sources)
 
     return CompiledQuery(
         sql=sql,
@@ -675,7 +677,8 @@ def _compile_aggregate_field(  # REQ-196, REQ-197, REQ-198, REQ-199
         root_field=root_name,
         canonical_field=field_node.name.value,
         columns=columns,
-        sources=sources,
+        sources=set(sources),
+        table_ids=frozenset(sources.table_ids),
         nodes_sql=nodes_sql,
         nodes_columns=nodes_columns,
         nodes_params=nodes_params,

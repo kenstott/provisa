@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS sources (
     dialect       TEXT NOT NULL DEFAULT '',
     cache_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     cache_ttl     INTEGER,
-    prefer_materialized BOOLEAN NOT NULL DEFAULT FALSE,  -- force MATERIALIZED federation for this source's tables
+    replicate   INTEGER,  -- REQ-826: when this source's tables are served from replicas; NULL = global threshold, -1 never, N hot, 0 always
     load_protected BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-1141: scheduled-refresh-only; query path never pulls the source
     off_peak_window TEXT,  -- REQ-1141: "HH:MM-HH:MM" maintenance window for the scheduler; NULL = no window gate
     off_peak_tz   TEXT NOT NULL DEFAULT 'UTC',  -- REQ-1141: IANA zone the off_peak_window is evaluated in
@@ -118,7 +118,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     description TEXT,
     cache_ttl   INTEGER,
     role_ttl    JSONB NOT NULL DEFAULT '{}',  -- REQ-1907: role -> TTL seconds; effective = max(cache_ttl, role_ttl)
-    prefer_materialized BOOLEAN,  -- NULL = inherit source; overrides federation strategy to MATERIALIZED
+    replicate   INTEGER,  -- REQ-826: NULL = inherit source; -1 never, N > 0 once it passes N statements per interval, 0 always
     load_protected BOOLEAN,  -- REQ-1141: NULL = inherit source; overrides scheduled-refresh-only load protection
     off_peak_window TEXT,    -- REQ-1141: per-table "HH:MM-HH:MM" window override; NULL = inherit source
     off_peak_tz TEXT,        -- REQ-1141: per-table window zone override; NULL = inherit source
@@ -199,7 +199,6 @@ DO $$ BEGIN
         FROM registered_tables rt WHERE rt.id = tc.table_id AND tc.domain_id IS NULL;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_enabled BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
-    ALTER TABLE sources ADD COLUMN IF NOT EXISTS prefer_materialized BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS path TEXT;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS allowed_domains JSONB NOT NULL DEFAULT '[]';
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
@@ -210,7 +209,6 @@ DO $$ BEGIN
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cdc JSONB;  -- REQ-824: source-level CDC transport
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS change_signal TEXT NOT NULL DEFAULT 'ttl';  -- REQ-929
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
-    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS prefer_materialized BOOLEAN;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS watermark_column TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS change_signal TEXT;  -- REQ-929
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS probe_query TEXT;  -- REQ-929

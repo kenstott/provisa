@@ -49,7 +49,7 @@ def _source(source_id="s1", *, change_signal="ttl", type="openapi"):
         change_signal=change_signal,
         freshness_gate=False,
         cache_ttl=None,
-        prefer_materialized=False,
+        replicate=None,
         load_protected=False,
     )
 

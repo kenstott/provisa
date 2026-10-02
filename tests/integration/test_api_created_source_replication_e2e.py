@@ -161,7 +161,7 @@ def test_a_source_created_through_the_admin_api_is_replicated_and_read(databases
 
             # REQ-1907: a replicated table on the ttl change signal needs its landing TTL.
             _admin(srv, 'updateSourceCache(sourceId: "src", cacheEnabled: true, cacheTtl: 3600)')
-            _admin(srv, 'updateSourcePreferMaterialized(sourceId: "src", preferMaterialized: true)')
+            _admin(srv, 'updateSourceReplicate(sourceId: "src", replicate: 0)')
             replicated = _read(srv)
             assert replicated.status_code == 200, replicated.text
             assert sorted(replicated.json()["data"]["orders"], key=lambda r: r["id"]) == _ID_AMOUNT

@@ -113,7 +113,7 @@ def _state(*, ready=True):
             "columns": [_rcol("id", "bigint", pk=True)],
             "dq_contract": None,
             "role_ttl": {},  # REQ-1907
-            "prefer_materialized": None,
+            "replicate": None,
             "load_protected": None,
         }
     ]
@@ -217,7 +217,7 @@ async def test_registered_checker_table_carries_its_contract_to_the_loop(monkeyp
                 "columns": [_rcol("scan_id", "varchar", pk=True)],
                 "dq_contract": contract,
                 "role_ttl": {},  # REQ-1907
-                "prefer_materialized": None,
+                "replicate": None,
                 "load_protected": None,
             }
         ]

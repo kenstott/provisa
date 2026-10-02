@@ -108,7 +108,11 @@ def governed_table_scan_stream(
                 )
 
             run_on_connection_loop(_prep_residency())
-            run_on_connection_loop(ensure_resident(state, plan.sources, reader_role=plan.role_id))
+            run_on_connection_loop(
+                ensure_resident(
+                    state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids
+                )
+            )
             # REQ-1909: the permits ride the batch generator until the scan is fully pulled.
             permits = acquire_plan_permits(state, plan)
             schema, batch_gen = state.federation_engine.execute_engine_stream(plan.physical_sql, [])
@@ -212,7 +216,9 @@ def governed_table_scan_schema(
             )
 
         run_on_connection_loop(_prep_residency())
-        run_on_connection_loop(ensure_resident(state, plan.sources, reader_role=plan.role_id))
+        run_on_connection_loop(
+            ensure_resident(state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids)
+        )
         from provisa.federation.live_concurrency import acquire_plan_permits
 
         # REQ-1909: binding the probe reads the live source too; held only while it opens.

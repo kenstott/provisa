@@ -23,10 +23,10 @@ federation engine, which reads a replica of a replicated table), ``cache`` (the 
 ``api``. The value is written at ``provisa/pgwire/_pipeline.py`` and ``provisa/api/data/endpoint.py``
 from ``Route.<name>.lower()``.
 
-The setting is ``prefer_materialized`` in the working tree today (``update_source_prefer_materialized``
-and ``update_table_prefer_materialized`` in ``provisa/api/admin/schema_mutation.py``); REQ-826's
-2026-10-01 amendment renames it ``replicate`` (an integer: 0 Always, -1 Never, N > 0 Hot-N). The
-admin mutations are named in ``MUTATIONS``: a rename is one edit there.
+The setting is ``replicate`` (REQ-826; ``update_source_replicate`` and ``update_table_replicate``
+in ``provisa/api/admin/schema_mutation.py``): an integer — 0 Always, -1 Never, N > 0 Hot-N, not
+set = Default. The contract's ``replica`` is 0 and its ``live`` is -1, the two values whose route
+is certain. The admin mutations are named in ``MUTATIONS``.
 """
 
 from __future__ import annotations
@@ -76,8 +76,8 @@ ALWAYS_ENGINE_SOURCE_TYPES = frozenset(
 
 # the admin mutations that set the setting, and the introspection name that proves they exist
 MUTATIONS = {
-    "source": "updateSourcePreferMaterialized",
-    "table": "updateTablePreferMaterialized",
+    "source": "updateSourceReplicate",
+    "table": "updateTableReplicate",
     "source_cache": "updateSourceCache",
     "table_cache": "updateTableCache",
 }
@@ -108,8 +108,6 @@ def _is_replica(value: Any) -> bool | None:
     """The registry's setting as live (False) / replica (True); None: not set, inherit."""
     if value is None:
         return None
-    if isinstance(value, bool):
-        return value
     if value == 0:
         return True  # replicate = Always
     if value == -1:
@@ -117,12 +115,18 @@ def _is_replica(value: Any) -> bool | None:
     raise ReplicationError(f"replicate = {value} (Hot-N) is neither live nor replica")
 
 
+def _replicate_value(setting: str) -> int:
+    """The ``replicate`` value for a contract setting: ``replica`` is Always (0), ``live`` is
+    Never (-1) — the two values whose route does not depend on how busy the table is."""
+    return 0 if setting == "replica" else -1
+
+
 def _registry(resolved: lookup.Resolved, source: str, key: str) -> tuple[bool, int | None]:
     """The (is replica, TTL) the deployment holds for a table: its own value, else its source's."""
     names = resolved.tables[key]
     src = resolved.sources[source]
-    own = _is_replica(names.prefer_materialized)
-    replica = own if own is not None else bool(_is_replica(src["prefer_materialized"]))
+    own = _is_replica(names.replicate)
+    replica = own if own is not None else bool(_is_replica(src["replicate"]))
     ttl = names.cache_ttl if names.cache_ttl is not None else src["cache_ttl"]
     return replica, ttl
 
@@ -157,7 +161,7 @@ def require_declared_or_apply(
 
     A deployment is only touched when the run was told to set it (``apply``). The registry is not
     authoritative for a source the deployment's configuration file declares: the admin API reports
-    the stored value (the local run showed ``preferMaterialized`` false for a source whose config
+    the stored value (the local run showed ``replicate`` unset for a source whose config
     sets it true, while the router followed the config). So when the routes are verified from the
     audit log, which is authoritative, a difference is returned as a warning for the caller to print
     and the audit decides; without route verification nothing else would catch it and it raises."""
@@ -215,8 +219,8 @@ class AdminReplication:
         for want in MUTATIONS.values():
             if want not in names:
                 raise ReplicationError(
-                    f"the admin API has no {want} mutation (REQ-826 renames the setting to "
-                    "replicate): update MUTATIONS in replication.py"
+                    f"the admin API has no {want} mutation: the deployment predates the "
+                    "replicate setting (REQ-826), or MUTATIONS in replication.py is out of date"
                 )
         self._checked = True
 
@@ -231,14 +235,14 @@ class AdminReplication:
 
     # ---- the changes for a setting, and the ones that put it back
     def _source_changes(
-        self, sid: str, replica: bool, ttl: int | None, cache_enabled: bool
+        self, sid: str, replicate: int | None, ttl: int | None, cache_enabled: bool
     ) -> list[_Change]:
         return [
             _Change(
                 MUTATIONS["source"],
-                {"sourceId": sid, "value": replica},
-                "$sourceId: String!, $value: Boolean!",
-                "sourceId: $sourceId, preferMaterialized: $value",
+                {"sourceId": sid, "value": replicate},
+                "$sourceId: String!, $value: Int",
+                "sourceId: $sourceId, replicate: $value",
             ),
             _Change(
                 MUTATIONS["source_cache"],
@@ -248,13 +252,15 @@ class AdminReplication:
             ),
         ]
 
-    def _table_changes(self, table_id: int, replica: bool | None, ttl: int | None) -> list[_Change]:
+    def _table_changes(
+        self, table_id: int, replicate: int | None, ttl: int | None
+    ) -> list[_Change]:
         return [
             _Change(
                 MUTATIONS["table"],
-                {"tableId": table_id, "value": replica},
-                "$tableId: Int!, $value: Boolean",
-                "tableId: $tableId, preferMaterialized: $value",
+                {"tableId": table_id, "value": replicate},
+                "$tableId: Int!, $value: Int",
+                "tableId: $tableId, replicate: $value",
             ),
             _Change(
                 MUTATIONS["table_cache"],
@@ -273,17 +279,17 @@ class AdminReplication:
         try:
             for sid, src in setup.sources.items():
                 before = resolved.sources[sid]
-                prev_replica = bool(_is_replica(before["prefer_materialized"]))
                 want = src.replication
                 self._apply(
                     self._source_changes(
                         sid,
-                        want.setting == "replica",
+                        _replicate_value(want.setting),
                         want.ttl_seconds or None,
                         before["cache_enabled"],
                     ),
+                    # put back exactly what the registry held, whatever it was
                     self._source_changes(
-                        sid, prev_replica, before["cache_ttl"], before["cache_enabled"]
+                        sid, before["replicate"], before["cache_ttl"], before["cache_enabled"]
                     ),
                     undo,
                 )
@@ -299,11 +305,9 @@ class AdminReplication:
                     t = table.replication
                     self._apply(
                         self._table_changes(
-                            names.table_id, t.setting == "replica", t.ttl_seconds or None
+                            names.table_id, _replicate_value(t.setting), t.ttl_seconds or None
                         ),
-                        self._table_changes(
-                            names.table_id, _is_replica(names.prefer_materialized), names.cache_ttl
-                        ),
+                        self._table_changes(names.table_id, names.replicate, names.cache_ttl),
                         undo,
                     )
             yield

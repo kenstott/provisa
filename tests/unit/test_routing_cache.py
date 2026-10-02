@@ -28,6 +28,7 @@ from unittest.mock import patch
 
 from provisa.api.data.materialization import would_materialize_optimize
 from provisa.compiler.compiled_query_cache import CompiledQueryCache
+from provisa.federation.replica_address import ReplicaRoutes
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import CompilationContext
 from provisa.compiler.sql_types import TableMeta
@@ -98,7 +99,13 @@ def _state(hot_manager=None) -> SimpleNamespace:
         schema_boot_id="boot-1",
         schema_version=1,
         routing_cache=CompiledQueryCache(ttl_seconds=3600),
+        # as the schema build publishes it: no table is served from a replica (REQ-826)
+        replica_routes=ReplicaRoutes(),
     )
+
+
+# The registered tables the statement under test reads: ``orders`` (its id in ``_ctx``).
+_ORDERS_IDS = (1,)
 
 
 def _gov_ctx(ctx):
@@ -120,11 +127,15 @@ async def test_cache_hit_skips_optimize_and_route_recompute():
     sql = "SELECT * FROM sales.orders"
 
     with patch("provisa.pgwire._pipeline._optimize_and_route", wraps=_optimize_and_route) as m_opt:
-        r1 = await _optimize_and_route_cached(sql, sql, gov_ctx, ctx, state, "analyst")
+        r1 = await _optimize_and_route_cached(
+            sql, sql, gov_ctx, ctx, state, "analyst", table_ids=_ORDERS_IDS
+        )
         assert m_opt.await_count == 1
         assert r1[1].route == Route.DIRECT
 
-        r2 = await _optimize_and_route_cached(sql, sql, gov_ctx, ctx, state, "analyst")
+        r2 = await _optimize_and_route_cached(
+            sql, sql, gov_ctx, ctx, state, "analyst", table_ids=_ORDERS_IDS
+        )
         # The routing recompute (extract_sources/decide_route inside _optimize_and_route) must
         # not run again — this is what proves the cache actually short-circuited the work,
         # not merely returned an equal-looking result.
@@ -140,7 +151,9 @@ async def test_cache_populates_routing_cache_entry():
     state = _state()
     sql = "SELECT * FROM sales.orders"
     assert len(state.routing_cache) == 0
-    await _optimize_and_route_cached(sql, sql, gov_ctx, ctx, state, "analyst")
+    await _optimize_and_route_cached(
+        sql, sql, gov_ctx, ctx, state, "analyst", table_ids=_ORDERS_IDS
+    )
     assert len(state.routing_cache) == 1
 
 
@@ -156,13 +169,17 @@ async def test_schema_version_bump_invalidates_routing_cache():
     sql = "SELECT * FROM sales.orders"
 
     with patch("provisa.pgwire._pipeline._optimize_and_route", wraps=_optimize_and_route) as m_opt:
-        await _optimize_and_route_cached(sql, sql, gov_ctx, ctx, state, "analyst")
+        await _optimize_and_route_cached(
+            sql, sql, gov_ctx, ctx, state, "analyst", table_ids=_ORDERS_IDS
+        )
         assert m_opt.await_count == 1
 
         # Simulate a schema/RLS/role mutation: _rebuild_schemas_impl bumps schema_version.
         state.schema_version += 1
 
-        await _optimize_and_route_cached(sql, sql, gov_ctx, ctx, state, "analyst")
+        await _optimize_and_route_cached(
+            sql, sql, gov_ctx, ctx, state, "analyst", table_ids=_ORDERS_IDS
+        )
         # A new generation's key misses the old entry and must recompute, not serve the stale
         # generation's cached route.
         assert m_opt.await_count == 2
@@ -175,8 +192,12 @@ async def test_role_change_uses_a_different_cache_key():
     sql = "SELECT * FROM sales.orders"
 
     with patch("provisa.pgwire._pipeline._optimize_and_route", wraps=_optimize_and_route) as m_opt:
-        await _optimize_and_route_cached(sql, sql, gov_ctx, ctx, state, "analyst")
-        await _optimize_and_route_cached(sql, sql, gov_ctx, ctx, state, "modeler")
+        await _optimize_and_route_cached(
+            sql, sql, gov_ctx, ctx, state, "analyst", table_ids=_ORDERS_IDS
+        )
+        await _optimize_and_route_cached(
+            sql, sql, gov_ctx, ctx, state, "modeler", table_ids=_ORDERS_IDS
+        )
         assert m_opt.await_count == 2
 
 
@@ -199,7 +220,9 @@ async def test_hot_table_query_never_cached_and_route_tracks_live_state():
     # Call 1: table is NOT hot -> would_materialize_optimize is False for this call (no live
     # branch reachable) -> eligible for caching.
     assert would_materialize_optimize(sql, state) is False
-    r1 = await _optimize_and_route_cached(sql, sql, gov_ctx, ctx, state, "analyst")
+    r1 = await _optimize_and_route_cached(
+        sql, sql, gov_ctx, ctx, state, "analyst", table_ids=_ORDERS_IDS
+    )
     assert len(state.routing_cache) == 1
     assert r1[1].route == Route.DIRECT
 
@@ -208,7 +231,9 @@ async def test_hot_table_query_never_cached_and_route_tracks_live_state():
     assert would_materialize_optimize(sql, state) is True
 
     with patch("provisa.pgwire._pipeline._optimize_and_route", wraps=_optimize_and_route) as m_opt:
-        r2 = await _optimize_and_route_cached(sql, sql, gov_ctx, ctx, state, "analyst")
+        r2 = await _optimize_and_route_cached(
+            sql, sql, gov_ctx, ctx, state, "analyst", table_ids=_ORDERS_IDS
+        )
         # The live check caught the hot flip: the cache (populated by call 1, still within TTL)
         # must NOT have been consulted — _optimize_and_route ran the full, live path instead.
         assert m_opt.await_count == 1
@@ -224,6 +249,8 @@ async def test_hot_table_query_never_cached_and_route_tracks_live_state():
     # (proves the live re-check, not just "never cache once a hot table is seen anywhere").
     hot_mgr.hot.discard("orders")
     with patch("provisa.pgwire._pipeline._optimize_and_route", wraps=_optimize_and_route) as m_opt3:
-        r3 = await _optimize_and_route_cached(sql, sql, gov_ctx, ctx, state, "analyst")
+        r3 = await _optimize_and_route_cached(
+            sql, sql, gov_ctx, ctx, state, "analyst", table_ids=_ORDERS_IDS
+        )
         assert m_opt3.await_count == 0
     assert r3[1].route == r1[1].route == Route.DIRECT

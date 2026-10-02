@@ -64,6 +64,12 @@ class RegisteredNames:
         return f'"src"."public"."{table_name}"'
 
 
+async def no_promoted_tables(_conn) -> frozenset:
+    """Stands in for ``replica_state.promoted_keys`` on a faked control plane: no table has been
+    promoted. A test that fakes the registry read fakes this read of the same connection."""
+    return frozenset()
+
+
 class DsnEngine:
     """Minimal write-face stand-in for a non-embedded store: forwards to ``store_writer`` against a
     fixed DSN, mirroring ``EngineBackend``'s base-class default (the path every non-DuckDB engine

@@ -854,7 +854,9 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
                     resolved_params,
                     reader_role=plan.role_id,
                 )
-                await ensure_resident(state, plan.sources, reader_role=plan.role_id)
+                await ensure_resident(
+                    state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids
+                )
 
             # REQ-778: landing runs inside execution's error classification — a source that
             # cannot be landed (e.g. an unreachable broker) answers with the typed `error` field.

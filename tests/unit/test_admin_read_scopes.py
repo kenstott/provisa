@@ -64,6 +64,7 @@ _SOURCE = {
     "database": "sales",
     "username": "svc",
     "dialect": "postgresql",
+    "replicate": None,
     "path": "/data",
     "mapping": {"k": "v"},
     "federation_hints": {"warehouse": "w"},

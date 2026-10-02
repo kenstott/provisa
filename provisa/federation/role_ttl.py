@@ -43,21 +43,27 @@ def lands_from_config(
     *,
     materialize: bool,
     row_materialize: bool,
-    table_prefer_materialized: bool | None,
-    source_prefer_materialized: bool,
+    table_replicate: int | None,
+    source_replicate: int | None,
     table_load_protected: bool | None,
     source_load_protected: bool,
 ) -> bool:
-    """True when config alone guarantees the table lands: materialize, row_materialize, or a
-    resolved (table override, else source) prefer_materialized / load_protected. A table that
-    lands only because the bound engine cannot reach its source is not known until the read."""
-    prefer = (
-        table_prefer_materialized
-        if table_prefer_materialized is not None
-        else source_prefer_materialized
-    )
+    """True when the operator's settings say the table is replicated: materialize,
+    row_materialize, a source floored as a whole (its load_protected or ``replicate: 0`` — it has
+    no live attach, so every table of it is replica-served whatever the table says), or a
+    resolved (table's own, else source's) load_protected or ``replicate`` that names replication
+    — always (0) or once busy (N > 0) (``core.replicate.may_replicate``). Default (not set) and
+    Never (-1) do not: a table replicated only because the bound engine cannot read its source in
+    place is not known until the read."""
+    from provisa.core.replicate import floor_of, may_replicate
+
+    if materialize or row_materialize:
+        return True
+    if floor_of(source_replicate, bool(source_load_protected), promoted=False) is not None:
+        return True
+    replicate = table_replicate if table_replicate is not None else source_replicate
     protected = table_load_protected if table_load_protected is not None else source_load_protected
-    return bool(materialize or row_materialize or prefer or protected)
+    return may_replicate(replicate, bool(protected))
 
 
 def missing_landing_ttl(

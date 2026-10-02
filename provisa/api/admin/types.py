@@ -81,7 +81,7 @@ class SourceType:  # REQ-012
     dialect: str
     cache_enabled: bool
     cache_ttl: int | None
-    prefer_materialized: bool
+    replicate: int | None  # REQ-826: NULL = Default; -1 never, N hot, 0 always
     load_protected: bool = False  # REQ-1141: scheduled-refresh-only load protection
     off_peak_window: str | None = None  # REQ-1141: "HH:MM-HH:MM" maintenance window
     off_peak_tz: str = "UTC"  # REQ-1141: IANA zone for the window
@@ -272,7 +272,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     alias: str | None
     description: str | None
     cache_ttl: int | None
-    prefer_materialized: bool | None
+    replicate: int | None  # REQ-826: NULL = inherit source
     load_protected: bool | None  # REQ-1141: NULL = inherit source
     off_peak_window: str | None  # REQ-1141: per-table window override
     off_peak_tz: str | None  # REQ-1141: per-table window zone override
@@ -635,7 +635,7 @@ class SourceInput:  # REQ-012
     # create/update input as every other source field.
     cache_enabled: bool = True
     cache_ttl: int | None = None
-    prefer_materialized: bool = False  # REQ-826
+    replicate: int | None = None  # REQ-826: None = Default; -1 never, N hot, 0 always
     max_live_concurrency: int | None = None  # REQ-1909: None = no cap; else >= 1
     sentinel_path: str | None = None  # REQ-1148
     freshness_gate: bool = False  # REQ-860
