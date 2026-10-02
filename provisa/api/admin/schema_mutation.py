@@ -2955,11 +2955,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 params={"mv": mv_id},
             )
         try:
-            from provisa.mv.refresh import refresh_mv
+            from provisa.mv.refresh import refresh_failure, refresh_mv
 
             assert state.federation_engine is not None
             # REQ-879: coordinate the refresh across the fleet via the shared control-plane catalog.
             await refresh_mv(state.federation_engine, mv, state.mv_registry, store=state.tenant_db)
+            # refresh_mv records a failed refresh on the view and returns (it runs on the
+            # scheduler too, where there is nobody to raise to). The mutation answers the
+            # caller who asked: a failed refresh is reported as one, with the view's own error
+            # — the text the view list shows as its last error.
+            failure = refresh_failure(mv)
+            if failure is not None:
+                return MutationResult(success=False, message=failure)
             return MutationResult(
                 success=True,
                 message=f"MV {mv_id!r} refreshed",

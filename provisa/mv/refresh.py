@@ -803,6 +803,13 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
         log.exception("Failed to refresh MV %s", mv.id)
 
 
+def refresh_failure(mv: MVDefinition) -> str | None:
+    """Why ``mv``'s refresh did not leave it built, as recorded on the view — or None when it
+    did. :func:`refresh_mv` never raises; a caller that must answer for the refresh (the admin
+    mutation) reads the outcome here."""
+    return mv.last_error
+
+
 async def reclaim_removed_mvs(  # REQ-234
     engine,
     registry: MVRegistry,
