@@ -25,6 +25,7 @@ from tests.itest_stack import (
     COMPOSE_ARGS,
     acquire_stack_slot,
     reap_orphaned_projects,
+    reap_orphaned_server_processes,
     release_stack_slot,
 )
 from tests.otlp_receiver import start_discarding_receiver
@@ -558,6 +559,12 @@ class _DockerServiceManager:
         # those (and only those) so containers/memory are not leaked forever. A live sibling
         # session's project is never touched — that is the whole point of the per-session name.
         reap_orphaned_projects()
+
+        # The same for server processes: a session killed before teardown leaves its multi-worker
+        # launches running, and their workers keep dialing the dead session's Postgres port, which
+        # a later session may lease. Only processes reparented to init that carry the harness's
+        # own data directory are ended; a live session's launch has a living parent.
+        reap_orphaned_server_processes()
 
         # Per-session projects and ports make concurrent sessions independent of each other, but
         # they still share one Docker VM's memory. Where that memory holds only one stack this
