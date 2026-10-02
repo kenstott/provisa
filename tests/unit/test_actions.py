@@ -506,7 +506,6 @@ class TestWebhookApprovalGate:
 
         with (
             patch("provisa.api.app.state", fake_state),
-            patch("provisa.api.admin.actions_router._ensure_tables", new=AsyncMock()),
             patch("provisa.api.app._rebuild_schemas", new=AsyncMock()) as rebuild,
             patch(
                 "provisa.core.repositories.creation_request.create",
@@ -566,7 +565,6 @@ class TestWebhookApprovalGate:
 
         with (
             patch("provisa.api.app.state", fake_state),
-            patch.object(actions_router, "_ensure_tables", new=AsyncMock()),
             patch(
                 "provisa.core.repositories.creation_request.latest_status",
                 new=AsyncMock(return_value="pending"),

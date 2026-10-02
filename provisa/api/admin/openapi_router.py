@@ -79,7 +79,6 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
     """
     from provisa.openapi.loader import load_spec, parse_text
     from provisa.openapi.mapper import parse_spec
-    from provisa.api.admin.actions_router import _ensure_tables
     from provisa.api.app import state
 
     if spec_content:
@@ -98,8 +97,6 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
 
     if state.tenant_db is None:
         raise ApiError(503, "openapi.database_not_connected", "Database not connected")
-
-    await _ensure_tables(state.tenant_db)
 
     pool = state.tenant_db
     assert pool is not None
@@ -351,13 +348,11 @@ async def put_openapi_spec(source_id: str, request: Request):  # REQ-316, REQ-31
         raise ApiError(422, "openapi.invalid_json", f"Invalid JSON: {exc}", error=str(exc)) from exc
 
     from provisa.openapi.register import auto_register_openapi_source
-    from provisa.api.admin.actions_router import _ensure_tables
 
     if state.tenant_db is None:
         raise ApiError(503, "openapi.database_not_connected", "Database not connected")
 
     put_pool = state.tenant_db
-    await _ensure_tables(put_pool)
 
     specs = getattr(state, "openapi_specs", {})
     existing = specs.get(source_id, {})

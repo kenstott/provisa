@@ -67,7 +67,6 @@ async def test_graphql_native_filter_columns_carry_the_argument_type(monkeypatch
         return 1
 
     monkeypatch.setattr("provisa.core.repositories.table.upsert", _capture)
-    monkeypatch.setattr("provisa.api.admin.actions_router._ensure_tables", AsyncMock())
 
     tables = [
         {

@@ -208,6 +208,10 @@ _DEMONSTRATED_ROLES: dict[str, list[str]] = {
 
 _SCHEMA_NAME = re.compile(r"^[A-Za-z0-9_]+$")
 
+# The advisory lock every creator of control-plane tables holds: schema.sql (init_schema), the
+# audit initializer, and the metadata reconcile (add_missing_columns).
+SCHEMA_LOCK_KEY = 7337
+
 
 def _validate_schema_name(schema: str) -> None:
     if not _SCHEMA_NAME.match(schema):
@@ -262,6 +266,14 @@ def add_missing_columns(sync_conn, tables, schema: str | None = None) -> None:
     from sqlalchemy import inspect as _inspect
 
     postgres = sync_conn.dialect.name == "postgresql"
+    if postgres:
+        # One reconcile at a time, and never beside schema.sql (init_schema holds the same key
+        # while it runs): a newly provisioned org is initialized by its provisioning AND by the
+        # first request that reaches it, and two transactions that each find a table missing
+        # both CREATE it — the second fails on the catalog's unique index. Taken before the
+        # inspection below, held to this transaction's end, so the second sees what the first
+        # created.
+        sync_conn.exec_driver_sql(f"SELECT pg_advisory_xact_lock({SCHEMA_LOCK_KEY})")
     if schema and postgres:
         _validate_schema_name(schema)
         # Transaction-scoped: nothing of it stays on the pooled connection.
@@ -368,7 +380,7 @@ async def init_schema(
     async with pool.acquire() as conn:
         # This branch is PostgreSQL-only (non-PG returned above); the advisory lock is taken through
         # the abstraction so no PG-specific lock SQL appears here.
-        async with conn.advisory_lock(7337):
+        async with conn.advisory_lock(SCHEMA_LOCK_KEY):
             await conn.execute_core(CreateSchema(schema_name, if_not_exists=True))
             await conn.execute_core(
                 CreateSchema(org_schema(org_id, env, "_mv_cache"), if_not_exists=True)

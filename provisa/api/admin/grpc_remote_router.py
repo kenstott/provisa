@@ -24,35 +24,17 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from provisa.api.errors import ApiError
-from provisa.core.schema_org import domains, provisa_sources, sources
+from provisa.core.schema_org import domains, sources
 from provisa.grpc_remote.executor import open_channel
 from provisa.api.admin.capabilities import require_capability_request
 
-if TYPE_CHECKING:
-    from provisa.core.database import Database
-
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/grpc-remote", tags=["admin", "grpc-remote"])
-
-
-async def _ensure_provisa_sources_table(pool: "Database") -> None:
-    """Create provisa_sources (schema_org.py) in the org's own schema — see that table's own
-    definition comment for why this exists at all. Mirrors actions_router._ensure_tables'
-    enter-org-schema-then-create_all pattern exactly, scoped to just this one table."""
-    from sqlalchemy import text
-
-    from provisa.core.schema_org import metadata
-
-    with pool.engine.begin() as conn:
-        if pool.search_path and (sql := pool.capabilities.enter_org_sql(pool.search_path)):
-            conn.execute(text(sql))
-        metadata.create_all(conn, tables=[provisa_sources])
 
 
 class GrpcRemoteRegisterRequest(BaseModel):
@@ -90,7 +72,6 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
     from provisa.grpc_remote.loader import load_proto, compile_proto_stubs
     from provisa.grpc_remote.mapper import map_proto
     from provisa.grpc_remote.executor import load_stubs
-    from provisa.api.admin.actions_router import _ensure_tables
 
     proto_dict = await load_proto(proto_path, import_paths=import_paths or None)
 
@@ -168,9 +149,6 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
         )
         if domain_id:
             await conn.upsert(domains, {"id": domain_id}, index_elements=["id"], update_columns=[])
-
-    await _ensure_tables(state.tenant_db)
-    await _ensure_provisa_sources_table(state.tenant_db)
 
     async with state.tenant_db.acquire() as conn:
         n_tables, n_mutations = await _register_schema(
@@ -526,7 +504,6 @@ async def put_grpc_proto(source_id: str, request: Request):  # REQ-329
     from provisa.grpc_remote.loader import compile_proto_stubs, parse_proto_text
     from provisa.grpc_remote.mapper import map_proto
     from provisa.grpc_remote.executor import load_stubs
-    from provisa.api.admin.actions_router import _ensure_tables
 
     try:
         pb2_path, pb2_grpc_path = compile_proto_stubs(
@@ -553,8 +530,6 @@ async def put_grpc_proto(source_id: str, request: Request):  # REQ-329
 
     if state.tenant_db is None:
         raise ApiError(503, "grpc_remote.database_not_connected", "Database not connected")
-
-    await _ensure_tables(state.tenant_db)
 
     async with state.tenant_db.acquire() as conn:
         n_tables, n_mutations = await _register_schema(

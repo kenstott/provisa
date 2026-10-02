@@ -1261,12 +1261,10 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
 ) -> tuple[list[dict], list[dict]]:
     """Load tracked functions and webhooks from DB; populate state.tracked_functions/webhooks."""
     from provisa.api.app import state
-    from provisa.api.admin.actions_router import _ensure_tables
 
     assert state.tenant_db is not None, (
         "tenant_db must be initialized before loading tracked functions"
     )
-    await _ensure_tables(state.tenant_db)
 
     from provisa.discovery.catalog_cache import ensure_table as _ensure_catalog_cache
 

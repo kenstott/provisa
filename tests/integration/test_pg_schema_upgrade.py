@@ -247,3 +247,38 @@ async def test_the_catalog_cache_table_is_created_in_the_schema_its_readers_use(
     await write_cache(db, "src", "public", [CachedTable("public", "orders", ["id"], None)])
     cached = await read_cache(db, "src", "public")
     assert cached is not None and [t.table_name for t in cached] == ["orders"]
+
+
+async def test_two_starts_reconciling_one_org_schema_at_once_both_succeed(own_database):
+    """A newly provisioned org is initialized by its provisioning and by the first request that
+    reaches it, at once. The second reconcile starts while the first has created the missing
+    tables and not yet committed: it must wait and then find them, not create them again."""
+    import threading
+
+    from provisa.core import schema_org
+
+    db = own_database
+    await init_schema(db, _SCHEMA_SQL, org_id=_ORG)
+    with db.engine.begin() as conn:
+        conn.exec_driver_sql(f'DROP TABLE "{_SCHEMA}".provisa_sources')
+
+    tables = schema_org.metadata.sorted_tables
+    second: list[BaseException | str] = []
+
+    def _second_start() -> None:
+        try:
+            with db.engine.begin() as conn:
+                add_missing_columns(conn, tables, _SCHEMA)
+            second.append("done")
+        except BaseException as exc:  # asserted on below
+            second.append(exc)
+
+    with db.engine.begin() as first:
+        add_missing_columns(first, tables, _SCHEMA)  # provisa_sources created, not committed
+        other = threading.Thread(target=_second_start)
+        other.start()
+        other.join(1.5)
+        assert other.is_alive()  # waiting for the first, not creating beside it
+    other.join(30)
+    assert second == ["done"], second
+    assert _tables_by_schema(db, ["provisa_sources"]) == {(_SCHEMA, "provisa_sources")}

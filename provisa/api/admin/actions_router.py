@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
@@ -27,26 +26,8 @@ from provisa.api.errors import ApiError
 from provisa.core.schema_org import tracked_functions, tracked_webhooks
 from provisa.api.admin.capabilities import require_capability_request
 
-if TYPE_CHECKING:
-    from provisa.core.database import Database
-
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/actions", tags=["admin", "actions"])
-
-
-async def _ensure_tables(pool: "Database") -> None:
-    """Create the tracked-function/webhook tables via portable SQLAlchemy metadata, in the org's
-    own schema. A raw engine connection carries no search_path, so without entering the org's
-    schema the tables landed in ``public`` -- unnoticed until tracked_functions gained its FOREIGN
-    KEY to data_products, which lives only in the org schema."""
-    from sqlalchemy import text
-
-    from provisa.core.schema_org import metadata
-
-    with pool.engine.begin() as conn:
-        if pool.search_path and (sql := pool.capabilities.enter_org_sql(pool.search_path)):
-            conn.execute(text(sql))
-        metadata.create_all(conn, tables=[tracked_functions, tracked_webhooks])
 
 
 def _args_to_ui(raw: list[dict] | None) -> list[dict]:
@@ -123,8 +104,6 @@ async def list_actions(request: Request):  # REQ-205, REQ-209
 
     if state.tenant_db is None:
         raise ApiError(503, "actions.database_not_connected", "Database not connected")
-
-    await _ensure_tables(state.tenant_db)
 
     from provisa.core.repositories import creation_request as cr_repo
 
@@ -203,8 +182,6 @@ async def create_function(
     if state.tenant_db is None:
         raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
-    await _ensure_tables(state.tenant_db)
-
     func = Function(
         name=body.name,
         source_id=body.sourceId,
@@ -250,8 +227,6 @@ async def update_function(
 
     if state.tenant_db is None:
         raise ApiError(503, "actions.database_not_connected", "Database not connected")
-
-    await _ensure_tables(state.tenant_db)
 
     from provisa.core.repositories import data_product as data_product_repo
 
@@ -316,8 +291,6 @@ async def delete_function(request: Request, name: str):  # REQ-205, REQ-253
     if state.tenant_db is None:
         raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
-    await _ensure_tables(state.tenant_db)
-
     async with state.tenant_db.acquire() as conn:
         result = await conn.execute_core(
             _delete(tracked_functions).where(tracked_functions.c.name == name)
@@ -343,8 +316,6 @@ async def create_webhook(
 
     if state.tenant_db is None:
         raise ApiError(503, "actions.database_not_connected", "Database not connected")
-
-    await _ensure_tables(state.tenant_db)
 
     from provisa.core.repositories import creation_request as cr_repo
 
@@ -417,8 +388,6 @@ async def update_webhook(request: Request, name: str, body: WebhookInput):  # RE
     if state.tenant_db is None:
         raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
-    await _ensure_tables(state.tenant_db)
-
     async with state.tenant_db.acquire() as conn:
         result = await conn.execute_core(
             update(tracked_webhooks)
@@ -456,8 +425,6 @@ async def delete_webhook(request: Request, name: str):  # REQ-209, REQ-253
 
     if state.tenant_db is None:
         raise ApiError(503, "actions.database_not_connected", "Database not connected")
-
-    await _ensure_tables(state.tenant_db)
 
     async with state.tenant_db.acquire() as conn:
         result = await conn.execute_core(
@@ -575,8 +542,6 @@ async def test_action(request: Request, body: TestActionInput):  # REQ-004, REQ-
 
     if state.tenant_db is None:
         raise ApiError(503, "actions.database_not_connected", "Database not connected")
-
-    await _ensure_tables(state.tenant_db)
 
     if body.actionType == "function":
         fn_def = state.tracked_functions.get(body.name)

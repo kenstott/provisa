@@ -129,9 +129,7 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
     """Write discovered GraphQL tables into registered_tables with descriptions."""
     from provisa.core.models import Column, Table
     from provisa.core.repositories import table as table_repo
-    from provisa.api.admin.actions_router import _ensure_tables
 
-    await _ensure_tables(tenant_db)
     from provisa.compiler.naming import apply_sql_name
 
     async with tenant_db.acquire() as conn:
