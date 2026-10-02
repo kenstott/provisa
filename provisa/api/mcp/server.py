@@ -151,6 +151,24 @@ def resolve_token_role(token: str, state: Any) -> str:
     return asyncio.run(_resolve_token_role_async(token, state))
 
 
+def named_role(named: str) -> str:  # REQ-273, REQ-1105
+    """A role NAMED IN A TOOL CALL — or PermissionError when the caller does not hold it.
+
+    Remote HTTP: naming a role in a tool call is the same act as naming one in the role header,
+    and follows the same rule — the token's principal must hold it. The role the token itself
+    maps to always qualifies. stdio has no principal: the operator pinned the process's role and a
+    local client names roles at will.
+    """
+    identity = _request_identity.get()
+    if identity is not None:
+        from provisa.security.rights import role_ids_from_claims
+
+        held = role_ids_from_claims(getattr(identity, "roles", None) or ())
+        if named != _request_role.get() and named not in held:
+            raise PermissionError(f"Role {named!r} is not assigned to this user")
+    return named
+
+
 def _pinned_stdio_role() -> str:
     """The role for local stdio calls. Must be explicitly configured via
     PROVISA_MCP_ROLE — there is no admin default."""
@@ -234,7 +252,7 @@ def build_mcp_server(state: Any):
 
     def _role(role: str | None) -> str:
         if role and str(role).strip():
-            return str(role).strip()
+            return named_role(str(role).strip())
         # Remote HTTP: the transport middleware resolved the bearer token to a role for this
         # request (REQ-1105); prefer it over any ambient stdio role.
         req_role = _request_role.get()

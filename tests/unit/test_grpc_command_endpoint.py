@@ -27,8 +27,12 @@ from provisa.api.data.endpoint_grpc_proxy import grpc_command, grpc_commands
 
 
 class _FakeRequest:
+    """A request as a router mounted without the auth middleware sees it: no identity on its
+    state, so the role in the path is taken as given (``acting_role.held_role``)."""
+
     def __init__(self, body: dict):
         self._body = body
+        self.state = SimpleNamespace()
 
     async def json(self):
         return self._body
@@ -78,7 +82,7 @@ def _patch_state(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_commands_list_dedupes_and_filters_by_visibility():
-    out = await grpc_commands("admin")
+    out = await grpc_commands("admin", _req({}))
     names = [c["name"] for c in out]
     assert names.count("random_grpc_set") == 1  # deduped despite the prefixed alias
     assert "random_python_set" in names
@@ -87,7 +91,7 @@ async def test_commands_list_dedupes_and_filters_by_visibility():
 
 @pytest.mark.asyncio
 async def test_commands_list_reports_arguments():
-    out = await grpc_commands("admin")
+    out = await grpc_commands("admin", _req({}))
     py = next(c for c in out if c["name"] == "random_python_set")
     assert py["arguments"] == [
         {"name": "rows", "type": "Int"},

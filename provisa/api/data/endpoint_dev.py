@@ -58,12 +58,16 @@ def _resolve_role_id(raw_request: Request, x_provisa_role: str | None, body: Bas
 
 
 @router.get("/proto/{role_id}")
-async def proto_endpoint(role_id: str, domains: str = ""):  # REQ-525
+async def proto_endpoint(role_id: str, request: Request, domains: str = ""):  # REQ-525
     """Return the .proto file content for a role as text/plain.
 
-    Pass ?domains=a,b to restrict to specific domains.
+    Pass ?domains=a,b to restrict to specific domains. The role in the path is one the caller
+    holds (``acting_role.held_role``).
     """
+    from provisa.api.acting_role import held_role
     from provisa.api.app import state
+
+    role_id = held_role(request, role_id)
     from provisa.grpc.proto_gen import generate_proto
 
     domain_list = [d for d in domains.split(",") if d and d != "all"]

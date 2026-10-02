@@ -27,6 +27,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from provisa.api.acting_role import held_role
 from provisa.api.errors import ApiError
 from provisa.grpc.query_ir import (
     AGG_FUNCS,
@@ -77,7 +78,7 @@ def _filter_object(body: dict) -> dict | None:
 
 
 @router.get("/grpc-commands/{role_id}")
-async def grpc_commands(role_id: str):  # REQ-1156
+async def grpc_commands(role_id: str, request: Request):  # REQ-1156
     """List role-visible registered commands (tracked functions) for the gRPC Explorer.
 
     The gRPC surface exposes every command through the single generic ``CallCommand`` RPC, so
@@ -86,6 +87,7 @@ async def grpc_commands(role_id: str):  # REQ-1156
     """
     from provisa.api.app import state
 
+    role_id = held_role(request, role_id)
     fns = getattr(state, "tracked_functions", {}) or {}
     from provisa.security.rights import reaches_all_domains, require_role
 
@@ -132,6 +134,7 @@ async def grpc_command(role_id: str, request: Request):  # REQ-1156
     from provisa.api.app import state
     from provisa.api.data.action_exec import invoke_tracked_function
 
+    role_id = held_role(request, role_id)  # the command runs AS this role: one the caller holds
     body = await request.json()
     name = body.get("name")
     if not name:
@@ -167,7 +170,7 @@ async def grpc_command(role_id: str, request: Request):  # REQ-1156
 
 
 @router.get("/grpc-group-by-columns/{role_id}/{type_name}")
-async def grpc_group_by_columns(role_id: str, type_name: str):  # REQ-1361
+async def grpc_group_by_columns(role_id: str, type_name: str, request: Request):  # REQ-1361
     """List the columns valid in a Query{Type}GroupBy request's ``by`` argument, and (REQ-1882)
     the same table's aggregate-eligible columns for a GroupBy/Aggregate request's ``columns``
     picker — both draw from ``ctx.aggregate_columns``, the identical universe
@@ -183,6 +186,7 @@ async def grpc_group_by_columns(role_id: str, type_name: str):  # REQ-1361
     from provisa.api.app import state
     from provisa.grpc.query_ir import _find_table_meta
 
+    role_id = held_role(request, role_id)
     if role_id not in state.schemas:
         raise ApiError(
             404, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id
@@ -212,7 +216,9 @@ async def grpc_group_by_columns(role_id: str, type_name: str):  # REQ-1361
 
 
 @router.get("/jsonapi-group-by-columns/{role_id}/{domain_id}/{table_name}")
-async def jsonapi_group_by_columns(role_id: str, domain_id: str, table_name: str):  # REQ-1361
+async def jsonapi_group_by_columns(
+    role_id: str, domain_id: str, table_name: str, request: Request
+):  # REQ-1361
     """List the columns valid in a JSON:API ``?groupBy=`` request for this table.
 
     Same rationale as ``grpc_group_by_columns``: the ``{Type}DistinctOnColumn`` enum is the
@@ -222,6 +228,7 @@ async def jsonapi_group_by_columns(role_id: str, domain_id: str, table_name: str
 
     from provisa.api.app import state
 
+    role_id = held_role(request, role_id)
     if role_id not in state.schemas:
         raise ApiError(
             404, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id

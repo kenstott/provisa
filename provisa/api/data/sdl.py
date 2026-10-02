@@ -140,14 +140,18 @@ async def get_schema_version():  # REQ-537
 
 
 @router.get("/data/domains")
-async def get_domains(request: Request, x_role: str = Header(None, alias="X-Role")):  # REQ-471
+async def get_domains(  # REQ-471
+    request: Request,
+    x_provisa_role: str = Header(None, alias="X-Provisa-Role"),
+    x_role: str = Header(None, alias="X-Role"),
+):
     """Return domain IDs accessible to the requesting role."""
+    from provisa.api.acting_role import header_role
     from provisa.api.app import state
 
-    auth_role = getattr(request.state, "role", None)
-    role_id = auth_role or x_role
+    role_id = header_role(request, x_provisa_role, x_role)
     if role_id is None:
-        raise ApiError(422, "data.missing_x_role_header", "Missing X-Role header")
+        raise ApiError(422, "data.missing_x_provisa_role_header", "Missing X-Provisa-Role header")
     role = state.roles.get(role_id)
     if role is None:
         raise ApiError(404, "data.no_role", f"No role {role_id!r}", role_id=role_id)
@@ -165,16 +169,17 @@ async def get_domains(request: Request, x_role: str = Header(None, alias="X-Role
 @router.get("/data/sdl", response_class=PlainTextResponse)
 async def get_sdl(  # REQ-039, REQ-363
     request: Request,
-    x_role: str = Header(None, alias="X-Role"),
+    x_provisa_role: str = Header(None, alias="X-Provisa-Role"),
     domain: str | None = Query(None),
+    x_role: str = Header(None, alias="X-Role"),
 ):
     """Return the GraphQL SDL for the requesting role's schema, optionally filtered to a domain."""
+    from provisa.api.acting_role import header_role
     from provisa.api.app import state
 
-    auth_role = getattr(request.state, "role", None)
-    role_id = auth_role or x_role
+    role_id = header_role(request, x_provisa_role, x_role)
     if role_id is None:
-        raise ApiError(422, "data.missing_x_role_header", "Missing X-Role header")
+        raise ApiError(422, "data.missing_x_provisa_role_header", "Missing X-Provisa-Role header")
 
     domain_list = [d for d in (domain or "").split(",") if d and d != "all"]
     if domain_list:
@@ -238,14 +243,15 @@ fragment TypeRef on __Type {
 @router.get("/data/introspection")
 async def get_introspection(  # REQ-039, REQ-363
     request: Request,
-    x_role: str = Header(None, alias="X-Provisa-Role"),
+    x_provisa_role: str = Header(None, alias="X-Provisa-Role"),
     domain: str | None = Query(None),
+    x_role: str = Header(None, alias="X-Role"),
 ):
     """Return GraphQL introspection JSON, optionally filtered to a domain + reachable tables."""
+    from provisa.api.acting_role import header_role
     from provisa.api.app import state
 
-    auth_role = getattr(request.state, "role", None)
-    role_id = auth_role or x_role
+    role_id = header_role(request, x_provisa_role, x_role)
     if role_id is None:
         raise ApiError(422, "data.missing_x_provisa_role_header", "Missing X-Provisa-Role header")
 

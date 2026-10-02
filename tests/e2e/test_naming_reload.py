@@ -41,8 +41,8 @@ async def client():
             yield c
 
 
-async def _get_sdl(client: AsyncClient, role: str = "admin") -> str:
-    resp = await client.get("/data/sdl", headers={"X-Role": role})
+async def _get_sdl(client: AsyncClient, role: str = "org_admin") -> str:
+    resp = await client.get("/data/sdl", headers={"X-Provisa-Role": role})
     assert resp.status_code == 200
     return resp.text
 
@@ -132,7 +132,7 @@ class TestNamingConventionReload:
         """Convention change updates schema for every role, not just admin."""
         await _set_gql_naming_convention(client, "apollo_graphql")
 
-        sdl_admin = await _get_sdl(client, role="admin")
+        sdl_admin = await _get_sdl(client, role="org_admin")
         sdl_analyst = await _get_sdl(client, role="analyst")
 
         from graphql import build_schema
