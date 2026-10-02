@@ -345,13 +345,27 @@ class WorkerBoot:
         """Worker processes that logged the end of their startup."""
         return {int(p) for p in _READY_RE.findall(self.log_text())}
 
+    def _accepting(self) -> bool:
+        """Whether a connection to the launch's HTTP port is accepted."""
+        try:
+            socket.create_connection(("127.0.0.1", self.ports["http"]), timeout=1).close()
+        except OSError:
+            return False
+        return True
+
     def wait_all_ready(self, timeout: float = 600.0) -> float:
         """Seconds from launch until every worker has finished its startup (each worker's own
-        "worker ready" log line — independent of what /health reports)."""
+        "worker ready" log line — independent of what /health reports) AND the launch accepts
+        connections on its HTTP port.
+
+        The ready line is logged inside the application's startup. A single uvicorn process
+        binds its socket only after that startup has returned — after the line, the worker's
+        registration in the control plane and whatever else the loop runs first — so a request
+        sent the moment the line appears can be refused."""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             self._alive()
-            if len(self.ready_pids()) >= self.workers:
+            if len(self.ready_pids()) >= self.workers and self._accepting():
                 return time.monotonic() - self._started
             time.sleep(0.1)
         raise RuntimeError(
