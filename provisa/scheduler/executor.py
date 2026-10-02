@@ -39,7 +39,17 @@ if TYPE_CHECKING:
 # the deployment's and runs only in the worker that holds the scheduler lock.
 #   egress_drain — drains THIS process's in-memory egress counters into the meter.
 #   engine_watch — replaces THIS process's engine connection when it is dead.
-PER_WORKER_JOB_IDS = frozenset({"egress_drain", "engine_watch"})
+#   replica:builds — THIS process's replica build pass (REQ-1915): every node that does
+#                    background work builds, so capacity grows with nodes. One job per org
+#                    (``replica:builds:org_<id>``); the per-node, per-engine and per-replica locks
+#                    are what keep builds single, not the scheduler's holder.
+PER_WORKER_JOB_IDS = frozenset({"egress_drain", "engine_watch", "replica:builds"})
+
+
+def runs_in_every_worker(job_id: str) -> bool:
+    """Whether the job ``job_id`` runs in every worker, not only the scheduler's holder. An
+    org's copy of a job carries an ``:org_<id>`` suffix."""
+    return job_id.partition(":org_")[0] in PER_WORKER_JOB_IDS
 
 
 class BackgroundJobExecutor(BaseExecutor):
@@ -61,7 +71,7 @@ class BackgroundJobExecutor(BaseExecutor):
             # Asked here, on the background worker: the question is a control-plane statement,
             # and the process loop that submitted this job must not wait on one.
             holder = self._holder
-            if holder is not None and job.id not in PER_WORKER_JOB_IDS and not holder.holds():
+            if holder is not None and not runs_in_every_worker(job.id) and not holder.holds():
                 # Another worker holds the lock and runs this firing. Reported as a run with no
                 # events so the scheduler releases the job's instance slot.
                 self._run_job_success(job.id, [])

@@ -43,7 +43,7 @@ the requests that ask for its rows.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Protocol
@@ -188,6 +188,11 @@ def choose_method(source: SourceCaps, target: TargetCaps, engine: EngineCaps) ->
 
 # -- the job -----------------------------------------------------------------------------------
 
+#: The most Arrow data a streamed build writes, and holds as row objects, at once: a batch of
+#: wide rows is written in slices of this size. Measured: 65,536 rows of a 26-column table held
+#: as row objects were about 200 MB; 8 MiB of Arrow data is a few tens of MB as row objects.
+BATCH_BYTES = 8 * 1024 * 1024
+
 #: Called by a job as it copies: the rows copied so far.
 Progress = Callable[[int], Awaitable[None]]
 
@@ -246,6 +251,7 @@ class ReplicaJob:
         engine: _Engine,
         *,
         batch_rows: int,
+        batch_bytes: int = BATCH_BYTES,
         prior_hash: str | None,
     ) -> None:
         self.method = method
@@ -253,6 +259,7 @@ class ReplicaJob:
         self._target = target
         self._engine = engine
         self._batch_rows = batch_rows
+        self._batch_bytes = batch_bytes
         self._prior_hash = prior_hash
 
     async def run(self, progress: Progress) -> BuildOutcome:
@@ -265,7 +272,9 @@ class ReplicaJob:
 
     async def _stream(self, progress: Progress) -> BuildOutcome:
         """Stream the source into the build table a bounded batch at a time, then swap it in.
-        Only one batch is held at any moment; the content hash is accumulated as the batches
+        Only one batch is held at any moment, and a batch is bounded in rows AND in bytes: a
+        batch of wide rows is written in slices, so what the build holds as row objects does
+        not grow with the row width; the content hash is accumulated as the batches
         pass, and a copy whose hash equals the previous build's is discarded unswapped."""
         from provisa.events.content_hash import RowSetHash
 
@@ -275,12 +284,13 @@ class ReplicaJob:
         try:
             # Inside the try: a target that fails while opening is aborted like any other.
             await self._target.begin()
-            async for batch in self._source.batches(self._batch_rows):
-                rows = batch.to_pylist()
-                digest.update(rows)
-                await self._target.write(batch, rows)
-                copied += len(rows)
-                await progress(copied)
+            async for read in self._source.batches(self._batch_rows):
+                for batch in _within_bytes(read, self._batch_bytes):
+                    rows = batch.to_pylist()
+                    digest.update(rows)
+                    await self._target.write(batch, rows)
+                    copied += len(rows)
+                    await progress(copied)
             content_hash = digest.hexdigest()
             if content_hash == self._prior_hash:
                 return BuildOutcome(
@@ -298,12 +308,26 @@ class ReplicaJob:
         return BuildOutcome(rows_copied=copied, method=self.method.value, content_hash=content_hash)
 
 
+def _within_bytes(batch: "pa.RecordBatch", max_bytes: int) -> Iterator["pa.RecordBatch"]:
+    """``batch`` whole when it is within ``max_bytes`` of Arrow data, else in equal slices that
+    each are (by the batch's average row size). A slice is never empty: one row wider than the
+    bound is written alone."""
+    size = batch.nbytes
+    if size <= max_bytes or batch.num_rows <= 1:
+        yield batch
+        return
+    rows = max(1, batch.num_rows * max_bytes // size)
+    for start in range(0, batch.num_rows, rows):
+        yield batch.slice(start, rows)
+
+
 def data_replicator(
     source: Any,
     target: Any,
     engine: Any,
     *,
     batch_rows: int,
+    batch_bytes: int = BATCH_BYTES,
     prior_hash: str | None = None,
 ) -> ReplicaJob:
     """The job that builds one replica from ``source`` into ``target`` on ``engine``.
@@ -314,4 +338,12 @@ def data_replicator(
     a combination no method serves raises :class:`NoReplicationMethod`. ``prior_hash`` is the
     content hash of the replica's last build, when it has one."""
     method = choose_method(source.caps, target.caps, engine.caps)
-    return ReplicaJob(method, source, target, engine, batch_rows=batch_rows, prior_hash=prior_hash)
+    return ReplicaJob(
+        method,
+        source,
+        target,
+        engine,
+        batch_rows=batch_rows,
+        batch_bytes=batch_bytes,
+        prior_hash=prior_hash,
+    )

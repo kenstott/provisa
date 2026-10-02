@@ -8,33 +8,34 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The query path's residency prep (REQ-1661): a MATERIALIZED source a query reads is landed
-before the read when it has never landed or has gone stale.
+"""The query path's residency prep (REQ-1661, REQ-1915): a table a query reads from a
+whole-table replica has that replica built and fresh before the read.
 
-The event loop lands every materialized source at boot and refreshes it on its cadence. This is
-the other half of the same contract, for the query that arrives first: before the execute terminal
-runs a plan, each source the plan names is checked against the persisted node freshness state
-(the stamp the event loop's own lands write) and, when stale, landed through the engine's
-``materialize_pending`` -- the same loaders, landing address and store write face the event loop
-uses, so both paths converge on one replica.
+Replicas are built by the build runner (``replica_builds``), which every node that does
+background work runs; a build is requested when the model declares a replica. This module is
+the read's backstop for the query that arrives before a build has finished or after a replica
+has gone stale for its reader: before the execute terminal runs a plan, each table the
+statement reads from a replica is checked against its record in the state store
+(``replica_state``) and, when stale, its build is requested and the read waits on the record.
+A read never copies a table itself.
 
-Stale means: a table of the source the query reads has no refresh stamp (never landed), its last
-land failed, or its stamp has outrun THE READER's effective TTL on that table,
-max(cache_ttl, role_ttl(role)) (REQ-1907) -- each table against its own TTL, so readers with a
-larger tolerance serve the existing replica and never start a land. A source with
-``freshness_gate`` set is judged by its own predicate (REQ-860). A ``load_protected`` source lands
-here only when it has never landed (REQ-1141: the scheduler is its sole refresher).
+Stale means: the table has no completed build, its last build failed, or its replica has
+outrun THE READER's effective TTL on that table, max(cache_ttl, role_ttl(role)) (REQ-1907) —
+each table against its own TTL, so readers with a larger tolerance serve the existing replica
+and never ask for a build. A source with ``freshness_gate`` set is judged by its own predicate
+(REQ-860). A ``load_protected`` table is built on a read only when it has never been built
+(REQ-1141: the runner is its sole refresher).
 
-Concurrent stale reads of one source share one land: staleness is re-read from the persisted node
-state AFTER the per-node land locks are held, so a reader that queued behind another's land sees
-the fresh stamp and serves it instead of landing again (REQ-1907). The wait for the lock is an
-await inside the request's own coroutine, bounded by the request's deadline.
+Concurrent stale reads of one table share one build: the request is one conditional write in
+the state store, and every reader waits on the same record. The wait is an await inside the
+request's own coroutine, bounded by the request's deadline (``ReplicaBuilding``).
 
-A land that fails is stamped ``ok=False`` (so the next query retries it) and fails the query with
-its own cause; the query never reads the stale replica (REQ-1661, amended 2026-09-30).
+A build that fails is recorded on the replica and fails the query with the build's own cause;
+the query never reads what the failed build left (REQ-1661, amended 2026-09-30). A read does
+not ask again until ``replication.retry_interval`` has passed.
 """
 
-# Requirements: REQ-1661, REQ-860, REQ-855, REQ-1141, REQ-1907
+# Requirements: REQ-1661, REQ-860, REQ-855, REQ-1141, REQ-1907, REQ-1915
 
 from __future__ import annotations
 
@@ -45,64 +46,12 @@ from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from provisa.federation.replica_build import ReplicaBuilding
 
 log = logging.getLogger(__name__)
 
 
 def _node(schema_name: str, table_name: str) -> str:
     return f"{schema_name}.{table_name}"
-
-
-def _physical_node(backend: Any, state: Any, source: Any, table: Any) -> str:
-    """The lock key for ``land_lock`` — the address a land actually writes to, the table's replica
-    address (REQ-1912), not its registered name. ``events/boot.py``'s own poll-node wiring locks
-    on this same address (its ``land_schema``/``land_table``), and
-    ``EngineBackend.materialize_pending`` resolves the identical one right after this function's
-    caller acquires its lock — so the two lands ``land_lock``'s own docstring promises never
-    interleave key on the SAME string (REQ-1730: keyed on anything else, Oracle's REPLACE land
-    interleaved across two threads and landed every row twice)."""
-    address = backend.replica_address(
-        state, source_id=source.id, schema_name=table.schema_name, table_name=table.table_name
-    )
-    return _node(address.schema, address.table)
-
-
-def stale_sources(
-    sources: list[Any],
-    tables_by_source: dict[str, list[Any]],
-    states: dict[str, dict | None],
-) -> tuple[dict[str, float | None], dict[str, bool]]:
-    """Per source: its residency stamp (the oldest of its tables' stamps, None when any table has
-    never landed) and whether every table's last land succeeded. Pure."""
-    stamps: dict[str, float | None] = {}
-    oks: dict[str, bool] = {}
-    for source in sources:
-        tables = tables_by_source.get(source.id, [])
-        refreshed: list[float] = []
-        ok = True
-        for table in tables:
-            state = states.get(_node(table.schema_name, table.table_name))
-            at = state.get("last_refresh_at") if state else None
-            if at is None:
-                refreshed = []
-                break
-            refreshed.append(float(at))
-            ok = ok and bool(state.get("last_refresh_ok", True))  # type: ignore[union-attr]
-        stamps[source.id] = min(refreshed) if refreshed and tables else None
-        oks[source.id] = ok
-    return stamps, oks
-
-
-async def _node_states(db: Any, queue: Any, tables: list[Any]) -> dict[str, dict | None]:
-    """The persisted freshness state of each table's node (REQ-1661)."""
-    async with db.acquire() as conn:
-        return {
-            _node(t.schema_name, t.table_name): await queue.get_node_state(
-                conn, _node(t.schema_name, t.table_name)
-            )
-            for t in tables
-        }
 
 
 def _row_cache_ttls(table: Any, source: Any, reader_role: str | None) -> tuple[int, int]:
@@ -229,18 +178,28 @@ async def ensure_resident(
     reader_role: str | None,
     table_ids: Iterable[int],
 ) -> list[tuple[str, str]]:
-    """Land what a query reads and is not resident (REQ-1661). Returns the (source_id, table_name)
-    pairs landed. A no-op without an engine, config or tenant store, or when nothing is stale.
+    """Have every replica a query reads built and fresh before it reads (REQ-1661, REQ-1915).
+    Returns the (source_id, table_name) pairs it waited for. A no-op without an engine, config
+    or tenant store, or when every replica the statement reads is fresh for its reader.
+
+    This is the read's backstop, not where replicas are built: builds are requested when the
+    model declares a replica, and run by the build runner (``replica_builds``). A read that
+    finds a replica missing or stale for its reader asks for the build in the state store
+    (``replica_state.request_build``) and waits on the record until the build has completed —
+    it never copies a table on its own thread. A build that failed fails the read
+    (:class:`ReplicaBuildFailed`); it is asked for again only after
+    ``replication.retry_interval``. A read whose deadline passes while the build is still
+    running raises :class:`ReplicaBuilding`; the build goes on.
 
     ``table_ids`` are the registered tables the STATEMENT reads (REQ-826): only those are judged
-    and landed. A statement that reads one table of a source neither lands nor waits on the
-    source's other tables, and is not moved onto a replica by a setting on a table it does not read.
+    and waited for. A statement that reads one table of a source does not wait on the source's
+    other tables, and is not moved onto a replica by a setting on a table it does not read.
 
     ``reader_role`` is the governed role the query runs as (REQ-1907): staleness is judged against
     its effective TTL per table. None is a caller with no reader (it uses each table's cache_ttl).
 
     A table replicated ROW BY ROW (``_row_level``: the row_materialize flag on an engine that
-    cannot attach its source) is never landed here. Its rows are fetched by key —
+    cannot attach its source) has no whole-table replica and is never built here. Its rows are fetched by key —
     ``ensure_rows_resident`` for a key the statement binds, ``pushdown_row_materialize`` for a key
     a join supplies — and a statement that binds neither is refused at planning (REQ-1915,
     ``pgwire._pipeline._pk_bounds``), so no read reaches this function needing the whole table.
@@ -254,11 +213,9 @@ async def ensure_resident(
     if not wanted or engine is None or backend is None or config is None or db is None:
         return []
     from provisa.federation.registry_view import registered_sources, registered_tables
-    from provisa.federation.source_vault import org_vault
 
     # REQ-1674: the registry, not the config file — see registry_view.
-    _all_sources = await registered_sources(state)
-    sources = [s for s in _all_sources if s.id in wanted]
+    sources = [s for s in await registered_sources(state) if s.id in wanted]
     if not sources:
         return []
     from provisa.federation.strategy import engine_attaches
@@ -292,228 +249,179 @@ async def ensure_resident(
     replicated_by = {s.id: _replicated(state, tables_by_source.get(s.id, [])) for s in sources}
     protected_of = {s.id: _load_protected(s, tables_by_source.get(s.id, [])) for s in sources}
 
-    from provisa.events import queue
+    from provisa.core import request_deadline, settings_registry
+    from provisa.core.request_context import current_org
+    from provisa.federation import replica_builds, replica_state
+    from provisa.federation.replica_routing import live_while_building
+    from provisa.federation.replica_state_view import view_for
     from provisa.federation.role_ttl import require_landing_ttl
 
-    landed: list[tuple[str, str]] = []
-    from contextlib import AsyncExitStack
-
-    from provisa.federation.node_freshness_view import generation_of, view_for
-
-    view = view_for(state)
-    generation = generation_of(state)
-    loader: Any = None
-    # What a replicated source lands into: the engine's own store, or (Trino) the store it reads
-    # through its connector. The plan asks for it only for a source the operator's setting moves
-    # onto its replica (REQ-846), so the store is resolved only when one of these is.
+    # What a replicated source's replica is written into: the engine's own store, or (Trino) the
+    # store it reads through its connector. The plan asks for it only for a source the
+    # operator's setting moves onto its replica (REQ-846).
     _materialization_backend = (
         engine.engine.replica_store_backend()
         if any(replicated_by.values()) or any(protected_of.values())
         else None
     )
 
-    def _pending(source: Any, states: dict[str, dict | None] | None, now: float) -> bool:
-        """Whether a read of ``source`` must land something first, given its tables' freshness
-        ``states`` — None asks the question for the worst case (everything stale, nothing
-        resident), where False means this engine never lands the source at all. The same decision
-        the land below acts on (``EngineBackend.pending_lands``), taken without a lock or a store
-        read."""
-        tables = tables_by_source.get(source.id, [])
-        if states is None:
-            is_stale = lambda sid: True  # noqa: E731
-            stamps: dict[str, float | None] = {}
-        else:
-            stamps, _ = stale_sources([source], {source.id: tables}, states)
-            clock_stale = is_stale_of(
-                [source], {source.id: tables}, states, now, reader_role=reader_role
-            )
-            is_stale = lambda sid: clock_stale(sid) or backend.is_first_touch(sid)  # noqa: E731
+    def _plan(source: Any, is_stale: Any, resident_of: Any) -> bool:
+        """The residency plan's own decision for ``source`` (``EngineBackend.pending_lands``):
+        whether a read of it must have a replica built first."""
         return bool(
             backend.pending_lands(
                 [source],
                 is_stale=is_stale,
                 replicated_of=lambda sid: replicated_by[sid],
                 load_protected_of=lambda sid: protected_of[sid],
-                resident_of=(None if states is None else lambda sid: stamps.get(sid) is not None),
+                resident_of=resident_of,
                 materialization_backend=_materialization_backend,
                 # REQ-1907: a freshness_gate source's predicate is folded into ``is_stale`` (the
                 # TTL AND freshness gate); the plan must not re-decide it alone.
                 freshness_subject_of=None,
-                now=now,
+                now=time.time(),
             )
         )
 
+    _resolved_store: list[str] = []
+
+    def _store() -> str:
+        """The identity of the store this engine's replicas are in, resolved on first use: a
+        statement that reads no replica never asks."""
+        if not _resolved_store:
+            _resolved_store.append(replica_builds.store_identity(state))
+        return _resolved_store[0]
+
+    def _replicates(source: Any) -> bool:
+        """Whether this engine serves ``source`` from a replica for this statement at all —
+        asked for the worst case (nothing built). False: the engine reads it in place and no
+        replica, TTL or freshness gate applies to it (REQ-1907, amended 2026-09-30)."""
+        return _plan(source, lambda sid: True, None)
+
+    def _stale(source: Any, table: Any, record: Any) -> bool:
+        """Whether ``table``'s replica must be built before this read: it was never built, its
+        last build failed, or it is older than the reader's effective TTL and its freshness
+        check does not report it fresh (REQ-1907; the whole gate is ``is_stale_of``). The plan
+        applies the rest: a load-protected table that has a replica is never rebuilt by a read
+        (REQ-1141: its refresh is the runner's alone)."""
+        node = _node(table.schema_name, table.table_name)
+        state_ = _freshness_state(record, _store())
+        is_stale = is_stale_of(
+            [source], {source.id: [table]}, {node: state_}, time.time(), reader_role=reader_role
+        )
+        resident = state_ is not None and state_["last_refresh_at"] is not None
+        return _plan(source, is_stale, lambda sid: resident)
+
+    retry_interval = float(settings_registry.value("replication.retry_interval"))
+    org_id = current_org.get(None)
+    view = view_for(state)
+    waiting: list[tuple[Any, Any, replica_state.ReplicaKey]] = []
     for source in sources:
-        # REQ-1661 (amended 2026-10-01): the staleness decision is made in memory first. A source
-        # this engine reads in place never lands, whatever its state — no lock, no control-plane
-        # read. A landed source whose tables' freshness state is held in memory and says FRESH is
-        # left alone the same way. Only a STALE (or unknown) answer goes on to take the land locks
-        # and read the persisted state, which is the truth the land is decided on.
-        if not tables_by_source.get(source.id):
-            # Nothing of this source lands whole for this statement: its tables are read live
-            # through the engine's attach, or are replicated row by row.
+        tables = tables_by_source.get(source.id)
+        if not tables:
+            # Nothing of this source is served from a whole-table replica for this statement:
+            # its tables are read live through the engine's attach, or replicated row by row.
             continue
-        # REQ-1907 (amended 2026-09-30, direct attach is live): a source this engine reads in place
-        # has no replica — cache_ttl, role_ttl and the freshness gate do not apply to it.
-        if not _pending(source, None, time.time()):
+        if not _replicates(source):
             continue
-        # REQ-1907 (amended 2026-09-30): a ttl / ttl_probe table that lands with no table or source
-        # cache_ttl has no refresh clock — fail the read before any lock, land or refresh stamp.
-        for t in tables_by_source[source.id]:
+        # REQ-1907 (amended 2026-09-30): a ttl / ttl_probe table served from a replica with no
+        # table or source cache_ttl has no refresh clock — fail the read before anything else.
+        for t in tables:
             require_landing_ttl(t, source)
-        _nodes = [_node(t.schema_name, t.table_name) for t in tables_by_source.get(source.id, [])]
-        _held = view.states(generation, _nodes)
-        if _held is not None and not _pending(source, _held, time.time()):
-            continue
-        if loader is None:
-            # Built for the first source that may land — not for a read that lands nothing.
-            from provisa.events.app_wiring import (
-                build_adapter_loaders,
-                build_keyed_adapter_loaders,
-            )
-            from provisa.events.source_loader import SourceRowLoader
-
-            loader = SourceRowLoader(
-                engine,
-                adapter_loaders=build_adapter_loaders(state, engine),
-                keyed_adapter_loaders=build_keyed_adapter_loaders(state, engine),
-            )
-        # REQ-1695: the land dials sources — this one through its loader, and every registered
-        # one if the engine's attach walk runs — so the vault of the org they are registered in
-        # is bound here, where the refresh runs, not left to whichever path reached it.
-        async with org_vault(state, _all_sources):
-            # The same per-node locks the event loop's land takes, so the boot land and a first query
-            # never interleave on one replica; every node of the source is held for the source's land.
-            async with AsyncExitStack() as held:
-                for t in tables_by_source.get(source.id, []):
-                    await _hold_land_lock(held, _physical_node(backend, state, source, t))
-                # Staleness is judged with the locks held: a request that waited here for another
-                # request's land of the same table reads the stamp that land wrote and finds the table
-                # fresh, so one stale table is landed once, not once per waiting reader (REQ-1882,
-                # REQ-1907 single-flight).
-                source_tables = {source.id: tables_by_source.get(source.id, [])}
-                states = await _node_states(db, queue, source_tables[source.id])
-                view.read(generation, states)
-                now = time.time()
-                stamps, _ = stale_sources([source], source_tables, states)
-                try:
-                    # REQ-1907: the whole replication gate -- the reader's effective TTL AND the
-                    # table's freshness check (a freshness_gate source's own predicate included) --
-                    # is decided here, so the plan below consults only this oracle.
-                    clock_stale = is_stale_of(
-                        [source], source_tables, states, now, reader_role=reader_role
-                    )
-                    # REQ-1730: OR in this backend INSTANCE's own first-touch signal — see
-                    # EngineBackend._landed_this_process's own doc for why the persisted, per-NODE
-                    # freshness clock alone under-reports staleness for an engine with no live reach for
-                    # this source type (a genuine reboot onto an engine that has never held this row
-                    # reads as "fresh" purely because a DIFFERENT engine landed it recently).
-                    is_stale = lambda sid: clock_stale(sid) or backend.is_first_touch(sid)  # noqa: E731
-                    landed += await backend.materialize_pending(
-                        state,
-                        loader=loader,
-                        source_ids={source.id},
-                        is_stale=is_stale,
-                        replicated_of=lambda sid: replicated_by[sid],
-                        load_protected_of=lambda sid: protected_of[sid],
-                        resident_of=lambda sid: stamps.get(sid) is not None,
-                        # the engine's own store is what a replicated source's replica is written into
-                        materialization_backend=_materialization_backend,
-                        # REQ-1907: folded into ``is_stale`` above; not re-decided by the plan.
-                        freshness_subject_of=None,
-                        now=now,
-                        coordination=_BuildCoordination(db, queue, view, generation),
-                    )
-                    backend.mark_landed(source.id)
-                except ReplicaBuilding:
-                    # Not a failed land: the build is still running and will stamp the node itself.
-                    # Stamping it failed here would make the next read start over.
-                    raise
-                except Exception:  # noqa: BLE001 - the adapter's error type is its own; re-raised
-                    # REQ-1661 (amended 2026-09-30): a failed land fails the query -- it never reads
-                    # the stale replica. Stamp the nodes not ok first, so the next query retries.
-                    await _record_refresh(
-                        db,
-                        queue,
-                        [(source.id, t) for t in tables_by_source.get(source.id, [])],
-                        ok=False,
-                        seen=(view, generation),
-                    )
-                    raise
-                await _record_refresh(
-                    db,
-                    queue,
-                    [
-                        (sid, t)
-                        for sid, name in landed
-                        if sid == source.id
-                        for t in tables_by_source[sid]
-                        if t.table_name == name
-                    ],
-                    ok=True,
-                    seen=(view, generation),
-                )
-    if landed:
-        log.info("query residency: landed %s before the read", landed)
-    return landed
-
-
-class _BuildCoordination:
-    """What a replica build that outlives its request (``federation.replica_build``) needs from
-    the freshness state: whether another worker built the replica while this one waited for the
-    store's lock, and the stamp it writes itself when it finishes."""
-
-    def __init__(self, db: Any, queue: Any, view: Any, generation: Any) -> None:
-        self._db = db
-        self._queue = queue
-        self._seen = (view, generation)
-
-    async def built_since(self, source: Any, table: Any, since: float) -> bool:
-        del source
-        async with self._db.acquire() as conn:
-            state = await self._queue.get_node_state(
-                conn, _node(table.schema_name, table.table_name)
-            )
-        if state is None or not state.get("last_refresh_ok", True):
-            return False
-        at = state.get("last_refresh_at")
-        return at is not None and float(at) >= since
-
-    async def built(self, source: Any, table: Any) -> None:
-        await _record_refresh(self._db, self._queue, [(source.id, table)], ok=True, seen=self._seen)
-
-
-async def _hold_land_lock(held: Any, node: str) -> None:
-    """Take ``node``'s land lock for the caller's exit stack, waiting no longer than the request's
-    remaining budget. The wait is for another request's (or the event loop's) land of this table."""
-    from provisa.core import request_deadline
-    from provisa.events.land_lock import land_lock
-
+        for t in tables:
+            key = (source.id, t.schema_name, t.table_name)
+            # REQ-1661 (amended 2026-10-01): decided in memory first. A replica this process's
+            # copy says is fresh for this reader is served with no control-plane read.
+            known, record = view.known(org_id, key)
+            if known and not _stale(source, t, record):
+                continue
+            # Stale or unknown by the copy: re-read this ONE record, and ask for the build,
+            # under the replica's lock — a burst of stale reads makes one read and one request.
+            async with view.lock(org_id, key):
+                known, record = view.known(org_id, key)
+                if known and not _stale(source, t, record):
+                    continue  # another reader of this process re-read it while this one waited
+                if not (known and _joins(record, view.age(org_id, key))):
+                    async with db.acquire() as conn:
+                        record = await replica_state.read(conn, key)
+                        if _stale(source, t, record):
+                            await replica_state.request_build(
+                                conn, key, replica_state.REASON_READ, retry_interval=retry_interval
+                            )
+                            record = await replica_state.read(conn, key)
+                    view.read(org_id, key, record)
+            if not _stale(source, t, record):
+                continue
+            if record is not None and record.build_state == replica_state.FAILED:
+                # Failed too recently to ask again (replication.retry_interval): the read fails
+                # with the build's own error. It never reads what the failed build left.
+                raise replica_state.ReplicaBuildFailed(".".join(key), record.last_error)
+            if live_while_building(source, t, engine.engine):
+                continue  # read live while the build runs; the build is requested, not awaited
+            waiting.append((source, t, key))
+    if not waiting:
+        return []
+    replica_builds.kick(org_id)
+    built = [(key[0], key[2]) for _source, _table, key in waiting]
+    started = time.monotonic()
     budget = request_deadline.remaining()
-    try:
-        await asyncio.wait_for(held.enter_async_context(land_lock(node)), budget)
-    except TimeoutError as exc:
-        raise TimeoutError(
-            f"{node}: another land of this table was still running when this request's "
-            f"budget ran out"
-        ) from exc
+    while waiting:
+        still: list[tuple[Any, Any, replica_state.ReplicaKey]] = []
+        async with db.acquire() as conn:
+            for source, t, key in waiting:
+                record = await replica_state.read(conn, key)
+                view.read(org_id, key, record)
+                if record is not None and record.build_state == replica_state.FAILED:
+                    raise replica_state.ReplicaBuildFailed(".".join(key), record.last_error)
+                if _stale(source, t, record):
+                    still.append((source, t, key))
+        waiting = still
+        if not waiting:
+            break
+        waited = time.monotonic() - started
+        if budget is not None and waited + _BUILD_POLL_S + _ANSWER_RESERVE_S >= budget:
+            # The request answers with ReplicaBuilding before its own deadline cuts it off with
+            # a timeout that says nothing about why. The build goes on.
+            raise replica_state.ReplicaBuilding(".".join(waiting[0][2]), waited)
+        await asyncio.sleep(_BUILD_POLL_S)
+    log.info("query residency: %s built before the read", built)
+    return built
 
 
-async def _record_refresh(
-    db: Any, queue: Any, tables: list[tuple[str, Any]], *, ok: bool, seen: tuple[Any, Any]
-) -> None:
-    """Stamp each (source_id, table) node's refresh outcome in the freshness state the event loop
-    reads (REQ-1661), and in this process's in-memory view of it (``seen``: the view and the
-    generation it is keyed by) — so the next read decides on the outcome just written."""
-    if not tables:
-        return
-    at = datetime.now(UTC)
-    nodes = [_node(table.schema_name, table.table_name) for _sid, table in tables]
-    async with db.acquire() as conn:
-        for node in nodes:
-            await queue.record_refresh(conn, node, at=at, ok=ok)
-    view, generation = seen
-    view.stamped(generation, nodes, at=at.timestamp(), ok=ok)
+#: How often a read waiting for a build looks at its record.
+_BUILD_POLL_S = 0.2
+#: A waiting read answers with ReplicaBuilding this long before its own deadline, so the
+#: answer names the cause instead of losing the race to a timeout that names nothing.
+_ANSWER_RESERVE_S = 0.5
+
+
+def _joins(record: Any, age: float | None) -> bool:
+    """Whether a reader joins the build this process's copy already shows requested or running,
+    without reading the record or asking again: the copy was read within the last poll interval
+    by another reader of the same burst. An older copy is read again — a build this process did
+    not watch may have finished."""
+    from provisa.federation.replica_state import BUILDING, REQUESTED
+
+    return (
+        record is not None
+        and record.build_state in (REQUESTED, BUILDING)
+        and age is not None
+        and age < _BUILD_POLL_S
+    )
+
+
+def _freshness_state(record: Any, store: str) -> dict | None:
+    """A replica's record in the shape the staleness oracle reads: when it was last built in
+    the store this engine reads (``store``) and whether its last build succeeded. None: no
+    record, never built. A replica built in another store is one never built here."""
+    from provisa.federation.replica_state import FAILED
+
+    if record is None:
+        return None
+    return {
+        "last_refresh_at": record.completed_at.timestamp() if record.exists_in(store) else None,
+        "last_refresh_ok": record.build_state != FAILED,
+    }
 
 
 async def active_row_materialize_tables(state: Any) -> list[Any]:

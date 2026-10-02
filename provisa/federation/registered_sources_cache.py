@@ -15,7 +15,7 @@ on every single call with no cache -- confirmed by grepping every call site (`qu
 `backend.py`, `app_wiring.py`, `row_materialize_lifecycle.py`, `_pipeline.py`,
 `schema_mutation_ops.py`, `app.py`, `push_wiring.py`): `_execute_plan_in_org` alone calls it 2-3
 times per governed invocation (`ensure_rows_resident`, `ensure_resident`, and again inside
-`materialize_pending`), warm or cold, every time. This is the exact same shape of finding REQ-1882
+the replica build), warm or cold, every time. This is the exact same shape of finding REQ-1882
 fixed for `registered_tables` in the same file, just not applied here too -- see
 `registered_tables_cache.py`'s module docstring for the full reasoning this cache reuses unchanged:
 same generation key `(current_org, schema_boot_id, schema_version)`, same TTL backstop, same

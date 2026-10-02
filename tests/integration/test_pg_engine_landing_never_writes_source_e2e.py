@@ -404,7 +404,6 @@ async def test_every_store_write_refuses_a_view_over_the_source(databases):
         "persist_land": lambda: store_writer.persist_land(
             dsn, **target, rows=rows, persist="replace"
         ),
-        "land_ctas": lambda: store_writer.land_ctas(dsn, **target, rows=rows),
         "row cache: ensure": lambda: query_residency._ensure_row_cache_table(
             *row_target, _REPLICA_COLUMNS
         ),

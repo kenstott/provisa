@@ -8,17 +8,17 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Integration (REQ-1907): per-reader landing freshness over the REAL control-plane freshness state.
+"""Integration (REQ-1907, REQ-1915): per-reader replica freshness over the REAL state store.
 
-The real ``ensure_resident`` reads and stamps the real ``node_freshness_state`` rows (through the
-real ``queue.get_node_state`` / ``queue.record_refresh``) of a real Postgres control plane, under
-the real per-node ``land_lock``. Only the engine's land itself is a recording stand-in, so what is
-asserted is the decision the query path makes against persisted state: a tolerant role serves a
-200s-old replica, a TTL-0 role lands only past the table's cache_ttl floor, and two concurrent
-stale reads share one land because the second re-reads the state the first stamped.
+The real ``ensure_resident`` reads and requests against the real ``replica_state`` rows of a real
+Postgres control plane, and a real ``ReplicaRunner`` (real build locks on that control plane)
+claims and records the builds. Only the copy itself is a recording stand-in, so what is asserted
+is the decision the query path makes against persisted state and the one build the runner makes
+of it: a tolerant role serves a 200s-old replica, a TTL-0 role asks for a build only past the
+table's cache_ttl floor, and two concurrent stale reads share one build.
 """
 
-# Requirements: REQ-1907, REQ-1661
+# Requirements: REQ-1907, REQ-1661, REQ-1915
 
 from __future__ import annotations
 
@@ -32,14 +32,18 @@ import pytest_asyncio
 from sqlalchemy import text
 
 from provisa.core.database import Database, create_engine_from_url
-from provisa.core.schema_org import node_freshness_state
-from provisa.events import queue
+from provisa.core.schema_org import replica_state as replica_state_table
+from provisa.federation import replica_state
+from provisa.federation.data_replicator import BuildOutcome
 from provisa.federation.query_residency import ensure_resident
 from provisa.federation.replica_address import ReplicaRoutes
+from provisa.federation.replica_locks import BuildLocks
+from provisa.federation.replica_runner import ReplicaRunner
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
-NODE = "sch.orders"
+KEY = ("s", "sch", "orders")
+STORE = "store-a"
 
 
 def _async_dsn(pg_dsn: str) -> str:
@@ -54,7 +58,7 @@ async def db(pg_dsn):
     with engine.begin() as c:
         c.execute(text(f'CREATE SCHEMA "{schema}"'))
         c.execute(text(f'SET search_path TO "{schema}"'))
-        node_freshness_state.metadata.create_all(c, tables=[node_freshness_state])
+        replica_state_table.metadata.create_all(c, tables=[replica_state_table])
     try:
         yield Database(engine, name="rttl", search_path=schema)
     finally:
@@ -63,46 +67,68 @@ async def db(pg_dsn):
         engine.dispose()
 
 
-class _RecordingBackend:
-    """The engine's land, recorded: ``materialize_pending`` lands a source iff the query path's
-    oracle says so (a real land takes time, so a concurrent reader queues on the node lock)."""
+class _Backend:
+    """An engine that cannot read an rss source in place and has neither operator setting on:
+    the source is served from its replica when the query path's oracle says it is stale."""
 
     dialect = "postgres"
 
-    def __init__(self) -> None:
-        self.lands = 0
-
     def pending_lands(self, sources, *, is_stale, **kw):
-        """As EngineBackend.pending_lands for a source this engine cannot read in place (rss) with
-        neither operator setting on: it lands when the query path's oracle says it is stale."""
         del kw
         return [s.id for s in sources if is_stale(s.id)]
 
-    def is_first_touch(self, sid: str) -> bool:
-        return False  # this process already holds the replica; only the persisted clock decides
 
-    def mark_landed(self, sid: str) -> None:
-        pass
+class _NoCap:
+    @staticmethod
+    def key(org_id, source_id):
+        return f"{org_id}:{source_id}"
 
-    def replica_address(self, state, *, source_id, schema_name, table_name):
-        """As EngineBackend.replica_address: the replicas schema, under the one replica name."""
-        from provisa.federation.replica_address import ReplicaAddress, replica_table_name
 
-        del state
-        return ReplicaAddress(
-            "org_test_replicas", replica_table_name(source_id, schema_name, table_name)
+def _async(fn):
+    async def call(*args):
+        return fn(*args)
+
+    return call
+
+
+class _Builds:
+    """The real runner over the real state store and locks; the copy is a recording stand-in
+    that takes time, so a concurrent reader waits on the same record."""
+
+    def __init__(self, db: Database, platform_url: str, tmp_path) -> None:
+        self.count = 0
+        self.tasks: list[asyncio.Future] = []
+        locks = BuildLocks(platform_url)
+        locks._slots = tmp_path / "slots"  # a host of its own
+        self.runner = ReplicaRunner(
+            db=db,
+            org_id="org1",
+            locks=locks,
+            engine_key=lambda: f"postgres@{uuid.uuid4().hex}",
+            build=self._build,
+            source_cap=_async(lambda _key: None),
+            permits=_NoCap(),
+            next_refresh_at=_async(lambda _key, _now: None),
+            store=lambda: STORE,
+            builds_per_node=lambda: 4,
+            engine_jobs=lambda: 4,
+            spawn=lambda coro, name: self.tasks.append(asyncio.ensure_future(coro)),
         )
 
-    async def materialize_pending(
-        self, state, *, loader, is_stale, source_ids, load_protected_of, resident_of, **kw
-    ):
-        out = []
-        for sid in source_ids:
-            if is_stale(sid):
-                self.lands += 1
-                await asyncio.sleep(0.2)
-                out.append((sid, "orders"))
-        return out
+    async def _build(self, key, progress) -> BuildOutcome:
+        del key, progress
+        self.count += 1
+        await asyncio.sleep(0.2)
+        return BuildOutcome(rows_copied=1, method="stream_batches")
+
+    def kick(self, org_id) -> None:
+        del org_id
+        self.tasks.append(asyncio.ensure_future(self.runner.run_pass()))
+
+    async def drain(self) -> None:
+        while self.tasks:
+            done, self.tasks = self.tasks, []
+            await asyncio.gather(*done)
 
 
 # The registered id of the one table; a statement that reads it carries this id (REQ-826).
@@ -110,7 +136,7 @@ _TABLE_ID = 1
 _READ = frozenset({_TABLE_ID})
 
 
-def _state(db: Database, backend: _RecordingBackend) -> SimpleNamespace:
+def _state(db: Database, backend: _Backend) -> SimpleNamespace:
     source = SimpleNamespace(
         id="s",
         type=SimpleNamespace(value="rss"),
@@ -136,6 +162,7 @@ def _state(db: Database, backend: _RecordingBackend) -> SimpleNamespace:
     engine = SimpleNamespace(
         engine=SimpleNamespace(
             backend=backend,
+            name="postgres",
             native_store="postgres",
             connectors={},
             materialize_store=lambda: "postgresql://unused/materialize",
@@ -152,9 +179,10 @@ def _state(db: Database, backend: _RecordingBackend) -> SimpleNamespace:
 
 
 @pytest.fixture
-def registry(monkeypatch):
+def builds(monkeypatch, db, pg_dsn, tmp_path):
     """The registry view reads the control plane's registered tables; this test registers its one
-    table in-process (the decision under test is the freshness judgement, not the registry)."""
+    table in-process (the decision under test is the freshness judgement, not the registry). A
+    read's kick starts the real runner's pass."""
 
     async def _sources(state, conn=None):
         return list(state.config.sources)
@@ -164,60 +192,70 @@ def registry(monkeypatch):
 
     monkeypatch.setattr("provisa.federation.registry_view.registered_sources", _sources)
     monkeypatch.setattr("provisa.federation.registry_view.registered_tables", _tables)
-    monkeypatch.setattr("provisa.events.app_wiring.build_adapter_loaders", lambda s, e: {})
-    monkeypatch.setattr(
-        "provisa.events.app_wiring.build_keyed_adapter_loaders", lambda s, e=None: {}
-    )
-    monkeypatch.setattr("provisa.events.land_lock._locks", {})
+    monkeypatch.setattr("provisa.federation.replica_builds.store_identity", lambda state: STORE)
+    held = _Builds(db, _async_dsn(pg_dsn), tmp_path)
+    monkeypatch.setattr("provisa.federation.replica_builds.kick", held.kick)
+    return held
 
 
-async def _stamp(db: Database, age_seconds: float) -> None:
+async def _built(db: Database, age_seconds: float) -> None:
+    """Record the replica as built ``age_seconds`` ago in this store."""
+    at = datetime.now(UTC) - timedelta(seconds=age_seconds)
     async with db.acquire() as conn:
-        await queue.record_refresh(
-            conn, NODE, at=datetime.now(UTC) - timedelta(seconds=age_seconds), ok=True
+        await replica_state.request_build(conn, KEY, replica_state.REASON_BOOT, now=at)
+        await replica_state.claim(conn, KEY, holder="test:1", now=at)
+        await replica_state.record_completed(
+            conn,
+            KEY,
+            rows_copied=1,
+            method="stream_batches",
+            content_hash=None,
+            store=STORE,
+            next_refresh_at=None,
+            now=at,
         )
 
 
 async def _age(db: Database) -> float:
     async with db.acquire() as conn:
-        state = await queue.get_node_state(conn, NODE)
-    assert state is not None and state["last_refresh_at"] is not None
-    return datetime.now(UTC).timestamp() - state["last_refresh_at"]
+        record = await replica_state.read(conn, KEY)
+    assert record is not None and record.completed_at is not None
+    return (datetime.now(UTC) - record.completed_at).total_seconds()
 
 
-async def test_an_analyst_serves_a_200s_old_replica(db, registry):
-    backend = _RecordingBackend()
-    await _stamp(db, 200)
+async def test_an_analyst_serves_a_200s_old_replica(db, builds):
+    await _built(db, 200)
     assert (
-        await ensure_resident(_state(db, backend), {"s"}, reader_role="analyst", table_ids=_READ)
+        await ensure_resident(_state(db, _Backend()), {"s"}, reader_role="analyst", table_ids=_READ)
         == []
     )
-    assert backend.lands == 0
-    assert await _age(db) >= 199  # the persisted stamp was not touched
+    await builds.drain()
+    assert builds.count == 0
+    assert await _age(db) >= 199  # the persisted record was not touched
 
 
-async def test_a_trader_lands_only_past_the_cache_ttl_floor(db, registry):
-    backend = _RecordingBackend()
-    await _stamp(db, 30)
+async def test_a_trader_asks_for_a_build_only_past_the_cache_ttl_floor(db, builds):
+    await _built(db, 30)
     assert (
-        await ensure_resident(_state(db, backend), {"s"}, reader_role="trader", table_ids=_READ)
+        await ensure_resident(_state(db, _Backend()), {"s"}, reader_role="trader", table_ids=_READ)
         == []
     )
-    await _stamp(db, 200)
+    await _built(db, 200)
     assert await ensure_resident(
-        _state(db, backend), {"s"}, reader_role="trader", table_ids=_READ
+        _state(db, _Backend()), {"s"}, reader_role="trader", table_ids=_READ
     ) == [("s", "orders")]
-    assert backend.lands == 1
-    assert await _age(db) < 5  # the land re-stamped the persisted state
+    await builds.drain()
+    assert builds.count == 1
+    assert await _age(db) < 5  # the build's completion is the persisted state now
 
 
-async def test_two_concurrent_trader_reads_share_one_land(db, registry):
-    backend = _RecordingBackend()
-    await _stamp(db, 200)
-    state = _state(db, backend)
+async def test_two_concurrent_trader_reads_share_one_build(db, builds):
+    await _built(db, 200)
+    state = _state(db, _Backend())
     first, second = await asyncio.gather(
         ensure_resident(state, {"s"}, reader_role="trader", table_ids=_READ),
         ensure_resident(state, {"s"}, reader_role="trader", table_ids=_READ),
     )
-    assert backend.lands == 1
-    assert sorted([first, second]) == [[], [("s", "orders")]]
+    await builds.drain()
+    assert builds.count == 1
+    assert first == second == [("s", "orders")]  # both waited for that one build

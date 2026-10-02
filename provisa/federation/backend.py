@@ -64,25 +64,6 @@ class EngineBackend:
 
     def __init__(self, engine: FederationEngine) -> None:
         self.engine = engine
-        # Sources this backend INSTANCE has itself landed at least once (REQ-1730) — per-process,
-        # never persisted. `query_residency.ensure_resident`'s `is_stale` oracle reads
-        # `node_freshness_state.last_refresh_at`, a timestamp keyed by NODE (schema.table) alone,
-        # shared across every engine a source has ever been queried under — so a source landed
-        # minutes ago under DuckDB reads as "fresh" the instant a DIFFERENT engine (a genuine
-        # reboot, this engine's first-ever process) is asked for it, even though THIS engine's own
-        # store has never held a row of it. Verified live: a self-only engine with no live-connector
-        # fallback for the source type (elasticsearch under the generic mssql engine) served 0 rows
-        # with no error — `is_stale` correctly read the GLOBAL clock as fresh, `materialize_pending`
-        # correctly skipped landing by that clock's own logic, and the read simply had nothing to
-        # read. An engine with a live connector for the same source type never hits this (Trino
-        # answers mongodb/elasticsearch/etc. live, never through the landed replica, so the global
-        # clock's staleness is irrelevant to it) — this is why the existing scenario-1 reboot suite
-        # never surfaced it before a self-only engine with zero live reach was exercised. Forcing a
-        # land on this instance's OWN first touch of a source — regardless of the global clock —
-        # fixes it without changing the freshness table's schema or its meaning for every other
-        # caller; a later query against an already-first-touched source still defers to the real
-        # clock, so a source genuinely fresh elsewhere isn't re-landed on every request.
-        self._landed_this_process: set[str] = set()
         # (source_id, table_name) -> why its replica could not be reconciled to the registered
         # shape. A replicated table in this state has no replica a read may be answered from, so
         # a read that names it raises this instead of reading it. Cleared when a reconcile
@@ -96,17 +77,6 @@ class EngineBackend:
         (``replica_address.address_replicas``) — per table: a sibling table of the same source
         is read as usual."""
         return self._unreconciled
-
-    def is_first_touch(self, source_id: str) -> bool:
-        """Whether this backend instance has never itself landed ``source_id`` — see
-        ``_landed_this_process``'s own doc for why this must be checked ALONGSIDE, not instead of,
-        the real (persisted) staleness clock."""
-        return source_id not in self._landed_this_process
-
-    def mark_landed(self, source_id: str) -> None:
-        """Record that this backend instance has now landed ``source_id`` at least once — called by
-        ``query_residency.ensure_resident`` after a successful ``materialize_pending``."""
-        self._landed_this_process.add(source_id)
 
     @property
     def dialect(self) -> str:
@@ -218,14 +188,21 @@ class EngineBackend:
 
     def replica_target(self, state: Any, *, address: ReplicaAddress, args: Any, engine: Any) -> Any:
         """The write face of the replica at ``address`` in this engine's store, chosen by the
-        store. ``engine`` is this engine's party to the build (``replica_engine``)."""
+        store. ``engine`` is this engine's party to the build (``replica_engine``).
+
+        The base engine's replicas are in its materialization store, reached by that store's
+        DSN; the store's own kind (not the engine's) names the face. An engine that is its own
+        store overrides this."""
         del state
+        from sqlalchemy import make_url
+
         from provisa.federation.data_replicator import EngineRun
         from provisa.federation.replica_parties import store_target
 
+        dsn = self.engine.materialize_store()
         return store_target(
-            self.engine.replica_store_backend(),
-            self.engine.materialize_store(),
+            make_url(dsn).get_backend_name(),
+            dsn,
             address=address,
             columns=args.columns,
             pk_columns=list(args.pk_columns or ()),
@@ -268,7 +245,7 @@ class EngineBackend:
         """The residency prep steps a read of ``sources`` needs on this engine: one per source that
         federates MATERIALIZED here and that its staleness oracle (or REQ-860 gate, or REQ-1141
         first-load rule) says must land first. Pure — it reads no store. It is the decision
-        ``materialize_pending`` acts on, and the one the query path asks before it reads any
+        the read backstop (``query_residency.ensure_resident``) acts on, and the one the query path asks before it reads any
         freshness state: with ``is_stale`` answering True for everything, an empty result means
         the engine reads every one of these sources in place and none of them ever lands."""
         from provisa.federation.plan import build_execution_plan
@@ -284,123 +261,6 @@ class EngineBackend:
             freshness_subject_of=freshness_subject_of,
             now=now,
         ).prep
-
-    async def materialize_pending(
-        self,
-        state: Any,
-        *,
-        loader: Any,
-        is_stale: Any,
-        source_ids: Any = None,
-        replicated_of: Any = None,
-        load_protected_of: Any = None,
-        resident_of: Any = None,
-        materialization_backend: str | None = None,
-        freshness_subject_of: Any = None,
-        now: float | None = None,
-        coordination: Any = None,
-    ) -> list[tuple[str, str]]:
-        """Land every MATERIALIZED source table that is stale, before a read (REQ-825/932, REQ-1661).
-
-        Builds the residency plan over the configured sources (``build_execution_plan`` decides
-        which federate to MATERIALIZED and, via ``is_stale`` / the REQ-860 gate, which need a
-        refresh), then for each of those sources' registered tables fetches the rows with the
-        injected ``loader`` and lands them at the engine's own landing address through its store
-        write face -- the same address and face the event loop's source nodes use, so the two paths
-        converge on one replica. ``source_ids`` restricts the plan to the sources a query reads.
-        Returns the (source_id, table_name) pairs landed; a no-op when nothing is stale."""
-        from provisa.federation.registry_view import registered_sources, registered_tables
-        from provisa.federation.replica_guard import require_replicas_schema
-        from provisa.federation.residency import resolve_landing_args
-
-        # REQ-1674: the registry, not the config file — a source created in the UI and a table
-        # registered at runtime land exactly like config-declared ones.
-        sources = [
-            s for s in await registered_sources(state) if source_ids is None or s.id in source_ids
-        ]
-        if not sources:
-            return []
-        tables_by_source: dict[str, list] = {}
-        for t in await registered_tables(state):
-            # REQ-1865: a row_materialize table's residency is governed EXCLUSIVELY by the
-            # row-level cache (ensure_rows_resident) -- it must never also be swept into this
-            # whole-source full-table land. ensure_resident's own tables_by_source already excludes
-            # these (so its staleness/locking never counts them), but that filtering is local to
-            # that function; this is an INDEPENDENT registered_tables() lookup and must exclude
-            # them here too, or a row_materialize table gets landed anyway the moment its source is
-            # otherwise stale -- confirmed live (a keyed lookup paid the same multi-minute
-            # full-source materialize cost row_materialize exists to avoid).
-            if not getattr(t, "row_materialize", False):
-                tables_by_source.setdefault(t.source_id, []).append(t)
-        prep = self.pending_lands(
-            sources,
-            is_stale=is_stale,
-            replicated_of=replicated_of,
-            load_protected_of=load_protected_of,
-            resident_of=resident_of,
-            materialization_backend=materialization_backend,
-            freshness_subject_of=freshness_subject_of,
-            now=now,
-        )
-        if not prep:
-            return []
-        sources_by_id = {s.id: s for s in sources}
-        landed: list[tuple[str, str]] = []
-        for step in prep:
-            source = sources_by_id[step.source_id]
-            for table in tables_by_source.get(step.source_id, ()):
-                args = resolve_landing_args(source, table, platform=self.dialect)
-                address = self.replica_address(
-                    state,
-                    source_id=source.id,
-                    schema_name=table.schema_name,
-                    table_name=table.table_name,
-                )
-                schema, name = address.schema, address.table
-                require_replicas_schema(schema, name, action="write the replica")
-                # A build inside the engine moves no row through this process, is one build per
-                # replica across workers, and outlives a request that cannot wait for it.
-                if coordination is not None and await self.replicate_in_engine(
-                    state,
-                    source,
-                    table,
-                    schema=schema,
-                    name=name,
-                    args=args,
-                    coordination=coordination,
-                ):
-                    landed.append((source.id, table.table_name))
-                    continue
-                rows = await loader.load(source, table)
-                await self.land_source_table(
-                    state,
-                    schema=schema,
-                    table=name,
-                    columns=args.columns,
-                    rows=rows,
-                    change_signal=args.change_signal,
-                    watermark_column=args.watermark_column,
-                    pk_columns=args.pk_columns,
-                )
-                landed.append((source.id, table.table_name))
-        return landed
-
-    async def replicate_in_engine(
-        self,
-        state: Any,
-        source: Any,
-        table: Any,
-        *,
-        schema: str,
-        name: str,
-        args: Any,
-        coordination: Any,
-    ) -> bool:
-        """Build ``table``'s replica without the rows passing through this process, when this
-        engine can — True when it did (or joined a build already running). The base engine
-        cannot: the caller then loads the rows and lands them."""
-        del state, source, table, schema, name, args, coordination
-        return False
 
     async def land_source_table(
         self,

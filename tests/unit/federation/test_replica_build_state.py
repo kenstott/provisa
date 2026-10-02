@@ -55,6 +55,7 @@ async def test_a_completed_replica_stays_readable_while_its_refresh_is_requested
         rows_copied=100,
         method="stream_batches",
         content_hash="abc",
+        store="store-a",
         next_refresh_at=now + timedelta(hours=1),
         now=now,
     )
@@ -96,7 +97,14 @@ async def test_candidates_are_requested_due_and_building_rows_oldest_request_fir
         await build_state.request_build(conn, key, "boot", now=now - timedelta(hours=1))
         await build_state.claim(conn, key, holder="h:1", now=now)
         await build_state.record_completed(
-            conn, key, rows_copied=1, method="m", content_hash=None, next_refresh_at=due, now=now
+            conn,
+            key,
+            rows_copied=1,
+            method="m",
+            content_hash=None,
+            store="store-a",
+            next_refresh_at=due,
+            now=now,
         )
     assert await build_state.candidates(conn, now=now, limit=10) == [c, b, a]
     assert await build_state.candidates(conn, now=now, limit=1) == [c]

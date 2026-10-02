@@ -44,7 +44,12 @@ class _Engine:
         self.sql: list[str] = []
         self.closed = False
 
-    def execute_engine_stream(self, sql):
+    def execute_engine_stream(self, sql, *, authorization):
+        from provisa.federation.execution_auth import verify_execution_authorization
+
+        # as the engine terminal: the system's read is verified, pinned to its one statement
+        verify_execution_authorization(authorization, sql)
+        self.authorized = (authorization.reason, authorization.expected_sql)
         self.sql.append(sql)
         schema = pa.schema([("id", pa.int64())])
         outer = self

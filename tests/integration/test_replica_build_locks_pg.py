@@ -39,6 +39,15 @@ ORG = "org1"
 ENGINE = "trino@engine:8080"
 
 
+def _async(fn):
+    """``fn`` as the coroutine function the runner awaits."""
+
+    async def call(*args):
+        return fn(*args)
+
+    return call
+
+
 def _key(n: int):
     return ("src", "public", f"t{n}")
 
@@ -91,9 +100,10 @@ class _Node:
             locks=self.locks,
             engine_key=lambda: ENGINE,
             build=build,
-            source_cap=lambda _key: None,
+            source_cap=_async(lambda _key: None),
             permits=_NoCap(),
-            next_refresh_at=lambda _key, _now: None,
+            next_refresh_at=_async(lambda _key, _now: None),
+            store=lambda: "store-a",
             builds_per_node=lambda: 1,
             engine_jobs=lambda: engine_jobs,
             spawn=lambda coro, name: self.tasks.append(asyncio.ensure_future(coro)),

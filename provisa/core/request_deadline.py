@@ -513,7 +513,7 @@ def bind(dl: Deadline) -> None:
 
 def unbind() -> None:
     """Leave the request's deadline behind in this context: for work a request STARTED that is
-    not the request's own and must outlive it (a replica build, ``federation.replica_build``).
+    not the request's own and must outlive it (a replica build, ``federation.replica_builds``).
     Background work is started in a copy of its caller's context, deadline included; without
     this its control-plane and store calls are cancelled when that request's deadline passes."""
     _current.set(None)

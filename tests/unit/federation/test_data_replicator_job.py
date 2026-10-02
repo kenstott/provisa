@@ -244,3 +244,30 @@ def test_rows_become_a_batch_typed_by_the_declared_columns():
         {"id": 1, "note": None, "amount": "12.5", "doc": '{"a": 1}'},
         {"id": 2, "note": None, "amount": None, "doc": None},
     ]
+
+
+async def test_a_batch_of_wide_rows_is_written_in_slices_bounded_by_bytes():
+    """Bounded in rows AND bytes: a batch within the row bound whose rows are wide is written
+    in slices, so the row objects a build holds do not grow with the row width."""
+    import pyarrow as pa
+
+    from provisa.federation.data_replicator import _within_bytes
+
+    wide = pa.RecordBatch.from_pylist([{"id": i, "blob": "x" * 1000} for i in range(1000)])
+    slices = list(_within_bytes(wide, 100_000))
+    assert len(slices) > 5 and all(s.nbytes <= 110_000 for s in slices)
+    assert sum(s.num_rows for s in slices) == 1000
+    assert [s.column(0)[0].as_py() for s in slices] == sorted(
+        s.column(0)[0].as_py() for s in slices
+    )
+    assert list(_within_bytes(wide, wide.nbytes)) == [wide]  # within the bound: untouched
+    one = wide.slice(0, 1)
+    assert list(_within_bytes(one, 10)) == [one]  # a row wider than the bound is written alone
+
+    target = _Target()
+    job = data_replicator(
+        _cursor(1_000, 1_000), target, _Engine(), batch_rows=1_000, batch_bytes=2_000
+    )
+    outcome = await job.run(_noop)
+    assert outcome.rows_copied == 1_000
+    assert len(target.batch_sizes) > 1 and max(target.batch_sizes) < 1_000

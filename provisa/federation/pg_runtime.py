@@ -297,7 +297,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             remote = f'"{details["local_schema"]}"."{source.table_name}"'
             # A connector that can import ONE table (postgres_fdw) is attached per table: the
             # foreign tables outlive this process, and a replica build imports one on its own
-            # (copy_replica), so importing the whole schema again fails on the first table already
+            # (replica_target.pg_statement_copy), so importing the whole schema again fails on the first table already
             # there. The others import the source's schema once.
             per_table = "server_ddl_for_copy" in details
             attach_key = f"{source.id}\x00{source.table_name}" if per_table else source.id
@@ -594,33 +594,15 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             values,
         )
 
-    # -- engine-side replica build -----------------------------------------------
+    # -- engine-side replica build (the copy itself is replica_target.pg_statement_copy) ------
 
-    # Advisory-lock class for replica builds; the object id is the replica's name, hashed.
-    _REPLICA_LOCK_CLASS = 0x70726F76  # "prov"
-
-    def replica_lock(self, schema: str, table: str) -> Any:
-        """A dedicated connection holding the store's advisory lock for the replica
-        ``schema.table`` — taken by one build at a time across every worker process that shares
-        this store. Blocks (polling) until the lock is free; the caller closes the connection,
-        which releases the lock, with :meth:`replica_unlock`."""
+    def open_engine_connection(self) -> Any:
+        """A connection of its own to this engine's database, each statement its own
+        transaction, for work that must not hold a pooled read connection — a replica build's
+        statement-level copy (REQ-1915). The caller closes it."""
         con = psycopg2.connect(self._engine_dsn)
         con.autocommit = True
-        try:
-            cur = con.cursor()
-            while True:
-                cur.execute(
-                    "SELECT pg_try_advisory_lock(%s, hashtext(%s))",
-                    (self._REPLICA_LOCK_CLASS, f"{schema}.{table}"),
-                )
-                row = cur.fetchone()
-                assert row is not None  # a scalar function: always exactly one row
-                if row[0]:
-                    return con
-                time.sleep(0.25)
-        except BaseException:
-            con.close()
-            raise
+        return con
 
     @staticmethod
     def _ensure_foreign_table(cur: Any, details: dict, table_name: str) -> None:
@@ -639,48 +621,6 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
                 f'LIMIT TO ("{table_name}") FROM SERVER "{details["server"]}" '
                 f'INTO "{local}"'
             )
-
-    def replica_unlock(self, con: Any) -> None:
-        con.close()  # a session lock: released with its session
-
-    def copy_replica(
-        self,
-        con: Any,
-        source: Any,
-        *,
-        schema: str,
-        table: str,
-        columns: list[tuple[str, str]],
-        pk_columns: list[str],
-    ) -> int:
-        """Build the replica ``schema.table`` from the source's own table, inside the engine: one
-        ``INSERT … SELECT`` from the source's postgres_fdw foreign table, in one transaction. No
-        row passes through this process, so the build costs the worker nothing as the table
-        grows; readers see the previous replica until the commit. ``con`` is the connection that
-        holds the replica's lock. Returns the rows copied.
-
-        The foreign table lives in the connector's own schema and is imported for this one table
-        when it is not there. No live view is created: a replicated table is read from its
-        replica."""
-        details = self._engine.resolve(source).details
-        local = details["local_schema"]
-        names = ", ".join(f'"{name}"' for name, _ in columns)
-        cur = con.cursor()
-        self._ensure_foreign_table(cur, details, source.table_name)
-        cur.execute("BEGIN")
-        try:
-            self._ensure_table(cur, schema, table, columns, pk_columns)
-            cur.execute(f'DELETE FROM "{schema}"."{table}"')
-            cur.execute(
-                f'INSERT INTO "{schema}"."{table}" ({names}) '
-                f'SELECT {names} FROM "{local}"."{source.table_name}"'
-            )
-            copied = cur.rowcount
-            cur.execute("COMMIT")
-        except BaseException:
-            cur.execute("ROLLBACK")
-            raise
-        return copied
 
     async def apply_cdc_events(
         self,

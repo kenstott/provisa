@@ -1372,6 +1372,7 @@ CREATE TABLE IF NOT EXISTS replica_state (
     completed_at     TIMESTAMPTZ,   -- NULL: there is no replica
     next_refresh_at  TIMESTAMPTZ,   -- NULL: refreshed only on request
     content_hash     TEXT,          -- order-independent hash of the last completed build
+    built_store      TEXT,          -- the store the last completed build was written into
     last_error       TEXT,
     failed_at        TIMESTAMPTZ,
     waiting_on       TEXT,          -- why a requested build did not start on the last pass

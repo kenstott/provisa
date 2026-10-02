@@ -97,8 +97,6 @@ class PgStatementCopy:
         )
 
     def _copy(self, prior_hash: str | None) -> tuple[int, str, bool]:
-        import psycopg2
-
         from provisa.federation.replica_target import pg_statement_copy
 
         runtime = self._backend._runtime_for(self._state)
@@ -106,8 +104,9 @@ class PgStatementCopy:
         shield = request_deadline.shielded()
         with shield.lock:
             shield.settle()
-            con = psycopg2.connect(runtime._engine_dsn)
-            con.autocommit = True  # the copy issues its own BEGIN / COMMIT
+            con = (
+                runtime.open_engine_connection()
+            )  # autocommit: the copy issues its own BEGIN / COMMIT
         try:
             cur = con.cursor()
             runtime._ensure_foreign_table(cur, details, self._source.table_name)

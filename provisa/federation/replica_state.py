@@ -135,14 +135,21 @@ class ReplicaRecord:
     completed_at: datetime | None
     next_refresh_at: datetime | None
     content_hash: str | None
+    built_store: str | None
     last_error: str | None
     failed_at: datetime | None
     waiting_on: str | None
 
     @property
     def exists(self) -> bool:
-        """Whether there is a replica to read."""
+        """Whether a build of this replica has ever completed, in any store."""
         return self.completed_at is not None
+
+    def exists_in(self, store: str) -> bool:
+        """Whether there is a replica to read in the store ``store`` identifies. A record is one
+        per table, not per engine: a replica built in another engine's store (the deployment
+        was moved to a different engine or store) is not one this engine can read."""
+        return self.completed_at is not None and self.built_store == store
 
 
 _COLUMNS = (
@@ -159,6 +166,7 @@ _COLUMNS = (
     _t.completed_at,
     _t.next_refresh_at,
     _t.content_hash,
+    _t.built_store,
     _t.last_error,
     _t.failed_at,
     _t.waiting_on,
@@ -186,14 +194,37 @@ def _record(row: Any) -> ReplicaRecord:
         completed_at=_aware(row[10]),
         next_refresh_at=_aware(row[11]),
         content_hash=row[12],
-        last_error=row[13],
-        failed_at=_aware(row[14]),
-        waiting_on=row[15],
+        built_store=row[13],
+        last_error=row[14],
+        failed_at=_aware(row[15]),
+        waiting_on=row[16],
     )
 
 
 def _is(key: ReplicaKey) -> Any:
     return and_(_t.source_id == key[0], _t.schema_name == key[1], _t.table_name == key[2])
+
+
+class ReplicaBuilding(TimeoutError):
+    """A read's deadline passed while the replica it needs was still being built."""
+
+    def __init__(self, replica: str, running_for: float) -> None:
+        self.replica = replica
+        self.running_for = running_for
+        super().__init__(
+            f"the replica of {replica} is still being built (running for {running_for:.0f}s); "
+            "the build continues, and a read succeeds once it has finished"
+        )
+
+
+class ReplicaBuildFailed(RuntimeError):
+    """The build of a replica a read needs failed: the read fails, it never reads what the
+    failed build left standing (REQ-1661)."""
+
+    def __init__(self, replica: str, error: str | None) -> None:
+        self.replica = replica
+        self.error = error
+        super().__init__(f"the replica of {replica} could not be built: {error}")
 
 
 async def read(conn: "Connection", key: ReplicaKey) -> ReplicaRecord | None:
@@ -319,10 +350,11 @@ async def record_completed(
     rows_copied: int,
     method: str,
     content_hash: str | None,
+    store: str,
     next_refresh_at: datetime | None,
     now: datetime,
 ) -> None:
-    """The build finished and its table was swapped in."""
+    """The build finished and its table was swapped in, in the store ``store`` identifies."""
     await conn.execute_core(
         update(replica_state)
         .where(_is(key))
@@ -334,6 +366,7 @@ async def record_completed(
             completed_at=now,
             next_refresh_at=next_refresh_at,
             content_hash=content_hash,
+            built_store=store,
             last_error=None,
             failed_at=None,
             waiting_on=None,

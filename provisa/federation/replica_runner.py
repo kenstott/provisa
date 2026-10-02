@@ -82,7 +82,7 @@ class ReplicaRunner:
     ``build`` runs one replica's build and returns its outcome; it is the data replicator's
     job for that replica. ``source_cap`` gives a replica's source's live-read cap (None: no
     cap). ``next_refresh_at`` gives when a replica completed now is next due (None: only on
-    request). ``spawn`` runs a build detached from the pass that claimed it."""
+    request). ``store`` identifies the store the builds write into. ``spawn`` runs a build detached from the pass that claimed it."""
 
     def __init__(
         self,
@@ -92,9 +92,10 @@ class ReplicaRunner:
         locks: BuildLocks,
         engine_key: Callable[[], str],
         build: Callable[[ReplicaKey, Progress], Awaitable[BuildOutcome]],
-        source_cap: Callable[[ReplicaKey], int | None],
+        source_cap: Callable[[ReplicaKey], Awaitable[int | None]],
         permits: Any,
-        next_refresh_at: Callable[[ReplicaKey, datetime], datetime | None],
+        next_refresh_at: Callable[[ReplicaKey, datetime], Awaitable[datetime | None]],
+        store: Callable[[], str],
         builds_per_node: Callable[[], int],
         engine_jobs: Callable[[], int],
         spawn: Callable[..., Any],
@@ -107,6 +108,7 @@ class ReplicaRunner:
         self._source_cap = source_cap
         self._permits = permits
         self._next_refresh_at = next_refresh_at
+        self._store = store
         self._builds_per_node = builds_per_node
         self._engine_jobs = engine_jobs
         self._spawn = spawn
@@ -168,7 +170,7 @@ class ReplicaRunner:
             async with self._db.acquire() as conn:
                 if not await build_state.claim(conn, key, holder=self._holder, now=now):
                     return None  # built by another runner since this pass selected it
-                cap = self._source_cap(key)
+                cap = await self._source_cap(key)
                 permit: tuple[str, str] | None = None
                 if cap is not None:
                     permit_key = self._permits.key(self._org_id, key[0])
@@ -210,6 +212,7 @@ class ReplicaRunner:
                     raise
             else:
                 now = datetime.now(UTC)
+                due = await self._next_refresh_at(job.key, now)
                 async with self._db.acquire() as conn:
                     await build_state.record_completed(
                         conn,
@@ -217,7 +220,8 @@ class ReplicaRunner:
                         rows_copied=outcome.rows_copied,
                         method=outcome.method,
                         content_hash=outcome.content_hash,
-                        next_refresh_at=self._next_refresh_at(job.key, now),
+                        store=self._store(),
+                        next_refresh_at=due,
                         now=now,
                     )
                 log.info(

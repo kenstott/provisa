@@ -1160,6 +1160,9 @@ replica_state = Table(
     Column("completed_at", DateTime(timezone=True)),  # NULL: there is no replica
     Column("next_refresh_at", DateTime(timezone=True)),  # NULL: refreshed only on request
     Column("content_hash", Text),  # order-independent hash of the last completed build
+    # The store the last completed build was written into (a digest of the engine and its
+    # store's address). A replica recorded for another store is not one this engine can read.
+    Column("built_store", Text),
     Column("last_error", Text),
     Column("failed_at", DateTime(timezone=True)),
     # Why a requested build was not started on the last pass that tried it (the engine at its

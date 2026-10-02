@@ -76,7 +76,17 @@ class EngineTableSource:
         self.caps = SourceCaps(frozenset(reads))
 
     async def batches(self, batch_rows: int) -> AsyncIterator[pa.RecordBatch]:
-        _schema, stream = self._engine.execute_engine_stream(f"SELECT * FROM {self._ref}")
+        from provisa.federation.execution_auth import SystemAuth, mint_system_token
+
+        sql = f"SELECT * FROM {self._ref}"
+        # The system's own read of a source table for its replica: authorized as such, and
+        # pinned to this one statement (REQ-1760).
+        _schema, stream = self._engine.execute_engine_stream(
+            sql,
+            authorization=SystemAuth(
+                mint_system_token(), reason=f"replica_build:{self._ref}", expected_sql=sql
+            ),
+        )
         try:
             for batch in stream:
                 for part in _bounded(batch, batch_rows):

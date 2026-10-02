@@ -32,6 +32,15 @@ from provisa.federation.replica_runner import (
 ORG = "org1"
 
 
+def _async(fn):
+    """``fn`` as the coroutine function the runner awaits."""
+
+    async def call(*args):
+        return fn(*args)
+
+    return call
+
+
 def _key(n: int):
     return ("src", "public", f"t{n}")
 
@@ -106,9 +115,10 @@ class _Node:
             locks=self.locks,
             engine_key=lambda: engine,
             build=build,
-            source_cap=lambda _key: cap,
+            source_cap=_async(lambda _key: cap),
             permits=permits,
-            next_refresh_at=lambda _key, _now: None,
+            next_refresh_at=_async(lambda _key, _now: None),
+            store=lambda: "store-a",
             builds_per_node=lambda: per_node,
             engine_jobs=lambda: engine_jobs,
             spawn=lambda coro, name: self.tasks.append(asyncio.ensure_future(coro)),
@@ -314,6 +324,7 @@ async def test_a_refresh_that_is_due_is_claimed_like_a_request(plane, tmp_path):
             rows_copied=1,
             method="stream_batches",
             content_hash=None,
+            store="store-a",
             next_refresh_at=now - timedelta(seconds=1),
             now=now - timedelta(minutes=5),
         )
