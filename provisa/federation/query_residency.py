@@ -198,8 +198,11 @@ async def ensure_resident(
     ``reader_role`` is the governed role the query runs as (REQ-1907): staleness is judged against
     its effective TTL per table. None is a caller with no reader (it uses each table's cache_ttl).
 
-    A table replicated ROW BY ROW (``_row_level``: the row_materialize flag on an engine that
-    cannot attach its source) has no whole-table replica and is never built here. Its rows are fetched by key —
+    Only a WHOLE COPY is built for a read (``replica_converge.whole_copy``). A table with a
+    parameter column is a function of its arguments and is never built. A table replicated ROW
+    BY ROW (the row_materialize flag on an engine that cannot attach its source, REQ-1865,
+    settled: an engine that reads the source in place ignores the flag)
+    has no whole-table replica and is never built here. Its rows are fetched by key —
     ``ensure_rows_resident`` for a key the statement binds, ``pushdown_row_materialize`` for a key
     a join supplies — and a statement that binds neither is refused at planning (REQ-1915,
     ``pgwire._pipeline._pk_bounds``), so no read reaches this function needing the whole table.
@@ -222,14 +225,6 @@ async def ensure_resident(
 
     _attached_types = {s.id: engine_attaches(engine, s.type.value) for s in sources}
 
-    def _row_level(t: Any) -> bool:
-        """Whether row_materialize APPLIES to ``t`` on this engine (REQ-1865, settled): the flag
-        is set AND the engine cannot attach the table's source. An engine that reads the source
-        in place ignores the flag — the table is read through the attach, never landed into a
-        row cache — the same rule ``active_row_materialize_tables`` applies for every other
-        row-level consumer."""
-        return bool(getattr(t, "row_materialize", False)) and not _attached_types[t.source_id]
-
     read = frozenset(table_ids)
     floored = state.replica_routes.floored
 
@@ -240,9 +235,16 @@ async def ensure_resident(
         source is left alone — it is neither landed nor asked for a replication clock."""
         return t.id in floored or not _attached_types[t.source_id]
 
+    from provisa.federation.replica_converge import whole_copy
+
+    by_id = {s.id: s for s in sources}
     tables_by_source: dict[str, list[Any]] = {}
     for t in await registered_tables(state):
-        if t.source_id in wanted and t.id in read and not _row_level(t) and _lands(t):
+        if t.source_id not in wanted or t.id not in read or not _lands(t):
+            continue
+        # Only a whole copy is built for a read: not a row-level table's (its rows come by
+        # key) and not a parameterized table's (a function of its arguments has no whole).
+        if whole_copy(by_id[t.source_id], t, engine):
             tables_by_source.setdefault(t.source_id, []).append(t)
     # REQ-826 / REQ-1141: a table the operator's settings put on its replica moves its source's
     # read there for this statement, even where the engine could attach the source.

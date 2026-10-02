@@ -94,20 +94,29 @@ def still_answers(built_columns: list | None, columns: list[tuple[str, str]]) ->
     return all((name, ir_type) in have for name, ir_type in columns)
 
 
-def whole_copy(source: Any, reg: dict, engine: Any) -> bool:
-    """Whether the replica of the registered table ``reg`` is a whole copy of it, the kind a
-    build makes. Two kinds of table are served from the resolver's address and never built:
+def _field(holder: Any, name: str) -> Any:
+    return holder[name] if isinstance(holder, dict) else getattr(holder, name)
+
+
+def whole_copy(source: Any, table: Any, engine: Any) -> bool:
+    """Whether the replica of ``table`` is a whole copy of it, the kind a build makes. Two
+    kinds of table are served from the store and never built whole:
 
     - one replicated row by row (REQ-1865, where the engine cannot attach its source): its rows
       are fetched by key when a statement asks for them, never ahead of one;
     - one with a parameter column: it is a function of its arguments, with no whole to copy.
 
-    The rule the event loop's source nodes follow (``events.boot.build_source_node_spec``)."""
+    The one answer for convergence (no build is requested), the read backstop (no build is
+    requested or awaited) and the build itself (it refuses). ``table`` is a registered table as
+    the registry gives it, a row or a model; ``engine`` the runtime or the federation engine."""
     from provisa.federation.strategy import engine_attaches
 
-    if any(c["native_filter_type"] is not None for c in reg["columns"]):
+    if any(_field(c, "native_filter_type") is not None for c in _field(table, "columns")):
         return False
-    return not (reg["row_materialize"] and not engine_attaches(engine, _plain(source.type)))
+    row_level = _field(table, "row_materialize") and not engine_attaches(
+        engine, _plain(source.type)
+    )
+    return not row_level
 
 
 def builds_here(state: Any, key: ReplicaKey) -> bool:

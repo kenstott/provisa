@@ -32,7 +32,9 @@ pytestmark = pytest.mark.unit
 
 
 def _col(name, data_type="text", pk=False):
-    return SimpleNamespace(name=name, data_type=data_type, is_primary_key=pk)
+    return SimpleNamespace(
+        name=name, data_type=data_type, is_primary_key=pk, native_filter_type=None
+    )
 
 
 def _table(source_id="s1"):
@@ -44,6 +46,7 @@ def _table(source_id="s1"):
         watermark_column=None,
         probe_type=None,
         live=None,
+        row_materialize=False,
         columns=[_col("id", "bigint", pk=True), _col("status", "text")],
     )
 
@@ -191,6 +194,23 @@ def _state(backend, sources=None, tables=None):
 
 async def _noop(rows_copied):
     return None
+
+
+async def test_a_build_of_a_table_with_no_whole_copy_is_refused_before_anything_is_read(wiring):
+    """Nothing asks for one (convergence and the read backstop apply the same rule); a build
+    that ran would call a function with no arguments."""
+    table = _table()
+    table.columns.append(
+        SimpleNamespace(
+            name="pet_id", data_type="bigint", is_primary_key=False, native_filter_type="path_param"
+        )
+    )
+    backend = _Backend()
+    with pytest.raises(replica_builds.NoWholeCopy, match="public.events of source s1"):
+        await replica_builds.build_replica(
+            _state(backend, tables=[table]), ("s1", "public", "events"), _noop
+        )
+    assert backend.log == []
 
 
 async def test_a_build_reads_the_table_and_replaces_its_replica_at_the_replicas_address(wiring):

@@ -34,7 +34,7 @@ from provisa.federation import replica_state
 from provisa.federation.data_replicator import BuildOutcome, Progress, data_replicator
 from provisa.federation.replica_runner import ReplicaRunner, engine_job_key
 from provisa.federation.data_replicator import SourceCaps, SourceRead
-from provisa.federation.replica_converge import definition_hash, drop_retired
+from provisa.federation.replica_converge import definition_hash, drop_retired, whole_copy
 from provisa.federation.replica_source import BATCH_ROWS
 from provisa.federation.replica_state import ReplicaKey
 
@@ -57,6 +57,18 @@ class ReplicaTableGone(LookupError):
         self.key = key
         super().__init__(
             f"no registered table {key[1]}.{key[2]} of source {key[0]}: its replica is not built"
+        )
+
+
+class NoWholeCopy(LookupError):
+    """A build was asked for a table that has no whole copy: one replicated row by row, or one
+    that is a function of its parameters."""
+
+    def __init__(self, key: ReplicaKey) -> None:
+        self.key = key
+        super().__init__(
+            f"table {key[1]}.{key[2]} of source {key[0]} has no whole copy to build: it is "
+            "replicated row by row, or it has a parameter column"
         )
 
 
@@ -126,6 +138,8 @@ async def build_replica(state: Any, key: ReplicaKey, progress: Progress) -> Buil
 
     source, table, sources = await _model_row(state, key)
     engine = state.federation_engine
+    if not whole_copy(source, table, engine):
+        raise NoWholeCopy(key)  # nothing asks for one; a build that ran would call a function bare
     backend = engine.engine.backend
     args = resolve_landing_args(source, table, platform=backend.dialect)
     address = backend.replica_address(
