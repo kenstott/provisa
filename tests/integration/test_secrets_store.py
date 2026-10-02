@@ -39,6 +39,7 @@ from provisa.core.schema_admin import (
 )
 from provisa.core.secrets import resolve_secrets
 from provisa.core.secrets_runtime import configure_secrets, reset_secrets
+from tests.integration.vault_state import restore_vault, vault_snapshot
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -80,9 +81,12 @@ async def plane(docker_postgres, monkeypatch, tmp_path):
         with admin_db.engine.begin() as conn:
             conn.execute(deployment_encryption_key.delete())
 
+    # What the shared registry holds before this test writes to it: put back afterwards, so no
+    # later server of the session meets a vault written under this test's key.
+    found = vault_snapshot(admin_db.engine)
     _forget_the_recorded_key()
     yield admin_db, orgs
-    _forget_the_recorded_key()
+    restore_vault(admin_db.engine, found)
     reset_secrets()
     keyring.set_keyring(previous_keyring)
 

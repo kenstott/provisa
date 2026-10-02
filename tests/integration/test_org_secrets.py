@@ -166,8 +166,11 @@ class TestAStoredReferenceIsResolvedOnTheWayOut:
         admin_db = Database(engine, name="admin")
         await init_registry_schema(admin_db, _ORG_ID)
         monkeypatch.setattr(secrets_store, "_request_org", lambda: (admin_db, _ORG_ID))
+        from tests.integration.vault_state import restore_vault, vault_snapshot
+
+        found = vault_snapshot(engine)  # the shared registry's vault and key record, put back
         yield admin_db
-        await secrets_store.remove(admin_db, _ORG_ID, "LLM_KEY", owner_id=secrets_store.ORG_OWNER)
+        restore_vault(engine, found)
         reset_secrets()
         engine.dispose()
 

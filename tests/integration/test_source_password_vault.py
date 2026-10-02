@@ -50,13 +50,27 @@ async def client():
 
     app = create_app()
 
+    from tests.integration.vault_state import restore_vault, vault_snapshot
+
     try:
         async with app.router.lifespan_context(app):
+            # What the shared control plane holds before this module writes to it. Put back
+            # below: a secret left in the acting org's vault was written under this module's
+            # key, and every later server of the session would be a worker without that key.
+            found = vault_snapshot(state.admin_db.engine)
             _forget_the_recorded_key()
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as c:
                 yield c
-            _forget_the_recorded_key()
+                # The sources this module registered and did not delete in a test of its own.
+                for source_id in ("req1695_literal", "req1695_ref", "req1695_none"):
+                    await c.post(
+                        "/admin/graphql",
+                        json={
+                            "query": f'mutation {{ deleteSource(id: "{source_id}") {{ success }} }}'
+                        },
+                    )
+            restore_vault(state.admin_db.engine, found)
     finally:
         if previous is None:
             os.environ.pop("PROVISA_ENCRYPTION_KEY", None)
