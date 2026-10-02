@@ -213,6 +213,11 @@ class WorkerBoot:
             "PROVISA_REDIS_EMBEDDED": "1",
             "PROVISA_DATA_DIR": self.data_dir,
             "PROVISA_HOME": self.data_dir,
+            # The launch's workers share ONE key store, as the workers of a real host do: the
+            # file keystore under the launch's own data dir (REQ-1802). The test session's
+            # keyring (tests/conftest.py) is a dict inside one process — inherited, it would give
+            # every worker a master key no other worker can see, which no real keyring does.
+            "PYTHON_KEYRING_BACKEND": "keyring.backends.fail.Keyring",
             # Licensing writes here, not to the user's ~/.provisa (provisa/licensing/home.py) —
             # also when this harness is run as a script, outside the test session's own sandbox.
             "PROVISA_LICENSING_SANDBOX_DIR": os.path.join(self.data_dir, "licensing"),

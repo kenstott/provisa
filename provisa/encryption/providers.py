@@ -25,11 +25,21 @@ PROVISA_ENCRYPTION_KEY just because a Python package is missing. The fallback is
 this host's Provisa data directory (0600, never in the database, never in git) — the same trust
 boundary an OS keychain offers (this machine, and only this machine, holds it), just without the
 OS integration.
+
+ONE DEPLOYMENT, ONE MASTER KEY. Every worker of a deployment must hold the same key, or a value one
+worker encrypts is unreadable to the next. Workers on one host share that host's key store (the OS
+keychain, else the file above). Workers on separate hosts or containers have no store in common,
+so the key is GIVEN to them: ``PROVISA_ENCRYPTION_KEY``, which therefore WINS over whatever a
+host's own store holds — a host that minted a key of its own before the variable was set must not
+keep using it. A key is minted only where a write needs one and none exists
+(:func:`mint_master_key`), under an exclusive file lock, so two workers that reach that point
+together end with one key rather than one each.
 """
 
 from __future__ import annotations
 
 import base64
+import fcntl
 import os
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -65,8 +75,8 @@ class NullMasterKey(MasterKeyProvider):  # REQ-684
 class LocalKeychain(MasterKeyProvider):  # REQ-684
     """AES-256-GCM DEK wrapping with a 32-byte master key held on this machine.
 
-    The master key is retrieved (in order) from the OS keychain via ``keyring`` if
-    available, else the ``PROVISA_ENCRYPTION_KEY`` env var (base64). It never leaves
+    The master key is ``PROVISA_ENCRYPTION_KEY`` (base64) when the deployment sets it, else
+    this host's own: the OS keychain via ``keyring``, else the file keystore. It never leaves
     the process. A wrapped DEK is ``nonce(12) || AESGCM(dek)`` under the master key.
     """
 
@@ -88,12 +98,12 @@ class LocalKeychain(MasterKeyProvider):  # REQ-684
 
     @classmethod
     def from_config(cls, key_id: str | None = None) -> "LocalKeychain":
-        """Load the master key from the OS keychain (keyring) or the env fallback."""
-        raw = _load_from_keychain(key_id) or os.environ.get(_MASTER_KEY_ENV)
+        """Load the master key: ``PROVISA_ENCRYPTION_KEY``, else this host's key store."""
+        raw = _master_key_b64(key_id)
         if not raw:
             raise RuntimeError(
-                "LocalKeychain: no master key found in the OS keychain or "
-                f"{_MASTER_KEY_ENV}. Provision a 32-byte base64 key first."
+                f"LocalKeychain: no master key found in {_MASTER_KEY_ENV}, the OS keychain or "
+                f"{keystore_path(key_id)}. Provision a 32-byte base64 key first."
             )
         key = base64.b64decode(raw)
         return cls(key)
@@ -107,6 +117,18 @@ def _local_keystore_dir() -> Path:
 
 def _file_keystore_path(key_id: str | None) -> Path:
     return _local_keystore_dir() / f"{key_id or 'master'}.key"
+
+
+def keystore_path(key_id: str | None = None) -> Path:
+    """Where this host's file keystore holds ``key_id``'s master key (REQ-1802) — what an error
+    about a missing or mismatched key names, so the operator knows which file is meant."""
+    return _file_keystore_path(key_id)
+
+
+def _master_key_b64(key_id: str | None) -> str | None:
+    """The base64 master key this process uses: the deployment's (``PROVISA_ENCRYPTION_KEY``)
+    when it is set, else this host's own (keychain, then file keystore), else None."""
+    return os.environ.get(_MASTER_KEY_ENV) or _load_from_keychain(key_id)
 
 
 def _load_from_keychain(key_id: str | None) -> str | None:
@@ -264,8 +286,9 @@ class GcpKmsMasterKey(MasterKeyProvider):  # REQ-693
 
 
 def master_key_present(key_id: str | None = None) -> bool:
-    """Whether a LocalKeychain master key is available (OS keychain or the env fallback)."""
-    return bool(_load_from_keychain(key_id) or os.environ.get(_MASTER_KEY_ENV))
+    """Whether a LocalKeychain master key is available (``PROVISA_ENCRYPTION_KEY``, or this
+    host's keychain or file keystore)."""
+    return bool(_master_key_b64(key_id))
 
 
 def generate_master_key_b64() -> str:
@@ -294,3 +317,18 @@ def store_master_key(key_b64: str, key_id: str | None = None) -> bool:
     path.write_text(key_b64)
     os.chmod(path, 0o600)
     return True
+
+
+def mint_master_key(key_id: str | None = None) -> None:
+    """Make sure a master key exists for ``key_id``, minting one only if none does.
+
+    The check and the store happen under an exclusive lock on a file beside the keystore: workers
+    that reach a first write together would otherwise each see no key, each generate one, and the
+    last store would win — leaving what the others had already encrypted unreadable. The lock is
+    the operating system's (``flock``), released when the file closes however this exits."""
+    lock_path = _local_keystore_dir() / f"{key_id or 'master'}.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with open(lock_path, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if not master_key_present(key_id):
+            store_master_key(generate_master_key_b64(), key_id)

@@ -18,9 +18,9 @@ the default rather than the degraded case.
 WHAT AUTHORIZES A READ. Not a key of this table's own: the stored value is an envelope blob
 (REQ-685), so the authority to read it is the encryption master key the process holds. A control
 plane copied without that key holds ciphertext and nothing else. The key is provisioned on first
-write when the host has a keychain to hold it, and demanded explicitly when it does not -- a key
-this module minted but could not persist would encrypt one secret and lose it, which is worse than
-refusing.
+WRITE, in this host's key store, when the deployment has not set one (``PROVISA_ENCRYPTION_KEY``).
+A READ never provisions: a worker without the key the vault was written under refuses, naming the
+key it lacks (``VaultKeyError``), rather than minting one that opens nothing.
 
 NAMES GO IN, VALUES NEVER COME BACK OUT (REQ-1558). Nothing here returns a stored value to a
 caller who asks for it by name. The only path out is ``resolve``, reached through the reference
@@ -127,14 +127,34 @@ def validate_name(name: str) -> str:
     return name
 
 
-def _cipher() -> "EncryptionService":
+class VaultKeyError(RuntimeError):
+    """This worker cannot read a vault because of the master key it holds — none, or not the one
+    the vault was written under. The message says which, and how a deployment's workers come to
+    hold the same key."""
+
+
+def _same_key_everywhere() -> str:
+    from provisa.encryption.providers import keystore_path
+
+    return (
+        "Every worker of a deployment must hold the same master key: set PROVISA_ENCRYPTION_KEY "
+        "to the same 32-byte base64 key for every worker, or (workers on one host) share the "
+        f"keystore at {keystore_path()}."
+    )
+
+
+def _cipher(*, mint: bool) -> "EncryptionService":
     """The service that encrypts a stored secret. Never a passthrough.
 
     The process-wide service (REQ-684) is used when one is configured. When it is NOT -- which is
     the ordinary state of an install that never asked for column encryption -- this store still
     encrypts, because a secrets service whose store depends on unrelated config to not be
-    plaintext is not a secrets service. It falls to the local-keychain provider, whose master key
-    is minted on first use if the host can keep it.
+    plaintext is not a secrets service. It falls to the local-keychain provider.
+
+    ``mint``: a WRITE (``put``) may mint that provider's master key when none exists. A READ never
+    does: a vault that already holds secrets was written under a key, and a worker that has none
+    is a worker that was not given the deployment's key -- minting a second one there would only
+    produce a key that opens nothing, so it refuses and says what is missing.
     """
     from provisa.encryption.runtime import encryption_service
     from provisa.encryption.service import NullEncryption
@@ -144,17 +164,14 @@ def _cipher() -> "EncryptionService":
         return service
 
     from provisa.encryption.envelope import EnvelopeEncryption
-    from provisa.encryption.providers import (
-        LocalKeychain,
-        generate_master_key_b64,
-        master_key_present,
-        store_master_key,
-    )
+    from provisa.encryption.providers import LocalKeychain, master_key_present, mint_master_key
 
-    if not master_key_present() and not store_master_key(generate_master_key_b64()):
-        raise RuntimeError(
-            "No encryption master key, and this host has no keychain to hold one. Set "
-            "PROVISA_ENCRYPTION_KEY to a 32-byte base64 key before storing secrets."
+    if mint:
+        mint_master_key()
+    elif not master_key_present():
+        raise VaultKeyError(
+            "This worker holds no encryption master key, and the vault it was asked to read "
+            "already holds secrets written under one. " + _same_key_everywhere()
         )
     return EnvelopeEncryption(LocalKeychain.from_config())
 
@@ -179,7 +196,7 @@ async def put(
     validate_name(name)
     if value == "":
         raise ValueError("A secret's value cannot be empty.")
-    blob = _cipher().encrypt(value.encode())
+    blob = _cipher(mint=True).encrypt(value.encode())
     async with admin_db.acquire() as conn:
         await conn.upsert(
             secrets_store,
@@ -269,8 +286,19 @@ async def _decrypted(admin_db: "Database", org_id: str, owner_id: str) -> dict[s
         # mutation and every introspection of a source now does (REQ-1695) -- fail outright on an
         # install that has never stored a secret and has no keychain to mint a key in.
         return {}
-    cipher = _cipher()
-    return {name: cipher.decrypt(blob).decode() for name, blob in rows}
+    from cryptography.exceptions import InvalidTag
+
+    cipher = _cipher(mint=False)
+    try:
+        return {name: cipher.decrypt(blob).decode() for name, blob in rows}
+    except InvalidTag as exc:
+        # The authentication failure of a wrapped key opened with the wrong master key. Its own
+        # message is empty, which is what a client was shown.
+        raise VaultKeyError(
+            f"The encryption master key this worker holds is not the one the vault of org "
+            f"{org_id!r} was written under, so its secrets cannot be decrypted here. "
+            + _same_key_everywhere()
+        ) from exc
 
 
 @asynccontextmanager

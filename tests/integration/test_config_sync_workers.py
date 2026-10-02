@@ -181,9 +181,9 @@ def test_a_source_registered_through_one_worker_is_queryable_on_every_worker(wor
     res = author.admin(
         'mutation { createSource(input: {id: "crm-pg", type: "postgresql", '
         f'host: "{_PG_HOST}", port: {_PG_PORT}, database: "{first.database}", '
-        # A reference the operator wrote, stored verbatim and resolved by each worker from its
-        # own environment — as the launch's configured source does.
-        'username: "provisa", password: "${env:PG_PASSWORD}"}) { success message } }'
+        # A literal password: it goes into the org vault through this one worker, and every
+        # other worker decrypts it with the launch's one master key.
+        'username: "provisa", password: "provisa"}) { success message } }'
     )
     assert res["data"]["createSource"]["success"], res
     res = author.admin(

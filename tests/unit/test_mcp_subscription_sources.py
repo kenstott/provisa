@@ -130,7 +130,7 @@ class TestSearchKaggleDatasets:
         monkeypatch.setattr(
             secrets_store_mod,
             "_cipher",
-            lambda: types.SimpleNamespace(encrypt=lambda b: b, decrypt=lambda b: b),
+            lambda *, mint: types.SimpleNamespace(encrypt=lambda b: b, decrypt=lambda b: b),
         )
         await secrets_store_mod.put(
             self.admin_db,
