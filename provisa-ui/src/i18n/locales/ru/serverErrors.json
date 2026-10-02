@@ -3,6 +3,7 @@
     "_requestFailed": "{{op}}: сбой ({{status}})",
     "actions": {
       "database_not_connected": "База данных не подключена",
+      "domain_required": "{{name}} не указывает домен: команда или вебхук относится к домену",
       "function_not_found": "Функция '{{name}}' не найдена",
       "source_not_connected": "Источник '{{source}}' не подключен",
       "test_endpoint_disabled": "Тестовая конечная точка отключена (задайте PROVISA_ENABLE_TEST_ENDPOINTS, чтобы включить вне production).",

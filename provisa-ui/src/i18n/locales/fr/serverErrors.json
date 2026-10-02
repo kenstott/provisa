@@ -3,6 +3,7 @@
     "_requestFailed": "Échec de {{op}} ({{status}})",
     "actions": {
       "database_not_connected": "Base de données non connectée",
+      "domain_required": "{{name}} n’indique aucun domaine : une commande ou un webhook appartient à un domaine",
       "function_not_found": "Fonction « {{name}} » introuvable",
       "source_not_connected": "Source « {{source}} » non connectée",
       "test_endpoint_disabled": "L'endpoint de test est désactivé (définissez PROVISA_ENABLE_TEST_ENDPOINTS pour l'activer hors production).",

@@ -164,7 +164,10 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
             if visible_to and role_id not in visible_to:
                 continue
             domain_id = item.get("domain_id", "")
-            if not all_access and domain_id and domain_id not in accessible:
+            # REQ-1531: a command sits in a domain, and a role is shown the commands of the
+            # domains it reaches. One that names no domain — saving it is refused; a stored row
+            # can still carry none — is in no domain any role reaches, so no role is shown it.
+            if not domain_id or (not all_access and domain_id not in accessible):
                 continue
 
             gql_return, args = resolve_return_and_args(item)

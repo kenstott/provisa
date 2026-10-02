@@ -3,6 +3,7 @@
     "_requestFailed": "{{op}} 失败（{{status}}）",
     "actions": {
       "database_not_connected": "数据库未连接",
+      "domain_required": "{{name}} 未指定域：命令或 Webhook 必须属于某个域",
       "function_not_found": "未找到函数 '{{name}}'",
       "source_not_connected": "数据源 '{{source}}' 未连接",
       "test_endpoint_disabled": "测试终结点已禁用（在非生产环境中设置 PROVISA_ENABLE_TEST_ENDPOINTS 以启用）。",

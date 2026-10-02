@@ -33,7 +33,7 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
     return_schema: dict | None = None,
 ) -> int | None:
     """Upsert a tracked DB function. Returns the row id."""
-    domain_id = domain_policy.resolve_domain_id(func.domain_id)
+    domain_id = domain_policy.command_domain_id(func.domain_id, func.name)  # REQ-1531
     # REQ-1634: a DataProduct's member commands must all share its domain_id — same gate as
     # table.py's upsert, so config load, admin GraphQL, and introspection are all covered.
     if func.product_id is not None:
@@ -148,7 +148,7 @@ async def upsert_webhook(
         "inline_return_type": [t.model_dump() for t in wh.inline_return_type],
         "arguments": [a.model_dump() for a in wh.arguments],
         "visible_to": wh.visible_to,
-        "domain_id": domain_policy.resolve_domain_id(wh.domain_id),
+        "domain_id": domain_policy.command_domain_id(wh.domain_id, wh.name),  # REQ-1531
         "description": wh.description,
         "kind": wh.kind,
     }

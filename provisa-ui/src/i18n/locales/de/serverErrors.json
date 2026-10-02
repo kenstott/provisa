@@ -3,6 +3,7 @@
     "_requestFailed": "{{op}} fehlgeschlagen ({{status}})",
     "actions": {
       "database_not_connected": "Datenbank nicht verbunden",
+      "domain_required": "{{name}} nennt keine Domäne: Ein Befehl oder Webhook gehört zu einer Domäne",
       "function_not_found": "Funktion '{{name}}' nicht gefunden",
       "source_not_connected": "Quelle '{{source}}' nicht verbunden",
       "test_endpoint_disabled": "Test-Endpunkt ist deaktiviert (PROVISA_ENABLE_TEST_ENDPOINTS setzen, um ihn außerhalb der Produktion zu aktivieren).",

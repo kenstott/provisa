@@ -427,7 +427,11 @@ export function CommandFormFields({
         placeholder={t("commandFormFields.selectDomain")}
         data={domainHints}
         value={form.domainId || null}
-        onChange={(val) => setForm({ ...form, domainId: val ?? "" })}
+        // REQ-1531: every command and webhook sits in a domain, so one that is chosen cannot
+        // be cleared — only replaced. Saving with none is refused by the server.
+        allowDeselect={false}
+        withAsterisk
+        onChange={(val) => setForm({ ...form, domainId: val ?? form.domainId })}
       />
       {form.actionType === "function" && (
         <Select

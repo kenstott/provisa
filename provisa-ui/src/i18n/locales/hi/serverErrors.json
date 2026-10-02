@@ -3,6 +3,7 @@
     "_requestFailed": "{{op}} विफल हुआ ({{status}})",
     "actions": {
       "database_not_connected": "डेटाबेस कनेक्ट नहीं है",
+      "domain_required": "{{name}} में कोई डोमेन नहीं दिया गया है: कमांड या वेबहुक किसी डोमेन में होता है",
       "function_not_found": "फ़ंक्शन '{{name}}' नहीं मिला",
       "source_not_connected": "स्रोत '{{source}}' कनेक्ट नहीं है",
       "test_endpoint_disabled": "टेस्ट एंडपॉइंट अक्षम है (गैर-प्रोडक्शन में सक्षम करने के लिए PROVISA_ENABLE_TEST_ENDPOINTS सेट करें)।",

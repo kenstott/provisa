@@ -3,6 +3,7 @@
     "_requestFailed": "{{op}} mislukt ({{status}})",
     "actions": {
       "database_not_connected": "Database niet verbonden",
+      "domain_required": "{{name}} noemt geen domein: een opdracht of webhook hoort bij een domein",
       "function_not_found": "Functie '{{name}}' niet gevonden",
       "source_not_connected": "Bron '{{source}}' niet verbonden",
       "test_endpoint_disabled": "Test-endpoint is uitgeschakeld (stel PROVISA_ENABLE_TEST_ENDPOINTS in om dit buiten productie in te schakelen).",

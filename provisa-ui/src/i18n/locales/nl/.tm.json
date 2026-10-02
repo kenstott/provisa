@@ -2776,6 +2776,7 @@
   "nl/securityTab.json::securityTab.savedRestartRequired": "Saved. Restart the service to apply.",
   "nl/serverErrors.json::serverErrors._requestFailed": "{{op}} failed ({{status}})",
   "nl/serverErrors.json::serverErrors.actions.database_not_connected": "Database not connected",
+  "nl/serverErrors.json::serverErrors.actions.domain_required": "{{name}} names no domain: a command or webhook sits in a domain",
   "nl/serverErrors.json::serverErrors.actions.function_not_found": "Function '{{name}}' not found",
   "nl/serverErrors.json::serverErrors.actions.source_not_connected": "Source '{{source}}' not connected",
   "nl/serverErrors.json::serverErrors.actions.test_endpoint_disabled": "Test endpoint is disabled (set PROVISA_ENABLE_TEST_ENDPOINTS to enable in non-production).",

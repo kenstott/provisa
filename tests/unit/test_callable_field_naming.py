@@ -37,7 +37,7 @@ def _schema_input(convention: str, *, kind: str = "mutation") -> SchemaInput:
                 "name": "add_pet",
                 "arguments": [{"name": "p_name", "type": "String"}],
                 "returns": "",
-                "domain_id": "",
+                "domain_id": "pets",  # a command sits in a domain (REQ-1531)
                 "kind": kind,
             }
         ],

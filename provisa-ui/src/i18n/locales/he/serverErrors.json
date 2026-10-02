@@ -3,6 +3,7 @@
     "_requestFailed": "{{op}} נכשלה ({{status}})",
     "actions": {
       "database_not_connected": "מסד הנתונים אינו מחובר",
+      "domain_required": "{{name}} אינו מציין דומיין: פקודה או webhook שייכים לדומיין",
       "function_not_found": "הפונקציה '{{name}}' לא נמצאה",
       "source_not_connected": "המקור '{{source}}' אינו מחובר",
       "test_endpoint_disabled": "נקודת הקצה לבדיקות מושבתת (הגדירו את PROVISA_ENABLE_TEST_ENDPOINTS כדי להפעיל בסביבה שאינה ייצור).",

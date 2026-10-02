@@ -3,6 +3,7 @@
     "_requestFailed": "{{op}} 失敗（{{status}}）",
     "actions": {
       "database_not_connected": "數據庫未連線",
+      "domain_required": "{{name}} 未指定網域：指令或 Webhook 必須屬於某個網域",
       "function_not_found": "找不到函數「{{name}}」",
       "source_not_connected": "數據來源「{{source}}」未連線",
       "test_endpoint_disabled": "測試端點已停用（在非生產環境設定 PROVISA_ENABLE_TEST_ENDPOINTS 以啟用）。",

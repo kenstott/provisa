@@ -168,6 +168,20 @@ class WebhookInput(BaseModel):  # REQ-209, REQ-210, REQ-211
     kind: str = "mutation"
 
 
+def _saved_domain(request: Request, name: str, domain_id: str) -> str:  # REQ-1531
+    """The domain a command or webhook is being saved into: it must name one, and the caller
+    must reach it."""
+    from provisa.api.admin.capabilities import require_domain_request
+    from provisa.core import domain_policy
+
+    try:
+        resolved = domain_policy.command_domain_id(domain_id, name)
+    except ValueError as refused:
+        raise ApiError(422, "actions.domain_required", str(refused), name=name) from refused
+    require_domain_request(request, resolved)
+    return resolved
+
+
 @router.post("/functions")
 async def create_function(
     request: Request,
@@ -175,6 +189,7 @@ async def create_function(
 ):  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-253, REQ-304
     """Create a tracked DB function."""
     require_capability_request(request, "table_registration")
+    body.domainId = _saved_domain(request, body.name, body.domainId)
     from provisa.api.app import state
     from provisa.core.models import DatasetColumn, Function, FunctionArgument
     from provisa.core.repositories import function as function_repo
@@ -223,6 +238,7 @@ async def update_function(
 ):  # REQ-205, REQ-253, REQ-304
     """Update a tracked DB function by name."""
     require_capability_request(request, "table_registration")
+    body.domainId = _saved_domain(request, name, body.domainId)
     from provisa.api.app import state
 
     if state.tenant_db is None:
@@ -231,6 +247,8 @@ async def update_function(
     from provisa.core.repositories import data_product as data_product_repo
 
     async with state.tenant_db.acquire() as conn:
+        # REQ-1531: moving it needs the domain it is moved out of as well.
+        await _require_its_domain(request, conn, tracked_functions, name)
         if body.productId is not None:
             # REQ-1634: same domain-membership gate as function_repo.upsert_function; the
             # update path writes tracked_functions directly and must not bypass it.
@@ -285,9 +303,9 @@ async def update_function(
 async def _require_its_domain(request: Request, conn, table, name: str) -> None:  # REQ-1531
     """Gate an act on a command or webhook named by ``name`` on the domain it sits in.
 
-    A row with no domain (``""``) is in none — every role reaching the commands surface sees it
-    (``actions_schema``) — so there is no domain to hold. A name with no row is the caller's
-    not-found, answered by the act itself.
+    Every command and webhook is saved into a domain. A stored row that names none predates
+    that rule: no role is shown it (``actions_schema``), and there is no domain to hold for it.
+    A name with no row is the caller's not-found, answered by the act itself.
     """
     from provisa.api.admin.capabilities import require_domain_request
 
@@ -329,6 +347,7 @@ async def create_webhook(
 ):  # REQ-209, REQ-210, REQ-211, REQ-253, REQ-434
     """Create a tracked webhook."""
     require_capability_request(request, "table_registration")
+    body.domainId = _saved_domain(request, body.name, body.domainId)
     from provisa.api.app import state
 
     if state.tenant_db is None:
@@ -400,12 +419,15 @@ async def create_webhook(
 async def update_webhook(request: Request, name: str, body: WebhookInput):  # REQ-209, REQ-253
     """Update a tracked webhook by name."""
     require_capability_request(request, "table_registration")
+    body.domainId = _saved_domain(request, name, body.domainId)
     from provisa.api.app import state
 
     if state.tenant_db is None:
         raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
     async with state.tenant_db.acquire() as conn:
+        # REQ-1531: moving it needs the domain it is moved out of as well.
+        await _require_its_domain(request, conn, tracked_webhooks, name)
         result = await conn.execute_core(
             update(tracked_webhooks)
             .where(tracked_webhooks.c.name == name)
