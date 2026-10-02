@@ -7,6 +7,7 @@
     "colActions": "操作",
     "empty": "ロールが見つかりません。",
     "detailsHidden": "詳細の表示にはユーザー管理権限が必要です。",
+    "noDomains": "ドメインなし — データにアクセスできません",
     "deleteRole": "ロール {{roleId}} を削除",
     "deleted": "「{{roleId}}」を削除しました",
     "pageInfo": "ページ {{current}} / {{total}}",

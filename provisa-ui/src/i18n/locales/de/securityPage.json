@@ -29,6 +29,8 @@
     "colRole": "Rolle",
     "colFilter": "Filter",
     "none": "keine",
+    "noDomains": "keine Domänen – erreicht keine Daten",
+    "noDomainsNote": "Keine Domänen ausgewählt: Diese Rolle erreicht keine Daten. Wählen Sie die Domänen, die sie lesen darf, oder „Alle Domänen“.",
     "detailsHidden": "Details erfordern Benutzerverwaltung.",
     "labelId": "ID:",
     "labelCapabilities": "Fähigkeiten:",

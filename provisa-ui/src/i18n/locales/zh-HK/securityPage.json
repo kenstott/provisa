@@ -29,6 +29,8 @@
     "colRole": "角色",
     "colFilter": "篩選",
     "none": "無",
+    "noDomains": "沒有網域 — 無法存取任何資料",
+    "noDomainsNote": "未選擇任何網域：此角色無法存取任何資料。請選擇它可以讀取的網域，或選擇「所有網域」。",
     "detailsHidden": "詳細資料需要用戶管理權限。",
     "labelId": "ID：",
     "labelCapabilities": "功能：",

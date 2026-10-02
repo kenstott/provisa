@@ -7,6 +7,7 @@
     "colActions": "Aktionen",
     "empty": "Keine Rollen gefunden.",
     "detailsHidden": "Details erfordern Benutzerverwaltung.",
+    "noDomains": "keine Domänen – erreicht keine Daten",
     "deleteRole": "Rolle {{roleId}} löschen",
     "deleted": "„{{roleId}}“ gelöscht",
     "pageInfo": "Seite {{current}} / {{total}}",

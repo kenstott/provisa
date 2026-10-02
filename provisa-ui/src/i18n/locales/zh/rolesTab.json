@@ -7,6 +7,7 @@
     "colActions": "操作",
     "empty": "未找到角色。",
     "detailsHidden": "详细信息需要用户管理权限。",
+    "noDomains": "无域 — 无法访问任何数据",
     "deleteRole": "删除角色 {{roleId}}",
     "deleted": "已删除“{{roleId}}”",
     "pageInfo": "第 {{current}} / {{total}} 页",

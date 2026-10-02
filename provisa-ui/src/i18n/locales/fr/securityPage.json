@@ -29,6 +29,8 @@
     "colRole": "Rôle",
     "colFilter": "Filtre",
     "none": "aucun",
+    "noDomains": "aucun domaine — n’accède à aucune donnée",
+    "noDomainsNote": "Aucun domaine sélectionné : ce rôle n’accède à aucune donnée. Choisissez les domaines qu’il peut lire, ou Tous les domaines.",
     "detailsHidden": "Les détails nécessitent la gestion des utilisateurs.",
     "labelId": "ID :",
     "labelCapabilities": "Capacités :",

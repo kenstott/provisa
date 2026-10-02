@@ -29,6 +29,8 @@
     "colRole": "Função",
     "colFilter": "Filtro",
     "none": "nenhum",
+    "noDomains": "sem domínios — não acede a nenhum dado",
+    "noDomainsNote": "Nenhum domínio selecionado: este papel não acede a nenhum dado. Escolha os domínios que pode ler, ou Todos os domínios.",
     "detailsHidden": "Os detalhes exigem gerenciamento de usuários.",
     "labelId": "ID:",
     "labelCapabilities": "Recursos:",

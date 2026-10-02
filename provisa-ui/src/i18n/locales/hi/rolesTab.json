@@ -7,6 +7,7 @@
     "colActions": "क्रियाएँ",
     "empty": "कोई भूमिका नहीं मिली।",
     "detailsHidden": "विवरण के लिए उपयोगकर्ता प्रबंधन आवश्यक है।",
+    "noDomains": "कोई डोमेन नहीं — किसी डेटा तक पहुँच नहीं",
     "deleteRole": "भूमिका {{roleId}} हटाएँ",
     "deleted": "\"{{roleId}}\" हटाई गई",
     "pageInfo": "पृष्ठ {{current}} / {{total}}",
