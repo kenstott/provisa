@@ -22,8 +22,9 @@ state earlier ones created (pytest runs them in file order):
   mismatching email is refused with a stable code, no rule accepts any email.
 - REQ-1295: X-Provisa-Role is honored only for a role the caller is actually ASSIGNED.
 - REQ-1327: platform_admin is control-plane only — zero data-plane capability anywhere
-  (no data surface at all, platform bypass notwithstanding), no entry into an org
-  without membership, and the audited grant_org_admin recovery operation.
+  (no data surface, and no admin data route: its two platform rights stand in for no
+  other right), no entry into an org without membership, and the audited
+  grant_org_admin recovery operation.
 - REQ-1293: the tenant plane is isolated by SCHEMA; admin resolvers apply no row-level
   org_id filter, so rows seeded into an org schema that carry org_id='root' stay
   visible to that org's admin, while another org's rows never appear.
@@ -335,7 +336,7 @@ class TestOnlyAssignedRoleRidesHeader:
 
 class TestPlatformAdminHasZeroDataPlane:
     """REQ-1327: platform_admin is a purely control-plane role — no data surface anywhere,
-    and the platform bypass exempts no data-plane capability check."""
+    and no right it holds passes a data-plane capability check."""
 
     async def test_grant_platform_admin_only(self, client):
         org1, ids = _ctx["org1"], _ctx["user_ids"]
@@ -357,8 +358,11 @@ class TestPlatformAdminHasZeroDataPlane:
         assert resp.status_code == 200, resp.text
         roles = {r["id"]: r for r in resp.json()}
         caps = set(roles["platform_admin"]["capabilities"])
-        assert "cross_org" in caps
+        # Exactly the two platform rights: no data capability, and nothing standing in for one.
+        assert caps == {"platform_settings", "cross_org"}, caps
         assert not caps & _DATA_PLANE_CAPS, f"platform_admin holds data caps: {caps}"
+        for role_id, role in roles.items():
+            assert not {"admin", "superadmin"} & set(role["capabilities"]), role_id
 
     async def test_control_plane_works_but_data_surfaces_refuse(self, client):
         # Control plane: the org registry answers a platform_admin.
@@ -366,8 +370,7 @@ class TestPlatformAdminHasZeroDataPlane:
         assert orgs.status_code == 200, orgs.text
         assert any(o["id"] == _ctx["org1"] for o in orgs.json())
 
-        # Data plane, GraphQL: refused outright — no schema exists for the role, even
-        # though the role holds the admin/superadmin platform-bypass capabilities.
+        # Data plane, GraphQL: refused outright — no schema exists for the role.
         gql = await client.post(
             "/data/graphql",
             json={"query": "{ sa__customers { id } }"},
@@ -385,6 +388,83 @@ class TestPlatformAdminHasZeroDataPlane:
         )
         assert japi.status_code == 400, japi.text
         assert "No schema available" in japi.text
+
+    async def test_admin_data_routes_refuse_the_platform_admin(self, client):
+        # The admin surface authorizes on the union of the caller's rights rather than on an
+        # acting role's schema, so it is where a right standing in for another would show.
+        # opsbot holds platform_admin and nothing else.
+        ops = _basic("opsbot")
+
+        read = await client.post(
+            "/admin/graphql", json={"query": "{ rlsRules { __typename } }"}, headers=ops
+        )
+        assert read.status_code == 200, read.text
+        errors = read.json().get("errors") or []
+        assert errors and "access_config" in errors[0]["message"], read.text
+
+        write = await client.post(
+            "/admin/graphql",
+            json={
+                "query": 'mutation { createDomain(input: {id: "opsbotdomain", '
+                'description: "must not exist"}) { success message } }'
+            },
+            headers=ops,
+        )
+        assert write.status_code == 200, write.text
+        errors = write.json().get("errors") or []
+        assert errors and "org_settings" in errors[0]["message"], write.text
+
+        for method, path, body in (
+            ("GET", "/admin/users/", None),
+            ("POST", "/admin/roles/", {"id": "opsrole", "capabilities": [], "domain_access": []}),
+            ("GET", "/admin/audit/queries/1/text", None),
+        ):
+            resp = await client.request(method, path, json=body, headers=ops)
+            assert resp.status_code == 403, f"{method} {path}: {resp.status_code} {resp.text}"
+            assert resp.json()["code"] == "auth.missing_capability", resp.text
+
+        # Nothing was written by the refused calls.
+        seen = await client.post(
+            "/admin/graphql", json={"query": "{ domains { id } }"}, headers=_basic("founder")
+        )
+        assert "opsbotdomain" not in {d["id"] for d in seen.json()["data"]["domains"]}
+        listed = await client.get("/admin/roles/", headers=_basic("founder"))
+        assert "opsrole" not in {r["id"] for r in listed.json()}
+
+    async def test_the_bootstrap_administrator_keeps_both_planes(self, client):
+        # founder holds platform_admin AND org_admin (the claim seats both): the same calls pass,
+        # each on the org_admin right it names, and the control plane still answers.
+        founder = _basic("founder")
+
+        read = await client.post(
+            "/admin/graphql", json={"query": "{ rlsRules { __typename } }"}, headers=founder
+        )
+        assert read.status_code == 200, read.text
+        assert not read.json().get("errors"), read.text
+
+        users = await client.get("/admin/users/", headers=founder)
+        assert users.status_code == 200, users.text
+
+        # Past the gate: the statement does not exist, which is a 404 and not a refusal.
+        text = await client.get("/admin/audit/queries/999999999/text", headers=founder)
+        assert text.status_code == 404, text.text
+
+        orgs = await client.get("/admin/orgs/", headers=founder)
+        assert orgs.status_code == 200, orgs.text
+
+    async def test_a_role_definition_is_held_to_the_capability_vocabulary(self, client):
+        # The retired wildcard strings are not capabilities, so no role can be defined with them —
+        # by anyone, the holder of both planes included.
+        founder = _basic("founder")
+        unknown = await client.post(
+            "/admin/roles/",
+            json={"id": "wild", "capabilities": ["admin"], "domain_access": ["*"]},
+            headers=founder,
+        )
+        assert unknown.status_code == 422, unknown.text
+        assert unknown.json()["code"] == "roles.unknown_capability"
+        listed = await client.get("/admin/roles/", headers=founder)
+        assert "wild" not in {r["id"] for r in listed.json()}
 
 
 class TestSchemaIsolatedTenantPlane:
