@@ -26,6 +26,7 @@ No file is written on this host: a batch goes from memory to the store's connect
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 from typing import Any, Protocol
@@ -225,6 +226,191 @@ class ClickHouseStoreTarget:
             self._begun = False
             build = qualified((self._database, self._build))
             await self._run(lambda: self._backend.command(f"DROP TABLE IF EXISTS {build}"))
+
+
+#: Dialects where DDL is transactional: the drop of the previous replica and the rename of the
+#: build table commit together.
+_SA_TRANSACTIONAL_DDL = frozenset({"postgresql", "mssql"})
+#: Dialects whose ``RENAME TABLE a TO b, c TO a`` moves both names in one atomic statement.
+_SA_RENAME_PAIR = frozenset({"mysql", "mariadb"})
+
+
+def previous_table_name(table: str) -> str:
+    """Where the replica ``table`` stands for the instant between a paired rename and the drop
+    of its previous rows, in a store that swaps by renaming two tables at once."""
+    return "prev__" + hashlib.sha256(table.encode()).hexdigest()[:24]
+
+
+class SqlAlchemyStoreTarget:
+    """A replica in a store reached only through SQLAlchemy, written by batched inserts: the
+    floor every such store has, used where it declares no faster bulk write.
+
+    One connection carries the build. The build table is created and filled a batch at a time,
+    each batch its own transaction (no reader addresses the build table), then swapped in:
+
+    - PostgreSQL, SQL Server: the previous replica is dropped and the build table renamed
+      onto its name in one transaction;
+    - MySQL, MariaDB: one ``RENAME TABLE`` moves the previous replica aside and the build table
+      onto its name, then the previous rows are dropped.
+
+    Any other dialect has no swap proven atomic here and declares none, so no method builds a
+    replica in it. A build that dies leaves the previous replica standing and its build table
+    behind; the next build of the same replica drops that first."""
+
+    def __init__(
+        self,
+        sa_engine: Any,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        pk_columns: list[str],
+    ) -> None:
+        self._sa = sa_engine
+        self._dialect = sa_engine.dialect.name
+        self._schema = schema
+        self._table = table
+        self._columns = columns
+        self._pk = tuple(pk_columns)
+        self._build = build_table_name(table)
+        self._previous = previous_table_name(table)
+        self._conn: Any = None
+        self._build_table: Any = None
+        self._json: frozenset[str] = frozenset()
+        self._temporal: Any = None
+        self._begun = False
+        self.caps = TargetCaps(
+            frozenset({TargetWrite.BULK_BATCH}),
+            atomic_swap=self._dialect in _SA_TRANSACTIONAL_DDL | _SA_RENAME_PAIR,
+        )
+
+    def _core_table(self, name: str, *, keyed: bool) -> Any:
+        import secrets
+
+        from provisa.federation.materialize_exec import build_table
+
+        table = build_table(
+            self._schema,
+            name,
+            self._columns,
+            self._pk if keyed else (),
+            dialect_name=self._dialect,
+        )
+        if keyed and self._pk:
+            # The key's constraint keeps its name through the rename, so each build names its
+            # own: a store that scopes constraint names to the schema would refuse a second one.
+            table.primary_key.name = f"pk__{self._build[7:]}_{secrets.token_hex(4)}"
+        return table
+
+    def _drop_if_present(self, conn: Any, name: str) -> None:
+        from sqlalchemy import inspect
+        from sqlalchemy.schema import DropTable
+
+        if inspect(conn).has_table(name, schema=self._schema):
+            conn.execute(DropTable(self._core_table(name, keyed=False)))
+
+    def _begin(self) -> None:
+        from sqlalchemy.schema import CreateTable
+
+        from provisa.federation.materialize_exec import _json_columns, temporal_columns
+        from provisa.federation.sqlalchemy_runtime import _ensure_schema
+
+        shield = request_deadline.shielded()
+        with shield.lock:
+            shield.settle()
+            self._conn = self._sa.connect()
+        conn = self._conn
+        self._build_table = self._core_table(self._build, keyed=True)
+        self._json = _json_columns(self._build_table)
+        self._temporal = temporal_columns(self._columns)
+        _ensure_schema(conn, self._schema)
+        self._drop_if_present(conn, self._build)
+        if self._dialect in _SA_RENAME_PAIR:
+            # Left by a build that died between its rename and its drop: the replica is whole.
+            self._drop_if_present(conn, self._previous)
+        conn.execute(CreateTable(self._build_table))
+        conn.commit()
+        self._begun = True
+
+    async def begin(self) -> None:
+        from provisa.federation.replica_guard import require_replicas_schema
+
+        require_replicas_schema(self._schema, self._table, action="build the replica at")
+        await asyncio.to_thread(self._begin)
+
+    def _write(self, rows: list[dict]) -> None:
+        from provisa.federation.materialize_exec import _coerce_json_row, coerce_temporal_row
+
+        coerced = [
+            coerce_temporal_row(_coerce_json_row(row, self._json), self._temporal) for row in rows
+        ]
+        self._conn.execute(self._build_table.insert(), coerced)
+        self._conn.commit()
+
+    async def write(self, batch: pa.RecordBatch, rows: list[dict]) -> None:
+        del batch  # this face writes rows
+        if rows:
+            await asyncio.to_thread(self._write, rows)
+
+    def _swap(self) -> None:
+        from sqlalchemy import inspect, text
+
+        shield = request_deadline.shielded()
+        conn = self._conn
+        try:
+            quote = self._sa.dialect.identifier_preparer.quote
+            build = f"{quote(self._schema)}.{quote(self._build)}"
+            replica = f"{quote(self._schema)}.{quote(self._table)}"
+            standing = inspect(conn).has_table(self._table, schema=self._schema)
+            if self._dialect in _SA_RENAME_PAIR:
+                if standing:
+                    previous = f"{quote(self._schema)}.{quote(self._previous)}"
+                    conn.execute(
+                        text(f"RENAME TABLE {replica} TO {previous}, {build} TO {replica}")
+                    )
+                    conn.execute(text(f"DROP TABLE {previous}"))
+                else:
+                    conn.execute(text(f"RENAME TABLE {build} TO {replica}"))
+            else:
+                # One transaction: a reader sees the previous replica until the commit.
+                if standing:
+                    conn.execute(text(f"DROP TABLE {replica}"))
+                if self._dialect == "mssql":
+                    conn.execute(
+                        text("EXEC sp_rename :build, :name"), {"build": build, "name": self._table}
+                    )
+                else:
+                    conn.execute(text(f"ALTER TABLE {build} RENAME TO {quote(self._table)}"))
+            conn.commit()
+            self._begun = False
+        finally:
+            with shield.lock:
+                shield.settle()
+                self._conn = None
+                conn.close()
+
+    async def swap(self) -> None:
+        await asyncio.to_thread(self._swap)
+
+    def _abort(self) -> None:
+        shield = request_deadline.shielded()
+        conn, self._conn = self._conn, None
+        try:
+            if conn is not None:
+                conn.rollback()
+        finally:
+            with shield.lock:
+                shield.settle()
+                if conn is not None:
+                    conn.close()
+        if self._begun:
+            self._begun = False
+            # On a connection of its own: the build's may be the thing that failed.
+            with self._sa.begin() as fresh:
+                self._drop_if_present(fresh, self._build)
+
+    async def abort(self) -> None:
+        await asyncio.to_thread(self._abort)
 
 
 class _BuildAbandoned(Exception):
