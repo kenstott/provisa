@@ -69,6 +69,16 @@ class TargetWrite(str, Enum):
     BULK_BATCH = "bulk_batch"  # the store's bulk write, called once per batch
 
 
+class TargetLoad(str, Enum):
+    """How a store's write face takes a streamed build's rows: the one name the admin store
+    page and the documentation state for a store."""
+
+    BULK_STREAM = (
+        "bulk_stream"  # the store's bulk path: COPY, Arrow ingest, direct path, staged files
+    )
+    ROW_COPY = "row_copy"  # rows bound as statement parameters; workable within limits, not for very large tables
+
+
 class EngineRun(str, Enum):
     """A way an engine runs a copy itself."""
 
@@ -97,11 +107,12 @@ class SourceCaps:
 
 @dataclass(frozen=True)
 class TargetCaps:
-    """What a store declares: the ways it takes rows, and whether a finished table can replace
-    the current one in a single atomic step."""
+    """What a store declares: the ways it takes rows, whether a finished build can replace the
+    current replica in a single atomic step, and how its write face loads a streamed build."""
 
     writes: frozenset[TargetWrite]
     atomic_swap: bool
+    load: TargetLoad
 
 
 @dataclass(frozen=True)

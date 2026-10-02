@@ -34,7 +34,7 @@ from typing import Any, Protocol
 import pyarrow as pa
 
 from provisa.core import request_deadline
-from provisa.federation.data_replicator import TargetCaps, TargetWrite
+from provisa.federation.data_replicator import TargetCaps, TargetLoad, TargetWrite
 
 log = logging.getLogger(__name__)
 
@@ -89,7 +89,9 @@ class DuckDBStoreTarget:
     place. The swap is one operation: drop and rename in a transaction. A build that dies
     leaves only its build table, which the next build drops."""
 
-    caps = TargetCaps(frozenset({TargetWrite.BULK_BATCH}), atomic_swap=True)
+    caps = TargetCaps(
+        frozenset({TargetWrite.BULK_BATCH}), atomic_swap=True, load=TargetLoad.BULK_STREAM
+    )
 
     def __init__(
         self, broker: Any, *, schema: str, table: str, columns: list[tuple[str, str]]
@@ -165,6 +167,7 @@ class ClickHouseStoreTarget:
         self.caps = TargetCaps(
             frozenset({TargetWrite.BULK_BATCH}),
             atomic_swap=self.database_engine in _CLICKHOUSE_ATOMIC_ENGINES,
+            load=TargetLoad.BULK_STREAM,
         )
 
     def _table_engine(self, name: str) -> str | None:
@@ -228,11 +231,49 @@ class ClickHouseStoreTarget:
             await self._run(lambda: self._backend.command(f"DROP TABLE IF EXISTS {build}"))
 
 
-#: Dialects where DDL is transactional: the drop of the previous replica and the rename of the
-#: build table commit together.
-_SA_TRANSACTIONAL_DDL = frozenset({"postgresql", "mssql"})
-#: Dialects whose ``RENAME TABLE a TO b, c TO a`` moves both names in one atomic statement.
+#: How a finished build replaces the replica, per SQLAlchemy dialect.
+RENAME_IN_TRANSACTION = "rename_in_transaction"  # DDL is transactional: drop + rename, one commit
+RENAME_PAIR = "rename_pair"  # ``RENAME TABLE a TO b, c TO a``: both names move in one statement
+ROWS_IN_TRANSACTION = "rows_in_transaction"  # DELETE + INSERT ... SELECT, one commit
+
+_SA_RENAME_IN_TRANSACTION = frozenset({"postgresql", "mssql"})
 _SA_RENAME_PAIR = frozenset({"mysql", "mariadb"})
+#: Dialects of stores with neither a transaction spanning two DML statements nor an atomic
+#: rename reachable through SQLAlchemy: no method replaces a replica atomically there. Every
+#: other dialect is a transactional database and takes ROWS_IN_TRANSACTION.
+SA_NO_ATOMIC_REPLACE = frozenset(
+    {"clickhouse", "hive", "trino", "presto", "awsathena", "impala", "druid", "databricks"}
+)
+
+#: How a batch is written into the build table, per (dialect, driver).
+LOAD_INSERT = "insert"  # SQLAlchemy executemany: the floor every driver has
+LOAD_ODBC_ARRAY = "odbc_array"  # pyodbc parameter arrays (``fast_executemany``) on the raw cursor
+LOAD_ORACLE_DIRECT_PATH = "oracle_direct_path"  # python-oracledb Direct Path Load
+
+#: What each load method is, as the store declares it (``TargetCaps.load``).
+_SA_LOAD_KIND = {
+    LOAD_INSERT: TargetLoad.ROW_COPY,
+    LOAD_ODBC_ARRAY: TargetLoad.ROW_COPY,
+    LOAD_ORACLE_DIRECT_PATH: TargetLoad.BULK_STREAM,
+}
+
+_SA_NATIVE_LOAD = {
+    ("mssql", "pyodbc"): LOAD_ODBC_ARRAY,
+    ("oracle", "oracledb"): LOAD_ORACLE_DIRECT_PATH,
+}
+
+
+def sa_replace_method(dialect: str, *, rename: bool = True) -> str | None:
+    """How a build replaces the replica on ``dialect``; None when the store has no atomic way.
+    ``rename=False`` rules the rename methods out, leaving the one every transactional database
+    has."""
+    if dialect in SA_NO_ATOMIC_REPLACE:
+        return None
+    if rename and dialect in _SA_RENAME_IN_TRANSACTION:
+        return RENAME_IN_TRANSACTION
+    if rename and dialect in _SA_RENAME_PAIR:
+        return RENAME_PAIR
+    return ROWS_IN_TRANSACTION
 
 
 def previous_table_name(table: str) -> str:
@@ -241,21 +282,58 @@ def previous_table_name(table: str) -> str:
     return "prev__" + hashlib.sha256(table.encode()).hexdigest()[:24]
 
 
+def sqlalchemy_store_target(
+    sa_engine: Any,
+    *,
+    schema: str,
+    table: str,
+    columns: list[tuple[str, str]],
+    pk_columns: list[str],
+) -> Any:
+    """The write face of a replica in the store a SQLAlchemy engine names. A PostgreSQL store
+    has one write face whichever driver the URL names (:class:`PostgresStoreTarget`, the held
+    COPY); every other store is written through its own driver's connection."""
+    if sa_engine.dialect.name == "postgresql":
+        return PostgresStoreTarget(
+            sa_engine.url.render_as_string(hide_password=False),
+            schema=schema,
+            table=table,
+            columns=columns,
+            pk_columns=pk_columns,
+        )
+    return SqlAlchemyStoreTarget(
+        sa_engine, schema=schema, table=table, columns=columns, pk_columns=pk_columns
+    )
+
+
 class SqlAlchemyStoreTarget:
-    """A replica in a store reached only through SQLAlchemy, written by batched inserts: the
-    floor every such store has, used where it declares no faster bulk write.
+    """A replica in a store reached through SQLAlchemy, written on the driver's own connection.
 
-    One connection carries the build. The build table is created and filled a batch at a time,
-    each batch its own transaction (no reader addresses the build table), then swapped in:
+    One connection carries the build. The build table is filled a batch at a time, each batch
+    committed (no reader addresses the build table), by the driver's bulk call where it has one:
 
-    - PostgreSQL, SQL Server: the previous replica is dropped and the build table renamed
-      onto its name in one transaction;
+    - SQL Server over pyodbc: parameter arrays on the raw cursor (``fast_executemany``);
+    - Oracle over python-oracledb: Direct Path Load;
+    - any other driver: SQLAlchemy's ``executemany``, the floor (PyMySQL sends it as multi-row
+      ``INSERT`` statements; its ``LOAD DATA LOCAL`` reads a named file and is not used).
+
+    The finished build then replaces the replica atomically:
+
+    - PostgreSQL, SQL Server: the previous replica is dropped and the build table renamed onto
+      its name in one transaction;
     - MySQL, MariaDB: one ``RENAME TABLE`` moves the previous replica aside and the build table
-      onto its name, then the previous rows are dropped.
+      onto its name, then the previous rows are dropped;
+    - any other transactional database (Oracle and the rest): the replica's rows are deleted and
+      the build table's inserted in ONE transaction, into the replica's own table (created, with
+      its key, by the first build); the build table is dropped after the commit. A reader sees
+      the whole previous rows or the whole new rows by the database's own isolation.
 
-    Any other dialect has no swap proven atomic here and declares none, so no method builds a
-    replica in it. A build that dies leaves the previous replica standing and its build table
-    behind; the next build of the same replica drops that first."""
+    A dialect in :data:`SA_NO_ATOMIC_REPLACE` has neither and declares no atomic swap, so no
+    method builds a replica in it. A build that dies leaves the previous replica standing and
+    its build table behind; the next build of the same replica drops that first.
+
+    ``load`` and ``rename`` override the choice for a measurement or a proof: ``load=LOAD_INSERT``
+    forces the floor, ``rename=False`` forces the rows-in-one-transaction replace."""
 
     def __init__(
         self,
@@ -265,6 +343,8 @@ class SqlAlchemyStoreTarget:
         table: str,
         columns: list[tuple[str, str]],
         pk_columns: list[str],
+        load: str | None = None,
+        rename: bool = True,
     ) -> None:
         self._sa = sa_engine
         self._dialect = sa_engine.dialect.name
@@ -274,6 +354,10 @@ class SqlAlchemyStoreTarget:
         self._pk = tuple(pk_columns)
         self._build = build_table_name(table)
         self._previous = previous_table_name(table)
+        self.load_method = load or _SA_NATIVE_LOAD.get(
+            (self._dialect, sa_engine.dialect.driver), LOAD_INSERT
+        )
+        self.replace_method = sa_replace_method(self._dialect, rename=rename)
         self._conn: Any = None
         self._build_table: Any = None
         self._json: frozenset[str] = frozenset()
@@ -281,7 +365,8 @@ class SqlAlchemyStoreTarget:
         self._begun = False
         self.caps = TargetCaps(
             frozenset({TargetWrite.BULK_BATCH}),
-            atomic_swap=self._dialect in _SA_TRANSACTIONAL_DDL | _SA_RENAME_PAIR,
+            atomic_swap=self.replace_method is not None,
+            load=_SA_LOAD_KIND[self.load_method],
         )
 
     def _core_table(self, name: str, *, keyed: bool) -> Any:
@@ -297,16 +382,26 @@ class SqlAlchemyStoreTarget:
             dialect_name=self._dialect,
         )
         if keyed and self._pk:
-            # The key's constraint keeps its name through the rename, so each build names its
+            # The key's constraint keeps its name through a rename, so each build names its
             # own: a store that scopes constraint names to the schema would refuse a second one.
             table.primary_key.name = f"pk__{self._build[7:]}_{secrets.token_hex(4)}"
         return table
 
-    def _drop_if_present(self, conn: Any, name: str) -> None:
+    def _has_table(self, conn: Any, name: str) -> bool:
+        """Whether ``name`` stands in the replicas schema, looked up by its exact case: the
+        tables are created quoted, and Oracle's inspector folds an unquoted name to upper case
+        and reports a table that is there as absent."""
         from sqlalchemy import inspect
+        from sqlalchemy.sql.elements import quoted_name
+
+        return inspect(conn).has_table(
+            quoted_name(name, quote=True), schema=quoted_name(self._schema, quote=True)
+        )
+
+    def _drop_if_present(self, conn: Any, name: str) -> None:
         from sqlalchemy.schema import DropTable
 
-        if inspect(conn).has_table(name, schema=self._schema):
+        if self._has_table(conn, name):
             conn.execute(DropTable(self._core_table(name, keyed=False)))
 
     def _begin(self) -> None:
@@ -320,12 +415,16 @@ class SqlAlchemyStoreTarget:
             shield.settle()
             self._conn = self._sa.connect()
         conn = self._conn
-        self._build_table = self._core_table(self._build, keyed=True)
+        # Renamed onto the replica's name, the build table carries the key; replacing rows in
+        # the replica's own table, the key is the replica's and the build table needs none.
+        self._build_table = self._core_table(
+            self._build, keyed=self.replace_method != ROWS_IN_TRANSACTION
+        )
         self._json = _json_columns(self._build_table)
         self._temporal = temporal_columns(self._columns)
         _ensure_schema(conn, self._schema)
         self._drop_if_present(conn, self._build)
-        if self._dialect in _SA_RENAME_PAIR:
+        if self.replace_method == RENAME_PAIR:
             # Left by a build that died between its rename and its drop: the replica is whole.
             self._drop_if_present(conn, self._previous)
         conn.execute(CreateTable(self._build_table))
@@ -344,25 +443,78 @@ class SqlAlchemyStoreTarget:
         coerced = [
             coerce_temporal_row(_coerce_json_row(row, self._json), self._temporal) for row in rows
         ]
-        self._conn.execute(self._build_table.insert(), coerced)
-        self._conn.commit()
+        if self.load_method == LOAD_INSERT:
+            self._conn.execute(self._build_table.insert(), coerced)
+            self._conn.commit()
+            return
+        # The driver's own connection, the one this build's SQLAlchemy connection wraps.
+        raw = self._conn.connection.driver_connection
+        names = [name for name, _ in self._columns]
+        data = [tuple(_driver_value(row.get(name)) for name in names) for row in coerced]
+        if self.load_method == LOAD_ODBC_ARRAY:
+            quote = self._sa.dialect.identifier_preparer.quote_identifier
+            cursor = raw.cursor()
+            try:
+                cursor.fast_executemany = True
+                cursor.executemany(
+                    f"INSERT INTO {quote(self._schema)}.{quote(self._build)} "
+                    f"({', '.join(quote(name) for name in names)}) "
+                    f"VALUES ({', '.join('?' * len(names))})",
+                    data,
+                )
+            finally:
+                cursor.close()
+        elif self.load_method == LOAD_ORACLE_DIRECT_PATH:
+            # The names are case-sensitive ones (created quoted); unquoted, the driver folds
+            # them to upper case and the load addresses a table that does not exist (ORA-39826).
+            raw.direct_path_load(
+                f'"{self._schema}"',
+                f'"{self._build}"',
+                [f'"{name}"' for name in names],
+                data,
+            )
+        else:
+            raise ValueError(f"unknown load method {self.load_method!r}")
+        raw.commit()
 
     async def write(self, batch: pa.RecordBatch, rows: list[dict]) -> None:
         del batch  # this face writes rows
         if rows:
             await asyncio.to_thread(self._write, rows)
 
+    def _replace_rows(self, conn: Any, standing: bool) -> None:
+        """Replace the replica's rows with the build table's in one transaction, in the
+        replica's own table; the first build creates that table, with its key."""
+        from sqlalchemy import select
+        from sqlalchemy.schema import CreateTable
+
+        replica = self._core_table(self._table, keyed=True)
+        if not standing:
+            conn.execute(CreateTable(replica))
+            conn.commit()
+        names = [name for name, _ in self._columns]
+        conn.execute(replica.delete())
+        conn.execute(
+            replica.insert().from_select(
+                names, select(*[self._build_table.c[name] for name in names])
+            )
+        )
+        conn.commit()  # both statements, or neither
+        self._drop_if_present(conn, self._build)
+
     def _swap(self) -> None:
-        from sqlalchemy import inspect, text
+        from sqlalchemy import text
 
         shield = request_deadline.shielded()
         conn = self._conn
         try:
-            quote = self._sa.dialect.identifier_preparer.quote
+            quote = self._sa.dialect.identifier_preparer.quote_identifier
             build = f"{quote(self._schema)}.{quote(self._build)}"
             replica = f"{quote(self._schema)}.{quote(self._table)}"
-            standing = inspect(conn).has_table(self._table, schema=self._schema)
-            if self._dialect in _SA_RENAME_PAIR:
+            standing = self._has_table(conn, self._table)
+            if self.replace_method == ROWS_IN_TRANSACTION:
+                self._replace_rows(conn, standing)
+            elif self.replace_method == RENAME_PAIR:
                 if standing:
                     previous = f"{quote(self._schema)}.{quote(self._previous)}"
                     conn.execute(
@@ -371,7 +523,7 @@ class SqlAlchemyStoreTarget:
                     conn.execute(text(f"DROP TABLE {previous}"))
                 else:
                     conn.execute(text(f"RENAME TABLE {build} TO {replica}"))
-            else:
+            elif self.replace_method == RENAME_IN_TRANSACTION:
                 # One transaction: a reader sees the previous replica until the commit.
                 if standing:
                     conn.execute(text(f"DROP TABLE {replica}"))
@@ -381,6 +533,8 @@ class SqlAlchemyStoreTarget:
                     )
                 else:
                     conn.execute(text(f"ALTER TABLE {build} RENAME TO {quote(self._table)}"))
+            else:
+                raise ValueError(f"no atomic replace on a {self._dialect!r} store")
             conn.commit()
             self._begun = False
         finally:
@@ -411,6 +565,14 @@ class SqlAlchemyStoreTarget:
 
     async def abort(self) -> None:
         await asyncio.to_thread(self._abort)
+
+
+def _driver_value(value: Any) -> Any:
+    """A row value as a driver's bulk call binds it: a JSON document as its text (the store
+    column is the dialect's JSON or text type); everything else as it is."""
+    import json
+
+    return json.dumps(value) if isinstance(value, (dict, list)) else value
 
 
 class _BuildAbandoned(Exception):
@@ -507,7 +669,9 @@ class PostgresStoreTarget:
     transaction, build table included. The key is added after the load, on the replica's own
     name."""
 
-    caps = TargetCaps(frozenset({TargetWrite.COPY_STREAM}), atomic_swap=True)
+    caps = TargetCaps(
+        frozenset({TargetWrite.COPY_STREAM}), atomic_swap=True, load=TargetLoad.BULK_STREAM
+    )
 
     def __init__(
         self,

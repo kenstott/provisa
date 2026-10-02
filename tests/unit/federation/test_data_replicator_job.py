@@ -23,6 +23,7 @@ from provisa.federation.data_replicator import (
     SourceCaps,
     SourceRead,
     TargetCaps,
+    TargetLoad,
     TargetWrite,
     data_replicator,
 )
@@ -36,7 +37,7 @@ def _rows(n, start=0):
 
 
 class _Target:
-    caps = TargetCaps(frozenset({TargetWrite.BULK_BATCH}), atomic_swap=True)
+    caps = TargetCaps(frozenset({TargetWrite.BULK_BATCH}), True, TargetLoad.BULK_STREAM)
 
     def __init__(self):
         self.events: list[str] = []
@@ -156,7 +157,11 @@ async def test_where_the_engine_can_copy_no_row_passes_through_the_job():
         raise AssertionError("the engine copies; the source is not read here")
 
     target = _Target()
-    target.caps = TargetCaps(frozenset({TargetWrite.STATEMENT_COPY, TargetWrite.BULK_BATCH}), True)
+    target.caps = TargetCaps(
+        frozenset({TargetWrite.STATEMENT_COPY, TargetWrite.BULK_BATCH}),
+        True,
+        TargetLoad.BULK_STREAM,
+    )
     engine = _Engine(EngineCaps(True, frozenset({EngineRun.STATEMENT})))
     job = data_replicator(_EngineReached(load, COLUMNS), target, engine, batch_rows=100)
     outcome = await job.run(_noop)
@@ -174,7 +179,7 @@ async def test_where_the_engine_can_copy_no_row_passes_through_the_job():
 
 async def test_a_combination_no_method_serves_is_refused_before_anything_is_opened():
     target = _Target()
-    target.caps = TargetCaps(frozenset(), atomic_swap=True)
+    target.caps = TargetCaps(frozenset(), True, TargetLoad.BULK_STREAM)
     with pytest.raises(NoReplicationMethod, match="the store takes no batches"):
         data_replicator(_cursor(1, 1), target, _Engine(), batch_rows=1)
     assert target.events == []

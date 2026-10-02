@@ -22,6 +22,7 @@ from provisa.federation.data_replicator import (
     SourceCaps,
     SourceRead,
     TargetCaps,
+    TargetLoad,
     TargetWrite,
     choose_method,
 )
@@ -41,7 +42,11 @@ def _every_combination():
     for reads, writes, swap, reaches, runs in product(
         _subsets(R), _subsets(W), (True, False), (True, False), _subsets(E)
     ):
-        yield SourceCaps(reads), TargetCaps(writes, swap), EngineCaps(reaches, runs)
+        yield (
+            SourceCaps(reads),
+            TargetCaps(writes, swap, TargetLoad.BULK_STREAM),
+            EngineCaps(reaches, runs),
+        )
 
 
 def _source(*reads):
@@ -49,7 +54,7 @@ def _source(*reads):
 
 
 def _target(*writes, swap=True):
-    return TargetCaps(frozenset(writes), swap)
+    return TargetCaps(frozenset(writes), swap, TargetLoad.BULK_STREAM)
 
 
 def _engine(reaches, *runs):

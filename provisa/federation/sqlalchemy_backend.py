@@ -32,12 +32,12 @@ class SqlAlchemyBackend(NativeEngineBackend):
         return SqlAlchemyFederationRuntime(url=url, catalog_qualified=self.engine.catalog_qualified)
 
     def replica_target(self, state: Any, *, address: Any, args: Any, engine: Any) -> Any:
-        """A replica in this engine's own store, written through the store's SQLAlchemy engine
-        by batched inserts and swapped in by the dialect's atomic rename (REQ-1915)."""
+        """A replica in this engine's own store, written on the store driver's own connection
+        by its bulk call and replaced atomically by the dialect's method (REQ-1915)."""
         del engine
-        from provisa.federation.replica_target import SqlAlchemyStoreTarget
+        from provisa.federation.replica_target import sqlalchemy_store_target
 
-        return SqlAlchemyStoreTarget(
+        return sqlalchemy_store_target(
             self._runtime_for(state)._sa,
             schema=address.schema,
             table=address.table,

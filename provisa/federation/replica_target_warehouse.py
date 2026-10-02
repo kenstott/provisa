@@ -31,7 +31,7 @@ import pyarrow as pa
 
 from provisa.core import request_deadline
 from provisa.core.ir_arrow import arrow_schema, rows_to_batch
-from provisa.federation.data_replicator import TargetCaps, TargetWrite
+from provisa.federation.data_replicator import TargetCaps, TargetLoad, TargetWrite
 from provisa.federation.replica_target import build_table_name
 
 #: The Arrow type a ``numeric`` column is ingested as: Snowflake's NUMBER(38,9).
@@ -70,7 +70,9 @@ class MssqlWarehouseStoreTarget:
         self._build = build_table_name(table)
         self._conn: Any = None
         self._begun = False
-        self.caps = TargetCaps(frozenset({TargetWrite.BULK_BATCH}), atomic_swap=transactional)
+        self.caps = TargetCaps(
+            frozenset({TargetWrite.BULK_BATCH}), atomic_swap=transactional, load=TargetLoad.ROW_COPY
+        )
 
     def _ref(self, table: str) -> str:
         return f"[{self._schema}].[{table}]"
@@ -252,7 +254,9 @@ class BigQueryStoreTarget:
     until it commits, and the replica's own table (its key, descriptions and labels) is kept.
     The build table is deleted after the swap."""
 
-    caps = TargetCaps(frozenset({TargetWrite.BULK_BATCH}), atomic_swap=True)
+    caps = TargetCaps(
+        frozenset({TargetWrite.BULK_BATCH}), atomic_swap=True, load=TargetLoad.BULK_STREAM
+    )
 
     def __init__(
         self,
@@ -427,7 +431,9 @@ class DatabricksStoreTarget:
     removed after the swap, or on abort; files left by a build that died are removed by the
     next build of the same replica."""
 
-    caps = TargetCaps(frozenset({TargetWrite.BULK_BATCH}), atomic_swap=True)
+    caps = TargetCaps(
+        frozenset({TargetWrite.BULK_BATCH}), atomic_swap=True, load=TargetLoad.BULK_STREAM
+    )
 
     def __init__(
         self,
@@ -600,7 +606,9 @@ class SnowflakeStoreTarget:
     (``ALTER TABLE ... SWAP WITH``) hands those to the build table and was measured to leave the
     replica's name without them. The build table is dropped after the swap."""
 
-    caps = TargetCaps(frozenset({TargetWrite.BULK_BATCH}), atomic_swap=True)
+    caps = TargetCaps(
+        frozenset({TargetWrite.BULK_BATCH}), atomic_swap=True, load=TargetLoad.BULK_STREAM
+    )
 
     def __init__(
         self,

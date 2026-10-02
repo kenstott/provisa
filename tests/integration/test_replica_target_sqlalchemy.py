@@ -15,16 +15,32 @@ import threading
 import pyarrow as pa
 import pytest
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.sql.elements import quoted_name
 
-from provisa.federation.data_replicator import TargetWrite
 from provisa.federation.replica_address import replica_schema
-from provisa.federation.replica_target import SqlAlchemyStoreTarget, build_table_name
+from provisa.federation.replica_target import (
+    LOAD_INSERT,
+    LOAD_ODBC_ARRAY,
+    LOAD_ORACLE_DIRECT_PATH,
+    RENAME_IN_TRANSACTION,
+    RENAME_PAIR,
+    ROWS_IN_TRANSACTION,
+    PostgresStoreTarget,
+    SqlAlchemyStoreTarget,
+    build_table_name,
+    sqlalchemy_store_target,
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 _COLUMNS = [("id", "integer"), ("name", "text"), ("amount", "numeric")]
 _SCHEMA = replica_schema("swaptest")
 _TABLE = "src__public__orders"
+
+
+def _Q(name: str) -> quoted_name:
+    """``name`` as the inspector must look it up: by its exact case (Oracle folds otherwise)."""
+    return quoted_name(name, quote=True)
 
 
 def _postgres_url() -> str:
@@ -50,14 +66,27 @@ def _batch(rows: list[dict]) -> pa.RecordBatch:
     return pa.RecordBatch.from_pylist(rows)
 
 
-def _target(sa) -> SqlAlchemyStoreTarget:
-    return SqlAlchemyStoreTarget(
-        sa, schema=_SCHEMA, table=_TABLE, columns=_COLUMNS, pk_columns=["id"]
+def _oracle_url() -> str:
+    return (
+        f"oracle+oracledb://system:provisa@localhost:{os.environ['ORACLE_PORT']}"
+        "/?service_name=FREEPDB1"
+    )
+
+
+def _target(sa, **overrides):
+    return (
+        sqlalchemy_store_target(
+            sa, schema=_SCHEMA, table=_TABLE, columns=_COLUMNS, pk_columns=["id"]
+        )
+        if not overrides
+        else SqlAlchemyStoreTarget(
+            sa, schema=_SCHEMA, table=_TABLE, columns=_COLUMNS, pk_columns=["id"], **overrides
+        )
     )
 
 
 def _names(sa) -> list[str]:
-    quote = sa.dialect.identifier_preparer.quote
+    quote = sa.dialect.identifier_preparer.quote_identifier
     with sa.connect() as conn:
         found = conn.execute(
             text(f"SELECT {quote('name')} FROM {quote(_SCHEMA)}.{quote(_TABLE)} ORDER BY 1")
@@ -65,9 +94,8 @@ def _names(sa) -> list[str]:
         return [row[0] for row in found]
 
 
-async def _build(sa, rows: list[dict], *, during_build=None) -> None:
-    target = _target(sa)
-    assert target.caps.writes == {TargetWrite.BULK_BATCH}
+async def _build(sa, rows: list[dict], *, during_build=None, **overrides) -> None:
+    target = _target(sa, **overrides)
     assert target.caps.atomic_swap
     await target.begin()
     for start in range(0, len(rows), 2):
@@ -78,20 +106,24 @@ async def _build(sa, rows: list[dict], *, during_build=None) -> None:
     await target.swap()
 
 
-async def _swap_is_atomic(url: str) -> None:
+async def _replace_is_atomic(url: str, *, expect: tuple[str, str] | None = None, **overrides):
+    """A first build, then a rebuild under a concurrent reader that must see only the whole
+    previous rows or the whole new rows, then an abandoned build that must leave no trace."""
     sa = create_engine(url)
     try:
+        if expect is not None:
+            probe = _target(sa, **overrides)
+            assert (probe.load_method, probe.replace_method) == expect
+        quote = sa.dialect.identifier_preparer.quote_identifier
         with sa.begin() as conn:
-            if inspect(conn).has_table(_TABLE, schema=_SCHEMA):
-                quote = sa.dialect.identifier_preparer.quote
+            if inspect(conn).has_table(_Q(_TABLE), schema=_Q(_SCHEMA)):
                 conn.execute(text(f"DROP TABLE {quote(_SCHEMA)}.{quote(_TABLE)}"))
 
-        # First build: no replica stands; the build table becomes it.
-        await _build(sa, _rows(5, "a"))
-        assert _names(sa) == [f"a{i}" for i in range(5)]
+        # First build: no replica stands.
+        await _build(sa, _rows(5, "a"), **overrides)
+        old, new = [f"a{i}" for i in range(5)], [f"b{i}" for i in range(3)]
+        assert _names(sa) == old
 
-        # Rebuild: a reader sees the previous replica, whole, until the swap, and never a
-        # missing or half-filled one while it happens.
         seen: list[list[str]] = []
         failures: list[BaseException] = []
         stop = threading.Event()
@@ -107,40 +139,65 @@ async def _swap_is_atomic(url: str) -> None:
         before: list[list[str]] = []
         reader.start()
         try:
-            await _build(sa, _rows(3, "b"), during_build=lambda: before.append(_names(sa)))
+            await _build(
+                sa, _rows(3, "b"), during_build=lambda: before.append(_names(sa)), **overrides
+            )
         finally:
             stop.set()
             reader.join()
         assert not failures, failures
-        assert before == [[f"a{i}" for i in range(5)]]
-        old, new = [f"a{i}" for i in range(5)], [f"b{i}" for i in range(3)]
+        assert before == [old]
         assert all(names in (old, new) for names in seen), [n for n in seen if n not in (old, new)]
         assert _names(sa) == new
 
-        # A build that is abandoned leaves the replica as it was and no build table behind.
-        target = _target(sa)
+        # An abandoned build leaves the replica as it was and no build table behind.
+        target = _target(sa, **overrides)
         await target.begin()
         await target.write(_batch(_rows(2, "c")), _rows(2, "c"))
         await target.abort()
         assert _names(sa) == new
         with sa.connect() as conn:
-            assert not inspect(conn).has_table(build_table_name(_TABLE), schema=_SCHEMA)
-            assert inspect(conn).get_pk_constraint(_TABLE, schema=_SCHEMA)[
+            assert not inspect(conn).has_table(_Q(build_table_name(_TABLE)), schema=_Q(_SCHEMA))
+            assert inspect(conn).get_pk_constraint(_Q(_TABLE), schema=_Q(_SCHEMA))[
                 "constrained_columns"
             ] == ["id"]
     finally:
         sa.dispose()
 
 
-async def test_postgresql_swaps_the_build_table_in_atomically():
-    await _swap_is_atomic(_postgres_url())
+async def test_postgresql_store_is_written_through_the_held_copy():
+    sa = create_engine(_postgres_url())
+    try:
+        assert isinstance(_target(sa), PostgresStoreTarget)
+    finally:
+        sa.dispose()
+    await _replace_is_atomic(_postgres_url())
 
 
 @pytest.mark.requires_mariadb
-async def test_mariadb_swaps_the_build_table_in_atomically():
-    await _swap_is_atomic(_mariadb_url())
+async def test_mariadb_moves_both_names_in_one_rename():
+    await _replace_is_atomic(_mariadb_url(), expect=(LOAD_INSERT, RENAME_PAIR))
+
+
+@pytest.mark.requires_mariadb
+async def test_mariadb_with_the_rename_ruled_out_replaces_rows_in_one_transaction():
+    await _replace_is_atomic(
+        _mariadb_url(), expect=(LOAD_INSERT, ROWS_IN_TRANSACTION), rename=False
+    )
 
 
 @pytest.mark.requires_sqlserver
-async def test_sqlserver_swaps_the_build_table_in_atomically():
-    await _swap_is_atomic(_sqlserver_url())
+async def test_sqlserver_loads_by_parameter_arrays_and_renames_in_one_transaction():
+    await _replace_is_atomic(_sqlserver_url(), expect=(LOAD_ODBC_ARRAY, RENAME_IN_TRANSACTION))
+
+
+@pytest.mark.requires_sqlserver
+async def test_sqlserver_with_the_rename_ruled_out_replaces_rows_in_one_transaction():
+    await _replace_is_atomic(
+        _sqlserver_url(), expect=(LOAD_ODBC_ARRAY, ROWS_IN_TRANSACTION), rename=False
+    )
+
+
+@pytest.mark.requires_oracle
+async def test_oracle_loads_by_direct_path_and_replaces_rows_in_one_transaction():
+    await _replace_is_atomic(_oracle_url(), expect=(LOAD_ORACLE_DIRECT_PATH, ROWS_IN_TRANSACTION))

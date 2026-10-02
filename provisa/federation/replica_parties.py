@@ -154,7 +154,9 @@ def store_target(
         )
         if engine_writes_store:
             target.caps = TargetCaps(
-                frozenset({TargetWrite.COPY_STREAM, TargetWrite.STATEMENT_COPY}), atomic_swap=True
+                frozenset({TargetWrite.COPY_STREAM, TargetWrite.STATEMENT_COPY}),
+                atomic_swap=True,
+                load=target.caps.load,
             )
         return target
     raise NoReplicationMethod([f"no replica write face for a {store_backend!r} store"])
