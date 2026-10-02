@@ -41,7 +41,7 @@ vi.mock("../../api/actions", () => ({
 vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useAdminQueries")>()),
   useRoles: () => ({
-    roles: [{ id: "analyst", capabilities: [], demonstrated: [], domain_access: [] }],
+    roles: [{ id: "analyst", capabilities: [], demonstrated: [], domain_access: ["*"] }],
     loading: false,
     refetch: vi.fn(),
   }),

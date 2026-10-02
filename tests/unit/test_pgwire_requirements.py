@@ -798,7 +798,7 @@ class TestReq582DdlRouting:
         ctx.session.role_id = "viewer"
 
         fake_state = MagicMock()
-        fake_state.roles = {"viewer": {"capabilities": [], "domain_access": []}}
+        fake_state.roles = {"viewer": {"capabilities": [], "domain_access": ["*"]}}
 
         with patch("provisa.pgwire.ddl_handler.state", fake_state):
             with pytest.raises(PermissionError, match="ddl"):
@@ -1320,7 +1320,7 @@ class TestReq616DdlCapabilityRequired:
         ctx.session.role_id = "readonly"
 
         fake_state = MagicMock()
-        fake_state.roles = {"readonly": {"capabilities": ["query"], "domain_access": []}}
+        fake_state.roles = {"readonly": {"capabilities": ["query"], "domain_access": ["*"]}}
 
         with patch("provisa.pgwire.ddl_handler.state", fake_state):
             with pytest.raises(PermissionError):

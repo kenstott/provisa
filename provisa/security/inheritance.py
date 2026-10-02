@@ -120,6 +120,16 @@ def effective_capabilities(role_id: str, roles: Iterable[dict]) -> list[str]:
     return sorted(caps)
 
 
+def effective_domain_access(role_id: str, roles: Iterable[dict]) -> list[str]:
+    """The domains ``role_id`` lists once its ancestors' lists are folded in (see
+    :func:`effective_capabilities`; the same rows, the same chain)."""
+    by_id = {r["id"]: r for r in roles}
+    domains: set[str] = set()
+    for rid in role_chain(role_id, parent_map(by_id.values())):
+        domains.update(by_id[rid].get("domain_access") or [])
+    return sorted(domains)
+
+
 def expand_grants(items: Iterable[dict], chains: dict[str, list[str]]) -> None:
     """Add each role to every grant list on ``items`` that names one of its ancestors."""
     for item in items:

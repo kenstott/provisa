@@ -272,7 +272,9 @@ class TestSeededClasses:
     """REQ-1539: roles and assignments are seeded by a creation and never carried again."""
 
     async def test_a_creation_seeds_the_roles_of_the_environment_it_came_from(self, seeded):
-        await seeded.insert(roles, id="lab_reviewer", capabilities=["write"], domain_access=[])
+        await seeded.insert(
+            roles, id="lab_reviewer", capabilities=["write"], domain_access=["sales"]
+        )
         await seeded.insert(
             user_role_assignments, user_id="ana", role_id="lab_reviewer", domain_id="sales"
         )
@@ -285,7 +287,9 @@ class TestSeededClasses:
 
     async def test_a_creation_that_does_not_seed_leaves_them_behind(self, seeded):
         # The default. Only the create endpoint asks for a seed; nothing else may.
-        await seeded.insert(roles, id="lab_reviewer", capabilities=["write"], domain_access=[])
+        await seeded.insert(
+            roles, id="lab_reviewer", capabilities=["write"], domain_access=["sales"]
+        )
         await copy_model(seeded.db, seeded.org_id, None, ENV, mode=REPLACE)
         assert "lab_reviewer" not in {r["id"] for r in await seeded.rows(roles, ENV)}
 

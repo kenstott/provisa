@@ -365,8 +365,8 @@ class TestRollbackOnValidationFailure:
         """generate_schema raises ValueError when no tables are visible to the role —
         this is the schema-level equivalent of a rollback trigger."""
         si = _make_schema_input()
-        # Assign a role with no domain access
-        si.role = {"id": "stranger", "capabilities": ["read"], "domain_access": []}
+        # A role whose one domain holds none of these tables
+        si.role = {"id": "stranger", "capabilities": ["read"], "domain_access": ["nowhere"]}
         with pytest.raises(ValueError, match="No tables visible"):
             generate_schema(si)
 

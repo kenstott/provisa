@@ -65,17 +65,30 @@ const ALL_CAPABILITIES: Capability[] = [
 ];
 
 /**
- * A role reaches the domains it lists and no others; "All Domains" is the only way to say all.
- * A role saved with none reads no data, so the editor says so rather than letting an empty
- * picker look like "unrestricted".
+ * A role is always one or more domains, or all: "All Domains" is the only way to say all, and
+ * the server refuses a role saved with none. The editor therefore never lets an empty picker
+ * look like "unrestricted" — it says what is required and withholds Save until it is met.
+ *
+ * Two messages, for two states. A form with no domain chosen yet states the requirement. An
+ * EXISTING role that has ended up with none (the server's backstop: such a role reads no data)
+ * is told so, because that is a fact about the role as it stands, not about the form.
  */
-function NoDomainsNote() {
+function DomainsNote({ savedWithNone }: { savedWithNone: boolean }) {
   const { t } = useTranslation();
-  return (
+  return savedWithNone ? (
     <Text size="sm" c="orange" role="note" data-testid="role-no-domains-note">
       {t("securityPage.noDomainsNote")}
     </Text>
+  ) : (
+    <Text size="sm" c="red" role="alert" data-testid="role-domains-required">
+      {t("securityPage.domainsRequired")}
+    </Text>
   );
+}
+
+/** A role may be saved once it lists a domain — its own, or one a parent role hands down. */
+function listsADomain(form: { domainAccess: string[]; parentRoleId: string }): boolean {
+  return form.domainAccess.length > 0 || form.parentRoleId !== "";
 }
 
 const EMPTY_ROLE = {
@@ -302,11 +315,12 @@ export function SecurityRolesPage() {
           />
           <MultiSelect
             label={t("securityPage.domainAccess")}
+            placeholder={t("securityPage.chooseDomains")}
             options={domainOptions}
             value={roleForm.domainAccess}
             onChange={(selected) => setRoleForm({ ...roleForm, domainAccess: selected })}
           />
-          {roleForm.domainAccess.length === 0 && <NoDomainsNote />}
+          {!listsADomain(roleForm) && <DomainsNote savedWithNone={false} />}
           {/* REQ-1677: single parent; the chain is walked child-first at build time. */}
           <Select
             label={t("securityPage.parentRole")}
@@ -376,7 +390,7 @@ export function SecurityRolesPage() {
               leftSection={<Check size={14} />}
               data-testid="save-role"
               onClick={handleSaveRole}
-              disabled={saving}
+              disabled={saving || !listsADomain(roleForm)}
             >
               {t("securityPage.save")}
             </Button>
@@ -479,13 +493,16 @@ export function SecurityRolesPage() {
                             />
                             <MultiSelect
                               label={t("securityPage.domainAccess")}
+                              placeholder={t("securityPage.chooseDomains")}
                               options={domainOptions}
                               value={roleForm.domainAccess}
                               onChange={(selected) =>
                                 setRoleForm({ ...roleForm, domainAccess: selected })
                               }
                             />
-                            {roleForm.domainAccess.length === 0 && <NoDomainsNote />}
+                            {!listsADomain(roleForm) && (
+                              <DomainsNote savedWithNone={r.domain_access.length === 0} />
+                            )}
                             <Select
                               label={t("securityPage.parentRole")}
                               placeholder={t("securityPage.parentRoleNone")}
@@ -510,8 +527,9 @@ export function SecurityRolesPage() {
                                 variant="filled"
                                 color="blue"
                                 leftSection={<Check size={14} />}
+                                data-testid={`save-role-${r.id}`}
                                 onClick={handleSaveRole}
-                                disabled={saving}
+                                disabled={saving || !listsADomain(roleForm)}
                               >
                                 {t("securityPage.save")}
                               </Button>

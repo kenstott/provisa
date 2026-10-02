@@ -1784,11 +1784,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # and a platform right (the role's own or its parent chain's) defined by a caller who is
         # not a platform administrator.
         from provisa.api.admin._platform_guard import role_definition_problem
-        from provisa.security.inheritance import effective_capabilities
+        from provisa.security.inheritance import effective_capabilities, effective_domain_access
 
         inherited = effective_capabilities(parent_id, existing) if parent_id is not None else []
+        inherited_domains = (
+            effective_domain_access(parent_id, existing) if parent_id is not None else []
+        )
         definition_problem = role_definition_problem(
-            info.context["request"], input.capabilities, inherited
+            info.context["request"],
+            input.capabilities,
+            inherited,
+            role_id=input.id,
+            domain_access=input.domain_access,
+            inherited_domain_access=inherited_domains,
         )
         if definition_problem is not None:
             return MutationResult(

@@ -254,6 +254,36 @@ def reaches_domain(domain_access: Iterable[str] | None, domain_id: str) -> bool:
     return reaches_all_domains(domain_access) or domain_id in (domain_access or ())
 
 
+def is_control_plane_definition(capabilities: Iterable[str] | None) -> bool:  # REQ-1337
+    """True when a role's capabilities are platform rights and nothing else.
+
+    Such a role is over the deployment and holds no data right for a domain scope to apply to.
+    Decided by the RIGHTS it carries, never by its id.
+    """
+    caps = set(capabilities or ())
+    return bool(caps & PLATFORM_RIGHTS) and not (caps - PLATFORM_RIGHTS)
+
+
+def role_domain_problem(  # REQ-039, REQ-1530
+    role_id: str, capabilities: Iterable[str] | None, domain_access: Iterable[str] | None
+) -> str | None:
+    """Why a role may not be DEFINED with this ``domain_access``, or None when it may.
+
+    A role is always one or more domains, or all: its list names at least one domain, or ``"*"``.
+    An empty list is never what an administrator means to save — it reads no data — so it is
+    refused where the role is defined rather than discovered when the role is used. Both
+    arguments are the role's EFFECTIVE values (its own plus what its parent chain hands down).
+
+    The one exception is a role whose capabilities are platform rights and nothing else
+    (:func:`is_control_plane_definition`): it holds no data right, so it lists no domain.
+    """
+    if list(domain_access or ()):
+        return None
+    if is_control_plane_definition(capabilities):
+        return None
+    return f'Role {role_id!r} must list at least one domain, or "*" for all domains'
+
+
 def effective_domain_access_role(role_id: str, roles: dict[str, dict] | None) -> dict:  # REQ-1620
     """``roles[role_id]``, with domain_access widened to the union of every role the caller is
     currently acting as (``request_context.current_role_claims`` — the UI's "Role: All").

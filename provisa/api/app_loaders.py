@@ -1364,6 +1364,24 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
     return tracked_functions, tracked_webhooks
 
 
+def _drop_data_surface(state, role_id: str) -> None:
+    """Remove whatever an earlier build registered for a role that now gets no data surface.
+
+    The maps are built up across rebuilds of a live runtime, so "this build did not generate a
+    schema for the role" is not the same as "the role has none": a role that HAD a domain when the
+    last build ran still has that build's schema, context and proto in place. Leaving them would
+    go on showing the role a catalog it no longer reaches.
+    """
+    for surface in (
+        state.schemas,
+        state.contexts,
+        state.rls_contexts,
+        state.table_path_maps,
+        state.proto_files,
+    ):
+        surface.pop(role_id, None)
+
+
 def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221, REQ-262, REQ-263
     roles: list[dict],
     tables: list[dict],
@@ -1443,15 +1461,17 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         # REQ-1337: the test is the `cross_org` RIGHT the role carries, not its name — a deployment
         # that mints another control-plane role is kept off the data plane on the same terms.
         if Capability.CROSS_ORG.value in (role.get("capabilities") or []):
+            _drop_data_surface(state, role["id"])
             continue
         # A role reaches the domains it lists, and one that lists NONE reaches no data: it gets no
         # data surface, on the same terms as the control-plane role above — every surface answers
         # "No schema available for role ...", which is a refusal, rather than a schema with
-        # nothing in it. This is not the "bad role definition" the build fails loudly on below: a
-        # role saved with no domains yet is a legitimate state (it is what a new role starts as),
-        # and it must not take the org's whole build down with it. reaches_all_domains decides
-        # the single-domain exemption.
+        # nothing in it. A role is refused at save with an empty list (rights.role_domain_problem);
+        # this is the backstop for one that has ended up with none anyway, and it must not take
+        # the org's whole build down with it. reaches_all_domains decides the single-domain
+        # exemption.
         if not role["domain_access"] and not reaches_all_domains(role["domain_access"]):
+            _drop_data_surface(state, role["id"])
             continue
         si = _schema_input(role, tables, metrics)
         from provisa.compiler.schema_gen import build_table_path_map

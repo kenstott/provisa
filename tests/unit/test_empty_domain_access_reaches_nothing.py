@@ -420,3 +420,63 @@ def test_single_domain_mode_builds_the_same_role_its_schema(single_domain, monke
     empty = {"id": "r", "capabilities": ["usage"], "domain_access": []}
     state = _built_roles(monkeypatch, [empty])
     assert "r" in state.schemas and "r" in state.contexts
+
+
+def test_a_role_whose_list_becomes_empty_loses_the_surface_an_earlier_build_gave_it(
+    multi_domain, monkeypatch
+):
+    import provisa.api.app as appmod
+    from provisa.api.app_loaders import _drop_data_surface
+
+    state = _built_roles(
+        monkeypatch, [{"id": "r", "capabilities": ["usage"], "domain_access": ["sales"]}]
+    )
+    surfaces = (
+        state.schemas,
+        state.contexts,
+        state.rls_contexts,
+        state.table_path_maps,
+        state.proto_files,
+    )
+    assert all("r" in surface for surface in surfaces)
+
+    # The same runtime, rebuilt after the role's list was emptied: nothing of the old build is
+    # left to show it a catalog it no longer reaches.
+    _drop_data_surface(appmod.state, "r")
+    assert not any("r" in surface for surface in surfaces)
+
+
+def test_the_build_itself_drops_a_stale_surface(multi_domain, monkeypatch):
+    import provisa.api.app as appmod
+    from provisa.api.app_loaders import _build_and_register_schemas
+
+    state = _built_roles(
+        monkeypatch, [{"id": "r", "capabilities": ["usage"], "domain_access": ["sales"]}]
+    )
+    assert "r" in state.schemas
+    # Rebuild in place (the maps are NOT reset between builds of a live runtime).
+    _build_and_register_schemas(
+        roles=[
+            {"id": "r", "capabilities": ["usage"], "domain_access": []},
+            {"id": "s", "capabilities": ["usage"], "domain_access": ["sales"]},
+        ],
+        tables=_tables(),
+        relationships=[],
+        col_types_converted={
+            tid: [ColumnMetadata(column_name="id", data_type="integer", is_nullable=False)]
+            for tid in DOMAIN_OF
+        },
+        naming_rules=[],
+        domains=[{"id": d} for d in DOMAIN_OF.values()],
+        domain_prefix=False,
+        kafka_physical={},
+        tracked_functions=[],
+        tracked_webhooks=[],
+        gql_object_cols={},
+        rls_rules=[],
+        metrics=[],
+    )
+    assert appmod.state.roles["r"]["domain_access"] == []
+    for surface in (state.schemas, state.contexts, state.rls_contexts, state.proto_files):
+        assert "r" not in surface
+        assert "s" in surface

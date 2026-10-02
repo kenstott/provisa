@@ -13,7 +13,7 @@
 // the upsertRole save path (Hasura api_limits parity, editable in the UI).
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "../../test-utils/render";
+import { render, screen, fireEvent, waitFor, within } from "../../test-utils/render";
 
 const upsertRoleSpy = vi.fn(async () => ({ success: true, message: "" }));
 
@@ -46,6 +46,24 @@ vi.mock("../../hooks/useSecurityQueries", () => ({
 
 import { SecurityPage } from "../SecurityPage";
 
+// A role must list a domain before it can be saved (the server refuses an empty list), so a test
+// that saves a new role chooses "All Domains" in the picker first.
+// Mantine MultiSelect in jsdom: floating-ui hides the detached dropdown (all rects are 0), so
+// the options are found through the input's aria-controls listbox with hidden: true.
+async function chooseAllDomains() {
+  const picker = screen
+    .getAllByLabelText("Domain Access")
+    .find((el) => el.tagName === "INPUT") as HTMLElement;
+  fireEvent.click(picker);
+  await waitFor(() => {
+    if (!picker.getAttribute("aria-controls")) throw new Error("dropdown not open");
+  });
+  const listbox = document.getElementById(picker.getAttribute("aria-controls") as string);
+  fireEvent.click(
+    within(listbox as HTMLElement).getByRole("option", { name: "All Domains", hidden: true }),
+  );
+}
+
 function renderPage() {
   return render(<SecurityPage />);
 }
@@ -73,6 +91,7 @@ describe("SecurityPage — per-role rate & query-complexity limits (REQ-1174)", 
     fireEvent.change(input("role-max-depth"), { target: { value: "6" } });
     fireEvent.change(input("role-max-nodes"), { target: { value: "200" } });
     fireEvent.change(input("role-max-time-ms"), { target: { value: "3000" } });
+    await chooseAllDomains();
 
     fireEvent.click(screen.getByTestId("save-role"));
 
@@ -95,6 +114,7 @@ describe("SecurityPage — per-role rate & query-complexity limits (REQ-1174)", 
     renderPage();
     fireEvent.click(screen.getByTestId("toggle-role-form"));
     fireEvent.change(input("role-id-input"), { target: { value: "guest" } });
+    await chooseAllDomains();
     fireEvent.click(screen.getByTestId("save-role"));
     await waitFor(() => expect(upsertRoleSpy).toHaveBeenCalledTimes(1));
     expect(upsertRoleSpy).toHaveBeenCalledWith(expect.objectContaining({ rateLimit: null }));

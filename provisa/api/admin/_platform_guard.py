@@ -30,6 +30,7 @@ from provisa.security.rights import (
     PlatformRoleGrantError,
     check_role_grant,
     platform_rights_in,
+    role_domain_problem,
     unknown_capabilities,
 )
 
@@ -199,13 +200,22 @@ def require_role_grantable(  # REQ-1337
         ) from exc
 
 
-def role_definition_problem(  # REQ-042, REQ-1337
-    request: Request, capabilities: Iterable[str] | None, inherited: Iterable[str] | None = None
+def role_definition_problem(  # REQ-042, REQ-1337, REQ-1530
+    request: Request,
+    capabilities: Iterable[str] | None,
+    inherited: Iterable[str] | None = None,
+    *,
+    role_id: str,
+    domain_access: Iterable[str] | None,
+    inherited_domain_access: Iterable[str] | None = None,
 ) -> ApiError | None:
-    """Why a role may not be DEFINED with ``capabilities``, or None when it may.
+    """Why a role may not be DEFINED this way, or None when it may.
 
-    Two refusals, asked of every surface that writes a role's definition:
+    Three refusals, asked of every surface that writes a role's definition:
 
+    * a ``domain_access`` that lists no domain — a role is always one or more domains, or
+      ``"*"`` (``rights.role_domain_problem``; the role's own list plus ``inherited_domain_access``
+      from its parent chain). The one exception is a role carrying only platform rights;
     * a string naming no right — the vocabulary is closed (``rights.unknown_capabilities``);
     * a platform right, held directly or through ``inherited`` (the parent chain's capabilities),
       unless the caller is a platform administrator. Defining a role is ``user_management``'s act,
@@ -221,6 +231,13 @@ def role_definition_problem(  # REQ-042, REQ-1337
             "Unknown capability: " + ", ".join(repr(c) for c in unknown),
             capabilities=unknown,
         )
+    domain_problem = role_domain_problem(
+        role_id,
+        [*(capabilities or ()), *(inherited or ())],
+        [*(domain_access or ()), *(inherited_domain_access or ())],
+    )
+    if domain_problem is not None:
+        return ApiError(422, "roles.domain_required", domain_problem, role=role_id)
     platform = sorted(platform_rights_in(capabilities) | platform_rights_in(inherited))
     if platform and not has_deployment_settings(request):
         return ApiError(

@@ -110,7 +110,9 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
     pool = _pool(request)
     async with pool.acquire() as conn:
         await _check_parent(conn, body.id, body.parent_role_id)  # REQ-1677
-        await _check_definition(conn, request, body.capabilities, body.parent_role_id)
+        await _check_definition(
+            conn, request, body.id, body.capabilities, body.domain_access, body.parent_role_id
+        )
         await conn.execute_core(
             insert(roles).values(
                 id=body.id,
@@ -129,21 +131,37 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
     }
 
 
-async def _check_definition(  # REQ-042, REQ-1337
-    conn, request: Request, capabilities: list[str], parent_id: str | None
+async def _check_definition(  # REQ-042, REQ-1337, REQ-1530
+    conn,
+    request: Request,
+    role_id: str,
+    capabilities: list[str],
+    domain_access: list[str],
+    parent_id: str | None,
 ) -> None:
-    """Refuse a definition naming an unknown capability, or carrying a platform right — its own
-    or one its parent chain hands down (REQ-1677 folds a parent's rights into the role) — that the
-    caller may not define. See ``role_definition_problem``."""
+    """Refuse a definition that lists no domain, names an unknown capability, or carries a
+    platform right the caller may not define — its own values or the ones its parent chain hands
+    down (REQ-1677 folds a parent's rights and domains into the role). See
+    ``role_definition_problem``."""
     inherited: list[str] = []
+    inherited_domains: list[str] = []
     if parent_id is not None:
-        from provisa.security.inheritance import effective_capabilities
+        from provisa.security.inheritance import effective_capabilities, effective_domain_access
 
         result = await conn.execute_core(
-            select(roles.c.id, roles.c.capabilities, roles.c.parent_role_id)
+            select(roles.c.id, roles.c.capabilities, roles.c.domain_access, roles.c.parent_role_id)
         )
-        inherited = effective_capabilities(parent_id, [dict(r._mapping) for r in result.fetchall()])
-    problem = role_definition_problem(request, capabilities, inherited)
+        rows = [dict(r._mapping) for r in result.fetchall()]
+        inherited = effective_capabilities(parent_id, rows)
+        inherited_domains = effective_domain_access(parent_id, rows)
+    problem = role_definition_problem(
+        request,
+        capabilities,
+        inherited,
+        role_id=role_id,
+        domain_access=domain_access,
+        inherited_domain_access=inherited_domains,
+    )
     if problem is not None:
         raise problem
 
@@ -196,7 +214,7 @@ async def update_role(
         )
         if new_parent != existing["parent_role_id"]:
             await _check_parent(conn, role_id, new_parent)  # REQ-1677
-        await _check_definition(conn, request, new_caps, new_parent)
+        await _check_definition(conn, request, role_id, new_caps, new_domains, new_parent)
         await conn.execute_core(
             update(roles)
             .where(roles.c.id == role_id)
