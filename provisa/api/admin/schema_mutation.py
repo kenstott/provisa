@@ -2048,7 +2048,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 )
         if input.view_sql and input.materialize:
             try:
-                _sync_view_mv(
+                await _sync_view_mv(
                     input.table_name,
                     input.view_sql,
                     input.mv_refresh_interval,

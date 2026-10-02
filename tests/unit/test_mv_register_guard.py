@@ -17,6 +17,7 @@ recompute-to-current and replay stay sound.
 
 from __future__ import annotations
 
+import asyncio
 import types
 
 import pytest
@@ -37,7 +38,13 @@ def fake_state(monkeypatch):
         materialize_store_target=lambda _: ("postgresql", "mv_cache"),
     )
     state = types.SimpleNamespace(
-        mv_registry=registry, org_id="test", engine=None, federation_engine=fed
+        mv_registry=registry,
+        org_id="test",
+        engine=None,
+        federation_engine=fed,
+        # What a saved view's inputs are checked against (provisa/mv/readable_inputs.py).
+        api_endpoints={},
+        graphql_remote_sources={},
     )
     fake_app = types.ModuleType("provisa.api.app")
     fake_app.state = state  # type: ignore[attr-defined]
@@ -47,7 +54,11 @@ def fake_state(monkeypatch):
 
 
 def test_deterministic_mv_registers(fake_state):
-    schema_common._sync_view_mv("sales", "SELECT region, sum(amt) AS t FROM o GROUP BY region", 300)
+    asyncio.run(
+        schema_common._sync_view_mv(
+            "sales", "SELECT region, sum(amt) AS t FROM o GROUP BY region", 300
+        )
+    )
     assert len(fake_state.registered) == 1
     assert fake_state.registered[0].id == "view-sales"
 
@@ -62,7 +73,7 @@ def test_deterministic_mv_registers(fake_state):
 )
 def test_non_deterministic_mv_rejected(fake_state, sql):
     with pytest.raises(ValueError, match="non-deterministic MV"):
-        schema_common._sync_view_mv("bad", sql, 300)
+        asyncio.run(schema_common._sync_view_mv("bad", sql, 300))
     assert fake_state.registered == []
 
 
@@ -72,18 +83,18 @@ _DET_SQL = "SELECT region, sum(amt) AS t FROM o GROUP BY region"
 
 @pytest.mark.parametrize("tier", ["shared", "distributed"])
 def test_consistency_tier_sets_mvdefinition(fake_state, tier):
-    schema_common._sync_view_mv("sales", _DET_SQL, 300, consistency=tier)
+    asyncio.run(schema_common._sync_view_mv("sales", _DET_SQL, 300, consistency=tier))
     assert fake_state.registered[0].consistency == tier
 
 
 def test_consistency_defaults_to_shared(fake_state):
-    schema_common._sync_view_mv("sales", _DET_SQL, 300)
+    asyncio.run(schema_common._sync_view_mv("sales", _DET_SQL, 300))
     assert fake_state.registered[0].consistency == "shared"
 
 
 def test_invalid_consistency_rejected(fake_state):
     with pytest.raises(ValueError, match="invalid MV consistency"):
-        schema_common._sync_view_mv("sales", _DET_SQL, 300, consistency="bogus")
+        asyncio.run(schema_common._sync_view_mv("sales", _DET_SQL, 300, consistency="bogus"))
     assert fake_state.registered == []
 
 
@@ -135,3 +146,26 @@ def test_table_input_maps_consistency():
     )
     model = table_model_from_input(inp, [], [], None)
     assert model.mv_consistency == "distributed"
+
+
+def test_a_view_over_a_row_level_table_is_refused_and_not_registered(fake_state, monkeypatch):
+    """Saving a view whose definition reads a row-level replicated table is refused, naming the
+    view, the input and the reason; nothing is registered."""
+
+    async def _row_level(_state):
+        return {"clicks": object()}
+
+    monkeypatch.setattr(
+        "provisa.federation.query_residency.row_materialized_tables_by_name", _row_level
+    )
+    with pytest.raises(ValueError) as raised:
+        asyncio.run(
+            schema_common._sync_view_mv(
+                "clicks_by_region", "SELECT region, count(*) AS n FROM clicks GROUP BY region", 300
+            )
+        )
+    message = str(raised.value)
+    assert "'view-clicks_by_region'" in message
+    assert "'clicks' is a row-level replicated table" in message
+    assert "only the rows requests have fetched" in message
+    assert fake_state.registered == []

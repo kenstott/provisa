@@ -496,6 +496,24 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
     None or the MV is ``distributed``, refresh is per-instance (the distributed tier)."""
     from provisa.mv.input_signals import gather_input_signals, input_token  # noqa: PLC0415
 
+    # A view is built only from inputs the engine reads whole (provisa/mv/readable_inputs.py). A
+    # view saved while its inputs were readable can stop being so (a table switched to row-level
+    # replication): its refresh then fails here, before anything reaches the engine or the
+    # refresh is claimed, with the reason recorded as the view's error — it is not built from
+    # whatever rows requests left cached.
+    from provisa.api.app import state  # noqa: PLC0415
+    from provisa.mv.readable_inputs import (  # noqa: PLC0415
+        ViewInputNotReadable,
+        require_readable_inputs,
+    )
+
+    try:
+        await require_readable_inputs(mv, state)
+    except ViewInputNotReadable as refused:
+        registry.mark_refresh_failed(mv.id, str(refused))
+        log.error("MV %s not refreshed: %s", mv.id, refused)
+        return
+
     authorization = SystemAuth(mint_system_token(), reason=f"mv_refresh:{mv.id}")
 
     coordinated = store is not None and mv.consistency == "shared"

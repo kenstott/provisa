@@ -537,7 +537,7 @@ def _fire_catalog_indexing(state, pool, input: SourceInput) -> None:
     )
 
 
-def _sync_view_mv(
+async def _sync_view_mv(
     table_name: str,
     view_sql: str,
     refresh_interval: int,
@@ -636,7 +636,10 @@ def _sync_view_mv(
         expected_events=expected_events,  # REQ-961
         business_day_grain=business_day_grain,  # REQ-962
     )
-    state.mv_registry.register(mv)
+    # Refused, and nothing registered, when the view reads an input the engine cannot read whole.
+    from provisa.mv.readable_inputs import register_view
+
+    await register_view(state, mv)
 
 
 def _remove_view_mv(table_name: str) -> None:

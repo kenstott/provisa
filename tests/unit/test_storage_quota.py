@@ -56,6 +56,9 @@ def app_state(monkeypatch):
         admin_db=object(),
         org_registry=_registry(acme=None),
         federation_engine=SimpleNamespace(materialize_store_dsn=lambda: _PLATFORM_STORE),
+        # What a refreshed view's inputs are checked against (provisa/mv/readable_inputs.py).
+        api_endpoints={},
+        graphql_remote_sources={},
     )
     monkeypatch.setattr("provisa.api.app.state", state, raising=False)
     return state

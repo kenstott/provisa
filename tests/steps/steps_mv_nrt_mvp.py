@@ -118,13 +118,16 @@ def _register(ctx, monkeypatch):
         federation_engine=types.SimpleNamespace(
             materialize_store_target=lambda _org: ("mat_store", "public")
         ),
+        # What a saved view's inputs are checked against (provisa/mv/readable_inputs.py).
+        api_endpoints={},
+        graphql_remote_sources={},
     )
     mod = types.ModuleType("provisa.api.app")
     mod.state = state  # type: ignore[attr-defined]
     monkeypatch.setitem(__import__("sys").modules, "provisa.api.app", mod)
     ctx["registered"] = registered
     try:
-        schema_common._sync_view_mv("v", ctx["sql"], 300)
+        asyncio.run(schema_common._sync_view_mv("v", ctx["sql"], 300))
         ctx["error"] = None
     except ValueError as e:
         ctx["error"] = str(e)

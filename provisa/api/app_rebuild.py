@@ -195,6 +195,11 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                     _tgt_cat, _tgt_schema = state.federation_engine.materialize_store_target(
                         state.org_id
                     )
+                    # A saved view coming back into memory, not a save: registered as it is.
+                    # If an input has since stopped being readable (a table switched to
+                    # row-level replication) its refresh fails with that reason, shown as the
+                    # view's error (provisa/mv/readable_inputs.py) — a rebuild that refused it
+                    # here would fail every later change to the org, the one that fixes it too.
                     state.mv_registry.register(
                         MVDefinition(
                             id=_mv_id,

@@ -1105,7 +1105,7 @@ async def _load_and_build(
     await _load_openapi_specs()
 
     # Load materialized view definitions, views, and auto-MV cross-source rels
-    _load_mv_and_views_config(raw_config)
+    _config_views = _load_mv_and_views_config(raw_config)
 
     await _load_graphql_remote_sources_from_db()
     await _load_grpc_remote_sources_from_db()
@@ -1124,6 +1124,13 @@ async def _load_and_build(
     _mark("source-pools+ingest+remote")
 
     await _rebuild_schemas(raw_config)
+
+    # A config view that reads an input the engine cannot read whole fails the load, naming the
+    # view and the input. Checked here, not where the view is read from the config: the registry
+    # it is checked against (tables, API endpoints) is loaded by the build above.
+    from provisa.mv.readable_inputs import require_views_readable
+
+    await require_views_readable(state, _config_views)
 
     _mark("rebuild_schemas")
 

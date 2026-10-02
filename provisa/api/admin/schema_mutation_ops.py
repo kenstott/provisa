@@ -356,7 +356,7 @@ async def register_table(
                 )
 
     if _effective_view_sql and input.materialize:
-        _sync_view_mv(
+        await _sync_view_mv(
             input.table_name,
             _effective_view_sql,
             input.mv_refresh_interval,

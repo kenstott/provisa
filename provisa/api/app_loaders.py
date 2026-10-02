@@ -48,6 +48,7 @@ from typing import TYPE_CHECKING, Any, cast  # noqa: F401
 if TYPE_CHECKING:
     from provisa.api.app import AppState
     from provisa.core.database import Connection
+    from provisa.mv.models import MVDefinition
 
 log = logging.getLogger(__name__)
 
@@ -567,10 +568,16 @@ async def _load_openapi_specs() -> None:
 
 def _load_mv_and_views_config(
     raw_config: dict,
-) -> None:  # REQ-086, REQ-133, REQ-135, REQ-158, REQ-159, REQ-160
-    """Load materialized_views, views, and auto-MV cross-source relationships into state."""
+) -> list[MVDefinition]:  # REQ-086, REQ-133, REQ-135, REQ-158, REQ-159, REQ-160
+    """Load materialized_views, views, and auto-MV cross-source relationships into state.
+
+    Returns the views it registered: the caller checks each reads only inputs the engine can
+    read whole (provisa/mv/readable_inputs.py) once the registry they are checked against is
+    loaded, and fails the load on one that does not."""
     from provisa.api.app import state
     from provisa.mv.models import MVDefinition, JoinPattern, SDLConfig
+
+    loaded: list[MVDefinition] = []
 
     # REQ-1443/description pull-forward: base-table column descriptions, keyed by table name, as
     # declared BEFORE this function appends any MV/view-derived table entries — a pass-through MV
@@ -648,6 +655,7 @@ def _load_mv_and_views_config(
             preprocess=mvc.get("preprocess"),  # REQ-957 (purity-checked at boot compile)
         )
         state.mv_registry.register(mv)
+        loaded.append(mv)
 
         # REQ-086: Expose MV as queryable table in schema. Source catalog/schema mirror the MV's
         # resolved target (engine store), not a hardcoded postgresql.
@@ -721,6 +729,7 @@ def _load_mv_and_views_config(
                     ),  # REQ-957 (purity-checked at boot compile)
                 )
                 state.mv_registry.register(mv)
+                loaded.append(mv)
                 _view_log.info("Registered materialized view: %s", view_id)
             else:
                 _view_log.info("Registered inline view: %s", view_id)
@@ -793,6 +802,7 @@ def _load_mv_and_views_config(
                 join_pattern=jp,
             )
             state.mv_registry.register(mv)
+            loaded.append(mv)
             if via_table:
                 logging.getLogger(__name__).info(
                     "Auto-materialized cross-source junction relationship %s (%s.%s → %s.%s → %s.%s)",
@@ -813,6 +823,8 @@ def _load_mv_and_views_config(
                     tgt_source,
                     tgt_table,
                 )
+
+    return loaded
 
 
 async def _init_ingest_engines() -> None:
