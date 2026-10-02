@@ -366,7 +366,7 @@ async def put_openapi_spec(source_id: str, request: Request):  # REQ-316, REQ-31
     cache_ttl = existing.get("cache_ttl", 300)
 
     async with put_pool.acquire() as conn:
-        n_tables, n_mutations = await auto_register_openapi_source(
+        n_tables, n_mutations, kept_tables = await auto_register_openapi_source(
             source_id,
             spec,
             conn,
@@ -394,4 +394,7 @@ async def put_openapi_spec(source_id: str, request: Request):  # REQ-316, REQ-31
         "source_id": source_id,
         "tables": n_tables,
         "mutations": n_mutations,
+        # REQ-1918: tables the spec no longer has that something still refers to — kept, with
+        # what refers to each.
+        "kept_tables": kept_tables,
     }

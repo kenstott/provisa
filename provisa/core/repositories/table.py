@@ -465,11 +465,55 @@ async def delete(conn: "Connection", table_id: int) -> bool:  # REQ-014, REQ-191
     return True
 
 
+async def retire_generated(  # REQ-1918
+    conn: "Connection", source_id: str, schema_name: str, current: set[str]
+) -> list[TableDeleteRefused]:
+    """Remove the tables a source's generated set no longer contains, one at a time through
+    :func:`delete`; returns the refusals of those that could not go.
+
+    A remote source's tables are generated from its schema, and re-registering the source
+    upserts each by its identity (source, schema, name), so a table that is still there keeps its
+    id and everything that refers to it. A table the remote no longer has is deleted like any
+    other — and when something depends on it, it is KEPT and reported, so the operator sees
+    which tables are gone upstream and what still refers to them. ``current`` is the names in
+    the set just registered.
+    """
+    rows = await conn.execute_core(
+        select(registered_tables.c.id, registered_tables.c.table_name).where(
+            registered_tables.c.source_id == source_id,
+            registered_tables.c.schema_name == schema_name,
+        )
+    )
+    kept: list[TableDeleteRefused] = []
+    for table_id, name in sorted(rows.fetchall(), key=lambda r: r[1]):
+        if name in current:
+            continue
+        try:
+            await delete(conn, table_id)
+        except TableDeleteRefused as refused:
+            kept.append(refused)
+    return kept
+
+
+def kept_report(kept: list[TableDeleteRefused]) -> list[dict]:
+    """:func:`retire_generated`'s refusals as the rows a re-registration returns: the table
+    kept, and what still refers to it."""
+    return [
+        {
+            "id": refused.table_id,
+            "name": refused.name,
+            "dependents": [
+                {"kind": d.ref.kind, "id": d.ref.id, "via": list(d.via)} for d in refused.dependents
+            ],
+        }
+        for refused in kept
+    ]
+
+
 async def remove_registrations(conn: "Connection", *where) -> None:
     """Remove every registered table matching ``where`` (clauses on ``registered_tables``) —
-    for the code that registers tables as a SET and replaces or retires that set: a remote
-    source's re-registration of its generated tables, the seed retiring rows it wrote, the
-    config loader dropping what the config no longer declares.
+    for the code that registers tables as a SET and replaces or retires that set: the seed
+    retiring rows it wrote, the config loader dropping what the config no longer declares.
 
     It declares a set; it is not a deletion of one object, so it does not ask the dependency
     guard, as a full replace does not. What referred to those tables is left to the database, as

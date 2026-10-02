@@ -125,8 +125,13 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
     domain_id: str,
     tables: list[dict],
     tenant_db,
-) -> None:
-    """Write discovered GraphQL tables into registered_tables with descriptions."""
+) -> list[dict]:
+    """Write discovered GraphQL tables into registered_tables with descriptions.
+
+    Each table is upserted by its identity (source, schema, name), so one that is still in the
+    remote schema keeps its id and what refers to it. One the remote no longer has is deleted
+    through the model store; when something depends on it, it is kept, and returned here with
+    what still refers to it (REQ-1918)."""
     from provisa.core.models import Column, Table
     from provisa.core.repositories import table as table_repo
 
@@ -134,8 +139,8 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
 
     async with tenant_db.acquire() as conn:
         # Introspection is not the authority on governance grants — preserve any
-        # visible_to already set (e.g. by config apply) before the stale rows
-        # (e.g. pre-fix camelCase names) are dropped and re-inserted.
+        # visible_to already set (e.g. by config apply): the upsert below replaces a table's
+        # columns wholesale.
         _existing_rows = await conn.execute_core(
             select(
                 registered_tables.c.table_name,
@@ -163,13 +168,6 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
         from provisa.core.repositories import glossary as glossary_repo
 
         domains_before = await glossary_repo.term_domains(conn)
-        from provisa.core.repositories import table as table_repo
-
-        await table_repo.remove_registrations(
-            conn,
-            registered_tables.c.source_id == source_id,
-            registered_tables.c.schema_name == "graphql",
-        )
         for t in tables:
             _sql_name = apply_sql_name(t["name"])
             tbl = Table(
@@ -205,9 +203,12 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
             )
             await table_repo.upsert(conn, tbl)
 
-        # REQ-1387: the wipe above cascaded glossary refs; the upserts relinked surviving
-        # columns, so settle only the terms whose fields truly departed.
+        kept = await table_repo.retire_generated(
+            conn, source_id, "graphql", {apply_sql_name(t["name"]) for t in tables}
+        )
+        # REQ-1387: settle only the terms whose fields truly departed.
         await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
+        return table_repo.kept_report(kept)
 
 
 async def _upsert_relationships_to_semantic_layer(  # REQ-313, REQ-598
@@ -292,6 +293,8 @@ async def register_graphql_remote_source(
     state.graphql_remote_sources[body.source_id] = reg_dict
 
     _tenant_db = state.tenant_db
+    # REQ-1918: tables the remote schema no longer has that something still refers to.
+    kept_tables: list[dict] = []
     if _tenant_db is not None:
         async with _tenant_db.acquire() as _conn:
             await _conn.upsert(
@@ -317,7 +320,7 @@ async def register_graphql_remote_source(
                     index_elements=["id"],
                     update_columns=[],
                 )
-        await _upsert_tables_to_semantic_layer(
+        kept_tables = await _upsert_tables_to_semantic_layer(
             body.source_id,
             body.domain_id,
             tables,
@@ -357,6 +360,7 @@ async def register_graphql_remote_source(
         "relationships": len(all_relationships),
         "table_names": [t["name"] for t in tables],
         "function_names": [f["name"] for f in functions],
+        "kept_tables": kept_tables,
     }
 
 
@@ -401,8 +405,10 @@ async def refresh_graphql_remote_source(request: Request, source_id: str):  # RE
     state.graphql_remote_sources[source_id] = reg
 
     _tenant_db = state.tenant_db
+    # REQ-1918: tables the remote schema no longer has that something still refers to.
+    kept_tables: list[dict] = []
     if _tenant_db is not None:
-        await _upsert_tables_to_semantic_layer(
+        kept_tables = await _upsert_tables_to_semantic_layer(
             source_id,
             reg.get("domain_id", ""),
             tables,
@@ -426,6 +432,7 @@ async def refresh_graphql_remote_source(request: Request, source_id: str):  # RE
         "relationships": len(all_relationships),
         "table_names": [t["name"] for t in tables],
         "function_names": [f["name"] for f in functions],
+        "kept_tables": kept_tables,
     }
 
 
