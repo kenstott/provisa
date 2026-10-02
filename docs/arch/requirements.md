@@ -20569,3 +20569,15 @@ The model store. The model -- sources, tables and columns, relationships, roles 
 **Code:** —
 
 **Tests:** —
+
+### REQ-1920 · State Store {#REQ-1920}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** structural
+
+The state store. Provisa keeps three kinds of data in its control plane and treats each differently. The model is what the operator declares, and it lives in the model store ([REQ-1919](#REQ-1919)). State is what the runtime works out while making the estate match the model -- the build state of each replica and whether a table is promoted as hot, the freshness of each table and view, the status and log of each view refresh, queued events and the outcome of each job, cached source catalogs and file timestamps, and the like -- and it lives in the state store. The record is the audit trail and usage history, which says what happened and is kept apart from both. State is never declared -- no operator and no configuration file writes it; only the runtime does, the coordinator for most of it. State is derived -- it can be discarded and rebuilt from the model and the estate, and losing it costs work but no information. A change to state never causes a model reload; where other processes must learn of it, state has its own stamp, separate from the model stamp, whose reload reads only that state ([REQ-1914](#REQ-1914)). The state store is the one place that reads and writes state, as the model store is for the model -- other code asks it, and a test fails the build when state is written from elsewhere. State is not part of a configuration export and is not copied when the model is copied to another environment. State held outside the control plane for speed -- kept plans, the response cache, per-interval read counts -- follows the same rule of being derived and discardable, and is keyed to the model it was derived under so that it cannot outlive a change to that model. The record is not state -- it cannot be rebuilt, it is append-only, and nothing in the state store may be relied on as the record. The replica state built for the data replicator ([REQ-1915](#REQ-1915)) is the first resident of the state store.
+
+**Use case:** Declared model and derived state were stored side by side with nothing to tell them apart, so a change to bookkeeping could force every process to rebuild its schemas, and it was unclear which rows a configuration export should carry or which could safely be dropped. Naming state as its own store, with its own rules, keeps the model a pure declaration.
+
+**Code:** —
+
+**Tests:** —
