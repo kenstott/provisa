@@ -51,6 +51,8 @@ GATE_NAMES = frozenset(
         # capability resolution done in-handler
         "_resolved_capabilities",
         "has_capability",
+        "has_capability_request",
+        "role_definitions_visible",
         "check_capability",
         "can_act_cross_org",
         # router-local gates
@@ -101,21 +103,18 @@ EXEMPT: dict[tuple[str, str], str] = {
     ("GET", "/admin/graphql"): "transport; per-resolver gates are checked in the GraphQL pass",
     ("POST", "/admin/graphql"): "transport; per-resolver gates are checked in the GraphQL pass",
     ("*", "/admin/graphql"): "transport; per-resolver gates are checked in the GraphQL pass",
-    # --- waiting on a maintainer decision --------------------------------------------------------
-    ("GET", "/admin/roles/"): "PENDING DECISION",
-    ("GET", "/admin/mcp-server"): "PENDING DECISION",
-    ("GET", "/admin/mcp/chat/status"): "PENDING DECISION",
 }
 
-_PENDING_READS = ("allRelationships metrics relationships source sources").split()
-for _name in _PENDING_READS:
-    EXEMPT[("graphql:query", _name)] = "PENDING DECISION"
-# Bound to the caller's org (_resolve_admin_context raises when none is bound) and read by any
-# member of it; no capability is asked. They used to count as gated only because that helper
-# resolved the caller's capabilities to compute a flag — a resolution, never a check.
-_ORG_BOUND_READS = ("domains resolveOwners roles tagAssignments tags").split()
-for _name in _ORG_BOUND_READS:
-    EXEMPT[("graphql:query", _name)] = "PENDING DECISION: org-bound member read, no capability gate"
+# Model metadata read by every role's pages; holds no connection details or security rules. Each
+# resolves through _get_pool(), the org-routed tenant pool (one schema per org), so it returns only
+# the acting org's rows; the ones that take info also require an org bound to the request.
+_MODEL_METADATA_READS = (
+    "allRelationships metrics relationships domains resolveOwners tagAssignments tags"
+).split()
+for _name in _MODEL_METADATA_READS:
+    EXEMPT[("graphql:query", _name)] = (
+        "model metadata read by every role's pages; holds no connection details or security rules"
+    )
 EXEMPT[("graphql:query", "schemaVersion")] = "identifier hash only; no model content"
 # Pure text parse (parse_contract reads no source, credential or model row); called by DqRulesModal
 # on /data-products, opened with data_product_read.

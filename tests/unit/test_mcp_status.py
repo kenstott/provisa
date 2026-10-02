@@ -100,7 +100,12 @@ def test_enabled_without_role_reports_none(monkeypatch):
 async def test_endpoint_returns_status(monkeypatch):
     monkeypatch.setenv("PROVISA_MCP_PORT", "9100")
     monkeypatch.setenv("PROVISA_MCP_ROLE", "analyst")
-    result = await get_mcp_server(_FakeRequest({"host": "localhost:3000"}))
+    from tests.unit.gate_identity import grant
+
+    request = _FakeRequest({"host": "localhost:3000"})
+    # The full status is the observer's; a caller without the right gets the connect address only.
+    request.state = grant(monkeypatch, "observability")[1].state
+    result = await get_mcp_server(request)
     assert result["enabled"] is True
     assert result["port"] == 9100
     assert result["stdio_role"] == "analyst"

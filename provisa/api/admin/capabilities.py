@@ -23,6 +23,8 @@ from provisa.security.rights import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import strawberry
     import strawberry.types
 
@@ -167,6 +169,18 @@ def allowed_domains_request(request) -> frozenset[str] | None:  # REQ-1591
         return None
     allowed = domains_within(sorted(_domain_access(identity, state)))
     return None if allowed is None else frozenset(allowed)
+
+
+def role_definitions_visible(request, role_id_claims) -> "Callable[[str], bool]":
+    """Which role definitions the caller may read in full: every one for a ``user_management``
+    holder, otherwise only the roles the caller itself holds (the client builds its own rights from
+    them). Any other role is visible by id alone."""
+    from provisa.security.rights import role_ids_from_claims
+
+    if has_capability_request(request, "user_management"):
+        return lambda _role_id: True
+    own = role_ids_from_claims(role_id_claims)
+    return lambda role_id: role_id in own
 
 
 def has_capability_request(request, capability: str) -> bool:  # REQ-1592

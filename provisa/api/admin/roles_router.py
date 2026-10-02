@@ -21,7 +21,7 @@ from pydantic import BaseModel
 from sqlalchemy import delete as _delete, insert, or_, select, update
 
 from provisa.api.admin._platform_guard import role_definition_problem
-from provisa.api.admin.capabilities import require_capability_request
+from provisa.api.admin.capabilities import require_capability_request, role_definitions_visible
 from provisa.api.errors import ApiError
 from provisa.core.schema_org import roles
 
@@ -97,7 +97,9 @@ async def list_roles(request: Request):  # REQ-042, REQ-059, REQ-060
             .order_by(roles.c.id)
         )
         rows = result.fetchall()
-    return [dict(r._mapping) for r in rows]
+    identity = getattr(request.state, "identity", None)
+    full = role_definitions_visible(request, getattr(identity, "roles", []))
+    return [dict(r._mapping) if full(r.id) else {"id": r.id} for r in rows]
 
 
 @router.post("/")

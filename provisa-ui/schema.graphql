@@ -633,9 +633,9 @@ type RoleRateLimitType {
 
 type RoleType {
   id: String!
-  capabilities: [String!]!
-  domainAccess: [String!]!
-  demonstrated: [String!]!
+  capabilities: [String!]
+  domainAccess: [String!]
+  demonstrated: [String!]
   rateLimit: RoleRateLimitType
   parentRoleId: String
 }
@@ -689,10 +689,10 @@ input SourceInput {
 type SourceType {
   id: String!
   type: String!
-  host: String!
-  port: Int!
-  database: String!
-  username: String!
+  host: String
+  port: Int
+  database: String
+  username: String
   dialect: String!
   cacheEnabled: Boolean!
   cacheTtl: Int
@@ -704,8 +704,8 @@ type SourceType {
   path: String
   allowedDomains: [String!]!
   description: String!
-  mappingJson: String!
-  federationHintsJson: String!
+  mappingJson: String
+  federationHintsJson: String
   changeSignal: String!
   cdc: SourceCdcConfigType
 }

@@ -1228,14 +1228,15 @@ INSERT INTO roles (id, capabilities, domain_access, org_id)
 VALUES (
     'platform_admin',
     '["platform_settings","cross_org"]'::jsonb,
-    '["*"]'::jsonb,
+    '[]'::jsonb,
     NULL
 )
 ON CONFLICT (id) DO NOTHING;
 
 -- REQ-1297: the seed asserts the system role's definition on every init_schema (ON CONFLICT DO
 -- NOTHING above leaves an existing row alone), the same way the retired-id rewrite below does.
-UPDATE roles SET capabilities = '["platform_settings","cross_org"]'::jsonb WHERE id = 'platform_admin';
+-- domain_access is empty too: the control plane reaches no data domain.
+UPDATE roles SET capabilities = '["platform_settings","cross_org"]'::jsonb, domain_access = '[]'::jsonb WHERE id = 'platform_admin';
 
 -- REQ-1573: the two environment rights arrived after these system roles were seeded, and
 -- ON CONFLICT DO NOTHING leaves an existing row alone, so assert them here the same way

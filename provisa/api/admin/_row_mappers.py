@@ -87,7 +87,10 @@ def _cdc_model_from_input(input: SourceInput):  # REQ-824
     )
 
 
-def _source_from_row(row) -> SourceType:
+def _source_from_row(row, *, connection: bool) -> SourceType:
+    """``connection`` False nulls every field that locates or authenticates to the source (host,
+    port, database, username, path, mapping, federation hints, vault reference, CDC brokers and
+    registry); only a caller holding source_registration is given them."""
     import json as _json
 
     raw_mapping = row.get("mapping") or {}
@@ -99,10 +102,10 @@ def _source_from_row(row) -> SourceType:
     return SourceType(
         id=row["id"],
         type=row["type"],
-        host=row["host"],
-        port=row["port"],
-        database=row["database"],
-        username=row["username"],
+        host=row["host"] if connection else None,
+        port=row["port"] if connection else None,
+        database=row["database"] if connection else None,
+        username=row["username"] if connection else None,
         dialect=row["dialect"],
         cache_enabled=row.get("cache_enabled", True),
         cache_ttl=row.get("cache_ttl"),
@@ -111,14 +114,15 @@ def _source_from_row(row) -> SourceType:
         off_peak_window=row.get("off_peak_window"),  # REQ-1141
         off_peak_tz=row.get("off_peak_tz") or "UTC",  # REQ-1141
         gql_naming_convention=row.get("gql_naming_convention"),
-        path=row.get("path"),
+        path=row.get("path") if connection else None,
         allowed_domains=list(row.get("allowed_domains") or []),
         description=row.get("description") or "",
-        mapping_json=mapping_json,
-        federation_hints_json=federation_hints_json,
-        password_ref=row.get("password_ref") or "",  # REQ-1730: the vault reference, never a secret
+        mapping_json=mapping_json if connection else None,
+        federation_hints_json=federation_hints_json if connection else None,
+        # REQ-1730: the vault reference, never a secret
+        password_ref=(row.get("password_ref") or "") if connection else None,
         change_signal=row.get("change_signal") or "ttl",  # REQ-929
-        cdc=_cdc_from_row(row),
+        cdc=_cdc_from_row(row) if connection else None,
     )
 
 
@@ -134,7 +138,10 @@ def _domain_from_row(row) -> DomainType:
     )
 
 
-def _role_from_row(row) -> RoleType:
+def _role_from_row(row, *, detail: bool = True) -> RoleType:
+    """``detail`` False returns the id alone: no capabilities, domain access, limits or parent."""
+    if not detail:
+        return RoleType(id=row["id"], capabilities=None, domain_access=None, demonstrated=None)
     # REQ-1174: surface the per-role rate + query-complexity limits (JSON column) to the admin API.
     rl = row.get("rate_limit")
     rate_limit = None

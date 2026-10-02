@@ -21,10 +21,11 @@ export interface SourceCdcConfig {
 export interface Source {
   id: string;
   type: string;
-  host: string;
-  port: number;
-  database: string;
-  username: string;
+  // Null for a caller without source_registration: connection details are that right's.
+  host: string | null;
+  port: number | null;
+  database: string | null;
+  username: string | null;
   dialect: string | null;
   cacheEnabled: boolean;
   cacheTtl: number | null;

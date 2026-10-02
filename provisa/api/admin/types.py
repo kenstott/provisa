@@ -72,10 +72,12 @@ class SourceCdcConfigType:  # REQ-824
 class SourceType:  # REQ-012
     id: str
     type: str
-    host: str
-    port: int
-    database: str
-    username: str
+    # The fields that locate or authenticate to the source are null for a caller without
+    # source_registration (see _row_mappers._source_from_row).
+    host: str | None
+    port: int | None
+    database: str | None
+    username: str | None
     dialect: str
     cache_enabled: bool
     cache_ttl: int | None
@@ -87,14 +89,14 @@ class SourceType:  # REQ-012
     path: str | None = None
     allowed_domains: list[str] = strawberry.field(default_factory=list)
     description: str = ""
-    mapping_json: str = "{}"
+    mapping_json: str | None = "{}"
     # REQ-1736: read-side counterpart of SourceInput.federation_hints_json — without this, a
     # source's warehouse extras (Snowflake warehouse/role, Databricks http_path, ...) round-trip
     # into the store on create but can never be read back into the edit form, so a save-then-edit
     # silently drops them from the form (though not from the store, since update_source only
     # overwrites federation_hints when the input actually carries a federation_hints_json). Also
     # the channel rss's feed_url and websocket's subscribe_payload round-trip through (REQ-1739).
-    federation_hints_json: str = "{}"
+    federation_hints_json: str | None = "{}"
     # REQ-1730: the ``${secret:NAME}`` reference persist_source_password (REQ-1695) wrote — never
     # the plaintext credential, which the vault holds "unreadable by name" by design. Exposed so a
     # caller re-registering an ALREADY-VALIDATED source on a second engine (the cross-engine swap
@@ -102,7 +104,7 @@ class SourceType:  # REQ-012
     # already treats a value containing ``${`` as a reference and stores it verbatim rather than
     # re-vaulting it, so round-tripping this field through create_source resolves correctly via
     # resolve_secrets() on the target engine's own process, sharing the same org vault.
-    password_ref: str = ""
+    password_ref: str | None = ""
     change_signal: str = "ttl"  # REQ-929: source default change signal (inherited by its tables)
     cdc: SourceCdcConfigType | None = None  # REQ-824: source-level CDC transport
 
@@ -551,9 +553,11 @@ class RoleRateLimitType:  # REQ-1174
 @strawberry.type
 class RoleType:  # REQ-042
     id: str
-    capabilities: list[str]
-    domain_access: list[str]
-    demonstrated: list[str] = strawberry.field(default_factory=list)  # REQ-1602
+    # Null for a caller who neither holds user_management nor holds the role itself: a role's
+    # definition is the right-holder's, and everyone else sees only that it exists.
+    capabilities: list[str] | None
+    domain_access: list[str] | None
+    demonstrated: list[str] | None = strawberry.field(default_factory=list)  # REQ-1602
     rate_limit: RoleRateLimitType | None = None  # REQ-1174
     parent_role_id: str | None = None  # REQ-1677
 

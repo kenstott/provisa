@@ -26,6 +26,7 @@ Three callers:
 from __future__ import annotations
 
 import types
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -46,7 +47,12 @@ ROOT_ORG = "root"
 # The seed, as a multitenant deployment holds it (apply_tenancy_role_grants grants
 # platform_settings to org_admin only in a single-tenant one).
 ROLES: dict[str, dict] = {
-    role_id: {"id": role_id, "capabilities": list(caps), "domain_access": ["*"]}
+    role_id: {
+        "id": role_id,
+        "capabilities": list(caps),
+        # The seed (db.py, schema.sql): the control plane reaches no data domain.
+        "domain_access": [] if role_id == "platform_admin" else ["*"],
+    }
     for role_id, caps in _SEED_ROLES
 }
 # Roles an org might try to define for itself. None is seeded; each is the shape a refused
@@ -105,6 +111,11 @@ def _seeded_registry(monkeypatch):
 
 def test_the_seed_gives_platform_admin_the_two_platform_rights_and_nothing_else():
     assert set(ROLES["platform_admin"]["capabilities"]) == {"platform_settings", "cross_org"}
+    assert ROLES["platform_admin"]["domain_access"] == []
+    sql = (Path(__file__).resolve().parents[2] / "provisa" / "core" / "schema.sql").read_text()
+    seed = sql[sql.index("'platform_admin',\n") :].split("ON CONFLICT", 1)[0]
+    assert "'[]'::jsonb" in seed and "'[\"*\"]'::jsonb" not in seed
+    assert "domain_access = '[]'::jsonb WHERE id = 'platform_admin'" in sql
     assert not {"platform_settings", "cross_org"} & set(ROLES["org_admin"]["capabilities"])
     for role_id, role in ROLES.items():
         if role_id not in ("retired_strings",):

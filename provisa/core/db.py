@@ -294,7 +294,8 @@ async def _init_schema_portable(pool: "Database") -> None:
                         id=role_id,
                         capabilities=capabilities,
                         demonstrated=demonstrated,
-                        domain_access=["*"],
+                        # The control plane reaches no data domain (REQ-1337).
+                        domain_access=[] if role_id == "platform_admin" else ["*"],
                         org_id=None,
                     )
                 )

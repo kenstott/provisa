@@ -40,7 +40,11 @@ from provisa.core.repositories import rls as rls_repo
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
 from provisa.api.admin._config_io import config_path as _config_path, read_config
-from provisa.api.admin.capabilities import require_capability
+from provisa.api.admin.capabilities import (
+    has_capability,
+    require_capability,
+    role_definitions_visible,
+)
 from provisa.api.admin.types import (
     AvailableColumnType,
     AvailableTableType,
@@ -292,8 +296,6 @@ class Query:  # REQ-021, REQ-042
         """
         import json as _json
 
-        from provisa.api.admin.capabilities import has_capability
-
         from provisa.core.repositories import creation_request as cr_repo
 
         pool = await _get_pool()
@@ -349,19 +351,26 @@ class Query:  # REQ-021, REQ-042
         return version_hash
 
     @strawberry.field
-    async def sources(self) -> list[SourceType]:  # REQ-012, REQ-013
+    async def sources(self, info: StrawberryInfo) -> list[SourceType]:  # REQ-012, REQ-013
+        # Connection details go to a source_registration holder only; everyone else reads the rest.
+        connection = has_capability(info, "source_registration")
         pool = await _get_pool()
         async with pool.acquire() as conn:
             _res = await conn.execute_core(select(sources).order_by(sources.c.id))
-            return [_source_from_row(dict(r._mapping)) for r in _res.fetchall()]
+            return [
+                _source_from_row(dict(r._mapping), connection=connection) for r in _res.fetchall()
+            ]
 
     @strawberry.field
-    async def source(self, id: str) -> Optional[SourceType]:  # REQ-012, REQ-013
+    async def source(
+        self, info: StrawberryInfo, id: str
+    ) -> Optional[SourceType]:  # REQ-012, REQ-013
+        connection = has_capability(info, "source_registration")
         pool = await _get_pool()
         async with pool.acquire() as conn:
             _res = await conn.execute_core(select(sources).where(sources.c.id == id))
             row = _res.fetchone()
-            return _source_from_row(dict(row._mapping)) if row else None
+            return _source_from_row(dict(row._mapping), connection=connection) if row else None
 
     @strawberry.field
     async def domains(self, info: StrawberryInfo) -> list[DomainType]:  # REQ-021, REQ-042
@@ -639,7 +648,11 @@ class Query:  # REQ-021, REQ-042
                 .where(or_(roles.c.org_id.is_(None), roles.c.org_id == active_org_id))
                 .order_by(roles.c.id)
             )
-            return [_role_from_row(dict(r._mapping)) for r in _res.fetchall()]
+            request = info.context["request"]
+            identity = getattr(request.state, "identity", None)
+            full = role_definitions_visible(request, getattr(identity, "roles", []))
+            rows = [dict(r._mapping) for r in _res.fetchall()]
+            return [_role_from_row(r, detail=full(r["id"])) for r in rows]
 
     @strawberry.field
     async def rls_rules(

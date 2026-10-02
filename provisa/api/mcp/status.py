@@ -26,7 +26,7 @@ from __future__ import annotations
 import os
 
 from fastapi import APIRouter, HTTPException, Request
-from provisa.api.admin.capabilities import require_capability_request
+from provisa.api.admin.capabilities import has_capability_request, require_capability_request
 
 router = APIRouter()
 
@@ -144,12 +144,20 @@ def mcp_status(request: Request | None = None) -> dict:
 
 @router.get("/admin/mcp-server")
 async def get_mcp_server(request: Request):  # REQ-1008
-    """Effective MCP server status (enabled, port, transport, connect URL, bound role, tools)."""
-    return mcp_status(request)
+    """Effective MCP server status.
+
+    Open to every org member (the Explore page reads the connect address), trimmed for a caller
+    without ``observability`` to that address and the bridge needed to use it; the port,
+    transport, bound role, row cap, tool list and environment variable names are the observer's.
+    """
+    status = mcp_status(request)
+    if has_capability_request(request, "observability"):
+        return status
+    return {key: status[key] for key in ("enabled", "url", "tls", "bridge_command", "bridge_args")}
 
 
 @router.get("/admin/mcp/chat/status")
-async def mcp_chat_status():  # REQ-1804
+async def mcp_chat_status(request: Request):  # REQ-1804
     """Whether Polly (the chat assistant, REQ-1008) has a usable vendor/model/credential.
 
     A cheap preflight the UI calls BEFORE opening the chat panel (REQ-1804), so an unconfigured
@@ -160,7 +168,11 @@ async def mcp_chat_status():  # REQ-1804
     from provisa.api.mcp.chat import _llm_configured
 
     configured, reason = await _llm_configured(state)
-    return {"configured": configured, "reason": reason}
+    # The reason names the missing vendor, model or credential: the org administrator's to read.
+    return {
+        "configured": configured,
+        "reason": reason if has_capability_request(request, "org_settings") else None,
+    }
 
 
 @router.post("/admin/mcp/search-catalog")
