@@ -418,7 +418,12 @@ class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
                 desc = cur.description or []
                 columns = [d.name for d in desc]
                 col_types = self._type_names(conn, [d.type_code for d in desc])
-        return QueryResult(rows=rows, column_names=columns, column_types=col_types)
+                # A statement with no result set (a data write without RETURNING) reports how
+                # many rows it changed; the driver's count is the only place that is known.
+                affected = cur.rowcount if cur.description is None and cur.rowcount >= 0 else None
+        return QueryResult(
+            rows=rows, column_names=columns, column_types=col_types, rowcount=affected
+        )
 
     @property
     def supports_streaming(self) -> bool:  # REQ-1190

@@ -509,7 +509,6 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         CypherWriteParseError as _CWPE,
         WriteTranslator as _WT,
         parse_cypher_write as _pwc,
-        write_acl_error,
     )
 
     _write_ast = None
@@ -519,12 +518,11 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         pass  # not a write query; fall through to read path
 
     if _write_ast is not None:
-        from provisa.compiler.mutation_gen import (
-            MutationResult as _MutationResult,
-            inject_rls_into_mutation as _inject_rls,
+        from provisa.compiler.directives import NO_CACHE_HINT as _NO_CACHE
+        from provisa.pgwire._pipeline import (
+            _execute_plan as _execute_write_plan,
+            _govern_and_route_compiled as _govern_write,
         )
-        from provisa.compiler.rls import RLSContext as _RLSContext
-        from provisa.transpiler.transpile import transpile as _transpile
 
         _role_id = _resolve_role_id(request, state)
         _ctx = state.contexts.get(_role_id)
@@ -538,54 +536,21 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         except _CWPE as exc:
             return JSONResponse(status_code=400, content={"error": str(exc)})
         _source_id = _mapping.source_id
-        if not state.source_pools.has(_source_id):
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "error": f"Source '{_source_id}' does not support writes or is not connected"
-                },
-            )
-
-        # Build MutationResult so the full write pipeline applies (RLS, dialect
-        # transpilation, post-mutation hooks) — same as GraphQL and SQL mutations.
-        _mutation_type = {"create": "insert", "update": "update"}.get(_write_ast.kind, "delete")
-        _mut = _MutationResult(
-            sql=_write_sql,
-            params=[],
-            mutation_type=_mutation_type,
-            table_name=_mapping.table_name,
-            source_id=_source_id,
-            returning_columns=[],
-        )
-
-        # Look up table_meta for RLS and post-mutation hooks (same pattern as GraphQL)
         _table_meta = _resolve_table_meta(_ctx, _mapping.table_name)
 
-        # Enforce writable_by column ACL for CREATE/SET, uniformly with the
-        # GraphQL/SQL mutation path (REQ-663).
-        if _acl := write_acl_error(_table_meta, _write_ast, _mapping, _role_id):
-            return JSONResponse(status_code=_acl[0], content={"error": _acl[1]})
-
-        # Apply RLS into UPDATE/DELETE (same as GraphQL mutations)
-        if _table_meta is not None:
-            _rls = state.rls_contexts.get(_role_id, _RLSContext.empty())
-            if _rls.has_rules():
-                _mut = _inject_rls(_mut, _table_meta.table_id, _rls.rules)
-
-        # Transpile to target dialect then add RETURNING for row-count on write-capable backends
-        _dialect = state.source_dialects.get(_source_id, "postgres")
-        _target_sql = _transpile(_mut.sql, _dialect)
-        _source_type = state.source_types.get(_source_id, "")
-        if _source_type == "postgresql":
-            _target_sql += " RETURNING 1"
-
+        # ONE write path: the translated statement goes through the pipeline every other surface's
+        # write goes through (Bolt's Cypher writes included) — its admission (the write right, the
+        # columns' writable_by, the role's row filter), its lowering to the source's own
+        # addressing and dialect, and its execution. This route used to check, address and run
+        # the statement itself.
         try:
-            _result = await state.federation_engine.execute_native(
-                state.source_pools, _source_id, _target_sql
-            )
-            affected = len(_result.rows) if _result.rows else (_result.rowcount or 0)
-        except Exception as exc:
+            _plan = await _govern_write(_write_sql, _role_id, state=state, cache_hint=_NO_CACHE)
+            _result = await _execute_write_plan(_plan, state)
+        except PermissionError as exc:
+            return JSONResponse(status_code=403, content={"error": str(exc)})
+        except Exception as exc:  # allow-ble: request boundary — a source or driver error of any type is this write's outcome, answered as an error response
             return JSONResponse(status_code=500, content={"error": f"Write failed: {exc}"})
+        affected = _result.rowcount if _result.rowcount is not None else len(_result.rows)
 
         # Post-mutation hooks: cache invalidation, MV staleness, Kafka events,
         # hot-table reload — same as GraphQL mutations.
