@@ -765,7 +765,8 @@ async def forget_source_password(source_id: str, password_ref: str) -> None:
 
     Only the entry THIS module minted: a reference the operator wrote themselves names a secret
     they own for their own reasons, and deleting a source is not permission to delete it. The
-    comparison is against the generated name, which is exactly that distinction.
+    comparison is against the generated name, which is exactly that distinction. The entry is
+    kept while the same source in another environment of the org still names it.
     """
     if password_ref != f"${{secret:{source_password_secret_name(source_id)}}}":
         return
@@ -773,10 +774,20 @@ async def forget_source_password(source_id: str, password_ref: str) -> None:
     from provisa.core import secrets_store
     from provisa.core.request_context import current_org
 
+    from provisa.api.admin.secrets_router import _environment_planes
+
     assert state.admin_db is not None, "the platform control plane holds every org's vault"
-    await secrets_store.remove(
-        state.admin_db,
-        current_org.get() or state.org_id,
-        source_password_secret_name(source_id),
-        owner_id=secrets_store.ORG_OWNER,
-    )
+    org_id = current_org.get() or state.org_id
+    name = source_password_secret_name(source_id)
+    try:
+        await secrets_store.remove(
+            state.admin_db,
+            org_id,
+            name,
+            owner_id=secrets_store.ORG_OWNER,
+            environments=await _environment_planes(org_id),
+        )
+    except secrets_store.SecretDeleteRefused as refused:
+        # REQ-1918: the same source in another environment of the org still names the entry, so
+        # it is kept: the credential is still owned. It goes when the last source naming it does.
+        logging.getLogger(__name__).info("vault entry %r kept: %s", name, refused)

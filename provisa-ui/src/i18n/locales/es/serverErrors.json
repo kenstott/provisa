@@ -302,6 +302,9 @@
       "replicate_invalid": "Replicar debe ser «Predeterminado», «Nunca», «Siempre» o un umbral superior a 0; se recibió {{value}}",
       "replicate_contradicts_load_protected": "La protección de carga no puede combinarse con Replicar = «Nunca»: una tabla protegida contra carga nunca se lee en vivo"
     },
+    "secrets": {
+      "still_referenced": "{{secret}} sigue siendo nombrado por {{count}} valor(es) almacenado(s) en esta organización. Cambie o quite cada uno y vuelva a eliminarlo."
+    },
     "security": {
       "unknown_mode": "modo de seguridad desconocido: '{{mode}}'"
     },

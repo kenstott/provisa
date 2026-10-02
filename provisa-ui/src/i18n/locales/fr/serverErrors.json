@@ -302,6 +302,9 @@
       "replicate_invalid": "Répliquer doit être « Par défaut », « Jamais », « Toujours » ou un seuil supérieur à 0 ; reçu : {{value}}",
       "replicate_contradicts_load_protected": "La protection de charge ne peut pas être combinée avec Répliquer = « Jamais » : une table protégée contre la charge n'est jamais lue en direct"
     },
+    "secrets": {
+      "still_referenced": "{{secret}} est encore nommé par {{count}} valeur(s) stockée(s) dans cette organisation. Modifiez ou retirez chacune, puis supprimez-le de nouveau."
+    },
     "security": {
       "unknown_mode": "mode de sécurité « {{mode}} » inconnu"
     },

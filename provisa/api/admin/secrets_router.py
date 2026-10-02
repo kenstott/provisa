@@ -197,14 +197,48 @@ async def _store(
     return stored.as_dict()
 
 
+async def _environment_planes(org_id: str) -> dict[str, Database]:
+    """The control plane of every environment the org holds, by environment name."""
+    from provisa.api.app import ensure_org_runtime
+    from provisa.core.env_store import list_envs
+
+    planes: dict[str, Database] = {}
+    for env in await list_envs(_admin_pool(), org_id):
+        runtime = await ensure_org_runtime(org_id, env["name"])
+        if runtime.tenant_db is None:
+            raise ApiError(
+                409,
+                "orgs.no_tenant_runtime",
+                f"Org {org_id!r} has no tenant runtime — it may still be provisioning.",
+                org=org_id,
+            )
+        planes[env["name"]] = runtime.tenant_db
+    return planes
+
+
 async def _drop(org_id: str, owner_id: str, name: str, actor: str | None) -> dict:
     """Delete one secret from one vault.
 
-    A config somewhere still naming it does not block this: the reference is text, and what it
-    resolves to is decided when it is used (REQ-1558).
+    REQ-1918: an org secret is refused while any stored value of the org names it; the refusal
+    lists each one with the environment it is in, and nothing is removed.
     """
     _must_be_writable(org_id)
-    if not await secrets_store.remove(_admin_pool(), org_id, name, owner_id=owner_id):
+    environments = await _environment_planes(org_id) if owner_id == ORG_OWNER else None
+    try:
+        removed = await secrets_store.remove(
+            _admin_pool(), org_id, name, owner_id=owner_id, environments=environments
+        )
+    except secrets_store.SecretDeleteRefused as refused:
+        raise ApiError(
+            409,
+            "secrets.still_referenced",
+            str(refused),
+            org=org_id,
+            secret=name,
+            count=len(refused.references),
+            references=[r.as_dict() for r in refused.references],
+        ) from refused
+    if not removed:
         raise ApiError(
             404,
             "secrets.not_found",

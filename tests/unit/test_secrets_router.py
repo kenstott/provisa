@@ -59,7 +59,16 @@ def store(monkeypatch):
     Held is keyed by (owner_id, name) -- the same shape the table's primary key has, which is what
     makes "another developer cannot reach your secret" a fact about addressing rather than a check.
     """
-    calls: dict[str, list] = {"guard": [], "owner": [], "put": [], "remove": [], "audit": []}
+    calls: dict[str, list] = {
+        "guard": [],
+        "owner": [],
+        "put": [],
+        "remove": [],
+        "audit": [],
+        "environments": [],
+    }
+    refused_for: dict[tuple[str, str], list] = {}
+    calls["refuse"] = [refused_for]
     held: dict[tuple[str, str], SecretInfo] = {(ORG_OWNER, "GIT_TOKEN"): _info()}
 
     async def _org_guard(request, org_id):
@@ -81,9 +90,17 @@ def store(monkeypatch):
         held[(owner_id, name)] = _info(name, owner_id)
         return held[(owner_id, name)]
 
-    async def _remove(admin_db, org_id, name, *, owner_id):
+    async def _remove(admin_db, org_id, name, *, owner_id, environments=None):
+        # REQ-1918: an org secret is deleted against the org's environments; a personal one
+        # is handed none.
         calls["remove"].append((org_id, owner_id, name))
+        calls["environments"].append(environments)
+        if (owner_id, name) in refused_for:
+            raise sr.secrets_store.SecretDeleteRefused(name, refused_for[(owner_id, name)])
         return held.pop((owner_id, name), None) is not None
+
+    async def _environment_planes(org_id):
+        return {"prod": "prod-plane", "dev": "dev-plane"}
 
     async def _audit(org_id, actor, action, name):
         calls["audit"].append((org_id, actor, action, name))
@@ -92,6 +109,7 @@ def store(monkeypatch):
     monkeypatch.setattr(sr, "_personal_owner", _personal_owner)
     monkeypatch.setattr(sr, "_audit", _audit)
     monkeypatch.setattr(sr, "_admin_pool", lambda: "admin-db")
+    monkeypatch.setattr(sr, "_environment_planes", _environment_planes)
     monkeypatch.setattr(sr.secrets_store, "listing", _listing)
     monkeypatch.setattr(sr.secrets_store, "describe", _describe)
     monkeypatch.setattr(sr.secrets_store, "put", _put)
@@ -229,6 +247,47 @@ class TestWhatIsRefused:
             await sr.delete_secret(_Request(), ORG, "ABSENT")
         assert raised.value.status_code == 404
         assert raised.value.code == "secrets.not_found"
+
+    async def test_an_org_secret_still_named_is_refused_listing_each_value(self, store):
+        """REQ-1918: the refusal carries every stored value that names the secret, with the
+        environment it is in; nothing is removed and nothing is audited as deleted."""
+        from provisa.core.secret_references import SecretReference
+
+        store["refuse"][0][(ORG_OWNER, "GIT_TOKEN")] = [
+            SecretReference("sources", "warehouse", "warehouse", "password_ref", "prod"),
+            SecretReference("sources", "lake", "lake", "federation_hints", "dev"),
+        ]
+        with pytest.raises(ApiError) as raised:
+            await sr.delete_secret(_Request(), ORG, "GIT_TOKEN")
+        assert (raised.value.status_code, raised.value.code) == (409, "secrets.still_referenced")
+        assert raised.value.params["secret"] == "GIT_TOKEN"
+        assert raised.value.params["count"] == 2
+        assert raised.value.params["references"] == [
+            {
+                "kind": "sources",
+                "id": "warehouse",
+                "name": "warehouse",
+                "column": "password_ref",
+                "environment": "prod",
+            },
+            {
+                "kind": "sources",
+                "id": "lake",
+                "name": "lake",
+                "column": "federation_hints",
+                "environment": "dev",
+            },
+        ]
+        assert store["audit"] == []
+
+    async def test_an_org_delete_is_judged_against_every_environment_of_the_org(self, store):
+        await sr.delete_secret(_Request(), ORG, "GIT_TOKEN")
+        assert store["environments"] == [{"prod": "prod-plane", "dev": "dev-plane"}]
+
+    async def test_a_personal_delete_is_handed_no_environments(self, store):
+        await sr.put_my_secret(_Request(), ORG, "MINE", sr.SecretBody(value=VALUE))
+        await sr.delete_my_secret(_Request(), ORG, "MINE")
+        assert store["environments"] == [None]
 
     async def test_a_rejected_name_is_the_callers_fault(self, store, monkeypatch):
         async def _put(*args, **kwargs):

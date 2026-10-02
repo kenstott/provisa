@@ -112,6 +112,27 @@ export async function putSecret(
   return ok<Secret>(res, "save secret");
 }
 
+/** One stored value that names an org secret: the table and row, the column, and the
+ *  environment it is in (null for the organization's own platform rows). */
+export interface SecretReference {
+  kind: string;
+  id: unknown;
+  name: string;
+  column: string;
+  environment: string | null;
+}
+
+/** REQ-1918: an org secret is deleted only when nothing stored in the org names it. The
+ *  refusal carries every value that still does. */
+export class SecretStillReferenced extends Error {
+  readonly references: SecretReference[];
+  constructor(message: string, references: SecretReference[]) {
+    super(message);
+    this.name = "SecretStillReferenced";
+    this.references = references;
+  }
+}
+
 export async function deleteSecret(
   orgId: string,
   vault: Vault,
@@ -120,6 +141,16 @@ export async function deleteSecret(
   const res = await fetch(`${base(orgId, vault)}/${encodeURIComponent(name)}`, {
     method: "DELETE",
   });
+  if (res.status === 409) {
+    const data = await res.json().catch(() => null);
+    if (data?.code === "secrets.still_referenced") {
+      throw new SecretStillReferenced(
+        serverMessage(data, requestFailed("delete secret", res.status)),
+        (data.params?.references ?? []) as SecretReference[],
+      );
+    }
+    throw new Error(serverMessage(data, requestFailed("delete secret", res.status)));
+  }
   return ok<{ deleted: string }>(res, "delete secret");
 }
 

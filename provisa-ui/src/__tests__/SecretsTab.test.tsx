@@ -23,7 +23,9 @@ import { SecretsTab, MySecretsTab } from "../components/admin/SecretsTab";
 
 const auth = { activeOrgId: "acme" as string | null, capabilities: ["org_settings"] };
 vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
-vi.mock("../api/secrets", () => ({
+vi.mock("../api/secrets", async (orig) => ({
+  // The refusal's error class is the real one: the tab tells it apart by `instanceof`.
+  SecretStillReferenced: (await orig<typeof import("../api/secrets")>()).SecretStillReferenced,
   fetchSecrets: vi.fn(),
   putSecret: vi.fn(),
   deleteSecret: vi.fn(),
@@ -37,6 +39,7 @@ import {
   deleteSecret,
   fetchSecretsService,
   setSecretsService,
+  SecretStillReferenced,
 } from "../api/secrets";
 
 // REQ-1574: the org's key panel now lives at the top of this page, so this file has to answer for
@@ -193,6 +196,32 @@ describe("SecretsTab", () => {
     expect(mockDelete).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByRole("button", { name: "Confirm" }));
     await waitFor(() => expect(mockDelete).toHaveBeenCalledWith("acme", "org", "GIT_TOKEN"));
+  });
+
+  it("shows what still names a secret whose delete was refused", async () => {
+    // REQ-1918: nothing was removed; each stored value that names it is listed with where it is.
+    mockDelete.mockRejectedValue(
+      new SecretStillReferenced("GIT_TOKEN is still named by 2 stored value(s).", [
+        {
+          kind: "sources",
+          id: "warehouse",
+          name: "warehouse",
+          column: "password_ref",
+          environment: "dev",
+        },
+        { kind: "orgs", id: "acme", name: "acme", column: "repo_remote", environment: null },
+      ]),
+    );
+    render(<SecretsTab />);
+    fireEvent.click(await screen.findByTestId("secret-delete-GIT_TOKEN"));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm" }));
+
+    const listed = await screen.findByTestId("secret-references");
+    expect(listed).toHaveTextContent("sources warehouse (password_ref), in environment dev");
+    expect(listed).toHaveTextContent("orgs acme (repo_remote), in the organization's own records");
+    expect(screen.getByText("GIT_TOKEN is still named by 2 stored value(s).")).toBeInTheDocument();
+    // Still listed: the secret was not deleted.
+    expect(screen.getByTestId("secret-delete-GIT_TOKEN")).toBeInTheDocument();
   });
 
   it("offers nothing to create when a central service owns the names", async () => {

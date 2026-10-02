@@ -302,6 +302,9 @@
       "replicate_invalid": "Replicare deve essere «Predefinito», «Mai», «Sempre» o una soglia superiore a 0; ricevuto {{value}}",
       "replicate_contradicts_load_protected": "La protezione dal carico non può essere combinata con Replicare = «Mai»: una tabella protetta dal carico non viene mai letta in tempo reale"
     },
+    "secrets": {
+      "still_referenced": "{{secret}} è ancora nominato da {{count}} valore/i memorizzato/i in questa organizzazione. Modifica o rimuovi ciascuno, poi eliminalo di nuovo."
+    },
     "security": {
       "unknown_mode": "modalità di sicurezza '{{mode}}' sconosciuta"
     },

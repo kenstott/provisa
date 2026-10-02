@@ -52,6 +52,8 @@ from provisa.core.schema_admin import deployment_encryption_key, secrets_store
 from provisa.core.secrets import SecretsProvider
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from provisa.core.database import Connection, Database
     from provisa.encryption.service import EncryptionService
 
@@ -332,13 +334,49 @@ async def listing(admin_db: "Database", org_id: str, *, owner_id: str) -> list[S
     return [SecretInfo(*row) for row in rows]
 
 
-async def remove(admin_db: "Database", org_id: str, name: str, *, owner_id: str) -> bool:
+class SecretDeleteRefused(ValueError):  # REQ-1918
+    """An org secret that stored values of the org still name. ``references`` lists each one
+    (``secret_references.SecretReference``); nothing was removed."""
+
+    def __init__(self, name: str, references: list) -> None:
+        self.name = name
+        self.references = references
+        named = ", ".join(
+            f"{r.table} {r.name!r}" + (f" in {r.environment}" if r.environment else "")
+            for r in references
+        )
+        super().__init__(f"Secret {name!r} is still named by: {named}")
+
+
+async def remove(
+    admin_db: "Database",
+    org_id: str,
+    name: str,
+    *,
+    owner_id: str,
+    environments: "Mapping[str, Database] | None" = None,
+) -> bool:
     """Delete one secret. True when there was one to delete.
 
-    A reference somewhere still naming it does NOT block this: the reference is text, and what it
-    resolves to is decided when it is used (REQ-1558). Provisa does not hold a credential hostage
-    to a config that mentions it.
+    REQ-1918: an ORG secret is deleted only when no stored value of the org names it. The delete
+    is refused (:class:`SecretDeleteRefused`) listing each value that does — a source's password
+    reference, a header, a setting — in whichever environment it sits; ``environments`` is the
+    control plane of every environment the org holds, and is required for the org vault. (It
+    used to delete regardless and leave the references to fail when next used.) A PERSONAL
+    secret is deleted as before: it is its owner's, and no stored value of the org resolves it.
     """
+    if owner_id == ORG_OWNER:
+        if environments is None:
+            raise ValueError("deleting an org secret needs the org's environment control planes")
+        from provisa.core import secret_references
+
+        if await describe(admin_db, org_id, name, owner_id=owner_id) is None:
+            return False
+        named_by = await secret_references.references(
+            admin_db, org_id, name, environments=environments
+        )
+        if named_by:
+            raise SecretDeleteRefused(name, named_by)
     async with admin_db.acquire() as conn:
         result = await conn.execute_core(
             sql_delete(secrets_store).where(

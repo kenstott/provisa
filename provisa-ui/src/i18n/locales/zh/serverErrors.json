@@ -302,6 +302,9 @@
       "replicate_invalid": "复制必须是“默认”“从不”“始终”或大于 0 的阈值；收到 {{value}}",
       "replicate_contradicts_load_protected": "负载保护不能与复制 =“从不”同时使用：受负载保护的表从不被实时读取"
     },
+    "secrets": {
+      "still_referenced": "本组织中仍有 {{count}} 个已存储的值引用 {{secret}}。请更改或移除每一个，然后再次删除。"
+    },
     "security": {
       "unknown_mode": "未知的安全模式 '{{mode}}'"
     },

@@ -122,8 +122,20 @@ class TestWhatGoesInAndWhatComesBack:
     async def test_a_deleted_secret_stops_resolving(self, plane):
         admin_db, (org, _) = plane
         await secrets_store.put(admin_db, org, "GIT_TOKEN", VALUE, owner_id=ORG_OWNER)
-        assert await secrets_store.remove(admin_db, org, "GIT_TOKEN", owner_id=ORG_OWNER) is True
-        assert await secrets_store.remove(admin_db, org, "GIT_TOKEN", owner_id=ORG_OWNER) is False
+        # The org here holds no environment: nothing stored names the secret (REQ-1918).
+        none: dict = {}
+        assert (
+            await secrets_store.remove(
+                admin_db, org, "GIT_TOKEN", owner_id=ORG_OWNER, environments=none
+            )
+            is True
+        )
+        assert (
+            await secrets_store.remove(
+                admin_db, org, "GIT_TOKEN", owner_id=ORG_OWNER, environments=none
+            )
+            is False
+        )
         async with secrets_store.bound(admin_db, org):
             with pytest.raises(KeyError):
                 resolve_secrets("${secret:GIT_TOKEN}")

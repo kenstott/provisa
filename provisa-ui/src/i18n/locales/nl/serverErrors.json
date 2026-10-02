@@ -302,6 +302,9 @@
       "replicate_invalid": "Repliceren moet 'Standaard', 'Nooit', 'Altijd' of een drempel boven 0 zijn; ontvangen: {{value}}",
       "replicate_contradicts_load_protected": "Belastingsbescherming kan niet worden gecombineerd met Repliceren = 'Nooit': een tabel met belastingsbescherming wordt nooit live gelezen"
     },
+    "secrets": {
+      "still_referenced": "{{secret}} wordt nog genoemd door {{count}} opgeslagen waarde(n) in deze organisatie. Wijzig of verwijder elk daarvan en verwijder het daarna opnieuw."
+    },
     "security": {
       "unknown_mode": "onbekende beveiligingsmodus '{{mode}}'"
     },

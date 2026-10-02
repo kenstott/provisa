@@ -302,6 +302,9 @@
       "replicate_invalid": "Replizieren muss „Standard“, „Nie“, „Immer“ oder ein Schwellenwert über 0 sein; erhalten: {{value}}",
       "replicate_contradicts_load_protected": "Lastschutz lässt sich nicht mit Replizieren = „Nie“ kombinieren: Eine lastgeschützte Tabelle wird nie live gelesen"
     },
+    "secrets": {
+      "still_referenced": "{{secret}} wird noch von {{count}} gespeicherten Wert(en) in dieser Organisation genannt. Ändern oder entfernen Sie jeden davon und löschen Sie es dann erneut."
+    },
     "security": {
       "unknown_mode": "unbekannter Sicherheitsmodus '{{mode}}'"
     },

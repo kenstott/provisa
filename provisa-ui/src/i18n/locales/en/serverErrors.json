@@ -302,6 +302,9 @@
       "replicate_invalid": "Replicate must be Default, Never, Always or a threshold above 0; got {{value}}",
       "replicate_contradicts_load_protected": "Load protection cannot be combined with Replicate = Never: a load-protected table is never read live"
     },
+    "secrets": {
+      "still_referenced": "{{secret}} is still named by {{count}} stored value(s) in this organization. Change or remove each one, then delete it again."
+    },
     "security": {
       "unknown_mode": "unknown security mode '{{mode}}'"
     },

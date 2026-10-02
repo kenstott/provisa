@@ -302,6 +302,9 @@
       "replicate_invalid": "複製必須是「預設」、「永不」、「一律」或大於 0 的閾值；收到 {{value}}",
       "replicate_contradicts_load_protected": "負載保護不能與複製 =「永不」同時使用：受負載保護的數據表永不被即時讀取"
     },
+    "secrets": {
+      "still_referenced": "本機構中仍有 {{count}} 個已儲存的值引用 {{secret}}。請更改或移除每一個，然後再次刪除。"
+    },
     "security": {
       "unknown_mode": "未知的安全模式「{{mode}}」"
     },

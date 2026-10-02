@@ -20,6 +20,7 @@ import {
   Code,
   Divider,
   Group,
+  List,
   Modal,
   PasswordInput,
   Radio,
@@ -43,7 +44,9 @@ import {
   deleteSecret,
   fetchSecretsService,
   setSecretsService,
+  SecretStillReferenced,
   type Secret,
+  type SecretReference,
   type SecretsState,
   type SecretsServiceState,
   type Vault,
@@ -219,6 +222,8 @@ function SecretsVault({ vault, header }: VaultProps) {
   const { activeOrgId } = useAuth();
   const [state, setState] = useState<SecretsState | null>(null);
   const [error, setError] = useState("");
+  // REQ-1918: what still names a secret whose delete was refused.
+  const [stillNamedBy, setStillNamedBy] = useState<SecretReference[]>([]);
   const [message, setMessage] = useState("");
   // The name being replaced, "" for a new secret, null when the form is closed. A replacement
   // fixes the name, because the name is the identity and changing it would create a second secret.
@@ -266,12 +271,20 @@ function SecretsVault({ vault, header }: VaultProps) {
   const remove = async (secret: Secret) => {
     if (!activeOrgId) return;
     setError("");
+    setStillNamedBy([]);
     try {
       await deleteSecret(activeOrgId, vault, secret.name);
       setMessage(t("secretsTab.deleted", { name: secret.name }));
       load();
     } catch (e) {
-      setError(String(e));
+      if (e instanceof SecretStillReferenced) {
+        // REQ-1918: refused, and nothing was removed. Each value that still names it is listed
+        // so the person knows what to change before deleting again.
+        setError(e.message);
+        setStillNamedBy(e.references);
+      } else {
+        setError(String(e));
+      }
     }
   };
 
@@ -293,7 +306,31 @@ function SecretsVault({ vault, header }: VaultProps) {
           : t("secretsTab.providerCentral", { provider: state.provider.label })}
       </Alert>
 
-      {error && <Alert color="red">{error}</Alert>}
+      {error && (
+        <Alert color="red">
+          {error}
+          {stillNamedBy.length > 0 && (
+            <List size="sm" mt="xs" data-testid="secret-references">
+              {stillNamedBy.map((r) => (
+                <List.Item key={`${r.environment}/${r.kind}/${String(r.id)}/${r.column}`}>
+                  {r.environment === null
+                    ? t("secretsTab.referenceInOrg", {
+                        kind: r.kind,
+                        name: r.name,
+                        column: r.column,
+                      })
+                    : t("secretsTab.referenceIn", {
+                        kind: r.kind,
+                        name: r.name,
+                        column: r.column,
+                        environment: r.environment,
+                      })}
+                </List.Item>
+              ))}
+            </List>
+          )}
+        </Alert>
+      )}
       {message && <Alert color="green">{message}</Alert>}
 
       {state.secrets.length === 0 ? (
@@ -354,7 +391,12 @@ function SecretsVault({ vault, header }: VaultProps) {
                       </Button>
                       <ConfirmDialog
                         title={t("secretsTab.deleteAction")}
-                        consequence={t("secretsTab.deleteConfirm", { name: s.name })}
+                        consequence={t(
+                          vault === "org"
+                            ? "secretsTab.deleteConfirmOrg"
+                            : "secretsTab.deleteConfirm",
+                          { name: s.name },
+                        )}
                         onConfirm={() => remove(s)}
                       >
                         {(openConfirm) => (
