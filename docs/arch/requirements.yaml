@@ -70065,12 +70065,12 @@
     operator edits the role, and a data role cannot be left with no domain (a role always lists one
     or more domains or all of them). Removing an individual object cleans up after itself -- removing
     a table removes its replica, its rules and its place in relationships, or is itself refused while
-    something reads it -- so that emptying a domain leaves nothing behind. [SUPERSEDED by REQ-1918, 2026-10-02 -- a set of objects
-    may be deleted together. Kept here for history; do not implement against it.] A bulk removal built on
+    something reads it -- so that emptying a domain leaves nothing behind. [SUPERSEDED by REQ-1918, 2026-10-02 -- deletion follows
+    the general rule there. Kept here for history; do not implement against it.] A bulk removal built on
     the same list may be added later; it is not part of this requirement. [END SUPERSEDED BLOCK]
-    (Amended 2026-10-02, SET DELETION) The operator may delete the domain together with a chosen set
-    of the objects on its impact list, under the rule of REQ-1918 -- the deletion succeeds when nothing
-    outside the chosen set refers to anything inside it.
+    (Amended 2026-10-02, GENERAL RULE) Domain deletion follows the general deletion rule of REQ-1918
+    -- one object at a time, refused while anything depends on it, with a cycle removed whole on
+    the operator's approval. There is no bulk removal of a domain's contents.
   use_case: A domain owns tables, rules and data, and many other objects point at it. Deleting it
     silently either destroyed a great deal without warning or left objects pointing at a domain that
     no longer existed, depending on the control plane in use. Refusing until the domain is empty,
@@ -70098,31 +70098,37 @@
     Its parts are the things that exist only as part of it -- a table and its columns, its replica,
     its cache entries -- and they are removed with it. Its dependents are other objects that refer
     to it -- a view that reads a table, a relationship from another table, a role that lists a domain
-    -- and a dependent blocks the deletion. A deletion request names a set of one or more objects.
-    The request succeeds when nothing outside the set depends on anything inside it; then every object
-    in the set and every part of each is removed in one operation, in one control-plane transaction,
-    in an order the system works out, and the data held for them is removed by background jobs. Otherwise
-    the request is refused, nothing is removed, and the operator is shown every dependent that lies
-    outside the set, named and linked, so that it can be removed first, moved, or added to the set.
-    Deleting a single object is the same rule with a set of one. Objects that refer to each other
-    in a circle are deleted by naming them together in one set, and a reference from an object to
-    itself never blocks it. The operator chooses the set -- the system never adds an object to it
-    unasked, though it may offer to add the listed dependents. Each object in the set is checked
-    against the right its own deletion requires, and the whole request is refused when the caller
-    lacks any of them. One function answers what depends on an object, and every deletion path and
-    the refusal shown in the admin pages use it. The rule is checked in code and holds the same on
-    every control plane; no deletion relies on a database cascade. The request, the set and the outcome
-    are recorded in the audit trail.
+    -- and a dependent blocks the deletion. A deletion names one object. While anything depends on
+    it the deletion is refused, nothing is removed, and the operator is shown every dependent, named
+    and linked to where it is removed or moved; the operator is responsible for that cleanup, through
+    each object's own action. A reference from an object to itself never blocks it. The one exception
+    is a cycle -- objects that refer to each other in a circle, where each is blocked by the others
+    and none could ever be removed alone. When the object named is in a cycle, the system works
+    out the other members of that cycle (the complement) and shows them to the operator; on the operator's
+    approval the whole cycle is removed as one coordinated deletion, in one control-plane transaction,
+    in an order the system works out. The approval covers exactly the members shown -- if the cycle
+    changed in between, the new list is shown and approval is asked again. Dependents that lie outside
+    the cycle still block it and are listed in the same way. Each member of the cycle is checked
+    against the right its own deletion requires, and the request is refused when the caller lacks
+    any of them. There is no other deletion of several objects at once -- the operator does not compose
+    a set. Data held for removed objects is removed by background jobs. One function answers what
+    depends on an object and whether it is in a cycle, and every deletion path and the refusal shown
+    in the admin pages use it. The rule is checked in code and holds the same on every control plane;
+    no deletion relies on a database cascade. The request, the members removed and the outcome are
+    recorded in the audit trail. (History, 2026-10-02 -- an earlier wording of this requirement let
+    the operator name any set of objects to delete together. The maintainer replaced it the same day
+    with the cycle-only rule above before anything was built.)
   use_case: Refusing a deletion while something depends on the object keeps every removal a deliberate
-    act, but objects that refer to each other could then never be removed, and emptying a large
-    domain one object at a time is slow. Letting the operator name a set, and accepting it only
-    when the set is closed, solves both without the system ever deleting something the operator
-    did not choose.
-  scenario: 'Given two tables each with a relationship to the other, when the operator asks to delete
-    one table alone, then the request is refused and the other table''s relationship is listed. When
-    the operator asks to delete both tables and both relationships as one set, then all four are removed
-    in one operation. Given a view outside the set that reads one of the tables, when the operator
-    asks to delete that set, then the request is refused, the view is listed, and nothing is removed.'
+    act, as a restricted foreign key does in a relational database. Objects that refer to each other
+    in a circle are the one case that rule alone cannot remove, so the system finds the circle and
+    the operator approves removing it whole.
+  scenario: 'Given a table that a view reads, when the operator asks to delete the table, then the
+    request is refused, the view is listed, and nothing is removed. Given two tables each with a relationship
+    to the other and nothing else depending on either, when the operator asks to delete one table,
+    then the other table and both relationships are shown as the rest of the cycle and nothing is
+    removed; when the operator approves, then all four are removed in one operation. Given the same
+    cycle and a view outside it that reads one of the tables, when the operator asks to delete a table,
+    then the request is refused, the view is listed, and nothing is removed.'
   related_reqs:
   - REQ-1917
   - REQ-1915
