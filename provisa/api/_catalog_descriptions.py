@@ -154,6 +154,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "description": "What the domain covers",
         "steward": "Role or principal accountable for the domain's metadata quality",
         "graphql_alias": "Name the domain is exposed under in GraphQL, when it differs",
+        "origin": "Where the domain came from: config (a config file declares it), admin (made "
+        "through the admin) or seed (the deployment's own)",
         "org_id": "Org the domain was defined in",
         "tenant_id": _TENANT,
     },
