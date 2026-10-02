@@ -75,18 +75,17 @@ async def require_table_domain(info: "StrawberryInfo", conn: "Connection", table
 
 
 async def relationship_domains(conn: "Connection", rel_id: str) -> set[str] | None:
-    """The domains of the two tables a relationship joins, or ``None`` when there is no such
-    relationship. A relationship belongs to both ends: removing it changes what each table's
-    readers can traverse, so an act on it is an act in both domains (REQ-1531)."""
+    """The domains of the tables a relationship takes part in — its two ends, and the table it
+    goes through when it has one — or ``None`` when there is no such relationship. A
+    relationship belongs to each of them: removing it changes what each table's readers can
+    traverse, so an act on it is an act in every one of those domains (REQ-1531)."""
     from provisa.core.repositories import relationship as rel_repo
 
     row = await rel_repo.get(conn, rel_id)
     if row is None:
         return None
-    return {
-        await table_domain(conn, row["source_table_id"]),
-        await table_domain(conn, row["target_table_id"]),
-    }
+    table_ids = [row["source_table_id"], row["target_table_id"], row["via_table_id"]]
+    return {await table_domain(conn, table_id) for table_id in table_ids if table_id is not None}
 
 
 async def metric_domains(conn: "Connection", name: str) -> set[str] | None:

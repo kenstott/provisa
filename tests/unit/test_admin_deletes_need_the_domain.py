@@ -88,6 +88,18 @@ async def plane(monkeypatch) -> Database:
                     cardinality="many-to-one",
                 )
             )
+        # sales to sales, through a finance table.
+        await conn.execute_core(
+            insert(relationships).values(
+                id="through_finance",
+                source_table_id=ids["orders"],
+                target_table_id=ids["customers"],
+                via_table_id=ids["ledgers"],
+                source_column="id",
+                target_column="id",
+                cardinality="many-to-one",
+            )
+        )
         for name, expression in (
             ("revenue", "SUM(orders.amount)"),
             ("billed", "SUM(invoices.amount)"),
@@ -146,7 +158,7 @@ async def test_a_relationship_inside_the_callers_domain_is_deleted(plane):
     assert "in_sales" not in await _names(plane, relationships, "id")
 
 
-@pytest.mark.parametrize("rel_id", ["in_finance", "across"])
+@pytest.mark.parametrize("rel_id", ["in_finance", "across", "through_finance"])
 async def test_a_relationship_touching_another_domain_is_refused(plane, rel_id):
     with pytest.raises(PermissionError, match="No access to domain 'finance'"):
         await schema_mutation.Mutation().delete_relationship(_info("sales_steward"), rel_id)
