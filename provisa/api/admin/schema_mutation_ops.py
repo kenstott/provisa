@@ -37,7 +37,12 @@ from provisa.api.admin.schema_helpers import (
 )
 from provisa.api.admin._table_ops import _build_columns_for_input
 from provisa.api.admin._live_mappers import table_model_from_input as _table_model_from_input
-from provisa.api.admin.schema_common import _queue_creation_request, _sync_view_mv
+from provisa.api.admin.schema_common import (
+    _queue_creation_request,
+    _sync_view_mv,
+    config_warnings,
+)
+from provisa.core.repositories import origin as origin_repo
 
 if TYPE_CHECKING:
     from strawberry.types.info import Info as StrawberryInfo
@@ -303,6 +308,7 @@ async def register_table(
             await _conn.upsert(
                 sources,
                 {
+                    "origin": "seed",  # REQ-1919: written when the row is created
                     "id": DERIVED_SOURCE_ID,
                     "type": state.federation_engine.name,
                     "description": "Provisa-managed virtual views — cross-source SQL views defined and published by the data team as governed data products",
@@ -318,8 +324,11 @@ async def register_table(
             _qa_precheck = await persist_query_api_registration(_conn, model)
             if _qa_precheck is not None:
                 return _qa_precheck
+        _was = await origin_repo.of_registration(
+            _conn, model.source_id, model.schema_name, model.table_name
+        )
         try:
-            table_id = await table_repo.upsert(_conn, model)
+            table_id = await table_repo.upsert(_conn, model, origin="admin")
         except table_repo.ViewLoopRefused as _loop:
             # REQ-1918: a view that would read itself through other views is refused at save.
             return MutationResult(
@@ -469,6 +478,7 @@ async def register_table(
         message=f"Table {input.table_name!r} registered (id={table_id})",
         code="schema.table_registered",
         params={"table": input.table_name, "id": table_id},
+        warnings=config_warnings("table", input.table_name, _was, "edited"),
     )
 
 

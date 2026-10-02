@@ -56,14 +56,18 @@ async def plane(monkeypatch) -> Database:
     db = Database(create_engine_from_url("sqlite+pysqlite:///:memory:"), name="delete-domain-test")
     await _init_schema_portable(db)
     async with db.acquire() as conn:
-        await conn.execute_core(insert(sources).values(id="pg", type="postgresql"))
+        await conn.execute_core(insert(sources).values(id="pg", type="postgresql", origin="admin"))
         for domain_id in ("sales", "finance"):
-            await conn.execute_core(insert(domains).values(id=domain_id))
+            await conn.execute_core(insert(domains).values(id=domain_id, origin="admin"))
         ids: dict[str, int] = {}
         for table_name, domain_id in TABLES.items():
             await conn.execute_core(
                 insert(registered_tables).values(
-                    source_id="pg", domain_id=domain_id, schema_name="public", table_name=table_name
+                    source_id="pg",
+                    domain_id=domain_id,
+                    schema_name="public",
+                    table_name=table_name,
+                    origin="admin",
                 )
             )
             ids[table_name] = (

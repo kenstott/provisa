@@ -96,7 +96,7 @@ def _register(shared_data: dict, table_name: str, columns: list[str]) -> None:
         columns=[Column(name=c, data_type="text", visible_to=[]) for c in columns],
         view_sql="SELECT 1",
     )
-    _run(shared_data, lambda conn: table_repo.upsert(conn, table))
+    _run(shared_data, lambda conn: table_repo.upsert(conn, table, origin="admin"))
 
 
 def _terms(shared_data: dict) -> dict[str, dict]:

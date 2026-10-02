@@ -87,9 +87,9 @@ def _prepare_sync():
                 user_directory,  # REQ-1439: every authenticated request upserts it
             ],
         )
-        conn.execute(insert(roles).values(id="org_admin"))
-        conn.execute(insert(sources).values(id="provisa-admin", type="postgres"))
-        conn.execute(insert(domains).values(id="meta"))
+        conn.execute(insert(roles).values(id="org_admin", origin="admin"))
+        conn.execute(insert(sources).values(id="provisa-admin", type="postgres", origin="admin"))
+        conn.execute(insert(domains).values(id="meta", origin="admin"))
     return engine
 
 

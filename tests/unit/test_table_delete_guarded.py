@@ -52,10 +52,12 @@ async def plane(monkeypatch) -> Database:
     db = Database(create_engine_from_url("sqlite+pysqlite:///:memory:"), name="table-delete-test")
     await _init_schema_portable(db)
     async with db.acquire() as conn:
-        await conn.execute_core(insert(sources).values(id="pg", type="postgresql"))
-        await conn.execute_core(insert(domains).values(id="sales"))
+        await conn.execute_core(insert(sources).values(id="pg", type="postgresql", origin="admin"))
+        await conn.execute_core(insert(domains).values(id="sales", origin="admin"))
         await conn.execute_core(
-            insert(roles).values(id="seller", capabilities=[], domain_access=["sales"])
+            insert(roles).values(
+                id="seller", capabilities=[], domain_access=["sales"], origin="admin"
+            )
         )
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
     return db
@@ -70,6 +72,7 @@ async def _table(db: Database, name: str, view_sql: str | None = None) -> int:
                 schema_name="public",
                 table_name=name,
                 view_sql=view_sql,
+                origin="admin",
             )
         )
         return (
@@ -205,10 +208,10 @@ def _view(name: str, sql: str) -> Table:
 
 async def test_the_write_path_refuses_the_loop_and_writes_nothing(plane):
     async with plane.acquire() as conn:
-        await table_repo.upsert(conn, _view("v_a", "SELECT 1 AS id"))
-        await table_repo.upsert(conn, _view("v_b", "SELECT id FROM v_a"))
+        await table_repo.upsert(conn, _view("v_a", "SELECT 1 AS id"), origin="admin")
+        await table_repo.upsert(conn, _view("v_b", "SELECT id FROM v_a"), origin="admin")
         with pytest.raises(table_repo.ViewLoopRefused) as err:
-            await table_repo.upsert(conn, _view("v_a", "SELECT id FROM v_b"))
+            await table_repo.upsert(conn, _view("v_a", "SELECT id FROM v_b"), origin="admin")
         assert err.value.loop == ["v_a", "v_b", "v_a"]
         assert "v_a -> v_b -> v_a" in str(err.value)
         stored = (

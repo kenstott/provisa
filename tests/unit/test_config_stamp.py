@@ -82,7 +82,7 @@ def test_both_kinds_have_a_row_after_the_schema_is_created(tenant_db):
 
 def test_insert_update_and_delete_each_advance_the_stamp(tenant_db):
     with tenant_db.engine.begin() as conn:
-        conn.execute(sa.insert(schema_org.roles).values(id="risk_reviewer"))
+        conn.execute(sa.insert(schema_org.roles).values(id="risk_reviewer", origin="admin"))
     after_insert = _model(tenant_db)
     with tenant_db.engine.begin() as conn:
         conn.execute(
@@ -101,7 +101,7 @@ def test_the_stamp_is_written_in_the_transaction_of_the_change(tenant_db):
     before = _model(tenant_db)
     conn = tenant_db.engine.connect()
     try:
-        conn.execute(sa.insert(schema_org.roles).values(id="risk_reviewer"))
+        conn.execute(sa.insert(schema_org.roles).values(id="risk_reviewer", origin="admin"))
         # Inside the writer's own transaction the stamp has already advanced...
         inside = conn.execute(sa.text("SELECT stamp FROM config_stamp WHERE kind = 'model'"))
         assert inside.scalar_one() > before
@@ -175,7 +175,7 @@ def test_a_change_of_one_kind_does_not_move_the_other_kinds_stamp(tenant_db):
     assert after[config_stamp.MODEL] == before[config_stamp.MODEL]
 
     with tenant_db.engine.begin() as conn:
-        conn.execute(sa.insert(schema_org.roles).values(id="risk_reviewer"))
+        conn.execute(sa.insert(schema_org.roles).values(id="risk_reviewer", origin="admin"))
     assert _stamps(tenant_db)[config_stamp.SETTINGS] == after[config_stamp.SETTINGS]
 
 
@@ -185,7 +185,7 @@ def test_installing_twice_changes_nothing(tenant_db):
         config_stamp.install(conn, config_stamp.TENANT_TABLES)
     assert _stamps(tenant_db) == before
     with tenant_db.engine.begin() as conn:
-        conn.execute(sa.insert(schema_org.roles).values(id="risk_reviewer"))
+        conn.execute(sa.insert(schema_org.roles).values(id="risk_reviewer", origin="admin"))
     assert _model(tenant_db) == before[config_stamp.MODEL] + 1  # one trigger per event, not two
 
 
@@ -227,11 +227,14 @@ def test_a_table_upsert_is_one_transaction(tenant_db):
                     table_name="orders",
                     columns=columns,
                 ),
+                origin="admin",
             )
 
     with tenant_db.engine.begin() as conn:
-        conn.execute(sa.insert(schema_org.sources).values(id="src", type="postgresql"))
-        conn.execute(sa.insert(schema_org.domains).values(id="sales"))
+        conn.execute(
+            sa.insert(schema_org.sources).values(id="src", type="postgresql", origin="admin")
+        )
+        conn.execute(sa.insert(schema_org.domains).values(id="sales", origin="admin"))
     asyncio.run(
         _register(
             [
@@ -290,7 +293,7 @@ def _check(*copies: tuple[str, _Copy]) -> list[str]:
 
 def _other_worker_changes_the_model(db: Database, role: str) -> None:
     with db.engine.begin() as conn:
-        conn.execute(sa.insert(schema_org.roles).values(id=role))
+        conn.execute(sa.insert(schema_org.roles).values(id=role, origin="admin"))
 
 
 def test_a_process_reloads_exactly_when_the_stored_stamp_differs(tenant_db):

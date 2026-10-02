@@ -337,7 +337,9 @@ async def _init_schema_portable(pool: "Database") -> None:
             result = await conn.execute_core(select(domains.c.id).where(domains.c.id == domain_id))
             if result.fetchone() is None:
                 await conn.execute_core(
-                    insert(domains).values(id=domain_id, description=description, steward=steward)
+                    insert(domains).values(
+                        id=domain_id, description=description, steward=steward, origin="seed"
+                    )
                 )
         for role_id, capabilities in _SEED_ROLES:
             demonstrated = _DEMONSTRATED_ROLES.get(role_id, [])
@@ -352,6 +354,7 @@ async def _init_schema_portable(pool: "Database") -> None:
                         # no data domain (REQ-1337).
                         domain_access=[] if "cross_org" in capabilities else ["*"],
                         org_id=None,
+                        origin="seed",  # REQ-1919
                     )
                 )
             elif demonstrated:

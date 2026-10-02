@@ -56,10 +56,12 @@ async def plane() -> Database:
     db = Database(create_engine_from_url("sqlite+pysqlite:///:memory:"), name="column-drop-test")
     await _init_schema_portable(db)
     async with db.acquire() as conn:
-        await conn.execute_core(insert(sources).values(id="pg", type="postgresql"))
-        await conn.execute_core(insert(domains).values(id="sales"))
-        await table_repo.upsert(conn, _table("orders", "id", "customer_id", "amount", "note"))
-        await table_repo.upsert(conn, _table("customers", "id", "name"))
+        await conn.execute_core(insert(sources).values(id="pg", type="postgresql", origin="admin"))
+        await conn.execute_core(insert(domains).values(id="sales", origin="admin"))
+        await table_repo.upsert(
+            conn, _table("orders", "id", "customer_id", "amount", "note"), origin="admin"
+        )
+        await table_repo.upsert(conn, _table("customers", "id", "name"), origin="admin")
     return db
 
 
@@ -123,6 +125,7 @@ async def test_the_relationships_views_and_metrics_that_name_a_column(plane):
         await table_repo.upsert(
             conn,
             _table("big_orders", "id", view_sql="SELECT o.id FROM orders o WHERE o.amount > 9"),
+            origin="admin",
         )
         await conn.execute_core(
             insert(metrics).values(name="revenue", expression="SUM(orders.amount)")
@@ -149,7 +152,7 @@ async def test_dropping_a_column_a_relationship_is_keyed_on_is_refused_and_nothi
     await _relate(plane)
     async with plane.acquire() as conn:
         with pytest.raises(table_repo.ColumnDropRefused) as err:
-            await table_repo.upsert(conn, _table("orders", "id", "amount", "added"))
+            await table_repo.upsert(conn, _table("orders", "id", "amount", "added"), origin="admin")
     assert err.value.table_name == "orders"
     assert err.value.report() == {
         "customer_id": [
@@ -170,7 +173,7 @@ async def test_dropping_the_other_ends_key_column_is_refused_too(plane):
     await _relate(plane)
     async with plane.acquire() as conn:
         with pytest.raises(table_repo.ColumnDropRefused) as err:
-            await table_repo.upsert(conn, _table("customers", "name"))
+            await table_repo.upsert(conn, _table("customers", "name"), origin="admin")
     assert list(err.value.columns) == ["id"]
 
 
@@ -188,7 +191,9 @@ async def test_a_column_nothing_refers_to_is_dropped_with_its_tags(plane):
                     column_name=column,
                 )
             )
-        await table_repo.upsert(conn, _table("orders", "id", "customer_id", "amount"))
+        await table_repo.upsert(
+            conn, _table("orders", "id", "customer_id", "amount"), origin="admin"
+        )
         tagged = (await conn.execute_core(select(tag_assignments.c.column_name))).fetchall()
     assert await _columns(plane, "orders") == ["amount", "customer_id", "id"]
     assert [t[0] for t in tagged] == ["amount"]
@@ -198,7 +203,9 @@ async def test_a_column_nothing_refers_to_is_dropped_with_its_tags(plane):
 async def test_registering_the_same_columns_again_changes_nothing_and_is_not_refused(plane):
     await _relate(plane)
     async with plane.acquire() as conn:
-        await table_repo.upsert(conn, _table("orders", "id", "customer_id", "amount", "note"))
+        await table_repo.upsert(
+            conn, _table("orders", "id", "customer_id", "amount", "note"), origin="admin"
+        )
     assert await _columns(plane, "orders") == ["amount", "customer_id", "id", "note"]
 
 
@@ -211,7 +218,7 @@ async def test_a_row_filter_on_the_table_that_names_the_column_blocks_the_drop(p
     orders = await _id(plane, "orders")
     async with plane.acquire() as conn:
         await conn.execute_core(
-            insert(roles).values(id="seller", capabilities=[], domain_access=["*"])
+            insert(roles).values(id="seller", capabilities=[], domain_access=["*"], origin="admin")
         )
         await rls_repo.upsert(
             conn, RLSRule(table_id="orders", role_id="seller", filter="note = 'public'")
@@ -225,7 +232,9 @@ async def test_a_row_filter_on_the_table_that_names_the_column_blocks_the_drop(p
             ("row_filter", stored[0], ("rls_rules.filter_expr",))
         ]
         with pytest.raises(table_repo.ColumnDropRefused) as err:
-            await table_repo.upsert(conn, _table("orders", "id", "customer_id", "amount"))
+            await table_repo.upsert(
+                conn, _table("orders", "id", "customer_id", "amount"), origin="admin"
+            )
     assert list(err.value.columns) == ["note"]
     assert "note = 'public'" not in str(err.value)  # the predicate is not echoed
     assert await _columns(plane, "orders") == ["amount", "customer_id", "id", "note"]

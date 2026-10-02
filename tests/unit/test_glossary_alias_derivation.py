@@ -101,7 +101,7 @@ async def _term_for_column(conn, column_name: str) -> str | None:
 @pytest.mark.asyncio
 async def test_the_term_derives_from_the_alias_not_the_physical_name(tmp_path):
     async with _conn(tmp_path) as conn:
-        await table_repo.upsert(conn, _accounts("user name"))
+        await table_repo.upsert(conn, _accounts("user name"), origin="admin")
 
         assert await _names(conn) == {"user name"}
         # The ref still identifies the column physically — that is what a query compiles against.
@@ -112,7 +112,7 @@ async def test_the_term_derives_from_the_alias_not_the_physical_name(tmp_path):
 async def test_an_unaliased_column_derives_from_its_physical_name(tmp_path):
     """The alias is the business name where there is one; otherwise the column speaks for itself."""
     async with _conn(tmp_path) as conn:
-        await table_repo.upsert(conn, _accounts(None))
+        await table_repo.upsert(conn, _accounts(None), origin="admin")
 
         assert await _names(conn) == {"usr name"}
 
@@ -121,8 +121,8 @@ async def test_an_unaliased_column_derives_from_its_physical_name(tmp_path):
 async def test_re_aliasing_a_column_re_derives_its_term(tmp_path):
     """The glossary follows the model: correcting the alias corrects the term it produced."""
     async with _conn(tmp_path) as conn:
-        await table_repo.upsert(conn, _accounts("user name"))
-        await table_repo.upsert(conn, _accounts("login name"))
+        await table_repo.upsert(conn, _accounts("user name"), origin="admin")
+        await table_repo.upsert(conn, _accounts("login name"), origin="admin")
 
         assert await _term_for_column(conn, "usr_nm") == "login name"
         # The term the old alias produced was an untouched proposal, so it does not linger.
@@ -135,7 +135,7 @@ async def test_curation_outranks_the_model_and_pins_the_ref(tmp_path, kind):
     """A definition, a relationship, or a named expert can only have come from a person. Once one
     exists, an alias edit is the weaker statement and must not move the link off their work."""
     async with _conn(tmp_path) as conn:
-        await table_repo.upsert(conn, _accounts("user name"))
+        await table_repo.upsert(conn, _accounts("user name"), origin="admin")
         term = await _term(conn, "user name")
         assert term is not None
         if kind == "definition":
@@ -146,7 +146,7 @@ async def test_curation_outranks_the_model_and_pins_the_ref(tmp_path, kind):
             party = await glossary_repo.create_abstract_term(conn, "party", domains=set())
             await glossary_repo.add_edge(conn, term["id"], party, "KIND_OF")
 
-        await table_repo.upsert(conn, _accounts("login name"))
+        await table_repo.upsert(conn, _accounts("login name"), origin="admin")
 
         assert await _term_for_column(conn, "usr_nm") == "user name"
         assert "login name" not in await _names(conn)
@@ -155,7 +155,7 @@ async def test_curation_outranks_the_model_and_pins_the_ref(tmp_path, kind):
 @pytest.mark.asyncio
 async def test_dropping_the_alias_returns_the_term_to_the_physical_name(tmp_path):
     async with _conn(tmp_path) as conn:
-        await table_repo.upsert(conn, _accounts("user name"))
-        await table_repo.upsert(conn, _accounts(None))
+        await table_repo.upsert(conn, _accounts("user name"), origin="admin")
+        await table_repo.upsert(conn, _accounts(None), origin="admin")
 
         assert await _term_for_column(conn, "usr_nm") == "usr name"

@@ -48,6 +48,7 @@ async def _register_mv(conn, *, source_id, table_name, mv_calendar):
             schema_name="public",
             table_name=table_name,
             mv_calendar=mv_calendar,
+            origin="admin",
         )
     )
 

@@ -51,9 +51,9 @@ async def plane(monkeypatch) -> Database:
     db = Database(create_engine_from_url("sqlite+pysqlite:///:memory:"), name="command-domain-test")
     await _init_schema_portable(db)
     async with db.acquire() as conn:
-        await conn.execute_core(insert(sources).values(id="pg", type="postgresql"))
+        await conn.execute_core(insert(sources).values(id="pg", type="postgresql", origin="admin"))
         for domain_id in ("sales", "finance"):
-            await conn.execute_core(insert(domains).values(id=domain_id))
+            await conn.execute_core(insert(domains).values(id=domain_id, origin="admin"))
         for table in (tracked_functions, tracked_webhooks):
             await conn.execute_core(insert(table).values(name="in_finance", domain_id="finance"))
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)

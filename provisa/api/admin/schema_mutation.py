@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 
 from provisa.compiler.sql_types import key_list
 from provisa.core.repositories import rls as rls_repo
+from provisa.core.repositories import origin as origin_repo
 from provisa.api.admin._config_io import config_path as _config_path, read_config
 from provisa.api.admin.capabilities import require_capability
 from provisa.api.admin.types import (
@@ -86,6 +87,7 @@ from provisa.api.admin._row_mappers import (  # noqa: E402
     _cdc_model_from_input,
 )
 from provisa.api.admin.schema_common import (  # noqa: E402
+    config_warnings as _config_warnings,
     _add_source_pool,
     _analyze_source_on_engine,
     _configure_govdata_env,
@@ -1184,7 +1186,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     input.allowed_domains,
                     empty_is_all=True,
                 )
-            await source_repo.upsert(_conn, model)
+            _was = await origin_repo.of(_conn, "source", input.id)
+            await source_repo.upsert(_conn, model, origin="admin")
             if input.allowed_domains is not None:
                 await conn.execute_core(
                     update(sources)
@@ -1290,6 +1293,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             message=f"Source {input.id!r} updated",
             code="schema.source_updated",
             params={"source": input.id},
+            warnings=_config_warnings("source", input.id, _was, "edited"),
         )
 
     @strawberry.mutation
@@ -1361,6 +1365,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 message=f"Source {id!r} deleted",
                 code="schema.source_deleted",
                 params={"source": id},
+                warnings=_config_warnings("source", id, _existing["origin"], "deleted"),
             )
         return MutationResult(
             success=False,
@@ -1418,12 +1423,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             graphql_alias=input.graphql_alias or None,
         )
         async with pool.acquire() as conn:
-            await domain_repo.upsert(cast("Connection", conn), model)
+            _was = await origin_repo.of(cast("Connection", conn), "domain", input.id)
+            await domain_repo.upsert(cast("Connection", conn), model, origin="admin")
         return MutationResult(
             success=True,
             message=f"Domain {input.id!r} created",
             code="schema.domain_created",
             params={"domain": input.id},
+            warnings=_config_warnings("domain", input.id, _was, "edited"),
         )
 
     @strawberry.mutation
@@ -1435,6 +1442,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            _was = await origin_repo.of(cast("Connection", conn), "domain", id)
             try:
                 deleted = await domain_repo.delete(cast("Connection", conn), id)
             except domain_repo.DomainDeleteRefused as refused:
@@ -1461,6 +1469,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 message=f"Domain {id!r} deleted",
                 code="schema.domain_deleted",
                 params={"domain": id},
+                warnings=_config_warnings("domain", id, _was, "deleted"),
             )
         return MutationResult(
             success=False,
@@ -2025,8 +2034,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             parent_role_id=parent_id,
         )
         async with pool.acquire() as conn:
+            _was = await origin_repo.of(cast("Connection", conn), "role", input.id)
             await role_repo.upsert(
-                cast("Connection", conn), model, org_id=_resolve_admin_context(info)
+                cast("Connection", conn),
+                model,
+                org_id=_resolve_admin_context(info),
+                origin="admin",
             )
         # A new role has no state.schemas[role_id]/state.contexts[role_id] until some rebuild
         # runs; without this, the role is unusable until an unrelated mutation happens to trigger
@@ -2037,6 +2050,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             message=f"Role {input.id!r} created",
             code="schema.role_created",
             params={"role": input.id},
+            warnings=_config_warnings("role", input.id, _was, "edited"),
         )
 
     @strawberry.mutation
@@ -2300,8 +2314,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
             if _ttl_refusal is not None:
                 return _ttl_refusal
+            _was = await origin_repo.of_registration(
+                _conn, model.source_id, model.schema_name, model.table_name
+            )
             try:
-                table_id = await table_repo.upsert(_conn, model)
+                table_id = await table_repo.upsert(_conn, model, origin="admin")
             except table_repo.ViewLoopRefused as _loop:
                 # REQ-1918: a view that would read itself through other views is refused at save.
                 return MutationResult(
@@ -2395,6 +2412,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             message=f"Table {input.table_name!r} updated (id={table_id})",
             code="schema.table_updated",
             params={"table": input.table_name, "id": table_id},
+            warnings=_config_warnings("table", input.table_name, _was, "edited"),
         )
 
     @strawberry.mutation
@@ -2448,6 +2466,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 message=f"Table {id} deleted",
                 code="schema.table_deleted",
                 params={"table": id},
+                warnings=(
+                    _config_warnings("table", held["table_name"], held["origin"], "deleted")
+                    if held is not None
+                    else []
+                ),
             )
         return MutationResult(
             success=False,
@@ -2464,6 +2487,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         require_capability(info, "user_management")  # REQ-1531: see create_role
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            _was = await origin_repo.of(cast("Connection", conn), "role", id)
             try:
                 deleted = await role_repo.delete(cast("Connection", conn), id)
             except role_repo.RoleDeleteRefused as refused:
@@ -2491,6 +2515,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 message=f"Role {id!r} deleted",
                 code="schema.role_deleted",
                 params={"role": id},
+                warnings=_config_warnings("role", id, _was, "deleted"),
             )
         return MutationResult(
             success=False,

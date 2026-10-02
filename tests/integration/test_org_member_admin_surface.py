@@ -89,7 +89,9 @@ async def org_plane(monkeypatch):
     # A registered table, as the demo seed would leave it.
     async with tenant_db.acquire() as conn:
         await conn.execute_core(
-            insert(sources_t).values(id="sales-pg", type="postgres", dialect="postgresql")
+            insert(sources_t).values(
+                id="sales-pg", type="postgres", dialect="postgresql", origin="admin"
+            )
         )
         await conn.execute_core(
             insert(registered_tables_t).values(
@@ -97,6 +99,7 @@ async def org_plane(monkeypatch):
                 schema_name="public",
                 table_name="orders",
                 domain_id="shelter",
+                origin="admin",
             )
         )
 

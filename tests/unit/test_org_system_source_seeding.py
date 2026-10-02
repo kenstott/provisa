@@ -94,14 +94,14 @@ def test_the_org_builder_seeds_into_the_environment_being_built():
 
 @pytest.mark.parametrize("source_id", sorted(SYSTEM_SOURCES))
 def test_every_system_source_is_seeded(source_id):
-    from provisa.core.config_loader import _SYSTEM_SOURCE_IDS
+    from provisa.core.models import BUILT_IN_SOURCE_IDS
 
     seed = (_REPO_ROOT / "provisa/api/startup_seed.py").read_text()
     body = seed.split("async def _seed_built_in_sources")[1]
 
-    # The loader's system-source list is the definition of "system source" — the seeder has to
-    # cover exactly it, or a config load will reference a row nobody wrote.
-    assert source_id in _SYSTEM_SOURCE_IDS
+    # The built-in source list is the definition of "system source" — the seeder has to cover
+    # exactly it, or a config load will reference a row nobody wrote.
+    assert source_id in BUILT_IN_SOURCE_IDS
     # __derived__ is written through its constant rather than as a literal.
     seeded = f'"id": "{source_id}"' in body or (
         source_id == "__derived__" and '"id": DERIVED_SOURCE_ID' in body

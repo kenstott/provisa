@@ -46,12 +46,14 @@ async def _store(uri: str) -> Database:
 async def _seed(conn) -> None:
     # Two tenants' rows plus a shared (NULL-tenant) row, written OUTSIDE any tenant scope.
     await conn.execute_core(
-        insert(domains).values(id="d_a", description="A", tenant_id=uuid.UUID(_A))
+        insert(domains).values(id="d_a", description="A", tenant_id=uuid.UUID(_A), origin="admin")
     )
     await conn.execute_core(
-        insert(domains).values(id="d_b", description="B", tenant_id=uuid.UUID(_B))
+        insert(domains).values(id="d_b", description="B", tenant_id=uuid.UUID(_B), origin="admin")
     )
-    await conn.execute_core(insert(domains).values(id="d_shared", description="S", tenant_id=None))
+    await conn.execute_core(
+        insert(domains).values(id="d_shared", description="S", tenant_id=None, origin="admin")
+    )
 
 
 async def _ids(conn) -> set[str]:
@@ -96,7 +98,9 @@ async def test_insert_stamped_with_scoped_tenant(uri):
         async with db.acquire() as conn:
             with meta_tenant_scope(_A):
                 # No tenant_id supplied — the guard stamps it (coercing the string to UUID).
-                await conn.execute_core(insert(domains).values(id="d_new", description="N"))
+                await conn.execute_core(
+                    insert(domains).values(id="d_new", description="N", origin="admin")
+                )
             res = await conn.execute_core(
                 select(domains.c.tenant_id).where(domains.c.id == "d_new")
             )
@@ -113,7 +117,9 @@ async def test_insert_cannot_land_under_another_tenant(uri):
             with meta_tenant_scope(_A):
                 # A caller attempting to write a B-owned row is forced back to A.
                 await conn.execute_core(
-                    insert(domains).values(id="d_x", description="X", tenant_id=uuid.UUID(_B))
+                    insert(domains).values(
+                        id="d_x", description="X", tenant_id=uuid.UUID(_B), origin="admin"
+                    )
                 )
             res = await conn.execute_core(select(domains.c.tenant_id).where(domains.c.id == "d_x"))
             assert str(res.fetchone()[0]) == _A

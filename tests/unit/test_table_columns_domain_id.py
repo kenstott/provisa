@@ -65,7 +65,7 @@ async def test_upsert_sets_table_columns_domain_id_from_the_table():
         ],
     )
 
-    await table_repo.upsert(cast(Connection, conn), tbl)
+    await table_repo.upsert(cast(Connection, conn), tbl, origin="admin")
 
     assert len(conn.inserted_columns) == 2
     assert {c["domain_id"] for c in conn.inserted_columns} == {"sales"}
@@ -86,6 +86,6 @@ async def test_upsert_re_registration_moves_columns_to_the_new_domain():
         columns=[Column(name="id", data_type="integer", visible_to=[])],
     )
 
-    await table_repo.upsert(cast(Connection, conn), tbl)
+    await table_repo.upsert(cast(Connection, conn), tbl, origin="admin")
 
     assert conn.inserted_columns[-1]["domain_id"] == "finance"

@@ -49,8 +49,8 @@ async def plane(monkeypatch) -> Database:
     db = Database(create_engine_from_url("sqlite+pysqlite:///:memory:"), name="product-delete-test")
     await _init_schema_portable(db)
     async with db.acquire() as conn:
-        await conn.execute_core(insert(sources).values(id="pg", type="postgresql"))
-        await conn.execute_core(insert(domains).values(id="sales"))
+        await conn.execute_core(insert(sources).values(id="pg", type="postgresql", origin="admin"))
+        await conn.execute_core(insert(domains).values(id="sales", origin="admin"))
         for product_id in ("orders_product", "empty_product"):
             await conn.execute_core(
                 insert(data_products).values(id=product_id, domain_id="sales", name=product_id)
@@ -62,6 +62,7 @@ async def plane(monkeypatch) -> Database:
                 schema_name="public",
                 table_name="orders",
                 product_id="orders_product",
+                origin="admin",
             )
         )
         await conn.execute_core(

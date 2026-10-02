@@ -127,16 +127,16 @@ def _prepare_sync():
         # root org-registry view (REQ-1301), which registers itself in registered_tables/
         # table_columns of the root tenant schema.
         org_metadata.create_all(conn)
-        conn.execute(insert(roles).values(id="org_admin"))
-        conn.execute(insert(roles).values(id="analyst"))
+        conn.execute(insert(roles).values(id="org_admin", origin="admin"))
+        conn.execute(insert(roles).values(id="analyst", origin="admin"))
         # REQ-1297: the bootstrap claim also grants platform_admin, a system role schema.sql seeds
         # in every org.
-        conn.execute(insert(roles).values(id="platform_admin"))
+        conn.execute(insert(roles).values(id="platform_admin", origin="admin"))
         # REQ-1301: provisioning refreshes the root org-registry view, registered under the
         # provisa-admin source in the meta domain — rows the startup seeder
         # (startup_seed.py's source/meta-domain seeding) writes before any org is provisioned.
-        conn.execute(insert(sources).values(id="provisa-admin", type="postgresql"))
-        conn.execute(insert(domains).values(id="meta"))
+        conn.execute(insert(sources).values(id="provisa-admin", type="postgresql", origin="admin"))
+        conn.execute(insert(domains).values(id="meta", origin="admin"))
     return engine
 
 

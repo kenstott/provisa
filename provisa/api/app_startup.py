@@ -822,6 +822,7 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
                     await _conn.upsert(
                         _sources_t,
                         {
+                            "origin": "seed",  # REQ-1919: written when the row is created
                             "id": "graphql-demo",
                             "type": "graphql_remote",
                             "host": "",
@@ -841,6 +842,7 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
                     await _conn.upsert(
                         _domains_t,
                         {
+                            "origin": "seed",  # REQ-1919: written when the row is created
                             "id": "shelter",
                             "description": "Animal shelter staff and breed management",
                         },

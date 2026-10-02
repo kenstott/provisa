@@ -72,6 +72,10 @@ class SourceCdcConfigType:  # REQ-824
 class SourceType:  # REQ-012
     id: str
     type: str
+    # REQ-1919: where the object came from — "config" (a config file declared it), "admin"
+    # (made through the admin) or "seed" (the deployment's own). A load of the config re-applies
+    # what the file says about a "config" object, which the UI marks.
+    origin: str
     # The fields that locate or authenticate to the source are null for a caller without
     # source_registration (see _row_mappers._source_from_row).
     host: str | None
@@ -116,6 +120,10 @@ class SourceType:  # REQ-012
 class DomainType:  # REQ-533, REQ-609
     id: str
     description: str
+    # REQ-1919: where the object came from — "config" (a config file declared it), "admin"
+    # (made through the admin) or "seed" (the deployment's own). A load of the config re-applies
+    # what the file says about a "config" object, which the UI marks.
+    origin: str
     steward: str | None = None  # REQ-609: None = pending, no designated steward
     graphql_alias: str | None = None
     # domain_policy.system_domain_ids() (meta/ops/"") -- auto-generated, preserved across
@@ -269,6 +277,10 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     domain_id: str
     schema_name: str
     table_name: str
+    # REQ-1919: where the object came from — "config" (a config file declared it), "admin"
+    # (made through the admin) or "seed" (the deployment's own). A load of the config re-applies
+    # what the file says about a "config" object, which the UI marks.
+    origin: str
     alias: str | None
     description: str | None
     cache_ttl: int | None
@@ -564,6 +576,10 @@ class RoleRateLimitType:  # REQ-1174
 @strawberry.type
 class RoleType:  # REQ-042
     id: str
+    # REQ-1919: where the object came from — "config" (a config file declared it), "admin"
+    # (made through the admin) or "seed" (the deployment's own). A load of the config re-applies
+    # what the file says about a "config" object, which the UI marks.
+    origin: str
     # Null for a caller who neither holds user_management nor holds the role itself: a role's
     # definition is the right-holder's, and everyone else sees only that it exists.
     capabilities: list[str] | None
@@ -1213,6 +1229,16 @@ class ScheduledTaskType:  # REQ-533
 
 
 @strawberry.type
+class MutationWarning:  # REQ-1919
+    """Something the caller should know about a change that was made: a stable code and its
+    params for the UI's localized text, and the English ``message``."""
+
+    code: str
+    message: str
+    params: JsonScalar | None = None
+
+
+@strawberry.type
 class MutationResult:  # REQ-533
     success: bool
     message: str
@@ -1220,6 +1246,9 @@ class MutationResult:  # REQ-533
     # a localized message; English `message` remains the fallback.
     code: str | None = None
     params: JsonScalar | None = None
+    # REQ-1919: the change was made, and there is something to know about it — a config-origin
+    # object was edited or deleted, and the next load of the config re-applies the file.
+    warnings: list[MutationWarning] = strawberry.field(default_factory=list)
 
 
 # --- Compile / Submit types ---

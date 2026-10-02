@@ -176,7 +176,7 @@ def change_saved(shared_data: dict) -> None:
     async def _body() -> None:
         conn = _FakeConn(product_row=shared_data["product_row"])
         try:
-            await table_repo.upsert(cast(Connection, conn), shared_data["table"])
+            await table_repo.upsert(cast(Connection, conn), shared_data["table"], origin="admin")
         except ValueError as exc:
             shared_data["save_error"] = exc
 

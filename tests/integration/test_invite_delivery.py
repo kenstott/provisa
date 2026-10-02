@@ -139,7 +139,7 @@ def _prepare_sync():
             conn.execute(text(f"SET search_path TO {schema}"))
             org_metadata.create_all(conn, tables=_TENANT_TABLES)
             for role_id, caps in _SEEDED_ROLE_CAPS.items():
-                conn.execute(insert(roles).values(id=role_id, capabilities=caps))
+                conn.execute(insert(roles).values(id=role_id, capabilities=caps, origin="admin"))
 
         conn.execute(text(f"SET search_path TO {_ORG_SCHEMAS['acme']}"))
         conn.execute(

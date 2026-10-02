@@ -57,7 +57,9 @@ async def org_plane(monkeypatch):
 
     async with tenant_db.acquire() as conn:
         await conn.execute_core(
-            insert(roles_t).values(id="data_steward", capabilities=[], domain_access=["*"])
+            insert(roles_t).values(
+                id="data_steward", capabilities=[], domain_access=["*"], origin="admin"
+            )
         )
         await conn.execute_core(
             insert(user_directory_t).values(
@@ -144,7 +146,9 @@ async def test_unknown_ref_is_echoed_back_bare(org_plane):
 async def test_refs_are_deduped_across_multiple_roles(org_plane):
     async with org_plane.acquire() as conn:
         await conn.execute_core(
-            insert(roles_t).values(id="req609_analyst", capabilities=[], domain_access=["*"])
+            insert(roles_t).values(
+                id="req609_analyst", capabilities=[], domain_access=["*"], origin="admin"
+            )
         )
         await conn.execute_core(
             insert(user_role_assignments_t).values(

@@ -101,6 +101,11 @@ sources = Table(
     # here is the ``${secret:NAME}`` that names it; a reference the operator typed themselves is
     # stored verbatim. Empty means the source needs no password. Resolution happens where every
     # other connection secret's does — at the use point, inside the bound org.
+    # REQ-1919: where the row came from — "config" (a config file declared it), "admin" (made
+    # through the admin) or "seed" (the deployment's own). Written when the row is created; a
+    # load removes only "config" rows its file no longer declares. No default: a writer that
+    # does not say where a row came from is a defect.
+    Column("origin", Text, nullable=False),
     Column("password_ref", Text, nullable=False, server_default=""),
 )
 
@@ -111,6 +116,11 @@ domains = Table(
     Column("description", Text, nullable=False, server_default=""),
     Column("steward", Text),  # REQ-609: designated steward; NULL = pending
     Column("graphql_alias", Text),
+    # REQ-1919: where the row came from — "config" (a config file declared it), "admin" (made
+    # through the admin) or "seed" (the deployment's own). Written when the row is created; a
+    # load removes only "config" rows its file no longer declares. No default: a writer that
+    # does not say where a row came from is a defect.
+    Column("origin", Text, nullable=False),
     Column("org_id", Text),  # cross-model ref -> admin.orgs
     Column("tenant_id", Uuid),
 )
@@ -224,6 +234,8 @@ registered_tables = Table(
     Column("l2_cluster", Integer),
     Column("l3_cluster", Integer),
     Column("clusters_computed_at", DateTime(timezone=True)),
+    # REQ-1919: where the row came from — "config", "admin" or "seed" (see ``sources.origin``).
+    Column("origin", Text, nullable=False),
     UniqueConstraint("source_id", "schema_name", "table_name"),
 )
 
@@ -342,6 +354,11 @@ roles = Table(
     # (db.apply_tenancy_role_grants) re-asserts org_admin's rights into every environment schema on
     # every runtime build, which silently handed the subtracted rights back.
     Column("defined_from", Text),
+    # REQ-1919: where the row came from — "config" (a config file declared it), "admin" (made
+    # through the admin) or "seed" (the deployment's own). Written when the row is created; a
+    # load removes only "config" rows its file no longer declares. No default: a writer that
+    # does not say where a row came from is a defect.
+    Column("origin", Text, nullable=False),
     Column("org_id", Text),  # cross-model ref -> admin.orgs
     Column("tenant_id", Uuid),
 )

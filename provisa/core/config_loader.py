@@ -20,10 +20,9 @@ from typing import TYPE_CHECKING, Any, Mapping
 
 import yaml
 from sqlalchemy import delete as _delete
-from sqlalchemy import insert, or_, select, tuple_, update
+from sqlalchemy import insert, or_, select, update
 
 from provisa.core.models import (
-    DERIVED_SOURCE_ID,
     ControlPlaneConfig,
     Domain,
     ProvisaConfig,
@@ -35,17 +34,21 @@ from provisa.core import domain_policy
 from provisa.core.schema_org import (
     api_endpoints,
     api_sources,
+    domains as domains_table,
     glossary_terms,
     metrics as metrics_table,
     naming_rules,
     registered_tables,
     relationships,
+    roles as roles_table,
     sources,
     table_columns,
 )
 from provisa.core.secrets import resolve_secrets
 from provisa.openapi.mapper import OpenAPIQuery
 from provisa.security.rights import SYSTEM_ROLE_IDS
+from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, wholes_of
+from provisa.core.repositories.origin import CONFIG, SEED
 from provisa.core.repositories import (
     source as source_repo,
     domain as domain_repo,
@@ -186,40 +189,15 @@ def parse_config_dict(data: dict) -> ProvisaConfig:  # REQ-250
     return ProvisaConfig.model_validate(resolve_secrets_in_dict(data))
 
 
-_SYSTEM_SOURCE_IDS = ["provisa-admin", "provisa-otel", DERIVED_SOURCE_ID]
+async def _replace_mode_cleanup(conn: "Connection") -> None:  # REQ-013, REQ-014, REQ-1919
+    """Remove the relationships, commands and webhooks a replace load re-declares as a set.
 
-
-async def _replace_mode_cleanup(
-    conn: "Connection", config: ProvisaConfig, extra_sources: list[Source] | None = None
-) -> None:  # REQ-013, REQ-014, REQ-1730
-    """Delete all rows not present in the new config (full replace semantics).
-
-    ``extra_sources`` (REQ-1730): control-plane-only sources (created purely through the
-    ``createSource`` mutation, no ``sources:`` YAML entry) are kept too. Without this, a full
-    replace — the CLI's own default (see ``PROVISA_CONFIG_REPLACE`` in cli.py) — permanently
-    deleted every UI-registered source and its registered tables on the very next boot or
-    ``PUT /admin/config`` reload, regardless of which engine was configured: reproduced live via
-    the REQ-1730 engine-swap harness, where a mongodb source registered purely through the UI was
-    gone (`registered_tables` row and all) after a single reload, before `_upsert_sources` even
-    ran.
+    Sources, domains, roles and tables are NOT removed here, in any mode (REQ-1919): a load
+    manages only what a config declared, and removes only config-origin objects its file no
+    longer declares — through the dependency guard, at the end of the load
+    (:func:`_remove_what_the_config_dropped`). An object made through the admin is never removed
+    by a load, which is what keeps a source registered only through the UI across a boot.
     """
-    new_source_ids = list(
-        {src.id for src in config.sources}
-        | {src.id for src in (extra_sources or ())}
-        | set(_SYSTEM_SOURCE_IDS)
-    )
-    new_domain_ids = list({d.id for d in config.domains} | set(domain_policy.system_domain_ids()))
-    # REQ-1297: the four system roles are seeded by schema.sql, not by any config file, so a full
-    # replace must keep them the way it keeps system sources and domains. Deleting platform_admin
-    # here strands every request an unsecured server makes under it — the role resolves to nothing
-    # and the rate-limit gate 403s the whole deployment.
-    new_role_ids = list({r.id for r in config.roles} | SYSTEM_ROLE_IDS)
-    keep_sources = new_source_ids if new_source_ids else _SYSTEM_SOURCE_IDS
-    await table_repo.remove_registrations(conn, registered_tables.c.source_id.not_in(keep_sources))
-    await source_repo.remove_where(conn, sources.c.id.not_in(keep_sources))
-    keep_domains = new_domain_ids if new_domain_ids else domain_policy.system_domain_ids()
-    await domain_repo.delete_all_except(conn, list(keep_domains))
-    await role_repo.delete_all_except(conn, new_role_ids)
     await rel_repo.remove_where(conn, relationships.c.id.notlike("meta:%"))
     await function_repo.remove_all(conn)
 
@@ -262,7 +240,7 @@ async def _upsert_sources(  # REQ-012, REQ-250, REQ-1266, REQ-1730
     # that loop rarely needs the binding — wrapping both here anyway costs nothing when unneeded.
     async with bound_to_request_org():
         for src in config.sources:
-            await source_repo.upsert(conn, src)
+            await source_repo.upsert(conn, src, origin=CONFIG)
             # Provision the source on the bound engine through the abstraction (the engine makes
             # a catalog; native engines attach lazily). No direct the engine reference here.
             # REQ-1266: catalog_names supplies the org-prefixed physical catalog name for a
@@ -585,17 +563,6 @@ async def _upsert_single_table(
     openapi_specs: dict[str, dict],
 ) -> None:
     """Upsert one table and run source-type-specific post-upsert steps."""
-    # Semantic-SQL naming authority (REQ-471): a source the engine cannot ATTACH in place is
-    # materialized into the store, so its registered/physical name is a semantic alias — not a
-    # source-physical name — and MUST be normalized through the central naming authority so all
-    # data in the store follows one convention. Attach sources keep their source-physical name
-    # (it must match the real table). Never rename inline — always route through apply_sql_name.
-    from provisa.compiler.naming import apply_sql_name
-    from provisa.federation.strategy import engine_attaches
-
-    if src is not None and engine is not None and not engine_attaches(engine, src.type.value):
-        tbl.table_name = apply_sql_name(tbl.table_name)
-
     if src and src.type.value == "openapi" and src.base_url:
         spec = openapi_specs.get(src.id, {})
         if spec:
@@ -604,7 +571,7 @@ async def _upsert_single_table(
     # REQ-1426: data_type is design-time metadata — the config carries it and nothing infers it
     # here. A column that reaches this point untyped means the design was never completed; the
     # repository refuses it rather than persisting a hole the catalog renders as "unknown".
-    await table_repo.upsert(conn, tbl)
+    await table_repo.upsert(conn, tbl, origin=CONFIG)
 
     if src and src.type.value == "openapi" and src.base_url:
         spec = openapi_specs.get(src.id, {})
@@ -618,31 +585,126 @@ async def _upsert_single_table(
         await _handle_sparql_table(conn, tbl, src)
 
 
-async def _purge_removed_tables(conn: "Connection", config: ProvisaConfig) -> None:
-    """Delete registered_tables rows whose (schema_name, table_name) is no longer in config for
-    that source — matches table.py's upsert conflict key (source_id, schema_name, table_name)
-    exactly, not just table_name. A table_name-only check leaves a row whose `schema` field
-    CHANGED in config permanently orphaned: the upsert's conflict key includes schema_name, so a
-    changed schema inserts a NEW row under the new identity rather than updating the old one, and
-    the old (source_id, old_schema, table_name) row survives forever (table_name is still
-    "in config", just under a different schema) — the compiler then has two registered rows for
-    the same logical table and silently resolves to whichever one it finds, which is not
-    guaranteed to be the current one. Confirmed live: a ClickHouse source's schema corrected from
-    "public" to "default" left the stale "public" row registered and query compilation kept
-    resolving to it, well after every other part of the reload path (fresh config parse, fresh
-    control-plane init) was already correct.
-    """
-    tables_by_source: dict[str, list[tuple[str, str]]] = {}
-    for tbl in config.tables:
-        tables_by_source.setdefault(tbl.source_id, []).append((tbl.schema_name, tbl.table_name))
-    for src_id, current_pairs in tables_by_source.items():
-        await table_repo.remove_registrations(
-            conn,
-            registered_tables.c.source_id == src_id,
-            tuple_(registered_tables.c.schema_name, registered_tables.c.table_name).not_in(
-                current_pairs
-            ),
+class ConfigDropRefused(ValueError):  # REQ-1918, REQ-1919
+    """The file no longer declares objects that other objects still depend on. ``refusals``
+    lists every such object with what depends on it; the load removed nothing."""
+
+    def __init__(self, refusals: list[tuple[ObjectRef, str, list[Dependent]]]) -> None:
+        self.refusals = refusals
+        lines = [
+            f"{ref.kind} {name!r} is depended on by "
+            + ", ".join(
+                f"{d.ref.kind.replace('_', ' ')} {(d.name or d.ref.id)!r}" for d in dependents
+            )
+            for ref, name, dependents in refusals
+        ]
+        super().__init__(
+            "the config no longer declares these objects, and each is still depended on; "
+            "declare them again, or remove what depends on them first: " + "; ".join(lines)
         )
+
+    def report(self) -> list[dict[str, Any]]:
+        """The refusals as an API reports them."""
+        return [
+            {
+                "kind": ref.kind,
+                "id": ref.id,
+                "name": name,
+                "dependents": [d.as_dict() for d in dependents],
+            }
+            for ref, name, dependents in self.refusals
+        ]
+
+
+async def _dropped_by_the_config(
+    conn: "Connection", config: ProvisaConfig
+) -> list[tuple[ObjectRef, str]]:
+    """Every config-origin source, domain, role and table the file no longer declares, with the
+    name an operator knows it by. Tables first: they are what the other three are held by."""
+    declared_tables = _declared_tables(config)
+    dropped: list[tuple[ObjectRef, str]] = []
+    rows = await conn.execute_core(
+        select(
+            registered_tables.c.id,
+            registered_tables.c.source_id,
+            registered_tables.c.schema_name,
+            registered_tables.c.table_name,
+        )
+        .where(registered_tables.c.origin == CONFIG)
+        .order_by(registered_tables.c.id)
+    )
+    for r in rows.fetchall():
+        if (r.source_id, r.schema_name, r.table_name) not in declared_tables:
+            dropped.append(
+                (ObjectRef("table", r.id), f"{r.source_id}.{r.schema_name}.{r.table_name}")
+            )
+    for kind, table, declared in (
+        ("source", sources, {x.id for x in config.sources}),
+        ("domain", domains_table, {x.id for x in config.domains}),
+        ("role", roles_table, {x.id for x in config.roles}),
+    ):
+        ids = await conn.execute_core(
+            select(table.c.id).where(table.c.origin == CONFIG).order_by(table.c.id)
+        )
+        dropped.extend(
+            (ObjectRef(kind, row.id), row.id) for row in ids.fetchall() if row.id not in declared
+        )
+    return dropped
+
+
+_DISCARD = {
+    "table": table_repo.discard,
+    "source": source_repo.discard,
+    "domain": domain_repo.discard,
+    "role": role_repo.discard,
+}
+
+
+async def _remove_what_the_config_dropped(  # REQ-1918, REQ-1919
+    conn: "Connection", config: ProvisaConfig
+) -> None:
+    """Remove the config-origin sources, domains, roles and tables the file no longer declares.
+
+    A load manages only what a config declared: an object made through the admin, and one the
+    deployment seeds, is not looked at here in any mode. Judged at the END of the load, against
+    the model the file produced — a relationship the file dropped with its table is already
+    gone, and a view the file still declares is still there. Each dropped object is asked of the
+    dependency guard; an object that depends on it blocks it unless that object is being dropped
+    by this same load, or is a part of one that is. Every refusal is collected into one error (:class:`ConfigDropRefused`),
+    and nothing is removed unless everything may go.
+    """
+    dropped = await _dropped_by_the_config(conn, config)
+    if not dropped:
+        return
+    going = {ref for ref, _name in dropped}
+    refusals: list[tuple[ObjectRef, str, list[Dependent]]] = []
+    for ref, name in dropped:
+        # What depends on it and is not itself going — as one of the dropped objects, or as a
+        # part of one (a column that names a dropped role goes with its own dropped table).
+        blocking = [
+            d
+            for d in await guard(conn, ref)
+            if d.ref not in going and not await wholes_of(conn, d.ref) & going
+        ]
+        if blocking:
+            refusals.append((ref, name, blocking))
+    if refusals:
+        raise ConfigDropRefused(refusals)
+    # What is left depends only on other things that are going, so each goes once nothing still
+    # depends on it: a view before the table it reads, a table before its source and domain, a
+    # child role before its parent.
+    remaining = dropped
+    while remaining:
+        free = [(ref, name) for ref, name in remaining if not await guard(conn, ref)]
+        if not free:
+            raise RuntimeError(
+                "objects the config dropped depend on each other in a circle: "
+                + ", ".join(f"{ref.kind} {name!r}" for ref, name in remaining)
+            )
+        for ref, name in free:
+            await _DISCARD[ref.kind](conn, ref.id)
+            log.info("config load removes %s %r: the config no longer declares it", ref.kind, name)
+        remaining = [item for item in remaining if item not in free]
 
 
 async def _analyze_sources(  # REQ-275
@@ -707,6 +769,79 @@ def _expand_view_metrics(config: ProvisaConfig) -> None:  # REQ-1318
             tbl.view_sql, _ = expand_metric_calls_in_sql(tbl.view_sql, metric_registry)
 
 
+def _settle_table_names(engine: Any, config: ProvisaConfig) -> None:  # REQ-471
+    """Give each declared table the name it is registered under, in place on ``config``.
+
+    Semantic-SQL naming authority (REQ-471): a source the engine cannot ATTACH in place is
+    materialized into the store, so its registered/physical name is a semantic alias — not a
+    source-physical name — and MUST be normalized through the central naming authority so all
+    data in the store follows one convention. Attach sources keep their source-physical name
+    (it must match the real table). Never rename inline — always route through apply_sql_name.
+    """
+    from provisa.compiler.naming import apply_sql_name
+    from provisa.federation.strategy import engine_attaches
+
+    if engine is None:
+        return
+    sources_by_id = {src.id: src for src in config.sources}
+    for tbl in config.tables:
+        src = sources_by_id.get(tbl.source_id)
+        if src is not None and not engine_attaches(engine, src.type.value):
+            tbl.table_name = apply_sql_name(tbl.table_name)
+
+
+def _declared_tables(config: ProvisaConfig) -> set[tuple[str, str, str]]:
+    """The identity — source, schema, name — of every table the file declares."""
+    return {(t.source_id, t.schema_name, t.table_name) for t in config.tables}
+
+
+async def _rekey_moved_tables(conn: "Connection", config: ProvisaConfig) -> None:  # REQ-1919
+    """A table the file moved to another schema is the same table under a new key.
+
+    A table is registered under (source, schema, name). When the file corrects a table's schema
+    the new key matches no row, and the row under the old key is no longer declared: taken
+    literally that is one table added and one dropped, and the drop would be refused for every
+    relationship and view that reads the table — all of which the file still declares. So the
+    one config-origin row on the same source with the same name, which the file no longer
+    declares, is moved to the new schema before the upserts. Its id, its parts and everything
+    that refers to it stay as they are. (It used to be deleted with everything hanging off it,
+    and the relationships re-created.) Nothing is moved when more than one row could be meant.
+    """
+    declared = _declared_tables(config)
+    rows = (
+        await conn.execute_core(
+            select(
+                registered_tables.c.id,
+                registered_tables.c.source_id,
+                registered_tables.c.schema_name,
+                registered_tables.c.table_name,
+                registered_tables.c.origin,
+            )
+        )
+    ).fetchall()
+    registered = {(r.source_id, r.schema_name, r.table_name) for r in rows}
+    for source_id, schema_name, table_name in sorted(declared - registered):
+        left_behind = [
+            r
+            for r in rows
+            if r.origin == CONFIG
+            and r.source_id == source_id
+            and r.table_name == table_name
+            and (r.source_id, r.schema_name, r.table_name) not in declared
+        ]
+        arriving = [d for d in declared - registered if d[0] == source_id and d[2] == table_name]
+        if len(left_behind) != 1 or len(arriving) != 1:
+            continue
+        await table_repo.rekey(conn, left_behind[0].id, schema_name)
+        log.info(
+            "config load moves table %s.%s from schema %r to %r",
+            source_id,
+            table_name,
+            left_behind[0].schema_name,
+            schema_name,
+        )
+
+
 async def _upsert_tables(  # REQ-013, REQ-016, REQ-251
     conn: "Connection",
     engine: Any,
@@ -716,12 +851,12 @@ async def _upsert_tables(  # REQ-013, REQ-016, REQ-251
 ) -> None:
     sources_by_id = {src.id: src for src in config.sources}
     _expand_view_metrics(config)
+    _settle_table_names(engine, config)
+    await _rekey_moved_tables(conn, config)
 
     for tbl in config.tables:
         src = sources_by_id.get(tbl.source_id)
         await _upsert_single_table(conn, engine, tbl, src, openapi_specs)
-
-    await _purge_removed_tables(conn, config)
 
     if engine is not None:
         await _analyze_sources(engine, config, catalog_names)
@@ -844,19 +979,23 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     domains_before = await glossary_repo.term_domains(conn)
 
     if replace:
-        await _replace_mode_cleanup(conn, config, extra_sources=extra_sources)
+        await _replace_mode_cleanup(conn)
 
     # 1. Sources
     failed_catalogs = await _upsert_sources(
-        conn, engine, config, catalog_names=catalog_names, extra_sources=extra_sources
+        conn,
+        engine,
+        config,
+        catalog_names=catalog_names,
+        extra_sources=extra_sources,
     )
 
     # 2. Domains
     if domain_policy.single_domain():
         # Seed the implicit single-domain bucket so registered_tables FK resolves.
-        await domain_repo.upsert(conn, Domain(id=config.naming.default_domain))
+        await domain_repo.upsert(conn, Domain(id=config.naming.default_domain), origin=SEED)
     for dom in config.domains:
-        await domain_repo.upsert(conn, dom)
+        await domain_repo.upsert(conn, dom, origin=CONFIG)
 
     # 3. Naming rules
     await _upsert_naming_rules(conn, config)
@@ -865,7 +1004,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     for role in config.roles:
         # A role the config declares is the deployment's own definition, as a seeded role is:
         # it carries no org, and the admin surfaces do not delete it.
-        await role_repo.upsert(conn, role, org_id=None)
+        await role_repo.upsert(conn, role, org_id=None, origin=CONFIG)
 
     # 4.5 Data products (before tables so product_id FK refs exist)  # REQ-1634
     for dp in config.data_products:
@@ -965,6 +1104,10 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     # 11. Glossary settle (REQ-1387): purged/replaced tables cascaded their term refs away
     # before the upserts above could relink them; runs LAST so a rename that re-registers the
     # same column names revives its terms instead of losing their definitions to an early sweep.
+    # 10.9 What the file no longer declares (REQ-1919) — judged here, against the model the
+    # steps above produced, and before the glossary settles what the removed tables' refs leave.
+    await _remove_what_the_config_dropped(conn, config)
+
     await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
 
     return failed_catalogs
@@ -1362,6 +1505,12 @@ async def load_config(  # REQ-012, REQ-016, REQ-250, REQ-1266, REQ-1730
     extra_sources: list[Source] | None = None,
 ) -> list[str]:
     """Upsert full config into PG within a transaction. Idempotent.
+
+    REQ-1919: a load manages only what a config declared. What it creates is recorded as
+    config-origin; an admin-made object the file declares is taken over by the file; and at its
+    end the load removes the config-origin sources, domains, roles and tables the file no longer
+    declares — each through the dependency guard, and none of them when any is refused
+    (:class:`ConfigDropRefused`). An object made through the admin is never removed by a load.
 
     ``engine`` is the EngineRuntime: it provisions each source (the engine catalog / native
     attach) and supplies engine-native column types — the ONLY engine touchpoint, so no

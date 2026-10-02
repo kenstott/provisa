@@ -14,7 +14,7 @@
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import delete as _delete, select
+from sqlalchemy import delete as _delete, select, update
 
 from provisa.core import domain_policy
 from provisa.core.models import Table
@@ -28,6 +28,8 @@ from provisa.core.repositories.integrity import (
     remove_parts,
     view_loop,
 )
+from provisa.core.repositories.origin import require as require_origin
+from provisa.core.repositories.origin import take_over
 from provisa.core.schema_org import registered_tables, roles, table_columns, tag_assignments
 from provisa.security.rights import Capability
 
@@ -143,9 +145,13 @@ class ViewLoopRefused(ValueError):
 
 
 async def upsert(
-    conn: "Connection", table: Table
+    conn: "Connection", table: Table, *, origin: str
 ) -> int | None:  # REQ-013, REQ-016, REQ-133, REQ-155, REQ-156, REQ-260, REQ-334, REQ-393, REQ-399
     """Upsert a registered table and its columns. Returns the table row id.
+
+    REQ-1919: ``origin`` says where the table comes from (``repositories.origin``). It is
+    written when the table is CREATED and left alone after, except that a config load takes over
+    a table made through the admin.
 
     REQ-1914: one transaction. The table row, the wholesale column replace and the glossary refs
     commit together, so the config stamp they advance is seen only with the finished table —
@@ -162,10 +168,10 @@ async def upsert(
             loop = await view_loop(conn, table.table_name, view_sql)
             if loop:
                 raise ViewLoopRefused(loop)
-        return await _upsert(conn, table)
+        return await _upsert(conn, table, require_origin(origin))
 
 
-async def _upsert(conn: "Connection", table: Table) -> int | None:
+async def _upsert(conn: "Connection", table: Table, origin: str) -> int | None:
     domain_id = domain_policy.resolve_domain_id(table.domain_id)
     if getattr(table, "row_materialize", False):
         # A table a materialized view reads may not become row-level: refused here, the last
@@ -302,10 +308,18 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
     ]
     table_id = await conn.upsert_returning(
         registered_tables,
-        values,
+        {**values, "origin": origin},  # REQ-1919: on INSERT only — not among the update columns
         index_elements=["source_id", "schema_name", "table_name"],
         returning="id",
         update_columns=_update_columns,
+    )
+    await take_over(
+        conn,
+        registered_tables,
+        (registered_tables.c.id == table_id,),
+        kind="table",
+        ident=f"{table.source_id}.{table.schema_name}.{table.table_name}",
+        origin=origin,
     )
 
     # Column data_type is resolved at registration (design time) and PERSISTS: a column type once
@@ -503,14 +517,30 @@ async def delete(conn: "Connection", table_id: int) -> bool:  # REQ-014, REQ-191
         # REQ-1591: before the refs go. A term's domains are derived by joining its refs to this
         # very table, so the sweep that follows has nothing left to read them from.
         domains_before = await glossary_repo.term_domains(conn)
-        await remove_parts(conn, ref)
-        await conn.execute_core(
-            _delete(registered_tables).where(registered_tables.c.id == table_id)
-        )
+        await discard(conn, table_id)
         # REQ-1387: settle the terms that lost their last ref (remove, or deprecate when an
         # abstract term hangs on them).
         await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
     return True
+
+
+async def rekey(conn: "Connection", table_id: int, schema_name: str) -> None:  # REQ-1919
+    """Move a registered table to another schema of its source: the same table, with its id, its
+    parts and everything that refers to it, under a new key. The config loader's, for a table
+    whose schema the file corrected."""
+    await conn.execute_core(
+        update(registered_tables)
+        .where(registered_tables.c.id == table_id)
+        .values(schema_name=schema_name)
+    )
+
+
+async def discard(conn: "Connection", table_id: int) -> None:
+    """Remove a table's parts and its row WITHOUT asking the guard: for a caller that has
+    already established it may go — :func:`delete`, and the config loader once its own check of
+    everything the file dropped has passed."""
+    await remove_parts(conn, ObjectRef("table", table_id))
+    await conn.execute_core(_delete(registered_tables).where(registered_tables.c.id == table_id))
 
 
 async def retire_generated(  # REQ-1918

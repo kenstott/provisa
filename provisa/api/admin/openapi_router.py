@@ -120,7 +120,7 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
             _spec_source = source_repo.source_from_row(_existing).model_copy(
                 update={"type": SourceType.openapi, "path": _spec_source.path}
             )
-        await source_repo.upsert(cast("Connection", _conn), _spec_source)
+        await source_repo.upsert(cast("Connection", _conn), _spec_source, origin="admin")
 
     queries, mutations = parse_spec(spec, operation_overrides=operation_overrides)
 

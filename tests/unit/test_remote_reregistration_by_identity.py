@@ -75,8 +75,8 @@ async def plane() -> Database:
     db = Database(create_engine_from_url("sqlite+pysqlite:///:memory:"), name="reregister-test")
     await _init_schema_portable(db)
     async with db.acquire() as conn:
-        await conn.execute_core(insert(sources).values(id="crm", type="openapi"))
-        await conn.execute_core(insert(domains).values(id="sales"))
+        await conn.execute_core(insert(sources).values(id="crm", type="openapi", origin="admin"))
+        await conn.execute_core(insert(domains).values(id="sales", origin="admin"))
     return db
 
 
@@ -194,13 +194,21 @@ async def test_retiring_touches_only_that_sources_generated_schema(plane):
     async with plane.acquire() as conn:
         await conn.execute_core(
             insert(registered_tables).values(
-                source_id="crm", domain_id="sales", schema_name="manual", table_name="notes"
+                source_id="crm",
+                domain_id="sales",
+                schema_name="manual",
+                table_name="notes",
+                origin="admin",
             )
         )
-        await conn.execute_core(insert(sources).values(id="erp", type="openapi"))
+        await conn.execute_core(insert(sources).values(id="erp", type="openapi", origin="admin"))
         await conn.execute_core(
             insert(registered_tables).values(
-                source_id="erp", domain_id="sales", schema_name="openapi", table_name="invoices"
+                source_id="erp",
+                domain_id="sales",
+                schema_name="openapi",
+                table_name="invoices",
+                origin="admin",
             )
         )
         assert await table_repo.retire_generated(conn, "crm", "openapi", set()) == []
@@ -219,7 +227,9 @@ async def test_a_graphql_remote_reregistration_keeps_ids_and_reports_what_it_kep
     from provisa.api.admin.graphql_remote_router import _upsert_tables_to_semantic_layer
 
     async with plane.acquire() as conn:
-        await conn.execute_core(insert(sources).values(id="shop", type="graphql_remote"))
+        await conn.execute_core(
+            insert(sources).values(id="shop", type="graphql_remote", origin="admin")
+        )
 
     async def ids() -> dict[str, int]:
         async with plane.acquire() as conn:

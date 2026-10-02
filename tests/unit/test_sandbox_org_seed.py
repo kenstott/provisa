@@ -199,7 +199,10 @@ async def tenant_dbs(monkeypatch):
             for role_id, capabilities in _SEED_ROLES:
                 conn.execute(
                     org_roles.insert().values(
-                        id=role_id, capabilities=capabilities, domain_access=["*"]
+                        id=role_id,
+                        capabilities=capabilities,
+                        domain_access=["*"],
+                        origin="seed",
                     )
                 )
         made.append((engine, Database(engine, "test")))

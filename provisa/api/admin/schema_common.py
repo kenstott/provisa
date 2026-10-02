@@ -142,6 +142,15 @@ async def _queue_creation_request(  # REQ-434
     )
 
 
+def config_warnings(kind: str, name: object, origin: str | None, change) -> list:  # REQ-1919
+    """The warnings a mutation's answer carries after an admin edits or deletes an object a
+    config declared (``origin`` as it was before the change). Empty for any other object."""
+    from provisa.api.admin.types import MutationWarning
+    from provisa.core.repositories.origin import config_notices
+
+    return [MutationWarning(**notice) for notice in config_notices(kind, name, origin, change)]
+
+
 def _resolve_admin_context(info: StrawberryInfo) -> str:
     """The org the request acts in — raises when none is bound.
 
@@ -253,7 +262,7 @@ async def _upsert_source_with_domains(pool, model, input: SourceInput) -> None:
     from provisa.core.repositories import source as source_repo
 
     async with pool.acquire() as conn:
-        await source_repo.upsert(conn, model)
+        await source_repo.upsert(conn, model, origin="admin")
         _domains = [d for d in (input.allowed_domains or []) if d.strip()]
         if _domains:
             await conn.execute_core(

@@ -49,7 +49,7 @@ async def _seed_built_ins(conn) -> None:
     for built_in in sorted(BUILT_IN_SOURCE_IDS):
         await conn.upsert(
             sources,
-            {"id": built_in, "type": "postgresql", "dialect": "postgresql"},
+            {"id": built_in, "type": "postgresql", "dialect": "postgresql", "origin": "admin"},
             index_elements=["id"],
         )
 
@@ -65,8 +65,8 @@ class TestCountBillable:
         db = await _store()
         async with db.acquire() as conn:
             await _seed_built_ins(conn)
-            await source_repo.upsert(conn, _source("warehouse"))
-            await source_repo.upsert(conn, _source("crm"))
+            await source_repo.upsert(conn, _source("warehouse"), origin="admin")
+            await source_repo.upsert(conn, _source("crm"), origin="admin")
             assert await source_repo.count_billable(conn) == 2
 
     async def test_the_built_in_set_is_what_the_seed_writes(self):

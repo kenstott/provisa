@@ -77,8 +77,8 @@ async def db():
         sc.execute(text(f"SET search_path TO {_SCHEMA}"))
         org_metadata.create_all(sc)
         # rls_rules references domains/roles; seed the rows the tests' rules point at.
-        sc.execute(text("INSERT INTO domains (id) VALUES ('sales')"))
-        sc.execute(text("INSERT INTO roles (id) VALUES ('analyst')"))
+        sc.execute(text("INSERT INTO domains (id, origin) VALUES ('sales', 'admin')"))
+        sc.execute(text("INSERT INTO roles (id, origin) VALUES ('analyst', 'admin')"))
     yield database
     async with database.acquire() as conn:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")

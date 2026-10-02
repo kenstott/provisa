@@ -258,6 +258,7 @@ async def _seed_meta_domain(
         table_id = await conn.upsert_returning(
             _registered_tables_t,
             {
+                "origin": "seed",  # REQ-1919: written when the row is created
                 "source_id": "provisa-admin",
                 "domain_id": "meta",
                 "schema_name": schema_name,
@@ -364,6 +365,7 @@ async def _seed_ops_domain(
         table_id = await conn.upsert_returning(
             _registered_tables_t,
             {
+                "origin": "seed",  # REQ-1919: written when the row is created
                 "source_id": "provisa-admin",
                 "domain_id": "ops",
                 "schema_name": schema_name,
@@ -423,6 +425,7 @@ async def _seed_ops_domain(
         table_id = await conn.upsert_returning(
             _registered_tables_t,
             {
+                "origin": "seed",  # REQ-1919: written when the row is created
                 "source_id": "provisa-admin",
                 "domain_id": "ops",
                 "schema_name": schema_name,
@@ -644,6 +647,7 @@ async def _seed_ops_pg(conn: "Connection") -> None:  # REQ-016
         table_id = await conn.upsert_returning(
             _registered_tables_t,
             {
+                "origin": "seed",  # REQ-1919: written when the row is created
                 "source_id": "provisa-otel",
                 "domain_id": "ops",
                 "schema_name": "signals",
@@ -662,6 +666,7 @@ async def _seed_ops_pg(conn: "Connection") -> None:  # REQ-016
         table_id = await conn.upsert_returning(
             _registered_tables_t,
             {
+                "origin": "seed",  # REQ-1919: written when the row is created
                 "source_id": "provisa-otel",
                 "domain_id": "ops",
                 "schema_name": "signals",
@@ -788,6 +793,7 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
         await _conn.upsert(
             _sources_t,
             {
+                "origin": "seed",  # REQ-1919: written when the row is created
                 "id": "provisa-admin",
                 "type": cp_dialect,
                 "host": pg_host or "",
@@ -817,6 +823,7 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
             "username": "provisa",
             "dialect": _engine_name,
             "description": _otel_desc,
+            "origin": "seed",  # REQ-1919: written when the row is created
         }
         if engine_endpoint is not None:
             _otel_row["host"], _otel_row["port"] = engine_endpoint
@@ -837,6 +844,7 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
         await _conn.upsert(
             _sources_t,
             {
+                "origin": "seed",  # REQ-1919: written when the row is created
                 "id": DERIVED_SOURCE_ID,
                 "type": _engine_name,
                 "description": (
@@ -941,6 +949,7 @@ async def seed_org_registry_view() -> bool:  # REQ-1301
         table_id = await conn.upsert_returning(
             _registered_tables_t,
             {
+                "origin": "seed",  # REQ-1919: written when the row is created
                 "source_id": "provisa-admin",
                 "domain_id": "meta",
                 "schema_name": schema_name,

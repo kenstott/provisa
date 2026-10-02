@@ -119,6 +119,7 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
         await conn.upsert(
             sources,
             {
+                "origin": "admin",  # REQ-1919: written when the row is created
                 "id": source_id,
                 "type": "grpc_remote",
                 "host": server_address,
@@ -148,7 +149,12 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
             update_columns=["host", "description", "path", "federation_hints"],
         )
         if domain_id:
-            await conn.upsert(domains, {"id": domain_id}, index_elements=["id"], update_columns=[])
+            await conn.upsert(
+                domains,
+                {"id": domain_id, "origin": "admin"},  # REQ-1919
+                index_elements=["id"],
+                update_columns=[],
+            )
 
     async with state.tenant_db.acquire() as conn:
         n_tables, n_mutations = await _register_schema(
@@ -307,7 +313,7 @@ async def _register_schema(  # REQ-325, REQ-326, REQ-599
             table_name=table_name,
             columns=output_cols + nf_cols,
         )
-        await table_repo.upsert(conn, tbl)
+        await table_repo.upsert(conn, tbl, origin="admin")
 
     # Tracked functions from mutation methods
     for m in mutations:

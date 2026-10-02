@@ -48,8 +48,8 @@ async def plane(monkeypatch) -> Database:
     db = Database(create_engine_from_url("sqlite+pysqlite:///:memory:"), name="rel-delete-test")
     await _init_schema_portable(db)
     async with db.acquire() as conn:
-        await conn.execute_core(insert(sources).values(id="pg", type="postgresql"))
-        await conn.execute_core(insert(domains).values(id="sales"))
+        await conn.execute_core(insert(sources).values(id="pg", type="postgresql", origin="admin"))
+        await conn.execute_core(insert(domains).values(id="sales", origin="admin"))
     for name in ("orders", "customers"):
         await _table(db, name)
     await _relate(db, "orders_customers", "orders", "customer_id", "customers", "id")
@@ -68,6 +68,7 @@ async def _table(db: Database, name: str, view_sql: str | None = None, materiali
                 table_name=name,
                 view_sql=view_sql,
                 materialize=materialize,
+                origin="admin",
             )
         )
         return (

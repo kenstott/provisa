@@ -192,7 +192,7 @@ async def upsert_table(  # REQ-316, REQ-320
         ],
         description=query.summary,
     )
-    await table_repo.upsert(conn, tbl)
+    await table_repo.upsert(conn, tbl, origin="admin")
     log.debug("Upserted table %s for operation %s", table_name, query.operation_id)
 
     # Upsert api_sources so api_endpoints FK is satisfied

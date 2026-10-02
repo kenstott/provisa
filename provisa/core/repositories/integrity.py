@@ -508,6 +508,28 @@ async def parts(conn: "Connection", ref: ObjectRef) -> dict[str, int]:
     return counts
 
 
+async def wholes_of(conn: "Connection", ref: ObjectRef) -> set[ObjectRef]:
+    """The objects ``ref`` is a part of — what it goes with: a column's table, a row filter's
+    table and role. Empty for an object that is nothing's part. For a caller removing several
+    objects at once, to whom a dependent that goes with one of them does not block the others.
+    Only parts that hold their whole's key are followed; one that names it another way is not
+    seen here, which can only make such a caller refuse more."""
+    kind = KINDS[ref.kind]
+    table = metadata.tables[kind.table]
+    row = (await conn.execute_core(select(table).where(table.c[kind.key] == ref.id))).fetchone()
+    if row is None:
+        raise LookupError(f"no {ref.kind} {ref.id!r}")
+    return {
+        ObjectRef(reference.to, row._mapping[reference.column])
+        for reference in REFERENCES
+        if reference.standing is Standing.PART
+        and reference.table == kind.table
+        and reference.by == "key"
+        and reference.match is Match.EQUALS
+        and row._mapping[reference.column] is not None
+    }
+
+
 async def remove_parts(conn: "Connection", ref: ObjectRef) -> None:
     """Delete the rows that go with ``ref``. The caller holds the transaction, has asked
     :func:`guard`, and deletes the object's own row after this."""

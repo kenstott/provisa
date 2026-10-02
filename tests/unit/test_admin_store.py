@@ -200,7 +200,7 @@ async def test_source_repository_round_trip(uri_factory):
         try:
             async with db.acquire() as conn:
                 # insert
-                await source_repo.upsert(conn, _sample_source())
+                await source_repo.upsert(conn, _sample_source(), origin="admin")
                 got = await source_repo.get(conn, "src1")
                 assert got is not None
                 assert got["id"] == "src1"
@@ -210,7 +210,7 @@ async def test_source_repository_round_trip(uri_factory):
                 # update via the same upsert path (rowcount-driven match on every backend)
                 updated = _sample_source()
                 updated.host = "db2.example.com"
-                await source_repo.upsert(conn, updated)
+                await source_repo.upsert(conn, updated, origin="admin")
                 got2 = await source_repo.get(conn, "src1")
                 assert got2["host"] == "db2.example.com"
 
@@ -235,7 +235,7 @@ async def test_duckdb_file_store_persists_across_reopen():
         db = await _make_store(uri)
         try:
             async with db.acquire() as conn:
-                await source_repo.upsert(conn, _sample_source("persist"))
+                await source_repo.upsert(conn, _sample_source("persist"), origin="admin")
         finally:
             await db.close()
 

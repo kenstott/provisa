@@ -193,8 +193,8 @@ async def served(
         # The DataProduct FK/domain check in table_repo.upsert requires the domain to already
         # exist, but load_config only creates domains as part of the same run — so the domains
         # and products must be seeded ahead of it, not derived from raw["domains"].
-        await domain_repo.upsert(conn, Domain(id="sales"))
-        await domain_repo.upsert(conn, Domain(id="petstore"))
+        await domain_repo.upsert(conn, Domain(id="sales"), origin="admin")
+        await domain_repo.upsert(conn, Domain(id="petstore"), origin="admin")
         await data_product_repo.upsert(
             conn, DataProduct(id="prod-sales", domain_id="sales", name="Sales Product")
         )

@@ -30,8 +30,8 @@ async def _conn(tmp_path):
         # The whole org schema: a delete asks the dependency guard, which reads every table
         # that can refer to the object.
         domains.metadata.create_all(c)
-        c.execute(domains.insert().values(id="sales", description="Sales"))
-        c.execute(domains.insert().values(id="finance", description="Finance"))
+        c.execute(domains.insert().values(id="sales", description="Sales", origin="admin"))
+        c.execute(domains.insert().values(id="finance", description="Finance", origin="admin"))
     try:
         async with Database(engine, name="dp").acquire() as conn:
             yield conn

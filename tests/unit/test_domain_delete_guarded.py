@@ -51,13 +51,19 @@ async def plane(monkeypatch) -> Database:
     await _init_schema_portable(db)
     async with db.acquire() as conn:
         for domain_id in ("sales", "empty"):
-            await conn.execute_core(insert(domains).values(id=domain_id))
+            await conn.execute_core(insert(domains).values(id=domain_id, origin="admin"))
         await conn.execute_core(
-            insert(sources).values(id="pg", type="postgresql", allowed_domains=["sales"])
+            insert(sources).values(
+                id="pg", type="postgresql", allowed_domains=["sales"], origin="admin"
+            )
         )
         await conn.execute_core(
             insert(registered_tables).values(
-                source_id="pg", domain_id="sales", schema_name="public", table_name="orders"
+                source_id="pg",
+                domain_id="sales",
+                schema_name="public",
+                table_name="orders",
+                origin="admin",
             )
         )
         table_id = (await conn.execute_core(select(registered_tables.c.id))).scalar_one()
@@ -65,7 +71,9 @@ async def plane(monkeypatch) -> Database:
             insert(table_columns).values(table_id=table_id, column_name="id", domain_id="sales")
         )
         await conn.execute_core(
-            insert(roles).values(id="seller", capabilities=[], domain_access=["sales"], org_id="a")
+            insert(roles).values(
+                id="seller", capabilities=[], domain_access=["sales"], org_id="a", origin="admin"
+            )
         )
         await conn.execute_core(
             insert(user_role_assignments).values(user_id="u1", role_id="seller", domain_id="sales")
@@ -132,12 +140,6 @@ async def test_a_domain_the_deployment_keeps_is_refused(plane, monkeypatch):
         with pytest.raises(domain_repo.DomainDeleteRefused) as err:
             await domain_repo.delete(conn, "empty")
     assert err.value.reason == "system" and "empty" in await _domain_ids(plane)
-
-
-async def test_a_full_replace_removes_every_domain_it_is_not_told_to_keep(plane):
-    async with plane.acquire() as conn:
-        await domain_repo.delete_all_except(conn, ["sales"])
-    assert "empty" not in await _domain_ids(plane) and "sales" in await _domain_ids(plane)
 
 
 # --- the mutation --------------------------------------------------------------------------------

@@ -18,13 +18,21 @@ from sqlalchemy import delete as _delete, select
 
 from provisa.core.models import Domain
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
+from provisa.core.repositories.origin import require as require_origin
+from provisa.core.repositories.origin import take_over
 from provisa.core.schema_org import domains
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
 
-async def upsert(conn: "Connection", domain: Domain) -> None:  # REQ-021, REQ-367
+async def upsert(  # REQ-021, REQ-367, REQ-1919
+    conn: "Connection", domain: Domain, *, origin: str
+) -> None:
+    """Create the domain, or replace its definition. ``origin`` says where it comes from
+    (``repositories.origin``): written when the domain is CREATED and left alone after, except
+    that a config load takes over a domain made through the admin."""
+    require_origin(origin)
     await conn.upsert(
         domains,
         {
@@ -33,9 +41,13 @@ async def upsert(conn: "Connection", domain: Domain) -> None:  # REQ-021, REQ-36
             "steward": domain.steward,  # REQ-609
             "graphql_alias": domain.graphql_alias,
             "org_id": "root",
+            "origin": origin,
         },
         index_elements=["id"],
         update_columns=["description", "steward", "graphql_alias"],
+    )
+    await take_over(
+        conn, domains, (domains.c.id == domain.id,), kind="domain", ident=domain.id, origin=origin
     )
 
 
@@ -88,14 +100,13 @@ async def delete(conn: "Connection", domain_id: str) -> bool:  # REQ-021, REQ-19
         blocking = await guard(conn, ref)
         if blocking:
             raise DomainDeleteRefused(domain_id, "dependents", blocking)
-        await remove_parts(conn, ref)
-        await conn.execute_core(_delete(domains).where(domains.c.id == domain_id))
+        await discard(conn, domain_id)
     return True
 
 
-async def delete_all_except(conn: "Connection", keep: list[str]) -> None:
-    """Remove every domain not named in ``keep``: the config loader's full replace.
-
-    A replace load declares the whole model; it is not a deletion of one object, so it does not
-    ask the dependency guard, as the deletion of a whole org does not."""
-    await conn.execute_core(_delete(domains).where(domains.c.id.not_in(keep)))
+async def discard(conn: "Connection", domain_id: str) -> None:
+    """Remove a domain's parts and its row WITHOUT asking the guard: for a caller that has
+    already established it may go — :func:`delete`, and the config loader once its own check of
+    everything the file dropped has passed."""
+    await remove_parts(conn, ObjectRef("domain", domain_id))
+    await conn.execute_core(_delete(domains).where(domains.c.id == domain_id))

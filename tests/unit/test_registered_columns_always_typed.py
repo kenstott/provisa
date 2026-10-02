@@ -62,7 +62,7 @@ async def test_graphql_native_filter_columns_carry_the_argument_type(monkeypatch
 
     captured: list[Table] = []
 
-    async def _capture(_conn, tbl):
+    async def _capture(_conn, tbl, *, origin):
         captured.append(tbl)
         return 1
 
@@ -122,7 +122,7 @@ async def test_grpc_columns_carry_the_proto_resolved_type(monkeypatch):
 
     captured: list[Table] = []
 
-    async def _capture(_conn, tbl):
+    async def _capture(_conn, tbl, *, origin):
         captured.append(tbl)
         return 1
 
@@ -247,4 +247,4 @@ async def test_repository_refuses_an_untyped_column():
         columns=[Column(name="c", data_type=None, visible_to=[])],
     )
     with pytest.raises(ValueError, match="t.c has no data_type"):
-        await table_repo.upsert(conn, tbl)  # type: ignore[arg-type]
+        await table_repo.upsert(conn, tbl, origin="admin")  # type: ignore[arg-type]

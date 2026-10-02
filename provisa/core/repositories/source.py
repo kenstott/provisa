@@ -18,6 +18,8 @@ from sqlalchemy import delete as _delete, select, update
 
 from provisa.core.models import BUILT_IN_SOURCE_IDS, Source
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
+from provisa.core.repositories.origin import require as require_origin
+from provisa.core.repositories.origin import take_over
 from provisa.core.schema_org import registered_tables, sources
 
 if TYPE_CHECKING:
@@ -69,8 +71,23 @@ def source_from_row(row: dict) -> Source:  # REQ-1695
     return Source.model_validate(fields)
 
 
-async def upsert(conn: "Connection", source: Source) -> None:  # REQ-012, REQ-250
-    await conn.upsert(sources, _source_values(source), index_elements=["id"])
+async def upsert(  # REQ-012, REQ-250, REQ-1919
+    conn: "Connection", source: Source, *, origin: str
+) -> None:
+    """Create the source, or replace its definition. ``origin`` says where it comes from
+    (``repositories.origin``): written when the source is CREATED and left alone after, except
+    that a config load takes over a source made through the admin."""
+    require_origin(origin)
+    values = _source_values(source)
+    await conn.upsert(
+        sources,
+        {**values, "origin": origin},
+        index_elements=["id"],
+        update_columns=[c for c in values if c != "id"],
+    )
+    await take_over(
+        conn, sources, (sources.c.id == source.id,), kind="source", ident=source.id, origin=origin
+    )
 
 
 async def count_billable(conn: "Connection") -> int:  # REQ-1513
@@ -141,9 +158,16 @@ async def delete(conn: "Connection", source_id: str) -> bool:  # REQ-014, REQ-19
         blocking = await guard(conn, ref)
         if blocking:
             raise SourceDeleteRefused(source_id, "dependents", blocking)
-        await remove_parts(conn, ref)
-        await conn.execute_core(_delete(sources).where(sources.c.id == source_id))
+        await discard(conn, source_id)
     return True
+
+
+async def discard(conn: "Connection", source_id: str) -> None:
+    """Remove a source's parts and its row WITHOUT asking the guard: for a caller that has
+    already established it may go — :func:`delete`, and the config loader once its own check of
+    everything the file dropped has passed."""
+    await remove_parts(conn, ObjectRef("source", source_id))
+    await conn.execute_core(_delete(sources).where(sources.c.id == source_id))
 
 
 async def remove_where(conn: "Connection", *where) -> None:

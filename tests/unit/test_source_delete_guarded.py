@@ -51,12 +51,16 @@ async def plane(monkeypatch) -> Database:
     db = Database(create_engine_from_url("sqlite+pysqlite:///:memory:"), name="source-delete-test")
     await _init_schema_portable(db)
     async with db.acquire() as conn:
-        await conn.execute_core(insert(domains).values(id="sales"))
+        await conn.execute_core(insert(domains).values(id="sales", origin="admin"))
         for source_id, kind in (("crm", "postgresql"), ("api", "openapi")):
-            await conn.execute_core(insert(sources).values(id=source_id, type=kind))
+            await conn.execute_core(insert(sources).values(id=source_id, type=kind, origin="admin"))
         await conn.execute_core(
             insert(registered_tables).values(
-                source_id="crm", domain_id="sales", schema_name="public", table_name="customers"
+                source_id="crm",
+                domain_id="sales",
+                schema_name="public",
+                table_name="customers",
+                origin="admin",
             )
         )
         await conn.execute_core(
@@ -123,7 +127,9 @@ async def test_the_source_goes_once_its_table_and_command_have(plane):
 
 async def test_a_source_the_deployment_keeps_is_refused(plane):
     async with plane.acquire() as conn:
-        await conn.execute_core(insert(sources).values(id=DERIVED_SOURCE_ID, type="duckdb"))
+        await conn.execute_core(
+            insert(sources).values(id=DERIVED_SOURCE_ID, type="duckdb", origin="admin")
+        )
         with pytest.raises(source_repo.SourceDeleteRefused) as err:
             await source_repo.delete(conn, DERIVED_SOURCE_ID)
     assert err.value.reason == "system" and DERIVED_SOURCE_ID in await _source_ids(plane)

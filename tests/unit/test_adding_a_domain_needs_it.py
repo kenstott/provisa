@@ -102,19 +102,29 @@ async def plane(monkeypatch) -> Database:
     await _init_schema_portable(db)
     async with db.acquire() as conn:
         for domain_id in ("sales", "finance"):
-            await conn.execute_core(insert(domains).values(id=domain_id))
+            await conn.execute_core(insert(domains).values(id=domain_id, origin="admin"))
         await conn.execute_core(
             insert(roles).values(
-                id="seller", capabilities=["usage"], domain_access=["sales"], org_id="acme"
+                id="seller",
+                capabilities=["usage"],
+                domain_access=["sales"],
+                org_id="acme",
+                origin="admin",
             )
         )
         await conn.execute_core(
             insert(roles).values(
-                id="auditor", capabilities=["usage"], domain_access=["finance"], org_id="acme"
+                id="auditor",
+                capabilities=["usage"],
+                domain_access=["finance"],
+                org_id="acme",
+                origin="admin",
             )
         )
         await conn.execute_core(
-            insert(sources).values(id="warehouse", type="postgresql", allowed_domains=["sales"])
+            insert(sources).values(
+                id="warehouse", type="postgresql", allowed_domains=["sales"], origin="admin"
+            )
         )
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "roles", ROLES, raising=False)

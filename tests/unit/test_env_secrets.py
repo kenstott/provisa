@@ -88,7 +88,10 @@ class TestOnlyCarriedFieldsAreScanned:
         check_row("sources", {"password": "hunter2", "host": "db.internal"})
 
     def test_a_write_to_a_binding_table_passes_the_seam(self):
-        assert guard_statement(sources.insert().values(id="s", password="hunter2")) is not None
+        assert (
+            guard_statement(sources.insert().values(id="s", password="hunter2", origin="admin"))
+            is not None
+        )
 
 
 class TestTheSeam:

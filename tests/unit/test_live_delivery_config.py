@@ -187,7 +187,7 @@ class TestRepoUpsertSerializesLive:
         _empty.fetchall.return_value = []  # no pre-existing column types to preserve
         conn.execute_core = AsyncMock(return_value=_empty)
 
-        await table_repo.upsert(conn, tbl)
+        await table_repo.upsert(conn, tbl, origin="admin")
 
         # The JSON `live` column takes the Python dict directly (SQLAlchemy serializes per dialect) —
         # no manual json.dumps. Assert the value passed to the Core upsert.
@@ -214,7 +214,7 @@ class TestRepoUpsertSerializesLive:
         _empty.fetchall.return_value = []  # no pre-existing column types to preserve
         conn.execute_core = AsyncMock(return_value=_empty)
 
-        await table_repo.upsert(conn, tbl)
+        await table_repo.upsert(conn, tbl, origin="admin")
 
         values = conn.upsert_returning.await_args.args[1]
         assert values["live"] is None

@@ -60,10 +60,10 @@ async def plane(monkeypatch) -> Database:
     db = Database(create_engine_from_url("sqlite+pysqlite:///:memory:"), name="role-delete-test")
     await _init_schema_portable(db)
     async with db.acquire() as conn:
-        await role_repo.upsert(conn, _role("from_config"), org_id=None)
-        await role_repo.upsert(conn, _role("base"), org_id=ORG)
-        await role_repo.upsert(conn, _role("derived", parent="base"), org_id=ORG)
-        await role_repo.upsert(conn, _role("loose"), org_id=ORG)
+        await role_repo.upsert(conn, _role("from_config"), org_id=None, origin="config")
+        await role_repo.upsert(conn, _role("base"), org_id=ORG, origin="admin")
+        await role_repo.upsert(conn, _role("derived", parent="base"), org_id=ORG, origin="admin")
+        await role_repo.upsert(conn, _role("loose"), org_id=ORG, origin="admin")
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
     return db
 
@@ -97,21 +97,64 @@ async def test_the_seed_marks_its_roles_with_no_org_and_a_created_role_records_o
     assert (rows["base"], rows["derived"], rows["loose"]) == (ORG, ORG, ORG)
 
 
+async def test_every_role_records_where_it_came_from(plane):
+    async with plane.acquire() as conn:
+        origin = {r["id"]: r["origin"] for r in await role_repo.list_all(conn)}
+    for seeded in ("org_admin", "analyst", "developer", "platform_admin"):
+        assert origin[seeded] == "seed", seeded
+    assert origin["from_config"] == "config"
+    assert (origin["base"], origin["derived"], origin["loose"]) == ("admin", "admin", "admin")
+
+
+async def test_an_admin_edit_leaves_the_origin_and_a_config_load_takes_an_admin_role_over(
+    plane, caplog
+):
+    async with plane.acquire() as conn:
+        await role_repo.upsert(conn, _role("from_config"), org_id=ORG, origin="admin")
+        await role_repo.upsert(conn, _role("analyst"), org_id=None, origin="config")
+        with caplog.at_level("INFO", logger="provisa.core.repositories.origin"):
+            await role_repo.upsert(conn, _role("loose"), org_id=None, origin="config")
+        origin = {r["id"]: r["origin"] for r in await role_repo.list_all(conn)}
+    # An edit through the admin does not make a config's role the admin's, and a config that
+    # declares a seeded role does not make it the config's.
+    assert (origin["from_config"], origin["analyst"]) == ("config", "seed")
+    # A config that declares a role made through the admin takes it over, and says so.
+    assert origin["loose"] == "config"
+    assert [r.getMessage() for r in caplog.records] == [
+        "config load takes over role 'loose', which was made through the admin: "
+        "it is now declared by the config"
+    ]
+
+
+async def test_an_origin_outside_the_three_is_refused(plane):
+    async with plane.acquire() as conn:
+        with pytest.raises(ValueError, match="origin must be one of"):
+            await role_repo.upsert(conn, _role("other"), org_id=ORG, origin="system")
+
+
 async def test_redefining_a_role_does_not_change_the_org_it_was_created_in(plane):
     async with plane.acquire() as conn:
-        await role_repo.upsert(conn, _role("loose"), org_id=None)
-        await role_repo.upsert(conn, _role("from_config"), org_id=ORG)
+        await role_repo.upsert(conn, _role("loose"), org_id=None, origin="admin")
+        await role_repo.upsert(conn, _role("from_config"), org_id=ORG, origin="admin")
         rows = {r["id"]: r["org_id"] for r in await role_repo.list_all(conn)}
     assert (rows["loose"], rows["from_config"]) == (ORG, None)
 
 
-@pytest.mark.parametrize("role_id", ["org_admin", "analyst", "platform_admin", "from_config"])
-async def test_a_role_the_deployment_defines_is_refused(plane, role_id):
+@pytest.mark.parametrize("role_id", ["org_admin", "analyst", "platform_admin"])
+async def test_a_role_the_deployment_seeds_is_refused(plane, role_id):
     async with plane.acquire() as conn:
         with pytest.raises(role_repo.RoleDeleteRefused) as err:
             await role_repo.delete(conn, role_id)
     assert (err.value.reason, err.value.role_id) == ("system", role_id)
     assert role_id in await _ids(plane)
+
+
+async def test_a_role_a_config_declared_may_be_deleted(plane):
+    """Only a seeded role is a system role. A config's role may go; the next load of a file that
+    still declares it brings it back, which the delete's answer says."""
+    async with plane.acquire() as conn:
+        assert await role_repo.delete(conn, "from_config") is True
+    assert "from_config" not in await _ids(plane)
 
 
 def _named(refused: role_repo.RoleDeleteRefused) -> list[tuple[str, object, tuple[str, ...]]]:
@@ -155,12 +198,6 @@ async def test_a_role_someone_holds_or_a_grant_names_is_refused_naming_each(plan
     assert [r[0] for r in left if r[0] == "loose"] == []
 
 
-async def test_a_full_replace_removes_every_role_it_is_not_told_to_keep(plane):
-    async with plane.acquire() as conn:
-        await role_repo.delete_all_except(conn, ["org_admin", "analyst", "base"])
-    assert await _ids(plane) == {"org_admin", "analyst", "base"}
-
-
 async def test_a_created_role_nothing_inherits_from_is_deleted(plane):
     async with plane.acquire() as conn:
         assert await role_repo.delete(conn, "loose") is True
@@ -199,18 +236,16 @@ def graphql_pool(plane, monkeypatch):
     monkeypatch.setattr(schema_mutation, "_get_pool", _pool)
 
 
-@pytest.mark.parametrize("role_id", ["analyst", "from_config"])
-async def test_rest_refuses_a_role_the_deployment_defines(plane, rebuilds, role_id):
+@pytest.mark.parametrize("role_id", ["analyst"])
+async def test_rest_refuses_a_role_the_deployment_seeds(plane, rebuilds, role_id):
     with pytest.raises(ApiError) as err:
         await _rest(role_id)
     assert (err.value.status_code, err.value.code) == (400, "roles.cannot_delete_system")
     assert role_id in await _ids(plane) and rebuilds == []
 
 
-@pytest.mark.parametrize("role_id", ["analyst", "from_config"])
-async def test_graphql_refuses_a_role_the_deployment_defines(
-    plane, graphql_pool, rebuilds, role_id
-):
+@pytest.mark.parametrize("role_id", ["analyst"])
+async def test_graphql_refuses_a_role_the_deployment_seeds(plane, graphql_pool, rebuilds, role_id):
     result = await _graphql(role_id)
     assert (result.success, result.code) == (False, "schema.role_is_system")
     assert role_id in await _ids(plane) and rebuilds == []
@@ -243,7 +278,7 @@ async def test_graphql_refuses_a_parent_naming_its_heirs(plane, graphql_pool, re
 
 
 async def test_rest_deletes_a_created_role_and_rebuilds(plane, rebuilds):
-    assert await _rest("loose") == {"deleted": "loose"}
+    assert await _rest("loose") == {"deleted": "loose", "warnings": []}
     assert "loose" not in await _ids(plane) and rebuilds == [1]
 
 
@@ -266,3 +301,48 @@ async def test_graphql_answers_not_found_for_a_role_that_is_not_there(
     result = await _graphql("nobody")
     assert (result.success, result.code) == (False, "schema.role_not_found")
     assert rebuilds == []
+
+
+# --- a config's role: the delete is made, and the answer says what the next load does (REQ-1919) --
+
+_CONFIG_DELETED = {
+    "code": "origin.config_object_deleted",
+    "message": (
+        "role 'from_config' is declared in the config: the next load of the config creates it "
+        "again while the file still declares it"
+    ),
+    "params": {"kind": "role", "name": "from_config"},
+}
+
+
+async def test_rest_deletes_a_config_role_and_says_the_next_load_brings_it_back(plane, rebuilds):
+    assert await _rest("from_config") == {"deleted": "from_config", "warnings": [_CONFIG_DELETED]}
+    assert "from_config" not in await _ids(plane)
+
+
+async def test_graphql_deletes_a_config_role_and_says_the_next_load_brings_it_back(
+    plane, graphql_pool, rebuilds
+):
+    result = await _graphql("from_config")
+    assert (result.success, result.code) == (True, "schema.role_deleted")
+    assert [(w.code, w.message, w.params) for w in result.warnings] == [
+        (_CONFIG_DELETED["code"], _CONFIG_DELETED["message"], _CONFIG_DELETED["params"])
+    ]
+    assert "from_config" not in await _ids(plane)
+
+
+async def test_deleting_a_role_made_through_the_admin_carries_no_warning(
+    plane, graphql_pool, rebuilds
+):
+    assert await _rest("loose") == {"deleted": "loose", "warnings": []}
+    result = await _graphql("derived")
+    assert (result.success, result.warnings) == (True, [])
+
+
+async def test_rest_lists_each_roles_origin(plane):
+    listed = {r["id"]: r["origin"] for r in await roles_router.list_roles(_request())}
+    assert (listed["analyst"], listed["from_config"], listed["loose"]) == (
+        "seed",
+        "config",
+        "admin",
+    )

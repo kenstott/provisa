@@ -128,4 +128,7 @@ class TestWhatIsDemonstrated:
         # The reconcile above only reaches a row an earlier release left behind; a fresh control
         # plane gets its demonstrated list from the INSERT itself.
         sql = open("provisa/core/schema.sql").read()
-        assert "INSERT INTO roles (id, capabilities, demonstrated, domain_access, org_id)" in sql
+        assert (
+            "INSERT INTO roles (id, capabilities, demonstrated, domain_access, org_id, origin)"
+            in sql
+        )

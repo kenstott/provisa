@@ -194,8 +194,10 @@ async def _seed_semantic_layer(conn):
             columns=[Column(name=c, data_type="text", visible_to=["*"]) for c in cols],
         )
 
-    await table_repo.upsert(conn, _tbl("orders", ["amount", "refunds", "customer_id"]))
-    await table_repo.upsert(conn, _tbl("customers", ["id", "region"]))
+    await table_repo.upsert(
+        conn, _tbl("orders", ["amount", "refunds", "customer_id"]), origin="admin"
+    )
+    await table_repo.upsert(conn, _tbl("customers", ["id", "region"]), origin="admin")
     await relationship_repo.upsert(
         conn,
         Relationship(
@@ -239,7 +241,7 @@ async def test_register_view_metrics_generates_and_persists_view_sql(tmp_path):
                 view_metrics=spec,
             )
             model.view_sql = sql  # register_table generates then persists (REQ-1318)
-            await table_repo.upsert(conn, model)
+            await table_repo.upsert(conn, model, origin="admin")
 
             row = await table_repo.get_by_name(conn, "__derived__", "views", "revenue_by_region")
             assert row is not None
@@ -285,7 +287,7 @@ async def test_metric_upsert_regenerates_dependent_view_sql(tmp_path):
                 view_metrics=spec,
             )
             model.view_sql = await compile_view_metrics_sql(conn, spec)
-            await table_repo.upsert(conn, model)
+            await table_repo.upsert(conn, model, origin="admin")
 
             # unrelated metric → nothing regenerates
             await metric_repo.upsert(

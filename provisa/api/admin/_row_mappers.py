@@ -102,6 +102,7 @@ def _source_from_row(row, *, connection: bool) -> SourceType:
     return SourceType(
         id=row["id"],
         type=row["type"],
+        origin=row["origin"],  # REQ-1919
         host=row["host"] if connection else None,
         port=row["port"] if connection else None,
         database=row["database"] if connection else None,
@@ -135,6 +136,7 @@ def _domain_from_row(row) -> DomainType:
     return DomainType(
         id=row["id"],
         description=row["description"],
+        origin=row["origin"],  # REQ-1919
         steward=row["steward"],  # REQ-609
         graphql_alias=row["graphql_alias"],
         is_system=row["id"] in system_domain_ids(),
@@ -144,7 +146,13 @@ def _domain_from_row(row) -> DomainType:
 def _role_from_row(row, *, detail: bool = True) -> RoleType:
     """``detail`` False returns the id alone: no capabilities, domain access, limits or parent."""
     if not detail:
-        return RoleType(id=row["id"], capabilities=None, domain_access=None, demonstrated=None)
+        return RoleType(
+            id=row["id"],
+            origin=row["origin"],
+            capabilities=None,
+            domain_access=None,
+            demonstrated=None,
+        )
     # REQ-1174: surface the per-role rate + query-complexity limits (JSON column) to the admin API.
     rl = row.get("rate_limit")
     rate_limit = None
@@ -157,6 +165,7 @@ def _role_from_row(row, *, detail: bool = True) -> RoleType:
         )
     return RoleType(
         id=row["id"],
+        origin=row["origin"],  # REQ-1919
         capabilities=list(row["capabilities"]),
         domain_access=list(row["domain_access"]),
         # REQ-1602: the rights this role is shown but does not hold.

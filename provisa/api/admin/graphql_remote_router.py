@@ -203,7 +203,7 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
                 ],
             )
             try:
-                await table_repo.upsert(conn, tbl)
+                await table_repo.upsert(conn, tbl, origin="admin")
             except table_repo.ColumnDropRefused as refused:
                 # The remote dropped a field something here still refers to: the table is left
                 # as it was and reported.
@@ -309,6 +309,7 @@ async def register_graphql_remote_source(
             await _conn.upsert(
                 sources,
                 {
+                    "origin": "admin",  # REQ-1919: written when the row is created
                     "id": body.source_id,
                     "type": "graphql_remote",
                     "host": "",
@@ -325,7 +326,7 @@ async def register_graphql_remote_source(
             if body.domain_id:
                 await _conn.upsert(
                     domains,
-                    {"id": body.domain_id},
+                    {"id": body.domain_id, "origin": "admin"},  # REQ-1919
                     index_elements=["id"],
                     update_columns=[],
                 )

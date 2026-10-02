@@ -64,6 +64,7 @@ def _table(**overrides: Any) -> RegisteredTableType:
         domain_id="sales",
         schema_name="quality",
         table_name="orders_scans",
+        origin="admin",
         alias=None,
         description=None,
         cache_ttl=None,

@@ -50,10 +50,10 @@ async def plane(monkeypatch) -> Database:
     db = Database(create_engine_from_url("sqlite+pysqlite:///:memory:"), name="metric-delete-test")
     await _init_schema_portable(db)
     async with db.acquire() as conn:
-        await conn.execute_core(insert(sources).values(id="pg", type="postgresql"))
-        await conn.execute_core(insert(domains).values(id="sales"))
+        await conn.execute_core(insert(sources).values(id="pg", type="postgresql", origin="admin"))
+        await conn.execute_core(insert(domains).values(id="sales", origin="admin"))
         await conn.execute_core(
-            insert(roles).values(id="seller", capabilities=[], domain_access=["*"])
+            insert(roles).values(id="seller", capabilities=[], domain_access=["*"], origin="admin")
         )
         for name in ("revenue", "margin", "unused"):
             await conn.execute_core(insert(metrics).values(name=name, expression="SUM(orders.a)"))
@@ -66,7 +66,12 @@ async def _view(db: Database, name: str, **values: Any) -> int:
     async with db.acquire() as conn:
         await conn.execute_core(
             insert(registered_tables).values(
-                source_id="pg", domain_id="sales", schema_name="views", table_name=name, **values
+                source_id="pg",
+                domain_id="sales",
+                schema_name="views",
+                table_name=name,
+                origin="admin",
+                **values,
             )
         )
         return (

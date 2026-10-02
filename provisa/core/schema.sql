@@ -20,7 +20,11 @@ CREATE TABLE IF NOT EXISTS sources (
     change_signal TEXT NOT NULL DEFAULT 'ttl',  -- REQ-929/1149: source default change signal (ttl|probe|ttl_probe|native|debezium|kafka|signal)
     gql_naming_convention TEXT,
     federation_hints JSONB NOT NULL DEFAULT '{}',  -- connection extras the typed columns can't carry
-    path          TEXT  -- file path or URL for file-based sources (csv, parquet, sqlite)
+    path          TEXT,  -- file path or URL for file-based sources (csv, parquet, sqlite)
+    -- REQ-1919: where the row came from -- 'config' (a config file declared it), 'admin' (made
+    -- through the admin) or 'seed' (the deployment's own). Written when the row is created; a load
+    -- removes only 'config' rows its file no longer declares.
+    origin        TEXT NOT NULL
     -- the password itself is never stored; password_ref below carries the reference that names it
 );
 
@@ -38,27 +42,31 @@ CREATE TABLE IF NOT EXISTS domains (
     id            TEXT PRIMARY KEY,
     description   TEXT NOT NULL DEFAULT '',
     steward       TEXT,
-    graphql_alias TEXT
+    graphql_alias TEXT,
+    -- REQ-1919: where the row came from -- 'config' (a config file declared it), 'admin' (made
+    -- through the admin) or 'seed' (the deployment's own). Written when the row is created; a load
+    -- removes only 'config' rows its file no longer declares.
+    origin        TEXT NOT NULL
 );
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS graphql_alias TEXT;
 -- REQ-609: designated steward; NULL = pending (the domain may not serve governed data).
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS steward TEXT;
 
 -- Seed default (no-domain) row so domain_id='' is always a valid FK target
-INSERT INTO domains (id, description) VALUES ('', 'No domain')
+INSERT INTO domains (id, description, origin) VALUES ('', 'No domain', 'seed')
 ON CONFLICT (id) DO NOTHING;
 
 -- Seed built-in system metadata domain
-INSERT INTO domains (id, description) VALUES ('meta', 'System metadata')
+INSERT INTO domains (id, description, origin) VALUES ('meta', 'System metadata', 'seed')
 ON CONFLICT (id) DO NOTHING;
 
 -- Seed built-in operational telemetry domain (REQ-1386: org_admin is its steward)
-INSERT INTO domains (id, description, steward) VALUES ('ops', 'Operational telemetry', 'org_admin')
+INSERT INTO domains (id, description, steward, origin) VALUES ('ops', 'Operational telemetry', 'org_admin', 'seed')
 ON CONFLICT (id) DO NOTHING;
 
 
 -- Seed demo shelter domain
-INSERT INTO domains (id, description) VALUES ('shelter', 'Animal shelter staff and breed management')
+INSERT INTO domains (id, description, origin) VALUES ('shelter', 'Animal shelter staff and breed management', 'seed')
 ON CONFLICT (id) DO NOTHING;
 
 -- REQ-1634: a data product groups tables within a single domain for governed publication.
@@ -147,6 +155,10 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     modeling_role TEXT,     -- REQ-1320: 'dimension' | 'fact' | NULL (entity/fact lowering metadata)
     modeling_history TEXT,  -- REQ-1320: originating entity history mode ('scd2' | 'snapshot' | NULL)
     view_metrics JSONB,     -- REQ-1318: declarative metric-view spec {metrics, dimensions, filters}; view_sql holds the generated SELECT
+    -- REQ-1919: where the row came from -- 'config' (a config file declared it), 'admin' (made
+    -- through the admin) or 'seed' (the deployment's own). Written when the row is created; a load
+    -- removes only 'config' rows its file no longer declares.
+    origin TEXT NOT NULL,
     UNIQUE (source_id, schema_name, table_name)
 );
 
@@ -384,7 +396,11 @@ CREATE TABLE IF NOT EXISTS roles (
     -- as a column rather than applied once at creation because the tenancy seam
     -- (db.apply_tenancy_role_grants) re-asserts org_admin's rights into every environment schema on
     -- every runtime build, which handed the subtracted rights straight back.
-    defined_from    TEXT
+    defined_from    TEXT,
+    -- REQ-1919: where the row came from -- 'config' (a config file declared it), 'admin' (made
+    -- through the admin) or 'seed' (the deployment's own). Written when the row is created; a load
+    -- removes only 'config' rows its file no longer declares.
+    origin          TEXT NOT NULL
 );
 
 -- Migration: add parent_role_id if missing
@@ -1102,7 +1118,7 @@ END $$;
 -- its org (confinement comes from membership + active_org_id + per-schema assignments), and
 -- deliberately EXCLUDES the platform rights 'platform_settings'/'cross_org' here. org_id = NULL
 -- marks it a system role (identical caps in every org; non-editable via roles_router).
-INSERT INTO roles (id, capabilities, domain_access, org_id)
+INSERT INTO roles (id, capabilities, domain_access, org_id, origin)
 VALUES (
     'org_admin',
     '["source_registration","table_registration","create_relationship","create_view",
@@ -1113,7 +1129,8 @@ VALUES (
       "glossary_read","glossary_rw","org_glossary_rw",
       "data_product_read","data_product_rw"]'::jsonb,
     '["*"]'::jsonb,
-    NULL
+    NULL,
+    'seed'
 )
 ON CONFLICT (id) DO NOTHING;
 
@@ -1130,12 +1147,13 @@ ON CONFLICT (id) DO NOTHING;
 -- still applies to it. Testing the result of a modelling change is done by switching BACK to a role
 -- without ignore_relationships, which is what enforces the model. analyst deliberately does not
 -- hold it: the least-privileged default never breaks out of the model.
-INSERT INTO roles (id, capabilities, domain_access, org_id)
+INSERT INTO roles (id, capabilities, domain_access, org_id, origin)
 VALUES (
     'analyst',
     '["usage","query_development","glossary_read","data_product_read"]'::jsonb,
     '["*"]'::jsonb,
-    NULL
+    NULL,
+    'seed'
 ),
 (
     'developer',
@@ -1181,7 +1199,7 @@ ON CONFLICT (id) DO NOTHING;
 -- back. `user_management` is the exception: letting a sandbox visitor see a page that implies they
 -- could confer roles or admit people, even inertly, misrepresents what the role can ever do here,
 -- so /team stays a hard block instead of a demonstration.
-INSERT INTO roles (id, capabilities, demonstrated, domain_access, org_id)
+INSERT INTO roles (id, capabilities, demonstrated, domain_access, org_id, origin)
 VALUES (
     'sandbox',
     '["access_config","approve_relationship","approve_view","column_grant","create_relationship",
@@ -1190,7 +1208,8 @@ VALUES (
       "source_registration","table_registration","usage","view_governance","write"]'::jsonb,
     '["environment_management","environment_switch","org_glossary_rw"]'::jsonb,
     '["*"]'::jsonb,
-    NULL
+    NULL,
+    'seed'
 )
 ON CONFLICT (id) DO NOTHING;
 
@@ -1226,12 +1245,13 @@ WHERE id = 'sandbox'
 -- Seeded here rather than synthesized in code so user_role_assignments.role_id has a real FK target
 -- and state.roles["platform_admin"] resolves its capabilities like any other role. role_repo.upsert
 -- refuses to overwrite this row, so no config file or admin surface can re-grant the data caps.
-INSERT INTO roles (id, capabilities, domain_access, org_id)
+INSERT INTO roles (id, capabilities, domain_access, org_id, origin)
 VALUES (
     'platform_admin',
     '["platform_settings","cross_org"]'::jsonb,
     '[]'::jsonb,
-    NULL
+    NULL,
+    'seed'
 )
 ON CONFLICT (id) DO NOTHING;
 

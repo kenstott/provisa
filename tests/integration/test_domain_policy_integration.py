@@ -151,7 +151,7 @@ class TestSingleDomainMode:
                 columns=[Column(name="id", data_type="integer", visible_to=["admin"])],
             )
             with pytest.raises(ValueError, match="cannot register domain"):
-                await table_repo.upsert(conn, bad)
+                await table_repo.upsert(conn, bad, origin="admin")
 
 
 class TestLegacyMode:
@@ -181,15 +181,18 @@ class TestReloadValidationSweep:
         # then switch to single-domain mode and run the sweep.
         async with tenant_db.acquire() as conn:
             await conn.execute(
-                "INSERT INTO sources (id, type, dialect) VALUES ('pg1', 'postgresql', 'postgres') "
+                "INSERT INTO sources (id, type, dialect, origin) "
+                "VALUES ('pg1', 'postgresql', 'postgres', 'admin') "
                 "ON CONFLICT (id) DO NOTHING"
             )
             await conn.execute(
-                "INSERT INTO domains (id) VALUES ('sales') ON CONFLICT (id) DO NOTHING"
+                "INSERT INTO domains (id, origin) VALUES ('sales', 'admin') "
+                "ON CONFLICT (id) DO NOTHING"
             )
             await conn.execute(
-                "INSERT INTO registered_tables (source_id, domain_id, schema_name, table_name) "
-                "VALUES ('pg1', 'sales', 'public', 'legacy_tbl')"
+                "INSERT INTO registered_tables "
+                "(source_id, domain_id, schema_name, table_name, origin) "
+                "VALUES ('pg1', 'sales', 'public', 'legacy_tbl', 'admin')"
             )
             with pytest.raises(RuntimeError, match="re-register"):
                 await _validate_existing_domains(conn, "global")
@@ -198,15 +201,18 @@ class TestReloadValidationSweep:
     async def test_sweep_passes_when_all_default(self, tenant_db, graphql_client):
         async with tenant_db.acquire() as conn:
             await conn.execute(
-                "INSERT INTO sources (id, type, dialect) VALUES ('pg1', 'postgresql', 'postgres') "
+                "INSERT INTO sources (id, type, dialect, origin) "
+                "VALUES ('pg1', 'postgresql', 'postgres', 'admin') "
                 "ON CONFLICT (id) DO NOTHING"
             )
             await conn.execute(
-                "INSERT INTO domains (id) VALUES ('global') ON CONFLICT (id) DO NOTHING"
+                "INSERT INTO domains (id, origin) VALUES ('global', 'admin') "
+                "ON CONFLICT (id) DO NOTHING"
             )
             await conn.execute(
-                "INSERT INTO registered_tables (source_id, domain_id, schema_name, table_name) "
-                "VALUES ('pg1', 'global', 'public', 'ok_tbl')"
+                "INSERT INTO registered_tables "
+                "(source_id, domain_id, schema_name, table_name, origin) "
+                "VALUES ('pg1', 'global', 'public', 'ok_tbl', 'admin')"
             )
             # Should not raise — all tables are in the default domain.
             await _validate_existing_domains(conn, "global")

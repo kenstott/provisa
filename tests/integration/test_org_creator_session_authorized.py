@@ -112,14 +112,14 @@ def _prepare_sync():
         # schema.sql seeds org_admin/analyst/platform_admin per org; provisioning is stubbed here, so
         # the FK targets for user_role_assignments have to exist up front. The bootstrap claim
         # grants platform_admin as well as org_admin (REQ-1297).
-        conn.execute(insert(roles).values(id="org_admin"))
-        conn.execute(insert(roles).values(id="analyst"))
-        conn.execute(insert(roles).values(id="platform_admin"))
+        conn.execute(insert(roles).values(id="org_admin", origin="admin"))
+        conn.execute(insert(roles).values(id="analyst", origin="admin"))
+        conn.execute(insert(roles).values(id="platform_admin", origin="admin"))
         # REQ-1301: provisioning refreshes the root org-registry view, registered under the
         # provisa-admin source in the meta domain — rows the startup seeder writes before any org
         # is provisioned.
-        conn.execute(insert(sources).values(id="provisa-admin", type="postgresql"))
-        conn.execute(insert(domains).values(id="meta"))
+        conn.execute(insert(sources).values(id="provisa-admin", type="postgresql", origin="admin"))
+        conn.execute(insert(domains).values(id="meta", origin="admin"))
     return engine
 
 
