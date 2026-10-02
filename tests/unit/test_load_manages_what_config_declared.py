@@ -380,6 +380,45 @@ async def test_a_config_domain_a_role_still_reaches_is_refused_naming_the_role(d
     assert [(d["kind"], d["name"]) for d in report[0]["dependents"]] == [("role", "tester")]
 
 
+# --- a secondary worker only upserts (REQ-1229) ---------------------------------------------------
+
+
+@pytest.mark.parametrize("replace", [False, True])
+async def test_a_secondarys_load_removes_nothing_and_raises_nothing(db, monkeypatch, replace):
+    """Only the primary's load removes what the file dropped. A secondary — whose file may be
+    older than the primary's — upserts, and neither removes a dropped object nor refuses one
+    that is still depended on."""
+    view = _view("big_orders", "SELECT id FROM orders")
+    await _load(
+        db,
+        _file(
+            roles=("seller", "auditor"), domains=("sales", "spare"), tables=[_table("orders"), view]
+        ),
+    )
+
+    monkeypatch.setenv("PROVISA_ROLE", "secondary")
+    # Drops a role and a domain nothing depends on, and a table a remaining view reads.
+    await _load(db, _file(tables=[view]), replace=replace)
+
+    assert {"seller", "auditor"} <= set(await _origins(db, "roles"))
+    assert "spare" in await _origins(db, "domains")
+    assert await _origins(db, "registered_tables", "table_name") == {
+        "big_orders": "config",
+        "orders": "config",
+    }
+
+    # The primary's load of the same file is the one that judges it.
+    monkeypatch.setenv("PROVISA_ROLE", "primary")
+    with pytest.raises(ConfigDropRefused):
+        await _load(db, _file(tables=[view]), replace=replace)
+
+
+def test_a_worker_is_the_primary_unless_started_as_a_secondary():
+    assert config_loader.is_primary_worker({}) is True
+    assert config_loader.is_primary_worker({"PROVISA_ROLE": "primary"}) is True
+    assert config_loader.is_primary_worker({"PROVISA_ROLE": " Secondary "}) is False
+
+
 # --- a table whose schema the file corrected ------------------------------------------------------
 
 

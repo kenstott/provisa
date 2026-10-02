@@ -14,6 +14,7 @@
 # complexity-gate: allow-ble=6 reason="per-source config registration is best-effort: source-driver register, OpenAPI spec load, SQLite migration post-step, OpenAPI cache, api_endpoints register, and CBO analyze each log their own failure and continue, so one bad source never fails the whole config load"
 
 import logging
+import os
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Mapping
@@ -1106,7 +1107,11 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     # same column names revives its terms instead of losing their definitions to an early sweep.
     # 10.9 What the file no longer declares (REQ-1919) — judged here, against the model the
     # steps above produced, and before the glossary settles what the removed tables' refs leave.
-    await _remove_what_the_config_dropped(conn, config)
+    # REQ-1229: on the PRIMARY's load only. A secondary's load only upserts — its file may be
+    # older than the primary's — so it removes nothing and refuses nothing; it sees the outcome
+    # of the primary's removal through the model stamp and reloads (REQ-1914).
+    if is_primary_worker(os.environ):
+        await _remove_what_the_config_dropped(conn, config)
 
     await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
 
@@ -1481,6 +1486,12 @@ async def _validate_existing_domains(conn: "Connection", default_domain: str) ->
         )
 
 
+def is_primary_worker(environ: Mapping[str, str]) -> bool:  # REQ-1229
+    """Whether this worker is the cluster's single writer. THE place "primary" is decided: a
+    worker is the primary unless it was started with ``PROVISA_ROLE=secondary``."""
+    return environ.get("PROVISA_ROLE", "primary").strip().lower() != "secondary"
+
+
 def config_replace_mode(environ: Mapping[str, str]) -> bool:  # REQ-1229
     """Single-writer cluster invariant: replace mode is hard-disabled off the primary.
 
@@ -1488,8 +1499,7 @@ def config_replace_mode(environ: Mapping[str, str]) -> bool:  # REQ-1229
     load_config advisory lock) — replace would let it wipe primary-registered rows.
     On the primary, replace is opt-in via PROVISA_CONFIG_REPLACE.
     """
-    is_primary = environ.get("PROVISA_ROLE", "primary").strip().lower() != "secondary"
-    return is_primary and environ.get("PROVISA_CONFIG_REPLACE", "").lower() in (
+    return is_primary_worker(environ) and environ.get("PROVISA_CONFIG_REPLACE", "").lower() in (
         "1",
         "true",
         "yes",
