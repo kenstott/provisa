@@ -19,14 +19,16 @@ from __future__ import annotations
 import pytest
 
 from provisa.executor.result import QueryResult
+from tests.helpers import RegisteredNames
 from provisa.mv.models import JoinPattern, MVDefinition, MVStatus
 from provisa.mv.refresh import _build_refresh_sql, _target_ref, refresh_mv
 from provisa.mv.registry import MVRegistry
 
 
-class _FakeEngine:
-    """Records SQL; SHOW COLUMNS/COUNT(*) return configured rows. ``side_effect`` and
-    ``raise_all`` reproduce the old cursor.execute side effects (e.g. table-not-found)."""
+class _FakeEngine(RegisteredNames):
+    """Records SQL; the zero-row shape read of a join-pattern table / COUNT(*) return configured
+    rows. ``side_effect`` and ``raise_all`` reproduce the old cursor.execute side effects (e.g.
+    table-not-found)."""
 
     def __init__(self, count=0, show_columns=None, side_effect=None, raise_all=None):
         self.count = count
@@ -35,17 +37,14 @@ class _FakeEngine:
         self._side_effect = side_effect
         self._raise_all = raise_all
 
-    def address_replicas(self, sql):
-        return sql  # this stand-in's tables are all read where the statement names them
-
     async def execute_engine(self, sql, *a, **k):
         self.sqls.append(sql)
         if self._side_effect is not None:
             self._side_effect(sql)
         if self._raise_all is not None:
             raise self._raise_all
-        if "SHOW COLUMNS" in sql:
-            return QueryResult(rows=self.show_columns, column_names=[])
+        if sql.startswith('SELECT * FROM "src"."public".') and sql.endswith("LIMIT 0"):
+            return QueryResult(rows=[], column_names=[c for (c,) in self.show_columns])
         if "COUNT(*)" in sql:
             return QueryResult(rows=[(self.count,)], column_names=[])
         return QueryResult(rows=[], column_names=[])
@@ -104,6 +103,9 @@ class TestBuildRefreshSQL:
         assert '"customers"."name" AS "customers__name"' in result
         assert '"customers"."email" AS "customers__email"' in result
         assert '"orders".*' in result
+        # Each table is read at its catalog-physical name, under its registered name as alias.
+        assert 'FROM "src"."public"."orders" AS "orders" ' in result
+        assert 'JOIN "src"."public"."customers" AS "customers" ON ' in result
 
     async def test_join_pattern_introspection_failure_raises(self):
         mv = _jp_mv()
@@ -192,9 +194,10 @@ class TestRefreshMV:
         registry.register(mv)
 
         # Table does not exist — raise on the target existence probe
-        # (SELECT * FROM {target} LIMIT 0); the "_shape" probe only runs when it exists.
+        # (SELECT * FROM {target} LIMIT 0); the "_shape" probe only runs when it exists. The
+        # zero-row shape read of an input table (named in its source) is not that probe.
         def side_effect(sql):
-            if "LIMIT 0" in sql and "_shape" not in sql:
+            if "LIMIT 0" in sql and "_shape" not in sql and '"src"."public".' not in sql:
                 raise Exception("TABLE_NOT_FOUND")
 
         engine = _FakeEngine(count=42, side_effect=side_effect)

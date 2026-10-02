@@ -30,14 +30,13 @@ from provisa.api.metadata_export.snowflake_horizon import (
     SnowflakeHorizonExport,
     _object_kind,
     ListingMember,
+    PublishedAddresses,
     _table_exists,
     comment_statements,
     listing_manifest,
     listing_statements,
     listing_update_statement,
     manifest_matches,
-    physical_parts,
-    physical_table_and_column,
     revoke_statements,
     share_statements,
 )
@@ -62,19 +61,35 @@ def _column_ref(source_id: str, schema: str, table: str, column: str) -> AssetRe
     return AssetRef(kind=AssetKind.COLUMN, parts=(source_id, schema, table, column))
 
 
+# The export view of each replica-served table of the test model, as the publish path hands it
+# to the adapter (REQ-1912): the landing database's export schema, under the replica's name.
+_VIEWS = {
+    ("petstore-api", "public", t): ("org_acme_export", f"petstore-api__public__{t}")
+    for t in ("customers", "orders", "pets")
+}
+_ADDR = PublishedAddresses(landing_database="landing", export_views=_VIEWS)
+
+
 def test_registered_under_its_provider_name():
     assert "snowflake_horizon" in registered_providers()
 
 
-def test_physical_parts_resolves_source_id_to_catalog_name():
+def test_a_replica_served_table_is_published_through_its_export_view():
+    # REQ-1912: the address the reconcile created the view at — the landing database's export
+    # schema — not the table's registered address and not a database named for its source.
     ref = _table_ref("petstore-api", "public", "pets")
-    assert physical_parts(ref) == ("petstore_api", "public", "pets")
+    assert _ADDR.table(ref) == ("landing", "org_acme_export", "petstore-api__public__pets")
 
 
-def test_physical_parts_rejects_non_table_ref():
+def test_a_table_the_engine_reads_in_place_is_published_where_it_is_attached():
+    ref = _table_ref("lake", "sales", "events")  # an external table: it has no export view
+    assert _ADDR.table(ref) == ("landing", "sales", "events")
+
+
+def test_published_address_rejects_non_table_ref():
     ref = AssetRef(kind=AssetKind.SOURCE, parts=("petstore-api",))
     with pytest.raises(ValueError):
-        physical_parts(ref)
+        _ADDR.table(ref)
 
 
 def test_share_statements_grant_once_per_database_and_schema():
@@ -290,20 +305,26 @@ def test_revoke_statements_withdraws_select_on_objects_no_longer_members():
     ]
 
 
-def test_physical_table_and_column_resolves_table_ref():
+def test_published_table_and_column_resolves_table_ref():
     ref = _table_ref("petstore-api", "public", "pets")
-    assert physical_table_and_column(ref) == (("petstore_api", "public", "pets"), None)
+    assert _ADDR.table_and_column(ref) == (
+        ("landing", "org_acme_export", "petstore-api__public__pets"),
+        None,
+    )
 
 
-def test_physical_table_and_column_resolves_column_ref():
+def test_published_table_and_column_resolves_column_ref():
     ref = _column_ref("petstore-api", "public", "pets", "owner_ssn")
-    assert physical_table_and_column(ref) == (("petstore_api", "public", "pets"), "owner_ssn")
+    assert _ADDR.table_and_column(ref) == (
+        ("landing", "org_acme_export", "petstore-api__public__pets"),
+        "owner_ssn",
+    )
 
 
-def test_physical_table_and_column_rejects_other_ref_kinds():
+def test_published_table_and_column_rejects_other_ref_kinds():
     ref = AssetRef(kind=AssetKind.SOURCE, parts=("petstore-api",))
     with pytest.raises(ValueError):
-        physical_table_and_column(ref)
+        _ADDR.table_and_column(ref)
 
 
 def _column_asset(source_id: str, schema: str, table: str, column: str) -> ColumnAsset:
@@ -334,16 +355,20 @@ def _table_asset(
 
 def test_comment_statements_sets_table_comment_on_a_real_table():
     table = _table_asset("petstore-api", "public", "pets", description="Pets for sale")
-    kinds = {("petstore_api", "public", "pets"): "TABLE"}
-    stmts = comment_statements([table], kinds, [])
-    assert stmts == ['ALTER TABLE "petstore_api"."public"."pets" SET COMMENT = \'Pets for sale\';']
+    kinds = {("landing", "org_acme_export", "petstore-api__public__pets"): "TABLE"}
+    stmts = comment_statements([table], kinds, [], _ADDR)
+    assert stmts == [
+        'ALTER TABLE "landing"."org_acme_export"."petstore-api__public__pets" SET COMMENT = \'Pets for sale\';'
+    ]
 
 
 def test_comment_statements_sets_view_comment_via_alter_view():
     table = _table_asset("petstore-api", "public", "pets", description="Pets for sale")
-    kinds = {("petstore_api", "public", "pets"): "VIEW"}
-    stmts = comment_statements([table], kinds, [])
-    assert stmts == ['ALTER VIEW "petstore_api"."public"."pets" SET COMMENT = \'Pets for sale\';']
+    kinds = {("landing", "org_acme_export", "petstore-api__public__pets"): "VIEW"}
+    stmts = comment_statements([table], kinds, [], _ADDR)
+    assert stmts == [
+        'ALTER VIEW "landing"."org_acme_export"."petstore-api__public__pets" SET COMMENT = \'Pets for sale\';'
+    ]
 
 
 def test_comment_statements_sets_column_comment_via_modify_column_on_a_table():
@@ -354,10 +379,10 @@ def test_comment_statements_sets_column_comment_via_modify_column_on_a_table():
         description="Pet name",
     )
     table = _table_asset("petstore-api", "public", "pets", columns=[column])
-    kinds = {("petstore_api", "public", "pets"): "TABLE"}
-    stmts = comment_statements([table], kinds, [])
+    kinds = {("landing", "org_acme_export", "petstore-api__public__pets"): "TABLE"}
+    stmts = comment_statements([table], kinds, [], _ADDR)
     assert stmts == [
-        'ALTER TABLE "petstore_api"."public"."pets" MODIFY COLUMN "name" COMMENT \'Pet name\';'
+        'ALTER TABLE "landing"."org_acme_export"."petstore-api__public__pets" MODIFY COLUMN "name" COMMENT \'Pet name\';'
     ]
 
 
@@ -369,16 +394,16 @@ def test_comment_statements_sets_column_comment_via_alter_column_on_a_view():
         description="Pet name",
     )
     table = _table_asset("petstore-api", "public", "pets", columns=[column])
-    kinds = {("petstore_api", "public", "pets"): "VIEW"}
-    stmts = comment_statements([table], kinds, [])
+    kinds = {("landing", "org_acme_export", "petstore-api__public__pets"): "VIEW"}
+    stmts = comment_statements([table], kinds, [], _ADDR)
     assert stmts == [
-        'ALTER VIEW "petstore_api"."public"."pets" ALTER COLUMN "name" COMMENT \'Pet name\';'
+        'ALTER VIEW "landing"."org_acme_export"."petstore-api__public__pets" ALTER COLUMN "name" COMMENT \'Pet name\';'
     ]
 
 
 def test_comment_statements_skips_tables_missing_from_kinds():
     table = _table_asset("petstore-api", "public", "pets", description="Pets for sale")
-    assert comment_statements([table], {}, []) == []
+    assert comment_statements([table], {}, [], _ADDR) == []
 
 
 def test_comment_statements_skips_columns_and_tables_with_no_description():
@@ -389,13 +414,13 @@ def test_comment_statements_skips_columns_and_tables_with_no_description():
         description="",
     )
     table = _table_asset("petstore-api", "public", "pets", columns=[column])
-    kinds = {("petstore_api", "public", "pets"): "TABLE"}
-    assert comment_statements([table], kinds, []) == []
+    kinds = {("landing", "org_acme_export", "petstore-api__public__pets"): "TABLE"}
+    assert comment_statements([table], kinds, [], _ADDR) == []
 
 
 def test_comment_statements_appends_governance_note_to_table_comment():
     table = _table_asset("petstore-api", "public", "pets", description="Pets for sale")
-    kinds = {("petstore_api", "public", "pets"): "TABLE"}
+    kinds = {("landing", "org_acme_export", "petstore-api__public__pets"): "TABLE"}
     tags = [
         GovernanceTag(
             asset=_table_ref("petstore-api", "public", "pets"),
@@ -405,9 +430,9 @@ def test_comment_statements_appends_governance_note_to_table_comment():
             exempt_roles=("owner",),
         )
     ]
-    stmts = comment_statements([table], kinds, tags)
+    stmts = comment_statements([table], kinds, tags, _ADDR)
     assert stmts == [
-        'ALTER TABLE "petstore_api"."public"."pets" SET COMMENT = '
+        'ALTER TABLE "landing"."org_acme_export"."petstore-api__public__pets" SET COMMENT = '
         "'Pets for sale\n\n"
         "[provisa:governance rls_restricted rule=rule-42 restricted=analyst exempt=owner]';"
     ]
@@ -415,7 +440,7 @@ def test_comment_statements_appends_governance_note_to_table_comment():
 
 def test_comment_statements_uses_governance_note_alone_when_no_description():
     table = _table_asset("petstore-api", "public", "pets", description="")
-    kinds = {("petstore_api", "public", "pets"): "TABLE"}
+    kinds = {("landing", "org_acme_export", "petstore-api__public__pets"): "TABLE"}
     tags = [
         GovernanceTag(
             asset=_table_ref("petstore-api", "public", "pets"),
@@ -423,9 +448,9 @@ def test_comment_statements_uses_governance_note_alone_when_no_description():
             rule_id="rule-7",
         )
     ]
-    stmts = comment_statements([table], kinds, tags)
+    stmts = comment_statements([table], kinds, tags, _ADDR)
     assert stmts == [
-        'ALTER TABLE "petstore_api"."public"."pets" SET COMMENT = '
+        'ALTER TABLE "landing"."org_acme_export"."petstore-api__public__pets" SET COMMENT = '
         "'[provisa:governance masked rule=rule-7]';"
     ]
 
@@ -507,7 +532,9 @@ def _runtime(
 
 def _exporter() -> SnowflakeHorizonExport:
     config = SimpleNamespace(enabled=True, provider="snowflake_horizon")
-    return SnowflakeHorizonExport(config)  # type: ignore[arg-type]
+    exporter = SnowflakeHorizonExport(config)  # type: ignore[arg-type]
+    exporter.export_views = _VIEWS  # what publish_snapshot hands in before publish
+    return exporter
 
 
 def test_publish_is_a_noop_when_engine_is_not_snowflake(monkeypatch):
@@ -557,7 +584,7 @@ def test_publish_creates_share_and_listing_for_each_data_product(monkeypatch):
     joined = " | ".join(rt._conn.cursor_obj.sql)
     assert 'CREATE SHARE IF NOT EXISTS "provisa_c360_share"' in joined
     assert (
-        'GRANT SELECT ON TABLE "petstore_api"."public"."customers" TO SHARE "provisa_c360_share"'
+        'GRANT SELECT ON TABLE "landing"."org_acme_export"."petstore-api__public__customers" TO SHARE "provisa_c360_share"'
         in joined
     )
     assert 'CREATE ORGANIZATION LISTING IF NOT EXISTS "provisa_c360_listing"' in joined
@@ -722,13 +749,27 @@ def test_publish_features_members_with_their_object_kind_and_masked_columns(monk
             ),
         ],
     )
-    result = asyncio.run(_exporter().publish(snapshot))
+    exporter = _exporter()
+    exporter.export_views = {
+        ("pet-store-sqlite", "pet_store", "pets"): (
+            "org_acme_export",
+            "pet-store-sqlite__pet_store__pets",
+        )
+    }
+    result = asyncio.run(exporter.publish(snapshot))
     assert result.ok, result.errors
     create = next(s for s in rt._conn.cursor_obj.sql if s.startswith("CREATE ORGANIZATION"))
     doc = yaml.safe_load(create.split("$$\n")[1])
+    # The featured object is the replica's export view, where the reconcile created it.
     assert doc["data_dictionary"]["featured"] == {
-        "database": '"pet_store_sqlite"',
-        "objects": [{"name": '"pets"', "schema": '"pet_store"', "domain": "VIEW"}],
+        "database": '"landing"',
+        "objects": [
+            {
+                "name": '"pet-store-sqlite__pet_store__pets"',
+                "schema": '"org_acme_export"',
+                "domain": "VIEW",
+            }
+        ],
     }
     assert doc["data_preview"]["has_pii"] is True
     assert doc["data_preview"]["metadata_overrides"]["objects"][0]["pii_columns"] == ['"name"']
@@ -799,8 +840,8 @@ def test_publish_revokes_share_grants_on_former_members(monkeypatch):
         existing_objects=True,
         kind="VIEW",
         select_grants=[
-            ("VIEW", '"petstore_api"."public"."customers"'),
-            ("VIEW", '"petstore_api"."public"."orders"'),
+            ("VIEW", '"landing"."org_acme_export"."petstore-api__public__customers"'),
+            ("VIEW", '"landing"."org_acme_export"."petstore-api__public__orders"'),
         ],
     )
     _snowflake(monkeypatch, rt)
@@ -811,7 +852,7 @@ def test_publish_revokes_share_grants_on_former_members(monkeypatch):
     assert result.ok, result.errors
     revokes = [s for s in rt._conn.cursor_obj.sql if s.startswith("REVOKE")]
     assert revokes == [
-        'REVOKE SELECT ON VIEW "petstore_api"."public"."orders" FROM SHARE "provisa_c360_share";'
+        'REVOKE SELECT ON VIEW "landing"."org_acme_export"."petstore-api__public__orders" FROM SHARE "provisa_c360_share";'
     ]
 
 
@@ -822,12 +863,12 @@ def test_object_kind_returns_table_when_object_is_a_real_table():
 
 def test_object_kind_returns_view_when_object_is_a_view():
     rt = _runtime(existing_objects=True, kind="VIEW")
-    assert _object_kind(rt, ("petstore_api", "public", "pets")) == "VIEW"
+    assert _object_kind(rt, ("landing", "org_acme_export", "petstore-api__public__pets")) == "VIEW"
 
 
 def test_object_kind_returns_none_when_object_does_not_exist():
     rt = _runtime(existing_objects=False)
-    assert _object_kind(rt, ("petstore_api", "public", "pets")) is None
+    assert _object_kind(rt, ("landing", "org_acme_export", "petstore-api__public__pets")) is None
 
 
 def test_table_exists_delegates_to_object_kind():
@@ -852,7 +893,10 @@ def test_publish_applies_descriptions_to_a_view(monkeypatch):
     assert result.ok
     assert result.published["descriptions"] == 1
     joined = " | ".join(rt._conn.cursor_obj.sql)
-    assert 'ALTER VIEW "petstore_api"."public"."pets" SET COMMENT = \'Pets for sale\';' in joined
+    assert (
+        'ALTER VIEW "landing"."org_acme_export"."petstore-api__public__pets" SET COMMENT = \'Pets for sale\';'
+        in joined
+    )
 
 
 def test_publish_reports_error_when_described_table_not_landed(monkeypatch):
@@ -875,3 +919,31 @@ def test_publish_reports_error_when_described_table_not_landed(monkeypatch):
 
 if __name__ == "__main__":
     pytest.main([__file__, "-q"])
+
+
+def test_publish_refuses_to_guess_when_no_export_views_were_handed_in(monkeypatch):
+    # REQ-1912: the org and the replica-served decision are passed in by the publish path. An
+    # adapter that was given none does not read that as "nothing is replica-served".
+    rt = _runtime(existing_objects=True)
+    _snowflake(monkeypatch, rt)
+    product = _FakeDataProduct(
+        "c360", "customer_360", "Customer 360", [_table_ref("petstore-api", "public", "customers")]
+    )
+    exporter = SnowflakeHorizonExport(SimpleNamespace(enabled=True, provider="snowflake_horizon"))  # type: ignore[arg-type]
+    with pytest.raises(RuntimeError, match="export view addresses"):
+        asyncio.run(exporter.publish(SimpleNamespace(data_products=[product])))
+    assert rt._conn.cursor_obj.sql == []  # nothing was shared at a guessed address
+
+
+def test_publish_shares_a_live_attached_table_where_it_is_attached(monkeypatch):
+    rt = _runtime(existing_objects=True)
+    _snowflake(monkeypatch, rt)
+    product = _FakeDataProduct(
+        "lake", "lake_events", "Lake events", [_table_ref("lake", "sales", "events")]
+    )
+    result = asyncio.run(_exporter().publish(SimpleNamespace(data_products=[product])))
+    assert result.ok, result.errors
+    joined = " | ".join(rt._conn.cursor_obj.sql)
+    assert (
+        'GRANT SELECT ON TABLE "landing"."sales"."events" TO SHARE "provisa_lake_share"' in joined
+    )

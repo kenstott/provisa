@@ -65,6 +65,10 @@ _SQLSERVER_SYSTEM_SCHEMAS = {
     "db_denydatawriter",
 }
 _PG_SYSTEM_SCHEMAS = {"information_schema", "pg_catalog", "pg_toast"}
+# The source types that speak PostgreSQL's wire protocol and expose its information_schema shape.
+_POSTGRES_WIRE = ("postgresql", "cockroachdb", "yugabytedb", "greenplum", "redshift")
+# information_schema.columns.data_type values that are markers, not type names.
+_PG_COLLAPSED_TYPES = frozenset({"ARRAY", "USER-DEFINED"})
 # Redshift is a Postgres 8.0 fork — same wire protocol and catalog shape as _PG_SYSTEM_SCHEMAS,
 # plus its own pg_internal schema (holds temp tables), which upstream Postgres doesn't have.
 _REDSHIFT_SYSTEM_SCHEMAS = _PG_SYSTEM_SCHEMAS | {"pg_internal"}
@@ -1164,10 +1168,10 @@ async def native_columns(  # REQ-1732
 ) -> "list[tuple[str, str]] | None":
     """``[(column_name, data_type)]`` via native introspection, or None to fall back to the engine.
 
-    trino/mysql/mariadb/tidb (REQ-1732/1749): postgresql/sqlserver never needed this because they
-    are ATTACH-mechanism on whatever engine they are normally registered under (their own native
-    engine, or Trino's own JDBC connector), so resolve_available_columns_metadata's generic
-    engine-catalog fallback already sees a real catalog by the time this is called. trino-as-a-
+    postgresql/sqlserver: an engine that attaches them live has a catalog to list, but a source
+    the operator floors has NO live attach on any engine (REQ-1912) — on Trino no catalog is
+    registered for it — so its columns are listed here, through the source's own driver.
+    trino/mysql/mariadb/tidb (REQ-1732/1749): trino-as-a-
     SOURCE has no engine that attaches it live except another Trino, and mysql/mariadb/tidb have no
     DuckDB ATTACH connector at all (verified: connector_duckdb.py has none) — this is the only path
     when the active engine doesn't natively attach the type (e.g. mysql/trino under DuckDB).
@@ -1202,11 +1206,11 @@ async def native_columns(  # REQ-1732
             f"ORDER BY position",
         )
         return [(row[0], row[1]) for row in result.rows]
-    if t in ("cockroachdb", "yugabytedb", "greenplum", "redshift"):
-        # Same "no ATTACH-mechanism seam" gap as trino above — connector_duckdb.py has no ATTACH
-        # connector for any of these four (unlike postgresql itself, see this function's own
-        # docstring), so this direct-pool path is the only one, same postgres-wire query trino
-        # uses above (all four speak the identical wire protocol/information_schema shape).
+    if t in _POSTGRES_WIRE:
+        # cockroachdb/yugabytedb/greenplum/redshift: connector_duckdb.py has no ATTACH connector
+        # for any of them, so this direct-pool path is the only one. postgresql: the path for a
+        # source the bound engine holds no live attach of (REQ-1912 — a floored source has no
+        # engine catalog to list). All speak the identical wire protocol/information_schema shape.
         # information_schema reports ANSI spellings ("character varying", "double precision",
         # "timestamp without time zone") that no downstream type map keys on; the IR table
         # (provisa.core.ir_types, the one native→canonical authority) resolves them — an
@@ -1219,7 +1223,25 @@ async def native_columns(  # REQ-1732
             "WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position",
             [schema_name, table_name],
         )
-        return [(row[0], to_ir(row[1])) for row in result.rows]
+        # ``ARRAY`` and ``USER-DEFINED`` (an enum, a domain, a composite) are not type names but
+        # information_schema's markers for a composite/array type, which the IR collapses to text.
+        return [
+            (row[0], "text" if row[1] in _PG_COLLAPSED_TYPES else to_ir(row[1]))
+            for row in result.rows
+        ]
+    if t == "sqlserver":
+        # The path for a SQL Server source the bound engine holds no live attach of (REQ-1912).
+        # T-SQL's own spellings (nvarchar, datetime2, bit, uniqueidentifier, money) resolve
+        # through the IR table's sqlserver overlay.
+        from provisa.core.ir_types import to_ir
+
+        result = await pool.execute(
+            source_id,
+            "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS "
+            "WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION",
+            [schema_name, table_name],
+        )
+        return [(row[0], to_ir(row[1], "sqlserver")) for row in result.rows]
     if t == "oracle":
         # Same gap, Oracle's own catalog view (no information_schema) — ALL_TAB_COLUMNS mirrors
         # native_tables_rdbms's ALL_TABLES/ALL_TAB_COMMENTS pairing above.
@@ -1333,6 +1355,87 @@ async def native_columns(  # REQ-1732
         )
         return [(row[0], row[1]) for row in result.rows]
     return None
+
+
+_PK_SQL = (
+    "SELECT kcu.column_name FROM information_schema.table_constraints tc "
+    "JOIN information_schema.key_column_usage kcu "
+    "ON tc.constraint_name = kcu.constraint_name "
+    "AND tc.table_schema = kcu.table_schema AND tc.table_name = kcu.table_name "
+    "WHERE tc.table_schema = {schema} AND tc.table_name = {table} "
+    "AND tc.constraint_type = 'PRIMARY KEY' ORDER BY kcu.ordinal_position"
+)
+
+
+async def native_primary_keys(  # REQ-1912
+    source_id: str,
+    source_type: str,
+    schema_name: str,
+    table_name: str,
+    pool: "SourcePool",
+) -> "list[str] | None":
+    """The table's primary-key columns, in key order, through the source's own driver; None for a
+    type with no driver listing of keys (the caller then asks the engine's catalog, when the
+    engine holds a live attach of the source). The sibling of :func:`native_columns` for the
+    families whose columns it lists from ``information_schema``."""
+    t = source_type.lower()
+    if not pool.has(source_id):
+        return None
+    if t in _POSTGRES_WIRE:
+        result = await pool.execute(
+            source_id, _PK_SQL.format(schema="$1", table="$2"), [schema_name, table_name]
+        )
+        return [row[0] for row in result.rows]
+    if t == "sqlserver":
+        result = await pool.execute(
+            source_id, _PK_SQL.format(schema="?", table="?"), [schema_name, table_name]
+        )
+        return [row[0] for row in result.rows]
+    return None
+
+
+class SourceNotListable(RuntimeError):
+    """A source's catalog was asked for, and there is neither a listing through the source's own
+    driver nor a live attach of it on the bound engine to list it through (REQ-1912)."""
+
+    def __init__(self, source_id: str, source_type: str, engine_name: str, what: str) -> None:
+        self.source_id = source_id
+        self.source_type = source_type
+        self.engine_name = engine_name
+        super().__init__(
+            f"cannot list the {what} of source {source_id!r}: its type {source_type!r} has no "
+            f"listing through the source's own driver, and engine {engine_name!r} holds no live "
+            "attach of it (its reads are served from replicas), so there is no engine catalog "
+            "of it to list either"
+        )
+
+
+async def unattached_source(state, source_id: str):
+    """The registered source ``source_id`` when the bound engine holds NO live attach of it
+    (``replica_routing.has_live_attach``: the operator floors it, or the engine reaches it only
+    by replicating it), else None — also None for an id that is not a registered source (a
+    built-in catalog, the derived-view source), whose engine catalog is Provisa's own."""
+    from provisa.federation.registry_view import registered_sources
+    from provisa.federation.replica_routing import has_live_attach
+
+    for source in await registered_sources(state):
+        if source.id == source_id:
+            if has_live_attach(source, state.federation_engine.engine):
+                return None
+            return source
+    return None
+
+
+async def require_live_attach(state, source_id: str, what: str) -> None:
+    """Refuse an engine-catalog listing of a source the bound engine holds no live attach of
+    (REQ-1912): a floored source has no engine catalog — on Trino none is registered — so the
+    query is not attempted. Called after the source's own driver had no listing; the error names
+    the source and the reason."""
+    source = await unattached_source(state, source_id)
+    if source is not None:
+        raise SourceNotListable(
+            source_id, source.type.value, state.federation_engine.engine.name, what
+        )
 
 
 async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314, REQ-322, REQ-147

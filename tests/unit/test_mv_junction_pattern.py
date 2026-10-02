@@ -25,24 +25,25 @@ import pytest
 
 from provisa.compiler.sql_gen import CompiledQuery
 from provisa.executor.result import QueryResult
+from tests.helpers import RegisteredNames
 from provisa.mv.models import JoinPattern, MVDefinition, MVStatus
 from provisa.mv.refresh import _build_refresh_sql
 from provisa.mv.rewriter import rewrite_if_mv_match
 
 
-class _FakeEngine:
-    """SHOW COLUMNS answers per table from a mapping."""
+class _FakeEngine(RegisteredNames):
+    """The zero-row shape read of a table answers its columns from a mapping."""
 
     def __init__(self, columns: dict[str, list[str]]):
         self._columns = columns
 
-    def address_replicas(self, sql):
-        return sql  # this stand-in's tables are all read where the statement names them
-
     async def execute_engine(self, sql, *a, **k):
-        assert sql.startswith("SHOW COLUMNS FROM ")
-        table = sql.split('"')[1]
-        return QueryResult(rows=[(c,) for c in self._columns[table]], column_names=[])
+        # The table is named where the engine reads it and aliased to its registered name.
+        prefix = 'SELECT * FROM "src"."public"."'
+        assert sql.startswith(prefix) and sql.endswith(" LIMIT 0"), sql
+        table = sql[len(prefix) :].split('"')[0]
+        assert f'"src"."public"."{table}" AS "{table}"' in sql
+        return QueryResult(rows=[], column_names=list(self._columns[table]))
 
 
 def _junction_jp(type_value: str | None = "bonded pair") -> JoinPattern:
@@ -144,8 +145,17 @@ class TestJunctionRefreshSQL:
         )
         sql = await _build_refresh_sql(_junction_mv(), engine)
 
-        assert 'LEFT JOIN "pet_companions" ON "pets"."id" = "pet_companions"."pet_id"' in sql
-        assert 'LEFT JOIN "pets" ON "pet_companions"."companion_pet_id" = "pets"."id"' in sql
+        # Each table is named catalog-physically (resolved from the registry) under its
+        # registered name as alias; no bare name reaches the engine.
+        assert 'FROM "src"."public"."pets" AS "pets" ' in sql
+        assert (
+            'LEFT JOIN "src"."public"."pet_companions" AS "pet_companions" '
+            'ON "pets"."id" = "pet_companions"."pet_id"'
+        ) in sql
+        assert (
+            'LEFT JOIN "src"."public"."pets" AS "pets" '
+            'ON "pet_companions"."companion_pet_id" = "pets"."id"'
+        ) in sql
 
     @pytest.mark.asyncio
     async def test_refresh_sql_carries_the_edge_attributes(self):

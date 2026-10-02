@@ -50,7 +50,10 @@ def _base_name(table: str) -> str:
 
 
 async def _watermark_columns(engine) -> dict[str, str]:
-    """Map ``table_name -> watermark_column`` from the config registry. {} on failure."""
+    """Map ``table_name -> watermark_column`` from the config registry. {} on failure.
+
+    A read of the control plane's own registry through the engine's ``provisa_admin`` catalog,
+    by design: it is not a source table, it has no replica, and it is not addressed (REQ-1912)."""
     try:
         rows = (await engine.execute_engine(_WATERMARK_LOOKUP_SQL)).rows
         return {row[0]: row[1] for row in rows if row[0] and row[1]}
@@ -60,11 +63,19 @@ async def _watermark_columns(engine) -> dict[str, str]:
 
 
 async def _iceberg_snapshot(engine, table: str) -> str | None:
-    """Latest committed Iceberg snapshot id for ``table``, or None if not Iceberg."""
+    """Latest committed Iceberg snapshot id for ``table``, or None if not Iceberg.
+
+    ``table`` is a registered table's name; the snapshot list is the SOURCE's own metadata table
+    (``<table>$snapshots``), so it is read at the table's registered address on the engine, by
+    design, never at a replica (a replica has no snapshots). A table served from its replica has
+    no live attach to read it through and contributes no snapshot signal."""
     try:
+        catalog, schema, name = await engine.registered_key(_base_name(table))
+        from provisa.federation.runtime import quoted_name
+
         rows = (
             await engine.execute_engine(
-                f'SELECT snapshot_id FROM "{_base_name(table)}$snapshots" '
+                f"SELECT snapshot_id FROM {quoted_name((catalog, schema, name + '$snapshots'))} "
                 "ORDER BY committed_at DESC LIMIT 1"
             )
         ).rows
@@ -76,10 +87,15 @@ async def _iceberg_snapshot(engine, table: str) -> str | None:
 
 
 async def _table_watermark(engine, table: str, column: str) -> str | None:
-    """``MAX(column)`` for ``table`` as an RDB watermark value, or None on failure."""
+    """``MAX(column)`` for ``table`` as an RDB watermark value, or None on failure.
+
+    ``table`` is a registered table's name, read where the engine reads it (REQ-1912): the view
+    built from it reads that same address, so this is the version of what the view will read."""
     try:
         rows = (
-            await engine.execute_engine(f'SELECT MAX("{column}") FROM "{_base_name(table)}"')
+            await engine.execute_engine(
+                f'SELECT MAX("{column}") FROM {await engine.read_ref(_base_name(table))}'
+            )
         ).rows
         row = rows[0] if rows else None
     except Exception as exc:  # noqa: BLE001 — column/table may be unqueryable here

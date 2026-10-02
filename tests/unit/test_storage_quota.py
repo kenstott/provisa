@@ -34,6 +34,7 @@ from provisa.storage.quota import (
     storage_ceiling,
     storage_report,
 )
+from tests.helpers import RegisteredNames
 
 _GB = 1024**3
 _PLATFORM_STORE = "postgresql://platform/store"
@@ -96,6 +97,7 @@ class TestAttribution:
             "org_acme_api_cache",
             "org_acme_gql_cache",
             "org_acme_replicas",  # REQ-1912
+            "org_acme_export",  # REQ-1912: a store's export views over its replicas
         ]
 
     def test_one_org_is_never_billed_for_a_similarly_named_org(self):
@@ -189,22 +191,17 @@ class TestRequireStorageHeadroom:
         }
 
 
-class _FakeEngine:
+class _FakeEngine(RegisteredNames):
     """Answers the probes ``refresh_mv`` runs, recording every statement it was asked to execute."""
 
     def __init__(self, count: int = 10) -> None:
         self.count = count
         self.sqls: list[str] = []
 
-    def address_replicas(self, sql):
-        return sql  # this stand-in's tables are all read where the statement names them
-
     async def execute_engine(self, sql, *args, **kwargs):
         from provisa.executor.result import QueryResult
 
         self.sqls.append(sql)
-        if "SHOW COLUMNS" in sql:
-            return QueryResult(rows=[], column_names=[])
         if "COUNT(*)" in sql:
             return QueryResult(rows=[(self.count,)], column_names=[])
         return QueryResult(rows=[], column_names=[])

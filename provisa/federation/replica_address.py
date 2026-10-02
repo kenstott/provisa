@@ -43,6 +43,10 @@ if TYPE_CHECKING:
 #: The store schemas Provisa writes, per org and environment (``core.environments``).
 REPLICAS_SUFFIX = "_replicas"
 MVS_SUFFIX = "_mv_cache"
+#: The schema a store publishes a view of each replica in, for a catalog export that shares and
+#: tags one (Snowflake's Horizon export). It holds those views and nothing else; no statement of
+#: Provisa's reads through it.
+EXPORT_SUFFIX = "_export"
 
 #: PostgreSQL's identifier limit; over it PostgreSQL truncates a name silently, which would point
 #: two replicas at one table. The one naming rule keeps every replica name within it.
@@ -109,6 +113,13 @@ def mv_schema(org_id: str) -> str:
     return active_org_schema(org_id, MVS_SUFFIX)
 
 
+def export_schema(org_id: str) -> str:
+    """The schema that holds the export views of ``org_id``'s replicas in the environment served."""
+    from provisa.core.environments import active_org_schema
+
+    return active_org_schema(org_id, EXPORT_SUFFIX)
+
+
 def active_org_id(state: Any) -> str:
     """The org a store address is named for: the one bound to this request, else the boot org —
     the runtime ``state`` resolves to when no org is bound (``AppState._active_runtime``)."""
@@ -126,6 +137,18 @@ def replica_address(
     with no schemas). Pure — no store is opened and nothing is read."""
     return ReplicaAddress(
         replica_schema(org_id), replica_table_name(source_id, schema_name, table_name)
+    )
+
+
+def export_view_address(
+    *, org_id: str, source_id: str, schema_name: str, table_name: str
+) -> ReplicaAddress:
+    """The address of the view a catalog export publishes over the replica of ``source_id``'s
+    table: the export schema, under the replica's own name. It is not the table's registered
+    address (that belongs to the live attach) and it is in neither schema Provisa reads from, so
+    no read is ever answered through it (REQ-1912). Pure."""
+    return ReplicaAddress(
+        export_schema(org_id), replica_table_name(source_id, schema_name, table_name)
     )
 
 
@@ -196,17 +219,10 @@ def address_replicas(pg_sql: str, routes: ReplicaRoutes) -> str:
         if not tbl.name:
             continue
         key: TableKey = (tbl.catalog or None, tbl.db, tbl.name)
-        if key in routes.ambiguous:
-            raise AmbiguousReplica(key, list(routes.ambiguous[key]))
-        route = routes.routes.get(key)
-        if route is None:
+        target = read_address(key, routes)
+        if target == key:
             continue
-        cause = routes.unreconciled.get((route.source_id, route.table_name))
-        if cause is not None:
-            from provisa.federation.replica_guard import ReplicaUnavailable
-
-            raise ReplicaUnavailable(route.source_id, route.table_name, cause) from cause
-        catalog, schema, table = route.target
+        catalog, schema, table = target
         if not tbl.alias:
             # Column references written against the table's own name keep binding to it.
             tbl.set("alias", exp.TableAlias(this=exp.to_identifier(tbl.name, quoted=True)))
@@ -215,6 +231,26 @@ def address_replicas(pg_sql: str, routes: ReplicaRoutes) -> str:
         tbl.set("catalog", exp.to_identifier(catalog, quoted=True) if catalog else None)
         changed = True
     return tree.sql(dialect="postgres") if changed else pg_sql
+
+
+def read_address(key: TableKey, routes: ReplicaRoutes) -> TableKey:
+    """Where the table an engine statement names ``key`` is read: its replica's address when it
+    is served from its replica, ``key`` itself when it is read live.
+
+    The one lookup :func:`address_replicas` applies to each table of a query; a caller whose
+    statement is not a query the rewrite parses (``ANALYZE``, a catalog listing of one table)
+    asks it directly. Raises exactly what the rewrite raises."""
+    if key in routes.ambiguous:
+        raise AmbiguousReplica(key, list(routes.ambiguous[key]))
+    route = routes.routes.get(key)
+    if route is None:
+        return key
+    cause = routes.unreconciled.get((route.source_id, route.table_name))
+    if cause is not None:
+        from provisa.federation.replica_guard import ReplicaUnavailable
+
+        raise ReplicaUnavailable(route.source_id, route.table_name, cause) from cause
+    return route.target
 
 
 def _names_a_routed_table(pg_sql: str, routes: ReplicaRoutes) -> bool:
@@ -239,14 +275,18 @@ def engine_table_keys(
     return (physical, (None, f"{catalog}_{schema_name}", table_name))
 
 
-# ``org_<id>[_env_<env>]_replicas`` / ``…_mv_cache``. The owner part holds no double underscore:
+# ``org_<id>[_env_<env>]_replicas`` / ``…_mv_cache`` / ``…_export``. The owner part holds no
+# double underscore:
 # a live attach's folded schema of any org but the boot org is ``org_<id>__<source>_<schema>``
 # (``naming.org_prefixed_catalog``), so no source schema — whatever it is called — folds to a
 # name these match.
 _SURFACE_OWNER = r"org_(?:(?!__).)+?"
 _REPLICAS_SCHEMA = re.compile(_SURFACE_OWNER + re.escape(REPLICAS_SUFFIX))
 _WRITE_SURFACE = re.compile(
-    _SURFACE_OWNER + "(?:" + re.escape(REPLICAS_SUFFIX) + "|" + re.escape(MVS_SUFFIX) + ")"
+    _SURFACE_OWNER
+    + "(?:"
+    + "|".join(re.escape(s) for s in (REPLICAS_SUFFIX, MVS_SUFFIX, EXPORT_SUFFIX))
+    + ")"
 )
 
 
@@ -257,6 +297,7 @@ def is_replicas_schema(schema: str) -> bool:
 
 
 def is_write_surface(schema: str) -> bool:
-    """Whether ``schema`` is named as a schema Provisa writes replicas or materialized views into
-    — one that holds nothing else, so a live attach never creates anything in it."""
+    """Whether ``schema`` is named as a schema Provisa writes replicas, materialized views or
+    export views into — one that holds nothing else, so a live attach never creates anything in
+    it."""
     return _WRITE_SURFACE.fullmatch(schema) is not None

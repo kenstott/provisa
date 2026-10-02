@@ -65,6 +65,15 @@ async def _seed() -> None:
         for table in ("lp_items", "pm_items", "bare_items"):
             await conn.execute(f"CREATE TABLE {_SCHEMA}.{table} (id int PRIMARY KEY, name text)")
             await conn.executemany(f"INSERT INTO {_SCHEMA}.{table} VALUES ($1, $2)", _ROWS)
+        # A table of the floored source that no config registers: admin discovery finds it and
+        # registers it (REQ-1912). It is never renamed away.
+        await conn.execute(
+            f"CREATE TABLE {_SCHEMA}.extra_items "
+            "(id int PRIMARY KEY, name text, created timestamp DEFAULT now())"
+        )
+        await conn.executemany(
+            f"INSERT INTO {_SCHEMA}.extra_items (id, name) VALUES ($1, $2)", _ROWS
+        )
     finally:
         await conn.close()
 
@@ -215,3 +224,74 @@ async def test_trino_holds_no_catalog_of_a_floored_source(floor_server):
         conn.close()
     assert not catalogs & {"floor_protected", "floor_materialized", "floor_bare"}, catalogs
     assert "provisa_admin" in catalogs  # the store the replicas are read from
+
+
+# -- admin discovery of a floored source (REQ-1912) -------------------------------------------------
+#
+# A floored source has no live attach: on Trino no catalog is registered for it. Listing its
+# schemas, tables and columns, and registering one of its tables, therefore go through the
+# source's own driver, never through an engine catalog.
+
+
+async def _admin(client: httpx.AsyncClient, query: str) -> dict:
+    resp = await client.post(
+        "/admin/graphql", json={"query": query}, headers={"X-Provisa-Role": "org_admin"}
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert not body.get("errors"), body
+    return body["data"]
+
+
+async def test_admin_discovery_lists_a_floored_source_through_its_own_driver(floor_server):
+    async with httpx.AsyncClient(base_url=floor_server.base_url, timeout=120.0) as client:
+        schemas = await _admin(client, '{ availableSchemas(sourceId: "floor-materialized") }')
+        tables = await _admin(
+            client,
+            '{ availableTables(sourceId: "floor-materialized", schemaName: "op_floor_e2e") '
+            "{ name } }",
+        )
+        columns = await _admin(
+            client,
+            '{ availableColumnsMetadata(sourceId: "floor-materialized", '
+            'schemaName: "op_floor_e2e", tableName: "extra_items") '
+            "{ name dataType isPrimaryKey } }",
+        )
+    assert _SCHEMA in schemas["availableSchemas"], schemas
+    assert "extra_items" in {t["name"] for t in tables["availableTables"]}, tables
+    assert [
+        (c["name"], c["dataType"], c["isPrimaryKey"]) for c in columns["availableColumnsMetadata"]
+    ] == [("id", "integer", True), ("name", "text", False), ("created", "timestamp", False)]
+
+
+async def test_a_table_of_a_floored_source_registers_with_its_types_resolved(floor_server):
+    """Registration resolves each column's type from the source. On Trino that read used to go
+    to the source's engine catalog, which a floored source does not have, and the registration
+    was refused with no type resolved."""
+    async with httpx.AsyncClient(base_url=floor_server.base_url, timeout=180.0) as client:
+        registered = await _admin(
+            client,
+            """
+            mutation {
+                registerTable(input: {
+                    sourceId: "floor-materialized",
+                    domainId: "floor",
+                    schemaName: "op_floor_e2e",
+                    tableName: "extra_items",
+                    columns: [
+                        { name: "id", visibleTo: ["org_admin"] },
+                        { name: "name", visibleTo: ["org_admin"] },
+                        { name: "created", visibleTo: ["org_admin"] }
+                    ]
+                }) { success message }
+            }
+            """,
+        )
+        assert registered["registerTable"]["success"], registered
+        listed = await _admin(client, "{ tables { tableName columns { columnName dataType } } }")
+    table = next(t for t in listed["tables"] if t["tableName"] == "extra_items")
+    assert {c["columnName"]: c["dataType"] for c in table["columns"]} == {
+        "id": "integer",
+        "name": "text",
+        "created": "timestamp",
+    }

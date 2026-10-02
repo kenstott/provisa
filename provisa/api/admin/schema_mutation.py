@@ -3606,10 +3606,22 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         errors: list[str] = []
         source_catalog = state.catalog_for(source_id)
 
+        engine = state.federation_engine
         for row in rows:
             full_name = f"{source_catalog}.{row.schema_name}.{row.table_name}"
             try:
-                await state.federation_engine.execute_engine(f"ANALYZE {full_name}")
+                # REQ-1912: statistics are collected where the engine reads the table. A table
+                # served from its replica is analyzed at its replica's address, in the store
+                # (its source has no live attach to analyze); a live table at its registered name.
+                registered = (source_catalog, row.schema_name, row.table_name)
+                read = engine.read_address(*registered)
+                if read != registered:
+                    r_catalog, r_schema, r_table = read
+                    await engine.analyze_landed_table(
+                        catalog=r_catalog, schema=r_schema, table=r_table
+                    )
+                else:
+                    await engine.execute_engine(f"ANALYZE {full_name}")
                 analyzed.append(full_name)
             except Exception as exc:
                 logging.getLogger(__name__).exception("ANALYZE %s failed", full_name)

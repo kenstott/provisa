@@ -232,16 +232,19 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         return await self._land_guard.run(_run)
 
     async def publish_replica_view(
-        self, source: Any, *, schema: str, table: str, replace: bool
+        self, *, view_schema: str, view_table: str, schema: str, table: str, replace: bool
     ) -> None:
-        """Publish the per-source SECURE VIEW over the replica ``schema.table``. It is the object
-        the catalog export shares and tags (REQ-1070, REQ-1652); Provisa's own reads do not use it
-        — they address the replica (REQ-1912). ``replace``: the replica was recreated."""
+        """Publish the SECURE VIEW ``view_schema.view_table`` over the replica ``schema.table``,
+        both in the landing database. It is the object the catalog export shares and tags
+        (REQ-1070, REQ-1652). ``view_schema`` is the export schema (REQ-1912): the view is not at
+        the table's registered address, and Provisa's own reads do not use it — they address the
+        replica. ``replace``: the replica was recreated."""
 
         from provisa.federation.snowflake_store import expose_view
 
-        replica = (self.ensure_materialize_attached(), schema, table)
-        view = self._phys_parts(source)
+        database = self.ensure_materialize_attached()
+        replica = (database, schema, table)
+        view = (database, view_schema, view_table)
 
         def _run() -> None:
             cur = self._conn.cursor()
@@ -293,18 +296,14 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
 
     async def reconcile_landed_metadata(self, plan: Any) -> int:
         """Apply the landed model's keys and descriptions (REQ-1652, REQ-1654): PRIMARY/FOREIGN KEY
-        constraints on the replicas, PRIMARY_KEY / FOREIGN_KEY column tags on the per-source views,
-        and the table/column COMMENTs on both."""
+        constraints on the replicas, PRIMARY_KEY / FOREIGN_KEY column tags on their export views
+        (at the address the plan carries for each), and the table/column COMMENTs on both."""
 
-        from provisa.core.catalog import _to_catalog_name
         from provisa.federation.landed_keys import plan_targets
         from provisa.federation.snowflake_store import reconcile_metadata_native
 
         landing_database = self.ensure_materialize_attached()
-        targets = plan_targets(
-            plan,
-            view_for=lambda t: (_to_catalog_name(t.source_id), t.schema_name, t.table_name),
-        )
+        targets = plan_targets(plan)
 
         def _run() -> int:
             cur = self._conn.cursor()

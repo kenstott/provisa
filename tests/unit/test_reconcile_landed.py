@@ -211,6 +211,101 @@ async def test_keys_converge_with_the_tables_from_registration_and_relationships
     assert "not api.default.pets's primary key" in plan.withheld[0][1]
 
 
+class _PublishingRuntime(_KeyedRuntime):
+    """A store whose catalog export shares a view of each replica (Snowflake)."""
+
+    def __init__(self):
+        super().__init__()
+        self.views: list = []
+
+    async def publish_replica_view(self, *, view_schema, view_table, schema, table, replace):
+        self.views.append(((view_schema, view_table), (schema, table), replace))
+
+
+@pytest.mark.asyncio
+async def test_a_published_view_of_a_replica_lives_in_the_export_schema(monkeypatch):
+    # REQ-1912: the view a store publishes over a replica for its catalog export is in a schema
+    # of its own — not at the table's registered address ("default"."pets"), not in the replicas
+    # schema a read is addressed to — and the metadata plan names that same address for it.
+    backend = DuckDBBackend(build_duckdb_engine())
+    rt = _PublishingRuntime()
+    backend._runtime = rt
+    cfg = SimpleNamespace(sources=[_src("api", "openapi")], tables=[])
+    registered = [{"id": 1, **_rtbl("api", "pets", [_rcol("id", "bigint", pk=True)])}]
+
+    async def _rels(_conn):
+        return []
+
+    monkeypatch.setattr("provisa.core.repositories.relationship.list_all", _rels)
+    await backend.reconcile_landed_tables(_state(cfg, registered, monkeypatch))
+
+    assert rt.views == [
+        (
+            ("org_acme_export", "api__default__pets"),
+            ("org_acme_replicas", "api__default__pets"),
+            False,
+        )
+    ]
+    plan = rt.plans[0]
+    assert plan.view_parts == {
+        "api.default.pets": ("mat_store", "org_acme_export", "api__default__pets")
+    }
+    from provisa.federation.landed_keys import plan_targets
+
+    target = plan_targets(plan)["api.default.pets"]
+    assert target.view == ("mat_store", "org_acme_export", "api__default__pets")
+    assert target.replica == ("mat_store", "org_acme_replicas", "api__default__pets")
+
+
+@pytest.mark.asyncio
+async def test_a_catalog_export_is_handed_the_addresses_the_reconcile_published(monkeypatch):
+    # REQ-1912: the export addresses a replica-served table by the same rule, over the same
+    # tables, as the reconcile publishes views for — so it finds what was created.
+    from provisa.federation.replica_routing import export_view_addresses
+
+    backend = DuckDBBackend(build_duckdb_engine())
+    rt = _PublishingRuntime()
+    backend._runtime = rt
+    cfg = SimpleNamespace(sources=[_src("api", "openapi"), _src("pg", "postgresql")], tables=[])
+    registered = [
+        {"id": 1, **_rtbl("api", "pets", [_rcol("id", "bigint", pk=True)])},
+        {"id": 2, **_rtbl("pg", "orders", [_rcol("id", "bigint", pk=True)])},  # read live
+    ]
+
+    async def _rels(_conn):
+        return []
+
+    monkeypatch.setattr("provisa.core.repositories.relationship.list_all", _rels)
+    state = _state(cfg, registered, monkeypatch)
+    state.federation_engine = SimpleNamespace(engine=backend.engine)
+    await backend.reconcile_landed_tables(state)
+
+    handed = await export_view_addresses(state)
+
+    assert handed == {("api", "default", "pets"): ("org_acme_export", "api__default__pets")}
+    assert [view for view, _replica, _replace in rt.views] == list(handed.values())
+
+
+@pytest.mark.asyncio
+async def test_a_runtime_that_publishes_no_view_has_none_in_its_plan(monkeypatch):
+    backend = DuckDBBackend(build_duckdb_engine())
+    rt = _KeyedRuntime()
+    backend._runtime = rt
+    cfg = SimpleNamespace(sources=[_src("api", "openapi")], tables=[])
+    registered = [{"id": 1, **_rtbl("api", "pets", [_rcol("id", "bigint", pk=True)])}]
+
+    async def _rels(_conn):
+        return []
+
+    monkeypatch.setattr("provisa.core.repositories.relationship.list_all", _rels)
+    await backend.reconcile_landed_tables(_state(cfg, registered, monkeypatch))
+
+    from provisa.federation.landed_keys import plan_targets
+
+    assert rt.plans[0].view_parts == {}
+    assert plan_targets(rt.plans[0])["api.default.pets"].view is None
+
+
 @pytest.mark.asyncio
 async def test_a_runtime_without_the_key_hook_gets_no_key_plan(monkeypatch):
     # An enforcing store (DuckDB/Postgres): a FOREIGN KEY would refuse every REPLACE land, so the

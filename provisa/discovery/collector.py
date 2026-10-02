@@ -67,20 +67,26 @@ async def _try_engine_rows(engine: Any, sql: str) -> list | None:
         return None
 
 
-def _information_schema_ref(engine: Any, catalog: str) -> tuple[str, str]:
+def _information_schema_ref(engine: Any, catalog: str | None) -> tuple[str, str]:
     """(from-clause prefix, extra WHERE clause) addressing ``information_schema`` for the bound
     engine's dialect. DuckDB has no per-catalog ``information_schema`` for ATTACHed catalogs (only
     the unqualified, session-wide one, spanning every attached catalog via ``table_catalog``);
-    Trino's is a real per-catalog schema, addressed the standard way."""
+    Trino's is a real per-catalog schema, addressed the standard way. ``catalog`` is None on an
+    engine whose SQL has no catalog: its one ``information_schema`` is addressed alone."""
+    if catalog is None:
+        return "", ""
     if engine.dialect == "duckdb":
         return "", f"table_catalog = '{catalog}' AND "
     return f"{catalog}.", ""
 
 
 async def _fetch_column_types(engine: Any, catalog: str, schema: str, table: str) -> list[dict]:
-    cat = _validate_ident(catalog)
+    _validate_ident(catalog)
     _validate_ident(schema)
     _validate_ident(table)
+    # REQ-1912: the columns are listed where the engine reads the table — its replica's address
+    # when it is served from its replica (its source then has no live attach to list).
+    cat, schema, table = engine.read_address(catalog, schema, table)
     prefix, extra_where = _information_schema_ref(engine, cat)
     res = await engine.execute_engine(
         f"SELECT column_name, data_type "
@@ -101,8 +107,12 @@ async def _fetch_samples(
     if not col_names:
         return []
     cols_sql = ", ".join(col_names)
+    # REQ-1912: a table served from its replica is sampled at its replica's address.
     rows = await _try_engine_rows(
-        engine, f"SELECT {cols_sql} FROM {cat}.{sch}.{tbl} LIMIT {int(sample_size)}"
+        engine,
+        engine.address_replicas(
+            f"SELECT {cols_sql} FROM {cat}.{sch}.{tbl} LIMIT {int(sample_size)}"
+        ),
     )
     if rows is None:
         log.warning("Failed to sample %s.%s.%s", cat, sch, tbl)

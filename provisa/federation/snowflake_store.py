@@ -17,8 +17,11 @@ Layout (what the account holds, and what the compiler's physical names resolve t
   every engine uses (REQ-1912) --
   ``"<landing db>"."org_<org>[_env_<env>]_replicas"."<source>__<schema>__<table>"`` -- and
   Provisa's reads are addressed to it there;
-* a per-source SECURE VIEW over that replica is published for the catalog export, which shares
-  and tags it (REQ-1070, REQ-1652). No read of Provisa's goes through the view.
+* a SECURE VIEW over that replica is published for the catalog export, which shares and tags it
+  (REQ-1070, REQ-1652), in a schema that holds only those views --
+  ``"<landing db>"."org_<org>[_env_<env>]_export"."<source>__<schema>__<table>"``
+  (``replica_address.export_view_address``). It is not at the table's registered address, and no
+  read of Provisa's goes through it.
 
 Keys are part of the replica's shape, not of any catalog publish: the landed table gets its
 declared PRIMARY KEY and every relationship between landed tables its FOREIGN KEY (Snowflake keeps
@@ -291,7 +294,7 @@ def view_reads(cur: Any, view: Parts, replica: Parts) -> bool | None:
 
 
 def expose_view(cur: Any, *, view: Parts, replica: Parts, replace: bool) -> None:
-    """The per-source SECURE VIEW at the compiler's physical name over the replica. Created when
+    """The SECURE VIEW ``view`` (in the export schema, REQ-1912) over the replica. Created when
     absent; REPLACED when the replica's shape changed or when the view's own body no longer selects
     from this replica (a view left behind by an earlier layout, pointing at a database that is
     gone, fails every statement issued against it). Left alone otherwise, because CREATE OR REPLACE

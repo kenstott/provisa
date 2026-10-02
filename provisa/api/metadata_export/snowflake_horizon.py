@@ -23,10 +23,11 @@ member tables' PHYSICAL addresses, granted USAGE/SELECT, then wrapped in an inte
 ``CREATE ORGANIZATION LISTING`` (distribution: ORGANIZATION) so it surfaces as a first-class Data
 Product in the account's own Horizon Catalog / Data sharing UI — NOT ``CREATE EXTERNAL LISTING``,
 which is Marketplace-shaped for other Snowflake organizations and never shows up there. A member
-table's physical address is resolved the same way the engine resolves it for
-query execution (:func:`provisa.core.catalog._to_catalog_name` on the source id) — REQ-1637 lands
-a non-attachable source as a VIEW at that physical name, and a share over the view works exactly
-like a share over a table.
+table's published address is :class:`PublishedAddresses`' (REQ-1912): a table served from its
+replica is published through its export VIEW in the landing database's export schema — the
+address the reconcile created it at, handed in by the publish path — and a table the engine
+reads in place where it is attached. A share over the view works exactly like a share over a
+table.
 
 Each ``DataProductAsset`` (REQ-1634) exposes ``id``, ``name``, ``description`` and
 ``members: tuple[AssetRef, ...]`` (table-kind refs, ``(source_id, schema_name, table_name)`` — the
@@ -51,6 +52,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
@@ -95,32 +97,42 @@ def _escape(value: str) -> str:
     return value.replace("'", "''")
 
 
-def physical_parts(ref: "AssetRef") -> tuple[str, str, str]:
-    """A table ref's governed physical address — mirrors ``SnowflakeFederationRuntime._phys_parts``,
-    which takes a ``Source``-like object rather than a ref; this takes the ref directly since that
-    is all a published ``AssetRef`` carries."""
-    from provisa.core.catalog import _to_catalog_name
+@dataclass(frozen=True)
+class PublishedAddresses:
+    """Where each registered table is published in the Snowflake account (REQ-1912): the object
+    this adapter shares, comments and features for it.
 
-    if ref.kind is not AssetKind.TABLE or len(ref.parts) != 3:
-        raise ValueError(f"expected a table ref (source, schema, table); got {ref!r}")
-    source_id, schema_name, table_name = ref.parts
-    return _to_catalog_name(source_id), schema_name, table_name
+    Snowflake is a single-catalog engine: every object is in the landing database. A table served
+    from its replica is published through its export view — ``export_views[(source, schema,
+    table)]`` gives its ``(schema, view)``, the address the reconcile created it at. A table the
+    engine reads in place (an external table over a stage) is published where it is attached: its
+    registered schema and name. Both inputs are handed in by the publish path; nothing here works
+    out the org or which tables are replica-served."""
 
+    landing_database: str
+    export_views: Mapping[tuple[str, str, str], tuple[str, str]]
 
-def physical_table_and_column(ref: "AssetRef") -> tuple[tuple[str, str, str], str | None]:
-    """A table OR column ref's governed physical address: ``(database, schema, table)`` plus the
-    column name when ``ref`` is a column (``None`` for a table ref) — the shape
-    :func:`tag_statements` needs to target either ``ALTER TABLE ... SET TAG`` or
-    ``ALTER TABLE ... MODIFY COLUMN ... SET TAG``."""
-    from provisa.core.catalog import _to_catalog_name
+    def _parts(self, source_id: str, schema_name: str, table_name: str) -> tuple[str, str, str]:
+        view = self.export_views.get((source_id, schema_name, table_name))
+        if view is not None:
+            return self.landing_database, view[0], view[1]
+        return self.landing_database, schema_name, table_name
 
-    if ref.kind is AssetKind.TABLE and len(ref.parts) == 3:
-        source_id, schema_name, table_name = ref.parts
-        return (_to_catalog_name(source_id), schema_name, table_name), None
-    if ref.kind is AssetKind.COLUMN and len(ref.parts) == 4:
-        source_id, schema_name, table_name, column_name = ref.parts
-        return (_to_catalog_name(source_id), schema_name, table_name), column_name
-    raise ValueError(f"expected a table or column ref; got {ref!r}")
+    def table(self, ref: "AssetRef") -> tuple[str, str, str]:
+        """A table ref's published address ``(database, schema, object)``."""
+        if ref.kind is not AssetKind.TABLE or len(ref.parts) != 3:
+            raise ValueError(f"expected a table ref (source, schema, table); got {ref!r}")
+        return self._parts(*ref.parts)
+
+    def table_and_column(self, ref: "AssetRef") -> tuple[tuple[str, str, str], str | None]:
+        """A table OR column ref's published address plus the column name when ``ref`` is a
+        column (``None`` for a table ref) — the shape a COMMENT or TAG statement targets."""
+        if ref.kind is AssetKind.TABLE and len(ref.parts) == 3:
+            return self._parts(*ref.parts), None
+        if ref.kind is AssetKind.COLUMN and len(ref.parts) == 4:
+            source_id, schema_name, table_name, column_name = ref.parts
+            return self._parts(source_id, schema_name, table_name), column_name
+        raise ValueError(f"expected a table or column ref; got {ref!r}")
 
 
 def _set_comment(kind: str, parts: tuple[str, str, str], column: str | None, text: str) -> str:
@@ -168,12 +180,12 @@ def comment_statements(
     tables: list["TableAsset"],
     kinds: dict[tuple[str, str, str], str],
     governance_tags: list["GovernanceTag"],
+    addresses: PublishedAddresses,
 ) -> list[str]:
     """DDL applying table/column descriptions — appended with any governance facts on that same
-    asset (REQ-1071) — as native Snowflake COMMENTs on each table's governed physical address
-    (REQ-1647), the same address :func:`tag_statements` tags — so a source's per-source VIEW back
-    onto ``_landing`` (REQ-1637) carries its description alongside its tags, not just an
-    attachable source's real TABLE. Pure — no I/O — ``kinds`` (one ``_object_kind`` I/O lookup per
+    asset (REQ-1071) — as native Snowflake COMMENTs on each table's published address
+    (REQ-1647, ``addresses``) — so a replica-served table's export VIEW (REQ-1637, REQ-1912)
+    carries its description alongside its tags, not just an attachable source's real TABLE. Pure — no I/O — ``kinds`` (one ``_object_kind`` I/O lookup per
     table, done by the caller) is what lets it stay testable without a live connection. A
     table/column missing from ``kinds`` (not yet landed) is skipped, not an error here — the
     caller already reports missing landing terminals via ``_table_exists``.
@@ -187,7 +199,7 @@ def comment_statements(
         governance_by_fqn.setdefault(tag.asset.fqn(), []).append(tag)
     stmts: list[str] = []
     for table in tables:
-        parts, _ = physical_table_and_column(table.ref)
+        parts, _ = addresses.table_and_column(table.ref)
         kind = kinds.get(parts)
         if kind is None:
             continue
@@ -215,9 +227,8 @@ def share_statements(
     """DDL creating (or reusing) a share and granting it read access to ``tables``. Pure — no I/O —
     so the shape is testable without a live Snowflake connection.
 
-    A per-source table's physical name (``_to_catalog_name(source.id)``) is a SECURE VIEW over the
-    landed replica in ``landing_database`` (REQ-1637) when the source isn't attachable — a different
-    database from the table's own. Snowflake refuses to share such a view unless the landing database
+    A member in a database other than ``landing_database`` that is a SECURE VIEW over a replica
+    in ``landing_database`` (REQ-1637) cannot be shared unless the landing database
     has granted ``REFERENCE_USAGE`` to the share — but a share has exactly ONE database that can ever
     receive ``USAGE`` (its PRIMARY, established by the share's first ``GRANT USAGE ON DATABASE``, i.e.
     each member's own database here). A SECOND ``GRANT USAGE ON DATABASE`` for the landing database
@@ -525,6 +536,9 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
     DataProducts, ``publish`` is a documented no-op."""
 
     provider_name = "snowflake_horizon"
+    # REQ-1912: every object this adapter addresses is in the engine's own store, where a
+    # replica-served table is published through its export view.
+    needs_export_views = True
 
     def _runtime_or_none(self) -> SnowflakeFederationRuntime | None:
         url = configured_engine_url()
@@ -543,14 +557,20 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
         if runtime is None:
             return result
         try:
+            addresses = PublishedAddresses(
+                landing_database=runtime.ensure_materialize_attached(),
+                export_views=self.export_views,
+            )
             published = sum(
                 1
                 for product in products
-                if self._publish_product(runtime, product, result, governance_tags)
+                if self._publish_product(runtime, product, result, addresses, governance_tags)
             )
             if published:
                 result.published["data_products"] = published
-            commented = self._publish_descriptions(runtime, tables, governance_tags, result)
+            commented = self._publish_descriptions(
+                runtime, tables, governance_tags, result, addresses
+            )
             if commented:
                 result.published["descriptions"] = commented
         finally:
@@ -563,6 +583,7 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
         tables: list["TableAsset"],
         governance_tags: list["GovernanceTag"],
         result: PublishResult,
+        addresses: PublishedAddresses,
     ) -> int:
         """Applies table/column descriptions, appended with any governance facts on that same
         asset (REQ-1071), as native Snowflake COMMENTs (REQ-1647), gated on the target already
@@ -593,7 +614,7 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             if not has_content:
                 continue
             try:
-                parts = physical_table_and_column(table.ref)[0]
+                parts = addresses.table_and_column(table.ref)[0]
             except ValueError as exc:
                 result.errors.append(AssetError(table.ref, str(exc)))
                 continue
@@ -610,7 +631,7 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             described.append(table)
         if not described:
             return 0
-        statements = comment_statements(described, kinds, governance_tags)
+        statements = comment_statements(described, kinds, governance_tags, addresses)
         cur = runtime.connection.cursor()
         try:
             for stmt in statements:
@@ -627,10 +648,11 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
         runtime: SnowflakeFederationRuntime,
         product: Any,
         result: PublishResult,
+        addresses: PublishedAddresses,
         governance_tags: list["GovernanceTag"] | None = None,
     ) -> bool:
         try:
-            tables = [physical_parts(ref) for ref in product.members]
+            tables = [addresses.table(ref) for ref in product.members]
         except ValueError as exc:
             result.errors.append(AssetError(AssetRefStub(product.name), str(exc)))
             return False
@@ -696,7 +718,7 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             share_name,
             product.description,
             tables,
-            landing_database=runtime.ensure_materialize_attached(),
+            landing_database=addresses.landing_database,
         ) + listing_statements(listing_name, share_name, manifest, publish=publish)
         cur = runtime.connection.cursor()
         try:

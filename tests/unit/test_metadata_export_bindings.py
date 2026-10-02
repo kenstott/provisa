@@ -497,6 +497,7 @@ async def test_publish_snapshot_loads_persists_and_prunes_bindings(snapshot, tmp
 
     class _Exporter:
         stored_bindings: dict = {}
+        needs_export_views = False  # a remote catalog: it addresses nothing in the engine's store
 
         async def publish(self, published_snapshot):
             seen["bindings"] = dict(self.stored_bindings)

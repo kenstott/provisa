@@ -53,7 +53,9 @@ async def _open_input_streams(engine: Any, input_nodes: Iterable[str]) -> dict[s
     iterates that input's rows — an input the hook never touches is never scanned."""
     streams: dict[str, Any] = {}
     for node in input_nodes:
-        sql = f"SELECT * FROM {_quoted_from(node)}"
+        # REQ-1912: an input served from its replica is streamed from its replica's address; the
+        # stream keeps the input's own name as its key, which is what the check names.
+        sql = engine.address_replicas(f"SELECT * FROM {_quoted_from(node)}")
         _schema, batches = await asyncio.to_thread(engine.execute_engine_stream, sql)
         del _schema  # the reader carries its own schema; we only stream batches
         streams[node] = rows_of(batches)
@@ -72,7 +74,8 @@ async def evaluate_streams(
         return None
     sqlpf = translate(source)
     if sqlpf is not None:
-        res = await engine.execute_engine(sqlpf.count_sql())
+        # REQ-1912: the probe counts the input where the engine reads it.
+        res = await engine.execute_engine(engine.address_replicas(sqlpf.count_sql()))
         return sqlpf.verdict_for(res.rows[0][0])
     from provisa.federation.runtime import EngineCapability  # noqa: PLC0415
 

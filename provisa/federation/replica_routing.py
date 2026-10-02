@@ -92,12 +92,81 @@ def reads_replica(source: Any, table: Any, engine: Any) -> bool:
     return strategy is Strategy.MATERIALIZED
 
 
+def has_live_attach(source: Any, engine: Any) -> bool:
+    """Whether ``engine`` holds a live attach of ``source`` — a catalog, a view or a foreign table
+    a statement could read the source through in place.
+
+    False for a source the operator floors (it has no live attach at all, REQ-1912), for one the
+    engine reaches only by replicating it, and for one it cannot reach. Asked by the admin
+    discovery reads: with no live attach there is no engine catalog of the source to list, so its
+    schemas, tables and columns are listed through the source's own driver. ``engine`` is the
+    ``FederationEngine``."""
+    from provisa.core.operator_floor import floor_setting
+    from provisa.federation.engine import UnreachableSource
+    from provisa.federation.strategy import Strategy, federate
+
+    try:
+        strategy = federate(source, engine, prefer_materialized=floor_setting(source) is not None)
+    except UnreachableSource:
+        return False
+    return strategy is not Strategy.MATERIALIZED
+
+
 def live_while_building(source: Any, table: Any, engine: Any) -> bool:
     """Whether ``table`` may be read live while its replica is being built. Never for a table the
     operator floors (its reads come from the replica, and a failed build is an error) or one the
     engine cannot read in place (there is no live read to fall back on)."""
     del source, table, engine
     return False
+
+
+class UnknownRegisteredTable(LookupError):
+    """A statement names a table that is not registered."""
+
+    def __init__(self, table_name: str) -> None:
+        self.table_name = table_name
+        super().__init__(
+            f"table {table_name!r} is not a registered table, so it has no name on the engine"
+        )
+
+
+class AmbiguousRegisteredTable(LookupError):
+    """A statement names a table by a name more than one source registers."""
+
+    def __init__(self, table_name: str, sources: list[str]) -> None:
+        self.table_name = table_name
+        self.sources = sources
+        super().__init__(
+            f"table {table_name!r} is registered by more than one source ({', '.join(sources)}), "
+            "so the name alone does not say which is meant. Register the tables under different "
+            "names, or define the view by SQL that names the source."
+        )
+
+
+async def registered_table_key(engine: Any, state: Any, table_name: str) -> TableKey:
+    """The catalog-physical name the bound ``engine`` gives the table registered as
+    ``table_name`` — ``(catalog, schema, table)``, the catalog folded into the schema on an
+    engine whose SQL has none — exactly as a lowered statement names it.
+
+    For a caller that holds only a registered table's name (a join-pattern materialized view):
+    a bare name is no engine address, live or replica, so it is resolved here first and then
+    read through the address seam (``EngineRuntime.read_address``). Refused when no registered
+    table has that name, and when more than one source registers it. ``engine`` is the
+    ``FederationEngine``."""
+    from provisa.compiler.naming import apply_sql_name
+    from provisa.federation.registry_view import registered_tables
+
+    wanted = {table_name, apply_sql_name(table_name)}
+    found = [t for t in await registered_tables(state) if t.table_name in wanted]
+    if not found:
+        raise UnknownRegisteredTable(table_name)
+    if len(found) > 1:
+        raise AmbiguousRegisteredTable(table_name, sorted(t.source_id for t in found))
+    reg = found[0]
+    physical = getattr(state, "kafka_table_physical", None) or {}
+    name = physical.get(reg.table_name, reg.table_name)
+    # The last key is the form the engine executes: three-part, or folded where it has no catalog.
+    return engine_table_keys(engine, state.catalog_for(reg.source_id), reg.schema_name, name)[-1]
 
 
 def _data_columns(reg: dict) -> list[dict]:
@@ -133,6 +202,26 @@ async def replica_tables(engine: Any, state: Any) -> list[tuple[Any, dict]]:
         if reads_replica(src, reg, engine):
             out.append((src, reg))
     return out
+
+
+async def export_view_addresses(state: Any) -> dict[tuple[str, str, str], tuple[str, str]]:
+    """The export view of every table served from a replica on ``state``'s bound engine, keyed
+    by the table's registered identity ``(source_id, schema_name, table_name)`` and giving the
+    ``(schema, view)`` a store that publishes one creates it at (REQ-1912,
+    ``EngineBackend.export_view_address``). The same tables, by the same decision, as the
+    reconcile publishes views for — so a catalog export addresses exactly what was created."""
+    engine = state.federation_engine.engine
+    backend = engine.backend
+    views: dict[tuple[str, str, str], tuple[str, str]] = {}
+    for src, reg in await replica_tables(engine, state):
+        address = backend.export_view_address(
+            state,
+            source_id=src.id,
+            schema_name=reg["schema_name"],
+            table_name=reg["table_name"],
+        )
+        views[(src.id, reg["schema_name"], reg["table_name"])] = (address.schema, address.table)
+    return views
 
 
 async def landing_worklist(

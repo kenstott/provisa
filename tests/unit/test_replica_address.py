@@ -28,10 +28,12 @@ from provisa.federation.replica_address import (
     ReplicaRoute,
     ReplicaRoutes,
     address_replicas,
+    export_view_address,
     engine_table_keys,
     is_replicas_schema,
     is_write_surface,
     mv_schema,
+    replica_address,
     replica_schema,
     replica_table_name,
 )
@@ -109,12 +111,32 @@ def test_a_replica_name_stays_within_the_identifier_limit_and_stays_distinct():
     assert replica_table_name("s", "public", "t") == "s__public__t"
 
 
+def test_an_export_view_is_outside_the_registered_address_and_both_read_schemas():
+    """A store that publishes a view of each replica for its catalog export (Snowflake) puts it
+    in a schema of its own: not the table's registered schema, not the replicas schema a read is
+    addressed to, not the materialized-view schema."""
+    view = export_view_address(
+        org_id="acme", source_id="sales-pg", schema_name="public", table_name="orders"
+    )
+    replica = replica_address(
+        org_id="acme", source_id="sales-pg", schema_name="public", table_name="orders"
+    )
+    assert (view.schema, view.table) == ("org_acme_export", "sales-pg__public__orders")
+    assert view.table == replica.table
+    assert view.schema not in ("public", replica.schema, mv_schema("acme"))
+    assert not is_replicas_schema(view.schema)  # a replica write addressed there is refused
+    assert is_write_surface(view.schema)  # and so is a live attach
+
+
 @pytest.mark.parametrize(
     ("schema", "replicas", "surface"),
     [
         ("org_acme_replicas", True, True),
         ("org_acme_env_dev_replicas", True, True),
         ("org_acme_mv_cache", False, True),
+        ("org_acme_export", False, True),
+        ("org_acme_env_dev_export", False, True),
+        ("org_acme__sales_export", False, False),  # another org's live schema "export", folded
         ("org_landing_never_writes_source_replicas", True, True),  # a boot org named in config
         ("org_acme__sales_replicas", False, False),  # another org's live schema "replicas", folded
         ("org_acme_api_cache", False, False),

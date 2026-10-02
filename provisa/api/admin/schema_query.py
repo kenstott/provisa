@@ -684,6 +684,8 @@ class Query:  # REQ-021, REQ-042
         # registry (REQ-947), not a parallel map: unreachable ⇒ no engine schemas.
         if not state.federation_engine.engine.reachable(source_type):
             return []
+        # REQ-1912: the engine lists only a source it holds a live attach of.
+        await _require_live_attach(source_id, "schemas")
         # REQ-1673: a native engine attaches a source only when a table on it is registered, so
         # its catalog does not exist yet at this point; the seam attaches the raw source and lists it.
         src = await _source_for_introspection(source_id)
@@ -744,6 +746,8 @@ class Query:  # REQ-021, REQ-042
         from provisa.api.admin.introspect import PROVISA_INTERNAL_TABLES
 
         skip = PROVISA_INTERNAL_TABLES if schema_name.lower() == "public" else frozenset()
+        # REQ-1912: the engine lists only a source it holds a live attach of.
+        await _require_live_attach(source_id, "tables")
         # REQ-1673: see available_schemas — list through the attached raw source on a native engine.
         src = await _source_for_introspection(source_id)
         if src is not None:
@@ -893,25 +897,13 @@ class Query:  # REQ-021, REQ-042
     async def available_columns(
         self, info: StrawberryInfo, source_id: str, schema_name: str, table_name: str
     ) -> list[str]:
-        """List columns for a table in a source's the engine catalog."""
+        """List the column names of a table in a source: the names of
+        ``available_columns_metadata``, through the one resolver — the source's own driver or
+        reader first, the engine's catalog only for a source it holds a live attach of
+        (REQ-1912)."""
         require_capability(info, "table_registration")
-        from provisa.api.app import state
-
-        source_type = state.source_types.get(source_id, "")
-        if source_type == "govdata":
-            cols = await _govdata_columns(source_id, schema_name, table_name, None)
-            return [c.name for c in cols]
-        catalog = state.catalog_for(source_id)
-        columns: list[str] = []
-        with discovery_fallback(f"engine columns for {source_id!r}.{schema_name}.{table_name}"):
-            res = await state.federation_engine.execute_engine(
-                f'SELECT column_name FROM "{catalog}".information_schema.columns '
-                f"WHERE table_schema = '{schema_name}' "
-                f"AND table_name = '{table_name}' "
-                f"ORDER BY ordinal_position"
-            )
-            columns = [row[0] for row in res.rows]
-        return columns
+        columns = await resolve_available_columns_metadata(source_id, schema_name, table_name)
+        return [c.name for c in columns]
 
     @strawberry.field
     async def available_columns_metadata(
@@ -1470,6 +1462,23 @@ class Query:  # REQ-021, REQ-042
             return ""
 
 
+async def _require_live_attach(source_id: str, what: str) -> None:
+    """``introspect.require_live_attach`` for the app's state: refuse an engine-catalog listing
+    of a source the bound engine holds no live attach of (REQ-1912)."""
+    from provisa.api.admin.introspect import require_live_attach
+    from provisa.api.app import state
+
+    await require_live_attach(state, source_id, what)
+
+
+async def _unattached_source(source_id: str):
+    """``introspect.unattached_source`` for the app's state."""
+    from provisa.api.admin.introspect import unattached_source
+    from provisa.api.app import state
+
+    return await unattached_source(state, source_id)
+
+
 async def _source_for_introspection(source_id: str):
     """REQ-1673: the Source a native engine attaches from. The live config Source when the id is
     there; otherwise the control-plane row, whose ``password_ref`` carries the source's credential
@@ -1734,7 +1743,13 @@ async def resolve_available_columns_metadata(
     # reader dials ``sources.host``, which is the ENGINE-visible address (trino_system_catalogs.
     # engine_visible_address); under a live-connector engine the app is not the reader, so that
     # address need not resolve from the app at all.
-    if not _engine_reaches_live(state, source_type):
+    # REQ-1912: "reaches live" is judged for THIS source, not only its type: a source the operator
+    # floors has no live attach on any engine, and is typed by the app's own reader like one the
+    # engine only lands.
+    if (
+        not _engine_reaches_live(state, source_type)
+        or await _unattached_source(source_id) is not None
+    ):
         if source_type == "elasticsearch":
             return await _elasticsearch_columns(source_id, table_name)
         if source_type == "redis":
@@ -1862,10 +1877,28 @@ async def resolve_available_columns_metadata(
             source_id, source_type, schema_name, table_name, state.source_pools, _cc
         )
     if native:
+        from provisa.api.admin.introspect import native_primary_keys
+
+        # Primary keys are decoration on the result; column types are the contract (see below).
+        native_pks: list[str] | None = None
+        with discovery_fallback(f"primary keys for {source_id!r}.{schema_name}.{table_name}"):
+            native_pks = await native_primary_keys(
+                source_id, source_type, schema_name, table_name, state.source_pools
+            )
+        pk_names = set(native_pks or [])
         return [
-            AvailableColumnType(name=name, data_type=dtype.lower(), comment=None)
+            AvailableColumnType(
+                name=name, data_type=dtype.lower(), comment=None, is_primary_key=name in pk_names
+            )
             for name, dtype in native
         ]
+    # REQ-1912: the engine lists only a source it holds a live attach of. With none, a table the
+    # driver listed and found no columns for has none to report; a source the driver cannot list
+    # at all is refused, naming it.
+    if native is None:
+        await _require_live_attach(source_id, "columns")
+    elif await _unattached_source(source_id) is not None:
+        return []
     # A __derived__ virtual view has no registered source and thus no catalog_for() entry — it's
     # physically materialized in the view catalog (same pattern as table_profile_router.py:88).
     # REQ-1673: on a native engine the source's catalog does not exist before a table is

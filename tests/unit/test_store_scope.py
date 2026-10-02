@@ -122,7 +122,11 @@ def store(monkeypatch):
 async def test_retire_drops_the_environments_replicas_schema(store):
     dropped = await drop_env_store(PG, "acme", "feature_x")
     assert dropped == "org_acme_env_feature_x_replicas"
-    assert store == [(PG, 'DROP SCHEMA IF EXISTS "org_acme_env_feature_x_replicas" CASCADE')]
+    # The export views a store publishes over those replicas go first: they select from them.
+    assert store == [
+        (PG, 'DROP SCHEMA IF EXISTS "org_acme_env_feature_x_export" CASCADE'),
+        (PG, 'DROP SCHEMA IF EXISTS "org_acme_env_feature_x_replicas" CASCADE'),
+    ]
 
 
 @pytest.mark.asyncio

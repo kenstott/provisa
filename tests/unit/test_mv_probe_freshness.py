@@ -19,6 +19,7 @@ from provisa.mv.input_signals import input_token
 from provisa.mv.models import MVDefinition, MVStatus
 from provisa.mv.refresh import refresh_mv
 from provisa.mv.registry import MVRegistry
+from tests.helpers import RegisteredNames
 
 
 # ---- input_token ------------------------------------------------------------
@@ -84,13 +85,10 @@ def test_mark_unchanged_resets_ttl_keeps_rows():
 _WM_MARK = "registered_tables"
 
 
-class _FakeEngine:
+class _FakeEngine(RegisteredNames):
     def __init__(self, snapshot):
         self.snapshot = snapshot
         self.queries: list[str] = []
-
-    def address_replicas(self, sql):
-        return sql  # this stand-in's tables are all read where the statement names them
 
     async def execute_engine(self, sql, *a, **k):
         from provisa.executor.result import QueryResult

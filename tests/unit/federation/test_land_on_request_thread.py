@@ -41,11 +41,13 @@ class _Recorder:
 
     def __init__(self, result: Any = "ok") -> None:
         self.idents: list[int] = []
+        self.kwargs: list[dict[str, Any]] = []
         self._result = result
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        del args, kwargs
+        del args
         self.idents.append(threading.get_ident())
+        self.kwargs.append(kwargs)
         return self._result
 
 
@@ -201,9 +203,15 @@ def test_snowflake_publish_replica_view_writes_on_the_request_thread(monkeypatch
     monkeypatch.setattr(snowflake_store, "expose_view", write)
     rt = _snowflake_runtime()
     _run_as_request(
-        lambda: rt.publish_replica_view(_source(), schema="s", table="t", replace=False)
+        lambda: rt.publish_replica_view(
+            view_schema="org_acme_export", view_table="t", schema="s", table="t", replace=False
+        )
     )
     _assert_ran_here(write)
+    # The view is published in the export schema of the landing database, over the replica.
+    (call,) = write.kwargs
+    assert call["view"] == ("LANDING", "org_acme_export", "t")
+    assert call["replica"] == ("LANDING", "s", "t")
 
 
 def test_snowflake_reconcile_landed_metadata_writes_on_the_request_thread(monkeypatch) -> None:
@@ -263,6 +271,40 @@ def test_databricks_land_table_writes_on_the_request_thread(monkeypatch) -> None
     rt = _databricks_runtime()
     _run_as_request(lambda: rt.land_table(schema="s", table="t", columns=_COLUMNS, rows=_ROWS))
     _assert_ran_here(write)
+
+
+def test_databricks_source_land_writes_its_replica_on_the_request_thread(monkeypatch) -> None:
+    """A source's rows reach the warehouse through the backend's one land terminal (it replaced
+    the runtime's per-source ``materialize_source``): the write runs on the request's thread and
+    lands at the replica address it was given, in the warehouse catalog — never at the table's
+    registered name (REQ-1912)."""
+    from provisa.federation import databricks_store
+    from provisa.federation.databricks_backend import DatabricksBackend
+    from provisa.federation.replica_address import replica_table_name
+
+    write = _Recorder(None)
+    monkeypatch.setattr(databricks_store, "land_databricks_native", write)
+    backend = DatabricksBackend.__new__(DatabricksBackend)
+    backend._runtime = _databricks_runtime()
+    replica = replica_table_name("src", "sales", "orders")
+    landed = _run_as_request(
+        lambda: backend.land_source_table(
+            SimpleNamespace(config=None),
+            schema="org_acme_replicas",
+            table=replica,
+            columns=_COLUMNS,
+            rows=_ROWS,
+        )
+    )
+    _assert_ran_here(write)
+    assert landed == f"main.org_acme_replicas.{replica}"
+    (call,) = write.kwargs
+    assert (call["catalog"], call["schema"], call["table"]) == (
+        "main",
+        "org_acme_replicas",
+        replica,
+    )
+    assert call["rows"] == _ROWS
 
 
 def test_databricks_reconcile_replica_writes_on_the_request_thread(monkeypatch) -> None:

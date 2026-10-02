@@ -49,6 +49,11 @@ def _strip_driver_suffix(url: str) -> str:
     return f"{scheme.split('+', 1)[0]}://{rest}" if sep else url
 
 
+def quoted_name(key: tuple[str | None, str, str]) -> str:
+    """An engine table name ``(catalog | None, schema, table)`` as a quoted SQL reference."""
+    return ".".join('"' + part.replace('"', '""') + '"' for part in key if part is not None)
+
+
 class EngineCapability(str, Enum):  # REQ-825, REQ-840
     """A transport an engine advertises. Consumer-side features gate on these — they are
     federation-engine-specific, not universally available (e.g. Arrow Flight is the engine feature)."""
@@ -101,27 +106,65 @@ class EngineRuntime:  # REQ-825, REQ-840
         replica differently and none reads the source of a table the operator floors."""
         return self._backend.transpile_physical(self.address_replicas(pg_sql))
 
-    def address_replicas(self, pg_sql: str) -> str:
-        """``pg_sql`` with each replica-served table at its replica's address (REQ-1912), from the
-        routes published with the registry (``replica_routing.replica_routes``)."""
-        from provisa.federation.replica_address import ReplicaRoutes, address_replicas
+    def _replica_routes(self) -> Any:
+        """The routes published with the registry (``replica_routing.replica_routes``) for the
+        bound engine, or None when no table is served from a replica."""
+        from provisa.federation.replica_address import ReplicaRoutes
 
         # The routes are published on the org's runtime with its registry (``_rebuild_schemas``).
         # A state that carries none — an engine runtime built outside the app, with no registry —
         # has no registered table, so none is served from a replica.
         routes = getattr(self._state, "replica_routes", None)
         if routes is None:
-            return pg_sql
+            return None
         if not isinstance(routes, ReplicaRoutes):
             raise TypeError(f"replica_routes is a {type(routes).__name__}, not ReplicaRoutes")
         if not routes:
-            return pg_sql
+            return None
         if routes.engine_name != self.engine.name:
             raise RuntimeError(
                 f"replica routes were published for engine {routes.engine_name!r}; the bound "
                 f"engine is {self.engine.name!r}"
             )
-        return address_replicas(pg_sql, routes)
+        return routes
+
+    def address_replicas(self, pg_sql: str) -> str:
+        """``pg_sql`` with each replica-served table at its replica's address (REQ-1912), from the
+        routes published with the registry (``replica_routing.replica_routes``)."""
+        from provisa.federation.replica_address import address_replicas
+
+        routes = self._replica_routes()
+        return pg_sql if routes is None else address_replicas(pg_sql, routes)
+
+    def read_address(
+        self, catalog: str | None, schema: str, table: str
+    ) -> tuple[str | None, str, str]:
+        """Where the bound engine reads the table a statement names ``catalog.schema.table``
+        (REQ-1912): its replica's address when it is served from its replica, the name itself
+        when it is read live. The same published routes and the same refusals as
+        :meth:`address_replicas`, for a statement that is not a query (``ANALYZE``, a catalog
+        listing of one table)."""
+        from provisa.federation.replica_address import read_address
+
+        routes = self._replica_routes()
+        key = (catalog, schema, table)
+        return key if routes is None else read_address(key, routes)
+
+    async def registered_key(self, table_name: str) -> tuple[str | None, str, str]:
+        """The catalog-physical name the bound engine gives the table registered as
+        ``table_name`` (``replica_routing.registered_table_key``): its registered address, before
+        the address seam. Refused for an unknown name and for one two sources register."""
+        from provisa.federation.replica_routing import registered_table_key
+
+        return await registered_table_key(self.engine, self._state, table_name)
+
+    async def read_ref(self, table_name: str) -> str:
+        """The quoted engine name a statement reads the table registered as ``table_name`` by:
+        its registered address resolved from the registry, then the address seam — its replica's
+        address when it is served from its replica (REQ-1912). For a statement built from
+        registered table names rather than lowered by the query pipeline."""
+        address = self.read_address(*await self.registered_key(table_name))
+        return quoted_name(address)
 
     def engine_physical(self, pg_sql: str) -> str:
         """Catalog-physical (``"catalog"."schema"."table"``) PostgreSQL-dialect SQL as the bound
@@ -545,7 +588,7 @@ class EngineRuntime:  # REQ-825, REQ-840
             self._state, source_id=source_id, schema_name=schema_name, table_name=table_name
         )
 
-    async def analyze_landed_table(self, *, catalog: str, schema: str, table: str) -> None:
+    async def analyze_landed_table(self, *, catalog: str | None, schema: str, table: str) -> None:
         """Planner statistics on a landed table, collected where the table lives (REQ-1688) —
         delegated to the backend."""
         await self._backend.analyze_landed_table(

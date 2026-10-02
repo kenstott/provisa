@@ -19,6 +19,7 @@ import pytest
 from provisa.mv.models import JoinPattern, MVDefinition, MVStatus
 from provisa.mv.registry import MVRegistry
 from provisa.executor.result import QueryResult
+from tests.helpers import RegisteredNames
 from provisa.mv.refresh import (
     detect_orphans,
     drop_expired_orphans,
@@ -56,9 +57,10 @@ def _mv(
     )
 
 
-class _FakeEngine:
-    """Records SQL through the engine terminal; COUNT(*)/SHOW TABLES/SHOW COLUMNS return
-    configured rows. ``fail_exists`` raises on the SELECT-1 existence probe (table absent)."""
+class _FakeEngine(RegisteredNames):
+    """Records SQL through the engine terminal; COUNT(*)/SHOW TABLES and the zero-row shape read
+    of a join-pattern table return configured rows. ``fail_exists`` raises on the SELECT-1
+    existence probe (table absent)."""
 
     def __init__(self, count=0, show_tables=None, show_columns=None, fail_exists=False):
         self.count = count
@@ -67,17 +69,14 @@ class _FakeEngine:
         self.fail_exists = fail_exists
         self.sqls: list[str] = []
 
-    def address_replicas(self, sql):
-        return sql  # this stand-in's tables are all read where the statement names them
-
     async def execute_engine(self, sql, *a, **k):
         self.sqls.append(sql)
         if self.fail_exists and "SELECT 1 FROM" in sql:
             raise Exception("TABLE_NOT_FOUND")
         if "SHOW TABLES" in sql:
             return QueryResult(rows=self.show_tables, column_names=[])
-        if "SHOW COLUMNS" in sql:
-            return QueryResult(rows=self.show_columns, column_names=[])
+        if sql.startswith('SELECT * FROM "src"."public".') and sql.endswith("LIMIT 0"):
+            return QueryResult(rows=[], column_names=[c for (c,) in self.show_columns])
         if "COUNT(*)" in sql:
             return QueryResult(rows=[(self.count,)], column_names=[])
         return QueryResult(rows=[], column_names=[])

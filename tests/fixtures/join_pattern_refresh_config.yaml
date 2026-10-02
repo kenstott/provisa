@@ -1,0 +1,85 @@
+# A join-pattern materialized view over two Postgres sources in the test stack: one the engine
+# reads live (jp-live), one the operator floors onto its replica (jp-replica, REQ-826). The view
+# names both tables by registered name only; its refresh must resolve each to where the engine
+# reads it (REQ-1912).
+federation_engine: duckdb
+auth:
+  provider: none
+  assignments_source: provisa
+  default_assignments:
+    - domain_id: '*'
+      role_id: org_admin
+naming:
+  domain_prefix: false
+  rules: []
+cache:
+  enabled: false
+domains:
+  - id: jp
+    description: Join pattern refresh
+roles:
+  - id: org_admin
+    capabilities:
+      - source_registration
+      - table_registration
+      - access_config
+      - query_development
+      - full_results
+      - usage
+      - observability
+    domain_access:
+      - '*'
+sources:
+  - id: jp-live
+    type: postgresql
+    host: ${env:PG_HOST}
+    port: ${env:PG_PORT}
+    database: ${env:PG_DATABASE}
+    username: ${env:PG_USER}
+    password: ${env:PG_PASSWORD}
+  - id: jp-replica
+    type: postgresql
+    host: ${env:PG_HOST}
+    port: ${env:PG_PORT}
+    database: ${env:PG_DATABASE}
+    username: ${env:PG_USER}
+    password: ${env:PG_PASSWORD}
+    prefer_materialized: true
+    cache_ttl: 86400
+tables:
+  - source_id: jp-live
+    table: jp_customers
+    schema: jp_refresh_e2e
+    domain_id: jp
+    columns:
+      - name: id
+        data_type: integer
+        visible_to: [org_admin]
+      - name: name
+        data_type: varchar
+        visible_to: [org_admin]
+  - source_id: jp-replica
+    table: jp_orders
+    schema: jp_refresh_e2e
+    domain_id: jp
+    columns:
+      - name: id
+        data_type: integer
+        visible_to: [org_admin]
+      - name: customer_id
+        data_type: integer
+        visible_to: [org_admin]
+      - name: amount
+        data_type: integer
+        visible_to: [org_admin]
+relationships:
+  # A cross-source relationship marked materialize: the loader builds a join-pattern materialized
+  # view for it (auto-mv-<relationship id>), naming both tables by registered name only.
+  - id: jp-orders-customer
+    source_table_id: jp_orders
+    target_table_id: jp_customers
+    source_column: customer_id
+    target_column: id
+    cardinality: many-to-one
+    materialize: true
+    refresh_interval: 86400

@@ -188,6 +188,21 @@ class EngineBackend:
             table_name=table_name,
         )
 
+    def export_view_address(
+        self, state: Any, *, source_id: str, schema_name: str, table_name: str
+    ) -> ReplicaAddress:
+        """Where a store that publishes a view of each replica for its catalog export puts the
+        view of this table's replica (REQ-1912): the export schema of the org and environment
+        being served. Never the table's registered address."""
+        from provisa.federation.replica_address import active_org_id, export_view_address
+
+        return export_view_address(
+            org_id=active_org_id(state),
+            source_id=source_id,
+            schema_name=schema_name,
+            table_name=table_name,
+        )
+
     def replica_read_catalog(self, state: Any) -> str | None:
         """The catalog a statement names this engine's store by when it reads a replica, or None
         on an engine whose SQL has no catalog (the replicas schema is then addressed alone).
@@ -415,7 +430,7 @@ class EngineBackend:
             return await apply_cdc(conn, tbl, pk_columns, events)
 
     async def analyze_landed_table(
-        self, state: Any, *, catalog: str, schema: str, table: str
+        self, state: Any, *, catalog: str | None, schema: str, table: str
     ) -> None:  # REQ-280, REQ-1688
         """Collect planner statistics on a table landed in the materialization store.
 
@@ -423,7 +438,8 @@ class EngineBackend:
         attach is a read view and its ANALYZE is the engine's, not the store's (DuckDB implements
         ANALYZE as VACUUM and refuses it on an attached Postgres table). A store dialect with no
         statistics statement is skipped by name. ``catalog`` is the engine's attach name, which
-        the Trino backend uses because there the engine IS the analyzer.
+        the Trino backend uses because there the engine IS the analyzer; it is None on an engine
+        whose SQL has no catalog.
         """
         del state, catalog
         from provisa.federation import store_writer
@@ -1196,10 +1212,11 @@ class TrinoBackend(EngineBackend):
                 catalog.analyze_source_tables(conn, source, tables, catalog_name=catalog_name)
 
     async def analyze_landed_table(
-        self, state: Any, *, catalog: str, schema: str, table: str
+        self, state: Any, *, catalog: str | None, schema: str, table: str
     ) -> None:  # REQ-280, REQ-1688
         """On Trino the engine IS the analyzer of its catalogs: ANALYZE through the coordinator when
         the catalog's connector collects statistics, else skip by name (REQ-636)."""
+        assert catalog is not None  # Trino's SQL is catalog-qualified: every table has one
         with self._provisioning_conn(state) as conn:
             if conn is None:
                 return

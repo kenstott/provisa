@@ -46,6 +46,24 @@ def _normalize_sql(sql: str) -> str:
     return re.sub(r"\s+", " ", sql).strip()
 
 
+class RegisteredNames:
+    """The address face of an engine stand-in whose registered tables all live in one source
+    (``src``, schema ``public``) and are all read live: a registered name resolves to
+    ``"src"."public"."<name>"`` and the address seam leaves every statement as written."""
+
+    def address_replicas(self, sql: str) -> str:
+        return sql
+
+    def read_address(self, catalog, schema: str, table: str):
+        return (catalog, schema, table)
+
+    async def registered_key(self, table_name: str):
+        return ("src", "public", table_name)
+
+    async def read_ref(self, table_name: str) -> str:
+        return f'"src"."public"."{table_name}"'
+
+
 class DsnEngine:
     """Minimal write-face stand-in for a non-embedded store: forwards to ``store_writer`` against a
     fixed DSN, mirroring ``EngineBackend``'s base-class default (the path every non-DuckDB engine

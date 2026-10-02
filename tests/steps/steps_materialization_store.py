@@ -37,6 +37,7 @@ from provisa.mv.aggregate_catalog import (
 from provisa.mv.input_signals import input_token
 from provisa.mv.models import MVDefinition, MVStatus
 from provisa.mv.refresh import refresh_mv
+from tests.helpers import RegisteredNames
 from provisa.mv.registry import MVRegistry
 
 scenarios("../features/REQ-881.feature")
@@ -273,15 +274,12 @@ def then_subset_safety_enforced(shared_data):
 _WM_MARK = "registered_tables"
 
 
-class _FakeConn:
+class _FakeConn(RegisteredNames):
     """Engine terminal recording SQL; answers snapshot/count probes for refresh_mv."""
 
     def __init__(self, snapshot):
         self.snapshot = snapshot
         self.queries: list[str] = []
-
-    def address_replicas(self, sql):
-        return sql  # this stand-in's tables are all read where the statement names them
 
     async def execute_engine(self, sql, *a, **k):
         from provisa.executor.result import QueryResult

@@ -323,19 +323,31 @@ async def _build_refresh_sql(
         if engine is None:
             raise ValueError(f"MV {mv.id}: engine required to introspect right-table columns")
 
+        # A join pattern names its tables by registered name, which is no engine address. Each
+        # is resolved to where the bound engine reads it — its catalog-physical name from the
+        # registry, then the address seam, so a table served from its replica is read there
+        # (REQ-1912) — and aliased to its registered name, which is what the columns below and
+        # the "{table}__{col}" convention are written against.
+        refs: dict[str, str] = {}
+
+        async def _from(table: str) -> str:
+            if table not in refs:
+                refs[table] = await engine.read_ref(table)
+            return f'{refs[table]} AS "{table}"'
+
         async def _columns_of(table: str) -> list[str]:
             try:
-                rows = (
-                    await engine.execute_engine(
-                        f'SHOW COLUMNS FROM "{table}"', authorization=authorization
-                    )
-                ).rows
+                # The table's shape, read with a zero-row SELECT: every engine answers it, and it
+                # names the table the same way the refresh's own SELECT does.
+                result = await engine.execute_engine(
+                    f"SELECT * FROM {await _from(table)} LIMIT 0", authorization=authorization
+                )
             except Exception as exc:
                 # Falling back to left.* silently drops the table's columns — fail loud.
                 raise RuntimeError(
                     f"MV {mv.id}: could not introspect columns for {table!r}: {exc}"
                 ) from exc
-            return [row[0] for row in rows]
+            return list(result.column_names)
 
         def _prefixed(table: str, cols: list[str]) -> str:
             return ", ".join(f'"{table}"."{c}" AS "{table}__{c}"' for c in cols)
@@ -351,11 +363,11 @@ async def _build_refresh_sql(
             join_kw = jp.join_type.upper()
             sql = (
                 f'SELECT "{jp.left_table}".*, {via_cols}, {right_cols} '
-                f'FROM "{jp.left_table}" '
-                f'{join_kw} JOIN "{jp.via_table}" '
+                f"FROM {await _from(jp.left_table)} "
+                f"{join_kw} JOIN {await _from(jp.via_table)} "
                 f'ON "{jp.left_table}"."{jp.left_column}" = '
                 f'"{jp.via_table}"."{jp.via_left_column}" '
-                f'{join_kw} JOIN "{jp.right_table}" '
+                f"{join_kw} JOIN {await _from(jp.right_table)} "
                 f'ON "{jp.via_table}"."{jp.via_right_column}" = '
                 f'"{jp.right_table}"."{jp.right_column}"'
             )
@@ -369,8 +381,8 @@ async def _build_refresh_sql(
         select_clause = f'"{jp.left_table}".*, {right_cols}'
 
         return (
-            f'SELECT {select_clause} FROM "{jp.left_table}" '
-            f'{jp.join_type.upper()} JOIN "{jp.right_table}" '
+            f"SELECT {select_clause} FROM {await _from(jp.left_table)} "
+            f"{jp.join_type.upper()} JOIN {await _from(jp.right_table)} "
             f'ON "{jp.left_table}"."{jp.left_column}" = '
             f'"{jp.right_table}"."{jp.right_column}"'
         )
@@ -457,7 +469,10 @@ async def _evaluate_preflight(engine, mv: MVDefinition, select_sql: str):
     a SQL-expressible check pushes down as an engine-side count probe over the named input node; a
     non-SQL check opens one lazy Arrow stream per input and short-circuits through the compiled
     hook. The two strategies must reach the same verdict for a dataset (REQ-964). The input nodes
-    are the SQL-lineage inputs of ``select_sql`` (the MV's resolved SELECT)."""
+    are the SQL-lineage inputs of the view as its definition names them — the names the check is
+    written against. ``select_sql`` has had its replica-served inputs renamed to their replicas
+    (REQ-1912), so it stands in only for a join-pattern view, which has no SQL of its own; each
+    input is addressed where the engine reads it at the read (``preflight_eval``)."""
     source = getattr(mv, "preprocess", None)
     if source is None or not source.strip():
         return None
@@ -467,7 +482,7 @@ async def _evaluate_preflight(engine, mv: MVDefinition, select_sql: str):
     from provisa.mv.preflight_eval import evaluate_streams  # noqa: PLC0415
 
     ctx = NodeContext(node=mv.id, kind="mv", claimed=[], prior_hash=None)
-    inputs = sorted(extract_inputs(select_sql, "postgres"))
+    inputs = sorted(extract_inputs(mv.sql or select_sql, "postgres"))
     return await evaluate_streams(engine, source, inputs, ctx)
 
 

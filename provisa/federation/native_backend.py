@@ -422,6 +422,7 @@ class NativeEngineBackend(EngineBackend):
         reconciled: list[tuple[str, str]] = []
         landed: list[LandedTable] = []
         addresses: dict[str, tuple[str, str]] = {}
+        views: dict[str, tuple[str, str]] = {}
         for src, schema_name, table_name, columns, pk_columns in await landing_worklist(
             self.engine, state
         ):
@@ -435,13 +436,17 @@ class NativeEngineBackend(EngineBackend):
                     columns=columns,
                     pk_columns=pk_columns,
                 )
+                view = None
                 if hasattr(runtime, "publish_replica_view"):
-                    # A store whose catalog export shares a per-source view of each replica
-                    # (Snowflake). It is a published object, not a read path (REQ-1912).
+                    # A store whose catalog export shares a view of each replica (Snowflake). It
+                    # is a published object in the export schema, not a read path, and never at
+                    # the table's registered address (REQ-1912).
+                    view = self.export_view_address(
+                        state, source_id=src.id, schema_name=schema_name, table_name=table_name
+                    )
                     await runtime.publish_replica_view(
-                        SimpleNamespace(
-                            id=src.id, type=src.type, schema_name=schema_name, table_name=table_name
-                        ),
+                        view_schema=view.schema,
+                        view_table=view.table,
                         schema=address.schema,
                         table=address.table,
                         replace=outcome == "recreated",
@@ -464,6 +469,8 @@ class NativeEngineBackend(EngineBackend):
             entry = LandedTable(src.id, schema_name, table_name, tuple(pk_columns))
             landed.append(entry)
             addresses[entry.identity] = (address.schema, address.table)
+            if view is not None:
+                views[entry.identity] = (view.schema, view.table)
         # REQ-1652/REQ-1654: the keys and descriptions are part of the replicated model's shape and
         # converge here, with the tables, on a store that can hold informational constraints. A
         # runtime without the hook is an enforcing store, where a FOREIGN KEY would refuse every
@@ -475,6 +482,10 @@ class NativeEngineBackend(EngineBackend):
             plan.store_parts = {
                 ident: (store_catalog, schema, table)
                 for ident, (schema, table) in addresses.items()
+            }
+            # each replica's export view, where the store publishes one: named by the export rule
+            plan.view_parts = {
+                ident: (store_catalog, schema, table) for ident, (schema, table) in views.items()
             }
             for what, reason in plan.withheld:
                 _log.info("%s: key withheld for %s: %s", self.engine.name, what, reason)
@@ -490,7 +501,7 @@ class NativeEngineBackend(EngineBackend):
     # -- store write face --------------------------------------------------
 
     async def analyze_landed_table(
-        self, state: Any, *, catalog: str, schema: str, table: str
+        self, state: Any, *, catalog: str | None, schema: str, table: str
     ) -> None:  # REQ-280, REQ-1688
         """An embedded DuckDB store is a DuckDB table: the engine's own ANALYZE is the store's (and
         the single connection is the only writer). Every other store is analyzed through its own

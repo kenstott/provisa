@@ -46,7 +46,7 @@ async def _candidates_live(
     source_id: str, schema_name: str, state
 ) -> list[TableCandidate]:  # REQ-464
     """Fetch candidates live from native introspection + the engine (cache-miss path)."""
-    from provisa.api.admin.introspect import native_tables
+    from provisa.api.admin.introspect import native_columns, native_tables, require_live_attach
     from provisa.api.admin.schema import _get_pool
     from provisa.api.admin.discovery_resilience import discovery_fallback
 
@@ -65,6 +65,8 @@ async def _candidates_live(
             )
 
     if raw_tables is None:
+        # REQ-1912: the engine lists only a source it holds a live attach of.
+        await require_live_attach(state, source_id, "tables")
         catalog = state.catalog_for(source_id)
         raw_tables_list: list[str] = []
         # Through the sanctioned discovery boundary, not a bare swallow: on a shard that has just
@@ -87,9 +89,25 @@ async def _candidates_live(
             for t in raw_tables
         ]
 
-    # Enrich with column names (best-effort)
-    catalog = state.catalog_for(source_id)
+    # Enrich with column names (best-effort): the source's own driver first (REQ-1912); the
+    # engine's catalog only for a table the driver cannot list, on a source the engine holds a
+    # live attach of.
+    from provisa.api.admin.introspect import unattached_source
+
+    engine_lists = await unattached_source(state, source_id) is None
     for c in candidates:
+        native = None
+        async with pool.acquire() as config_conn:
+            with discovery_fallback(f"native columns for {source_id!r}.{schema_name}.{c.name}"):
+                native = await native_columns(
+                    source_id, source_type, schema_name, c.name, state.source_pools, config_conn
+                )
+        if native is not None:
+            c.columns = [name for name, _dtype in native]
+            continue
+        if not engine_lists:
+            continue  # no driver listing and no engine catalog: the names stay unenriched
+        catalog = state.catalog_for(source_id)
         with discovery_fallback(f"engine columns for {source_id!r}.{schema_name}.{c.name}"):
             res = await state.federation_engine.execute_engine(
                 f'SELECT column_name FROM "{catalog}".information_schema.columns '

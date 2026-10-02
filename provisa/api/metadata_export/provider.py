@@ -100,6 +100,11 @@ class MetadataExport(ABC):  # REQ-1068
         # Loaded by the publish path before ``publish``; a provider that can rebind reads
         # them to re-address the SAME catalog entity when the vendor-side name-key changed.
         self._bindings: dict[str, tuple[str, str]] = {}
+        # REQ-1912: where the engine's store publishes a view of each replica-served table, keyed
+        # by the table's registered identity (source, schema, table) -> (schema, view). Handed in
+        # by the publish path for a provider that declares ``needs_export_views``; a provider
+        # never works the org or the replica-served decision out for itself.
+        self._export_views: dict[tuple[str, str, str], tuple[str, str]] | None = None
 
     @property
     def stored_bindings(self) -> dict[str, tuple[str, str]]:
@@ -114,6 +119,27 @@ class MetadataExport(ABC):  # REQ-1068
     @stored_bindings.setter
     def stored_bindings(self, bindings: dict[str, tuple[str, str]]) -> None:
         self._bindings = bindings
+
+    #: Whether the publish path must hand this provider ``export_views`` before ``publish``: true
+    #: for a provider that shares or annotates objects inside the engine's own store (Snowflake
+    #: Horizon), where a replica-served table is published through its export view.
+    needs_export_views = False
+
+    @property
+    def export_views(self) -> dict[tuple[str, str, str], tuple[str, str]]:
+        """The export view of each replica-served table, as the publish path handed it in
+        (REQ-1912). Reading it before it was handed in is a wiring fault and raises: an absent
+        map is never read as "no table is replica-served"."""
+        if self._export_views is None:
+            raise RuntimeError(
+                f"metadata export provider {self.provider_name!r} was not given the export view "
+                "addresses of the org it publishes (MetadataExport.export_views)"
+            )
+        return self._export_views
+
+    @export_views.setter
+    def export_views(self, views: dict[tuple[str, str, str], tuple[str, str]]) -> None:
+        self._export_views = views
 
     @abstractmethod
     async def publish(self, snapshot: MetadataSnapshot) -> PublishResult:

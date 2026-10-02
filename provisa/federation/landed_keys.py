@@ -108,6 +108,10 @@ class KeyPlan:
     # Each entry's store address. It is not derivable from the entry's identity: a replica is
     # named by the replica rule in the replicas schema, an MV as mv_<id> in the MV schema.
     store_parts: dict[Identity, tuple[str, str, str]] = field(default_factory=dict)
+    # The export view over an entry's replica, on a store that publishes one (Snowflake): the
+    # export schema, never the entry's registered address (REQ-1912). Absent for every other
+    # entry — a materialized view, and any table on a store that publishes no view.
+    view_parts: dict[Identity, tuple[str, str, str]] = field(default_factory=dict)
 
 
 def _fk_name(rel_id: str, suffix: str = "") -> str:
@@ -337,22 +341,17 @@ async def key_plan_for(state: Any, landed: list[LandedTable]) -> KeyPlan:
     return plan
 
 
-def plan_targets(
-    plan: KeyPlan,
-    *,
-    view_for: Any = None,
-) -> dict[Identity, KeyTarget]:
+def plan_targets(plan: KeyPlan) -> dict[Identity, KeyTarget]:
     """The plan's tables as store targets. Every entry's store address rides on the plan
     (``plan.store_parts``): a replica is named by the replica rule and a materialized view for its
-    id, neither by its registration (REQ-1912). ``view_for(table) -> Parts | None`` names the view
-    mirroring a replica's keys and comments, for a store that publishes one (Snowflake)."""
+    id, neither by its registration (REQ-1912). The view mirroring a replica's keys and comments,
+    on a store that publishes one (Snowflake), rides on it too (``plan.view_parts``)."""
     targets: dict[Identity, KeyTarget] = {}
     for ident, t in plan.tables.items():
         replica = plan.store_parts[ident]
-        view = None if view_for is None or t.source_id == "__derived__" else view_for(t)
         targets[ident] = KeyTarget(
             replica=replica,
-            view=view,
+            view=plan.view_parts.get(ident),
             primary_key=t.primary_key,
             description=t.description,
             column_descriptions=dict(t.column_descriptions),

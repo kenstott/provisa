@@ -15,11 +15,12 @@ from __future__ import annotations
 from provisa.executor.result import QueryResult
 from provisa.lineage import resolve_input_version
 from provisa.mv.input_signals import gather_input_signals
+from tests.helpers import RegisteredNames
 
 _WATERMARK_SQL_MARK = "registered_tables"
 
 
-class _FakeEngine:
+class _FakeEngine(RegisteredNames):
     """Engine terminal that answers input-signal probes (watermark registry, Iceberg
     $snapshots, MAX(watermark)) with configured data."""
 
@@ -29,20 +30,18 @@ class _FakeEngine:
         self.watermark_values = watermark_values or {}
         self.queries: list[str] = []
 
-    def address_replicas(self, sql):
-        return sql  # this stand-in's tables are all read where the statement names them
-
     async def execute_engine(self, sql, *a, **k):
         self.queries.append(sql)
         if _WATERMARK_SQL_MARK in sql:
             return QueryResult(rows=list(self.watermark_registry.items()), column_names=[])
+        # Every probe names its table catalog-physically, resolved from the registry.
         if "$snapshots" in sql:
-            base = sql.split('"')[1].replace("$snapshots", "")
+            base = sql.split('FROM "src"."public"."')[1].split("$snapshots")[0]
             if base not in self.iceberg:
                 raise RuntimeError(f"table {base}$snapshots does not exist")
             return QueryResult(rows=[(self.iceberg[base],)], column_names=[])
         if sql.startswith("SELECT MAX("):
-            base = sql.split('FROM "')[1].rstrip('"')
+            base = sql.split('FROM "src"."public"."')[1].rstrip('"')
             return QueryResult(rows=[(self.watermark_values.get(base),)], column_names=[])
         raise AssertionError(f"unexpected SQL: {sql}")
 
@@ -95,9 +94,6 @@ async def test_mixed_sources_gather_independently():
 
 async def test_registry_lookup_failure_is_non_fatal():
     class _BrokenRegistryEngine(_FakeEngine):
-        def address_replicas(self, sql):
-            return sql  # this stand-in's tables are all read where the statement names them
-
         async def execute_engine(self, sql, *a, **k):
             if _WATERMARK_SQL_MARK in sql:
                 raise RuntimeError("provisa_admin catalog unavailable")

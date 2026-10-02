@@ -241,11 +241,20 @@ async def test_native_columns_trino():
 
 
 @pytest.mark.asyncio
-async def test_native_columns_non_trino_returns_none():
-    """Every other RDBMS type is ATTACH-mechanism on whatever engine it's normally registered
-    under, so resolve_available_columns_metadata's existing engine-catalog fallback already
-    covers it — native_columns must not intercept those."""
-    result = await native_columns("src", "postgresql", "public", "widgets", _pool([]))
+async def test_native_columns_lists_postgresql_through_its_own_driver():
+    """REQ-1912: a source's catalog is listed through the source's own driver. A floored
+    postgresql source has no live attach on any engine (no Trino catalog), so the engine-catalog
+    path cannot be what lists it; the driver's information_schema does, in the IR vocabulary."""
+    pool = _pool([("id", "integer"), ("label", "character varying")])
+    result = await native_columns("src", "postgresql", "public", "widgets", pool)
+    assert result == [("id", "integer"), ("label", "text")]
+
+
+@pytest.mark.asyncio
+async def test_native_columns_of_a_type_with_no_driver_listing_returns_none():
+    """A type this dispatch has no driver listing for answers None; the caller then asks the
+    engine's catalog, when the engine holds a live attach of the source."""
+    result = await native_columns("src", "mongodb", "db", "widgets", _pool([]))
     assert result is None
 
 

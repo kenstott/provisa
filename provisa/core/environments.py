@@ -47,8 +47,16 @@ PROD = "prod"
 #: Enumerated rather than matched with ``LIKE 'org_<id>%'``: an org id is user-chosen text, so a
 #: prefix match would bill "acme" for every byte belonging to "acmeeu".
 #: ``_replicas`` holds only replicas of source tables and ``_mv_cache`` only materialized views
-#: (REQ-1912): each write surface is a schema of its own.
-SCHEMA_SUFFIXES: tuple[str, ...] = ("", "_mv_cache", "_api_cache", "_gql_cache", "_replicas")
+#: (REQ-1912): each write surface is a schema of its own. ``_export`` holds only the views a
+#: store publishes over its replicas for a catalog export (Snowflake), which no read goes through.
+SCHEMA_SUFFIXES: tuple[str, ...] = (
+    "",
+    "_mv_cache",
+    "_api_cache",
+    "_gql_cache",
+    "_replicas",
+    "_export",
+)
 
 #: PostgreSQL's identifier limit. Over it, PostgreSQL truncates silently.
 MAX_IDENTIFIER_BYTES = 63

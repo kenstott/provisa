@@ -124,9 +124,18 @@ async def index_source(
 
     Errors are logged and swallowed — cache miss is always safe (live fallback).
     """
-    from provisa.api.admin.introspect import native_schemas, native_tables
+    from provisa.api.admin.introspect import (
+        native_columns,
+        native_schemas,
+        native_tables,
+        unattached_source,
+    )
 
     source_type = source_types.get(source_id, "")
+    # REQ-1912: a source's catalog is listed through the source's own driver. The engine's
+    # catalog is asked only for what the driver cannot list, and only for a source the engine
+    # holds a live attach of — a floored source has no engine catalog, so no query is sent.
+    engine_lists = await unattached_source(state, source_id) is None
     try:
         async with pool.acquire() as config_conn:
             schemas = await native_schemas(source_id, source_type, source_pools, config_conn)
@@ -135,6 +144,13 @@ async def index_source(
         schemas = None
 
     if schemas is None:
+        if not engine_lists:
+            log.warning(
+                "catalog_cache: %r is not indexed: its driver listed no schemas and the engine "
+                "holds no live attach of it",
+                source_id,
+            )
+            return
         # the engine fallback for schema list
         catalog = state.catalog_for(source_id)
         try:
@@ -157,6 +173,14 @@ async def index_source(
             tables = None
 
         if tables is None:
+            if not engine_lists:
+                log.warning(
+                    "catalog_cache: %r/%r is not indexed: its driver listed no tables and the "
+                    "engine holds no live attach of the source",
+                    source_id,
+                    schema,
+                )
+                continue
             catalog = state.catalog_for(source_id)
             try:
                 res = await engine.execute_engine(
@@ -185,9 +209,19 @@ async def index_source(
                 for t in tables
             ]
 
-        # Enrich with column names from the engine
-        catalog = state.catalog_for(source_id)
+        # Enrich with column names: the source's own driver first, else the engine's catalog
+        # where the engine holds a live attach of the source.
         for cached in tables_with_cols:
+            async with pool.acquire() as config_conn:
+                native = await native_columns(
+                    source_id, source_type, schema, cached.table_name, source_pools, config_conn
+                )
+            if native is not None:
+                cached.column_names = [name for name, _dtype in native]
+                continue
+            if not engine_lists:
+                continue  # neither lists this table's columns: it is indexed by name alone
+            catalog = state.catalog_for(source_id)
             try:
                 res = await engine.execute_engine(
                     f'SELECT column_name FROM "{catalog}".information_schema.columns '

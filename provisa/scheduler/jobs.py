@@ -777,6 +777,9 @@ def _insert_otel_iceberg(engine, signal: str, table: pa.Table, dt: datetime) -> 
     _ensure_iceberg_table(engine, signal, col_defs, partition_cols)
 
     # Read back actual the engine column types and cast PyArrow table to match exactly.
+    # ``otel.signals.*`` are Provisa's own telemetry tables in the engine's Iceberg catalog — the
+    # store this job writes, read where it writes them. They are not tables of a registered
+    # source and have no replica, so nothing here passes the address seam (REQ-1912).
     _cols = engine.execute_engine_sync(f"SHOW COLUMNS FROM otel.signals.{signal}")
     engine_cols = {row[0].lower(): row[1].lower() for row in _cols.rows}
     table = _cast_table_to_physical_schema(signal, table, engine_cols)

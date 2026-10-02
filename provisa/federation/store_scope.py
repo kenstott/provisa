@@ -34,22 +34,25 @@ log = logging.getLogger(__name__)
 
 
 async def drop_env_store(dsn: str, org_id: str, env: str) -> str | None:
-    """Remove the replicas ``env`` of ``org_id`` wrote in the store at ``dsn``. Returns the schema
-    dropped, or None.
+    """Remove the replicas ``env`` of ``org_id`` wrote in the store at ``dsn``, and the export
+    views published over them. Returns the replicas schema dropped, or None.
 
     Called from the one retire door. ``prod`` is never retired, so its replicas schema is never
-    dropped from here: the only schema this deletes is one that exists because a non-prod
+    dropped from here: the only schemas this deletes are ones that exist because a non-prod
     environment existed.
     """
     if env == PROD:
         return None
     from sqlalchemy import text
 
-    from provisa.federation.replica_address import REPLICAS_SUFFIX
+    from provisa.federation.replica_address import EXPORT_SUFFIX, REPLICAS_SUFFIX
     from provisa.federation.store_writer import store_connection
 
     schema = org_schema(org_id, env, REPLICAS_SUFFIX)
+    # The export views first: each selects from a replica the next statement drops.
+    export = org_schema(org_id, env, EXPORT_SUFFIX)
     async with store_connection(dsn) as conn:
+        await conn.execute_core(text(f'DROP SCHEMA IF EXISTS "{export}" CASCADE'))
         await conn.execute_core(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
     log.info("Environment %r dropped its replicas schema %s", env, schema)
     return schema

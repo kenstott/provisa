@@ -249,6 +249,12 @@ async def publish_snapshot(org_id: str) -> PublishResult:
             # a physically re-addressed asset rebinds the SAME catalog entity instead of
             # trusting the vendor's name-keyed upsert.
             exporter.stored_bindings = await catalog_binding.load_bindings(conn, config.provider)
+        if exporter.needs_export_views:
+            # REQ-1912: the org (bound above) and the replica-served decision are worked out
+            # here, by the one decision the reconcile and the reads use, and passed in.
+            from provisa.federation.replica_routing import export_view_addresses
+
+            exporter.export_views = await export_view_addresses(state)
         result = await exporter.publish(snapshot)
         if result.bindings:
             async with tenant_db.acquire() as conn:

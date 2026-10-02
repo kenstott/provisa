@@ -146,5 +146,56 @@ async def test_snowflake_engine_applies_rls(runtime):
     assert all(r == "west" for r in table.column("region").to_pylist())
 
 
+@pytest.mark.asyncio
+async def test_snowflake_export_view_exists_where_the_export_addresses_it(runtime):
+    """REQ-1912: the reconcile publishes a SECURE VIEW of each replica in the export schema; the
+    Horizon export shares and comments the object at the address it is handed for that table.
+    Both are one address, so the export finds the view — and nothing is created at the table's
+    registered address."""
+    from provisa.api.metadata_export.model import AssetKind, AssetRef
+    from provisa.api.metadata_export.snowflake_horizon import PublishedAddresses, _object_kind
+    from provisa.federation.replica_address import export_view_address, replica_address
+
+    identity = {"source_id": "evt-api", "schema_name": _SCHEMA, "table_name": "events"}
+    replica = replica_address(org_id="itest", **identity)
+    view = export_view_address(org_id="itest", **identity)
+    columns = [("id", "integer"), ("kind", "text")]
+    await runtime.reconcile_replica(
+        schema=replica.schema, table=replica.table, columns=columns, pk_columns=["id"]
+    )
+    await runtime.publish_replica_view(
+        view_schema=view.schema,
+        view_table=view.table,
+        schema=replica.schema,
+        table=replica.table,
+        replace=False,
+    )
+    await runtime.land_table(
+        schema=replica.schema,
+        table=replica.table,
+        columns=columns,
+        rows=[{"id": 1, "kind": "shipped"}, {"id": 2, "kind": "placed"}],
+    )
+
+    database = runtime.ensure_materialize_attached()
+    addresses = PublishedAddresses(
+        landing_database=database,
+        export_views={("evt-api", _SCHEMA, "events"): (view.schema, view.table)},
+    )
+    published = addresses.table(
+        AssetRef(kind=AssetKind.TABLE, parts=("evt-api", _SCHEMA, "events"))
+    )
+
+    assert published == (database, "org_itest_export", "evt-api__public__events")
+    assert _object_kind(runtime, published) == "VIEW"
+    assert (
+        _object_kind(runtime, (database, _SCHEMA, "events")) is None
+    )  # not the registered address
+    count = runtime.run_sync(
+        f'SELECT COUNT(*) FROM "{published[0]}"."{published[1]}"."{published[2]}"'
+    ).rows
+    assert count[0][0] == 2
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-q"])
