@@ -102,15 +102,15 @@ BUILDING = "building"
 FAILED = "failed"
 
 # Why a build was requested.
-REASON_SAVE = "save"
-REASON_BOOT = "boot"
+REASON_MODEL = "model"  # the model declares a replica that has no completed build
+REASON_DEFINITION = "definition"  # the table's definition changed since the last build
 REASON_HOT = "hot"
 REASON_REFRESH = "refresh"
 REASON_OPERATOR = "operator"
 REASON_READ = "read"
 REASONS = (
-    REASON_SAVE,
-    REASON_BOOT,
+    REASON_MODEL,
+    REASON_DEFINITION,
     REASON_HOT,
     REASON_REFRESH,
     REASON_OPERATOR,
@@ -139,6 +139,11 @@ class ReplicaRecord:
     last_error: str | None
     failed_at: datetime | None
     waiting_on: str | None
+    definition_hash: str | None
+    built_columns: list | None
+    model_stamp: int | None
+    load_kind: str | None
+    retired_at: datetime | None
 
     @property
     def exists(self) -> bool:
@@ -170,6 +175,11 @@ _COLUMNS = (
     _t.last_error,
     _t.failed_at,
     _t.waiting_on,
+    _t.definition_hash,
+    _t.built_columns,
+    _t.model_stamp,
+    _t.load_kind,
+    _t.retired_at,
 )
 
 
@@ -198,6 +208,11 @@ def _record(row: Any) -> ReplicaRecord:
         last_error=row[14],
         failed_at=_aware(row[15]),
         waiting_on=row[16],
+        definition_hash=row[17],
+        built_columns=row[18],
+        model_stamp=row[19],
+        load_kind=row[20],
+        retired_at=_aware(row[21]),
     )
 
 
@@ -244,11 +259,16 @@ async def request_build(
     reason: str,
     *,
     retry_interval: float | None = None,
+    model_stamp: int | None = None,
     now: datetime | None = None,
 ) -> bool:
     """Ask for a build of the replica ``key``. True when this call made the request; False when
-    a build was already requested or running (the caller has joined it), or when
-    ``retry_interval`` holds it back.
+    a build was already requested or running (the caller has joined it), when
+    ``retry_interval`` holds it back, or when the replica is retired (the model no longer
+    declares it: a retired replica is never rebuilt).
+
+    ``model_stamp`` is the model stamp the asking process has loaded, recorded so that a node
+    with an older model does not take the replica for one whose table is gone.
 
     ``retry_interval`` (seconds) is given by a caller that must not ask again too soon after a
     failure — a read: a build that failed less than that long ago is not requested again."""
@@ -261,16 +281,22 @@ async def request_build(
             retriable,
             or_(_t.failed_at.is_(None), _t.failed_at <= at - timedelta(seconds=retry_interval)),
         )
-    requested = {"build_state": REQUESTED, "requested_at": at, "requested_reason": reason}
+    requested: dict[str, Any] = {
+        "build_state": REQUESTED,
+        "requested_at": at,
+        "requested_reason": reason,
+    }
+    if model_stamp is not None:
+        requested["model_stamp"] = model_stamp
     result = await conn.execute_core(
         update(replica_state)
-        .where(_is(key), or_(_t.build_state == IDLE, retriable))
+        .where(_is(key), _t.retired_at.is_(None), or_(_t.build_state == IDLE, retriable))
         .values(**requested, waiting_on=None)
     )
     if (result.rowcount or 0) > 0:
         return True
     if (await conn.execute_core(select(_t.build_state).where(_is(key)))).fetchone() is not None:
-        return False  # requested, building, or failed too recently to ask again
+        return False  # requested, building, failed too recently to ask again, or retired
     try:
         await conn.execute_core(
             replica_state.insert().values(
@@ -282,28 +308,42 @@ async def request_build(
     return True
 
 
-async def candidates(conn: "Connection", *, now: datetime, limit: int) -> list[ReplicaKey]:
-    """The replicas a runner may try to build, oldest request first: requested; idle with a
-    refresh due; and building (whose builder may have died — only the runner that gets the
-    replica's lock finds out)."""
+def _claimable(now: datetime, retry_interval: float) -> Any:
+    """A record a runner may build: not retired, and requested; idle with a refresh due;
+    building (whose builder may have died — only the runner that gets the replica's lock finds
+    out); or failed at least ``retry_interval`` seconds ago (the runner tries a failed build
+    again itself: a replica nobody reads would otherwise stay failed)."""
     due = and_(_t.build_state == IDLE, _t.next_refresh_at.is_not(None), _t.next_refresh_at <= now)
+    retry = and_(
+        _t.build_state == FAILED,
+        _t.failed_at.is_not(None),
+        _t.failed_at <= now - timedelta(seconds=retry_interval),
+    )
+    return and_(_t.retired_at.is_(None), or_(_t.build_state.in_((REQUESTED, BUILDING)), due, retry))
+
+
+async def candidates(
+    conn: "Connection", *, now: datetime, limit: int, retry_interval: float
+) -> list[ReplicaKey]:
+    """The replicas a runner may try to build (:func:`_claimable`), oldest request first."""
     result = await conn.execute_core(
         select(_t.source_id, _t.schema_name, _t.table_name)
-        .where(or_(_t.build_state.in_((REQUESTED, BUILDING)), due))
+        .where(_claimable(now, retry_interval))
         .order_by(_t.requested_at.asc().nulls_last(), _t.next_refresh_at.asc())
         .limit(limit)
     )
     return [(r[0], r[1], r[2]) for r in result.fetchall()]
 
 
-async def claim(conn: "Connection", key: ReplicaKey, *, holder: str, now: datetime) -> bool:
+async def claim(
+    conn: "Connection", key: ReplicaKey, *, holder: str, now: datetime, retry_interval: float
+) -> bool:
     """Move the row to ``building`` for ``holder``. Called only by the process that holds the
     replica's lock; False when the row is no longer a candidate (another runner completed it
-    between this runner's selection and its lock)."""
-    due = and_(_t.build_state == IDLE, _t.next_refresh_at.is_not(None), _t.next_refresh_at <= now)
+    between this runner's selection and its lock, or the model stopped declaring it)."""
     result = await conn.execute_core(
         update(replica_state)
-        .where(_is(key), or_(_t.build_state.in_((REQUESTED, BUILDING)), due))
+        .where(_is(key), _claimable(now, retry_interval))
         .values(
             build_state=BUILDING,
             build_started_at=now,
@@ -313,6 +353,18 @@ async def claim(conn: "Connection", key: ReplicaKey, *, holder: str, now: dateti
         )
     )
     return (result.rowcount or 0) > 0
+
+
+async def record_started(
+    conn: "Connection", key: ReplicaKey, *, method: str, load_kind: str
+) -> None:
+    """How the running build copies (its method, and whether the store takes a bulk stream or
+    a row copy), written when the build starts so an operator sees it while it runs."""
+    await conn.execute_core(
+        update(replica_state)
+        .where(_is(key), _t.build_state == BUILDING)
+        .values(build_method=method, load_kind=load_kind)
+    )
 
 
 async def unclaim(conn: "Connection", key: ReplicaKey, *, waiting_on: str) -> None:
@@ -353,8 +405,15 @@ async def record_completed(
     store: str,
     next_refresh_at: datetime | None,
     now: datetime,
+    definition_hash: str | None = None,
+    built_columns: list | None = None,
 ) -> None:
-    """The build finished and its table was swapped in, in the store ``store`` identifies."""
+    """The build finished and its table was swapped in, in the store ``store`` identifies.
+    ``definition_hash`` and ``built_columns`` say what it was built from and which columns it
+    has (None from a caller that does not track them: the next convergence asks again)."""
+    # CALL SITE (replica-layout-2, Job 3): ``await mark_first_completion(conn, key)`` goes
+    # here, in this function's transaction — it bumps the REPLICA stamp for a promoted row's
+    # first completion. This function never touches the stamp itself.
     await conn.execute_core(
         update(replica_state)
         .where(_is(key))
@@ -367,6 +426,8 @@ async def record_completed(
             next_refresh_at=next_refresh_at,
             content_hash=content_hash,
             built_store=store,
+            definition_hash=definition_hash,
+            built_columns=built_columns,
             last_error=None,
             failed_at=None,
             waiting_on=None,
@@ -381,3 +442,42 @@ async def record_failed(conn: "Connection", key: ReplicaKey, *, error: str, now:
         .where(_is(key))
         .values(build_state=FAILED, build_holder=None, last_error=error, failed_at=now)
     )
+
+
+# -- retiring a replica the model no longer declares (REQ-1915, REQ-1919) ----------------------
+
+
+async def retire(conn: "Connection", key: ReplicaKey, *, now: datetime) -> bool:
+    """Mark the replica ``key`` retired: the model no longer declares it. Nothing is dropped;
+    the record is no longer built or refreshed. True when this call retired it."""
+    result = await conn.execute_core(
+        update(replica_state).where(_is(key), _t.retired_at.is_(None)).values(retired_at=now)
+    )
+    return (result.rowcount or 0) > 0
+
+
+async def unretire(conn: "Connection", key: ReplicaKey) -> bool:
+    """The model declares the replica ``key`` again before it was dropped: it keeps its table."""
+    result = await conn.execute_core(
+        update(replica_state).where(_is(key), _t.retired_at.is_not(None)).values(retired_at=None)
+    )
+    return (result.rowcount or 0) > 0
+
+
+async def retired_before(conn: "Connection", before: datetime) -> list[ReplicaKey]:
+    """The replicas retired at or before ``before``: those whose wait is over."""
+    result = await conn.execute_core(
+        select(_t.source_id, _t.schema_name, _t.table_name).where(
+            _t.retired_at.is_not(None), _t.retired_at <= before
+        )
+    )
+    return [(r[0], r[1], r[2]) for r in result.fetchall()]
+
+
+async def forget(conn: "Connection", key: ReplicaKey) -> bool:
+    """Remove the record of a retired replica whose table has been dropped. Only a record that
+    is still retired goes: one the model declared again in the meantime stays."""
+    result = await conn.execute_core(
+        replica_state.delete().where(_is(key), _t.retired_at.is_not(None))
+    )
+    return (result.rowcount or 0) > 0

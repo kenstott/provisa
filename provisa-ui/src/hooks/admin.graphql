@@ -641,6 +641,29 @@ query HotTables {
   }
 }
 
+query ReplicaBuilds {
+  replicaBuilds {
+    builds {
+      sourceId
+      schemaName
+      tableName
+      state
+      requestedReason
+      method
+      loadKind
+      startedAt
+      rowsCopied
+      rowsPerSecond
+      completedAt
+      nextRefreshAt
+      lastError
+      waitingOn
+    }
+    convergenceError
+    convergenceErrorAt
+  }
+}
+
 query MaterializeStoreInfo {
   materializeStoreInfo {
     engineName

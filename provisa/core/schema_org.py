@@ -1152,7 +1152,7 @@ replica_state = Table(
     # idle → requested → building → idle (completed) | failed.
     Column("build_state", Text, nullable=False, server_default="idle"),
     Column("requested_at", DateTime(timezone=True)),
-    Column("requested_reason", Text),  # save | boot | hot | refresh | operator | read
+    Column("requested_reason", Text),  # model | definition | hot | refresh | operator | read
     Column("build_started_at", DateTime(timezone=True)),
     Column("build_holder", Text),  # host:pid of the process building it
     Column("build_method", Text),  # data_replicator.Method
@@ -1163,6 +1163,19 @@ replica_state = Table(
     # The store the last completed build was written into (a digest of the engine and its
     # store's address). A replica recorded for another store is not one this engine can read.
     Column("built_store", Text),
+    # What the last completed build was built from: a digest of the table's replica address,
+    # columns, key and its source's connection identity, and the columns it has. A model that
+    # no longer matches the digest asks for a rebuild; the columns say whether the standing
+    # replica can still answer the model meanwhile.
+    Column("definition_hash", Text),
+    Column("built_columns", JSON),
+    # The model stamp (REQ-1914) of the process that asked for the build: a node whose loaded
+    # model is older than this has not seen the table yet and must not retire its replica.
+    Column("model_stamp", BigInteger),
+    Column("load_kind", Text),  # data_replicator.TargetLoad of the running or last build
+    # Set when the model stops declaring this replica; it is dropped once every node has had
+    # time to reload and every statement already addressed at it has ended. NULL: in use.
+    Column("retired_at", DateTime(timezone=True)),
     Column("last_error", Text),
     Column("failed_at", DateTime(timezone=True)),
     # Why a requested build was not started on the last pass that tried it (the engine at its

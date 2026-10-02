@@ -73,6 +73,8 @@ from provisa.api.admin.types import (
     HotTableStatType,
     KaggleDatasetType,
     MaterializeStoreInfoType,
+    ReplicaBuildsType,
+    ReplicaBuildType,
     MetricType,
     MVType,
     RefreshPolicySummaryType,
@@ -1243,6 +1245,33 @@ class Query:  # REQ-021, REQ-042
             )
             for e, kind in entries
         ]
+
+    @strawberry.field
+    async def replica_builds(self, info: StrawberryInfo) -> ReplicaBuildsType:  # REQ-1915
+        """Every replica of the acting org and environment with its build: state, how it
+        copies, when it started, rows copied and the running rate, and its last error — and the
+        last failure of the step that brings replicas in line with the model."""
+        require_capability(info, "observability")
+        from datetime import UTC, datetime
+
+        from provisa.api.admin._replica_builds import build_view
+        from provisa.api.app import state
+        from provisa.core.request_context import current_org
+        from provisa.federation import replica_converge, replica_state
+
+        # The tenant plane is the acting org's, in the acting environment: no other's rows.
+        tenant_db = state.tenant_db
+        if tenant_db is None:
+            raise RuntimeError("replica builds: the org's control plane is not open")
+        async with tenant_db.acquire() as conn:
+            records = await replica_state.read_all(conn)
+        now = datetime.now(UTC)
+        failure = replica_converge.last_error.get(current_org.get(None))
+        return ReplicaBuildsType(
+            builds=[ReplicaBuildType(**build_view(record, now)) for record in records],
+            convergence_error=failure["cause"] if failure else None,
+            convergence_error_at=failure["at"].isoformat() if failure else None,
+        )
 
     @strawberry.field
     async def materialize_store_info(self, info: StrawberryInfo) -> MaterializeStoreInfoType:

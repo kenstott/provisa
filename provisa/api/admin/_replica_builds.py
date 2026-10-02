@@ -1,0 +1,53 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 15afc4bc-a4b9-45fd-a26a-6d46bd91a531
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""What an operator sees of replica builds (REQ-1915): each replica's state, how its running or
+last build copies, how far a running build has got and at what rate, and its last error."""
+
+# Requirements: REQ-1915
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+
+RETIRED = "retired"
+
+
+def _iso(at: datetime | None) -> str | None:
+    return at.isoformat() if at is not None else None
+
+
+def build_view(record: Any, now: datetime) -> dict:
+    """One replica's record as the admin query returns it. ``rows_per_second`` is derived for a
+    build that is running: the rows copied so far over the time since it started (None before
+    its first progress write, and for a build that is not running). A replica the model no
+    longer declares is shown as ``retired`` until it is dropped."""
+    building = record.build_state == "building" and record.retired_at is None
+    rate: float | None = None
+    if building and record.build_started_at is not None and record.rows_copied:
+        elapsed = (now - record.build_started_at).total_seconds()
+        rate = record.rows_copied / elapsed if elapsed > 0 else None
+    return {
+        "source_id": record.key[0],
+        "schema_name": record.key[1],
+        "table_name": record.key[2],
+        "state": RETIRED if record.retired_at is not None else record.build_state,
+        "requested_reason": record.requested_reason,
+        "method": record.build_method,
+        "load_kind": record.load_kind,
+        "started_at": _iso(record.build_started_at),
+        "rows_copied": record.rows_copied,
+        "rows_per_second": rate,
+        "completed_at": _iso(record.completed_at),
+        "next_refresh_at": _iso(record.next_refresh_at),
+        "last_error": record.last_error,
+        "waiting_on": record.waiting_on,
+    }

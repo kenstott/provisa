@@ -1,0 +1,21 @@
+{
+  "replicaBuild": {
+    "none": "此表尚未建置複本。",
+    "requested": "已要求建置複本。",
+    "waiting": "已要求建置複本；等待中：{{waitingOn}}。",
+    "building": "複本建置中：已複製 {{rows}} 列，{{rate}} 列/秒（{{how}}）。",
+    "buildingNoRate": "複本建置中（{{how}}）。",
+    "built": "複本已於 {{when}} 建置：{{rows}} 列（{{how}}）。",
+    "failed": "複本建置失敗：{{error}}",
+    "retired": "此表不再複製；其複本正在移除。",
+    "convergenceError": "複本未與模型保持一致：{{error}}",
+    "method": {
+      "engine_statement": "由引擎複製",
+      "stream_batches": "分批串流"
+    },
+    "loadKind": {
+      "bulk_stream": "大量串流",
+      "row_copy": "逐列複製"
+    }
+  }
+}

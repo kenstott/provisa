@@ -26,6 +26,7 @@ own thread.
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -33,6 +34,7 @@ from provisa.federation import replica_state
 from provisa.federation.data_replicator import BuildOutcome, Progress, data_replicator
 from provisa.federation.replica_runner import ReplicaRunner, engine_job_key
 from provisa.federation.data_replicator import SourceCaps, SourceRead
+from provisa.federation.replica_converge import definition_hash, drop_retired
 from provisa.federation.replica_source import BATCH_ROWS
 from provisa.federation.replica_state import ReplicaKey
 
@@ -144,11 +146,17 @@ async def build_replica(state: Any, key: ReplicaKey, progress: Progress) -> Buil
         target = backend.replica_target(state, address=address, args=args, engine=engine_party)
         if engine_party.caps.reaches_source:
             reader = _EngineReached(reader)
+
+        async def still_wanted() -> None:
+            # A table deleted while its build ran: the build ends without swapping.
+            await _model_row(state, key)
+
         job = data_replicator(
             reader,
             target,
             engine_party,
             batch_rows=BATCH_ROWS,
+            still_wanted=still_wanted,
             # The last build's hash says "unchanged" only of the replica standing in THIS store.
             prior_hash=(
                 record.content_hash
@@ -156,10 +164,21 @@ async def build_replica(state: Any, key: ReplicaKey, progress: Progress) -> Buil
                 else None
             ),
         )
+        # How this build copies, recorded as it starts so an operator sees it while it runs.
+        async with state.tenant_db.acquire() as conn:
+            await replica_state.record_started(
+                conn, key, method=job.method.value, load_kind=target.caps.load.value
+            )
         # REQ-1661: never two writers on one replica in a process. The event loop's delta lands
         # take this same lock, keyed on the replica's address.
         async with land_lock(f"{address.schema}.{address.table}"):
-            return await job.run(progress)
+            outcome = await job.run(progress)
+        # What it was built from: the next convergence compares the model with this.
+        return replace(
+            outcome,
+            definition_hash=definition_hash(source, address, args.columns, args.pk_columns),
+            built_columns=[[name, ir_type] for name, ir_type in args.columns],
+        )
 
 
 def _next_refresh_at(state: Any) -> Any:
@@ -192,6 +211,36 @@ def _source_cap(state: Any) -> Any:
     return cap
 
 
+async def run_build(state: Any, key: ReplicaKey, progress: Progress) -> BuildOutcome:
+    """One build as the runner runs it: the build itself, its outcome stamped on the table's
+    node in the event loop's freshness state (a materialized view that reads this table judges
+    its input by that stamp), and a build that changed the replica posted to that node so its
+    dependents ripple."""
+    from provisa.events import queue
+
+    node = f"{key[1]}.{key[2]}"
+    try:
+        outcome = await build_replica(state, key, progress)
+    except BaseException:
+        async with state.tenant_db.acquire() as conn:
+            await queue.record_refresh(conn, node, at=datetime.now(UTC), ok=False)
+        raise
+    async with state.tenant_db.acquire() as conn:
+        await queue.record_refresh(conn, node, at=datetime.now(UTC), ok=True)
+        if outcome.changed and key in (getattr(state, "replica_nodes", None) or {}):
+            # The replica changed: post it to the table's event-loop node, which re-posts
+            # its change to the materialized views that read it. A build whose content is
+            # unchanged posts nothing, so nothing ripples (REQ-981).
+            event_id = await queue.post_event(
+                conn,
+                source_table=node,
+                event_type="replace",
+                payload={"built": True, "rows": outcome.rows_copied},
+            )
+            await queue.fan_out(conn, event_id, [node])
+    return outcome
+
+
 def make_runner(state: Any, org_id: str | None, platform_url: str) -> ReplicaRunner:
     """This process's runner for the org ``state`` serves."""
     from provisa.core import settings_registry
@@ -203,20 +252,7 @@ def make_runner(state: Any, org_id: str | None, platform_url: str) -> ReplicaRun
     engine = state.federation_engine.engine
 
     async def build(key: ReplicaKey, progress: Progress) -> BuildOutcome:
-        """One build, and its outcome stamped on the table's node in the event loop's freshness
-        state: a materialized view that reads this table judges its input by that stamp."""
-        from provisa.events import queue
-
-        node = f"{key[1]}.{key[2]}"
-        try:
-            outcome = await build_replica(state, key, progress)
-        except BaseException:
-            async with state.tenant_db.acquire() as conn:
-                await queue.record_refresh(conn, node, at=datetime.now(UTC), ok=False)
-            raise
-        async with state.tenant_db.acquire() as conn:
-            await queue.record_refresh(conn, node, at=datetime.now(UTC), ok=True)
-        return outcome
+        return await run_build(state, key, progress)
 
     return ReplicaRunner(
         db=state.tenant_db,
@@ -228,6 +264,8 @@ def make_runner(state: Any, org_id: str | None, platform_url: str) -> ReplicaRun
         permits=state.live_permit_store,
         next_refresh_at=_next_refresh_at(state),
         store=lambda: store_identity(state),
+        retry_interval=lambda: float(settings_registry.value("replication.retry_interval")),
+        housekeeping=lambda locks, org: drop_retired(state, locks, org),
         builds_per_node=lambda: int(settings_registry.value("replication.builds_per_node")),
         engine_jobs=lambda: int(settings_registry.value("replication.engine_jobs")),
         spawn=spawn_background,

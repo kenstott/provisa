@@ -147,6 +147,9 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
 
     started: list[LongLived] = []
 
+    from provisa.events.app_wiring import replica_write_lock_factory
+
+    locks = replica_write_lock_factory(state)
     for tbl in tables:
         src = sources.get(tbl["source_id"])
         if src is None:
@@ -207,6 +210,11 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
                 node=node,
                 row_materialize=row_materialize,
                 log=log,
+                write_lock=(
+                    None
+                    if row_materialize  # a row-level table has no whole-table replica to build
+                    else (lambda key=(src.id, tbl["schema_name"], tbl["table_name"]): locks(key))
+                ),
             ),
             name=f"push-listener:{node}",
         )
@@ -240,6 +248,7 @@ async def _run_listener(
     node: str,
     log: Any,
     row_materialize: bool = False,
+    write_lock: Any = None,
 ) -> None:
     """One push table's whole lifetime: drain the provider into the landed table through the
     engine's own write face (``EngineRuntime.apply_cdc_events``, REQ-989/REQ-1733 — never a raw
@@ -251,16 +260,23 @@ async def _run_listener(
     (design doc section 5) instead of the ordinary upsert-every-event land."""
     from provisa.subscriptions.cdc_landing import consume_cdc_into_store
 
+    from provisa.events.handlers import _held
+
     async def _land(events: list) -> dict[str, int]:
-        return await engine.apply_cdc_events(
-            schema=land_schema,
-            table=land_table,
-            columns=columns,
-            pk_columns=pk_columns,
-            events=events,
-            row_materialize=row_materialize,
-            node=node,
-        )
+        # REQ-1915: a batch of change events is applied under the replica's own lock, so it is
+        # never written into a table a build is about to replace. A batch that finds a build
+        # running waits for it and lands in the new table; applied by key, a change the build
+        # already copied is applied again harmlessly.
+        async with _held(write_lock):
+            return await engine.apply_cdc_events(
+                schema=land_schema,
+                table=land_table,
+                columns=columns,
+                pk_columns=pk_columns,
+                events=events,
+                row_materialize=row_materialize,
+                node=node,
+            )
 
     try:
         await consume_cdc_into_store(

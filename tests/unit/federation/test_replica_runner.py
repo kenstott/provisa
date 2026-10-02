@@ -119,6 +119,7 @@ class _Node:
             permits=permits,
             next_refresh_at=_async(lambda _key, _now: None),
             store=lambda: "store-a",
+            retry_interval=lambda: 60.0,
             builds_per_node=lambda: per_node,
             engine_jobs=lambda: engine_jobs,
             spawn=lambda coro, name: self.tasks.append(asyncio.ensure_future(coro)),
@@ -133,7 +134,7 @@ class _Node:
 async def _request(db, *keys):
     async with db.acquire() as conn:
         for key in keys:
-            assert await build_state.request_build(conn, key, build_state.REASON_SAVE)
+            assert await build_state.request_build(conn, key, build_state.REASON_MODEL)
 
 
 async def _records(db):
@@ -280,7 +281,9 @@ async def test_a_row_left_building_by_a_dead_builder_is_rebuilt(plane, tmp_path)
     db = connect()
     await _request(db, _key(0))
     async with db.acquire() as conn:
-        assert await build_state.claim(conn, _key(0), holder="gone:1", now=datetime.now(UTC))
+        assert await build_state.claim(
+            conn, _key(0), holder="gone:1", retry_interval=60, now=datetime.now(UTC)
+        )
 
     async def build(key, progress):
         return BuildOutcome(rows_copied=7, method="stream_batches", content_hash="h")

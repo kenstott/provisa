@@ -1466,6 +1466,36 @@ export interface CacheTableStat {
   cachedEntries: number;
 }
 
+/** One replica and its build, as the admin API reports it (REQ-1915). */
+export interface ReplicaBuild {
+  sourceId: string;
+  schemaName: string;
+  tableName: string;
+  /** idle (built, nothing pending) | requested | building | failed | retired */
+  state: string;
+  requestedReason: string | null;
+  /** engine_statement | stream_batches, of the running or last build */
+  method: string | null;
+  /** bulk_stream | row_copy */
+  loadKind: string | null;
+  startedAt: string | null;
+  rowsCopied: number | null;
+  /** A running build's rate so far. */
+  rowsPerSecond: number | null;
+  /** null: there is no replica yet. */
+  completedAt: string | null;
+  nextRefreshAt: string | null;
+  lastError: string | null;
+  waitingOn: string | null;
+}
+
+export interface ReplicaBuilds {
+  builds: ReplicaBuild[];
+  /** The last failure to bring replicas in line with the model; null when the last pass worked. */
+  convergenceError: string | null;
+  convergenceErrorAt: string | null;
+}
+
 export interface HotTableStat {
   tableName: string;
   catalog: string;

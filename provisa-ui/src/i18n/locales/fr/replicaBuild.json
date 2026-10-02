@@ -1,0 +1,21 @@
+{
+  "replicaBuild": {
+    "none": "Aucune réplique n'a été construite pour cette table.",
+    "requested": "Construction de la réplique demandée.",
+    "waiting": "Construction de la réplique demandée ; en attente : {{waitingOn}}.",
+    "building": "Réplique en construction : {{rows}} lignes copiées, {{rate}} lignes/s ({{how}}).",
+    "buildingNoRate": "Réplique en construction ({{how}}).",
+    "built": "Réplique construite {{when}} : {{rows}} lignes ({{how}}).",
+    "failed": "La construction de la réplique a échoué : {{error}}",
+    "retired": "Cette table n'est plus répliquée ; sa réplique est en cours de suppression.",
+    "convergenceError": "Les répliques ne sont pas mises en conformité avec le modèle : {{error}}",
+    "method": {
+      "engine_statement": "copiée par le moteur",
+      "stream_batches": "diffusée par lots"
+    },
+    "loadKind": {
+      "bulk_stream": "flux en masse",
+      "row_copy": "copie par lignes"
+    }
+  }
+}

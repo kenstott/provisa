@@ -265,6 +265,9 @@ async def ensure_resident(
         else None
     )
 
+    org_id = current_org.get(None)
+    view = view_for(state)
+
     def _plan(source: Any, is_stale: Any, resident_of: Any) -> bool:
         """The residency plan's own decision for ``source`` (``EngineBackend.pending_lands``):
         whether a read of it must have a replica built first."""
@@ -305,7 +308,10 @@ async def ensure_resident(
         applies the rest: a load-protected table that has a replica is never rebuilt by a read
         (REQ-1141: its refresh is the runner's alone)."""
         node = _node(table.schema_name, table.table_name)
-        state_ = _freshness_state(record, _store())
+        key_ = (source.id, table.schema_name, table.table_name)
+        # A standing replica that can no longer answer the model (convergence found a column
+        # added or retyped) is one never built, until a build of the model's definition lands.
+        state_ = _freshness_state(record, _store()) if view.serves(org_id, key_, record) else None
         is_stale = is_stale_of(
             [source], {source.id: [table]}, {node: state_}, time.time(), reader_role=reader_role
         )
@@ -313,8 +319,6 @@ async def ensure_resident(
         return _plan(source, is_stale, lambda sid: resident)
 
     retry_interval = float(settings_registry.value("replication.retry_interval"))
-    org_id = current_org.get(None)
-    view = view_for(state)
     waiting: list[tuple[Any, Any, replica_state.ReplicaKey]] = []
     for source in sources:
         tables = tables_by_source.get(source.id)

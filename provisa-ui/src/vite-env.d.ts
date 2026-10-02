@@ -50,6 +50,7 @@ declare module "*.graphql" {
   export const CacheStats: DocumentNode;
   export const CacheTableStats: DocumentNode;
   export const HotTables: DocumentNode;
+  export const ReplicaBuilds: DocumentNode;
   export const MaterializeStoreInfo: DocumentNode;
   export const SystemHealth: DocumentNode;
   export const ScheduledTasks: DocumentNode;
@@ -150,6 +151,7 @@ declare module "*.gql" {
   export const CacheStats: DocumentNode;
   export const CacheTableStats: DocumentNode;
   export const HotTables: DocumentNode;
+  export const ReplicaBuilds: DocumentNode;
   export const MaterializeStoreInfo: DocumentNode;
   export const SystemHealth: DocumentNode;
   export const ScheduledTasks: DocumentNode;

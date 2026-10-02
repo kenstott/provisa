@@ -193,6 +193,32 @@ class MssqlWarehouseStoreTarget:
                 self._conn = None
                 conn.close()
 
+    def _drop(self) -> None:
+        shield = request_deadline.shielded()
+        with shield.lock:
+            shield.settle()
+            conn = self._connect()
+        try:
+            cur = conn.cursor()
+            try:
+                for name in (self._build, self._table):
+                    if self._exists(cur, name):
+                        cur.execute(f"DROP TABLE {self._ref(name)}")
+                conn.commit()
+            finally:
+                cur.close()
+        finally:
+            with shield.lock:
+                shield.settle()
+                conn.close()
+
+    async def drop(self) -> None:
+        """Remove the replica and any build table left beside it."""
+        from provisa.federation.replica_guard import require_replicas_schema
+
+        require_replicas_schema(self._schema, self._table, action="drop the replica at")
+        await asyncio.to_thread(self._drop)
+
     async def abort(self) -> None:
         await asyncio.to_thread(self._abort)
 
@@ -412,6 +438,17 @@ class BigQueryStoreTarget:
                 shield.settle()
                 self._close_writer()
 
+    def _drop(self) -> None:
+        for name in (self._build, self._table):
+            self._client.query(f"DROP TABLE IF EXISTS {self._ref(name)}").result()
+
+    async def drop(self) -> None:
+        """Remove the replica and any build table left beside it."""
+        from provisa.federation.replica_guard import require_replicas_schema
+
+        require_replicas_schema(self._dataset, self._table, action="drop the replica at")
+        await asyncio.to_thread(self._drop)
+
     async def abort(self) -> None:
         await asyncio.to_thread(self._abort)
 
@@ -565,6 +602,31 @@ class DatabricksStoreTarget:
                 shield.settle()
                 self._conn = None
                 conn.close()
+
+    def _drop(self) -> None:
+        from provisa.federation.databricks_store import _qualified
+
+        shield = request_deadline.shielded()
+        with shield.lock:
+            shield.settle()
+            self._conn = self._connect()
+        try:
+            self._execute(
+                f"DROP TABLE IF EXISTS {_qualified(self._catalog, self._schema, self._table)}"
+            )
+        finally:
+            with shield.lock:
+                shield.settle()
+                conn, self._conn = self._conn, None
+                conn.close()
+
+    async def drop(self) -> None:
+        """Remove the replica. Files a build of it left staged are removed by the next build
+        of the same replica, or go with the replicas schema's volume."""
+        from provisa.federation.replica_guard import require_replicas_schema
+
+        require_replicas_schema(self._schema, self._table, action="drop the replica at")
+        await asyncio.to_thread(self._drop)
 
     async def abort(self) -> None:
         await asyncio.to_thread(self._abort)
@@ -730,6 +792,31 @@ class SnowflakeStoreTarget:
                 shield.settle()
                 self._conn = None
                 conn.close()
+
+    def _drop(self) -> None:
+        from provisa.federation.snowflake_store import qualified
+
+        shield = request_deadline.shielded()
+        with shield.lock:
+            shield.settle()
+            self._conn = self._connect()
+        try:
+            for name in (self._build, self._table):
+                self._execute(
+                    f"DROP TABLE IF EXISTS {qualified((self._database, self._schema, name))}"
+                )
+        finally:
+            with shield.lock:
+                shield.settle()
+                conn, self._conn = self._conn, None
+                conn.close()
+
+    async def drop(self) -> None:
+        """Remove the replica and any build table left beside it."""
+        from provisa.federation.replica_guard import require_replicas_schema
+
+        require_replicas_schema(self._schema, self._table, action="drop the replica at")
+        await asyncio.to_thread(self._drop)
 
     async def abort(self) -> None:
         await asyncio.to_thread(self._abort)

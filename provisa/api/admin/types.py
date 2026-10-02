@@ -1159,6 +1159,38 @@ class HotTableStatType:
 
 
 @strawberry.type
+class ReplicaBuildType:  # REQ-1915
+    """One replica and its build, as an operator sees it."""
+
+    source_id: str
+    schema_name: str
+    table_name: str
+    # idle (built, nothing pending) | requested | building | failed | retired (the model no
+    # longer declares it; it is dropped after a grace period)
+    state: str
+    requested_reason: str | None
+    method: str | None  # engine_statement | stream_batches, of the running or last build
+    load_kind: str | None  # bulk_stream | row_copy
+    started_at: str | None  # ISO 8601, UTC
+    # A float: a GraphQL Int is 32 bits, and a replica can hold more than 2^31 rows.
+    rows_copied: float | None
+    rows_per_second: float | None  # a running build's rate so far
+    completed_at: str | None  # None: there is no replica yet
+    next_refresh_at: str | None
+    last_error: str | None
+    waiting_on: str | None  # why a requested build has not started
+
+
+@strawberry.type
+class ReplicaBuildsType:  # REQ-1915
+    builds: list[ReplicaBuildType]
+    # The last failure of the step that brings replicas in line with the model, for the acting
+    # org; None when the last pass succeeded.
+    convergence_error: str | None
+    convergence_error_at: str | None
+
+
+@strawberry.type
 class MaterializeStoreInfoType:
     engine_name: str
     # None when the engine has no materialization store configured yet — the panel still shows the

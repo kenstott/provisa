@@ -169,6 +169,11 @@ def wiring(monkeypatch):
     )
     monkeypatch.setattr("provisa.events.land_lock._locks", {})
     monkeypatch.setattr("provisa.federation.replica_state.read", _read)
+
+    async def _started(conn, key, *, method, load_kind):
+        seen["started"] = (key, method, load_kind)
+
+    monkeypatch.setattr("provisa.federation.replica_state.record_started", _started)
     monkeypatch.setattr(replica_builds, "store_identity", lambda state: "store-a")
     return seen
 
@@ -192,6 +197,10 @@ async def test_a_build_reads_the_table_and_replaces_its_replica_at_the_replicas_
     backend = _Backend()
     outcome = await replica_builds.build_replica(_state(backend), ("s1", "public", "events"), _noop)
     assert (outcome.rows_copied, outcome.method, outcome.changed) == (2, "stream_batches", True)
+    # how it copies is recorded as it starts; what it was built from goes with its completion
+    assert wiring["started"] == (("s1", "public", "events"), "stream_batches", "bulk_stream")
+    assert outcome.built_columns == [["id", "bigint"], ["status", "text"]]
+    assert outcome.definition_hash and len(outcome.definition_hash) == 64
     # REQ-1912: the org's replicas schema, under the one replica name — on every engine
     target = backend.target
     assert (target.address.schema, target.address.table) == (
@@ -377,3 +386,99 @@ async def test_the_engines_own_copy_is_chosen_when_the_engine_reaches_the_table(
     assert (outcome.method, outcome.rows_copied) == ("engine_statement", 150_000)
     assert copied == [None, "after_swap"]
     assert backend.log == []  # the stream's target was never opened
+
+
+async def test_a_table_deleted_while_its_build_runs_is_not_swapped_in(wiring):
+    """The build ends, finds no model row before the swap, and removes its build table."""
+    backend = _Backend()
+    state = _state(backend)
+    real_write = _Target.write
+
+    async def write_then_delete(self, batch, rows):
+        await real_write(self, batch, rows)
+        state.config.tables.clear()  # the table leaves the model mid-build
+
+    _Target.write = write_then_delete  # type: ignore[method-assign]
+    try:
+        with pytest.raises(replica_builds.ReplicaTableGone):
+            await replica_builds.build_replica(state, ("s1", "public", "events"), _noop)
+    finally:
+        _Target.write = real_write  # type: ignore[method-assign]
+    assert "swap" not in backend.log and backend.log[-1] == "abort"
+
+
+class _Queue:
+    def __init__(self):
+        self.refreshes: list = []
+        self.events: list = []
+        self.fanned: list = []
+
+    async def record_refresh(self, conn, node, *, at, ok):
+        self.refreshes.append((node, ok))
+
+    async def post_event(self, conn, *, source_table, event_type, payload=None):
+        self.events.append((source_table, event_type, payload))
+        return len(self.events)
+
+    async def fan_out(self, conn, event_id, dependent_tables):
+        self.fanned.append((event_id, dependent_tables))
+        return len(dependent_tables)
+
+
+@pytest.fixture
+def queue(monkeypatch):
+    held = _Queue()
+    for name in ("record_refresh", "post_event", "fan_out"):
+        monkeypatch.setattr(f"provisa.events.queue.{name}", getattr(held, name))
+    return held
+
+
+def _built(monkeypatch, outcome):
+    async def build(state, key, progress):
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(replica_builds, "build_replica", build)
+
+
+async def test_a_changed_build_is_posted_to_its_tables_node_so_dependents_ripple(
+    queue, monkeypatch
+):
+    from provisa.federation.data_replicator import BuildOutcome
+
+    key = ("s1", "public", "events")
+    state = SimpleNamespace(tenant_db=_Db(), replica_nodes={key: "public.events"})
+    _built(monkeypatch, BuildOutcome(rows_copied=9, method="stream_batches", changed=True))
+    await replica_builds.run_build(state, key, _noop)
+    assert queue.refreshes == [("public.events", True)]
+    assert queue.events == [("public.events", "replace", {"built": True, "rows": 9})]
+    assert queue.fanned == [(1, ["public.events"])]  # to the node itself: it re-posts onward
+
+
+async def test_an_unchanged_build_ripples_nothing(queue, monkeypatch):
+    from provisa.federation.data_replicator import BuildOutcome
+
+    key = ("s1", "public", "events")
+    state = SimpleNamespace(tenant_db=_Db(), replica_nodes={key: "public.events"})
+    _built(monkeypatch, BuildOutcome(rows_copied=9, method="stream_batches", changed=False))
+    await replica_builds.run_build(state, key, _noop)
+    assert queue.refreshes == [("public.events", True)] and queue.events == []
+
+
+async def test_a_build_of_a_table_with_no_event_loop_node_posts_nothing(queue, monkeypatch):
+    from provisa.federation.data_replicator import BuildOutcome
+
+    state = SimpleNamespace(tenant_db=_Db())  # the event loop is not wired, or has no such node
+    _built(monkeypatch, BuildOutcome(rows_copied=9, method="stream_batches"))
+    await replica_builds.run_build(state, ("s1", "public", "events"), _noop)
+    assert queue.events == [] and queue.refreshes == [("public.events", True)]
+
+
+async def test_a_failed_build_is_stamped_not_fresh_and_ripples_nothing(queue, monkeypatch):
+    key = ("s1", "public", "events")
+    state = SimpleNamespace(tenant_db=_Db(), replica_nodes={key: "public.events"})
+    _built(monkeypatch, RuntimeError("source down"))
+    with pytest.raises(RuntimeError, match="source down"):
+        await replica_builds.run_build(state, key, _noop)
+    assert queue.refreshes == [("public.events", False)] and queue.events == []

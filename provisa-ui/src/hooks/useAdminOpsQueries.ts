@@ -19,6 +19,7 @@ import type {
   CacheStats,
   CacheTableStat,
   HotTableStat,
+  ReplicaBuilds,
   MaterializeStoreInfo,
   SystemHealth,
   ScheduledTask,
@@ -28,6 +29,7 @@ import {
   CacheStats as CACHE_STATS_QUERY,
   CacheTableStats as CACHE_TABLE_STATS_QUERY,
   HotTables as HOT_TABLES_QUERY,
+  ReplicaBuilds as REPLICA_BUILDS_QUERY,
   MaterializeStoreInfo as MATERIALIZE_STORE_INFO_QUERY,
   SystemHealth as SYSTEM_HEALTH_QUERY,
   ScheduledTasks as SCHEDULED_TASKS_QUERY,
@@ -63,6 +65,16 @@ export function useCacheTableStats() {
     { fetchPolicy: "cache-and-network" },
   );
   return { cacheTableStats: data?.cacheTableStats ?? [], loading, error, refetch };
+}
+
+/** Every replica of the acting org and environment with its build (REQ-1915). Polled, so a
+ * running build's progress moves while the form is open. */
+export function useReplicaBuilds() {
+  const { data, loading, error, refetch } = useQuery<{ replicaBuilds: ReplicaBuilds }>(
+    REPLICA_BUILDS_QUERY,
+    { fetchPolicy: "cache-and-network", pollInterval: 5000 },
+  );
+  return { replicaBuilds: data?.replicaBuilds ?? null, loading, error, refetch };
 }
 
 export function useHotTables() {

@@ -133,6 +133,8 @@ def build_source_node_spec(
     engine_runtime: Any,
     source_fetch: Callable[[Any, Any], Any],
     probe_scalar: Callable[[Any, Any], Any] | None = None,
+    replica_build: Callable[[tuple[str, str, str]], Any] | None = None,
+    write_lock: Callable[[tuple[str, str, str]], Any] | None = None,
 ) -> NodeSpec | None:
     """One source table's :class:`NodeSpec` (REQ-941), or ``None`` when it doesn't federate
     MATERIALIZED, is parameterized (no snapshot), or a column's type isn't resolved yet.
@@ -179,17 +181,34 @@ def build_source_node_spec(
         source_id=src.id, schema_name=tbl.schema_name, table_name=tbl.table_name
     )
     land_schema, land_table = address.schema, address.table
-    handle = make_source_land(
-        engine_runtime,
-        schema=land_schema,
-        table=land_table,
-        columns=args.columns,
-        change_signal=args.change_signal,
-        watermark_column=args.watermark_column,
-        pk_columns=args.pk_columns,
-        fetch=source_fetch(src, tbl),
-        probe_type=args.probe_type,  # REQ-982: authoritative landing-shape selector
-    )
+    from provisa.events.probes import probe_shape
+    from provisa.core.change_signal import REPLACE as _REPLACE
+
+    whole_copy = probe_shape(args.probe_type) == _REPLACE
+    if replica_build is not None and whole_copy and getattr(tbl, "mv_preprocess", None) is None:
+        # REQ-1915: a whole copy of a source table is the data replicator's. The node asks for
+        # the build and re-posts the change when the build has completed; no row passes here.
+        # (A table that declares a preflight check over its rows keeps the fetch-and-land below:
+        # the check runs on the rows this process fetched.)
+        handle = replica_build((src.id, tbl.schema_name, tbl.table_name))
+    else:
+        handle = make_source_land(
+            engine_runtime,
+            schema=land_schema,
+            table=land_table,
+            columns=args.columns,
+            change_signal=args.change_signal,
+            watermark_column=args.watermark_column,
+            pk_columns=args.pk_columns,
+            fetch=source_fetch(src, tbl),
+            probe_type=args.probe_type,  # REQ-982: authoritative landing-shape selector
+            # REQ-1915: a land of deltas takes the replica's own lock, as a build does.
+            write_lock=(
+                (lambda: write_lock((src.id, tbl.schema_name, tbl.table_name)))
+                if write_lock is not None
+                else None
+            ),
+        )
     # REQ-982: build the poll node's probe from its resolved probe_type. watermark/count read the
     # source through the engine terminal (the SQL scalar runner + engine ref, injected); hash/none
     # degrade to the TTL cadence (a None token) where the REQ-981 output hash gates the ripple.
@@ -242,6 +261,8 @@ def specs_from_config(
     calendar_registry: Any | None = None,
     freshness_of: Callable[[str], Any] | None = None,
     mv_bitemporal_append: Callable[[Any], Callable[[str | None], Any]] | None = None,
+    replica_build: Callable[[tuple[str, str, str]], Any] | None = None,
+    write_lock: Callable[[tuple[str, str, str]], Any] | None = None,
 ) -> list[NodeSpec]:
     """Bind the config to :class:`NodeSpec`s (REQ-941). A MATERIALIZED source table (``federate`` ==
     MATERIALIZED) becomes a source spec — its landing args resolved from config, its ``fetch`` the
@@ -266,6 +287,8 @@ def specs_from_config(
             engine_runtime=engine_runtime,
             source_fetch=source_fetch,
             probe_scalar=probe_scalar,
+            replica_build=replica_build,
+            write_lock=write_lock,
         )
         if spec is not None:
             specs.append(spec)
