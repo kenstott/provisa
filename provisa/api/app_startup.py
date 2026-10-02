@@ -904,6 +904,7 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
                                     cardinality=Cardinality(_card),
                                     **({} if _alias is None else {"alias": _alias}),
                                 ),
+                                origin="seed",
                             )
                         except Exception:
                             _log.warning("Failed to upsert %s", _rel_id, exc_info=True)
@@ -924,6 +925,7 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
                                 source_json_key="id",
                                 disable_cypher=True,
                             ),
+                            origin="seed",
                         )
                     except Exception:
                         _log.warning(

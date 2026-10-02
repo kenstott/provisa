@@ -108,6 +108,7 @@ async def _relate(db: Database, ids: dict[str, int], source: str, target: str) -
                 source_column="id",
                 target_column="id",
                 cardinality="many-to-one",
+                origin="admin",
             )
         )
         await conn.execute_core(
@@ -117,6 +118,7 @@ async def _relate(db: Database, ids: dict[str, int], source: str, target: str) -
                 object_type="table",
                 object_key=target,
                 table_id=ids[target],
+                origin="admin",
             )
         )
 

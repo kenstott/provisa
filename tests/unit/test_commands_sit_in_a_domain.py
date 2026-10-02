@@ -55,7 +55,9 @@ async def plane(monkeypatch) -> Database:
         for domain_id in ("sales", "finance"):
             await conn.execute_core(insert(domains).values(id=domain_id, origin="admin"))
         for table in (tracked_functions, tracked_webhooks):
-            await conn.execute_core(insert(table).values(name="in_finance", domain_id="finance"))
+            await conn.execute_core(
+                insert(table).values(origin="admin", name="in_finance", domain_id="finance")
+            )
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "roles", ROLES, raising=False)
     monkeypatch.setattr(domain_policy, "single_domain", lambda: False)
@@ -99,16 +101,18 @@ async def test_the_model_store_refuses_a_command_or_webhook_with_no_domain(plane
                 Function(
                     name="refund", source_id="pg", function_name="refund", returns="", domain_id=""
                 ),
+                origin="admin",
             )
         with pytest.raises(ValueError, match="'notify' names no domain"):
             await function_repo.upsert_webhook(
-                conn, Webhook(name="notify", url="http://x", domain_id="")
+                conn, Webhook(name="notify", url="http://x", domain_id=""), origin="admin"
             )
         await function_repo.upsert_function(
             conn,
             Function(
                 name="refund", source_id="pg", function_name="refund", returns="", domain_id="sales"
             ),
+            origin="admin",
         )
     assert await _domain_of(plane, tracked_functions, "refund") == "sales"
     assert await _domain_of(plane, tracked_webhooks, "notify") is None

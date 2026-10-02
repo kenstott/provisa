@@ -104,9 +104,12 @@ async def test_a_table_something_refers_to_is_refused_naming_each_and_nothing_is
                 source_column="id",
                 target_column="id",
                 cardinality="many-to-one",
+                origin="admin",
             )
         )
-        await conn.execute_core(insert(metrics).values(name="revenue", expression="SUM(orders.a)"))
+        await conn.execute_core(
+            insert(metrics).values(name="revenue", expression="SUM(orders.a)", origin="admin")
+        )
         with pytest.raises(table_repo.TableDeleteRefused) as err:
             await table_repo.delete(conn, orders)
     assert err.value.name == "orders"
@@ -129,7 +132,9 @@ async def test_a_table_nothing_refers_to_goes_with_its_parts(plane):
                 insert(table_columns).values(table_id=table_id, column_name=column)
             )
         await conn.execute_core(
-            insert(rls_rules).values(role_id="seller", table_id=orders, filter_expr=b"1=1")
+            insert(rls_rules).values(
+                role_id="seller", table_id=orders, filter_expr=b"1=1", origin="admin"
+            )
         )
         await conn.execute_core(
             insert(tag_assignments).values(
@@ -138,6 +143,7 @@ async def test_a_table_nothing_refers_to_goes_with_its_parts(plane):
                 object_type="table",
                 object_key="orders",
                 table_id=orders,
+                origin="admin",
             )
         )
         assert await table_repo.delete(conn, orders) is True

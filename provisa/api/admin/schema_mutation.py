@@ -235,7 +235,7 @@ async def _upsert_relationship_impl(
     )
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
-        await rel_repo.upsert(_conn, model)
+        await rel_repo.upsert(_conn, model, origin="admin")
         if _cross_domain:
             # REQ-1531: re-assert AFTER the upsert. rel_repo.upsert clears needs_review on conflict
             # (REQ-020 treats a save as an explicit re-review), and a cross-domain edge is not the
@@ -1516,7 +1516,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 support=input.support,
                 custom_properties=input.custom_properties,
             )
-            await data_product_repo.upsert(conn, model)
+            await data_product_repo.upsert(conn, model, origin="admin")
         return MutationResult(
             success=True,
             message=f"Data product {input.id!r} created",
@@ -1632,7 +1632,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            await tag_repo.upsert(cast("Connection", conn), model)
+            await tag_repo.upsert(cast("Connection", conn), model, origin="admin")
         await _refresh_config_tags()
         return MutationResult(
             success=True,
@@ -1804,7 +1804,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.tag_scope_mismatch",
                     params={"tag": input.tag_id, "objectType": input.object_type},
                 )
-            await tag_repo.assign(cast("Connection", conn), model)
+            await tag_repo.assign(cast("Connection", conn), model, origin="admin")
         await _refresh_config_tags()
         return MutationResult(
             success=True,
@@ -2106,7 +2106,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # REQ-1320: each fact measure auto-registers as a governed metric (upsert by name).
         async with pool.acquire() as conn:
             for m in fact_metrics:
-                await metric_repo.upsert(cast("Connection", conn), m)
+                await metric_repo.upsert(cast("Connection", conn), m, origin="admin")
         if fact_metrics:
             await _rebuild_schemas()  # republish state.metrics + schema metric blocks
         return MutationResult(
@@ -2144,7 +2144,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         pool = await _get_pool()
         try:
             async with pool.acquire() as conn:
-                await metric_repo.upsert(cast("Connection", conn), model)
+                await metric_repo.upsert(cast("Connection", conn), model, origin="admin")
                 # REQ-1318: every registered view whose view_metrics spec references this
                 # metric regenerates its stored view_sql against the UPDATED definition.
                 # Free-hand view_sql born from inline metric() calls carries no stored
@@ -2580,7 +2580,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
         try:
             async with pool.acquire() as conn:
-                await rls_repo.upsert(cast("Connection", conn), model)
+                await rls_repo.upsert(cast("Connection", conn), model, origin="admin")
         except ValueError as e:
             return MutationResult(success=False, message=str(e))
         # state.rls_contexts[role_id] is only ever populated by _rebuild_schemas's own
@@ -3883,6 +3883,7 @@ async def _upsert_action_rls_rule(
         await rls_repo.upsert(
             cast("Connection", conn),
             RLSRuleModel(action_name=name, role_id=input.role_id, filter=input.filter_expr),
+            origin="admin",
         )
     # See upsert_rls_rule's own matching rebuild — this action-RLS path bypasses that function
     # entirely (early-returns before it), so it needs the identical rebuild call itself.

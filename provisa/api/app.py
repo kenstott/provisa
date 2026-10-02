@@ -1160,7 +1160,7 @@ async def _load_and_build(
         async with state.tenant_db.acquire() as _retry_conn:
             for _rel in state.config.relationships:
                 try:
-                    await _rel_repo.upsert(_retry_conn, _rel)
+                    await _rel_repo.upsert(_retry_conn, _rel, origin="config")
                 except ValueError:
                     pass
 

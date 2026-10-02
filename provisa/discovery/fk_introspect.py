@@ -333,8 +333,9 @@ async def _insert_rel(
     result = await conn.execute(
         """
         INSERT INTO relationships
-            (id, source_table_id, target_table_id, source_column, target_column, cardinality, alias)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+            (id, source_table_id, target_table_id, source_column, target_column, cardinality,
+             alias, origin)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'admin')
         ON CONFLICT DO NOTHING
         """,
         rel_id,

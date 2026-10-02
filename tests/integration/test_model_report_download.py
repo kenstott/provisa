@@ -196,10 +196,14 @@ async def served(
         await domain_repo.upsert(conn, Domain(id="sales"), origin="admin")
         await domain_repo.upsert(conn, Domain(id="petstore"), origin="admin")
         await data_product_repo.upsert(
-            conn, DataProduct(id="prod-sales", domain_id="sales", name="Sales Product")
+            conn,
+            DataProduct(id="prod-sales", domain_id="sales", name="Sales Product"),
+            origin="admin",
         )
         await data_product_repo.upsert(
-            conn, DataProduct(id="prod-petstore", domain_id="petstore", name="Petstore Product")
+            conn,
+            DataProduct(id="prod-petstore", domain_id="petstore", name="Petstore Product"),
+            origin="admin",
         )
         await load_config(parse_config_dict(raw), conn, origin="config")
         # A derived term publishes only once a curator has defined it (REQ-1387), so the

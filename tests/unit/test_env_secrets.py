@@ -97,14 +97,16 @@ class TestOnlyCarriedFieldsAreScanned:
 class TestTheSeam:
     def test_an_insert_carrying_a_credential_is_refused(self):
         with pytest.raises(CredentialLiteralError):
-            guard_statement(tracked_webhooks.insert().values(url=f"https://x/?t={GITHUB}"))
+            guard_statement(
+                tracked_webhooks.insert().values(url=f"https://x/?t={GITHUB}", origin="admin")
+            )
 
     def test_an_update_carrying_a_credential_is_refused(self):
         with pytest.raises(CredentialLiteralError):
             guard_statement(metrics.update().values(expression=f"f('{AWS}')"))
 
     def test_a_clean_write_is_returned_unchanged(self):
-        stmt = tracked_webhooks.insert().values(url="https://hooks.example/x")
+        stmt = tracked_webhooks.insert().values(url="https://hooks.example/x", origin="admin")
         assert guard_statement(stmt) is stmt
 
     def test_a_select_is_never_scanned(self):

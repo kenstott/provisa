@@ -328,6 +328,7 @@ async def _seed_meta_domain(
         await conn.upsert(
             _relationships_t,
             {
+                "origin": "seed",  # REQ-1919: written when the row is created
                 "id": "meta:registered_tables:table_columns",
                 "source_table_id": _rt_id,
                 "target_table_id": _tc_id,
@@ -554,6 +555,7 @@ async def _seed_meta_relationships(conn: "Connection") -> None:
             _relationships_t,
             {
                 **_cols,
+                "origin": "seed",  # REQ-1919: written when the row is created
                 "source_table_id": _src_id,
                 "target_table_id": _tgt_id,
                 "via_table_id": _via_id,

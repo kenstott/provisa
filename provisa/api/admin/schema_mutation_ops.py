@@ -107,6 +107,7 @@ async def _apply_mv_relationship_gate(
                         cardinality=Cardinality.many_to_one,
                         owner=getattr(_identity_user(info), "user_id", None),
                     ),
+                    origin="admin",
                 )
             return None
 

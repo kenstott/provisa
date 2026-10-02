@@ -873,7 +873,7 @@ async def _upsert_tables(  # REQ-013, REQ-016, REQ-251
 
 
 async def _upsert_relationships(
-    conn: "Connection", config: ProvisaConfig
+    conn: "Connection", config: ProvisaConfig, *, origin: str
 ) -> None:  # REQ-018, REQ-019, REQ-020
     """Delete stale relationships and upsert config-declared ones."""
     current_rel_ids = [rel.id for rel in config.relationships]
@@ -902,7 +902,7 @@ async def _upsert_relationships(
         )
     for rel in config.relationships:
         try:
-            await rel_repo.upsert(conn, rel)
+            await rel_repo.upsert(conn, rel, origin=origin)
         except ValueError as exc:
             # Genuinely expected for a dynamic source (createSource mutation flow — the target
             # table registers moments later and this same upsert is retried then). For static
@@ -915,7 +915,9 @@ async def _upsert_relationships(
             log.warning("relationship %r not registered: %s", rel.id, exc)
 
 
-async def _upsert_metrics(conn: "Connection", config: ProvisaConfig) -> None:  # REQ-1317, REQ-1320
+async def _upsert_metrics(
+    conn: "Connection", config: ProvisaConfig, *, origin: str
+) -> None:  # REQ-1317, REQ-1320
     """Delete stale config-declared metrics and upsert the current ones.
 
     Fact-derived metrics (``from_fact`` set, REQ-1320) are managed by fact registration, not
@@ -926,7 +928,7 @@ async def _upsert_metrics(conn: "Connection", config: ProvisaConfig) -> None:  #
         stale.append(metrics_table.c.name.not_in(current_names))
     await metric_repo.remove_where(conn, *stale)
     for m in config.metrics:
-        await metric_repo.upsert(conn, m)
+        await metric_repo.upsert(conn, m, origin=origin)
 
 
 async def _resolve_tag_assignment_table(
@@ -1021,7 +1023,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
 
     # 4.5 Data products (before tables so product_id FK refs exist)  # REQ-1634
     for dp in config.data_products:
-        await data_product_repo.upsert(conn, dp)
+        await data_product_repo.upsert(conn, dp, origin=origin)
 
     # 4.6 Glossary terms (after domains, so declared scope names something real)  # REQ-1641
     # upsert_declared_term upserts by name (its unique key), matching every other loader step's
@@ -1029,7 +1031,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     # role or relationship a steward has since edited by hand outside the config file.
     for gt in config.glossary_terms:
         await glossary_repo.upsert_declared_term(
-            conn, gt.name, definition=gt.definition, domains=set(gt.domains)
+            conn, gt.name, definition=gt.definition, domains=set(gt.domains), origin=origin
         )
 
     # 5. Tables + columns
@@ -1053,10 +1055,10 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     # Preserve relationships whose source or target table belongs to a dynamically-registered
     # source (e.g. graphql_remote) — those are managed outside of this config file.
     # Also preserve 'meta:*' relationships seeded by _seed_meta_domain.
-    await _upsert_relationships(conn, config)
+    await _upsert_relationships(conn, config, origin=origin)
 
     # 6.5 Metrics (REQ-1317/REQ-1320): governed metric definitions; fact-derived ones preserved.
-    await _upsert_metrics(conn, config)
+    await _upsert_metrics(conn, config, origin=origin)
 
     # 6.6 Tags (REQ-1373/REQ-1377): registry rows then assignments — tables and relationships
     # must exist first so assignment FKs resolve. System tags are code-defined intrinsics
@@ -1068,17 +1070,19 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
         # tag, and storing it would shadow the intrinsic with a user row (REQ-1467).
         if base_tag_id(tg.id) in SYSTEM_TAG_IDS:
             continue
-        await tag_repo.upsert(conn, tg)
+        await tag_repo.upsert(conn, tg, origin=origin)
     for ta in config.tag_assignments:
-        await tag_repo.assign(conn, await _resolve_tag_assignment_table(conn, ta))
+        await tag_repo.assign(conn, await _resolve_tag_assignment_table(conn, ta), origin=origin)
 
     # 7. RLS rules (tables + roles must exist first)
     for rule in config.rls_rules:
-        await rls_repo.upsert(conn, rule)
+        await rls_repo.upsert(conn, rule, origin=origin)
 
     # 8. Tracked DB functions
     for func in config.functions:
-        await function_repo.upsert_function(conn, func, return_schema=func.return_schema)
+        await function_repo.upsert_function(
+            conn, func, return_schema=func.return_schema, origin=origin
+        )
 
     # 9. Tracked webhooks. Config is the trusted source of truth, so a config-declared webhook is
     # pre-approved (REQ-209): without an 'executed' creation_request the schema gate in
@@ -1086,7 +1090,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     from provisa.core.repositories import creation_request as cr_repo
 
     for wh in config.webhooks:
-        await function_repo.upsert_webhook(conn, wh)
+        await function_repo.upsert_webhook(conn, wh, origin=origin)
         await cr_repo.ensure_executed(conn, "webhook", wh.name, "config")
 
     # 10. Policy sweep: dynamically-registered rows (openapi/hasura/graphql_remote) are not

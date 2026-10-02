@@ -88,7 +88,7 @@ async def db():
 async def test_filter_stored_ciphertext_and_decrypts_on_read(db):
     rule = RLSRule(domain_id="sales", role_id="analyst", filter=_PREDICATE)
     async with db.acquire() as conn:
-        await rls_repo.upsert(conn, rule)
+        await rls_repo.upsert(conn, rule, origin="admin")
 
         raw = await conn.fetchrow(
             f"SELECT filter_expr FROM {_SCHEMA}.rls_rules WHERE role_id='analyst'"
@@ -106,7 +106,7 @@ async def test_filter_stored_ciphertext_and_decrypts_on_read(db):
 async def test_wrong_master_key_cannot_read(db, monkeypatch):
     async with db.acquire() as conn:
         await rls_repo.upsert(
-            conn, RLSRule(domain_id="sales", role_id="analyst", filter=_PREDICATE)
+            conn, RLSRule(domain_id="sales", role_id="analyst", filter=_PREDICATE), origin="admin"
         )
 
     # Rotate to a different master key — the stored ciphertext must no longer decrypt.

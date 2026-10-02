@@ -243,6 +243,7 @@ async def _upsert_relationships_to_semantic_layer(  # REQ-313, REQ-598
                         cardinality=Cardinality(r.get("cardinality", "many-to-one")),
                         source_json_key=r.get("source_json_key") or None,
                     ),
+                    origin="admin",
                 )
             except Exception:
                 log.warning("Failed to upsert relationship %s", r["id"], exc_info=True)
@@ -251,7 +252,7 @@ async def _upsert_relationships_to_semantic_layer(  # REQ-313, REQ-598
         if cfg is not None:
             for rel in cfg.relationships:
                 try:
-                    await rel_repo.upsert(conn, rel)
+                    await rel_repo.upsert(conn, rel, origin="admin")
                 except ValueError:
                     pass
 

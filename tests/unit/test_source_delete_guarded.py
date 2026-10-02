@@ -64,7 +64,9 @@ async def plane(monkeypatch) -> Database:
             )
         )
         await conn.execute_core(
-            insert(tracked_functions).values(name="refund", source_id="crm", domain_id="sales")
+            insert(tracked_functions).values(
+                name="refund", source_id="crm", domain_id="sales", origin="admin"
+            )
         )
         await conn.execute_core(
             insert(api_sources).values(id="api", type="openapi", base_url="http://x")
@@ -79,6 +81,7 @@ async def plane(monkeypatch) -> Database:
                 object_type="source",
                 object_key="api",
                 source_id="api",
+                origin="admin",
             )
         )
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
