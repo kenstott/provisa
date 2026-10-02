@@ -96,13 +96,21 @@ def _mock_context(role: str) -> AsyncMock:
     return context
 
 
+def _routed_plan() -> MagicMock:
+    """What governance returns for a request it routed to a source: a plan that was NOT answered
+    from the response cache (``_Plan.cache_hit`` is None unless the entry was read before
+    routing, REQ-1897). A bare MagicMock's ``cache_hit`` is another mock, which the servicer
+    reads as a cache hit."""
+    return MagicMock(cache_hit=None)
+
+
 def _pipeline_patches(result, *, govern=None):
     """Patch the real _handle_query pipeline seams: gRPC lowers the request to a semantic SELECT,
     then governs+routes it and executes the plan (the retired parse→compile→transpile→execute_direct
     path no longer runs). ``govern`` may be an AsyncMock to capture/assert the govern call."""
     govern_patch = patch(
         "provisa.pgwire._pipeline._govern_and_route_compiled",
-        govern if govern is not None else AsyncMock(return_value=MagicMock()),
+        govern if govern is not None else AsyncMock(return_value=_routed_plan()),
     )
     return (
         patch(
@@ -228,7 +236,7 @@ class TestRoleBasedFieldFiltering:
 
         fake_result = SimpleNamespace(column_names=["id"], rows=[[42]])
 
-        govern = AsyncMock(return_value=MagicMock())
+        govern = AsyncMock(return_value=_routed_plan())
         p_semantic, p_govern, p_execute = _pipeline_patches(fake_result, govern=govern)
         with p_semantic as mock_semantic, p_govern, p_execute:
             context = _mock_context("viewer")

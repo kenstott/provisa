@@ -16,12 +16,16 @@ build_cache_headers) and cache key role-partitioning.
 
 from __future__ import annotations
 
-import json
 
 import pytest
 
 from provisa.cache.key import cache_key
-from provisa.cache.middleware import build_cache_headers, check_cache, store_result
+from provisa.cache.middleware import (
+    build_cache_headers,
+    check_cache,
+    decode_cached_result,
+    store_result,
+)
 from provisa.cache.store import CacheStore, CachedResult
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio(loop_scope="session")]
@@ -108,8 +112,10 @@ class TestRolePartitionedCache:
         admin_hit = await check_cache(store, key_admin)
         assert analyst_hit is not None
         assert admin_hit is not None
-        assert json.loads(analyst_hit.data) == {"rows": [1]}
-        assert json.loads(admin_hit.data) == {"rows": [1, 2, 3]}
+        # Each role reads back its own entry: the stored payload is the cache's own encoding
+        # (REQ-1896), read the way a serving surface reads it.
+        assert decode_cached_result(analyst_hit)[0] == {"rows": [1]}
+        assert decode_cached_result(admin_hit)[0] == {"rows": [1, 2, 3]}
 
     async def test_same_role_same_key_hits(self):
         store = FakeStore()
@@ -123,7 +129,7 @@ class TestRolePartitionedCache:
 
         hit = await check_cache(store, key)
         assert hit is not None
-        assert hit.data == json.dumps({"rows": [1]}).encode("utf-8")
+        assert decode_cached_result(hit) == ({"rows": [1]}, None)
 
 
 class TestMutationInvalidatesCache:
