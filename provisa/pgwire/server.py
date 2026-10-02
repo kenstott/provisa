@@ -54,6 +54,7 @@ from provisa.otel_compat import annotate_request as _annotate_request
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
 from provisa.otel_compat import HeldRequestSpan
+from provisa.pgwire.ddl_handler import creates_view
 from provisa.executor.result import ResultStream
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
@@ -2039,7 +2040,9 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                     self._send_pg_error("ERROR", "0A000", str(exc))
                     ctx.mark_error()
                 break
-            if _DDL_RE.match(stmt):
+            if _DDL_RE.match(stmt) or creates_view(stmt):
+                # creates_view: every spelling of CREATE ... VIEW (OR REPLACE, MATERIALIZED,
+                # TEMP) is the DDL handler's to refuse, whatever _DDL_RE's own list holds.
                 from provisa.pgwire.ddl_handler import DdlHandler
 
                 try:

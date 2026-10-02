@@ -943,15 +943,15 @@ def ddl_statement_submitted(shared_data):
 )
 def ddl_catalog_routing(shared_data):
     """Verify the two DDL dispatch paths using DdlHandler internals."""
-    from provisa.pgwire.ddl_handler import _catalog_to_source_id, _CREATE_TABLE_OR_VIEW_RE
+    from provisa.pgwire.ddl_handler import _catalog_to_source_id, _CREATE_TABLE_RE
 
     # Build a minimal mock state for Trino path (iceberg catalog, not a source)
     trino_state = MagicMock()
     trino_state.source_catalogs = {}
     trino_state.source_types = {}
 
-    is_create = _CREATE_TABLE_OR_VIEW_RE.match(shared_data["create_table_sql"])
-    is_alter = _CREATE_TABLE_OR_VIEW_RE.match(shared_data["alter_table_sql"])
+    is_create = _CREATE_TABLE_RE.match(shared_data["create_table_sql"])
+    is_alter = _CREATE_TABLE_RE.match(shared_data["alter_table_sql"])
 
     shared_data["trino_create_allowed"] = bool(is_create)
     shared_data["trino_alter_allowed"] = bool(is_alter)
@@ -972,12 +972,13 @@ def ddl_catalog_routing(shared_data):
 @then("the statement is dispatched to the correct path")
 def ddl_dispatched_to_correct_path(shared_data):
     """Assert Trino path rejects ALTER but accepts CREATE; direct path accepts both."""
-    # Trino path: only CREATE TABLE/VIEW allowed
+    # Trino path: only CREATE TABLE allowed. (A view is on neither path: it is refused over
+    # pgwire, see tests/unit/test_pgwire_view_refused.py; the scenario's wording is REQ-582's.)
     assert shared_data["trino_create_allowed"] is True, (
-        "CREATE TABLE must match _CREATE_TABLE_OR_VIEW_RE for Trino path"
+        "CREATE TABLE must match _CREATE_TABLE_RE for Trino path"
     )
     assert shared_data["trino_alter_allowed"] is False, (
-        "ALTER TABLE must NOT match _CREATE_TABLE_OR_VIEW_RE — only CREATE is allowed on Trino path"
+        "ALTER TABLE must NOT match _CREATE_TABLE_RE — only CREATE is allowed on Trino path"
     )
 
     # iceberg is not a registered source → source_id is None → Trino path

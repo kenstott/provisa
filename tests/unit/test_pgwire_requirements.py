@@ -756,8 +756,8 @@ class TestReq582DdlRouting:
     """REQ-582: DDL dispatched to Trino or direct path based on ddl_catalog."""
 
     def test_trino_path_rejects_alter(self):
-        # REQ-582: Trino path only supports CREATE TABLE/VIEW
-        from provisa.pgwire.ddl_handler import _CREATE_TABLE_OR_VIEW_RE
+        # REQ-582: Trino path only supports CREATE TABLE
+        from provisa.pgwire.ddl_handler import _CREATE_TABLE_RE
 
         ddl_statements = [
             "ALTER TABLE foo ADD COLUMN bar INT",
@@ -765,26 +765,27 @@ class TestReq582DdlRouting:
             "CREATE INDEX idx ON foo(id)",
         ]
         for sql in ddl_statements:
-            assert not _CREATE_TABLE_OR_VIEW_RE.match(sql), f"Should not match: {sql}"
+            assert not _CREATE_TABLE_RE.match(sql), f"Should not match: {sql}"
 
     def test_trino_path_accepts_create_table(self):
         # REQ-582
-        from provisa.pgwire.ddl_handler import _CREATE_TABLE_OR_VIEW_RE
+        from provisa.pgwire.ddl_handler import _CREATE_TABLE_RE
 
-        assert _CREATE_TABLE_OR_VIEW_RE.match("CREATE TABLE foo (id INT)")
+        assert _CREATE_TABLE_RE.match("CREATE TABLE foo (id INT)")
 
-    def test_trino_path_accepts_create_view(self):
-        # REQ-582
-        from provisa.pgwire.ddl_handler import _CREATE_TABLE_OR_VIEW_RE
+    def test_no_path_accepts_create_view(self):
+        # A view is a model object: it is on neither DDL path (tests/unit/test_pgwire_view_refused.py).
+        from provisa.pgwire.ddl_handler import _CREATE_TABLE_RE, creates_view
 
-        assert _CREATE_TABLE_OR_VIEW_RE.match("CREATE VIEW v AS SELECT 1")
+        assert not _CREATE_TABLE_RE.match("CREATE VIEW v AS SELECT 1")
+        assert creates_view("CREATE VIEW v AS SELECT 1")
 
     def test_ddl_handler_raises_for_non_create_on_trino_path(self):
         # REQ-582: ALTER/DROP on Trino catalog raises ValueError
-        from provisa.pgwire.ddl_handler import _CREATE_TABLE_OR_VIEW_RE
+        from provisa.pgwire.ddl_handler import _CREATE_TABLE_RE
 
         sql = "ALTER TABLE foo ADD COLUMN bar INT"
-        assert not _CREATE_TABLE_OR_VIEW_RE.match(sql)
+        assert not _CREATE_TABLE_RE.match(sql)
 
     def test_role_without_ddl_capability_raises(self):
         # REQ-582 (also REQ-616): Roles without ddl cap are rejected at the ddl handler
