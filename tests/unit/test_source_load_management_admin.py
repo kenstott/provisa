@@ -90,18 +90,25 @@ def test_every_panel_field_round_trips_through_the_row():
     )
     row = {**_source_values(src), "allowed_domains": [], "bound": True}
     back = source_from_row(row)
-    admin = _source_from_row(row)
-    for field in (
-        "cache_enabled",
-        "cache_ttl",
-        "change_signal",
-        "sentinel_path",
-        "freshness_gate",
-        "prefer_materialized",
-        "load_protected",
-        "off_peak_window",
-        "off_peak_tz",
-        "max_live_concurrency",
-    ):
+    # The panel's fields are not connection details: they reach a caller with or without
+    # source_registration (connection=False nulls only what locates or authenticates).
+    for connection in (True, False):
+        admin = _source_from_row(row, connection=connection)
+        for field in _PANEL_FIELDS:
+            assert getattr(admin, field) == getattr(src, field), (field, connection)
+    for field in _PANEL_FIELDS:
         assert getattr(back, field) == getattr(src, field), field
-        assert getattr(admin, field) == getattr(src, field), field
+
+
+_PANEL_FIELDS = (
+    "cache_enabled",
+    "cache_ttl",
+    "change_signal",
+    "sentinel_path",
+    "freshness_gate",
+    "prefer_materialized",
+    "load_protected",
+    "off_peak_window",
+    "off_peak_tz",
+    "max_live_concurrency",
+)
