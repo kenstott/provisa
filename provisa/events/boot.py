@@ -156,7 +156,7 @@ def build_source_node_spec(
     # queried") rules out an ordinary PERIODIC/TTL-triggered whole-table land for a row_materialize
     # table specifically -- the queue-driven scheduler this NodeSpec feeds runs on ITS OWN clock,
     # independent of any query, which is exactly the "eager, unprompted" activity that constraint
-    # forbids (the per-query fallback path -- ensure_resident/materialize_pending, when NO bound
+    # forbids (the per-query fallback path -- ensure_resident and the replica build it asks for, when NO bound
     # resolves for a given statement -- is a DIFFERENT, query-triggered mechanism and is unaffected
     # by this; both already exclude a row_materialize table from THEIR sweep for the same reason).
     # Confirmed live: bench_placed_edge's queue-driven land held the engine's one DuckDB connection

@@ -8,9 +8,9 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1907: landing freshness is judged per TABLE and per reader — a read lands a replica only
-when its age exceeds that reader's effective TTL, max(cache_ttl, role_ttl(role)); concurrent
-stale reads of one table share one land; the row cache applies the same per-reader age check."""
+"""REQ-1907: replica freshness is judged per TABLE and per reader — a read asks for a replica's
+build only when its age exceeds that reader's effective TTL, max(cache_ttl, role_ttl(role));
+concurrent stale reads of one table share one build; the row cache applies the same per-reader age check."""
 
 # Requirements: REQ-1907, REQ-1661, REQ-1865
 
@@ -204,9 +204,15 @@ def test_a_freshness_gated_source_is_judged_by_its_own_predicate():
 
 
 class _Db:
+    """The state store as these tests need it: each table's replica state by node
+    (``{last_refresh_at, last_refresh_ok}``, None: never built), the builds a read has asked
+    for, and how many records were read."""
+
     def __init__(self, states):
         self.states = states
         self.reads = 0
+        self.requested: set[str] = set()
+        self.building: set[str] = set()
 
     def acquire(self):
         db = self
@@ -227,7 +233,6 @@ class _Backend:
     def __init__(self):
         self.lands = 0
         self.plans = 0
-        self._landed: set[str] = set()
         self.attaches = False  # set by _state: the engine reads the source in place
 
     def pending_lands(
@@ -249,12 +254,6 @@ class _Backend:
                 due.append(s.id)
         return due
 
-    def is_first_touch(self, sid):
-        return sid not in self._landed
-
-    def mark_landed(self, sid):
-        self._landed.add(sid)
-
     def replica_address(self, state, *, source_id, schema_name, table_name):
         """As EngineBackend.replica_address: the replicas schema, under the one replica name."""
         from provisa.federation.replica_address import ReplicaAddress, replica_table_name
@@ -264,27 +263,17 @@ class _Backend:
             "org_test_replicas", replica_table_name(source_id, schema_name, table_name)
         )
 
-    async def materialize_pending(
-        self, state, *, loader, is_stale, source_ids, load_protected_of, resident_of, **kw
-    ):
-        """Mirrors plan._needs_prep: a load-protected source preps only when not resident."""
-        self.plans += 1
-        out = []
-        for sid in source_ids:
-            due = not resident_of(sid) if load_protected_of(sid) else is_stale(sid)
-            if due:
-                self.lands += 1
-                await asyncio.sleep(0.05)  # a real land takes time; a second reader queues
-                out += [(sid, t.table_name) for t in state.config.tables if t.source_id == sid]
-        return out
-
 
 def _state(tables, backend, states, *, source=None, attaches=False):
-    connectors = {"sqlite": SimpleNamespace(reads_in_place=True)} if attaches else {}
+    from provisa.federation.connector import Mechanism
+
+    attach = SimpleNamespace(reads_in_place=True, reach_modes=frozenset({Mechanism.ATTACH_R}))
+    connectors = {"sqlite": attach} if attaches else {}
     backend.attaches = attaches
     engine = SimpleNamespace(
         engine=SimpleNamespace(
             backend=backend,
+            name="postgres",
             native_store="postgres",
             replica_store_backend=lambda: "postgres",  # as FederationEngine: its native store
             connectors=connectors,
@@ -313,30 +302,67 @@ def _read(state) -> frozenset[int]:
 
 @pytest.fixture
 def wiring(monkeypatch):
+    """The read backstop's collaborators: a fixed clock, the registry, the replica records read
+    from ``_Db.states``, and a stand-in for the build runner that builds what a read asked for."""
     import time as _time
 
+    from provisa.federation import replica_state
+
     monkeypatch.setattr(_time, "time", lambda: NOW)
+    monkeypatch.setattr("provisa.federation.replica_builds.store_identity", lambda state: "store")
+    monkeypatch.setattr("provisa.federation.query_residency._BUILD_POLL_S", 0.01)
+    monkeypatch.setattr(
+        "provisa.core.settings_registry.value",
+        lambda key: {"replication.retry_interval": 60}[key],
+    )
+    seen: dict = {}
 
-    async def get_node_state(conn, node):
+    def _node(key) -> str:
+        return f"{key[1]}.{key[2]}"
+
+    async def read(conn, key):
+        seen["db"] = conn
         conn.reads += 1
-        return conn.states.get(node)
+        held = conn.states.get(_node(key))
+        building = _node(key) in conn.requested | conn.building
+        if held is None and not building:
+            return None
+        at = held["last_refresh_at"] if held else None
+        failed = held is not None and not held.get("last_refresh_ok", True)
+        return SimpleNamespace(
+            build_state="requested" if building else "failed" if failed else "idle",
+            completed_at=datetime.fromtimestamp(at, UTC) if at is not None else None,
+            last_error=None,
+            exists_in=lambda store: at is not None,
+        )
 
-    async def record_refresh(conn, node, *, at, ok):
-        conn.states[node] = {"last_refresh_at": NOW, "last_refresh_ok": ok}
+    async def request_build(conn, key, reason, **kw):
+        del reason, kw
+        seen["backend"].plans += 1
+        conn.requested.add(_node(key))
+        return True
 
-    monkeypatch.setattr("provisa.events.queue.get_node_state", get_node_state)
-    monkeypatch.setattr("provisa.events.queue.record_refresh", record_refresh)
-    monkeypatch.setattr("provisa.events.app_wiring.build_adapter_loaders", lambda s, e: {})
-    monkeypatch.setattr(
-        "provisa.events.app_wiring.build_keyed_adapter_loaders", lambda s, e=None: {}
-    )
-    monkeypatch.setattr(
-        "provisa.events.source_loader.SourceRowLoader",
-        lambda engine, adapter_loaders=None, keyed_adapter_loaders=None: object(),
-    )
-    monkeypatch.setattr("provisa.events.land_lock._locks", {})
+    async def _build() -> None:
+        db, backend = seen["db"], seen["backend"]
+        # As the runner: a requested build is claimed by one pass, so two kicks build it once.
+        claimed, db.requested = sorted(db.requested), set()
+        db.building.update(claimed)
+        for node in claimed:
+            backend.lands += 1
+            await asyncio.sleep(0.05)  # a real build takes time; a second reader waits on it
+            db.states[node] = {"last_refresh_at": _time.time(), "last_refresh_ok": True}
+            db.building.discard(node)
+
+    def kick(org_id) -> None:
+        del org_id
+        asyncio.get_running_loop().create_task(_build())
+
+    monkeypatch.setattr(replica_state, "read", read)
+    monkeypatch.setattr(replica_state, "request_build", request_build)
+    monkeypatch.setattr("provisa.federation.replica_builds.kick", kick)
 
     async def _sources(state, conn=None):
+        seen["backend"] = state.federation_engine.engine.backend
         return list(state.config.sources)
 
     async def _tables(state, conn=None):
@@ -349,7 +375,6 @@ def wiring(monkeypatch):
 @pytest.mark.asyncio
 async def test_an_analyst_read_of_a_200s_old_replica_does_not_land(wiring):
     backend = _Backend()
-    backend.mark_landed("s")
     state = _state([_tbl("orders")], backend, {"sch.orders": _st(200)})
     assert await ensure_resident(state, {"s"}, reader_role="analyst", table_ids=_read(state)) == []
     assert backend.lands == 0
@@ -358,7 +383,6 @@ async def test_an_analyst_read_of_a_200s_old_replica_does_not_land(wiring):
 @pytest.mark.asyncio
 async def test_a_trader_read_lands_only_past_the_cache_ttl_floor(wiring, monkeypatch):
     backend = _Backend()
-    backend.mark_landed("s")
     state = _state([_tbl("orders")], backend, {"sch.orders": _st(30)})
     assert await ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state)) == []
     # 170 s later the same replica is 200 s old: past the cache_ttl floor the trader is held to.
@@ -376,14 +400,14 @@ async def test_a_trader_read_lands_only_past_the_cache_ttl_floor(wiring, monkeyp
 @pytest.mark.asyncio
 async def test_two_concurrent_trader_reads_share_one_land(wiring):
     backend = _Backend()
-    backend.mark_landed("s")
     state = _state([_tbl("orders")], backend, {"sch.orders": _st(200)})
     first, second = await asyncio.gather(
         ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state)),
         ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state)),
     )
-    assert backend.lands == 1
-    assert sorted([first, second]) == [[], [("s", "orders")]]
+    assert backend.lands == 1 and backend.plans == 1  # one request, one build
+    # both readers waited for that one build
+    assert first == second == [("s", "orders")]
 
 
 @pytest.mark.asyncio
@@ -400,7 +424,6 @@ async def test_a_direct_attached_table_is_read_live_with_no_staleness_evaluation
 @pytest.mark.asyncio
 async def test_attach_capable_but_replicate_goes_through_the_replica_gate(wiring):
     backend = _Backend()
-    backend.mark_landed("s")
     t = _tbl("orders", replicate=0)
     state = _state([t], backend, {"sch.orders": _st(200)}, attaches=True)
     assert (
@@ -417,7 +440,6 @@ async def test_a_read_of_a_ttl_table_with_no_cache_ttl_fails_before_any_land(wir
     """REQ-1907 (amended 2026-09-30): the read fails with a clear error naming the table; it is
     rejected before the land plan runs, so no land is attempted and no node is stamped."""
     backend = _Backend()
-    backend.mark_landed("s")
     t = _tbl("orders", cache_ttl=None, role_ttl={"analyst": 360})
     state = _state([t], backend, {"sch.orders": _st(200)})
     with pytest.raises(ValueError, match=r"orders.*add a cache_ttl"):
@@ -442,7 +464,6 @@ async def test_a_directly_attached_ttl_table_with_no_cache_ttl_reads_live(wiring
 @pytest.mark.parametrize("signal", ["probe", "native", "debezium", "kafka"])
 async def test_a_landed_no_ttl_freshness_signal_table_reads_without_a_cache_ttl(wiring, signal):
     backend = _Backend()
-    backend.mark_landed("s")
     t = _tbl("orders", cache_ttl=None, change_signal=signal)
     state = _state([t], backend, {"sch.orders": _st(10_000)})
     assert await ensure_resident(state, {"s"}, reader_role="analyst", table_ids=_read(state)) == []
@@ -466,7 +487,6 @@ async def test_a_load_protected_table_is_never_landed_by_a_read_even_for_ttl_0(w
     """REQ-1141: once resident, only the scheduler refreshes a load-protected table; every
     reader, a TTL-0 trader included, gets the scheduled snapshot."""
     backend = _Backend()
-    backend.mark_landed("s")
     t = _tbl("orders", load_protected=True, role_ttl={"trader": 0})
     state = _state([t], backend, {"sch.orders": _st(10_000)}, attaches=True)
     assert await ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state)) == []

@@ -100,6 +100,9 @@ OWNERS: dict[str, set[str]] = {
         "provisa/core/database.py",
         "provisa/federation/pg_runtime.py",
         "provisa/federation/pg_backend.py",
+        # REQ-1915: the PostgreSQL store's replica write face — one COPY ... FROM STDIN held
+        # open for a build (psycopg 3's ``cursor.copy``; psycopg2 has no row-wise COPY writer).
+        "provisa/federation/replica_target.py",
     },
     "psycopg_pool": {
         # The DIRECT postgres source driver's one shared, thread-safe pool per source.

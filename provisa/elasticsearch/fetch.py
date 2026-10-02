@@ -20,6 +20,7 @@ it in a thread.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Iterator
 from typing import Any
 
 import httpx
@@ -93,12 +94,19 @@ def fetch_rows(
 ) -> list[dict]:  # REQ-1672
     """Every document of ``index`` as a row of ``columns`` — ``(column name, source path)`` pairs —
     read through the scroll API so an index larger than one page comes back whole."""
-    rows: list[dict] = []
+    return [row for page in iter_row_batches(conn, index, columns, _PAGE_SIZE) for row in page]
+
+
+def iter_row_batches(
+    conn: ESConnection, index: str, columns: list[tuple[str, str]], batch_rows: int
+) -> Iterator[list[dict]]:  # REQ-1915
+    """The documents of ``index`` a scroll page at a time, each page of at most ``batch_rows``
+    rows: only one page is held."""
     with conn._client() as c:
         resp = c.post(
             f"/{index}/_search",
             params={"scroll": _SCROLL_KEEPALIVE},
-            json={"size": _PAGE_SIZE, "sort": ["_doc"], "query": {"match_all": {}}},
+            json={"size": batch_rows, "sort": ["_doc"], "query": {"match_all": {}}},
         )
         resp.raise_for_status()
         body = resp.json()
@@ -108,9 +116,10 @@ def fetch_rows(
                 hits = body.get("hits", {}).get("hits", [])
                 if not hits:
                     break
-                for hit in hits:
-                    src = hit.get("_source") or {}
-                    rows.append({name: _pluck(src, path) for name, path in columns})
+                yield [
+                    {name: _pluck(hit.get("_source") or {}, path) for name, path in columns}
+                    for hit in hits
+                ]
                 if scroll_id is None:
                     break
                 resp = c.post(
@@ -122,7 +131,6 @@ def fetch_rows(
         finally:
             if scroll_id is not None:
                 c.request("DELETE", "/_search/scroll", json={"scroll_id": scroll_id})
-    return rows
 
 
 def fetch_rows_by_keys(

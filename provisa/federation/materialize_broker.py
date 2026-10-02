@@ -102,7 +102,7 @@ def _memory() -> _MemoryStore:
         return _memory_store
 
 
-def _with_memory_store(fn: Any, *, read_only: bool, canary: bool) -> Any:
+def _with_memory_store(fn: Any, *, read_only: bool, canary: bool, unseen: bool = False) -> Any:
     """``_with_store`` for the in-memory store: the same one-operation-at-a-time contract and the
     same generation semantics, held in this process instead of in files."""
     from provisa.core import request_deadline
@@ -117,7 +117,7 @@ def _with_memory_store(fn: Any, *, read_only: bool, canary: bool) -> Any:
                 result = fn(con)
         finally:
             con.close()
-            if not read_only:
+            if not read_only and not unseen:
                 store.generation += 1
         return (result, store.generation) if canary else result
 
@@ -145,7 +145,14 @@ def _bump_generation(db_path: str) -> None:
     os.replace(tmp, db_path + _GEN_SUFFIX)
 
 
-def _with_store(db_path: str, fn: Any, *, read_only: bool = False, canary: bool = False) -> Any:
+def _with_store(
+    db_path: str,
+    fn: Any,
+    *,
+    read_only: bool = False,
+    canary: bool = False,
+    unseen: bool = False,
+) -> Any:
     """Acquire the sentinel lock for `db_path` (waiting at most the request's remaining budget),
     ATTACH it under the `mat_store` alias, run `fn(con)` (cancellable at the request deadline), then
     DETACH (close) and release the lock -- see module docstring. The lock file itself is never read
@@ -154,9 +161,11 @@ def _with_store(db_path: str, fn: Any, *, read_only: bool = False, canary: bool 
     ``read_only`` ATTACHes READ_ONLY; every other call may write, so it advances the store's write
     generation (even on failure — a partial write must not look unchanged). ``canary`` returns
     ``(result, generation)`` read while the lock is still held, so no writer can land between the
-    read and the generation it is tagged with."""
+    read and the generation it is tagged with. ``unseen`` marks a write no reader can see — a
+    replica's build table, which nothing reads until it is swapped in — so it leaves the
+    generation alone and no reader throws away its copy of the store for it."""
     if db_path == _MEMORY_PATH:
-        return _with_memory_store(fn, read_only=read_only, canary=canary)
+        return _with_memory_store(fn, read_only=read_only, canary=canary, unseen=unseen)
 
     from provisa.core import request_deadline
 
@@ -172,7 +181,7 @@ def _with_store(db_path: str, fn: Any, *, read_only: bool = False, canary: bool 
                     result = fn(con)
             finally:
                 con.close()
-                if not read_only:
+                if not read_only and not unseen:
                     _bump_generation(db_path)
             return (result, store_canary(db_path)) if canary else result
         finally:
@@ -395,6 +404,81 @@ class _SyncedStore:
                 persist=persist,
                 pk_columns=pk_columns,
             ),
+        )
+
+    # -- replica builds (REQ-1915): a build table, filled a batch per operation, then swapped --
+
+    def replica_begin(
+        self, schema: str, table: str, build: str, columns: list[tuple[str, str]]
+    ) -> None:
+        """Create the empty build table ``build`` for the replica ``table``, dropping one a dead
+        build left. Refuses when a view stands at the replica's name."""
+        from provisa.federation.replica_guard import require_duckdb_replica_table
+        from provisa.federation.store_connection import (
+            _create_ddl,
+            _duckdb_dialect,
+            _ensure_schema,
+            _qualified,
+        )
+
+        def _do(con: Any) -> None:
+            _ensure_schema(con, _MAT_STORE_ALIAS, schema, _duckdb_dialect())
+            require_duckdb_replica_table(
+                con, _MAT_STORE_ALIAS, schema, table, action="build the replica at"
+            )
+            con.execute(f"DROP TABLE IF EXISTS {_qualified(_MAT_STORE_ALIAS, schema, build)}")
+            con.execute(_create_ddl(_MAT_STORE_ALIAS, schema, build, columns))
+
+        _with_store(self._db_path, _do, unseen=True)
+
+    def replica_write(self, schema: str, build: str, names: list[str], batch: Any) -> None:
+        """Append one Arrow record batch to the build table, read in place by the store."""
+        import pyarrow as pa  # noqa: PLC0415
+
+        from provisa.federation.store_connection import _qualified
+
+        collist = ", ".join(f'"{n}"' for n in names)
+
+        def _do(con: Any) -> None:
+            con.register("_replica_batch", pa.Table.from_batches([batch]))
+            try:
+                con.execute(
+                    f"INSERT INTO {_qualified(_MAT_STORE_ALIAS, schema, build)} ({collist}) "
+                    f'SELECT {collist} FROM "_replica_batch"'
+                )
+            finally:
+                con.unregister("_replica_batch")
+
+        _with_store(self._db_path, _do, unseen=True)
+
+    def replica_swap(self, schema: str, table: str, build: str) -> None:
+        """Replace the replica with the build table: drop and rename in one transaction."""
+        from provisa.federation.store_connection import _qualified
+
+        def _do(con: Any) -> None:
+            con.execute("BEGIN")
+            try:
+                con.execute(f"DROP TABLE IF EXISTS {_qualified(_MAT_STORE_ALIAS, schema, table)}")
+                con.execute(
+                    f'ALTER TABLE {_qualified(_MAT_STORE_ALIAS, schema, build)} RENAME TO "{table}"'
+                )
+                con.execute("COMMIT")
+            except BaseException:
+                con.execute("ROLLBACK")
+                raise
+
+        _with_store(self._db_path, _do)
+
+    def replica_abort(self, schema: str, build: str) -> None:
+        """Discard the build table."""
+        from provisa.federation.store_connection import _qualified
+
+        _with_store(
+            self._db_path,
+            lambda con: con.execute(
+                f"DROP TABLE IF EXISTS {_qualified(_MAT_STORE_ALIAS, schema, build)}"
+            ),
+            unseen=True,
         )
 
     def table_columns(self, schema: str, table: str) -> list[str] | None:

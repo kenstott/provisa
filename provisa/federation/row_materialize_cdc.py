@@ -32,7 +32,7 @@ def row_refresh_claim_node(node: str) -> str:
 
     A row_materialize table's own ordinary whole-table federation strategy can independently
     resolve to MATERIALIZED (design doc section 3a: row_materialize does not suppress the
-    is_stale/materialize_pending fallback), in which case ``provisa.events.boot.
+    is_stale / replica-build fallback), in which case ``provisa.events.boot.
     build_source_node_spec`` registers a plain ``SourceTableProcessor`` under the EXACT SAME
     node string this module uses (``f"{schema_name}.{table_name}"``, the same convention
     ``land_lock``/``ensure_resident`` key on). ``queue.claim`` claims ALL pending unclaimed work

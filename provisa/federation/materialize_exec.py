@@ -101,6 +101,10 @@ def build_table(
             quoted_name(name, quote=True),
             _sa_type(sql_type, indexed=bound_all or name in pk),
             primary_key=name in pk,
+            # The table carries the source's own key values: the store never generates one. Left
+            # to its default, an integer key becomes AUTO_INCREMENT on MySQL/MariaDB, which
+            # stores a key of 0 as the next generated value.
+            autoincrement=False,
         )
         for name, sql_type in columns
     ]

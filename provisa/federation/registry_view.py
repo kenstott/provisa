@@ -47,7 +47,7 @@ async def registered_sources(state: Any, conn: Any | None = None) -> list[Source
 
     REQ-1892: cached (TTL + schema-generation-keyed) when called on the pool-acquire path
     (``conn`` unset) -- this is read 2-3 times per governed call (`ensure_rows_resident`,
-    `ensure_resident`, `materialize_pending`) with no cache before this, the same shape of finding
+    `ensure_resident`, the replica build) with no cache before this, the same shape of finding
     REQ-1882 already fixed for `registered_tables` in this file. A caller supplying its own
     ``conn`` (already inside an explicit transaction) bypasses the cache, unchanged from before."""
     from provisa.core.repositories import source as source_repo
@@ -210,7 +210,7 @@ def _build_registered_tables(registered: list[dict], cfg_by: dict) -> list[Any]:
                 dq_contract=rt["dq_contract"],
                 # REQ-1865: fetch_tables already SELECTs this column; it was simply never carried
                 # onto the returned object here, so every getattr(t, "row_materialize", False)
-                # check downstream (ensure_resident, materialize_pending,
+                # check downstream (ensure_resident, the replica build,
                 # row_materialized_tables_by_name) silently saw False for every table regardless of
                 # its real registration -- the row-level cache could never actually engage through
                 # the registry view. Confirmed live: a row_materialize=True neo4j table's residency

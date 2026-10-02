@@ -4648,5 +4648,13 @@
   "orgEngineTab.json::orgEngineTab.hostedStateStopped": "This engine is idle. It starts on the next query.",
   "serverErrors.json::serverErrors.schema.source_limit_reached": "This organization holds {{held}} of the {{limit}} data sources its {{plan}} plan admits. Change the plan on the Billing page, or remove a source.",
   "tablesPage.json::tablesPage.modelingRole.impliedDimensionTitle": "Implied dimension — Enable Group By is on for this table",
-  "tablesPage.json::tablesPage.modelingRole.impliedFactTitle": "Implied fact — Enable Aggregates is on for this table"
+  "tablesPage.json::tablesPage.modelingRole.impliedFactTitle": "Implied fact — Enable Aggregates is on for this table",
+  "it/settings.json::settings.replication.builds_per_node.label": "Replica builds per node",
+  "it/settings.json::settings.replication.builds_per_node.help": "The most replica builds one host runs at once. Add nodes to build more replicas at the same time. A source's live-read cap also limits builds; with the embedded Redis that cap is counted per process, not across nodes.",
+  "it/settings.json::settings.replication.engine_jobs.label": "Background jobs per engine",
+  "it/settings.json::settings.replication.engine_jobs.help": "The most background jobs (replica builds) running on one engine at once, across every node. Requests are not counted.",
+  "it/settings.json::settings.replication.retry_interval.label": "Replica build retry interval",
+  "it/settings.json::settings.replication.retry_interval.help": "After a replica build fails, a read does not ask for another build until this long has passed.",
+  "it/settings.json::settings.replication.spool_max_bytes.label": "Replica spool disk limit",
+  "it/settings.json::settings.replication.spool_max_bytes.help": "The most disk space this node uses to hold a source's answer in a temporary file while its replica is built. It applies to sources that answer with one document and cannot be read through a cursor. A build that would pass the limit fails; nothing is truncated."
 }

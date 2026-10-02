@@ -23,8 +23,10 @@ moment that process dies. Every other worker asks for the lock (without waiting)
 its own schedulers fires a deployment job, so the first firing after the holder is gone is run by
 whoever asks first.
 
-Control planes on other dialects are single-writer file stores run by one process, which is
-therefore the holder.
+A control plane on another dialect is a file on one host and has no such lock. There the holder
+is whoever holds an exclusive ``flock`` on a lock file beside it (``provisa.core.host_lock``):
+the same shape, with the operating system as the guarantor — the lock is held as long as the
+holding process lives and is free the moment it ends.
 """
 
 # Requirements: REQ-1900
@@ -38,6 +40,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 from provisa.core.database import create_engine_from_url
+from provisa.core.host_lock import FileLock, control_plane_lock_dir, lock_name
 
 log = logging.getLogger(__name__)
 
@@ -55,13 +58,24 @@ class SchedulerHolder:
         self._scope = scope
         self._conn = None
         self._held = False
+        self._file: FileLock | None = None
+        if self._engine.dialect.name != "postgresql":
+            self._file = FileLock(
+                control_plane_lock_dir(platform_url) / lock_name("scheduler-holder", scope)
+            )
         # Jobs run on background worker threads; the claim is one connection.
         self._guard = threading.Lock()
 
     def holds(self) -> bool:
         """Whether this process holds the lock now, taking it if nobody does."""
-        if self._engine.dialect.name != "postgresql":
-            return True
+        if self._file is not None:
+            with self._guard:
+                if not self._file.held and self._file.try_acquire():
+                    log.warning(
+                        "scheduler holder: this process now runs scheduled jobs for %r",
+                        self._scope,
+                    )
+                return self._file.held
         with self._guard:
             try:
                 return self._holds_locked()
@@ -105,4 +119,6 @@ class SchedulerHolder:
             conn, self._conn, self._held = self._conn, None, False
             if conn is not None:
                 conn.close()
+            if self._file is not None:
+                self._file.release()
         self._engine.dispose()

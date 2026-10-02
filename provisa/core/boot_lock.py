@@ -25,7 +25,9 @@ The workers are separate processes with no shared memory, so the one thing they 
 platform control-plane database — carries both the lock and the record of what is done:
 
 * a PostgreSQL session advisory lock, taken before the first control-plane statement. The server
-  releases it itself if the holding process dies.
+  releases it itself if the holding process dies. A control plane that is a file on one host
+  (SQLite) has no such lock; there the lock is an exclusive ``flock`` on a file beside it, which
+  the operating system releases the same way.
 * ``boot_generations``: one row per org naming the generation whose once-per-launch work is
   COMPLETE (written last, under the lock). A generation is the launch (``$PROVISA_LAUNCH_ID``,
   exported once by the launcher and inherited by every worker it starts, respawns included)
@@ -152,9 +154,19 @@ def control_plane_boot_lock(platform_url: str) -> Generator[BootLock]:
     engine = create_engine_from_url(platform_url, pool_size=1, max_overflow=0)
     try:
         if engine.dialect.name != "postgresql":
-            with engine.begin() as conn:
-                _metadata.create_all(conn, tables=[boot_workers])
-            yield BootLock(None)
+            # A control plane that is a file on one host: the lock is a file lock beside it,
+            # held by this process until the block ends (or the process does). Autocommit, as
+            # below: the boot must not hold the store's write transaction for its whole length.
+            from provisa.core.host_lock import FileLock, control_plane_lock_dir
+
+            lock = FileLock(control_plane_lock_dir(platform_url) / "boot.lock")
+            lock.acquire()
+            try:
+                with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+                    _metadata.create_all(conn)
+                    yield BootLock(conn)
+            finally:
+                lock.release()
             return
         # A session-level lock lives on this one connection, so it stays open (autocommit: the
         # lock must not sit inside a transaction that idles for the whole boot).

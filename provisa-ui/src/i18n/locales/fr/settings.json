@@ -128,6 +128,24 @@
         "help": "Le nombre de processus worker que le serveur exécute. Redémarrage requis car les processus sont lancés par le lanceur."
       }
     },
+    "replication": {
+      "builds_per_node": {
+        "label": "Constructions de répliques par nœud",
+        "help": "Le nombre maximal de constructions de répliques qu'un hôte exécute en même temps. Ajoutez des nœuds pour construire davantage de répliques simultanément. La limite de lectures en direct d'une source limite aussi les constructions ; avec le Redis embarqué, cette limite est comptée par processus et non entre les nœuds."
+      },
+      "engine_jobs": {
+        "label": "Tâches d'arrière-plan par moteur",
+        "help": "Le nombre maximal de tâches d'arrière-plan (constructions de répliques) exécutées en même temps sur un moteur, tous nœuds confondus. Les requêtes ne sont pas comptées."
+      },
+      "retry_interval": {
+        "label": "Intervalle de nouvelle tentative de construction de réplique",
+        "help": "Après l'échec de la construction d'une réplique, une lecture ne demande pas d'autre construction avant que ce délai soit écoulé."
+      },
+      "spool_max_bytes": {
+        "label": "Limite de disque pour le stockage temporaire des répliques",
+        "help": "L'espace disque maximal que ce nœud utilise pour conserver la réponse d'une source dans un fichier temporaire pendant la construction de sa réplique. S'applique aux sources qui répondent par un seul document et ne peuvent pas être lues par un curseur. Une construction qui dépasserait la limite échoue ; rien n'est tronqué."
+      }
+    },
     "security": {
       "mode": {
         "label": "Mode de sécurité",

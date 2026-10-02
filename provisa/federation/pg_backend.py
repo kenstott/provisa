@@ -14,7 +14,6 @@ this subclass supplies the PgFederationRuntime and the psycopg driver error type
 from __future__ import annotations
 
 import logging
-import time
 from typing import Any
 
 import psycopg2
@@ -36,59 +35,42 @@ class PgBackend(NativeEngineBackend):
     # unrelated later query's attach pass (see duckdb_backend.py for the observed failure mode).
     _attach_errors = (psycopg2.Error, KeyError, UnreachableSource)
 
-    async def replicate_in_engine(
-        self,
-        state: Any,
-        source: Any,
-        table: Any,
-        *,
-        schema: str,
-        name: str,
-        args: Any,
-        coordination: Any,
-    ) -> bool:
-        """A full-refresh replica of a table the engine reaches through postgres_fdw is built
-        inside the engine (``PgFederationRuntime.copy_replica``): one job per replica in this
-        process, one build at a time across workers (the store's lock), not bound to the deadline
-        of the request that asked — which waits for it up to its own (``replica_build``)."""
-        import asyncio
-
-        from provisa.core import request_deadline
+    def replica_engine(
+        self, state: Any, source: Any, table: Any, *, address: Any, args: Any
+    ) -> Any:
+        """A full-refresh replica of a table this engine reaches through postgres_fdw is copied
+        by the engine itself, as one statement; any other is streamed into the store."""
         from provisa.core.change_signal import REPLACE, select_landing_shape
-        from provisa.federation import replica_build
+        from provisa.federation.replica_parties import PgStatementCopy
 
         if select_landing_shape(args.change_signal, args.watermark_column) != REPLACE:
-            return False  # an incremental shape appends a delta: not a whole-table copy
+            return super().replica_engine(state, source, table, address=address, args=args)
         merged = self._merged_source(source, table.schema_name, table.table_name)
-        runtime = self._runtime_for(state)
-        if "server_ddl_for_copy" not in runtime._engine.resolve(merged).details:
-            return False  # this connector has no foreign table to copy from
-        replica = f"{source.id}.{table.schema_name}.{table.table_name}"
+        if "server_ddl_for_copy" not in self._runtime_for(state)._engine.resolve(merged).details:
+            return super().replica_engine(state, source, table, address=address, args=args)
+        return PgStatementCopy(
+            self,
+            state,
+            merged,
+            address=address,
+            columns=args.columns,
+            pk_columns=list(args.pk_columns or ()),
+        )
 
-        async def _build() -> int | None:
-            requested = time.time()
-            lock = await asyncio.to_thread(runtime.replica_lock, schema, name)
-            try:
-                # Another worker held the lock while it built this replica: nothing to copy.
-                if await coordination.built_since(source, table, requested):
-                    return None
-                copied = await asyncio.to_thread(
-                    runtime.copy_replica,
-                    lock,
-                    merged,
-                    schema=schema,
-                    table=name,
-                    columns=args.columns,
-                    pk_columns=list(args.pk_columns or ()),
-                )
-                await coordination.built(source, table)
-                _log.info("pg: replica of %s built inside the engine: %d rows", replica, copied)
-                return copied
-            finally:
-                await asyncio.to_thread(runtime.replica_unlock, lock)
+    def replica_target(self, state: Any, *, address: Any, args: Any, engine: Any) -> Any:
+        """A replica in this engine's own PostgreSQL database: the one PostgreSQL write face
+        (the held COPY), which also takes the engine's own statement-level copy."""
+        from provisa.federation.data_replicator import EngineRun
+        from provisa.federation.replica_parties import store_target
 
-        await replica_build.build_once(replica, _build, budget=request_deadline.remaining())
-        return True
+        return store_target(
+            "postgresql",
+            self._runtime_for(state)._engine_dsn,
+            address=address,
+            columns=args.columns,
+            pk_columns=list(args.pk_columns or ()),
+            engine_writes_store=EngineRun.STATEMENT in engine.caps.runs,
+        )
 
     def transpile_physical(self, pg_sql: str) -> str:  # REQ-902
         """Postgres physical SQL, then collapse JSON_OBJECT colon syntax into flat json_build_object so

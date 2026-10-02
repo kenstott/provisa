@@ -159,6 +159,12 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
     #   idle reaper        NOT gated — it measures idleness from THIS process's activity.
     _holder = _scheduler_holder(state)
 
+    # REQ-1915: spool files a build left when its process died are removed at node start. A
+    # file another worker's running build holds is locked and left alone.
+    from provisa.federation.replica_spool import spool_directory, sweep as _sweep_spool
+
+    _sweep_spool(spool_directory())
+
     if state.federation_engine.is_connected():
         from provisa.mv.refresh import reclamation_loop
 

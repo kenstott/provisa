@@ -21,6 +21,9 @@ dependencies = [
     "orjson",
     # The response cache's stored-entry encoding (provisa/cache/codec.py, REQ-1896).
     "msgpack",
+    # REQ-1915: incremental JSON parsing of a single-document source spooled to a file during a
+    # replica build (orjson and jiter parse a whole buffer). The C backend (yajl2_c) is the one used.
+    "ijson",
     "asyncpg",
     "pydantic>=2",
     "strawberry-graphql[fastapi]",

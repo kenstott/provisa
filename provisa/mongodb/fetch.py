@@ -89,14 +89,34 @@ def fetch_rows(
 ) -> list[dict]:  # REQ-1730
     """Every document of ``database.collection``, ``columns`` projected (``_id`` excluded unless
     named), read via a single find-all cursor."""
+    return [
+        row
+        for batch in iter_row_batches(conn, database, collection, columns, _CURSOR_BATCH_ROWS)
+        for row in batch
+    ]
+
+
+_CURSOR_BATCH_ROWS = 1000
+
+
+def iter_row_batches(
+    conn: MongoConnection, database: str, collection: str, columns: list[str], batch_rows: int
+) -> Iterator[list[dict]]:  # REQ-1915
+    """The documents of ``database.collection`` in batches of at most ``batch_rows`` rows, off
+    one find-all cursor that fetches that many per round trip: only one batch is held."""
     projection = {c: 1 for c in columns}
     if "_id" not in columns:
         projection["_id"] = 0
-    rows: list[dict] = []
     with conn.client() as client:
-        for doc in client[database][collection].find({}, projection):
-            rows.append({c: _coerce(doc.get(c)) for c in columns})
-    return rows
+        cursor = client[database][collection].find({}, projection).batch_size(batch_rows)
+        batch: list[dict] = []
+        for doc in cursor:
+            batch.append({c: _coerce(doc.get(c)) for c in columns})
+            if len(batch) >= batch_rows:
+                yield batch
+                batch = []
+        if batch:
+            yield batch
 
 
 def fetch_rows_by_keys(

@@ -55,12 +55,17 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
 
         from provisa.federation.databricks_tls import databricks_tls_kwargs
 
-        self._conn = dbsql.connect(
-            server_hostname=u.hostname,
-            http_path=http_path,
-            access_token=self._token,
-            **databricks_tls_kwargs(),
-        )
+        def _open() -> Any:
+            return dbsql.connect(
+                server_hostname=u.hostname,
+                http_path=http_path,
+                access_token=self._token,
+                **databricks_tls_kwargs(),
+            )
+
+        # A replica build writes on a connection of its own (REQ-1915), opened by the same call.
+        self._open = _open
+        self._conn = _open()
         # One store connection, so one write on it at a time (two lands interleaving on it was a
         # confirmed regression). A lock serializes it, and each write runs on the thread that asked
         # for it — a read-triggered land stays on its request's thread (REQ-1882), where a

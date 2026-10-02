@@ -326,6 +326,27 @@ def build_keyed_adapter_loaders(state: Any, engine: Any = None) -> dict[str, Any
     return keyed_loaders
 
 
+def _wire_replica_builds(scheduler: Any, state: Any, log: Any) -> None:
+    """Register this process's replica build pass (REQ-1915). Its own step, so the event loop
+    and the build runner do not take each other down: a failure here is logged at ERROR, naming
+    what it costs, and the event loop is still wired."""
+    from provisa.core.config_loader import load_control_plane
+    from provisa.core.config_location import config_path_str
+    from provisa.federation.replica_builds import wire_replica_runner
+
+    try:
+        wire_replica_runner(
+            scheduler,
+            state=state,
+            platform_url=load_control_plane(config_path_str()).resolved_platform_url(),
+        )
+    except Exception:  # allow-ble: boot wiring is best-effort by this module's contract (see wire_event_loop); the failure is logged with its cause and consequence, and the next wiring pass registers the runner
+        log.exception(
+            "replica build runner could not be registered: this process builds no replicas "
+            "until the event loop is wired again"
+        )
+
+
 async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = True) -> int:
     """Build + register the event loop from live state. Returns the node count registered (0 if the
     prerequisites are not ready or the loop is skipped). Best-effort — never raises into boot.
@@ -346,6 +367,10 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         except MaterializeStoreUnconfigured:
             log.info("event loop: no materialization store configured — skipping")
             return 0
+
+        # REQ-1915: this process's replica build pass for this org, registered before anything
+        # below can skip the event loop (an MV lineage cycle must not leave replicas unbuilt).
+        _wire_replica_builds(scheduler, state, log)
 
         registry = getattr(state, "mv_registry", None)
         mvs = registry.get_enabled() if registry is not None else []

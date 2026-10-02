@@ -20,6 +20,23 @@ _LOG = logging.getLogger("test")
 
 
 @pytest.fixture(autouse=True)
+def replica_runner_wired(monkeypatch):
+    """The build runner's registration, recorded: these tests are about the event loop, and the
+    runner's own registration is tested in test_replica_builds.py."""
+    wired: list = []
+
+    def _wire(scheduler, *, state, platform_url):
+        wired.append((scheduler, state))
+
+    monkeypatch.setattr("provisa.federation.replica_builds.wire_replica_runner", _wire)
+    monkeypatch.setattr(
+        "provisa.core.config_loader.load_control_plane",
+        lambda path: SimpleNamespace(resolved_platform_url=lambda: "sqlite+pysqlite://"),
+    )
+    return wired
+
+
+@pytest.fixture(autouse=True)
 def _patch_fetch_tables(monkeypatch):
     # wire_event_loop drives off the REGISTERED tables (control plane); the fake conn carries them.
     async def _fetch(conn):
@@ -134,6 +151,26 @@ async def test_skips_when_prerequisites_missing():
 
 
 @pytest.mark.asyncio
+async def test_the_build_runner_is_registered_with_the_event_loop(replica_runner_wired):
+    """REQ-1915: wiring the event loop registers this process's replica build pass for the org,
+    and a failure to register it does not stop the event loop from being wired."""
+    sched = _Sched()
+    state = _state()
+    assert await wire_event_loop(sched, state=state, log=logging.getLogger("test")) >= 1
+    assert replica_runner_wired == [(sched, state)]
+
+
+async def test_a_runner_that_cannot_be_registered_leaves_the_event_loop_wired(monkeypatch, caplog):
+    def _boom(scheduler, *, state, platform_url):
+        raise RuntimeError("no platform control plane")
+
+    monkeypatch.setattr("provisa.federation.replica_builds.wire_replica_runner", _boom)
+    with caplog.at_level(logging.ERROR):
+        wired = await wire_event_loop(_Sched(), state=_state(), log=logging.getLogger("test"))
+    assert wired >= 1
+    assert "replica build runner could not be registered" in caplog.text
+
+
 async def test_registers_source_node_and_runtime_jobs():
     sched = _Sched()
     n = await wire_event_loop(sched, state=_state(), log=_LOG)

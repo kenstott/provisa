@@ -1379,6 +1379,25 @@ CREATE TABLE IF NOT EXISTS replica_state (
     table_name   TEXT NOT NULL,
     promoted     BOOLEAN NOT NULL DEFAULT FALSE,  -- reads go to the replica once it is built
     promoted_at  TIMESTAMPTZ,                     -- when it was last promoted (NULL = never)
+    -- REQ-1915: the replica's build. A replica exists when completed_at is set, whatever
+    -- build_state says: a refresh that is requested, running or failed leaves the previous
+    -- replica readable.
+    build_state      TEXT NOT NULL DEFAULT 'idle'
+        CONSTRAINT replica_state_build_state_check
+        CHECK (build_state IN ('idle','requested','building','failed')),
+    requested_at     TIMESTAMPTZ,
+    requested_reason TEXT,          -- save | boot | hot | refresh | operator | read
+    build_started_at TIMESTAMPTZ,
+    build_holder     TEXT,          -- host:pid of the process building it
+    build_method     TEXT,          -- engine_statement | stream_batches
+    rows_copied      BIGINT,        -- progress of the running build; the total once complete
+    completed_at     TIMESTAMPTZ,   -- NULL: there is no replica
+    next_refresh_at  TIMESTAMPTZ,   -- NULL: refreshed only on request
+    content_hash     TEXT,          -- order-independent hash of the last completed build
+    built_store      TEXT,          -- the store the last completed build was written into
+    last_error       TEXT,
+    failed_at        TIMESTAMPTZ,
+    waiting_on       TEXT,          -- why a requested build did not start on the last pass
     PRIMARY KEY (source_id, schema_name, table_name)
 );
 

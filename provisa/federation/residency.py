@@ -10,7 +10,7 @@
 
 """Residency landing arguments (REQ-825 stage-4b, REQ-932): what one MATERIALIZED table lands
 as -- its IR-typed columns, key, change signal, watermark and probe type -- resolved from config.
-The landing itself is ``EngineBackend.materialize_pending`` (the query path, REQ-1661) and the
+The whole-table build itself is ``replica_builds.build_replica`` (REQ-1915; a read asks for it through ``query_residency.ensure_resident``, REQ-1661) and the
 event loop's source nodes (boot-create and refresh), both through the engine's landing address and
 store write face.
 """

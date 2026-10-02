@@ -42,7 +42,7 @@ from provisa.core import request_deadline
 from provisa.api.errors import ApiError
 from provisa.cache.key import cache_key, is_cacheable
 from provisa.cache.middleware import build_cache_headers, check_cache, decode_cached_result
-from provisa.federation.replica_build import ReplicaBuilding
+from provisa.federation.replica_state import ReplicaBuilding
 from provisa.cache.store import CachedResult
 from provisa.cache.tenancy import cache_tenant
 from provisa.compiler.hints import extract_graphql_hints

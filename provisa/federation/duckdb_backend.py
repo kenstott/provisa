@@ -39,6 +39,19 @@ class DuckDBBackend(NativeEngineBackend):
     # The runtime connection is a duckdb connection: values bind at ``?``.
     _cache_bind_placeholder = "?"
 
+    def replica_target(self, state: Any, *, address: Any, args: Any, engine: Any) -> Any:
+        """A replica in the embedded DuckDB store file is written through the store broker; a
+        replica in any other store by that store's own write face."""
+        runtime = self._runtime_for(state)
+        if not runtime._store_is_duckdb():
+            return super().replica_target(state, address=address, args=args, engine=engine)
+        from provisa.federation.replica_target import DuckDBStoreTarget
+
+        runtime.ensure_materialize_attached()  # resolves the store broker (REQ-1901)
+        return DuckDBStoreTarget(
+            runtime._store_broker, schema=address.schema, table=address.table, columns=args.columns
+        )
+
     def transpile_physical(self, pg_sql: str) -> str:
         """DuckDB physical SQL, then rewrite the JSON array aggregate the compiler emits for
         one-to-many relationships: SQLGlot writes Postgres json_agg as JSON_ARRAYAGG, which DuckDB

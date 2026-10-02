@@ -408,9 +408,6 @@ async def test_a_direct_read_issues_no_control_plane_statement(buffered, monkeyp
         def pending_lands(self, sources, **kw):
             return []
 
-        def is_first_touch(self, source_id):
-            return True
-
     state = buffered.state
     state.tenant_db = _ControlPlane()
     state.config = SimpleNamespace(sources=[source], tables=[table])

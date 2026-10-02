@@ -128,6 +128,24 @@
         "help": "Wie viele Worker-Prozesse der Server ausführt. Neustart erforderlich, da die Prozesse vom Launcher gestartet werden."
       }
     },
+    "replication": {
+      "builds_per_node": {
+        "label": "Replikat-Builds pro Knoten",
+        "help": "Die Höchstzahl an Replikat-Builds, die ein Host gleichzeitig ausführt. Fügen Sie Knoten hinzu, um mehr Replikate gleichzeitig zu erstellen. Auch das Live-Lese-Limit einer Quelle begrenzt Builds; mit dem eingebetteten Redis wird dieses Limit pro Prozess gezählt, nicht knotenübergreifend."
+      },
+      "engine_jobs": {
+        "label": "Hintergrundjobs pro Engine",
+        "help": "Die Höchstzahl an Hintergrundjobs (Replikat-Builds), die über alle Knoten hinweg gleichzeitig auf einer Engine laufen. Anforderungen werden nicht mitgezählt."
+      },
+      "retry_interval": {
+        "label": "Wiederholungsintervall für Replikat-Builds",
+        "help": "Nach einem fehlgeschlagenen Replikat-Build fordert ein Lesezugriff erst nach Ablauf dieser Zeit einen weiteren Build an."
+      },
+      "spool_max_bytes": {
+        "label": "Speicherplatzlimit für Replikat-Zwischendateien",
+        "help": "Der maximale Speicherplatz, den dieser Knoten nutzt, um die Antwort einer Quelle in einer temporären Datei zu halten, während ihr Replikat gebaut wird. Gilt für Quellen, die mit einem einzigen Dokument antworten und nicht über einen Cursor gelesen werden können. Ein Build, der das Limit überschreiten würde, schlägt fehl; es wird nichts abgeschnitten."
+      }
+    },
     "security": {
       "mode": {
         "label": "Sicherheitsmodus",

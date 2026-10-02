@@ -33,6 +33,7 @@ storage has no host-reachable path at all today, a strictly larger gap) would le
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any
 
 from dataclasses import dataclass
@@ -198,15 +199,34 @@ def table_columns(conn: HiveS3Connection, schema: str, table: str) -> list[dict]
 
 def fetch_rows(conn: HiveS3Connection, schema: str, table: str, columns: list[str]) -> list[dict]:
     """Every current row of `table`'s given columns (or every column when none are given)."""
+    return [
+        row
+        for batch in iter_row_batches(conn, schema, table, columns, _CURSOR_BATCH_ROWS)
+        for row in batch
+    ]
+
+
+_CURSOR_BATCH_ROWS = 10_000
+
+
+def iter_row_batches(
+    conn: HiveS3Connection, schema: str, table: str, columns: list[str], batch_rows: int
+) -> Iterator[list[dict]]:  # REQ-1915
+    """The table's rows in batches of at most ``batch_rows``, fetched from the scan's cursor a
+    batch at a time: only one batch is held."""
     files = conn.table_files(schema, table)
     if not files:
-        return []
+        return
     c = _duckdb_s3_conn(conn)
     try:
         select = ", ".join(f'"{col}"' for col in columns) if columns else "*"
         cur = c.execute(f"SELECT {select} FROM read_parquet({_file_list_literal(files)})")
         names = [d[0] for d in cur.description]
-        return [dict(zip(names, row, strict=False)) for row in cur.fetchall()]
+        while True:
+            chunk = cur.fetchmany(batch_rows)
+            if not chunk:
+                return
+            yield [dict(zip(names, row, strict=False)) for row in chunk]
     finally:
         c.close()
 

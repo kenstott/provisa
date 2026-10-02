@@ -169,6 +169,62 @@ class SourceRowLoader:
             )
         return await engine_table_rows(self._engine, source, table)
 
+    def replica_source(
+        self, state: Any, source: Any, table: Any, columns: list[tuple[str, str]]
+    ) -> Any:
+        """``table`` as a stream of Arrow record batches for a replica build (REQ-1915): the
+        one place each source type's read is chosen, with the same precedence as :meth:`load`.
+
+        - A source the operator floors, whose driver has a server-side cursor, is read through
+          that cursor.
+        - A type with a registered adapter loader is read by it: through the adapter's own
+          cursor or Arrow stream where its client has one, else whole, as a single document.
+        - Any other type is read by the engine, which streams Arrow batches; where the engine
+          attaches the source in place it is also declared engine-reachable.
+
+        A type with no engine-scannable table and no adapter raises
+        :class:`UnsupportedSourceFetch`."""
+        import sqlglot.expressions as exp
+
+        from provisa.compiler.naming import source_to_catalog
+        from provisa.core.operator_floor import floor_setting
+        from provisa.executor.direct import open_direct_stream
+        from provisa.federation.replica_source import (
+            DirectTableSource,
+            DocumentSource,
+            EngineTableSource,
+        )
+        from provisa.federation.strategy import engine_attaches
+
+        stype = _source_type(source)
+        pools = getattr(state, "source_pools", None)
+        if (
+            floor_setting(source) is not None
+            and pools is not None
+            and pools.supports_stream(source.id)
+        ):
+            sql = (
+                exp.select("*")
+                .from_(exp.table_(table.table_name, db=table.schema_name))
+                .sql(dialect=state.source_dialects[source.id] or None)
+            )
+            return DirectTableSource(lambda: open_direct_stream(pools, source.id, sql, []), columns)
+        loader = self._adapter_loaders.get(stype)
+        if loader is not None:
+            # An adapter whose client has a cursor carries its own stream (``replica_source``,
+            # set where the adapter is made); one without is read whole, as a single document.
+            streamed = getattr(loader, "replica_source", None)
+            if streamed is not None:
+                return streamed(source, table, columns)
+            return DocumentSource(lambda: loader(source, table), columns)
+        if stype in _ADAPTER_FETCH_ONLY:
+            raise UnsupportedSourceFetch(
+                f"source type {stype!r} has no engine-scannable table and no adapter row-fetch "
+                f"is wired (source {source.id!r})"
+            )
+        ref = f'"{source_to_catalog(source.id)}"."{table.schema_name}"."{table.table_name}"'
+        return EngineTableSource(self._engine, ref, in_place=engine_attaches(self._engine, stype))
+
     async def load_keys(
         self, source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
     ) -> list[dict]:
@@ -351,6 +407,19 @@ def make_sqlite_loader() -> AdapterLoader:
             connector_sqlite.execute_sync, path, f'SELECT {select} FROM "{table.table_name}"'
         )
 
+    def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        from provisa.federation.replica_source import BlockingCursorSource
+
+        path = getattr(source, "path", None)
+        if not path:
+            raise ValueError(f"sqlite source {source.id!r} has no path")
+        select = ", ".join(f'"{name}"' for name, _ in columns)
+        sql = f'SELECT {select} FROM "{table.table_name}"'
+        return BlockingCursorSource(
+            lambda batch_rows: connector_sqlite.iter_row_batches(path, sql, batch_rows), columns
+        )
+
+    _load.replica_source = _replica_source  # type: ignore[attr-defined]
     return _load
 
 
@@ -383,6 +452,35 @@ def _duckdb_extension_scratch_read(connector_details: dict, select_sql: str) -> 
         conn.close()
 
 
+def _duckdb_extension_scratch_batches(
+    connector_details: dict, select_sql: str, batch_rows: int
+) -> Any:  # REQ-1915
+    """:func:`_duckdb_extension_scratch_read` a batch at a time: the same throwaway connection,
+    its cursor fetched ``batch_rows`` rows per step, closed when the iteration ends."""
+    import duckdb
+
+    conn = duckdb.connect(":memory:")
+    try:
+        install_from_community = connector_details.get("install_from_community", True)
+        extension = connector_details["extension"]
+        conn.execute(
+            f"INSTALL {extension} FROM community"
+            if install_from_community
+            else f"INSTALL {extension}"
+        )
+        conn.execute(f"LOAD {extension}")
+        conn.execute(connector_details["attach"])
+        cursor = conn.execute(select_sql)
+        names = [d[0] for d in cursor.description]
+        while True:
+            chunk = cursor.fetchmany(batch_rows)
+            if not chunk:
+                return
+            yield [dict(zip(names, row)) for row in chunk]
+    finally:
+        conn.close()
+
+
 def make_firebird_loader() -> AdapterLoader:
     """Build the firebird row-fetch (REQ-1730): no engine other than DuckDB reaches firebird at
     all (no Trino/pg connector exists), so landing is the ONLY way any other engine ever sees a
@@ -391,10 +489,8 @@ def make_firebird_loader() -> AdapterLoader:
     from provisa.core.secrets import resolve_secrets
     from provisa.federation.connector_duckdb import DuckDBFirebirdConnector
 
-    async def _load(source: Any, table: Any) -> list[dict]:
-        columns = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
-        if not columns:
-            return []
+    def _plan(source: Any, table: Any, columns: list[str]) -> tuple[dict, str]:
+        """The scratch connection's ATTACH details and the SELECT of ``columns``."""
         connector = DuckDBFirebirdConnector()
         # registered_sources() (registry_view.py) returns the PERSISTED password reference
         # (REQ-1695), never plaintext — the live engine's own ATTACH resolves it separately before
@@ -417,8 +513,24 @@ def make_firebird_loader() -> AdapterLoader:
             "extension": connector.extension,
             "install_from_community": connector.install_from_community,
         }
+        return details, sql
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        columns = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        if not columns:
+            return []
+        details, sql = _plan(source, table, columns)
         return await asyncio.to_thread(_duckdb_extension_scratch_read, details, sql)
 
+    def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        from provisa.federation.replica_source import BlockingCursorSource
+
+        details, sql = _plan(source, table, [name for name, _ in columns])
+        return BlockingCursorSource(
+            lambda batch_rows: _duckdb_extension_scratch_batches(details, sql, batch_rows), columns
+        )
+
+    _load.replica_source = _replica_source  # type: ignore[attr-defined]
     return _load
 
 
@@ -429,10 +541,8 @@ def make_airport_loader() -> AdapterLoader:
     other engine."""
     from provisa.federation.connector_duckdb import DuckDBAirportConnector
 
-    async def _load(source: Any, table: Any) -> list[dict]:
-        columns = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
-        if not columns:
-            return []
+    def _plan(source: Any, table: Any, columns: list[str]) -> tuple[dict, str]:
+        """The scratch connection's ATTACH details and the SELECT of ``columns``."""
         connector = DuckDBAirportConnector()
         details = connector.details(source)
         select = ", ".join(f'"{c}"' for c in columns)
@@ -442,8 +552,24 @@ def make_airport_loader() -> AdapterLoader:
             "extension": connector.extension,
             "install_from_community": connector.install_from_community,
         }
+        return details, sql
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        columns = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        if not columns:
+            return []
+        details, sql = _plan(source, table, columns)
         return await asyncio.to_thread(_duckdb_extension_scratch_read, details, sql)
 
+    def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        from provisa.federation.replica_source import BlockingCursorSource
+
+        details, sql = _plan(source, table, [name for name, _ in columns])
+        return BlockingCursorSource(
+            lambda batch_rows: _duckdb_extension_scratch_batches(details, sql, batch_rows), columns
+        )
+
+    _load.replica_source = _replica_source  # type: ignore[attr-defined]
     return _load
 
 
@@ -460,6 +586,20 @@ def make_pinot_loader() -> AdapterLoader:
         conn = PinotConnection.build(source.host, source.port, hints.get("pinot_broker_url"))
         return await asyncio.to_thread(fetch_rows, conn, table.table_name, columns)
 
+    def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        from provisa.federation.replica_spool import SpooledDocumentSource
+        from provisa.pinot.fetch import iter_rows_spooled
+
+        hints = getattr(source, "federation_hints", None) or {}
+        conn = PinotConnection.build(source.host, source.port, hints.get("pinot_broker_url"))
+        names = [name for name, _ in columns]
+        return SpooledDocumentSource(
+            lambda spooled: iter_rows_spooled(conn, table.table_name, names, spooled),
+            columns,
+            table=f"{source.id}.{table.table_name}",
+        )
+
+    _load.replica_source = _replica_source  # type: ignore[attr-defined]
     return _load
 
 
@@ -494,6 +634,19 @@ def make_druid_loader() -> AdapterLoader:
         conn = DruidConnection.build(source.host, source.port)
         return await asyncio.to_thread(fetch_rows, conn, table.table_name, columns)
 
+    def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        from provisa.druid.fetch import iter_rows_spooled
+        from provisa.federation.replica_spool import SpooledDocumentSource
+
+        conn = DruidConnection.build(source.host, source.port)
+        names = [name for name, _ in columns]
+        return SpooledDocumentSource(
+            lambda spooled: iter_rows_spooled(conn, table.table_name, names, spooled),
+            columns,
+            table=f"{source.id}.{table.table_name}",
+        )
+
+    _load.replica_source = _replica_source  # type: ignore[attr-defined]
     return _load
 
 
@@ -530,6 +683,20 @@ def make_hive_s3_loader() -> AdapterLoader:
             fetch_rows, conn, table.schema_name, table.table_name, columns
         )
 
+    def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        from provisa.federation.replica_source import BlockingCursorSource
+        from provisa.hive.fetch import iter_row_batches
+
+        conn = HiveS3Connection.build(getattr(source, "database", None), source.mapping or {})
+        names = [name for name, _ in columns]
+        return BlockingCursorSource(
+            lambda batch_rows: iter_row_batches(
+                conn, table.schema_name, table.table_name, names, batch_rows
+            ),
+            columns,
+        )
+
+    _load.replica_source = _replica_source  # type: ignore[attr-defined]
     return _load
 
 
@@ -578,6 +745,27 @@ def make_elasticsearch_loader() -> AdapterLoader:
 
         return await asyncio.to_thread(_read)
 
+    def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        from provisa.elasticsearch.fetch import iter_row_batches
+        from provisa.federation.replica_source import BlockingCursorSource
+
+        mapping = getattr(source, "mapping", None) or {}
+        conn = ESConnection.build(
+            resolve_secrets(getattr(source, "host", "") or "localhost"),
+            int(getattr(source, "port", 0) or 9200),
+            tls=bool(mapping.get("tls", False)),
+            username=getattr(source, "username", None) or None,
+            password=resolve_secrets(getattr(source, "password", "") or "") or None,
+        )
+        names = [name for name, _ in columns]
+
+        def _batches(batch_rows: int) -> Any:
+            index, paths = table_index_and_columns(conn, mapping, table.table_name, names)
+            return iter_row_batches(conn, index, paths, batch_rows)
+
+        return BlockingCursorSource(_batches, columns)
+
+    _load.replica_source = _replica_source  # type: ignore[attr-defined]
     return _load
 
 
@@ -636,6 +824,23 @@ def make_redis_loader() -> AdapterLoader:
             return []
         return await asyncio.to_thread(fetch_rows, conn, mapping, table.table_name, names)
 
+    def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        from provisa.federation.replica_source import BlockingCursorSource
+        from provisa.redis.fetch import iter_row_batches
+
+        mapping = getattr(source, "mapping", None) or {}
+        conn = RedisConnection(
+            host=resolve_secrets(getattr(source, "host", "") or "localhost"),
+            port=int(getattr(source, "port", 0) or 6379),
+            password=resolve_secrets(getattr(source, "password", "") or "") or None,
+        )
+        names = [name for name, _ in columns]
+        return BlockingCursorSource(
+            lambda batch_rows: iter_row_batches(conn, mapping, table.table_name, names, batch_rows),
+            columns,
+        )
+
+    _load.replica_source = _replica_source  # type: ignore[attr-defined]
     return _load
 
 
@@ -710,6 +915,28 @@ def make_clickhouse_loader() -> AdapterLoader:
         finally:
             await driver.close()
 
+    def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        from provisa.federation.replica_source import ArrowStreamSource
+
+        cols = ", ".join(f'"{name}"' for name, _ in columns)
+        sql = f'SELECT {cols} FROM "{table.table_name}"'
+
+        async def _open() -> Any:
+            # A driver of its own for the stream, opened here and closed when the stream ends.
+            driver = ClickHouseDriver()
+            driver.configure(getattr(source, "federation_hints", None) or {})
+            await driver.connect(
+                resolve_secrets(getattr(source, "host", "") or "localhost"),
+                int(getattr(source, "port", 0) or 8123),
+                getattr(source, "database", None) or table.schema_name,
+                getattr(source, "username", None) or "default",
+                resolve_secrets(getattr(source, "password", "") or ""),
+            )
+            return (lambda: driver.iter_arrow_batches(sql)), driver.close
+
+        return ArrowStreamSource(_open)
+
+    _load.replica_source = _replica_source  # type: ignore[attr-defined]
     return _load
 
 
@@ -884,6 +1111,26 @@ def make_mongodb_loader() -> AdapterLoader:
             return []
         return await asyncio.to_thread(fetch_rows, conn, database, table.table_name, names)
 
+    def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        from provisa.federation.replica_source import BlockingCursorSource
+        from provisa.mongodb.fetch import iter_row_batches
+
+        conn = MongoConnection.build(
+            resolve_secrets(getattr(source, "host", "") or "localhost"),
+            int(getattr(source, "port", 0) or 27017),
+            username=getattr(source, "username", None) or None,
+            password=resolve_secrets(getattr(source, "password", "") or "") or None,
+        )
+        database = getattr(source, "database", None) or table.schema_name
+        names = [name for name, _ in columns]
+        return BlockingCursorSource(
+            lambda batch_rows: iter_row_batches(
+                conn, database, table.table_name, names, batch_rows
+            ),
+            columns,
+        )
+
+    _load.replica_source = _replica_source  # type: ignore[attr-defined]
     return _load
 
 
@@ -937,6 +1184,20 @@ def make_kafka_loader() -> AdapterLoader:
             return []
         return await fetch_rows(conn, table.table_name, names)
 
+    def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        from provisa.federation.replica_source import CursorSource
+        from provisa.kafka.fetch import iter_row_batches
+
+        conn = KafkaConnection.build(
+            resolve_secrets(getattr(source, "host", "") or "localhost"),
+            getattr(source, "port", None),
+        )
+        names = [name for name, _ in columns]
+        return CursorSource(
+            lambda _batch_rows: iter_row_batches(conn, table.table_name, names), columns
+        )
+
+    _load.replica_source = _replica_source  # type: ignore[attr-defined]
     return _load
 
 
@@ -988,6 +1249,25 @@ def make_cassandra_loader() -> AdapterLoader:
             return []
         return await asyncio.to_thread(fetch_rows, conn, table.schema_name, table.table_name, names)
 
+    def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        from provisa.cassandra.fetch import iter_row_batches
+        from provisa.federation.replica_source import BlockingCursorSource
+
+        conn = CassandraConnection.build(
+            resolve_secrets(getattr(source, "host", "") or "localhost"),
+            int(getattr(source, "port", 0) or 9042),
+            username=getattr(source, "username", None) or None,
+            password=resolve_secrets(getattr(source, "password", "") or "") or None,
+        )
+        names = [name for name, _ in columns]
+        return BlockingCursorSource(
+            lambda batch_rows: iter_row_batches(
+                conn, table.schema_name, table.table_name, names, batch_rows
+            ),
+            columns,
+        )
+
+    _load.replica_source = _replica_source  # type: ignore[attr-defined]
     return _load
 
 
@@ -1039,6 +1319,25 @@ def make_prometheus_loader() -> AdapterLoader:
             return []
         return await asyncio.to_thread(fetch_rows, conn, mapping, table.table_name, names)
 
+    def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        from provisa.federation.replica_spool import SpooledDocumentSource
+        from provisa.prometheus.fetch import iter_rows_spooled
+
+        mapping = getattr(source, "mapping", None) or {}
+        conn = PrometheusConnection.build(
+            resolve_secrets(
+                endpoint_url(getattr(source, "host", None), getattr(source, "port", None), mapping)
+            ),
+            token=resolve_secrets(getattr(source, "password", "") or "") or None,
+        )
+        names = [name for name, _ in columns]
+        return SpooledDocumentSource(
+            lambda spooled: iter_rows_spooled(conn, mapping, table.table_name, names, spooled),
+            columns,
+            table=f"{source.id}.{table.table_name}",
+        )
+
+    _load.replica_source = _replica_source  # type: ignore[attr-defined]
     return _load
 
 
@@ -1076,6 +1375,18 @@ def make_rss_loader() -> AdapterLoader:
         events = await provider.poll_once(table.table_name)
         return [event.row for event in events]
 
+    def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        from provisa.federation.replica_spool import SpooledDocumentSource
+        from provisa.subscriptions.rss_provider import iter_rows_spooled
+
+        url = _feed_url(source)
+        return SpooledDocumentSource(
+            lambda spooled: iter_rows_spooled(url, spooled),
+            columns,
+            table=f"{source.id}.{table.table_name}",
+        )
+
+    _load.replica_source = _replica_source  # type: ignore[attr-defined]
     return _load
 
 
@@ -1140,9 +1451,9 @@ def make_graphql_remote_loader(gql_sources: dict[str, Any]) -> AdapterLoader:
     its name for nested object fields). A table with no matching registration raises
     :class:`UnsupportedSourceFetch`."""
 
-    async def _load(source: Any, table: Any) -> list[dict]:
+    def _request(source: Any, table: Any) -> dict:
+        """The remote call for ``table``: url, auth, field name and column selections."""
         from provisa.compiler.naming import apply_gql_name, apply_sql_name
-        from provisa.graphql_remote.executor import execute_remote
 
         normalised = apply_sql_name(table.table_name)
         for reg in gql_sources.values():
@@ -1163,15 +1474,35 @@ def make_graphql_remote_loader(gql_sources: dict[str, Any]) -> AdapterLoader:
                         return gql_field if sql_name == gql_field else f"{sql_name}: {gql_field}"
 
                     col_selections = [_selection(c) for c in cols]
-                    return await execute_remote(
-                        url=reg["url"],
-                        auth=reg.get("auth"),
-                        field_name=tbl.get("field_name") or tbl["name"],
-                        columns=col_selections,
-                    )
+                    return {
+                        "url": reg["url"],
+                        "auth": reg.get("auth"),
+                        "field_name": tbl.get("field_name") or tbl["name"],
+                        "columns": col_selections,
+                    }
         raise UnsupportedSourceFetch(
             f"graphql_remote source {source.id!r} table {table.table_name!r}: no matching "
             f"registration in graphql_remote_sources"
         )
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        from provisa.graphql_remote.executor import execute_remote
+
+        return await execute_remote(**_request(source, table))
+
+    def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        from provisa.federation.replica_spool import SpooledDocumentSource
+        from provisa.graphql_remote.executor import iter_remote_rows_spooled
+
+        request = _request(source, table)
+        return SpooledDocumentSource(
+            lambda spooled: iter_remote_rows_spooled(
+                request["url"], request["auth"], request["field_name"], request["columns"], spooled
+            ),
+            columns,
+            table=f"{source.id}.{table.table_name}",
+        )
+
+    _load.replica_source = _replica_source  # type: ignore[attr-defined]
 
     return _load

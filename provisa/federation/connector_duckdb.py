@@ -645,7 +645,7 @@ class PostgresFdwConnector(Connector):  # REQ-893
                 f'INTO "{local_schema}"',
             ],
             "local_schema": local_schema,
-            # What an engine-side copy of ONE table needs (PgFederationRuntime.copy_replica):
+            # What an engine-side copy of ONE table needs (replica_target.pg_statement_copy):
             # the statements that make the server reachable, and the names to import a single
             # foreign table by.
             "server_ddl_for_copy": [
