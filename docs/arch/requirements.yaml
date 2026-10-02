@@ -70297,7 +70297,14 @@
     copy in the region they connected to, with their own rules applied on top. A view whose
     definition aggregates therefore gives each region the aggregate over what that region may hold,
     and the same view can return different figures in different regions -- that is the rule working,
-    and the admin pages say which region's copy a figure came from.
+    and the admin pages say which region's copy a figure came from. (Amended 2026-10-02, ROW-LEVEL
+    REPLICATION) Row-level replication follows the same rule as a materialized view. The rows a
+    request causes to be fetched from a source and kept are moved by the organisation's
+    administrator taken to be in the region of the node doing the fetch, so the fetch carries that
+    region's row and column rules and only what the region may hold is kept there. The kept rows are
+    one shared copy per region, not a copy per role; each reader's own rules are applied afterwards,
+    when the statement runs over the kept rows, as they are today. So a reader outside a country
+    cannot cause a row that must stay in the country to be kept in their region.
   use_case: A regulated enterprise holds data that must stay in a country but still wants one governed
     layer over the whole estate, in which most data may be read from anywhere. Rules on user attributes
     already limit who sees what; what was missing was a guarantee that the platform itself never
@@ -70314,7 +70321,10 @@
     storage. Given a materialized view over a table with a row rule on the region attribute, when
     the coordinators in region A and region B each refresh it, then each region's copy holds only
     the rows an administrator in that region may see, and a reader is served from the copy in the
-    region they connected to.
+    region they connected to. Given a table replicated by row with a row rule on the region
+    attribute, when a reader connected through region B asks for a key whose row may be held only in
+    region A, then the row is not fetched into region B's storage and the reader's response does not
+    contain it.
   related_reqs:
   - REQ-826
   - REQ-544
