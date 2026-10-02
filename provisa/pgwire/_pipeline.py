@@ -763,6 +763,10 @@ async def extend_trace_scope_to_sources(  # REQ-1910
 async def _attach_live_caps(plan: _Plan, state: Any) -> _Plan:
     """Bind the capped sources this plan reads live (REQ-1909) — at the top of the pipeline, the
     one place every surface passes through, so no terminal can skip the cap."""
+    if plan.cache_hit is not None:
+        # REQ-1897: answered from the response cache before routing — no source is read, live or
+        # otherwise, so there is no cap to bind and nothing is looked up.
+        return plan
     from provisa.federation.live_concurrency import live_caps_for_plan
 
     org_id, capped = await live_caps_for_plan(state, plan)

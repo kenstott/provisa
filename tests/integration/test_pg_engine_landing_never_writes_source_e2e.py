@@ -259,7 +259,7 @@ def _read_live_once(pg: _SourceAndEngine, workdir: str) -> None:
 
 @pytest.mark.parametrize(
     "setting",
-    [{"prefer_materialized": True}, {"load_protected": True, "cache_ttl": 3600}],
+    [{"prefer_materialized": True, "cache_ttl": 3600}, {"load_protected": True, "cache_ttl": 3600}],
     ids=["prefer_materialized", "load_protected"],
 )
 def test_a_source_that_starts_replicating_after_being_read_live_is_never_written(
@@ -290,7 +290,7 @@ def test_replicating_a_narrower_registration_never_destroys_the_sources_other_co
     with tempfile.TemporaryDirectory() as workdir:
         _read_live_once(pg, workdir)
         since = pg.source_statement_count()
-        narrow = _config(pg, columns=("id", "amount"), prefer_materialized=True)
+        narrow = _config(pg, columns=("id", "amount"), prefer_materialized=True, cache_ttl=3600)
         with _server(pg, workdir, narrow) as read:
             assert read() == _ID_AMOUNT
             assert pg.engine_relation() == "table"
@@ -303,7 +303,9 @@ def test_a_source_read_live_again_after_being_replicated_reads_the_source(databa
     sees the source as it is now — not the replica as it was."""
     pg = databases
     with tempfile.TemporaryDirectory() as workdir:
-        replicated = _config(pg, columns=("id", "amount", "note"), prefer_materialized=True)
+        replicated = _config(
+            pg, columns=("id", "amount", "note"), prefer_materialized=True, cache_ttl=3600
+        )
         with _server(pg, workdir, replicated) as read:
             assert read() == _ID_AMOUNT
         assert pg.engine_relation() == "table"

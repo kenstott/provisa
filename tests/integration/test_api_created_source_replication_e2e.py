@@ -159,6 +159,8 @@ def test_a_source_created_through_the_admin_api_is_replicated_and_read(databases
             assert live.status_code == 200, live.text
             assert sorted(live.json()["data"]["orders"], key=lambda r: r["id"]) == _ID_AMOUNT
 
+            # REQ-1907: a replicated table on the ttl change signal needs its landing TTL.
+            _admin(srv, 'updateSourceCache(sourceId: "src", cacheEnabled: true, cacheTtl: 3600)')
             _admin(srv, 'updateSourcePreferMaterialized(sourceId: "src", preferMaterialized: true)')
             replicated = _read(srv)
             assert replicated.status_code == 200, replicated.text

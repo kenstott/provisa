@@ -1,8 +1,9 @@
 # REQ-030 (amended 2026-09-30): the operator's floor. A DuckDB + SQLite stack reading two tables in
 # the test stack's Postgres, one source marked load_protected and one prefer_materialized. Both must
 # be served from the platform's landed copy after the first land -- never pulled live by a query,
-# with or without a request route hint. floor-bare is prefer_materialized with no refresh policy
-# (no cache_ttl, window or probe): it is still never read live (REQ-826, amended 2026-09-30).
+# with or without a request route hint. floor-bare is prefer_materialized with nothing but the
+# landing TTL its ttl change signal requires (REQ-1907) — no window, no probe: it is still never
+# read live (REQ-826, amended 2026-09-30).
 federation_engine: duckdb
 auth:
   provider: none
@@ -56,6 +57,7 @@ sources:
     username: ${env:PG_USER}
     password: ${env:PG_PASSWORD}
     prefer_materialized: true
+    cache_ttl: 86400
 tables:
   - source_id: floor-protected
     table: lp_items

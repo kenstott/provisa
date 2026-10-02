@@ -929,10 +929,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # Same gap update_table's own reconcile call (below, this file) already closed: a
         # materialize-only table replayed onto a new engine here has an EXISTING registered_tables
         # row (from its original registration) but no landed replica on THIS engine yet — nothing
-        # else creates it. Reproduced live: airport/firebird (is_adapter_fetched's raw-schema
-        # landing_target, backend.py) SCHEMA_NOT_FOUND on Trino after a swap replay, because
-        # reconcile_landed_tables() never ran for this engine's process against the
-        # just-reprovisioned source.
+        # else creates it. Reproduced live: airport/firebird SCHEMA_NOT_FOUND on Trino after a
+        # swap replay, because reconcile_landed_tables() never ran for this engine's process
+        # against the just-reprovisioned source.
         try:
             await state.federation_engine.reconcile_landed_tables()
         except Exception:
@@ -2350,13 +2349,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         await _rebuild_schemas()
         # REQ-1742: graphql_remote_router.py's/grpc_remote_router.py's own one-shot registration
         # flows call reconcile_landed_tables() right after _rebuild_schemas() — the pass that
-        # actually creates a MATERIALIZED source's landing schema/view in the engine catalog
-        # (REQ-846/932). update_table (this mutation) never did, so a materialize-only table
-        # whose landing view didn't converge for any reason at registration time (e.g. a
-        # transient failure, or state not yet fully committed) had no other path to ever catch
-        # up — every later grant/edit through this mutation left it permanently stuck. Idempotent
-        # (attach_landed_source uses CREATE VIEW IF NOT EXISTS), so calling it unconditionally
-        # here is safe for every table type, not just materialize-only ones.
+        # actually creates a replicated table's replica in the store (REQ-846/932). update_table
+        # (this mutation) never did, so a replica that didn't converge for any reason at
+        # registration time (e.g. a transient failure, or state not yet fully committed) had no
+        # other path to ever catch up — every later grant/edit through this mutation left it
+        # permanently stuck. Idempotent (a matching replica is kept), so calling it
+        # unconditionally here is safe for every table type.
         try:
             from provisa.api.app import state as _state
 
@@ -2876,10 +2874,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def update_table_role_ttl(
-        self, table_id: int, role_ttl: list[RoleTtlInput]
+        self, info: StrawberryInfo, table_id: int, role_ttl: list[RoleTtlInput]
     ) -> MutationResult:  # REQ-1907
         """Full-replace a table's role -> TTL list. Every role must exist, appear once, and carry a
         non-negative TTL; any violation rejects the whole list."""
+        require_capability(info, "table_registration")
         seen: set[str] = set()
         for entry in role_ttl:
             if entry.role in seen:

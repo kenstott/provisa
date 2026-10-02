@@ -377,10 +377,17 @@ async def test_a_direct_read_issues_no_control_plane_statement(buffered, monkeyp
         type=SimpleNamespace(value="postgresql"),
         prefer_materialized=False,
         load_protected=False,
+        max_live_concurrency=None,  # REQ-1909: no cap on live reads of this source
         model_dump_json=lambda: "{}",
     )
     table = SimpleNamespace(
-        source_id="pg", schema_name="sales", table_name="orders", row_materialize=False, columns=[]
+        source_id="pg",
+        schema_name="sales",
+        table_name="orders",
+        row_materialize=False,
+        columns=[],
+        prefer_materialized=None,
+        load_protected=None,
     )
 
     async def _sources(state, conn=None):
@@ -394,9 +401,6 @@ async def test_a_direct_read_issues_no_control_plane_statement(buffered, monkeyp
 
     class _LiveBackend:
         """The engine reads every source in place: nothing ever lands."""
-
-        def require_reconciled(self, source_ids) -> None:
-            del source_ids  # every replica here reconciled
 
         def pending_lands(self, sources, **kw):
             return []

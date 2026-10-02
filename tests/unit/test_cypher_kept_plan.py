@@ -254,6 +254,8 @@ class _Pipeline:
                 exec_sql=sql,
                 physical_sql=None,
                 row_count=None,
+                live_caps=(),  # REQ-1909: as _Plan — no capped live source bound at mint
+                live_caps_org=None,
             )
 
         monkeypatch.setattr(_pipeline, "_govern_and_route_compiled", _govern)

@@ -114,6 +114,13 @@ async def _source_row(db: Database):
         return res.fetchone()
 
 
+def _info(monkeypatch):
+    """A caller holding the capabilities the gated cache mutations require."""
+    from tests.unit.gate_identity import grant
+
+    return grant(monkeypatch, "source_registration", "table_registration")[0]
+
+
 def _mutation(db: Database):
     from provisa.api.admin.schema_mutation import Mutation
 
@@ -219,25 +226,31 @@ async def test_the_no_ttl_freshness_signals_need_no_cache_ttl(tmp_path, signal, 
 
 
 @pytest.mark.asyncio
-async def test_update_table_cache_refuses_clearing_the_only_cache_ttl(tmp_path):
+async def test_update_table_cache_refuses_clearing_the_only_cache_ttl(tmp_path, monkeypatch):
     async with _db(tmp_path, source_signal="ttl", table_ttl=60) as db:
         table_id = (await _table_row(db)).id
         m, p = _mutation(db)
         with p:
-            result = await m.update_table_cache(table_id=table_id, cache_ttl=None)
+            result = await m.update_table_cache(
+                _info(monkeypatch), table_id=table_id, cache_ttl=None
+            )
         assert result.success is False and result.code == "schema.landing_ttl_required"
         assert (await _table_row(db)).cache_ttl == 60  # nothing written
 
 
 @pytest.mark.asyncio
-async def test_update_source_cache_refuses_clearing_a_ttl_the_tables_inherit(tmp_path):
+async def test_update_source_cache_refuses_clearing_a_ttl_the_tables_inherit(tmp_path, monkeypatch):
     async with _db(tmp_path, source_signal="ttl", source_ttl=300) as db:
         m, p = _mutation(db)
         with p:
-            result = await m.update_source_cache(source_id="s", cache_enabled=True, cache_ttl=None)
+            result = await m.update_source_cache(
+                _info(monkeypatch), source_id="s", cache_enabled=True, cache_ttl=None
+            )
             assert result.success is False and result.code == "schema.landing_ttl_required"
             assert (await _source_row(db)).cache_ttl == 300  # nothing written
-            ok = await m.update_source_cache(source_id="s", cache_enabled=True, cache_ttl=120)
+            ok = await m.update_source_cache(
+                _info(monkeypatch), source_id="s", cache_enabled=True, cache_ttl=120
+            )
         assert ok.success is True and (await _source_row(db)).cache_ttl == 120
 
 
@@ -392,11 +405,15 @@ async def test_register_table_refuses_inheriting_a_ttl_signal_with_no_cache_ttl(
 
 
 @pytest.mark.asyncio
-async def test_update_table_cache_accepts_clearing_it_on_a_table_config_does_not_land(tmp_path):
+async def test_update_table_cache_accepts_clearing_it_on_a_table_config_does_not_land(
+    tmp_path, monkeypatch
+):
     async with _db(tmp_path, source_signal="ttl", table_ttl=60, table_prefer=None) as db:
         table_id = (await _table_row(db)).id
         m, p = _mutation(db)
         with p:
-            result = await m.update_table_cache(table_id=table_id, cache_ttl=None)
+            result = await m.update_table_cache(
+                _info(monkeypatch), table_id=table_id, cache_ttl=None
+            )
         assert result.success is True
         assert (await _table_row(db)).cache_ttl is None
