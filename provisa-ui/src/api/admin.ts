@@ -481,7 +481,8 @@ export interface ColumnMetadata {
 
 export async function fetchSdl(roleId: string): Promise<string> {
   const resp = await fetch(`${API_BASE}/data/sdl`, {
-    headers: { "X-Role": roleId },
+    // X-Provisa-Role is the role header the server validates; X-Role names no role.
+    headers: { "X-Provisa-Role": roleId },
   });
   if (!resp.ok) throw httpError("SDL fetch", resp.status);
   return resp.text();

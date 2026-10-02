@@ -137,7 +137,7 @@ async def test_a_domain_the_role_does_not_reach_is_refused_by_name(
 ):
     built = served(held)
     with pytest.raises(ApiError) as err:
-        await getattr(sdl, endpoint)(_request(), _NO_HEADER, "finance")
+        await getattr(sdl, endpoint)(_request(), _NO_HEADER, "finance", x_role=_NO_HEADER)
     assert (err.value.status_code, err.value.code) == (403, "data.domain_not_accessible")
     assert err.value.params == {"role_id": "scoped", "domain": "finance"}
     assert built == [], "a refused request builds no schema"
@@ -147,7 +147,7 @@ async def test_a_domain_the_role_does_not_reach_is_refused_by_name(
 async def test_one_unreached_domain_refuses_the_whole_request(multi_domain, served, endpoint):
     built = served(["sales"])
     with pytest.raises(ApiError) as err:
-        await getattr(sdl, endpoint)(_request(), _NO_HEADER, "sales,finance")
+        await getattr(sdl, endpoint)(_request(), _NO_HEADER, "sales,finance", x_role=_NO_HEADER)
     assert err.value.params["domain"] == "finance"
     assert built == []
 
@@ -164,7 +164,7 @@ async def test_a_reached_domain_is_served_for_the_role_as_it_is_held(
     multi_domain, served, held, asked, domains
 ):
     built = served(held)
-    resp = await sdl.get_introspection(_request(), _NO_HEADER, asked)
+    resp = await sdl.get_introspection(_request(), _NO_HEADER, asked, x_role=_NO_HEADER)
     assert resp.status_code == 200
     [(role, asked_domains)] = built
     assert asked_domains == domains
@@ -173,7 +173,7 @@ async def test_a_reached_domain_is_served_for_the_role_as_it_is_held(
 
 async def test_single_domain_mode_serves_any_role_its_one_domain(single_domain, served):
     built = served([])
-    resp = await sdl.get_introspection(_request(), _NO_HEADER, "default")
+    resp = await sdl.get_introspection(_request(), _NO_HEADER, "default", x_role=_NO_HEADER)
     assert resp.status_code == 200
     assert built[0][0]["domain_access"] == []
 

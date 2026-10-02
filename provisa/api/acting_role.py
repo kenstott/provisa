@@ -58,6 +58,57 @@ def acting_role(
     return established
 
 
+def held_role(request: Request, role_id: str) -> str:  # REQ-273
+    """A role NAMED BY THE REQUEST — in the path or a query parameter — or a 403.
+
+    Some routes address a role's own artifact (``/data/proto/{role_id}``, the gRPC Explorer's
+    ``/data/grpc-commands/{role_id}``). Naming a role there is the same act as naming one in
+    ``X-Provisa-Role``, and follows the same rule the middleware applies to that header: a role
+    the authenticated caller is assigned is honoured, any other is refused. Without it the path
+    is a way to read — or run a command as — a role the caller does not hold.
+
+    A deployment with no auth provider (the anonymous dev identity) takes the role at face value,
+    as it does for the header; so does a router mounted without the auth middleware.
+    """
+    identity = getattr(request.state, "identity", None)
+    if identity is None or getattr(identity, "user_id", "anonymous") == "anonymous":
+        return role_id
+    held = {a.role_id for a in getattr(request.state, "assignments", None) or ()}
+    if role_id not in held:
+        raise ApiError(
+            403,
+            "auth.role_not_assigned",
+            f"Role {role_id!r} is not assigned to this user",
+            role_id=role_id,
+        )
+    return role_id
+
+
+def header_role(request: Request, x_provisa_role: str | None, x_role: str | None) -> str | None:
+    """The role a header-addressed data route runs as, or None when the request has none.
+
+    ``X-Provisa-Role`` is the role header: the middleware reads it, checks it against the
+    caller's assignments and publishes the result as the acting role. ``X-Role`` is NOT a role
+    header — nothing validates it — but clients have sent it, and a route that silently ignored
+    it answered as the acting role while the caller believed it had asked for another. So an
+    ``X-Role`` that names a different role than the one the request runs as is refused, naming
+    both, on the same terms as a differing body ``role``; one that agrees is accepted and does
+    nothing. It never establishes a role by itself.
+    """
+    established = getattr(request.state, "role", None) or x_provisa_role
+    if x_role is not None and x_role != established:
+        raise ApiError(
+            400,
+            "data.role_mismatch",
+            f"The X-Role header names role {x_role!r} but the request runs as role "
+            f"{established!r}. The role is carried by the X-Provisa-Role header (or the "
+            "authenticated identity); remove X-Role or make it match.",
+            body_role=x_role,
+            acting_role=established,
+        )
+    return established
+
+
 def sent_role(body: object) -> str | None:
     """The ``role`` a request body carried, or None when the client did not send the field."""
     return getattr(body, "role") if "role" in body.model_fields_set else None  # type: ignore[attr-defined]
