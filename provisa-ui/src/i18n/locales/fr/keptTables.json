@@ -1,0 +1,7 @@
+{
+  "keptTables": {
+    "title": "Tables conservées : {{count}}",
+    "intro": "La source a été enregistrée. Ces tables n'existent plus à distance, ou auraient perdu des colonnes, et ont été conservées telles quelles parce que quelque chose y fait encore référence. Retirez ce qui référence chacune, puis enregistrez la source de nouveau.",
+    "item": "{{table}} : référencée par {{referrers}}"
+  }
+}

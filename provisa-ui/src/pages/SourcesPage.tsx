@@ -73,6 +73,9 @@ import { SourceDetailPanel } from "./sources/SourceDetailPanel";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { OriginBadge } from "../components/OriginBadge";
+import { KeptTablesNotice } from "../components/KeptTablesNotice";
+import { keptTablesOf } from "../lib/keptTables";
+import type { KeptTable } from "../lib/keptTables";
 
 export function SourcesPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
@@ -986,6 +989,7 @@ export function SourcesPage() {
   const [gqlCacheTtl, setGqlCacheTtl] = useState("300");
   const [refreshingSourceId, setRefreshingSourceId] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [keptTables, setKeptTables] = useState<KeptTable[]>([]);
 
   // OpenAPI-specific state
   const [openapiSpecPath, setOpenapiSpecPath] = useState("");
@@ -1027,6 +1031,8 @@ export function SourcesPage() {
         const body = await resp.json().catch(() => ({ detail: resp.statusText }));
         throw new Error(serverMessage(body, requestFailed("Schema refresh", resp.status)));
       }
+      // REQ-1918: tables the remote no longer has that something still refers to were kept.
+      setKeptTables(keptTablesOf(await resp.json().catch(() => null)));
     } catch (err) {
       setRefreshError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1154,6 +1160,8 @@ export function SourcesPage() {
         const body = await resp.json().catch(() => ({ detail: resp.statusText }));
         throw new Error(serverMessage(body, requestFailed("GraphQL register", resp.status)));
       }
+      // REQ-1918: registering a source again keeps the tables something still refers to.
+      setKeptTables(keptTablesOf(await resp.json().catch(() => null)));
       const ttlValue = form.cacheTtl.trim() === "" ? null : parseInt(form.cacheTtl, 10);
       if (ttlValue !== null && isNaN(ttlValue)) throw new Error("TTL must be a number");
       const cacheResult = await updateSourceCache(form.id, form.cacheEnabled, ttlValue);
@@ -1320,6 +1328,7 @@ export function SourcesPage() {
           {t("sourcesPage.schemaRefreshFailed", { message: refreshError })}
         </Alert>
       )}
+      <KeptTablesNotice kept={keptTables} onClose={() => setKeptTables([])} />
 
       {/* page-aux: `.page-sticky-head`'s overflow:hidden otherwise clips a tall form (many
           source-type fields, or Kaggle's dataset picker) with no scrollport a mouse wheel can

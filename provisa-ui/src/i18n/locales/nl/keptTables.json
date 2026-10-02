@@ -1,0 +1,7 @@
+{
+  "keptTables": {
+    "title": "Behouden tabellen: {{count}}",
+    "intro": "De bron is geregistreerd. Deze tabellen staan niet meer op de externe bron, of zouden kolommen hebben verloren, en zijn ongewijzigd behouden omdat er nog naar wordt verwezen. Verwijder wat naar elk verwijst en registreer de bron daarna opnieuw.",
+    "item": "{{table}}: verwezen door {{referrers}}"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "keptTables": {
+    "title": "Tables kept: {{count}}",
+    "intro": "The source was registered. These tables are no longer on the remote, or would have lost columns, and were kept as they are because something still refers to them. Remove what refers to each one, then register the source again.",
+    "item": "{{table}}: referred to by {{referrers}}"
+  }
+}

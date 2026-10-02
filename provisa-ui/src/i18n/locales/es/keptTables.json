@@ -1,0 +1,7 @@
+{
+  "keptTables": {
+    "title": "Tablas conservadas: {{count}}",
+    "intro": "La fuente se registró. Estas tablas ya no están en el origen remoto, o habrían perdido columnas, y se conservaron como estaban porque algo todavía las referencia. Quite lo que referencia a cada una y registre la fuente de nuevo.",
+    "item": "{{table}}: referida por {{referrers}}"
+  }
+}

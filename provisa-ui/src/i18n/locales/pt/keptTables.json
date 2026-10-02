@@ -1,0 +1,7 @@
+{
+  "keptTables": {
+    "title": "Tabelas mantidas: {{count}}",
+    "intro": "A fonte foi registrada. Estas tabelas não estão mais no remoto, ou teriam perdido colunas, e foram mantidas como estão porque algo ainda as referencia. Remova o que referencia cada uma e registre a fonte novamente.",
+    "item": "{{table}}: referenciada por {{referrers}}"
+  }
+}

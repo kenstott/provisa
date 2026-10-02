@@ -1,0 +1,7 @@
+{
+  "keptTables": {
+    "title": "Beibehaltene Tabellen: {{count}}",
+    "intro": "Die Quelle wurde registriert. Diese Tabellen gibt es auf der Gegenseite nicht mehr oder sie hätten Spalten verloren; sie wurden unverändert beibehalten, weil noch etwas auf sie verweist. Entfernen Sie, was auf jede verweist, und registrieren Sie die Quelle dann erneut.",
+    "item": "{{table}}: wird referenziert von {{referrers}}"
+  }
+}

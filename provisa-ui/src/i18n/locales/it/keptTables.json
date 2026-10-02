@@ -1,0 +1,7 @@
+{
+  "keptTables": {
+    "title": "Tabelle mantenute: {{count}}",
+    "intro": "La sorgente è stata registrata. Queste tabelle non sono più presenti sul remoto, o avrebbero perso colonne, e sono state mantenute così come sono perché qualcosa vi fa ancora riferimento. Rimuovi ciò che fa riferimento a ciascuna, poi registra di nuovo la sorgente.",
+    "item": "{{table}}: riferita da {{referrers}}"
+  }
+}
