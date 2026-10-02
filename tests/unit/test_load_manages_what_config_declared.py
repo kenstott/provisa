@@ -137,9 +137,9 @@ def _file(
     )
 
 
-async def _load(db: Database, config, *, replace: bool = False) -> None:
+async def _load(db: Database, config, *, replace: bool = False, origin: str = "config") -> None:
     async with db.acquire() as conn:
-        await load_config(config, conn, replace=replace)
+        await load_config(config, conn, replace=replace, origin=origin)
 
 
 async def _rows(db: Database, table: str, *columns: str) -> list[tuple]:
@@ -390,6 +390,64 @@ async def test_a_config_domain_a_role_still_reaches_is_refused_naming_the_role(d
     report = err.value.report()
     assert [(r["kind"], r["id"]) for r in report] == [("domain", "spare")]
     assert [(d["kind"], d["name"]) for d in report[0]["dependents"]] == [("role", "tester")]
+
+
+# --- an import through the admin is not a load of the deployment's file -----------------------
+
+
+@pytest.mark.parametrize("replace", [False, True])
+async def test_an_import_through_the_admin_removes_nothing_and_changes_no_origin(db, replace):
+    """An import adds and updates. What the deployment's file declared and the import does not
+    mention stays; an admin-made object the import names is not taken over; what the import
+    creates is the admin's."""
+    await _load(
+        db,
+        _file(
+            roles=("seller", "auditor"),
+            domains=("sales", "spare"),
+            tables=[_table("orders"), _table("customers")],
+        ),
+    )
+    await _admin_makes_its_own(db)
+    before = {
+        table: await _origins(db, table, key)
+        for table, key in (
+            ("sources", "id"),
+            ("domains", "id"),
+            ("roles", "id"),
+            ("registered_tables", "table_name"),
+        )
+    }
+
+    # The imported model names one config object (the source and a table), one admin-made
+    # object (the role "tester") and one new table; it mentions nothing else.
+    imported = _file(
+        roles=("tester",), domains=("sales",), tables=[_table("orders"), _table("imported")]
+    )
+    await _load(db, imported, replace=replace, origin="admin")
+
+    after = {
+        table: await _origins(db, table, key)
+        for table, key in (
+            ("sources", "id"),
+            ("domains", "id"),
+            ("roles", "id"),
+            ("registered_tables", "table_name"),
+        )
+    }
+    # Nothing is gone, and nothing that existed changed origin.
+    for table, origins in before.items():
+        for ident, origin in origins.items():
+            assert after[table].get(ident) == origin, (table, ident)
+    # What the import created is the admin's.
+    assert after["registered_tables"]["imported"] == "admin"
+    assert set(after["registered_tables"]) == set(before["registered_tables"]) | {"imported"}
+
+
+async def test_the_load_refuses_an_origin_it_does_not_know(db):
+    async with db.acquire() as conn:
+        with pytest.raises(ValueError, match="origin must be one of"):
+            await load_config(_file(), conn, origin="import")
 
 
 # --- a secondary worker only upserts (REQ-1229) ---------------------------------------------------

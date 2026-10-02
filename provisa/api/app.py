@@ -1072,6 +1072,7 @@ async def _load_and_build(
                 None if engine_deferred else state.federation_engine,
                 replace=_replace_mode,
                 extra_sources=_extra_sources,
+                origin="config",
             )
         else:
             from provisa.core.config_loader import adopt_loaded_config
@@ -1577,6 +1578,7 @@ async def build_org_runtime(
                     state.federation_engine,
                     replace=False,
                     catalog_names=rt.source_catalogs,
+                    origin="config",
                 )
             # REQ-1448: this build IS the repair a wake performs — a source whose catalog did not
             # come back leaves the org dispatching at a coordinator that has never heard of it, and

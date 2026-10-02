@@ -201,7 +201,7 @@ async def served(
         await data_product_repo.upsert(
             conn, DataProduct(id="prod-petstore", domain_id="petstore", name="Petstore Product")
         )
-        await load_config(parse_config_dict(raw), conn)
+        await load_config(parse_config_dict(raw), conn, origin="config")
         # A derived term publishes only once a curator has defined it (REQ-1387), so the
         # curation step is part of the fixture: without it the Glossary sheet is empty for a
         # reason that has nothing to do with the report.

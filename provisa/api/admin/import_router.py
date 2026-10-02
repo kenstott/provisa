@@ -274,6 +274,7 @@ async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApply
             state.federation_engine,
             replace=req.replace,
             catalog_names=state.source_catalogs,
+            origin="admin",
         )
     await _build_source_pools_and_enums(config)
     await _resolve_pk_from_sources()

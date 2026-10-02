@@ -115,7 +115,7 @@ async def _load_config(tenant_db, _init_schema, platform_admin_db):
         _populate_source_catalog_names(config)
         async with tenant_db.acquire() as conn:
             await conn.execute("SET search_path TO org_default")
-            await load_config(config, conn, app_mod.state.federation_engine)
+            await load_config(config, conn, app_mod.state.federation_engine, origin="config")
     finally:
         app_mod.state.federation_engine = prior_engine
         app_mod.state.engine_conn = prior_conn

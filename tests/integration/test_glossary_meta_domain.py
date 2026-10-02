@@ -127,7 +127,7 @@ def _config(tables: dict) -> dict:
 
 
 async def _setup(conn, tables: dict) -> None:
-    await load_config(parse_config_dict(_config(tables)), conn)
+    await load_config(parse_config_dict(_config(tables)), conn, origin="config")
     for tbl in _VIEWS:
         await conn.execute(_adapt_view_ddl(_META_TABLE_VIEWS[tbl], conn.capabilities.dialect))
 

@@ -347,6 +347,7 @@ async def restore_shared_terminal(state: Any, shard: str) -> None:
                 state.federation_engine,
                 replace=False,
                 catalog_names=default.source_catalogs,
+                origin="config",
             )
         # A catalog that did not come back is not a boot-time inconvenience here: the resumed
         # coordinator now serves every shared-lane org WITHOUT it, and the next query answers a raw

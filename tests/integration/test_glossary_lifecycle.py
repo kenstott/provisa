@@ -98,7 +98,7 @@ def _config(tables: dict) -> dict:
 
 
 async def _load(conn, tables: dict, *, replace: bool = False) -> None:
-    await load_config(parse_config_dict(_config(tables)), conn, replace=replace)
+    await load_config(parse_config_dict(_config(tables)), conn, replace=replace, origin="config")
 
 
 async def _terms(conn) -> dict[str, dict]:
@@ -235,7 +235,7 @@ class TestAConfigDeclaredTermGroundsThroughAnEdge:
             }
         ]
         async with tenant_db.acquire() as conn:
-            await load_config(parse_config_dict(config), conn, replace=False)
+            await load_config(parse_config_dict(config), conn, replace=False, origin="config")
             terms = await _terms(conn)
             buyer = terms["buyer"]
             customer = terms["customer"]
@@ -266,7 +266,7 @@ class TestAConfigDeclaredTermGroundsThroughAnEdge:
             }
         ]
         async with tenant_db.acquire() as conn:
-            await load_config(parse_config_dict(config), conn, replace=False)
+            await load_config(parse_config_dict(config), conn, replace=False, origin="config")
             terms = await _terms(conn)
             customer = terms["customer"]
         assert customer["is_abstract"] is False
@@ -292,7 +292,7 @@ class TestAConfigDeclaredTermGroundsThroughAnEdge:
         ]
         parsed = parse_config_dict(config)
         async with tenant_db.acquire() as conn:
-            await load_config(parsed, conn, replace=False)
+            await load_config(parsed, conn, replace=False, origin="config")
             first = (await _terms(conn))["customer"]
             assert first["is_abstract"] is False  # create-path fix already covers this load
 
@@ -304,7 +304,7 @@ class TestAConfigDeclaredTermGroundsThroughAnEdge:
                 "UPDATE glossary_terms SET is_abstract = TRUE WHERE id = $1", first["id"]
             )
 
-            await load_config(parsed, conn, replace=False)
+            await load_config(parsed, conn, replace=False, origin="config")
             second = (await _terms(conn))["customer"]
         assert second["is_abstract"] is False
         assert second["id"] == first["id"]
@@ -322,4 +322,4 @@ class TestAConfigDeclaredTermGroundsThroughAnEdge:
         ]
         async with tenant_db.acquire() as conn:
             with pytest.raises(ValueError, match="nonexistent term"):
-                await load_config(parse_config_dict(config), conn, replace=False)
+                await load_config(parse_config_dict(config), conn, replace=False, origin="config")
