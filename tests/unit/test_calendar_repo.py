@@ -22,18 +22,18 @@ from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
 from provisa.core.repositories import calendar as calendar_repo
-from provisa.core.schema_org import calendars, domains, registered_tables, sources
+from provisa.core.schema_org import calendars, registered_tables
 
 pytestmark = pytest.mark.asyncio
-
-_TABLES = [sources, domains, registered_tables, calendars]
 
 
 @asynccontextmanager
 async def _db(tmp_path):
     engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cal.db'}")
     with engine.begin() as c:
-        calendars.metadata.create_all(c, tables=_TABLES)
+        # The whole org schema: a delete asks the dependency guard, which reads every table
+        # that can refer to the object.
+        calendars.metadata.create_all(c)
     try:
         yield Database(engine, name="cp")
     finally:
@@ -89,6 +89,16 @@ async def test_usage_count_reports_referencing_mvs(tmp_path):
             await _register_mv(conn, source_id="s3", table_name="live_view", mv_calendar=None)
             # counted by name across all versions; the non-periodic MV is not counted
             assert await calendar_repo.usage_count(conn, "eom") == 2
-            # a delete would remove BOTH versions — the mutation must refuse while usage > 0
+            # REQ-1918: a calendar in use is not deleted — the two views that take their
+            # snapshot schedule from it are named, and neither version is removed.
+            with pytest.raises(calendar_repo.CalendarDeleteRefused) as refused:
+                await calendar_repo.delete(conn, "eom")
+            assert [d.via for d in refused.value.dependents] == [
+                ("registered_tables.mv_calendar",),
+                ("registered_tables.mv_calendar",),
+            ]
+            assert len(await calendar_repo.list_all(conn)) == 2
+            # Once nothing uses it, the delete removes BOTH versions.
+            await conn.execute_core(registered_tables.update().values(mv_calendar=None))
             removed = await calendar_repo.delete(conn, "eom")
     assert removed == 2

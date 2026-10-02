@@ -425,7 +425,7 @@ tag_assignments = Table(
     Column("tenant_id", Uuid),
     UniqueConstraint("base_tag_id", "object_key"),
     CheckConstraint(
-        "object_type IN ('source', 'table', 'column', 'relationship', 'command')",
+        "object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product')",
         name="tag_assignments_object_type_check",
     ),
 )

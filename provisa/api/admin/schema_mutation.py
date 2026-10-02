@@ -643,16 +643,22 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         pool = await _get_pool()
         async with pool.acquire() as conn:
             _conn = cast("Connection", conn)
-            used_by = await calendar_repo.usage_count(_conn, name)
-            if used_by > 0:
+            try:
+                removed = await calendar_repo.delete(_conn, name)
+            except calendar_repo.CalendarDeleteRefused as refused:
                 return MutationResult(
                     success=False,
-                    message=f"calendar {name!r} is in use by {used_by} materialized view(s) — "
-                    "clear their snapshot schedule before deleting",
+                    message=str(refused),
                     code="schema.calendar_in_use",
-                    params={"calendar": name, "count": used_by},
+                    params={
+                        "calendar": name,
+                        "count": len(refused.dependents),
+                        "dependents": [
+                            {"kind": d.ref.kind, "id": d.ref.id, "via": list(d.via)}
+                            for d in refused.dependents
+                        ],
+                    },
                 )
-            removed = await calendar_repo.delete(_conn, name)
         if removed == 0:
             return MutationResult(
                 success=False,
@@ -1399,7 +1405,22 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            deleted = await data_product_repo.delete(cast("Connection", conn), id)
+            try:
+                deleted = await data_product_repo.delete(cast("Connection", conn), id)
+            except data_product_repo.DataProductDeleteRefused as refused:
+                # REQ-1918: a data product is blocked by its members; each is named.
+                return MutationResult(
+                    success=False,
+                    message=str(refused),
+                    code="schema.data_product_has_dependents",
+                    params={
+                        "data_product": id,
+                        "dependents": [
+                            {"kind": d.ref.kind, "id": d.ref.id, "via": list(d.via)}
+                            for d in refused.dependents
+                        ],
+                    },
+                )
         if deleted:
             return MutationResult(
                 success=True,

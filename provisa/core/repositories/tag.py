@@ -33,6 +33,7 @@ from provisa.core.models import (
     TagParamValue,
     base_tag_id,
 )
+from provisa.core.repositories.integrity import ObjectRef, remove_parts
 from provisa.core.schema_org import (
     registered_tables,
     tag_assignments,
@@ -108,19 +109,25 @@ async def list_all(conn: "Connection") -> list[dict]:
     return [_code_tag_row(t) for t in SYSTEM_TAGS + DERIVED_TAGS] + user_rows
 
 
-async def delete(conn: "Connection", tag_id: str) -> bool:
-    """Delete a user tag, its assignments, and its parameter values.
+async def delete(conn: "Connection", tag_id: str) -> bool:  # REQ-1918
+    """Delete a user tag: THE delete, for every surface. False when there is no such tag.
 
-    No FK carries any of this: system tags are code-defined with no row to reference.
+    A tag takes its assignments and its parameter values with it (REQ-1918): they are its
+    parts, removed here because no foreign key carries them — system tags are code-defined with
+    no row to reference. Nothing blocks a tag. How many objects lose it is
+    :func:`assignment_count`, for the confirmation shown before a tag that carries a policy is
+    deleted. One transaction.
     """
-    base = base_tag_id(tag_id)
-    result = await conn.execute_core(_delete(tags).where(tags.c.id == base))
-    if (result.rowcount or 0) == 0:
-        return False
-    # base_tag_id, not tag_id: a parameterized tag's assignments are stored in "{tag}:{value}"
+    # The base id, not tag_id: a parameterized tag's assignments are stored in "{tag}:{value}"
     # form, so matching on tag_id would leave every one of them orphaned (REQ-1467).
-    await conn.execute_core(_delete(tag_assignments).where(tag_assignments.c.base_tag_id == base))
-    await conn.execute_core(_delete(tag_param_values).where(tag_param_values.c.tag_id == base))
+    base = base_tag_id(tag_id)
+    ref = ObjectRef("tag", base)
+    async with conn.transaction():
+        found = await conn.execute_core(select(tags.c.id).where(tags.c.id == base))
+        if found.fetchone() is None:
+            return False
+        await remove_parts(conn, ref)
+        await conn.execute_core(_delete(tags).where(tags.c.id == base))
     return True
 
 
