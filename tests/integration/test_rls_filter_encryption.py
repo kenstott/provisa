@@ -103,14 +103,14 @@ async def test_filter_stored_ciphertext_and_decrypts_on_read(db):
         assert for_role[0]["filter_expr"] == _PREDICATE
 
 
-async def test_wrong_master_key_cannot_read(db):
+async def test_wrong_master_key_cannot_read(db, monkeypatch):
     async with db.acquire() as conn:
         await rls_repo.upsert(
             conn, RLSRule(domain_id="sales", role_id="analyst", filter=_PREDICATE)
         )
 
     # Rotate to a different master key — the stored ciphertext must no longer decrypt.
-    os.environ["PROVISA_ENCRYPTION_KEY"] = base64.b64encode(bytes(range(33, 65))).decode()
+    monkeypatch.setenv("PROVISA_ENCRYPTION_KEY", base64.b64encode(bytes(range(33, 65))).decode())
     configure_encryption("local")
     async with db.acquire() as conn:
         with pytest.raises(Exception):

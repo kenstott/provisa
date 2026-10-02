@@ -32,7 +32,11 @@ from sqlalchemy import select
 
 from provisa.core import secrets_store
 from provisa.core.secrets_store import ORG_OWNER
-from provisa.core.schema_admin import init_registry_schema, secrets_store as table
+from provisa.core.schema_admin import (
+    deployment_encryption_key,
+    init_registry_schema,
+    secrets_store as table,
+)
 from provisa.core.secrets import resolve_secrets
 from provisa.core.secrets_runtime import configure_secrets, reset_secrets
 
@@ -68,7 +72,17 @@ async def plane(docker_postgres, monkeypatch, tmp_path):
     orgs = (f"sec{uuid.uuid4().hex[:8]}", f"sec{uuid.uuid4().hex[:8]}")
     for org_id in orgs:
         await init_registry_schema(admin_db, org_id)
+
+    def _forget_the_recorded_key() -> None:
+        # Each test here is a deployment with a key of its own, on a registry other suites of
+        # the session share: the record of which key the deployment's secrets are written under
+        # (REQ-684) is this test's for its duration and nobody's afterwards.
+        with admin_db.engine.begin() as conn:
+            conn.execute(deployment_encryption_key.delete())
+
+    _forget_the_recorded_key()
     yield admin_db, orgs
+    _forget_the_recorded_key()
     reset_secrets()
     keyring.set_keyring(previous_keyring)
 
@@ -220,3 +234,56 @@ class TestWhoseSecretItIs:
         async with secrets_store.bound(admin_db, org):
             with pytest.raises(KeyError, match="no acting user"):
                 resolve_secrets("${user:MINE}")
+
+
+class TestOneKeyPerDeployment:
+    """REQ-684: the deployment records the fingerprint of the key its secrets are written under,
+    with the first secret, and every worker checks its own key against it at first use."""
+
+    @staticmethod
+    def _recorded(admin_db) -> list[str]:
+        with admin_db.engine.connect() as conn:
+            return [r.fingerprint for r in conn.execute(deployment_encryption_key.select())]
+
+    async def test_the_first_secret_records_the_keys_fingerprint(self, plane):
+        from provisa.encryption.providers import master_key_fingerprint
+
+        admin_db, (org, other) = plane
+        assert self._recorded(admin_db) == []
+        await secrets_store.put(admin_db, org, "GIT_TOKEN", VALUE, owner_id=ORG_OWNER)
+        assert self._recorded(admin_db) == [master_key_fingerprint()]
+        await secrets_store.put(admin_db, other, "GIT_TOKEN", VALUE, owner_id=ORG_OWNER)
+        assert self._recorded(admin_db) == [master_key_fingerprint()]
+
+    async def test_the_record_is_written_in_the_secrets_own_transaction(self, plane, monkeypatch):
+        admin_db, (org, _) = plane
+
+        def _fails(*, mint):
+            raise RuntimeError("the write fails after the key was recorded")
+
+        monkeypatch.setattr(secrets_store, "_cipher", _fails)
+        with pytest.raises(RuntimeError, match="the write fails"):
+            await secrets_store.put(admin_db, org, "GIT_TOKEN", VALUE, owner_id=ORG_OWNER)
+        assert self._recorded(admin_db) == []
+
+    async def test_a_worker_with_another_key_refuses_naming_both(self, plane, monkeypatch):
+        from provisa.encryption.providers import master_key_fingerprint
+
+        admin_db, (org, _) = plane
+        await secrets_store.put(admin_db, org, "GIT_TOKEN", VALUE, owner_id=ORG_OWNER)
+        theirs = master_key_fingerprint()
+        monkeypatch.setenv("PROVISA_ENCRYPTION_KEY", base64.b64encode(os.urandom(32)).decode())
+        mine = master_key_fingerprint()
+        with pytest.raises(secrets_store.VaultKeyError) as reading:
+            async with secrets_store.bound(admin_db, org):
+                pass
+        with pytest.raises(secrets_store.VaultKeyError) as writing:
+            await secrets_store.put(admin_db, org, "SECOND", "x", owner_id=ORG_OWNER)
+        for raised in (reading, writing):
+            message = str(raised.value)
+            assert f"fingerprint {mine[:8]}" in message and f"fingerprint {theirs[:8]}" in message
+            assert "PROVISA_ENCRYPTION_KEY" in message
+        assert self._recorded(admin_db) == [theirs]
+        assert [s.name for s in await secrets_store.listing(admin_db, org, owner_id=ORG_OWNER)] == [
+            "GIT_TOKEN"
+        ]

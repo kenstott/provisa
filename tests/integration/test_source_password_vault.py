@@ -35,16 +35,33 @@ async def client():
     os.environ.setdefault("PG_PASSWORD", "provisa")
     # The vault encrypts what it stores (REQ-685), and this host has no keychain to mint a master
     # key in -- the same explicit key every other secrets-store suite supplies.
+    previous = os.environ.get("PROVISA_ENCRYPTION_KEY")
     os.environ["PROVISA_ENCRYPTION_KEY"] = base64.b64encode(bytes(range(1, 33))).decode()
 
-    from provisa.api.app import create_app
+    from provisa.api.app import create_app, state
+    from provisa.core.schema_admin import deployment_encryption_key
+
+    def _forget_the_recorded_key() -> None:
+        # This module is a deployment given a key of its own, on a control plane other suites
+        # of the session also use: the record of which key the deployment's secrets are written
+        # under (REQ-684) is this module's for its duration and nobody's afterwards.
+        with state.admin_db.engine.begin() as conn:
+            conn.execute(deployment_encryption_key.delete())
 
     app = create_app()
 
-    async with app.router.lifespan_context(app):
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
-            yield c
+    try:
+        async with app.router.lifespan_context(app):
+            _forget_the_recorded_key()
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as c:
+                yield c
+            _forget_the_recorded_key()
+    finally:
+        if previous is None:
+            os.environ.pop("PROVISA_ENCRYPTION_KEY", None)
+        else:
+            os.environ["PROVISA_ENCRYPTION_KEY"] = previous
 
 
 async def _gql(client, query):

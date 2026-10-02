@@ -76,6 +76,9 @@ REGISTRY_ONLY_TABLES = {
     # REQ-1574: the org's key ring, held beside ``orgs`` on the platform plane so a blob is
     # decryptable before any org schema is open. Portable metadata only.
     "org_encryption_keys",
+    # REQ-684, REQ-1802: the fingerprint of the key the deployment's secrets are written under,
+    # beside ``secrets_store`` on the platform plane. Portable metadata only.
+    "deployment_encryption_key",
     # REQ-1576: the record of what the deployment's mail transport actually delivered. Platform-
     # wide, beside the registry it reports on. Portable metadata only.
     "mail_events",

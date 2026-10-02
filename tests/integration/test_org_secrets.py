@@ -37,10 +37,17 @@ def _enc():
     # A real provider — the default NullEncryption passthrough would let the
     # ciphertext-format assertion below pass even if encryption were silently dropped.
     reset_encryption()
+    previous = os.environ.get("PROVISA_ENCRYPTION_KEY")
     os.environ["PROVISA_ENCRYPTION_KEY"] = base64.b64encode(bytes(range(1, 33))).decode()
     configure_encryption("local")
     yield
     reset_encryption()
+    # The key is this module's own: not left in the environment for the rest of the session,
+    # where PROVISA_ENCRYPTION_KEY is the deployment's key and wins over the host's.
+    if previous is None:
+        os.environ.pop("PROVISA_ENCRYPTION_KEY", None)
+    else:
+        os.environ["PROVISA_ENCRYPTION_KEY"] = previous
 
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")

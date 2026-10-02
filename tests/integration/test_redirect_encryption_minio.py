@@ -50,11 +50,18 @@ _SECRET_VALUE = "top-secret-cell-value-687"
 @pytest.fixture(autouse=True)
 def _enc():
     reset_encryption()
+    previous = os.environ.get("PROVISA_ENCRYPTION_KEY")
     os.environ["PROVISA_ENCRYPTION_KEY"] = base64.b64encode(bytes(range(32))).decode()
     svc = configure_encryption("local")
     assert isinstance(svc, EnvelopeEncryption)
     yield
     reset_encryption()
+    # The key is this module's own: not left in the environment for the rest of the session,
+    # where PROVISA_ENCRYPTION_KEY is the deployment's key and wins over the host's.
+    if previous is None:
+        os.environ.pop("PROVISA_ENCRYPTION_KEY", None)
+    else:
+        os.environ["PROVISA_ENCRYPTION_KEY"] = previous
 
 
 def _config() -> RedirectConfig:

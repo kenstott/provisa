@@ -19,15 +19,15 @@ import os
 import subprocess
 import sys
 import time
-from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
 
-from provisa.core.secrets_store import ORG_OWNER, VaultKeyError, _cipher, _decrypted
+from provisa.core.secrets_store import ORG_OWNER, VaultKeyError, _cipher, _decrypted, put
 from provisa.encryption.providers import (
     _file_keystore_path,
     generate_master_key_b64,
+    master_key_fingerprint,
     master_key_present,
     mint_master_key,
     store_master_key,
@@ -86,70 +86,146 @@ class _EnvelopeStub:
 # --- one master key per deployment; a worker never mints on read ------------------------------
 
 
-class _Vault:
-    """The one query ``_decrypted`` makes, answered from a list of (name, blob) rows."""
+@pytest.fixture
+def plane(tmp_path):
+    """A platform control plane (SQLite) holding the vault and the deployment key's record."""
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.schema_admin import (
+        deployment_encryption_key,
+        metadata,
+        secrets_store,
+    )
 
-    def __init__(self, rows: list[tuple[str, bytes]]) -> None:
-        self._rows = rows
-
-    @asynccontextmanager
-    async def acquire(self):
-        yield self
-
-    async def execute_core(self, _stmt):
-        return self
-
-    def fetchall(self):
-        return self._rows
-
-
-def _read(vault: _Vault) -> dict[str, str]:
-    return asyncio.run(_decrypted(vault, "acme", ORG_OWNER))  # type: ignore[arg-type]
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'platform.db'}")
+    with engine.begin() as conn:
+        metadata.create_all(conn, tables=[secrets_store, deployment_encryption_key])
+    db = Database(engine, name="admin")
+    yield db
+    engine.dispose()
 
 
-def test_reading_a_vault_that_holds_secrets_never_mints_a_key():
+def _put(plane, name: str = "PG_PASSWORD", value: str = "s3cret") -> None:
+    asyncio.run(put(plane, "acme", name, value, owner_id=ORG_OWNER))
+
+
+def _read(plane) -> dict[str, str]:
+    return asyncio.run(_decrypted(plane, "acme", ORG_OWNER))
+
+
+def _recorded(plane) -> list[str]:
+    from provisa.core.schema_admin import deployment_encryption_key
+
+    with plane.engine.connect() as conn:
+        return [r[0] for r in conn.execute(deployment_encryption_key.select()).fetchall()]
+
+
+def _secret_names(plane) -> list[str]:
+    from provisa.core.schema_admin import secrets_store
+
+    with plane.engine.connect() as conn:
+        return [r.name for r in conn.execute(secrets_store.select()).fetchall()]
+
+
+def test_the_first_secret_records_the_deployment_keys_fingerprint(plane):
+    from provisa.core.org_encryption import fingerprint
+
+    assert _recorded(plane) == []
+    _put(plane)
+    raw = base64.b64decode(_file_keystore_path(None).read_text())
+    assert _recorded(plane) == ["master"]
+    with plane.engine.connect() as conn:
+        from provisa.core.schema_admin import deployment_encryption_key as t
+
+        stored = conn.execute(t.select()).fetchone().fingerprint
+    assert stored == fingerprint(raw) == master_key_fingerprint()
+    assert _read(plane) == {"PG_PASSWORD": "s3cret"}
+    _put(plane, "OTHER", "x")  # a later write leaves the record as it is
+    with plane.engine.connect() as conn:
+        assert conn.execute(t.select()).fetchone().fingerprint == stored
+
+
+def test_reading_a_vault_that_holds_secrets_never_mints_a_key(plane):
     """A worker with no key, facing a vault written under one, was not given the deployment's
     key. It says so; it does not make a second key that opens nothing."""
-    blob = _cipher(mint=True).encrypt(b"s3cret")
+    _put(plane)
+    recorded = master_key_fingerprint()
     _file_keystore_path(None).unlink()  # this worker: the same vault, no key
     assert not master_key_present()
     with pytest.raises(VaultKeyError) as raised:
-        _read(_Vault([("PG_PASSWORD", blob)]))
+        _read(plane)
     message = str(raised.value)
     assert "holds no encryption master key" in message
+    assert f"fingerprint {recorded[:8]}" in message
     assert "PROVISA_ENCRYPTION_KEY" in message
     assert str(_file_keystore_path(None)) in message
     assert not master_key_present()
 
 
-def test_an_empty_vault_is_read_without_a_key():
-    assert _read(_Vault([])) == {}
+def test_no_worker_mints_once_the_deployment_has_a_key(plane):
+    """A write on a worker without the key is refused too: the deployment's key exists, so
+    this worker is to be given it, not to make another."""
+    _put(plane)
+    _file_keystore_path(None).unlink()
+    with pytest.raises(VaultKeyError, match="holds no encryption master key"):
+        _put(plane, "SECOND", "x")
     assert not master_key_present()
+    assert _secret_names(plane) == ["PG_PASSWORD"]
 
 
-def test_a_vault_written_under_another_key_says_so():
-    blob = _cipher(mint=True).encrypt(b"s3cret")
+def test_an_empty_vault_is_read_without_a_key(plane):
+    assert _read(plane) == {}
+    assert not master_key_present()
+    assert _recorded(plane) == []
+
+
+def test_a_worker_holding_another_key_refuses_naming_both_fingerprints(plane):
+    _put(plane)
+    theirs = master_key_fingerprint()
     store_master_key(generate_master_key_b64())  # this worker holds a different key
-    with pytest.raises(VaultKeyError) as raised:
-        _read(_Vault([("PG_PASSWORD", blob)]))
-    message = str(raised.value)
-    assert "is not the one the vault of org 'acme' was written under" in message
-    assert "PROVISA_ENCRYPTION_KEY" in message
-    assert str(_file_keystore_path(None)) in message
+    mine = master_key_fingerprint()
+    assert mine != theirs
+    for use in (lambda: _read(plane), lambda: _put(plane, "SECOND", "x")):
+        with pytest.raises(VaultKeyError) as raised:
+            use()
+        message = str(raised.value)
+        assert f"fingerprint {mine[:8]}" in message and f"fingerprint {theirs[:8]}" in message
+        assert "PROVISA_ENCRYPTION_KEY" in message
+        assert str(_file_keystore_path(None)) in message
+    assert _secret_names(plane) == ["PG_PASSWORD"]
 
 
-def test_the_deployments_key_wins_over_this_hosts_own(monkeypatch):
+def test_the_deployments_key_wins_over_this_hosts_own(plane, monkeypatch):
     """Workers on separate hosts share a key only by being given one. A host that minted its own
-    before the variable was set must use the deployment's."""
+    before the variable was set uses the deployment's, and it is the one recorded."""
+    from provisa.core.org_encryption import fingerprint
+
     mint_master_key()  # this host's own key, in its file keystore
-    own = _cipher(mint=False).encrypt(b"written under the host key")
-    deployment_key = base64.b64encode(bytes(range(32))).decode()
-    monkeypatch.setenv("PROVISA_ENCRYPTION_KEY", deployment_key)
-    blob = _cipher(mint=True).encrypt(b"s3cret")
-    assert _file_keystore_path(None).read_text() != deployment_key  # nothing was overwritten
-    assert _read(_Vault([("PG_PASSWORD", blob)])) == {"PG_PASSWORD": "s3cret"}
-    with pytest.raises(VaultKeyError):
-        _read(_Vault([("OLD", own)]))
+    own = _file_keystore_path(None).read_text()
+    deployment_key = bytes(range(32))
+    monkeypatch.setenv("PROVISA_ENCRYPTION_KEY", base64.b64encode(deployment_key).decode())
+    _put(plane)
+    assert _file_keystore_path(None).read_text() == own  # nothing was overwritten
+    assert master_key_fingerprint() == fingerprint(deployment_key)
+    assert _read(plane) == {"PG_PASSWORD": "s3cret"}
+    # A worker of the same deployment that was NOT given the variable holds only its host key.
+    monkeypatch.delenv("PROVISA_ENCRYPTION_KEY")
+    with pytest.raises(VaultKeyError, match="is not the one this deployment's secrets"):
+        _read(plane)
+
+
+def test_two_hosts_storing_a_first_secret_together_end_with_one_deployment_key(plane):
+    """Separate hosts share no key store, so each mints. Both try to record; one row wins, and
+    the other host finds its key is not the deployment's — its secret is not stored."""
+    from provisa.core.schema_admin import deployment_encryption_key as t
+
+    with plane.engine.begin() as conn:  # the other host recorded its key first
+        conn.execute(t.insert().values(key_id="master", fingerprint="0123456789abcdef"))
+    with pytest.raises(VaultKeyError) as raised:
+        _put(plane)
+    assert "fingerprint 01234567" in str(raised.value)
+    assert _secret_names(plane) == []
+    with plane.engine.connect() as conn:
+        assert conn.execute(t.select()).fetchone().fingerprint == "0123456789abcdef"
 
 
 def test_minting_does_not_replace_a_key_that_exists():

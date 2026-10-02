@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import base64
 import fcntl
+import hashlib
 import os
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -289,6 +290,17 @@ def master_key_present(key_id: str | None = None) -> bool:
     """Whether a LocalKeychain master key is available (``PROVISA_ENCRYPTION_KEY``, or this
     host's keychain or file keystore)."""
     return bool(_master_key_b64(key_id))
+
+
+def master_key_fingerprint(key_id: str | None = None) -> str | None:
+    """The public name of the master key this process holds — first 16 hex of SHA-256 over the
+    raw key, the same convention an org's own key is shown by (REQ-1574) — or None when it holds
+    none. Never invertible to the key; what a deployment records to tell its workers apart from
+    workers holding another key."""
+    raw = _master_key_b64(key_id)
+    if not raw:
+        return None
+    return hashlib.sha256(base64.b64decode(raw)).hexdigest()[:16]
 
 
 def generate_master_key_b64() -> str:

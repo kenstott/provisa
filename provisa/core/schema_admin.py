@@ -647,6 +647,22 @@ org_encryption_keys = Table(
 )
 
 
+# REQ-684, REQ-1802: WHICH master key this deployment's secrets are written under -- its
+# fingerprint (first 16 hex of SHA-256 over the raw key, the REQ-1574 convention), never the key.
+# One row per key id (``master`` is the host-held deployment key ``secrets_store`` falls to),
+# written in the same transaction as the first secret stored under that key. It is what lets a
+# worker that holds a DIFFERENT key, or none, find that out before it encrypts or decrypts
+# anything -- workers on separate hosts share no key store, so nothing else would tell them --
+# and what stops any worker minting a key once the deployment has one.
+deployment_encryption_key = Table(
+    "deployment_encryption_key",
+    metadata,
+    Column("key_id", Text, primary_key=True),
+    Column("fingerprint", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+
 # The org/user/invite registry. ``org_config`` is bootstrapped separately by the billing
 # module, so it is excluded here.
 # REQ-1576: what the mail transport actually did. A configured transport says nothing about
@@ -689,6 +705,7 @@ REGISTRY_TABLES = [
     env_merge_requests,
     org_config,
     secrets_store,
+    deployment_encryption_key,
     personal_access_tokens,
     scram_credentials,
     platform_notice,

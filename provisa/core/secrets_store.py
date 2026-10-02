@@ -48,11 +48,11 @@ from typing import TYPE_CHECKING
 from sqlalchemy import delete as sql_delete
 from sqlalchemy import func, select
 
-from provisa.core.schema_admin import secrets_store
+from provisa.core.schema_admin import deployment_encryption_key, secrets_store
 from provisa.core.secrets import SecretsProvider
 
 if TYPE_CHECKING:
-    from provisa.core.database import Database
+    from provisa.core.database import Connection, Database
     from provisa.encryption.service import EncryptionService
 
 #: A name is a reference a person types into a config field, so it is held to what the reference
@@ -143,6 +143,83 @@ def _same_key_everywhere() -> str:
     )
 
 
+#: The key id of the host-held deployment key this store falls to (``LocalKeychain``'s default).
+_HOST_KEY_ID = "master"
+#: How much of a fingerprint an error shows: enough to tell two keys apart at a glance.
+_FINGERPRINT_PREFIX = 8
+
+
+def _uses_host_key() -> bool:
+    """Whether stored secrets are encrypted under the host-held deployment key (no encryption
+    service is configured, and the bound org holds no key of its own)."""
+    from provisa.encryption.runtime import encryption_service
+    from provisa.encryption.service import NullEncryption
+
+    return isinstance(encryption_service(), NullEncryption)
+
+
+async def _recorded_fingerprint(conn: "Connection") -> str | None:
+    result = await conn.execute_core(
+        select(deployment_encryption_key.c.fingerprint).where(
+            deployment_encryption_key.c.key_id == _HOST_KEY_ID
+        )
+    )
+    row = result.fetchone()
+    return None if row is None else row[0]
+
+
+def _require_the_deployments_key(recorded: str) -> None:
+    """Refuse unless the master key this worker holds is the one the deployment recorded."""
+    from provisa.encryption.providers import master_key_fingerprint
+
+    mine = master_key_fingerprint()
+    if mine == recorded:
+        return
+    theirs = recorded[:_FINGERPRINT_PREFIX]
+    if mine is None:
+        raise VaultKeyError(
+            "This worker holds no encryption master key, and this deployment's secrets are "
+            f"written under the key with fingerprint {theirs}…. " + _same_key_everywhere()
+        )
+    raise VaultKeyError(
+        f"This worker's encryption master key (fingerprint {mine[:_FINGERPRINT_PREFIX]}…) is "
+        f"not the one this deployment's secrets are written under (fingerprint {theirs}…). "
+        + _same_key_everywhere()
+    )
+
+
+async def _hold_the_deployments_key(conn: "Connection", *, mint: bool) -> None:
+    """Make sure this worker holds THE key this deployment's secrets are written under, before
+    it encrypts or decrypts one (REQ-684, REQ-1802).
+
+    The deployment records its key's fingerprint in the platform control plane the first time a
+    secret is stored, in that write's own transaction. From then on every worker checks its key
+    against the record at first use: one holding another key, or none, refuses, naming both
+    fingerprints and ``PROVISA_ENCRYPTION_KEY`` -- and NO worker mints, because the deployment
+    has a key. Before there is a record, a WRITE (``mint``) may mint the key and records it; two
+    workers that get there together (separate hosts, separate key stores) both try to record,
+    one row wins, and the loser finds its key is not the deployment's and refuses."""
+    if not _uses_host_key():
+        return
+    recorded = await _recorded_fingerprint(conn)
+    if recorded is None:
+        if not mint:
+            return  # nothing recorded and nothing to record: _cipher answers for a missing key
+        from provisa.encryption.providers import master_key_fingerprint, mint_master_key
+
+        mint_master_key()
+        await conn.upsert(
+            deployment_encryption_key,
+            {"key_id": _HOST_KEY_ID, "fingerprint": master_key_fingerprint()},
+            index_elements=["key_id"],
+            update_columns=[],  # insert if absent: a recorded key is never replaced here
+        )
+        recorded = await _recorded_fingerprint(conn)
+        if recorded is None:
+            raise RuntimeError("the deployment key's fingerprint was written but cannot be read")
+    _require_the_deployments_key(recorded)
+
+
 def _cipher(*, mint: bool) -> "EncryptionService":
     """The service that encrypts a stored secret. Never a passthrough.
 
@@ -196,8 +273,11 @@ async def put(
     validate_name(name)
     if value == "":
         raise ValueError("A secret's value cannot be empty.")
-    blob = _cipher(mint=True).encrypt(value.encode())
-    async with admin_db.acquire() as conn:
+    # One transaction: the deployment key's fingerprint is recorded with the first secret
+    # written under it, or neither is.
+    async with admin_db.acquire() as conn, conn.transaction():
+        await _hold_the_deployments_key(conn, mint=True)
+        blob = _cipher(mint=True).encrypt(value.encode())
         await conn.upsert(
             secrets_store,
             {
@@ -279,6 +359,9 @@ async def _decrypted(admin_db: "Database", org_id: str, owner_id: str) -> dict[s
             )
         )
         rows = result.fetchall()
+        if rows:
+            # Before anything is decrypted: is this worker's key the deployment's?
+            await _hold_the_deployments_key(conn, mint=False)
     if not rows:
         # An EMPTY vault is decrypted without a master key, because there is nothing to decrypt.
         # The key is what authorizes a read (see _cipher), and a vault holding no secret grants no

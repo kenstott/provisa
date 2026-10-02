@@ -22,7 +22,7 @@ from provisa.core.database import create_engine_from_url
 from provisa.api.mcp import tools as mcp_tools
 from provisa.core.database import Database
 from provisa.core.models import GovDataSubject, GovDataSubscription
-from provisa.core.schema_admin import secrets_store
+from provisa.core.schema_admin import deployment_encryption_key, secrets_store
 
 pytestmark = pytest.mark.asyncio
 
@@ -68,7 +68,7 @@ async def _admin_db(tmp_path):
     is mocked, so every test below needs a real one, not a bare mock."""
     engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'secrets.db'}")
     with engine.begin() as c:
-        secrets_store.metadata.create_all(c, tables=[secrets_store])
+        secrets_store.metadata.create_all(c, tables=[secrets_store, deployment_encryption_key])
     db = Database(engine, name="admin")
     try:
         yield db
