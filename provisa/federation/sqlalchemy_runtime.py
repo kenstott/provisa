@@ -116,9 +116,13 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
     # -- source exposure -------------------------------------------------------
 
     def attach_source(self, source: Any) -> None:
-        """Self-only: a source LANDs into the store; there is nothing to attach in place. The landed
-        rows are a native table in the store, so the compiled physical name resolves directly."""
+        """Self-only: a source is replicated into the store; there is nothing to attach in place.
+        A read addresses the replica in the store's replicas schema (REQ-1912)."""
         return None
+
+    def detach_source(self, source: Any) -> None:
+        """Nothing was attached live, so there is nothing to remove."""
+        del source
 
     # -- materialization store -------------------------------------------------
 
@@ -247,55 +251,34 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
 
     # -- landing -----------------------------------------------------------
 
-    async def attach_landed_source(
-        self, source: Any, columns: list[tuple[str, str]], *, pk_columns: list[str] | None = None
+    async def reconcile_replica(
+        self,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        pk_columns: list[str] | None = None,
     ) -> str:
-        """Eager reconcile (boot/registration, REQ-846/932): converge ``source.schema_name``/
-        ``source.table_name`` to ``columns`` + ``pk_columns`` (DDL only, no rows — the refresh's job
-        is ``land_table``). ``NativeEngineBackend.reconcile_landed_tables`` no-ops for any runtime
-        lacking this method (``hasattr(runtime, "attach_landed_source")``) — before this, the
-        generic sqlalchemy engine's boot-time reconcile silently did nothing, so a MATERIALIZE_ONLY
-        source's table was never created ahead of its first query (verified live, REQ-1730
-        engine-swap harness, 2026-09-20: SQL Server raised `Invalid object name` on the very first
-        query after a reboot into this engine).
+        """Eager reconcile (boot/registration, REQ-846/932): converge the replica ``schema.table``
+        to ``columns`` + ``pk_columns`` (DDL only, no rows — the refresh's job is ``land_table``).
+        ``schema`` is the store's replicas schema (REQ-1912), the same on every engine, so there is
+        no per-engine folding of the name here.
 
-        Unlike Snowflake/Databricks/BigQuery's own ``attach_landed_source`` (which lands into a
-        MANGLED replica name and exposes a VIEW at the compiler's physical name), this engine's
-        ``SqlAlchemyBackend.landing_target`` override already lands MATERIALIZE_ONLY sources
-        directly at ``(schema_name, table_name)`` — the same address the compiler emits — so there
-        is no separate replica/view indirection to converge here, just the one table.
-
-        REQ-1730 (Oracle): for a ``catalog_qualified=False`` member of this family, the compiler
-        folds the catalog into the schema half of every compiled reference
-        (``sql_rewrite.fold_catalog_into_schema``, mirrored by ``SqlAlchemyBackend.landing_target``).
-        This DDL path must apply the SAME fold to ``schema`` before creating the table — otherwise
-        the boot-time DDL creates the table at the plain registered schema while the query path
-        looks for it at the folded address (verified live, 2026-09-21: Oracle's
-        ``ORA-00942: table or view does not exist`` on the very first query after reboot).
-
-        METADATA DRIFT (required, REQ-846/REQ-1651's own contract — mirrors
-        ``snowflake_store.reconcile_snowflake_native`` exactly, generalized via SQLAlchemy Core's
-        ``Inspector`` instead of an information_schema query hand-written per dialect): an existing
-        table whose column set/order OR primary key no longer matches ``columns``/``pk_columns`` is
-        DROPPED and RECREATED — its data re-lands on the next ``land_table`` refresh, same as
-        Snowflake's own contract states ("a drifted one is recreated"). A table that already matches
-        survives untouched (restart-safe); a table that does not exist yet is created. Returns
+        METADATA DRIFT (REQ-846/REQ-1651, generalized via SQLAlchemy Core's ``Inspector`` instead
+        of an information_schema query hand-written per dialect): an existing table whose column
+        set/order OR primary key no longer matches ``columns``/``pk_columns`` is DROPPED and
+        RECREATED — its data is copied again on the next refresh. A table that already matches
+        survives untouched (restart-safe); one that does not exist yet is created. Returns
         ``created`` | ``kept`` | ``recreated``."""
         from provisa.federation.materialize_exec import build_table
 
-        schema, table = source.schema_name, source.table_name
-        if not self._catalog_qualified:
-            from provisa.compiler.naming import source_to_catalog
-
-            schema = f"{source_to_catalog(source.id)}_{schema}"
         tbl = build_table(
             schema, table, columns, tuple(pk_columns or ()), dialect_name=self._sa.dialect.name
         )
 
         def _run() -> str:
             with self._sa.begin() as conn:
-                if schema:
-                    _ensure_schema(conn, schema)
+                _ensure_schema(conn, schema)
                 return _reconcile_table_shape(conn, tbl)
 
         loop = asyncio.get_event_loop()

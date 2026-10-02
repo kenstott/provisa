@@ -95,6 +95,7 @@ class TestAttribution:
             "org_acme_mv_cache",
             "org_acme_api_cache",
             "org_acme_gql_cache",
+            "org_acme_replicas",  # REQ-1912
         ]
 
     def test_one_org_is_never_billed_for_a_similarly_named_org(self):
@@ -194,6 +195,9 @@ class _FakeEngine:
     def __init__(self, count: int = 10) -> None:
         self.count = count
         self.sqls: list[str] = []
+
+    def address_replicas(self, sql):
+        return sql  # this stand-in's tables are all read where the statement names them
 
     async def execute_engine(self, sql, *args, **kwargs):
         from provisa.executor.result import QueryResult

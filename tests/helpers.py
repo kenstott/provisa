@@ -61,6 +61,14 @@ class DsnEngine:
     async def persist_mv_table(self, **kw):
         return await store_writer.persist_land(self._dsn, **kw)
 
+    def replica_address(self, *, source_id: str, schema_name: str, table_name: str):
+        """As ``EngineRuntime.replica_address``: the one replica address, for the test org."""
+        from provisa.federation.replica_address import replica_address
+
+        return replica_address(
+            org_id="test", source_id=source_id, schema_name=schema_name, table_name=table_name
+        )
+
 
 def stub_materialization_noop(state) -> None:
     """Pin the post-governance materialization inputs on a MagicMock AppState.

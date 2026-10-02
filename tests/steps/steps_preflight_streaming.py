@@ -52,6 +52,9 @@ class _DuckEngine:
         self._caps = caps
         self.stream_calls: list[str] = []
 
+    def address_replicas(self, sql):
+        return sql  # this stand-in's tables are all read where the statement names them
+
     async def execute_engine(self, sql, *a, **k):
         from provisa.executor.result import QueryResult
 

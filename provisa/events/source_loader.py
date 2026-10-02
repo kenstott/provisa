@@ -52,38 +52,17 @@ _ADAPTER_FETCH_ONLY: frozenset[str] = frozenset(
         "sqlite",
         # REQ-1730: neo4j/sparql rows are produced by running the registered Cypher/SPARQL query
         # against the source, not scanned from a relation Trino can reach directly — Trino has no
-        # connector for either type (trino_connectors.py has no entry). Missing from this set
-        # left TrinoBackend.landing_target mangling their landing name with no engine-side redirect
-        # view to expose it back under the registered address (see attach_landed_source's DuckDB
-        # counterpart, which DOES create that redirect) — unexercised until a source of either type
-        # was ever registered against a DuckDB backend and then queried under Trino.
+        # connector for either type (trino_connectors.py has no entry).
         "neo4j",
         "sparql",
         # REQ-1730: same gap as neo4j/sparql above — firebird/airport rows are produced by a
         # scratch DuckDB connection ATTACHed via their own community extension
         # (make_firebird_loader/make_airport_loader), not scanned from a relation Trino can reach
-        # directly (no Trino connector for either type). Missing from this set left
-        # TrinoBackend.landing_target mangling their landing name while the query compiler expects
-        # the raw registered address — reproduced live: SCHEMA_NOT_FOUND for the registered schema
-        # after an engine-swap replay onto Trino, because the landed table was created under the
-        # mangled name instead.
+        # directly (no Trino connector for either type).
         "firebird",
         "airport",
     }
 )
-
-
-def is_adapter_fetched(source_type: Any) -> bool:
-    """Whether a source type's rows are PRODUCED by its adapter rather than scanned from a relation
-    the engine can already reach.
-
-    The distinction decides where a landed replica has to live. An engine-scannable source has a
-    mirror at its physical address the engine reads, so its landing table is an internal copy and
-    can be named anything. An adapter-fetched source has no such mirror — the landed rows ARE the
-    only copy, so on an engine that reads the store directly by physical name they must land at that
-    name (see ``TrinoBackend.landing_target``). Accepts the enum member or the bare string."""
-    stype = source_type.value if hasattr(source_type, "value") else str(source_type)
-    return stype in _ADAPTER_FETCH_ONLY
 
 
 class UnsupportedSourceFetch(Exception):

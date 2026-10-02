@@ -209,6 +209,9 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
         if not location:
             raise ValueError(f"external-link source {source.id!r} has no 'path' (object-store URL)")
         _database, schema, table = self._phys_parts(source)
+        from provisa.federation.replica_guard import refuse_live_in_write_surface
+
+        refuse_live_in_write_surface(schema, table)  # REQ-1912
         fq = f"[{schema}].[{table}]"
         bulk_path = self._resolve_bulk_path(source, location)
         cur = self._conn.cursor()
@@ -258,39 +261,46 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
             name=shortcut_name,
         )
 
-    async def materialize_source(
+    def detach_source(self, source: Any) -> None:
+        """Remove the live OPENROWSET view of ``source``'s table, when the engine read it in place.
+        Called when the table's reads move to its replica (REQ-1912)."""
+        from provisa.federation.connector_base import LIVE_IN_PLACE
+
+        if self._engine_for().resolve(source).mechanism not in LIVE_IN_PLACE:
+            return
+        _database, schema, table = self._phys_parts(source)
+        cur = self._conn.cursor()
+        try:
+            cur.execute(f"DROP VIEW IF EXISTS [{schema}].[{table}]")
+            self._conn.commit()
+        finally:
+            cur.close()
+
+    def _store_parts(self, schema: str, table: str) -> tuple[str, str]:
+        """(schema, table) of a store table as T-SQL addresses it: the schema name through the
+        same mapping the transpiler applies to every schema a statement names
+        (``tsql_physical_schema``), so a write and a read of ``schema.table`` meet."""
+        from provisa.transpiler.transpile import tsql_physical_schema
+
+        return tsql_physical_schema(schema), table
+
+    async def reconcile_replica(
         self,
-        source: Any,
-        columns: list[tuple[str, str]],
-        rows: list[dict],
         *,
-        change_signal: str = "ttl",
-        watermark_column: str | None = None,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
         pk_columns: list[str] | None = None,
-    ) -> None:
-        """LAND a source into a per-source schema at the compiler-physical name. A bulk multi-row
-        INSERT (replace = TRUNCATE+insert, append = insert), never per-row."""
-        del pk_columns
-
-        from provisa.core.change_signal import APPEND, select_landing_shape
-
-        append = select_landing_shape(change_signal, watermark_column) == APPEND
-        await self._land_guard.run(lambda: self._land(source, columns, rows, append))
-
-    async def attach_landed_source(
-        self, source: Any, columns: list[tuple[str, str]], *, pk_columns: list[str] | None = None
     ) -> str:
-        """Eager reconcile (boot/registration, REQ-1632/REQ-1633): converge the landed table to
-        ``columns`` (DDL only, no data), so the catalog is complete at startup and survives
-        restart. REQ-1633: MssqlWarehouseRuntime (Fabric/Synapse) had neither this nor
-        ``land_table`` before this — one of only two engines (with ClickHouse) implementing none
-        of the three landing terminals at all."""
+        """Eager reconcile (boot/registration, REQ-1632/REQ-1633): converge the replica
+        ``schema.table`` to ``columns`` (DDL only, no data), so the store is complete at startup
+        and survives restart. ``schema`` is the replicas schema (REQ-1912)."""
 
         del pk_columns  # T-SQL PRIMARY KEY is not a landing concern here — REQ-1651 tracks it
-        return await self._land_guard.run(lambda: self._reconcile(source, columns))
+        return await self._land_guard.run(lambda: self._reconcile(schema, table, columns))
 
-    def _reconcile(self, source: Any, columns: list[tuple[str, str]]) -> str:
-        _database, schema, table = self._phys_parts(source)
+    def _reconcile(self, schema: str, table: str, columns: list[tuple[str, str]]) -> str:
+        schema, table = self._store_parts(schema, table)
         fq = f"[{schema}].[{table}]"
         want = [name for name, _ in columns]
         cur = self._conn.cursor()
@@ -326,25 +336,13 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
         match_floor: float = 0.0,
         shape: str | None = None,
     ) -> str:
-        """The ``NativeEngineBackend.land_source_table``/``hasattr(runtime, "land_table")`` seam
-        every other native engine's runtime uses (REQ-1730) — before this,
-        ``MssqlWarehouseRuntime`` had no method by this name (only ``materialize_source``, a
-        different signature taking a full ``source`` object), so the seam silently fell through to
-        the BASE ``EngineBackend`` default: landing through ``store_writer``'s async path against
-        ``self.engine.materialize_store()`` — the shared PLATFORM Postgres by default
-        (``_build_mssql_warehouse_engine``'s old ``_platform_db_materialize_default``, also fixed by
-        this change), not Fabric/Synapse itself, which has no bridge reading from a separate
-        Postgres landing table. Same class of bug as BigQuery's/Databricks'/ClickHouse's own.
+        """Land ``rows`` into the table ``schema.table`` of the warehouse database (REQ-1730): a
+        bulk multi-row INSERT (replace = TRUNCATE+insert, append = insert), never per-row. For a
+        replica, ``schema`` is the replicas schema (REQ-1912).
 
-        Adapts to ``materialize_source``'s own signature: ``_phys_parts`` (used internally) needs
-        only ``schema_name``/``table_name`` on the source object — the catalog is the fixed
-        warehouse database (``self._database``), never per-source (module doc), so unlike
-        Databricks/ClickHouse this needs no catalog-folding through ``schema`` at all. CDC is not
-        a shape ``_land`` implements (REPLACE/APPEND only) — raising loud on CDC rather than
-        silently mishandling it."""
-        from types import SimpleNamespace
-
-        from provisa.core.change_signal import CDC, select_landing_shape
+        REPLACE/APPEND only: CDC is not a shape ``_land`` implements, and is refused rather than
+        mishandled."""
+        from provisa.core.change_signal import APPEND, CDC, select_landing_shape
 
         del match_floor, pk_columns
         landing_shape = shape or select_landing_shape(change_signal, watermark_column)
@@ -352,18 +350,12 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
             raise NotImplementedError(
                 "Fabric/Synapse native landing has no CDC shape; use replace or append"
             )
-        source = SimpleNamespace(schema_name=schema, table_name=table)
-        await self.materialize_source(
-            source,
-            columns,
-            rows,
-            change_signal=change_signal,
-            watermark_column=watermark_column,
-        )
+        append = landing_shape == APPEND
+        await self._land_guard.run(lambda: self._land(schema, table, columns, rows, append))
         return f"{self._database}.{schema}.{table}"
 
-    def _land(self, source: Any, columns, rows: list[dict], append: bool) -> None:
-        _database, schema, table = self._phys_parts(source)
+    def _land(self, schema: str, table: str, columns, rows: list[dict], append: bool) -> None:
+        schema, table = self._store_parts(schema, table)
         fq = f"[{schema}].[{table}]"
         cols_ddl = ", ".join(f"[{n}] {_tsql_type(t)}" for n, t in columns)
         cur = self._conn.cursor()

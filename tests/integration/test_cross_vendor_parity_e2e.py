@@ -39,7 +39,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from types import SimpleNamespace
 from typing import Any, Callable
 
 import pytest
@@ -294,18 +293,18 @@ def _dbx_connect():
             f"databricks://token:{os.environ['DATABRICKS_TOKEN']}"
             f"@{os.environ['DATABRICKS_SERVER_HOSTNAME']}"
             f"?http_path={os.environ['DATABRICKS_HTTP_PATH']}"
+            # the lane's own Unity Catalog — the name the governed SQL gives the table's catalog
+            "&catalog=parity_dbx"
         )
     )
 
 
 async def _dbx_seed(rt):
-    src = SimpleNamespace(
-        id="parity-dbx", type="databricks", schema_name=_SCHEMA, table_name=_TABLE
-    )
-    await rt.materialize_source(
-        src,
-        [("id", "bigint"), ("region", "text"), ("amount", "double")],
-        _GOLDEN,
+    await rt.land_table(
+        schema=_SCHEMA,
+        table=_TABLE,
+        columns=[("id", "bigint"), ("region", "text"), ("amount", "double")],
+        rows=_GOLDEN,
         change_signal="ttl",
     )
 
@@ -349,15 +348,11 @@ def _bq_connect():
 
 
 async def _bq_seed(rt):
-    from provisa.core.models import SourceType
-
-    src = SimpleNamespace(
-        id="parity-bq", type=SourceType.bigquery, schema_name=_BQ_DS, table_name=_TABLE
-    )
-    await rt.materialize_source(
-        src,
-        [("id", "bigint"), ("region", "text"), ("amount", "double")],
-        _GOLDEN,
+    await rt.land_table(
+        schema=_BQ_DS,
+        table=_TABLE,
+        columns=[("id", "bigint"), ("region", "text"), ("amount", "double")],
+        rows=_GOLDEN,
         change_signal="ttl",
     )
 
@@ -400,15 +395,11 @@ def _fab_connect():
 
 
 async def _fab_seed(rt):
-    from provisa.core.models import SourceType
-
-    src = SimpleNamespace(
-        id="parity-fab", type=SourceType.parquet, schema_name=_FAB_SCH, table_name=_TABLE
-    )
-    await rt.materialize_source(
-        src,
-        [("id", "bigint"), ("region", "text"), ("amount", "double")],
-        _GOLDEN,
+    await rt.land_table(
+        schema=_FAB_SCH,
+        table=_TABLE,
+        columns=[("id", "bigint"), ("region", "text"), ("amount", "double")],
+        rows=_GOLDEN,
         change_signal="ttl",
     )
 

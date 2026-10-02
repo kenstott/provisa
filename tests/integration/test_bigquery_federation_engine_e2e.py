@@ -7,7 +7,7 @@
 """E2E: BigQuery as a federation engine through the REAL query pipeline + a zero-copy GCS external link.
 
 Drives the actual Provisa primitives (compile → govern → catalog-physical → transpile(bigquery)),
-MATERIALIZES demo rows into a per-source BigQuery dataset via ``materialize_source`` (columnar load
+MATERIALIZES demo rows into a BigQuery dataset via ``land_table`` (columnar load
 job), reads them back via the Arrow path (Storage Read API), and asserts RLS filters on the live
 warehouse. A second test seeds a Parquet file on GCS and drives the ATTACH connector's
 ``attach_source`` — a BigQuery EXTERNAL TABLE over the GCS object (``table_type = EXTERNAL``), read
@@ -97,7 +97,7 @@ def runtime():
         yield rt
     finally:
         # Drop the whole per-source datasets (CASCADE takes their tables) — dropping only the
-        # table would leak the dataset materialize_source auto-created. Covers both the landed
+        # table would leak the dataset land_table auto-created. Covers both the landed
         # dataset and the external-link dataset.
         for ds in (_DS, "provisa_ext_it_ds"):
             rt.connection.query(f"DROP SCHEMA IF EXISTS `{_PROJ}`.`{ds}` CASCADE").result()
@@ -106,15 +106,11 @@ def runtime():
 
 @pytest.mark.asyncio
 async def test_bigquery_engine_land_govern_read_and_rls(runtime):
-    from types import SimpleNamespace
-
-    from provisa.core.models import SourceType
-
-    src = SimpleNamespace(id=_SRC, type=SourceType.bigquery, schema_name=_DS, table_name="orders")
-    await runtime.materialize_source(
-        src,
-        [("id", "bigint"), ("region", "text"), ("amount", "double")],
-        [
+    await runtime.land_table(
+        schema=_DS,
+        table="orders",
+        columns=[("id", "bigint"), ("region", "text"), ("amount", "double")],
+        rows=[
             {"id": 1, "region": "west", "amount": 100.0},
             {"id": 2, "region": "east", "amount": 200.0},
             {"id": 3, "region": "west", "amount": 300.0},

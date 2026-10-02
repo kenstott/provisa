@@ -47,6 +47,9 @@ class _DuckEngine:
         self._caps = caps
         self.stream_calls: list[str] = []
 
+    def address_replicas(self, sql):
+        return sql  # this stand-in's tables are all read where the statement names them
+
     async def execute_engine(self, sql: str, *a, **k) -> QueryResult:
         cur = self.con.execute(sql)
         cols = [d[0] for d in cur.description] if cur.description else []

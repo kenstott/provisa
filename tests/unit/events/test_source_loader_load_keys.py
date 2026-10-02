@@ -63,6 +63,9 @@ async def test_load_keys_runs_bounded_select_through_engine_terminal():
         rows = [(1, "new")]
 
     class _FakeEngine:
+        def address_replicas(self, sql):
+            return sql  # this stand-in's tables are all read where the statement names them
+
         async def execute_engine(self, sql):
             calls.append(sql)
             return _FakeResult()

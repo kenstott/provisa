@@ -93,8 +93,35 @@ class EngineRuntime:  # REQ-825, REQ-840
 
     def transpile_physical(self, pg_sql: str) -> str:
         """Transpile governed PostgreSQL-dialect SQL to the bound engine's physical dialect —
-        the single seam generic callers use instead of hardcoding a specific engine's dialect."""
-        return self._backend.transpile_physical(pg_sql)
+        the single seam generic callers use instead of hardcoding a specific engine's dialect.
+
+        REQ-1912: ``pg_sql`` names its tables as the engine addresses them. Each table served
+        from its replica is renamed here to its replica's address, before the dialect transpile:
+        the one place every statement bound for the engine passes, so no surface addresses a
+        replica differently and none reads the source of a table the operator floors."""
+        return self._backend.transpile_physical(self.address_replicas(pg_sql))
+
+    def address_replicas(self, pg_sql: str) -> str:
+        """``pg_sql`` with each replica-served table at its replica's address (REQ-1912), from the
+        routes published with the registry (``replica_routing.replica_routes``)."""
+        from provisa.federation.replica_address import ReplicaRoutes, address_replicas
+
+        # The routes are published on the org's runtime with its registry (``_rebuild_schemas``).
+        # A state that carries none — an engine runtime built outside the app, with no registry —
+        # has no registered table, so none is served from a replica.
+        routes = getattr(self._state, "replica_routes", None)
+        if routes is None:
+            return pg_sql
+        if not isinstance(routes, ReplicaRoutes):
+            raise TypeError(f"replica_routes is a {type(routes).__name__}, not ReplicaRoutes")
+        if not routes:
+            return pg_sql
+        if routes.engine_name != self.engine.name:
+            raise RuntimeError(
+                f"replica routes were published for engine {routes.engine_name!r}; the bound "
+                f"engine is {self.engine.name!r}"
+            )
+        return address_replicas(pg_sql, routes)
 
     def engine_physical(self, pg_sql: str) -> str:
         """Catalog-physical (``"catalog"."schema"."table"``) PostgreSQL-dialect SQL as the bound
@@ -109,7 +136,7 @@ class EngineRuntime:  # REQ-825, REQ-840
             from provisa.compiler.sql_rewrite import fold_catalog_into_schema
 
             pg_sql = fold_catalog_into_schema(pg_sql)
-        return self._backend.transpile_physical(pg_sql)
+        return self.transpile_physical(pg_sql)
 
     def connector_pushdown(self, source_type: str):
         """The bound engine's declared pushdown Capability for ``source_type`` — the same
@@ -511,25 +538,11 @@ class EngineRuntime:  # REQ-825, REQ-840
             shape=shape,
         )
 
-    def landing_target(
-        self,
-        *,
-        store_schema: str,
-        source_id: str,
-        source_type: Any,
-        schema_name: str,
-        table_name: str,
-    ) -> tuple[str, str]:
-        """Where a MATERIALIZED source table's replica lives in the materialization store —
-        delegated to the backend (REQ-1733's push-listener wiring computes a table's landing
-        address without reaching into the backend directly, since ``EngineRuntime`` exposes no
-        public ``backend`` attribute of its own)."""
-        return self._backend.landing_target(
-            store_schema=store_schema,
-            source_id=source_id,
-            source_type=source_type,
-            schema_name=schema_name,
-            table_name=table_name,
+    def replica_address(self, *, source_id: str, schema_name: str, table_name: str) -> Any:
+        """Where the replica of a source table lives in the bound engine's store (REQ-1912) —
+        delegated to the backend, for a caller that holds the runtime and not the backend."""
+        return self._backend.replica_address(
+            self._state, source_id=source_id, schema_name=schema_name, table_name=table_name
         )
 
     async def analyze_landed_table(self, *, catalog: str, schema: str, table: str) -> None:

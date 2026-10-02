@@ -158,7 +158,9 @@ def _replica_rows(pg: _SourceAndEngine) -> int:
     import psycopg
 
     with psycopg.connect(pg.url(pg.engine_port, "provisa"), autocommit=True) as conn:
-        return conn.execute('SELECT COUNT(*) FROM "src_public"."wide"').fetchone()[0]
+        return conn.execute(
+            'SELECT COUNT(*) FROM "org_replication_bounded_replicas"."src__public__wide"'
+        ).fetchone()[0]
 
 
 def _source_table_reads(pg: _SourceAndEngine) -> list[str]:

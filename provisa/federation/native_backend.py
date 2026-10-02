@@ -125,6 +125,9 @@ class NativeEngineBackend(EngineBackend):
         super().__init__(engine)
         self._runtime: Any = None
         self._attached: set[str] = set()
+        # Tables whose live attach this process has removed because their reads moved to the
+        # replica (REQ-1912) — removed once, whichever process created it.
+        self._detached: set[str] = set()
         # The registry state the last complete walk covered: the identities of (config,
         # runtime_sources, tables, tenant_db). A schema rebuild REPLACES those objects (app.py
         # publishes a new source map and a new table list; nothing mutates them in place), so an
@@ -297,15 +300,32 @@ class NativeEngineBackend(EngineBackend):
             """Attach one table into the runtime; skip if already attached or attach fails."""
             nonlocal complete
             key = f"{schema_name}.{table_name}"
-            if key in self._attached or key in self._refused or key in tried:
-                return
-            tried.add(key)
-            if getattr(src, "id", None) in _NO_REMOTE_SOURCE_IDS:
+            if key in tried:
                 return
             if floor_setting(src) is not None:
                 # REQ-030/826/1141: the operator's floor. A floored source is read only from its
-                # landed copy, which the residency prep exposes at this same physical name; a live
-                # attach here would let every query read the source directly beneath the floor.
+                # replica, which a read addresses in the store's replicas schema (REQ-1912). It
+                # has no live attach: nothing on the engine can then read the source, whatever a
+                # statement names. One attached before the setting was turned on is removed.
+                # An earlier process of a persistent engine may have left one too, so it is removed
+                # once per process whether or not this process attached it.
+                tried.add(key)
+                if key in self._attached or key not in self._detached:
+                    self._runtime.detach_source(
+                        SimpleNamespace(
+                            id=src.id,
+                            type=src.type,
+                            schema_name=schema_name,
+                            table_name=table_name,
+                        )
+                    )
+                    self._attached.discard(key)
+                    self._detached.add(key)
+                return
+            if key in self._attached or key in self._refused:
+                return
+            tried.add(key)
+            if getattr(src, "id", None) in _NO_REMOTE_SOURCE_IDS:
                 return
             merged = SimpleNamespace(
                 id=getattr(src, "id", None),
@@ -341,6 +361,7 @@ class NativeEngineBackend(EngineBackend):
             try:
                 self._runtime.attach_source(merged)
                 self._attached.add(key)
+                self._detached.discard(key)
             except self._attach_errors as _ae:
                 if isinstance(_ae, _DECLARED_REFUSALS):
                     self._refused.add(key)
@@ -383,60 +404,84 @@ class NativeEngineBackend(EngineBackend):
     # -- residency prep (REQ-825 stage-4b / REQ-932) ---------------------------
 
     async def reconcile_landed_tables(self, state: Any) -> list[tuple[str, str]]:
-        """Reconcile the store's landing SCHEMA to the REGISTERED tables for every MATERIALIZED
-        source, then attach the engine's read view — the schema-currency controller (REQ-846/932).
-        DDL only: no data is landed (that is the refresh's job); an existing matching table is KEPT
-        (survives restart), a drifted one RECREATED. Convergent + idempotent.
+        """Reconcile the store's replica of every REGISTERED table that is served from one
+        (REQ-846/932) — the schema-currency controller. DDL only: no data is copied (that is the
+        refresh's job); an existing matching table is KEPT (survives restart), a drifted one
+        RECREATED. Convergent + idempotent.
 
-        The work list (which registered tables land, with what shape) is the shared
-        ``landing_worklist``; what this adds is the native terminal — converge the store table and
-        expose the engine's read view over it. Returns the (source_id, table_name) reconciled."""
-        from provisa.federation.backend import landing_worklist
-
+        The work list (which registered tables own a replica, with what shape) is the shared
+        ``landing_worklist``; what this adds is the native terminal — converge the table at its
+        replica address (REQ-1912). Nothing is created at the table's registered name: a read
+        reaches the replica by its address. Returns the (source_id, table_name) reconciled."""
         from provisa.federation.landed_keys import LandedTable, key_plan_for
+        from provisa.federation.replica_routing import landing_worklist
 
         runtime = self._runtime_for(state)
-        if not hasattr(runtime, "attach_landed_source"):
-            return []  # this engine's runtime has no eager-landing terminal
+        if not hasattr(runtime, "reconcile_replica"):
+            return []  # this engine's runtime has no replica terminal
         reconciled: list[tuple[str, str]] = []
         landed: list[LandedTable] = []
+        addresses: dict[str, tuple[str, str]] = {}
         for src, schema_name, table_name, columns, pk_columns in await landing_worklist(
             self.engine, state
         ):
-            merged = SimpleNamespace(
-                id=src.id, type=src.type, schema_name=schema_name, table_name=table_name
+            address = self.replica_address(
+                state, source_id=src.id, schema_name=schema_name, table_name=table_name
             )
             try:
-                await runtime.attach_landed_source(merged, columns, pk_columns=pk_columns)
-            except Exception as exc:  # allow-ble: any failure to reconcile IS this table's state — recorded, logged, and raised to every read of its source (require_reconciled); the other tables still reconcile
+                outcome = await runtime.reconcile_replica(
+                    schema=address.schema,
+                    table=address.table,
+                    columns=columns,
+                    pk_columns=pk_columns,
+                )
+                if hasattr(runtime, "publish_replica_view"):
+                    # A store whose catalog export shares a per-source view of each replica
+                    # (Snowflake). It is a published object, not a read path (REQ-1912).
+                    await runtime.publish_replica_view(
+                        SimpleNamespace(
+                            id=src.id, type=src.type, schema_name=schema_name, table_name=table_name
+                        ),
+                        schema=address.schema,
+                        table=address.table,
+                        replace=outcome == "recreated",
+                    )
+            except Exception as exc:  # allow-ble: any failure to reconcile IS this table's state — recorded, logged, and raised to every read that names it (replica_address.address_replicas); the other tables still reconcile
                 self._unreconciled[(src.id, table_name)] = exc
                 _log.error(
-                    "%s: the replica of %s.%s.%s could not be reconciled; reads of source %r are "
+                    "%s: the replica of %s.%s.%s could not be reconciled; reads of it are "
                     "refused until it is: %s",
                     self.engine.name,
                     src.id,
                     schema_name,
                     table_name,
-                    src.id,
                     exc,
                     exc_info=exc,
                 )
                 continue
             self._unreconciled.pop((src.id, table_name), None)
             reconciled.append((src.id, table_name))
-            landed.append(LandedTable(src.id, schema_name, table_name, tuple(pk_columns)))
-        # REQ-1652/REQ-1654: the keys and descriptions are part of the landed model's shape and
+            entry = LandedTable(src.id, schema_name, table_name, tuple(pk_columns))
+            landed.append(entry)
+            addresses[entry.identity] = (address.schema, address.table)
+        # REQ-1652/REQ-1654: the keys and descriptions are part of the replicated model's shape and
         # converge here, with the tables, on a store that can hold informational constraints. A
         # runtime without the hook is an enforcing store, where a FOREIGN KEY would refuse every
         # REPLACE land -- by design.
         if landed and hasattr(runtime, "reconcile_landed_metadata"):
             plan = await key_plan_for(state, landed)
+            store_catalog = runtime.ensure_materialize_attached()
+            # each replica's store address: named by the replica rule, not by its registration
+            plan.store_parts = {
+                ident: (store_catalog, schema, table)
+                for ident, (schema, table) in addresses.items()
+            }
             for what, reason in plan.withheld:
                 _log.info("%s: key withheld for %s: %s", self.engine.name, what, reason)
             applied = await runtime.reconcile_landed_metadata(plan)
             if applied:
                 _log.info(
-                    "%s: %d metadata statement(s) applied to landed tables",
+                    "%s: %d metadata statement(s) applied to replicas",
                     self.engine.name,
                     applied,
                 )

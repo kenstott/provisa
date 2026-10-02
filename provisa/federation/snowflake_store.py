@@ -13,11 +13,12 @@ its replicas through (REQ-1637, REQ-1653), and the keys those replicas carry (RE
 
 Layout (what the account holds, and what the compiler's physical names resolve to):
 
-* a source's rows LAND in the landing database's store schema, under the same mangled name every
-  backend's ``landing_target`` produces -- ``"<landing db>"."mat"."<source>__<schema>__<table>"``;
-* the compiler's physical name for the source -- ``"<catalog(source id)>"."<schema>"."<table>"`` --
-  is a SECURE VIEW over that replica, so governed SQL resolves natively and the replica is one
-  object however many environments read it.
+* a source's rows are replicated into the landing database's replicas schema, at the one address
+  every engine uses (REQ-1912) --
+  ``"<landing db>"."org_<org>[_env_<env>]_replicas"."<source>__<schema>__<table>"`` -- and
+  Provisa's reads are addressed to it there;
+* a per-source SECURE VIEW over that replica is published for the catalog export, which shares
+  and tags it (REQ-1070, REQ-1652). No read of Provisa's goes through the view.
 
 Keys are part of the replica's shape, not of any catalog publish: the landed table gets its
 declared PRIMARY KEY and every relationship between landed tables its FOREIGN KEY (Snowflake keeps
@@ -101,14 +102,6 @@ def ddl_type(ir_type: str) -> str:
 
 def qualified(parts: Parts) -> str:
     return ".".join(f'"{part}"' for part in parts)
-
-
-def replica_parts(
-    landing_database: str, store_schema: str, source_id: str, schema: str, table: str
-) -> Parts:
-    """Where a source table's rows land: the store schema of the landing database, under the name
-    every backend's ``landing_target`` mangles from the source id and the physical schema/table."""
-    return landing_database, store_schema, f"{source_id}__{schema}__{table}"
 
 
 # -- replica DDL / DML ---------------------------------------------------------------------------

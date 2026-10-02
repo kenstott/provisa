@@ -342,7 +342,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         from provisa.federation.engine import MaterializeStoreUnconfigured
 
         try:
-            store_dsn = engine.materialize_store_dsn()
+            engine.materialize_store_dsn()  # a store must be configured for the loop to wire
         except MaterializeStoreUnconfigured:
             log.info("event loop: no materialization store configured — skipping")
             return 0
@@ -402,7 +402,9 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
                 continue
             _key = f"{_m.target_schema}.{_m.target_table}"
             try:
-                _probe = await engine.execute_engine(f"SELECT * FROM ({_sql}) AS _mv_probe LIMIT 0")
+                _probe = await engine.execute_engine(
+                    f"SELECT * FROM ({engine.address_replicas(_sql)}) AS _mv_probe LIMIT 0"
+                )
             except Exception:
                 log.exception("event loop: MV %s not introspectable yet — skipping", _key)
                 continue
@@ -430,7 +432,8 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
 
         def mv_run_query(mv: Any) -> Any:
             async def _run() -> list[dict]:
-                result = await engine.execute_engine(mv.sql)
+                # REQ-1912: a replica-served input is read at its replica's address.
+                result = await engine.execute_engine(engine.address_replicas(mv.sql))
                 return [dict(zip(result.column_names, row)) for row in result.rows]
 
             return _run
@@ -452,12 +455,6 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         # REQ-1674: sources likewise come from the registry (a UI-created source is one).
         from provisa.federation.registry_view import registered_sources, registered_tables
 
-        # REQ-1622: the landing schema belongs to the environment being wired, not to the store --
-        # a landed table's name is derived from the source id, which every environment shares.
-        from provisa.core.request_context import active_env
-        from provisa.federation.store_scope import store_schema as _store_schema_for
-
-        store_schema = _store_schema_for(store_dsn, active_env())
         all_sources = await registered_sources(state)
         registered_tables_ = await registered_tables(state)
 
@@ -503,7 +500,6 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
             source_fetch=source_fetch,
             mv_columns=mv_columns,
             mv_run_query=mv_run_query,
-            store_schema=store_schema,
             probe_scalar=probe_scalar,
             subscribers_of=subscribers_of,  # REQ-965 demand routing
             calendar_registry=calendar_registry,  # REQ-962 periodic boundary source
@@ -592,7 +588,7 @@ async def wire_new_poll_jobs(*, state: Any, log: Any) -> int:
         from provisa.federation.engine import MaterializeStoreUnconfigured
 
         try:
-            store_dsn = engine.materialize_store_dsn()
+            engine.materialize_store_dsn()  # a store must be configured for the loop to wire
         except MaterializeStoreUnconfigured:
             return 0
 
@@ -614,13 +610,11 @@ async def wire_new_poll_jobs(*, state: Any, log: Any) -> int:
         if not candidates:
             return 0
 
-        from provisa.core.request_context import active_env, current_org
+        from provisa.core.request_context import current_org
         from provisa.events import supervisor
         from provisa.events.boot import build_processors, build_source_node_spec
         from provisa.events.source_loader import SourceRowLoader, UnsupportedSourceFetch
-        from provisa.federation.store_scope import store_schema as _store_schema_for
 
-        store_schema = _store_schema_for(store_dsn, active_env())
         _adapter_loaders = build_adapter_loaders(state, engine)
         _keyed_adapter_loaders = build_keyed_adapter_loaders(state, engine)
         row_loader = SourceRowLoader(
@@ -672,7 +666,6 @@ async def wire_new_poll_jobs(*, state: Any, log: Any) -> int:
                 engine=bare_engine,
                 engine_runtime=engine,
                 source_fetch=source_fetch,
-                store_schema=store_schema,
                 probe_scalar=probe_scalar,
             )
             if spec is None:

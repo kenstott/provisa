@@ -54,29 +54,18 @@ def _node(schema_name: str, table_name: str) -> str:
     return f"{schema_name}.{table_name}"
 
 
-def _physical_node(backend: Any, engine: Any, source: Any, table: Any) -> str:
-    """The lock key for ``land_lock`` — the PHYSICAL (post-fold) address a land actually writes to,
-    not the registered logical one (REQ-1730). ``events/boot.py``'s own poll-node wiring locks on
-    this same ``backend.landing_target(...)`` result (its ``land_schema``/``land_table``), and
-    ``EngineBackend.materialize_pending`` recomputes the identical fold internally right after this
-    function's caller acquires its lock — so the two lands ``land_lock``'s own docstring promises
-    never interleave must key on the SAME string. Keying on the registered name instead (as this
-    used to) is a no-op fold for most engines but diverges from boot.py's key for any
-    ``catalog_qualified=False`` engine (pg/ClickHouse/Oracle): the query path's lock then guards a
-    different node than the event loop's own scheduled land, and the two run truly concurrently —
-    confirmed live, REQ-1730, 2026-09-21: Oracle's REPLACE land interleaved (DELETE, DELETE, INSERT,
-    INSERT) across two OS threads, landing every row twice."""
-    from provisa.federation.backend import _env_store_schema
-
-    store_schema = _env_store_schema(engine.engine.materialize_store())
-    schema, name = backend.landing_target(
-        store_schema=store_schema,
-        source_id=source.id,
-        source_type=source.type,
-        schema_name=table.schema_name,
-        table_name=table.table_name,
+def _physical_node(backend: Any, state: Any, source: Any, table: Any) -> str:
+    """The lock key for ``land_lock`` — the address a land actually writes to, the table's replica
+    address (REQ-1912), not its registered name. ``events/boot.py``'s own poll-node wiring locks
+    on this same address (its ``land_schema``/``land_table``), and
+    ``EngineBackend.materialize_pending`` resolves the identical one right after this function's
+    caller acquires its lock — so the two lands ``land_lock``'s own docstring promises never
+    interleave key on the SAME string (REQ-1730: keyed on anything else, Oracle's REPLACE land
+    interleaved across two threads and landed every row twice)."""
+    address = backend.replica_address(
+        state, source_id=source.id, schema_name=table.schema_name, table_name=table.table_name
     )
-    return _node(schema, name)
+    return _node(address.schema, address.table)
 
 
 def stale_sources(
@@ -258,9 +247,6 @@ async def ensure_resident(
     sources = [s for s in _all_sources if s.id in wanted]
     if not sources:
         return []
-    # REQ-826: a replicated table whose replica could not be reconciled is not read at all. An
-    # in-memory lookup: this is on every read's path and issues no control-plane statement.
-    backend.require_reconciled(s.id for s in sources)
     from provisa.federation.strategy import engine_attaches
 
     _attached_types = {s.id: engine_attaches(engine, s.type.value) for s in sources}
@@ -298,7 +284,14 @@ async def ensure_resident(
     view = view_for(state)
     generation = generation_of(state)
     loader: Any = None
-    _materialization_backend = getattr(getattr(engine, "engine", engine), "native_store", None)
+    # What a replicated source lands into: the engine's own store, or (Trino) the store it reads
+    # through its connector. The plan asks for it only for a source the operator's setting moves
+    # onto its replica (REQ-846), so the store is resolved only when one of these is.
+    _materialization_backend = (
+        engine.engine.replica_store_backend()
+        if any(prefer_of.values()) or any(protected_of.values())
+        else None
+    )
 
     def _pending(source: Any, states: dict[str, dict | None] | None, now: float) -> bool:
         """Whether a read of ``source`` must land something first, given its tables' freshness
@@ -372,7 +365,7 @@ async def ensure_resident(
             # never interleave on one replica; every node of the source is held for the source's land.
             async with AsyncExitStack() as held:
                 for t in tables_by_source.get(source.id, []):
-                    await _hold_land_lock(held, _physical_node(backend, engine, source, t))
+                    await _hold_land_lock(held, _physical_node(backend, state, source, t))
                 # Staleness is judged with the locks held: a request that waited here for another
                 # request's land of the same table reads the stamp that land wrote and finds the table
                 # fresh, so one stale table is landed once, not once per waiting reader (REQ-1882,
@@ -632,6 +625,12 @@ def _join_key_column(join: Any, target_alias: str) -> tuple[str, Any] | None:
     return None
 
 
+def _pushdown_alias(table: Any) -> str:
+    """The probe's output column carrying a row-level table's join keys: named for the table's
+    registered name, a plain identifier whatever its replica is called."""
+    return f"__pushdown_{table.table_name}"
+
+
 def resolve_landing_args_for(source: Any, table: Any, dialect: str | None) -> Any:
     from provisa.federation.residency import resolve_landing_args
 
@@ -694,7 +693,6 @@ async def pushdown_row_materialize(
         build_keyed_arrow_loaders,
     )
     from provisa.events.source_loader import SourceRowLoader
-    from provisa.federation.backend import _env_store_schema
     from provisa.federation.registry_view import registered_sources
 
     engine = getattr(state, "federation_engine", None)
@@ -702,9 +700,17 @@ async def pushdown_row_materialize(
     if engine is None or backend is None:
         return set()
 
-    tables_by_name = {t.table_name: t for t in await active_row_materialize_tables(state)}
-    if not tables_by_name:
+    row_level = await active_row_materialize_tables(state)
+    if not row_level:
         return set()
+    # REQ-1912: ``physical_sql`` addresses a row-level table at its replica, so a join is matched
+    # to its table by the replica's name.
+    tables_by_name = {
+        backend.replica_address(
+            state, source_id=t.source_id, schema_name=t.schema_name, table_name=t.table_name
+        ).table: t
+        for t in row_level
+    }
     sources_by_id = {s.id: s for s in await registered_sources(state)}
 
     try:
@@ -753,7 +759,9 @@ async def pushdown_row_materialize(
 
         for name, (_target_col, other_expr) in key_cols.items():
             pass_tree.select(
-                exp.alias_(other_expr.copy(), f"__pushdown_{name}"), append=True, copy=False
+                exp.alias_(other_expr.copy(), _pushdown_alias(tables_by_name[name])),
+                append=True,
+                copy=False,
             )
 
         # A failed probe propagates, same as a failed keyed fetch below: breaking out left every
@@ -763,7 +771,7 @@ async def pushdown_row_materialize(
         made_progress = False
         for name in list(still_pending):
             target_col, _ = key_cols[name]
-            alias = f"__pushdown_{name}"
+            alias = _pushdown_alias(tables_by_name[name])
             if alias not in result.column_names:
                 continue
             idx = result.column_names.index(alias)
@@ -781,14 +789,13 @@ async def pushdown_row_materialize(
             args = resolve_landing_args_for(source, table, backend.dialect)
             reader_ttl, reap_horizon = _row_cache_ttls(table, source, reader_role)
             change_fed = change_signal_of(table, source) in _PUSH_SIGNALS
-            store_schema = _env_store_schema(engine.engine.materialize_store())
-            schema, cache_name = backend.landing_target(
-                store_schema=store_schema,
+            address = backend.replica_address(
+                state,
                 source_id=source.id,
-                source_type=source.type,
                 schema_name=table.schema_name,
                 table_name=table.table_name,
             )
+            schema, cache_name = address.schema, address.table
             # REQ-1865 (amended): a coarse "does this table hold ANY fresh row" gate used to
             # decide whether to probe/fetch AT ALL -- correct only for a repeat query using the
             # exact same key set, and wrong for a query needing keys the cache doesn't have yet
@@ -1123,7 +1130,6 @@ async def ensure_rows_resident(
     from provisa.events.app_wiring import build_adapter_loaders, build_keyed_adapter_loaders
     from provisa.events.row_lock import row_lock
     from provisa.events.source_loader import SourceRowLoader
-    from provisa.federation.backend import _env_store_schema
     from provisa.federation.registry_view import registered_sources, registered_tables
     from provisa.federation.residency import resolve_landing_args
 
@@ -1142,7 +1148,6 @@ async def ensure_rows_resident(
         adapter_loaders=build_adapter_loaders(state, engine),
         keyed_adapter_loaders=build_keyed_adapter_loaders(state, engine),
     )
-    store_schema = _env_store_schema(engine.engine.materialize_store())
 
     now = datetime.now(UTC)
     results: list[tuple[str, str, int]] = []
@@ -1159,13 +1164,13 @@ async def ensure_rows_resident(
         reader_ttl, reap_horizon = _row_cache_ttls(table, source, reader_role)
         change_fed = change_signal_of(table, source) in _PUSH_SIGNALS
 
-        schema, name = backend.landing_target(
-            store_schema=store_schema,
+        address = backend.replica_address(
+            state,
             source_id=source.id,
-            source_type=source.type,
             schema_name=table.schema_name,
             table_name=table.table_name,
         )
+        schema, name = address.schema, address.table
         node = _node(schema, name)
         pk_columns = list(bound.pk_columns)
         cache_table, cached = await _ensure_and_read_row_cache(

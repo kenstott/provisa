@@ -135,6 +135,7 @@ if TYPE_CHECKING:
     from provisa.kafka.window import KafkaTableConfig
     from provisa.core.models import Source
     from provisa.core.database import Connection
+    from provisa.federation.replica_address import ReplicaRoutes
     from sqlalchemy.engine import Engine
     import graphql
 
@@ -640,6 +641,15 @@ class AppState:
         self._active_runtime().tables = value
 
     @property
+    def replica_routes(self) -> ReplicaRoutes:
+        # REQ-1912: the active runtime's replica-served tables, as _rebuild_schemas published them.
+        return self._active_runtime().replica_routes
+
+    @replica_routes.setter
+    def replica_routes(self, value: ReplicaRoutes) -> None:
+        self._active_runtime().replica_routes = value
+
+    @property
     def relationships(self) -> list[dict]:
         # REQ-1132: resolved user-defined relationships (int source/target table ids),
         # published for the raw-SQL governance path's 1-hop meta row scoping.
@@ -908,6 +918,16 @@ async def _load_and_build(
     )
 
     _mark("engine-connect")
+
+    # REQ-1912: replicas and materialized views each need a schema of their own, so a store with
+    # no schemas stops the start here, naming the store. A deployment with no store configured
+    # at all replicates nothing and has nothing to refuse.
+    from contextlib import suppress
+
+    from provisa.federation.engine import MaterializeStoreUnconfigured
+
+    with suppress(MaterializeStoreUnconfigured):
+        state.federation_engine.materialize_store_dsn()
 
     # Flight (Zaychik), the MinIO buckets, and the results schema are mutually independent
     # engine-terminal network setup, run concurrently to cut startup latency. the engine-terminal
@@ -1925,6 +1945,11 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         # source landed via TrinoPgBackedConnector) would otherwise have no relation for
         # introspect_tables to read, and _build_visible_tables silently drops every table it can't
         # find column metadata for. DDL only, best-effort like the other two call sites.
+        # REQ-1912: which tables are read from their replica, and where — published before the
+        # reconcile and before any statement is lowered against this registry.
+        from provisa.federation.replica_routing import replica_routes as _replica_routes
+
+        state.replica_routes = await _replica_routes(state)
         try:
             _landed = await state.federation_engine.reconcile_landed_tables()
             if _landed:

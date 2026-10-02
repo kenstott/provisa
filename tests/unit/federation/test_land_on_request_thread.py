@@ -149,14 +149,14 @@ def test_clickhouse_land_table_writes_on_the_request_thread(monkeypatch) -> None
     _assert_ran_here(write)
 
 
-def test_clickhouse_attach_landed_source_writes_on_the_request_thread(monkeypatch) -> None:
+def test_clickhouse_reconcile_replica_writes_on_the_request_thread(monkeypatch) -> None:
     from provisa.federation import clickhouse_store
     from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
 
     write = _Recorder("created")
     monkeypatch.setattr(clickhouse_store, "reconcile_clickhouse_native", write)
     rt = _bare(ClickHouseFederationRuntime, _backend=object())
-    _run_as_request(lambda: rt.attach_landed_source(_source(), _COLUMNS))
+    _run_as_request(lambda: rt.reconcile_replica(schema="db", table="t", columns=_COLUMNS))
     _assert_ran_here(write)
 
 
@@ -170,8 +170,6 @@ def _snowflake_runtime() -> Any:
         SnowflakeFederationRuntime,
         _conn=_Connection(),
         ensure_materialize_attached=lambda: "LANDING",
-        _store_schema=lambda: "store",
-        _replica_parts=lambda source: ("LANDING", "store", "src__sales__orders"),
         _phys_parts=lambda source: ("src", "sales", "orders"),
     )
 
@@ -186,14 +184,25 @@ def test_snowflake_land_table_writes_on_the_request_thread(monkeypatch) -> None:
     _assert_ran_here(write)
 
 
-def test_snowflake_attach_landed_source_writes_on_the_request_thread(monkeypatch) -> None:
+def test_snowflake_reconcile_replica_writes_on_the_request_thread(monkeypatch) -> None:
     from provisa.federation import snowflake_store
 
     write = _Recorder("created")
     monkeypatch.setattr(snowflake_store, "reconcile_snowflake_native", write)
-    monkeypatch.setattr(snowflake_store, "expose_view", _Recorder(None))
     rt = _snowflake_runtime()
-    _run_as_request(lambda: rt.attach_landed_source(_source(), _COLUMNS))
+    _run_as_request(lambda: rt.reconcile_replica(schema="s", table="t", columns=_COLUMNS))
+    _assert_ran_here(write)
+
+
+def test_snowflake_publish_replica_view_writes_on_the_request_thread(monkeypatch) -> None:
+    from provisa.federation import snowflake_store
+
+    write = _Recorder(None)
+    monkeypatch.setattr(snowflake_store, "expose_view", write)
+    rt = _snowflake_runtime()
+    _run_as_request(
+        lambda: rt.publish_replica_view(_source(), schema="s", table="t", replace=False)
+    )
     _assert_ran_here(write)
 
 
@@ -252,29 +261,17 @@ def test_databricks_land_table_writes_on_the_request_thread(monkeypatch) -> None
     write = _Recorder(None)
     monkeypatch.setattr(databricks_store, "land_databricks_native", write)
     rt = _databricks_runtime()
-    _run_as_request(
-        lambda: rt.land_table(schema="src\x00sales", table="t", columns=_COLUMNS, rows=_ROWS)
-    )
+    _run_as_request(lambda: rt.land_table(schema="s", table="t", columns=_COLUMNS, rows=_ROWS))
     _assert_ran_here(write)
 
 
-def test_databricks_materialize_source_writes_on_the_request_thread(monkeypatch) -> None:
-    from provisa.federation import databricks_store
-
-    write = _Recorder(None)
-    monkeypatch.setattr(databricks_store, "land_databricks_native", write)
-    rt = _databricks_runtime()
-    _run_as_request(lambda: rt.materialize_source(_source(), _COLUMNS, _ROWS))
-    _assert_ran_here(write)
-
-
-def test_databricks_attach_landed_source_writes_on_the_request_thread(monkeypatch) -> None:
+def test_databricks_reconcile_replica_writes_on_the_request_thread(monkeypatch) -> None:
     from provisa.federation import databricks_store
 
     write = _Recorder(None)
     monkeypatch.setattr(databricks_store, "reconcile_databricks_native", write)
     rt = _databricks_runtime()
-    _run_as_request(lambda: rt.attach_landed_source(_source(), _COLUMNS))
+    _run_as_request(lambda: rt.reconcile_replica(schema="s", table="t", columns=_COLUMNS))
     _assert_ran_here(write)
 
 
@@ -291,21 +288,21 @@ def test_databricks_reconcile_landed_metadata_writes_on_the_request_thread(monke
 # -- Fabric / Synapse --------------------------------------------------------------------------
 
 
-def test_mssql_warehouse_materialize_source_writes_on_the_request_thread() -> None:
+def test_mssql_warehouse_land_table_writes_on_the_request_thread() -> None:
     from provisa.federation.mssql_warehouse_runtime import MssqlWarehouseRuntime
 
     write = _Recorder(None)
-    rt = _bare(MssqlWarehouseRuntime, _land=write)
-    _run_as_request(lambda: rt.materialize_source(_source(), _COLUMNS, _ROWS))
+    rt = _bare(MssqlWarehouseRuntime, _land=write, _database="wh")
+    _run_as_request(lambda: rt.land_table(schema="s", table="t", columns=_COLUMNS, rows=_ROWS))
     _assert_ran_here(write)
 
 
-def test_mssql_warehouse_attach_landed_source_writes_on_the_request_thread() -> None:
+def test_mssql_warehouse_reconcile_replica_writes_on_the_request_thread() -> None:
     from provisa.federation.mssql_warehouse_runtime import MssqlWarehouseRuntime
 
     write = _Recorder("created")
     rt = _bare(MssqlWarehouseRuntime, _reconcile=write)
-    _run_as_request(lambda: rt.attach_landed_source(_source(), _COLUMNS))
+    _run_as_request(lambda: rt.reconcile_replica(schema="s", table="t", columns=_COLUMNS))
     _assert_ran_here(write)
 
 

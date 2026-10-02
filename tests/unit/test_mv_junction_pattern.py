@@ -36,6 +36,9 @@ class _FakeEngine:
     def __init__(self, columns: dict[str, list[str]]):
         self._columns = columns
 
+    def address_replicas(self, sql):
+        return sql  # this stand-in's tables are all read where the statement names them
+
     async def execute_engine(self, sql, *a, **k):
         assert sql.startswith("SHOW COLUMNS FROM ")
         table = sql.split('"')[1]

@@ -112,6 +112,9 @@ def install(path: str) -> None:
         _write("source", sql, source_id, params)
         return await real_open_stream(self, source_id, sql, params)
 
+    def address_replicas(self, sql):
+        return sql  # this stand-in's tables are all read where the statement names them
+
     async def execute_engine(self, sql, params=None, **kwargs):  # type: ignore[no-untyped-def]
         _write("engine", sql, None, params)
         return await real_engine(self, sql, params, **kwargs)

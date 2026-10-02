@@ -85,7 +85,7 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         """Object/lake sources on cloud storage attach as a ZERO-COPY Databricks external table (an
         ``ATTACH_R`` SCAN — REQ-987): install + validate the Unity Catalog credential/external location
         for the bucket, then create an external table at the compiler's physical name. Every other
-        source LANDs (handled by ``materialize_source``), so attach is a no-op for it — never a copy."""
+        source is replicated (``land_table``), so attach is a no-op for it — never a copy."""
         from provisa.federation.connector_base import LIVE_IN_PLACE
 
         entry = self._engine_for().resolve(source)
@@ -102,6 +102,9 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
             self._host, self._token, location=d["location"], credential=d["credential"]
         )
         catalog, schema, table = self._phys_parts(source)
+        from provisa.federation.replica_guard import refuse_live_in_write_surface
+
+        refuse_live_in_write_surface(schema, table)  # REQ-1912
         cur = self._conn.cursor()
         try:
             cur.execute(f"CREATE CATALOG IF NOT EXISTS `{catalog}`")
@@ -114,10 +117,26 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
             cur.close()
         return None
 
+    def detach_source(self, source: Any) -> None:
+        """Remove the live external table of ``source``'s table, when the engine read it in place.
+        Called when the table's reads move to its replica (REQ-1912). Dropping an external table
+        removes its catalog entry only; the files at its location are the source's and stay."""
+        from provisa.federation.connector_base import LIVE_IN_PLACE
+
+        if self._engine_for().resolve(source).mechanism not in LIVE_IN_PLACE:
+            return
+        catalog, schema, table = self._phys_parts(source)
+        cur = self._conn.cursor()
+        try:
+            cur.execute(f"DROP TABLE IF EXISTS `{catalog}`.`{schema}`.`{table}`")
+        finally:
+            cur.close()
+
     def _phys_parts(self, source: Any) -> tuple[str, str, str]:
-        """The (catalog, schema, table) the compiler emits for a source — catalog = the source id with
-        hyphens normalized (``core.catalog._to_catalog_name``), so a self-only Databricks engine lands
-        each source into its own Unity Catalog and the governed query resolves natively (no view)."""
+        """The (catalog, schema, table) the compiler emits for a source the engine reads in place —
+        catalog = the source id with hyphens normalized (``core.catalog._to_catalog_name``), a
+        Unity Catalog of the source's own. A replica lives in the warehouse catalog's replicas
+        schema instead (REQ-1912)."""
         from provisa.core.catalog import _to_catalog_name
 
         return _to_catalog_name(source.id), source.schema_name, source.table_name
@@ -178,44 +197,6 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
 
         return active_org_schema(org_id, "_mv_cache")
 
-    async def materialize_source(
-        self,
-        source: Any,
-        columns: list[tuple[str, str]],
-        rows: list[dict],
-        *,
-        change_signal: str = "ttl",
-        watermark_column: str | None = None,
-        pk_columns: list[str] | None = None,
-    ) -> None:
-        """LAND a source into the warehouse at its compiler-physical name (REQ-987, REQ-990). Self-only:
-        the landed Delta table IS the physical relation the governed query reads — no separate mat table
-        or view. Columnar bulk write via ``land_databricks_native`` — a large batch takes the bulk COPY
-        INTO from a staged Parquet object when a stage is configured, else the multi-row INSERT."""
-
-        from provisa.federation.databricks_store import land_databricks_native
-
-        catalog, schema, table = self._phys_parts(source)
-        stage = self._stage_from_env()
-        cur = self._conn.cursor()
-        try:
-            await self._land_guard.run(
-                lambda: land_databricks_native(
-                    cur,
-                    catalog=catalog,
-                    schema=schema,
-                    table=table,
-                    columns=columns,
-                    rows=rows,
-                    change_signal=change_signal,
-                    watermark_column=watermark_column,
-                    stage=stage,
-                    pk_columns=pk_columns,
-                ),
-            )
-        finally:
-            cur.close()
-
     async def land_table(
         self,
         *,
@@ -229,27 +210,13 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         match_floor: float = 0.0,
         shape: str | None = None,
     ) -> str:
-        """The ``NativeEngineBackend.land_source_table``/``hasattr(runtime, "land_table")`` seam
-        every other native engine's runtime uses (REQ-1730) — before this,
-        ``DatabricksFederationRuntime`` had no method by this name (only ``materialize_source``, a
-        different signature taking a full ``source`` object), so the seam silently fell through to
-        the BASE ``EngineBackend`` default: landing through ``store_writer``'s async path against
-        ``self.engine.materialize_store()`` — the shared PLATFORM Postgres, not Databricks itself.
-        Same class of bug as BigQuery's own (``BigQueryFederationRuntime.land_table``), found by the
-        same live probe (REQ-1730 engine-swap harness, 2026-09-21): a redis source rebooted into
-        Databricks queried 0 rows with no error.
+        """Land ``rows`` into the Delta table ``schema.table`` of the warehouse catalog (REQ-987,
+        REQ-990, REQ-1730). Columnar bulk write via ``land_databricks_native`` — a large batch takes
+        the bulk COPY INTO from a staged Parquet object when a stage is configured, else the
+        multi-row INSERT. For a replica, ``schema`` is the replicas schema (REQ-1912).
 
-        UNLIKE BigQuery/Snowflake (a fixed catalog independent of the source), Databricks lands each
-        source into its OWN per-source Unity Catalog (``_phys_parts``'s own docstring; confirmed via
-        ``engine.fixed_catalog_for`` returning ``None`` for ``"databricks"`` — the compiler resolves
-        a per-source name here too), which needs ``source.id`` — the ONE thing this hook's plain
-        ``(schema, table)`` strings don't carry. ``DatabricksBackend.landing_target`` (REQ-1730)
-        folds the catalog into the ``schema`` half it returns (NUL-joined — never a legal identifier
-        character, so it never collides) precisely so this seam can recover it; unpacked here rather
-        than duplicating ``_phys_parts``'s own catalog derivation, so both stay driven by the exact
-        same ``_to_catalog_name(source_id)`` call. ``match_floor``/CDC are not shapes
-        ``land_databricks_native`` implements (REPLACE/APPEND only) — raising loud on CDC rather
-        than silently mishandling it."""
+        REPLACE/APPEND only: CDC is not a shape ``land_databricks_native`` implements, and is
+        refused rather than mishandled."""
 
         from provisa.core.change_signal import CDC, select_landing_shape
         from provisa.federation.databricks_store import land_databricks_native
@@ -260,7 +227,7 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
             raise NotImplementedError(
                 "Databricks native landing has no CDC shape; use replace or append"
             )
-        catalog, real_schema = schema.split("\x00", 1)
+        catalog = self._catalog
         stage = self._stage_from_env()
         cur = self._conn.cursor()
         try:
@@ -268,7 +235,7 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
                 lambda: land_databricks_native(
                     cur,
                     catalog=catalog,
-                    schema=real_schema,
+                    schema=schema,
                     table=table,
                     columns=columns,
                     rows=rows,
@@ -280,20 +247,26 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
             )
         finally:
             cur.close()
-        return f"{catalog}.{real_schema}.{table}"
+        return f"{catalog}.{schema}.{table}"
 
-    async def attach_landed_source(
-        self, source: Any, columns: list[tuple[str, str]], *, pk_columns: list[str] | None = None
-    ) -> None:
-        """Eager reconcile (boot/registration): converge the landing table at the physical name
-        WITHOUT landing data (DDL only), so the catalog is complete at startup and survives restart."""
+    async def reconcile_replica(
+        self,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        pk_columns: list[str] | None = None,
+    ) -> str:
+        """Eager reconcile (boot/registration): converge the replica ``schema.table`` of the
+        warehouse catalog WITHOUT copying data (DDL only), so the store is complete at startup and
+        survives restart. ``schema`` is the replicas schema (REQ-1912)."""
 
         from provisa.federation.databricks_store import reconcile_databricks_native
 
-        catalog, schema, table = self._phys_parts(source)
+        catalog = self._catalog
         cur = self._conn.cursor()
         try:
-            await self._land_guard.run(
+            return await self._land_guard.run(
                 lambda: reconcile_databricks_native(
                     cur,
                     catalog=catalog,
@@ -307,22 +280,14 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
             cur.close()
 
     async def reconcile_landed_metadata(self, plan: Any) -> int:
-        """Apply the landed model's keys, descriptions and tags (REQ-1657): informational
-        PRIMARY/FOREIGN KEY constraints, COMMENTs and ``provisa_governance:*`` tags on each landed
-        Delta table. No view layer: the landed table is the compiler's physical name."""
+        """Apply the replicated model's keys, descriptions and tags (REQ-1657): informational
+        PRIMARY/FOREIGN KEY constraints, COMMENTs and ``provisa_governance:*`` tags on each replica,
+        at the address the plan carries for it."""
 
-        from provisa.core.catalog import _to_catalog_name
         from provisa.federation.databricks_store import reconcile_metadata_native
         from provisa.federation.landed_keys import plan_targets
 
-        targets = plan_targets(
-            plan,
-            replica_for=lambda t: (
-                (self._catalog, t.schema_name, t.table_name)
-                if t.source_id == "__derived__"
-                else (_to_catalog_name(t.source_id), t.schema_name, t.table_name)
-            ),
-        )
+        targets = plan_targets(plan)
 
         def _run() -> int:
             cur = self._conn.cursor()

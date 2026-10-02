@@ -394,7 +394,23 @@ class FederationEngine:  # REQ-840
                     f"(only {sorted(self._supported_materialize_stores)} does); an org's own store, "
                     "materialize_store_url, or $PROVISA_MATERIALIZE_URL named an unsupported one"
                 )
+        # REQ-1912: replicas and materialized views each have a schema of their own, so a store
+        # with no schemas is refused here — the one door every write and every read address
+        # comes through.
+        from provisa.federation.replica_address import require_schema_capable_store
+
+        require_schema_capable_store(dsn)
         return dsn
+
+    def replica_store_backend(self) -> str:
+        """The backend a replicated source's rows land into, as the plan validates it (REQ-846):
+        the engine's native store, or — for an engine that has none (Trino) — the type of its
+        materialization store, which it reads back through its own connector for that type."""
+        if self.native_store is not None:
+            return self.native_store
+        from sqlalchemy import make_url
+
+        return make_url(self.materialize_store()).get_backend_name()
 
     # -- capability discovery (REQ-904) ----------------------------------------
 
@@ -772,8 +788,8 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
         # REQ-1730: real ClickHouse has no catalog/schema split at all — verified live, a literal
         # 3-part reference is a SYNTAX_ERROR (position after the second dot) — same limitation as
         # real PostgreSQL's own "no cross-database queries", which is why pg carries this identical
-        # trait. ClickHouseBackend.landing_target and ClickHouseFederationRuntime.attach_source both
-        # fold the per-source catalog into the schema half instead (fold_catalog_into_schema).
+        # trait. A statement's catalog is folded into the schema half instead
+        # (fold_catalog_into_schema).
         catalog_qualified=False,
         backend_factory=ClickHouseBackend,  # in-process terminal driving ClickHouseFederationRuntime
         # REQ-1730/REQ-1633: ClickHouse is its own warehouse — a MATERIALIZED source must land INTO
@@ -954,8 +970,8 @@ def _mssql_warehouse_materialize_default(
     ``MssqlWarehouseRuntime`` connects from those two separate env vars, never a single DSN (its own
     ``_new_runtime``/``__init__``), so there is no URL for ``_own_warehouse_materialize_default`` to
     read. The synthetic ``mssql://server/database`` DSN this returns is never actually connected
-    with — only ``store_scope.store_schema``'s own scheme check (``_schema_capable``, "not sqlite")
-    consults it, deciding the landing SCHEMA name; the real connection is
+    with — only the store's scheme is read from it (a store with no schemas is refused,
+    ``replica_address.require_schema_capable_store``); the real connection is
     ``MssqlWarehouseRuntime``'s own, already-open one."""
     server_env = "FABRIC_SQL_SERVER" if name == "fabric" else "SYNAPSE_SQL_SERVER"
     database_env = "FABRIC_DATABASE" if name == "fabric" else "SYNAPSE_DATABASE"

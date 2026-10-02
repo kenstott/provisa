@@ -8,102 +8,124 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Where an environment's landed replicas go, and what retiring it may remove (REQ-1622).
+"""Where an environment's replicas go, and what retiring it may remove (REQ-1622, REQ-1912).
 
-Pure logic — no store is opened. The one test that would open one asserts the refusal that
-happens BEFORE any connection, which is the whole guarantee: ``drop_env_store`` declines a
-schema this module did not name rather than connecting and deciding afterwards.
+Every org environment has a replicas schema of its own, named for the org and the environment, so
+no two environments and no two orgs write the same replica. A store with no schemas cannot give
+one and is refused. Retiring an environment drops its replicas schema and never prod's.
 """
 
+# Requirements: REQ-1622, REQ-1912, REQ-1620
+
 from __future__ import annotations
+
+from contextlib import asynccontextmanager
 
 import pytest
 
 from provisa.core.environments import PROD
-from provisa.federation.store_scope import (
-    ENV_SCHEMA_PREFIX,
-    StoreNotIsolable,
-    dsn_names_env,
-    drop_env_store,
-    store_schema,
+from provisa.core.request_context import reset_current_env, set_current_env
+from provisa.federation.replica_address import (
+    StoreHasNoSchemas,
+    replica_schema,
+    require_schema_capable_store,
 )
+from provisa.federation.store_scope import drop_env_store
 
 PG = "postgresql://u:p@h:5432/store"
 SQLITE = "sqlite:////var/provisa/store.db"
 
 
-# --- prod keeps the store's default namespace ----------------------------------
+def _in_env(env: str | None, org_id: str) -> str:
+    token = set_current_env(env)
+    try:
+        return replica_schema(org_id)
+    finally:
+        reset_current_env(token)
 
 
-def test_prod_on_a_schema_capable_store_is_mat():
-    assert store_schema(PG, PROD) == "mat"
+# --- every org environment has a replicas schema of its own ---------------------
 
 
-def test_prod_on_a_schemaless_store_is_main():
-    assert store_schema(SQLITE, PROD) == "main"
-
-
-# --- every other environment gets a namespace of its own -----------------------
+def test_prod_replicas_schema_is_named_for_the_org():
+    assert _in_env(None, "acme") == "org_acme_replicas"
+    assert _in_env(PROD, "acme") == "org_acme_replicas"
 
 
 def test_non_prod_gets_its_own_schema():
-    assert store_schema(PG, "feature_x") == f"{ENV_SCHEMA_PREFIX}feature_x"
+    assert _in_env("feature_x", "acme") == "org_acme_env_feature_x_replicas"
 
 
 def test_two_environments_do_not_share_a_schema():
-    assert store_schema(PG, "feature_x") != store_schema(PG, "feature_y")
+    assert _in_env("feature_x", "acme") != _in_env("feature_y", "acme")
+    assert _in_env("feature_x", "acme") != _in_env(PROD, "acme")
 
 
-def test_an_expiring_environment_is_not_a_special_case():
-    # The rule is per-environment, not per-expiry: two long-lived environments clobbering each
-    # other's replicas is the same defect with a slower clock.
-    assert store_schema(PG, "ephemeral_ab12").startswith(ENV_SCHEMA_PREFIX)
+def test_two_orgs_do_not_share_a_schema():
+    assert _in_env(PROD, "acme") != _in_env(PROD, "globex")
+    assert _in_env("feature_x", "acme") != _in_env("feature_x", "globex")
 
 
-def test_a_name_that_is_not_an_environment_is_refused():
-    with pytest.raises(ValueError):
-        store_schema(PG, "not a name")
+# --- a store with no schemas is refused, for every environment -------------------
 
 
-# --- a store whose own address already names the environment -------------------
+def test_a_schemaless_store_is_refused_naming_the_store():
+    with pytest.raises(StoreHasNoSchemas) as excinfo:
+        require_schema_capable_store(SQLITE)
+    message = str(excinfo.value)
+    assert "'sqlite'" in message
+    assert "Replicas and materialized views are each written to a schema" in message
+    assert excinfo.value.dsn_scheme == "sqlite"
 
 
-def test_a_templated_dsn_already_addresses_the_environment():
-    assert dsn_names_env("sqlite:////var/store_feature_x.db", "feature_x") is True
+@pytest.mark.parametrize(
+    "dsn", [PG, "duckdb:////var/provisa/materialize.duckdb", "mssql://server/warehouse"]
+)
+def test_a_store_with_schemas_is_accepted(dsn):
+    require_schema_capable_store(dsn)
 
 
-def test_prod_is_never_read_as_a_templated_dsn():
-    assert dsn_names_env("postgresql://h/prod_store", PROD) is False
+def test_the_engine_refuses_a_schemaless_store_where_it_resolves_its_store(monkeypatch):
+    """``materialize_store()`` is the one door every replica address and every write comes
+    through, so the refusal there covers both — and the start, which resolves the store."""
+    from provisa.federation.engine import build_engine
+
+    monkeypatch.setenv("PROVISA_MATERIALIZE_URL", SQLITE)
+    with pytest.raises(StoreHasNoSchemas):
+        build_engine("duckdb").materialize_store()
 
 
-def test_a_templated_schemaless_store_keeps_its_default_schema():
-    assert store_schema("sqlite:////var/store_feature_x.db", "feature_x") == "main"
+# --- what retire may drop -------------------------------------------------------
 
 
-def test_a_templated_schema_capable_store_keeps_mat():
-    assert store_schema("postgresql://h/store_feature_x", "feature_x") == "mat"
+@pytest.fixture
+def store(monkeypatch):
+    """The store write face, recording the statements issued and the DSN they went to."""
+    seen: list[tuple[str, str]] = []
 
+    class _Conn:
+        def __init__(self, dsn: str) -> None:
+            self._dsn = dsn
 
-# --- the refusal, and what it tells the author ---------------------------------
+        async def execute_core(self, stmt) -> None:
+            seen.append((self._dsn, str(stmt)))
 
+    @asynccontextmanager
+    async def _connection(dsn: str):
+        yield _Conn(dsn)
 
-def test_a_schemaless_untemplated_store_is_refused_for_a_non_prod_environment():
-    with pytest.raises(StoreNotIsolable) as excinfo:
-        store_schema(SQLITE, "feature_x")
-    assert "${scope:ENV}" in str(excinfo.value)
-    assert excinfo.value.env == "feature_x"
-
-
-# --- what retire may drop ------------------------------------------------------
+    monkeypatch.setattr("provisa.federation.store_writer.store_connection", _connection)
+    return seen
 
 
 @pytest.mark.asyncio
-async def test_retire_declines_a_store_it_did_not_namespace():
-    # A DSN that already addressed the environment is the AUTHOR's store; its lifetime is the
-    # author's to state, so nothing is dropped and nothing is even connected to.
-    assert await drop_env_store("postgresql://h/store_feature_x", "feature_x") is None
+async def test_retire_drops_the_environments_replicas_schema(store):
+    dropped = await drop_env_store(PG, "acme", "feature_x")
+    assert dropped == "org_acme_env_feature_x_replicas"
+    assert store == [(PG, 'DROP SCHEMA IF EXISTS "org_acme_env_feature_x_replicas" CASCADE')]
 
 
 @pytest.mark.asyncio
-async def test_retire_never_reaches_prods_schema():
-    assert await drop_env_store(PG, PROD) is None
+async def test_retire_never_reaches_prods_schema(store):
+    assert await drop_env_store(PG, "acme", PROD) is None
+    assert store == [], "retiring prod connected to the store"

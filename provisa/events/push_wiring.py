@@ -134,7 +134,6 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
         return []
 
     from provisa.api.admin.db_queries import fetch_tables
-    from provisa.federation.backend import _env_store_schema
     from provisa.federation.registry_view import registered_sources
 
     async with db.acquire() as conn:
@@ -146,7 +145,6 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
     if not hasattr(state, "push_listener_tasks"):
         state.push_listener_tasks = []
 
-    store_schema = _env_store_schema(engine.materialize_store_dsn())
     started: list[LongLived] = []
 
     for tbl in tables:
@@ -183,13 +181,10 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
         provider, watch_target = built
         row_materialize = bool(tbl.get("row_materialize"))  # REQ-1865
 
-        land_schema, land_table = engine.landing_target(
-            store_schema=store_schema,
-            source_id=src.id,
-            source_type=src.type,
-            schema_name=tbl["schema_name"],
-            table_name=tbl["table_name"],
+        address = engine.replica_address(
+            source_id=src.id, schema_name=tbl["schema_name"], table_name=tbl["table_name"]
         )
+        land_schema, land_table = address.schema, address.table
         # A threading.Event: the listener polls is_set() on its own thread, and shutdown sets it
         # from another — an asyncio.Event is not safe to set across threads.
         disconnect = threading.Event()

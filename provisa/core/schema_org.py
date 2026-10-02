@@ -1134,6 +1134,20 @@ event_status = Table(
     ),
 )
 
+# REQ-1912 / REQ-826 replica state: one row per replica of a source table, shared by every worker
+# and instance. ``promoted`` is the automatic-promotion decision (a Hot-N table past its
+# threshold); the replica build's own state is added to this same row. Keyed by the table's
+# registered identity, source first. V1: schema-defined, no migration.
+replica_state = Table(
+    "replica_state",
+    metadata,
+    Column("source_id", Text, primary_key=True),
+    Column("schema_name", Text, primary_key=True),
+    Column("table_name", Text, primary_key=True),
+    Column("promoted", Boolean, nullable=False, server_default=false()),
+    Column("promoted_at", DateTime(timezone=True)),
+)
+
 # REQ-983 preserved snapshots: a point-in-time dataset MATERIALIZED-AND-SEALED because it is NOT
 # reconstructible from current state + retained event history — the one PIT form that genuinely
 # departs from the NRT ideal (contrast the reconstructible PIT of REQ-958/965/967). DECLARED (never

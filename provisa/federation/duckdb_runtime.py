@@ -90,14 +90,6 @@ def build_vss_index_connection(
     return con
 
 
-def _mat_table_name(source: Any) -> str:
-    """The internal ``mat`` schema table name for a landed (source, physical table). Keyed by the
-    source id AND its physical schema/table so a multi-table materialize-only source lands each
-    table in its own store table instead of colliding on the source id. Only the runtime references
-    it (through the physical-named view it creates); the compiler never sees it."""
-    return f"{source.id}__{source.schema_name}__{source.table_name}"
-
-
 class _CatalogGate:
     """Readers-writer gate over the shared DuckDB connection's catalog.
 
@@ -156,8 +148,16 @@ class _CatalogGate:
 
 # REQ-1901: a `mat_store.<schema>.<table>` read on the engine connection (quoted or bare parts).
 _MAT_STORE_REF = re.compile(
-    r'(?<![\w"])"?mat_store"?\s*\.\s*("?)([^".\s]+)\1\s*\.\s*("?)([^".\s,;()]+)\3'
+    r'(?<![\w"])"?mat_store"?\s*\.\s*(?:"([^"]+)"|([^".\s]+))'
+    r'\s*\.\s*(?:"([^"]+)"|([^".\s,;()]+))'
 )
+
+
+def _store_ref(match: re.Match[str]) -> tuple[str, str]:
+    """The (schema, table) a ``_MAT_STORE_REF`` match names."""
+    return match.group(1) or match.group(2), match.group(3) or match.group(4)
+
+
 _LOCAL_STORE_SCHEMA = "_mat_store_local"
 
 
@@ -189,14 +189,12 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self._httpfs_loaded = False  # httpfs INSTALL/LOAD for S3-compatible (e.g. R2) sources
         self._store_attached = False  # materialization-store ATTACH (distinct from source attaches)
         # REQ-1901: set instead of a `mat_store` ATTACH when the store is embedded DuckDB — see
-        # ensure_materialize_attached. `_store_relations` maps this connection's own exposed
-        # physical name -> (schema, table) in the store, for the query-time refresh in run/
-        # run_sync/run_arrow/run_arrow_stream that re-registers a fresh Arrow snapshot from the
-        # broker immediately before any query touching it executes.
+        # ensure_materialize_attached. A statement's `mat_store.<schema>.<table>` reads (a replica,
+        # a materialized view) are served by the query-time refresh in run/run_sync/run_arrow/
+        # run_arrow_stream, which copies a fresh snapshot from the broker before the query runs.
         self._store_broker: Any = None
-        self._store_relations: dict[str, tuple[str, str]] = {}
         # Guards the register()+CREATE TABLE pair in _refresh_store_relations: run()/run_arrow()
-        # dispatch to a thread pool, so two concurrent queries touching the same landed table
+        # dispatch to a thread pool, so two concurrent queries touching the same store table
         # would otherwise race registering under the same temp name.
         self._store_relation_lock = threading.Lock()
         # local copy target -> the store canary it was copied at (see _copy_store_table).
@@ -286,14 +284,32 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             if secret_ddl:
                 self._con.execute(secret_ddl)
             scan = details["view_ddl"].split(" AS ", 1)[1]
-            self._drop_replica_exposure(source, phys)
             self._con.execute(f"CREATE OR REPLACE VIEW {phys} AS {scan}")
         else:  # ATTACH postgres / sqlite / extension source once, then view the remote table
             raw_alias = self._attach_raw(source, details)
             remote_schema = details.get("remote_schema", source.schema_name)
             remote = f'"{raw_alias}"."{remote_schema}"."{source.table_name}"'
-            self._drop_replica_exposure(source, phys)
             self._con.execute(f"CREATE OR REPLACE VIEW {phys} AS SELECT * FROM {remote}")
+
+    def detach_source(self, source: Any) -> None:
+        """Remove the live exposure of ``source``'s table from this engine: the view at its
+        catalog-physical name (checked against the catalog, so nothing else is dropped) and any
+        ClickHouse HTTP relation registered for it. Called when the table's reads move to its
+        replica (REQ-1912): nothing on the engine may then read the source."""
+        from provisa.core.catalog import _to_catalog_name
+
+        parts = [_to_catalog_name(source.id), source.schema_name, source.table_name]
+        with self._ch_lock:
+            self._ch_relations.pop((parts[0].lower(), parts[1].lower(), parts[2].lower()), None)
+        if parts[0] not in self._phys_catalogs:
+            return  # nothing of this source was ever exposed on this connection
+        is_view = self._con.execute(
+            "SELECT 1 FROM duckdb_views() WHERE database_name = ? AND schema_name = ? "
+            "AND view_name = ?",
+            parts,
+        ).fetchone()
+        if is_view is not None:
+            self._con.execute(f'DROP VIEW "{parts[0]}"."{parts[1]}"."{parts[2]}"')
 
     def _attach_clickhouse(self, source: Any, details: dict) -> None:
         """REQ-899: register a ClickHouse table for the query-time HTTP read. Loads httpfs, creates
@@ -661,24 +677,11 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     _NO_EXTENSION_TYPES = frozenset({"duckdb"})  # core store type: no INSTALL/LOAD needed
 
     def mv_store_schema(self, org_id: str) -> str:
-        """The schema MVs materialize into — the SAME store schema source-landing writes to (``mat`` /
-        ``main``). The embedded store is already the org's isolated store, so ``org_id`` is unused
-        (no org-scoped namespace needed, unlike a shared Postgres store-engine)."""
-        del org_id
-        return self._store_schema()
+        """The schema materialized views are written to: one that holds nothing else (REQ-1912).
+        Replicas have their own (``replica_address.replica_schema``)."""
+        from provisa.federation.replica_address import mv_schema
 
-    def _store_schema(self) -> str:
-        """The schema the landed replicas live in WITHIN the store. Schema-capable stores (postgres)
-        isolate them under ``mat``; a schema-less store (sqlite) has no namespaces, so they land in
-        its default ``main`` schema. Landing, reconcile, and the engine's READ view all use this.
-
-        REQ-1622: and WHICH environment's, because a landed table is named from the source id, which
-        every environment shares. Prod keeps ``mat``/``main``; another environment gets its own
-        namespace, or is refused when the store has none to give."""
-        from provisa.core.request_context import active_env
-        from provisa.federation.store_scope import store_schema
-
-        return store_schema(self._store_dsn(), active_env())
+        return mv_schema(org_id)
 
     def _store_dsn(self) -> str:
         """The materialization-store DSN: the explicit constructor override, else the engine's
@@ -710,9 +713,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         against the store through `materialize_broker.get_broker()` — the one process-wide (or, if
         elected, cross-process) singleton connection (see that module). This runtime's own `self._con`
         never holds `mat_store` attached; `self._store_broker` is set instead, and every duckdb-store
-        call site below (materialize_source/attach_landed_source/land_table/apply_cdc_events/
-        reconcile_mv_table/persist_mv_table/_expose_landed, plus the query-time relation refresh in
-        run/run_sync/run_arrow/run_arrow_stream) goes through it."""
+        call site below (reconcile_replica/land_table/apply_cdc_events/reconcile_mv_table/
+        persist_mv_table, plus the query-time relation refresh in run/run_sync/run_arrow/
+        run_arrow_stream) goes through it."""
         dsn = self._store_dsn()
         if not self._store_attached:
             from sqlalchemy import make_url
@@ -748,70 +751,24 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         cache through it against ``mat_store.*``, landing in the store (not DuckDB's own storage)."""
         return self._con
 
-    async def materialize_source(
+    async def reconcile_replica(
         self,
-        source: Any,
-        columns: list[tuple[str, str]],
-        rows: list[dict],
         *,
-        change_signal: str = "ttl",
-        watermark_column: str | None = None,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
         pk_columns: list[str] | None = None,
-    ) -> None:
-        """LAND a source with no connector into the materialization store, then expose it at its
-        catalog-physical name through the store attach.
-
-        The batch land shape is chosen from the effective change_signal (REQ-932): a poll signal
-        with a watermark AMENDS (append the watermark-filtered delta); every other batch is a full
-        REPLACE. Hard-delete CDC is the separate streaming path (subscriptions.cdc_landing) — a push
-        signal's one-shot materialize is a full snapshot seed."""
-        store = self.ensure_materialize_attached()  # errors if the store is not configured
-        mat_table = _mat_table_name(source)  # unique per (source, physical table) — no collision
+    ) -> str:
+        """Eager reconcile (boot / (re)registration): converge the replica ``schema.table`` in the
+        store to ``columns`` — it survives restart and is recreated on a drift — WITHOUT copying
+        data (that is the refresh's job). Nothing is created on the engine: a read addresses the
+        replica in the store (REQ-1912). The engine never writes the store."""
+        self.ensure_materialize_attached()
         if self._store_is_duckdb():
-            # REQ-1901: through the broker singleton, never this connection (see
-            # ensure_materialize_attached — a duckdb store is never ATTACHed here at all).
-            self._store_broker.land(
-                self._store_schema(),
-                mat_table,
-                columns,
-                rows,
-                change_signal,
-                watermark_column,
-            )
-        else:
-            # Land through the ONE server-store write face — the engine never writes that store.
-            await store_writer.land(
-                self._store_dsn(),
-                schema=self._store_schema(),
-                table=mat_table,
-                columns=columns,
-                rows=rows,
-                change_signal=change_signal,
-                watermark_column=watermark_column,
-                pk_columns=pk_columns,
-            )
-        self._expose_landed(source, store, mat_table)  # the engine only READS the landed replica
-
-    async def attach_landed_source(
-        self, source: Any, columns: list[tuple[str, str]], *, pk_columns: list[str] | None = None
-    ) -> None:
-        """Eager reconcile + attach (boot / (re)registration): converge the landing table in the
-        store to ``columns`` — survives restart, recreated on a config drift — and expose the
-        engine's READ view over it, WITHOUT landing data (that is the refresh's job). Splitting the
-        DDL from the DML makes the catalog complete at startup. The engine never writes the store."""
-        store = self.ensure_materialize_attached()
-        mat_table = _mat_table_name(source)
-        if self._store_is_duckdb():
-            self._store_broker.reconcile(self._store_schema(), mat_table, columns)
-        else:
-            await store_writer.reconcile_table(
-                self._store_dsn(),
-                schema=self._store_schema(),
-                table=mat_table,
-                columns=columns,
-                pk_columns=pk_columns,
-            )
-        self._expose_landed(source, store, mat_table)
+            return self._store_broker.reconcile(schema, table, columns)
+        return await store_writer.reconcile_table(
+            self._store_dsn(), schema=schema, table=table, columns=columns, pk_columns=pk_columns
+        )
 
     async def land_table(
         self,
@@ -826,10 +783,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         match_floor: float = 0.0,
         shape: str | None = None,
     ) -> str:
-        """Land ``rows`` into a store table already named ``schema.table`` (the per-fire source
-        refresh path — no source-object physical-name exposure, that is boot-time reconcile's job).
-        Duckdb-native dispatch mirroring ``materialize_source``: through the engine's own connection
-        for an embedded DuckDB store (REQ-989), else the server-store write face."""
+        """Land ``rows`` into the store table ``schema.table`` (the per-fire source refresh path).
+        Duckdb-native dispatch: through the store broker for an embedded DuckDB store (REQ-989),
+        else the server-store write face."""
         self.ensure_materialize_attached()
         if self._store_is_duckdb():
             # REQ-1901: the land goes through the store broker, a synchronous, blocking call. It
@@ -894,7 +850,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         pk_columns: list[str] | None = None,
     ) -> str:
         """Converge an MV's OWN store table to its output ``columns`` (REQ-970). Duckdb-native
-        dispatch mirroring ``attach_landed_source``: through the engine's own connection for an
+        dispatch mirroring ``reconcile_replica``: through the engine's own connection for an
         embedded DuckDB store (REQ-989), else the server-store write face."""
         self.ensure_materialize_attached()
         if self._store_is_duckdb():
@@ -915,7 +871,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         match_floor: float = 0.0,
     ) -> str:
         """Land an MV's recomputed ``rows`` into its OWN store table under the declared PERSISTENCE
-        outcome (REQ-965). Duckdb-native dispatch mirroring ``materialize_source``: through the
+        outcome (REQ-965). Duckdb-native dispatch mirroring ``land_table``: through the
         engine's own connection for an embedded DuckDB store (REQ-989), else the server-store write
         face."""
         self.ensure_materialize_attached()
@@ -940,74 +896,17 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self.ensure_materialize_attached()
         return self._store_broker if self._store_is_duckdb() else None
 
-    def _expose_landed(self, source: Any, store: str, mat_table: str) -> None:
-        """Expose the landed store table under the engine's physical name.
-
-        REQ-1901: for the embedded-DuckDB store this connection never ATTACHes `mat_store` at all
-        (see ensure_materialize_attached) — so `phys` cannot be a DuckDB VIEW over it. Instead
-        `phys` is recorded in `_store_relations`; the query-time refresh in run/run_sync/run_arrow/
-        run_arrow_stream re-registers it as a live-fetched local relation immediately before any
-        query referencing it executes. Every OTHER store backend still ATTACHes normally, so its
-        `phys` stays a real VIEW, unchanged from before."""
-        phys = self._phys_name(source)
-        if self._store_is_duckdb():
-            # A table that was attached live before it was replicated left its live VIEW at this
-            # name; the query-time copy below makes a TABLE of it, which DuckDB refuses over a view.
-            self._drop_live_view(source, phys)
-            self._store_relations[phys] = (self._store_schema(), mat_table)
-            return
-        # OR REPLACE: the name reads the replica from now on, whatever view (a live one, from
-        # before the table was replicated) held it — IF NOT EXISTS left the live view in place.
-        self._con.execute(
-            f"CREATE OR REPLACE VIEW {phys} AS "
-            f'SELECT * FROM {store}."{self._store_schema()}"."{mat_table}"'
-        )
-
-    def _physical_parts(self, source: Any) -> list[str]:
-        from provisa.core.catalog import _to_catalog_name
-
-        return [_to_catalog_name(source.id), source.schema_name, source.table_name]
-
-    def _drop_live_view(self, source: Any, phys: str) -> None:
-        """Drop the view at ``phys`` (the engine's own in-memory exposure of a table), if one is
-        there — checked against the catalog, so a table is never dropped as a view."""
-        is_view = self._con.execute(
-            "SELECT 1 FROM duckdb_views() WHERE database_name = ? AND schema_name = ? "
-            "AND view_name = ?",
-            self._physical_parts(source),
-        ).fetchone()
-        if is_view is not None:
-            self._con.execute(f"DROP VIEW {phys}")
-
-    def _drop_replica_exposure(self, source: Any, phys: str) -> None:
-        """The table is read live again: forget the replica exposed at ``phys`` — its
-        ``_store_relations`` entry and the local copy of the store table made for queries. The
-        replica itself, in the store, is not touched here."""
-        self._store_relations.pop(phys, None)
-        self._store_copy_canary.pop(phys, None)
-        is_table = self._con.execute(
-            "SELECT 1 FROM duckdb_tables() WHERE database_name = ? AND schema_name = ? "
-            "AND table_name = ?",
-            self._physical_parts(source),
-        ).fetchone()
-        if is_table is not None:
-            self._con.execute(f"DROP TABLE {phys}")
-
     def _refresh_store_relations(self, duck_sql: str) -> str:
-        """REQ-1901: rehydrate, from the broker singleton, every embedded-DuckDB-store relation
+        """REQ-1901: rehydrate, from the broker singleton, every embedded-DuckDB-store table
         `duck_sql` reads, and return the SQL to execute.
 
-        Two kinds of reference are served, both copied ONLY when the statement names them (never
-        the whole store), under `_store_relation_lock`, through the same transient register() ->
-        CREATE OR REPLACE TABLE path:
-
-        * a landed source's physical name recorded by `_expose_landed` (`_store_relations`) is
-          re-materialized under that same name, so the SQL is unchanged;
-        * a direct `mat_store.<schema>.<table>` reference (an MV's read target —
-          `materialize_store_target` names `mat_store`) is copied into a local table and the
-          reference rewritten to it. This connection never ATTACHes the store file (the exclusive
-          DuckDB file lock), and no stand-in `mat_store` catalog is attached either: a WRITE aimed at
-          `mat_store` on this connection must keep failing loudly, not land in memory and vanish.
+        A read of the store is a `mat_store.<schema>.<table>` reference — a replica addressed in
+        the replicas schema (REQ-1912), or a materialized view in its own. Each is copied ONLY when
+        the statement names it (never the whole store), under `_store_relation_lock`, into a local
+        table, and the reference is rewritten to that table. This connection never ATTACHes the
+        store file (the exclusive DuckDB file lock), and no stand-in `mat_store` catalog is
+        attached either: a WRITE aimed at `mat_store` on this connection must keep failing loudly,
+        not land in memory and vanish.
 
         A real TABLE, not a VIEW over a `register()`-ed Python object: `register()` binds a
         "replacement scan" scoped to the connection object it was called on, but every query runs
@@ -1016,24 +915,18 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         this connection can read, so the registration is only a transient staging step.
 
         Matching is textual — a false positive (a name inside an unrelated literal) only costs one
-        extra broker round-trip; a false negative cannot happen, since a read of the relation must
+        extra broker round-trip; a false negative cannot happen, since a read of the store must
         name it."""
         if self._store_broker is None:
             return duck_sql
-        refs = {(m.group(2), m.group(4)) for m in _MAT_STORE_REF.finditer(duck_sql)}
-        wanted = [(phys, st) for phys, st in self._store_relations.items() if phys in duck_sql]
-        if not refs and not wanted:
-            return duck_sql
-        with self._store_relation_lock:
-            for phys, (schema, table) in wanted:
-                self._copy_store_table(schema, table, phys)
-            if refs:
-                self._con.execute(f'CREATE SCHEMA IF NOT EXISTS "{_LOCAL_STORE_SCHEMA}"')
-                for schema, table in refs:
-                    self._copy_store_table(schema, table, _local_store_name(schema, table))
+        refs = {_store_ref(m) for m in _MAT_STORE_REF.finditer(duck_sql)}
         if not refs:
             return duck_sql
-        return _MAT_STORE_REF.sub(lambda m: _local_store_name(m.group(2), m.group(4)), duck_sql)
+        with self._store_relation_lock:
+            self._con.execute(f'CREATE SCHEMA IF NOT EXISTS "{_LOCAL_STORE_SCHEMA}"')
+            for schema, table in refs:
+                self._copy_store_table(schema, table, _local_store_name(schema, table))
+        return _MAT_STORE_REF.sub(lambda m: _local_store_name(*_store_ref(m)), duck_sql)
 
     def _copy_store_table(self, schema: str, table: str, target: str) -> None:
         """Make `target` on this connection current with the store's `schema.table` (lock held).

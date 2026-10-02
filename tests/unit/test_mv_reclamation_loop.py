@@ -24,6 +24,9 @@ class _RecordingEngine:
         self._tables = list(tables)
         self.executed = []
 
+    def address_replicas(self, sql):
+        return sql  # this stand-in's tables are all read where the statement names them
+
     async def execute_engine(self, sql, *, authorization=None):
         del authorization  # REQ-1760: execute_engine's caller-accountability param; this fake
         # only records the SQL, verify_execution_authorization has its own unit tests.

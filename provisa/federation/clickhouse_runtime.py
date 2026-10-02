@@ -368,12 +368,15 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         source), which ``strip_catalog`` already drops the catalog for entirely — the SAME
         unqualified name this method has always created. ``fold_catalog_into_schema`` (this
         engine's OWN new ``catalog_qualified=False``) only ever applies to ``Route.ENGINE``, which
-        MATERIALIZED sources take (``attach_landed_source``/``land_table``, below, fold their own
-        naming independently) — a live-attached source under Route.ENGINE (e.g. joined with
+        MATERIALIZED sources take (their replicas are addressed in the replicas schema, REQ-1912)
+        — a live-attached source under Route.ENGINE (e.g. joined with
         another source) is a genuinely untested combination this session's scope did not reach;
         reverted here after breaking test_clickhouse_runtime_e2e.py's own ``"fin"."widget"``
         assertions, which exercise this exact method directly and predate REQ-1730.
         """
+        from provisa.federation.replica_guard import refuse_live_in_write_surface
+
+        refuse_live_in_write_surface(source.schema_name, source.table_name)  # REQ-1912
         entry = self._engine.resolve(source)  # picks the (clickhouse, source_type) connector
         details = entry.details
         self._backend.command(f'CREATE DATABASE IF NOT EXISTS "{source.schema_name}"')
@@ -401,21 +404,36 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
             self._backend.command(f"CREATE TABLE IF NOT EXISTS {staged} ENGINE = {clause}")
         self._backend.command(f"CREATE VIEW IF NOT EXISTS {phys} AS SELECT * FROM {staged}")
 
-    # -- landing terminals (REQ-1730/REQ-1633) ----------------------------------
+    def detach_source(self, source: Any) -> None:
+        """Remove the live view of ``source``'s table. Called when the table's reads move to its
+        replica (REQ-1912): no query can then read the source through this engine."""
+        from provisa.federation.clickhouse_store import _lit
 
-    async def attach_landed_source(
-        self, source: Any, columns: list[tuple[str, str]], *, pk_columns: list[str] | None = None
+        rows, _ = self._backend.query(
+            "SELECT engine FROM system.tables WHERE database = "
+            f"{_lit(source.schema_name)} AND name = {_lit(source.table_name)}"
+        )
+        if rows and rows[0][0] == "View":  # only what a live attach created is dropped
+            self._backend.command(f'DROP VIEW "{source.schema_name}"."{source.table_name}"')
+
+    # -- replica terminals (REQ-1730/REQ-1633) ----------------------------------
+
+    async def reconcile_replica(
+        self,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        pk_columns: list[str] | None = None,
     ) -> str:
-        """Eager reconcile (boot/registration): converge the landed table at the physical name
-        WITHOUT landing data (DDL only), so the catalog is complete at startup and survives
-        restart. REQ-1633: ClickHouse had neither this nor ``land_table`` before — one of only two
-        engines (with MssqlWarehouseRuntime) implementing none of the three landing terminals."""
+        """Eager reconcile (boot/registration): converge the replica ``schema.table`` WITHOUT
+        copying data (DDL only), so the store is complete at startup and survives restart.
+        ``schema`` is the replicas schema (REQ-1912) — a ClickHouse database that holds only
+        replicas."""
 
-        from provisa.compiler.naming import source_to_catalog
         from provisa.federation.clickhouse_store import reconcile_clickhouse_native
 
-        database = f"{source_to_catalog(source.id)}_{source.schema_name}"
-        parts = (database, source.table_name)
+        parts = (schema, table)
         return await self._land_guard.run(
             lambda: reconcile_clickhouse_native(
                 self._backend, parts=parts, columns=columns, pk_columns=pk_columns
@@ -444,9 +462,7 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         change to ``_own_warehouse_materialize_default``), not ClickHouse itself, and ClickHouse has
         no automatic bridge reading FROM a separate Postgres landing table.
 
-        ``schema`` here is ``ClickHouseBackend.landing_target``'s own already-folded
-        ``{catalog}_{schema_name}`` (REQ-1730) — used directly as the database, unlike
-        ``attach_landed_source`` above (which folds it itself from a full ``source`` object)."""
+        ``schema`` is the replicas schema (REQ-1912), used directly as the database."""
 
         from provisa.core.change_signal import CDC, select_landing_shape
         from provisa.federation.clickhouse_store import land_clickhouse_native

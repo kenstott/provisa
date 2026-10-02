@@ -33,6 +33,12 @@ from provisa.compiler.sql_gen import compile_query  # noqa: E402
 from provisa.compiler.context import build_context  # noqa: E402
 from provisa.compiler.sql_rewrite import rewrite_semantic_to_catalog_physical  # noqa: E402
 from provisa.federation.duckdb_runtime import DuckDBFederationRuntime  # noqa: E402
+from provisa.federation.replica_address import address_replicas  # noqa: E402
+from tests.integration.replica_seed import (  # noqa: E402
+    REPLICAS_SCHEMA,
+    routes_to,
+    seed_replica,
+)
 from tests.helpers import ALL_DATA_CAPABILITIES  # noqa: E402
 
 _FILES = Path(__file__).parent.parent.parent / "demo" / "files"
@@ -118,11 +124,15 @@ async def test_runtime_federates_all_demo_source_types():
         rt.attach_source(_src("cust", "csv", "customers", str(_FILES / "customers.csv")))
         rt.attach_source(_src("ordr", "sqlite", "orders", str(_FILES / "orders.sqlite")))
         rt.attach_source(_src("prod", "parquet", "products", str(_FILES / "products.parquet")))
-        # MATERIALIZE: a non-attachable openapi source landed into the PG store, then attached.
-        await rt.materialize_source(
-            _src("evt", "openapi", "events"),
-            columns=[("id", "int"), ("order_id", "int"), ("kind", "text")],
-            rows=[
+        # REPLICATE: a non-attachable openapi source is replicated into the PG store, in the
+        # replicas schema. Nothing is created at the table's registered name (REQ-1912).
+        replica_schema, replica_table = await seed_replica(
+            rt,
+            "evt",
+            "main",
+            "events",
+            [("id", "int"), ("order_id", "int"), ("kind", "text")],
+            [
                 {"id": 1, "order_id": 1, "kind": "shipped"},
                 {"id": 2, "order_id": 2, "kind": "placed"},
             ],
@@ -147,11 +157,24 @@ async def test_runtime_federates_all_demo_source_types():
         first = dict(zip(res.column_names, res.rows[0]))
         assert "firstName" in first["customer"] and "category" in first["product"]
 
-        # the materialized openapi source is queryable on the same engine (catalog-physical name)
-        evt = await rt.execute('SELECT count(*) AS n FROM "evt"."main"."events"')
+        # the replicated openapi source is read on the same engine at its replica's address: the
+        # statement names the table catalog-physical and the address pass renames it
+        routes = routes_to(
+            "duckdb",
+            "mat_store",
+            live=("evt", "main", "events"),
+            source_id="evt",
+            schema_name="main",
+            table_name="events",
+        )
+        lowered = address_replicas('SELECT count(*) AS n FROM "evt"."main"."events" AS "e"', routes)
+        assert f'"mat_store"."{replica_schema}"."{replica_table}"' in lowered
+        evt = await rt.execute(lowered)
         assert evt.rows[0][0] == 2
+        with pytest.raises(duckdb.Error):
+            await rt.execute('SELECT count(*) FROM "evt"."main"."events"')  # no exposure there
     finally:
         pg = await asyncpg.connect(dsn=_dsn())
-        await pg.execute("DROP SCHEMA IF EXISTS mat CASCADE")
+        await pg.execute(f'DROP SCHEMA IF EXISTS "{REPLICAS_SCHEMA}" CASCADE')
         await pg.close()
         rt.close()

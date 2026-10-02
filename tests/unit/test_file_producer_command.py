@@ -33,6 +33,9 @@ class _Engine:
         self._result = result
         self.sql: str | None = None
 
+    def address_replicas(self, sql):
+        return sql  # this stand-in's tables are all read where the statement names them
+
     async def execute_engine(self, sql, *a, **k):
         self.sql = sql
         return self._result

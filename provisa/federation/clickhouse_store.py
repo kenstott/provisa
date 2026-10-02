@@ -9,7 +9,7 @@
 # permission from the copyright holder.
 
 """ClickHouse native landing terminals (REQ-1730/REQ-1633): the DDL/type-mapping/land helpers
-``ClickHouseFederationRuntime.attach_landed_source``/``land_table`` are built on. ClickHouse had
+``ClickHouseFederationRuntime.reconcile_replica``/``land_table`` are built on. ClickHouse had
 neither terminal before this — REQ-1633's own audit flagged it as one of only two engines
 (ClickHouse, MssqlWarehouseRuntime) implementing none of the three landing terminals at all.
 

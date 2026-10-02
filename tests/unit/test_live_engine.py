@@ -28,6 +28,9 @@ class _BridgeEngine:
     def __init__(self, conn) -> None:
         self._conn = conn
 
+    def address_replicas(self, sql):
+        return sql  # this stand-in's tables are all read where the statement names them
+
     async def execute_engine(self, sql, params=None, **_kw):
         from provisa.executor.trino import execute_trino
 

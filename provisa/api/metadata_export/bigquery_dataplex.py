@@ -23,7 +23,7 @@ exposes (``snowflake_runtime.py``, ``databricks_runtime.py``, ...).
 Wired through the same injected seam as the Snowflake adapter — ``set_runtime_resolver`` —
 rather than reaching into ``provisa.api.org_runtime``/``AppState`` directly, so this module
 stays free of the data-plane object graph and stays testable with an injected fake runtime.
-Until REQ-1633 gives BigQuery an ``attach_landed_source`` landing terminal, ``publish`` finds
+Until a runtime resolver is wired (``set_runtime_resolver``), ``publish`` finds
 no runtime with that attribute for a BigQuery-backed org and reports nothing published — the
 documented "otherwise skipped" state in REQ-1636.
 
@@ -133,7 +133,7 @@ class BigQueryDataplexExport(MetadataExport):  # REQ-1636
         runtime = _get_runtime(snapshot.org_id)
         # REQ-1633: no landing terminal for this org's runtime (not yet implemented for
         # BigQuery) means there is nothing to resolve a member table's identity against.
-        if runtime is None or not hasattr(runtime, "attach_landed_source"):
+        if runtime is None or not hasattr(runtime, "reconcile_replica"):
             return result
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
             for product in snapshot.data_products:

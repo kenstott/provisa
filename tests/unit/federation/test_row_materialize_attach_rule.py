@@ -30,6 +30,9 @@ from provisa.federation.query_residency import (
 
 pytestmark = pytest.mark.unit
 
+# REQ-1912: a statement bound for the engine names a row-level table at its replica.
+_NODE_REPLICA = '"org_acme_replicas"."graph__s__order_node"'
+
 
 def _table(source_id: str, table_name: str):
     from provisa.core.models import Column, Table
@@ -54,6 +57,9 @@ class _NoEngineCalls:
     def __init__(self) -> None:
         self.engine = build_duckdb_engine()
         self.calls: list[str] = []
+
+    def address_replicas(self, sql):
+        return sql  # this stand-in's tables are all read where the statement names them
 
     async def execute_engine(self, sql, *_a, **_k):
         self.calls.append(sql)
@@ -100,7 +106,7 @@ def test_row_materialize_applies_only_where_the_engine_cannot_attach(registry):
 def test_a_declared_attach_table_runs_no_key_pushdown(registry):
     """The query JOINs the attachable table; pushdown must not probe, fetch or land it."""
     engine = _NoEngineCalls()
-    state = SimpleNamespace(federation_engine=engine)
+    state = SimpleNamespace(federation_engine=engine, org_id="acme")
     sql = 'SELECT o.id FROM "s"."orders" AS o JOIN "s"."order_docs" AS d ON d.id = o.id'
     assert asyncio.run(pushdown_row_materialize(state, sql, "duckdb", reader_role=None)) == set()
     assert engine.calls == []  # no probe query at all
@@ -110,8 +116,8 @@ def test_a_non_attachable_row_materialize_join_still_probes(registry):
     """Control: the SAME join shape against the table DuckDB cannot attach does run the probe --
     proving the test above passes because of the attach rule, not a vacuous pushdown."""
     engine = _NoEngineCalls()
-    state = SimpleNamespace(federation_engine=engine)
-    sql = 'SELECT o.id FROM "s"."orders" AS o JOIN "s"."order_node" AS n ON n.id = o.id'
+    state = SimpleNamespace(federation_engine=engine, org_id="acme")
+    sql = f'SELECT o.id FROM "s"."orders" AS o JOIN {_NODE_REPLICA} AS n ON n.id = o.id'
     asyncio.run(pushdown_row_materialize(state, sql, "duckdb", reader_role=None))
     assert len(engine.calls) == 1
 
@@ -146,6 +152,9 @@ def test_a_failed_attach_is_an_error_not_a_row_cache_detour(registry):
 
 
 class _FailingProbe(_NoEngineCalls):
+    def address_replicas(self, sql):
+        return sql  # this stand-in's tables are all read where the statement names them
+
     async def execute_engine(self, sql, *_a, **_k):
         raise RuntimeError("probe boom")
 
@@ -153,13 +162,16 @@ class _FailingProbe(_NoEngineCalls):
 def test_a_failed_key_pushdown_probe_raises(registry):
     """A failed probe used to be logged and skipped, leaving the table unlanded and the query
     answered from whatever the row cache already held."""
-    state = SimpleNamespace(federation_engine=_FailingProbe())
-    sql = 'SELECT o.id FROM "s"."orders" AS o JOIN "s"."order_node" AS n ON n.id = o.id'
+    state = SimpleNamespace(federation_engine=_FailingProbe(), org_id="acme")
+    sql = f'SELECT o.id FROM "s"."orders" AS o JOIN {_NODE_REPLICA} AS n ON n.id = o.id'
     with pytest.raises(RuntimeError, match="probe boom"):
         asyncio.run(pushdown_row_materialize(state, sql, "duckdb", reader_role=None))
 
 
 class _ProbeFindsKeys(_NoEngineCalls):
+    def address_replicas(self, sql):
+        return sql  # this stand-in's tables are all read where the statement names them
+
     async def execute_engine(self, sql, *_a, **_k):
         self.calls.append(sql)
         return SimpleNamespace(column_names=["id", "__pushdown_order_node"], rows=[(1, 1), (2, 2)])
@@ -195,7 +207,7 @@ def test_a_failed_keyed_fetch_raises(registry, monkeypatch):
         return sources
 
     monkeypatch.setattr("provisa.federation.registry_view.registered_sources", _sources)
-    state = SimpleNamespace(federation_engine=_ProbeFindsKeys())
-    sql = 'SELECT o.id FROM "s"."orders" AS o JOIN "s"."order_node" AS n ON n.id = o.id'
+    state = SimpleNamespace(federation_engine=_ProbeFindsKeys(), org_id="acme")
+    sql = f'SELECT o.id FROM "s"."orders" AS o JOIN {_NODE_REPLICA} AS n ON n.id = o.id'
     with pytest.raises(RuntimeError, match="Max query size exceeded"):
         asyncio.run(pushdown_row_materialize(state, sql, "duckdb", reader_role=None))

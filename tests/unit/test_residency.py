@@ -224,8 +224,11 @@ class _FakeBackend:
         self.calls = []
         self._impl = EngineBackend.materialize_pending
 
-    def landing_target(self, *, store_schema, source_id, source_type, schema_name, table_name):
-        return store_schema, f"{source_id}__{schema_name}__{table_name}"
+    def replica_address(self, state, **kw):
+        # the base resolver materialize_pending writes to (REQ-1912)
+        from provisa.federation.backend import EngineBackend
+
+        return EngineBackend.replica_address(self, state, **kw)  # type: ignore[arg-type]
 
     async def land_source_table(self, state, *, schema, table, columns, rows, **kw):
         self.calls.append(
@@ -258,17 +261,14 @@ def _registry_is_config(monkeypatch):
 
 
 async def test_materialize_pending_lands_each_stale_source_table(monkeypatch):
-    """REQ-1661: the base backend lands every table of a stale MATERIALIZED source at the engine's
-    landing address through its store write face -- the event loop's own path."""
-    import provisa.federation.backend as backend_mod
-
-    monkeypatch.setattr(backend_mod, "_env_store_schema", lambda dsn: "mat")
+    """REQ-1661: the base backend lands every table of a stale MATERIALIZED source at its replica
+    address through its store write face -- the event loop's own path."""
     monkeypatch.setattr(
         "provisa.federation.plan.federate", lambda s, e, **kw: Strategy.MATERIALIZED
     )
     src = _source("s1", change_signal="ttl")
     tbl = _table("s1", watermark_column="updated_at")
-    state = SimpleNamespace(config=SimpleNamespace(sources=[src], tables=[tbl]))
+    state = SimpleNamespace(config=SimpleNamespace(sources=[src], tables=[tbl]), org_id="acme")
     _registry_is_config(monkeypatch)
     backend = _FakeBackend()
     loader = _FakeLoader({"events": [{"id": 1, "status": "new"}]})
@@ -277,7 +277,8 @@ async def test_materialize_pending_lands_each_stale_source_table(monkeypatch):
     assert landed == [("s1", "events")]
     assert loader.loaded == [("s1", "events")]
     call = backend.calls[0]
-    assert (call.schema, call.table) == ("mat", "s1__public__events")
+    # REQ-1912: the org's replicas schema, under the one replica name — on every engine
+    assert (call.schema, call.table) == ("org_acme_replicas", "s1__public__events")
     assert call.rows == [{"id": 1, "status": "new"}]
     assert call.columns == [("id", "bigint"), ("status", "text")]
     assert call.pk_columns == ["id"]

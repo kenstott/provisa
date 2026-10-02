@@ -56,6 +56,9 @@ class _Engine:
         self._caps = caps
         self.sqls: list[str] = []
 
+    def address_replicas(self, sql):
+        return sql  # this stand-in's tables are all read where the statement names them
+
     async def execute_engine(self, sql, *a, **k):
         self.sqls.append(sql)
         if "_preflight" in sql:

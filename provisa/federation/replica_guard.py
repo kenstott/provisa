@@ -8,19 +8,26 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A replica is written only into an ordinary table of the store (REQ-826, REQ-1141, REQ-030).
+"""A replica is written only into an ordinary table of its own schema (REQ-1912, REQ-826,
+REQ-1141, REQ-030).
 
 Replicating a source means writing its rows — CREATE, DELETE, INSERT, DROP — into the engine's own
 store. On an engine that also reaches the source live, the live reach is an object in that same
 store: on Postgres a VIEW over a postgres_fdw FOREIGN TABLE, which Postgres will happily write
 THROUGH. A replica write addressed to such an object is a write into the customer's source.
 
-Every replica write therefore asks first what its target is, and proceeds only for an ordinary
-table or no relation at all. Anything else raises :class:`ReplicaTargetError`, which names what is
-there and, where it can be read off the catalog, which foreign server a write would have reached.
-There is no path from a failed check to a write."""
+Every replica write therefore asks first WHERE its target is and WHAT it is. A replica is
+written only into the replicas schema, which holds nothing else (REQ-1912): the write that
+addresses one calls :func:`require_replicas_schema`, and a target in any other schema raises
+:class:`ReplicaSurfaceError`. The store write face then proceeds only for an ordinary table or no
+relation at all; anything else raises :class:`ReplicaTargetError`, which names what is there and,
+where it can be read off the catalog, which foreign server a write would have reached. There is
+no path from a failed check to a write.
 
-# Requirements: REQ-826, REQ-1141, REQ-030
+The same boundary is held from the other side: a live attach never creates anything in a schema
+Provisa writes (:func:`refuse_live_in_write_surface`)."""
+
+# Requirements: REQ-1912, REQ-826, REQ-1141, REQ-030
 
 from __future__ import annotations
 
@@ -74,6 +81,45 @@ class ReplicaTargetError(RuntimeError):
             f"of the store, and {relation} is a {kind}{through}. Writing it would write into the "
             "source, so nothing was written."
         )
+
+
+class ReplicaSurfaceError(RuntimeError):
+    """A replica write was addressed outside the replicas schema, or a live attach was addressed
+    into a schema Provisa writes."""
+
+    def __init__(self, schema: str, table: str, action: str, *, live: bool = False) -> None:
+        self.schema = schema
+        self.table = table
+        self.action = action
+        if live:
+            reason = (
+                f'"{schema}" is a schema Provisa writes replicas or materialized views into, '
+                "which holds nothing else"
+            )
+        else:
+            reason = f'a replica is written only into the replicas schema, and "{schema}" is not it'
+        super().__init__(
+            f'refusing to {action} "{schema}"."{table}": {reason}. Nothing was written.'
+        )
+
+
+def require_replicas_schema(schema: str, table: str, *, action: str) -> None:
+    """Refuse a replica write whose target is not in a replicas schema (REQ-1912). Called where a
+    replica write is addressed — the store write faces below are shared with writes of other
+    kinds (a materialized view, an API result cache, a CTAS into a writable source)."""
+    from provisa.federation.replica_address import is_replicas_schema
+
+    if not is_replicas_schema(schema):
+        raise ReplicaSurfaceError(schema, table, action)
+
+
+def refuse_live_in_write_surface(schema: str, table: str) -> None:
+    """Refuse a live attach (a view, a foreign or external table over a source) addressed into a
+    schema Provisa writes: a source registered under such a schema name cannot be attached live."""
+    from provisa.federation.replica_address import is_write_surface
+
+    if is_write_surface(schema):
+        raise ReplicaSurfaceError(schema, table, "create the live attach at", live=True)
 
 
 def _reach(rows: list[tuple]) -> str | None:
@@ -154,12 +200,12 @@ def require_duckdb_replica_table(
 
 
 class ReplicaUnavailable(RuntimeError):
-    """A read was refused because a replica of its source could not be reconciled."""
+    """A read was refused because the replica of a table it names could not be reconciled."""
 
     def __init__(self, source_id: str, table_name: str, cause: BaseException) -> None:
         self.source_id = source_id
         self.table_name = table_name
         super().__init__(
-            f"source {source_id!r} cannot be read: the replica of its table {table_name!r} could "
-            f"not be reconciled ({type(cause).__name__}: {cause})"
+            f"table {table_name!r} of source {source_id!r} cannot be read: it is served from its "
+            f"replica, which could not be reconciled ({type(cause).__name__}: {cause})"
         )

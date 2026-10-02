@@ -291,27 +291,20 @@ def catalog_name_for_source(state: "AppState", source_type: str, source_id: str)
     """The physical catalog a registered source's tables resolve to under the ACTIVE engine.
 
     Order: (1) a fixed-catalog warehouse engine (see ``fixed_catalog_for_engine``) pins every
-    source to one name; (2) a source whose Trino connector is ITSELF Postgres-backed (REQ-826
-    ``_MATERIALIZE_ONLY`` — its rows are produced by the connector's fetch, not scanned from a
-    relation Trino can reach live) lands DIRECTLY at its registered address with no engine-side
-    redirect view (``TrinoBackend.landing_target``'s own docstring: "no engine-side view layer to
-    redirect a mangled mat name back to the physical name the compiler emits") — so the catalog
-    the compiler must emit is Trino's OWN materialize-store catalog (``materialize_store_target``'s
-    catalog, ``provisa_admin`` — the same Postgres ``reconcile_landed_tables`` writes into), never
-    a per-source name: REQ-842 means no Trino catalog is ever provisioned for a type with no LIVE
-    Trino connector, so a per-source name here would resolve to a catalog that is never created.
+    source to one name; (2) a source Trino cannot read in place (REQ-826 ``_MATERIALIZE_ONLY``, or
+    a connector that only fetches) has no catalog of its own — REQ-842: none is ever provisioned
+    for a type with no LIVE Trino connector — so the compiler names it under Trino's
+    materialize-store catalog (``materialize_store_target``'s catalog, ``provisa_admin``). Its
+    reads are then addressed to its replica in that store's replicas schema (REQ-1912); the name
+    emitted here only identifies the table to that rewrite.
     (3) otherwise the per-source org-scoped name every other engine (DuckDB's own per-source
     ATTACH, a warehouse's per-source external-table catalog, or Trino's OWN live connector for a
     type that has one) actually provisions.
 
     REQ-1730: (2) checks the Trino connector's OWN ``mechanism`` (``LIVE_IN_PLACE`` — ATTACH_RW/
-    ATTACH_R/SCAN — vs FETCH, or no Trino connector at all), never ``is_adapter_fetched`` — a
-    DIFFERENT question (does DuckDB's introspection produce rows by running a query) that a type
-    can answer True to while STILL having its own LIVE Trino connector (prometheus, whose rows
-    Trino scrapes directly — routing it through provisa_admin landed it on a catalog nothing ever
-    populated, TABLE_NOT_FOUND on every query; google_sheets is the same case, ATTACH_R). redis is
-    the inverse case, already excluded from adapter-fetched entirely since Trino reaches it live
-    too.
+    ATTACH_R/SCAN — vs FETCH, or no Trino connector at all) — a type can produce its rows by
+    running a query on another engine while STILL having its own LIVE Trino connector
+    (prometheus, whose rows Trino scrapes directly; google_sheets is the same case, ATTACH_R).
     """
     from provisa.compiler.naming import org_prefixed_catalog
     from provisa.core.request_context import active_env, current_org

@@ -53,6 +53,7 @@ class TestOrgSchema:
             "org_acme_env_dev_mv_cache",
             "org_acme_env_dev_api_cache",
             "org_acme_env_dev_gql_cache",
+            "org_acme_env_dev_replicas",  # REQ-1912
         ]
         assert env_schemas("acme") == [f"org_acme{s}" for s in SCHEMA_SUFFIXES]
 

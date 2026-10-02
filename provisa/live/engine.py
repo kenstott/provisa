@@ -280,7 +280,10 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
             # federated source is pollable regardless of which engine is bound.
             if self._engine is None:
                 raise RuntimeError("LiveEngine has no bound engine for polling")
-            result = await self._engine.execute_engine(incremental_sql)
+            # REQ-1912: a table served from its replica is polled at its replica's address.
+            result = await self._engine.execute_engine(
+                self._engine.address_replicas(incremental_sql)
+            )
             if not result.rows:
                 return
 
@@ -326,7 +329,10 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
         query_id = job.query_id
         if self._engine is None:
             raise RuntimeError("LiveEngine has no bound engine for polling")
-        result = await self._engine.execute_engine(job.sql.rstrip().rstrip(";"))
+        # REQ-1912: a table served from its replica is polled at its replica's address.
+        result = await self._engine.execute_engine(
+            self._engine.address_replicas(job.sql.rstrip().rstrip(";"))
+        )
         rows = [dict(zip(result.column_names, r)) for r in result.rows]
         # Order-independent: sort row reprs so a reordered-but-equal result
         # is not seen as a change.

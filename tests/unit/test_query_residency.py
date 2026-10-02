@@ -130,10 +130,6 @@ class _Backend:
         del kw
         return [s.id for s in sources if s.id not in self.live and is_stale(s.id)]
 
-    def require_reconciled(self, source_ids) -> None:
-        """As EngineBackend.require_reconciled: every replica here reconciled."""
-        del source_ids
-
     def is_first_touch(self, source_id: str) -> bool:
         return source_id not in self._landed_this_process
 
@@ -154,11 +150,14 @@ class _Backend:
                 ]
         return landed
 
-    def landing_target(self, *, store_schema, source_id, source_type, schema_name, table_name):
-        # REQ-1730: a stand-in for the default (catalog_qualified=True) fold — the registered
-        # address, unchanged, matching this fake's own snowflake native_store.
-        del store_schema, source_id, source_type
-        return schema_name, table_name
+    def replica_address(self, state, *, source_id, schema_name, table_name):
+        """As EngineBackend.replica_address: the replicas schema, under the one replica name."""
+        from provisa.federation.replica_address import ReplicaAddress, replica_table_name
+
+        del state
+        return ReplicaAddress(
+            "org_test_replicas", replica_table_name(source_id, schema_name, table_name)
+        )
 
 
 def _state(sources, tables, backend):

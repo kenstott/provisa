@@ -4,18 +4,20 @@
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""REQ-1443: on Trino the landed replica has to live where the compiler reads it.
+"""REQ-1912 (and REQ-1443): on Trino a replica lives in the store's replicas schema, like on every
+engine, and a read is addressed to it there.
 
-Trino's catalog for an adapter-produced source is PG-backed — it resolves
-``<catalog>.<schema>.<table>`` straight to a relation in the Postgres materialization store, with no
-engine-side view layer to redirect a mangled ``mat`` name. So an adapter-produced source (a
-data-quality checker's scan results, an API's fetched pages) lands AT its registered address, while
-an engine-scannable source keeps the internal ``mat`` name — landing that one at its registered
-address would point the read and the write at one relation.
+Trino reads the Postgres materialization store through its ``provisa_admin`` catalog. A source it
+cannot read in place — a data-quality checker's scan results, an API's fetched pages, a sqlite
+file — is served from its replica, and so is a source the operator floors. Every one of them has
+the same address rule: the org's replicas schema, under ``<source>__<schema>__<table>``. No
+source's replica sits at its registered address, where the source's live relation would be.
 
 The reconcile is DDL-only, and it must run: a poll node probes its table's watermark BEFORE the
 first land, so an unresolvable relation would fail the probe and prevent the land that would have
 created it."""
+
+# Requirements: REQ-1912, REQ-1443
 
 from __future__ import annotations
 
@@ -37,11 +39,25 @@ def _rcol(name, data_type: str | None = "bigint", pk=False, nf=None):
 
 
 def _rtbl(sid, schema, tname, cols):
-    return {"source_id": sid, "schema_name": schema, "table_name": tname, "columns": cols}
+    return {
+        "source_id": sid,
+        "schema_name": schema,
+        "table_name": tname,
+        "columns": cols,
+        # the per-table overrides every registry row carries (None = inherit the source's)
+        "prefer_materialized": None,
+        "load_protected": None,
+    }
 
 
 def _src(sid, stype):
-    return SimpleNamespace(id=sid, type=SimpleNamespace(value=stype), change_signal="ttl")
+    return SimpleNamespace(
+        id=sid,
+        type=SimpleNamespace(value=stype),
+        change_signal="ttl",
+        prefer_materialized=False,
+        load_protected=False,
+    )
 
 
 class _FakeConn:
@@ -62,51 +78,58 @@ def _state(cfg, registered, monkeypatch):
         return []
 
     monkeypatch.setattr("provisa.core.repositories.source.list_all", _no_ui_sources)
-    return SimpleNamespace(config=cfg, tenant_db=SimpleNamespace(acquire=lambda: _FakeConn()))
+    return SimpleNamespace(
+        config=cfg, tenant_db=SimpleNamespace(acquire=lambda: _FakeConn()), org_id="acme"
+    )
 
 
 def _backend():
     return TrinoBackend(build_trino_engine())
 
 
-class TestTheLandingAddress:
-    def test_an_adapter_produced_source_lands_at_its_registered_address(self):
-        assert _backend().landing_target(
-            store_schema="mat",
-            source_id="dq-checker",
-            source_type="great_expectations",
-            schema_name="quality",
-            table_name="pets_scan",
-        ) == ("quality", "pets_scan")
+_STATE = SimpleNamespace(org_id="acme")
 
-    def test_a_sqlite_source_lands_at_its_registered_address(self):
-        """REQ-1660: a sqlite file is read by its connector and landed like any other fetched
-        source; on Trino the landed replica IS the physical address the compiler emits."""
-        assert _backend().landing_target(
-            store_schema="mat",
-            source_id="inquiries_sqlite",
-            source_type="sqlite",
-            schema_name="default",
-            table_name="inquiries",
-        ) == ("default", "inquiries")
 
-    def test_an_engine_scannable_source_keeps_the_internal_name(self):
-        assert _backend().landing_target(
-            store_schema="mat",
-            source_id="warehouse_pg",
-            source_type="postgres",
-            schema_name="public",
-            table_name="orders",
-        ) == ("mat", "warehouse_pg__public__orders")
+@pytest.fixture(autouse=True)
+def _a_postgres_store(monkeypatch):
+    backend = _backend()
+    monkeypatch.setattr(type(backend.engine), "materialize_store", lambda _self: "postgresql:///x")
 
-    def test_the_enum_member_reads_the_same_as_the_bare_string(self):
-        assert _backend().landing_target(
-            store_schema="mat",
-            source_id="dq-checker",
-            source_type=SimpleNamespace(value="soda"),
-            schema_name="quality",
-            table_name="pets_scan",
-        ) == ("quality", "pets_scan")
+
+def _address(source_id: str, schema_name: str, table_name: str) -> tuple[str, str]:
+    address = _backend().replica_address(
+        _STATE, source_id=source_id, schema_name=schema_name, table_name=table_name
+    )
+    return address.schema, address.table
+
+
+class TestTheReplicaAddress:
+    def test_an_adapter_produced_source_is_replicated_into_the_replicas_schema(self):
+        assert _address("dq-checker", "quality", "pets_scan") == (
+            "org_acme_replicas",
+            "dq-checker__quality__pets_scan",
+        )
+
+    def test_a_sqlite_source_is_replicated_into_the_replicas_schema(self):
+        """REQ-1660: a sqlite file is read by its connector and replicated like any other fetched
+        source; its replica is not at the registered address."""
+        assert _address("inquiries_sqlite", "default", "inquiries") == (
+            "org_acme_replicas",
+            "inquiries_sqlite__default__inquiries",
+        )
+
+    def test_an_engine_scannable_source_follows_the_same_rule(self):
+        assert _address("warehouse_pg", "public", "orders") == (
+            "org_acme_replicas",
+            "warehouse_pg__public__orders",
+        )
+
+    def test_no_source_type_has_an_address_rule_of_its_own(self):
+        """The rule reads the source's id and its table's names only."""
+        import inspect
+
+        params = inspect.signature(TrinoBackend.replica_address).parameters
+        assert "source_type" not in params
 
 
 @pytest.mark.asyncio
@@ -121,7 +144,6 @@ async def test_reconcile_converges_the_store_table_at_that_address(monkeypatch):
 
     monkeypatch.setattr("provisa.federation.store_writer.reconcile_table", _reconcile_table)
     backend = _backend()
-    monkeypatch.setattr(type(backend.engine), "materialize_store", lambda _self: "postgresql:///x")
     cfg = SimpleNamespace(
         sources=[_src("dq-checker", "great_expectations"), _src("pg", "postgresql")], tables=[]
     )
@@ -140,19 +162,29 @@ async def test_reconcile_converges_the_store_table_at_that_address(monkeypatch):
     assert reconciled == [("dq-checker", "pets_scan")]
     assert calls == [
         {
-            "schema": "quality",
-            "table": "pets_scan",
+            "schema": "org_acme_replicas",
+            "table": "dq-checker__quality__pets_scan",
             "columns": [("check_name", "text"), ("passed", "boolean")],
             "pk_columns": ["check_name"],
         }
     ]
 
 
-def test_a_checker_source_gets_a_trino_catalog():
-    """Without a connector, create_catalog skips the source and the catalog name the compiler emits
-    resolves to nothing — the CATALOG_NOT_FOUND this fixes."""
+def test_a_checker_source_is_reachable_by_replication_and_has_no_catalog_of_its_own():
+    """Trino declares it reaches a checker by fetching (so its results are replicated), and
+    registers no catalog for it: there is nothing live to attach, and its replica is read through
+    the store's own catalog."""
+    from provisa.core import catalog
+    from provisa.federation.connector_base import LIVE_IN_PLACE
     from provisa.federation.trino_connectors import build_trino_connectors
 
     by_type = {c.source_type: c for c in build_trino_connectors()}
     for stype in ("great_expectations", "soda"):
-        assert by_type[stype].trino_connector == "postgresql"
+        assert by_type[stype].mechanism not in LIVE_IN_PLACE
+
+        class _Conn:
+            def cursor(self):
+                raise AssertionError(f"a catalog statement was issued for a {stype} source")
+
+        source = SimpleNamespace(id="dq-checker", type=SimpleNamespace(value=stype))
+        catalog.create_catalog(_Conn(), source, "", catalog_name="dq_checker")  # type: ignore[arg-type]

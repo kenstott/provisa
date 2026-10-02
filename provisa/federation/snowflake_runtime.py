@@ -119,7 +119,7 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         landing database (``ensure_materialize_attached()``), never a per-source one — matching
         ``BigQueryFederationRuntime._phys_parts``'s own use of ``self._project`` for the identical
         reason. A stale per-source catalog here (``_to_catalog_name(source.id)``, predating that
-        model) built the ``attach_landed_source`` view in a database the compiled query never
+        model) built the replica's view in a database the compiled query never
         looks in: reconcile succeeded (the view existed) but every query saw "schema does not
         exist" because it was addressing a DIFFERENT database entirely. Verified live (REQ-1730
         engine-swap harness, 2026-09-20): the first-ever live mongodb -> snowflake run."""
@@ -143,6 +143,9 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         from provisa.federation.snowflake_connectors import stage_and_external_table_ddl
 
         database, schema, table = self._phys_parts(source)
+        from provisa.federation.replica_guard import refuse_live_in_write_surface
+
+        refuse_live_in_write_surface(schema, table)  # REQ-1912
         stage = f"provisa_stg_{table}"
         cur = self._conn.cursor()
         try:
@@ -151,6 +154,21 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         finally:
             cur.close()
         return None
+
+    def detach_source(self, source: Any) -> None:
+        """Remove the live external table of ``source``'s table, when the engine read it in place.
+        Called when the table's reads move to its replica (REQ-1912). A source that was never
+        attached in place has nothing to remove."""
+        from provisa.federation.connector_base import LIVE_IN_PLACE
+        from provisa.federation.snowflake_store import qualified
+
+        if self._engine_for().resolve(source).mechanism not in LIVE_IN_PLACE:
+            return
+        cur = self._conn.cursor()
+        try:
+            cur.execute(f"DROP EXTERNAL TABLE IF EXISTS {qualified(self._phys_parts(source))}")
+        finally:
+            cur.close()
 
     # -- materialization store -------------------------------------------------
 
@@ -184,50 +202,55 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
 
         return active_org_schema(org_id, "_mv_cache")
 
-    def _store_schema(self) -> str:
-        """The landing database's replica schema for the bound environment (``mat`` for prod)."""
-        from provisa.core.request_context import active_env
-        from provisa.federation.store_scope import store_schema
-
-        return store_schema(self._url, active_env())
-
-    def _replica_parts(self, source: Any) -> tuple[str, str, str]:
-        from provisa.federation.snowflake_store import replica_parts
-
-        return replica_parts(
-            self.ensure_materialize_attached(),
-            self._store_schema(),
-            source.id,
-            source.schema_name,
-            source.table_name,
-        )
-
     # -- landing terminal (REQ-1637, REQ-1653) ---------------------------------
 
-    async def attach_landed_source(
-        self, source: Any, columns: list[tuple[str, str]], *, pk_columns: list[str] | None = None
+    async def reconcile_replica(
+        self,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        pk_columns: list[str] | None = None,
     ) -> str:
-        """Eager reconcile (boot / registration): converge the replica in the landing database to
-        ``columns`` + ``pk_columns`` (DDL only, no data) and expose the compiler's physical name as
-        a SECURE VIEW over it. Returns the reconcile outcome."""
+        """Eager reconcile (boot / registration): converge the replica ``schema.table`` of the
+        landing database to ``columns`` + ``pk_columns`` (DDL only, no data). ``schema`` is the
+        replicas schema (REQ-1912). Returns the reconcile outcome."""
 
-        from provisa.federation.snowflake_store import expose_view, reconcile_snowflake_native
+        from provisa.federation.snowflake_store import reconcile_snowflake_native
 
-        replica = self._replica_parts(source)
-        view = self._phys_parts(source)
+        parts = (self.ensure_materialize_attached(), schema, table)
 
         def _run() -> str:
             cur = self._conn.cursor()
             try:
-                outcome = reconcile_snowflake_native(
-                    cur, parts=replica, columns=columns, pk_columns=pk_columns
+                return reconcile_snowflake_native(
+                    cur, parts=parts, columns=columns, pk_columns=pk_columns
                 )
-                expose_view(cur, view=view, replica=replica, replace=outcome == "recreated")
-                return outcome
             finally:
                 cur.close()
 
         return await self._land_guard.run(_run)
+
+    async def publish_replica_view(
+        self, source: Any, *, schema: str, table: str, replace: bool
+    ) -> None:
+        """Publish the per-source SECURE VIEW over the replica ``schema.table``. It is the object
+        the catalog export shares and tags (REQ-1070, REQ-1652); Provisa's own reads do not use it
+        — they address the replica (REQ-1912). ``replace``: the replica was recreated."""
+
+        from provisa.federation.snowflake_store import expose_view
+
+        replica = (self.ensure_materialize_attached(), schema, table)
+        view = self._phys_parts(source)
+
+        def _run() -> None:
+            cur = self._conn.cursor()
+            try:
+                expose_view(cur, view=view, replica=replica, replace=replace)
+            finally:
+                cur.close()
+
+        await self._land_guard.run(_run)
 
     async def land_table(
         self,
@@ -243,7 +266,7 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         shape: str | None = None,
     ) -> str:
         """Land ``rows`` into the replica ``schema.table`` of the landing database (the per-fire
-        refresh path; the replica's DDL is ``attach_landed_source``'s)."""
+        refresh path; the replica's DDL is ``reconcile_replica``'s)."""
 
         from provisa.core.change_signal import select_landing_shape
         from provisa.federation.snowflake_store import land_snowflake_native
@@ -268,29 +291,6 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
 
         return await self._land_guard.run(_run)
 
-    async def materialize_source(
-        self,
-        source: Any,
-        columns: list[tuple[str, str]],
-        rows: list[dict],
-        *,
-        change_signal: str = "ttl",
-        watermark_column: str | None = None,
-        pk_columns: list[str] | None = None,
-    ) -> None:
-        """LAND a source (REQ-825 prep): converge its replica and view, then land the rows."""
-        await self.attach_landed_source(source, columns, pk_columns=pk_columns)
-        _, schema, table = self._replica_parts(source)
-        await self.land_table(
-            schema=schema,
-            table=table,
-            columns=columns,
-            rows=rows,
-            change_signal=change_signal,
-            watermark_column=watermark_column,
-            pk_columns=pk_columns,
-        )
-
     async def reconcile_landed_metadata(self, plan: Any) -> int:
         """Apply the landed model's keys and descriptions (REQ-1652, REQ-1654): PRIMARY/FOREIGN KEY
         constraints on the replicas, PRIMARY_KEY / FOREIGN_KEY column tags on the per-source views,
@@ -301,21 +301,8 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         from provisa.federation.snowflake_store import reconcile_metadata_native
 
         landing_database = self.ensure_materialize_attached()
-        store_schema = self._store_schema()
         targets = plan_targets(
             plan,
-            # An MV's store table IS the object the compiler reads (no view over it); its store
-            # address rides on the plan entry (NativeEngineBackend.reconcile_mv_table). Without one
-            # it sits in the landing database under its registration name.
-            replica_for=lambda t: (
-                (landing_database, t.schema_name, t.table_name)
-                if t.source_id == "__derived__"
-                else (
-                    landing_database,
-                    store_schema,
-                    f"{t.source_id}__{t.schema_name}__{t.table_name}",
-                )
-            ),
             view_for=lambda t: (_to_catalog_name(t.source_id), t.schema_name, t.table_name),
         )
 

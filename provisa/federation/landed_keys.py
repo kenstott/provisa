@@ -105,8 +105,8 @@ class KeyPlan:
     # Every tag id the model defines: a tag of that name found on an object but no longer assigned
     # to it is withdrawn; a tag of any other origin is never touched.
     known_tags: frozenset[str] = frozenset()
-    # An entry whose store address is not derivable from its identity (an MV: registered by id,
-    # stored as mv_<id> in the cache schema) carries it here.
+    # Each entry's store address. It is not derivable from the entry's identity: a replica is
+    # named by the replica rule in the replicas schema, an MV as mv_<id> in the MV schema.
     store_parts: dict[Identity, tuple[str, str, str]] = field(default_factory=dict)
 
 
@@ -340,20 +340,16 @@ async def key_plan_for(state: Any, landed: list[LandedTable]) -> KeyPlan:
 def plan_targets(
     plan: KeyPlan,
     *,
-    replica_for: Any,
     view_for: Any = None,
 ) -> dict[Identity, KeyTarget]:
-    """The plan's tables as store targets. ``replica_for(table) -> Parts`` names the object that
-    carries the keys and comments; ``view_for(table) -> Parts | None`` the view mirroring them, for
-    a store that exposes one (Snowflake). An MV (``__derived__``) is addressed by the store parts
-    the plan carries, when it does: its store table is named for the MV id, not its registration."""
+    """The plan's tables as store targets. Every entry's store address rides on the plan
+    (``plan.store_parts``): a replica is named by the replica rule and a materialized view for its
+    id, neither by its registration (REQ-1912). ``view_for(table) -> Parts | None`` names the view
+    mirroring a replica's keys and comments, for a store that publishes one (Snowflake)."""
     targets: dict[Identity, KeyTarget] = {}
     for ident, t in plan.tables.items():
-        if t.source_id == "__derived__" and ident in plan.store_parts:
-            replica, view = plan.store_parts[ident], None
-        else:
-            replica = replica_for(t)
-            view = None if view_for is None or t.source_id == "__derived__" else view_for(t)
+        replica = plan.store_parts[ident]
+        view = None if view_for is None or t.source_id == "__derived__" else view_for(t)
         targets[ident] = KeyTarget(
             replica=replica,
             view=view,

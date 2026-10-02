@@ -52,6 +52,9 @@ class _DuckEngine:
         self.con = con
 
     # Matches the real engine's signature: REQ-1760 passes a keyword-only authorization per statement.
+    def address_replicas(self, sql):
+        return sql  # this stand-in's tables are all read where the statement names them
+
     async def execute_engine(self, sql: str, params=None, *, authorization=None):
         del params, authorization
         cur = self.con.execute(sql)

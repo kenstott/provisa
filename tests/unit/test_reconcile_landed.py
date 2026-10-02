@@ -5,7 +5,8 @@
 # found in the LICENSE file in the root directory of this source tree.
 
 """REQ-846/932: the schema-currency controller — reconcile_landed_tables converges the store's
-landing schema for MATERIALIZED tables only, skips still-untyped ones, and attaches the read view.
+replica of every table served from one, at its replica address (REQ-1912), and skips still-untyped
+ones. Nothing is created at the table's registered name.
 
 Drives off the design-time REGISTERED tables (control plane: semantic sql names + resolved types),
 not the raw YAML — so the test feeds the registered shape through a fake ``fetch_tables``."""
@@ -30,11 +31,25 @@ def _rcol(name, data_type: str | None = "bigint", pk=False, nf=None):
 
 
 def _rtbl(sid, tname, cols):
-    return {"source_id": sid, "schema_name": "default", "table_name": tname, "columns": cols}
+    return {
+        "source_id": sid,
+        "schema_name": "default",
+        "table_name": tname,
+        "columns": cols,
+        # the per-table overrides every registry row carries (None = inherit the source's)
+        "prefer_materialized": None,
+        "load_protected": None,
+    }
 
 
 def _src(sid, stype):
-    return SimpleNamespace(id=sid, type=SimpleNamespace(value=stype), change_signal="ttl")
+    return SimpleNamespace(
+        id=sid,
+        type=SimpleNamespace(value=stype),
+        change_signal="ttl",
+        prefer_materialized=False,
+        load_protected=False,
+    )
 
 
 class _FakeRuntime:
@@ -44,8 +59,12 @@ class _FakeRuntime:
     def attach_source(self, source):  # exercised by _attach_registered — no-op record
         pass
 
-    async def attach_landed_source(self, source, columns, *, pk_columns=None):
-        self.landed.append((source.id, source.table_name, columns, pk_columns))
+    async def reconcile_replica(self, *, schema, table, columns, pk_columns=None):
+        self.landed.append((schema, table, columns, pk_columns))
+        return "created"
+
+    def ensure_materialize_attached(self) -> str:
+        return "mat_store"
 
 
 class _FakeConn:
@@ -70,7 +89,7 @@ def _state(cfg, registered, monkeypatch):
         return []
 
     monkeypatch.setattr("provisa.core.repositories.source.list_all", _no_ui_sources)
-    return SimpleNamespace(config=cfg, tenant_db=_fake_tenant_db())
+    return SimpleNamespace(config=cfg, tenant_db=_fake_tenant_db(), org_id="acme")
 
 
 @pytest.mark.asyncio
@@ -98,9 +117,15 @@ async def test_reconciles_only_materialized_and_skips_untyped(monkeypatch):
     reconciled = await backend.reconcile_landed_tables(_state(cfg, registered, monkeypatch))
 
     assert reconciled == [("api", "events"), ("api", "mixed")]
+    # REQ-1912: each at its replica address — the org's replicas schema, the one replica name
     assert rt.landed == [
-        ("api", "events", [("id", "bigint"), ("status", "text")], ["id"]),
-        ("api", "mixed", [("val", "text")], []),
+        (
+            "org_acme_replicas",
+            "api__default__events",
+            [("id", "bigint"), ("status", "text")],
+            ["id"],
+        ),
+        ("org_acme_replicas", "api__default__mixed", [("val", "text")], []),
     ]
 
 
@@ -177,6 +202,11 @@ async def test_keys_converge_with_the_tables_from_registration_and_relationships
     assert [
         (e.holder, e.holder_columns, e.referenced, e.referenced_columns) for e in plan.edges
     ] == [("api.default.visits", ("pet_id",), "api.default.pets", ("id",))]
+    # REQ-1912: the plan carries each replica's store address; none is at its registered name
+    assert plan.store_parts == {
+        "api.default.pets": ("mat_store", "org_acme_replicas", "api__default__pets"),
+        "api.default.visits": ("mat_store", "org_acme_replicas", "api__default__visits"),
+    }
     assert plan.withheld[0][0] == "provisa_fk_breed_link"
     assert "not api.default.pets's primary key" in plan.withheld[0][1]
 

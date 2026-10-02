@@ -81,16 +81,17 @@ class BigQueryFederationRuntime:  # REQ — BigQuery federation engine
         return self._engine
 
     def _phys_parts(self, source: Any) -> tuple[str, str, str]:
-        """(project, dataset, table) — the governed physical name. The compiler pins the catalog to
-        the project (via state.source_catalogs), the dataset is the source's schema, so a landed or
-        externally-linked table sits exactly where the governed query reads it."""
+        """(project, dataset, table) — the governed physical name of a table the engine reads in
+        place. The compiler pins the catalog to the project (via state.source_catalogs) and the
+        dataset is the source's schema, so an externally-linked table sits where the governed
+        query reads it. A replica lives in the replicas dataset instead (REQ-1912)."""
         return self._project, source.schema_name, source.table_name  # type: ignore[return-value]
 
     # -- source exposure -------------------------------------------------------
 
     def attach_source(self, source: Any) -> None:
         """Object/lake sources on cloud storage attach as a ZERO-COPY external table (an ``ATTACH_R``
-        SCAN); every other source LANDs (materialize_source), so attach is a no-op for it."""
+        SCAN); every other source is replicated, so attach is a no-op for it."""
         from provisa.federation.connector_base import LIVE_IN_PLACE
 
         entry = self._engine_for().resolve(source)
@@ -101,9 +102,24 @@ class BigQueryFederationRuntime:  # REQ — BigQuery federation engine
         from provisa.federation.bigquery_connectors import external_table_ddl
 
         project, dataset, table = self._phys_parts(source)
+        from provisa.federation.replica_guard import refuse_live_in_write_surface
+
+        refuse_live_in_write_surface(dataset, table)  # REQ-1912
         self._ensure_dataset(dataset)
         self._client.query(external_table_ddl(project, dataset, table, entry.details)).result()
         return None
+
+    def detach_source(self, source: Any) -> None:
+        """Remove the live external table of ``source``'s table, when the engine read it in place.
+        Called when the table's reads move to its replica (REQ-1912)."""
+        from provisa.federation.connector_base import LIVE_IN_PLACE
+
+        if self._engine_for().resolve(source).mechanism not in LIVE_IN_PLACE:
+            return
+        project, dataset, table = self._phys_parts(source)
+        self._client.query(
+            f"DROP EXTERNAL TABLE IF EXISTS `{project}`.`{dataset}`.`{table}`"
+        ).result()
 
     # -- materialization store -------------------------------------------------
 
@@ -129,29 +145,6 @@ class BigQueryFederationRuntime:  # REQ — BigQuery federation engine
 
         self._client.create_dataset(bigquery.Dataset(f"{self._project}.{dataset}"), exists_ok=True)
 
-    async def materialize_source(
-        self,
-        source: Any,
-        columns: list[tuple[str, str]],
-        rows: list[dict],
-        *,
-        change_signal: str = "ttl",
-        watermark_column: str | None = None,
-        pk_columns: list[str] | None = None,
-    ) -> None:
-        """LAND a source into a per-source BigQuery dataset at the compiler-physical name (REQ-987):
-        converge the table (``attach_landed_source``), then a columnar BigQuery LOAD job
-        (WRITE_TRUNCATE for replace, WRITE_APPEND for a poll+watermark delta) — never per-row
-        INSERT. The dataset/table are the physical relation the governed query reads directly."""
-        import asyncio
-
-        from provisa.core.change_signal import APPEND, select_landing_shape
-
-        await self.attach_landed_source(source, columns, pk_columns=pk_columns)
-        _, dataset, table = self._phys_parts(source)
-        append = select_landing_shape(change_signal, watermark_column) == APPEND
-        await asyncio.to_thread(self._load, dataset, table, columns, rows, append)
-
     async def land_table(
         self,
         *,
@@ -165,25 +158,15 @@ class BigQueryFederationRuntime:  # REQ — BigQuery federation engine
         match_floor: float = 0.0,
         shape: str | None = None,
     ) -> str:
-        """The ``NativeEngineBackend.land_source_table``/``hasattr(runtime, "land_table")`` seam
-        every other native engine's runtime uses (REQ-1730) — before this, ``BigQueryFederationRuntime``
-        had no method by this name (only ``materialize_source``, a different signature taking a
-        full ``source`` object), so the seam silently fell through to the BASE ``EngineBackend``
-        default: landing through ``store_writer``'s async path against
-        ``self.engine.materialize_store()`` — the shared PLATFORM Postgres, not BigQuery itself.
-        Verified live (REQ-1730 engine-swap harness, 2026-09-20): a cassandra source rebooted into
-        BigQuery queried 0 rows with no error — the DDL reconcile (``attach_landed_source``,
-        already correctly wired via ``reconcile_landed_tables``) created the right table in
-        BigQuery, but the actual rows landed in a different database entirely.
+        """Land ``rows`` into the table ``schema.table`` of the project (REQ-987, REQ-1730): a
+        columnar BigQuery LOAD job (WRITE_TRUNCATE for replace, WRITE_APPEND for a poll+watermark
+        delta) — never per-row INSERT. The table's shape is converged first.
 
-        Adapts to ``materialize_source``'s own signature: it needs a source-like object for
-        ``_phys_parts`` (``schema_name``/``table_name`` only — confirmed by reading it, no other
-        attribute is read), so this builds the minimal one. ``match_floor``/CDC are not something
-        ``materialize_source`` implements (REPLACE/APPEND only, matching Snowflake/Databricks's
-        own same limitation) — raising loud on CDC rather than silently mishandling it."""
-        from types import SimpleNamespace
+        REPLACE/APPEND only: CDC is not a shape the LOAD job has, and is refused rather than
+        mishandled."""
+        import asyncio
 
-        from provisa.core.change_signal import CDC, select_landing_shape
+        from provisa.core.change_signal import APPEND, CDC, select_landing_shape
 
         del match_floor
         landing_shape = shape or select_landing_shape(change_signal, watermark_column)
@@ -191,28 +174,29 @@ class BigQueryFederationRuntime:  # REQ — BigQuery federation engine
             raise NotImplementedError(
                 "BigQuery native landing has no CDC shape; use replace or append"
             )
-        source = SimpleNamespace(schema_name=schema, table_name=table)
-        await self.materialize_source(
-            source,
-            columns,
-            rows,
-            change_signal=change_signal,
-            watermark_column=watermark_column,
-            pk_columns=pk_columns,
+        await self.reconcile_replica(
+            schema=schema, table=table, columns=columns, pk_columns=pk_columns
         )
+        await asyncio.to_thread(self._load, schema, table, columns, rows, landing_shape == APPEND)
         return f"{schema}.{table}"
 
-    async def attach_landed_source(
-        self, source: Any, columns: list[tuple[str, str]], *, pk_columns: list[str] | None = None
+    async def reconcile_replica(
+        self,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        pk_columns: list[str] | None = None,
     ) -> str:
-        """Eager reconcile (boot / registration, REQ-1658): converge the landed table to
-        ``columns`` + ``pk_columns`` (DDL only, no data), so the catalog is complete at startup and
-        survives restart. Returns the reconcile outcome."""
+        """Eager reconcile (boot / registration, REQ-1658): converge the table ``schema.table``
+        of the project to ``columns`` + ``pk_columns`` (DDL only, no data), so the store is
+        complete at startup and survives restart. For a replica, ``schema`` is the replicas
+        dataset (REQ-1912). Returns the reconcile outcome."""
         import asyncio
 
         from provisa.federation.bigquery_store import reconcile_bigquery_native
 
-        parts = self._phys_parts(source)
+        parts = (self.project, schema, table)
         return await asyncio.to_thread(
             reconcile_bigquery_native,
             self._client,
@@ -222,17 +206,15 @@ class BigQueryFederationRuntime:  # REQ — BigQuery federation engine
         )
 
     async def reconcile_landed_metadata(self, plan: Any) -> int:
-        """Apply the landed model's keys, descriptions and tags (REQ-1658): ``NOT ENFORCED``
+        """Apply the replicated model's keys, descriptions and tags (REQ-1658): ``NOT ENFORCED``
         PRIMARY/FOREIGN KEY constraints, table and column descriptions, and ``provisa_governance_*``
-        labels on each landed table. No view layer: the landed table is the physical name."""
+        labels on each replica, at the address the plan carries for it."""
         import asyncio
 
         from provisa.federation.bigquery_store import reconcile_metadata_native
         from provisa.federation.landed_keys import plan_targets
 
-        targets = plan_targets(
-            plan, replica_for=lambda t: (self._project, t.schema_name, t.table_name)
-        )
+        targets = plan_targets(plan)
         return await asyncio.to_thread(
             reconcile_metadata_native,
             self._client,
@@ -256,7 +238,7 @@ class BigQueryFederationRuntime:  # REQ — BigQuery federation engine
         )
         ref = f"{self._project}.{dataset}.{table}"
         if not rows:
-            # The table already exists (attach_landed_source); a replace with no rows empties it.
+            # The table already exists (reconcile_replica); a replace with no rows empties it.
             if not append:
                 self._client.query(
                     f"TRUNCATE TABLE `{self._project}`.`{dataset}`.`{table}`"

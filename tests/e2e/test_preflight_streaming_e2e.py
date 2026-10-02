@@ -67,6 +67,9 @@ class _DuckEngine(_StoreWriteFace):
         self.con = con
         self._caps = caps
 
+    def address_replicas(self, sql):
+        return sql  # this stand-in's tables are all read where the statement names them
+
     async def execute_engine(self, sql, *a, **k):
         cur = self.con.execute(sql)
         cols = [d[0] for d in cur.description] if cur.description else []

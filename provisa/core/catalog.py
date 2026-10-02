@@ -129,6 +129,12 @@ def create_catalog(
     if trino_connector is None:
         log.warning("No Trino connector for source type %r — skipping catalog creation", stype)
         return
+    from provisa.federation.connector_base import LIVE_IN_PLACE
+
+    if trino_connector.mechanism not in LIVE_IN_PLACE:
+        # REQ-1912: a source Trino cannot read in place is read from its replica, addressed in the
+        # store's replicas schema. It has no catalog of its own: there is nothing live to attach.
+        return
     connector = _validate_identifier(trino_connector.trino_connector)
     props = _build_catalog_properties(source, resolved_password)
 

@@ -68,6 +68,15 @@ async def _noop_land(**_kw):
     return "mat.noop"
 
 
+def _replica_address(*, source_id, schema_name, table_name):
+    """As ``EngineRuntime.replica_address``: the one replica address, for the test org."""
+    from provisa.federation.replica_address import replica_address
+
+    return replica_address(
+        org_id="test", source_id=source_id, schema_name=schema_name, table_name=table_name
+    )
+
+
 def _state(*, ready=True):
     if not ready:
         return SimpleNamespace(tenant_db=None, federation_engine=None, config=None)
@@ -77,6 +86,7 @@ def _state(*, ready=True):
         reconcile_mv_table=_noop_reconcile,
         land_source_table=_noop_land,
         persist_mv_table=_noop_land,
+        replica_address=_replica_address,
     )
     config = SimpleNamespace(
         sources=[
@@ -142,9 +152,11 @@ def _state_with_mv(*, column_types):
         engine=build_duckdb_engine(),
         materialize_store_dsn=lambda: "sqlite://",
         execute_engine=_execute_engine,
+        address_replicas=lambda sql: sql,  # this stand-in serves no table from a replica
         reconcile_mv_table=_noop_reconcile,
         land_source_table=_noop_land,
         persist_mv_table=_noop_land,
+        replica_address=_replica_address,
     )
     mv = SimpleNamespace(
         target_schema="analytics",

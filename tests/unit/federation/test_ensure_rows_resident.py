@@ -43,8 +43,14 @@ def _source(source_id="pg1") -> Source:
 class _FakeBackend:
     dialect = "postgresql"
 
-    def landing_target(self, *, store_schema, source_id, source_type, schema_name, table_name):
-        return store_schema, f"{source_id}__{schema_name}__{table_name}"
+    def replica_address(self, state, *, source_id, schema_name, table_name):
+        """As EngineBackend.replica_address: the one replica name. The schema is the test store's
+        own (a SQLite file stands in for the store here, and ``main`` is the schema it has): what
+        is under test is the row cache, not where the replicas schema lives."""
+        from provisa.federation.replica_address import ReplicaAddress, replica_table_name
+
+        del state
+        return ReplicaAddress("main", replica_table_name(source_id, schema_name, table_name))
 
 
 class _FakeEngineEngine:

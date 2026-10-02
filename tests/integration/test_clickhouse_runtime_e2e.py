@@ -64,6 +64,35 @@ async def test_clickhouse_runtime_federates_csv_source():
         rt.close()
 
 
+async def test_detach_removes_the_live_view_and_nothing_else():
+    """REQ-1912: when a table's reads move to its replica its live view is removed, so no
+    statement can read the source through the engine. A table that is not a view is left alone,
+    and detaching what was never attached does nothing."""
+    rt = ClickHouseFederationRuntime.embedded()
+    try:
+        src = SimpleNamespace(
+            id="cust",
+            type=SimpleNamespace(value="csv"),
+            path=str(_FILES / "customers.csv"),
+            schema_name="sales",
+            table_name="customers",
+            federation_hints={},
+        )
+        rt.attach_source(src)
+        assert rt.run_sync('SELECT count(*) FROM "sales"."customers"').rows[0][0] > 0
+
+        rt.detach_source(src)
+        with pytest.raises(Exception, match="(?i)unknown|doesn't exist|does not exist"):
+            rt.run_sync('SELECT count(*) FROM "sales"."customers"')
+        rt.detach_source(src)  # nothing left: no error
+
+        rt._backend.command('CREATE TABLE "sales"."kept" (id Int32) ENGINE = Memory')
+        rt.detach_source(SimpleNamespace(id="cust", schema_name="sales", table_name="kept"))
+        assert rt.run_sync('SELECT count(*) FROM "sales"."kept"').rows[0][0] == 0
+    finally:
+        rt.close()
+
+
 async def test_clickhouse_runtime_federates_sqlite_source(tmp_path):
     """REQ-1178: the OOTB ClickHouse SQLite connector mounts a SQLite file via the SQLite DATABASE
     engine (auto-exposes every table) and a federated query returns its rows — no server."""

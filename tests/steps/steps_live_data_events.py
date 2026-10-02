@@ -55,6 +55,9 @@ class _FakeEngine:
         self._result = result
         self.sql: str | None = None
 
+    def address_replicas(self, sql):
+        return sql  # this stand-in's tables are all read where the statement names them
+
     async def execute_engine(self, sql: str, *args, **kwargs) -> QueryResult:
         self.sql = sql
         return self._result

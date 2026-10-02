@@ -8,14 +8,15 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Replication writes only into an ordinary table of the store (REQ-826, REQ-1141, REQ-030).
+"""Replication writes only into an ordinary table of the replicas schema (REQ-1912, REQ-826,
+REQ-1141, REQ-030).
 
 The Postgres side of the guard needs a real server and is covered in
-``tests/integration/test_pg_engine_landing_never_writes_source_e2e.py``. Here: the named error,
-the DuckDB store's check, the DuckDB engine's switch between a live and a replicated table in
-both directions, and the state of a table whose replica could not be reconciled."""
+``tests/integration/test_pg_engine_landing_never_writes_source_e2e.py``. Here: the named errors,
+the schema check, the DuckDB store's check, a DuckDB table's live relation and its replica as two
+separate objects, and the state of a table whose replica could not be reconciled."""
 
-# Requirements: REQ-826, REQ-1141, REQ-030
+# Requirements: REQ-1912, REQ-826, REQ-1141, REQ-030
 
 from __future__ import annotations
 
@@ -26,9 +27,12 @@ import pytest
 
 from provisa.core.models import SourceType
 from provisa.federation.replica_guard import (
+    ReplicaSurfaceError,
     ReplicaTargetError,
     ReplicaUnavailable,
+    refuse_live_in_write_surface,
     require_duckdb_replica_table,
+    require_replicas_schema,
 )
 
 
@@ -46,6 +50,45 @@ def test_the_error_names_the_relation_what_it_is_and_what_a_write_would_reach():
         "into the source, so nothing was written."
     )
     assert (error.kind, error.action) == ("view", "write the replica")
+
+
+# -- where a replica may be written, and where a live attach may not be (REQ-1912) ------------------
+
+
+@pytest.mark.parametrize("schema", ["org_acme_replicas", "org_acme_env_feature_x_replicas"])
+def test_a_replica_write_into_a_replicas_schema_is_accepted(schema):
+    require_replicas_schema(schema, "src__public__orders", action="write the replica")
+
+
+@pytest.mark.parametrize(
+    "schema",
+    [
+        "public",  # a source's own schema
+        "src_public",  # a live attach's folded schema
+        "org_acme",  # the control plane
+        "org_acme_mv_cache",  # materialized views have a schema of their own
+        "org_acme_api_cache",
+        "mat",
+    ],
+)
+def test_a_replica_write_anywhere_else_is_refused_naming_the_target(schema):
+    with pytest.raises(ReplicaSurfaceError) as refused:
+        require_replicas_schema(schema, "orders", action="write the replica")
+    assert str(refused.value) == (
+        f'refusing to write the replica "{schema}"."orders": a replica is written only into the '
+        f'replicas schema, and "{schema}" is not it. Nothing was written.'
+    )
+
+
+@pytest.mark.parametrize("schema", ["org_acme_replicas", "org_acme_env_dev_mv_cache"])
+def test_a_live_attach_is_never_created_in_a_schema_provisa_writes(schema):
+    with pytest.raises(ReplicaSurfaceError, match="which holds nothing else"):
+        refuse_live_in_write_surface(schema, "orders")
+
+
+def test_a_live_attach_in_a_sources_own_schema_is_accepted():
+    refuse_live_in_write_surface("src_public", "orders")
+    refuse_live_in_write_surface("replicas", "orders")  # a source may name a schema this
 
 
 # -- the DuckDB store ------------------------------------------------------------------------------
@@ -119,7 +162,7 @@ def test_every_duckdb_store_writer_refuses_a_view_at_the_replicas_name(write):
     assert con.execute("SELECT * FROM elsewhere ORDER BY id").fetchall() == [(1, 1.5), (2, 3.0)]
 
 
-# -- the DuckDB engine: one relation per physical name, whichever way the table switches --------------
+# -- the DuckDB engine: a table's live relation and its replica are two objects (REQ-1912) -----------
 
 
 def _sqlite_source(tmp_path) -> SimpleNamespace:
@@ -147,62 +190,75 @@ def _sqlite_source(tmp_path) -> SimpleNamespace:
 
 
 _COLUMNS = [("id", "integer"), ("amount", "double")]
+_REPLICA = ("org_acme_replicas", "src__main__orders")
 
 
-async def _replicate(runtime, source, rows: list[dict]) -> None:
-    from provisa.federation.duckdb_runtime import _mat_table_name
-
-    await runtime.attach_landed_source(source, _COLUMNS, pk_columns=["id"])
+async def _replicate(runtime, rows: list[dict]) -> None:
+    schema, table = _REPLICA
+    await runtime.reconcile_replica(schema=schema, table=table, columns=_COLUMNS, pk_columns=["id"])
     await runtime.land_table(
-        schema=runtime._store_schema(),
-        table=_mat_table_name(source),
-        columns=_COLUMNS,
-        rows=rows,
-        pk_columns=["id"],
+        schema=schema, table=table, columns=_COLUMNS, rows=rows, pk_columns=["id"]
     )
 
 
-async def test_duckdb_switches_a_table_from_live_to_its_replica_and_back(tmp_path):
-    """The replica holds one row and the source five, so each read says which one answered."""
+async def test_duckdb_reads_a_table_live_at_its_name_and_its_replica_at_its_address(tmp_path):
+    """The replica holds one row and the source five, so each read says which one answered. The
+    two never share a name: replicating a table changes nothing at its live name, and removing
+    the live attach changes nothing at the replica's address."""
+    import duckdb
+
     from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
 
     runtime = DuckDBFederationRuntime(materialize_dsn=f"duckdb:///{tmp_path / 'mat.duckdb'}")
     source = _sqlite_source(tmp_path)
     physical = runtime._phys_name(source)
+    replica = f'mat_store."{_REPLICA[0]}"."{_REPLICA[1]}"'
 
-    async def _rows() -> int:
-        return (await runtime.run(f"SELECT COUNT(*) FROM {physical}")).rows[0][0]
+    async def _rows(relation: str) -> int:
+        return (await runtime.run(f"SELECT COUNT(*) FROM {relation}")).rows[0][0]
 
     runtime.attach_source(source)
-    assert await _rows() == 5  # live
-    await _replicate(runtime, source, [{"id": 1, "amount": 1.5}])
-    assert await _rows() == 1  # the replica
+    assert await _rows(physical) == 5  # live
+    await _replicate(runtime, [{"id": 1, "amount": 1.5}])
+    assert await _rows(replica) == 1  # the replica, where it lives
+    assert await _rows(physical) == 5  # the live name still reads the source
+    runtime.detach_source(source)  # the table's reads moved to its replica
+    with pytest.raises(duckdb.Error):
+        await _rows(physical)  # nothing stands at the live name: the source cannot be read
+    assert await _rows(replica) == 1
     runtime.attach_source(source)
-    assert await _rows() == 5  # live again: the replica's exposure is gone
-    await _replicate(runtime, source, [{"id": 1, "amount": 1.5}, {"id": 2, "amount": 3.0}])
-    assert await _rows() == 2  # and replicated again
+    assert await _rows(physical) == 5  # live again
+    await _replicate(runtime, [{"id": 1, "amount": 1.5}, {"id": 2, "amount": 3.0}])
+    assert await _rows(replica) == 2  # and replicated again
 
 
 # -- a replica that cannot be reconciled -------------------------------------------------------------
 
 
 async def test_a_table_whose_replica_cannot_be_reconciled_is_not_read(monkeypatch):
-    """Reconcile records the failure against that table, goes on to the others, and a read of
-    the table's source is refused with the reason — never answered by whatever is at its name."""
-    from provisa.federation import backend as backend_mod
+    """Reconcile records the failure against that table and goes on to the others. A read that
+    names the table is refused with the reason — never answered by anything else; a read of
+    another table is addressed to its replica as usual."""
+    from provisa.federation import replica_routing
     from provisa.federation.engine import build_engine
     from provisa.federation.native_backend import NativeEngineBackend
+    from provisa.federation.replica_address import (
+        ReplicaRoute,
+        ReplicaRoutes,
+        address_replicas,
+    )
 
     refused = ReplicaTargetError(
-        '"src_public"."orders"', "foreign table", "reconcile the replica at"
+        '"org_acme_replicas"."src__public__orders"', "foreign table", "reconcile the replica at"
     )
     attempts: list[str] = []
 
     class _Runtime:
-        async def attach_landed_source(self, source, columns, *, pk_columns=None):
-            attempts.append(source.table_name)
-            if source.table_name == "orders":
+        async def reconcile_replica(self, *, schema, table, columns, pk_columns=None):
+            attempts.append(table)
+            if table == "src__public__orders":
                 raise refused
+            return "created"
 
     async def _worklist(engine, state):
         src = SimpleNamespace(id="src", type=SourceType.postgresql)
@@ -212,26 +268,52 @@ async def test_a_table_whose_replica_cannot_be_reconciled_is_not_read(monkeypatc
             (other, "public", "customers", [("id", "integer")], ["id"]),
         ]
 
-    monkeypatch.setattr(backend_mod, "landing_worklist", _worklist)
+    monkeypatch.setattr(replica_routing, "landing_worklist", _worklist)
     backend = NativeEngineBackend(build_engine("pg"))
     monkeypatch.setattr(backend, "_runtime_for", lambda state: _Runtime())
+    state = SimpleNamespace(org_id="acme")
 
-    reconciled = await backend.reconcile_landed_tables(SimpleNamespace())
-    assert attempts == ["orders", "customers"]  # the failure did not stop the other table
+    reconciled = await backend.reconcile_landed_tables(state)
+    # the failure did not stop the other table
+    assert attempts == ["src__public__orders", "other__public__customers"]
     assert reconciled == [("other", "customers")]
 
-    backend.require_reconciled(["other"])  # a source with no failed replica reads normally
+    # The routes a read is addressed with hold the backend's own record of the failure.
+    routes = ReplicaRoutes(
+        engine_name="pg",
+        routes={
+            (None, "src_public", "orders"): ReplicaRoute(
+                "src", "orders", (None, "org_acme_replicas", "src__public__orders")
+            ),
+            (None, "other_public", "customers"): ReplicaRoute(
+                "other", "customers", (None, "org_acme_replicas", "other__public__customers")
+            ),
+        },
+        unreconciled=backend.unreconciled,
+    )
+    # a table with no failed replica reads normally, at its replica
+    assert (
+        address_replicas('SELECT * FROM "other_public"."customers" AS "c"', routes)
+        == 'SELECT * FROM "org_acme_replicas"."other__public__customers" AS "c"'
+    )
     with pytest.raises(ReplicaUnavailable) as unavailable:
-        backend.require_reconciled(["other", "src"])
+        address_replicas(
+            'SELECT * FROM "other_public"."customers" AS "c" '
+            'JOIN "src_public"."orders" AS "o" ON "o"."id" = "c"."id"',
+            routes,
+        )
     assert unavailable.value.__cause__ is refused
-    assert "source 'src' cannot be read" in str(unavailable.value)
-    assert "'orders' could not be reconciled" in str(unavailable.value)
+    assert "table 'orders' of source 'src' cannot be read" in str(unavailable.value)
+    assert "could not be reconciled" in str(unavailable.value)
 
     # A later reconcile that succeeds clears the state.
-    monkeypatch.setattr(_Runtime, "attach_landed_source", _ok)
-    await backend.reconcile_landed_tables(SimpleNamespace())
-    backend.require_reconciled(["other", "src"])
+    monkeypatch.setattr(_Runtime, "reconcile_replica", _ok)
+    await backend.reconcile_landed_tables(state)
+    assert (
+        address_replicas('SELECT * FROM "src_public"."orders" AS "o"', routes)
+        == 'SELECT * FROM "org_acme_replicas"."src__public__orders" AS "o"'
+    )
 
 
-async def _ok(self, source, columns, *, pk_columns=None):
+async def _ok(self, *, schema, table, columns, pk_columns=None):
     return "kept"

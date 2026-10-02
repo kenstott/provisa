@@ -15,7 +15,7 @@ runtime to turn a member's ``(source_id, schema_name, table_name)`` into its act
 identity, and to confirm REQ-1633's landing terminal exists before publishing anything. The
 adapter never opens a real BigQuery connection here — ``set_runtime_resolver`` injects a fake
 runtime, exercising exactly the gate ``native_backend.py``'s ``reconcile_landed_tables`` uses
-(``hasattr(runtime, "attach_landed_source")``).
+(``hasattr(runtime, "reconcile_replica")``).
 
 Snowflake Horizon (REQ-1635) is engine-native by a different route — it opens its own
 connection off ``configured_engine_url()`` rather than an injected runtime resolver — and is
@@ -61,8 +61,8 @@ class FakeRuntimeWithLandingTerminal:
     def _phys_parts(self, source: Any) -> tuple[str, str, str]:
         return (f"{source.id}_db", source.schema_name, source.table_name)
 
-    async def attach_landed_source(self, source: Any, columns: Any, *, pk_columns=None) -> None:
-        raise AssertionError("publish() must never call attach_landed_source itself")
+    async def reconcile_replica(self, *, schema: str, table: str, columns: Any, pk_columns=None):
+        raise AssertionError("publish() must never call reconcile_replica itself")
 
 
 class FakeRuntimeWithoutLandingTerminal:

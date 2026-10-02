@@ -89,6 +89,9 @@ async def test_execute_plan_accepts_pipeline_minted_plan():
     class _FakeEngine:
         dialect = "trino"
 
+        def address_replicas(self, sql):
+            return sql  # this stand-in's tables are all read where the statement names them
+
         async def execute_engine(self, sql, params=None, session_hints=None, span_attrs=None):
             return QueryResult(rows=[(1,)], column_names=["n"])
 

@@ -29,6 +29,9 @@ class _FakeEngine:
         self.watermark_values = watermark_values or {}
         self.queries: list[str] = []
 
+    def address_replicas(self, sql):
+        return sql  # this stand-in's tables are all read where the statement names them
+
     async def execute_engine(self, sql, *a, **k):
         self.queries.append(sql)
         if _WATERMARK_SQL_MARK in sql:
@@ -92,6 +95,9 @@ async def test_mixed_sources_gather_independently():
 
 async def test_registry_lookup_failure_is_non_fatal():
     class _BrokenRegistryEngine(_FakeEngine):
+        def address_replicas(self, sql):
+            return sql  # this stand-in's tables are all read where the statement names them
+
         async def execute_engine(self, sql, *a, **k):
             if _WATERMARK_SQL_MARK in sql:
                 raise RuntimeError("provisa_admin catalog unavailable")

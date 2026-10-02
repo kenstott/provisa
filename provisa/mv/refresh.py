@@ -312,7 +312,9 @@ async def _build_refresh_sql(
     path compiles view SQL, so the engine never sees an unresolved semantic schema.
     """
     if mv.sql:
-        return mv.sql
+        # REQ-1912: a table the view reads that is served from its replica is addressed there —
+        # the same rewrite every statement bound for the engine gets.
+        return engine.address_replicas(mv.sql) if engine is not None else mv.sql
 
     if mv.join_pattern:
         jp = mv.join_pattern

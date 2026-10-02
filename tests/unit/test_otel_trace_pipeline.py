@@ -590,6 +590,9 @@ class TestPipelineSpanAttributes:
         class _Engine:
             dialect = "trino"
 
+            def address_replicas(self, sql):
+                return sql  # this stand-in's tables are all read where the statement names them
+
             async def execute_engine(self, sql, params=None, session_hints=None, span_attrs=None):
                 seen["span_attrs"] = span_attrs
                 return QueryResult(rows=[(1,)], column_names=["n"])

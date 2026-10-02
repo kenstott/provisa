@@ -96,7 +96,8 @@ async def profile_table(
     sql = f"SELECT * FROM {fqn} TABLESAMPLE BERNOULLI ({_TABLESAMPLE_PCT}) LIMIT {_SAMPLE_LIMIT}"
 
     try:
-        res = await engine.execute_engine(sql)
+        # REQ-1912: a table served from its replica is sampled at its replica's address.
+        res = await engine.execute_engine(engine.address_replicas(sql))
         raw_rows = res.rows
         columns = res.column_names
     except Exception:
@@ -104,7 +105,9 @@ async def profile_table(
             # Retry without TABLESAMPLE
             try:
                 fqn = f'"{state.catalog_for(source_id)}"."{schema_name}"."{table_name}"'
-                res = await engine.execute_engine(f"SELECT * FROM {fqn} LIMIT {_SAMPLE_LIMIT}")
+                res = await engine.execute_engine(
+                    engine.address_replicas(f"SELECT * FROM {fqn} LIMIT {_SAMPLE_LIMIT}")
+                )
                 raw_rows = res.rows
                 columns = res.column_names
             except Exception as e:

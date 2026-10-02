@@ -335,26 +335,21 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         from provisa.compiler.naming import source_to_catalog
 
         folded_schema = f"{source_to_catalog(source.id)}_{source.schema_name}"
-        cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{folded_schema}"')
-        # The live view and a replica of this table share this one name. A source that was
-        # replicated and is now read live again has its replica TABLE here, and CREATE OR REPLACE
-        # VIEW refuses a table — the stale replica would go on answering reads. It is the engine's
-        # own copy, so it is dropped (as the ordinary table the catalog says it is) to make room.
+        # REQ-1912: this name belongs to the live attach alone. A replica lives in the replicas
+        # schema under its own name, so nothing Provisa writes ever stands here — and the live
+        # view is never created in a schema Provisa writes. Anything other than a view at this
+        # name is not ours to replace.
         from provisa.federation.replica_guard import (
             ReplicaTargetError,
             pg_kind_name,
             pg_relation_kind,
+            refuse_live_in_write_surface,
         )
 
+        refuse_live_in_write_surface(folded_schema, source.table_name)
+        cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{folded_schema}"')
         found = pg_relation_kind(cur, folded_schema, source.table_name)
-        if found is not None and found[1] == "r":
-            _log.warning(
-                'pg: "%s"."%s" is read live again; dropping the replica table that held its name',
-                folded_schema,
-                source.table_name,
-            )
-            cur.execute(f'DROP TABLE "{folded_schema}"."{source.table_name}"')
-        elif found is not None and found[1] != "v":
+        if found is not None and found[1] != "v":
             raise ReplicaTargetError(
                 f'"{folded_schema}"."{source.table_name}"',
                 pg_kind_name(found[1]),
@@ -365,7 +360,21 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             f"AS SELECT * FROM {remote}"
         )
 
-    # -- landing (MATERIALIZE_ONLY sources — no live FDW reach) -----------------
+    def detach_source(self, source: Any) -> None:
+        """Remove the live view of ``source``'s table (dropped AS a view, on the catalog's word
+        that it is one). Called when the table's reads move to its replica (REQ-1912): no query
+        can then read the source through this engine. The foreign table in the connector's own
+        schema stays — the engine-side replica build copies from it."""
+        from provisa.compiler.naming import source_to_catalog
+        from provisa.federation.replica_guard import pg_relation_kind
+
+        folded_schema = f"{source_to_catalog(source.id)}_{source.schema_name}"
+        cur = self._con.cursor()
+        found = pg_relation_kind(cur, folded_schema, source.table_name)
+        if found is not None and found[1] == "v":
+            cur.execute(f'DROP VIEW "{folded_schema}"."{source.table_name}"')
+
+    # -- replicas ---------------------------------------------------------------
 
     def _existing_columns(self, cur: Any, schema: str, table: str) -> list[str]:
         cur.execute(
@@ -398,57 +407,46 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             col_defs.append(f"PRIMARY KEY ({', '.join(f'"{c}"' for c in pk)})")
         return f'CREATE TABLE "{schema}"."{table}" ({", ".join(col_defs)})'
 
-    async def attach_landed_source(
-        self, source: Any, columns: list[tuple[str, str]], *, pk_columns: list[str] | None = None
+    async def reconcile_replica(
+        self,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        pk_columns: list[str] | None = None,
     ) -> str:
-        """``_reconcile_landed`` on the caller's own thread with the connection held, as
-        ``land_table`` runs. ``NativeEngineBackend.reconcile_landed_tables`` awaits this for every
-        native runtime; as a plain ``def`` it returned a ``str`` to that ``await``, which raised
-        ``TypeError`` after the first table and ended the reconcile there."""
+        """``_reconcile_replica`` on the caller's own thread with the connection held, as
+        ``land_table`` runs (``NativeEngineBackend.reconcile_landed_tables`` awaits this for every
+        native runtime)."""
         return await self._land_guard.run(
-            lambda: self._reconcile_landed(source, columns, pk_columns=pk_columns)
+            lambda: self._reconcile_replica(schema, table, columns, pk_columns=pk_columns)
         )
 
-    def _reconcile_landed(
-        self, source: Any, columns: list[tuple[str, str]], *, pk_columns: list[str] | None = None
+    def _reconcile_replica(
+        self,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        *,
+        pk_columns: list[str] | None = None,
     ) -> str:
-        """Eager reconcile (boot/registration, REQ-846/REQ-1651): converge the source's landed
-        table to ``columns`` + ``pk_columns`` (DDL only, no rows — the refresh's job is
-        ``land_table``) — the sync mirror of ``SqlAlchemyFederationRuntime.attach_landed_source``,
-        raw psycopg2 SQL instead of SQLAlchemy Core since this runtime never uses SQLAlchemy.
-        Returns ``created`` | ``kept`` | ``recreated`` (drift = column set/order or PK mismatch).
+        """Eager reconcile (boot/registration, REQ-846/REQ-1651): converge the replica
+        ``schema.table`` to ``columns`` + ``pk_columns`` (DDL only, no rows — the refresh's job is
+        ``land_table``). Returns ``created`` | ``kept`` | ``recreated`` (drift = column set/order
+        or PK mismatch).
 
-        The schema is ``{catalog}_{schema_name}``, not bare ``schema_name`` — MUST match
-        ``PgBackend.landing_target``'s own fold exactly (its own docstring has the full reasoning:
-        this engine's ``catalog_qualified=False`` means the compiler folds the catalog into the
-        schema rather than stripping it, since two MATERIALIZED sources can otherwise share a
-        native ``schema_name`` and collide once catalog qualification is gone). This method is
-        reached independently of ``landing_target`` (``reconcile_landed_tables`` calls it directly
-        off the registered-table row, not through the backend's ``landing_target`` seam), so it
-        must recompute the SAME fold here rather than trust a value threaded through."""
-        from provisa.compiler.naming import source_to_catalog
+        ``schema`` is the replicas schema (REQ-1912), which holds only replicas: the source's
+        live view lives under its own folded schema and is never touched from here."""
+        from provisa.federation.replica_guard import (
+            require_pg_replica_table,
+            require_replicas_schema,
+        )
 
-        schema = f"{source_to_catalog(source.id)}_{source.schema_name}"
-        table = source.table_name
+        require_replicas_schema(schema, table, action="reconcile the replica at")
         want_cols = [name for name, _ in columns]
         want_pk = list(pk_columns or ())
-        from provisa.federation.replica_guard import pg_relation_kind, require_pg_replica_table
-
         cur = self._con.cursor()
         cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
-        # REQ-826/REQ-1141: what stands at the replica's name decides what may be done to it. A
-        # source that was read live left its live VIEW here (attach_source) — over a postgres_fdw
-        # foreign table, so every write to it is a write into the source. The source is replicated
-        # now: the view goes (dropped AS a view, on the catalog's word that it is one) and the
-        # replica table takes the name. Any other non-table relation is refused, never written.
-        found = pg_relation_kind(cur, schema, table)
-        if found is not None and found[1] == "v":
-            _log.warning(
-                'pg: "%s"."%s" is replicated now; dropping the live view that held its name',
-                schema,
-                table,
-            )
-            cur.execute(f'DROP VIEW "{schema}"."{table}"')
         if not require_pg_replica_table(cur, schema, table, action="reconcile the replica at"):
             cur.execute(self._create_table_ddl(schema, table, columns, want_pk))
             return "created"
@@ -490,7 +488,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         shape: str | None = None,
     ) -> str:
         """Land ``rows`` into ``schema.table`` of THIS engine's own store (REQ-1730) — create-if-
-        absent only (drift is ``attach_landed_source``'s job), then REPLACE (delete+insert) or
+        absent only (drift is ``reconcile_replica``'s job), then REPLACE (delete+insert) or
         APPEND (insert, or upsert-by-key via Postgres's native ``ON CONFLICT`` when ``pk_columns``
         is given).
 

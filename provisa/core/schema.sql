@@ -1349,6 +1349,19 @@ CREATE TABLE IF NOT EXISTS node_freshness_state (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Replica state (REQ-1912, REQ-826): one row per replica of a source table, shared by every
+-- worker and instance. ``promoted`` is the automatic-promotion decision (a Hot-N table past its
+-- threshold); the replica build's own state is added to this same row. Keyed by the table's
+-- registered identity, source first. Mirrors provisa.core.schema_org.replica_state.
+CREATE TABLE IF NOT EXISTS replica_state (
+    source_id    TEXT NOT NULL,
+    schema_name  TEXT NOT NULL,
+    table_name   TEXT NOT NULL,
+    promoted     BOOLEAN NOT NULL DEFAULT FALSE,  -- reads go to the replica once it is built
+    promoted_at  TIMESTAMPTZ,                     -- when it was last promoted (NULL = never)
+    PRIMARY KEY (source_id, schema_name, table_name)
+);
+
 -- Preserved snapshots (REQ-983): a point-in-time dataset MATERIALIZED-AND-SEALED because it is NOT
 -- reconstructible from current state + retained event history — the one PIT form that departs from
 -- the NRT ideal. DECLARED (never inferred) and MUST be why-tagged. The row is the immutability

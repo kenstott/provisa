@@ -8,14 +8,16 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Integration: landing a source on the pg engine never writes to the source (REQ-826, REQ-1141).
+"""Integration: replicating a source on the pg engine never writes to the source (REQ-826,
+REQ-1141, REQ-1912).
 
 On the Postgres federation engine a source read live is exposed as a VIEW named
-``"<catalog>_<schema>"."<table>"`` over its postgres_fdw foreign table, and a landed source's copy
-is a TABLE at that same name. When a source that has been read live becomes one that lands
-(``prefer_materialized`` / ``load_protected`` newly set), the view is still there: the land's
-``DELETE`` and ``INSERT`` are then issued against the view, and postgres_fdw carries them to the
-SOURCE database.
+``"<catalog>_<schema>"."<table>"`` over its postgres_fdw foreign table. A replica that shared that
+name was refreshed through the view: when a source that had been read live became one that is
+replicated (``prefer_materialized`` / ``load_protected`` newly set), the view was still there, the
+refresh's ``DELETE`` and ``INSERT`` were issued against it, and postgres_fdw carried them to the
+SOURCE database. A replica has its own address — the org's replicas schema — and the live view is
+removed when the table's reads move to it.
 
 Two real Postgres servers (the test's own containers): the SOURCE, and the ENGINE (which is also
 the control plane and the materialization store). The engine container shares the source
@@ -24,7 +26,7 @@ the source at one address. The source logs every statement; the assertions read 
 source's rows.
 """
 
-# Requirements: REQ-826, REQ-1141, REQ-030
+# Requirements: REQ-826, REQ-1141, REQ-030, REQ-1912
 
 from __future__ import annotations
 
@@ -114,8 +116,13 @@ class _SourceAndEngine:
         with psycopg.connect(self.url(self.source_port, "shop"), autocommit=True) as conn:
             conn.execute(sql)
 
+    def replica_relation(self) -> str:
+        """What stands at the replica's address in the ENGINE."""
+        return self.engine_relation(_REPLICAS_SCHEMA, "src__public__orders")
+
     def engine_relation(self, schema: str = "src_public", table: str = "orders") -> str:
-        """What stands at the table's name in the ENGINE: view (live), table (replica), absent."""
+        """What stands at a name in the ENGINE (default: the table's live name): view, table,
+        absent."""
         import psycopg
 
         with psycopg.connect(self.url(self.engine_port, "provisa"), autocommit=True) as conn:
@@ -248,6 +255,7 @@ def _server(pg: _SourceAndEngine, workdir: str, config: dict):
 
 
 _ID_AMOUNT = [(i, amount) for i, amount, _note in _ROWS]
+_REPLICAS_SCHEMA = "org_landing_never_writes_source_replicas"
 
 
 def _read_live_once(pg: _SourceAndEngine, workdir: str) -> None:
@@ -273,7 +281,8 @@ def test_a_source_that_starts_replicating_after_being_read_live_is_never_written
         since = pg.source_statement_count()
         with _server(pg, workdir, _config(pg, columns=("id", "amount", "note"), **setting)) as read:
             assert read() == _ID_AMOUNT
-            assert pg.engine_relation() == "table"  # the replica took the live view's name
+            assert pg.replica_relation() == "table"  # the replica, in the replicas schema
+            assert pg.engine_relation() == "absent"  # and no live view is left to read or write
             # A change made in the source afterwards is not seen: the read is the replica's.
             pg.update_source("UPDATE orders SET amount = 999 WHERE id = 1")
             assert read() == _ID_AMOUNT
@@ -293,14 +302,15 @@ def test_replicating_a_narrower_registration_never_destroys_the_sources_other_co
         narrow = _config(pg, columns=("id", "amount"), prefer_materialized=True, cache_ttl=3600)
         with _server(pg, workdir, narrow) as read:
             assert read() == _ID_AMOUNT
-            assert pg.engine_relation() == "table"
+            assert pg.replica_relation() == "table"
+            assert pg.engine_relation() == "absent"
     assert pg.source_rows() == _ROWS
     assert pg.source_writes(since) == []
 
 
 def test_a_source_read_live_again_after_being_replicated_reads_the_source(databases):
-    """The reverse switch: the replica table leaves the name and the live view returns, so a read
-    sees the source as it is now — not the replica as it was."""
+    """The reverse switch: the live view returns and the read is addressed to it, so a read sees
+    the source as it is now — not the replica as it was."""
     pg = databases
     with tempfile.TemporaryDirectory() as workdir:
         replicated = _config(
@@ -308,7 +318,8 @@ def test_a_source_read_live_again_after_being_replicated_reads_the_source(databa
         )
         with _server(pg, workdir, replicated) as read:
             assert read() == _ID_AMOUNT
-        assert pg.engine_relation() == "table"
+        assert pg.replica_relation() == "table"
+        assert pg.engine_relation() == "absent"
         since = pg.source_statement_count()
         pg.update_source("UPDATE orders SET amount = 999 WHERE id = 1")
         with _server(pg, workdir, _config(pg, columns=("id", "amount", "note"))) as read:

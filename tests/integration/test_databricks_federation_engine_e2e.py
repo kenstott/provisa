@@ -8,7 +8,7 @@
 
 Drives the actual Provisa primitives — generate_schema/compile_query, apply_governance (RLS),
 rewrite_semantic_to_catalog_physical, transpile(..., "databricks") — then MATERIALIZES demo rows into
-the live Databricks warehouse via ``DatabricksFederationRuntime.materialize_source`` (columnar bulk
+the live Databricks warehouse via ``DatabricksFederationRuntime.land_table`` (columnar bulk
 write, per-source Unity Catalog matching the compiler's physical name) and executes the governed
 Databricks SQL on the warehouse via the Arrow read path, asserting on the returned rows. If governance
 were not applied, or the landed name did not match the compiler's, these fail.
@@ -106,6 +106,8 @@ def runtime():
         f"databricks://token:{os.environ['DATABRICKS_TOKEN']}"
         f"@{os.environ['DATABRICKS_SERVER_HOSTNAME']}"
         f"?http_path={os.environ['DATABRICKS_HTTP_PATH']}"
+        # the suite's own Unity Catalog — the name the governed SQL gives the table's catalog
+        f"&catalog={_to_catalog_name(_SRC)}"
     )
     rt = DatabricksFederationRuntime(url=url)
     try:
@@ -131,11 +133,10 @@ _ROWS = [
 
 
 async def _materialize(runtime, rows):
-    from types import SimpleNamespace
-
-    src = SimpleNamespace(id=_SRC, type="databricks", schema_name=_SCHEMA, table_name=_TABLE)
     cols = [("id", "bigint"), ("region", "text"), ("amount", "double")]
-    await runtime.materialize_source(src, cols, rows, change_signal="ttl")
+    await runtime.land_table(
+        schema=_SCHEMA, table=_TABLE, columns=cols, rows=rows, change_signal="ttl"
+    )
 
 
 @pytest.mark.asyncio
@@ -170,9 +171,7 @@ _R2 = (
     "CLOUDFLARE_ACCOUNT_ID",
 )
 _HAVE_R2 = all(os.environ.get(v) for v in _R2)
-_COPY_SRC = (
-    "e2e-dbx-copy"  # its own Unity Catalog so the COPY-INTO test never collides with the above
-)
+_COPY_SCHEMA = f"{_SCHEMA}_copy"  # its own schema so the COPY-INTO test never collides
 
 
 @pytest.mark.asyncio
@@ -181,8 +180,6 @@ async def test_databricks_bulk_copy_into_lands_large_batch(runtime):
     """A batch >= COPY_INTO_ROW_THRESHOLD lands via the REAL bulk COPY-INTO path (staged Parquet on R2
     → COPY INTO the Delta table), then reads back the exact row count + a sample value on the live
     warehouse. Below-threshold batches take the INSERT path (covered in unit); this pins the bulk seam."""
-    from types import SimpleNamespace
-
     from provisa.federation.databricks_store import COPY_INTO_ROW_THRESHOLD
 
     bucket = os.environ.get("PROVISA_R2_TEST_BUCKET", "pubs")
@@ -194,19 +191,20 @@ async def test_databricks_bulk_copy_into_lands_large_batch(runtime):
     n = COPY_INTO_ROW_THRESHOLD + 500  # comfortably above the gate → COPY INTO, not INSERT
     rows = [{"id": i, "region": "west" if i % 2 else "east", "amount": float(i)} for i in range(n)]
     cols = [("id", "bigint"), ("region", "text"), ("amount", "double")]
-    src = SimpleNamespace(id=_COPY_SRC, type="databricks", schema_name=_SCHEMA, table_name=_TABLE)
-    cat = _to_catalog_name(_COPY_SRC)
+    cat = _to_catalog_name(_SRC)
     try:
-        await runtime.materialize_source(src, cols, rows, change_signal="ttl")
+        await runtime.land_table(
+            schema=_COPY_SCHEMA, table=_TABLE, columns=cols, rows=rows, change_signal="ttl"
+        )
         table = runtime.run_arrow(
-            f"SELECT count(*) AS n, max(amount) AS mx FROM `{cat}`.`{_SCHEMA}`.`{_TABLE}`"
+            f"SELECT count(*) AS n, max(amount) AS mx FROM `{cat}`.`{_COPY_SCHEMA}`.`{_TABLE}`"
         )
         assert table.column("n").to_pylist()[0] == n
         assert table.column("mx").to_pylist()[0] == float(n - 1)
     finally:
         cur = runtime.connection.cursor()
         try:
-            cur.execute(f"DROP TABLE IF EXISTS `{cat}`.`{_SCHEMA}`.`{_TABLE}`")
+            cur.execute(f"DROP TABLE IF EXISTS `{cat}`.`{_COPY_SCHEMA}`.`{_TABLE}`")
         finally:
             cur.close()
         os.environ.pop("PROVISA_DATABRICKS_STAGE_URL", None)

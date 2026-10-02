@@ -57,6 +57,9 @@ class _DuckEngine:
 
     # Mirrors the real ENGINE terminal's contract (provisa/federation/runtime.py execute_engine):
     # REQ-1760 callers (provisa/mv/refresh.py) name what authorizes each statement.
+    def address_replicas(self, sql):
+        return sql  # this stand-in's tables are all read where the statement names them
+
     async def execute_engine(self, sql: str, params=None, *, authorization=None):
         del params, authorization
         cur = self.con.execute(sql)

@@ -46,7 +46,9 @@ PROD = "prod"
 #: The per-org store schemas derived from one environment's base name (REQ-1046 meters these).
 #: Enumerated rather than matched with ``LIKE 'org_<id>%'``: an org id is user-chosen text, so a
 #: prefix match would bill "acme" for every byte belonging to "acmeeu".
-SCHEMA_SUFFIXES: tuple[str, ...] = ("", "_mv_cache", "_api_cache", "_gql_cache")
+#: ``_replicas`` holds only replicas of source tables and ``_mv_cache`` only materialized views
+#: (REQ-1912): each write surface is a schema of its own.
+SCHEMA_SUFFIXES: tuple[str, ...] = ("", "_mv_cache", "_api_cache", "_gql_cache", "_replicas")
 
 #: PostgreSQL's identifier limit. Over it, PostgreSQL truncates silently.
 MAX_IDENTIFIER_BYTES = 63

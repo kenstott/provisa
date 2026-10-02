@@ -40,6 +40,9 @@ class _FakeEngine:
     def engine_physical(self, pg_sql):
         return pg_sql  # an engine that addresses catalog.schema.table as written
 
+    def address_replicas(self, sql):
+        return sql  # this stand-in's tables are all read where the statement names them
+
     async def execute_engine(self, sql, *args, **kwargs):
         return QueryResult(rows=self._rows, column_names=self._cols)
 
@@ -52,6 +55,9 @@ class _CountEngine:
 
     def engine_physical(self, pg_sql):
         return pg_sql  # an engine that addresses catalog.schema.table as written
+
+    def address_replicas(self, sql):
+        return sql  # this stand-in's tables are all read where the statement names them
 
     async def execute_engine(self, sql, *args, **kwargs):
         for t, c in self._counts.items():
@@ -550,6 +556,9 @@ class TestDetectHotTablesByCount:
         class _BoomEngine:
             def engine_physical(self, pg_sql):
                 return pg_sql
+
+            def address_replicas(self, sql):
+                return sql  # this stand-in's tables are all read where the statement names them
 
             async def execute_engine(self, sql, *a, **k):
                 raise RuntimeError("connector has no COUNT")

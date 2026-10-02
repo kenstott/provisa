@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class LandingArgs:  # REQ-932
-    """The materialize_source arguments resolved from a (source, table) config."""
+    """The replication arguments resolved from a (source, table) config."""
 
     columns: list[tuple[str, str]]
     change_signal: str

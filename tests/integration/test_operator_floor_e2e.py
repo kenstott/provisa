@@ -10,15 +10,19 @@
 
 """E2E (REQ-030, amended 2026-09-30): there is no getting around the operator's floor.
 
-A real Provisa server (DuckDB engine, SQLite control plane, DuckDB materialize store) reads two
-tables in the test stack's Postgres: one source ``load_protected``, one ``prefer_materialized``. The
+A real Provisa server reads tables in the test stack's Postgres: one source ``load_protected``,
+the others ``prefer_materialized``. It runs once on the DuckDB engine (SQLite control plane, DuckDB
+materialize store) and once on the test stack's Trino (Postgres control plane and store). The
 first read lands each. The upstream tables are then RENAMED away, so any read that reaches the source
 live fails with "does not exist" -- the source's own proof it was hit. Every later read, over
 /data/sql, pgwire and GraphQL, with no hint or a ``route=federated`` hint, must still answer from the
 landed copy; a ``route=direct`` hint must be refused with an error naming the operator setting.
+
+On Trino a catalog IS the live attach of a source, so a floored source has none (REQ-1912): the
+coordinator is asked for its catalogs and none of the three sources is among them.
 """
 
-# Requirements: REQ-030, REQ-826, REQ-1141
+# Requirements: REQ-030, REQ-826, REQ-1141, REQ-1912
 
 from __future__ import annotations
 
@@ -83,20 +87,24 @@ async def _drop() -> None:
         await conn.close()
 
 
-@pytest_asyncio.fixture(scope="module")
-async def floor_server():
-    from tests.integration.isolated_server import IsolatedServer
+@pytest_asyncio.fixture(scope="module", params=["duckdb", "trino"])
+async def floor_server(request):
+    from tests.integration.isolated_server import IsolatedServer, drop_org_schema
 
     await _seed()
     store_dir = tempfile.TemporaryDirectory()
-    server = IsolatedServer(
-        _ISOLATED_ORG,
-        engine="duckdb",
-        config=_CONFIG,
-        control_plane="sqlite",
-        enable_pgwire=True,
-        materialize_store_url=f"duckdb:///{Path(store_dir.name) / 'materialize.duckdb'}",
-    )
+    org = f"{_ISOLATED_ORG}_{request.param}"
+    if request.param == "duckdb":
+        server = IsolatedServer(
+            org,
+            engine="duckdb",
+            config=_CONFIG,
+            control_plane="sqlite",
+            enable_pgwire=True,
+            materialize_store_url=f"duckdb:///{Path(store_dir.name) / 'materialize.duckdb'}",
+        )
+    else:
+        server = IsolatedServer(org, engine="trino", config=_CONFIG, enable_pgwire=True)
     server.start()
     try:
         async with httpx.AsyncClient(base_url=server.base_url, timeout=120.0) as client:
@@ -110,6 +118,8 @@ async def floor_server():
         server.stop_process()
         store_dir.cleanup()
         await _drop()
+        if request.param == "trino":
+            await drop_org_schema(org)
 
 
 async def _sql(client: httpx.AsyncClient, sql: str) -> httpx.Response:
@@ -185,3 +195,23 @@ async def test_pgwire_reads_come_from_the_landed_copy_not_the_source(floor_serve
     finally:
         await conn.close()
     assert [r["id"] for r in rows] == [1, 2, 3]
+
+
+@pytest.mark.parametrize("floor_server", ["trino"], indirect=True)
+async def test_trino_holds_no_catalog_of_a_floored_source(floor_server):
+    """The engine has no live attach of a floored source: nothing a statement could name on the
+    coordinator reads the source. (DuckDB's live attach is a view inside the server's own
+    process; tests/unit/test_floor_enforced_on_every_engine.py covers its removal.)"""
+    import trino
+
+    # The test stack's own coordinator: its port is the one the session allocated (the stack
+    # publishes it on this host), never a default that could name another instance's.
+    conn = trino.dbapi.connect(host="localhost", port=int(os.environ["TRINO_PORT"]), user="itest")
+    try:
+        cur = conn.cursor()
+        cur.execute("SHOW CATALOGS")
+        catalogs = {row[0] for row in cur.fetchall()}
+    finally:
+        conn.close()
+    assert not catalogs & {"floor_protected", "floor_materialized", "floor_bare"}, catalogs
+    assert "provisa_admin" in catalogs  # the store the replicas are read from

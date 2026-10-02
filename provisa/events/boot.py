@@ -132,7 +132,6 @@ def build_source_node_spec(
     engine: Any,
     engine_runtime: Any,
     source_fetch: Callable[[Any, Any], Any],
-    store_schema: str,
     probe_scalar: Callable[[Any, Any], Any] | None = None,
 ) -> NodeSpec | None:
     """One source table's :class:`NodeSpec` (REQ-941), or ``None`` when it doesn't federate
@@ -174,16 +173,12 @@ def build_source_node_spec(
     except ValueError:
         return None  # a column's type is not yet resolved — reconcile skips it too
     node = f"{tbl.schema_name}.{tbl.table_name}"
-    # The engine owns the landing address: a native engine lands into the mangled ``mat`` name and
-    # exposes a physical-named view over it; Trino reads the store directly by physical name and so
-    # lands adapter-produced rows AT that name. Same address the backend's reconcile converges.
-    land_schema, land_table = engine.backend.landing_target(
-        store_schema=store_schema,
-        source_id=src.id,
-        source_type=src.type,
-        schema_name=tbl.schema_name,
-        table_name=tbl.table_name,
+    # REQ-1912: the replica's address — the same on every engine, and the same address the
+    # backend's reconcile converges and a read is rewritten to.
+    address = engine_runtime.replica_address(
+        source_id=src.id, schema_name=tbl.schema_name, table_name=tbl.table_name
     )
+    land_schema, land_table = address.schema, address.table
     handle = make_source_land(
         engine_runtime,
         schema=land_schema,
@@ -242,7 +237,6 @@ def specs_from_config(
     source_fetch: Callable[[Any, Any], Any],
     mv_columns: Callable[[Any], list[tuple[str, str]] | None],
     mv_run_query: Callable[[Any], Any],
-    store_schema: str = "mat",
     probe_scalar: Callable[[Any, Any], Any] | None = None,
     subscribers_of: Callable[[str, str], list[str]] | None = None,
     calendar_registry: Any | None = None,
@@ -257,9 +251,7 @@ def specs_from_config(
     at registration). The three live collaborators are injected so this binder stays pure/testable.
 
     ``tables`` MUST be the design-time REGISTERED tables (semantic sql names + resolved types), not
-    the raw YAML — the landed replica name (``mat_table``) has to match what the schema-currency
-    reconcile created. ``store_schema`` is where the replicas live in the store (``main`` on a
-    schema-less sqlite store, ``mat`` otherwise) — never assume ``mat``."""
+    the raw YAML — the replica's name has to match what the schema-currency reconcile created."""
     src_by_id = {s.id: s for s in sources}
     specs: list[NodeSpec] = []
 
@@ -273,7 +265,6 @@ def specs_from_config(
             engine=engine,
             engine_runtime=engine_runtime,
             source_fetch=source_fetch,
-            store_schema=store_schema,
             probe_scalar=probe_scalar,
         )
         if spec is not None:

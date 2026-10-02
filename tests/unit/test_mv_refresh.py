@@ -35,6 +35,9 @@ class _FakeEngine:
         self._side_effect = side_effect
         self._raise_all = raise_all
 
+    def address_replicas(self, sql):
+        return sql  # this stand-in's tables are all read where the statement names them
+
     async def execute_engine(self, sql, *a, **k):
         self.sqls.append(sql)
         if self._side_effect is not None:
@@ -142,13 +145,14 @@ class TestMaterializeStoreTarget:
         be._runtime_for = lambda _state: _RT()  # type: ignore[method-assign]
         assert be.materialize_store_target(object(), "acme") == ("mat_store", "mat")
 
-    def test_duckdb_runtime_mv_schema_is_store_schema(self):
-        # DuckDB's MV schema is its store schema (mat/main), org-independent.
+    def test_duckdb_runtime_mv_schema_holds_only_materialized_views(self):
+        # REQ-1912: materialized views have a schema of their own; replicas have another.
         from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
+        from provisa.federation.replica_address import replica_schema
 
         rt = DuckDBFederationRuntime.__new__(DuckDBFederationRuntime)
-        rt._store_schema = lambda: "mat"  # type: ignore[method-assign]
-        assert rt.mv_store_schema("acme") == "mat"
+        assert rt.mv_store_schema("acme") == "org_acme_mv_cache"
+        assert rt.mv_store_schema("acme") != replica_schema("acme")
 
     def test_warehouse_runtime_mv_schema_is_org_scoped(self):
         # Databricks/BigQuery isolate MVs in an org-scoped cache namespace in the warehouse/project.

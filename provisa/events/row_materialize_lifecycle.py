@@ -159,7 +159,6 @@ async def reap_expired_rows(
 
     from provisa.events.row_lock import row_lock
     from provisa.federation import store_writer
-    from provisa.federation.backend import _env_store_schema
     from provisa.federation.materialize_exec import build_row_cache_table
 
     engine = getattr(state, "federation_engine", None)
@@ -181,14 +180,10 @@ async def reap_expired_rows(
     from provisa.federation.residency import resolve_landing_args
 
     args = resolve_landing_args(source, table, platform=backend.dialect)
-    store_schema = _env_store_schema(engine.engine.materialize_store())
-    schema, name = backend.landing_target(
-        store_schema=store_schema,
-        source_id=source.id,
-        source_type=source.type,
-        schema_name=schema_name,
-        table_name=table_name,
+    address = backend.replica_address(
+        state, source_id=source.id, schema_name=schema_name, table_name=table_name
     )
+    schema, name = address.schema, address.table
     cache_table = build_row_cache_table(
         schema, name, args.columns, pk_columns, dialect_name=backend.dialect
     )

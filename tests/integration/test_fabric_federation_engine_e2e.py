@@ -7,7 +7,7 @@
 """E2E: Microsoft Fabric Warehouse as a federation engine through the REAL query pipeline.
 
 Drives the actual Provisa primitives (compile → govern → catalog-physical → transpile(tsql)),
-MATERIALIZES demo rows into a per-source schema via ``materialize_source`` (T-SQL bulk insert), reads
+MATERIALIZES demo rows into a schema via ``land_table`` (T-SQL bulk insert), reads
 them back via the Arrow path, and asserts RLS on the live warehouse. A second test drives the ATTACH
 connector's ``attach_source`` for an S3-compatible (Cloudflare R2) source — which AUTO-PROVISIONS the
 whole external-data chain (an ``AmazonS3Compatible`` connection + a lakehouse + a OneLake shortcut via
@@ -100,7 +100,7 @@ def runtime():
     try:
         yield rt
     finally:
-        # Drop the object then the schema materialize_source/attach auto-created — dropping only
+        # Drop the object then the schema land_table/attach auto-created — dropping only
         # the object would leak the schema. T-SQL requires an empty schema before DROP SCHEMA.
         from tests.integration.fabric_capacity import suspend_capacity
 
@@ -124,15 +124,11 @@ def runtime():
 
 @pytest.mark.asyncio
 async def test_fabric_engine_land_govern_read_and_rls(runtime):
-    from types import SimpleNamespace
-
-    from provisa.core.models import SourceType
-
-    src = SimpleNamespace(id=_SRC, type=SourceType.parquet, schema_name=_SCH, table_name="orders")
-    await runtime.materialize_source(
-        src,
-        [("id", "bigint"), ("region", "text"), ("amount", "double")],
-        [
+    await runtime.land_table(
+        schema=_SCH,
+        table="orders",
+        columns=[("id", "bigint"), ("region", "text"), ("amount", "double")],
+        rows=[
             {"id": 1, "region": "west", "amount": 100.0},
             {"id": 2, "region": "east", "amount": 200.0},
             {"id": 3, "region": "west", "amount": 300.0},

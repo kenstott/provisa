@@ -61,6 +61,9 @@ def _make_trino_conn_mock(rows: list[tuple], columns: list[str]):
         def engine_physical(self, pg_sql):
             return pg_sql  # an engine that addresses catalog.schema.table as written
 
+        def address_replicas(self, sql):
+            return sql  # this stand-in's tables are all read where the statement names them
+
         async def execute_engine(self, sql, *a, **k):
             return QueryResult(rows=rows, column_names=columns)
 

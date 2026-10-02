@@ -85,16 +85,16 @@ async def retire_environment(
 
 
 async def _drop_store_schema(org_id: str, name: str) -> str | None:
-    """Remove the materialization schema ``name`` landed its replicas into (REQ-1622).
+    """Remove the replicas schema ``name`` wrote in the materialization store (REQ-1622).
 
     The third thing an environment owns, after its schemas and its files, and the one furthest from
     this module: the store is a different DSN from the tenant pool ``deprovision_org`` ran against,
     so dropping the environment's tenant schemas never reached it and its replicas outlived it.
 
     Resolved with the org bound, because the store DSN is per-org (an org's BYO store outranks the
-    platform's, REQ-1048) and ``materialize_store()`` reads that binding. ``drop_env_store`` refuses
-    anything that is not a schema an environment's existence created, so a BYO store and prod's
-    ``mat`` are both out of reach from here.
+    platform's, REQ-1048) and ``materialize_store()`` reads that binding. ``drop_env_store`` drops
+    only the replicas schema a non-prod environment's existence created, so prod's replicas are
+    out of reach from here.
     """
     from provisa.api.app import state
     from provisa.core.request_context import reset_current_org, set_current_org
@@ -103,6 +103,6 @@ async def _drop_store_schema(org_id: str, name: str) -> str | None:
     token = set_current_org(org_id)
     try:
         dsn = state.federation_engine.engine.materialize_store()
-        return await drop_env_store(dsn, name)
+        return await drop_env_store(dsn, org_id, name)
     finally:
         reset_current_org(token)

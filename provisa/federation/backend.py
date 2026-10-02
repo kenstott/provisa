@@ -33,130 +33,9 @@ if TYPE_CHECKING:
     from provisa.executor.result import QueryResult, ResultStream
     from provisa.executor.session import EngineSession, StoreBrokerSession
     from provisa.federation.engine import FederationEngine
+    from provisa.federation.replica_address import ReplicaAddress
 
 _log = logging.getLogger(__name__)
-
-
-def _env_store_schema(dsn: str) -> str:
-    """The landing schema for the environment bound to this context (REQ-1622).
-
-    Read here rather than passed down, because reconcile is reached from a startup path and from a
-    request path and both already know their environment through the ContextVar; threading it
-    through every signature between would give two callers two chances to disagree.
-    """
-    from provisa.core.request_context import active_env
-    from provisa.federation.store_scope import store_schema
-
-    return store_schema(dsn, active_env())
-
-
-async def landing_worklist(
-    engine: Any, state: Any
-) -> list[tuple[Any, str, str, list[tuple[str, str]], list[str]]]:
-    """The MATERIALIZED registered tables that own a landed replica, as
-    ``(source, schema_name, table_name, columns, pk_columns)`` (REQ-846/932).
-
-    Drives off the control-plane REGISTERED tables — not the raw YAML config — because registration
-    is the design-time source of truth: it holds the sql-normalized physical names (the same names
-    the compiler emits) AND the resolved column types. A registered data column with no type is a
-    registration/config gap and the table is skipped (logged), never guessed.
-
-    Shared by every backend's ``reconcile_landed_tables`` so the native engines and Trino agree on
-    exactly which tables land — they differ only in what they do with each entry.
-    """
-    from provisa.api.admin.db_queries import fetch_tables
-    from provisa.core.ir_types import to_ir
-    from provisa.core.operator_floor import floor_setting
-    from provisa.federation.engine import UnreachableSource
-    from provisa.federation.strategy import Strategy, federate
-
-    from provisa.federation.registry_view import registered_sources
-
-    config = getattr(state, "config", None)
-    tdb = getattr(state, "tenant_db", None)
-    if config is None or tdb is None:
-        return []
-    async with tdb.acquire() as conn:
-        registered = await fetch_tables(conn)
-        sources = {s.id: s for s in await registered_sources(state, conn)}  # REQ-1674
-    work: list[tuple[Any, str, str, list[tuple[str, str]], list[str]]] = []
-    for reg in registered:
-        src = sources.get(reg["source_id"])
-        if src is None:
-            continue
-        try:
-            # REQ-826/1141: an operator-floored source (prefer_materialized / load_protected) is
-            # MATERIALIZED even when the engine could reach it live — its reads come from this
-            # landed replica, never the source (REQ-030 floor).
-            floored = floor_setting(src) is not None
-            if federate(src, engine, prefer_materialized=floored) is not Strategy.MATERIALIZED:
-                continue  # live/scan → attached live, not eager-landed
-        except UnreachableSource:
-            continue
-        if src.type.value == "ingest":
-            # REQ-1730: ingest is in _MATERIALIZE_ONLY (strategy.py) because it has no live/scan
-            # connector on any engine, but unlike every OTHER member of that set it does not land
-            # through store_writer at all — its rows are written directly into its own table by
-            # provisa/ingest/router.py, whose shape (app_loaders.py's _init_ingest_engines/
-            # provisa/ingest/ddl.py) always includes an `id SERIAL PRIMARY KEY` and
-            # `_received_at`/`_updated_at` columns that reg["columns"] (the user-registered
-            # ext_id/value columns alone) never lists. reconcile_table's drift check (this
-            # function's only caller) compares the physical column set against reg["columns"]
-            # verbatim, sees a permanent "mismatch" for every single ingest table on every single
-            # reconcile pass, and DROPs + recreates it — silently discarding every row ingest had
-            # already written, reproduced live: a POSTed row committed and was visible via a fresh
-            # Postgres connection immediately afterward, then vanished the moment the next engine
-            # reload (or any other landing_worklist-triggering reconcile) ran reconcile_table on
-            # its "mismatched" shape. Excluding ingest here leaves its own DDL/write path as the
-            # sole owner of its table, the same way it already is for the DuckDB-native tier.
-            continue
-        if src.type.value == "govdata":
-            # REQ-1730: govdata is in _MATERIALIZE_ONLY (strategy.py) because no federation engine
-            # has a live connector for it, but unlike every other member of that set its READS never
-            # go through the engine at all, materialized or otherwise: pgwire/_pipeline.py's query
-            # dispatch special-cases it (`state.source_types[...] == "govdata"`) straight to
-            # `_execute_govdata`, which runs the query LIVE against the askamerica JDBC connection
-            # (provisa.govdata.source.execute_query) on every request — bypassing Route.ENGINE,
-            # materialize_pending, and SourceRowLoader entirely, regardless of which engine is
-            # active. Landing it here would build a replica no query path ever reads, AND fail loud
-            # doing so: SourceRowLoader's generic engine-scan fallback (no adapter loader is wired
-            # for govdata, nor could one usefully be — its own dedicated live path already IS the
-            # complete read) would try `SELECT * FROM {per_source_catalog}...` against a relation no
-            # engine has ever created. Same shape as ingest's own exclusion just above: a
-            # _MATERIALIZE_ONLY type with a complete, independent path of its own must never enter
-            # this generic pipeline.
-            continue
-        # Native-filter columns are synthetic query args (LIMIT/path params, etc.), not landed
-        # data. REQ-1742 gap: this used to skip the WHOLE table the instant ANY column carried a
-        # native_filter_type, on the theory that such a table is a pure "function f(args) -> rows"
-        # with no unparameterized snapshot to land at all. That's true only when EVERY column is a
-        # parameter — grpc_remote's map_proto (provisa/grpc_remote/mapper.py) adds a synthetic
-        # "_nf_limit"-style column ALONGSIDE the method's real output columns, so a grpc_remote
-        # table with genuine data columns was being thrown out entirely instead of landing just
-        # the real ones: the landing view for e.g. AnimalCatalog.ListBreeds never got created at
-        # all, and every query against it failed "no such table" no matter how many times
-        # reconcile ran. Filter the parameter columns out FIRST, then only skip if nothing real
-        # is left to land.
-        data_cols = [c for c in reg["columns"] if c["native_filter_type"] is None]
-        if not data_cols:
-            continue  # every column is a synthetic query arg — genuinely nothing to land
-        if any(c["data_type"] is None for c in data_cols):
-            _log.warning(
-                "%s: skip eager reconcile of %s.%s — a registered column has no resolved type",
-                engine.name,
-                reg["schema_name"],
-                reg["table_name"],
-            )
-            continue
-        _entry = (
-            src,
-            reg["schema_name"],
-            reg["table_name"],
-            [(c["column_name"], to_ir(c["data_type"])) for c in data_cols],
-            [c["column_name"] for c in data_cols if c["is_primary_key"]],
-        )
-        work.append(_entry)
-    return work
 
 
 class EngineBackend:
@@ -205,25 +84,18 @@ class EngineBackend:
         # clock, so a source genuinely fresh elsewhere isn't re-landed on every request.
         self._landed_this_process: set[str] = set()
         # (source_id, table_name) -> why its replica could not be reconciled to the registered
-        # shape. A replicated table in this state has no replica a read may be answered from, and
-        # whatever stands at its name is not one either — so reads of its source raise this
-        # (``require_reconciled``) instead of reading it. Cleared when a reconcile succeeds.
+        # shape. A replicated table in this state has no replica a read may be answered from, so
+        # a read that names it raises this instead of reading it. Cleared when a reconcile
+        # succeeds.
         self._unreconciled: dict[tuple[str, str], BaseException] = {}
 
-    def require_reconciled(self, source_ids: Any) -> None:
-        """Refuse a read of any source with a replica that could not be reconciled (REQ-826): the
-        read would be answered by something other than that table's replica.
-
-        Refused per SOURCE today: this is asked where a read's sources are known and its tables
-        are not, so a sibling table of the same source is refused with it. The target is per
-        TABLE — it becomes that when a replica is addressed by its own name (REQ-1912) and the
-        read's tables are resolved here. An in-memory lookup; no store or control plane is read."""
-        from provisa.federation.replica_guard import ReplicaUnavailable
-
-        wanted = set(source_ids)
-        for (source_id, table_name), cause in self._unreconciled.items():
-            if source_id in wanted:
-                raise ReplicaUnavailable(source_id, table_name, cause) from cause
+    @property
+    def unreconciled(self) -> dict[tuple[str, str], BaseException]:
+        """(source_id, table_name) -> why its replica could not be reconciled (REQ-826). A read
+        that names such a table is refused where its tables are addressed
+        (``replica_address.address_replicas``) — per table: a sibling table of the same source
+        is read as usual."""
+        return self._unreconciled
 
     def is_first_touch(self, source_id: str) -> bool:
         """Whether this backend instance has never itself landed ``source_id`` — see
@@ -301,25 +173,36 @@ class EngineBackend:
         listing — and so the compiler's resolved ``catalog.schema.table`` reference — sees it."""
         del state
 
-    def landing_target(
-        self,
-        *,
-        store_schema: str,
-        source_id: str,
-        source_type: Any,
-        schema_name: str,
-        table_name: str,
-    ) -> tuple[str, str]:
-        """Where a MATERIALIZED source table's replica lives in the materialization store.
+    def replica_address(
+        self, state: Any, *, source_id: str, schema_name: str, table_name: str
+    ) -> ReplicaAddress:
+        """Where the replica of a source table is written in this engine's store (REQ-1912): the
+        replicas schema of the org and environment being served, under the one replica name. The
+        same on every engine — no engine places a replica at its table's registered address."""
+        from provisa.federation.replica_address import active_org_id, replica_address
 
-        The default is the mangled name under the store's landing schema (``mat``), keyed by source
-        id AND physical schema/table so a multi-table source does not collide on the source id. The
-        engine then exposes that replica at the catalog-physical name the compiler emits — the
-        runtime's ``_expose_landed`` view. An engine whose source catalog reads the store DIRECTLY by
-        physical name (Trino over the Postgres store) has no view layer to interpose and overrides
-        this to land at the registered address itself."""
-        del self, source_type
-        return store_schema, f"{source_id}__{schema_name}__{table_name}"
+        return replica_address(
+            org_id=active_org_id(state),
+            source_id=source_id,
+            schema_name=schema_name,
+            table_name=table_name,
+        )
+
+    def replica_read_catalog(self, state: Any) -> str | None:
+        """The catalog a statement names this engine's store by when it reads a replica, or None
+        on an engine whose SQL has no catalog (the replicas schema is then addressed alone).
+
+        A single-catalog engine (a warehouse) reads its store under that one catalog; any other
+        reads it under the catalog its materialized views are read under."""
+        if not self.engine.catalog_qualified:
+            return None
+        from provisa.federation.engine import fixed_catalog_for
+        from provisa.federation.replica_address import active_org_id
+
+        fixed = fixed_catalog_for(self.engine)
+        if fixed:
+            return fixed
+        return self.materialize_store_target(state, active_org_id(state))[0]
 
     def pending_lands(
         self,
@@ -377,9 +260,9 @@ class EngineBackend:
         write face -- the same address and face the event loop's source nodes use, so the two paths
         converge on one replica. ``source_ids`` restricts the plan to the sources a query reads.
         Returns the (source_id, table_name) pairs landed; a no-op when nothing is stale."""
-        from provisa.federation.residency import resolve_landing_args
-
         from provisa.federation.registry_view import registered_sources, registered_tables
+        from provisa.federation.replica_guard import require_replicas_schema
+        from provisa.federation.residency import resolve_landing_args
 
         # REQ-1674: the registry, not the config file — a source created in the UI and a table
         # registered at runtime land exactly like config-declared ones.
@@ -413,19 +296,19 @@ class EngineBackend:
         if not prep:
             return []
         sources_by_id = {s.id: s for s in sources}
-        store_schema = _env_store_schema(self.engine.materialize_store())
         landed: list[tuple[str, str]] = []
         for step in prep:
             source = sources_by_id[step.source_id]
             for table in tables_by_source.get(step.source_id, ()):
                 args = resolve_landing_args(source, table, platform=self.dialect)
-                schema, name = self.landing_target(
-                    store_schema=store_schema,
+                address = self.replica_address(
+                    state,
                     source_id=source.id,
-                    source_type=source.type,
                     schema_name=table.schema_name,
                     table_name=table.table_name,
                 )
+                schema, name = address.schema, address.table
+                require_replicas_schema(schema, name, action="write the replica")
                 # A build inside the engine moves no row through this process, is one build per
                 # replica across workers, and outlives a request that cannot wait for it.
                 if coordination is not None and await self.replicate_in_engine(
@@ -1040,40 +923,7 @@ class TrinoBackend(EngineBackend):
 
         return PROVISA_ADMIN_CATALOG, active_org_schema(org_id, "_mv_cache")
 
-    # -- landing ---------------------------------------------------------------
-
-    def landing_target(
-        self,
-        *,
-        store_schema: str,
-        source_id: str,
-        source_type: Any,
-        schema_name: str,
-        table_name: str,
-    ) -> tuple[str, str]:
-        """An ADAPTER-PRODUCED source's replica lands at its REGISTERED address in the store.
-
-        Trino's catalog for such a source is PG-backed (``TrinoPgBackedConnector``): it points at the
-        Postgres materialization store and resolves ``<catalog>.<schema>.<table>`` straight to a PG
-        relation. There is no engine-side view layer to redirect a mangled ``mat`` name back to the
-        physical name the compiler emits, so for rows that exist ONLY as a landed replica — a
-        checker's scan results, an API's fetched pages — the landing address IS the physical address.
-
-        An engine-scannable source keeps the default internal name: its physical address already
-        holds the mirror the engine reads, and landing onto that same relation would make the node
-        read and write one table.
-        """
-        from provisa.events.source_loader import is_adapter_fetched
-
-        if is_adapter_fetched(source_type):
-            return schema_name, table_name
-        return super().landing_target(
-            store_schema=store_schema,
-            source_id=source_id,
-            source_type=source_type,
-            schema_name=schema_name,
-            table_name=table_name,
-        )
+    # -- replicas --------------------------------------------------------------
 
     async def reconcile_landed_tables(self, state: Any) -> list[tuple[str, str]]:
         """Converge each MATERIALIZED source's store table to its registered shape (REQ-846/932).
@@ -1081,28 +931,22 @@ class TrinoBackend(EngineBackend):
         DDL only — no rows (that is the refresh's job). Trino needs this for the same reason the
         native engines do: a poll node probes its table's watermark BEFORE the first land, and an
         unresolvable relation would fail the probe and so prevent the land that would have created
-        it. The store write face is ``store_writer`` against the engine's own store DSN, which is the
-        same Postgres the source catalogs read."""
+        it. The store write face is ``store_writer`` against the engine's own store DSN — the Postgres
+        Trino reads replicas from, in its replicas schema (REQ-1912)."""
         from provisa.federation import store_writer
-        from provisa.federation.backend import landing_worklist
+        from provisa.federation.replica_routing import landing_worklist
 
         reconciled: list[tuple[str, str]] = []
         for src, schema_name, table_name, columns, pk_columns in await landing_worklist(
             self.engine, state
         ):
-            schema, table = self.landing_target(
-                # REQ-1622: the environment's own namespace, not the shared literal -- the table
-                # name below is derived from the source id, which every environment shares.
-                store_schema=_env_store_schema(self.engine.materialize_store()),
-                source_id=src.id,
-                source_type=src.type,
-                schema_name=schema_name,
-                table_name=table_name,
+            address = self.replica_address(
+                state, source_id=src.id, schema_name=schema_name, table_name=table_name
             )
             await store_writer.reconcile_table(
                 self.engine.materialize_store(),
-                schema=schema,
-                table=table,
+                schema=address.schema,
+                table=address.table,
                 columns=columns,
                 pk_columns=pk_columns,
             )
@@ -1320,11 +1164,20 @@ class TrinoBackend(EngineBackend):
     def register_source(
         self, state: Any, source: Any, resolved_password: str, catalog_name: str | None = None
     ) -> None:
-        with self._provisioning_conn(state) as conn:
-            if conn is not None:
-                from provisa.core import catalog
+        """Register the source's catalog — its live attach. A source the operator floors
+        (REQ-030/826/1141) is read only from its replica, so it has no catalog at all (REQ-1912):
+        one left from before the setting was turned on is dropped. Nothing can then read the
+        source through the engine, whatever a statement names."""
+        from provisa.core import catalog
+        from provisa.core.operator_floor import floor_setting
 
-                catalog.create_catalog(conn, source, resolved_password, catalog_name=catalog_name)
+        with self._provisioning_conn(state) as conn:
+            if conn is None:
+                return
+            if floor_setting(source) is not None:
+                catalog.drop_catalog(conn, source.id, catalog_name=catalog_name)
+                return
+            catalog.create_catalog(conn, source, resolved_password, catalog_name=catalog_name)
 
     def drop_source(self, state: Any, source_id: str, catalog_name: str | None = None) -> None:
         with self._provisioning_conn(state) as conn:

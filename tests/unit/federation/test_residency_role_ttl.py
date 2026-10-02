@@ -223,10 +223,6 @@ class _Backend:
         self._landed: set[str] = set()
         self.attaches = False  # set by _state: the engine reads the source in place
 
-    def require_reconciled(self, source_ids) -> None:
-        """As EngineBackend.require_reconciled: every replica here reconciled."""
-        del source_ids
-
     def pending_lands(
         self, sources, *, is_stale, prefer_materialized_of, load_protected_of, resident_of, **kw
     ):
@@ -252,8 +248,14 @@ class _Backend:
     def mark_landed(self, sid):
         self._landed.add(sid)
 
-    def landing_target(self, *, store_schema, source_id, source_type, schema_name, table_name):
-        return schema_name, table_name
+    def replica_address(self, state, *, source_id, schema_name, table_name):
+        """As EngineBackend.replica_address: the replicas schema, under the one replica name."""
+        from provisa.federation.replica_address import ReplicaAddress, replica_table_name
+
+        del state
+        return ReplicaAddress(
+            "org_test_replicas", replica_table_name(source_id, schema_name, table_name)
+        )
 
     async def materialize_pending(
         self, state, *, loader, is_stale, source_ids, load_protected_of, resident_of, **kw
@@ -277,6 +279,7 @@ def _state(tables, backend, states, *, source=None, attaches=False):
         engine=SimpleNamespace(
             backend=backend,
             native_store="postgres",
+            replica_store_backend=lambda: "postgres",  # as FederationEngine: its native store
             connectors=connectors,
             materialize_store=lambda: "postgresql://localhost/materialize",
         )
@@ -466,8 +469,14 @@ def _rm_table(role_ttl=None) -> Table:
 class _RowBackend:
     dialect = "postgresql"
 
-    def landing_target(self, *, store_schema, source_id, source_type, schema_name, table_name):
-        return store_schema, f"{source_id}__{schema_name}__{table_name}"
+    def replica_address(self, state, *, source_id, schema_name, table_name):
+        """As EngineBackend.replica_address: the one replica name. The schema is the test store's
+        own (a SQLite file stands in for the store here, and ``main`` is the schema it has): what
+        is under test is the row cache, not where the replicas schema lives."""
+        from provisa.federation.replica_address import ReplicaAddress, replica_table_name
+
+        del state
+        return ReplicaAddress("main", replica_table_name(source_id, schema_name, table_name))
 
 
 class _Loader:

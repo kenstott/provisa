@@ -37,6 +37,9 @@ class _Engine:
     def transpile_physical(self, pg_sql: str) -> str:
         return sqlglot.transpile(pg_sql, read="postgres", write="duckdb")[0]
 
+    def address_replicas(self, sql):
+        return sql  # this stand-in's tables are all read where the statement names them
+
     async def execute_engine(self, sql: str, params=None, **_):
         self.sql.append(sql)
         cur = duckdb.connect().execute(sql)

@@ -325,7 +325,7 @@ def build_row_cache_table(
     two per-row bookkeeping columns section 2a of the design doc requires. Both are
     ``TIMESTAMP WITH TIME ZONE NOT NULL`` — every cached row always carries its own freshness
     stamps, never nullable placeholders. This is the SAME physical shape ``land_rows`` upserts
-    into; the table's address (``EngineBackend.landing_target``) is unchanged from the whole-table
+    into; the table's address (``EngineBackend.replica_address``) is unchanged from the whole-table
     MATERIALIZED path (section 2b) — the two shapes never collide because ``row_materialize`` and
     ``materialize`` are validated mutually exclusive (``Table._validate_row_materialize``)."""
     cols = list(columns) + [

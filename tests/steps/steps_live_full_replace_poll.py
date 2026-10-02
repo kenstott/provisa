@@ -22,6 +22,9 @@ class _FakeEngineRuntime:
         self.rows = rows
         self.column_names = ["id", "v"]
 
+    def address_replicas(self, sql):
+        return sql  # this stand-in's tables are all read where the statement names them
+
     async def execute_engine(self, _sql):
         from types import SimpleNamespace
 

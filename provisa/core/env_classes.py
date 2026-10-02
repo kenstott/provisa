@@ -109,6 +109,9 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "events",
         "event_status",
         "node_freshness_state",
+        # REQ-1912: which replicas this environment promoted and built. Its replicas live in its
+        # own store schema, so their state describes nothing another environment has.
+        "replica_state",
         "preserved_snapshots",
         "admin_audit_log",
         "catalog_bindings",

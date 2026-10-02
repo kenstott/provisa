@@ -71,10 +71,6 @@ class _RecordingBackend:
     def __init__(self) -> None:
         self.lands = 0
 
-    def require_reconciled(self, source_ids) -> None:
-        """As EngineBackend.require_reconciled: the replica here reconciled."""
-        del source_ids
-
     def pending_lands(self, sources, *, is_stale, **kw):
         """As EngineBackend.pending_lands for a source this engine cannot read in place (rss) with
         neither operator setting on: it lands when the query path's oracle says it is stale."""
@@ -87,8 +83,14 @@ class _RecordingBackend:
     def mark_landed(self, sid: str) -> None:
         pass
 
-    def landing_target(self, *, store_schema, source_id, source_type, schema_name, table_name):
-        return schema_name, table_name
+    def replica_address(self, state, *, source_id, schema_name, table_name):
+        """As EngineBackend.replica_address: the replicas schema, under the one replica name."""
+        from provisa.federation.replica_address import ReplicaAddress, replica_table_name
+
+        del state
+        return ReplicaAddress(
+            "org_test_replicas", replica_table_name(source_id, schema_name, table_name)
+        )
 
     async def materialize_pending(
         self, state, *, loader, is_stale, source_ids, load_protected_of, resident_of, **kw
