@@ -70196,6 +70196,15 @@
     outlive a change to that model. The record is not state -- it cannot be rebuilt, it is append-only,
     and nothing in the state store may be relied on as the record. The replica state built for the
     data replicator (REQ-1915) is the first resident of the state store.
+    (Amended 2026-10-02, WHAT EACH IS FOR) The three fit together. The model says what should be true.
+    The state store is the sink the runtime uses to keep track of what it has done about it -- when
+    a view was last refreshed, whether a replica is built, what a job did last time. The record proves
+    that the state matched the model -- that what was served, copied or refused was what the model
+    in force at that moment required. For the record to prove that, each entry names the model it
+    was made under (the model stamp in force, REQ-1914) and what was applied -- the role acted as,
+    the row filters and masks enforced, the route taken, the replica or view read and how old it was
+    -- so that an entry can be checked against the declaration of that moment without trusting the
+    runtime's present state.
   use_case: Declared model and derived state were stored side by side with nothing to tell them apart,
     so a change to bookkeeping could force every process to rebuild its schemas, and it was unclear
     which rows a configuration export should carry or which could safely be dropped. Naming state
