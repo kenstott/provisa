@@ -191,20 +191,36 @@ def _count_rows_per_source(field_rows: list, ctx) -> dict[str, int]:
     For one-to-many joins, sums the nested array lengths across all parent rows.
     For many-to-one / one-to-one joins, counts the non-null joined objects.
     The root source row count is NOT included here — callers use len(field_rows) for that.
+
+    Only the joins the query SELECTED are counted, in one pass over the rows. A field's rows are
+    one selection, so the join fields present are read off the first row; a query that selected
+    no join does no per-row work, however many joins the role's context holds. A source no
+    selected join targets has no entry, and its caller reports the field's own row count for it.
     """
-    counts: dict[str, int] = {}
     if not field_rows or not ctx or not hasattr(ctx, "joins"):
-        return counts
-    for (_, join_field), join_meta in ctx.joins.items():
-        src_id = join_meta.target.source_id
-        if join_meta.cardinality == "one-to-many":
-            total = sum(
-                len(row.get(join_field, []) or []) for row in field_rows if isinstance(row, dict)
-            )
-        else:
-            total = sum(
-                1 for row in field_rows if isinstance(row, dict) and row.get(join_field) is not None
-            )
+        return {}
+    first = field_rows[0]
+    if not isinstance(first, dict):
+        return {}
+    selected = [
+        (join_field, join_meta.cardinality == "one-to-many", join_meta.target.source_id)
+        for (_, join_field), join_meta in ctx.joins.items()
+        if join_field in first
+    ]
+    if not selected:
+        return {}
+    totals = [0] * len(selected)
+    for row in field_rows:
+        if not isinstance(row, dict):
+            continue
+        for i, (join_field, one_to_many, _) in enumerate(selected):
+            value = row.get(join_field)
+            if one_to_many:
+                totals[i] += len(value or [])
+            elif value is not None:
+                totals[i] += 1
+    counts: dict[str, int] = {}
+    for (_, _, src_id), total in zip(selected, totals):
         counts[src_id] = counts.get(src_id, 0) + total
     return counts
 
