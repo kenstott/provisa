@@ -79,6 +79,50 @@ def _libpq_dsn(dsn: str) -> str:
     return f"{scheme.split('+', 1)[0]}://{rest}" if sep else dsn
 
 
+class DuckDBStoreTarget:
+    """A replica in an embedded DuckDB store file, written through the store broker.
+
+    The store is a single-writer file that every process opens, uses and closes under one lock
+    (``materialize_broker``). Each batch is one such operation appending to the build table, so
+    readers are not shut out for the length of the build; the store reads the Arrow batch in
+    place. The swap is one operation: drop and rename in a transaction. A build that dies
+    leaves only its build table, which the next build drops."""
+
+    caps = TargetCaps(frozenset({TargetWrite.BULK_BATCH}), atomic_swap=True)
+
+    def __init__(
+        self, broker: Any, *, schema: str, table: str, columns: list[tuple[str, str]]
+    ) -> None:
+        self._broker = broker
+        self._schema = schema
+        self._table = table
+        self._columns = columns
+        self._build = build_table_name(table)
+        self._begun = False
+
+    async def begin(self) -> None:
+        from provisa.federation.replica_guard import require_replicas_schema
+
+        require_replicas_schema(self._schema, self._table, action="build the replica at")
+        self._broker.replica_begin(self._schema, self._table, self._build, self._columns)
+        self._begun = True
+
+    async def write(self, batch: pa.RecordBatch, rows: list[dict]) -> None:
+        del rows  # the store reads the Arrow batch itself
+        self._broker.replica_write(
+            self._schema, self._build, [name for name, _ in self._columns], batch
+        )
+
+    async def swap(self) -> None:
+        self._broker.replica_swap(self._schema, self._table, self._build)
+        self._begun = False
+
+    async def abort(self) -> None:
+        if self._begun:
+            self._begun = False
+            self._broker.replica_abort(self._schema, self._build)
+
+
 class _BuildAbandoned(Exception):
     """Raised into an open COPY to end it without committing its rows."""
 
