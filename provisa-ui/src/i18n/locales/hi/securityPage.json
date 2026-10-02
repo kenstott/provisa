@@ -29,6 +29,7 @@
     "colRole": "भूमिका",
     "colFilter": "फ़िल्टर",
     "none": "कोई नहीं",
+    "detailsHidden": "विवरण के लिए उपयोगकर्ता प्रबंधन आवश्यक है।",
     "labelId": "ID:",
     "labelCapabilities": "क्षमताएँ:",
     "labelDomainAccess": "डोमेन एक्सेस:",

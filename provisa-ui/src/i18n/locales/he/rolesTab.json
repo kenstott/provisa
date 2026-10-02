@@ -6,6 +6,7 @@
     "colDomainAccess": "גישה לדומיינים",
     "colActions": "פעולות",
     "empty": "לא נמצאו תפקידים.",
+    "detailsHidden": "הפרטים דורשים ניהול משתמשים.",
     "deleteRole": "מחיקת תפקיד {{roleId}}",
     "deleted": "\"{{roleId}}\" נמחק",
     "pageInfo": "עמוד {{current}} / {{total}}",

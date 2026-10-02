@@ -29,6 +29,7 @@
     "colRole": "Rôle",
     "colFilter": "Filtre",
     "none": "aucun",
+    "detailsHidden": "Les détails nécessitent la gestion des utilisateurs.",
     "labelId": "ID :",
     "labelCapabilities": "Capacités :",
     "labelDomainAccess": "Accès aux domaines :",

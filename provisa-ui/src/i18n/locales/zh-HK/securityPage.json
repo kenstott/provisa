@@ -29,6 +29,7 @@
     "colRole": "角色",
     "colFilter": "篩選",
     "none": "無",
+    "detailsHidden": "詳細資料需要用戶管理權限。",
     "labelId": "ID：",
     "labelCapabilities": "功能：",
     "labelDomainAccess": "網域存取：",

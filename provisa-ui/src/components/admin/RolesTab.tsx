@@ -70,19 +70,27 @@ export function RolesTab({ orgId }: RolesTabProps) {
             {paged.map((role) => (
               <Table.Tr key={role.id}>
                 <Table.Td>{role.id}</Table.Td>
-                <Table.Td>{role.capabilities.join(", ")}</Table.Td>
-                <Table.Td>{role.domain_access.join(", ")}</Table.Td>
-                <Table.Td>
-                  <ActionIcon
-                    variant="subtle"
-                    color="red"
-                    aria-label={t("rolesTab.deleteRole", { roleId: role.id })}
-                    data-testid={`delete-role-${role.id}`}
-                    onClick={() => handleDeleteOrgRole(role.id)}
-                  >
-                    <Trash2 size={14} />
-                  </ActionIcon>
-                </Table.Td>
+                {role.detailsHidden ? (
+                  <Table.Td colSpan={3} c="dimmed" data-testid={`role-details-hidden-${role.id}`}>
+                    {t("rolesTab.detailsHidden")}
+                  </Table.Td>
+                ) : (
+                  <>
+                    <Table.Td>{role.capabilities.join(", ")}</Table.Td>
+                    <Table.Td>{role.domain_access.join(", ")}</Table.Td>
+                    <Table.Td>
+                      <ActionIcon
+                        variant="subtle"
+                        color="red"
+                        aria-label={t("rolesTab.deleteRole", { roleId: role.id })}
+                        data-testid={`delete-role-${role.id}`}
+                        onClick={() => handleDeleteOrgRole(role.id)}
+                      >
+                        <Trash2 size={14} />
+                      </ActionIcon>
+                    </Table.Td>
+                  </>
+                )}
               </Table.Tr>
             ))}
           </Table.Tbody>

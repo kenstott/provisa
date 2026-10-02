@@ -396,10 +396,18 @@ export function SecurityRolesPage() {
                     }}
                   >
                     <Table.Td>{r.id}</Table.Td>
-                    <Table.Td>{r.capabilities.join(", ")}</Table.Td>
-                    <Table.Td>{r.domain_access.join(", ")}</Table.Td>
+                    {r.detailsHidden ? (
+                      <Table.Td colSpan={2} c="dimmed" data-testid={`role-details-hidden-${r.id}`}>
+                        {t("securityPage.detailsHidden")}
+                      </Table.Td>
+                    ) : (
+                      <>
+                        <Table.Td>{r.capabilities.join(", ")}</Table.Td>
+                        <Table.Td>{r.domain_access.join(", ")}</Table.Td>
+                      </>
+                    )}
                   </Table.Tr>
-                  {expandedRole === r.id && (
+                  {expandedRole === r.id && !r.detailsHidden && (
                     <Table.Tr>
                       <Table.Td colSpan={3} style={{ background: "var(--bg)" }}>
                         {editingRoleInRow !== r.id ? (

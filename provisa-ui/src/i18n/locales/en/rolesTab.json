@@ -6,6 +6,7 @@
     "colDomainAccess": "Domain Access",
     "colActions": "Actions",
     "empty": "No roles found.",
+    "detailsHidden": "Details require user management.",
     "deleteRole": "Delete role {{roleId}}",
     "deleted": "Deleted \"{{roleId}}\"",
     "pageInfo": "Page {{current}} / {{total}}",

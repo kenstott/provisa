@@ -29,6 +29,7 @@
     "colRole": "ロール",
     "colFilter": "フィルター",
     "none": "なし",
+    "detailsHidden": "詳細の表示にはユーザー管理権限が必要です。",
     "labelId": "ID:",
     "labelCapabilities": "ケイパビリティ:",
     "labelDomainAccess": "ドメインアクセス:",

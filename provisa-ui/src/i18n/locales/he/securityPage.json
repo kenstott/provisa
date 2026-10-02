@@ -29,6 +29,7 @@
     "colRole": "תפקיד",
     "colFilter": "סינון",
     "none": "אין",
+    "detailsHidden": "הפרטים דורשים ניהול משתמשים.",
     "labelId": "מזהה:",
     "labelCapabilities": "יכולות:",
     "labelDomainAccess": "גישה לתחומים:",

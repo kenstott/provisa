@@ -6,6 +6,7 @@
     "colDomainAccess": "Acesso a domínios",
     "colActions": "Ações",
     "empty": "Nenhuma função encontrada.",
+    "detailsHidden": "Os detalhes exigem gerenciamento de usuários.",
     "deleteRole": "Excluir função {{roleId}}",
     "deleted": "Excluída \"{{roleId}}\"",
     "pageInfo": "Página {{current}} / {{total}}",

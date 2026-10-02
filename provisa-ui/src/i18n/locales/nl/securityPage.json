@@ -29,6 +29,7 @@
     "colRole": "Rol",
     "colFilter": "Filter",
     "none": "geen",
+    "detailsHidden": "Voor details is gebruikersbeheer vereist.",
     "labelId": "ID:",
     "labelCapabilities": "Mogelijkheden:",
     "labelDomainAccess": "Domeintoegang:",

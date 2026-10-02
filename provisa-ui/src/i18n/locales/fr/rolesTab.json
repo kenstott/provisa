@@ -6,6 +6,7 @@
     "colDomainAccess": "Accès aux domaines",
     "colActions": "Actions",
     "empty": "Aucun rôle trouvé.",
+    "detailsHidden": "Les détails nécessitent la gestion des utilisateurs.",
     "deleteRole": "Supprimer le rôle {{roleId}}",
     "deleted": "« {{roleId}} » supprimé",
     "pageInfo": "Page {{current}} / {{total}}",

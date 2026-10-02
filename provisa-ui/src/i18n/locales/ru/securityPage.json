@@ -29,6 +29,7 @@
     "colRole": "Роль",
     "colFilter": "Фильтр",
     "none": "нет",
+    "detailsHidden": "Для просмотра сведений требуется управление пользователями.",
     "labelId": "Идентификатор:",
     "labelCapabilities": "Возможности:",
     "labelDomainAccess": "Доступ к доменам:",

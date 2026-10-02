@@ -6,6 +6,7 @@
     "colDomainAccess": "網域存取",
     "colActions": "操作",
     "empty": "找不到角色。",
+    "detailsHidden": "詳細資料需要用戶管理權限。",
     "deleteRole": "刪除角色 {{roleId}}",
     "deleted": "已刪除「{{roleId}}」",
     "pageInfo": "第 {{current}} / {{total}} 頁",

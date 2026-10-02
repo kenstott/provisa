@@ -16,6 +16,7 @@ import { AuthMeError, fetchMe } from "../api/admin";
 import { useRoles, useDomains } from "../hooks/useAdminQueries";
 import { CHECKED_DOMAINS_KEY, KNOWN_DOMAINS_KEY } from "../lib/domainFilterKeys";
 import { unionDemonstrated } from "../lib/capabilities";
+import { normalizeRole, type RawRole } from "../lib/roles";
 
 // REQ-1297: dev/no-auth mirrors what the server grants an unsecured caller, and that is now
 // org_admin — the DATA-plane administrator — not platform_admin. The no-auth configs' single
@@ -241,7 +242,7 @@ export function AuthProvider({
         // Apply the same mapping useRoles()'s return value does.
         const roles = (data?.roles ?? []).map((r) => ({
           ...r,
-          domain_access: (r as { domainAccess?: string[] }).domainAccess ?? r.domain_access,
+          ...normalizeRole(r as unknown as RawRole),
         }));
         if (roles.length > 0) {
           if (isDev) {

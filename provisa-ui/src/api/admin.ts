@@ -10,6 +10,7 @@
 
 import type { Role, RoleAssignment, OrgMembership } from "../types/auth";
 import { ORG_HEADER } from "../lib/authFetch";
+import { normalizeRole, type RawRole } from "../lib/roles";
 import { serverMessage, requestFailed } from "../i18n/serverMessage";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
@@ -423,19 +424,8 @@ export async function fetchOrgRoles(orgId: string): Promise<Role[]> {
     headers: { [ORG_HEADER]: orgId },
   });
   if (!res.ok) throw httpError("fetchOrgRoles", res.status);
-  const rows: Array<{
-    id: string;
-    capabilities: string[];
-    demonstrated: string[];
-    domain_access: string[];
-  }> = await res.json();
-  return rows.map((r) => ({
-    id: r.id,
-    capabilities: r.capabilities as import("../types/auth").Capability[],
-    // REQ-1602: rights the role is shown but does not hold.
-    demonstrated: r.demonstrated as import("../types/auth").Capability[],
-    domain_access: r.domain_access,
-  }));
+  const rows: RawRole[] = await res.json();
+  return rows.map(normalizeRole);
 }
 
 export async function createOrgRole(

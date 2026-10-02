@@ -35,6 +35,7 @@ import type {
 } from "../types/admin";
 import type { CompileResult, TableMetadata, ColumnMetadata } from "../api/admin";
 import { useStartingPoll } from "./discoveryStartingPoll";
+import { normalizeRole, type RawRole } from "../lib/roles";
 import {
   RolesQuery as ROLES_QUERY,
   RLSRulesQuery as RLS_RULES_QUERY, // useTourPrefetch warms the RLS rules page
@@ -834,11 +835,7 @@ export function useRoles() {
   });
   const rawRoles = data?.roles ?? NO_ROLES;
   const roles = useMemo(
-    () =>
-      rawRoles.map((r) => ({
-        ...r,
-        domain_access: (r as { domainAccess?: string[] }).domainAccess ?? r.domain_access,
-      })),
+    () => rawRoles.map((r) => ({ ...r, ...normalizeRole(r as unknown as RawRole) })),
     [rawRoles],
   );
   return { roles, loading: firstLoad(loading, data), error, refetch };
