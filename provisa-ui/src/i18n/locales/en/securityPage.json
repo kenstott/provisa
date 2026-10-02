@@ -29,6 +29,8 @@
     "colRole": "Role",
     "colFilter": "Filter",
     "none": "none",
+    "noDomains": "no domains — reaches no data",
+    "noDomainsNote": "No domains selected: this role reaches no data. Choose the domains it may read, or All Domains.",
     "detailsHidden": "Details require user management.",
     "labelId": "ID:",
     "labelCapabilities": "Capabilities:",

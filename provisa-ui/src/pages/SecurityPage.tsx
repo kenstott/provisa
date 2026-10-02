@@ -64,6 +64,20 @@ const ALL_CAPABILITIES: Capability[] = [
   "glossary_rw",
 ];
 
+/**
+ * A role reaches the domains it lists and no others; "All Domains" is the only way to say all.
+ * A role saved with none reads no data, so the editor says so rather than letting an empty
+ * picker look like "unrestricted".
+ */
+function NoDomainsNote() {
+  const { t } = useTranslation();
+  return (
+    <Text size="sm" c="orange" role="note" data-testid="role-no-domains-note">
+      {t("securityPage.noDomainsNote")}
+    </Text>
+  );
+}
+
 const EMPTY_ROLE = {
   id: "",
   capabilities: [] as Capability[],
@@ -292,6 +306,7 @@ export function SecurityRolesPage() {
             value={roleForm.domainAccess}
             onChange={(selected) => setRoleForm({ ...roleForm, domainAccess: selected })}
           />
+          {roleForm.domainAccess.length === 0 && <NoDomainsNote />}
           {/* REQ-1677: single parent; the chain is walked child-first at build time. */}
           <Select
             label={t("securityPage.parentRole")}
@@ -403,7 +418,9 @@ export function SecurityRolesPage() {
                     ) : (
                       <>
                         <Table.Td>{r.capabilities.join(", ")}</Table.Td>
-                        <Table.Td>{r.domain_access.join(", ")}</Table.Td>
+                        <Table.Td data-testid={`role-domains-${r.id}`}>
+                          {r.domain_access.join(", ") || t("securityPage.noDomains")}
+                        </Table.Td>
                       </>
                     )}
                   </Table.Tr>
@@ -421,7 +438,7 @@ export function SecurityRolesPage() {
                             </Text>
                             <Text>
                               <strong>{t("securityPage.labelDomainAccess")}</strong>{" "}
-                              {r.domain_access.join(", ") || t("securityPage.none")}
+                              {r.domain_access.join(", ") || t("securityPage.noDomains")}
                             </Text>
                             <Text data-testid={`role-parent-${r.id}`}>
                               <strong>{t("securityPage.labelParentRole")}</strong>{" "}
@@ -468,6 +485,7 @@ export function SecurityRolesPage() {
                                 setRoleForm({ ...roleForm, domainAccess: selected })
                               }
                             />
+                            {roleForm.domainAccess.length === 0 && <NoDomainsNote />}
                             <Select
                               label={t("securityPage.parentRole")}
                               placeholder={t("securityPage.parentRoleNone")}

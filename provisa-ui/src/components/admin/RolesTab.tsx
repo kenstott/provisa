@@ -77,7 +77,10 @@ export function RolesTab({ orgId }: RolesTabProps) {
                 ) : (
                   <>
                     <Table.Td>{role.capabilities.join(", ")}</Table.Td>
-                    <Table.Td>{role.domain_access.join(", ")}</Table.Td>
+                    <Table.Td data-testid={`role-domains-${role.id}`}>
+                      {/* A role reaches the domains it lists; an empty list is none, not all. */}
+                      {role.domain_access.join(", ") || t("rolesTab.noDomains")}
+                    </Table.Td>
                     <Table.Td>
                       <ActionIcon
                         variant="subtle"
