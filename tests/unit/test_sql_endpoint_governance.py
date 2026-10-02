@@ -106,6 +106,7 @@ async def sql_client(monkeypatch):
         "org_admin": {
             "id": "org_admin",
             "capabilities": ["query_development", "full_results", "usage", "write"],
+            "domain_access": ["*"],  # the seeded org_admin: every domain, said explicitly
         }
     }
     app_mod.state.masking_rules = {}
@@ -235,6 +236,7 @@ class TestSQLGovernanceApplied:
             masking_rules={},
             ctx=ctx,
             tables=tables,
+            role={"id": "analyst", "capabilities": [], "domain_access": ["*"]},
         )
 
         sql = "SELECT id FROM orders"

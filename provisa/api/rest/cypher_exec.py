@@ -69,7 +69,7 @@ def _build_label_map(ctx: CompilationContext, role_id: str, state: AppState) -> 
     from provisa.cypher.label_map import CypherLabelMap
     from provisa.security.rights import effective_domain_access_role
 
-    domain_access = effective_domain_access_role(role_id, state.roles).get("domain_access")
+    domain_access = effective_domain_access_role(role_id, state.roles)["domain_access"]
     cache = state.schema_build_cache
     return kept_label_map(
         state,

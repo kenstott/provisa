@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from enum import Enum
+from typing import cast
 
 # Requirements: REQ-001, REQ-002, REQ-003, REQ-038, REQ-042, REQ-125, REQ-263
 
@@ -198,6 +199,28 @@ def domain_access_for_claims(  # REQ-1530
     return out
 
 
+class UnknownRoleError(LookupError):
+    """A role id that names no loaded role."""
+
+    def __init__(self, role_id: str):
+        self.role_id = role_id
+        super().__init__(f"No role {role_id!r} is loaded")
+
+
+def require_role(roles: dict[str, dict] | None, role_id: str) -> dict:  # REQ-042
+    """``roles[role_id]`` — or :class:`UnknownRoleError`. Never an empty stand-in.
+
+    Governance reads everything it decides off the role: its capabilities, its domain scope, its
+    row cap. A missing role read as ``{}`` is a role with no restrictions recorded, which every
+    reader would have to remember to treat as "nothing" rather than "anything". So there is no
+    such value: the role is there, or the request fails.
+    """
+    role = (roles or {}).get(role_id)
+    if role is None:
+        raise UnknownRoleError(role_id)
+    return role
+
+
 #: The one entry in a role's ``domain_access`` that means every domain.
 ALL_DOMAINS = "*"
 
@@ -241,10 +264,11 @@ def effective_domain_access_role(role_id: str, roles: dict[str, dict] | None) ->
     identically instead of each re-deriving it. ``role_id`` itself, and every OTHER field on the
     role (capabilities, RLS, masking, session_vars), stays single-role — only domain_access
     follows the full claim set, matching ``domain_access_for_claims`` (REQ-1530): a real RBAC
-    union, grant if ANY assigned role allows it, never an intersection.
+    union, grant if ANY assigned role allows it, never an intersection. The union of lists that
+    are all empty is empty, and an empty list is no domains.
     """
     roles = roles or {}
-    role = roles.get(role_id) or {}
+    role = require_role(roles, role_id)  # a missing acting role is an error, never an empty one
     from provisa.core.request_context import current_role_claims
 
     claims = current_role_claims.get()
@@ -424,7 +448,7 @@ META_ROW_SCOPED_VIEWS: dict[str, str] = {
 
 
 def compute_meta_row_scope(
-    role: dict[str, object] | None,
+    role: dict[str, object],
     tables: list[dict],
     relationships: list[dict] | None,
 ) -> set[int] | None:
@@ -432,7 +456,8 @@ def compute_meta_row_scope(
     NO row filter applies (all rows visible).
 
     ``None`` (unfiltered) is returned for the tier that sees the whole catalog: a role holding
-    the meta DOMAIN GRANT (or global ``*``/empty domain access). Every other
+    the meta DOMAIN GRANT or ``*``. An empty ``domain_access`` is no domains, so such a role sees
+    no meta rows at all; the role itself is required — a missing role is not a tier. Every other
     (DEFAULT-tier) role is confined to its directly-accessible tables — those in a domain the role
     can access — PLUS 1-hop neighbours over user-defined/semantic relationships (the ``relationships``
     registry holds only user relationships; auto-derived FK/catalog edges are never stored there, so
@@ -441,13 +466,10 @@ def compute_meta_row_scope(
     discoverable from the target side). Computed (function-target) relationships have no concrete
     target table and contribute no neighbour.
     """
-    if role is None:
-        return None
-    accessible = role.get("domain_access") or []
-    if not isinstance(accessible, (list, tuple, set, frozenset)):
-        accessible = []
-    if not accessible or "*" in accessible or META_DOMAIN_ID in accessible:
-        return None  # meta domain grant / global access → the whole catalog
+    accessible = cast("list[str]", role["domain_access"])
+    if reaches_all_domains(accessible) or META_DOMAIN_ID in accessible:
+        return None  # meta domain grant / "*" → the whole catalog
+    # An EMPTY list falls through: no domain is directly reachable, so no meta row is either.
 
     directly = {t["id"] for t in tables if t.get("domain_id") in accessible}
     visible = set(directly)

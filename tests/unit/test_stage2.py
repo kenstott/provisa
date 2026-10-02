@@ -12,6 +12,7 @@ from provisa.compiler.stage2 import (
     build_governance_context,
 )
 from provisa.security.masking import MaskingRule, MaskType
+from tests.helpers import unscoped_role
 
 
 def _gov(**kwargs) -> GovernanceContext:
@@ -207,32 +208,43 @@ class TestCeilingWiring:
 
     def test_role_max_rows_populates_limit_ceiling(self):
         ctx = SimpleNamespace(tables={})
-        gov = build_governance_context("analyst", None, {}, ctx, [], role={"max_rows": 500})
+        gov = build_governance_context(
+            "analyst", None, {}, ctx, [], role={"max_rows": 500, "domain_access": ["*"]}
+        )
         assert gov.limit_ceiling == 500
 
     def test_role_without_full_results_gets_default_row_limit(self, monkeypatch):
         monkeypatch.setenv("PROVISA_DEFAULT_ROW_LIMIT", "10000")
         ctx = SimpleNamespace(tables={})
-        gov = build_governance_context("analyst", None, {}, ctx, [], role={"capabilities": []})
+        gov = build_governance_context(
+            "analyst", None, {}, ctx, [], role={"capabilities": [], "domain_access": ["*"]}
+        )
         assert gov.limit_ceiling == 10000
 
     def test_full_results_role_is_uncapped(self):
         ctx = SimpleNamespace(tables={})
         gov = build_governance_context(
-            "admin", None, {}, ctx, [], role={"capabilities": ["full_results"]}
+            "admin",
+            None,
+            {},
+            ctx,
+            [],
+            role={"capabilities": ["full_results"], "domain_access": ["*"]},
         )
         assert gov.limit_ceiling is None
 
     def test_missing_role_arg_gets_default_row_limit(self, monkeypatch):
         monkeypatch.setenv("PROVISA_DEFAULT_ROW_LIMIT", "10000")
         ctx = SimpleNamespace(tables={})
-        gov = build_governance_context("analyst", None, {}, ctx, [])
+        gov = build_governance_context("analyst", None, {}, ctx, [], role=unscoped_role("analyst"))
         assert gov.limit_ceiling == 10000
 
     def test_table_max_rows_populates_table_ceilings(self):
         ctx = SimpleNamespace(tables={})
         tables = [{"id": 1, "columns": [], "max_rows": 10}]
-        gov = build_governance_context("analyst", None, {}, ctx, tables)
+        gov = build_governance_context(
+            "analyst", None, {}, ctx, tables, role=unscoped_role("analyst")
+        )
         assert gov.table_ceilings == {1: 10}
 
 

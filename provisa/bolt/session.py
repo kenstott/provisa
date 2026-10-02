@@ -754,9 +754,12 @@ def _bolt_label_map(ctx: Any, role_id: str, include_ops: bool, app_state: Any) -
     )
 
 
-def _bolt_domain_access(app_state: Any, role_id: str) -> list[str] | None:
-    """The domain access a Bolt database's graph is scoped to: the selected role's own."""
-    return (app_state.roles.get(role_id) or {}).get("domain_access")
+def _bolt_domain_access(app_state: Any, role_id: str) -> list[str]:
+    """The domain access a Bolt database's graph is scoped to: the selected role's own. A role
+    that is not loaded raises — there is no scope to read off a missing role."""
+    from provisa.security.rights import require_role
+
+    return require_role(app_state.roles, role_id)["domain_access"]
 
 
 def _business_view(base: Any) -> Any:

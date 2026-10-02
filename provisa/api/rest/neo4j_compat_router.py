@@ -112,7 +112,11 @@ async def neo4j_query_v2(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-35
     except CypherParseError as exc:
         return _error_response(str(exc), "SyntaxError")
 
-    label_map = CypherLabelMap.from_schema(ctx)
+    from provisa.security.rights import require_role
+
+    label_map = CypherLabelMap.from_schema(
+        ctx, domain_access=require_role(state.roles, role_id)["domain_access"]
+    )
 
     param_names = collect_param_names(body.statement)
     try:

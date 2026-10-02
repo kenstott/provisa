@@ -1479,7 +1479,7 @@ def test_from_schema_table_label_from_field_name():
         domain_id="support",
     )
 
-    lm = CypherLabelMap.from_schema(ctx)
+    lm = CypherLabelMap.from_schema(ctx, domain_access=["*"])
 
     created = lm.nodes["Support_SupportTicketsCreated"]
     resolved = lm.nodes["Support_SupportTicketsResolved"]
@@ -1527,7 +1527,7 @@ def test_from_schema_table_label_physical_table_map():
         domain_id="support",
     )
 
-    lm = CypherLabelMap.from_schema(ctx)
+    lm = CypherLabelMap.from_schema(ctx, domain_access=["*"])
 
     created = lm.nodes["Support_SupportTicketsCreated"]
     resolved = lm.nodes["Support_SupportTicketsResolved"]

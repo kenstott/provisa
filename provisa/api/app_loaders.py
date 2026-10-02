@@ -27,7 +27,7 @@ from provisa.api.startup_resilience import tolerate_startup_failure
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.naming import source_to_catalog
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
-from provisa.security.rights import Capability
+from provisa.security.rights import Capability, reaches_all_domains
 from provisa.compiler.context import build_context
 from provisa.compiler.rls import build_rls_context
 from sqlalchemy import select
@@ -1443,6 +1443,15 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         # REQ-1337: the test is the `cross_org` RIGHT the role carries, not its name — a deployment
         # that mints another control-plane role is kept off the data plane on the same terms.
         if Capability.CROSS_ORG.value in (role.get("capabilities") or []):
+            continue
+        # A role reaches the domains it lists, and one that lists NONE reaches no data: it gets no
+        # data surface, on the same terms as the control-plane role above — every surface answers
+        # "No schema available for role ...", which is a refusal, rather than a schema with
+        # nothing in it. This is not the "bad role definition" the build fails loudly on below: a
+        # role saved with no domains yet is a legitimate state (it is what a new role starts as),
+        # and it must not take the org's whole build down with it. reaches_all_domains decides
+        # the single-domain exemption.
+        if not role["domain_access"] and not reaches_all_domains(role["domain_access"]):
             continue
         si = _schema_input(role, tables, metrics)
         from provisa.compiler.schema_gen import build_table_path_map

@@ -594,7 +594,9 @@ async def test_action(request: Request, body: TestActionInput):  # REQ-004, REQ-
             # (app.py). role_id is present in contexts (checked above), so it must
             # be in rls_contexts — a missing key is an invariant break, fail loud.
             rls = state.rls_contexts[role_id]
-            role = state.roles.get(role_id)
+            from provisa.security.rights import require_role
+
+            role = require_role(state.roles, role_id)
             gov_ctx = build_governance_context(
                 role_id,
                 rls,

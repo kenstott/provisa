@@ -38,6 +38,7 @@ from provisa.compiler.stage2 import build_governance_context
 from provisa.compiler.rls import RLSContext
 from provisa.pgwire._pipeline import _optimize_and_route
 from provisa.transpiler.router import Route
+from tests.helpers import unscoped_role
 
 SOURCE_ID = "ghsrc"
 TABLE_ID = 7
@@ -91,7 +92,9 @@ async def test_non_union_unmaterializable_api_table_routes_instead_of_raising():
     must fall through to normal routing, not raise RuntimeError."""
     ctx = _ctx()
     rls = RLSContext.empty()
-    gov_ctx = build_governance_context("analyst", rls, {}, ctx, tables=[])
+    gov_ctx = build_governance_context(
+        "analyst", rls, {}, ctx, tables=[], role=unscoped_role("analyst")
+    )
     state = _state()
 
     exec_sql, decision, default_source, optimized, sources, _opts = await _optimize_and_route(
@@ -185,7 +188,9 @@ async def test_openapi_path_param_table_routes_through_engine_cache_not_tenant_d
     raising "no such table")."""
     ctx = _openapi_ctx()
     rls = RLSContext.empty()
-    gov_ctx = build_governance_context("analyst", rls, {}, ctx, tables=[])
+    gov_ctx = build_governance_context(
+        "analyst", rls, {}, ctx, tables=[], role=unscoped_role("analyst")
+    )
     state = _openapi_state()
     loc = CacheLocation("cat", "sch", "relational")
     rest_result = SimpleNamespace(from_cache=False, rows=[{"id": "1"}])

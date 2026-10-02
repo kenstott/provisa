@@ -302,6 +302,8 @@ async def _select_source_ids(select_sql: str, role_id: str, state) -> set[str]:
         extract_sources,
     )
 
+    from provisa.security.rights import require_role
+
     ctx = state.contexts[role_id]
     gov_ctx = build_governance_context(
         role_id,
@@ -309,7 +311,7 @@ async def _select_source_ids(select_sql: str, role_id: str, state) -> set[str]:
         state.masking_rules,
         ctx,
         getattr(state, "tables", []),
-        role=state.roles.get(role_id),
+        role=require_role(state.roles, role_id),
     )
     return extract_sources(apply_governance(select_sql, gov_ctx), gov_ctx, ctx)
 

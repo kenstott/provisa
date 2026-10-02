@@ -13,11 +13,22 @@ import re
 from provisa.federation import store_writer
 from provisa.security.rights import PLATFORM_RIGHTS, Capability
 
+
 #: Every data-plane right a role can be GIVEN, named one by one — for a test role that is to be
 #: limited by nothing but the grants the test itself writes (``visible_to``, ``writable_by``,
 #: ``domain_access``). No capability stands in for another (REQ-1327), so a role that holds them
 #: all lists them all. Left out: the two platform rights, which are over the deployment and not
 #: over data; ``ddl``, which a test grants on purpose; and ``no_aggregations``, which withholds.
+def unscoped_role(role_id: str, *capabilities: str) -> dict:
+    """A role that reaches every domain, said explicitly — ``domain_access: ["*"]``.
+
+    Governance always takes the acting role's own dict, and a role reaches only the domains it
+    lists, so a test that is about something other than domain scope names the role and gives it
+    the wildcard rather than leaving either out.
+    """
+    return {"id": role_id, "capabilities": list(capabilities), "domain_access": ["*"]}
+
+
 ALL_DATA_CAPABILITIES: list[str] = sorted(
     c.value
     for c in Capability

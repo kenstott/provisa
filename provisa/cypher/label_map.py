@@ -282,7 +282,7 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
     def from_schema(  # REQ-351, REQ-471
         cls,
         ctx: object,  # object-ok: circular import boundary — CompilationContext imported inside method body
-        domain_access: list[str] | None = None,
+        domain_access: list[str] | None,
         all_tables: list[dict] | None = None,
         all_relationships: list[dict] | None = None,
         all_column_types: dict | None = None,
@@ -293,7 +293,18 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         When domain_access/all_tables/all_relationships/all_column_types are supplied,
         cross-domain nodes reachable via registered relationships are included and
         marked traversal_only=True — they cannot be used as MATCH starting nodes.
+
+        ``domain_access`` is the ACTING ROLE's own list and is required: it decides whether the
+        meta catalog may be a MATCH root, and there is no list to read off a missing role, so
+        ``None`` raises rather than leaving the catalog open.
         """
+        from provisa.security.rights import reaches_all_domains
+
+        if domain_access is None:
+            raise ValueError(
+                "CypherLabelMap.from_schema needs the acting role's domain_access: a graph is "
+                "scoped to the role it is built for, and a missing role has no scope to read"
+            )
 
         nodes: dict[str, NodeMapping] = {}
         relationships: dict[str, RelationshipMapping] = {}
@@ -306,7 +317,7 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         _build_node_mappings(ctx_typed, target_pk, nodes, domains, nodes_by_table)
         aliases = _build_relationship_mappings(ctx_typed, relationships)
 
-        _all_access = domain_access is not None and "*" in domain_access
+        _all_access = reaches_all_domains(domain_access)
         if (
             not _all_access
             and all_tables is not None
@@ -341,11 +352,7 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         # — it may not be a bare MATCH (n) root (which would emit a direct meta FROM and be V001-blocked,
         # the same rule SQL enforces). Mark meta nodes traversal_only so MATCH (mine)-[]->(meta) still
         # works while MATCH (n) roots on the role's own domains only. A meta grant / "*" keeps it direct.
-        if (
-            domain_access is not None
-            and "*" not in domain_access
-            and _META_DOMAIN_ID not in domain_access
-        ):
+        if not _all_access and _META_DOMAIN_ID not in domain_access:
             for nm in nodes.values():
                 if nm.domain_id == _META_DOMAIN_ID:
                     nm.traversal_only = True

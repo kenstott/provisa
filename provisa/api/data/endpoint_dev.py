@@ -464,7 +464,9 @@ def _check_qualifier_binding(tree) -> str | None:
     return None
 
 
-def _collect_nl_user_tables(ctx) -> tuple[list, dict, dict, "CypherLabelMap"]:
+def _collect_nl_user_tables(
+    ctx, domain_access: list[str]
+) -> tuple[list, dict, dict, "CypherLabelMap"]:
     """Return (all_tables, user_nodes, table_name_to_type) from a schema context."""
     from provisa.compiler.sql_gen import TableMeta as _TableMeta
     from provisa.cypher.label_map import CypherLabelMap as _CLM
@@ -480,7 +482,7 @@ def _collect_nl_user_tables(ctx) -> tuple[list, dict, dict, "CypherLabelMap"]:
             seen_type_names.add(jm.target.type_name)
             all_tables.append(jm.target)
 
-    _lm = _CLM.from_schema(ctx)
+    _lm = _CLM.from_schema(ctx, domain_access=domain_access)
     if domain_policy.single_domain():
         # Single-domain mode: nodes carry no domain label — include all non-traversal nodes.
         _user_nodes = {tn: nm for tn, nm in _lm.nodes.items() if not nm.traversal_only}
@@ -803,7 +805,7 @@ async def _run_sql_generation_loop(
             continue
 
         normalized = rewrite_semantic_to_physical(last_sql, ctx)
-        violations = validate_sql(normalized, ctx, gov_ctx, role_obj or {}, raw_tables)
+        violations = validate_sql(normalized, ctx, gov_ctx, role_obj, raw_tables)
         if violations:
             last_error = "; ".join(f"[{v.code}] {v.message}" for v in violations)
             continue
@@ -860,7 +862,9 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
 
     ctx = state.contexts[role_id]
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
-    role_obj = state.roles.get(role_id)
+    from provisa.security.rights import require_role
+
+    role_obj = require_role(state.roles, role_id)
     gov_ctx = build_governance_context(
         role_id,
         rls,
@@ -872,7 +876,9 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
     )
     raw_tables = getattr(state, "tables", [])
 
-    all_tables, _user_nodes, _table_name_to_type, _lm = _collect_nl_user_tables(ctx)
+    all_tables, _user_nodes, _table_name_to_type, _lm = _collect_nl_user_tables(
+        ctx, role_obj["domain_access"]
+    )
 
     def _sql_domain(domain_id: str | None) -> str:
         return domain_to_sql_name(domain_id) if domain_id else "default"

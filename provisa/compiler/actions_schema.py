@@ -123,8 +123,10 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
     extra_mutation: dict[str, GraphQLField] = {}
 
     role_id = si.role["id"]
+    from provisa.security.rights import reaches_all_domains
+
     accessible = set(si.role["domain_access"])
-    all_access = "*" in accessible
+    all_access = reaches_all_domains(si.role["domain_access"])
 
     def _gql_scalar(type_str: str):
         return _ACTION_SCALAR_MAP.get(type_str, GraphQLString)

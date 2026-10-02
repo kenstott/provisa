@@ -67,14 +67,14 @@ def _nodes_by_table_label(lm: CypherLabelMap):
 
 
 def test_pk_columns_populated_per_node():
-    lm = CypherLabelMap.from_schema(_ctx())
+    lm = CypherLabelMap.from_schema(_ctx(), domain_access=["*"])
     nodes = _nodes_by_table_label(lm)
     assert "id" in nodes["Orders"].pk_columns
     assert "id" in nodes["Customers"].pk_columns
 
 
 def test_pk_singular_first_designated():
-    lm = CypherLabelMap.from_schema(_ctx())
+    lm = CypherLabelMap.from_schema(_ctx(), domain_access=["*"])
     node = _nodes_by_table_label(lm)["Orders"]
     # the endpoint emits pk = pk_columns[0]
     assert node.pk_columns[0] == "id"
@@ -82,7 +82,7 @@ def test_pk_singular_first_designated():
 
 def test_endpoint_serializes_pk_columns_shape():
     # mirror the /data/graph-schema per-node dict for pk fields
-    lm = CypherLabelMap.from_schema(_ctx())
+    lm = CypherLabelMap.from_schema(_ctx(), domain_access=["*"])
     node = _nodes_by_table_label(lm)["Customers"]
     serialized = {
         "pk": node.pk_columns[0] if node.pk_columns else None,

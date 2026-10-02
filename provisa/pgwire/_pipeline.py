@@ -1064,8 +1064,8 @@ async def govern_statement(
 
     from provisa.security.rights import Capability, has_capability
 
-    _role_guard = (role or {}).get("relationship_guard", True)
-    _bypass_guard = has_capability(role or {}, Capability.IGNORE_RELATIONSHIPS) or (
+    _role_guard = role.get("relationship_guard", True)
+    _bypass_guard = has_capability(role, Capability.IGNORE_RELATIONSHIPS) or (
         (not _role_guard) and sql_opts_out
     )
     # REQ-693: high-security mode is belts and suspenders — the relationship guard is not
@@ -1101,13 +1101,13 @@ async def govern_statement(
             normalized_sql,
             ctx,
             gov_ctx,
-            role or {},
+            role,
             getattr(state, "tables", []),
             bypass_relationship_guard=_bypass_guard,
             bypass_uncovered_relationships=True,
         )
 
-        _role_domain_access = (role or {}).get("domain_access") or []
+        _role_domain_access = role["domain_access"]
         if "*" not in _role_domain_access:
             try:
                 # REQ-1882: off-loaded, same rationale as prepare_front_end's parse.
@@ -2986,6 +2986,8 @@ async def _govern_compiled(
     _reject_view_writes(_compiled_tree, state)  # REQ-1157: views are query-only
     await _reject_unbound_writes(_compiled_tree, state)  # REQ-1491
 
+    from provisa.security.rights import require_role
+
     ctx = state.contexts[role_id]
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
 
@@ -2995,7 +2997,7 @@ async def _govern_compiled(
         state.masking_rules,
         ctx,
         getattr(state, "tables", []),
-        role=state.roles.get(role_id),
+        role=require_role(state.roles, role_id),
         relationships=getattr(state, "relationships", None),
         source_types=state.source_types,
         engine=getattr(state, "federation_engine", None),

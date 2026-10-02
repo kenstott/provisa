@@ -474,7 +474,7 @@ class TestTwoStageCompiler:
                 "max_rows": None,
             }
         ]
-        role = {"id": ROLE_ANALYST, "capabilities": ["usage"]}
+        role = {"id": ROLE_ANALYST, "capabilities": ["usage"], "domain_access": ["*"]}
 
         gov = build_governance_context(ROLE_ANALYST, rls, masking_rules, ctx, tables, role)
 
@@ -503,7 +503,7 @@ class TestTwoStageCompiler:
                 "max_rows": None,
             }
         ]
-        role = {"id": ROLE_ANALYST, "capabilities": ["usage"]}
+        role = {"id": ROLE_ANALYST, "capabilities": ["usage"], "domain_access": ["*"]}
 
         gov = build_governance_context(ROLE_ANALYST, rls, masking_rules, ctx, tables, role)
 
@@ -531,7 +531,7 @@ class TestTwoStageCompiler:
                 "max_rows": None,
             }
         ]
-        role = {"id": ROLE_ADMIN, "capabilities": ALL_DATA_CAPABILITIES}
+        role = {"id": ROLE_ADMIN, "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
 
         gov = build_governance_context(ROLE_ADMIN, rls, masking_rules, ctx, tables, role)
 

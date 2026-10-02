@@ -318,13 +318,21 @@ def generate_proto(
 
     # --- Query message (mirrors GraphQL type Query) ---
     _root_ids = si.root_table_ids
-    _accessible = set(si.role.get("domain_access") or [])
-    _all_access = not _accessible or "*" in _accessible
+    from provisa.security.rights import reaches_all_domains
+
+    # Same root rule as the GraphQL Query type (schema_gen): an implicit-traversal domain is a
+    # root only for a role that reaches it. An empty domain_access reaches no domain.
+    _accessible = set(si.role["domain_access"])
+    _all_access = reaches_all_domains(si.role["domain_access"])
     root_tables = [
         t
         for t in sorted(tables, key=lambda t: t.type_name)
         if (_root_ids is None or t.table_id in _root_ids)
-        and (_all_access or t.domain_id not in _IMPLICIT_TRAVERSAL_DOMAINS)
+        and (
+            _all_access
+            or t.domain_id not in _IMPLICIT_TRAVERSAL_DOMAINS
+            or t.domain_id in _accessible
+        )
     ]
     lines.append("message Query {")
     for i, t in enumerate(root_tables, start=1):

@@ -87,9 +87,11 @@ async def grpc_commands(role_id: str):  # REQ-1156
     from provisa.api.app import state
 
     fns = getattr(state, "tracked_functions", {}) or {}
-    role = state.roles.get(role_id) or {}
-    accessible = set(role.get("domain_access") or [])
-    all_access = "*" in accessible
+    from provisa.security.rights import reaches_all_domains, require_role
+
+    role = require_role(state.roles, role_id)
+    accessible = set(role["domain_access"])
+    all_access = reaches_all_domains(role["domain_access"])
 
     seen: set[str] = set()
     out: list[dict] = []

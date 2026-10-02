@@ -154,8 +154,10 @@ async def get_domains(request: Request, x_role: str = Header(None, alias="X-Role
     all_domains = [
         d["id"] for d in (state.schema_build_cache.get("domains") or []) if d["id"] != ""
     ]
-    access = role.get("domain_access") or []
-    if "*" in access:
+    from provisa.security.rights import reaches_all_domains
+
+    access = role["domain_access"]
+    if reaches_all_domains(access):
         return JSONResponse(all_domains)
     return JSONResponse([d for d in all_domains if d in set(access)])
 

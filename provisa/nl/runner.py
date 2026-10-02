@@ -553,7 +553,9 @@ async def _generate_sql_from_nl(
 
     # Missing rls_contexts attribute is a wiring bug; a role with no rules is legitimately empty.
     rls = app_state.rls_contexts.get(role, RLSContext.empty())
-    role_obj = getattr(app_state, "roles", {}).get(role)
+    from provisa.security.rights import require_role
+
+    role_obj = require_role(app_state.roles, role)
     gov_ctx = build_governance_context(
         role,
         rls,
@@ -564,7 +566,9 @@ async def _generate_sql_from_nl(
     )
     raw_tables = getattr(app_state, "tables", [])
 
-    all_tables, user_nodes, table_name_to_type, lm = _collect_nl_user_tables(ctx)
+    all_tables, user_nodes, table_name_to_type, lm = _collect_nl_user_tables(
+        ctx, role_obj["domain_access"]
+    )
     llm_config, llm_api_keys = await _resolve_llm_org_ctx(app_state)
 
     def _sql_domain(domain_id: str | None) -> str:
@@ -622,11 +626,13 @@ def _build_cypher_label_map(
 ) -> "CypherLabelMap":
     from provisa.cypher.label_map import CypherLabelMap
 
-    role_obj = getattr(app_state, "roles", {}).get(role) or {}
+    from provisa.security.rights import require_role
+
+    role_obj = require_role(app_state.roles, role)
     schema_build_cache = getattr(app_state, "schema_build_cache", {})
     return CypherLabelMap.from_schema(
         ctx,
-        domain_access=role_obj.get("domain_access"),
+        domain_access=role_obj["domain_access"],
         all_tables=schema_build_cache.get("tables"),
         all_relationships=schema_build_cache.get("relationships"),
         all_column_types=schema_build_cache.get("column_types"),
@@ -809,7 +815,11 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
         from provisa.api.data.endpoint_dev import _collect_nl_user_tables, _run_table_selection
         from provisa.compiler.naming import domain_to_sql_name
 
-        _, _u_nodes, _tbl_to_type, _ = _collect_nl_user_tables(ctx)
+        from provisa.security.rights import require_role
+
+        _, _u_nodes, _tbl_to_type, _ = _collect_nl_user_tables(
+            ctx, require_role(app_state.roles, role)["domain_access"]
+        )
 
         def _sql_dom(d: str | None) -> str:
             return domain_to_sql_name(d) if d else "default"
