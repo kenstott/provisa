@@ -163,6 +163,23 @@ def debug_server(tmp_path_factory):
         _stop(s)
 
 
+@pytest.fixture(autouse=True)
+def _requests_sent_here_start_no_trace():
+    """The requests these tests send carry no trace context of this process.
+
+    An application built in this process by another test file (``create_app`` -> ``setup_otel``)
+    instruments httpx and gRPC clients process-wide, and nothing removes that when its lifespan
+    ends — some such applications are session-scoped and still running. A client instrumented that
+    way opens a span of its own and sends its ``traceparent``, so the server under test exports
+    its request span as the CHILD of a span that exists only in this process: the request is no
+    longer a trace of its own, which is what these tests count. Seen as ``child spans [...]`` on
+    the http-sql, http-cypher and grpc requests whenever any such file ran first."""
+    from opentelemetry.instrumentation.utils import suppress_instrumentation
+
+    with suppress_instrumentation():
+        yield
+
+
 # -- one request, and the spans it exported --------------------------------------------------------
 
 
