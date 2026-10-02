@@ -452,9 +452,9 @@ def _names_column(sql: str, table_name: str, column: str) -> bool:
 
 async def column_dependents(conn: "Connection", table_id: int, column: str) -> list[Dependent]:
     """The objects that refer to one COLUMN of a table, by its name: the relationships keyed on
-    it, and the views, materialized views and metrics whose SQL names it. They block a
-    re-registration of the table that would drop the column (REQ-1918). ``LookupError`` when
-    there is no such table."""
+    it, the views, materialized views and metrics whose SQL names it, and the row filters on
+    the table whose predicate names it. They block a re-registration of the table that would
+    drop the column (REQ-1918). ``LookupError`` when there is no such table."""
     attributes = await _attributes(conn, ObjectRef("table", table_id))
     table_name = attributes["name"]
     blocking: dict[ObjectRef, set[str]] = {}
@@ -490,6 +490,21 @@ async def column_dependents(conn: "Connection", table_id: int, column: str) -> l
                 continue
             if text and _names_column(text, table_name, column):
                 blocking.setdefault(ObjectRef(kind, owner), set()).add(f"{table}.{text_column}")
+
+    # A row filter defined on the table whose predicate names the column: it would fail for
+    # every reader of that role once the column is gone. The predicate is stored encrypted
+    # (REQ-686); it is decrypted here, in the server that holds the key, read, and neither
+    # returned nor logged. A domain-level filter is not read: it is not about this table.
+    from provisa.core.repositories import rls as rls_repo  # noqa: PLC0415 — rls imports table
+
+    for rule in await rls_repo.list_all(conn):
+        if rule["table_id"] != table_id or not rule["filter_expr"]:
+            continue
+        predicate = f'SELECT 1 FROM "{table_name}" WHERE {rule["filter_expr"]}'
+        if _names_column(predicate, table_name, column):
+            blocking.setdefault(ObjectRef("row_filter", rule["id"]), set()).add(
+                "rls_rules.filter_expr"
+            )
 
     return sorted(
         (Dependent(referrer, tuple(sorted(via))) for referrer, via in blocking.items()),

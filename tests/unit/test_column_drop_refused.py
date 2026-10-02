@@ -199,3 +199,32 @@ async def test_registering_the_same_columns_again_changes_nothing_and_is_not_ref
     async with plane.acquire() as conn:
         await table_repo.upsert(conn, _table("orders", "id", "customer_id", "amount", "note"))
     assert await _columns(plane, "orders") == ["amount", "customer_id", "id", "note"]
+
+
+async def test_a_row_filter_on_the_table_that_names_the_column_blocks_the_drop(plane):
+    """The predicate is stored encrypted; the guard reads it in the server that holds the key."""
+    from provisa.core.models import RLSRule
+    from provisa.core.repositories import rls as rls_repo
+    from provisa.core.schema_org import rls_rules, roles
+
+    orders = await _id(plane, "orders")
+    async with plane.acquire() as conn:
+        await conn.execute_core(
+            insert(roles).values(id="seller", capabilities=[], domain_access=["*"])
+        )
+        await rls_repo.upsert(
+            conn, RLSRule(table_id="orders", role_id="seller", filter="note = 'public'")
+        )
+        stored = (
+            await conn.execute_core(select(rls_rules.c.id, rls_rules.c.filter_expr))
+        ).fetchone()
+        assert await integrity.column_dependents(conn, orders, "amount") == []
+        note = await integrity.column_dependents(conn, orders, "note")
+        assert [(d.ref.kind, d.ref.id, d.via) for d in note] == [
+            ("row_filter", stored[0], ("rls_rules.filter_expr",))
+        ]
+        with pytest.raises(table_repo.ColumnDropRefused) as err:
+            await table_repo.upsert(conn, _table("orders", "id", "customer_id", "amount"))
+    assert list(err.value.columns) == ["note"]
+    assert "note = 'public'" not in str(err.value)  # the predicate is not echoed
+    assert await _columns(plane, "orders") == ["amount", "customer_id", "id", "note"]
