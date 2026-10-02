@@ -106,6 +106,10 @@ def _make_mock_engine(schema_tables: list[str], executed: list[str]) -> MagicMoc
         return result
 
     engine.execute_engine = _execute_engine
+    # This engine writes its store as SQL (the scenario's target is an Iceberg catalog): it has
+    # no embedded-store broker. A bare MagicMock answers every attribute, so the lifecycle would
+    # take it for a broker-backed engine and send the DROP to the mock instead of here.
+    engine.mv_store_broker = lambda: None
     return engine
 
 

@@ -206,8 +206,10 @@ def shared_data_841():
     target_fixture="shared_data",
 )
 def given_source_and_engine():
-    """Set up a reachable source (postgresql via Trino) and an unreachable one (parquet — no Trino
-    connector and not materialize-only)."""
+    """Set up a reachable source (postgresql via Trino) and an unreachable one: a DynamoDB
+    source, a type the Trino engine has no connector for. (Parquet was the example until it got
+    a real Trino connector; the scenario asserts the example has none, so a type gaining a
+    connector fails here and not three steps later.)"""
     reachable_source = Source(
         id="orders_pg",
         type=SourceType.postgresql,
@@ -217,11 +219,14 @@ def given_source_and_engine():
         username="reader",
     )
     unreachable_source = Source(
-        id="legacy_parquet",
-        type=SourceType.parquet,
-        path="/data/legacy.parquet",
+        id="legacy_dynamo",
+        type=SourceType.dynamodb,
+        host="dynamodb.example.com",
+        port=443,
+        database="legacy",
     )
     engine = build_trino_engine()
+    assert not engine.reachable(unreachable_source.type.value)
     return {
         "engine": engine,
         "reachable_source": reachable_source,

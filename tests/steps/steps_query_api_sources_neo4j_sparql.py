@@ -146,7 +146,9 @@ def neo4j_sparql_post_source(shared_data: dict) -> None:
 
     # Both endpoints must declare POST with a body encoding for transmission.
     assert neo4j_ep.method == "POST"
-    assert neo4j_ep.body_encoding == "json"
+    # Neo4j's is the transaction API's own JSON envelope, ``{"statements": [{"statement": …}]}``
+    # (REQ-1668) — a JSON body, named for the endpoint it is shaped for.
+    assert neo4j_ep.body_encoding == "neo4j_tx"
     assert sparql_ep.method == "POST"
     assert sparql_ep.body_encoding == "form"
 

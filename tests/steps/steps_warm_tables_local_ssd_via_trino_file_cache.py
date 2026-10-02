@@ -53,6 +53,10 @@ def _mock_trino(cursor):
         return result
 
     engine.execute_engine = _execute_engine
+    # An engine that addresses catalog.schema.table as written: its own form of a statement is
+    # the statement (``EngineRuntime.engine_physical``, which the warm-table manager calls for
+    # every statement). A bare MagicMock would hand back another mock in place of the SQL.
+    engine.engine_physical = lambda sql: sql
     return engine
 
 

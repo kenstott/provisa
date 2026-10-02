@@ -172,8 +172,8 @@ def events_persisted(shared_data):
     ddl = shared_data["ddl"]
     assert "CREATE TABLE IF NOT EXISTS" in ddl
     assert "id SERIAL PRIMARY KEY" in ddl
-    assert "_received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()" in ddl
-    assert "_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()" in ddl
+    assert "_received_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP" in ddl
+    assert "_updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP" in ddl
 
     # Confirm that the ingest source_id and table are recorded in shared_data.
     assert shared_data["source_id"] == "otel-collector-1"
@@ -276,8 +276,8 @@ def ddl_executed_with_system_columns(shared_data):
     assert ddl.startswith(f"CREATE TABLE IF NOT EXISTS {table}")
 
     # System audit columns are always injected as TIMESTAMPTZ.
-    assert "_received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()" in ddl
-    assert "_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()" in ddl
+    assert "_received_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP" in ddl
+    assert "_updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP" in ddl
 
     # Surrogate primary key is injected.
     assert "id SERIAL PRIMARY KEY" in ddl
@@ -341,8 +341,8 @@ def ddl_executed_with_system_columns(shared_data):
     # An empty column list still produces a valid DDL with system columns.
     empty_ddl = generate_create_table("empty_tbl", [])
     assert "id SERIAL PRIMARY KEY" in empty_ddl
-    assert "_received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()" in empty_ddl
-    assert "_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()" in empty_ddl
+    assert "_received_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP" in empty_ddl
+    assert "_updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP" in empty_ddl
 
 
 # ---------------------------------------------------------------------------
@@ -522,8 +522,8 @@ def nested_value_extracted_missing_null(shared_data):
     assert "resource_attributes JSONB" in ddl
     assert "severity TEXT" in ddl
     assert "missing_value TEXT" in ddl
-    assert "_received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()" in ddl
-    assert "_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()" in ddl
+    assert "_received_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP" in ddl
+    assert "_updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP" in ddl
     assert "id SERIAL PRIMARY KEY" in ddl
 
 
@@ -739,7 +739,7 @@ def ingest_table_with_sse_subscription(shared_data):
 
     ddl = generate_create_table(table, columns)
     assert ddl.startswith(f"CREATE TABLE IF NOT EXISTS {table}")
-    assert "_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()" in ddl
+    assert "_updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP" in ddl
 
     # RLS policy: subscriber can only see rows where region == 'us-east-1'
     rls_policy = {"column": "region", "allowed_value": "us-east-1"}
@@ -951,8 +951,8 @@ def subscribers_receive_sse_with_governance(shared_data):
 
     # DDL for the ingest table is well-formed (system columns present).
     ddl = shared_data["ddl"]
-    assert "_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()" in ddl, (
+    assert "_updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP" in ddl, (
         "_updated_at watermark column must be present in ingest table DDL"
     )
     assert "id SERIAL PRIMARY KEY" in ddl
-    assert "_received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()" in ddl
+    assert "_received_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP" in ddl

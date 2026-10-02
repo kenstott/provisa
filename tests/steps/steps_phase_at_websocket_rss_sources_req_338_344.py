@@ -345,6 +345,10 @@ def only_new_items_emitted_as_insert_events(shared_data: dict) -> None:
         # The publication date stored in the row must be AFTER the watermark.
         pub = ev.row.get("published")
         assert pub is not None, "ChangeEvent row is missing 'published' field"
+        # The row's value is naive UTC: the landed ``published`` column is a timestamp without a
+        # zone, so the provider strips the zone it parsed (rss_provider.poll_once, REQ-1730).
+        assert pub.tzinfo is None
+        pub = pub.replace(tzinfo=timezone.utc)
         assert pub > watermark, (
             f"Emitted item '{ev.row.get('title')}' has published={pub} "
             f"which is not after watermark={watermark}"

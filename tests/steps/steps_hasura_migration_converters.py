@@ -654,9 +654,11 @@ def _then_writable_by(shared_data: dict) -> None:
     assert region is not None
     assert "clerk" in region.writable_by
     assert "editor" in region.writable_by
-    # A select-only column is not writable by anyone.
+    # A select-only column is writable by no role the metadata names — only by org_admin, which
+    # holds every permission as Hasura's implicit admin does (mapper.py, REQ-1684).
     id_col = _col(table, "id")
-    assert id_col is not None and id_col.writable_by == []
+    assert id_col is not None and id_col.writable_by == ["org_admin"]
+    assert "clerk" not in id_col.writable_by and "editor" not in id_col.writable_by
 
 
 # ---------------------------------------------------------------------------
