@@ -183,6 +183,10 @@
       "self_role_change": "Un utilisateur ne peut pas changer son propre rôle. Demandez à un autre administrateur (REQ-1308).",
       "view_not_permitted": "Vous n'êtes pas autorisé à consulter cette organisation"
     },
+    "origin": {
+      "config_object_deleted": "{{name}} est déclaré dans la configuration. Il est supprimé maintenant ; le prochain chargement de la configuration le recréera tant que le fichier le déclare encore.",
+      "config_object_edited": "{{name}} est déclaré dans la configuration. La modification est enregistrée ; le prochain chargement de la configuration réappliquera le contenu du fichier."
+    },
     "platform": {
       "right_required": "Capacité {{right}} requise",
       "settings_capability_required": "Capacité platform_settings requise",
@@ -302,21 +306,22 @@
       "unknown_mode": "mode de sécurité « {{mode}} » inconnu"
     },
     "settings": {
+      "auth_required": "{{field}} ne peut pas être modifié tant que l'authentification n'est pas configurée.",
       "config_file_not_found": "Fichier de configuration introuvable",
       "database_not_available": "Base de données indisponible",
       "default_domain_required": "default_domain requis quand use_domains=false",
       "docker_not_found": "docker introuvable dans le PATH",
       "docker_restart_timeout": "le redémarrage de docker a expiré",
+      "domain_policy_catalog_exists": "La politique de domaines ne peut pas changer tant que cette organisation possède un catalogue : {{tables}} table(s), {{sources}} source(s), {{domains}} domaine(s). Supprimez-les d'abord.",
       "encryption_provider_unavailable": "le fournisseur de chiffrement « {{provider}} » n'est pas disponible (son SDK/runtime n'est pas installé)",
+      "invalid_body": "La requête de paramètres n'est pas valide.",
+      "invalid_value": "La valeur de {{field}} a été refusée.",
       "live_export_disabled": "L'export de configuration en direct est désactivé (définissez live_config_export: true).",
       "no_container_resolvable": "aucun conteneur spécifié et aucun résolvable depuis QUERY_ENGINE_CONTAINER ou le moteur lié",
       "unknown_auth_provider": "fournisseur d'authentification « {{provider}} » inconnu ; valides : {{valid}}",
       "unknown_encryption_provider": "fournisseur de chiffrement « {{provider}} » inconnu",
       "unknown_engine": "moteur « {{engine}} » inconnu ; valides : {{valid}}",
-      "use_domains_invalid": "use_domains doit être true, false ou null",
-      "invalid_value": "La valeur de {{field}} a été refusée.",
-      "invalid_body": "La requête de paramètres n'est pas valide.",
-      "auth_required": "{{field}} ne peut pas être modifié tant que l'authentification n'est pas configurée."
+      "use_domains_invalid": "use_domains doit être true, false ou null"
     },
     "setup": {
       "admin_credentials_required": "admin_username et admin_password requis",

@@ -183,6 +183,10 @@
       "self_role_change": "Un utente non può modificare il proprio ruolo. Chiedere a un altro amministratore (REQ-1308).",
       "view_not_permitted": "Visualizzazione di questa organizzazione non consentita"
     },
+    "origin": {
+      "config_object_deleted": "{{name}} è dichiarato nella configurazione. È stato eliminato ora; il prossimo caricamento della configurazione lo creerà di nuovo finché il file lo dichiara.",
+      "config_object_edited": "{{name}} è dichiarato nella configurazione. La modifica è salvata; il prossimo caricamento della configurazione riapplicherà il contenuto del file."
+    },
     "platform": {
       "right_required": "Capacità {{right}} richiesta",
       "settings_capability_required": "Capacità platform_settings richiesta",
@@ -302,21 +306,22 @@
       "unknown_mode": "modalità di sicurezza '{{mode}}' sconosciuta"
     },
     "settings": {
+      "auth_required": "{{field}} non può essere modificato finché l'autenticazione non è configurata.",
       "config_file_not_found": "File di configurazione non trovato",
       "database_not_available": "Database non disponibile",
       "default_domain_required": "default_domain richiesto quando use_domains=false",
       "docker_not_found": "docker non trovato nel PATH",
       "docker_restart_timeout": "riavvio di docker scaduto",
+      "domain_policy_catalog_exists": "Il criterio dei domini non può cambiare finché questa organizzazione ha un catalogo: {{tables}} tabella/e, {{sources}} sorgente/i, {{domains}} dominio/i. Eliminali prima.",
       "encryption_provider_unavailable": "il provider di crittografia '{{provider}}' non è disponibile (il suo SDK/runtime non è installato)",
+      "invalid_body": "La richiesta delle impostazioni non è valida.",
+      "invalid_value": "Il valore di {{field}} è stato rifiutato.",
       "live_export_disabled": "L'esportazione live della configurazione è disabilitata (impostare live_config_export: true).",
       "no_container_resolvable": "nessun container specificato e nessuno risolvibile da QUERY_ENGINE_CONTAINER o dal motore associato",
       "unknown_auth_provider": "provider di autenticazione '{{provider}}' sconosciuto; validi: {{valid}}",
       "unknown_encryption_provider": "provider di crittografia '{{provider}}' sconosciuto",
       "unknown_engine": "motore '{{engine}}' sconosciuto; validi: {{valid}}",
-      "use_domains_invalid": "use_domains deve essere true, false o null",
-      "invalid_value": "Il valore di {{field}} è stato rifiutato.",
-      "invalid_body": "La richiesta delle impostazioni non è valida.",
-      "auth_required": "{{field}} non può essere modificato finché l'autenticazione non è configurata."
+      "use_domains_invalid": "use_domains deve essere true, false o null"
     },
     "setup": {
       "admin_credentials_required": "admin_username e admin_password richiesti",

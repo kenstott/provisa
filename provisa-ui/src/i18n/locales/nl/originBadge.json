@@ -1,0 +1,6 @@
+{
+  "originBadge": {
+    "config": "gedeclareerd in de configuratie",
+    "configHint": "Een configuratiebestand declareert dit object. Een wijziging die hier wordt gemaakt blijft gelden totdat de configuratie opnieuw wordt geladen; dan wordt de inhoud van het bestand opnieuw toegepast."
+  }
+}

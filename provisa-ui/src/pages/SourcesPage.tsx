@@ -72,6 +72,7 @@ import { SourceFormFields } from "./sources/SourceFormFields";
 import { SourceDetailPanel } from "./sources/SourceDetailPanel";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
+import { OriginBadge } from "../components/OriginBadge";
 
 export function SourcesPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
@@ -1452,7 +1453,12 @@ export function SourcesPage() {
                         background: isExpanded ? "var(--surface)" : undefined,
                       }}
                     >
-                      <Table.Td>{s.id}</Table.Td>
+                      <Table.Td>
+                        <Group gap="0.35rem" wrap="nowrap">
+                          {s.id}
+                          <OriginBadge origin={s.origin} />
+                        </Group>
+                      </Table.Td>
                       <Table.Td>
                         {SOURCE_TYPES.find((st) => st.value === s.type)?.label ?? s.type}
                       </Table.Td>

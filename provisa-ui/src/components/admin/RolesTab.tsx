@@ -15,6 +15,7 @@ import { notifications } from "@mantine/notifications";
 import { Trash2 } from "lucide-react";
 import { fetchOrgRoles, deleteOrgRole } from "../../api/admin";
 import type { Role } from "../../types/auth";
+import { OriginBadge } from "../OriginBadge";
 
 const PAGE_SIZE = 50;
 
@@ -69,7 +70,12 @@ export function RolesTab({ orgId }: RolesTabProps) {
             )}
             {paged.map((role) => (
               <Table.Tr key={role.id}>
-                <Table.Td>{role.id}</Table.Td>
+                <Table.Td>
+                  <Group gap="0.35rem" wrap="nowrap">
+                    {role.id}
+                    <OriginBadge origin={role.origin} />
+                  </Group>
+                </Table.Td>
                 {role.detailsHidden ? (
                   <Table.Td colSpan={3} c="dimmed" data-testid={`role-details-hidden-${role.id}`}>
                     {t("rolesTab.detailsHidden")}

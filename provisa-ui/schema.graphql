@@ -148,6 +148,7 @@ input DomainInput {
 type DomainType {
   id: String!
   description: String!
+  origin: String!
   steward: String
   graphqlAlias: String
 }
@@ -446,6 +447,17 @@ type MutationResult {
   message: String!
   code: String
   params: JSON
+  warnings: [MutationWarning!]!
+}
+
+"""
+Something the caller should know about a change that was made: a stable code and its
+params for the UI's localized text, and the English ``message``.
+"""
+type MutationWarning {
+  code: String!
+  message: String!
+  params: JSON
 }
 
 type ProtocolHealthType {
@@ -522,6 +534,7 @@ type RegisteredTableType {
   domainId: String!
   schemaName: String!
   tableName: String!
+  origin: String!
   alias: String
   description: String
   cacheTtl: Int
@@ -633,6 +646,7 @@ type RoleRateLimitType {
 
 type RoleType {
   id: String!
+  origin: String!
   capabilities: [String!]
   domainAccess: [String!]
   demonstrated: [String!]
@@ -689,6 +703,7 @@ input SourceInput {
 type SourceType {
   id: String!
   type: String!
+  origin: String!
   host: String
   port: Int
   database: String

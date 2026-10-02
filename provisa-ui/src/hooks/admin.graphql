@@ -7,6 +7,11 @@ fragment MutationResult on MutationResult {
   message
   code
   params
+  warnings {
+    code
+    message
+    params
+  }
 }
 
 fragment ColumnFields on TableColumnType {
@@ -48,6 +53,7 @@ fragment ColumnPresetFields on ColumnPresetType {
 query RolesQuery {
   roles {
     id
+    origin
     capabilities
     demonstrated
     domainAccess
@@ -65,6 +71,7 @@ query SourcesQuery {
   sources {
     id
     type
+    origin
     host
     port
     database
@@ -99,6 +106,7 @@ query DomainsQuery {
   domains {
     id
     description
+    origin
     graphqlAlias
     steward
     isSystem
@@ -170,6 +178,7 @@ query TablesQuery {
     domainId
     schemaName
     tableName
+    origin
     alias
     description
     cacheTtl

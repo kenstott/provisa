@@ -44,6 +44,7 @@ import { fetchActions } from "../api/actions";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
+import { OriginBadge } from "../components/OriginBadge";
 
 const ALL_CAPABILITIES: Capability[] = [
   "source_registration",
@@ -432,7 +433,12 @@ export function SecurityRolesPage() {
                       setEditingRoleInRow(null);
                     }}
                   >
-                    <Table.Td>{r.id}</Table.Td>
+                    <Table.Td>
+                      <Group gap="0.35rem" wrap="nowrap">
+                        {r.id}
+                        <OriginBadge origin={r.origin} />
+                      </Group>
+                    </Table.Td>
                     {r.detailsHidden ? (
                       <Table.Td colSpan={2} c="dimmed" data-testid={`role-details-hidden-${r.id}`}>
                         {t("securityPage.detailsHidden")}

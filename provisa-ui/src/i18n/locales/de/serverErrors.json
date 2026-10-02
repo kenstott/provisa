@@ -183,6 +183,10 @@
       "self_role_change": "Ein Benutzer kann seine eigene Rolle nicht ändern. Bitten Sie einen anderen Administrator (REQ-1308).",
       "view_not_permitted": "Keine Berechtigung, diese Organisation anzuzeigen"
     },
+    "origin": {
+      "config_object_deleted": "{{name}} ist in der Konfiguration deklariert. Es wurde jetzt gelöscht; beim nächsten Laden der Konfiguration wird es wieder angelegt, solange die Datei es noch deklariert.",
+      "config_object_edited": "{{name}} ist in der Konfiguration deklariert. Die Änderung ist gespeichert; beim nächsten Laden der Konfiguration wird der Inhalt der Datei wieder angewendet."
+    },
     "platform": {
       "right_required": "Fähigkeit {{right}} erforderlich",
       "settings_capability_required": "Fähigkeit platform_settings erforderlich",
@@ -302,21 +306,22 @@
       "unknown_mode": "unbekannter Sicherheitsmodus '{{mode}}'"
     },
     "settings": {
+      "auth_required": "{{field}} kann erst geändert werden, wenn die Authentifizierung konfiguriert ist.",
       "config_file_not_found": "Konfigurationsdatei nicht gefunden",
       "database_not_available": "Datenbank nicht verfügbar",
       "default_domain_required": "default_domain erforderlich, wenn use_domains=false",
       "docker_not_found": "docker nicht im PATH gefunden",
       "docker_restart_timeout": "Zeitüberschreitung beim Docker-Neustart",
+      "domain_policy_catalog_exists": "Die Domänenrichtlinie kann nicht geändert werden, solange diese Organisation einen Katalog hat: {{tables}} Tabelle(n), {{sources}} Quelle(n), {{domains}} Domäne(n). Löschen Sie diese zuerst.",
       "encryption_provider_unavailable": "Verschlüsselungsanbieter '{{provider}}' ist nicht verfügbar (SDK/Laufzeit nicht installiert)",
+      "invalid_body": "Die Einstellungsanfrage ist ungültig.",
+      "invalid_value": "Der Wert für {{field}} wurde abgelehnt.",
       "live_export_disabled": "Live-Konfigurationsexport ist deaktiviert (live_config_export: true setzen).",
       "no_container_resolvable": "kein Container angegeben und keiner über QUERY_ENGINE_CONTAINER oder die gebundene Engine ermittelbar",
       "unknown_auth_provider": "unbekannter Auth-Anbieter '{{provider}}'; gültig: {{valid}}",
       "unknown_encryption_provider": "unbekannter Verschlüsselungsanbieter '{{provider}}'",
       "unknown_engine": "unbekannte Engine '{{engine}}'; gültig: {{valid}}",
-      "use_domains_invalid": "use_domains muss true, false oder null sein",
-      "invalid_value": "Der Wert für {{field}} wurde abgelehnt.",
-      "invalid_body": "Die Einstellungsanfrage ist ungültig.",
-      "auth_required": "{{field}} kann erst geändert werden, wenn die Authentifizierung konfiguriert ist."
+      "use_domains_invalid": "use_domains muss true, false oder null sein"
     },
     "setup": {
       "admin_credentials_required": "admin_username und admin_password erforderlich",

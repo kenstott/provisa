@@ -183,6 +183,10 @@
       "self_role_change": "A user cannot change their own role. Ask another administrator (REQ-1308).",
       "view_not_permitted": "Not permitted to view this org"
     },
+    "origin": {
+      "config_object_deleted": "{{name}} is declared in the config. It is deleted now; the next load of the config creates it again while the file still declares it.",
+      "config_object_edited": "{{name}} is declared in the config. The change is saved; the next load of the config re-applies what the file says."
+    },
     "platform": {
       "right_required": "{{right}} capability required",
       "settings_capability_required": "platform_settings capability required",
@@ -302,21 +306,22 @@
       "unknown_mode": "unknown security mode '{{mode}}'"
     },
     "settings": {
+      "auth_required": "{{field}} cannot be changed until authentication is configured.",
       "config_file_not_found": "Config file not found",
       "database_not_available": "Database not available",
       "default_domain_required": "default_domain required when use_domains=false",
       "docker_not_found": "docker not found on PATH",
       "docker_restart_timeout": "docker restart timed out",
+      "domain_policy_catalog_exists": "The domain policy cannot change while this organization has a catalog: {{tables}} table(s), {{sources}} source(s), {{domains}} domain(s). Delete them first.",
       "encryption_provider_unavailable": "encryption provider '{{provider}}' is not available (its SDK/runtime is not installed)",
+      "invalid_body": "The settings request is not valid.",
+      "invalid_value": "The value for {{field}} was refused.",
       "live_export_disabled": "Live config export is disabled (set live_config_export: true).",
       "no_container_resolvable": "no container specified and none resolvable from QUERY_ENGINE_CONTAINER or the bound engine",
       "unknown_auth_provider": "unknown auth provider '{{provider}}'; valid: {{valid}}",
       "unknown_encryption_provider": "unknown encryption provider '{{provider}}'",
       "unknown_engine": "unknown engine '{{engine}}'; valid: {{valid}}",
-      "use_domains_invalid": "use_domains must be true, false, or null",
-      "invalid_value": "The value for {{field}} was refused.",
-      "invalid_body": "The settings request is not valid.",
-      "auth_required": "{{field}} cannot be changed until authentication is configured."
+      "use_domains_invalid": "use_domains must be true, false, or null"
     },
     "setup": {
       "admin_credentials_required": "admin_username and admin_password required",

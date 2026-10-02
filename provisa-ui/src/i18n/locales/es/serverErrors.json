@@ -183,6 +183,10 @@
       "self_role_change": "Un usuario no puede cambiar su propio rol. Solicite a otro administrador (REQ-1308).",
       "view_not_permitted": "No tiene permiso para ver esta organización"
     },
+    "origin": {
+      "config_object_deleted": "{{name}} está declarado en la configuración. Se ha eliminado ahora; la próxima carga de la configuración lo creará de nuevo mientras el archivo lo siga declarando.",
+      "config_object_edited": "{{name}} está declarado en la configuración. El cambio se ha guardado; la próxima carga de la configuración volverá a aplicar lo que dice el archivo."
+    },
     "platform": {
       "right_required": "Se requiere la capacidad {{right}}",
       "settings_capability_required": "Se requiere la capacidad platform_settings",
@@ -302,21 +306,22 @@
       "unknown_mode": "modo de seguridad desconocido: '{{mode}}'"
     },
     "settings": {
+      "auth_required": "{{field}} no se puede cambiar hasta que se configure la autenticación.",
       "config_file_not_found": "No se encontró el archivo de configuración",
       "database_not_available": "Base de datos no disponible",
       "default_domain_required": "default_domain es obligatorio cuando use_domains=false",
       "docker_not_found": "no se encontró docker en el PATH",
       "docker_restart_timeout": "el reinicio de docker agotó el tiempo de espera",
+      "domain_policy_catalog_exists": "La política de dominios no puede cambiar mientras esta organización tenga un catálogo: {{tables}} tabla(s), {{sources}} fuente(s), {{domains}} dominio(s). Elimínelos primero.",
       "encryption_provider_unavailable": "el proveedor de cifrado '{{provider}}' no está disponible (su SDK/runtime no está instalado)",
+      "invalid_body": "La solicitud de ajustes no es válida.",
+      "invalid_value": "Se rechazó el valor de {{field}}.",
       "live_export_disabled": "La exportación de configuración en vivo está deshabilitada (establezca live_config_export: true).",
       "no_container_resolvable": "no se especificó un contenedor y no se puede resolver ninguno a partir de QUERY_ENGINE_CONTAINER ni del motor enlazado",
       "unknown_auth_provider": "proveedor de autenticación desconocido: '{{provider}}'; válidos: {{valid}}",
       "unknown_encryption_provider": "proveedor de cifrado desconocido: '{{provider}}'",
       "unknown_engine": "motor desconocido: '{{engine}}'; válidos: {{valid}}",
-      "use_domains_invalid": "use_domains debe ser true, false o null",
-      "invalid_value": "Se rechazó el valor de {{field}}.",
-      "invalid_body": "La solicitud de ajustes no es válida.",
-      "auth_required": "{{field}} no se puede cambiar hasta que se configure la autenticación."
+      "use_domains_invalid": "use_domains debe ser true, false o null"
     },
     "setup": {
       "admin_credentials_required": "admin_username y admin_password son obligatorios",

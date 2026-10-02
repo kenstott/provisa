@@ -183,6 +183,10 @@
       "self_role_change": "משתמש אינו יכול לשנות את התפקיד של עצמו. פנו למנהל אחר (REQ-1308).",
       "view_not_permitted": "אין הרשאה לצפות בארגון זה"
     },
+    "origin": {
+      "config_object_deleted": "{{name}} מוצהר בתצורה. הוא נמחק כעת; הטעינה הבאה של התצורה תיצור אותו מחדש כל עוד הקובץ מצהיר עליו.",
+      "config_object_edited": "{{name}} מוצהר בתצורה. השינוי נשמר; הטעינה הבאה של התצורה תחיל מחדש את מה שכתוב בקובץ."
+    },
     "platform": {
       "right_required": "נדרשת יכולת {{right}}",
       "settings_capability_required": "נדרשת יכולת platform_settings",
@@ -302,21 +306,22 @@
       "unknown_mode": "מצב אבטחה לא מוכר '{{mode}}'"
     },
     "settings": {
+      "auth_required": "לא ניתן לשנות את {{field}} עד שהאימות יוגדר.",
       "config_file_not_found": "קובץ התצורה לא נמצא",
       "database_not_available": "מסד הנתונים אינו זמין",
       "default_domain_required": "default_domain נדרש כאשר use_domains=false",
       "docker_not_found": "docker לא נמצא ב-PATH",
       "docker_restart_timeout": "הפעלה מחדש של docker חרגה מהזמן הקצוב",
+      "domain_policy_catalog_exists": "לא ניתן לשנות את מדיניות הדומיינים כל עוד לארגון יש קטלוג: {{tables}} טבלאות, {{sources}} מקורות, {{domains}} דומיינים. יש למחוק אותם תחילה.",
       "encryption_provider_unavailable": "ספק ההצפנה '{{provider}}' אינו זמין (ה-SDK/סביבת הריצה שלו אינם מותקנים)",
+      "invalid_body": "בקשת ההגדרות אינה תקינה.",
+      "invalid_value": "הערך של {{field}} נדחה.",
       "live_export_disabled": "ייצוא תצורה חי מושבת (הגדירו live_config_export: true).",
       "no_container_resolvable": "לא צוין מכולה (container) ולא ניתן לפתור אחת מ-QUERY_ENGINE_CONTAINER או מהמנוע המקושר",
       "unknown_auth_provider": "ספק אימות לא מוכר '{{provider}}'; תקפים: {{valid}}",
       "unknown_encryption_provider": "ספק הצפנה לא מוכר '{{provider}}'",
       "unknown_engine": "מנוע לא מוכר '{{engine}}'; תקפים: {{valid}}",
-      "use_domains_invalid": "use_domains חייב להיות true, false או null",
-      "invalid_value": "הערך של {{field}} נדחה.",
-      "invalid_body": "בקשת ההגדרות אינה תקינה.",
-      "auth_required": "לא ניתן לשנות את {{field}} עד שהאימות יוגדר."
+      "use_domains_invalid": "use_domains חייב להיות true, false או null"
     },
     "setup": {
       "admin_credentials_required": "admin_username ו-admin_password נדרשים",

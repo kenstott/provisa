@@ -23,7 +23,7 @@
     "sqlNamingConvention": "Convention de nommage SQL",
     "sqlNamingConventionHint": "Casse appliquée aux noms du plan SQL — ce que les surfaces pgwire, Bolt et SQL sémantique interrogent. Définie séparément de la convention GraphQL, afin que renommer un plan ne renomme jamais l'autre.",
     "domainMode": "Mode de domaine",
-    "domainModeHint": "Single stocke chaque table sous un domaine unique ; Namespaced exige un domaine sur chaque table. Changer ce réglage supprime les sources, tables et domaines de cette organisation.",
+    "domainModeHint": "Single stocke chaque table sous un seul domaine ; Namespaced exige un domaine pour chaque table. Le mode ne peut changer que tant que cette organisation n'a ni sources, ni tables, ni domaines qui lui sont propres.",
     "domainModeSingle": "Domaine unique",
     "domainModeNamespaced": "Par espace de noms",
     "applyDomainPolicy": "Appliquer la politique de domaine",
@@ -181,13 +181,7 @@
     "addDomain": "Ajouter un domaine",
     "domainAdded": "« {{id}} » ajouté",
     "domainDeleted": "« {{id}} » supprimé",
-    "policyModalTitle": "Réinitialiser toute la configuration",
-    "policyModalWarning": "Changer la politique de domaine va RÉINITIALISER toute votre configuration. Toutes les sources, tables, domaines et relations seront supprimés. Une sauvegarde de votre config actuelle sera enregistrée. Cette action est irréversible.",
-    "policyConfirmLabel": "Saisissez RESET pour confirmer :",
-    "policyConfirmWord": "RESET",
-    "policyCancel": "Annuler",
-    "policyResetApply": "Réinitialiser et appliquer",
-    "policyApplied": "Politique de domaine appliquée. Le catalogue de cette organisation a été réinitialisé.",
+    "policyApplied": "Politique de domaines appliquée.",
     "policyApplyFailed": "Échec de l'application de la politique de domaine",
     "settingsPanel": "Paramètres"
   }

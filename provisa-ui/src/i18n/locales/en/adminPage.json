@@ -23,7 +23,7 @@
     "sqlNamingConvention": "SQL Naming Convention",
     "sqlNamingConventionHint": "Casing applied to names on the SQL plane — what the pgwire, Bolt and semantic-SQL surfaces query. Set separately from the GraphQL convention so renaming one plane never renames the other.",
     "domainMode": "Domain Mode",
-    "domainModeHint": "Single stores every table under one domain; Namespaced requires a domain on every table. Changing this deletes this organization's sources, tables and domains.",
+    "domainModeHint": "Single stores every table under one domain; Namespaced requires a domain on every table. It can change only while this organization has no sources, tables or domains of its own.",
     "domainModeSingle": "Single domain",
     "domainModeNamespaced": "Namespaced",
     "applyDomainPolicy": "Apply Domain Policy",
@@ -181,13 +181,7 @@
     "addDomain": "Add Domain",
     "domainAdded": "Added \"{{id}}\"",
     "domainDeleted": "Deleted \"{{id}}\"",
-    "policyModalTitle": "Reset Entire Configuration",
-    "policyModalWarning": "Changing the domain policy will RESET your entire configuration. All sources, tables, domains, and relationships will be deleted. A backup of your current config will be saved. This cannot be undone.",
-    "policyConfirmLabel": "Type RESET to confirm:",
-    "policyConfirmWord": "RESET",
-    "policyCancel": "Cancel",
-    "policyResetApply": "Reset & Apply",
-    "policyApplied": "Domain policy applied. This organization's catalog was reset.",
+    "policyApplied": "Domain policy applied.",
     "policyApplyFailed": "Failed to apply domain policy",
     "settingsPanel": "Settings"
   }

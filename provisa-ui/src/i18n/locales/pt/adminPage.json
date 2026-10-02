@@ -23,7 +23,7 @@
     "sqlNamingConvention": "Convenção de nomes SQL",
     "sqlNamingConventionHint": "Grafia aplicada aos nomes no plano SQL — o que as superfícies pgwire, Bolt e SQL semântico consultam. Definida separadamente da convenção do GraphQL, para que renomear um plano nunca renomeie o outro.",
     "domainMode": "Modo de domínio",
-    "domainModeHint": "Single armazena todas as tabelas sob um único domínio; Namespaced exige um domínio em cada tabela. Alterar isso exclui as fontes, tabelas e domínios desta organização.",
+    "domainModeHint": "Single armazena todas as tabelas em um único domínio; Namespaced exige um domínio em cada tabela. Só pode ser alterado enquanto esta organização não tiver fontes, tabelas ou domínios próprios.",
     "domainModeSingle": "Domínio único",
     "domainModeNamespaced": "Com namespace",
     "applyDomainPolicy": "Aplicar política de domínio",
@@ -181,13 +181,7 @@
     "addDomain": "Adicionar domínio",
     "domainAdded": "Adicionado \"{{id}}\"",
     "domainDeleted": "Excluído \"{{id}}\"",
-    "policyModalTitle": "Redefinir toda a configuração",
-    "policyModalWarning": "Alterar a política de domínio vai REDEFINIR toda a configuração. Todas as fontes, tabelas, domínios e relacionamentos serão excluídos. Um backup da configuração atual será salvo. Isso não pode ser desfeito.",
-    "policyConfirmLabel": "Digite RESET para confirmar:",
-    "policyConfirmWord": "RESET",
-    "policyCancel": "Cancelar",
-    "policyResetApply": "Redefinir e aplicar",
-    "policyApplied": "Política de domínio aplicada. O catálogo desta organização foi redefinido.",
+    "policyApplied": "Política de domínios aplicada.",
     "policyApplyFailed": "Falha ao aplicar a política de domínio",
     "settingsPanel": "Configurações"
   }

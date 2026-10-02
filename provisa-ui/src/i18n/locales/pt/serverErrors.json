@@ -183,6 +183,10 @@
       "self_role_change": "Um usuário não pode alterar a própria função. Peça a outro administrador (REQ-1308).",
       "view_not_permitted": "Sem permissão para exibir esta organização"
     },
+    "origin": {
+      "config_object_deleted": "{{name}} está declarado na configuração. Foi excluído agora; a próxima carga da configuração o criará de novo enquanto o arquivo ainda o declarar.",
+      "config_object_edited": "{{name}} está declarado na configuração. A alteração foi salva; a próxima carga da configuração reaplicará o que o arquivo diz."
+    },
     "platform": {
       "right_required": "Capacidade {{right}} necessária",
       "settings_capability_required": "Capacidade platform_settings necessária",
@@ -302,21 +306,22 @@
       "unknown_mode": "modo de segurança desconhecido '{{mode}}'"
     },
     "settings": {
+      "auth_required": "{{field}} não pode ser alterado até que a autenticação seja configurada.",
       "config_file_not_found": "Arquivo de configuração não encontrado",
       "database_not_available": "Banco de dados não disponível",
       "default_domain_required": "default_domain obrigatório quando use_domains=false",
       "docker_not_found": "docker não encontrado no PATH",
       "docker_restart_timeout": "o reinício do docker expirou",
+      "domain_policy_catalog_exists": "A política de domínios não pode ser alterada enquanto esta organização tiver um catálogo: {{tables}} tabela(s), {{sources}} fonte(s), {{domains}} domínio(s). Exclua-os primeiro.",
       "encryption_provider_unavailable": "o provedor de criptografia '{{provider}}' não está disponível (seu SDK/runtime não está instalado)",
+      "invalid_body": "A solicitação de configurações não é válida.",
+      "invalid_value": "O valor de {{field}} foi recusado.",
       "live_export_disabled": "A exportação de configuração ao vivo está desabilitada (defina live_config_export: true).",
       "no_container_resolvable": "nenhum contêiner especificado e nenhum resolvível a partir de QUERY_ENGINE_CONTAINER ou do mecanismo vinculado",
       "unknown_auth_provider": "provedor de autenticação desconhecido '{{provider}}'; válidos: {{valid}}",
       "unknown_encryption_provider": "provedor de criptografia desconhecido '{{provider}}'",
       "unknown_engine": "mecanismo desconhecido '{{engine}}'; válidos: {{valid}}",
-      "use_domains_invalid": "use_domains deve ser true, false ou null",
-      "invalid_value": "O valor de {{field}} foi recusado.",
-      "invalid_body": "A solicitação de configurações não é válida.",
-      "auth_required": "{{field}} não pode ser alterado até que a autenticação seja configurada."
+      "use_domains_invalid": "use_domains deve ser true, false ou null"
     },
     "setup": {
       "admin_credentials_required": "admin_username e admin_password obrigatórios",

@@ -12,6 +12,7 @@ import type { Role, RoleAssignment, OrgMembership } from "../types/auth";
 import { ORG_HEADER } from "../lib/authFetch";
 import { normalizeRole, type RawRole } from "../lib/roles";
 import { serverMessage, requestFailed } from "../i18n/serverMessage";
+import { announceWarnings } from "../lib/mutationWarnings";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -449,6 +450,7 @@ export async function deleteOrgRole(orgId: string, roleId: string): Promise<void
     headers: { [ORG_HEADER]: orgId },
   });
   if (!res.ok) throw httpError("deleteOrgRole", res.status);
+  announceWarnings(await res.json()); // REQ-1919: a config's role comes back on the next load
 }
 
 export async function profileTable(

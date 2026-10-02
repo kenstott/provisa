@@ -8,6 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import type { Origin } from "./admin";
+
 /** Capabilities matching provisa/security/rights.py */
 export type Capability =
   | "source_registration"
@@ -67,6 +69,8 @@ export interface RoleRateLimit {
 
 export interface Role {
   id: string;
+  /** REQ-1919: where the role came from — a config file, the admin, or the deployment's seed. */
+  origin: Origin;
   capabilities: Capability[];
   /**
    * REQ-1602: rights the role does NOT hold, whose surfaces it is shown anyway -- disabled and

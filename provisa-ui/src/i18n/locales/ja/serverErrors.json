@@ -183,6 +183,10 @@
       "self_role_change": "ユーザーは自分自身のロールを変更できません。別の管理者に依頼してください（REQ-1308）。",
       "view_not_permitted": "この組織を表示する権限がありません"
     },
+    "origin": {
+      "config_object_deleted": "{{name}} は設定で宣言されています。いま削除されましたが、ファイルが宣言している限り、次回の設定読み込みで再び作成されます。",
+      "config_object_edited": "{{name}} は設定で宣言されています。変更は保存されましたが、次回の設定読み込みでファイルの内容が再適用されます。"
+    },
     "platform": {
       "right_required": "{{right}} 機能が必要です",
       "settings_capability_required": "platform_settings 機能が必要です",
@@ -302,21 +306,22 @@
       "unknown_mode": "不明なセキュリティモード「{{mode}}」です"
     },
     "settings": {
+      "auth_required": "認証が設定されるまで {{field}} は変更できません。",
       "config_file_not_found": "設定ファイルが見つかりません",
       "database_not_available": "データベースが利用できません",
       "default_domain_required": "use_domains=false の場合は default_domain が必要です",
       "docker_not_found": "PATH 上に docker が見つかりません",
       "docker_restart_timeout": "docker の再起動がタイムアウトしました",
+      "domain_policy_catalog_exists": "この組織にカタログがある間はドメインポリシーを変更できません: テーブル {{tables}} 件、ソース {{sources}} 件、ドメイン {{domains}} 件。先に削除してください。",
       "encryption_provider_unavailable": "暗号化プロバイダー「{{provider}}」は利用できません（SDK／ランタイムがインストールされていません）",
+      "invalid_body": "設定リクエストが無効です。",
+      "invalid_value": "{{field}} の値は拒否されました。",
       "live_export_disabled": "ライブ設定エクスポートは無効です（live_config_export: true を設定してください）。",
       "no_container_resolvable": "コンテナが指定されておらず、QUERY_ENGINE_CONTAINER やバインド済みエンジンからも解決できません",
       "unknown_auth_provider": "不明な認証プロバイダー「{{provider}}」です。有効な値：{{valid}}",
       "unknown_encryption_provider": "不明な暗号化プロバイダー「{{provider}}」です",
       "unknown_engine": "不明なエンジン「{{engine}}」です。有効な値：{{valid}}",
-      "use_domains_invalid": "use_domains は true、false、または null である必要があります",
-      "invalid_value": "{{field}} の値は拒否されました。",
-      "invalid_body": "設定リクエストが無効です。",
-      "auth_required": "認証が設定されるまで {{field}} は変更できません。"
+      "use_domains_invalid": "use_domains は true、false、または null である必要があります"
     },
     "setup": {
       "admin_credentials_required": "admin_username と admin_password が必要です",

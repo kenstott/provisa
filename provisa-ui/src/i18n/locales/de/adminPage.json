@@ -23,7 +23,7 @@
     "sqlNamingConvention": "SQL-Namenskonvention",
     "sqlNamingConventionHint": "Schreibweise für Namen auf der SQL-Ebene — also das, was die pgwire-, Bolt- und Semantic-SQL-Oberflächen abfragen. Getrennt von der GraphQL-Konvention gesetzt, damit das Umbenennen einer Ebene nie die andere umbenennt.",
     "domainMode": "Domänenmodus",
-    "domainModeHint": "Single speichert jede Tabelle unter einer Domäne; Namespaced verlangt für jede Tabelle eine Domäne. Eine Änderung löscht die Quellen, Tabellen und Domänen dieser Organisation.",
+    "domainModeHint": "Single speichert jede Tabelle unter einer Domäne; Namespaced verlangt eine Domäne für jede Tabelle. Die Einstellung lässt sich nur ändern, solange diese Organisation keine eigenen Quellen, Tabellen oder Domänen hat.",
     "domainModeSingle": "Einzelne Domäne",
     "domainModeNamespaced": "Mit Namespaces",
     "applyDomainPolicy": "Domänenrichtlinie anwenden",
@@ -181,13 +181,7 @@
     "addDomain": "Domäne hinzufügen",
     "domainAdded": "„{{id}}“ hinzugefügt",
     "domainDeleted": "„{{id}}“ gelöscht",
-    "policyModalTitle": "Gesamte Konfiguration zurücksetzen",
-    "policyModalWarning": "Das Ändern der Domänenrichtlinie SETZT Ihre gesamte Konfiguration ZURÜCK. Alle Quellen, Tabellen, Domänen und Beziehungen werden gelöscht. Ein Backup Ihrer aktuellen Konfiguration wird gespeichert. Dies kann nicht rückgängig gemacht werden.",
-    "policyConfirmLabel": "Geben Sie zur Bestätigung RESET ein:",
-    "policyConfirmWord": "RESET",
-    "policyCancel": "Abbrechen",
-    "policyResetApply": "Zurücksetzen & Anwenden",
-    "policyApplied": "Domänenrichtlinie angewendet. Der Katalog dieser Organisation wurde zurückgesetzt.",
+    "policyApplied": "Domänenrichtlinie angewendet.",
     "policyApplyFailed": "Anwenden der Domänenrichtlinie fehlgeschlagen",
     "settingsPanel": "Einstellungen"
   }

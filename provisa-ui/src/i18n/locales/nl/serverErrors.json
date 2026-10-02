@@ -183,6 +183,10 @@
       "self_role_change": "Een gebruiker kan de eigen rol niet wijzigen. Vraag een andere beheerder (REQ-1308).",
       "view_not_permitted": "Geen toestemming om deze organisatie te bekijken"
     },
+    "origin": {
+      "config_object_deleted": "{{name}} is gedeclareerd in de configuratie. Het is nu verwijderd; bij de volgende keer laden van de configuratie wordt het opnieuw aangemaakt zolang het bestand het nog declareert.",
+      "config_object_edited": "{{name}} is gedeclareerd in de configuratie. De wijziging is opgeslagen; bij de volgende keer laden van de configuratie wordt de inhoud van het bestand opnieuw toegepast."
+    },
     "platform": {
       "right_required": "Capability {{right}} vereist",
       "settings_capability_required": "Capability platform_settings vereist",
@@ -302,21 +306,22 @@
       "unknown_mode": "onbekende beveiligingsmodus '{{mode}}'"
     },
     "settings": {
+      "auth_required": "{{field}} kan pas worden gewijzigd als verificatie is geconfigureerd.",
       "config_file_not_found": "Configuratiebestand niet gevonden",
       "database_not_available": "Database niet beschikbaar",
       "default_domain_required": "default_domain vereist wanneer use_domains=false",
       "docker_not_found": "docker niet gevonden op PATH",
       "docker_restart_timeout": "time-out bij docker-herstart",
+      "domain_policy_catalog_exists": "Het domeinbeleid kan niet worden gewijzigd zolang deze organisatie een catalogus heeft: {{tables}} tabel(len), {{sources}} bron(nen), {{domains}} domein(en). Verwijder deze eerst.",
       "encryption_provider_unavailable": "encryptieprovider '{{provider}}' is niet beschikbaar (de bijbehorende SDK/runtime is niet geïnstalleerd)",
+      "invalid_body": "Het instellingenverzoek is ongeldig.",
+      "invalid_value": "De waarde voor {{field}} is geweigerd.",
       "live_export_disabled": "Live configuratie-export is uitgeschakeld (stel live_config_export: true in).",
       "no_container_resolvable": "geen container opgegeven en geen container af te leiden uit QUERY_ENGINE_CONTAINER of de gekoppelde engine",
       "unknown_auth_provider": "onbekende authenticatieprovider '{{provider}}'; geldig: {{valid}}",
       "unknown_encryption_provider": "onbekende encryptieprovider '{{provider}}'",
       "unknown_engine": "onbekende engine '{{engine}}'; geldig: {{valid}}",
-      "use_domains_invalid": "use_domains moet true, false of null zijn",
-      "invalid_value": "De waarde voor {{field}} is geweigerd.",
-      "invalid_body": "Het instellingenverzoek is ongeldig.",
-      "auth_required": "{{field}} kan pas worden gewijzigd als verificatie is geconfigureerd."
+      "use_domains_invalid": "use_domains moet true, false of null zijn"
     },
     "setup": {
       "admin_credentials_required": "admin_username en admin_password vereist",

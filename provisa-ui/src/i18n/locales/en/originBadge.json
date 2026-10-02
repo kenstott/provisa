@@ -1,0 +1,6 @@
+{
+  "originBadge": {
+    "config": "declared in config",
+    "configHint": "A config file declares this. A change made here stands until the config is loaded again, which re-applies what the file says."
+  }
+}

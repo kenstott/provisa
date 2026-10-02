@@ -23,7 +23,7 @@
     "sqlNamingConvention": "מוסכמת שמות ל-SQL",
     "sqlNamingConventionHint": "אופן הכתיב של שמות במשטח ה-SQL — זה שממשקי pgwire, Bolt ו-SQL סמנטי מתשאלים. נקבע בנפרד ממוסכמת ה-GraphQL, ולכן שינוי שמות במשטח אחד לעולם אינו משנה שמות במשטח האחר.",
     "domainMode": "מצב דומיין",
-    "domainModeHint": "Single שומר כל טבלה בדומיין יחיד; Namespaced מחייב דומיין לכל טבלה. שינוי מוחק את המקורות, הטבלאות והדומיינים של ארגון זה.",
+    "domainModeHint": "Single שומר כל טבלה תחת דומיין אחד; Namespaced דורש דומיין לכל טבלה. ניתן לשנות זאת רק כל עוד לארגון אין מקורות, טבלאות או דומיינים משלו.",
     "domainModeSingle": "דומיין יחיד",
     "domainModeNamespaced": "עם מרחבי שמות (Namespaced)",
     "applyDomainPolicy": "החלת מדיניות דומיין",
@@ -181,13 +181,7 @@
     "addDomain": "הוספת דומיין",
     "domainAdded": "\"{{id}}\" נוסף",
     "domainDeleted": "\"{{id}}\" נמחק",
-    "policyModalTitle": "איפוס התצורה כולה",
-    "policyModalWarning": "שינוי מדיניות הדומיין יאפס את כל התצורה שלך. כל המקורות, הטבלאות, הדומיינים והקשרים יימחקו. גיבוי של התצורה הנוכחית יישמר. לא ניתן לבטל פעולה זו.",
-    "policyConfirmLabel": "יש להקליד RESET לאישור:",
-    "policyConfirmWord": "RESET",
-    "policyCancel": "ביטול",
-    "policyResetApply": "איפוס והחלה",
-    "policyApplied": "מדיניות הדומיין הוחלה. הקטלוג של הארגון הזה אופס.",
+    "policyApplied": "מדיניות הדומיינים הוחלה.",
     "policyApplyFailed": "החלת מדיניות הדומיין נכשלה",
     "settingsPanel": "הגדרות"
   }

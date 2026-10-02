@@ -23,7 +23,7 @@
     "sqlNamingConvention": "SQL 命名規則",
     "sqlNamingConventionHint": "SQL プレーン上の名前に適用する表記で、pgwire、Bolt、セマンティック SQL の各サーフェスが参照します。GraphQL の規則とは別に設定するため、一方のプレーンの名前を変えても他方は変わりません。",
     "domainMode": "ドメインモード",
-    "domainModeHint": "Single はすべてのテーブルを 1 つのドメインに格納し、Namespaced はすべてのテーブルにドメインを要求します。これを変更すると、この組織のソース、テーブル、ドメインが削除されます。",
+    "domainModeHint": "Single はすべてのテーブルを 1 つのドメインに格納し、Namespaced はすべてのテーブルにドメインを必須とします。この組織に独自のソース、テーブル、ドメインがない間だけ変更できます。",
     "domainModeSingle": "単一ドメイン",
     "domainModeNamespaced": "名前空間付き",
     "applyDomainPolicy": "ドメインポリシーを適用",
@@ -181,13 +181,7 @@
     "addDomain": "ドメインを追加",
     "domainAdded": "「{{id}}」を追加しました",
     "domainDeleted": "「{{id}}」を削除しました",
-    "policyModalTitle": "構成全体のリセット",
-    "policyModalWarning": "ドメインポリシーを変更すると、構成全体がリセットされます。すべてのソース、テーブル、ドメイン、リレーションシップが削除されます。現在の構成のバックアップは保存されます。この操作は取り消せません。",
-    "policyConfirmLabel": "確認のため RESET と入力してください:",
-    "policyConfirmWord": "RESET",
-    "policyCancel": "キャンセル",
-    "policyResetApply": "リセットして適用",
-    "policyApplied": "ドメインポリシーを適用しました。この組織のカタログをリセットしました。",
+    "policyApplied": "ドメインポリシーを適用しました。",
     "policyApplyFailed": "ドメインポリシーの適用に失敗しました",
     "settingsPanel": "設定"
   }

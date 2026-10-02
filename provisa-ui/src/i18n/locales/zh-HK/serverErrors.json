@@ -183,6 +183,10 @@
       "self_role_change": "使用者不可更改自己的角色。請要求另一位管理員處理（REQ-1308）。",
       "view_not_permitted": "不允許檢視此組織"
     },
+    "origin": {
+      "config_object_deleted": "{{name}} 已於設定中宣告。它現已刪除；只要檔案仍宣告它，下次載入設定時會重新建立。",
+      "config_object_edited": "{{name}} 已於設定中宣告。變更已儲存；下次載入設定時將重新套用檔案中的內容。"
+    },
     "platform": {
       "right_required": "需要 {{right}} 能力",
       "settings_capability_required": "需要 platform_settings 能力",
@@ -302,21 +306,22 @@
       "unknown_mode": "未知的安全模式「{{mode}}」"
     },
     "settings": {
+      "auth_required": "在設定身份驗證之前，無法變更 {{field}}。",
       "config_file_not_found": "找不到設定檔",
       "database_not_available": "數據庫不可用",
       "default_domain_required": "use_domains=false 時必須提供 default_domain",
       "docker_not_found": "PATH 上找不到 docker",
       "docker_restart_timeout": "docker 重新啟動逾時",
+      "domain_policy_catalog_exists": "本機構存在目錄時無法更改網域政策：{{tables}} 個資料表、{{sources}} 個資料來源、{{domains}} 個網域。請先刪除它們。",
       "encryption_provider_unavailable": "加密提供者「{{provider}}」不可用（其 SDK／執行環境未安裝）",
+      "invalid_body": "設定請求無效。",
+      "invalid_value": "{{field}} 的值被拒絕。",
       "live_export_disabled": "即時設定匯出已停用（請設定 live_config_export: true）。",
       "no_container_resolvable": "未指定容器，且無法從 QUERY_ENGINE_CONTAINER 或已繫結的引擎解析",
       "unknown_auth_provider": "未知的驗證提供者「{{provider}}」；有效值：{{valid}}",
       "unknown_encryption_provider": "未知的加密提供者「{{provider}}」",
       "unknown_engine": "未知引擎「{{engine}}」；有效值：{{valid}}",
-      "use_domains_invalid": "use_domains 必須為 true、false 或 null",
-      "invalid_value": "{{field}} 的值被拒絕。",
-      "invalid_body": "設定請求無效。",
-      "auth_required": "在設定身份驗證之前，無法變更 {{field}}。"
+      "use_domains_invalid": "use_domains 必須為 true、false 或 null"
     },
     "setup": {
       "admin_credentials_required": "必須提供 admin_username 及 admin_password",

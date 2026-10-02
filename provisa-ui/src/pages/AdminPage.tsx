@@ -67,6 +67,7 @@ import { DomainModeCard, NamingConventionsCard } from "../components/admin/setti
 import { PageLoading } from "../components/PageLoading";
 import { usePanelState } from "../hooks/usePanelState";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
+import { OriginBadge } from "../components/OriginBadge";
 
 const ROUTE_TO_SECTION: Record<string, string> = {
   // Both routes open the merged dashboard; /admin/system-health keeps working as a deep link.
@@ -345,7 +346,12 @@ export function AdminPage() {
                           )}
                           {paged.map((d) => (
                             <Table.Tr key={d.id}>
-                              <Table.Td>{d.id}</Table.Td>
+                              <Table.Td>
+                                <Group gap="0.35rem" wrap="nowrap">
+                                  {d.id}
+                                  <OriginBadge origin={d.origin} />
+                                </Group>
+                              </Table.Td>
                               <Table.Td>{d.description || "—"}</Table.Td>
                               <Table.Td>
                                 <Text c="dimmed" ff="monospace" fz="sm">

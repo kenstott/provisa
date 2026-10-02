@@ -33,7 +33,6 @@ import {
   Checkbox,
   FileButton,
   Group,
-  Modal,
   NumberInput,
   Select,
   SimpleGrid,
@@ -435,10 +434,11 @@ export function NamingConventionsCard() {
 }
 
 /**
- * Whether this org namespaces its tables by domain (org-scoped, destructive).
+ * Whether this org namespaces its tables by domain (org-scoped).
  *
- * Applying it resets THIS org's catalog, so it goes through /admin/domain-policy behind a typed
- * confirmation rather than the ordinary save.
+ * Every registered table's domain is bound to the policy, so /admin/domain-policy refuses the
+ * switch while the org has sources, tables or domains of its own (REQ-1919) and removes nothing.
+ * The refusal, which counts what exists, is shown under the button.
  */
 export function DomainModeCard({ onApplied }: { onApplied?: () => void }) {
   const { t } = useTranslation();
@@ -446,8 +446,6 @@ export function DomainModeCard({ onApplied }: { onApplied?: () => void }) {
   // Not editable: in single-domain mode the name reaches no label, no name and no access check
   // -- it is only the string every row is stored under -- so it is round-tripped, never shown.
   const [defaultDomain, setDefaultDomain] = useState("default");
-  const [modalOpen, setModalOpen] = useState(false);
-  const [confirmText, setConfirmText] = useState("");
   const [applying, setApplying] = useState(false);
   const [appliedMsg, setAppliedMsg] = useState("");
   const [error, setError] = useState("");
@@ -465,8 +463,6 @@ export function DomainModeCard({ onApplied }: { onApplied?: () => void }) {
     setAppliedMsg("");
     try {
       await setDomainPolicy({ use_domains: useDomains, default_domain: defaultDomain });
-      setModalOpen(false);
-      setConfirmText("");
       setAppliedMsg(t("adminPage.policyApplied"));
       const s = await fetchSettings();
       setUseDomains(s.naming.use_domains);
@@ -505,71 +501,20 @@ export function DomainModeCard({ onApplied }: { onApplied?: () => void }) {
             <Button
               variant="default"
               data-testid="apply-domain-policy"
-              onClick={() => {
-                setError("");
-                setConfirmText("");
-                setModalOpen(true);
-              }}
+              onClick={apply}
+              loading={applying}
             >
               {t("adminPage.applyDomainPolicy")}
             </Button>
             {appliedMsg && <Text fz="sm">{appliedMsg}</Text>}
           </Group>
-        </Stack>
-      </Card>
-
-      <Modal
-        opened={modalOpen}
-        onClose={() => {
-          setModalOpen(false);
-          setConfirmText("");
-          setError("");
-        }}
-        title={t("adminPage.policyModalTitle")}
-        centered
-        closeOnClickOutside={!applying}
-        closeOnEscape={!applying}
-        data-testid="domain-policy-modal"
-      >
-        <Stack gap="md">
-          <Alert color="red" variant="filled">
-            {t("adminPage.policyModalWarning")}
-          </Alert>
-          <TextInput
-            label={t("adminPage.policyConfirmLabel")}
-            data-testid="domain-policy-confirm-input"
-            value={confirmText}
-            onChange={(e) => setConfirmText(e.currentTarget.value)}
-          />
           {error && (
-            <Alert color="red" variant="light">
+            <Alert color="red" variant="light" data-testid="domain-policy-refused">
               {error}
             </Alert>
           )}
-          <Group justify="flex-end">
-            <Button
-              variant="default"
-              onClick={() => {
-                setModalOpen(false);
-                setConfirmText("");
-                setError("");
-              }}
-              disabled={applying}
-            >
-              {t("adminPage.policyCancel")}
-            </Button>
-            <Button
-              color="red"
-              data-testid="domain-policy-confirm-btn"
-              disabled={confirmText !== "RESET" || applying}
-              onClick={apply}
-              loading={applying}
-            >
-              {applying ? t("adminPage.applying") : t("adminPage.policyResetApply")}
-            </Button>
-          </Group>
         </Stack>
-      </Modal>
+      </Card>
     </>
   );
 }

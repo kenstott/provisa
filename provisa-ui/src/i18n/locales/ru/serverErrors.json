@@ -183,6 +183,10 @@
       "self_role_change": "Пользователь не может изменить собственную роль. Обратитесь к другому администратору (REQ-1308).",
       "view_not_permitted": "Просмотр этой организации не разрешен"
     },
+    "origin": {
+      "config_object_deleted": "{{name}} объявлен в конфигурации. Сейчас он удалён; при следующей загрузке конфигурации он будет создан снова, пока файл его объявляет.",
+      "config_object_edited": "{{name}} объявлен в конфигурации. Изменение сохранено; при следующей загрузке конфигурации содержимое файла будет применено заново."
+    },
     "platform": {
       "right_required": "требуется право {{right}}",
       "settings_capability_required": "требуется право platform_settings",
@@ -302,21 +306,22 @@
       "unknown_mode": "неизвестный режим безопасности '{{mode}}'"
     },
     "settings": {
+      "auth_required": "{{field}} нельзя изменить, пока не настроена аутентификация.",
       "config_file_not_found": "Файл конфигурации не найден",
       "database_not_available": "База данных недоступна",
       "default_domain_required": "default_domain требуется при use_domains=false",
       "docker_not_found": "docker не найден в PATH",
       "docker_restart_timeout": "истекло время ожидания перезапуска docker",
+      "domain_policy_catalog_exists": "Политику доменов нельзя изменить, пока у организации есть каталог: таблиц — {{tables}}, источников — {{sources}}, доменов — {{domains}}. Сначала удалите их.",
       "encryption_provider_unavailable": "провайдер шифрования '{{provider}}' недоступен (его SDK/среда выполнения не установлены)",
+      "invalid_body": "Запрос настроек недопустим.",
+      "invalid_value": "Значение {{field}} отклонено.",
       "live_export_disabled": "Экспорт живой конфигурации отключен (задайте live_config_export: true).",
       "no_container_resolvable": "контейнер не указан и не может быть определен из QUERY_ENGINE_CONTAINER или привязанного движка",
       "unknown_auth_provider": "неизвестный провайдер аутентификации '{{provider}}'; допустимые: {{valid}}",
       "unknown_encryption_provider": "неизвестный провайдер шифрования '{{provider}}'",
       "unknown_engine": "неизвестный движок '{{engine}}'; допустимые: {{valid}}",
-      "use_domains_invalid": "use_domains должен быть true, false или null",
-      "invalid_value": "Значение {{field}} отклонено.",
-      "invalid_body": "Запрос настроек недопустим.",
-      "auth_required": "{{field}} нельзя изменить, пока не настроена аутентификация."
+      "use_domains_invalid": "use_domains должен быть true, false или null"
     },
     "setup": {
       "admin_credentials_required": "требуются admin_username и admin_password",

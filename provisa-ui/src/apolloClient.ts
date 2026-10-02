@@ -12,6 +12,7 @@ import { ApolloClient, InMemoryCache, HttpLink, ApolloLink } from "@apollo/clien
 import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
 import { map } from "rxjs/operators";
 import { currentBearer, ENV_HEADER, ORG_HEADER, selectedEnv } from "./lib/authFetch";
+import { announceWarnings } from "./lib/mutationWarnings";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -110,8 +111,6 @@ function dropPersistedCache(): Promise<void> {
   });
 }
 
-
-
 // Afterware: read X-Schema-Version from every /admin/graphql response.
 // When the server-side version advances (schema rebuilt after table mutations),
 // re-fetch every active query so no view keeps rendering pre-rebuild data.
@@ -174,9 +173,21 @@ const schemaVersionLink = new ApolloLink((operation, forward) =>
   ),
 );
 
+// Afterware: a mutation result can carry warnings about a change that WAS made (REQ-1919: an
+// object a config file declares was edited or deleted). Shown here, once, for every mutation,
+// so no page has to remember to look.
+const mutationWarningLink = new ApolloLink((operation, forward) =>
+  forward(operation).pipe(
+    map((response) => {
+      if (typeof window !== "undefined") announceWarnings(response.data);
+      return response;
+    }),
+  ),
+);
+
 export const client = new ApolloClient({
   ssrMode: typeof window === "undefined",
-  link: ApolloLink.from([authLink, schemaVersionLink, httpLink]),
+  link: ApolloLink.from([authLink, schemaVersionLink, mutationWarningLink, httpLink]),
   cache,
   defaultOptions: {
     watchQuery: {

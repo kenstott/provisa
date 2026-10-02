@@ -75,6 +75,7 @@ import {
   replicateContradictsLoadProtection,
   resolvedReplicate,
 } from "../components/admin/replicate";
+import { OriginBadge } from "../components/OriginBadge";
 
 export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
@@ -1058,6 +1059,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                       >
                         <Group gap="0.35rem">
                           {t.alias || t.tableName}
+                          <OriginBadge origin={t.origin} />
                           {/* REQ-1320: star-schema role is metadata on the registration itself —
                             the badge derives live from it, so it can never drift from the def. */}
                           {t.modelingRole ? (

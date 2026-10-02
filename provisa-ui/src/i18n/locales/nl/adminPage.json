@@ -23,7 +23,7 @@
     "sqlNamingConvention": "SQL-naamgevingsconventie",
     "sqlNamingConventionHint": "Schrijfwijze voor namen op het SQL-vlak — dat wat de pgwire-, Bolt- en semantische SQL-oppervlakken bevragen. Los van de GraphQL-conventie ingesteld, zodat het hernoemen van het ene vlak nooit het andere hernoemt.",
     "domainMode": "Domeinmodus",
-    "domainModeHint": "Single slaat elke tabel op onder één domein; Namespaced vereist een domein op elke tabel. Dit wijzigen verwijdert de bronnen, tabellen en domeinen van deze organisatie.",
+    "domainModeHint": "Single slaat elke tabel onder één domein op; Namespaced vereist een domein voor elke tabel. Dit kan alleen worden gewijzigd zolang deze organisatie geen eigen bronnen, tabellen of domeinen heeft.",
     "domainModeSingle": "Eén domein",
     "domainModeNamespaced": "Met naamruimte",
     "applyDomainPolicy": "Domeinbeleid toepassen",
@@ -181,13 +181,7 @@
     "addDomain": "Domein toevoegen",
     "domainAdded": "\"{{id}}\" toegevoegd",
     "domainDeleted": "\"{{id}}\" verwijderd",
-    "policyModalTitle": "Volledige configuratie resetten",
-    "policyModalWarning": "Het wijzigen van het domeinbeleid RESET de volledige configuratie. Alle bronnen, tabellen, domeinen en relaties worden verwijderd. Er wordt een back-up van de huidige configuratie opgeslagen. Dit kan niet ongedaan worden gemaakt.",
-    "policyConfirmLabel": "Typ RESET ter bevestiging:",
-    "policyConfirmWord": "RESET",
-    "policyCancel": "Annuleren",
-    "policyResetApply": "Resetten en toepassen",
-    "policyApplied": "Domeinbeleid toegepast. De catalogus van deze organisatie is opnieuw ingesteld.",
+    "policyApplied": "Domeinbeleid toegepast.",
     "policyApplyFailed": "Toepassen van domeinbeleid mislukt",
     "settingsPanel": "Instellingen"
   }
