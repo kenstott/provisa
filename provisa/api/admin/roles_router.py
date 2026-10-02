@@ -102,6 +102,25 @@ async def list_roles(request: Request):  # REQ-042, REQ-059, REQ-060
     return [dict(r._mapping) if full(r.id) else {"id": r.id} for r in rows]
 
 
+async def _require_reach_of_added(
+    conn, request: Request, own_before, parent_before, own_after, parent_after
+) -> None:  # REQ-1531
+    """The caller reaches every domain this change adds to what the role reaches — the domains
+    it lists and the ones it inherits (REQ-1677). ``own_before`` is None for a new role."""
+    from provisa.api.admin.capabilities import require_reach_of_added_domains_request
+    from provisa.core.repositories import role as role_repo
+    from provisa.security.inheritance import effective_domain_access
+
+    rows = await role_repo.list_all(conn)
+
+    def _reach(own, parent_id):
+        inherited = effective_domain_access(parent_id, rows) if parent_id else []
+        return [*own, *inherited]
+
+    before = None if own_before is None else _reach(own_before, parent_before)
+    require_reach_of_added_domains_request(request, before, _reach(own_after, parent_after))
+
+
 @router.post("/")
 async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-059, REQ-060, REQ-215
     # REQ-1531: a role carries capabilities AND domain_access, so minting one widens scope.
@@ -112,6 +131,10 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
         await _check_parent(conn, body.id, body.parent_role_id)  # REQ-1677
         await _check_definition(
             conn, request, body.id, body.capabilities, body.domain_access, body.parent_role_id
+        )
+        # REQ-1531: a role hands out reach; its creator must hold what it lists and inherits.
+        await _require_reach_of_added(
+            conn, request, None, None, body.domain_access, body.parent_role_id
         )
         await conn.execute_core(
             insert(roles).values(
@@ -215,6 +238,14 @@ async def update_role(
         if new_parent != existing["parent_role_id"]:
             await _check_parent(conn, role_id, new_parent)  # REQ-1677
         await _check_definition(conn, request, role_id, new_caps, new_domains, new_parent)
+        await _require_reach_of_added(
+            conn,
+            request,
+            existing["domain_access"],
+            existing["parent_role_id"],
+            new_domains,
+            new_parent,
+        )
         await conn.execute_core(
             update(roles)
             .where(roles.c.id == role_id)

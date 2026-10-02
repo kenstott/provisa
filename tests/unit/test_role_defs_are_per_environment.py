@@ -38,6 +38,11 @@ class _Result:
     def fetchone(self):
         return self._row
 
+    def fetchall(self):
+        # The roles of this environment, as the router lists them to work out what a role
+        # inherits: the one seeded role.
+        return [] if self._row is None else [self._row]
+
 
 class _Row:
     def __init__(self, mapping):

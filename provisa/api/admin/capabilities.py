@@ -152,6 +152,30 @@ def require_domain(info: "strawberry.types.Info", domain_id: str) -> None:  # RE
         raise PermissionError(f"No access to domain {domain_id!r}")
 
 
+def require_reach_of_added_domains(  # REQ-1531
+    info: "strawberry.types.Info", before, after, *, empty_is_all: bool = False
+) -> None:
+    """Gate a change that ADDS domains to a role's ``domain_access`` or a source's
+    ``allowed_domains``: the caller must reach each domain the change adds (all of them, when it
+    adds ``*``). Adding a domain to a role is how reach is handed out and adding one to a source
+    is how a source is opened to a domain, so neither may hand out more than the caller holds.
+    Removing a domain needs no reach. ``before`` is None for an object being created."""
+    from provisa.security.rights import domains_added
+
+    for domain_id in sorted(domains_added(before, after, empty_is_all=empty_is_all)):
+        require_domain(info, domain_id)
+
+
+def require_reach_of_added_domains_request(  # REQ-1531
+    request, before, after, *, empty_is_all: bool = False
+) -> None:
+    """The Request twin of :func:`require_reach_of_added_domains`, for a REST router."""
+    from provisa.security.rights import domains_added
+
+    for domain_id in sorted(domains_added(before, after, empty_is_all=empty_is_all)):
+        require_domain_request(request, domain_id)
+
+
 def require_capability_request(request, capability: str) -> None:  # REQ-1531
     """The same gate for a REST admin router, which has a Request rather than a resolver Info.
 

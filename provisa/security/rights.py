@@ -131,6 +131,31 @@ SYSTEM_ROLE_IDS: frozenset[str] = frozenset(
 )
 
 
+def domains_added(
+    before: Iterable[str] | None, after: Iterable[str], *, empty_is_all: bool = False
+) -> set[str]:  # REQ-1531
+    """The domains a change ADDS to a list of domains: those in ``after`` and not in ``before``.
+
+    ``before`` is None for an object being created, which reached nothing. ``ALL_DOMAINS`` in a
+    list is every domain: a list that gains it adds ``ALL_DOMAINS`` and nothing narrower, and a
+    list that already had it gains nothing whatever else it now names. ``empty_is_all`` is for a
+    list whose EMPTY state means every domain (a source's ``allowed_domains``), so that emptying
+    it is seen as the widening it is.
+    """
+
+    def _reach(domains: Iterable[str]) -> set[str]:
+        reach = {d for d in domains if d}
+        return {ALL_DOMAINS} if empty_is_all and not reach else reach
+
+    was = set() if before is None else _reach(before)
+    now = _reach(after)
+    if ALL_DOMAINS in was:
+        return set()
+    if ALL_DOMAINS in now:
+        return {ALL_DOMAINS}
+    return now - was
+
+
 def is_tenant_org(org_id: str | None, root_org_id: str) -> bool:  # REQ-1297
     """True when ``org_id`` names a TENANT org — any bound org other than the deployment's root.
 

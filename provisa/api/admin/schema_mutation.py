@@ -763,6 +763,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             cdc=_cdc_model_from_input(input),
         )
 
+        # REQ-1531: a source with no allowed list is open to every domain, so opening it to a
+        # domain — or to all of them — needs the caller to reach that domain.
+        from provisa.api.admin.capabilities import require_reach_of_added_domains
+        from provisa.core.repositories import source as _source_repo
+
+        async with pool.acquire() as _held_conn:
+            _held = await _source_repo.get(cast("Connection", _held_conn), input.id)
+        _was = None if _held is None else _held["allowed_domains"] or []
+        # The list the source will hold: the one given, or — when none is given — the one it
+        # already holds (``_upsert_source_with_domains`` writes only a list that names a domain).
+        _named = [d for d in (input.allowed_domains or []) if d.strip()]
+        require_reach_of_added_domains(info, _was, _named or _was or [], empty_is_all=True)
         await _upsert_source_with_domains(pool, model, input)
 
         if input.type == "govdata" and input.username:
@@ -1030,6 +1042,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 off_peak_tz=input.off_peak_tz,  # REQ-1141
                 cdc=_cdc_model_from_input(input),
             )
+            if input.allowed_domains is not None:
+                from provisa.api.admin.capabilities import require_reach_of_added_domains
+
+                require_reach_of_added_domains(  # REQ-1531: see create_source
+                    info,
+                    existing["allowed_domains"] or [],
+                    input.allowed_domains,
+                    empty_is_all=True,
+                )
             await source_repo.upsert(_conn, model)
             if input.allowed_domains is not None:
                 await conn.execute_core(
@@ -1806,6 +1827,16 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 code=definition_problem.code,
                 params={"role": input.id, **definition_problem.params},
             )
+        # REQ-1531: a role hands out reach; whoever defines it must hold every domain the
+        # definition adds to what the role reaches — listed or inherited.
+        from provisa.api.admin.capabilities import require_reach_of_added_domains
+
+        held = next((r for r in existing if r["id"] == input.id), None)
+        require_reach_of_added_domains(
+            info,
+            None if held is None else effective_domain_access(input.id, existing),
+            [*input.domain_access, *inherited_domains],
+        )
         model = RoleModel(
             id=input.id,
             capabilities=input.capabilities,
@@ -2799,14 +2830,23 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         self, info: StrawberryInfo, source_id: str, allowed_domains: list[str]
     ) -> MutationResult:  # REQ-1531
         """Set the allowed domain list for a source (empty list = unrestricted)."""
-        # REQ-1531: this decides which domains may reach a source at all. A member widening it would
-        # be granting themselves reach, so it belongs to whoever registers sources, and is not
-        # gated by membership in the domains being listed.
-        from provisa.api.admin.capabilities import require_capability
+        # REQ-1531: this decides which domains may reach a source at all. It belongs to whoever
+        # registers sources, and opening the source to a domain — or, with an empty list, to
+        # every domain — needs the caller to reach that domain. Closing it to one needs no reach.
+        from provisa.api.admin.capabilities import (
+            require_capability,
+            require_reach_of_added_domains,
+        )
+        from provisa.core.repositories import source as source_repo
 
         require_capability(info, "source_registration")
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            held = await source_repo.get(cast("Connection", conn), source_id)
+            if held is not None:
+                require_reach_of_added_domains(
+                    info, held["allowed_domains"] or [], allowed_domains, empty_is_all=True
+                )
             result = await conn.execute_core(
                 update(sources)
                 .where(sources.c.id == source_id)
