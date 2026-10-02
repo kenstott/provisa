@@ -14,6 +14,9 @@ services:
   provisa:
     build: null
     image: provisa/provisa:local
+    # The data directory's named volume, PROVISA_DATA_DIR and the PROVISA_ENCRYPTION_KEY
+    # pass-through come from docker-compose.app.yml, which this file overlays: the master key
+    # survives the container being replaced here as it does there.
 
   provisa-ui:
     build: null

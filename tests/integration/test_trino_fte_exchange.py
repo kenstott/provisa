@@ -71,6 +71,10 @@ class TestDockerFTEConfig:
         assert "provisa_exchange" in compose["volumes"]
 
 
+# The chart renders only when it is told where the deployment's master key lives
+# (tests/integration/test_helm_master_key.py); these tests are about the exchange store.
+_MASTER_KEY = ("--set", "encryption.existingSecret=provisa-master-key")
+
 needs_helm = pytest.mark.skipif(shutil.which("helm") is None, reason="helm CLI not installed")
 
 
@@ -80,6 +84,7 @@ def _render_secret(*sets: str) -> subprocess.CompletedProcess:
         "template",
         "t",
         str(CHART),
+        *_MASTER_KEY,
         "--show-only",
         "templates/trino-exchange-secret.yaml",
     ]
@@ -112,6 +117,8 @@ class TestHelmExchangeSecret:
             "template",
             "t",
             str(CHART),
+            *_MASTER_KEY,
+            *_MASTER_KEY,
             "--show-only",
             "templates/trino-exchange-bucket-job.yaml",
         ]

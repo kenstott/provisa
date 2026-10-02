@@ -1,0 +1,24 @@
+{{- $vol := .Values.encryption.dataVolume -}}
+{{- if and $vol.enabled (not $vol.existingClaim) }}
+# The API's data directory (PROVISA_DATA_DIR): where a master key minted by the product lives,
+# so it survives a pod being replaced. See `encryption` in values.yaml.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-provisa-data
+  labels:
+    app: provisa
+  annotations:
+    # The key outlives a `helm uninstall`: the vault in the control-plane database does too.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - {{ $vol.accessMode }}
+  {{- $class := $vol.storageClass | default .Values.global.storageClass }}
+  {{- if $class }}
+  storageClassName: {{ $class }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $vol.size }}
+{{- end }}

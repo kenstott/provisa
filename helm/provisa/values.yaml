@@ -34,6 +34,40 @@ tls:
   # Existing Secret of type kubernetes.io/tls with keys tls.crt and tls.key.
   secretName: provisa-tls
 
+# The deployment's master key (envelope encryption of the secrets vault and of encrypted
+# columns). Every API pod must hold the SAME key, and the key must outlive any pod: a key kept
+# only in a container's own filesystem is gone when the pod is replaced, and the next pod then
+# faces a vault it cannot open and refuses to start.
+#
+# ONE of the two below is required; the chart fails to render with neither. There is no default
+# key and the chart never generates one.
+#
+#   existingSecret  (recommended, and the only choice that suits more than one replica on
+#                    ReadWriteOnce storage) — a Kubernetes Secret you create, holding a 32-byte
+#                    key, base64-encoded, under `secretKey`. It is given to the API as
+#                    PROVISA_ENCRYPTION_KEY, which the product uses ahead of any key on disk.
+#                      kubectl create secret generic provisa-master-key \
+#                        --from-literal=master-key="$(openssl rand -base64 32)"
+#
+#   dataVolume      — a persistent volume mounted at PROVISA_DATA_DIR, where the product keeps
+#                    the key it mints at the first stored secret (and its other on-disk state).
+#                    Every replica mounts the same claim, so with more than one replica the
+#                    claim must be ReadWriteMany.
+#
+# Both may be set: the Secret's key is used, and the volume keeps the rest of the data directory.
+encryption:
+  existingSecret: ""
+  secretKey: master-key
+  dataVolume:
+    enabled: false
+    # Use a claim you already have; empty creates `<release>-provisa-data`.
+    existingClaim: ""
+    size: 1Gi
+    accessMode: ReadWriteMany
+    # "" uses global.storageClass (and that, when empty, the cluster default).
+    storageClass: ""
+    mountPath: /var/lib/provisa
+
 provisa:
   replicaCount: 2
   image:

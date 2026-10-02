@@ -1,3 +1,15 @@
+{{- /*
+The deployment's master key must outlive a pod (see `encryption` in values.yaml). Rendering fails
+when the chart is given neither the key (a Secret) nor a persistent place to keep it.
+*/ -}}
+{{- $enc := .Values.encryption -}}
+{{- if and (not $enc.existingSecret) (not $enc.dataVolume.enabled) -}}
+{{- fail "provisa: the deployment's master key has nowhere to live. Set encryption.existingSecret to a Secret holding the key (recommended: kubectl create secret generic provisa-master-key --from-literal=master-key=\"$(openssl rand -base64 32)\"), or set encryption.dataVolume.enabled=true to keep it on a persistent volume. Without one of them the key is lost when a pod is replaced and the secrets vault can no longer be opened." -}}
+{{- end -}}
+{{- $replicated := or (gt (int .Values.provisa.replicaCount) 1) .Values.provisa.hpa.enabled -}}
+{{- if and (not $enc.existingSecret) $enc.dataVolume.enabled (not $enc.dataVolume.existingClaim) $replicated (ne $enc.dataVolume.accessMode "ReadWriteMany") -}}
+{{- fail "provisa: encryption.dataVolume is the only home of the master key and more than one API replica can run (provisa.replicaCount > 1 or provisa.hpa.enabled), so every replica must mount the same volume: set encryption.dataVolume.accessMode=ReadWriteMany, or give the key as a Secret with encryption.existingSecret." -}}
+{{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -104,6 +116,19 @@ spec:
                 secretKeyRef:
                   name: {{ .Release.Name }}-secrets
                   key: pg-password
+            {{- if .Values.encryption.existingSecret }}
+            # The deployment's master key, the same for every replica and every restart.
+            - name: PROVISA_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.encryption.existingSecret }}
+                  key: {{ .Values.encryption.secretKey }}
+            {{- end }}
+            {{- if .Values.encryption.dataVolume.enabled }}
+            # The product's on-disk state (a minted master key among it) on a persistent volume.
+            - name: PROVISA_DATA_DIR
+              value: {{ .Values.encryption.dataVolume.mountPath | quote }}
+            {{- end }}
             # Control-plane DB URLs are REQUIRED with no fallback (REQ-837), so
             # the chart must supply them. Both planes share the same Postgres in
             # this deployment; built from the PG_* vars above via k8s dependent
@@ -213,6 +238,10 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /app/config
+            {{- if .Values.encryption.dataVolume.enabled }}
+            - name: data
+              mountPath: {{ .Values.encryption.dataVolume.mountPath }}
+            {{- end }}
             {{- if .Values.tls.enabled }}
             - name: tls-certs
               mountPath: /app/certs
@@ -238,6 +267,11 @@ spec:
         - name: config
           configMap:
             name: {{ .Release.Name }}-config
+        {{- if .Values.encryption.dataVolume.enabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Values.encryption.dataVolume.existingClaim | default (printf "%s-provisa-data" .Release.Name) }}
+        {{- end }}
         {{- if .Values.tls.enabled }}
         - name: tls-certs
           secret:

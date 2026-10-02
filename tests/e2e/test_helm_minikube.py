@@ -178,6 +178,22 @@ def helm_install():
     )
 
     _run(["kubectl", "create", "namespace", NAMESPACE])
+    # The chart requires the deployment's master key (a Secret, or a persistent data volume):
+    # without one it does not render. A key of this test's own, held as a Secret.
+    import base64
+    import os
+
+    _run(
+        [
+            "kubectl",
+            "create",
+            "secret",
+            "generic",
+            "provisa-master-key",
+            f"--namespace={NAMESPACE}",
+            f"--from-literal=master-key={base64.b64encode(os.urandom(32)).decode()}",
+        ]
+    )
 
     # Use minimal values: single replicas, no autoscaling, no ingress.
     # flightService.type=ClusterIP avoids LoadBalancer pending-IP stall in minikube.
@@ -190,6 +206,8 @@ def helm_install():
             RELEASE,
             str(CHART_DIR),
             f"--namespace={NAMESPACE}",
+            "--set",
+            "encryption.existingSecret=provisa-master-key",
             "--set",
             "provisa.replicaCount=1",
             "--set",

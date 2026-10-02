@@ -530,10 +530,25 @@ Note: the Provisa AppImage cannot run inside a Kubernetes pod — it requires FU
    - **MinIO / S3** — in-cluster MinIO or native S3? For AWS, use S3 with an IAM role
    - **Secrets** — pass via `--set` for evaluation; use External Secrets or Vault Agent for production
 
-4. Install the chart:
+4. Give the deployment its master key. The key encrypts the secrets vault; every API pod must
+   hold the same one, and it must outlive any pod. The chart does not render without it.
+
+   ```bash
+   kubectl create namespace provisa
+   kubectl create secret generic provisa-master-key --namespace provisa \
+     --from-literal=master-key="$(openssl rand -base64 32)"
+   ```
+
+   Keep a copy of the key outside the cluster. A vault written under a key that is later lost
+   cannot be opened. The alternative to a Secret is a persistent data volume
+   (`encryption.dataVolume.enabled=true`), where the product keeps the key it mints; see
+   `encryption` in `values.yaml`.
+
+5. Install the chart:
 
    ```bash
    helm install provisa helm/provisa/ \
+     --set encryption.existingSecret=provisa-master-key \
      --set config.pgPassword=<password> \
      --set config.adminToken=<token> \
      --set s3.endpoint=https://s3.amazonaws.com \
@@ -550,20 +565,20 @@ Note: the Provisa AppImage cannot run inside a Kubernetes pod — it requires FU
    --set trino.image.tag=480
    ```
 
-5. Verify pods are running:
+6. Verify pods are running:
 
    ```bash
    kubectl get pods -n provisa
    ```
 
-6. Check the API:
+7. Check the API:
 
    ```bash
    kubectl port-forward svc/provisa 8000:8000 -n provisa
    curl http://localhost:8000/health
    ```
 
-7. (Optional) Enable ingress for external access — set `ingress.enabled: true` and configure your ingress controller
+8. (Optional) Enable ingress for external access — set `ingress.enabled: true` and configure your ingress controller
 
 ### Prerequisites checklist
 

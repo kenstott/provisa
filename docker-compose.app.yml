@@ -44,7 +44,16 @@ services:
       - "${FLIGHT_PORT:-8815}:8815"
     volumes:
       - ./demo:/app/demo:ro
+      # The data directory, on a named volume: it holds the master key the product mints at the
+      # first stored secret (and its other on-disk state). Kept only in the container's own
+      # filesystem, the key is lost when the container is replaced (a rebuild, an image
+      # update), and the next one cannot open the secrets vault and refuses to start.
+      - provisa_data:/var/lib/provisa
     environment:
+      PROVISA_DATA_DIR: /var/lib/provisa
+      # The deployment's master key, when the operator supplies one (a 32-byte key, base64):
+      # it is used ahead of any key in the data directory. Unset, the key in the volume is used.
+      PROVISA_ENCRYPTION_KEY: "${PROVISA_ENCRYPTION_KEY:-}"
       PG_HOST: "${CONFIG_DB_HOST:-postgres}"
       PG_PORT: "${CONFIG_DB_PORT:-5432}"
       PG_DATABASE: "${CONFIG_DB_NAME:-provisa}"
@@ -123,3 +132,9 @@ services:
       PROVISA_ENGINE: "${PROVISA_ENGINE:-duckdb}"
     depends_on:
       - provisa
+
+volumes:
+  # The API's data directory (PROVISA_DATA_DIR). `docker compose down -v` removes it, and with
+  # it a minted master key — the secrets vault in the control-plane database then cannot be
+  # opened. Keep it, or set PROVISA_ENCRYPTION_KEY.
+  provisa_data:
