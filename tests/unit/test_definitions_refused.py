@@ -56,7 +56,6 @@ _SQL_DATA = [
     "UPDATE t SET a = 1",
     "DELETE FROM t",
     "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET a = 1",
-    "TRUNCATE TABLE t",
 ]
 _HOW = (
     "is not available here: create it in the model (admin pages, admin API or config), or "
@@ -200,3 +199,18 @@ def test_the_client_ctas_module_is_gone():
         for path in root.rglob("*.py")
         if "run_ctas" in path.read_text(errors="replace")
     ]
+
+
+@pytest.mark.parametrize(
+    "sql", ["TRUNCATE TABLE t", "truncate sales.orders", "-- nightly\nTRUNCATE t"]
+)
+def test_truncate_is_refused_naming_delete(sql):
+    """TRUNCATE empties a table whatever the role may see and cannot carry a row filter, so it
+    is not a data write: refused on every surface, with DELETE named as the governed way."""
+    expected = "TRUNCATE is not available here: use DELETE, which is governed."
+    with pytest.raises(DefinitionNotAvailable) as from_tree:
+        refuse_definition(sqlglot.parse_one(sql, read="postgres"))
+    assert str(from_tree.value) == expected
+    with pytest.raises(DefinitionNotAvailable) as from_text:
+        refuse_definition_text(sql)
+    assert str(from_text.value) == expected

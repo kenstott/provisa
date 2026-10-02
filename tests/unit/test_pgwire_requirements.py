@@ -924,62 +924,47 @@ class TestReq585CopySupport:
 
 
 # ---------------------------------------------------------------------------
-# REQ-586 — COPY FROM restricted to writable source types
+# REQ-586 / REQ-615 — COPY FROM is a write, and pgwire takes no writes
 # ---------------------------------------------------------------------------
 
 
-class TestReq586CopyFromWritableOnly:
-    """REQ-586: COPY FROM only allowed for postgresql, mysql, sqlite, mariadb sources."""
+class TestReq586CopyFromRefused:
+    """REQ-586 as ruled 2026-10-02: ``COPY … FROM STDIN`` is refused on every source type, with
+    the refusal an INSERT over pgwire gets (REQ-615), before the client is asked for any data."""
 
-    def test_writable_source_types_set(self):
-        # REQ-586
-        from provisa.pgwire.copy_handler import _WRITABLE_SOURCE_TYPES
-
-        assert "postgresql" in _WRITABLE_SOURCE_TYPES
-        assert "mysql" in _WRITABLE_SOURCE_TYPES
-        assert "sqlite" in _WRITABLE_SOURCE_TYPES
-        assert "mariadb" in _WRITABLE_SOURCE_TYPES
-
-    def test_trino_source_not_in_writable_types(self):
-        # REQ-586: Trino (iceberg/hive) must not be in writable set
-        from provisa.pgwire.copy_handler import _WRITABLE_SOURCE_TYPES
-
-        assert "iceberg" not in _WRITABLE_SOURCE_TYPES
-        assert "hive" not in _WRITABLE_SOURCE_TYPES
-        assert "trino" not in _WRITABLE_SOURCE_TYPES
-
-    def test_copy_from_non_writable_source_raises_permission_error(self):
-        # REQ-586: SQLSTATE 42501 equivalent (PermissionError) for non-writable source
+    @pytest.mark.parametrize(
+        "statement",
+        [
+            "COPY orders FROM STDIN",
+            "COPY sales.orders (id, region) FROM STDIN",
+            "copy sales.orders from stdin with (format csv)",
+        ],
+    )
+    def test_copy_from_is_refused_before_any_data_is_asked_for(self, statement):
+        from provisa.compiler.definitions import definition_refusal
+        from provisa.pgwire._pipeline import WriteNotAvailableOverPgwire
         from provisa.pgwire.copy_handler import CopyHandler
 
         handler = object.__new__(CopyHandler)
         handler._h = MagicMock()
-
-        # TableMeta with non-writable source type
-        fake_tm = MagicMock()
-        fake_tm.source_id = "iceberg_source"
-        fake_tm.domain_id = "domain1"
-
-        fake_state = MagicMock()
-        fake_state.source_types = {"iceberg_source": "iceberg"}
-
         ctx = MagicMock()
-        ctx.session.role_id = "dev"
+        ctx.session.role_id = "org_admin"
 
-        with (
-            patch("provisa.pgwire.copy_handler._find_table_meta", return_value=(fake_tm, ["id"])),
-            patch("provisa.pgwire.copy_handler.state", fake_state),
-        ):
-            with pytest.raises(PermissionError):
-                handler._handle_copy_from(ctx, None, "orders", None, "text", "dev")
+        with pytest.raises(WriteNotAvailableOverPgwire) as raised:
+            handler.handle(ctx, statement)
+        assert "COPY ... FROM STDIN is not available over pgwire" in str(raised.value)
+        # the refusal pgwire answers with SQLSTATE 0A000
+        assert definition_refusal(raised.value) is raised.value
+        # no CopyInResponse was sent and nothing was read from the client
+        handler._h.wfile.write.assert_not_called()
+        handler._h.rfile.read.assert_not_called()
 
-    def test_copy_from_column_list_inferred_when_not_provided(self):
-        # REQ-586: If no column list provided, columns inferred from registered schema
-        from provisa.pgwire.copy_handler import _PARSE_FROM_RE
+    def test_no_bulk_load_write_path_remains(self):
+        import provisa.pgwire.copy_handler as copy_handler
 
-        m = _PARSE_FROM_RE.match("COPY orders FROM STDIN")
-        assert m is not None
-        assert m.group("cols") is None  # no explicit column list
+        for name in ("_insert_rows", "_WRITABLE_SOURCE_TYPES", "_find_table_meta"):
+            assert not hasattr(copy_handler, name), name
+        assert not hasattr(copy_handler.CopyHandler, "_handle_copy_from")
 
 
 # ---------------------------------------------------------------------------

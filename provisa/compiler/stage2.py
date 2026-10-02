@@ -47,6 +47,12 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     # Per-table row ceiling (REQ-005) — applied only when that table is referenced.
     table_ceilings: dict[int, int] = field(default_factory=dict)
     sample_size: int | None = None
+    # The role this context was built for, and what it may write (compiler/write_admission.py):
+    # whether it holds the ``write`` right (REQ-868), and per table the columns whose
+    # ``writable_by`` names it (REQ-663). A column that declares none is writable by nobody.
+    role_id: str = ""
+    can_write: bool = False
+    writable_columns: dict[int, frozenset[str]] = field(default_factory=dict)
 
 
 # --------------------------------------------------------------------------- #
@@ -115,6 +121,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             "is decided from the role, and a missing role is an error, never a default"
         )
     gov = GovernanceContext()
+    gov.role_id = role_id
 
     # RLS rules
     gov.rls_rules = dict(rls_context.rules) if rls_context else {}
@@ -143,6 +150,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     )
 
     _has_view_gov = has_capability(role, Capability.VIEW_GOVERNANCE)
+    gov.can_write = has_capability(role, Capability.WRITE)
     # table_id → domain_id, so meta (catalog) tables can be governed by the tiered rule (REQ-1132)
     # rather than their static seed (meta columns are seeded visible_to: [] = nobody).
     _domain_by_tid: dict[int | None, str | None] = {
@@ -159,6 +167,9 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         gov.all_columns[table_id] = [
             (c["column_name"], c.get("data_type", "varchar")) for c in cols
         ]
+        gov.writable_columns[table_id] = frozenset(
+            c["column_name"] for c in cols if role_id in (c.get("writable_by") or [])
+        )
 
         # visible_columns — None means "all visible" (no V003 filtering for this table)
         if _domain_by_tid.get(table_id) == META_DOMAIN_ID:
@@ -501,16 +512,28 @@ def _expand_star(
 
 
 def apply_governance(
-    sql: str, gov_ctx: GovernanceContext
+    sql: str,
+    gov_ctx: GovernanceContext,
+    session_vars: dict[str, str] | None = None,
+    params: list | None = None,
 ) -> str:  # REQ-002, REQ-038, REQ-263, REQ-264, REQ-266, REQ-267
-    """Apply governance (RLS, masking, visibility, LIMIT) to raw SQL.
+    """Apply governance (RLS, masking, visibility, LIMIT) to raw SQL — and, to a data write, its
+    admission (compiler/write_admission.py: the write right, the columns' ``writable_by``, the
+    role's row filter on the rows it touches and on the rows it leaves behind).
+
+    ``session_vars`` are the request's session variables and ``params`` its bound values; a
+    write's row-filter check reads both. A read's are resolved by the pipeline after this stage.
 
     Returns governed SQL string.
     """
+    from provisa.compiler.write_admission import admit_write, is_write
     from provisa.observability.stage_trace import trace_stage
 
     trace_stage("govern.in", sql)
     tree = sqlglot.parse_one(sql, read="postgres")
+    writes = is_write(tree)  # pyright: ignore[reportArgumentType]  # sqlglot stub types parse_one as Expr
+    if writes:
+        tree = admit_write(tree, gov_ctx, session_vars, params)  # pyright: ignore[reportArgumentType]
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if isinstance(node, exp.Select):
@@ -534,10 +557,12 @@ def apply_governance(
 
     # Apply LIMIT ceiling (REQ-005): most restrictive of the role-level ceiling and
     # any per-table ceiling on a table referenced by the query.
-    ceiling = _effective_ceiling(tree, gov_ctx)
+    # A ceiling bounds the rows a READ returns; a write returns none, and what it may write
+    # is its admission's to decide.
+    ceiling = None if writes else _effective_ceiling(tree, gov_ctx)
     if ceiling is not None:
         governed = _apply_limit_ceiling(governed, ceiling)
-    elif gov_ctx.sample_size is not None:
+    elif gov_ctx.sample_size is not None and not writes:
         governed = _apply_limit_ceiling(governed, gov_ctx.sample_size)
 
     trace_stage("govern.out", governed)

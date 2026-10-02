@@ -102,9 +102,9 @@ async def test_governance_does_not_starve_concurrent_request(monkeypatch):
 
     real_apply_governance = stage2_mod.apply_governance
 
-    def _slow_apply_governance(sql, gov_ctx):
+    def _slow_apply_governance(sql, gov_ctx, *request):
         time.sleep(0.2)  # simulates a slow governance pass — must run off-loop
-        return real_apply_governance(sql, gov_ctx)
+        return real_apply_governance(sql, gov_ctx, *request)
 
     monkeypatch.setattr(stage2_mod, "apply_governance", _slow_apply_governance)
 

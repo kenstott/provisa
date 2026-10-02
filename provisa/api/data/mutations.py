@@ -16,6 +16,7 @@ mutation execute path (never the engine). Extracted from endpoint.py; leaf modul
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 
 import httpx
@@ -24,30 +25,12 @@ from fastapi import HTTPException
 
 from provisa.core.connection_loop import spawn_background
 from provisa.api.errors import ApiError
-from provisa.compiler.mutation_gen import (
-    compile_mutation,
-    inject_rls_into_mutation,
-)
+from provisa.compiler.mutation_gen import compile_mutation
 from provisa.api.data.action_exec import invoke_tracked_function, require_mutation_write
-from provisa.security.mutation_authz import ColumnNotWritable, check_writable_by
 from provisa.transpiler.transpile import transpile
 
 
 log = logging.getLogger(__name__)
-
-
-def _check_writable_by(table_meta, columns: list[str], role_id: str):
-    """Raise 403 if any column restricts write access and the role is not allowed (REQ-663)."""
-    try:
-        check_writable_by(table_meta, columns, role_id)
-    except ColumnNotWritable as exc:
-        raise ApiError(
-            403,
-            "data.column_not_writable",
-            str(exc),
-            role=exc.role_id,
-            column=exc.column,
-        ) from exc
 
 
 _ACTION_FILTER_ARGS = {"where", "order_by", "limit", "offset"}
@@ -329,6 +312,23 @@ async def _handle_mutation(
     if not mutations:
         raise ApiError(400, "data.no_mutation_fields", "No mutation fields found")
 
+    from provisa.compiler.stage2 import apply_governance, build_governance_context
+    from provisa.core.request_context import session_vars_for
+    from provisa.security.rights import effective_domain_access_role
+
+    role = effective_domain_access_role(role_id, state.roles)
+    gov_ctx = build_governance_context(
+        role_id,
+        rls,
+        state.masking_rules,
+        ctx,
+        getattr(state, "tables", []),
+        role=role,
+        relationships=getattr(state, "relationships", None),
+        source_types=state.source_types,
+        engine=getattr(state, "federation_engine", None),
+    )
+
     results = []
     for mutation in mutations:
         # Look up by DB table name (ctx keys are GraphQL field names which may have domain prefix)
@@ -339,17 +339,16 @@ async def _handle_mutation(
                     table_meta = meta
                     break
 
-        # Enforce writable_by column permissions
-        if table_meta and mutation.mutation_type in ("insert", "update"):
-            _check_writable_by(table_meta, mutation.returning_columns, role_id)
-
-        # Inject RLS into UPDATE/DELETE
-        if table_meta and rls.has_rules():
-            mutation = inject_rls_into_mutation(
-                mutation,
-                table_meta.table_id,
-                rls.rules,
+        # The one admission every data write passes (compiler/write_admission.py, through the
+        # governance stage): the role's write right, the written columns' ``writable_by``, and
+        # its row filter on the rows the statement touches and the rows it leaves behind.
+        try:
+            governed_sql = apply_governance(
+                mutation.sql, gov_ctx, session_vars_for(role), mutation.params
             )
+        except PermissionError as exc:
+            raise ApiError(403, "data.write_not_admitted", str(exc), role=role_id) from exc
+        mutation = dataclasses.replace(mutation, sql=governed_sql)
 
         # Mutations always route direct
         source_id = mutation.source_id

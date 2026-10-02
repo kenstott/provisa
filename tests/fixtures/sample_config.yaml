@@ -52,19 +52,26 @@ tables:
     domain_id: sales-analytics
     schema: public
     table: customers
+    # The table the write tests write (GraphQL mutations, the airport DML round trips). A column
+    # is writable only by the roles its writable_by names (REQ-663); org_admin also holds the
+    # write right (REQ-868).
     columns:
       - name: id
         data_type: integer
         visible_to: [org_admin, analyst]
+        writable_by: [org_admin]
       - name: name
         data_type: varchar
         visible_to: [org_admin, analyst]
+        writable_by: [org_admin]
       - name: email
         data_type: varchar
         visible_to: [org_admin]
+        writable_by: [org_admin]
       - name: region
         data_type: varchar
         visible_to: [org_admin, analyst]
+        writable_by: [org_admin]
   - source_id: sales-pg
     domain_id: product-catalog
     schema: public

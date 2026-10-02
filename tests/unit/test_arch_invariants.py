@@ -231,7 +231,9 @@ class TestReq896EngineIndependentGovernance:
         # the engine. Governance sits strictly above the engine seam (REQ-896 design consequence).
         params = inspect.signature(apply_governance).parameters
         assert "engine" not in params
-        assert set(params) == {"sql", "gov_ctx"}
+        # What it does take beside the statement and the role's governance: the request's session
+        # variables and bound values, which a data write's admission reads. Still no engine.
+        assert set(params) == {"sql", "gov_ctx", "session_vars", "params"}
 
     def test_same_governed_ir_regardless_of_engine(self):
         # The governed IR (semantic layer output) is produced before engine lowering and is identical

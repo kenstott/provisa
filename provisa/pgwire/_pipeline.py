@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
 from provisa.audit.pipeline import PendingAudit
+from provisa.compiler.definitions import NotAvailableHere
 from provisa.executor.result import QueryResult
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
@@ -936,6 +937,10 @@ async def _govern_and_route_planned(
     wire_formats: list[int] | None = None,
 ) -> _Plan:  # REQ-262, REQ-263, REQ-264, REQ-266, REQ-267, REQ-272, REQ-1120, REQ-1159, REQ-1163
     """Govern, then route: the two stages of the one pipeline, run back to back."""
+    if explain is not None and opening_write_verb(sql) is not None:
+        # A write is never explained — EXPLAIN ANALYZE would perform it — whatever the role may
+        # write: said before the statement is admitted, so the answer does not depend on rights.
+        raise ValueError("EXPLAIN is only supported for read statements")
     governed = await govern_statement(sql, role_id, session_vars=session_vars)
     return await route_governed(
         governed,
@@ -1184,7 +1189,9 @@ async def govern_statement(
     # REQ-863 pipeline order: governance → post-governance optimization → routing.
     # REQ-1882: apply_governance re-parses+transforms the statement's AST (sqlglot) synchronously;
     # off-load it (see _off_loop's own docstring).
-    governed_semantic = await _off_loop(apply_governance, normalized_sql, gov_ctx)
+    governed_semantic = await _off_loop(
+        apply_governance, normalized_sql, gov_ctx, _session_vars, embedded_params or None
+    )
 
     # REQ-1120/REQ-1682: resolve RLS session predicates (current_setting('provisa.<var>')) to
     # SQL literals on EVERY route. A caller that supplies session vars out-of-band (the airport
@@ -2918,7 +2925,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     _slot = PlanSlot(state, "compiled", role_id, sql, sorted(_session_vars.items()))
     _governed = _slot.cached()
     if _governed is None:
-        _governed = await _govern_compiled(sql, role_id, state, _session_vars)
+        _governed = await _govern_compiled(sql, role_id, state, _session_vars, exec_params)
         # A write is not kept: its admission checks (view writes, unbound branch writes) run per call.
         if not isinstance(
             _governed.parsed, (_sg_exp.Insert, _sg_exp.Update, _sg_exp.Delete, _sg_exp.Merge)
@@ -3000,7 +3007,11 @@ class _GovernedCompiled:
 
 
 async def _govern_compiled(
-    sql: str, role_id: str, state: Any, session_vars: dict[str, str]
+    sql: str,
+    role_id: str,
+    state: Any,
+    session_vars: dict[str, str],
+    exec_params: list | None = None,
 ) -> _GovernedCompiled:
     """The value-independent half of the compiled stage: parse, metric expansion, write admission,
     governance."""
@@ -3074,7 +3085,7 @@ async def _govern_compiled(
 
     # REQ-863 pipeline order: governance → post-governance optimization → routing.
     # REQ-1882: off-loaded, same rationale as the raw-SQL path's own apply_governance call above.
-    governed_sql = await _off_loop(apply_governance, sql, gov_ctx)
+    governed_sql = await _off_loop(apply_governance, sql, gov_ctx, session_vars, exec_params)
     # REQ-1682: session-variable predicates resolve to the request's literals on every route (see
     # the raw path above for why the direct Postgres route cannot keep native current_setting).
     governed_sql = _resolve_session_settings(governed_sql, session_vars)
@@ -3380,6 +3391,38 @@ async def _route_compiled(
         )
 
 
+class WriteNotAvailableOverPgwire(NotAvailableHere):
+    """REQ-615: a data write sent over pgwire."""
+
+    def __init__(self, kind: str) -> None:
+        self.kind = kind
+        super().__init__(
+            f"{kind} is not available over pgwire: this listener takes no INSERT, UPDATE, DELETE "
+            "or MERGE. Write through a GraphQL mutation, SQL over HTTP (POST /data/sql), Cypher "
+            "(Bolt or POST /data/cypher) or the MCP run_sql tool, where a write is admitted by "
+            "the role's rights."
+        )
+
+
+_OPENING_WRITE_RE = re.compile(
+    r"(?:\s+|--[^\n]*\n?|/\*.*?\*/)*(?P<verb>INSERT|UPDATE|DELETE|MERGE)\b",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def opening_write_verb(sql: str) -> str | None:
+    """The verb ``sql`` opens with when it opens as a data write, else None."""
+    m = _OPENING_WRITE_RE.match(sql)
+    return m.group("verb").upper() if m else None
+
+
+def refuse_pgwire_write(sql: str) -> None:
+    """Raise :class:`WriteNotAvailableOverPgwire` when ``sql`` opens as a data write."""
+    verb = opening_write_verb(sql)
+    if verb is not None:
+        raise WriteNotAvailableOverPgwire(verb)
+
+
 async def plan_pgwire_sql(sql: str, role_id: str) -> _Plan:  # REQ-267
     return await _govern_and_route(sql, role_id)
 
@@ -3410,6 +3453,10 @@ async def govern_pgwire_plan(  # REQ-028, REQ-266
     # surface is opted in for this deployment.
     from provisa.pgwire.ext_surfaces import rewrite_surface_operators
 
+    # REQ-615: pgwire carries no data writes. Refused here, on the statement's own words, before
+    # it is rewritten, governed or sent anywhere.
+    refuse_pgwire_write(sql)
+
     sql = rewrite_surface_operators(sql)
 
     # REQ-872: a bare SELECT of a registered tracked function routes to the shared executor
@@ -3431,9 +3478,13 @@ async def govern_pgwire_plan(  # REQ-028, REQ-266
     if fn_result is not None:
         return fn_result
 
-    return await _govern_and_route(
+    plan = await _govern_and_route(
         sql, role_id, params=params, serve_cached=True, wire_formats=wire_formats
     )
+    if plan.writes_tables:
+        # A write the opening words did not show (a WITH … INSERT): refused before it runs.
+        raise WriteNotAvailableOverPgwire("A data write")
+    return plan
 
 
 @dataclass
@@ -3476,6 +3527,7 @@ async def describe_pgwire_statement(sql: str, role_id: str) -> _Described:  # RE
     from provisa.pgwire.function_call import detect_sql_function_call
     from provisa.pgwire.result_shape import derive_result_shape
 
+    refuse_pgwire_write(sql)  # REQ-615: refused at Parse/Describe as at Execute
     sql = rewrite_surface_operators(sql)
     call = detect_sql_function_call(sql, state)
     if call is not None:
