@@ -139,6 +139,8 @@
     },
     "conflictsNotCompared": "These environments share no common ancestor, so nothing could be compared — this is not the same as no conflicts.",
     "mergedOverwriting": "Merged into {{env}}, overwriting {{count}} object(s) changed there.",
-    "pulledOverwriting": "Pulled {{env}} from the remote, overwriting {{count}} object(s) changed here since these lines parted:"
+    "pulledOverwriting": "Pulled {{env}} from the remote, overwriting {{count}} object(s) changed here since these lines parted:",
+    "expiredKept": "expired, kept",
+    "expiredKeptHint": "This environment has expired and is kept because something still refers to it ({{reasons}}). Remove those and it is retired on the next sweep."
   }
 }

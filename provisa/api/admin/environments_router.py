@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
@@ -46,7 +46,13 @@ from provisa.core.env_deploy import (
     plan_deploy,
     report_touches_connectivity,
 )
-from provisa.core.env_retire import EnvironmentInUse, RetirementError, retire_environment
+from provisa.core.env_retire import (
+    EnvironmentInUse,
+    RetirementError,
+    env_dependents,
+    kinds_and_counts,
+    retire_environment,
+)
 from provisa.core.env_store import (
     EnvironmentLimitError,
     get_env,
@@ -364,7 +370,21 @@ async def list_environments(request: Request, org_id: str) -> dict:
     pinned = await _pinned_env(request, org_id)
     if pinned is not None:
         rows = [r for r in rows if r["name"] == pinned]
-    return {"environments": [_with_history(org_id, r) for r in rows]}
+    listed = [_with_history(org_id, r) for r in rows]
+    # REQ-1918: an environment past its expiry that the sweep could not retire, and why — the
+    # kinds and counts of what still refers to it, never who. Empty for every other row.
+    now = datetime.now(tz=timezone.utc)
+    for row in listed:
+        expires_at = row["expires_at"]
+        if expires_at is not None and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        expired = expires_at is not None and expires_at <= now
+        row["expired_kept_by"] = (
+            kinds_and_counts(await env_dependents(_admin_pool(), org_id, row["name"]))
+            if expired
+            else {}
+        )
+    return {"environments": listed}
 
 
 def _with_history(org_id: str, row: dict) -> dict:

@@ -89,7 +89,13 @@ def _request() -> Request:
 
 
 def _env(name: str) -> dict:
-    return {"name": name, "deployed_sha": None, "origin_sha": None, "redo_sha": None}
+    return {
+        "name": name,
+        "deployed_sha": None,
+        "origin_sha": None,
+        "redo_sha": None,
+        "expires_at": None,  # the registry row always carries it; none of these expire
+    }
 
 
 class TestTheListingIsTheirOwnEnvironment:

@@ -122,6 +122,7 @@ function env(name: string, overrides: Partial<Environment> = {}): Environment {
     created_at: null,
     created_by: "someone",
     expires_at: null,
+    expired_kept_by: {},
     protected: false,
     drifted: false,
 
@@ -202,6 +203,24 @@ describe("EnvironmentsTab", () => {
     expect(screen.getByTestId("dependents-membership")).toHaveTextContent("Members pinned to it");
     expect(screen.getByTestId("dependents-membership")).toHaveTextContent("viv");
     expect(screen.getByTestId("dependents-environment")).toHaveTextContent("feature-x");
+  });
+
+  it("marks an expired environment that is kept, and says what keeps it", async () => {
+    // REQ-1918: the expiry sweep leaves an environment something still refers to. The row says
+    // so, so nobody has to read the server's log to learn it.
+    mockList.mockResolvedValue([
+      env("prod"),
+      env("portal", {
+        expires_at: "2026-01-01T00:00:00Z",
+        expired_kept_by: { membership: 2, invitation: 1 },
+      }),
+      env("dev", { expires_at: "2099-01-01T00:00:00Z" }),
+    ]);
+    render(<EnvironmentsTab />);
+
+    expect(await screen.findByTestId("env-expired-kept-portal")).toHaveTextContent("expired, kept");
+    expect(screen.queryByTestId("env-expired-kept-dev")).toBeNull();
+    expect(screen.queryByTestId("env-expired-kept-prod")).toBeNull();
   });
 
   it("deletes the remote branch only alongside the local one", async () => {

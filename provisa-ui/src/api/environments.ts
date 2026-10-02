@@ -54,6 +54,9 @@ export interface Environment {
   // REQ-1548: the commit this environment's model was ingested from. One control plane, one sha --
   // this is the version the switcher shows as the one being read.
   deployed_sha: string | null;
+  // REQ-1918: for an environment past its expiry that could not be retired, how many of each
+  // kind still refer to it (membership, invitation, environment). Empty for every other row.
+  expired_kept_by: Record<string, number>;
 }
 
 /** REQ-1529: an environment bound with its own source credentials, which is what members branch. */

@@ -329,13 +329,17 @@ async def test_the_delete_door_answers_with_each_dependent(admin):
 
 async def test_the_sweep_leaves_an_expired_environment_that_is_still_referred_to(admin, caplog):
     """An expiry does not override what still refers to the environment. The sweep reaps what it
-    may, says what it left and why, and raises nothing for it."""
+    may and raises nothing for the rest; it says what it kept and why in ONE warning per sweep,
+    by kind and count, naming nobody."""
     await _pin(admin, "viv", "portal")
+    await _invite(admin, "tok-a", "portal", email="guest@example.com")
+    await _invite(admin, "tok-b", "portal", max_uses=None, policy="per_visitor", ttl=3600)
+    await _pin(admin, "zed", "portal", org=OTHER)
     async with admin.acquire() as conn:
-        for name in ("portal", "staging"):
+        for org_id, name in ((ORG, "portal"), (ORG, "staging"), (OTHER, "portal")):
             await conn.execute_core(
                 environments.update()
-                .where(environments.c.org_id == ORG, environments.c.name == name)
+                .where(environments.c.org_id == org_id, environments.c.name == name)
                 .values(expires_at=PAST)
             )
 
@@ -344,7 +348,50 @@ async def test_the_sweep_leaves_an_expired_environment_that_is_still_referred_to
 
     assert [o["retired"] for o in outcomes] == ["staging"]
     assert {"portal", "prod"} <= await _envs(admin) and "staging" not in await _envs(admin)
-    assert any(
-        "expired environment acme/portal not reaped" in r.getMessage() and "viv" in r.getMessage()
-        for r in caplog.records
-    )
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert [r.getMessage() for r in warnings] == [
+        "2 expired environment(s) kept because something still refers to them: "
+        "acme/portal (invitation: 2, membership: 1); globex/portal (membership: 1)"
+    ]
+    assert "viv" not in warnings[0].getMessage() and "guest@" not in warnings[0].getMessage()
+
+
+async def test_the_environments_listing_says_which_expired_rows_are_kept_and_why(
+    admin, monkeypatch
+):
+    """The same fact an operator needs without reading logs: per row, the kinds and counts of
+    what keeps an expired environment standing; empty for every other row."""
+    import types
+
+    from provisa.api.admin import environments_router
+
+    await _pin(admin, "viv", "portal")
+    await _pin(admin, "ann", "staging")  # pinned, but staging has not expired
+    async with admin.acquire() as conn:
+        await conn.execute_core(
+            environments.update()
+            .where(environments.c.org_id == ORG, environments.c.name == "portal")
+            .values(expires_at=PAST)
+        )
+        await conn.execute_core(
+            environments.update()
+            .where(environments.c.org_id == ORG, environments.c.name == "staging")
+            .values(expires_at=SOON)
+        )
+
+    async def _allowed(request, org_id, *rights):
+        return "alice"
+
+    async def _not_pinned(request, org_id):
+        return None
+
+    monkeypatch.setattr(environments_router, "_admin_pool", lambda: admin)
+    monkeypatch.setattr(environments_router, "_member", _allowed)
+    monkeypatch.setattr(environments_router, "_pinned_env", _not_pinned)
+    monkeypatch.setattr(environments_router, "_with_history", lambda org_id, row: dict(row))
+
+    answer = await environments_router.list_environments(types.SimpleNamespace(), ORG)
+
+    kept = {e["name"]: e["expired_kept_by"] for e in answer["environments"]}
+    assert kept["portal"] == {"membership": 1}
+    assert kept["staging"] == {} and kept["prod"] == {}

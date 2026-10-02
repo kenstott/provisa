@@ -139,6 +139,8 @@
     },
     "conflictsNotCompared": "Questi ambienti non hanno un antenato comune, quindi non è stato possibile confrontare nulla: non equivale a nessun conflitto.",
     "mergedOverwriting": "Merge eseguito in {{env}}, sovrascrivendo {{count}} oggetto/i modificato/i lì.",
-    "pulledOverwriting": "Recuperato {{env}} dal remote, sovrascrivendo {{count}} oggetto/i modificato/i qui da quando queste linee si sono separate:"
+    "pulledOverwriting": "Recuperato {{env}} dal remote, sovrascrivendo {{count}} oggetto/i modificato/i qui da quando queste linee si sono separate:",
+    "expiredKept": "scaduto, mantenuto",
+    "expiredKeptHint": "Questo ambiente è scaduto ed è mantenuto perché qualcosa vi fa ancora riferimento ({{reasons}}). Rimuovi quei riferimenti e sarà ritirato al prossimo controllo."
   }
 }

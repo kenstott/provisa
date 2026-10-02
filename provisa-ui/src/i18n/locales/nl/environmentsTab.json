@@ -139,6 +139,8 @@
     },
     "conflictsNotCompared": "Deze omgevingen hebben geen gemeenschappelijke voorouder, dus er kon niets worden vergeleken — dat is niet hetzelfde als geen conflicten.",
     "mergedOverwriting": "Gemerged in {{env}}, met overschrijving van {{count}} daar gewijzigd(e) object(en).",
-    "pulledOverwriting": "{{env}} gepulld van de remote, met overschrijving van {{count}} hier gewijzigd(e) object(en) sinds deze lijnen uiteengingen:"
+    "pulledOverwriting": "{{env}} gepulld van de remote, met overschrijving van {{count}} hier gewijzigd(e) object(en) sinds deze lijnen uiteengingen:",
+    "expiredKept": "verlopen, behouden",
+    "expiredKeptHint": "Deze omgeving is verlopen en wordt behouden omdat er nog naar wordt verwezen ({{reasons}}). Verwijder die verwijzingen, dan wordt ze bij de volgende ronde opgeruimd."
   }
 }

@@ -131,6 +131,15 @@ class EnvironmentInUse(RetirementError):  # REQ-1918
         super().__init__(f"Environment {name!r} is still referred to by: {named}")
 
 
+def kinds_and_counts(dependents: list[EnvDependent]) -> dict[str, int]:
+    """How many of each kind block the environment: what a log line and the environments page
+    say about an expired environment that is kept, without naming anybody."""
+    counts: dict[str, int] = {}
+    for dependent in dependents:
+        counts[dependent.kind] = counts.get(dependent.kind, 0) + 1
+    return counts
+
+
 def _standing(reference: EnvReference, name: str) -> str:
     return reference.visitor if is_visitor_environment(name) else reference.otherwise
 

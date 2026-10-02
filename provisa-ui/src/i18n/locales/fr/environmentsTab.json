@@ -139,6 +139,8 @@
     },
     "conflictsNotCompared": "Ces environnements n'ont aucun ancêtre commun ; rien n'a donc pu être comparé. Ce n'est pas la même chose qu'une absence de conflits.",
     "mergedOverwriting": "Fusionné dans {{env}}, écrasant {{count}} objet(s) modifié(s) à cet endroit.",
-    "pulledOverwriting": "{{env}} récupéré depuis le dépôt distant, écrasant {{count}} objet(s) modifié(s) ici depuis la séparation de ces lignes :"
+    "pulledOverwriting": "{{env}} récupéré depuis le dépôt distant, écrasant {{count}} objet(s) modifié(s) ici depuis la séparation de ces lignes :",
+    "expiredKept": "expiré, conservé",
+    "expiredKeptHint": "Cet environnement a expiré et est conservé parce que quelque chose y fait encore référence ({{reasons}}). Retirez ces références et il sera retiré au prochain passage."
   }
 }

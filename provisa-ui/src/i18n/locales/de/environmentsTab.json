@@ -139,6 +139,8 @@
     },
     "conflictsNotCompared": "Diese Umgebungen haben keinen gemeinsamen Vorfahren, daher ließ sich nichts vergleichen – das ist nicht dasselbe wie keine Konflikte.",
     "mergedOverwriting": "In {{env}} gemergt; {{count}} dort geänderte(s) Objekt(e) überschrieben.",
-    "pulledOverwriting": "{{env}} vom Remote gepullt; {{count}} hier seit der Trennung dieser Linien geänderte(s) Objekt(e) überschrieben:"
+    "pulledOverwriting": "{{env}} vom Remote gepullt; {{count}} hier seit der Trennung dieser Linien geänderte(s) Objekt(e) überschrieben:",
+    "expiredKept": "abgelaufen, beibehalten",
+    "expiredKeptHint": "Diese Umgebung ist abgelaufen und wird beibehalten, weil noch etwas auf sie verweist ({{reasons}}). Entfernen Sie diese Verweise, dann wird sie beim nächsten Durchlauf stillgelegt."
   }
 }

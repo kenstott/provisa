@@ -50,6 +50,7 @@ def _row(
         "name": name,
         "branched_from": None if name == "prod" else "prod",
         "deployed_sha": deployed_sha,
+        "expires_at": None,  # the registry row always carries it; this one never expires
         "redo_sha": redo_sha,
         "origin_sha": origin_sha,
     }

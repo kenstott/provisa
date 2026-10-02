@@ -76,6 +76,7 @@ function env(name: string, overrides: Partial<Environment> = {}): Environment {
     created_at: null,
     created_by: null,
     expires_at: null,
+    expired_kept_by: {},
     protected: false,
     drifted: false,
     branched_from: name === "prod" ? null : "prod",

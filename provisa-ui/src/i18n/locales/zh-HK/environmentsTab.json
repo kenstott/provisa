@@ -139,6 +139,8 @@
     },
     "conflictsNotCompared": "這些環境沒有共同祖先，因此無法比較 — 這並不等於沒有衝突。",
     "mergedOverwriting": "已合併至 {{env}}，並覆寫該處已變更的 {{count}} 個物件。",
-    "pulledOverwriting": "已從遠端拉取 {{env}}，並覆寫自這些分支分開後此處已變更的 {{count}} 個物件："
+    "pulledOverwriting": "已從遠端拉取 {{env}}，並覆寫自這些分支分開後此處已變更的 {{count}} 個物件：",
+    "expiredKept": "已過期，保留中",
+    "expiredKeptHint": "此環境已過期，但因仍被引用而保留（{{reasons}}）。移除這些引用後，它將在下次清理時被停用。"
   }
 }

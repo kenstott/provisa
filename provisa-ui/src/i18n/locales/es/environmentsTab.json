@@ -139,6 +139,8 @@
     },
     "conflictsNotCompared": "Estos entornos no comparten un ancestro común, por lo que no se pudo comparar nada: esto no equivale a que no haya conflictos.",
     "mergedOverwriting": "Merge realizado en {{env}}, sobrescribiendo {{count}} objeto(s) cambiado(s) allí.",
-    "pulledOverwriting": "Pull de {{env}} desde el remoto, sobrescribiendo {{count}} objeto(s) cambiado(s) aquí desde que estas líneas se separaron:"
+    "pulledOverwriting": "Pull de {{env}} desde el remoto, sobrescribiendo {{count}} objeto(s) cambiado(s) aquí desde que estas líneas se separaron:",
+    "expiredKept": "caducado, conservado",
+    "expiredKeptHint": "Este entorno ha caducado y se conserva porque algo todavía hace referencia a él ({{reasons}}). Quite esas referencias y se retirará en el próximo barrido."
   }
 }

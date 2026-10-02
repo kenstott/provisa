@@ -139,6 +139,8 @@
     },
     "conflictsNotCompared": "Estes ambientes não compartilham um ancestral comum, então nada pôde ser comparado — isso não equivale a não haver conflitos.",
     "mergedOverwriting": "Mesclado em {{env}}, sobrescrevendo {{count}} objeto(s) alterado(s) lá.",
-    "pulledOverwriting": "{{env}} recebido do remote, sobrescrevendo {{count}} objeto(s) alterado(s) aqui desde que estas linhas se separaram:"
+    "pulledOverwriting": "{{env}} recebido do remote, sobrescrevendo {{count}} objeto(s) alterado(s) aqui desde que estas linhas se separaram:",
+    "expiredKept": "expirado, mantido",
+    "expiredKeptHint": "Este ambiente expirou e é mantido porque algo ainda o referencia ({{reasons}}). Remova essas referências e ele será retirado na próxima varredura."
   }
 }

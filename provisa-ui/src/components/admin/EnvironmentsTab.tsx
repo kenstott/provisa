@@ -579,6 +579,32 @@ export function EnvironmentsTab() {
                     </Table.Td>
                     <Table.Td>
                       <Text size="sm">{e.expires_at ?? "—"}</Text>
+                      {Object.keys(e.expired_kept_by).length > 0 && (
+                        // REQ-1918: past its expiry and still standing, because something still
+                        // refers to it. Said on the row so nobody has to read the server's log.
+                        <Tooltip
+                          multiline
+                          w={300}
+                          withArrow
+                          label={t("environmentsTab.expiredKeptHint", {
+                            reasons: Object.entries(e.expired_kept_by)
+                              .map(
+                                ([kind, count]) =>
+                                  `${t(`dependentsDialog.kind.${kind}`)}: ${count}`,
+                              )
+                              .join("; "),
+                          })}
+                        >
+                          <Badge
+                            size="xs"
+                            color="yellow"
+                            variant="light"
+                            data-testid={`env-expired-kept-${e.name}`}
+                          >
+                            {t("environmentsTab.expiredKept")}
+                          </Badge>
+                        </Tooltip>
+                      )}
                     </Table.Td>
                     <Table.Td>
                       <Switch

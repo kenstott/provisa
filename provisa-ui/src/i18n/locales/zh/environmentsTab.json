@@ -139,6 +139,8 @@
     },
     "conflictsNotCompared": "这些环境没有共同祖先，因此无法进行任何比较——这并不等同于没有冲突。",
     "mergedOverwriting": "已合并到 {{env}}，覆盖了该处已更改的 {{count}} 个对象。",
-    "pulledOverwriting": "已从远程仓库拉取 {{env}}，覆盖了自这些分支分叉以来此处已更改的 {{count}} 个对象："
+    "pulledOverwriting": "已从远程仓库拉取 {{env}}，覆盖了自这些分支分叉以来此处已更改的 {{count}} 个对象：",
+    "expiredKept": "已过期，保留中",
+    "expiredKeptHint": "此环境已过期，但因仍被引用而保留（{{reasons}}）。移除这些引用后，它将在下次清理时被停用。"
   }
 }
