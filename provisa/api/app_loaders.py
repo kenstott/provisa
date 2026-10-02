@@ -1448,6 +1448,15 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
             metrics=mtrcs,  # REQ-1319
         )
 
+    # ``roles`` is every role the control plane holds now. The registry and the per-role maps
+    # are built up across rebuilds of a live runtime, so a role deleted since the last build is
+    # still in them: without this it keeps its rights (capability resolution reads state.roles)
+    # and its schema, and goes on being served to whoever still names it.
+    current = {role["id"] for role in roles}
+    for gone in [role_id for role_id in state.roles if role_id not in current]:
+        del state.roles[gone]
+        _drop_data_surface(state, gone)
+
     for role in roles:
         state.roles[role["id"]] = role
         # REQ-1327: platform_admin is control-plane only and holds zero data capabilities in every
