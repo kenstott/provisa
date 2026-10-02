@@ -15,8 +15,14 @@ import { Users } from "lucide-react";
 import { useResolveOwners } from "../hooks/useAdminQueries";
 import type { UserSummary } from "../types/admin";
 
-function summaryLabel(u: UserSummary): string {
-  return u.displayName || u.email || u.userId;
+// An owner the caller may not identify (no display name, and the user id and e-mail withheld) has
+// nothing to show.
+function summaryLabel(u: UserSummary): string | null {
+  return u.displayName || u.email || u.userId || null;
+}
+
+function labelled(members: UserSummary[]): string[] {
+  return members.map(summaryLabel).filter((label): label is string => label !== null);
 }
 
 // REQ-609/REQ-1634: an icon button that, on click, resolves a role/user ref list (an
@@ -75,10 +81,10 @@ export function OwnerResolutionIcon({
           <Loader size="xs" />
         ) : (
           <Stack gap={2}>
-            {members && members.length > 0 ? (
-              members.map((m) => (
-                <Text key={m.userId} size="xs">
-                  {summaryLabel(m)}
+            {members && labelled(members).length > 0 ? (
+              labelled(members).map((label, i) => (
+                <Text key={`${i}:${label}`} size="xs">
+                  {label}
                 </Text>
               ))
             ) : (
@@ -126,7 +132,7 @@ export function OwnerResolutionInline({ refs }: { refs: string[] }) {
     );
   }
 
-  if (members.length === 0) {
+  if (labelled(members).length === 0) {
     return (
       <Text size="xs" c="var(--text-muted)">
         {t("ownerResolution.empty")}
@@ -136,7 +142,7 @@ export function OwnerResolutionInline({ refs }: { refs: string[] }) {
 
   return (
     <Text size="xs" c="var(--text-muted)">
-      {members.map(summaryLabel).join(", ")}
+      {labelled(members).join(", ")}
     </Text>
   );
 }

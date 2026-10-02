@@ -108,13 +108,19 @@ EXEMPT: dict[tuple[str, str], str] = {
 # Model metadata read by every role's pages; holds no connection details or security rules. Each
 # resolves through _get_pool(), the org-routed tenant pool (one schema per org), so it returns only
 # the acting org's rows; the ones that take info also require an org bound to the request.
-_MODEL_METADATA_READS = (
-    "allRelationships metrics relationships domains resolveOwners tagAssignments tags"
-).split()
+_MODEL_METADATA_READS = ("allRelationships metrics relationships domains tags").split()
 for _name in _MODEL_METADATA_READS:
     EXEMPT[("graphql:query", _name)] = (
         "model metadata read by every role's pages; holds no connection details or security rules"
     )
+# resolveOwners is answered per right (has_capability("user_management") decides whether the user id
+# and e-mail come back), so it counts as gated and needs no entry. tagAssignments is trimmed to the
+# caller's reachable domains (allowed_domains_request) rather than refused.
+EXEMPT[("graphql:query", "tagAssignments")] = (
+    "returns only assignments on objects in the caller's reachable domains (table/column by the "
+    "table's domain, relationship by its source table, command by its domain, source by "
+    "allowed_domains); unrestricted scope sees all"
+)
 EXEMPT[("graphql:query", "schemaVersion")] = "identifier hash only; no model content"
 # Pure text parse (parse_contract reads no source, credential or model row); called by DqRulesModal
 # on /data-products, opened with data_product_read.

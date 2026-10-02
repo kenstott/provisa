@@ -637,7 +637,7 @@ class RoleType:  # REQ-042
 
 @strawberry.type
 class UserSummaryType:  # REQ-609/REQ-1634: resolves an owner_role/steward to the individuals it grants to
-    user_id: str
+    user_id: str | None  # user_id and email: user_management only, null otherwise
     display_name: str | None = None
     email: str | None = None
 

@@ -31,6 +31,8 @@ from provisa.core.schema_org import (
     roles,
     sources,
     table_columns,
+    tracked_functions,
+    tracked_webhooks,
     user_directory,
     user_role_assignments,
 )
@@ -42,6 +44,7 @@ from provisa.core.repositories import rls as rls_repo
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
 from provisa.api.admin.capabilities import (
+    allowed_domains_request,
     has_capability,
     require_capability,
     role_definitions_visible,
@@ -237,6 +240,71 @@ async def _has_table_synthetic_relationships(conn: Any) -> list[RelationshipType
     ]
 
 
+def _owner_summary(user_id: str, display_name, email, *, contact: bool) -> UserSummaryType:
+    return UserSummaryType(
+        user_id=user_id if contact else None,
+        display_name=display_name,
+        email=email if contact else None,
+    )
+
+
+async def _assignments_in_scope(conn, rows: list[dict], scope: frozenset[str]) -> list[dict]:
+    """The tag assignments whose object sits in a domain the caller reaches.
+
+    An assignment's domain comes from its object: a table or column from the registered table's
+    domain; a relationship from its SOURCE table's domain; a command (tracked function or webhook)
+    from its own domain; a source from its ``allowed_domains`` (reachable when any of them is). An
+    object with no domain (an empty domain id, or a source with no ``allowed_domains``) is not
+    restricted by a domain scope and stays visible. An assignment whose object cannot be found is
+    dropped: it cannot be shown to be in scope.
+    """
+    table_domain = {
+        r.id: r.domain_id
+        for r in (
+            await conn.execute_core(select(registered_tables.c.id, registered_tables.c.domain_id))
+        ).fetchall()
+    }
+    rel_table = {
+        r.id: r.source_table_id
+        for r in (
+            await conn.execute_core(select(relationships.c.id, relationships.c.source_table_id))
+        ).fetchall()
+    }
+    source_domains = {
+        r.id: list(r.allowed_domains or [])
+        for r in (
+            await conn.execute_core(select(sources.c.id, sources.c.allowed_domains))
+        ).fetchall()
+    }
+    command_domain: dict[str, str] = {}
+    for registry in (tracked_functions, tracked_webhooks):
+        for r in (
+            await conn.execute_core(select(registry.c.name, registry.c.domain_id))
+        ).fetchall():
+            command_domain[r.name] = r.domain_id
+
+    def reachable(domain: str) -> bool:
+        return domain == "" or domain in scope
+
+    def visible(row: dict) -> bool:
+        kind = row["object_type"]
+        if kind in ("table", "column"):
+            return row["table_id"] in table_domain and reachable(table_domain[row["table_id"]])
+        if kind == "relationship":
+            table_id = rel_table.get(row["relationship_id"])
+            return table_id in table_domain and reachable(table_domain[table_id])
+        if kind == "source":
+            allowed = source_domains.get(row["source_id"])
+            return allowed is not None and (not allowed or any(d in scope for d in allowed))
+        if kind == "command":
+            return row["command_name"] in command_domain and reachable(
+                command_domain[row["command_name"]]
+            )
+        return False
+
+    return [r for r in rows if visible(r)]
+
+
 @strawberry.type
 class Query:  # REQ-021, REQ-042
     @strawberry.field
@@ -430,6 +498,9 @@ class Query:  # REQ-021, REQ-042
         (REQ-609), possibly a raw user id — role lookup is tried first, and a ref matching neither
         is echoed back bare so the UI still shows the raw id rather than nothing."""
         _resolve_admin_context(info)
+        # A display name is for every org member; the user id and the e-mail address are
+        # user_management's. Without that right the contact fields are null.
+        contact = has_capability(info, "user_management")
         pool = await _get_pool()
         seen: dict[str, UserSummaryType] = {}
         async with pool.acquire() as conn:
@@ -457,9 +528,7 @@ class Query:  # REQ-021, REQ-042
                     for r in _res.fetchall():
                         seen.setdefault(
                             r.user_id,
-                            UserSummaryType(
-                                user_id=r.user_id, display_name=r.display_name, email=r.email
-                            ),
+                            _owner_summary(r.user_id, r.display_name, r.email, contact=contact),
                         )
                     continue
                 _res = await conn.execute_core(
@@ -473,12 +542,17 @@ class Query:  # REQ-021, REQ-042
                 if row is not None:
                     seen.setdefault(
                         row.user_id,
-                        UserSummaryType(
-                            user_id=row.user_id, display_name=row.display_name, email=row.email
-                        ),
+                        _owner_summary(row.user_id, row.display_name, row.email, contact=contact),
                     )
                 else:
-                    seen.setdefault(ref, UserSummaryType(user_id=ref))
+                    # A ref that matches no role and no directory entry is echoed back: it is the
+                    # caller's own input, so showing it as the name discloses nothing.
+                    seen.setdefault(
+                        ref,
+                        UserSummaryType(
+                            user_id=ref if contact else None, display_name=None if contact else ref
+                        ),
+                    )
         return list(seen.values())
 
     @strawberry.field
@@ -517,9 +591,14 @@ class Query:  # REQ-021, REQ-042
         from provisa.core.repositories import tag as tag_repo
 
         _resolve_admin_context(info)
+        # The domains the caller reaches (None = unrestricted: dev mode, single-domain mode, or a
+        # role whose domain_access is "*"), the same scope the admin gates compute.
+        scope = allowed_domains_request(info.context["request"])
         pool = await _get_pool()
         async with pool.acquire() as conn:
             rows = await tag_repo.list_assignments(cast("Connection", conn))
+            if scope is not None:
+                rows = await _assignments_in_scope(conn, rows, scope)
         return [
             TagAssignmentType(
                 tag_id=r["tag_id"],

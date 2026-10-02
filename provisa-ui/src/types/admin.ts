@@ -89,7 +89,8 @@ export interface DataProduct {
 
 // REQ-609/REQ-1634: an owner_role/steward/visible_to ref resolved to one individual.
 export interface UserSummary {
-  userId: string;
+  // userId and email are user_management's; null for every other caller.
+  userId?: string | null;
   displayName?: string | null;
   email?: string | null;
 }
