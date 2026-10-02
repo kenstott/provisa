@@ -284,3 +284,87 @@ def test_exec_args_leaves_sql_untouched_without_params() -> None:
     from provisa.federation.pg_runtime import _psycopg2_exec_args
 
     assert _psycopg2_exec_args("SELECT 'x%'", None) == ("SELECT 'x%'", None)
+
+
+# -- REQ-1905: a pool slot is never lost to the deadline's raise ----------------------------------
+
+
+class _KeyboardStop(BaseException):
+    """Stands for a raise that is not an ordinary error — what the deadline's watchdog delivers
+    into a request's thread at an arbitrary point."""
+
+
+def _all_slots_free(rt: PgFederationRuntime) -> bool:
+    """Whether the read pool can hand out every one of its connections."""
+    taken = [rt._read_pool.getconn() for _ in range(_POOL_MAXCONN)]
+    for con in taken:
+        rt._read_pool.putconn(con)
+    return len(taken) == _POOL_MAXCONN
+
+
+def test_a_raise_that_is_not_an_exception_during_a_read_still_gives_the_slot_back(
+    fake_psycopg2,
+) -> None:
+    rt = _runtime(fake_psycopg2)
+    for call in (rt.run_sync, lambda sql: asyncio.run(rt.run(sql))):
+        borrowed = rt._read_pool.getconn()
+        borrowed.raise_on_execute = _KeyboardStop()  # type: ignore[assignment]
+        rt._read_pool.putconn(borrowed)
+        with pytest.raises(_KeyboardStop):
+            call("SELECT id FROM t")
+        assert borrowed.closed  # cut mid-statement: discarded, never reused
+    assert _all_slots_free(rt)
+
+
+def test_a_stream_closed_after_a_failed_commit_discards_its_connection(fake_psycopg2) -> None:
+    rt = _runtime(fake_psycopg2)
+    stream = rt.run_sync("SELECT id FROM t")
+    con = next(c for c in fake_psycopg2 if c.executed)
+
+    def _fail() -> None:
+        raise RuntimeError("commit failed")
+
+    con.commit = _fail  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError, match="commit failed"):
+        _ = stream.rows  # draining the stream closes it
+    assert con.closed and _all_slots_free(rt)
+
+
+def test_a_borrowed_raw_connection_goes_back_when_its_handle_cannot_be_built(
+    fake_psycopg2,
+) -> None:
+    rt = _runtime(fake_psycopg2)
+    borrowed = rt._read_pool.getconn()
+    rt._read_pool.putconn(borrowed)  # this fake has no backend pid: building the handle fails
+    with pytest.raises(AttributeError):
+        rt.borrow_raw()
+    assert borrowed.closed and _all_slots_free(rt)
+
+
+def test_the_arrow_pool_keeps_its_count_when_a_connect_fails() -> None:
+    from provisa.federation.pg_runtime import _AdbcConnectionPool
+
+    pool = _AdbcConnectionPool.__new__(_AdbcConnectionPool)
+    import threading
+
+    made: list[object] = []
+
+    def _connect() -> object:
+        if not made:
+            made.append(None)
+            raise RuntimeError("server unreachable")
+        con = type("C", (), {"close": lambda self: None})()
+        made.append(con)
+        return con
+
+    pool._connect = _connect  # type: ignore[attr-defined]
+    pool._maxconn = 1
+    pool._pool = []
+    pool._created = 0
+    pool._lock = threading.Lock()
+    pool._not_empty = threading.Condition(pool._lock)
+    with pytest.raises(RuntimeError, match="server unreachable"):
+        pool.getconn()
+    con = pool.getconn()  # the failed connect did not use up the pool's one connection
+    pool.discard(con)
+    assert pool._created == 0

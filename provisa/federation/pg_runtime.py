@@ -67,23 +67,32 @@ class _WaitingThreadedPool(psycopg2.pool.ThreadedConnectionPool):
         self._slots = threading.BoundedSemaphore(maxconn)
 
     def getconn(self, key: Any = None) -> Any:
+        # Taking a slot and its connection is one section the request's deadline does not
+        # interrupt (REQ-1905): a raise between the two would lose the slot for good.
         budget = request_deadline.remaining()
         wait = _POOL_WAIT_S if budget is None else min(_POOL_WAIT_S, budget)
-        if not self._slots.acquire(timeout=wait):
-            raise psycopg2.pool.PoolError(
-                f"no engine connection freed within {wait:.1f}s (all {self.maxconn} checked out)"
-            )
-        try:
-            return super().getconn(key)
-        except BaseException:
-            self._slots.release()
-            raise
+        shield = request_deadline.shielded()
+        with shield.lock:
+            shield.settle()
+            if not self._slots.acquire(timeout=wait):
+                raise psycopg2.pool.PoolError(
+                    f"no engine connection freed within {wait:.1f}s "
+                    f"(all {self.maxconn} checked out)"
+                )
+            try:
+                return super().getconn(key)
+            except BaseException:
+                self._slots.release()
+                raise
 
     def putconn(self, conn: Any = None, key: Any = None, close: bool = False) -> None:
-        try:
-            super().putconn(conn, key, close)
-        finally:
-            self._slots.release()
+        shield = request_deadline.shielded()
+        with shield.lock:
+            shield.settle()
+            try:
+                super().putconn(conn, key, close)
+            finally:
+                self._slots.release()
 
 
 def _psycopg2_exec_args(sql: str, params: list | None) -> tuple[str, dict[str, Any] | None]:
@@ -194,30 +203,48 @@ class _AdbcConnectionPool:
         deadline = time.monotonic() + (
             _POOL_WAIT_S if budget is None else min(_POOL_WAIT_S, budget)
         )
-        with self._lock:
-            while True:
-                if self._pool:
-                    return self._pool.pop()
-                if self._created < self._maxconn:
-                    self._created += 1
-                    return self._connect()
-                remaining = deadline - time.monotonic()
-                if remaining <= 0 or not self._not_empty.wait(remaining):
-                    raise RuntimeError(
-                        f"no ADBC engine connection freed within {_POOL_WAIT_S:.0f}s "
-                        f"(all {self._maxconn} checked out)"
-                    )
+        # One section the request's deadline does not interrupt (REQ-1905): a raise after a
+        # connection left the pool, or was counted, and before the caller held it would lose it.
+        shield = request_deadline.shielded()
+        with shield.lock:
+            shield.settle()
+            with self._lock:
+                while True:
+                    if self._pool:
+                        return self._pool.pop()
+                    if self._created < self._maxconn:
+                        self._created += 1
+                        try:
+                            return self._connect()
+                        except BaseException:
+                            self._created -= 1
+                            self._not_empty.notify()
+                            raise
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0 or not self._not_empty.wait(remaining):
+                        raise RuntimeError(
+                            f"no ADBC engine connection freed within {_POOL_WAIT_S:.0f}s "
+                            f"(all {self._maxconn} checked out)"
+                        )
 
     def putconn(self, con: Any) -> None:
-        with self._lock:
-            self._pool.append(con)
-            self._not_empty.notify()
+        shield = request_deadline.shielded()
+        with shield.lock:
+            shield.settle()
+            with self._lock:
+                self._pool.append(con)
+                self._not_empty.notify()
 
     def discard(self, con: Any) -> None:
-        con.close()
-        with self._lock:
-            self._created -= 1
-            self._not_empty.notify()
+        shield = request_deadline.shielded()
+        with shield.lock:
+            shield.settle()
+            try:
+                con.close()
+            finally:
+                with self._lock:
+                    self._created -= 1
+                    self._not_empty.notify()
 
     def closeall(self) -> None:
         with self._lock:
@@ -721,7 +748,23 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         back idle (or discards it when its exchange did not complete)."""
         from provisa.pgwire.pg_passthrough import BorrowedPgConnection
 
+        # The connection is taken, described and handed to the caller inside the deadline
+        # shield (REQ-1905): until the caller holds the handle whose release returns it, nothing
+        # else would give it back.
+        shield = request_deadline.shielded()
+        with shield.lock:
+            shield.settle()
+            return self._borrow_raw(BorrowedPgConnection)
+
+    def _borrow_raw(self, handle: Any) -> Any:
         con = self._read_pool.getconn()
+        try:
+            return self._raw_handle(con, handle)
+        except BaseException:
+            self._read_pool.putconn(con, close=True)  # no handle exists to return it
+            raise
+
+    def _raw_handle(self, con: Any, handle: Any) -> Any:
         # What the passthrough prepared on this backend session, kept with it. A psycopg2
         # connection cannot be weakly referenced, so the entry is keyed by the session's backend
         # pid and dropped when the connection is discarded.
@@ -730,12 +773,15 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             statements = self._raw_statements.setdefault(pid, {})
 
         def _release(discard: bool) -> None:
-            if discard:
-                with self._raw_statements_lock:
-                    self._raw_statements.pop(pid, None)
-            self._read_pool.putconn(con, close=discard)
+            release_shield = request_deadline.shielded()
+            with release_shield.lock:
+                release_shield.settle()
+                if discard:
+                    with self._raw_statements_lock:
+                        self._raw_statements.pop(pid, None)
+                self._read_pool.putconn(con, close=discard)
 
-        return BorrowedPgConnection(
+        return handle(
             fileno=con.fileno(),
             ssl_in_use=bool(con.info.ssl_in_use),
             cancel=con.cancel,
@@ -759,7 +805,12 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         portal from the autocommit write/cache connection and from other concurrent streams, same as
         the prior dedicated-connection isolation. Consumers that call ``.rows`` still get the full list
         — the buffering is then explicit at their call site (REQ-1217)."""
-        read_con = self._read_pool.getconn()
+        # Taking the connection and giving it back are each a section the request's deadline
+        # does not interrupt (REQ-1905), so a timed-out read never leaves a pool slot taken.
+        shield = request_deadline.shielded()
+        with shield.lock:
+            shield.settle()
+            read_con = self._read_pool.getconn()
         try:
             cur = read_con.cursor(name="provisa_stream")  # named ⇒ server-side portal
             cur.itersize = _STREAM_BATCH_ROWS
@@ -768,16 +819,26 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
                 # psycopg2 populates a NAMED cursor's ``.description`` only after the first FETCH,
                 # so peek one batch to force the portal and expose the columns before streaming.
                 first = cur.fetchmany(_STREAM_BATCH_ROWS)
-        except Exception:
-            # Setup failed before the stream/on_close path exists to return this connection —
-            # discard it (don't return a possibly-mid-transaction connection to the pool for reuse).
-            self._read_pool.putconn(read_con, close=True)
+        except BaseException:
+            # Setup failed (or the deadline's raise landed) before the stream/on_close path
+            # exists to return this connection — discard it (don't return a possibly-mid-
+            # transaction connection to the pool for reuse).
+            with shield.lock:
+                shield.settle()
+                self._read_pool.putconn(read_con, close=True)
             raise
 
         def _close(*_: Any) -> None:
-            cur.close()
-            read_con.commit()
-            self._read_pool.putconn(read_con)
+            close_shield = request_deadline.shielded()
+            with close_shield.lock:
+                close_shield.settle()
+                try:
+                    cur.close()
+                    read_con.commit()
+                except BaseException:
+                    self._read_pool.putconn(read_con, close=True)
+                    raise
+                self._read_pool.putconn(read_con)
 
         if not cur.description:  # non-row-returning statement — drain now
             _close()
@@ -825,16 +886,23 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         call cost as ``run_sync`` before pooling, isolated here from the engine's psycopg2
         write/cache connection) and returned when the table is built, or discarded on failure."""
         pool = self._get_adbc_pool()
-        con = pool.getconn()
+        shield = request_deadline.shielded()
+        with shield.lock:
+            shield.settle()
+            con = pool.getconn()
         try:
             cur = con.cursor()
             with request_deadline.cancel_on_deadline(cur.adbc_cancel):
                 cur.execute(sql, params or None)
                 table = cur.fetch_arrow_table()
-        except Exception:
-            pool.discard(con)
+        except BaseException:
+            with shield.lock:
+                shield.settle()
+                pool.discard(con)
             raise
-        pool.putconn(con)
+        with shield.lock:
+            shield.settle()
+            pool.putconn(con)
         return table
 
     def run_arrow_stream(self, sql: str, params: list | None = None) -> tuple[Any, Any]:
@@ -845,24 +913,45 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         REQ-1895) returns to the pool when the generator drains or the consumer stops early, or is
         discarded on setup failure."""
         pool = self._get_adbc_pool()
-        con = pool.getconn()
+        shield = request_deadline.shielded()
+        with shield.lock:
+            shield.settle()
+            con = pool.getconn()
         try:
             cur = con.cursor()
             with request_deadline.cancel_on_deadline(cur.adbc_cancel):
                 cur.execute(sql, params or None)
                 reader = cur.fetch_record_batch()
             schema = reader.schema
-        except Exception:
-            pool.discard(con)
+        except BaseException:
+            with shield.lock:
+                shield.settle()
+                pool.discard(con)
             raise
 
         def _batches() -> Any:
+            # The generator may be drained on another thread than the one that opened it: the
+            # shield is that thread's own.
+            drain_shield = request_deadline.shielded()
+            failure: BaseException | None = None
             try:
                 for batch in reader:
                     yield batch
+            except BaseException as exc:
+                failure = exc
+                raise
             finally:
-                cur.close()
-                pool.putconn(con)
+                with drain_shield.lock:
+                    drain_shield.settle()
+                    if failure is not None and request_deadline.interrupted(failure):
+                        pool.discard(con)  # cut short mid-read: its protocol state is unknown
+                    else:
+                        try:
+                            cur.close()
+                        except BaseException:
+                            pool.discard(con)
+                            raise
+                        pool.putconn(con)
 
         return schema, _batches()
 
@@ -883,7 +972,10 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         loop = asyncio.get_event_loop()
 
         def _run() -> QueryResult:
-            con = self._read_pool.getconn()
+            shield = request_deadline.shielded()
+            with shield.lock:
+                shield.settle()
+                con = self._read_pool.getconn()
             try:
                 cur = con.cursor()
                 with request_deadline.cancel_on_deadline(con.cancel):
@@ -892,10 +984,13 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
                     rows = list(cur.fetchall()) if cur.description else []
                 con.commit()
                 cur.close()
-            except Exception:
-                self._read_pool.putconn(con, close=True)
+            except BaseException:
+                with shield.lock:
+                    shield.settle()
+                    self._read_pool.putconn(con, close=True)
                 raise
-            else:
+            with shield.lock:
+                shield.settle()
                 self._read_pool.putconn(con)
             return QueryResult(rows=rows, column_names=cols)
 
