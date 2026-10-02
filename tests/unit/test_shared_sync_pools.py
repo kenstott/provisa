@@ -241,6 +241,11 @@ def test_postgresql_execute_registers_deadline_cancel() -> None:
         def execute(self, sql: str, params: Any = None) -> None:
             super().execute(sql, params)
             self.description = [_Col()]
+            self._left = [(1,)]
+
+        def fetchmany(self, size: int) -> list[tuple]:
+            chunk, self._left = self._left[:size], self._left[size:]
+            return chunk
 
     class _PgConn(_FakeConn):
         def cursor(self, **_: Any) -> _FakeCursor:
@@ -303,3 +308,59 @@ def test_request_threads_share_one_driver_pool() -> None:
     # Four concurrent requests on four threads were served by at most maxsize=2 connections.
     assert 1 <= len(made) <= 2
     assert sum(len(c.executed) for c in made) == 4
+
+
+def test_postgresql_ends_a_large_fetch_between_chunks_when_the_deadline_passes(monkeypatch) -> None:
+    """Converting a large result is not one uninterruptible call: the driver fetches it in chunks
+    and looks at the request's deadline between them (REQ-1905)."""
+    import time as _time
+
+    from provisa.executor.drivers import postgresql as pg
+
+    monkeypatch.setattr(pg, "_FETCH_CHUNK_ROWS", 10)
+
+    class _Col:
+        name = "id"
+        type_code = 23
+
+    fetched: list[int] = []
+
+    class _SlowCursor(_FakeCursor):
+        def execute(self, sql: str, params: Any = None) -> None:
+            super().execute(sql, params)
+            self.description = [_Col()]
+
+        def fetchmany(self, size: int) -> list[tuple]:
+            fetched.append(size)
+            _time.sleep(0.05)  # each chunk's conversion
+            return [(n,) for n in range(size)]  # a result that never ends
+
+    class _Conn(_FakeConn):
+        def cursor(self, **_: Any) -> _FakeCursor:
+            return _SlowCursor(self)
+
+    class _Pool:
+        def __init__(self, conn: _FakeConn) -> None:
+            self._conn = conn
+            self.returned = 0
+
+        def getconn(self, timeout: float | None = None):
+            return self._conn
+
+        def putconn(self, conn) -> None:
+            self.returned += 1
+
+    drv = pg.PostgreSQLDriver()
+    pool = _Pool(_Conn())
+    drv._pool = pool  # type: ignore[assignment]
+
+    async def _request():
+        with request_deadline.within(0.2):
+            return await drv.execute("SELECT id FROM t")
+
+    started = _time.monotonic()
+    with pytest.raises(TimeoutError):
+        asyncio.run(_request())
+    assert _time.monotonic() - started < 1.0
+    assert 2 <= len(fetched) <= 8  # cut a chunk or so after 0.2 s, not after the whole result
+    assert pool.returned == 1

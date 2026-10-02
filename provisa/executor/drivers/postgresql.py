@@ -101,6 +101,8 @@ _TRAILING_LIMIT = re.compile(
 # The one server-side cursor a pooled connection holds at a time. A fixed name, so DECLARE / FETCH
 # / CLOSE are the same text for every stream on the connection and are prepared once.
 _CURSOR = '"provisa_direct"'
+# Rows converted per fetch of a materialized result, between two looks at the request's deadline.
+_FETCH_CHUNK_ROWS = 50_000
 
 
 def _row_bound(sql: str, params: list) -> int | None:
@@ -405,7 +407,14 @@ class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
             with conn.cursor() as cur:
                 with request_deadline.cancel_on_deadline(conn.cancel):
                     cur.execute(_q(exec_sql), args)
-                    rows = [tuple(r) for r in cur.fetchall()] if cur.description else []
+                    rows: list[tuple] = []
+                    if cur.description:
+                        # In chunks, not one fetchall(): converting a large result is a single
+                        # C call the request's deadline cannot end until it returns (REQ-1905,
+                        # measured at 0.9-3.5 s for 6M rows). Between chunks it can.
+                        while chunk := cur.fetchmany(_FETCH_CHUNK_ROWS):
+                            rows.extend(tuple(r) for r in chunk)
+                            request_deadline.check()
                 desc = cur.description or []
                 columns = [d.name for d in desc]
                 col_types = self._type_names(conn, [d.type_code for d in desc])
