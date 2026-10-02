@@ -24,7 +24,33 @@ if TYPE_CHECKING:
     from provisa.core.database import Connection
 
 
-async def upsert(conn: "Connection", role: Role) -> None:  # REQ-042, REQ-059, REQ-060, REQ-1174
+class RoleDeleteRefused(Exception):
+    """A role that may not be deleted, and why. ``reason`` is ``"system"`` (a role the seed
+    defines) or ``"heirs"`` (other roles inherit from it; ``heirs`` names them)."""
+
+    def __init__(self, role_id: str, reason: str, heirs: list[str] | None = None) -> None:
+        self.role_id = role_id
+        self.reason = reason
+        self.heirs = heirs or []
+        if reason == "heirs":
+            message = (
+                f"Role {role_id!r} is inherited by {', '.join(self.heirs)}; reparent them first"
+            )
+        else:
+            message = f"Role {role_id!r} is a system role and cannot be deleted"
+        super().__init__(message)
+
+
+async def upsert(  # REQ-042, REQ-059, REQ-060, REQ-1174
+    conn: "Connection", role: Role, *, org_id: str | None
+) -> None:
+    """Create the role, or replace its definition.
+
+    ``org_id`` is recorded when the role is CREATED and never changed after: the org an
+    administrator created it in. ``None`` is what the seed writes and marks a role the deployment
+    defines — the seeded roles, and a role declared in the deployment's config file — which no
+    admin surface deletes (:func:`delete`).
+    """
     if role.id in (PLATFORM_ADMIN_ROLE, ORG_ADMIN_ROLE):
         # REQ-1349: org_admin is refused on the same terms as platform_admin below. The shipped
         # install config redefined it WITHOUT `org_settings`/`observability`, and config load runs
@@ -49,6 +75,7 @@ async def upsert(conn: "Connection", role: Role) -> None:  # REQ-042, REQ-059, R
             # REQ-1174: per-role rate + query-complexity limits; None = unlimited (column NULL).
             "rate_limit": role.rate_limit.model_dump() if role.rate_limit is not None else None,
             "parent_role_id": role.parent_role_id,  # REQ-1677
+            "org_id": org_id,
         },
         index_elements=["id"],
         update_columns=["capabilities", "domain_access", "rate_limit", "parent_role_id"],
@@ -66,6 +93,23 @@ async def list_all(conn: "Connection") -> list[dict]:  # REQ-042, REQ-059
     return [dict(r._mapping) for r in result.fetchall()]
 
 
-async def delete(conn: "Connection", role_id: str) -> bool:  # REQ-042
-    result = await conn.execute_core(_delete(roles).where(roles.c.id == role_id))
-    return (result.rowcount or 0) > 0
+async def delete(conn: "Connection", role_id: str) -> bool:  # REQ-042, REQ-1677
+    """Delete one role: THE delete path, for every surface. False when there is no such role.
+
+    Refused (:class:`RoleDeleteRefused`) for a role the deployment defines — its row carries no
+    org, which is how the seed marks it — and for a role other roles inherit from, whose heirs
+    would be left naming a parent that is gone.
+    """
+    from provisa.security.inheritance import children_of
+
+    async with conn.transaction():
+        row = await get(conn, role_id)
+        if row is None:
+            return False
+        if row["org_id"] is None:
+            raise RoleDeleteRefused(role_id, "system")
+        heirs = children_of(role_id, await list_all(conn))
+        if heirs:
+            raise RoleDeleteRefused(role_id, "heirs", heirs)
+        await conn.execute_core(_delete(roles).where(roles.c.id == role_id))
+    return True

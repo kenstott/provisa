@@ -195,6 +195,7 @@
     "roles": {
       "cannot_delete_system": "Systemrollen können nicht gelöscht werden",
       "cannot_modify_administrative": "Administrative Rollen können nicht geändert werden",
+      "has_heirs": "Rolle {{role}} wird von {{heirs}} geerbt; weisen Sie diesen zuerst eine andere übergeordnete Rolle zu",
       "not_found": "Rolle nicht gefunden",
       "org_selection_required": "Organisationsauswahl erforderlich"
     },

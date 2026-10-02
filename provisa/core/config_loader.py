@@ -878,7 +878,9 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
 
     # 4. Roles (before tables/RLS so FK refs exist)
     for role in config.roles:
-        await role_repo.upsert(conn, role)
+        # A role the config declares is the deployment's own definition, as a seeded role is:
+        # it carries no org, and the admin surfaces do not delete it.
+        await role_repo.upsert(conn, role, org_id=None)
 
     # 4.5 Data products (before tables so product_id FK refs exist)  # REQ-1634
     for dp in config.data_products:

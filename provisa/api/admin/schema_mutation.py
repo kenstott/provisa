@@ -88,6 +88,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     _rebuild_relationship_input,
     _rebuild_source_input,
     _rebuild_table_input,
+    _resolve_admin_context,
     _register_source_on_engine,
     _remove_view_mv,
     _stage_kaggle_if_needed,
@@ -1813,7 +1814,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             parent_role_id=parent_id,
         )
         async with pool.acquire() as conn:
-            await role_repo.upsert(cast("Connection", conn), model)
+            await role_repo.upsert(
+                cast("Connection", conn), model, org_id=_resolve_admin_context(info)
+            )
         # A new role has no state.schemas[role_id]/state.contexts[role_id] until some rebuild
         # runs; without this, the role is unusable until an unrelated mutation happens to trigger
         # one, and any prepared-plan cache keyed on schema_version would never see this role exist.
@@ -2151,20 +2154,23 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.core.repositories import role as role_repo
 
         require_capability(info, "user_management")  # REQ-1531: see create_role
-        from provisa.security.inheritance import children_of
-
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            # REQ-1677: a role other roles inherit from cannot go; name them.
-            heirs = children_of(id, await role_repo.list_all(cast("Connection", conn)))
-            if heirs:
+            try:
+                deleted = await role_repo.delete(cast("Connection", conn), id)
+            except role_repo.RoleDeleteRefused as refused:
+                # REQ-1677: a role other roles inherit from cannot go; name them. Nor can a role
+                # the deployment defines.
                 return MutationResult(
                     success=False,
-                    message=f"Role {id!r} is inherited by {', '.join(heirs)}; reparent them first",
-                    code="schema.role_has_heirs",
-                    params={"role": id, "heirs": heirs},
+                    message=str(refused),
+                    code=(
+                        "schema.role_has_heirs"
+                        if refused.reason == "heirs"
+                        else "schema.role_is_system"
+                    ),
+                    params={"role": id, "heirs": refused.heirs},
                 )
-            deleted = await role_repo.delete(cast("Connection", conn), id)
         if deleted:
             # state.contexts/schemas[role_id] must not survive a deleted role — see create_role's
             # matching rebuild for why this can't wait for an unrelated mutation.

@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
-from sqlalchemy import delete as _delete, insert, or_, select, update
+from sqlalchemy import insert, or_, select, update
 
 from provisa.api.admin._platform_guard import role_definition_problem
 from provisa.api.admin.capabilities import require_capability_request, role_definitions_visible
@@ -232,14 +232,23 @@ async def update_role(
 @router.delete("/{role_id}")
 async def delete_role(role_id: str, request: Request):  # REQ-042, REQ-059, REQ-060, REQ-1531
     require_capability_request(request, "user_management")  # REQ-1531: see create_role
+    from provisa.api.app import _rebuild_schemas
+    from provisa.core.repositories import role as role_repo
+
     pool = _pool(request)
     async with pool.acquire() as conn:
-        result = await conn.execute_core(select(roles.c.org_id).where(roles.c.id == role_id))
-        existing = result.fetchone()
-        if existing is None:
-            raise ApiError(404, "roles.not_found", "Role not found")
-        if existing._mapping["org_id"] is None:
-            raise ApiError(400, "roles.cannot_delete_system", "Cannot delete system roles")
-
-        await conn.execute_core(_delete(roles).where(roles.c.id == role_id))
+        try:
+            deleted = await role_repo.delete(conn, role_id)
+        except role_repo.RoleDeleteRefused as refused:
+            if refused.reason == "heirs":
+                raise ApiError(
+                    409, "roles.has_heirs", str(refused), role=role_id, heirs=refused.heirs
+                ) from refused
+            raise ApiError(
+                400, "roles.cannot_delete_system", "Cannot delete system roles"
+            ) from refused
+    if not deleted:
+        raise ApiError(404, "roles.not_found", "Role not found")
+    # The role's built schema and context must not outlive it; the GraphQL path rebuilds too.
+    await _rebuild_schemas()
     return {"deleted": role_id}
