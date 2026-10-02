@@ -35,3 +35,24 @@ class SnowflakeBackend(NativeEngineBackend):
         if not url:
             raise RuntimeError("snowflake engine requires a URL ($PROVISA_ENGINE_URL)")
         return SnowflakeFederationRuntime(url=url)
+
+    def replica_target(self, state: Any, *, address: Any, args: Any, engine: Any) -> Any:
+        """A replica in this engine's own Snowflake database: Arrow batches ingested into a
+        build table, then the replica overwritten from it in one statement (REQ-1915)."""
+        del engine
+        from provisa.federation.replica_target_warehouse import (
+            SnowflakeStoreTarget,
+            snowflake_adbc_connect,
+        )
+
+        runtime = self._runtime_for(state)
+        url = runtime._url
+        database = runtime.ensure_materialize_attached()
+        return SnowflakeStoreTarget(
+            lambda: snowflake_adbc_connect(url, database),
+            database=database,
+            schema=address.schema,
+            table=address.table,
+            columns=args.columns,
+            pk_columns=list(args.pk_columns or ()),
+        )

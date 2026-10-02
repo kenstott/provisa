@@ -47,6 +47,23 @@ class _MssqlWarehouseBackend(NativeEngineBackend):
             engine_name=self._engine_name,
         )
 
+    def replica_target(self, state: Any, *, address: Any, args: Any, engine: Any) -> Any:
+        """A replica in this warehouse's own database: bulk inserts into a build table on a
+        connection of the build's own, then the replica's rows replaced from it in one
+        transaction (REQ-1915)."""
+        del engine
+        from provisa.federation.replica_target_warehouse import MssqlWarehouseStoreTarget
+
+        runtime = self._runtime_for(state)
+        schema, table = runtime._store_parts(address.schema, address.table)
+        return MssqlWarehouseStoreTarget(
+            runtime._connect,
+            schema=schema,
+            table=table,
+            columns=args.columns,
+            transactional=self.engine.transactional,
+        )
+
 
 class FabricBackend(_MssqlWarehouseBackend):
     _server_env = "FABRIC_SQL_SERVER"

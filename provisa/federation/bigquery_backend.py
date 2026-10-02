@@ -32,3 +32,20 @@ class BigQueryBackend(NativeEngineBackend):
 
         # URL is optional — project/location fall back to $GOOGLE_CLOUD_PROJECT / $BIGQUERY_LOCATION.
         return BigQueryFederationRuntime(url=configured_engine_url())
+
+    def replica_target(self, state: Any, *, address: Any, args: Any, engine: Any) -> Any:
+        """A replica in this project's replicas dataset: Arrow batches through one pending
+        Storage Write stream into a build table, then the replica's rows replaced from it in
+        one statement (REQ-1915)."""
+        del engine
+        from provisa.federation.replica_target_warehouse import BigQueryStoreTarget
+
+        runtime = self._runtime_for(state)
+        return BigQueryStoreTarget(
+            runtime._client,
+            project=runtime.project,
+            dataset=address.schema,
+            table=address.table,
+            columns=args.columns,
+            pk_columns=list(args.pk_columns or ()),
+        )
