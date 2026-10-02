@@ -227,6 +227,49 @@ def test_platform_admin_alone_keeps_the_platform_plane():
     assert can_act_cross_org(capabilities_for_claims(PLATFORM_ONLY, ROLES))
 
 
+def test_platform_admin_adds_no_domain_scope_to_a_role_held_beside_it(monkeypatch):
+    """Scope is unioned across every role a caller holds, so the control-plane role's own scope
+    is what a narrower data role held beside it would be widened by."""
+    from provisa.api.admin.capabilities import (
+        allowed_domains_request,
+        require_domain,
+        require_domain_request,
+    )
+    from provisa.core.request_context import current_role_claims
+    from provisa.security.rights import domain_access_for_claims, effective_domain_access_role
+
+    roles = {
+        **ROLES,
+        "sales_dev": {
+            "id": "sales_dev",
+            "capabilities": ["query_development", "create_view"],
+            "domain_access": ["sales"],
+        },
+    }
+    monkeypatch.setattr(appmod.state, "roles", roles, raising=False)
+    held = ["platform_admin", "sales_dev"]
+
+    assert domain_access_for_claims(PLATFORM_ONLY, roles) == set()
+    assert domain_access_for_claims(held, roles) == {"sales"}
+    assert allowed_domains_request(_request(*PLATFORM_ONLY)) == frozenset()
+    assert allowed_domains_request(_request(*held)) == frozenset({"sales"})
+    require_domain(_info(*held), "sales")
+    with pytest.raises(PermissionError, match="finance"):
+        require_domain(_info(*held), "finance")
+    with pytest.raises(PermissionError, match="sales"):
+        require_domain(_info(*PLATFORM_ONLY), "sales")
+    with pytest.raises(ApiError) as err:
+        require_domain_request(_request(*held), "finance")
+    assert (err.value.status_code, err.value.code) == (403, "auth.domain_denied")
+
+    # The governed query pipeline reads the acting role's scope through the same union.
+    token = current_role_claims.set(tuple(held))
+    try:
+        assert effective_domain_access_role("sales_dev", roles)["domain_access"] == ["sales"]
+    finally:
+        current_role_claims.reset(token)
+
+
 # --- the retired wildcard strings grant nothing --------------------------------------------------
 
 

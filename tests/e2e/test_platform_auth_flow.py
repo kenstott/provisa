@@ -360,6 +360,8 @@ class TestPlatformAdminHasZeroDataPlane:
         caps = set(roles["platform_admin"]["capabilities"])
         # Exactly the two platform rights: no data capability, and nothing standing in for one.
         assert caps == {"platform_settings", "cross_org"}, caps
+        # ...and no domain scope, which is data-plane scope.
+        assert roles["platform_admin"]["domain_access"] == [], roles["platform_admin"]
         assert not caps & _DATA_PLANE_CAPS, f"platform_admin holds data caps: {caps}"
         for role_id, role in roles.items():
             assert not {"admin", "superadmin"} & set(role["capabilities"]), role_id
