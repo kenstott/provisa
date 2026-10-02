@@ -70244,9 +70244,17 @@
     responsibility, and it is the only way a copy of resident data comes to exist. The declaration
     is inherited by a table from its source unless the table says otherwise, is shown in the admin
     pages beside the replicate setting, and the record of each request notes that resident data was
-    read (REQ-1920). Further steps -- nodes, stores and caches that declare the region they are in,
+    read (REQ-1920). [SUPERSEDED by REQ-1922, 2026-10-02 -- regions are separate
+    clusters on one shared model. Kept here for history; do not implement against it.] Further steps -- nodes, stores and caches that declare the region they are in,
     so that a copy may be kept where a reader in that place could see it, and traffic directed to
-    an in-country address -- are possible later and are not part of this requirement.
+    an in-country address -- are possible later and are not part of this requirement. [END SUPERSEDED BLOCK]
+    (Amended 2026-10-02, HOME REGION) Where a deployment runs more than one cluster on one shared model
+    (REQ-1922), a resident table names the region that is its home. In the cluster of its home region
+    it behaves as any other table -- it may be replicated, cached and kept hot, because that cluster's
+    engine, storage and cache are in the region. In every other cluster the rule above applies -- it
+    is read live, readers get what the rules allow, and no copy is kept there unless the operator
+    declares a materialized view for the purpose. In a deployment with a single cluster the rule above
+    applies as written.
   use_case: A regulated enterprise holds data that must stay in a country but still wants one governed
     layer over the whole estate, in which most data may be read from anywhere. Rules on user attributes
     already limit who sees what; what was missing was a guarantee that the platform itself never
@@ -70262,4 +70270,41 @@
   - REQ-544
   - REQ-1915
   - REQ-1920
+  since: 2026-10
+- id: REQ-1922
+  status: proposed
+  group: 11. Platform, Infrastructure & Delivery
+  category: Regions
+  priority: SHOULD
+  type: structural
+  target: 2027-Q1
+  description: Regions -- separate clusters on one shared model. A deployment may run more than one
+    Provisa cluster off a single model store (REQ-1919). The model -- every source, table, relationship,
+    role, rule, view, freshness setting and limit -- is declared once and is the same for every cluster,
+    so definitions cannot diverge between regions. Everything else belongs to a cluster. Each cluster
+    is in one region and has its own nodes (REQ-1916), its own engine, its own storage for replicas
+    and materialized views, its own cache, its own state store (REQ-1920), its own record, and its
+    own address. A node is started for one cluster and region. Clients connect to a region by its
+    address. What a reader may see is decided by the model's rules on the reader's attributes, the
+    same in every region; where the work is done and where anything is kept is decided by the cluster
+    the reader connected to. A reader in a country who connects to that country's address is served
+    by nodes, an engine, storage and a cache that are all in the country; a reader elsewhere is served
+    by another cluster and receives what the rules allow. Clusters share nothing at run time -- a
+    replica built in one region is not read from another, state and the record are kept per cluster
+    and stay in its region, and the limits on background work (REQ-1915) are per cluster. A change
+    to the model reaches every cluster by the same stamp (REQ-1914); each cluster then converges
+    on its own. The model declares the regions and, for each, its engine, storage, cache and address,
+    and may declare for a source or table which region is its home (REQ-1921). A cluster that cannot
+    reach the model store keeps serving the model it last loaded and reports that it is behind. A
+    deployment with one cluster is the ordinary case and needs none of this declared.
+  use_case: A regulated enterprise needs some data processed and kept inside a country, with the rest
+    of the estate readable from anywhere, under one set of definitions. Two independent deployments
+    would each need their own definitions, which could diverge. Two clusters on one shared model
+    give each region its own engine, storage and cache while the governance is declared once.
+  related_reqs:
+  - REQ-1919
+  - REQ-1920
+  - REQ-1921
+  - REQ-1916
+  - REQ-1914
   since: 2026-10
