@@ -153,9 +153,11 @@ class TestRoles:
     async def test_list_roles(self, client):
         data = await _gql(client, "{ roles { id capabilities domainAccess } }")
         roles = data["data"]["roles"]
-        # REQ-1297: the platform role id is platform_admin; "admin" survives only as a capability.
+        # REQ-1337: the platform role holds the two platform rights, no data capability and no
+        # data domain.
         admin = next(r for r in roles if r["id"] == "platform_admin")
-        assert "admin" in admin["capabilities"]
+        assert sorted(admin["capabilities"]) == ["cross_org", "platform_settings"]
+        assert admin["domainAccess"] == []
 
 
 class TestRlsRules:

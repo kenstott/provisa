@@ -117,7 +117,7 @@ async def test_materialized_api_source_federates_via_pg_store():
         ]
         from sqlalchemy.schema import CreateSchema
 
-        eng = create_engine_from_url(_dsn("+psycopg2"), pool_size=1)
+        eng = create_engine_from_url(_dsn("+psycopg"), pool_size=1)
         try:
             async with Database(eng, name="mat").acquire() as sconn:
                 await sconn.execute_core(CreateSchema("e2e_materialize", if_not_exists=True))

@@ -88,9 +88,11 @@ class TestQueryRoles:
         assert resp.status_code == 200
         roles = resp.json()["data"]["roles"]
         assert len(roles) > 0
-        # REQ-1297: the platform role id is platform_admin; "admin" survives only as a capability.
+        # REQ-1337: the platform role holds the two platform rights, no data capability and no
+        # data domain. The caller here holds user management, so role definitions are returned.
         admin = next(r for r in roles if r["id"] == "platform_admin")
-        assert "admin" in admin["capabilities"]
+        assert sorted(admin["capabilities"]) == ["cross_org", "platform_settings"]
+        assert admin["domainAccess"] == []
 
 
 class TestQueryRelationships:
