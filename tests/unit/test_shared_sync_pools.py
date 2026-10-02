@@ -246,19 +246,21 @@ def test_postgresql_execute_registers_deadline_cancel() -> None:
         def cursor(self, **_: Any) -> _FakeCursor:
             return _PgCursor(self)
 
-    from contextlib import contextmanager
-
     class _PgPool:
         """The psycopg_pool.ConnectionPool surface the driver borrows through."""
 
         def __init__(self, conn: _FakeConn) -> None:
             self._conn = conn
             self.timeouts: list[float | None] = []
+            self.returned: list[object] = []
 
-        @contextmanager
-        def connection(self, timeout: float | None = None):
+        def getconn(self, timeout: float | None = None):
             self.timeouts.append(timeout)
-            yield self._conn
+            return self._conn
+
+        def putconn(self, conn) -> None:
+            assert conn is self._conn
+            self.returned.append(conn)
 
     drv = pg.PostgreSQLDriver()
     drv._typnames[23] = "int4"
@@ -268,6 +270,7 @@ def test_postgresql_execute_registers_deadline_cancel() -> None:
     res = _run_within_deadline(drv.execute("SELECT id FROM t WHERE n LIKE 'a%' AND id = $1", [1]))
     # The pool wait is bounded by the request's remaining budget (here <= 30s, under 10s default).
     assert pool.timeouts and pool.timeouts[0] is not None and pool.timeouts[0] <= 10.0
+    assert pool.returned == [conn]  # and it went back to the pool
     assert res.rows == [(1,)]
     assert res.column_types == ["int4"]
     assert conn.executed == ["SELECT id FROM t WHERE n LIKE 'a%%' AND id = %(p1)s"]

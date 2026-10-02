@@ -27,11 +27,26 @@ encoding and the send all draw on the same budget, the transport's own request t
 transport and the setting. A tighter budget inside it (a role's ``max_query_time_ms``) is
 :func:`within`.
 
-WHERE EXPIRY IS NOTICED. A blocking driver call is cancelled by the watchdog, and one that
-returns after expiry raises on its way out (:meth:`Deadline._registered`). A stream checks
-between batches (``provisa.executor.result.StreamingQueryResult``). The transport checks before
-it answers (:func:`check`, :meth:`Deadline.check`): a request whose deadline has passed is
-answered with the timeout and nothing else."""
+WHAT ENDS A REQUEST AT EXPIRY. Two things the request's own thread cannot do for itself, both
+done by the watchdog. A blocking driver call is cancelled through its driver. Inline work —
+rows being shaped, a response being encoded — is ended by RAISING THE TIMEOUT IN THE REQUEST'S
+OWN THREAD (``PyThreadState_SetAsyncExc``; one request, one thread, REQ-1882), again every
+:data:`_RAISE_AGAIN_S` until the request's deadline scope has ended, because a raise that lands
+where exceptions are discarded (a weakref callback, a broad ``except``) ends nothing. The raise
+lands at the thread's next bytecode; a single long C call ends when it returns.
+
+A RELEASE SECTION IS NOT INTERRUPTED. Code that gives a resource back (a pooled connection, a
+lock slot, a stream's cursor) runs inside the thread's shield (:func:`shielded`): the watchdog
+raises only while it holds that same lock, so it raises nothing into a thread that is inside
+one, and a raise set a moment earlier is dropped on the way in (it comes again once the section
+is over). The scope's own exit is such a section. A connection whose statement was interrupted
+this way is not reused (:func:`interrupted`).
+
+The deterministic checks remain: a blocking call that returns after expiry raises on its way out
+(:meth:`Deadline._registered`), a stream checks between batches
+(``provisa.executor.result.StreamingQueryResult``), and a transport checks before it answers
+(:func:`check`, :meth:`Deadline.check`) — a request whose deadline has passed is answered with
+the timeout and nothing else."""
 
 # Requirements: REQ-1882, REQ-1905
 
@@ -39,11 +54,14 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
+import ctypes
+import functools
 import heapq
 import logging
 import signal
 import threading
 import time
+import traceback
 import weakref
 from collections.abc import Callable, Generator
 from types import FrameType
@@ -63,6 +81,121 @@ class RequestTimedOut(TimeoutError):
         self.transport = transport
         self.timeout_s = timeout_s
         self.setting = setting
+
+
+class DeadlinePassed(TimeoutError):
+    """What the watchdog raises in a request's own thread once its deadline has passed. Raised by
+    class (the interpreter builds it with no arguments), so it carries no detail: whoever ends
+    the request's deadline scope reports the deadline's own error (:meth:`Deadline.expired_error`)
+    in its place."""
+
+    def __init__(self) -> None:
+        super().__init__("the request's deadline passed")
+
+
+def interrupted(exc: BaseException) -> bool:
+    """Whether ``exc`` is, or was caused by, the watchdog's raise into the thread — work cut at
+    an arbitrary point, as opposed to a statement its driver cancelled. A connection that was
+    mid-statement then is in an unknown protocol state and must not go back into a pool."""
+    seen = 0
+    cause: BaseException | None = exc
+    while cause is not None and seen < 8:
+        if isinstance(cause, DeadlinePassed):
+            return True
+        cause = cause.__cause__ or cause.__context__
+        seen += 1
+    return False
+
+
+def let_go(exc: BaseException) -> None:
+    """Release what the frames a raise cut through were still holding, now.
+
+    The raise can land in the doorstep of a context manager — after its generator has taken a
+    connection and before the ``with`` body owns it, or before its exit has resumed the
+    generator. Nothing leaks: the abandoned generator's ``finally`` runs when it is finalized.
+    But the exception's traceback keeps those frames alive, and an exception thrown through any
+    generator-based context manager is part of a reference cycle, so "when it is finalized" is
+    the cyclic collector's next run. Clearing the finished frames of the traceback (frames still
+    executing are left alone) finalizes such a generator at once, on the request's own thread,
+    at the point the request's scope ends. A no-op unless ``exc`` came from the watchdog's raise."""
+    if not interrupted(exc):
+        return
+    seen = 0
+    link: BaseException | None = exc
+    while link is not None and seen < 8:
+        traceback.clear_frames(link.__traceback__)
+        link = link.__cause__ or link.__context__
+        seen += 1
+
+
+# The watchdog raises again this often until the request's deadline scope has ended.
+_RAISE_AGAIN_S = 0.25
+# ... and tries again this soon when the thread was inside a release section.
+_RAISE_SOON_S = 0.002
+# Between the expiry (statement cancelled) and the first raise: with a statement in flight, the
+# time its driver's cancel is given to end it; without one, enough for a wait that was bounded
+# by this same deadline to report its own timeout.
+_CANCEL_GRACE_S = 0.25
+_EXPIRY_GRACE_S = 0.05
+
+_set_async_exc = ctypes.pythonapi.PyThreadState_SetAsyncExc
+
+
+class _ThreadShield:
+    """One thread's shield: the lock the watchdog must hold to raise in this thread, and the two
+    calls on the thread's id. ``lock`` and ``settle`` are C callables on purpose — entering
+    ``with shield.lock:`` and calling ``shield.settle()`` execute no Python frame, so there is no
+    point between the end of the work and the start of the release at which a raise can land."""
+
+    __slots__ = ("inside", "lock", "raise_now", "settle")
+
+    def __init__(self) -> None:
+        tid = ctypes.c_ulong(threading.get_ident())
+        self.lock = threading.RLock()
+        # The deadlines this thread is inside the scope of.
+        self.inside: set[Deadline] = set()
+        # Drops a raise that was set but not yet delivered (NULL clears it).
+        self.settle = functools.partial(_set_async_exc, tid, None)
+        self.raise_now = functools.partial(_set_async_exc, tid, ctypes.py_object(DeadlinePassed))
+
+    def quiesce(self) -> None:
+        """This thread has finished a request: it is inside no deadline's scope. Called inside
+        the shield (``with shield.lock: shield.settle(); shield.quiesce()``) by whatever hands
+        the thread its requests, as the first thing after one ends.
+
+        A scope ends itself; this is for the one case it cannot. A raise that lands in the very
+        door of a scope's exit (the context manager's own first bytecode) skips that exit, and
+        the watchdog would go on raising into this thread — into its next request — until the
+        abandoned scope was collected."""
+        while self.inside:
+            dl = self.inside.pop()
+            dl._working = None  # noqa: SLF001
+            dl._depth = 0  # noqa: SLF001
+
+
+_thread = threading.local()
+
+
+def shielded() -> _ThreadShield:
+    """The calling thread's shield, for a release section the watchdog must not interrupt::
+
+        shield = request_deadline.shielded()      # where the resource is taken
+        conn = pool.getconn()
+        try:
+            ...
+        finally:
+            with shield.lock:      # the watchdog raises only while holding this lock
+                shield.settle()    # drop a raise set just before the lock was taken
+                pool.putconn(conn)
+
+    Take the shield BEFORE the work and enter it as the first statement of the ``finally``: both
+    steps run without a Python frame, so nothing can land between the work and the release. The
+    dropped raise is not lost — the watchdog raises again once the section is over. Outside a
+    request the same code runs and shields against nothing."""
+    shield = getattr(_thread, "shield", None)
+    if shield is None:
+        shield = _thread.shield = _ThreadShield()
+    return shield
 
 
 class Deadline:
@@ -85,6 +218,11 @@ class Deadline:
         self._stopped = False
         # Why the budget ended early, when it was not the clock (the process is stopping).
         self._ended: str | None = None
+        # The shield of the thread working under this deadline, while it is inside the deadline's
+        # scope (``_enter`` / ``_leave``), and how many scopes deep. The watchdog raises there.
+        self._working: _ThreadShield | None = None
+        self._depth = 0
+        self._cancelled = False
         with _live_lock:
             _live.add(self)
         # Watched from creation: expiry is acted on whatever the request is doing at that moment.
@@ -109,15 +247,60 @@ class Deadline:
                 # failure is reported and that statement ends at its own driver's limit.
                 log.exception("request deadline: cancelling an in-flight statement failed")
 
-    def _at_expiry(self) -> None:
+    def _at_expiry(self) -> float | None:
         """What the watchdog does when the budget runs out, in order. Each step ends work the
         request's own thread cannot end by itself. Runs on the watchdog thread; a request that
-        has already ended is left alone."""
+        has already ended is left alone. Returns the seconds after which to do it again, or
+        None when there is nothing left to do."""
         with self._lock:
             if self._stopped:
-                return
-        # 1. The blocking statement in flight, through its driver's cancel.
-        self._fire()
+                return None
+            first = not self._cancelled
+            self._cancelled = True
+            in_statement = bool(self._cancels)
+        # 1. The blocking statement in flight, through its driver's cancel — and then time for
+        # that to end the request the clean way: the driver raises its own error, the connection
+        # stays usable, and whatever was waiting on exactly this deadline (a pool, a queue, a
+        # slot) reports its own timeout. The raise below is for what none of that reaches.
+        if first:
+            self._fire()
+            return _CANCEL_GRACE_S if in_statement else _EXPIRY_GRACE_S
+        # 2. Inline work, by raising the timeout in the request's own thread.
+        shield = self._working
+        if shield is None:
+            return None  # no thread is inside the scope; one that enters later is seen then
+        if not shield.lock.acquire(blocking=False):
+            # It is inside a release section: raise as soon as it is out, not a period later.
+            return _RAISE_SOON_S
+        try:
+            if self._working is shield and not self._stopped:
+                shield.raise_now()
+        finally:
+            shield.lock.release()
+        return _RAISE_AGAIN_S
+
+    def _enter(self, shield: _ThreadShield) -> None:
+        """The calling thread starts working inside this deadline's scope."""
+        with self._lock:
+            if self._working is None:
+                self._working, self._depth = shield, 1
+                shield.inside.add(self)
+            elif self._working is shield:
+                self._depth += 1
+            else:
+                return  # another thread's scope (work fanned out under the same deadline)
+            already_passed = self.fired and not self._stopped
+        if already_passed:
+            _watchdog.watch(self, at=time.monotonic())
+
+    def _leave(self, shield: _ThreadShield) -> None:
+        """The calling thread leaves this deadline's scope. Called with ``shield.lock`` held and
+        ``shield.settle()`` done, so no raise is pending and none can be set."""
+        if self._working is shield:
+            self._depth -= 1
+            if self._depth == 0:
+                self._working = None
+                shield.inside.discard(self)
 
     def stop(self) -> None:
         with self._lock:
@@ -154,7 +337,10 @@ class Deadline:
                 return False
             self._ended = reason
             self.expires = time.monotonic()
+            self._cancelled = True
         self._fire()
+        # ... and the request's own thread is raised in, by the watchdog, as at an expiry.
+        _watchdog.watch(self, at=self.expires)
         return True
 
     @contextlib.contextmanager
@@ -200,16 +386,16 @@ class _Watchdog:
         self._ended = 0
         self._thread: threading.Thread | None = None
 
-    def watch(self, dl: Deadline) -> None:
+    def watch(self, dl: Deadline, *, at: float | None = None) -> None:
         with self._wake:
             self._seq += 1
-            heapq.heappush(self._heap, (dl.expires, self._seq, dl))
+            heapq.heappush(self._heap, (dl.expires if at is None else at, self._seq, dl))
             if self._thread is None or not self._thread.is_alive():
                 self._thread = threading.Thread(
                     target=self._run, name="provisa-deadline-watchdog", daemon=True
                 )
                 self._thread.start()
-            elif self._heap[0][2] is dl:
+            elif self._heap[0][2] is dl and threading.current_thread() is not self._thread:
                 self._wake.notify()  # it is now the next to expire
 
     def forget(self) -> None:
@@ -246,10 +432,13 @@ class _Watchdog:
         while True:
             dl = self._next_expired()
             try:
-                dl._at_expiry()  # noqa: SLF001 - module-private collaborator
+                again = dl._at_expiry()  # noqa: SLF001 - module-private collaborator
             except Exception:
                 # One request's expiry failing must not stop every other request being watched.
                 log.exception("request deadline: acting on an expired deadline failed")
+                continue
+            if again is not None:
+                self.watch(dl, at=time.monotonic() + again)
 
 
 _watchdog = _Watchdog()
@@ -334,11 +523,44 @@ def unbind() -> None:
 def bound(dl: Deadline) -> Generator[None]:
     """Bind ``dl`` for the enclosed work and unbind it after, WITHOUT stopping it: for a deadline
     whose owner outlives the block (a Flight stream pulled batch by batch, REQ-1905)."""
+    shield = shielded()
     token = _current.set(dl)
+    dl._enter(shield)  # noqa: SLF001
     try:
         yield
+    except DeadlinePassed as exc:
+        let_go(exc)
+        raise dl.expired_error() from exc
+    except Exception as exc:
+        let_go(exc)
+        raise
     finally:
+        with shield.lock:
+            shield.settle()
+            dl._leave(shield)  # noqa: SLF001
         _current.reset(token)
+
+
+def hold(dl: Deadline) -> _ThreadShield:
+    """Bind ``dl`` in the calling thread's context and put the thread inside its scope, for a
+    request that is several protocol messages long and has no block to wrap (pgwire). Returns the
+    thread's shield; the holder ends the scope with :func:`release` inside it::
+
+        with shield.lock:
+            shield.settle()
+            request_deadline.release(dl, shield)
+    """
+    shield = shielded()
+    _current.set(dl)
+    dl._enter(shield)  # noqa: SLF001
+    return shield
+
+
+def release(dl: Deadline, shield: _ThreadShield) -> None:
+    """End a scope begun with :func:`hold` (called inside the shield, see there)."""
+    dl._leave(shield)  # noqa: SLF001
+    _current.set(None)
+    dl.stop()
 
 
 def remaining() -> float | None:
@@ -383,15 +605,21 @@ def request(transport: str) -> Generator[Deadline]:
     if outer is not None and outer.remaining() <= request_timeout_for(transport):
         yield outer
         return
+    shield = shielded()
     dl = open_request(transport)
     token = _current.set(dl)
+    dl._enter(shield)  # noqa: SLF001
     try:
         yield dl
     except Exception as exc:
+        let_go(exc)
         if dl.fired and not dl.ended_early and not isinstance(exc, RequestTimedOut):
             raise dl.expired_error() from exc
         raise
     finally:
+        with shield.lock:
+            shield.settle()
+            dl._leave(shield)  # noqa: SLF001
         _current.reset(token)
         dl.stop()
 
@@ -404,11 +632,22 @@ def within(timeout: float) -> Generator[Deadline]:
     if outer is not None and outer.remaining() <= timeout:
         yield outer
         return
+    shield = shielded()
     dl = Deadline(timeout)
     token = _current.set(dl)
+    dl._enter(shield)  # noqa: SLF001
     try:
         yield dl
+    except DeadlinePassed as exc:
+        let_go(exc)
+        raise dl.expired_error() from exc
+    except Exception as exc:
+        let_go(exc)
+        raise
     finally:
+        with shield.lock:
+            shield.settle()
+            dl._leave(shield)  # noqa: SLF001
         _current.reset(token)
         dl.stop()
 

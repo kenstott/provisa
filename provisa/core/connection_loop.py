@@ -147,6 +147,7 @@ class ConnectionLoop:
             try:
                 return self._run_body(asyncio.wait_for(coro, dl.remaining()), context)
             except TimeoutError as exc:
+                request_deadline.let_go(exc)  # what the interrupted frames held is released now
                 # wait_for raises a bare TimeoutError() whose str() is empty — a client then sees
                 # a blank error. When the request's budget is what ran out, say so.
                 if dl.remaining() <= 0:
@@ -266,12 +267,21 @@ def bound(cl: ConnectionLoop) -> Generator[ConnectionLoop]:
 @contextmanager
 def connection_loop() -> Generator[ConnectionLoop]:
     """Check a loop out for the block and bind it to this thread; check it back in after."""
-    cl = LOOP_POOL.checkout()
+    shield = request_deadline.shielded()
+    cl: ConnectionLoop | None = None
     try:
+        # Checking the loop out and back in are each a section the request's deadline does not
+        # interrupt (REQ-1905, request_deadline.shielded).
+        with shield.lock:
+            shield.settle()
+            cl = LOOP_POOL.checkout()
         with bound(cl):
             yield cl
     finally:
-        LOOP_POOL.checkin(cl)
+        with shield.lock:
+            shield.settle()
+            if cl is not None:
+                LOOP_POOL.checkin(cl)
 
 
 def current_connection_loop() -> ConnectionLoop:

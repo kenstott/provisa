@@ -164,8 +164,12 @@ class _PgDirectStream(DirectResultStream):  # REQ-1190
 
     def _open_cursor(self, first_batch: int) -> None:
         pool = self._driver._require_pool()
-        conn = pool.getconn(timeout=_wait_s(self._driver._ACQUIRE_TIMEOUT))
+        shield = request_deadline.shielded()
+        conn: psycopg.Connection[Any] | None = None
         try:
+            with shield.lock:  # taken inside the shield too: see BlockingPool.connection
+                shield.settle()
+                conn = pool.getconn(timeout=_wait_s(self._driver._ACQUIRE_TIMEOUT))
             # A server-side cursor lives inside a transaction; the connection is autocommit, so the
             # transaction is opened explicitly and committed in close().
             conn.execute(_q("BEGIN"))
@@ -179,11 +183,25 @@ class _PgDirectStream(DirectResultStream):  # REQ-1190
             desc = cur.description or []
             self.column_names = [d.name for d in desc]
             self.column_types = self._driver._type_names(conn, [d.type_code for d in desc])
-        except BaseException:
-            # putconn rolls back an open transaction and discards a broken connection.
-            pool.putconn(conn)
+        except BaseException as exc:
+            # putconn rolls back an open transaction and discards a broken connection. A release
+            # section: the request's deadline does not interrupt it (REQ-1905).
+            with shield.lock:
+                shield.settle()
+                if conn is not None:
+                    if request_deadline.interrupted(exc):
+                        conn.close()
+                    pool.putconn(conn)
             raise
         self._conn = conn
+
+    def __del__(self) -> None:
+        # A stream dropped without close() — its request ended between open and whatever would
+        # have closed it — still gives its connection back: putconn rolls the cursor's
+        # transaction back.
+        conn, self._conn = self._conn, None
+        if conn is not None:
+            self._driver._require_pool().putconn(conn)
 
     # Async only for the DirectResultStream awaitable contract; fetches synchronously in-thread.
     async def fetch(self, size: int) -> list[tuple]:
@@ -204,13 +222,18 @@ class _PgDirectStream(DirectResultStream):  # REQ-1190
             return
         conn, self._conn = self._conn, None
         pool = self._driver._require_pool()
-        try:
-            conn.execute(_q(f"CLOSE {_CURSOR}"))
-            conn.execute(_q("COMMIT"))
-        finally:
-            # A failed close leaves the transaction open or the connection broken: putconn rolls it
-            # back or discards it; the close error still propagates.
-            pool.putconn(conn)
+        shield = request_deadline.shielded()
+        # The whole close is a release section (REQ-1905): the request's deadline does not
+        # interrupt it, so the cursor's transaction ends and the connection goes back.
+        with shield.lock:
+            shield.settle()
+            try:
+                conn.execute(_q(f"CLOSE {_CURSOR}"))
+                conn.execute(_q("COMMIT"))
+            finally:
+                # A failed close leaves the transaction open or the connection broken: putconn
+                # rolls it back or discards it; the close error still propagates.
+                pool.putconn(conn)
 
 
 class _RowFetcher:
@@ -300,22 +323,53 @@ class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
 
     @contextmanager
     def _borrow(self) -> Generator[psycopg.Connection[Any]]:
-        """A pooled connection, waiting at most the request's remaining budget for one."""
-        with self._require_pool().connection(timeout=_wait_s(self._ACQUIRE_TIMEOUT)) as conn:
+        """A pooled connection, waiting at most the request's remaining budget for one.
+
+        Returning it is a release section (REQ-1905): the request's deadline does not interrupt
+        it. ``putconn`` rolls back an open transaction and discards a connection that is not
+        idle, so one whose statement the deadline's raise cut short is closed, not pooled."""
+        pool = self._require_pool()
+        shield = request_deadline.shielded()
+        conn: psycopg.Connection[Any] | None = None
+        failure: BaseException | None = None
+        try:
+            with shield.lock:  # taken inside the shield too: see BlockingPool.connection
+                shield.settle()
+                conn = pool.getconn(timeout=_wait_s(self._ACQUIRE_TIMEOUT))
             yield conn
+        except BaseException as exc:
+            failure = exc
+            raise
+        finally:
+            with shield.lock:
+                shield.settle()
+                if conn is not None:
+                    if failure is not None and request_deadline.interrupted(failure):
+                        conn.close()  # putconn drops a closed connection; the pool opens another
+                    pool.putconn(conn)
 
     def borrow_raw(self) -> BorrowedPgConnection:
         """One pooled connection for a raw-DataRow passthrough (REQ-1863): the passthrough drives
         the extended-query exchange on the connection's own socket and hands it back idle."""
-        from provisa.pgwire.pg_passthrough import BorrowedPgConnection
 
         pool = self._require_pool()
+        shield = request_deadline.shielded()
+        with shield.lock:  # until the caller holds the release (the returned object)
+            shield.settle()
+            return self._borrow_raw(pool)
+
+    def _borrow_raw(self, pool: "ConnectionPool[psycopg.Connection[Any]]") -> BorrowedPgConnection:
+        from provisa.pgwire.pg_passthrough import BorrowedPgConnection
+
         conn = pool.getconn(timeout=_wait_s(self._ACQUIRE_TIMEOUT))
 
         def _release(discard: bool) -> None:
-            if discard:
-                conn.close()  # putconn drops a closed connection and the pool opens a new one
-            pool.putconn(conn)
+            shield = request_deadline.shielded()
+            with shield.lock:  # a release section: not interrupted by the request's deadline
+                shield.settle()
+                if discard:
+                    conn.close()  # putconn drops a closed connection and the pool opens a new one
+                pool.putconn(conn)
 
         with self._raw_statements_lock:
             statements = self._raw_statements.setdefault(conn, {})

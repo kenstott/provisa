@@ -122,17 +122,35 @@ class BlockingPool(Generic[C]):
 
     @contextmanager
     def connection(self, *, is_broken: Callable[[BaseException], bool]) -> Iterator[C]:
-        """Borrow a connection; a failure ``is_broken`` classifies as fatal discards it."""
-        conn = self.getconn()
+        """Borrow a connection; a failure ``is_broken`` classifies as fatal discards it.
+
+        Taking it and giving it back are each a section the request's deadline does not
+        interrupt (REQ-1905, ``request_deadline.shielded``): a raise landing after the connection
+        left the pool and before this block owned its return would lose the slot for good. So a
+        timed-out request never leaves a slot of this pool taken. A connection whose statement
+        the deadline's raise cut short is discarded — its protocol state is unknown."""
+        shield = request_deadline.shielded()
+        conn: C | None = None
+        failure: BaseException | None = None
         try:
+            with shield.lock:
+                shield.settle()
+                conn = self.getconn()
             yield conn
         except BaseException as exc:
-            if is_broken(exc):
-                self.discard(conn)
-            else:
-                self.putconn(conn)
+            failure = exc
             raise
-        self.putconn(conn)
+        finally:
+            with shield.lock:
+                shield.settle()
+                if conn is None:
+                    pass  # nothing was taken
+                elif failure is not None and (
+                    request_deadline.interrupted(failure) or is_broken(failure)
+                ):
+                    self.discard(conn)
+                else:
+                    self.putconn(conn)
 
     def closeall(self) -> None:
         with self._cond:

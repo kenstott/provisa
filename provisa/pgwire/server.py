@@ -1219,21 +1219,40 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
     # every run on the connection loop (``cl.run(..., timeout=...)`` keeps the tighter deadline)
     # and every stream this thread drains sees it.
     _deadline: "request_deadline.Deadline | None" = None
+    # This connection thread's shield (set in ``setup``, which runs on that thread).
+    _shield: Any
 
     def _open_request(self) -> None:
         self._request.open()
         if self._deadline is None:
             self._deadline = request_deadline.open_request("pgwire")
-            request_deadline.bind(self._deadline)
+            request_deadline.hold(self._deadline)
 
     def _close_request(self) -> None:
+        # Ending the cycle's deadline scope is a release section: a raise that landed between
+        # the cycle's last work and here would otherwise leave the deadline bound, and the
+        # watchdog raising into this connection thread for as long as it lives.
+        shield = self._shield
+        with shield.lock:
+            shield.settle()
+            deadline, self._deadline = self._deadline, None
+            if deadline is not None:
+                request_deadline.release(deadline, shield)
+            shield.quiesce()
         self._request.close()
-        deadline, self._deadline = self._deadline, None
-        if deadline is not None:
-            request_deadline.unbind()
-            deadline.stop()
 
-    def _send_request_timeout(self, exc: TimeoutError) -> None:
+    def _timed_out(self, exc: BaseException) -> "TimeoutError | None":
+        """The cycle's timeout, when ``exc`` is it: the deadline's own error, or the watchdog's
+        raise into this thread (which carries no detail). None for any other failure."""
+        deadline = self._deadline
+        request_deadline.let_go(exc)  # what the interrupted frames held is released now
+        if isinstance(exc, request_deadline.RequestTimedOut):
+            return exc
+        if isinstance(exc, TimeoutError) and deadline is not None and deadline.fired:
+            return deadline.expired_error()
+        return None
+
+    def _send_request_timeout(self, exc: BaseException) -> None:
         # 57014 query_canceled: what PostgreSQL itself reports for a statement its
         # statement_timeout ended. The message names the transport and the setting.
         self._send_pg_error("ERROR", "57014", str(exc))
@@ -1251,7 +1270,9 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         try:
             super().send_ready_for_query(ctx)
         finally:
-            self._close_request()
+            with self._shield.lock:  # entered without a Python frame: see _close_request
+                self._shield.settle()
+                self._close_request()
 
     def send_data_rows(self, query_result: BVQueryResult, limit: int = 0) -> int:
         # REQ-1905: the request's deadline covers the row send. A result that is ready only after
@@ -1276,7 +1297,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             try:
                 super().handle()
             finally:
-                self._close_request()  # a connection that died mid-cycle still ends its span
+                with self._shield.lock:
+                    self._shield.settle()
+                    # a connection that died mid-cycle still ends its span and its deadline
+                    self._close_request()
                 # A CancelRequest from another connection may have asked this session to close;
                 # its cursors are released here, on the thread that owns their loop.
                 session = self._session
@@ -1291,6 +1315,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         # of the startup and auth exchange belong to no org and are dropped rather than guessed.
         super().setup()
         self._request = HeldRequestSpan(_tracer, "pgwire.query", transport="pgwire")  # REQ-1910
+        self._shield = request_deadline.shielded()  # this connection thread's (REQ-1905)
         self._meter = CountingWriter(self.wfile, None)
         self.wfile = self._meter
 
@@ -1823,10 +1848,13 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             return
         try:
             super().handle_execute(ctx, payload)
-        except request_deadline.RequestTimedOut as exc:
+        except TimeoutError as exc:
             # REQ-1905: the deadline passed while rows were being sent. The statement ends with
             # an ErrorResponse and the rest of the cycle is skipped up to its Sync.
-            self._send_request_timeout(exc)
+            timed_out = self._timed_out(exc)
+            if timed_out is None:
+                raise
+            self._send_request_timeout(timed_out)
             ctx.mark_error()
 
     def handle_query(self, ctx: BVContext, payload: bytes) -> None:
@@ -1854,10 +1882,13 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             _org_token = set_current_org(_org_id)
         try:
             self._process_query_stmts(ctx, stmts)
-        except request_deadline.RequestTimedOut as exc:
+        except TimeoutError as exc:
             # REQ-1905: the deadline passed while rows were being sent — the Query ends with an
             # ErrorResponse and ReadyForQuery, as any failed statement does.
-            self._send_request_timeout(exc)
+            timed_out = self._timed_out(exc)
+            if timed_out is None:
+                raise
+            self._send_request_timeout(timed_out)
             self.send_ready_for_query(ctx)
         finally:
             if _org_token is not None:

@@ -229,8 +229,11 @@ def test_the_wait_is_bounded_by_the_requests_remaining_deadline_when_one_is_boun
     server = _server(1, _Engine(), request_timeout=30.0)
     _hit, _schema, held = _stream(server)
     started = time.monotonic()
-    with request_deadline.within(0.3), pytest.raises(flight.FlightServerError):
-        _stream(server)
+    # Either end is the 0.3 s deadline: the slot wait giving up at it (a Flight error), or the
+    # deadline's own raise landing in this thread as the wait returns.
+    with pytest.raises((flight.FlightServerError, TimeoutError)):
+        with request_deadline.within(0.3):
+            _stream(server)
     assert time.monotonic() - started < 2.0  # the 0.3s deadline, not the 30s server budget
     list(held)
 

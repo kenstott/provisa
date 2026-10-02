@@ -509,12 +509,23 @@ class _PoolGate:
             return
         budget = request_deadline.remaining()
         wait = _POOL_WAIT_S if budget is None else min(_POOL_WAIT_S, budget)
-        if not self._lock.acquire(timeout=wait):
-            raise TimeoutError(f"no control-plane connection freed within {wait:.1f}s")
+        shield = request_deadline.shielded()
+        held = False
         try:
+            # Taking the slot and giving it back are each a section the request's deadline does
+            # not interrupt (REQ-1905): a raise landing after the slot was taken and before this
+            # block owned its release would keep it for good.
+            with shield.lock:
+                shield.settle()
+                held = self._lock.acquire(timeout=wait)
+            if not held:
+                raise TimeoutError(f"no control-plane connection freed within {wait:.1f}s")
             yield
         finally:
-            self._lock.release()
+            with shield.lock:
+                shield.settle()
+                if held:
+                    self._lock.release()
 
 
 _GATES: "weakref.WeakKeyDictionary[Engine, _PoolGate]" = weakref.WeakKeyDictionary()
@@ -535,13 +546,35 @@ def bounded_connection(engine: Engine, *, begin: bool = False) -> Iterator[sa.Co
     bounded by the request's remaining budget, and statements run on it are cancellable by the
     request deadline via :func:`deadline_execute`. ``begin`` wraps it in a transaction committed
     on exit (``engine.begin()`` semantics)."""
+    shield = request_deadline.shielded()
     with _gate_for(engine).slot():
-        if begin:
-            with engine.begin() as sc:
-                yield sc
-        else:
-            with engine.connect() as sc:
-                yield sc
+        scope: Any = None
+        sc: Any = None  # the sa.Connection, once checked out
+        failure: BaseException | None = None
+        try:
+            # REQ-1905: checking the connection out, and ending its transaction and handing it
+            # back, are each a section the request's deadline does not interrupt.
+            with shield.lock:
+                shield.settle()
+                scope = engine.begin() if begin else engine.connect()
+                sc = scope.__enter__()
+            yield sc
+        except BaseException as exc:
+            failure = exc
+            raise
+        finally:
+            with shield.lock:
+                shield.settle()
+                if sc is None:
+                    pass  # the checkout itself failed: nothing is held
+                elif failure is None:
+                    scope.__exit__(None, None, None)
+                else:
+                    # A connection whose statement the deadline's raise cut short is in an
+                    # unknown protocol state: invalidated, so the pool closes it, not reuses it.
+                    if request_deadline.interrupted(failure):
+                        sc.invalidate()
+                    scope.__exit__(type(failure), failure, failure.__traceback__)
 
 
 def _buffered(result: Any) -> Any:
@@ -1124,11 +1157,14 @@ class Database:
 
     @asynccontextmanager
     async def acquire(self) -> AsyncGenerator[Connection]:
+        shield = request_deadline.shielded()
         with bounded_connection(self._engine) as sc:
-            if self.search_path and (sql := self.capabilities.enter_org_sql(self.search_path)):
-                sc.execute(text(sql))
-                sc.commit()
             try:
+                # Inside the try: once the org's search_path is set on the connection, the
+                # reset below runs whatever ends the block, a request timeout included.
+                if self.search_path and (sql := self.capabilities.enter_org_sql(self.search_path)):
+                    sc.execute(text(sql))
+                    sc.commit()
                 yield Connection(sc, self.capabilities)
             except BaseException:
                 # A statement that failed inside the block (a duplicate-key INSERT a caller
@@ -1137,7 +1173,7 @@ class Database:
                 # included, which then surfaces as "current transaction is aborted" in place of
                 # the caller's own error. Roll it back first; the caller's exception still
                 # propagates.
-                if self.dialect == "postgresql":
+                if self.dialect == "postgresql" and not sc.invalidated:
                     sc.rollback()
                 raise
             finally:
@@ -1148,9 +1184,13 @@ class Database:
                 # connection inherits the wrong schema regardless of its own Database's
                 # search_path setting. Reset unconditionally so every acquire starts the
                 # role's default search_path, matching the guarantee this class documents.
-                if self.dialect == "postgresql":
-                    sc.execute(text("RESET search_path"))
-                    sc.commit()
+                # A release section (REQ-1905): the request's deadline does not interrupt it.
+                # An invalidated connection (its statement was cut short) is closed, not reset.
+                with shield.lock:
+                    shield.settle()
+                    if self.dialect == "postgresql" and not sc.invalidated:
+                        sc.execute(text("RESET search_path"))
+                        sc.commit()
 
     # -- PG-only LISTEN/NOTIFY: served by the listener thread's own connection, so a listener
     #    (an SSE stream, the event-trigger manager) never holds a pooled connection. --

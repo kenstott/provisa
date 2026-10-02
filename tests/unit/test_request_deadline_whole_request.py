@@ -56,9 +56,10 @@ def test_a_requests_deadline_names_its_transport_and_setting():
     with request_deadline.request("rest") as deadline:
         assert request_deadline.current() is deadline
         request_deadline.check()  # in time: nothing
-        time.sleep(0.25)
-        with pytest.raises(RequestTimedOut) as raised:
-            request_deadline.check()
+        with request_deadline.shielded().lock:  # held: only the check below speaks
+            time.sleep(0.25)
+            with pytest.raises(RequestTimedOut) as raised:
+                request_deadline.check()
         _names(raised.value, "rest")
     assert request_deadline.current() is None
 
@@ -84,8 +85,9 @@ def test_a_blocking_call_within_the_deadline_is_untouched():
 def test_a_failure_after_the_deadline_is_reported_as_the_timeout():
     with pytest.raises(RequestTimedOut) as raised:
         with request_deadline.request("bolt"):
-            time.sleep(0.25)
-            raise ValueError("what the request happened to fail with")
+            with request_deadline.shielded().lock:
+                time.sleep(0.25)
+                raise ValueError("what the request happened to fail with")
     _names(raised.value, "bolt")
     assert isinstance(raised.value.__cause__, ValueError)
 
@@ -201,8 +203,8 @@ def test_a_stream_ends_with_the_timeout_at_the_batch_after_the_deadline_and_free
 
     stream = StreamingQueryResult(_batches(), ["id"], on_release=lambda: released.append(True))
     seen = []
-    with request_deadline.request("grpc"):
-        with pytest.raises(RequestTimedOut) as raised:
+    with pytest.raises(RequestTimedOut) as raised:
+        with request_deadline.request("grpc"):
             for batch in stream.batches():
                 seen.append(batch)
     _names(raised.value, "grpc")

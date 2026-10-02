@@ -50,6 +50,7 @@ import threading
 from collections.abc import Awaitable, Callable, Coroutine, MutableMapping
 from typing import Any, TypeVar
 
+from provisa.core import request_deadline
 from provisa.core.connection_loop import connection_loop
 
 log = logging.getLogger(__name__)
@@ -135,6 +136,7 @@ class _RequestThread:
 
     def _main(self) -> None:
         _current_thread.thread = self
+        shield = request_deadline.shielded()
         while True:
             try:
                 job = self._jobs.get(timeout=_IDLE_TTL_S)
@@ -148,6 +150,12 @@ class _RequestThread:
                     fut.set_result(_serve(make_coro, ctx))
                 except BaseException as exc:  # handed to the awaiting caller, which re-raises it
                     fut.set_exception(exc)
+                finally:
+                    # REQ-1905: the request is over; nothing of its deadline follows this thread
+                    # to the next one (see request_deadline._ThreadShield.quiesce).
+                    with shield.lock:
+                        shield.settle()
+                        shield.quiesce()
             if not self._pool.release(self):
                 return  # the pool has no place for it any more
 

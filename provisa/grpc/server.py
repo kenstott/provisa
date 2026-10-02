@@ -215,11 +215,17 @@ def _unary(body):
     from provisa.grpc.rpc_scope import rpc_scope
 
     def handler(request, context):
-        with rpc_scope() as rpc:
-            try:
-                return rpc.run(_unary_within_deadline(body(request, _RpcContext(context))))
-            except request_deadline.RequestTimedOut as exc:
-                context.abort(grpc.StatusCode.DEADLINE_EXCEEDED, str(exc))
+        shield = request_deadline.shielded()
+        try:
+            with rpc_scope() as rpc:
+                try:
+                    return rpc.run(_unary_within_deadline(body(request, _RpcContext(context))))
+                except request_deadline.RequestTimedOut as exc:
+                    context.abort(grpc.StatusCode.DEADLINE_EXCEEDED, str(exc))
+        finally:
+            with shield.lock:  # the RPC is over: nothing of its deadline follows this thread
+                shield.settle()
+                shield.quiesce()
 
     return handler
 
@@ -235,6 +241,7 @@ def _streaming(body):
     from provisa.grpc.rpc_scope import rpc_scope
 
     def handler(request, context):
+        shield = request_deadline.shielded()
         with rpc_scope() as rpc:
             deadline = request_deadline.open_request("grpc")
             try:
@@ -242,12 +249,16 @@ def _streaming(body):
                     for message in rpc.iterate(body(request, _RpcContext(context))):
                         deadline.check()
                         yield message
-            except Exception:
+            except Exception as exc:
+                request_deadline.let_go(exc)  # what the interrupted frames held is released now
                 if not deadline.fired or deadline.ended_early:
                     raise
                 # Whatever the stream failed with, its deadline has passed: that is the answer.
                 context.abort(grpc.StatusCode.DEADLINE_EXCEEDED, str(deadline.expired_error()))
             finally:
+                with shield.lock:  # the RPC is over: nothing of its deadline follows this thread
+                    shield.settle()
+                    shield.quiesce()
                 deadline.stop()
 
     return handler

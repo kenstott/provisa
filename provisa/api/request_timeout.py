@@ -26,6 +26,7 @@ import logging
 from typing import Any
 
 from provisa.api.errors import timeout_error
+from provisa.core import request_deadline
 from provisa.core.request_deadline import Deadline
 
 log = logging.getLogger(__name__)
@@ -73,7 +74,8 @@ async def serve_within_deadline(
 
     try:
         await app(scope, receive, checked_send)
-    except Exception:
+    except Exception as exc:
+        request_deadline.let_go(exc)  # what the interrupted frames held is released now
         if started or replaced or not deadline.fired:
             raise
         # The request failed after its deadline had passed and nothing has been sent: what it

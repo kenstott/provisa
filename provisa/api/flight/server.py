@@ -43,6 +43,7 @@ from provisa.compiler.directives import cache_hint_for
 from provisa.compiler.parser import parse_query
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import compile_query
+from provisa.core import request_deadline
 from provisa.core.connection_loop import current_connection_loop, run_on_connection_loop
 from provisa.core.limits import request_timeout_for  # REQ-1905: Flight's own request timeout
 from provisa.core.rpc_loop import hold_loop_for_stream as _hold_loop_for_stream
@@ -568,6 +569,7 @@ class ProvisaFlightServer(
         # in the nested helpers) resolves the org's runtime; _run_on_loop re-binds it inside each
         # dispatched loop coroutine. reset in finally below.
         _org_token = self._resolve_and_bind_org(request, identity)
+        _shield = request_deadline.shielded()
         try:
             from provisa.audit.context import ANONYMOUS_USER, audit_identity_scope
 
@@ -577,6 +579,11 @@ class ProvisaFlightServer(
             with audit_identity_scope(user_id, "flight"):
                 return self._do_get_inner(request, ticket)
         finally:
+            # REQ-1905: do_get is over on this handler thread; a stream it returned binds the
+            # deadline again around each batch it pulls (provisa/api/flight/deadline.py).
+            with _shield.lock:
+                _shield.settle()
+                _shield.quiesce()
             if _org_token is not None:
                 from provisa.core.request_context import reset_current_org
 

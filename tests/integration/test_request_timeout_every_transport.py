@@ -258,3 +258,37 @@ def test_a_request_ends_at_its_transports_timeout_naming_it(server, transport):
     # The transport keeps serving: the next request on it is answered.
     served, answer = client(server, "orders")
     assert served, f"{transport}: the request after the timeout failed: {answer}"
+
+    # And the timed-out request left nothing behind on the source: no statement still running,
+    # no transaction left open, on any connection of the server's.
+    busy = _busy_connections(server)
+    assert busy == [], f"{transport}: connections left busy after the timeout: {busy}"
+
+
+def _busy_connections(boot, settle_s: float = 5.0) -> list[tuple[str, str]]:
+    """(state, statement) of every connection to the launch's database that is not idle, once
+    they have had ``settle_s`` to finish what a cancel leaves in flight. The server's own
+    background reads come and go; a connection a timed-out request left busy stays."""
+    query = sa.text(
+        "SELECT state, left(query, 80) FROM pg_stat_activity "
+        "WHERE datname = current_database() AND pid <> pg_backend_pid() "
+        "AND state IS NOT NULL AND state <> 'idle' AND query NOT ILIKE '%pg_stat_activity%'"
+    )
+    engine = sa.create_engine(boot.url)
+    try:
+        deadline = time.monotonic() + settle_s
+        seen: dict[tuple[str, str], int] = {}
+        samples = 0
+        while time.monotonic() < deadline:
+            with engine.connect() as conn:
+                rows = [(r[0], r[1]) for r in conn.execute(query).fetchall()]
+            samples += 1
+            for row in rows:
+                seen[row] = seen.get(row, 0) + 1
+            if not rows:
+                return []
+            time.sleep(0.25)
+        # Busy in EVERY sample: left behind, not passing through.
+        return sorted(row for row, n in seen.items() if n == samples)
+    finally:
+        engine.dispose()

@@ -526,6 +526,7 @@ class BoltSession:
         # that named no principal (an unsecured deployment) is audited as the anonymous one.
         _audit_scope = audit_identity_scope(self.user_id or ANONYMOUS_USER, "bolt")
         self._end_request()  # a RUN over a result that was never drained ends that request
+        shield = request_deadline.shielded()
         deadline = request_deadline.open_request("bolt")
         try:
             with _audit_scope, request_deadline.bound(deadline):
@@ -541,6 +542,7 @@ class BoltSession:
                 deadline.check()
         except Exception as exc:
             deadline.stop()
+            request_deadline.let_go(exc)  # what the interrupted frames held is released now
             if deadline.fired and not deadline.ended_early:
                 # REQ-1905: whatever the RUN failed with, its deadline has passed.
                 self._fail_timed_out(deadline)
@@ -557,6 +559,9 @@ class BoltSession:
             self.send_failure("Neo.ClientError.Statement.SyntaxError", str(exc))
             return
         finally:
+            with shield.lock:  # execution is over: this thread is inside no deadline's scope
+                shield.settle()
+                shield.quiesce()
             if _org_token is not None:
                 reset_current_org(_org_token)
 

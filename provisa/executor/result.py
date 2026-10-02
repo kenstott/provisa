@@ -175,22 +175,20 @@ class StreamingQueryResult:  # REQ-028
         source = self._batches
         self._batches = None
         assert source is not None  # guarded by _begin
-        for batch in source:
-            # REQ-1905: the one seam every stream on every transport is pulled through. A request
-            # whose deadline has passed gets no further batch — its stream ends with the timeout,
-            # whichever terminal feeds it and whichever transport drains it.
-            try:
+        try:
+            for batch in source:
+                # REQ-1905: the one seam every stream on every transport is pulled through. A
+                # request whose deadline has passed gets no further batch — its stream ends with
+                # the timeout, whichever terminal feeds it and whichever transport drains it.
                 request_deadline.check()
-            except TimeoutError:
-                # The source (server-side cursor, pooled connection) is released now: nothing
-                # will drain this stream to the end.
-                source_close = getattr(source, "close", None)
-                if source_close is not None:
-                    source_close()
-                self._finish()
-                raise
-            self.stats.row_count += len(batch)
-            yield batch
+                self.stats.row_count += len(batch)
+                yield batch
+        except TimeoutError:
+            # The request timed out — noticed here between batches, or raised into the pull of
+            # one. The source (server-side cursor, pooled connection) is released now: nothing
+            # will drain this stream to the end.
+            self._release_source(source)
+            raise
         self._finish()
 
     def iter_rows(self) -> Iterator[tuple]:
@@ -240,7 +238,24 @@ class StreamingQueryResult:  # REQ-028
                 source_close()
         self._finish()
 
+    def _release_source(self, source: Iterator[list[tuple]]) -> None:
+        shield = request_deadline.shielded()
+        with shield.lock:
+            shield.settle()
+            source_close = getattr(source, "close", None)
+            if source_close is not None:
+                source_close()
+            self._finish()
+
     def _finish(self) -> None:
+        # REQ-1905: giving the source back is a release section — the request's deadline does
+        # not interrupt it (provisa.core.request_deadline.shielded).
+        shield = request_deadline.shielded()
+        with shield.lock:
+            shield.settle()
+            self._finish_shielded()
+
+    def _finish_shielded(self) -> None:
         if self._closed:
             return
         self._closed = True

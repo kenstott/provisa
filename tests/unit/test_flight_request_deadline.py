@@ -83,7 +83,8 @@ def test_execution_gets_what_the_wait_left_of_the_one_deadline():
         release_slot = server._acquire_stream_slot()
         try:
             seen.append(request_deadline.remaining())
-            release.wait(timeout=0.6)
+            if len(seen) == 1:
+                release.wait(timeout=0.6)  # the first request holds the slot this long
             return "ok"
         finally:
             release_slot()
@@ -113,7 +114,7 @@ def test_a_stream_that_waited_is_cut_off_at_the_deadline_not_at_wait_plus_budget
         release_slot = server._acquire_stream_slot()
         if mine == 1:
             try:
-                time.sleep(0.6)  # the first request: holds the only slot, then finishes
+                time.sleep(0.3)  # the first request: holds the only slot, then finishes
                 return "ok"
             finally:
                 release_slot()
@@ -128,8 +129,8 @@ def test_a_stream_that_waited_is_cut_off_at_the_deadline_not_at_wait_plus_budget
     first.start()
     time.sleep(0.05)
     started = time.monotonic()
-    stream = server.do_get(None, _ticket())  # waits ~0.55s for the slot
-    assert 0.4 < time.monotonic() - started < 0.9
+    stream = server.do_get(None, _ticket())  # waits ~0.25s for the slot
+    assert 0.15 < time.monotonic() - started < 0.6
     first.join(timeout=10)
 
     got = 0
@@ -138,7 +139,7 @@ def test_a_stream_that_waited_is_cut_off_at_the_deadline_not_at_wait_plus_budget
             got += 1
     elapsed = time.monotonic() - started
 
-    assert budget <= elapsed < budget + 0.5  # cut at the deadline, not at 0.6s + 1s
+    assert budget <= elapsed < budget + 0.5  # cut at the deadline, not at 0.3s + 1s
     assert 0 < got < 10
     message = str(raised.value)
     assert "request deadline" in message and "request_timeout" in message and "1s" in message
