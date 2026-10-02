@@ -98,40 +98,47 @@ def _state(client: httpx.Client, url: str) -> str:
     return body["properties"]["state"]
 
 
+def _request_resume(client: httpx.Client, url: str) -> bool:
+    """Ask ARM to resume the capacity. True once accepted. A capacity still settling out of a
+    suspend rejects the request with a 4xx — False, and the caller asks again; a 5xx raises."""
+    # ARM 411s a bodyless POST unless Content-Length is sent explicitly.
+    resp = client.post(
+        f"{url}/resume",
+        params={"api-version": _API_VERSION},
+        content=b"",
+        headers={"Content-Length": "0"},
+    )
+    if resp.status_code >= 500:
+        resp.raise_for_status()
+    return resp.status_code < 400
+
+
 def ensure_capacity_resumed() -> None:
-    """Resume the configured capacity if it is not Active, and block until it is (or time out)."""
+    """Resume the configured capacity if it is not Active, and block until it is (or time out).
+
+    The resume is sent whenever the capacity is seen in a resumable state and no resume has been
+    accepted yet — also when it was first seen mid-suspend and only settles at Paused during the
+    wait: nothing else would resume it from there."""
     with _client() as client:
         url, state = _locate(client)
-        if state == _ACTIVE:
-            return
-        if state in _TERMINAL_FAILURE_STATES:
-            raise RuntimeError(f"Fabric capacity is in terminal state {state!r}, cannot resume")
         deadline = time.monotonic() + _RESUME_TIMEOUT_S
-        if state in _RESUMABLE_STATES:
-            log.info("Fabric capacity is %s — resuming before connecting", state)
-            while True:
-                # ARM 411s a bodyless POST unless Content-Length is sent explicitly.
-                resp = client.post(
-                    f"{url}/resume",
-                    params={"api-version": _API_VERSION},
-                    content=b"",
-                    headers={"Content-Length": "0"},
-                )
-                if resp.status_code < 400:
-                    break
-                # A capacity still settling out of Suspending rejects resume with a 4xx; retry
-                # those until the budget runs out. A 5xx, or the budget exhausted, raises.
-                if resp.status_code >= 500 or time.monotonic() >= deadline:
-                    resp.raise_for_status()
-                time.sleep(_POLL_S)
-        # Otherwise already transitioning (Resuming/Provisioning/Updating/…): just wait.
-        while time.monotonic() < deadline:
-            state = _state(client, url)
+        resume_accepted = False
+        while True:
             if state == _ACTIVE:
                 return
             if state in _TERMINAL_FAILURE_STATES:
-                raise RuntimeError(f"Fabric capacity settled at {state!r} after a resume request")
+                raise RuntimeError(
+                    f"Fabric capacity is in terminal state {state!r}, cannot resume"
+                    if not resume_accepted
+                    else f"Fabric capacity settled at {state!r} after a resume request"
+                )
+            if state in _RESUMABLE_STATES and not resume_accepted:
+                log.info("Fabric capacity is %s — resuming before connecting", state)
+                resume_accepted = _request_resume(client, url)
+            if time.monotonic() >= deadline:
+                break
             time.sleep(_POLL_S)
+            state = _state(client, url)
     raise RuntimeError(
         f"Fabric capacity did not reach {_ACTIVE} within {_RESUME_TIMEOUT_S:.0f}s "
         f"(last state {state!r})"

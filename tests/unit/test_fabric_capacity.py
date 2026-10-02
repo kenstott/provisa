@@ -83,6 +83,20 @@ def test_a_paused_capacity_is_resumed_and_waited_for(configured, monkeypatch):
     ]
 
 
+def test_a_capacity_found_while_pausing_is_resumed_once_it_has_paused(configured, monkeypatch):
+    """Found mid-pause (another client just suspended it), the capacity settles at Paused. Nothing
+    resumes it but this call, so the resume is sent when it gets there — once."""
+    calls: list[str] = []
+    monkeypatch.setattr(fc, "_RESUME_TIMEOUT_S", 2.0)
+    monkeypatch.setattr(
+        fc,
+        "_client",
+        lambda: _arm(["Pausing", "Pausing", "Paused", "Paused", "Resuming", "Active"], calls),
+    )
+    fc.ensure_capacity_resumed()
+    assert len([c for c in calls if c.startswith("POST")]) == 1
+
+
 def test_a_terminal_state_raises(configured, monkeypatch):
     monkeypatch.setattr(fc, "_client", lambda: _arm(["Failed"], []))
     with pytest.raises(RuntimeError, match="terminal state"):
