@@ -28,8 +28,10 @@ from typing import Any
 
 from provisa.core import request_deadline
 from provisa.federation.data_replicator import (
+    BuildOutcome,
     EngineCaps,
     EngineRun,
+    Method,
     NoReplicationMethod,
     TargetCaps,
     TargetWrite,
@@ -50,7 +52,8 @@ class StoreReadingEngine:
         self._backend = backend
         self._state = state
 
-    async def copy(self) -> int:
+    async def copy(self, prior_hash: str | None) -> BuildOutcome:
+        del prior_hash
         raise NoReplicationMethod(["the engine runs no statement-level copy"])
 
     async def after_swap(self) -> None:
@@ -58,9 +61,10 @@ class StoreReadingEngine:
 
 
 class PgStatementCopy:
-    """The PostgreSQL engine builds the replica from the source's postgres_fdw foreign table in
-    one transaction (``PgFederationRuntime.copy_replica``). The copy runs on a connection of its
-    own, taken and returned inside the deadline shield."""
+    """The PostgreSQL engine builds the replica from the source's postgres_fdw foreign table as
+    its own statements, in one transaction: a build table filled by ``INSERT ... SELECT``, its
+    content hashed by the server, then swapped in (``replica_target.pg_statement_copy``). The
+    copy runs on a connection of its own, taken and returned inside the deadline shield."""
 
     caps = EngineCaps(reaches_source=True, runs=frozenset({EngineRun.STATEMENT}))
 
@@ -81,28 +85,43 @@ class PgStatementCopy:
         self._columns = columns
         self._pk = pk_columns
 
-    async def copy(self) -> int:
+    async def copy(self, prior_hash: str | None) -> BuildOutcome:
         import asyncio
 
-        return await asyncio.to_thread(self._copy)
+        copied, content_hash, changed = await asyncio.to_thread(self._copy, prior_hash)
+        return BuildOutcome(
+            rows_copied=copied,
+            method=Method.ENGINE_STATEMENT.value,
+            content_hash=content_hash,
+            changed=changed,
+        )
 
-    def _copy(self) -> int:
+    def _copy(self, prior_hash: str | None) -> tuple[int, str, bool]:
         import psycopg2
 
+        from provisa.federation.replica_target import pg_statement_copy
+
         runtime = self._backend._runtime_for(self._state)
+        details = runtime._engine.resolve(self._source).details
         shield = request_deadline.shielded()
         with shield.lock:
             shield.settle()
             con = psycopg2.connect(runtime._engine_dsn)
-            con.autocommit = True  # copy_replica issues its own BEGIN / COMMIT
+            con.autocommit = True  # the copy issues its own BEGIN / COMMIT
         try:
-            return runtime.copy_replica(
-                con,
-                self._source,
+            cur = con.cursor()
+            runtime._ensure_foreign_table(cur, details, self._source.table_name)
+            local, name = details["local_schema"], self._source.table_name
+            return pg_statement_copy(
+                cur,
+                source_relation='"{}"."{}"'.format(
+                    local.replace('"', '""'), name.replace('"', '""')
+                ),
                 schema=self._address.schema,
                 table=self._address.table,
                 columns=self._columns,
                 pk_columns=self._pk,
+                prior_hash=prior_hash,
             )
         finally:
             with shield.lock:

@@ -218,4 +218,4 @@ async def test_an_engine_that_only_reads_its_store_runs_its_own_step_after_a_swa
     await engine.after_swap()
     assert calls == ["state"]
     with pytest.raises(NoReplicationMethod):
-        await engine.copy()
+        await engine.copy(None)

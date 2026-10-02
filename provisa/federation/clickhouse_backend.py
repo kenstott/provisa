@@ -33,6 +33,22 @@ class ClickHouseBackend(NativeEngineBackend):
         # No URL configured → embedded chdb (in-process, no server).
         return ClickHouseFederationRuntime.embedded()
 
+    def replica_target(self, state: Any, *, address: Any, args: Any, engine: Any) -> Any:
+        """A replica in this engine's own ClickHouse store: Arrow batches into a build table,
+        exchanged with the replica (REQ-1915)."""
+        del engine
+        from provisa.federation.replica_target import ClickHouseStoreTarget
+
+        runtime = self._runtime_for(state)
+        return ClickHouseStoreTarget(
+            runtime._backend,
+            runtime._land_guard.run,
+            schema=address.schema,
+            table=address.table,
+            columns=args.columns,
+            pk_columns=list(args.pk_columns or ()),
+        )
+
     # -- engine-specific Arrow transports (REQ-986) ----------------------------
     # ClickHouse honors its declared ARROW / ARROW_STREAM capabilities: the runtime returns native
     # Arrow (query_arrow over HTTP, chdb ArrowStream) with no row materialization, mirroring

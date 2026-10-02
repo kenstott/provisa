@@ -123,8 +123,191 @@ class DuckDBStoreTarget:
             self._broker.replica_abort(self._schema, self._build)
 
 
+#: Database engines on which ClickHouse exchanges two tables atomically.
+_CLICKHOUSE_ATOMIC_ENGINES = frozenset({"Atomic", "Shared"})
+
+
+class ClickHouseStoreTarget:
+    """A replica in a ClickHouse store: Arrow batches inserted into a build table, which is then
+    exchanged with the replica.
+
+    ClickHouse has no multi-statement transaction; the swap is the single statement
+    ``EXCHANGE TABLES``, atomic on a database of the ``Atomic`` or ``Shared`` engine, after
+    which the build table (now holding the previous rows) is dropped. A replica built for the
+    first time is renamed into place. The target declares an atomic swap only where the
+    replicas database has such an engine, so a store that cannot swap is refused before a row
+    is read. ``run`` runs a blocking store call with the runtime's one client held."""
+
+    def __init__(
+        self,
+        backend: Any,
+        run: Any,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        pk_columns: list[str],
+    ) -> None:
+        from provisa.federation.clickhouse_store import _lit, ensure_namespace
+
+        self._backend = backend
+        self._run = run
+        self._database = schema
+        self._table = table
+        self._columns = columns
+        self._pk = tuple(pk_columns)
+        self._build = build_table_name(table)
+        self._begun = False
+        ensure_namespace(backend, schema)
+        rows, _ = backend.query(f"SELECT engine FROM system.databases WHERE name = {_lit(schema)}")
+        self.database_engine = str(rows[0][0]) if rows else ""
+        self.caps = TargetCaps(
+            frozenset({TargetWrite.BULK_BATCH}),
+            atomic_swap=self.database_engine in _CLICKHOUSE_ATOMIC_ENGINES,
+        )
+
+    def _table_engine(self, name: str) -> str | None:
+        from provisa.federation.clickhouse_store import _lit
+
+        rows, _ = self._backend.query(
+            "SELECT engine FROM system.tables WHERE database = "
+            f"{_lit(self._database)} AND name = {_lit(name)}"
+        )
+        return str(rows[0][0]) if rows else None
+
+    def _begin(self) -> None:
+        from provisa.federation.clickhouse_store import create_ddl, qualified
+        from provisa.federation.replica_guard import ReplicaTargetError
+
+        standing = self._table_engine(self._table)
+        if standing is not None and not standing.endswith("MergeTree"):
+            raise ReplicaTargetError(
+                qualified((self._database, self._table)),
+                f"{standing} relation",
+                "build the replica at",
+            )
+        build = (self._database, self._build)
+        self._backend.command(f"DROP TABLE IF EXISTS {qualified(build)}")
+        self._backend.command(create_ddl(build, self._columns, self._pk))
+
+    async def begin(self) -> None:
+        from provisa.federation.replica_guard import require_replicas_schema
+
+        require_replicas_schema(self._database, self._table, action="build the replica at")
+        await self._run(self._begin)
+        self._begun = True
+
+    async def write(self, batch: pa.RecordBatch, rows: list[dict]) -> None:
+        del rows  # the store reads the Arrow batch itself
+        await self._run(
+            lambda: self._backend.insert_arrow(self._database, self._build, self._columns, batch)
+        )
+
+    def _swap(self) -> None:
+        from provisa.federation.clickhouse_store import qualified
+
+        build = qualified((self._database, self._build))
+        replica = qualified((self._database, self._table))
+        if self._table_engine(self._table) is None:
+            self._backend.command(f"RENAME TABLE {build} TO {replica}")
+            return
+        self._backend.command(f"EXCHANGE TABLES {build} AND {replica}")
+        self._backend.command(f"DROP TABLE IF EXISTS {build}")  # the previous rows
+
+    async def swap(self) -> None:
+        await self._run(self._swap)
+        self._begun = False
+
+    async def abort(self) -> None:
+        from provisa.federation.clickhouse_store import qualified
+
+        if self._begun:
+            self._begun = False
+            build = qualified((self._database, self._build))
+            await self._run(lambda: self._backend.command(f"DROP TABLE IF EXISTS {build}"))
+
+
 class _BuildAbandoned(Exception):
     """Raised into an open COPY to end it without committing its rows."""
+
+
+def _pg_build_ddl(schema: str, build: str, columns: list[tuple[str, str]]) -> tuple[str, Any]:
+    """The build table's CREATE statement (no key: it is added at the swap, on the replica's
+    own name) and its SQLAlchemy table."""
+    from sqlalchemy.dialects import postgresql
+    from sqlalchemy.schema import CreateTable
+
+    from provisa.federation.materialize_exec import build_table
+
+    table = build_table(schema, build, columns)
+    return str(CreateTable(table).compile(dialect=postgresql.dialect())), table
+
+
+def _pg_swap(cur: Any, schema: str, table: str, build: str, pk_columns: list[str]) -> None:
+    """Replace the replica with the build table, inside the caller's transaction."""
+    replica = f"{_q(schema)}.{_q(table)}"
+    cur.execute(f"DROP TABLE IF EXISTS {replica}")
+    cur.execute(f"ALTER TABLE {_q(schema)}.{_q(build)} RENAME TO {_q(table)}")
+    if pk_columns:
+        key = ", ".join(_q(c) for c in pk_columns)
+        cur.execute(f"ALTER TABLE {replica} ADD PRIMARY KEY ({key})")
+
+
+def pg_statement_copy(
+    cur: Any,
+    *,
+    source_relation: str,
+    schema: str,
+    table: str,
+    columns: list[tuple[str, str]],
+    pk_columns: list[str],
+    prior_hash: str | None,
+) -> tuple[int, str, bool]:
+    """Build the replica ``schema.table`` from ``source_relation`` as PostgreSQL's own statements,
+    in one transaction on ``cur``'s connection: fill a build table with ``INSERT ... SELECT``,
+    hash its content, and swap it in — unless the hash equals ``prior_hash``, in which case the
+    transaction is rolled back and the replica left as it was. No row leaves the server.
+
+    ``source_relation`` is the already-quoted relation the engine reads the source through (its
+    postgres_fdw foreign table). Returns ``(rows copied, content hash, changed)``.
+
+    The content hash is computed by the server: each row's md5 over its text form, the two
+    halves summed, with the row count. Summing does not depend on order. It is the same kind
+    of digest as ``RowSetHash`` but not comparable with it — one hashes PostgreSQL's text form
+    of a row, the other Provisa's — so it is prefixed and only ever compared with the hash of
+    this replica's previous engine-side build."""
+    from provisa.federation.replica_guard import require_pg_replica_table, require_replicas_schema
+
+    require_replicas_schema(schema, table, action="build the replica at")
+    build = build_table_name(table)
+    ddl, _ = _pg_build_ddl(schema, build, columns)
+    names = ", ".join(_q(name) for name, _ in columns)
+    target = f"{_q(schema)}.{_q(build)}"
+    cur.execute("BEGIN")
+    try:
+        cur.execute(f"CREATE SCHEMA IF NOT EXISTS {_q(schema)}")
+        require_pg_replica_table(cur, schema, table, action="build the replica at")
+        cur.execute(f"DROP TABLE IF EXISTS {target}")
+        cur.execute(ddl)
+        cur.execute(f"INSERT INTO {target} ({names}) SELECT {names} FROM {source_relation}")
+        copied = cur.rowcount
+        cur.execute(
+            "SELECT count(*), "
+            "coalesce(sum(('x' || substr(h, 1, 16))::bit(64)::bigint::numeric), 0), "
+            "coalesce(sum(('x' || substr(h, 17, 16))::bit(64)::bigint::numeric), 0) "
+            f"FROM (SELECT md5(ROW({names})::text) AS h FROM {target}) hashed"
+        )
+        count, low, high = cur.fetchone()
+        content_hash = f"pg:{count:x}:{low}:{high}"
+        if content_hash == prior_hash:
+            cur.execute("ROLLBACK")
+            return copied, content_hash, False
+        _pg_swap(cur, schema, table, build, pk_columns)
+        cur.execute("COMMIT")
+    except BaseException:
+        cur.execute("ROLLBACK")
+        raise
+    return copied, content_hash, True
 
 
 class PostgresStoreTarget:
@@ -162,14 +345,11 @@ class PostgresStoreTarget:
         self._json: frozenset[str] = frozenset()
 
     def _create_ddl(self) -> str:
-        from sqlalchemy.dialects import postgresql
-        from sqlalchemy.schema import CreateTable
+        from provisa.federation.materialize_exec import _json_columns
 
-        from provisa.federation.materialize_exec import _json_columns, build_table
-
-        table = build_table(self._schema, self._build, self._columns)  # the key comes at the swap
+        ddl, table = _pg_build_ddl(self._schema, self._build, self._columns)
         self._json = _json_columns(table)
-        return str(CreateTable(table).compile(dialect=postgresql.dialect()))
+        return ddl
 
     async def begin(self) -> None:
         import psycopg
@@ -226,15 +406,7 @@ class PostgresStoreTarget:
         try:
             self._copy_cm.__exit__(None, None, None)  # ends the COPY; the server has every row
             self._copy = self._copy_cm = None
-            cur = self._cur
-            replica = f"{_q(self._schema)}.{_q(self._table)}"
-            cur.execute(f"DROP TABLE IF EXISTS {replica}")
-            cur.execute(
-                f"ALTER TABLE {_q(self._schema)}.{_q(self._build)} RENAME TO {_q(self._table)}"
-            )
-            if self._pk:
-                key = ", ".join(_q(c) for c in self._pk)
-                cur.execute(f"ALTER TABLE {replica} ADD PRIMARY KEY ({key})")
+            _pg_swap(self._cur, self._schema, self._table, self._build, self._pk)
             self._conn.commit()
         finally:
             with shield.lock:

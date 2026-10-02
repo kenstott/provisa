@@ -51,7 +51,7 @@ class _ReadsStore:
     def __init__(self):
         self.swaps = 0
 
-    async def copy(self):
+    async def copy(self, prior_hash):
         raise AssertionError("this engine copies nothing")
 
     async def after_swap(self):

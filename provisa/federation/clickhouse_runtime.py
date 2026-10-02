@@ -82,6 +82,13 @@ class _CHBackend(Protocol):
         """Run a query, returning ``(schema, lazy RecordBatch iterator)`` (REQ-986)."""
         ...
 
+    def insert_arrow(
+        self, database: str, table: str, columns: list[tuple[str, str]], batch: pa.RecordBatch
+    ) -> None:
+        """Append one Arrow record batch to ``database.table`` as a bulk insert (REQ-1915).
+        ``columns`` are the table's (name, IR type) pairs, in the batch's column order."""
+        ...
+
     def close(self) -> None: ...
 
 
@@ -150,6 +157,15 @@ class _ServerBackend:
 
         return schema, _batches()
 
+    def insert_arrow(
+        self, database: str, table: str, columns: list[tuple[str, str]], batch: pa.RecordBatch
+    ) -> None:
+        # One HTTP insert in the Arrow format: the server reads the batch itself, from memory.
+        import pyarrow as pa
+
+        del columns  # the batch's own column names address the table's columns
+        self._client.insert_arrow(table, pa.Table.from_batches([batch]), database=database)
+
     def close(self) -> None:
         self._client.close()
 
@@ -199,6 +215,22 @@ class _NativeBackend:
         raise NotImplementedError(
             "the ClickHouse native TCP transport (clickhouse-driver) has no Arrow format; "
             "use clickhouse:// (HTTP) or chdb:// for the Arrow Flight ENGINE path (REQ-986)"
+        )
+
+    def insert_arrow(
+        self, database: str, table: str, columns: list[tuple[str, str]], batch: pa.RecordBatch
+    ) -> None:
+        # The native protocol has no Arrow format: the batch goes as one columnar block, each
+        # column as the Python values the driver's column types take.
+        from provisa.federation.clickhouse_store import native_column
+
+        names = ", ".join(f'"{name}"' for name, _ in columns)
+        data = [
+            native_column(batch.column(i).to_pylist(), ir_type)
+            for i, (_, ir_type) in enumerate(columns)
+        ]
+        self._client.execute(
+            f'INSERT INTO "{database}"."{table}" ({names}) VALUES', data, columnar=True
         )
 
     def close(self) -> None:
@@ -261,6 +293,21 @@ class _EmbeddedBackend:
             yield from reader
 
         return schema, _batches()
+
+    def insert_arrow(
+        self, database: str, table: str, columns: list[tuple[str, str]], batch: pa.RecordBatch
+    ) -> None:
+        # chdb reads a pyarrow table in this process through its Python() table function, which
+        # finds the table by the name of the local variable holding it.
+        import pyarrow as pa
+
+        _replica_batch = pa.Table.from_batches([batch])
+        names = ", ".join(f'"{name}"' for name, _ in columns)
+        self._session.query(
+            f'INSERT INTO "{database}"."{table}" ({names}) '
+            f"SELECT {names} FROM Python(_replica_batch)"
+        )
+        del _replica_batch
 
     def close(self) -> None:
         self._session.close()

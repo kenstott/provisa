@@ -15,6 +15,7 @@ import pytest
 from provisa.core.ir_arrow import arrow_schema, rows_to_batch
 from provisa.events.content_hash import RowSetHash
 from provisa.federation.data_replicator import (
+    BuildOutcome,
     EngineCaps,
     EngineRun,
     Method,
@@ -62,9 +63,10 @@ class _Engine:
         self.caps = caps
         self.calls: list[str] = []
 
-    async def copy(self):
+    async def copy(self, prior_hash):
         self.calls.append("copy")
-        return 42
+        changed = prior_hash != "pg:same"
+        return BuildOutcome(42, "engine_statement", content_hash="pg:same", changed=changed)
 
     async def after_swap(self):
         self.calls.append("after_swap")
@@ -161,6 +163,13 @@ async def test_where_the_engine_can_copy_no_row_passes_through_the_job():
     assert job.method is Method.ENGINE_STATEMENT
     assert (outcome.rows_copied, outcome.method) == (42, "engine_statement")
     assert engine.calls == ["copy", "after_swap"] and target.events == []
+
+    # The engine's own hash gates the ripple: an unchanged copy runs no after-swap step.
+    again = _Engine(EngineCaps(True, frozenset({EngineRun.STATEMENT})))
+    unchanged = await data_replicator(
+        _EngineReached(load, COLUMNS), target, again, batch_rows=100, prior_hash="pg:same"
+    ).run(_noop)
+    assert unchanged.changed is False and again.calls == ["copy"]
 
 
 async def test_a_combination_no_method_serves_is_refused_before_anything_is_opened():

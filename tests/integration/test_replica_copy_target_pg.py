@@ -89,7 +89,7 @@ class _ReadsStore:
     def __init__(self):
         self.swaps = 0
 
-    async def copy(self):
+    async def copy(self, prior_hash):
         raise AssertionError("this engine copies nothing")
 
     async def after_swap(self):
@@ -236,3 +236,58 @@ async def test_a_view_at_the_replicas_name_is_refused_and_nothing_is_written(sto
     assert look.execute(
         "SELECT count(*) FROM pg_tables WHERE schemaname = %s", (SCHEMA,)
     ).fetchone() == (0,)
+
+
+def _engine_cursor(dsn):
+    import psycopg2
+
+    con = psycopg2.connect(dsn.replace("+psycopg", ""))
+    con.autocommit = True  # the copy issues its own BEGIN / COMMIT
+    return con, con.cursor()
+
+
+async def test_the_engines_own_copy_fills_a_build_table_hashes_it_and_swaps_it_in(store):
+    from provisa.federation.replica_target import pg_statement_copy
+
+    dsn, look = store
+    look.execute("CREATE SCHEMA remote")
+    look.execute(
+        "CREATE TABLE remote.orders AS SELECT g AS id, 'n' || g AS name, (g || '.25')::numeric "
+        "AS amount, now()::timestamp AS placed_at, g % 2 = 0 AS open, NULL::json AS doc, "
+        "NULL::interval AS wait FROM generate_series(1, 500) g"
+    )
+    con, cur = _engine_cursor(dsn)
+    try:
+        args = dict(
+            source_relation='"remote"."orders"',
+            schema=SCHEMA,
+            table=TABLE,
+            columns=COLUMNS,
+            pk_columns=["id"],
+        )
+        copied, first_hash, changed = pg_statement_copy(cur, prior_hash=None, **args)
+        assert (copied, changed) == (500, True) and first_hash.startswith("pg:1f4:")
+        assert _count(look) == 500
+        oid = look.execute("SELECT %s::regclass::oid", (f'"{SCHEMA}"."{TABLE}"',)).fetchone()[0]
+
+        # The same content again: rolled back, the replica table untouched, nothing to ripple.
+        copied, again_hash, changed = pg_statement_copy(cur, prior_hash=first_hash, **args)
+        assert (copied, again_hash, changed) == (500, first_hash, False)
+        assert (
+            look.execute("SELECT %s::regclass::oid", (f'"{SCHEMA}"."{TABLE}"',)).fetchone()[0]
+            == oid
+        )
+
+        # One value changes at the source: a new hash, and the build is swapped in.
+        look.execute("UPDATE remote.orders SET name = 'changed' WHERE id = 7")
+        copied, new_hash, changed = pg_statement_copy(cur, prior_hash=first_hash, **args)
+        assert changed and new_hash != first_hash
+        assert look.execute(f'SELECT name FROM "{SCHEMA}"."{TABLE}" WHERE id = 7').fetchone() == (
+            "changed",
+        )
+        tables = look.execute(
+            "SELECT tablename FROM pg_tables WHERE schemaname = %s", (SCHEMA,)
+        ).fetchall()
+        assert tables == [(TABLE,)]
+    finally:
+        con.close()

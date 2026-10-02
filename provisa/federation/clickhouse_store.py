@@ -68,6 +68,20 @@ def ddl_type(ir_type: str) -> str:
     return ch_type
 
 
+def native_column(values: list[Any], ir_type: str) -> list[Any]:
+    """A column of batch values as the native driver's column type takes them: a ``numeric``
+    carried as text becomes a Decimal, a ``uuid`` carried as text a UUID; every other IR type
+    already arrives as the Python value its ClickHouse column accepts."""
+    canonical = to_ir(ir_type)
+    if canonical == "numeric":
+        return [None if v is None else decimal.Decimal(str(v)) for v in values]
+    if canonical == "uuid":
+        import uuid
+
+        return [None if v is None else uuid.UUID(str(v)) for v in values]
+    return values
+
+
 _VALID_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
@@ -106,7 +120,17 @@ def create_ddl(
     """MergeTree, ClickHouse's own general-purpose table engine (REQ-1730): ``ORDER BY`` is
     mandatory even with no declared primary key — ``tuple()`` (no sort order) is MergeTree's own
     documented way to say that, not a Provisa convention."""
-    cols = ", ".join(f'"{name}" {ddl_type(ir_type)}' for name, ir_type in columns)
+    # A key column is not nullable: MergeTree refuses a nullable sorting key, and a declared
+    # primary key has a value in every row.
+    key = set(pk_columns)
+
+    def _type(name: str, ir_type: str) -> str:
+        declared = ddl_type(ir_type)
+        if name in key and declared.startswith("Nullable(") and declared.endswith(")"):
+            return declared[len("Nullable(") : -1]
+        return declared
+
+    cols = ", ".join(f'"{name}" {_type(name, ir_type)}' for name, ir_type in columns)
     order_by = ", ".join(f'"{c}"' for c in pk_columns) if pk_columns else ""
     order_clause = f"ORDER BY ({order_by})" if order_by else "ORDER BY tuple()"
     return f"CREATE TABLE IF NOT EXISTS {qualified(parts)} ({cols}) ENGINE = MergeTree() {order_clause}"

@@ -203,8 +203,10 @@ class _Target(Protocol):
 class _Engine(Protocol):
     caps: EngineCaps
 
-    async def copy(self) -> int:
-        """Run the copy as the engine's own statement, swap included; return the rows copied."""
+    async def copy(self, prior_hash: str | None) -> BuildOutcome:
+        """Run the copy as the engine's own statement, swap included. ``prior_hash`` is the
+        content hash of the replica's last build; a copy whose own hash equals it is discarded
+        and reported unchanged."""
         ...
 
     async def after_swap(self) -> None:
@@ -234,9 +236,10 @@ class ReplicaJob:
 
     async def run(self, progress: Progress) -> BuildOutcome:
         if self.method is Method.ENGINE_STATEMENT:
-            copied = await self._engine.copy()
-            await self._engine.after_swap()
-            return BuildOutcome(rows_copied=copied, method=self.method.value)
+            outcome = await self._engine.copy(self._prior_hash)
+            if outcome.changed:
+                await self._engine.after_swap()
+            return outcome
         return await self._stream(progress)
 
     async def _stream(self, progress: Progress) -> BuildOutcome:
