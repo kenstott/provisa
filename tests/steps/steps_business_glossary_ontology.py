@@ -34,28 +34,10 @@ from provisa.core.models import Column, Table
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import (
-    glossary_term_domains,
-    glossary_term_edges,
-    glossary_term_experts,
-    glossary_term_refs,
-    glossary_terms,
     registered_tables,
-    roles,
-    table_columns,
 )
 
 scenarios("../features/REQ-1387.feature")
-
-_TABLES = [
-    registered_tables,
-    table_columns,
-    roles,
-    glossary_terms,
-    glossary_term_refs,
-    glossary_term_domains,
-    glossary_term_edges,
-    glossary_term_experts,
-]
 
 
 @pytest.fixture
@@ -66,7 +48,9 @@ def shared_data(tmp_path) -> dict:
     async def _init() -> None:
         engine = create_engine_from_url(f"sqlite+pysqlite:///{path}")
         with engine.begin() as c:
-            registered_tables.metadata.create_all(c, tables=_TABLES)
+            # The whole org schema: a registration asks the dependency guard, which reads every
+            # table that can refer to a column (REQ-1918).
+            registered_tables.metadata.create_all(c)
         engine.dispose()
 
     asyncio.run(_init())

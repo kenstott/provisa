@@ -1187,7 +1187,12 @@ def rest_same_governance_as_graphql(shared_data):
         contexts={"filtered": ctx, "unfiltered": ctx},
         rls_contexts={"filtered": RLSContext(rules={1: "amount > 100"})},  # table 1 = orders
         masking_rules={},
-        roles={"filtered": {"id": "filtered"}, "unfiltered": {"id": "unfiltered"}},
+        # A role always lists the domains it reaches; both reach every domain here, so the row
+        # filter is the only difference between them.
+        roles={
+            "filtered": {"id": "filtered", "domain_access": ["*"]},
+            "unfiltered": {"id": "unfiltered", "domain_access": ["*"]},
+        },
         source_types={"sales-pg": "postgresql"},
         metrics={},
         tables=[],

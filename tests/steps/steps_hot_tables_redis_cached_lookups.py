@@ -16,7 +16,6 @@ import pytest
 from pytest_bdd import given, when, then, scenarios
 
 from provisa.cache.hot_tables import (
-    HOT_PREFIX,
     HotTableEntry,
     HotTableManager,
     detect_hot_tables,
@@ -194,7 +193,9 @@ def given_hot_table_with_refresh_interval(shared_data):
 
     # Register the hot table as loaded and seed Redis with its blob.
     manager._hot_tables[table_name] = entry
-    blob_key = HOT_PREFIX + table_name + ":blob"
+    # The key the manager itself keeps this table's blob under (scoped to the acting org and
+    # model, and to the table's catalog and schema).
+    blob_key = manager._blob_key(table_name, entry.catalog, entry.schema)
     _run(fake_redis.set(blob_key, json.dumps(rows)))
 
     # A positive refresh_interval (defaulting to materialized_views.default_ttl)

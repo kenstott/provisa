@@ -320,6 +320,8 @@ def all_three_loops_complete(shared_data: dict, job_store: InMemoryJobStore) -> 
         shared_data["store"] = job_store
         app_state = _FakeAppState()
         app_state.contexts[role] = CompilationContext()
+        # The acting role as the state holds it: table selection reads the domains it reaches.
+        app_state.roles = {role: {"id": role, "domain_access": ["*"]}}
         shared_data["app_state"] = app_state
         shared_data["llm"] = _AllValidLLM()
 
