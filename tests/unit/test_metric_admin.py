@@ -31,7 +31,9 @@ async def _db(tmp_path):
 
     engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'metrics.db'}")
     with engine.begin() as c:
-        metrics.metadata.create_all(c, tables=[metrics])
+        # The whole org schema: deleting a metric asks the dependency guard, which reads the
+        # tables that can refer to one.
+        metrics.metadata.create_all(c)
     try:
         yield Database(engine, name="cp")
     finally:

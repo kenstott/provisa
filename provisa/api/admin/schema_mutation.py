@@ -2036,7 +2036,22 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             domains = await metric_domains(cast("Connection", conn), name)
             if domains is not None:
                 require_domains(info, domains)
-            deleted = await metric_repo.delete(cast("Connection", conn), name)
+            try:
+                deleted = await metric_repo.delete(cast("Connection", conn), name)
+            except metric_repo.MetricDeleteRefused as refused:
+                # REQ-1918: a view uses it; nothing is removed, each is named.
+                return MutationResult(
+                    success=False,
+                    message=str(refused),
+                    code="schema.metric_has_dependents",
+                    params={
+                        "metric": name,
+                        "dependents": [
+                            {"kind": d.ref.kind, "id": d.ref.id, "via": list(d.via)}
+                            for d in refused.dependents
+                        ],
+                    },
+                )
         if deleted:
             await _rebuild_schemas()  # republish state.metrics + schema metric blocks
             return MutationResult(

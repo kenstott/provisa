@@ -18,7 +18,7 @@ import logging
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
-from sqlalchemy import delete as _delete, func, select, update
+from sqlalchemy import func, select, update
 
 import httpx
 
@@ -327,11 +327,11 @@ async def delete_function(request: Request, name: str):  # REQ-205, REQ-253
 
     async with state.tenant_db.acquire() as conn:
         await _require_its_domain(request, conn, tracked_functions, name)
-        result = await conn.execute_core(
-            _delete(tracked_functions).where(tracked_functions.c.name == name)
-        )
+        from provisa.core.repositories import function as function_repo
 
-    if (result.rowcount or 0) == 0:
+        deleted = await function_repo.delete_function(conn, name)
+
+    if not deleted:
         raise ApiError(404, "actions.function_not_found", f"Function '{name}' not found", name=name)
 
     log.info("Deleted tracked function %s", name)
@@ -467,11 +467,11 @@ async def delete_webhook(request: Request, name: str):  # REQ-209, REQ-253
 
     async with state.tenant_db.acquire() as conn:
         await _require_its_domain(request, conn, tracked_webhooks, name)
-        result = await conn.execute_core(
-            _delete(tracked_webhooks).where(tracked_webhooks.c.name == name)
-        )
+        from provisa.core.repositories import function as function_repo
 
-    if (result.rowcount or 0) == 0:
+        deleted = await function_repo.delete_webhook(conn, name)
+
+    if not deleted:
         raise ApiError(404, "actions.webhook_not_found", f"Webhook '{name}' not found", name=name)
 
     log.info("Deleted tracked webhook %s", name)

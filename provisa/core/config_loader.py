@@ -42,8 +42,6 @@ from provisa.core.schema_org import (
     relationships,
     sources,
     table_columns,
-    tracked_functions,
-    tracked_webhooks,
 )
 from provisa.core.secrets import resolve_secrets
 from provisa.openapi.mapper import OpenAPIQuery
@@ -223,8 +221,7 @@ async def _replace_mode_cleanup(
     await domain_repo.delete_all_except(conn, list(keep_domains))
     await role_repo.delete_all_except(conn, new_role_ids)
     await rel_repo.remove_where(conn, relationships.c.id.notlike("meta:%"))
-    await conn.execute_core(_delete(tracked_functions))
-    await conn.execute_core(_delete(tracked_webhooks))
+    await function_repo.remove_all(conn)
 
 
 async def _upsert_sources(  # REQ-012, REQ-250, REQ-1266, REQ-1730
@@ -779,10 +776,10 @@ async def _upsert_metrics(conn: "Connection", config: ProvisaConfig) -> None:  #
     Fact-derived metrics (``from_fact`` set, REQ-1320) are managed by fact registration, not
     the file — they are preserved regardless of the config's metric list."""
     current_names = [m.name for m in config.metrics]
-    stale = _delete(metrics_table).where(metrics_table.c.from_fact.is_(None))
+    stale = [metrics_table.c.from_fact.is_(None)]
     if current_names:
-        stale = stale.where(metrics_table.c.name.not_in(current_names))
-    await conn.execute_core(stale)
+        stale.append(metrics_table.c.name.not_in(current_names))
+    await metric_repo.remove_where(conn, *stale)
     for m in config.metrics:
         await metric_repo.upsert(conn, m)
 

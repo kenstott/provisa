@@ -25,6 +25,7 @@ from sqlglot.errors import SqlglotError
 from sqlalchemy import delete as _delete, select
 
 from provisa.core.models import Metric
+from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import metrics
 
 if TYPE_CHECKING:
@@ -81,6 +82,36 @@ async def list_all(conn: "Connection") -> list[dict]:  # REQ-1317
     return [dict(r._mapping) for r in result.fetchall()]
 
 
-async def delete(conn: "Connection", name: str) -> bool:  # REQ-1317
-    result = await conn.execute_core(_delete(metrics).where(metrics.c.name == name))
-    return (result.rowcount or 0) > 0
+class MetricDeleteRefused(Exception):
+    """A metric that may not be deleted because views use it; ``dependents`` lists them."""
+
+    def __init__(self, name: str, dependents: list[Dependent]) -> None:
+        self.name = name
+        self.dependents = dependents
+        named = ", ".join(f"{d.ref.kind} {d.ref.id}" for d in dependents)
+        super().__init__(f"Metric {name!r} is still used by: {named}")
+
+
+async def delete(conn: "Connection", name: str) -> bool:  # REQ-1317, REQ-1918
+    """Delete one metric: THE delete, for every surface. False when there is no such metric.
+
+    Refused (:class:`MetricDeleteRefused`), naming each, while a view is composed from it (its
+    ``view_metrics`` lists the metric) or a view's SQL reads it as ``metrics.<name>``. One
+    transaction; no database cascade is relied on."""
+    ref = ObjectRef("metric", name)
+    async with conn.transaction():
+        if await get(conn, name) is None:
+            return False
+        blocking = await guard(conn, ref)
+        if blocking:
+            raise MetricDeleteRefused(name, blocking)
+        await remove_parts(conn, ref)
+        await conn.execute_core(_delete(metrics).where(metrics.c.name == name))
+    return True
+
+
+async def remove_where(conn: "Connection", *where) -> None:
+    """Remove every metric matching ``where`` (clauses on ``metrics``) — for the config loader,
+    which declares metrics as a set and replaces that set. It is not a deletion of one object
+    and does not ask the dependency guard."""
+    await conn.execute_core(_delete(metrics).where(*where))

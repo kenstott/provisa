@@ -46,6 +46,9 @@ CONVERTED: dict[str, set[str]] = {
     "registered_tables": {"delete"},
     "sources": {"delete"},
     "relationships": {"delete"},
+    "metrics": {"delete"},
+    "tracked_functions": {"delete"},
+    "tracked_webhooks": {"delete"},
 }
 
 _CONSTRUCTORS = {
