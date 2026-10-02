@@ -310,6 +310,14 @@ async def register_table(
                 code="schema.view_reads_itself",
                 params={"view": _loop.loop[0], "loop": _loop.loop},
             )
+        except table_repo.ColumnDropRefused as _drop:
+            # REQ-1918: a column something still refers to is not dropped; each is named.
+            return MutationResult(
+                success=False,
+                message=str(_drop),
+                code="schema.column_has_dependents",
+                params={"table": _drop.table_name, "columns": _drop.report()},
+            )
         if model.query_template:
             _qa_err = await persist_query_api_registration(_conn, model)
             if _qa_err is not None:

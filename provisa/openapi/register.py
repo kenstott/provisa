@@ -332,8 +332,17 @@ async def auto_register_openapi_source(  # REQ-314, REQ-316, REQ-317, REQ-321
 
     domains_before = await glossary_repo.term_domains(conn)
     queries, mutations = parse_spec(spec)
+    unchanged: list[dict] = []
     for q in queries:
-        await upsert_table(source_id, q, conn, domain_id, base_url, auth_config, cache_ttl)
+        try:
+            await upsert_table(source_id, q, conn, domain_id, base_url, auth_config, cache_ttl)
+        except table_repo.ColumnDropRefused as refused:
+            # The spec dropped a field something here still refers to: the table is left as it
+            # was and reported.
+            held = await table_repo.get_by_name(
+                conn, source_id, "openapi", _operation_id_to_alias(q.operation_id)
+            )
+            unchanged.append(table_repo.kept_columns_report(refused, held["id"] if held else None))
     for m in mutations:
         await upsert_tracked_function(source_id, m, conn, domain_id)
     kept = await table_repo.retire_generated(
@@ -341,4 +350,4 @@ async def auto_register_openapi_source(  # REQ-314, REQ-316, REQ-317, REQ-321
     )
     # REQ-1387: settle only the terms whose fields truly departed.
     await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
-    return len(queries), len(mutations), table_repo.kept_report(kept)
+    return len(queries), len(mutations), [*table_repo.kept_report(kept), *unchanged]

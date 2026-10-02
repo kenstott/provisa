@@ -23,11 +23,12 @@ from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.repositories.integrity import (
     Dependent,
     ObjectRef,
+    column_dependents,
     guard,
     remove_parts,
     view_loop,
 )
-from provisa.core.schema_org import registered_tables, roles, table_columns
+from provisa.core.schema_org import registered_tables, roles, table_columns, tag_assignments
 from provisa.security.rights import Capability
 
 if TYPE_CHECKING:
@@ -106,6 +107,30 @@ class TableDeleteRefused(Exception):
         super().__init__(f"Table {name!r} is still referred to by: {named}")
 
 
+class ColumnDropRefused(ValueError):
+    """A re-registration that would drop columns other objects refer to; ``columns`` maps each
+    such column to its dependents. Nothing was changed."""
+
+    def __init__(self, table_name: str, columns: dict[str, list[Dependent]]) -> None:
+        self.table_name = table_name
+        self.columns = columns
+        named = "; ".join(
+            f"{column} (referred to by: "
+            + ", ".join(f"{d.ref.kind} {d.ref.id}" for d in dependents)
+            + ")"
+            for column, dependents in columns.items()
+        )
+        super().__init__(
+            f"Table {table_name!r} cannot drop column(s) that are still referred to: {named}"
+        )
+
+    def report(self) -> dict[str, list[dict]]:
+        return {
+            column: [{"kind": d.ref.kind, "id": d.ref.id, "via": list(d.via)} for d in dependents]
+            for column, dependents in self.columns.items()
+        }
+
+
 class ViewLoopRefused(ValueError):
     """A view whose SQL would read the view itself, directly or through other views;
     ``loop`` is the view names in reading order, starting and ending at the view."""
@@ -129,8 +154,9 @@ async def upsert(
 
     REQ-1918: a view whose SQL would read the view itself through other views is refused
     (:class:`ViewLoopRefused`) — it cannot be evaluated, and it is the one way objects could come
-    to block each other's deletion in a circle. This is the write path the admin mutations and
-    the config loader share, so both refuse it."""
+    to block each other's deletion in a circle. A registration that would drop a column other
+    objects refer to is refused (:class:`ColumnDropRefused`). This is the write path the admin
+    mutations and the config loader share, so both refuse them."""
     async with conn.transaction():
         view_sql = getattr(table, "view_sql", None)
         if view_sql:
@@ -293,6 +319,25 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
             )
         ).fetchall()
     }
+    # REQ-1918: a column this registration no longer lists is dropped. While a relationship is
+    # keyed on it, or a view, materialized view or metric names it, the registration is refused
+    # naming them; the transaction around this call undoes the table row's update. A dropped
+    # column's tag assignments are its parts and go with it.
+    _dropped = sorted(set(_existing_types) - {col.name for col in table.columns})
+    _referred: dict[str, list[Dependent]] = {}
+    for _column in _dropped:
+        _dependents = await column_dependents(conn, table_id, _column)
+        if _dependents:
+            _referred[_column] = _dependents
+    if _referred:
+        raise ColumnDropRefused(table.table_name, _referred)
+    if _dropped:
+        await conn.execute_core(
+            _delete(tag_assignments).where(
+                tag_assignments.c.table_id == table_id,
+                tag_assignments.c.column_name.in_(_dropped),
+            )
+        )
     # Replace columns: delete existing, insert new
     _control_plane = await _control_plane_role_ids(conn)
     await conn.execute_core(_delete(table_columns).where(table_columns.c.table_id == table_id))
@@ -493,6 +538,13 @@ async def retire_generated(  # REQ-1918
         except TableDeleteRefused as refused:
             kept.append(refused)
     return kept
+
+
+def kept_columns_report(refused: ColumnDropRefused, table_id: int | None) -> dict:
+    """A generated table whose re-registration would have dropped columns something refers to,
+    as a row of what the re-registration returns: the table was left as it was, and each such
+    column is listed with what refers to it."""
+    return {"id": table_id, "name": refused.table_name, "columns": refused.report()}
 
 
 def kept_report(kept: list[TableDeleteRefused]) -> list[dict]:

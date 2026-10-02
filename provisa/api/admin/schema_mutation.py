@@ -2101,6 +2101,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.view_reads_itself",
                     params={"view": _loop.loop[0], "loop": _loop.loop},
                 )
+            except table_repo.ColumnDropRefused as _drop:
+                # REQ-1918: a column something still refers to is not dropped; each is named.
+                return MutationResult(
+                    success=False,
+                    message=str(_drop),
+                    code="schema.column_has_dependents",
+                    params={"table": _drop.table_name, "columns": _drop.report()},
+                )
             if model.query_template:
                 # REQ-1670/REQ-1683: an edited query re-persists the endpoint the table serves from.
                 from provisa.api.admin._query_api_registration import persist_query_api_registration

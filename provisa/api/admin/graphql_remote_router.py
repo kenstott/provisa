@@ -168,6 +168,7 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
         from provisa.core.repositories import glossary as glossary_repo
 
         domains_before = await glossary_repo.term_domains(conn)
+        unchanged: list[dict] = []
         for t in tables:
             _sql_name = apply_sql_name(t["name"])
             tbl = Table(
@@ -201,14 +202,22 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
                     for a in t.get("required_args", [])
                 ],
             )
-            await table_repo.upsert(conn, tbl)
+            try:
+                await table_repo.upsert(conn, tbl)
+            except table_repo.ColumnDropRefused as refused:
+                # The remote dropped a field something here still refers to: the table is left
+                # as it was and reported.
+                held = await table_repo.get_by_name(conn, source_id, "graphql", _sql_name)
+                unchanged.append(
+                    table_repo.kept_columns_report(refused, held["id"] if held else None)
+                )
 
         kept = await table_repo.retire_generated(
             conn, source_id, "graphql", {apply_sql_name(t["name"]) for t in tables}
         )
         # REQ-1387: settle only the terms whose fields truly departed.
         await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
-        return table_repo.kept_report(kept)
+        return [*table_repo.kept_report(kept), *unchanged]
 
 
 async def _upsert_relationships_to_semantic_layer(  # REQ-313, REQ-598

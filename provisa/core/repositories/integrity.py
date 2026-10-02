@@ -427,6 +427,76 @@ async def remove_parts(conn: "Connection", ref: ObjectRef) -> None:
         await conn.execute_core(table.delete().where(where))
 
 
+def _names_column(sql: str, table_name: str, column: str) -> bool:
+    """Whether SQL text names ``column`` of ``table_name``: qualified by the table's name or by
+    an alias the text gives it, or unqualified where the table is the only relation read. A
+    ``SELECT *`` names no column, so a text that reaches the column only through one is not
+    seen here."""
+    try:
+        statement = sqlglot.parse_one(sql)
+    except SqlglotError as e:
+        raise ValueError(f"SQL could not be parsed, so what it reads is unknown: {e}") from e
+    tables = [t for t in statement.find_all(exp.Table) if t.name]
+    stands_for = {t.alias_or_name: t.name for t in tables}
+    only = len({t.name for t in tables}) <= 1
+    for col in statement.find_all(exp.Column):
+        if col.name != column:
+            continue
+        if col.table:
+            if stands_for.get(col.table, col.table) == table_name:
+                return True
+        elif only and (not tables or tables[0].name == table_name):
+            return True
+    return False
+
+
+async def column_dependents(conn: "Connection", table_id: int, column: str) -> list[Dependent]:
+    """The objects that refer to one COLUMN of a table, by its name: the relationships keyed on
+    it, and the views, materialized views and metrics whose SQL names it. They block a
+    re-registration of the table that would drop the column (REQ-1918). ``LookupError`` when
+    there is no such table."""
+    attributes = await _attributes(conn, ObjectRef("table", table_id))
+    table_name = attributes["name"]
+    blocking: dict[ObjectRef, set[str]] = {}
+
+    rel = metadata.tables["relationships"]
+    keyed = (
+        ("source_table_id", ("source_column",)),
+        ("target_table_id", ("target_column",)),
+        ("via_table_id", ("via_source_column", "via_target_column", "via_type_column")),
+    )
+    rows = (await conn.execute_core(select(rel))).fetchall()
+    for row in rows:
+        r = row._mapping
+        for end, columns in keyed:
+            for named in columns:
+                if r[end] == table_id and r[named] == column:
+                    blocking.setdefault(ObjectRef("relationship", r["id"]), set()).add(
+                        f"relationships.{named}"
+                    )
+
+    texts = (
+        ("registered_tables", "view_sql", "table", "id"),
+        ("materialized_views", "custom_sql", "materialized_view", "id"),
+        ("metrics", "expression", "metric", "name"),
+    )
+    for table, text_column, kind, key in texts:
+        tbl = metadata.tables[table]
+        found = await conn.execute_core(
+            select(tbl.c[key], tbl.c[text_column]).where(tbl.c[text_column].isnot(None))
+        )
+        for owner, text in found.fetchall():
+            if kind == "table" and owner == table_id:
+                continue
+            if text and _names_column(text, table_name, column):
+                blocking.setdefault(ObjectRef(kind, owner), set()).add(f"{table}.{text_column}")
+
+    return sorted(
+        (Dependent(referrer, tuple(sorted(via))) for referrer, via in blocking.items()),
+        key=lambda d: (d.ref.kind, str(d.ref.id)),
+    )
+
+
 async def view_loop(conn: "Connection", name: str, view_sql: str) -> list[str]:
     """The loop saving view ``name`` with ``view_sql`` would close — the view names in reading
     order, starting and ending at ``name`` — or ``[]`` when it closes none (REQ-1918).
