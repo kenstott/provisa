@@ -74,8 +74,38 @@ class HotTableCandidate:  # REQ-236, REQ-237
     schema: str
 
 
+def _scope_parts() -> tuple[str, int | None]:
+    """Where the request is acting (org and environment) and the model that runtime loaded."""
+    from provisa.api.app import state
+    from provisa.cache.tenancy import cache_place
+
+    return cache_place(state), state.model_stamp
+
+
+@dataclass
+class _Place:
+    """One org's one environment in the hot tier: its candidates, and the tables that are hot
+    under the model named by ``stamp``."""
+
+    stamp: int | None
+    tables: dict[str, HotTableEntry] = field(default_factory=dict)
+    candidates: dict[str, HotTableCandidate] = field(default_factory=dict)
+    # Names two relations of this model both claimed: the name cannot say whose rows to
+    # substitute, so it is never hot.
+    ambiguous: set[str] = field(default_factory=set)
+
+
 class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, REQ-241
-    """Manages small lookup tables cached in Redis for JOIN optimization."""
+    """Manages small lookup tables cached in Redis for JOIN optimization.
+
+    One manager serves the process, and its Redis serves every process, so nothing here is kept
+    by a table's bare name. The registry is per org and environment (:class:`_Place`), and holds
+    only what was loaded under the model that runtime currently has: when the model stamp moves,
+    the tables loaded under the previous one stop being hot — a table may now read another
+    relation — and are promoted again from their candidates by the next small read. A Redis
+    blob's key carries the org, the environment, the model stamp and the table's catalog, schema
+    and name.
+    """
 
     def __init__(
         self,
@@ -94,13 +124,42 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         self._max_bytes = max_bytes  # REQ-230: serialized blob ceiling (default 10 MB)
         self._ttl = ttl
         self._redis = None
-        self._hot_tables: dict[str, HotTableEntry] = {}
-        self._candidates: dict[str, HotTableCandidate] = {}
+        self._places: dict[str, _Place] = {}
         # REQ-688: hot-table payloads are encrypted at rest in Redis. Defaults to the
         # platform passthrough (NullEncryption) when no provider is configured; the app
         # injects the configured EncryptionService. Redis ACL isolation (REQ-595) and
         # payload encryption are independent controls.
         self._encryption = encryption or NullEncryption()
+
+    def _place(self) -> _Place:
+        """The acting org and environment's part of the registry, emptied of its tables when
+        the model it was loaded under is no longer the one the runtime has."""
+        where, stamp = _scope_parts()
+        place = self._places.get(where)
+        if place is None:
+            place = self._places[where] = _Place(stamp)
+        elif place.stamp != stamp:
+            place.tables.clear()
+            place.ambiguous.clear()
+            place.stamp = stamp
+        return place
+
+    @property
+    def _hot_tables(self) -> dict[str, HotTableEntry]:
+        return self._place().tables
+
+    @_hot_tables.setter
+    def _hot_tables(self, tables: dict[str, HotTableEntry]) -> None:
+        self._place().tables = tables
+
+    @property
+    def _candidates(self) -> dict[str, HotTableCandidate]:
+        return self._place().candidates
+
+    @staticmethod
+    def _blob_key(table_name: str, catalog: str, schema: str) -> str:
+        where, stamp = _scope_parts()
+        return f"{HOT_PREFIX}{where}:m{stamp}:{catalog}.{schema}.{table_name}:blob"
 
     async def _connect(self):
         if self._redis is None:
@@ -120,8 +179,22 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         await self._connect()
         assert self._redis is not None
 
+        place = self._place()
+        held = place.tables.get(table_name)
+        if table_name in place.ambiguous or (
+            held is not None and (held.catalog, held.schema) != (catalog, schema)
+        ):
+            # Two relations of this model carry the name. Callers address the hot tier by name
+            # alone, so serving either's rows would hand them to readers of the other.
+            place.ambiguous.add(table_name)
+            if held is not None:
+                del place.tables[table_name]
+                await self._redis.delete(self._blob_key(table_name, held.catalog, held.schema))
+            log.warning("Hot table name %s is claimed by two relations; not cached", table_name)
+            return len(rows)
+
         columns = list(rows[0].keys()) if rows else []
-        blob_key = HOT_PREFIX + table_name + ":blob"
+        blob_key = self._blob_key(table_name, catalog, schema)
 
         # REQ-230: measure the serialized blob and skip caching a table that exceeds the byte
         # ceiling, even when its row count is within max_rows (wide rows can still be large).
@@ -144,7 +217,7 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         pipe.set(blob_key, stored, ex=self._ttl)
         await pipe.execute()
 
-        self._hot_tables[table_name] = HotTableEntry(
+        place.tables[table_name] = HotTableEntry(
             table_name=table_name,
             catalog=catalog,
             schema=schema,
@@ -251,11 +324,14 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         await self._connect()
         assert self._redis is not None
 
-        blob_key = HOT_PREFIX + table_name + ":blob"
-        data = await self._redis.get(blob_key)
+        # The blob is addressed by the relation the name stands for here: a name that is not
+        # hot in the acting org, environment and model has no blob to read.
+        entry = self._hot_tables.get(table_name)
+        if entry is None:
+            return []
+        data = await self._redis.get(self._blob_key(table_name, entry.catalog, entry.schema))
         if data is None:
             # Check in-memory cache
-            entry = self._hot_tables.get(table_name)
             if entry:
                 return entry.rows
             # REQ-231: a cache miss returns no rows rather than raising — the caller falls
@@ -270,9 +346,9 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         """Delete all Redis keys for a hot table."""
         await self._connect()
         assert self._redis is not None
-        blob_key = HOT_PREFIX + table_name + ":blob"
-        await self._redis.delete(blob_key)
-        self._hot_tables.pop(table_name, None)
+        entry = self._hot_tables.pop(table_name, None)
+        if entry is not None:
+            await self._redis.delete(self._blob_key(table_name, entry.catalog, entry.schema))
         log.info("Hot table %s invalidated", table_name)
 
     def is_hot(self, table_name: str) -> bool:  # REQ-544
@@ -648,6 +724,13 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
             continue
         _, source_id, source_cfg, source_type, pk_col, schema_name = result
         catalog = source_to_catalog(source_id)
+        # Also a candidate: what is loaded here is hot only under the model loaded now, and a
+        # candidate is how the table becomes hot again after the model changes.
+        hot_mgr.register_candidate(
+            HotTableCandidate(
+                table_name=tbl_name, pk_column=pk_col, catalog=catalog, schema=schema_name
+            )
+        )
         if source_type == "sqlite":
             await hot_mgr.load_table_from_sqlite(source_cfg, tbl_name, pk_col)
         elif source_type == "openapi":

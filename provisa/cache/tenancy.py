@@ -39,14 +39,18 @@ from collections.abc import Iterable
 from typing import Any
 
 
-def cache_tenant(state: Any) -> str:
-    """The acting org, environment and loaded model — the prefix every response-cache key and
-    table index is written under."""
+def cache_place(state: Any) -> str:
+    """The acting org and environment: whose cached data this is, whatever model it holds."""
     from provisa.api.org_runtime import runtime_key
     from provisa.core.request_context import current_env, current_org
 
-    org_id = current_org.get() or state.org_id
-    return f"{runtime_key(org_id, current_env.get())}:m{state.model_stamp}"
+    return runtime_key(current_org.get() or state.org_id, current_env.get())
+
+
+def cache_tenant(state: Any) -> str:
+    """The acting org, environment and loaded model — the prefix every response-cache key and
+    table index is written under."""
+    return f"{cache_place(state)}:m{state.model_stamp}"
 
 
 async def invalidate_tables(state: Any, table_ids: Iterable[int]) -> int:
