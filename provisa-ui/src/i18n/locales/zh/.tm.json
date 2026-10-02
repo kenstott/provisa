@@ -4641,5 +4641,11 @@
   "zh/viewDefinitionForm.json::viewDefinitionForm.save": "Save view",
   "zh/viewDefinitionForm.json::viewDefinitionForm.saveFailed": "Save failed",
   "zh/viewDefinitionForm.json::viewDefinitionForm.sqlCreateHint": "Free-hand views are authored in the SQL editor: write the SELECT, run it, then save it as a view.",
-  "zh/viewDefinitionForm.json::viewDefinitionForm.sqlEditHint": "This view's SQL is edited in the SQL editor."
+  "zh/viewDefinitionForm.json::viewDefinitionForm.sqlEditHint": "This view's SQL is edited in the SQL editor.",
+  "zh/settings.json::settings.replication.builds_per_node.label": "Replica builds per node",
+  "zh/settings.json::settings.replication.builds_per_node.help": "The most replica builds one host runs at once. Add nodes to build more replicas at the same time. A source's live-read cap also limits builds; with the embedded Redis that cap is counted per process, not across nodes.",
+  "zh/settings.json::settings.replication.engine_jobs.label": "Background jobs per engine",
+  "zh/settings.json::settings.replication.engine_jobs.help": "The most background jobs (replica builds) running on one engine at once, across every node. Requests are not counted.",
+  "zh/settings.json::settings.replication.retry_interval.label": "Replica build retry interval",
+  "zh/settings.json::settings.replication.retry_interval.help": "After a replica build fails, a read does not ask for another build until this long has passed."
 }

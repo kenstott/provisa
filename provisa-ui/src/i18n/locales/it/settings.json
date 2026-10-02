@@ -128,6 +128,20 @@
         "help": "Quanti processi worker esegue il server. Richiede un riavvio perché i processi vengono avviati dal launcher."
       }
     },
+    "replication": {
+      "builds_per_node": {
+        "label": "Build di repliche per nodo",
+        "help": "Il numero massimo di build di repliche che un host esegue contemporaneamente. Aggiungi nodi per costruire più repliche nello stesso momento. Anche il limite di letture live di un'origine limita le build; con il Redis incorporato tale limite è contato per processo, non tra i nodi."
+      },
+      "engine_jobs": {
+        "label": "Job in background per motore",
+        "help": "Il numero massimo di job in background (build di repliche) in esecuzione contemporaneamente su un motore, su tutti i nodi. Le richieste non vengono conteggiate."
+      },
+      "retry_interval": {
+        "label": "Intervallo di nuovo tentativo per la build di repliche",
+        "help": "Dopo il fallimento della build di una replica, una lettura non richiede un'altra build finché non è trascorso questo tempo."
+      }
+    },
     "security": {
       "mode": {
         "label": "Modalità di sicurezza",

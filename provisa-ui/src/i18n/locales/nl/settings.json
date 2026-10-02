@@ -128,6 +128,20 @@
         "help": "Hoeveel workerprocessen de server draait. Opnieuw opstarten vereist omdat de processen door de launcher worden gestart."
       }
     },
+    "replication": {
+      "builds_per_node": {
+        "label": "Replica-builds per node",
+        "help": "Het maximale aantal replica-builds dat één host tegelijk uitvoert. Voeg nodes toe om meer replica's tegelijk te bouwen. De live-leeslimiet van een bron beperkt builds ook; met de ingebouwde Redis wordt die limiet per proces geteld, niet over nodes heen."
+      },
+      "engine_jobs": {
+        "label": "Achtergrondtaken per engine",
+        "help": "Het maximale aantal achtergrondtaken (replica-builds) dat tegelijk op één engine draait, over alle nodes heen. Requests worden niet meegeteld."
+      },
+      "retry_interval": {
+        "label": "Interval voor opnieuw proberen van replica-builds",
+        "help": "Nadat een replica-build is mislukt, vraagt een leesactie pas om een nieuwe build wanneer deze tijd is verstreken."
+      }
+    },
     "security": {
       "mode": {
         "label": "Beveiligingsmodus",

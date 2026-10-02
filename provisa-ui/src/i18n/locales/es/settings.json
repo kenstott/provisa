@@ -128,6 +128,20 @@
         "help": "Cuántos procesos worker ejecuta el servidor. Requiere reinicio porque el lanzador inicia los procesos."
       }
     },
+    "replication": {
+      "builds_per_node": {
+        "label": "Compilaciones de réplicas por nodo",
+        "help": "El máximo de compilaciones de réplicas que un host ejecuta a la vez. Añada nodos para compilar más réplicas al mismo tiempo. El límite de lecturas en vivo de un origen también limita las compilaciones; con el Redis integrado ese límite se cuenta por proceso, no entre nodos."
+      },
+      "engine_jobs": {
+        "label": "Trabajos en segundo plano por motor",
+        "help": "El máximo de trabajos en segundo plano (compilaciones de réplicas) que se ejecutan a la vez en un motor, entre todos los nodos. Las solicitudes no se cuentan."
+      },
+      "retry_interval": {
+        "label": "Intervalo de reintento de compilación de réplicas",
+        "help": "Después de que falle la compilación de una réplica, una lectura no solicita otra compilación hasta que haya pasado este tiempo."
+      }
+    },
     "security": {
       "mode": {
         "label": "Modo de seguridad",
