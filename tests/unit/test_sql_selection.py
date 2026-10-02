@@ -15,7 +15,7 @@ from __future__ import annotations
 from graphql import FieldNode, parse
 
 from provisa.compiler.params import ParamCollector
-from provisa.compiler.sql_types import CompilationContext, JoinMeta, TableMeta
+from provisa.compiler.sql_types import CompilationContext, JoinMeta, StatementSources, TableMeta
 from provisa.compiler.sql_selection import (
     _build_gql_selection,
     _build_rel_json_expr,
@@ -43,6 +43,12 @@ def _table(table_id: int, table_name: str, field_name: str = "widgets") -> Table
         schema_name="public",
         table_name=table_name,
     )
+
+
+def _sources() -> StatementSources:
+    """The accumulator the compiler hands these helpers (``sql_gen`` seeds it with the root
+    table): the statement's source ids together with the registered tables it reads (REQ-826)."""
+    return StatementSources(_table(1, "widgets"))
 
 
 def _join(target: TableMeta, **overrides) -> JoinMeta:
@@ -171,7 +177,7 @@ def test_emit_agg_subqueries_scalar_no_extra_joins_no_limit():
     fn = _field("{ widgets { name } }")
     select_parts: list[str] = []
     columns: list = []
-    sources: set[str] = set()
+    sources = _sources()
     _emit_agg_subqueries(
         fn.selection_set.selections,
         ctx,
@@ -217,7 +223,7 @@ def test_emit_agg_subqueries_scalar_with_extra_joins_and_limit():
         1,
         select_parts,
         [],
-        set(),
+        _sources(),
     )
     assert "LIMIT 5" in select_parts[0]
     assert "JOIN other o" in select_parts[0]
@@ -244,7 +250,7 @@ def test_emit_agg_subqueries_scalar_with_limit_no_extra_joins():
         1,
         select_parts,
         [],
-        set(),
+        _sources(),
     )
     assert "LIMIT 5" in select_parts[0]
     assert "ARRAY_AGG" in select_parts[0]
@@ -261,7 +267,7 @@ def test_emit_agg_subqueries_recurses_into_sub_relationship():
     fn = _field("{ widgets { children { name } } }")
     select_parts: list[str] = []
     columns: list = []
-    sources: set[str] = set()
+    sources = _sources()
     counter = _emit_agg_subqueries(
         fn.selection_set.selections,
         ctx,
@@ -282,6 +288,8 @@ def test_emit_agg_subqueries_recurses_into_sub_relationship():
     )
     assert counter == 2
     assert "src" in sources
+    # REQ-826: the nested table is recorded beside the root one, for the statement's floor
+    assert sources.table_ids == {1, 2}
     assert len(select_parts) == 1
     assert columns[0].nested_in == "root.children"
 
@@ -317,7 +325,7 @@ def test_emit_agg_subqueries_recurses_with_source_constant_and_target_expr():
         1,
         select_parts,
         [],
-        set(),
+        _sources(),
     )
     assert "'pets'" in select_parts[0]
     assert "CONCAT(" in select_parts[0]
@@ -354,7 +362,7 @@ def test_emit_agg_subqueries_recurses_with_source_expr():
         1,
         select_parts,
         [],
-        set(),
+        _sources(),
     )
     assert '"t0"."custom"' in select_parts[0]
 
@@ -391,7 +399,7 @@ def test_emit_agg_subqueries_recurses_with_source_json_key_and_virtual_target():
         1,
         select_parts,
         [],
-        set(),
+        _sources(),
     )
     assert "AS JSON)>>'cid'" in select_parts[0]
     assert "VARCHAR 'children'" in select_parts[0]
@@ -420,7 +428,7 @@ def test_emit_agg_subqueries_skips_relationship_without_selection_set():
         1,
         select_parts,
         [],
-        set(),
+        _sources(),
     )
     assert select_parts == []
 
@@ -477,7 +485,7 @@ def test_build_rel_json_expr_many_to_one():
         None,
         False,
         1,
-        set(),
+        _sources(),
     )
     assert expr.startswith("(SELECT json_object(")
     assert "LIMIT 1" in expr
@@ -500,7 +508,7 @@ def test_build_rel_json_expr_one_to_many_no_limit():
         None,
         False,
         1,
-        set(),
+        _sources(),
     )
     assert expr.startswith("(SELECT json_agg(json_object(")
     assert "_sub" not in expr
@@ -522,7 +530,7 @@ def test_build_rel_json_expr_one_to_many_with_agg_limit():
         3,
         False,
         1,
-        set(),
+        _sources(),
     )
     assert "json_agg(_t)" in expr
     assert "LIMIT 3" in expr
@@ -542,7 +550,7 @@ def test_build_rel_json_kv_source_constant_and_json_key():
         "t0",
         False,
         1,
-        set(),
+        _sources(),
         None,
     )
     assert counter == 2
@@ -562,7 +570,7 @@ def test_build_rel_json_kv_source_json_key():
         "t0",
         False,
         1,
-        set(),
+        _sources(),
         None,
     )
     assert "AS JSON)>>'cid'" in kv[0]
@@ -586,7 +594,7 @@ def test_build_rel_json_kv_source_expr_with_parent_src_val():
         "t0",
         False,
         1,
-        set(),
+        _sources(),
         None,
         parent_src_val="'literal-parent-val'",
     )
@@ -606,7 +614,7 @@ def test_build_rel_json_kv_target_expr_and_virtual_column():
         "t0",
         False,
         1,
-        set(),
+        _sources(),
         None,
     )
     assert "CONCAT(" in kv[0]
@@ -623,7 +631,7 @@ def test_build_rel_json_kv_gql_json_blob_column():
         "t0",
         False,
         1,
-        set(),
+        _sources(),
         None,
     )
     assert "json_object(KEY 'a' VALUE" in kv[0]
@@ -640,7 +648,7 @@ def test_build_rel_json_kv_plain_scalar_column():
         "t0",
         False,
         1,
-        set(),
+        _sources(),
         None,
     )
     assert kv == ['KEY \'name\' VALUE "t0"."nm"']
@@ -671,7 +679,7 @@ def test_collect_nested_columns_plain_left_join():
         select_parts,
         columns,
         join_clauses,
-        set(),
+        _sources(),
         1,
         False,
         ParamCollector(),
@@ -704,7 +712,7 @@ def test_collect_nested_columns_lateral_via_default_limit():
         select_parts,
         columns,
         join_clauses,
-        set(),
+        _sources(),
         1,
         False,
         ParamCollector(),
@@ -735,7 +743,7 @@ def test_collect_nested_columns_agg_subquery_path():
         select_parts,
         columns,
         join_clauses,
-        set(),
+        _sources(),
         1,
         False,
         ParamCollector(),
@@ -770,7 +778,7 @@ def test_collect_nested_columns_source_constant_and_target_expr():
         [],
         [],
         join_clauses,
-        set(),
+        _sources(),
         1,
         False,
         ParamCollector(),
@@ -800,7 +808,7 @@ def test_collect_nested_columns_virtual_source_column():
         [],
         [],
         join_clauses,
-        set(),
+        _sources(),
         1,
         False,
         ParamCollector(),
@@ -825,7 +833,7 @@ def test_collect_nested_columns_scalar_with_alias():
         select_parts,
         columns,
         [],
-        set(),
+        _sources(),
         1,
         False,
         ParamCollector(),
@@ -850,7 +858,7 @@ def test_collect_nested_columns_scalar_no_alias():
         select_parts,
         columns,
         [],
-        set(),
+        _sources(),
         1,
         False,
         ParamCollector(),
@@ -877,7 +885,7 @@ def test_collect_nested_columns_virtual_column():
         select_parts,
         columns,
         [],
-        set(),
+        _sources(),
         1,
         False,
         ParamCollector(),
@@ -901,7 +909,7 @@ def test_collect_nested_columns_gql_json_blob_expansion():
         select_parts,
         columns,
         [],
-        set(),
+        _sources(),
         1,
         False,
         ParamCollector(),
@@ -939,7 +947,7 @@ def test_collect_nested_columns_graphql_remote_undeclared_object_hydration():
         select_parts,
         columns,
         [],
-        set(),
+        _sources(),
         1,
         False,
         ParamCollector(),
@@ -975,7 +983,7 @@ def test_collect_nested_columns_nested_join_recursion_child_lateral_bubbles_up()
         select_parts,
         columns,
         join_clauses,
-        set(),
+        _sources(),
         1,
         False,
         ParamCollector(),
