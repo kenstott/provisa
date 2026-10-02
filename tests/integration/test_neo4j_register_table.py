@@ -73,6 +73,12 @@ async def admin_client(monkeypatch):
         "PROVISA_CONFIG",
         os.path.join(os.path.dirname(__file__), "..", "fixtures", "sample_config.yaml"),
     )
+    # REPLACED, not merged. Any earlier module that built an app on the session's default config
+    # (test_action_governance, test_schema_query_api, ...) has already loaded the demo config into
+    # this org, and a merge then puts sample_config's `orders` beside r2-orders' `orders`: this
+    # app's own startup failed "Ambiguous table name 'orders'" whenever such a module ran first.
+    # The same pin test_compile_endpoint and test_cypher_router_api use for this config.
+    monkeypatch.setenv("PROVISA_CONFIG_REPLACE", "true")
     app = app_mod.create_app()
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
