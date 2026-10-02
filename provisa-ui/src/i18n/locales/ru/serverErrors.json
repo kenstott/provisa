@@ -152,6 +152,7 @@
     },
     "openapi": {
       "database_not_connected": "База данных не подключена",
+      "domain_required": "Источник OpenAPI {{source}} объявляет команды ({{commands}}) и не указывает домен: команда относится к домену, поэтому для регистрации он необходим",
       "invalid_json": "Недействительный JSON: {{error}}",
       "refresh_failed": "Сбой обновления: {{error}}",
       "registration_failed": "Сбой регистрации: {{error}}",

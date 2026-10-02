@@ -310,6 +310,18 @@ async def upsert_tracked_function(  # REQ-317
     log.debug("Upserted tracked function %s for operation %s", fn_name, mutation.operation_id)
 
 
+class CommandsNeedDomain(ValueError):
+    """An OpenAPI registration whose spec declares commands and names no domain to put them in."""
+
+    def __init__(self, source_id: str, commands: int) -> None:
+        self.source_id = source_id
+        self.commands = commands
+        super().__init__(
+            f"OpenAPI source {source_id!r} declares {commands} command(s) and names no domain: "
+            "a command sits in a domain, so the registration needs one"
+        )
+
+
 async def auto_register_openapi_source(  # REQ-314, REQ-316, REQ-317, REQ-321
     source_id: str,
     spec: dict,
@@ -330,8 +342,18 @@ async def auto_register_openapi_source(  # REQ-314, REQ-316, REQ-317, REQ-321
     from provisa.core.repositories import glossary as glossary_repo
     from provisa.core.repositories import table as table_repo
 
-    domains_before = await glossary_repo.term_domains(conn)
     queries, mutations = parse_spec(spec)
+    if mutations:
+        # REQ-1531: the spec's mutations become commands, and a command sits in a domain.
+        # Refused before anything is written, so a registration never lands its tables and then
+        # fails on its commands.
+        from provisa.core import domain_policy
+
+        try:
+            domain_policy.command_domain_id(domain_id, source_id)
+        except ValueError as refused:
+            raise CommandsNeedDomain(source_id, len(mutations)) from refused
+    domains_before = await glossary_repo.term_domains(conn)
     unchanged: list[dict] = []
     for q in queries:
         try:

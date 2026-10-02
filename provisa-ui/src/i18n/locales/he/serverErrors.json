@@ -152,6 +152,7 @@
     },
     "openapi": {
       "database_not_connected": "מסד הנתונים אינו מחובר",
+      "domain_required": "מקור ה-OpenAPI ‏{{source}} מצהיר על {{commands}} פקודות ואינו מציין דומיין: פקודה שייכת לדומיין, ולכן הרישום דורש דומיין",
       "invalid_json": "JSON לא תקין: {{error}}",
       "refresh_failed": "הרענון נכשל: {{error}}",
       "registration_failed": "הרישום נכשל: {{error}}",

@@ -152,6 +152,7 @@
     },
     "openapi": {
       "database_not_connected": "データベースが接続されていません",
+      "domain_required": "OpenAPI ソース {{source}} は {{commands}} 個のコマンドを宣言していますが、ドメインが指定されていません。コマンドはドメインに属するため、登録にはドメインが必要です",
       "invalid_json": "無効な JSON です：{{error}}",
       "refresh_failed": "更新に失敗しました：{{error}}",
       "registration_failed": "登録に失敗しました：{{error}}",

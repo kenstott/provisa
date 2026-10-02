@@ -218,3 +218,59 @@ def test_a_stored_command_with_no_domain_is_shown_to_no_role(access):
     shown = _fields(role, items)
     assert any("in_sales" in f or "inSales" in f for f in shown), shown
     assert not any("in_none" in f or "inNone" in f for f in shown), shown
+
+
+# --- an OpenAPI registration whose spec declares commands ----------------------------------------
+
+
+def _spec_with_a_mutation() -> dict:
+    ok = {
+        "200": {
+            "description": "ok",
+            "content": {"application/json": {"schema": {"type": "object"}}},
+        }
+    }
+    listing = {
+        "200": {
+            "description": "ok",
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "array",
+                        "items": {"type": "object", "properties": {"id": {"type": "integer"}}},
+                    }
+                }
+            },
+        }
+    }
+    return {
+        "openapi": "3.0.0",
+        "info": {"title": "t", "version": "1"},
+        "paths": {
+            "/pets": {
+                "get": {"operationId": "listPets", "responses": listing},
+                "post": {"operationId": "createPet", "responses": ok},
+            }
+        },
+    }
+
+
+async def test_a_registration_with_commands_and_no_domain_is_refused_before_anything_is_written(
+    plane,
+):
+    from provisa.core.schema_org import registered_tables
+    from provisa.openapi.register import CommandsNeedDomain, auto_register_openapi_source
+
+    async with plane.acquire() as conn:
+        with pytest.raises(CommandsNeedDomain) as err:
+            await auto_register_openapi_source("pg", _spec_with_a_mutation(), conn, "")
+        assert (err.value.source_id, err.value.commands) == ("pg", 1)
+        assert "declares 1 command(s) and names no domain" in str(err.value)
+        # Not half-registered: neither its table nor its command landed.
+        assert (await conn.execute_core(select(registered_tables.c.id))).fetchall() == []
+        assert await _domain_of(plane, tracked_functions, "create_pet") is None
+
+        tables, commands, _ = await auto_register_openapi_source(
+            "pg", _spec_with_a_mutation(), conn, "sales", base_url="http://x"
+        )
+    assert (tables, commands) == (1, 1)

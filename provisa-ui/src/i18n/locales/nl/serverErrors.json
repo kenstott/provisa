@@ -152,6 +152,7 @@
     },
     "openapi": {
       "database_not_connected": "Database niet verbonden",
+      "domain_required": "OpenAPI-bron {{source}} declareert {{commands}} opdracht(en) en noemt geen domein: een opdracht hoort bij een domein, dus de registratie heeft er een nodig",
       "invalid_json": "Ongeldige JSON: {{error}}",
       "refresh_failed": "Vernieuwen mislukt: {{error}}",
       "registration_failed": "Registratie mislukt: {{error}}",

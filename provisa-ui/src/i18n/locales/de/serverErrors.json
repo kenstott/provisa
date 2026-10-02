@@ -152,6 +152,7 @@
     },
     "openapi": {
       "database_not_connected": "Datenbank nicht verbunden",
+      "domain_required": "Die OpenAPI-Quelle {{source}} deklariert {{commands}} Befehl(e) und nennt keine Domäne: Ein Befehl gehört zu einer Domäne, daher benötigt die Registrierung eine",
       "invalid_json": "Ungültiges JSON: {{error}}",
       "refresh_failed": "Aktualisierung fehlgeschlagen: {{error}}",
       "registration_failed": "Registrierung fehlgeschlagen: {{error}}",

@@ -152,6 +152,7 @@
     },
     "openapi": {
       "database_not_connected": "Base de datos no conectada",
+      "domain_required": "El origen OpenAPI {{source}} declara {{commands}} comando(s) y no indica ningún dominio: un comando pertenece a un dominio, por lo que el registro necesita uno",
       "invalid_json": "JSON no válido: {{error}}",
       "refresh_failed": "Error al actualizar: {{error}}",
       "registration_failed": "Error en el registro: {{error}}",

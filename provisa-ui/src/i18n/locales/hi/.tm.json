@@ -2895,6 +2895,7 @@
   "hi/serverErrors.json::serverErrors.invites.user_management_required": "user_management required",
   "hi/serverErrors.json::serverErrors.neo4j.source_not_found": "Neo4j source '{{source_id}}' not found",
   "hi/serverErrors.json::serverErrors.openapi.database_not_connected": "Database not connected",
+  "hi/serverErrors.json::serverErrors.openapi.domain_required": "OpenAPI source {{source}} declares {{commands}} command(s) and names no domain: a command sits in a domain, so the registration needs one",
   "hi/serverErrors.json::serverErrors.openapi.invalid_json": "Invalid JSON: {{error}}",
   "hi/serverErrors.json::serverErrors.openapi.refresh_failed": "Refresh failed: {{error}}",
   "hi/serverErrors.json::serverErrors.openapi.registration_failed": "Registration failed: {{error}}",

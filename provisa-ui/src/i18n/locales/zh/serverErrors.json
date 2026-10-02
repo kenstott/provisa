@@ -152,6 +152,7 @@
     },
     "openapi": {
       "database_not_connected": "数据库未连接",
+      "domain_required": "OpenAPI 数据源 {{source}} 声明了 {{commands}} 个命令但未指定域：命令必须属于某个域，因此注册时需要指定域",
       "invalid_json": "无效的 JSON：{{error}}",
       "refresh_failed": "刷新失败：{{error}}",
       "registration_failed": "注册失败：{{error}}",
