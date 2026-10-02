@@ -89,11 +89,13 @@ async def test_the_system_roles_and_nothing_else_are_seeded(tenant_db):
     }
 
 
-async def test_only_platform_admin_carries_the_bypass_capabilities(tenant_db):
+async def test_no_seeded_role_carries_the_bypass_capabilities(tenant_db):
+    """platform_admin is the control plane: it holds the two platform rights and nothing that
+    reaches data, and no seeded role holds ``admin`` or ``superadmin`` (REQ-1297, REQ-1337)."""
     seeded = await _system_roles(tenant_db)
 
-    assert {"admin", "superadmin"} <= set(seeded["platform_admin"])
-    for role_id in ("org_admin", "developer", "analyst", "modeler", "sandbox"):
+    assert set(seeded["platform_admin"]) == {"platform_settings", "cross_org"}
+    for role_id in ("platform_admin", "org_admin", "developer", "analyst", "modeler", "sandbox"):
         assert not ({"admin", "superadmin"} & set(seeded[role_id])), role_id
 
 

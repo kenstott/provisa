@@ -46,6 +46,7 @@ async def db() -> Database:  # noqa: F811 — replaces the SQLite plane the scen
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA}_mv_cache CASCADE")
     schema_sql = Path(__file__).resolve().parents[2] / "provisa" / "core" / "schema.sql"
     await init_schema(plane, schema_sql.read_text(encoding="utf-8"), org_id=_ORG_ID)
+    await seed_the_view_source(plane)  # noqa: F405 — from the scenarios module
     try:
         yield plane
     finally:

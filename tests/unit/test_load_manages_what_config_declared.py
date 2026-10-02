@@ -65,7 +65,19 @@ def no_vault(monkeypatch):
 async def db() -> Database:
     plane = Database(create_engine_from_url("sqlite+pysqlite:///:memory:"), name="origin-test")
     await _init_schema_portable(plane)
+    await seed_the_view_source(plane)
     return plane
+
+
+async def seed_the_view_source(plane: Database) -> None:
+    """The built-in source views are registered on, which the startup seed creates before any
+    config is loaded."""
+    async with plane.acquire() as conn:
+        await conn.execute_core(
+            insert(metadata.tables["sources"]).values(
+                id="__derived__", type="postgresql", origin="seed"
+            )
+        )
 
 
 # --- the file -------------------------------------------------------------------------------------
