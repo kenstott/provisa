@@ -70134,3 +70134,38 @@
   - REQ-1915
   - REQ-1531
   since: 2026-10
+- id: REQ-1919
+  status: proposed
+  group: 11. Platform, Infrastructure & Delivery
+  category: Model Store
+  priority: MUST
+  type: structural
+  target: 2026-Q4
+  description: The model store. The model -- sources, tables and columns, relationships, roles and
+    their assignments, row filters and masks, metrics, views, commands and webhooks, data products,
+    domains, tags, glossary terms and the other objects held in the control plane -- is created, read,
+    changed and deleted in one place, the model store, and nowhere else. The model store is the control
+    plane's create, read, update and delete for every kind of object, and it carries four things with
+    every change. Dependency guards -- a deletion or a change of domain is refused while something
+    depends on the object, under the rule of REQ-1918 and REQ-1917. Versioning -- each object carries
+    its own version, and an update made against a stale or missing version is refused (REQ-1914). Syncing
+    -- every change advances the stamp that tells every process to reload, in the same transaction
+    as the change (REQ-1914). One transaction -- a change that touches several rows is applied whole
+    or not at all, so no other process ever reloads a half-made change. A change is also recorded in
+    the audit trail. The admin API, the configuration loader, the startup seed and every other caller
+    change the model only by calling the model store; no other code writes a model table, and a test
+    fails the build when one does. The model store behaves the same on every control plane and relies
+    on no database cascade. It is built from the existing repository layer made complete, kind by
+    kind -- deletion and domain change first, then creation and update -- and the test that forbids
+    writes from elsewhere grows with each kind converted. The term is model store; it replaces maintenance
+    module and repository layer in documents and, at the terminology pass, in code.
+  use_case: About half of the statements that change the model were written directly in the admin
+    API, the configuration loader and the seed code, each with its own idea of what a change must
+    do. Deleting an object behaved differently on each control plane, changes written in several steps
+    could be seen half-made by another process, and nothing checked what depended on what. One store
+    for the model gives every change the same guards, versions, sync and audit.
+  related_reqs:
+  - REQ-1914
+  - REQ-1917
+  - REQ-1918
+  since: 2026-10
