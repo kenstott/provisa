@@ -416,6 +416,17 @@ DECLARED: list[Setting] = [
         guard="confirm",
     ),
     Setting(
+        key="server.flight_compression",
+        card="network",
+        type="enum",
+        effect="live",  # read when a Flight stream is created (provisa/api/flight/compression.py)
+        req="REQ-1913",
+        env="PROVISA_FLIGHT_COMPRESSION",
+        config_path=("server", "flight_compression"),
+        default="none",  # off: batches are sent as they are
+        choices=("none", "lz4", "zstd"),
+    ),
+    Setting(
         key="server.pgwire_port",
         card="network",
         type="int",

@@ -183,6 +183,10 @@
         "label": "Arrow Flight port",
         "help": "The port the Arrow Flight server listens on. Restart required; guarded because clients and firewalls must follow a change."
       },
+      "flight_compression": {
+        "label": "Arrow Flight compression",
+        "help": "How the record batches Arrow Flight sends are compressed: none, lz4 or zstd. Clients need no setting; applies to streams opened after the change."
+      },
       "pgwire_port": {
         "label": "PostgreSQL wire port",
         "help": "The port the PostgreSQL-protocol server listens on; 0 leaves it off. Restart required; guarded because it opens or closes a listener."

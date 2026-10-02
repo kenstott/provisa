@@ -63,6 +63,7 @@ from typing import TYPE_CHECKING, Any
 import pyarrow as pa
 import pyarrow.flight as flight
 
+from provisa.api.flight.compression import generator_stream
 from provisa.api.airport import pushdown, wire
 from provisa.api.airport.query import (
     governed_mutation,
@@ -792,7 +793,7 @@ class ProvisaAirportServer(
         # REQ-1882: pyarrow pulls the batches after do_get returns (a DIRECT scan's cursor fetches
         # on this RPC's loop), so the stream holds the loop until it ends.
         out_gen = hold_loop_for_stream(self._reshape_batches(batch_gen, base, pk))
-        return flight.GeneratorStream(advertised, out_gen)  # pyright: ignore[reportPrivateImportUsage]
+        return generator_stream(advertised, out_gen)  # pyright: ignore[reportPrivateImportUsage]
 
     def _reshape_batches(self, batch_gen: Any, base: pa.Schema, pk: list[str]) -> Any:
         """Yield each streamed RecordBatch padded to ``base`` (+ per-batch rowid when PK) — the

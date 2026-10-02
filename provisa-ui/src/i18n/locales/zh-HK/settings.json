@@ -183,6 +183,10 @@
         "label": "Arrow Flight 連接埠",
         "help": "Arrow Flight 伺服器偵聽的連接埠。需要重新啟動；儲存前會要求確認，因為用戶端和防火牆必須配合變更。"
       },
+      "flight_compression": {
+        "label": "Arrow Flight 壓縮",
+        "help": "Arrow Flight 傳送的記錄批次的壓縮方式：none、lz4 或 zstd。用戶端無需設定；對變更後開啟的串流生效。"
+      },
       "pgwire_port": {
         "label": "PostgreSQL wire 連接埠",
         "help": "PostgreSQL 協定伺服器偵聽的連接埠；0 表示關閉。需要重新啟動；儲存前會要求確認，因為這會開啟或關閉偵聽器。"

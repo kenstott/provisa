@@ -31,6 +31,7 @@ import jwt
 import pyarrow as pa
 import pyarrow.flight as flight
 
+from provisa.api.flight.compression import generator_stream, record_batch_stream
 from provisa.api.flight.catalog import (
     CatalogTable,
     build_catalog_tables,
@@ -702,13 +703,13 @@ class ProvisaFlightServer(
                 if t.domain_id == domain and t.table_name == table_name:
                     _catalog = self._build_columns_table(t)
                     _report_table(_catalog)
-                    return flight.RecordBatchStream(_catalog)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                    return record_batch_stream(_catalog)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             raise _flight_error(f"Table not found: {domain}.{table_name}")
 
         # Return all tables as rows
         _catalog = self._build_catalog_table(tables, domain)
         _report_table(_catalog)
-        return flight.RecordBatchStream(_catalog)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return record_batch_stream(_catalog)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     @staticmethod
     def _build_catalog_table(
@@ -1009,7 +1010,7 @@ class ProvisaFlightServer(
             empty = {col: pa.array([], type=pa.utf8()) for col in columns}
             _catalog = pa.table(empty)
             _report_table(_catalog)
-            return flight.RecordBatchStream(_catalog)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            return record_batch_stream(_catalog)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         col_names = list(serialized[0].keys())
         col_data: dict[str, list[object]] = {c: [] for c in col_names}
@@ -1019,7 +1020,7 @@ class ProvisaFlightServer(
                 col_data[col].append(json.dumps(val) if isinstance(val, (dict, list)) else val)
         _catalog = pa.table(col_data)
         _report_table(_catalog)
-        return flight.RecordBatchStream(_catalog)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return record_batch_stream(_catalog)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     def _execute_query(
         self, request: dict[str, object]
@@ -1043,7 +1044,7 @@ class ProvisaFlightServer(
         except Exception:
             text = None
         if not text:
-            return flight.RecordBatchStream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            return record_batch_stream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         meta = pa.py_buffer(text.replace("\n", " ").encode("utf-8"))
 
         def _gen():
@@ -1055,7 +1056,7 @@ class ProvisaFlightServer(
                 else:
                     yield batch
 
-        return flight.GeneratorStream(table.schema, _gen())  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return generator_stream(table.schema, _gen())  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     def _license_stream_gen(self, schema, batch_gen, role_id: str):  # REQ-1137, REQ-1214
         """Return a Flight GeneratorStream over a LAZY record-batch generator, attaching the license
@@ -1082,7 +1083,7 @@ class ProvisaFlightServer(
                 else:
                     yield batch
 
-        return flight.GeneratorStream(schema, _gen())  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return generator_stream(schema, _gen())  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     def _do_get_sql_governed(
         self, request: dict[str, object]
@@ -1333,7 +1334,7 @@ class ProvisaFlightServer(
                 table = rows_to_arrow_table(result.rows, compiled.columns)
                 plan.row_count = len(result.rows)
                 self._finalize_audit(plan, 200)
-                return flight.RecordBatchStream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                return record_batch_stream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
             assert plan.physical_sql is not None
             # REQ-1661/REQ-1887/REQ-1897: see _engine_arrow_through_cache.
@@ -1341,13 +1342,13 @@ class ProvisaFlightServer(
                 plan, compiled.params
             )
             if cached_table is not None:
-                return flight.RecordBatchStream(cached_table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                return record_batch_stream(cached_table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             self._finalize_audit(plan, 200, defer_to_drain=True)
             batch_gen = _audited_arrow(plan, batch_gen)
             # REQ-1905: pulled after do_get returns; the stream stays under its deadline.
             from provisa.api.flight.deadline import stream_within_deadline
 
-            return flight.GeneratorStream(arrow_schema, stream_within_deadline(batch_gen))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            return generator_stream(arrow_schema, stream_within_deadline(batch_gen))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         except Exception:
             self._finalize_audit(plan, 500)
             raise

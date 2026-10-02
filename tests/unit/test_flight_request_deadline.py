@@ -201,6 +201,8 @@ def test_every_lazy_stream_do_get_returns_is_under_the_deadline():
     from provisa.api.flight import server
 
     src = inspect.getsource(server)
-    assert src.count("flight.GeneratorStream(") == 3  # the third streams a materialized table
+    # Every stream is built through provisa.api.flight.compression (the operator's codec).
+    assert "flight.GeneratorStream(" not in src
+    assert src.count("generator_stream(") == 3  # the third streams a materialized table
     assert "_metered_batches(stream_within_deadline(batch_gen))" in src
-    assert "flight.GeneratorStream(arrow_schema, stream_within_deadline(batch_gen))" in src
+    assert "generator_stream(arrow_schema, stream_within_deadline(batch_gen))" in src

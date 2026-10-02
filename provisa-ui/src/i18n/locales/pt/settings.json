@@ -183,6 +183,10 @@
         "label": "Porta Arrow Flight",
         "help": "A porta em que o servidor Arrow Flight escuta. Requer reinicialização; pede confirmação antes de salvar porque clientes e firewalls precisam acompanhar a mudança."
       },
+      "flight_compression": {
+        "label": "Compressão do Arrow Flight",
+        "help": "Como são comprimidos os lotes de registros que o Arrow Flight envia: none, lz4 ou zstd. Os clientes não precisam de nenhuma configuração; aplica-se aos streams abertos após a alteração."
+      },
       "pgwire_port": {
         "label": "Porta do protocolo PostgreSQL",
         "help": "A porta em que o servidor do protocolo PostgreSQL escuta; 0 o mantém desativado. Requer reinicialização; pede confirmação antes de salvar porque abre ou fecha um listener."

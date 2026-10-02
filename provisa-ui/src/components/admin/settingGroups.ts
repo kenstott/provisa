@@ -10,12 +10,13 @@
 import type { CatalogSetting } from "../../api/admin";
 
 /**
- * REQ-1913: the transport a network or TLS setting belongs to, from its key: `server.<t>_port` and
- * `tls.<t>_cert` / `tls.<t>_key` belong to transport `<t>`; anything else (the hostname, the HTTP
- * certificate pair) is general.
+ * REQ-1913: the transport a network or TLS setting belongs to, from its key: `server.<t>_port`,
+ * `server.<t>_compression` and `tls.<t>_cert` / `tls.<t>_key` belong to transport `<t>`; anything
+ * else (the hostname, the HTTP certificate pair) is general.
  */
 export function networkTransport(s: CatalogSetting): string {
-  const m = /^server\.(\w+)_port$/.exec(s.key) ?? /^tls\.(\w+)_(?:cert|key)$/.exec(s.key);
+  const m =
+    /^server\.(\w+)_(?:port|compression)$/.exec(s.key) ?? /^tls\.(\w+)_(?:cert|key)$/.exec(s.key);
   return m ? m[1] : "general";
 }
 

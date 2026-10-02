@@ -183,6 +183,10 @@
         "label": "Puerto de Arrow Flight",
         "help": "El puerto en el que escucha el servidor Arrow Flight. Requiere reinicio; requiere confirmación al guardar porque los clientes y los firewalls deben seguir el cambio."
       },
+      "flight_compression": {
+        "label": "Compresión de Arrow Flight",
+        "help": "Cómo se comprimen los lotes de registros que envía Arrow Flight: none, lz4 o zstd. Los clientes no necesitan ningún ajuste; se aplica a los flujos abiertos después del cambio."
+      },
       "pgwire_port": {
         "label": "Puerto de PostgreSQL wire",
         "help": "El puerto en el que escucha el servidor del protocolo PostgreSQL; 0 lo deja desactivado. Requiere reinicio; requiere confirmación al guardar porque abre o cierra un listener."

@@ -183,6 +183,10 @@
         "label": "Arrow Flightポート",
         "help": "Arrow Flightサーバーがリッスンするポート。再起動が必要です。変更するとクライアントとファイアウォールも合わせる必要があるため、保存前に確認が求められます。"
       },
+      "flight_compression": {
+        "label": "Arrow Flight圧縮",
+        "help": "Arrow Flightが送信するレコードバッチの圧縮方式：none、lz4、zstd。クライアント側の設定は不要です。変更後に開かれたストリームに適用されます。"
+      },
       "pgwire_port": {
         "label": "PostgreSQL wireポート",
         "help": "PostgreSQLプロトコルのサーバーがリッスンするポート。0で無効にします。再起動が必要です。リスナーが開閉するため、保存前に確認が求められます。"

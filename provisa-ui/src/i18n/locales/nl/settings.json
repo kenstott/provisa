@@ -183,6 +183,10 @@
         "label": "Arrow Flight-poort",
         "help": "De poort waarop de Arrow Flight-server luistert. Opnieuw opstarten vereist; met bevestiging omdat clients en firewalls een wijziging moeten volgen."
       },
+      "flight_compression": {
+        "label": "Arrow Flight-compressie",
+        "help": "Hoe de recordbatches die Arrow Flight verstuurt worden gecomprimeerd: none, lz4 of zstd. Clients hebben geen instelling nodig; geldt voor streams die na de wijziging worden geopend."
+      },
       "pgwire_port": {
         "label": "PostgreSQL wire-poort",
         "help": "De poort waarop de server voor het PostgreSQL-protocol luistert; 0 laat hem uit. Opnieuw opstarten vereist; met bevestiging omdat een listener wordt geopend of gesloten."

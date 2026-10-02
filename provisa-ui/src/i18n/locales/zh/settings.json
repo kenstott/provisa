@@ -183,6 +183,10 @@
         "label": "Arrow Flight 端口",
         "help": "Arrow Flight 服务器监听的端口。需要重启；因客户端和防火墙必须随之调整，保存前需确认。"
       },
+      "flight_compression": {
+        "label": "Arrow Flight 压缩",
+        "help": "Arrow Flight 发送的记录批次的压缩方式：none、lz4 或 zstd。客户端无需设置；对更改后打开的流生效。"
+      },
       "pgwire_port": {
         "label": "PostgreSQL wire 端口",
         "help": "PostgreSQL 协议服务器监听的端口；0 表示不启用。需要重启；因会打开或关闭监听器，保存前需确认。"

@@ -631,6 +631,7 @@ describe("network settings grouped by transport", () => {
     expect(networkTransport(network[4])).toBe("grpc");
     expect(networkTransport(mk({ key: "server.airport_port" }))).toBe("airport");
     expect(networkTransport(mk({ key: "tls.pgwire_key" }))).toBe("pgwire");
+    expect(networkTransport(mk({ key: "server.flight_compression" }))).toBe("flight");
   });
 
   it("puts each transport in its own expandable panel, collapsed at first", () => {

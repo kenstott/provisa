@@ -183,6 +183,10 @@
         "label": "Arrow-Flight-Port",
         "help": "Der Port, auf dem der Arrow-Flight-Server lauscht. Neustart erforderlich; bestätigungspflichtig, da Clients und Firewalls einer Änderung folgen müssen."
       },
+      "flight_compression": {
+        "label": "Arrow-Flight-Komprimierung",
+        "help": "Wie die Record Batches komprimiert werden, die Arrow Flight sendet: none, lz4 oder zstd. Clients brauchen keine Einstellung; gilt für Streams, die nach der Änderung geöffnet werden."
+      },
       "pgwire_port": {
         "label": "PostgreSQL-Wire-Port",
         "help": "Der Port, auf dem der Server für das PostgreSQL-Protokoll lauscht; 0 lässt ihn aus. Neustart erforderlich; bestätigungspflichtig, da ein Listener geöffnet oder geschlossen wird."
