@@ -3101,12 +3101,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def purge_cache(self, info: StrawberryInfo) -> MutationResult:
-        """Purge all cached query results."""
+        """Purge the cached query results of the org and environment the caller is acting in."""
         require_capability(info, "org_settings")
         from provisa.api.app import state
+        from provisa.cache import tenancy
 
         try:
-            count = await state.response_cache_store.invalidate_by_pattern("provisa:cache:*")
+            # REQ-595: an org administrator's purge reaches that org's entries, never another's.
+            count = await tenancy.purge_acting_place(state)
             return MutationResult(
                 success=True,
                 message=f"Purged {count} cache entries",

@@ -53,6 +53,21 @@ def cache_tenant(state: Any) -> str:
     return f"{cache_place(state)}:m{state.model_stamp}"
 
 
+async def purge_acting_place(state: Any) -> int:
+    """Remove every response-cache entry of the org and environment the request is acting in,
+    under every model that runtime has held; returns how many. Another org's entries, and
+    another environment's, are not touched: there is no deployment-wide purge."""
+    return await state.response_cache_store.purge_place(cache_place(state))
+
+
+def acting_scope() -> str:
+    """:func:`cache_tenant` for the process's own state: for a caller that keeps a cache and
+    was not handed the state (a source adapter, the API cache's table naming)."""
+    from provisa.api.app import state
+
+    return cache_tenant(state)
+
+
 async def invalidate_tables(state: Any, table_ids: Iterable[int]) -> int:
     """Drop every response-cache entry indexed under ``table_ids`` for the acting org; returns how
     many were dropped. A store failure raises (``RedisCacheStore.invalidate_by_table``): a write

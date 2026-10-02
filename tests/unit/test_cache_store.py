@@ -167,12 +167,18 @@ class TestRedisCacheStoreTableEntryCounts:
         return RedisCacheStore(redis_url="redis://localhost:6379/0")
 
     @pytest.mark.asyncio
-    async def test_counts_aggregate_across_tenants_by_table_id(self):
+    async def test_counts_are_one_places_summed_over_its_models_by_table_id(self):
+        """REQ-595: the index is read for one org's one environment — the scan pattern names
+        it — and its counts are summed over the models that place has held."""
         store = self._make_store()
 
         async def fake_scan_iter(match):
-            assert match == "provisa:table:*"
-            for k in (b"provisa:table:1", b"provisa:table:acme:1", b"provisa:table:2"):
+            assert match == "provisa:table:acme:m*"
+            for k in (
+                b"provisa:table:acme:m7:1",
+                b"provisa:table:acme:m8:1",
+                b"provisa:table:acme:m8:2",
+            ):
                 yield k
 
         mock_pipe = MagicMock()
@@ -182,7 +188,7 @@ class TestRedisCacheStoreTableEntryCounts:
         mock_redis.pipeline = MagicMock(return_value=mock_pipe)
         store._redis = mock_redis
 
-        counts = await store.table_entry_counts()
+        counts = await store.table_entry_counts("acme")
         assert counts == {1: 5, 2: 5}
 
     @pytest.mark.asyncio
@@ -190,7 +196,7 @@ class TestRedisCacheStoreTableEntryCounts:
         store = self._make_store()
 
         async def fake_scan_iter(match):
-            assert match == "provisa:table:*"
+            assert match == "provisa:table:acme:m*"
             for _ in range(0):  # pragma: no branch — empty async generator
                 yield
 
@@ -198,11 +204,11 @@ class TestRedisCacheStoreTableEntryCounts:
         mock_redis.scan_iter = fake_scan_iter
         store._redis = mock_redis
 
-        assert await store.table_entry_counts() == {}
+        assert await store.table_entry_counts("acme") == {}
 
     @pytest.mark.asyncio
     async def test_noop_store_returns_empty(self):
-        assert await NoopCacheStore().table_entry_counts() == {}
+        assert await NoopCacheStore().table_entry_counts("acme") == {}
 
 
 class TestRedisCacheStoreTlsEnforcement:
