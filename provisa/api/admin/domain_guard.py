@@ -74,6 +74,40 @@ async def require_table_domain(info: "StrawberryInfo", conn: "Connection", table
     require_domain(info, await table_domain(conn, table_id))
 
 
+async def relationship_domains(conn: "Connection", rel_id: str) -> set[str] | None:
+    """The domains of the tables a relationship takes part in — its two ends, and the table it
+    goes through when it has one — or ``None`` when there is no such relationship. A
+    relationship belongs to each of them: removing it changes what each table's readers can
+    traverse, so an act on it is an act in every one of those domains (REQ-1531)."""
+    from provisa.core.repositories import relationship as rel_repo
+
+    row = await rel_repo.get(conn, rel_id)
+    if row is None:
+        return None
+    table_ids = [row["source_table_id"], row["target_table_id"], row["via_table_id"]]
+    return {await table_domain(conn, table_id) for table_id in table_ids if table_id is not None}
+
+
+async def metric_domains(conn: "Connection", name: str) -> set[str] | None:
+    """The domains of the tables a metric's expression reads, or ``None`` when there is no such
+    metric. A metric has no domain of its own — its expression names semantic tables
+    (``SUM(orders.amount)``) and it is an object of each domain those tables sit in (REQ-1531).
+    A name the model does not register contributes none, as in :func:`view_read_domains`."""
+    from provisa.compiler.metric_expand import metric_reference_tables
+    from provisa.core.repositories import metric as metric_repo
+    from provisa.core.repositories import table as table_repo
+
+    row = await metric_repo.get(conn, name)
+    if row is None:
+        return None
+    domains: set[str] = set()
+    for table_name in metric_reference_tables(name, row["expression"]):
+        table = await table_repo.find_by_table_name(conn, table_name)
+        if table is not None:
+            domains.add(table["domain_id"])
+    return domains
+
+
 def require_domains(info: "StrawberryInfo", domain_ids: Iterable[str]) -> None:
     """Gate an act that touches several domains: every one of them must be the caller's.
 

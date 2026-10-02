@@ -137,6 +137,16 @@ def resolve_domain_id(requested: str | None) -> str:  # REQ-367, REQ-418, REQ-43
     return policy.default_domain
 
 
+def command_domain_id(requested: str | None, name: str) -> str:  # REQ-1531
+    """The domain a command or webhook is saved into. Every one sits in a domain: an empty
+    domain is refused, by every path that saves one. In single-domain mode the one domain is
+    used, as for a table."""
+    resolved = resolve_domain_id(requested)
+    if not resolved:
+        raise ValueError(f"{name!r} names no domain: a command or webhook sits in a domain")
+    return resolved
+
+
 def import_default() -> str:  # REQ-471
     """Domain id for dynamic importers (hasura/fk introspection) that carry no domain info.
 

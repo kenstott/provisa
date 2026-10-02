@@ -236,7 +236,6 @@ def _rows_on_fresh_connections(boot, n: int) -> list[int]:
                 "Content-Type": "application/json",
                 "Connection": "close",
                 "x-provisa-role": "analyst",
-                "X-Role": "analyst",
             },
         )
         with urllib.request.urlopen(req, timeout=30) as resp:

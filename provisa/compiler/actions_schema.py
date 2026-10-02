@@ -123,8 +123,10 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
     extra_mutation: dict[str, GraphQLField] = {}
 
     role_id = si.role["id"]
+    from provisa.security.rights import reaches_all_domains
+
     accessible = set(si.role["domain_access"])
-    all_access = "*" in accessible
+    all_access = reaches_all_domains(si.role["domain_access"])
 
     def _gql_scalar(type_str: str):
         return _ACTION_SCALAR_MAP.get(type_str, GraphQLString)
@@ -162,7 +164,10 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
             if visible_to and role_id not in visible_to:
                 continue
             domain_id = item.get("domain_id", "")
-            if not all_access and domain_id and domain_id not in accessible:
+            # REQ-1531: a command sits in a domain, and a role is shown the commands of the
+            # domains it reaches. One that names no domain — saving it is refused; a stored row
+            # can still carry none — is in no domain any role reaches, so no role is shown it.
+            if not domain_id or (not all_access and domain_id not in accessible):
                 continue
 
             gql_return, args = resolve_return_and_args(item)

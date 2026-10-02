@@ -3,6 +3,7 @@
     "_requestFailed": "{{op}}に失敗しました（{{status}}）",
     "actions": {
       "database_not_connected": "データベースが接続されていません",
+      "domain_required": "{{name}} にドメインが指定されていません。コマンドまたは Webhook はドメインに属します",
       "function_not_found": "関数「{{name}}」が見つかりません",
       "source_not_connected": "ソース「{{source}}」が接続されていません",
       "test_endpoint_disabled": "テストエンドポイントは無効です（非本番環境で有効にするには PROVISA_ENABLE_TEST_ENDPOINTS を設定してください）。",
@@ -151,6 +152,7 @@
     },
     "openapi": {
       "database_not_connected": "データベースが接続されていません",
+      "domain_required": "OpenAPI ソース {{source}} は {{commands}} 個のコマンドを宣言していますが、ドメインが指定されていません。コマンドはドメインに属するため、登録にはドメインが必要です",
       "invalid_json": "無効な JSON です：{{error}}",
       "refresh_failed": "更新に失敗しました：{{error}}",
       "registration_failed": "登録に失敗しました：{{error}}",
@@ -195,6 +197,7 @@
     "roles": {
       "cannot_delete_system": "システムロールは削除できません",
       "cannot_modify_administrative": "管理ロールは変更できません",
+      "has_dependents": "ロール {{role}} はまだ {{count}} 個のオブジェクトから参照されています。先にそれらの参照を削除してください",
       "not_found": "ロールが見つかりません",
       "org_selection_required": "組織の選択が必要です"
     },

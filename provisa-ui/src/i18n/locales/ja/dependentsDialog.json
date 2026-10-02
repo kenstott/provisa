@@ -1,0 +1,26 @@
+{
+  "dependentsDialog": {
+    "title": "{{name}} はまだ削除できません",
+    "intro": "これらのオブジェクトがまだ参照しています。それぞれを削除または変更してから、もう一度削除してください。",
+    "open": "ページを開く",
+    "close": "閉じる",
+    "kind": {
+      "table": "テーブルとビュー",
+      "column": "列の権限",
+      "tag_assignment": "タグの割り当て",
+      "relationship": "リレーションシップ",
+      "role": "ロール",
+      "role_assignment": "ロールの割り当て",
+      "row_filter": "行フィルター",
+      "metric": "メトリクス",
+      "materialized_view": "マテリアライズドビュー",
+      "command": "コマンド",
+      "webhook": "Webhook",
+      "data_product": "データプロダクト",
+      "source": "ソース",
+      "remote_registration": "リモート登録",
+      "domain": "ドメイン",
+      "glossary_term": "用語集の用語"
+    }
+  }
+}

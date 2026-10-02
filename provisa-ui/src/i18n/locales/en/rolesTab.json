@@ -7,6 +7,7 @@
     "colActions": "Actions",
     "empty": "No roles found.",
     "detailsHidden": "Details require user management.",
+    "noDomains": "no domains — reaches no data",
     "deleteRole": "Delete role {{roleId}}",
     "deleted": "Deleted \"{{roleId}}\"",
     "pageInfo": "Page {{current}} / {{total}}",

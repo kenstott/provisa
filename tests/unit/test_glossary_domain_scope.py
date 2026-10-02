@@ -28,34 +28,17 @@ from provisa.core.models import Column, Table
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import (
-    glossary_term_domains,
-    glossary_term_edges,
-    glossary_term_experts,
-    glossary_term_refs,
-    glossary_terms,
     registered_tables,
-    roles,
-    table_columns,
 )
-
-
-_TABLES = [
-    registered_tables,
-    table_columns,
-    roles,
-    glossary_terms,
-    glossary_term_refs,
-    glossary_term_edges,
-    glossary_term_experts,
-    glossary_term_domains,
-]
 
 
 @asynccontextmanager
 async def _conn(tmp_path):
     engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'gd.db'}")
     with engine.begin() as c:
-        registered_tables.metadata.create_all(c, tables=_TABLES)
+        # The whole org schema: deleting a table asks the dependency guard, which reads every
+        # table that can refer to one.
+        registered_tables.metadata.create_all(c)
     try:
         async with Database(engine, name="gd").acquire() as conn:
             yield conn

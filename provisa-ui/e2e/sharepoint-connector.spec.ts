@@ -6,6 +6,7 @@
 // found in the LICENSE file in the root directory of this source tree.
 
 import { test, expect, UI_URL, TRINO_BACKEND_URL } from "./coverage";
+import { deleteSourceAndItsTables } from "./delete-source";
 
 const SOURCE_ID = "e2e-sharepoint";
 // Trino backend: register_source() creates a real Trino catalog so the schema dropdown populates.
@@ -41,9 +42,7 @@ async function gql(query: string, variables: Record<string, unknown> = {}) {
 }
 
 async function cleanupSource() {
-  await gql(`mutation D($id: String!) { deleteSource(id: $id) { success } }`, {
-    id: SOURCE_ID,
-  });
+  await deleteSourceAndItsTables(gql, SOURCE_ID);
 }
 
 async function getDomainId(): Promise<string> {

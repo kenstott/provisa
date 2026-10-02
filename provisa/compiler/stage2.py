@@ -81,7 +81,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     masking_rules,
     ctx: CompilationContext,
     tables: list[dict],
-    role: dict | None = None,
+    role: dict,
     relationships: list[dict] | None = None,
     source_types: dict[str, str] | None = None,
     engine=None,
@@ -96,8 +96,9 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         tables: Raw table dicts from state, each with
                 {id, source_id, columns: [{column_name, visible_to: [role_ids], data_type}],
                  max_rows: int | None}.
-        role: The requesting role's config dict (carries ``max_rows``, REQ-005).
-              When None, no role-level ceiling is applied.
+        role: The requesting role's own dict — REQUIRED. Its capabilities, domain scope and
+              ``max_rows`` (REQ-005) are what governance decides from; there is no default role,
+              because a missing one would have to be read as either nothing or everything.
         relationships: The user-defined relationship registry dicts (int source/target table ids),
               used for REQ-1132 row-level meta scoping. When None, meta rows are confined to the
               role's directly-accessible tables with NO 1-hop neighbour expansion (fail-closed).
@@ -108,6 +109,11 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         engine: The bound FederationEngine, used to read each masked table's connector
               ``Capability`` (REQ-897) via ``connector_pushdown``.
     """
+    if role is None:
+        raise ValueError(
+            f"build_governance_context needs the acting role's dict for {role_id!r}: governance "
+            "is decided from the role, and a missing role is an error, never a default"
+        )
     gov = GovernanceContext()
 
     # RLS rules
@@ -115,7 +121,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
 
     # Row cap (REQ-005): role-level ceiling. Explicit role `max_rows` wins; otherwise a
     # role without the FULL_RESULTS capability (or an unknown role) gets the default cap.
-    gov.limit_ceiling = resolve_row_cap(role, role.get("max_rows") if role else None)
+    gov.limit_ceiling = resolve_row_cap(role, role.get("max_rows"))
 
     # Masking rules — flatten to (table_id, col_name) → (rule, dtype)
     for (table_id, r_id), col_map in masking_rules.items():
@@ -136,7 +142,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         has_capability,
     )
 
-    _has_view_gov = bool(role) and has_capability(role, Capability.VIEW_GOVERNANCE)
+    _has_view_gov = has_capability(role, Capability.VIEW_GOVERNANCE)
     # table_id → domain_id, so meta (catalog) tables can be governed by the tiered rule (REQ-1132)
     # rather than their static seed (meta columns are seeded visible_to: [] = nobody).
     _domain_by_tid: dict[int | None, str | None] = {

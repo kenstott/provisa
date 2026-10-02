@@ -36,6 +36,7 @@ from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.compiler.stage2 import build_governance_context, apply_governance
 from provisa.security.masking import MaskingRule, MaskType
+from tests.helpers import unscoped_role
 
 # asyncio_mode = "auto" in pyproject.toml picks up async tests automatically.
 
@@ -143,28 +144,36 @@ class TestBuildGovernanceContextTables:
         """tables=[] → visible_columns empty → no per-column restrictions."""
         ctx = _ctx()
         rls = RLSContext.empty()
-        gov_ctx = build_governance_context("analyst", rls, {}, ctx, tables=[])
+        gov_ctx = build_governance_context(
+            "analyst", rls, {}, ctx, tables=[], role=unscoped_role("analyst")
+        )
         assert gov_ctx.visible_columns == {}
 
     def test_empty_tables_produces_empty_all_columns(self):
         """tables=[] → all_columns empty → SELECT * cannot be expanded to visible cols."""
         ctx = _ctx()
         rls = RLSContext.empty()
-        gov_ctx = build_governance_context("analyst", rls, {}, ctx, tables=[])
+        gov_ctx = build_governance_context(
+            "analyst", rls, {}, ctx, tables=[], role=unscoped_role("analyst")
+        )
         assert gov_ctx.all_columns == {}
 
     def test_populated_tables_restricts_analyst_visible_columns(self):
         """With real tables: analyst can see id, region — NOT amount."""
         ctx = _ctx()
         rls = RLSContext.empty()
-        gov_ctx = build_governance_context("analyst", rls, {}, ctx, tables=[_ORDERS_TABLE_DICT])
+        gov_ctx = build_governance_context(
+            "analyst", rls, {}, ctx, tables=[_ORDERS_TABLE_DICT], role=unscoped_role("analyst")
+        )
         assert gov_ctx.visible_columns[TABLE_ID] == frozenset({"id", "region"})
 
     def test_populated_tables_all_columns_populated(self):
         """With real tables: all_columns contains all three columns."""
         ctx = _ctx()
         rls = RLSContext.empty()
-        gov_ctx = build_governance_context("analyst", rls, {}, ctx, tables=[_ORDERS_TABLE_DICT])
+        gov_ctx = build_governance_context(
+            "analyst", rls, {}, ctx, tables=[_ORDERS_TABLE_DICT], role=unscoped_role("analyst")
+        )
         col_names = [c for c, _ in gov_ctx.all_columns[TABLE_ID]]
         assert col_names == ["id", "region", "amount"]
 
@@ -183,7 +192,9 @@ class TestColumnGovernanceWithPopulatedTables:
         """analyst cannot SELECT amount (visible_to=[admin] only)."""
         ctx = _ctx()
         rls = RLSContext.empty()
-        gov_ctx = build_governance_context("analyst", rls, {}, ctx, tables=[_ORDERS_TABLE_DICT])
+        gov_ctx = build_governance_context(
+            "analyst", rls, {}, ctx, tables=[_ORDERS_TABLE_DICT], role=unscoped_role("analyst")
+        )
         governed = apply_governance("SELECT amount FROM orders", gov_ctx)
         assert "amount" not in governed
 
@@ -191,7 +202,9 @@ class TestColumnGovernanceWithPopulatedTables:
         """SELECT * expands to id, region — amount (admin-only) is dropped."""
         ctx = _ctx()
         rls = RLSContext.empty()
-        gov_ctx = build_governance_context("analyst", rls, {}, ctx, tables=[_ORDERS_TABLE_DICT])
+        gov_ctx = build_governance_context(
+            "analyst", rls, {}, ctx, tables=[_ORDERS_TABLE_DICT], role=unscoped_role("analyst")
+        )
         governed = apply_governance("SELECT * FROM orders", gov_ctx)
         assert "SELECT *" not in governed  # wildcard expanded
         assert "id" in governed
@@ -203,7 +216,12 @@ class TestColumnGovernanceWithPopulatedTables:
         ctx = _ctx()
         rls = RLSContext.empty()
         gov_ctx = build_governance_context(
-            "analyst", rls, _MASKING_RULES, ctx, tables=[_ORDERS_TABLE_DICT]
+            "analyst",
+            rls,
+            _MASKING_RULES,
+            ctx,
+            tables=[_ORDERS_TABLE_DICT],
+            role=unscoped_role("analyst"),
         )
         governed = apply_governance("SELECT * FROM orders", gov_ctx)
         assert "'***'" in governed  # mask value in governed SQL
@@ -213,7 +231,9 @@ class TestColumnGovernanceWithPopulatedTables:
         """admin role has visible_to access to all columns."""
         ctx = _ctx()
         rls = RLSContext.empty()
-        gov_ctx = build_governance_context("admin", rls, {}, ctx, tables=[_ORDERS_TABLE_DICT])
+        gov_ctx = build_governance_context(
+            "admin", rls, {}, ctx, tables=[_ORDERS_TABLE_DICT], role=unscoped_role("admin")
+        )
         governed = apply_governance("SELECT * FROM orders", gov_ctx)
         assert "SELECT *" not in governed  # wildcard still expanded
         assert "id" in governed

@@ -80,8 +80,14 @@ class CacheStore(ABC):  # REQ-544
     async def close(self) -> None:
         """Close the store connection."""
 
-    async def table_entry_counts(self) -> dict[int, int]:
-        """Cached-entry count per table_id, aggregated across tenants.
+    async def purge_place(self, place: str) -> int:
+        """Remove every entry kept for ``place`` — one org's one environment
+        (``cache.tenancy.cache_place``) — under every model it has held. Returns the count."""
+        return await self.invalidate_by_pattern(f"{place}:m*")
+
+    async def table_entry_counts(self, place: str) -> dict[int, int]:  # pyright: ignore[reportUnusedParameter]
+        """Cached-entry count per table_id for ``place`` — one org's one environment
+        (``cache.tenancy.cache_place``) — summed over the models it has held.
 
         Returns ``{}`` for stores with no per-table index (e.g. the noop store).
         """
@@ -234,6 +240,19 @@ class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
             log.warning("Redis invalidate_by_pattern failed", exc_info=True)
             return 0
 
+    async def purge_place(self, place: str) -> int:  # REQ-595
+        """Remove every entry of one org's one environment, under every model it has held, and
+        its per-table index. A Redis failure RAISES: the caller asked for the entries to be
+        gone, and reporting "0 removed" would say they were."""
+        await self._connect()
+        assert self._redis is not None
+        scoped = f"{place}:m*"
+        entries = [k async for k in self._redis.scan_iter(match=self.PREFIX + scoped)]
+        index = [k async for k in self._redis.scan_iter(match=self.TABLE_PREFIX + scoped)]
+        if entries or index:
+            await self._redis.delete(*entries, *index)
+        return sum(1 for k in entries if not k.endswith(b":meta"))
+
     async def invalidate_by_table(
         self, table_id: int, tenant_id: str | None = None
     ) -> int:  # REQ-173, REQ-231
@@ -255,12 +274,14 @@ class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
         await pipe.execute()
         return len(cache_keys)
 
-    async def table_entry_counts(self) -> dict[int, int]:  # REQ-231
+    async def table_entry_counts(self, place: str) -> dict[int, int]:  # REQ-231, REQ-595
         try:
             await self._connect()
             assert self._redis is not None
             index_keys: list[bytes] = []
-            async for k in self._redis.scan_iter(match=self.TABLE_PREFIX + "*"):
+            # Only this org's and environment's index: another org's counts are not this
+            # caller's to see.
+            async for k in self._redis.scan_iter(match=f"{self.TABLE_PREFIX}{place}:m*"):
                 index_keys.append(k)
             if not index_keys:
                 return {}

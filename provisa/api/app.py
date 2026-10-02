@@ -666,6 +666,12 @@ class AppState:
         self._active_runtime().schema_build_cache = value
 
     @property
+    def model_stamp(self) -> int | None:
+        """The control plane's model stamp the acting runtime's copy was loaded at (REQ-1914).
+        Read-only here: the schema build is the one writer, on the runtime it built."""
+        return self._active_runtime().model_stamp
+
+    @property
     def settings_overrides(self) -> dict:
         """The active org's ``org_settings`` rows (REQ-1349). Empty when it has overridden nothing.
 

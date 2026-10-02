@@ -56,9 +56,9 @@ vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
 
 // The lineage role picker lists EVERY role in the org, not only the ones the user holds (REQ-1628).
 const fetchOrgRoles = vi.fn(async (_orgId: string) => [
-  { id: "analyst", capabilities: [], demonstrated: [], domain_access: [] },
-  { id: "auditor", capabilities: [], demonstrated: [], domain_access: [] },
-  { id: "vet", capabilities: [], demonstrated: [], domain_access: [] },
+  { id: "analyst", capabilities: [], demonstrated: [], domain_access: ["*"] },
+  { id: "auditor", capabilities: [], demonstrated: [], domain_access: ["*"] },
+  { id: "vet", capabilities: [], demonstrated: [], domain_access: ["*"] },
 ]);
 // The org id is forwarded, not swallowed: which org's roles are fetched is part of what this
 // suite asserts, and a zero-arg wrapper would make that assertion unfalsifiable.

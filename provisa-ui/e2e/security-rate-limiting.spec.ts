@@ -13,7 +13,7 @@ test("REQ-369: rate limit exceeded returns 429 with Retry-After header", async (
 }) => {
   const headers = {
     "Content-Type": "application/json",
-    "X-Role": "DEV",
+    "X-Provisa-Role": "org_admin",
   };
 
   // First request should succeed.

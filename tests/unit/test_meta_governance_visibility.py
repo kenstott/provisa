@@ -61,7 +61,7 @@ class TestREQ1134GovernanceColumnVisibility:
 
     def test_role_without_view_governance_sees_core_only(self):
         # REQ-1134 — meta grant, no view_governance: CORE visible, GOVERNANCE hidden.
-        gov = _build({"id": "analyst", "capabilities": []})
+        gov = _build({"id": "analyst", "capabilities": [], "domain_access": ["*"]})
         visible = gov.visible_columns[1]
         assert visible is not None
         assert _CORE_COL in visible
@@ -69,7 +69,7 @@ class TestREQ1134GovernanceColumnVisibility:
 
     def test_role_with_view_governance_sees_governance_columns(self):
         # REQ-1134 — view_governance granted independently: GOVERNANCE columns now visible.
-        gov = _build({"id": "steward", "capabilities": ["view_governance"]})
+        gov = _build({"id": "steward", "capabilities": ["view_governance"], "domain_access": ["*"]})
         visible = gov.visible_columns[1]
         assert visible is not None
         assert _CORE_COL in visible
@@ -79,7 +79,7 @@ class TestREQ1134GovernanceColumnVisibility:
         # REQ-1134/REQ-1327 — the retired wildcard strings and the platform rights are the
         # default tier here: CORE visible, GOVERNANCE hidden, exactly as for a role holding nothing.
         for held in (["admin"], ["superadmin"], ["platform_settings", "cross_org"]):
-            gov = _build({"id": "admin", "capabilities": held})
+            gov = _build({"id": "admin", "capabilities": held, "domain_access": ["*"]})
             visible = gov.visible_columns[1]
             assert visible is not None, held
             assert _CORE_COL in visible
@@ -100,7 +100,7 @@ class TestREQ1132ColumnTiering:
 
     def test_default_tier_sees_core_meta_columns(self):
         # REQ-1132 — CORE (structural) columns are always discoverable by the default tier.
-        gov = _build({"id": "analyst", "capabilities": []})
+        gov = _build({"id": "analyst", "capabilities": [], "domain_access": ["*"]})
         visible = gov.visible_columns[1]
         assert visible is not None
         assert _CORE_COL in visible

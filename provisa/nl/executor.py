@@ -74,7 +74,11 @@ async def _execute_cypher(query: str, role: str, app_state: Any) -> dict:
 
     ctx = _get_ctx(app_state, role)
     ast = parse_cypher(query)
-    label_map = CypherLabelMap.from_schema(ctx)
+    from provisa.security.rights import require_role
+
+    label_map = CypherLabelMap.from_schema(
+        ctx, domain_access=require_role(app_state.roles, role)["domain_access"]
+    )
     param_names = collect_param_names(query)
     bind_params(param_names, {})
     sql_ast, _, graph_vars = cypher_to_sql(ast, label_map, {})
@@ -120,6 +124,8 @@ async def _compile_and_execute_graphql(query: str, role: str, app_state: Any) ->
     # execute_engine guards its own connection — no direct engine-connection check.
     engine = app_state.federation_engine
 
+    from provisa.security.rights import require_role
+
     ctx = _get_ctx(app_state, role)
     rls = getattr(app_state, "rls_contexts", {}).get(role, RLSContext.empty())
     gov_ctx = build_governance_context(
@@ -128,7 +134,7 @@ async def _compile_and_execute_graphql(query: str, role: str, app_state: Any) ->
         getattr(app_state, "masking_rules", {}),
         ctx,
         getattr(app_state, "tables", []),
-        role=getattr(app_state, "roles", {}).get(role),
+        role=require_role(app_state.roles, role),
     )
 
     document = parse_query(schema, query, {})

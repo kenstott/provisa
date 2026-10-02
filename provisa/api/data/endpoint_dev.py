@@ -58,12 +58,16 @@ def _resolve_role_id(raw_request: Request, x_provisa_role: str | None, body: Bas
 
 
 @router.get("/proto/{role_id}")
-async def proto_endpoint(role_id: str, domains: str = ""):  # REQ-525
+async def proto_endpoint(role_id: str, request: Request, domains: str = ""):  # REQ-525
     """Return the .proto file content for a role as text/plain.
 
-    Pass ?domains=a,b to restrict to specific domains.
+    Pass ?domains=a,b to restrict to specific domains. The role in the path is one the caller
+    holds (``acting_role.held_role``).
     """
+    from provisa.api.acting_role import held_role
     from provisa.api.app import state
+
+    role_id = held_role(request, role_id)
     from provisa.grpc.proto_gen import generate_proto
 
     domain_list = [d for d in domains.split(",") if d and d != "all"]
@@ -72,6 +76,10 @@ async def proto_endpoint(role_id: str, domains: str = ""):  # REQ-525
         role = state.roles.get(role_id)
         if role is None:
             raise ApiError(404, "data.no_role", f"No role {role_id!r}", role_id=role_id)
+        from provisa.api.data.sdl import require_reached_domains
+
+        # A requested domain narrows the role's proto; it never adds a domain the role lacks.
+        require_reached_domains(role_id, role, domain_list)
         if not state.schema_build_cache:
             raise ApiError(503, "data.schema_cache_not_ready", "Schema build cache not ready")
         from provisa.api.data.sdl import _reachable_table_ids
@@ -87,12 +95,6 @@ async def proto_endpoint(role_id: str, domains: str = ""):  # REQ-525
             seed_ids |= {t["id"] for t in tables if t["domain_id"] == domain_id}
         reachable |= seed_ids
         filtered_tables = [t for t in tables if t["id"] in reachable]
-        existing = role.get("domain_access") or []
-        if "*" not in existing:
-            role = {
-                **role,
-                "domain_access": list(set(existing) | set(domain_list)),
-            }
         si = SchemaInput(
             tables=filtered_tables,
             root_table_ids=seed_ids,
@@ -466,7 +468,9 @@ def _check_qualifier_binding(tree) -> str | None:
     return None
 
 
-def _collect_nl_user_tables(ctx) -> tuple[list, dict, dict, "CypherLabelMap"]:
+def _collect_nl_user_tables(
+    ctx, domain_access: list[str]
+) -> tuple[list, dict, dict, "CypherLabelMap"]:
     """Return (all_tables, user_nodes, table_name_to_type) from a schema context."""
     from provisa.compiler.sql_gen import TableMeta as _TableMeta
     from provisa.cypher.label_map import CypherLabelMap as _CLM
@@ -482,7 +486,7 @@ def _collect_nl_user_tables(ctx) -> tuple[list, dict, dict, "CypherLabelMap"]:
             seen_type_names.add(jm.target.type_name)
             all_tables.append(jm.target)
 
-    _lm = _CLM.from_schema(ctx)
+    _lm = _CLM.from_schema(ctx, domain_access=domain_access)
     if domain_policy.single_domain():
         # Single-domain mode: nodes carry no domain label — include all non-traversal nodes.
         _user_nodes = {tn: nm for tn, nm in _lm.nodes.items() if not nm.traversal_only}
@@ -805,7 +809,7 @@ async def _run_sql_generation_loop(
             continue
 
         normalized = rewrite_semantic_to_physical(last_sql, ctx)
-        violations = validate_sql(normalized, ctx, gov_ctx, role_obj or {}, raw_tables)
+        violations = validate_sql(normalized, ctx, gov_ctx, role_obj, raw_tables)
         if violations:
             last_error = "; ".join(f"[{v.code}] {v.message}" for v in violations)
             continue
@@ -862,7 +866,9 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
 
     ctx = state.contexts[role_id]
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
-    role_obj = state.roles.get(role_id)
+    from provisa.security.rights import require_role
+
+    role_obj = require_role(state.roles, role_id)
     gov_ctx = build_governance_context(
         role_id,
         rls,
@@ -874,7 +880,9 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
     )
     raw_tables = getattr(state, "tables", [])
 
-    all_tables, _user_nodes, _table_name_to_type, _lm = _collect_nl_user_tables(ctx)
+    all_tables, _user_nodes, _table_name_to_type, _lm = _collect_nl_user_tables(
+        ctx, role_obj["domain_access"]
+    )
 
     def _sql_domain(domain_id: str | None) -> str:
         return domain_to_sql_name(domain_id) if domain_id else "default"

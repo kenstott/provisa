@@ -3,6 +3,7 @@
     "_requestFailed": "{{op}} non riuscita ({{status}})",
     "actions": {
       "database_not_connected": "Database non connesso",
+      "domain_required": "{{name}} non indica alcun dominio: un comando o un webhook appartiene a un dominio",
       "function_not_found": "Funzione '{{name}}' non trovata",
       "source_not_connected": "Origine '{{source}}' non connessa",
       "test_endpoint_disabled": "L'endpoint di test è disabilitato (impostare PROVISA_ENABLE_TEST_ENDPOINTS per abilitarlo in ambienti non di produzione).",
@@ -151,6 +152,7 @@
     },
     "openapi": {
       "database_not_connected": "Database non connesso",
+      "domain_required": "L’origine OpenAPI {{source}} dichiara {{commands}} comando/i e non indica alcun dominio: un comando appartiene a un dominio, quindi la registrazione ne richiede uno",
       "invalid_json": "JSON non valido: {{error}}",
       "refresh_failed": "Aggiornamento non riuscito: {{error}}",
       "registration_failed": "Registrazione non riuscita: {{error}}",
@@ -195,6 +197,7 @@
     "roles": {
       "cannot_delete_system": "Impossibile eliminare i ruoli di sistema",
       "cannot_modify_administrative": "Impossibile modificare i ruoli amministrativi",
+      "has_dependents": "Il ruolo {{role}} è ancora referenziato da {{count}} oggetto/i; rimuovere prima tali riferimenti",
       "not_found": "Ruolo non trovato",
       "org_selection_required": "Selezione dell'organizzazione richiesta"
     },

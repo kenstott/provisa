@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete as sa_delete, func, select
 
+from provisa.core.repositories.integrity import Dependent, ObjectRef, guard
 from provisa.core.schema_org import calendars, registered_tables
 
 if TYPE_CHECKING:
@@ -91,9 +92,32 @@ async def usage_count(conn: "Connection", name: str) -> int:
     return int(result.fetchone()[0])
 
 
-async def delete(conn: "Connection", name: str) -> int:
-    """Delete EVERY version of calendar ``name`` and return the row count removed (REQ-962). The
-    caller MUST verify :func:`usage_count` is zero first — this does not check (the mutation enforces
-    the no-usage guard, and this stays a pure delete)."""
-    result = await conn.execute_core(sa_delete(calendars).where(calendars.c.name == name))
+class CalendarDeleteRefused(Exception):
+    """A calendar that may not be deleted because views take their snapshot schedule from it;
+    ``dependents`` lists them."""
+
+    def __init__(self, name: str, dependents: list[Dependent]) -> None:
+        self.name = name
+        self.dependents = dependents
+        super().__init__(
+            f"calendar {name!r} is in use by {len(dependents)} materialized view(s) — "
+            "clear their snapshot schedule before deleting"
+        )
+
+
+async def delete(conn: "Connection", name: str) -> int:  # REQ-962, REQ-1918
+    """Delete EVERY version of calendar ``name``: THE delete, for every surface. Returns the
+    row count removed, 0 when there is no such calendar.
+
+    A calendar in use MUST NOT be removed — its snapshots would lose their boundary source — so
+    this is refused (:class:`CalendarDeleteRefused`), naming each, while a view or a
+    materialized view takes its snapshot schedule from it. One transaction."""
+    async with conn.transaction():
+        found = await conn.execute_core(select(calendars.c.name).where(calendars.c.name == name))
+        if found.fetchone() is None:
+            return 0
+        blocking = await guard(conn, ObjectRef("calendar", name))
+        if blocking:
+            raise CalendarDeleteRefused(name, blocking)
+        result = await conn.execute_core(sa_delete(calendars).where(calendars.c.name == name))
     return int(result.rowcount or 0)

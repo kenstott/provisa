@@ -21,7 +21,7 @@ import os
 
 import pytest
 
-from provisa.cache.hot_tables import HOT_PREFIX, HotTableManager
+from provisa.cache.hot_tables import HotTableEntry, HotTableManager
 from provisa.encryption import NullEncryption
 from provisa.encryption.envelope import EnvelopeEncryption
 from provisa.encryption.providers import LocalKeychain
@@ -37,7 +37,7 @@ def _mgr(encryption=None):
 
 async def _raw(mgr, table):
     await mgr._connect()
-    return await mgr._redis.get(HOT_PREFIX + table + ":blob")
+    return await mgr._redis.get(mgr._blob_key(table, "cat", "sch"))
 
 
 async def test_payload_stored_encrypted_and_roundtrips():
@@ -55,8 +55,11 @@ async def test_wrong_key_cannot_read():
     # A second manager on the shared fakeredis server with a different key.
     mgr2 = _mgr(EnvelopeEncryption(LocalKeychain(os.urandom(32))))
     await mgr2._connect()
-    # Drop the in-memory copy so the read must go through Redis + decrypt.
-    mgr2._hot_tables.clear()
+    # The table is hot for this process too, with no rows held in it, so the read must go
+    # through Redis + decrypt.
+    mgr2._hot_tables["t"] = HotTableEntry(
+        table_name="t", catalog="cat", schema="sch", pk_column="id"
+    )
     with pytest.raises(Exception):
         await mgr2.get_rows("t")
 

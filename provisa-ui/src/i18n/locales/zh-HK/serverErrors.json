@@ -3,6 +3,7 @@
     "_requestFailed": "{{op}} 失敗（{{status}}）",
     "actions": {
       "database_not_connected": "數據庫未連線",
+      "domain_required": "{{name}} 未指定網域：指令或 Webhook 必須屬於某個網域",
       "function_not_found": "找不到函數「{{name}}」",
       "source_not_connected": "數據來源「{{source}}」未連線",
       "test_endpoint_disabled": "測試端點已停用（在非生產環境設定 PROVISA_ENABLE_TEST_ENDPOINTS 以啟用）。",
@@ -151,6 +152,7 @@
     },
     "openapi": {
       "database_not_connected": "數據庫未連線",
+      "domain_required": "OpenAPI 資料來源 {{source}} 宣告了 {{commands}} 個指令但未指定網域：指令必須屬於某個網域，因此註冊時需要指定網域",
       "invalid_json": "JSON 無效：{{error}}",
       "refresh_failed": "重新整理失敗：{{error}}",
       "registration_failed": "註冊失敗：{{error}}",
@@ -195,6 +197,7 @@
     "roles": {
       "cannot_delete_system": "無法刪除系統角色",
       "cannot_modify_administrative": "無法修改管理角色",
+      "has_dependents": "仍有 {{count}} 個物件引用角色 {{role}}；請先移除這些引用",
       "not_found": "找不到角色",
       "org_selection_required": "需要選取組織"
     },

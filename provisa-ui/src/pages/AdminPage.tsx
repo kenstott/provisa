@@ -66,6 +66,7 @@ import { SettingsCatalogPanel } from "../components/admin/SettingField";
 import { DomainModeCard, NamingConventionsCard } from "../components/admin/settingsCards";
 import { PageLoading } from "../components/PageLoading";
 import { usePanelState } from "../hooks/usePanelState";
+import { useDependentsDialog } from "../hooks/useDependentsDialog";
 
 const ROUTE_TO_SECTION: Record<string, string> = {
   // Both routes open the merged dashboard; /admin/system-health keeps working as a deep link.
@@ -113,6 +114,8 @@ const SECURITY_SUBTAB: Record<string, "posture" | "encryption" | "authentication
 
 /** Admin overview page — dashboard, config management, platform settings. */
 export function AdminPage() {
+  // REQ-1918: a delete is refused while anything depends on the object; this lists them.
+  const refusal = useDependentsDialog();
   const { t } = useTranslation();
   const [domainPanel, setDomainPanel] = usePanelState("domain-settings");
   const [mcpPanel, setMcpPanel] = usePanelState("mcp-server");
@@ -210,9 +213,10 @@ export function AdminPage() {
   };
 
   const handleDeleteDomain = async (id: string) => {
-    await deleteDomain(id);
+    const result = await deleteDomain(id);
+    if (refusal.refused(result, id)) return;
     await refetchDomains();
-    setDomainMsg(t("adminPage.domainDeleted", { id }));
+    setDomainMsg(result.success ? t("adminPage.domainDeleted", { id }) : result.message);
   };
 
   if (loading) return <PageLoading message={t("adminPage.loading")} />;
@@ -451,6 +455,7 @@ export function AdminPage() {
         {activeTab === "Reports" && <ReportsTab />}
         {activeTab === "Glossary" && <GlossaryTab />}
       </Stack>
+      {refusal.dialog}
     </div>
   );
 }

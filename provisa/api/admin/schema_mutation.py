@@ -88,6 +88,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     _rebuild_relationship_input,
     _rebuild_source_input,
     _rebuild_table_input,
+    _resolve_admin_context,
     _register_source_on_engine,
     _remove_view_mv,
     _stage_kaggle_if_needed,
@@ -642,16 +643,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         pool = await _get_pool()
         async with pool.acquire() as conn:
             _conn = cast("Connection", conn)
-            used_by = await calendar_repo.usage_count(_conn, name)
-            if used_by > 0:
+            try:
+                removed = await calendar_repo.delete(_conn, name)
+            except calendar_repo.CalendarDeleteRefused as refused:
                 return MutationResult(
                     success=False,
-                    message=f"calendar {name!r} is in use by {used_by} materialized view(s) — "
-                    "clear their snapshot schedule before deleting",
+                    message=str(refused),
                     code="schema.calendar_in_use",
-                    params={"calendar": name, "count": used_by},
+                    params={
+                        "calendar": name,
+                        "count": len(refused.dependents),
+                        "dependents": [d.as_dict() for d in refused.dependents],
+                    },
                 )
-            removed = await calendar_repo.delete(_conn, name)
         if removed == 0:
             return MutationResult(
                 success=False,
@@ -762,6 +766,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             cdc=_cdc_model_from_input(input),
         )
 
+        # REQ-1531: a source with no allowed list is open to every domain, so opening it to a
+        # domain — or to all of them — needs the caller to reach that domain.
+        from provisa.api.admin.capabilities import require_reach_of_added_domains
+        from provisa.core.repositories import source as _source_repo
+
+        async with pool.acquire() as _held_conn:
+            _held = await _source_repo.get(cast("Connection", _held_conn), input.id)
+        _was = None if _held is None else _held["allowed_domains"] or []
+        # The list the source will hold: the one given, or — when none is given — the one it
+        # already holds (``_upsert_source_with_domains`` writes only a list that names a domain).
+        _named = [d for d in (input.allowed_domains or []) if d.strip()]
+        require_reach_of_added_domains(info, _was, _named or _was or [], empty_is_all=True)
         await _upsert_source_with_domains(pool, model, input)
 
         if input.type == "govdata" and input.username:
@@ -1029,6 +1045,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 off_peak_tz=input.off_peak_tz,  # REQ-1141
                 cdc=_cdc_model_from_input(input),
             )
+            if input.allowed_domains is not None:
+                from provisa.api.admin.capabilities import require_reach_of_added_domains
+
+                require_reach_of_added_domains(  # REQ-1531: see create_source
+                    info,
+                    existing["allowed_domains"] or [],
+                    input.allowed_domains,
+                    empty_is_all=True,
+                )
             await source_repo.upsert(_conn, model)
             if input.allowed_domains is not None:
                 await conn.execute_core(
@@ -1175,7 +1200,23 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             # REQ-1695: read the reference before the row goes, so the vault entry it names can be
             # removed with it. A source whose credential outlived it is a credential nothing owns.
             _existing = await source_repo.get(_conn, id)
-            deleted = await source_repo.delete(_conn, id)
+            try:
+                deleted = await source_repo.delete(_conn, id)
+            except source_repo.SourceDeleteRefused as refused:
+                # REQ-1918: nothing is removed; every dependent is named.
+                return MutationResult(
+                    success=False,
+                    message=str(refused),
+                    code=(
+                        "schema.source_has_dependents"
+                        if refused.reason == "dependents"
+                        else "schema.source_is_system"
+                    ),
+                    params={
+                        "source": id,
+                        "dependents": [d.as_dict() for d in refused.dependents],
+                    },
+                )
         if deleted:
             assert _existing is not None  # delete reported a row, so get found one
             await forget_source_password(id, _existing["password_ref"])
@@ -1264,8 +1305,27 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            deleted = await domain_repo.delete(cast("Connection", conn), id)
+            try:
+                deleted = await domain_repo.delete(cast("Connection", conn), id)
+            except domain_repo.DomainDeleteRefused as refused:
+                # REQ-1917: a domain is deleted only when nothing refers to it; every
+                # dependent is named and nothing is removed.
+                return MutationResult(
+                    success=False,
+                    message=str(refused),
+                    code=(
+                        "schema.domain_has_dependents"
+                        if refused.reason == "dependents"
+                        else "schema.domain_is_system"
+                    ),
+                    params={
+                        "domain": id,
+                        "dependents": [d.as_dict() for d in refused.dependents],
+                    },
+                )
         if deleted:
+            # The domain's catalog entry and alias must not outlive it in the built schemas.
+            await _rebuild_schemas()
             return MutationResult(
                 success=True,
                 message=f"Domain {id!r} deleted",
@@ -1336,7 +1396,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            deleted = await data_product_repo.delete(cast("Connection", conn), id)
+            try:
+                deleted = await data_product_repo.delete(cast("Connection", conn), id)
+            except data_product_repo.DataProductDeleteRefused as refused:
+                # REQ-1918: a data product is blocked by its members; each is named.
+                return MutationResult(
+                    success=False,
+                    message=str(refused),
+                    code="schema.data_product_has_dependents",
+                    params={
+                        "data_product": id,
+                        "dependents": [d.as_dict() for d in refused.dependents],
+                    },
+                )
         if deleted:
             return MutationResult(
                 success=True,
@@ -1784,11 +1856,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # and a platform right (the role's own or its parent chain's) defined by a caller who is
         # not a platform administrator.
         from provisa.api.admin._platform_guard import role_definition_problem
-        from provisa.security.inheritance import effective_capabilities
+        from provisa.security.inheritance import effective_capabilities, effective_domain_access
 
         inherited = effective_capabilities(parent_id, existing) if parent_id is not None else []
+        inherited_domains = (
+            effective_domain_access(parent_id, existing) if parent_id is not None else []
+        )
         definition_problem = role_definition_problem(
-            info.context["request"], input.capabilities, inherited
+            info.context["request"],
+            input.capabilities,
+            inherited,
+            role_id=input.id,
+            domain_access=input.domain_access,
+            inherited_domain_access=inherited_domains,
         )
         if definition_problem is not None:
             return MutationResult(
@@ -1797,6 +1877,16 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 code=definition_problem.code,
                 params={"role": input.id, **definition_problem.params},
             )
+        # REQ-1531: a role hands out reach; whoever defines it must hold every domain the
+        # definition adds to what the role reaches — listed or inherited.
+        from provisa.api.admin.capabilities import require_reach_of_added_domains
+
+        held = next((r for r in existing if r["id"] == input.id), None)
+        require_reach_of_added_domains(
+            info,
+            None if held is None else effective_domain_access(input.id, existing),
+            [*input.domain_access, *inherited_domains],
+        )
         model = RoleModel(
             id=input.id,
             capabilities=input.capabilities,
@@ -1805,7 +1895,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             parent_role_id=parent_id,
         )
         async with pool.acquire() as conn:
-            await role_repo.upsert(cast("Connection", conn), model)
+            await role_repo.upsert(
+                cast("Connection", conn), model, org_id=_resolve_admin_context(info)
+            )
         # A new role has no state.schemas[role_id]/state.contexts[role_id] until some rebuild
         # runs; without this, the role is unusable until an unrelated mutation happens to trigger
         # one, and any prepared-plan cache keyed on schema_version would never see this role exist.
@@ -1945,9 +2037,27 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.core.repositories import metric as metric_repo
 
         require_capability(info, "table_registration")
+        from provisa.api.admin.domain_guard import metric_domains, require_domains
+
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            deleted = await metric_repo.delete(cast("Connection", conn), name)
+            # REQ-1531: a metric is an object of every domain its expression reads from.
+            domains = await metric_domains(cast("Connection", conn), name)
+            if domains is not None:
+                require_domains(info, domains)
+            try:
+                deleted = await metric_repo.delete(cast("Connection", conn), name)
+            except metric_repo.MetricDeleteRefused as refused:
+                # REQ-1918: a view uses it; nothing is removed, each is named.
+                return MutationResult(
+                    success=False,
+                    message=str(refused),
+                    code="schema.metric_has_dependents",
+                    params={
+                        "metric": name,
+                        "dependents": [d.as_dict() for d in refused.dependents],
+                    },
+                )
         if deleted:
             await _rebuild_schemas()  # republish state.metrics + schema metric blocks
             return MutationResult(
@@ -2021,7 +2131,24 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
             if _owner_conflict:
                 return MutationResult(success=False, message=_owner_conflict)
-            table_id = await table_repo.upsert(_conn, model)
+            try:
+                table_id = await table_repo.upsert(_conn, model)
+            except table_repo.ViewLoopRefused as _loop:
+                # REQ-1918: a view that would read itself through other views is refused at save.
+                return MutationResult(
+                    success=False,
+                    message=str(_loop),
+                    code="schema.view_reads_itself",
+                    params={"view": _loop.loop[0], "loop": _loop.loop},
+                )
+            except table_repo.ColumnDropRefused as _drop:
+                # REQ-1918: a column something still refers to is not dropped; each is named.
+                return MutationResult(
+                    success=False,
+                    message=str(_drop),
+                    code="schema.column_has_dependents",
+                    params={"table": _drop.table_name, "columns": _drop.report()},
+                )
             if model.query_template:
                 # REQ-1670/REQ-1683: an edited query re-persists the endpoint the table serves from.
                 from provisa.api.admin._query_api_registration import persist_query_api_registration
@@ -2121,8 +2248,32 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.table_not_found",
                     params={"table": id},
                 )
-            deleted = await table_repo.delete(cast("Connection", conn), id)
+            held = await table_repo.get(cast("Connection", conn), id)
+            try:
+                deleted = await table_repo.delete(cast("Connection", conn), id)
+            except table_repo.TableDeleteRefused as refused:
+                # REQ-1918: nothing is removed; every dependent is named.
+                return MutationResult(
+                    success=False,
+                    message=str(refused),
+                    code="schema.table_has_dependents",
+                    params={
+                        "table": id,
+                        "name": refused.name,
+                        "dependents": [d.as_dict() for d in refused.dependents],
+                    },
+                )
         if deleted:
+            # Data kept for the table outside the control plane. What exists today is removed
+            # here: the response-cache entries indexed under it and its hot-tier rows. Its
+            # replica, row-level rows and a view's storage relation are not removed yet — that
+            # waits for the replica state's own removal path.
+            from provisa.api.app import state
+            from provisa.cache.tenancy import invalidate_tables
+
+            await invalidate_tables(state, [id])
+            if state.hot_manager is not None and held is not None:
+                await state.hot_manager.invalidate(held["table_name"])
             await _rebuild_schemas()
             return MutationResult(
                 success=True,
@@ -2143,20 +2294,26 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.core.repositories import role as role_repo
 
         require_capability(info, "user_management")  # REQ-1531: see create_role
-        from provisa.security.inheritance import children_of
-
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            # REQ-1677: a role other roles inherit from cannot go; name them.
-            heirs = children_of(id, await role_repo.list_all(cast("Connection", conn)))
-            if heirs:
+            try:
+                deleted = await role_repo.delete(cast("Connection", conn), id)
+            except role_repo.RoleDeleteRefused as refused:
+                # REQ-1918: refused while anything depends on the role, naming each dependent;
+                # and for a role the deployment defines.
                 return MutationResult(
                     success=False,
-                    message=f"Role {id!r} is inherited by {', '.join(heirs)}; reparent them first",
-                    code="schema.role_has_heirs",
-                    params={"role": id, "heirs": heirs},
+                    message=str(refused),
+                    code=(
+                        "schema.role_has_dependents"
+                        if refused.reason == "dependents"
+                        else "schema.role_is_system"
+                    ),
+                    params={
+                        "role": id,
+                        "dependents": [d.as_dict() for d in refused.dependents],
+                    },
                 )
-            deleted = await role_repo.delete(cast("Connection", conn), id)
         if deleted:
             # state.contexts/schemas[role_id] must not survive a deleted role — see create_role's
             # matching rebuild for why this can't wait for an unrelated mutation.
@@ -2423,11 +2580,28 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
     async def delete_relationship(self, info: StrawberryInfo, id: str) -> MutationResult:
         require_capability(info, "create_relationship")
+        from provisa.api.admin.domain_guard import relationship_domains, require_domains
         from provisa.core.repositories import relationship as rel_repo
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            deleted = await rel_repo.delete(cast("Connection", conn), id)
+            # REQ-1531: a relationship belongs to the domains of both tables it joins.
+            domains = await relationship_domains(cast("Connection", conn), id)
+            if domains is not None:
+                require_domains(info, domains)
+            try:
+                deleted = await rel_repo.delete(cast("Connection", conn), id)
+            except rel_repo.RelationshipDeleteRefused as refused:
+                # REQ-1918: a published view relies on it; nothing is removed, each is named.
+                return MutationResult(
+                    success=False,
+                    message=str(refused),
+                    code="schema.relationship_has_dependents",
+                    params={
+                        "relationship": id,
+                        "dependents": [d.as_dict() for d in refused.dependents],
+                    },
+                )
         if deleted:
             await _rebuild_schemas()
             return MutationResult(
@@ -2774,14 +2948,23 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         self, info: StrawberryInfo, source_id: str, allowed_domains: list[str]
     ) -> MutationResult:  # REQ-1531
         """Set the allowed domain list for a source (empty list = unrestricted)."""
-        # REQ-1531: this decides which domains may reach a source at all. A member widening it would
-        # be granting themselves reach, so it belongs to whoever registers sources, and is not
-        # gated by membership in the domains being listed.
-        from provisa.api.admin.capabilities import require_capability
+        # REQ-1531: this decides which domains may reach a source at all. It belongs to whoever
+        # registers sources, and opening the source to a domain — or, with an empty list, to
+        # every domain — needs the caller to reach that domain. Closing it to one needs no reach.
+        from provisa.api.admin.capabilities import (
+            require_capability,
+            require_reach_of_added_domains,
+        )
+        from provisa.core.repositories import source as source_repo
 
         require_capability(info, "source_registration")
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            held = await source_repo.get(cast("Connection", conn), source_id)
+            if held is not None:
+                require_reach_of_added_domains(
+                    info, held["allowed_domains"] or [], allowed_domains, empty_is_all=True
+                )
             result = await conn.execute_core(
                 update(sources)
                 .where(sources.c.id == source_id)
@@ -3008,12 +3191,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def purge_cache(self, info: StrawberryInfo) -> MutationResult:
-        """Purge all cached query results."""
+        """Purge the cached query results of the org and environment the caller is acting in."""
         require_capability(info, "org_settings")
         from provisa.api.app import state
+        from provisa.cache import tenancy
 
         try:
-            count = await state.response_cache_store.invalidate_by_pattern("provisa:cache:*")
+            # REQ-595: an org administrator's purge reaches that org's entries, never another's.
+            count = await tenancy.purge_acting_place(state)
             return MutationResult(
                 success=True,
                 message=f"Purged {count} cache entries",
@@ -3196,7 +3381,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     ) -> list[CompileQueryResult]:  # REQ-161
         require_capability(info, "query_development")
         from provisa.api.admin import dev_queries
+        from provisa.api.admin.capabilities import require_inspectable_role
 
+        require_inspectable_role(info, input.role)
         variables = cast(dict, input.variables) if input.variables else None
         results = await dev_queries.compile_query(
             input.role,

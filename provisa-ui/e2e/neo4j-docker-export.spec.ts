@@ -60,7 +60,7 @@ async function tryCypherQuery(
   try {
     const resp = await fetch(`${baseUrl}/data/cypher`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Role": "DEV" },
+      headers: { "Content-Type": "application/json", "X-Provisa-Role": "org_admin" },
       body: JSON.stringify({ query }),
     });
     if (!resp.ok) return null;
@@ -189,7 +189,7 @@ test("neo4j export: exports all queryable graph nodes and relationships to a com
         nodes: nodes.slice(i, i + EXPORT_BATCH),
         edges: [],
       },
-      headers: { "Content-Type": "application/json", "X-Role": "DEV" },
+      headers: { "Content-Type": "application/json", "X-Provisa-Role": "org_admin" },
     });
     expect(resp.status(), "neo4j-export status").toBe(200);
     const body = await resp.json();
@@ -206,7 +206,7 @@ test("neo4j export: exports all queryable graph nodes and relationships to a com
         nodes: [],
         edges,
       },
-      headers: { "Content-Type": "application/json", "X-Role": "DEV" },
+      headers: { "Content-Type": "application/json", "X-Provisa-Role": "org_admin" },
     });
     expect(resp.status(), "neo4j-export edge status").toBe(200);
     const body = await resp.json();

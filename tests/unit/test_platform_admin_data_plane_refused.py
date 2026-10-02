@@ -227,6 +227,49 @@ def test_platform_admin_alone_keeps_the_platform_plane():
     assert can_act_cross_org(capabilities_for_claims(PLATFORM_ONLY, ROLES))
 
 
+def test_platform_admin_adds_no_domain_scope_to_a_role_held_beside_it(monkeypatch):
+    """Scope is unioned across every role a caller holds, so the control-plane role's own scope
+    is what a narrower data role held beside it would be widened by."""
+    from provisa.api.admin.capabilities import (
+        allowed_domains_request,
+        require_domain,
+        require_domain_request,
+    )
+    from provisa.core.request_context import current_role_claims
+    from provisa.security.rights import domain_access_for_claims, effective_domain_access_role
+
+    roles = {
+        **ROLES,
+        "sales_dev": {
+            "id": "sales_dev",
+            "capabilities": ["query_development", "create_view"],
+            "domain_access": ["sales"],
+        },
+    }
+    monkeypatch.setattr(appmod.state, "roles", roles, raising=False)
+    held = ["platform_admin", "sales_dev"]
+
+    assert domain_access_for_claims(PLATFORM_ONLY, roles) == set()
+    assert domain_access_for_claims(held, roles) == {"sales"}
+    assert allowed_domains_request(_request(*PLATFORM_ONLY)) == frozenset()
+    assert allowed_domains_request(_request(*held)) == frozenset({"sales"})
+    require_domain(_info(*held), "sales")
+    with pytest.raises(PermissionError, match="finance"):
+        require_domain(_info(*held), "finance")
+    with pytest.raises(PermissionError, match="sales"):
+        require_domain(_info(*PLATFORM_ONLY), "sales")
+    with pytest.raises(ApiError) as err:
+        require_domain_request(_request(*held), "finance")
+    assert (err.value.status_code, err.value.code) == (403, "auth.domain_denied")
+
+    # The governed query pipeline reads the acting role's scope through the same union.
+    token = current_role_claims.set(tuple(held))
+    try:
+        assert effective_domain_access_role("sales_dev", roles)["domain_access"] == ["sales"]
+    finally:
+        current_role_claims.reset(token)
+
+
 # --- the retired wildcard strings grant nothing --------------------------------------------------
 
 
@@ -364,7 +407,7 @@ def _role_rows(**extra: dict) -> list[dict]:
         {
             "id": role_id,
             "capabilities": role["capabilities"],
-            "domain_access": ["*"],
+            "domain_access": role["domain_access"],
             "org_id": None,
             "parent_role_id": None,
         }
@@ -478,16 +521,26 @@ def test_a_platform_administrator_may_define_a_role_carrying_a_platform_right():
     from provisa.api.admin._platform_guard import role_definition_problem
 
     req = _request(*BOOTSTRAP)
-    assert role_definition_problem(req, ["platform_settings", "cross_org"]) is None
-    assert role_definition_problem(req, ["usage"], ["cross_org"]) is None
+    assert (
+        role_definition_problem(
+            req, ["platform_settings", "cross_org"], role_id="ops", domain_access=[]
+        )
+        is None
+    )
+    assert (
+        role_definition_problem(req, ["usage"], ["cross_org"], role_id="x", domain_access=["*"])
+        is None
+    )
     # ...and is held to the vocabulary like anyone else.
-    problem = role_definition_problem(req, ["everything"])
+    problem = role_definition_problem(req, ["everything"], role_id="x", domain_access=["*"])
     assert problem is not None and problem.code == "roles.unknown_capability"
     # platform_settings alone is not a platform administrator (a single-tenant org_admin holds it).
     single = {**ROLES, "org_admin": {**ROLES["org_admin"]}}
     single["org_admin"]["capabilities"] = [*ROLES["org_admin"]["capabilities"], "platform_settings"]
     appmod.state.roles = single
-    problem = role_definition_problem(_request(*ORG_ADMIN), ["platform_settings"])
+    problem = role_definition_problem(
+        _request(*ORG_ADMIN), ["platform_settings"], role_id="x", domain_access=["*"]
+    )
     assert problem is not None and problem.code == "roles.platform_right_requires_platform_admin"
 
 
@@ -495,8 +548,202 @@ def test_an_ordinary_definition_is_accepted():
     from provisa.api.admin._platform_guard import role_definition_problem
 
     req = _request(*ORG_ADMIN, org="acme")
-    assert role_definition_problem(req, ["usage", "query_development", "ddl"]) is None
-    assert role_definition_problem(req, ["usage"], ["create_view", "write"]) is None
+    assert (
+        role_definition_problem(
+            req, ["usage", "query_development", "ddl"], role_id="x", domain_access=["sales"]
+        )
+        is None
+    )
+    assert (
+        role_definition_problem(
+            req, ["usage"], ["create_view", "write"], role_id="x", domain_access=["*"]
+        )
+        is None
+    )
+
+
+# --- a data role lists at least one domain (or "*") ---------------------------------------------
+#
+# A role is always one or more domains, or all. An empty list reads no data, so it is refused
+# where the role is DEFINED — every save path asks the one validator — rather than discovered
+# when the role is used. The one exception is a role carrying platform rights and no data
+# capability, decided by its rights and never by its id.
+
+_DOMAIN_MESSAGE = 'must list at least one domain, or "*" for all domains'
+
+
+def test_the_rule_is_one_or_more_domains_or_all():
+    from provisa.security.rights import is_control_plane_definition, role_domain_problem
+
+    assert role_domain_problem("r", ["usage"], ["sales"]) is None
+    assert role_domain_problem("r", ["usage"], ["*"]) is None
+    problem = role_domain_problem("r", ["usage"], [])
+    assert problem == f"Role 'r' {_DOMAIN_MESSAGE}"
+    assert role_domain_problem("r", [], []) is not None  # no capabilities is still a data role
+    assert role_domain_problem("r", ["usage"], None) is not None
+
+    # The exception is by RIGHT: platform rights and nothing else. Any role with that shape
+    # qualifies whatever it is called; one data capability beside them and it does not.
+    assert is_control_plane_definition(["platform_settings", "cross_org"])
+    assert is_control_plane_definition(["cross_org"])
+    assert not is_control_plane_definition(["cross_org", "usage"])
+    assert not is_control_plane_definition([])
+    assert role_domain_problem("fleet_operator", ["cross_org"], []) is None
+    assert role_domain_problem("platform_admin", ["cross_org", "usage"], []) is not None
+
+
+def test_the_seeded_control_plane_role_is_the_exception_and_no_data_role_is():
+    from provisa.security.rights import role_domain_problem
+
+    for role_id, role in ROLES.items():
+        if role_id in ("retired_strings", "settings_only"):
+            continue
+        assert role_domain_problem(role_id, role["capabilities"], role["domain_access"]) is None
+    assert ROLES["platform_admin"]["domain_access"] == []
+
+
+@pytest.mark.parametrize("parent", [None, "platform_admin"])
+async def test_rest_create_refuses_a_role_with_no_domains(monkeypatch, parent):
+    from provisa.api.admin import roles_router
+
+    db = _Db(_role_rows())
+    monkeypatch.setattr(roles_router, "_pool", lambda _request: db)
+    body = roles_router.CreateRoleBody(
+        id="minted", capabilities=["usage"], domain_access=[], parent_role_id=parent
+    )
+    # BOOTSTRAP holds every right there is: the refusal is about the definition, not the caller.
+    with pytest.raises(ApiError) as err:
+        await roles_router.create_role(body, _request(*BOOTSTRAP))
+    assert (err.value.status_code, err.value.code) == (422, "roles.domain_required")
+    assert err.value.detail == f"Role 'minted' {_DOMAIN_MESSAGE}"
+    assert err.value.params == {"role": "minted"}
+    assert db.conn.writes == []
+
+
+async def test_rest_update_refuses_emptying_a_roles_domains(monkeypatch):
+    from provisa.api.admin import roles_router
+
+    rows = _role_rows(minted={"capabilities": ["usage"], "domain_access": ["sales"]})
+    db = _Db(rows)
+    target = next(r for r in rows if r["id"] == "minted")
+    reads = iter([[target]])
+
+    async def _execute_core(stmt):
+        if getattr(stmt, "is_select", False):
+            return _Rows(next(reads, rows))
+        db.conn.writes.append(stmt)
+        return _Rows([])
+
+    monkeypatch.setattr(db.conn, "execute_core", _execute_core)
+    monkeypatch.setattr(roles_router, "_pool", lambda _request: db)
+    with pytest.raises(ApiError) as err:
+        await roles_router.update_role(
+            "minted", roles_router.UpdateRoleBody(domain_access=[]), _request(*BOOTSTRAP)
+        )
+    assert (err.value.status_code, err.value.code) == (422, "roles.domain_required")
+    assert db.conn.writes == []
+
+
+async def test_graphql_create_refuses_a_role_with_no_domains(monkeypatch):
+    from provisa.api.admin import schema_mutation
+    from provisa.api.admin.types import RoleInput
+    from provisa.core.repositories import role as role_repo
+
+    db = _Db(_role_rows())
+
+    async def _get_pool():
+        return db
+
+    written: list[object] = []
+
+    async def _upsert(_conn, model):
+        written.append(model)
+
+    monkeypatch.setattr(schema_mutation, "_get_pool", _get_pool)
+    monkeypatch.setattr(role_repo, "upsert", _upsert)
+    info: Any = types.SimpleNamespace(context={"request": _request(*BOOTSTRAP)})
+    result = await schema_mutation.Mutation().create_role(
+        info, RoleInput(id="minted", capabilities=["usage"], domain_access=[])
+    )
+    assert result.success is False
+    assert result.code == "roles.domain_required"
+    assert result.message == f"Role 'minted' {_DOMAIN_MESSAGE}"
+    assert written == []
+
+
+def test_a_role_that_inherits_its_domains_is_not_refused():
+    from provisa.api.admin._platform_guard import role_definition_problem
+
+    req = _request(*BOOTSTRAP)
+    # REQ-1677: a child's list is its own plus its parent chain's.
+    assert (
+        role_definition_problem(
+            req,
+            ["usage"],
+            [],
+            role_id="junior",
+            domain_access=[],
+            inherited_domain_access=["sales"],
+        )
+        is None
+    )
+    problem = role_definition_problem(
+        req, ["usage"], [], role_id="junior", domain_access=[], inherited_domain_access=[]
+    )
+    assert problem is not None and problem.code == "roles.domain_required"
+
+
+def test_a_control_plane_definition_still_saves_with_an_empty_list():
+    from provisa.api.admin._platform_guard import role_definition_problem
+
+    assert (
+        role_definition_problem(
+            _request(*BOOTSTRAP),
+            ["platform_settings", "cross_org"],
+            role_id="ops",
+            domain_access=[],
+        )
+        is None
+    )
+
+
+def _config(roles: list[dict]) -> dict:
+    return {"sources": [], "domains": [], "tables": [], "relationships": [], "roles": roles}
+
+
+@pytest.mark.parametrize(
+    "role,fragment",
+    [
+        ({"id": "empty", "capabilities": ["usage"], "domain_access": []}, "Role 'empty' must list"),
+        ({"id": "missing", "capabilities": ["usage"]}, "role 'missing' has no domain_access"),
+    ],
+)
+def test_config_load_refuses_a_role_with_no_domains_by_name(role, fragment):
+    from provisa.core.models import ProvisaConfig
+
+    ok = {"id": "analyst", "capabilities": ["usage"], "domain_access": ["sales"]}
+    with pytest.raises(ValueError, match=fragment):
+        ProvisaConfig.model_validate(_config([ok, role]))
+
+
+def test_config_load_accepts_listed_wildcard_and_inherited_domains():
+    from provisa.core.models import ProvisaConfig
+
+    config = ProvisaConfig.model_validate(
+        _config(
+            [
+                {"id": "analyst", "capabilities": ["usage"], "domain_access": ["sales"]},
+                {"id": "everything", "capabilities": ["usage"], "domain_access": ["*"]},
+                {
+                    "id": "junior",
+                    "capabilities": [],
+                    "domain_access": [],
+                    "parent_role_id": "analyst",
+                },
+            ]
+        )
+    )
+    assert [r.id for r in config.roles] == ["analyst", "everything", "junior"]
 
 
 # --- ...nor CONFER one: assignment, invitation, auto-join, redemption ----------------------------

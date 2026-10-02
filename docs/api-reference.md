@@ -368,7 +368,7 @@ On the gRPC panel, the generated `{Type}GroupByRequest` carries `include_nodes` 
 
 Return the GraphQL SDL for a role's schema. (REQ-008) [tool-verified: `provisa/api/data/sdl.py:137`]
 
-**Headers:** `X-Role: <role_id>` (required)
+**Headers:** `X-Provisa-Role: <role_id>` (required)
 
 **Query parameters:**
 
@@ -404,7 +404,7 @@ Each relationship type also carries `junction_table_name` and `properties` (REQ-
 
 Return domain IDs accessible to the requesting role. [tool-verified: `provisa/api/data/sdl.py:116`]
 
-**Headers:** `X-Role: <role_id>` (required)
+**Headers:** `X-Provisa-Role: <role_id>` (required)
 
 **Response:** `["sales", "support", ...]`
 
@@ -1116,7 +1116,7 @@ Returns `{"status": "ok"}`. Always unauthenticated. (REQ-539) [tool-verified: `p
 | 401 | Missing or invalid auth token |
 | 403 | Insufficient capabilities; governance violation |
 | 404 | Role, resource, or config file not found |
-| 422 | Missing required header (e.g. `X-Role`) |
+| 422 | Missing required header (e.g. `X-Provisa-Role`) |
 | 503 | Database or source not connected; dependency unavailable |
 | 504 | Request timed out |
 

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from enum import Enum
+from typing import cast
 
 # Requirements: REQ-001, REQ-002, REQ-003, REQ-038, REQ-042, REQ-125, REQ-263
 
@@ -133,6 +134,31 @@ SYSTEM_ROLE_IDS: frozenset[str] = frozenset(
 )
 
 
+def domains_added(
+    before: Iterable[str] | None, after: Iterable[str], *, empty_is_all: bool = False
+) -> set[str]:  # REQ-1531
+    """The domains a change ADDS to a list of domains: those in ``after`` and not in ``before``.
+
+    ``before`` is None for an object being created, which reached nothing. ``ALL_DOMAINS`` in a
+    list is every domain: a list that gains it adds ``ALL_DOMAINS`` and nothing narrower, and a
+    list that already had it gains nothing whatever else it now names. ``empty_is_all`` is for a
+    list whose EMPTY state means every domain (a source's ``allowed_domains``), so that emptying
+    it is seen as the widening it is.
+    """
+
+    def _reach(domains: Iterable[str]) -> set[str]:
+        reach = {d for d in domains if d}
+        return {ALL_DOMAINS} if empty_is_all and not reach else reach
+
+    was = set() if before is None else _reach(before)
+    now = _reach(after)
+    if ALL_DOMAINS in was:
+        return set()
+    if ALL_DOMAINS in now:
+        return {ALL_DOMAINS}
+    return now - was
+
+
 def is_tenant_org(org_id: str | None, root_org_id: str) -> bool:  # REQ-1297
     """True when ``org_id`` names a TENANT org — any bound org other than the deployment's root.
 
@@ -201,6 +227,91 @@ def domain_access_for_claims(  # REQ-1530
     return out
 
 
+class UnknownRoleError(LookupError):
+    """A role id that names no loaded role."""
+
+    def __init__(self, role_id: str):
+        self.role_id = role_id
+        super().__init__(f"No role {role_id!r} is loaded")
+
+
+def require_role(roles: dict[str, dict] | None, role_id: str) -> dict:  # REQ-042
+    """``roles[role_id]`` — or :class:`UnknownRoleError`. Never an empty stand-in.
+
+    Governance reads everything it decides off the role: its capabilities, its domain scope, its
+    row cap. A missing role read as ``{}`` is a role with no restrictions recorded, which every
+    reader would have to remember to treat as "nothing" rather than "anything". So there is no
+    such value: the role is there, or the request fails.
+    """
+    role = (roles or {}).get(role_id)
+    if role is None:
+        raise UnknownRoleError(role_id)
+    return role
+
+
+#: The one entry in a role's ``domain_access`` that means every domain.
+ALL_DOMAINS = "*"
+
+
+def reaches_all_domains(domain_access: Iterable[str] | None) -> bool:  # REQ-039, REQ-471, REQ-1530
+    """Whether a ROLE's ``domain_access`` reaches every domain — THE one place that is decided.
+
+    A role reaches the domains it lists and no others. ``"*"`` is the only way to say all: an
+    EMPTY list is no domains, never "unrestricted". (A column's or action's ``visible_to=[]`` is a
+    different list with the opposite reading — visible to every role — and is not decided here.)
+
+    The single exemption is single-domain mode (``naming.use_domains: false``): the deployment has
+    one domain, domains are not a gate, and every role reaches it whatever its list says. It is
+    asked here so that no reader re-derives it.
+
+    ``None`` is not a scope. It is a role that was never loaded, and reading it as either answer
+    would be a guess, so it raises.
+    """
+    if domain_access is None:
+        raise ValueError(
+            "a role's domain_access is missing: the column is NOT NULL on the roles table, so "
+            "this is a role that was not loaded, and a missing role reaches nothing by default"
+        )
+    from provisa.core import domain_policy
+
+    return domain_policy.single_domain() or ALL_DOMAINS in domain_access
+
+
+def reaches_domain(domain_access: Iterable[str] | None, domain_id: str) -> bool:
+    """Whether a role's ``domain_access`` reaches ``domain_id`` (see :func:`reaches_all_domains`)."""
+    return reaches_all_domains(domain_access) or domain_id in (domain_access or ())
+
+
+def is_control_plane_definition(capabilities: Iterable[str] | None) -> bool:  # REQ-1337
+    """True when a role's capabilities are platform rights and nothing else.
+
+    Such a role is over the deployment and holds no data right for a domain scope to apply to.
+    Decided by the RIGHTS it carries, never by its id.
+    """
+    caps = set(capabilities or ())
+    return bool(caps & PLATFORM_RIGHTS) and not (caps - PLATFORM_RIGHTS)
+
+
+def role_domain_problem(  # REQ-039, REQ-1530
+    role_id: str, capabilities: Iterable[str] | None, domain_access: Iterable[str] | None
+) -> str | None:
+    """Why a role may not be DEFINED with this ``domain_access``, or None when it may.
+
+    A role is always one or more domains, or all: its list names at least one domain, or ``"*"``.
+    An empty list is never what an administrator means to save — it reads no data — so it is
+    refused where the role is defined rather than discovered when the role is used. Both
+    arguments are the role's EFFECTIVE values (its own plus what its parent chain hands down).
+
+    The one exception is a role whose capabilities are platform rights and nothing else
+    (:func:`is_control_plane_definition`): it holds no data right, so it lists no domain.
+    """
+    if list(domain_access or ()):
+        return None
+    if is_control_plane_definition(capabilities):
+        return None
+    return f'Role {role_id!r} must list at least one domain, or "*" for all domains'
+
+
 def effective_domain_access_role(role_id: str, roles: dict[str, dict] | None) -> dict:  # REQ-1620
     """``roles[role_id]``, with domain_access widened to the union of every role the caller is
     currently acting as (``request_context.current_role_claims`` — the UI's "Role: All").
@@ -211,10 +322,11 @@ def effective_domain_access_role(role_id: str, roles: dict[str, dict] | None) ->
     identically instead of each re-deriving it. ``role_id`` itself, and every OTHER field on the
     role (capabilities, RLS, masking, session_vars), stays single-role — only domain_access
     follows the full claim set, matching ``domain_access_for_claims`` (REQ-1530): a real RBAC
-    union, grant if ANY assigned role allows it, never an intersection.
+    union, grant if ANY assigned role allows it, never an intersection. The union of lists that
+    are all empty is empty, and an empty list is no domains.
     """
     roles = roles or {}
-    role = roles.get(role_id) or {}
+    role = require_role(roles, role_id)  # a missing acting role is an error, never an empty one
     from provisa.core.request_context import current_role_claims
 
     claims = current_role_claims.get()
@@ -394,7 +506,7 @@ META_ROW_SCOPED_VIEWS: dict[str, str] = {
 
 
 def compute_meta_row_scope(
-    role: dict[str, object] | None,
+    role: dict[str, object],
     tables: list[dict],
     relationships: list[dict] | None,
 ) -> set[int] | None:
@@ -402,7 +514,8 @@ def compute_meta_row_scope(
     NO row filter applies (all rows visible).
 
     ``None`` (unfiltered) is returned for the tier that sees the whole catalog: a role holding
-    the meta DOMAIN GRANT (or global ``*``/empty domain access). Every other
+    the meta DOMAIN GRANT or ``*``. An empty ``domain_access`` is no domains, so such a role sees
+    no meta rows at all; the role itself is required — a missing role is not a tier. Every other
     (DEFAULT-tier) role is confined to its directly-accessible tables — those in a domain the role
     can access — PLUS 1-hop neighbours over user-defined/semantic relationships (the ``relationships``
     registry holds only user relationships; auto-derived FK/catalog edges are never stored there, so
@@ -411,13 +524,10 @@ def compute_meta_row_scope(
     discoverable from the target side). Computed (function-target) relationships have no concrete
     target table and contribute no neighbour.
     """
-    if role is None:
-        return None
-    accessible = role.get("domain_access") or []
-    if not isinstance(accessible, (list, tuple, set, frozenset)):
-        accessible = []
-    if not accessible or "*" in accessible or META_DOMAIN_ID in accessible:
-        return None  # meta domain grant / global access → the whole catalog
+    accessible = cast("list[str]", role["domain_access"])
+    if reaches_all_domains(accessible) or META_DOMAIN_ID in accessible:
+        return None  # meta domain grant / "*" → the whole catalog
+    # An EMPTY list falls through: no domain is directly reachable, so no meta row is either.
 
     directly = {t["id"] for t in tables if t.get("domain_id") in accessible}
     visible = set(directly)

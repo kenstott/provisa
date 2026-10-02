@@ -34,7 +34,10 @@ SCHEMA_SQL = (Path(__file__).parent.parent.parent / "provisa" / "core" / "schema
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="session")
-async def _init_schema(tenant_db):
+async def _init_schema(tenant_db, platform_admin_db):
+    """``platform_admin_db``: every test here calls ``load_config``, which binds the request org
+    to read its vault from ``state.admin_db``. The module asks for that database rather than
+    relying on an earlier module having left one in place (it fails when it runs first)."""
     async with tenant_db.acquire() as conn:
         await conn.execute(SCHEMA_SQL)
 

@@ -13,11 +13,22 @@ import re
 from provisa.federation import store_writer
 from provisa.security.rights import PLATFORM_RIGHTS, Capability
 
+
 #: Every data-plane right a role can be GIVEN, named one by one — for a test role that is to be
 #: limited by nothing but the grants the test itself writes (``visible_to``, ``writable_by``,
 #: ``domain_access``). No capability stands in for another (REQ-1327), so a role that holds them
 #: all lists them all. Left out: the two platform rights, which are over the deployment and not
 #: over data; ``ddl``, which a test grants on purpose; and ``no_aggregations``, which withholds.
+def unscoped_role(role_id: str, *capabilities: str) -> dict:
+    """A role that reaches every domain, said explicitly — ``domain_access: ["*"]``.
+
+    Governance always takes the acting role's own dict, and a role reaches only the domains it
+    lists, so a test that is about something other than domain scope names the role and gives it
+    the wildcard rather than leaving either out.
+    """
+    return {"id": role_id, "capabilities": list(capabilities), "domain_access": ["*"]}
+
+
 ALL_DATA_CAPABILITIES: list[str] = sorted(
     c.value
     for c in Capability
@@ -121,3 +132,33 @@ def dq_contexts(*tables: tuple, role: str = "analyst") -> dict:
             display_name=alias[0] if alias else "",
         )
     return {role: SimpleNamespace(tables=metas)}
+
+
+async def delete_source_and_its_tables(client, source_id: str) -> None:
+    """Remove a source a test registered, and what the test registered against it (REQ-1918).
+
+    A source is deleted only when nothing refers to it: ``deleteSource`` is refused while a table
+    is registered against it, and ``deleteTable`` while a relationship takes part in the table.
+    So a cleanup removes them in that order, each through its own mutation, as an operator would.
+    ``client`` is an httpx ``AsyncClient`` for the app. A source that is not there is left
+    alone; one still refused after its tables are gone raises.
+    """
+
+    async def gql(query: str) -> dict:
+        resp = await client.post("/admin/graphql", json={"query": query})
+        assert resp.status_code == 200, resp.text
+        return resp.json()["data"]
+
+    listed = await gql(
+        "{ tables { id sourceId } relationships { id sourceTableId targetTableId } }"
+    )
+    table_ids = {t["id"] for t in listed["tables"] if t["sourceId"] == source_id}
+    for rel in listed["relationships"]:
+        if rel["sourceTableId"] in table_ids or rel["targetTableId"] in table_ids:
+            await gql(f'mutation {{ deleteRelationship(id: "{rel["id"]}") {{ success }} }}')
+    for table_id in sorted(table_ids):
+        await gql(f"mutation {{ deleteTable(id: {table_id}) {{ success }} }}")
+    outcome = (
+        await gql(f'mutation {{ deleteSource(id: "{source_id}") {{ success code message }} }}')
+    )["deleteSource"]
+    assert outcome["success"] or outcome["code"] == "schema.source_not_found", outcome

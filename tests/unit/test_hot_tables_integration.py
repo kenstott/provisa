@@ -154,6 +154,10 @@ class TestHotTableLoading:
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(return_value=serialized)
         mgr._redis = mock_redis
+        # The name is hot here (its rows are not held in this process), so its blob is read.
+        mgr._hot_tables["products"] = HotTableEntry(
+            table_name="products", catalog="pg", schema="public", pk_column="id"
+        )
 
         rows = await mgr.get_rows("products")
         assert len(rows) == 2

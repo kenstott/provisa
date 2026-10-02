@@ -267,3 +267,38 @@ async def test_secured_rejects_unassigned_requested_role():
     out = await _dispatch(mw, req)
     # a role the user does not hold is rejected, not honored
     assert getattr(out, "status_code", None) == 403
+
+
+# --- ProvisaClient / GraphQLDecryptClient / SQLAlchemy dialect ---
+
+
+def test_provisa_client_names_a_role_only_when_one_was_chosen():
+    from provisa_client.client import ProvisaClient
+
+    assert inspect.signature(ProvisaClient).parameters["role"].default is None
+    chosen = ProvisaClient("http://x", token="tok", role="analyst")._http_headers()
+    assert chosen["X-Provisa-Role"] == "analyst" and "X-Role" not in chosen
+    unset = ProvisaClient("http://x", token="tok")._http_headers()
+    assert "X-Provisa-Role" not in unset and "X-Role" not in unset
+
+
+def test_decrypt_client_names_a_role_only_when_one_was_chosen():
+    from provisa_client.graphql_decrypt import GraphQLDecryptClient
+
+    assert inspect.signature(GraphQLDecryptClient).parameters["role"].default is None
+    chosen = GraphQLDecryptClient(url="http://x", role="analyst", _http=object())._headers()
+    assert chosen["X-Provisa-Role"] == "analyst" and "X-Role" not in chosen
+    unset = GraphQLDecryptClient(url="http://x", _http=object())._headers()
+    assert "X-Provisa-Role" not in unset and "X-Role" not in unset
+
+
+def test_flight_ticket_names_a_role_only_when_one_was_chosen():
+    import json
+
+    from provisa_client.client import ProvisaClient
+
+    def body(client):
+        return json.loads(client._flight_ticket("{ x { id } }", None).ticket)
+
+    assert body(ProvisaClient("http://x", role="analyst"))["role"] == "analyst"
+    assert "role" not in body(ProvisaClient("http://x"))

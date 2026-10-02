@@ -57,6 +57,7 @@ from provisa.security.rights import (
     META_DOMAIN_ID,
     Capability,
     has_capability,
+    reaches_all_domains,
 )
 from provisa.compiler.actions_schema import _build_action_fields, _mutation_name
 
@@ -96,8 +97,10 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
     """Filter tables by role's domain access. Build per-table metadata."""
     role = si.role
     accessible = set(role["domain_access"])
-    # Consistent with visible_to=[]: empty list means no restriction (all domains accessible).
-    all_access = not accessible or "*" in accessible
+    # A ROLE's domain_access: it reaches the domains it lists, "*" is the only way to say all, and
+    # an empty list is no domains (rights.reaches_all_domains — the one place that is decided).
+    # Not to be confused with a COLUMN's visible_to below, where an empty list means every role.
+    all_access = reaches_all_domains(role["domain_access"])
 
     # REQ-1319: role-visible metrics keyed by the single semantic table their expression
     # references. The aggregate compiler selects from exactly one table (no join builder),
@@ -858,8 +861,8 @@ def generate_schema(
     # Build root query fields
     query_fields: dict[str, GraphQLField] = {}
     _root_ids = si.root_table_ids
-    _accessible_domains = set(si.role.get("domain_access") or [])
-    _all_access = "*" in _accessible_domains
+    _accessible_domains = set(si.role["domain_access"])
+    _all_access = reaches_all_domains(si.role["domain_access"])
 
     for t in tables:
         if _root_ids is not None and t.table_id not in _root_ids:

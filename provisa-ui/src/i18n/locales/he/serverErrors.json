@@ -3,6 +3,7 @@
     "_requestFailed": "{{op}} נכשלה ({{status}})",
     "actions": {
       "database_not_connected": "מסד הנתונים אינו מחובר",
+      "domain_required": "{{name}} אינו מציין דומיין: פקודה או webhook שייכים לדומיין",
       "function_not_found": "הפונקציה '{{name}}' לא נמצאה",
       "source_not_connected": "המקור '{{source}}' אינו מחובר",
       "test_endpoint_disabled": "נקודת הקצה לבדיקות מושבתת (הגדירו את PROVISA_ENABLE_TEST_ENDPOINTS כדי להפעיל בסביבה שאינה ייצור).",
@@ -151,6 +152,7 @@
     },
     "openapi": {
       "database_not_connected": "מסד הנתונים אינו מחובר",
+      "domain_required": "מקור ה-OpenAPI ‏{{source}} מצהיר על {{commands}} פקודות ואינו מציין דומיין: פקודה שייכת לדומיין, ולכן הרישום דורש דומיין",
       "invalid_json": "JSON לא תקין: {{error}}",
       "refresh_failed": "הרענון נכשל: {{error}}",
       "registration_failed": "הרישום נכשל: {{error}}",
@@ -195,6 +197,7 @@
     "roles": {
       "cannot_delete_system": "לא ניתן למחוק תפקידי מערכת",
       "cannot_modify_administrative": "לא ניתן לשנות תפקידי ניהול",
+      "has_dependents": "{{count}} אובייקט(ים) עדיין מפנים אל התפקיד {{role}}; יש להסיר תחילה את ההפניות האלה",
       "not_found": "התפקיד לא נמצא",
       "org_selection_required": "נדרשת בחירת ארגון"
     },

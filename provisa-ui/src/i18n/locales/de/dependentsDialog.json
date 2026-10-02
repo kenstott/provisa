@@ -1,0 +1,26 @@
+{
+  "dependentsDialog": {
+    "title": "{{name}} kann noch nicht gelöscht werden",
+    "intro": "Diese Objekte verweisen noch darauf. Entfernen oder ändern Sie jedes davon und löschen Sie dann erneut.",
+    "open": "Seite öffnen",
+    "close": "Schließen",
+    "kind": {
+      "table": "Tabellen und Sichten",
+      "column": "Spaltenberechtigungen",
+      "tag_assignment": "Tag-Zuweisungen",
+      "relationship": "Beziehungen",
+      "role": "Rollen",
+      "role_assignment": "Rollenzuweisungen",
+      "row_filter": "Zeilenfilter",
+      "metric": "Metriken",
+      "materialized_view": "Materialisierte Sichten",
+      "command": "Befehle",
+      "webhook": "Webhooks",
+      "data_product": "Datenprodukte",
+      "source": "Quellen",
+      "remote_registration": "Remote-Registrierungen",
+      "domain": "Domänen",
+      "glossary_term": "Glossarbegriffe"
+    }
+  }
+}

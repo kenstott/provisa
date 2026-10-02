@@ -21,6 +21,7 @@ from sqlalchemy import delete as _delete, func as _sa_func, select
 from provisa.core import domain_policy
 from provisa.core.models import Function, FunctionArgument, InlineType, Webhook
 from provisa.core.repositories import data_product as data_product_repo
+from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import tracked_functions, tracked_webhooks
 
 if TYPE_CHECKING:
@@ -33,7 +34,7 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
     return_schema: dict | None = None,
 ) -> int | None:
     """Upsert a tracked DB function. Returns the row id."""
-    domain_id = domain_policy.resolve_domain_id(func.domain_id)
+    domain_id = domain_policy.command_domain_id(func.domain_id, func.name)  # REQ-1531
     # REQ-1634: a DataProduct's member commands must all share its domain_id — same gate as
     # table.py's upsert, so config load, admin GraphQL, and introspection are all covered.
     if func.product_id is not None:
@@ -126,12 +127,37 @@ async def list_functions(conn: "Connection") -> list[dict]:  # REQ-205, REQ-360
     return out
 
 
-async def delete_function(conn: "Connection", name: str) -> bool:  # REQ-205
-    """Delete a tracked function by name."""
-    result = await conn.execute_core(
-        _delete(tracked_functions).where(tracked_functions.c.name == name)
-    )
-    return (result.rowcount or 0) > 0
+class CommandDeleteRefused(Exception):
+    """A command or webhook that may not be deleted because other objects refer to it;
+    ``dependents`` lists them."""
+
+    def __init__(self, name: str, dependents: list[Dependent]) -> None:
+        self.name = name
+        self.dependents = dependents
+        named = ", ".join(f"{d.ref.kind} {d.ref.id}" for d in dependents)
+        super().__init__(f"{name!r} is still referred to by: {named}")
+
+
+async def _delete_one(conn: "Connection", kind: str, table, name: str) -> bool:  # REQ-1918
+    """Delete one command or webhook through the dependency guard. Nothing in the model refers
+    to one today, so the guard returns nothing; what goes with it is its parts — the row filters
+    defined on it and its tag assignments — which no foreign key would remove. One transaction."""
+    ref = ObjectRef(kind, name)
+    async with conn.transaction():
+        found = await conn.execute_core(select(table.c.name).where(table.c.name == name))
+        if found.fetchone() is None:
+            return False
+        blocking = await guard(conn, ref)
+        if blocking:
+            raise CommandDeleteRefused(name, blocking)
+        await remove_parts(conn, ref)
+        await conn.execute_core(_delete(table).where(table.c.name == name))
+    return True
+
+
+async def delete_function(conn: "Connection", name: str) -> bool:  # REQ-205, REQ-1918
+    """Delete a tracked function by name: THE delete, for every surface."""
+    return await _delete_one(conn, "command", tracked_functions, name)
 
 
 async def upsert_webhook(
@@ -148,7 +174,7 @@ async def upsert_webhook(
         "inline_return_type": [t.model_dump() for t in wh.inline_return_type],
         "arguments": [a.model_dump() for a in wh.arguments],
         "visible_to": wh.visible_to,
-        "domain_id": domain_policy.resolve_domain_id(wh.domain_id),
+        "domain_id": domain_policy.command_domain_id(wh.domain_id, wh.name),  # REQ-1531
         "description": wh.description,
         "kind": wh.kind,
     }
@@ -198,12 +224,16 @@ async def list_webhooks(conn: "Connection") -> list[dict]:  # REQ-209, REQ-360
     return out
 
 
-async def delete_webhook(conn: "Connection", name: str) -> bool:  # REQ-209
-    """Delete a tracked webhook by name."""
-    result = await conn.execute_core(
-        _delete(tracked_webhooks).where(tracked_webhooks.c.name == name)
-    )
-    return (result.rowcount or 0) > 0
+async def delete_webhook(conn: "Connection", name: str) -> bool:  # REQ-209, REQ-1918
+    """Delete a tracked webhook by name: THE delete, for every surface."""
+    return await _delete_one(conn, "webhook", tracked_webhooks, name)
+
+
+async def remove_all(conn: "Connection") -> None:
+    """Remove every command and webhook: the config loader's full replace, which declares them
+    as a set. It is not a deletion of one object and does not ask the dependency guard."""
+    await conn.execute_core(_delete(tracked_functions))
+    await conn.execute_core(_delete(tracked_webhooks))
 
 
 def function_from_dict(d: dict) -> Function:  # REQ-205, REQ-304

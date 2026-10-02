@@ -365,16 +365,27 @@ async def put_openapi_spec(source_id: str, request: Request):  # REQ-316, REQ-31
     auth_config = existing.get("auth_config")
     cache_ttl = existing.get("cache_ttl", 300)
 
+    from provisa.openapi.register import CommandsNeedDomain
+
     async with put_pool.acquire() as conn:
-        n_tables, n_mutations = await auto_register_openapi_source(
-            source_id,
-            spec,
-            conn,
-            domain_id,
-            base_url=base_url,
-            auth_config=auth_config,
-            cache_ttl=cache_ttl,
-        )
+        try:
+            n_tables, n_mutations, kept_tables = await auto_register_openapi_source(
+                source_id,
+                spec,
+                conn,
+                domain_id,
+                base_url=base_url,
+                auth_config=auth_config,
+                cache_ttl=cache_ttl,
+            )
+        except CommandsNeedDomain as refused:
+            raise ApiError(
+                422,
+                "openapi.domain_required",
+                str(refused),
+                source=source_id,
+                commands=refused.commands,
+            ) from refused
 
     if not hasattr(state, "openapi_specs"):
         state.openapi_specs = {}
@@ -394,4 +405,7 @@ async def put_openapi_spec(source_id: str, request: Request):  # REQ-316, REQ-31
         "source_id": source_id,
         "tables": n_tables,
         "mutations": n_mutations,
+        # REQ-1918: tables the spec no longer has that something still refers to — kept, with
+        # what refers to each.
+        "kept_tables": kept_tables,
     }

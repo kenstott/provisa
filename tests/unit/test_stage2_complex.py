@@ -24,6 +24,7 @@ from provisa.compiler.stage2 import (
     extract_sources,
 )
 from provisa.security.masking import MaskType, MaskingRule
+from tests.helpers import unscoped_role
 
 
 # --------------------------------------------------------------------------- #
@@ -357,7 +358,7 @@ class TestBuildGovernanceContext:
         ctx = _ctx(_meta("orders", "orders", table_id=1))
         tables = [{"id": 1, "columns": [{"column_name": "id", "data_type": "integer"}]}]
         rls = _FakeRLSContext({})
-        gov = build_governance_context("role-a", rls, {}, ctx, tables)
+        gov = build_governance_context("role-a", rls, {}, ctx, tables, role=unscoped_role("role-a"))
         assert isinstance(gov, GovernanceContext)
         assert gov.rls_rules == {}
         assert gov.masking_rules == {}
@@ -366,7 +367,7 @@ class TestBuildGovernanceContext:
         ctx = _ctx(_meta("orders", "orders", table_id=1))
         tables = [{"id": 1, "columns": [{"column_name": "id"}]}]
         rls = _FakeRLSContext({1: "tenant_id = 7"})
-        gov = build_governance_context("role-a", rls, {}, ctx, tables)
+        gov = build_governance_context("role-a", rls, {}, ctx, tables, role=unscoped_role("role-a"))
         assert gov.rls_rules == {1: "tenant_id = 7"}
 
     def test_masking_rules_for_matching_role_populated(self):
@@ -375,7 +376,9 @@ class TestBuildGovernanceContext:
         rls = _FakeRLSContext({})
         rule = MaskingRule(mask_type=MaskType.regex, pattern=r".+@", replace="***@")
         masking = {(2, "role-a"): {"email": (rule, "varchar")}}
-        gov = build_governance_context("role-a", rls, masking, ctx, tables)
+        gov = build_governance_context(
+            "role-a", rls, masking, ctx, tables, role=unscoped_role("role-a")
+        )
         assert (2, "email") in gov.masking_rules
         assert gov.masking_rules[(2, "email")][0] is rule
 
@@ -385,7 +388,9 @@ class TestBuildGovernanceContext:
         rls = _FakeRLSContext({})
         rule = MaskingRule(mask_type=MaskType.regex, pattern=r".+@", replace="***@")
         masking = {(2, "role-b"): {"email": (rule, "varchar")}}
-        gov = build_governance_context("role-a", rls, masking, ctx, tables)
+        gov = build_governance_context(
+            "role-a", rls, masking, ctx, tables, role=unscoped_role("role-a")
+        )
         assert (2, "email") not in gov.masking_rules
 
     def test_visibility_restrictions_visible_columns_populated(self):
@@ -400,7 +405,7 @@ class TestBuildGovernanceContext:
             }
         ]
         rls = _FakeRLSContext({})
-        gov = build_governance_context("role-a", rls, {}, ctx, tables)
+        gov = build_governance_context("role-a", rls, {}, ctx, tables, role=unscoped_role("role-a"))
         vis = gov.visible_columns.get(1)
         assert vis is not None  # not all-visible
         assert "id" in vis
@@ -418,7 +423,7 @@ class TestBuildGovernanceContext:
             }
         ]
         rls = _FakeRLSContext({})
-        gov = build_governance_context("role-a", rls, {}, ctx, tables)
+        gov = build_governance_context("role-a", rls, {}, ctx, tables, role=unscoped_role("role-a"))
         # visible_to=None on all columns → all_visible=True → None sentinel
         assert gov.visible_columns.get(1) is None
 
@@ -427,5 +432,5 @@ class TestBuildGovernanceContext:
         ctx = _ctx(m)
         tables = [{"id": 1, "columns": []}]
         rls = _FakeRLSContext({})
-        gov = build_governance_context("role-a", rls, {}, ctx, tables)
+        gov = build_governance_context("role-a", rls, {}, ctx, tables, role=unscoped_role("role-a"))
         assert gov.table_map.get("orders") == 1

@@ -16,9 +16,8 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-from sqlalchemy import delete as _delete
 
-from provisa.core.schema_org import api_endpoints, api_sources, registered_tables
+from provisa.core.schema_org import api_endpoints, api_sources
 from provisa.openapi.mapper import OpenAPIQuery, OpenAPIMutation, parse_spec
 
 if TYPE_CHECKING:
@@ -311,6 +310,18 @@ async def upsert_tracked_function(  # REQ-317
     log.debug("Upserted tracked function %s for operation %s", fn_name, mutation.operation_id)
 
 
+class CommandsNeedDomain(ValueError):
+    """An OpenAPI registration whose spec declares commands and names no domain to put them in."""
+
+    def __init__(self, source_id: str, commands: int) -> None:
+        self.source_id = source_id
+        self.commands = commands
+        super().__init__(
+            f"OpenAPI source {source_id!r} declares {commands} command(s) and names no domain: "
+            "a command sits in a domain, so the registration needs one"
+        )
+
+
 async def auto_register_openapi_source(  # REQ-314, REQ-316, REQ-317, REQ-321
     source_id: str,
     spec: dict,
@@ -319,26 +330,46 @@ async def auto_register_openapi_source(  # REQ-314, REQ-316, REQ-317, REQ-321
     base_url: str = "",
     auth_config: dict | None = None,
     cache_ttl: int = 300,
-) -> tuple[int, int]:
-    """Parse spec and upsert virtual tables + tracked functions. Returns (n_tables, n_mutations)."""
-    # Delete stale rows (e.g. pre-fix verb-prefixed names) before upserting fresh set
+) -> tuple[int, int, list[dict]]:
+    """Parse spec and upsert virtual tables + tracked functions.
+
+    Returns (n_tables, n_mutations, kept). Each table is upserted by its identity (source,
+    schema, name), so one the spec still has keeps its id and what refers to it. One the spec no
+    longer has is deleted through the model store; when something depends on it, it is kept, and
+    ``kept`` lists it with what still refers to it (REQ-1918)."""
     # REQ-1591: a term's domains are derived by joining its refs to registered_tables, so the
     # snapshot the sweep needs has to be taken while those rows still exist.
     from provisa.core.repositories import glossary as glossary_repo
+    from provisa.core.repositories import table as table_repo
 
-    domains_before = await glossary_repo.term_domains(conn)
-    await conn.execute_core(
-        _delete(registered_tables).where(
-            registered_tables.c.source_id == source_id,
-            registered_tables.c.schema_name == "openapi",
-        )
-    )
     queries, mutations = parse_spec(spec)
+    if mutations:
+        # REQ-1531: the spec's mutations become commands, and a command sits in a domain.
+        # Refused before anything is written, so a registration never lands its tables and then
+        # fails on its commands.
+        from provisa.core import domain_policy
+
+        try:
+            domain_policy.command_domain_id(domain_id, source_id)
+        except ValueError as refused:
+            raise CommandsNeedDomain(source_id, len(mutations)) from refused
+    domains_before = await glossary_repo.term_domains(conn)
+    unchanged: list[dict] = []
     for q in queries:
-        await upsert_table(source_id, q, conn, domain_id, base_url, auth_config, cache_ttl)
+        try:
+            await upsert_table(source_id, q, conn, domain_id, base_url, auth_config, cache_ttl)
+        except table_repo.ColumnDropRefused as refused:
+            # The spec dropped a field something here still refers to: the table is left as it
+            # was and reported.
+            held = await table_repo.get_by_name(
+                conn, source_id, "openapi", _operation_id_to_alias(q.operation_id)
+            )
+            unchanged.append(table_repo.kept_columns_report(refused, held["id"] if held else None))
     for m in mutations:
         await upsert_tracked_function(source_id, m, conn, domain_id)
-    # REQ-1387: the stale-row wipe cascaded glossary refs; the upserts above relinked the
-    # surviving columns, so settle only the terms whose fields truly departed.
+    kept = await table_repo.retire_generated(
+        conn, source_id, "openapi", {_operation_id_to_alias(q.operation_id) for q in queries}
+    )
+    # REQ-1387: settle only the terms whose fields truly departed.
     await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
-    return len(queries), len(mutations)
+    return len(queries), len(mutations), [*table_repo.kept_report(kept), *unchanged]

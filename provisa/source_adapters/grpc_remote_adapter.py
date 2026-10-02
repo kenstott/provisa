@@ -56,10 +56,16 @@ async def fetch(  # REQ-325, REQ-327, REQ-328
     """Execute a gRPC query method with cache-aside. Returns rows as list of dicts."""
     cache_key = f"grpc_remote:{source_id}:{full_method_path}:{_args_hash(args)}:{role}"
 
-    cached = await response_cache_store.get(cache_key)
+    # REQ-595: read and written under the acting org, environment and loaded model, like every
+    # other cached result — the key alone (source id, method, arguments, role name) is the same
+    # in every org.
+    from provisa.cache import tenancy
+
+    scope = tenancy.acting_scope()
+    cached = await response_cache_store.get(cache_key, tenant_id=scope)
     if cached is not None:
         log.debug("Cache hit %s", cache_key)
-        return json.loads(cached)
+        return json.loads(cached.data)
 
     channel = _get_channel(grpc_remote_sources, source_id)
     rows = await execute_query(
@@ -72,7 +78,9 @@ async def fetch(  # REQ-325, REQ-327, REQ-328
         server_streaming=server_streaming,
     )
 
-    await response_cache_store.set(cache_key, json.dumps(rows, default=str), ttl=ttl)
+    await response_cache_store.set(
+        cache_key, json.dumps(rows, default=str).encode(), ttl=ttl, tenant_id=scope
+    )
     return rows
 
 

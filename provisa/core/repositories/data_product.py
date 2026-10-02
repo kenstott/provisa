@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import delete as _delete, select
 
 from provisa.core.models import DataProduct
+from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import data_products
 
 if TYPE_CHECKING:
@@ -83,6 +84,32 @@ async def list_by_domain(conn: "Connection", domain_id: str) -> list[dict]:  # R
     return [dict(r._mapping) for r in result.fetchall()]
 
 
-async def delete(conn: "Connection", product_id: str) -> bool:  # REQ-1634
-    result = await conn.execute_core(_delete(data_products).where(data_products.c.id == product_id))
-    return (result.rowcount or 0) > 0
+class DataProductDeleteRefused(Exception):
+    """A data product that may not be deleted because it has members; ``dependents`` lists
+    them."""
+
+    def __init__(self, product_id: str, dependents: list[Dependent]) -> None:
+        self.product_id = product_id
+        self.dependents = dependents
+        named = ", ".join(f"{d.ref.kind} {d.ref.id}" for d in dependents)
+        super().__init__(f"Data product {product_id!r} still has members: {named}")
+
+
+async def delete(conn: "Connection", product_id: str) -> bool:  # REQ-1634, REQ-1918
+    """Delete one data product: THE delete, for every surface. False when there is none.
+
+    A data product is blocked by its members (REQ-1918): refused
+    (:class:`DataProductDeleteRefused`), naming each, while a table or a command belongs to
+    it — the operator takes them out of the product first. (PostgreSQL used to detach them
+    silently; SQLite left them naming a product that was gone.) Its tag assignments go with it.
+    One transaction."""
+    ref = ObjectRef("data_product", product_id)
+    async with conn.transaction():
+        if await get(conn, product_id) is None:
+            return False
+        blocking = await guard(conn, ref)
+        if blocking:
+            raise DataProductDeleteRefused(product_id, blocking)
+        await remove_parts(conn, ref)
+        await conn.execute_core(_delete(data_products).where(data_products.c.id == product_id))
+    return True

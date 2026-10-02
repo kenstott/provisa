@@ -3,6 +3,7 @@
     "_requestFailed": "{{op}} विफल हुआ ({{status}})",
     "actions": {
       "database_not_connected": "डेटाबेस कनेक्ट नहीं है",
+      "domain_required": "{{name}} में कोई डोमेन नहीं दिया गया है: कमांड या वेबहुक किसी डोमेन में होता है",
       "function_not_found": "फ़ंक्शन '{{name}}' नहीं मिला",
       "source_not_connected": "स्रोत '{{source}}' कनेक्ट नहीं है",
       "test_endpoint_disabled": "टेस्ट एंडपॉइंट अक्षम है (गैर-प्रोडक्शन में सक्षम करने के लिए PROVISA_ENABLE_TEST_ENDPOINTS सेट करें)।",
@@ -151,6 +152,7 @@
     },
     "openapi": {
       "database_not_connected": "डेटाबेस कनेक्ट नहीं है",
+      "domain_required": "OpenAPI स्रोत {{source}} {{commands}} कमांड घोषित करता है और कोई डोमेन नहीं देता: कमांड किसी डोमेन में होता है, इसलिए पंजीकरण के लिए डोमेन आवश्यक है",
       "invalid_json": "अमान्य JSON: {{error}}",
       "refresh_failed": "रीफ़्रेश विफल हुआ: {{error}}",
       "registration_failed": "पंजीकरण विफल हुआ: {{error}}",
@@ -195,6 +197,7 @@
     "roles": {
       "cannot_delete_system": "सिस्टम भूमिकाएँ हटाई नहीं जा सकतीं",
       "cannot_modify_administrative": "प्रशासनिक भूमिकाएँ संशोधित नहीं की जा सकतीं",
+      "has_dependents": "भूमिका {{role}} को अब भी {{count}} ऑब्जेक्ट संदर्भित करते हैं; पहले उन संदर्भों को हटाएँ",
       "not_found": "भूमिका नहीं मिली",
       "org_selection_required": "संगठन चयन आवश्यक है"
     },

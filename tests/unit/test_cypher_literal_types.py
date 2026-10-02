@@ -55,7 +55,7 @@ def _label_map() -> CypherLabelMap:
         physical_to_sql={},
         gql_governed_object_cols=set(),
     )
-    return CypherLabelMap.from_schema(ctx)
+    return CypherLabelMap.from_schema(ctx, domain_access=["*"])
 
 
 def _where(cypher: str, params: dict | None = None) -> tuple[str, list[str]]:

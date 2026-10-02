@@ -3,6 +3,7 @@
     "_requestFailed": "{{op}} 失败（{{status}}）",
     "actions": {
       "database_not_connected": "数据库未连接",
+      "domain_required": "{{name}} 未指定域：命令或 Webhook 必须属于某个域",
       "function_not_found": "未找到函数 '{{name}}'",
       "source_not_connected": "数据源 '{{source}}' 未连接",
       "test_endpoint_disabled": "测试终结点已禁用（在非生产环境中设置 PROVISA_ENABLE_TEST_ENDPOINTS 以启用）。",
@@ -151,6 +152,7 @@
     },
     "openapi": {
       "database_not_connected": "数据库未连接",
+      "domain_required": "OpenAPI 数据源 {{source}} 声明了 {{commands}} 个命令但未指定域：命令必须属于某个域，因此注册时需要指定域",
       "invalid_json": "无效的 JSON：{{error}}",
       "refresh_failed": "刷新失败：{{error}}",
       "registration_failed": "注册失败：{{error}}",
@@ -195,6 +197,7 @@
     "roles": {
       "cannot_delete_system": "无法删除系统角色",
       "cannot_modify_administrative": "无法修改管理角色",
+      "has_dependents": "仍有 {{count}} 个对象引用角色 {{role}}；请先移除这些引用",
       "not_found": "未找到角色",
       "org_selection_required": "需要先选择组织"
     },

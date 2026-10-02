@@ -62,7 +62,7 @@ class Worker:
         return body
 
     def data(self, query: str, role: str = "analyst") -> dict:
-        _, body = self._post(DATA, {"query": query}, {"x-provisa-role": role, "X-Role": role})
+        _, body = self._post(DATA, {"query": query}, {"x-provisa-role": role})
         return body
 
 

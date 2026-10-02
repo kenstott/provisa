@@ -45,6 +45,7 @@ def _fn(writable_by):
         returns="",
         writable_by=writable_by,
         kind="mutation",
+        domain_id="orders",  # a command sits in a domain (REQ-1531)
     )
 
 

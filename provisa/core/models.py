@@ -2038,6 +2038,49 @@ class ProvisaConfig(BaseModel):
             raise ValueError("view_metrics: " + "; ".join(offenders))
         return self
 
+    @model_validator(mode="before")
+    @classmethod
+    def _roles_state_their_domains(cls, data: object) -> object:
+        """A role that omits ``domain_access`` fails the load BY NAME. There is no default: a
+        missing list would have to be read as either every domain or none."""
+        if isinstance(data, dict):
+            for role in data.get("roles") or []:
+                if isinstance(role, dict) and "domain_access" not in role:
+                    raise ValueError(
+                        f"role {role.get('id')!r} has no domain_access: a role must list at "
+                        'least one domain, or "*" for all domains'
+                    )
+        return data
+
+    @model_validator(mode="after")
+    def _roles_list_a_domain(self) -> "ProvisaConfig":
+        """A role is always one or more domains, or all (``rights.role_domain_problem``).
+
+        Judged on the role's effective list — its own plus what a parent IN THIS CONFIG hands
+        down. An empty list reads no data, so it fails the load naming the role rather than
+        loading a role that silently reaches nothing.
+        """
+        from provisa.security.rights import role_domain_problem
+
+        by_id = {r.id: r for r in self.roles}
+        for role in self.roles:
+            # Walk the parent chain here rather than through flatten_roles: that refuses an
+            # inheritance cycle, which is its own rule with its own error (REQ-1677), raised
+            # where the roles are flattened. A cycle simply ends this walk.
+            capabilities: set[str] = set()
+            domains: set[str] = set()
+            seen: set[str] = set()
+            current: Role | None = role
+            while current is not None and current.id not in seen:
+                seen.add(current.id)
+                capabilities.update(current.capabilities)
+                domains.update(current.domain_access)
+                current = by_id.get(current.parent_role_id) if current.parent_role_id else None
+            problem = role_domain_problem(role.id, capabilities, domains)
+            if problem is not None:
+                raise ValueError(problem)
+        return self
+
     @model_validator(mode="after")
     def _validate_domain_policy(self) -> "ProvisaConfig":
         # Inert when the feature is not engaged (use_domains absent).

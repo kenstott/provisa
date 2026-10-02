@@ -333,6 +333,34 @@ class TestOnlyAssignedRoleRidesHeader:
         assert resp.status_code == 403, resp.text
         assert "is not assigned to this user" in resp.json()["detail"]
 
+    async def test_a_role_named_in_the_path_follows_the_same_rule(self, client):
+        # REQ-273: a route that addresses a role by id in the URL is the same act as naming it in
+        # the header. alice holds analyst and not org_admin.
+        own = await client.get("/data/proto/analyst", headers=_basic("alice"))
+        assert own.status_code == 200, own.text
+        assert "proto3" in own.text
+
+        for path in (
+            "/data/proto/org_admin",
+            "/data/proto/org_admin?domains=sales-analytics",
+            "/data/grpc-commands/org_admin",
+        ):
+            resp = await client.get(path, headers=_basic("alice"))
+            assert resp.status_code == 403, f"{path}: {resp.status_code} {resp.text}"
+            assert resp.json()["detail"] == "Role 'org_admin' is not assigned to this user"
+
+        ran = await client.post(
+            "/data/grpc-command/org_admin",
+            json={"name": "anything", "args_json": "{}"},
+            headers=_basic("alice"),
+        )
+        assert ran.status_code == 403, ran.text
+        assert ran.json()["detail"] == "Role 'org_admin' is not assigned to this user"
+
+        # The holder of the role is served.
+        held = await client.get("/data/proto/org_admin", headers=_basic("founder"))
+        assert held.status_code == 200, held.text
+
 
 class TestPlatformAdminHasZeroDataPlane:
     """REQ-1327: platform_admin is a purely control-plane role — no data surface anywhere,
@@ -360,6 +388,8 @@ class TestPlatformAdminHasZeroDataPlane:
         caps = set(roles["platform_admin"]["capabilities"])
         # Exactly the two platform rights: no data capability, and nothing standing in for one.
         assert caps == {"platform_settings", "cross_org"}, caps
+        # ...and no domain scope, which is data-plane scope.
+        assert roles["platform_admin"]["domain_access"] == [], roles["platform_admin"]
         assert not caps & _DATA_PLANE_CAPS, f"platform_admin holds data caps: {caps}"
         for role_id, role in roles.items():
             assert not {"admin", "superadmin"} & set(role["capabilities"]), role_id

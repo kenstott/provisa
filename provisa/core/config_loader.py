@@ -35,17 +35,13 @@ from provisa.core import domain_policy
 from provisa.core.schema_org import (
     api_endpoints,
     api_sources,
-    domains,
     glossary_terms,
     metrics as metrics_table,
     naming_rules,
     registered_tables,
     relationships,
-    roles,
     sources,
     table_columns,
-    tracked_functions,
-    tracked_webhooks,
 )
 from provisa.core.secrets import resolve_secrets
 from provisa.openapi.mapper import OpenAPIQuery
@@ -219,19 +215,13 @@ async def _replace_mode_cleanup(
     # and the rate-limit gate 403s the whole deployment.
     new_role_ids = list({r.id for r in config.roles} | SYSTEM_ROLE_IDS)
     keep_sources = new_source_ids if new_source_ids else _SYSTEM_SOURCE_IDS
-    await conn.execute_core(
-        _delete(registered_tables).where(registered_tables.c.source_id.not_in(keep_sources))
-    )
-    await conn.execute_core(_delete(sources).where(sources.c.id.not_in(keep_sources)))
+    await table_repo.remove_registrations(conn, registered_tables.c.source_id.not_in(keep_sources))
+    await source_repo.remove_where(conn, sources.c.id.not_in(keep_sources))
     keep_domains = new_domain_ids if new_domain_ids else domain_policy.system_domain_ids()
-    await conn.execute_core(_delete(domains).where(domains.c.id.not_in(keep_domains)))
-    if new_role_ids:
-        await conn.execute_core(_delete(roles).where(roles.c.id.not_in(new_role_ids)))
-    else:
-        await conn.execute_core(_delete(roles))
-    await conn.execute_core(_delete(relationships).where(relationships.c.id.notlike("meta:%")))
-    await conn.execute_core(_delete(tracked_functions))
-    await conn.execute_core(_delete(tracked_webhooks))
+    await domain_repo.delete_all_except(conn, list(keep_domains))
+    await role_repo.delete_all_except(conn, new_role_ids)
+    await rel_repo.remove_where(conn, relationships.c.id.notlike("meta:%"))
+    await function_repo.remove_all(conn)
 
 
 async def _upsert_sources(  # REQ-012, REQ-250, REQ-1266, REQ-1730
@@ -646,13 +636,12 @@ async def _purge_removed_tables(conn: "Connection", config: ProvisaConfig) -> No
     for tbl in config.tables:
         tables_by_source.setdefault(tbl.source_id, []).append((tbl.schema_name, tbl.table_name))
     for src_id, current_pairs in tables_by_source.items():
-        await conn.execute_core(
-            _delete(registered_tables).where(
-                registered_tables.c.source_id == src_id,
-                tuple_(registered_tables.c.schema_name, registered_tables.c.table_name).not_in(
-                    current_pairs
-                ),
-            )
+        await table_repo.remove_registrations(
+            conn,
+            registered_tables.c.source_id == src_id,
+            tuple_(registered_tables.c.schema_name, registered_tables.c.table_name).not_in(
+                current_pairs
+            ),
         )
 
 
@@ -756,19 +745,15 @@ async def _upsert_relationships(
         .exists()
     )
     if current_rel_ids:
-        await conn.execute_core(
-            _delete(relationships).where(
-                relationships.c.id.not_in(current_rel_ids),
-                relationships.c.id.notlike("meta:%"),
-                ~graphql_remote_exists,
-            )
+        await rel_repo.remove_where(
+            conn,
+            relationships.c.id.not_in(current_rel_ids),
+            relationships.c.id.notlike("meta:%"),
+            ~graphql_remote_exists,
         )
     else:
-        await conn.execute_core(
-            _delete(relationships).where(
-                relationships.c.id.notlike("meta:%"),
-                ~graphql_remote_exists,
-            )
+        await rel_repo.remove_where(
+            conn, relationships.c.id.notlike("meta:%"), ~graphql_remote_exists
         )
     for rel in config.relationships:
         try:
@@ -791,10 +776,10 @@ async def _upsert_metrics(conn: "Connection", config: ProvisaConfig) -> None:  #
     Fact-derived metrics (``from_fact`` set, REQ-1320) are managed by fact registration, not
     the file — they are preserved regardless of the config's metric list."""
     current_names = [m.name for m in config.metrics]
-    stale = _delete(metrics_table).where(metrics_table.c.from_fact.is_(None))
+    stale = [metrics_table.c.from_fact.is_(None)]
     if current_names:
-        stale = stale.where(metrics_table.c.name.not_in(current_names))
-    await conn.execute_core(stale)
+        stale.append(metrics_table.c.name.not_in(current_names))
+    await metric_repo.remove_where(conn, *stale)
     for m in config.metrics:
         await metric_repo.upsert(conn, m)
 
@@ -878,7 +863,9 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
 
     # 4. Roles (before tables/RLS so FK refs exist)
     for role in config.roles:
-        await role_repo.upsert(conn, role)
+        # A role the config declares is the deployment's own definition, as a seeded role is:
+        # it carries no org, and the admin surfaces do not delete it.
+        await role_repo.upsert(conn, role, org_id=None)
 
     # 4.5 Data products (before tables so product_id FK refs exist)  # REQ-1634
     for dp in config.data_products:

@@ -80,6 +80,7 @@ async def test_role_upsert_refuses_to_redefine_platform_admin():
         Role(
             id="platform_admin", capabilities=["source_registration", "admin"], domain_access=["*"]
         ),
+        org_id=None,
     )
     assert conn.upserts == [], "platform_admin's definition belongs to schema.sql alone"
 
@@ -93,6 +94,7 @@ async def test_role_upsert_refuses_to_redefine_org_admin():
     await role_repo.upsert(
         conn,  # type: ignore[arg-type]
         Role(id="org_admin", capabilities=["query_development"], domain_access=["*"]),
+        org_id=None,
     )
     assert conn.upserts == [], "org_admin's definition belongs to schema.sql alone"
 
@@ -111,6 +113,7 @@ async def test_role_upsert_still_writes_other_roles():
     await role_repo.upsert(
         conn,  # type: ignore[arg-type]
         Role(id="analyst", capabilities=["query_development"], domain_access=["sales"]),
+        org_id=None,
     )
     assert [u["id"] for u in conn.upserts] == ["analyst"]
 

@@ -20,7 +20,15 @@ from provisa.core import domain_policy
 from provisa.core.models import Table
 from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories import glossary as glossary_repo
-from provisa.core.schema_org import registered_tables, roles, table_columns
+from provisa.core.repositories.integrity import (
+    Dependent,
+    ObjectRef,
+    column_dependents,
+    guard,
+    remove_parts,
+    view_loop,
+)
+from provisa.core.schema_org import registered_tables, roles, table_columns, tag_assignments
 from provisa.security.rights import Capability
 
 if TYPE_CHECKING:
@@ -87,6 +95,53 @@ async def _load_columns(conn: "Connection", table_id: int) -> list[dict]:
     return [dict(r._mapping) for r in result.fetchall()]
 
 
+class TableDeleteRefused(Exception):
+    """A table or view that may not be deleted because other objects refer to it;
+    ``dependents`` lists them."""
+
+    def __init__(self, table_id: int, name: str, dependents: list[Dependent]) -> None:
+        self.table_id = table_id
+        self.name = name
+        self.dependents = dependents
+        named = ", ".join(f"{d.ref.kind} {d.ref.id}" for d in dependents)
+        super().__init__(f"Table {name!r} is still referred to by: {named}")
+
+
+class ColumnDropRefused(ValueError):
+    """A re-registration that would drop columns other objects refer to; ``columns`` maps each
+    such column to its dependents. Nothing was changed."""
+
+    def __init__(self, table_name: str, columns: dict[str, list[Dependent]]) -> None:
+        self.table_name = table_name
+        self.columns = columns
+        named = "; ".join(
+            f"{column} (referred to by: "
+            + ", ".join(f"{d.ref.kind} {d.ref.id}" for d in dependents)
+            + ")"
+            for column, dependents in columns.items()
+        )
+        super().__init__(
+            f"Table {table_name!r} cannot drop column(s) that are still referred to: {named}"
+        )
+
+    def report(self) -> dict[str, list[dict]]:
+        return {
+            column: [d.as_dict() for d in dependents] for column, dependents in self.columns.items()
+        }
+
+
+class ViewLoopRefused(ValueError):
+    """A view whose SQL would read the view itself, directly or through other views;
+    ``loop`` is the view names in reading order, starting and ending at the view."""
+
+    def __init__(self, loop: list[str]) -> None:
+        self.loop = loop
+        super().__init__(
+            f"View {loop[0]!r} would read itself: {' -> '.join(loop)}. A view cannot read "
+            "itself through other views; change one of them."
+        )
+
+
 async def upsert(
     conn: "Connection", table: Table
 ) -> int | None:  # REQ-013, REQ-016, REQ-133, REQ-155, REQ-156, REQ-260, REQ-334, REQ-393, REQ-399
@@ -94,8 +149,19 @@ async def upsert(
 
     REQ-1914: one transaction. The table row, the wholesale column replace and the glossary refs
     commit together, so the config stamp they advance is seen only with the finished table —
-    another worker never reloads a table whose columns are deleted and not yet re-inserted."""
+    another worker never reloads a table whose columns are deleted and not yet re-inserted.
+
+    REQ-1918: a view whose SQL would read the view itself through other views is refused
+    (:class:`ViewLoopRefused`) — it cannot be evaluated, and it is the one way objects could come
+    to block each other's deletion in a circle. A registration that would drop a column other
+    objects refer to is refused (:class:`ColumnDropRefused`). This is the write path the admin
+    mutations and the config loader share, so both refuse them."""
     async with conn.transaction():
+        view_sql = getattr(table, "view_sql", None)
+        if view_sql:
+            loop = await view_loop(conn, table.table_name, view_sql)
+            if loop:
+                raise ViewLoopRefused(loop)
         return await _upsert(conn, table)
 
 
@@ -252,6 +318,25 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
             )
         ).fetchall()
     }
+    # REQ-1918: a column this registration no longer lists is dropped. While a relationship is
+    # keyed on it, or a view, materialized view or metric names it, the registration is refused
+    # naming them; the transaction around this call undoes the table row's update. A dropped
+    # column's tag assignments are its parts and go with it.
+    _dropped = sorted(set(_existing_types) - {col.name for col in table.columns})
+    _referred: dict[str, list[Dependent]] = {}
+    for _column in _dropped:
+        _dependents = await column_dependents(conn, table_id, _column)
+        if _dependents:
+            _referred[_column] = _dependents
+    if _referred:
+        raise ColumnDropRefused(table.table_name, _referred)
+    if _dropped:
+        await conn.execute_core(
+            _delete(tag_assignments).where(
+                tag_assignments.c.table_id == table_id,
+                tag_assignments.c.column_name.in_(_dropped),
+            )
+        )
     # Replace columns: delete existing, insert new
     _control_plane = await _control_plane_role_ids(conn)
     await conn.execute_core(_delete(table_columns).where(table_columns.c.table_id == table_id))
@@ -389,14 +474,98 @@ async def list_all(conn: "Connection") -> list[dict]:  # REQ-013, REQ-016
     return out
 
 
-async def delete(conn: "Connection", table_id: int) -> bool:  # REQ-014
-    # REQ-1591: before the row goes. A term's domains are derived by joining its refs to this very
-    # table, so the sweep that follows the delete has nothing left to read them from.
-    domains_before = await glossary_repo.term_domains(conn)
-    result = await conn.execute_core(
-        _delete(registered_tables).where(registered_tables.c.id == table_id)
+async def delete(conn: "Connection", table_id: int) -> bool:  # REQ-014, REQ-1918
+    """Delete one registered table or view: THE delete, for every surface. False when there is
+    no such table.
+
+    Refused (:class:`TableDeleteRefused`), naming each dependent, while a relationship takes
+    part in it — at either end, or through it — a view or materialized view reads it, a metric's
+    expression reads it, or a command or webhook returns it. When it may go, its parts go with
+    it: its columns, the row filters defined on it, its tag assignments, glossary references,
+    meta links, file mtimes, the discovery candidates naming it, and for a view its storage row
+    with its refresh log and delta ledger. One transaction; no database cascade is relied on.
+
+    Data kept for the table outside the control plane (replica, row-level rows, a view's
+    storage relation, cache entries) is not removed here; the caller runs what exists for it.
+    """
+    ref = ObjectRef("table", table_id)
+    async with conn.transaction():
+        row = await get(conn, table_id)
+        if row is None:
+            return False
+        blocking = await guard(conn, ref)
+        if blocking:
+            raise TableDeleteRefused(table_id, row["table_name"], blocking)
+        # REQ-1591: before the refs go. A term's domains are derived by joining its refs to this
+        # very table, so the sweep that follows has nothing left to read them from.
+        domains_before = await glossary_repo.term_domains(conn)
+        await remove_parts(conn, ref)
+        await conn.execute_core(
+            _delete(registered_tables).where(registered_tables.c.id == table_id)
+        )
+        # REQ-1387: settle the terms that lost their last ref (remove, or deprecate when an
+        # abstract term hangs on them).
+        await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
+    return True
+
+
+async def retire_generated(  # REQ-1918
+    conn: "Connection", source_id: str, schema_name: str, current: set[str]
+) -> list[TableDeleteRefused]:
+    """Remove the tables a source's generated set no longer contains, one at a time through
+    :func:`delete`; returns the refusals of those that could not go.
+
+    A remote source's tables are generated from its schema, and re-registering the source
+    upserts each by its identity (source, schema, name), so a table that is still there keeps its
+    id and everything that refers to it. A table the remote no longer has is deleted like any
+    other — and when something depends on it, it is KEPT and reported, so the operator sees
+    which tables are gone upstream and what still refers to them. ``current`` is the names in
+    the set just registered.
+    """
+    rows = await conn.execute_core(
+        select(registered_tables.c.id, registered_tables.c.table_name).where(
+            registered_tables.c.source_id == source_id,
+            registered_tables.c.schema_name == schema_name,
+        )
     )
-    # REQ-1387: the FK cascade just removed this table's glossary refs; settle the terms
-    # that lost their last ref (remove, or deprecate when an abstract term hangs on them).
-    await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
-    return (result.rowcount or 0) > 0
+    kept: list[TableDeleteRefused] = []
+    for table_id, name in sorted(rows.fetchall(), key=lambda r: r[1]):
+        if name in current:
+            continue
+        try:
+            await delete(conn, table_id)
+        except TableDeleteRefused as refused:
+            kept.append(refused)
+    return kept
+
+
+def kept_columns_report(refused: ColumnDropRefused, table_id: int | None) -> dict:
+    """A generated table whose re-registration would have dropped columns something refers to,
+    as a row of what the re-registration returns: the table was left as it was, and each such
+    column is listed with what refers to it."""
+    return {"id": table_id, "name": refused.table_name, "columns": refused.report()}
+
+
+def kept_report(kept: list[TableDeleteRefused]) -> list[dict]:
+    """:func:`retire_generated`'s refusals as the rows a re-registration returns: the table
+    kept, and what still refers to it."""
+    return [
+        {
+            "id": refused.table_id,
+            "name": refused.name,
+            "dependents": [d.as_dict() for d in refused.dependents],
+        }
+        for refused in kept
+    ]
+
+
+async def remove_registrations(conn: "Connection", *where) -> None:
+    """Remove every registered table matching ``where`` (clauses on ``registered_tables``) —
+    for the code that registers tables as a SET and replaces or retires that set: the seed
+    retiring rows it wrote, the config loader dropping what the config no longer declares.
+
+    It declares a set; it is not a deletion of one object, so it does not ask the dependency
+    guard, as a full replace does not. What referred to those tables is left to the database, as
+    it was when each caller issued this statement itself: removed by the schema's cascades on
+    PostgreSQL, left in place on SQLite."""
+    await conn.execute_core(_delete(registered_tables).where(*where))

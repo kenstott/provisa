@@ -20,16 +20,16 @@ from provisa.core.database import create_engine_from_url
 from provisa.core.database import Database
 from provisa.core.models import DataProduct
 from provisa.core.repositories import data_product as data_product_repo
-from provisa.core.schema_org import data_products, domains
-
-_TABLES = [domains, data_products]
+from provisa.core.schema_org import domains
 
 
 @asynccontextmanager
 async def _conn(tmp_path):
     engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'dp.db'}")
     with engine.begin() as c:
-        domains.metadata.create_all(c, tables=_TABLES)
+        # The whole org schema: a delete asks the dependency guard, which reads every table
+        # that can refer to the object.
+        domains.metadata.create_all(c)
         c.execute(domains.insert().values(id="sales", description="Sales"))
         c.execute(domains.insert().values(id="finance", description="Finance"))
     try:

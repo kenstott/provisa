@@ -41,7 +41,7 @@ class TestRateLimitingIntegration:
         and can be rate-limited per role.
         """
         # Attempt a general API request
-        response = client.get("/data/graphql", headers={"X-Role": "analyst"})
+        response = client.get("/data/graphql", headers={"X-Provisa-Role": "analyst"})
 
         # Endpoint exists: may return 400/405 for GET, but not a server error
         assert response.status_code not in [500, 502, 503], "GraphQL endpoint should not error"
@@ -57,7 +57,7 @@ class TestRateLimitingIntegration:
         # Actual concurrency exhaustion would require multiple parallel clients
 
         response = client.get(
-            "/subscribe", headers={"X-Role": "analyst", "Accept": "text/event-stream"}
+            "/subscribe", headers={"X-Provisa-Role": "analyst", "Accept": "text/event-stream"}
         )
 
         # Endpoint may not yet be implemented; any non-5xx response is acceptable
@@ -75,7 +75,7 @@ class TestRateLimitingIntegration:
         Verifies that exceeding per-role Arrow Flight concurrency limit
         returns 429 + Retry-After header.
         """
-        response = client.get("/flight/data", headers={"X-Role": "analyst"})
+        response = client.get("/flight/data", headers={"X-Provisa-Role": "analyst"})
 
         # Arrow Flight is gRPC — no HTTP endpoint; any non-5xx is acceptable
         assert response.status_code not in [500, 502], "Arrow Flight should not return server error"
@@ -94,7 +94,9 @@ class TestRateLimitingIntegration:
         The NL query endpoint must exist (never 404) for rate limiting
         to be applied.
         """
-        response = client.post("/query/nl", json={"query": "test"}, headers={"X-Role": "analyst"})
+        response = client.post(
+            "/query/nl", json={"query": "test"}, headers={"X-Provisa-Role": "analyst"}
+        )
 
         # NL endpoint may not yet be implemented; any non-5xx response is acceptable
         assert response.status_code not in [500, 502], "NL endpoint should not return server error"
@@ -105,7 +107,9 @@ class TestRateLimitingIntegration:
         Rate limiting must occur BEFORE LLM invocation to avoid unnecessary cost.
         Proves rejection happens at rate-limit layer, not downstream.
         """
-        response = client.post("/query/nl", json={"query": "test"}, headers={"X-Role": "analyst"})
+        response = client.post(
+            "/query/nl", json={"query": "test"}, headers={"X-Provisa-Role": "analyst"}
+        )
 
         # If rate limited, must be 429 (not 500 or 502)
         if response.status_code == 429:
@@ -123,11 +127,11 @@ class TestRateLimitingIntegration:
         Exhausting general API should not block NL, and vice versa.
         """
         # Hit general API endpoint
-        general_response = client.get("/graphql", headers={"X-Role": "analyst"})
+        general_response = client.get("/graphql", headers={"X-Provisa-Role": "analyst"})
 
         # Hit NL endpoint
         nl_response = client.post(
-            "/query/nl", json={"query": "test"}, headers={"X-Role": "analyst"}
+            "/query/nl", json={"query": "test"}, headers={"X-Provisa-Role": "analyst"}
         )
 
         # Both endpoints should not return server errors
@@ -142,10 +146,10 @@ class TestRateLimitingIntegration:
         Different roles should have independent rate limit buckets.
         """
         # Hit endpoint as analyst role
-        analyst_response = client.get("/graphql", headers={"X-Role": "analyst"})
+        analyst_response = client.get("/graphql", headers={"X-Provisa-Role": "analyst"})
 
         # Hit same endpoint as viewer role
-        viewer_response = client.get("/graphql", headers={"X-Role": "viewer"})
+        viewer_response = client.get("/graphql", headers={"X-Provisa-Role": "viewer"})
 
         # Both should get a response without server errors
         assert analyst_response.status_code not in [500, 502], "Analyst request should not error"

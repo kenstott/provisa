@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
-from sqlalchemy import delete as _delete, insert, or_, select, update
+from sqlalchemy import insert, or_, select, update
 
 from provisa.api.admin._platform_guard import role_definition_problem
 from provisa.api.admin.capabilities import require_capability_request, role_definitions_visible
@@ -102,6 +102,25 @@ async def list_roles(request: Request):  # REQ-042, REQ-059, REQ-060
     return [dict(r._mapping) if full(r.id) else {"id": r.id} for r in rows]
 
 
+async def _require_reach_of_added(
+    conn, request: Request, own_before, parent_before, own_after, parent_after
+) -> None:  # REQ-1531
+    """The caller reaches every domain this change adds to what the role reaches — the domains
+    it lists and the ones it inherits (REQ-1677). ``own_before`` is None for a new role."""
+    from provisa.api.admin.capabilities import require_reach_of_added_domains_request
+    from provisa.core.repositories import role as role_repo
+    from provisa.security.inheritance import effective_domain_access
+
+    rows = await role_repo.list_all(conn)
+
+    def _reach(own, parent_id):
+        inherited = effective_domain_access(parent_id, rows) if parent_id else []
+        return [*own, *inherited]
+
+    before = None if own_before is None else _reach(own_before, parent_before)
+    require_reach_of_added_domains_request(request, before, _reach(own_after, parent_after))
+
+
 @router.post("/")
 async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-059, REQ-060, REQ-215
     # REQ-1531: a role carries capabilities AND domain_access, so minting one widens scope.
@@ -110,7 +129,13 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
     pool = _pool(request)
     async with pool.acquire() as conn:
         await _check_parent(conn, body.id, body.parent_role_id)  # REQ-1677
-        await _check_definition(conn, request, body.capabilities, body.parent_role_id)
+        await _check_definition(
+            conn, request, body.id, body.capabilities, body.domain_access, body.parent_role_id
+        )
+        # REQ-1531: a role hands out reach; its creator must hold what it lists and inherits.
+        await _require_reach_of_added(
+            conn, request, None, None, body.domain_access, body.parent_role_id
+        )
         await conn.execute_core(
             insert(roles).values(
                 id=body.id,
@@ -129,21 +154,37 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
     }
 
 
-async def _check_definition(  # REQ-042, REQ-1337
-    conn, request: Request, capabilities: list[str], parent_id: str | None
+async def _check_definition(  # REQ-042, REQ-1337, REQ-1530
+    conn,
+    request: Request,
+    role_id: str,
+    capabilities: list[str],
+    domain_access: list[str],
+    parent_id: str | None,
 ) -> None:
-    """Refuse a definition naming an unknown capability, or carrying a platform right — its own
-    or one its parent chain hands down (REQ-1677 folds a parent's rights into the role) — that the
-    caller may not define. See ``role_definition_problem``."""
+    """Refuse a definition that lists no domain, names an unknown capability, or carries a
+    platform right the caller may not define — its own values or the ones its parent chain hands
+    down (REQ-1677 folds a parent's rights and domains into the role). See
+    ``role_definition_problem``."""
     inherited: list[str] = []
+    inherited_domains: list[str] = []
     if parent_id is not None:
-        from provisa.security.inheritance import effective_capabilities
+        from provisa.security.inheritance import effective_capabilities, effective_domain_access
 
         result = await conn.execute_core(
-            select(roles.c.id, roles.c.capabilities, roles.c.parent_role_id)
+            select(roles.c.id, roles.c.capabilities, roles.c.domain_access, roles.c.parent_role_id)
         )
-        inherited = effective_capabilities(parent_id, [dict(r._mapping) for r in result.fetchall()])
-    problem = role_definition_problem(request, capabilities, inherited)
+        rows = [dict(r._mapping) for r in result.fetchall()]
+        inherited = effective_capabilities(parent_id, rows)
+        inherited_domains = effective_domain_access(parent_id, rows)
+    problem = role_definition_problem(
+        request,
+        capabilities,
+        inherited,
+        role_id=role_id,
+        domain_access=domain_access,
+        inherited_domain_access=inherited_domains,
+    )
     if problem is not None:
         raise problem
 
@@ -196,7 +237,15 @@ async def update_role(
         )
         if new_parent != existing["parent_role_id"]:
             await _check_parent(conn, role_id, new_parent)  # REQ-1677
-        await _check_definition(conn, request, new_caps, new_parent)
+        await _check_definition(conn, request, role_id, new_caps, new_domains, new_parent)
+        await _require_reach_of_added(
+            conn,
+            request,
+            existing["domain_access"],
+            existing["parent_role_id"],
+            new_domains,
+            new_parent,
+        )
         await conn.execute_core(
             update(roles)
             .where(roles.c.id == role_id)
@@ -214,14 +263,29 @@ async def update_role(
 @router.delete("/{role_id}")
 async def delete_role(role_id: str, request: Request):  # REQ-042, REQ-059, REQ-060, REQ-1531
     require_capability_request(request, "user_management")  # REQ-1531: see create_role
+    from provisa.api.app import _rebuild_schemas
+    from provisa.core.repositories import role as role_repo
+
     pool = _pool(request)
     async with pool.acquire() as conn:
-        result = await conn.execute_core(select(roles.c.org_id).where(roles.c.id == role_id))
-        existing = result.fetchone()
-        if existing is None:
-            raise ApiError(404, "roles.not_found", "Role not found")
-        if existing._mapping["org_id"] is None:
-            raise ApiError(400, "roles.cannot_delete_system", "Cannot delete system roles")
-
-        await conn.execute_core(_delete(roles).where(roles.c.id == role_id))
+        try:
+            deleted = await role_repo.delete(conn, role_id)
+        except role_repo.RoleDeleteRefused as refused:
+            if refused.reason == "dependents":
+                # REQ-1918: nothing is removed; every dependent is named.
+                raise ApiError(
+                    409,
+                    "roles.has_dependents",
+                    str(refused),
+                    role=role_id,
+                    count=len(refused.dependents),
+                    dependents=[d.as_dict() for d in refused.dependents],
+                ) from refused
+            raise ApiError(
+                400, "roles.cannot_delete_system", "Cannot delete system roles"
+            ) from refused
+    if not deleted:
+        raise ApiError(404, "roles.not_found", "Role not found")
+    # The role's built schema and context must not outlive it; the GraphQL path rebuilds too.
+    await _rebuild_schemas()
     return {"deleted": role_id}

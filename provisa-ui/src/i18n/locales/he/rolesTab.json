@@ -7,6 +7,7 @@
     "colActions": "פעולות",
     "empty": "לא נמצאו תפקידים.",
     "detailsHidden": "הפרטים דורשים ניהול משתמשים.",
+    "noDomains": "אין תחומים — אין גישה לנתונים",
     "deleteRole": "מחיקת תפקיד {{roleId}}",
     "deleted": "\"{{roleId}}\" נמחק",
     "pageInfo": "עמוד {{current}} / {{total}}",

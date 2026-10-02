@@ -43,6 +43,7 @@ import type { RLSRule } from "../types/admin";
 import { fetchActions } from "../api/actions";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { PageLoading } from "../components/PageLoading";
+import { useDependentsDialog } from "../hooks/useDependentsDialog";
 
 const ALL_CAPABILITIES: Capability[] = [
   "source_registration",
@@ -63,6 +64,33 @@ const ALL_CAPABILITIES: Capability[] = [
   "glossary_read",
   "glossary_rw",
 ];
+
+/**
+ * A role is always one or more domains, or all: "All Domains" is the only way to say all, and
+ * the server refuses a role saved with none. The editor therefore never lets an empty picker
+ * look like "unrestricted" — it says what is required and withholds Save until it is met.
+ *
+ * Two messages, for two states. A form with no domain chosen yet states the requirement. An
+ * EXISTING role that has ended up with none (the server's backstop: such a role reads no data)
+ * is told so, because that is a fact about the role as it stands, not about the form.
+ */
+function DomainsNote({ savedWithNone }: { savedWithNone: boolean }) {
+  const { t } = useTranslation();
+  return savedWithNone ? (
+    <Text size="sm" c="orange" role="note" data-testid="role-no-domains-note">
+      {t("securityPage.noDomainsNote")}
+    </Text>
+  ) : (
+    <Text size="sm" c="red" role="alert" data-testid="role-domains-required">
+      {t("securityPage.domainsRequired")}
+    </Text>
+  );
+}
+
+/** A role may be saved once it lists a domain — its own, or one a parent role hands down. */
+function listsADomain(form: { domainAccess: string[]; parentRoleId: string }): boolean {
+  return form.domainAccess.length > 0 || form.parentRoleId !== "";
+}
 
 const EMPTY_ROLE = {
   id: "",
@@ -113,6 +141,8 @@ function CapabilityGrid({
 }
 
 export function SecurityRolesPage() {
+  // REQ-1918: a delete is refused while anything depends on the object; this lists them.
+  const refusal = useDependentsDialog();
   const { t } = useTranslation();
   const { setDomains: setContextDomains, setSelectedDomain } = useDomainFilter();
   const { roles, loading: rolesLoading, refetch: refetchRoles } = useRoles();
@@ -187,7 +217,12 @@ export function SecurityRolesPage() {
     setSaving(true);
     setError("");
     try {
-      await deleteRole(id);
+      const result = await deleteRole(id);
+      if (refusal.refused(result, id)) return;
+      if (!result.success) {
+        setError(result.message);
+        return;
+      }
       if (expandedRole === id) setExpandedRole(null);
       await reload();
     } catch (e) {
@@ -288,10 +323,12 @@ export function SecurityRolesPage() {
           />
           <MultiSelect
             label={t("securityPage.domainAccess")}
+            placeholder={t("securityPage.chooseDomains")}
             options={domainOptions}
             value={roleForm.domainAccess}
             onChange={(selected) => setRoleForm({ ...roleForm, domainAccess: selected })}
           />
+          {!listsADomain(roleForm) && <DomainsNote savedWithNone={false} />}
           {/* REQ-1677: single parent; the chain is walked child-first at build time. */}
           <Select
             label={t("securityPage.parentRole")}
@@ -361,7 +398,7 @@ export function SecurityRolesPage() {
               leftSection={<Check size={14} />}
               data-testid="save-role"
               onClick={handleSaveRole}
-              disabled={saving}
+              disabled={saving || !listsADomain(roleForm)}
             >
               {t("securityPage.save")}
             </Button>
@@ -403,7 +440,9 @@ export function SecurityRolesPage() {
                     ) : (
                       <>
                         <Table.Td>{r.capabilities.join(", ")}</Table.Td>
-                        <Table.Td>{r.domain_access.join(", ")}</Table.Td>
+                        <Table.Td data-testid={`role-domains-${r.id}`}>
+                          {r.domain_access.join(", ") || t("securityPage.noDomains")}
+                        </Table.Td>
                       </>
                     )}
                   </Table.Tr>
@@ -421,7 +460,7 @@ export function SecurityRolesPage() {
                             </Text>
                             <Text>
                               <strong>{t("securityPage.labelDomainAccess")}</strong>{" "}
-                              {r.domain_access.join(", ") || t("securityPage.none")}
+                              {r.domain_access.join(", ") || t("securityPage.noDomains")}
                             </Text>
                             <Text data-testid={`role-parent-${r.id}`}>
                               <strong>{t("securityPage.labelParentRole")}</strong>{" "}
@@ -462,12 +501,16 @@ export function SecurityRolesPage() {
                             />
                             <MultiSelect
                               label={t("securityPage.domainAccess")}
+                              placeholder={t("securityPage.chooseDomains")}
                               options={domainOptions}
                               value={roleForm.domainAccess}
                               onChange={(selected) =>
                                 setRoleForm({ ...roleForm, domainAccess: selected })
                               }
                             />
+                            {!listsADomain(roleForm) && (
+                              <DomainsNote savedWithNone={r.domain_access.length === 0} />
+                            )}
                             <Select
                               label={t("securityPage.parentRole")}
                               placeholder={t("securityPage.parentRoleNone")}
@@ -492,8 +535,9 @@ export function SecurityRolesPage() {
                                 variant="filled"
                                 color="blue"
                                 leftSection={<Check size={14} />}
+                                data-testid={`save-role-${r.id}`}
                                 onClick={handleSaveRole}
-                                disabled={saving}
+                                disabled={saving || !listsADomain(roleForm)}
                               >
                                 {t("securityPage.save")}
                               </Button>
@@ -508,6 +552,7 @@ export function SecurityRolesPage() {
           </Table.Tbody>
         </Table>
       </Table.ScrollContainer>
+      {refusal.dialog}
     </Stack>
   );
 }

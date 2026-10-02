@@ -68,7 +68,13 @@ async def fetch(  # REQ-316, REQ-318, REQ-319
     args_hash = hashlib.sha256(json.dumps(sorted(args.items())).encode()).hexdigest()[:12]
     cache_key = f"openapi:{source_id}:{query.operation_id}:{args_hash}:{role}"
 
-    cached = await response_cache_store.get(cache_key)
+    # REQ-595: read and written under the acting org, environment and loaded model, like every
+    # other cached result — the key alone (source id, operation, arguments, role name) is the
+    # same in every org.
+    from provisa.cache import tenancy
+
+    scope = tenancy.acting_scope()
+    cached = await response_cache_store.get(cache_key, tenant_id=scope)
     if cached is not None:
         log.debug("Cache hit for %s", cache_key)
         return json.loads(cached.data)
@@ -103,7 +109,7 @@ async def fetch(  # REQ-316, REQ-318, REQ-319
         data = resp.json()
 
     rows = data if isinstance(data, list) else [data]
-    await response_cache_store.set(cache_key, json.dumps(rows).encode(), ttl=ttl)
+    await response_cache_store.set(cache_key, json.dumps(rows).encode(), ttl=ttl, tenant_id=scope)
     return rows
 
 

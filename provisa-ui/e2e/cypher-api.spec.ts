@@ -68,7 +68,7 @@ test("REQ-345: POST /data/cypher applies RLS and column masking governance", asy
     },
     headers: {
       "Content-Type": "application/json",
-      "X-Role": "DEV",
+      "X-Provisa-Role": "org_admin",
     },
   });
 

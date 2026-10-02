@@ -7,6 +7,7 @@
     "colActions": "Actions",
     "empty": "Aucun rôle trouvé.",
     "detailsHidden": "Les détails nécessitent la gestion des utilisateurs.",
+    "noDomains": "aucun domaine — n’accède à aucune donnée",
     "deleteRole": "Supprimer le rôle {{roleId}}",
     "deleted": "« {{roleId}} » supprimé",
     "pageInfo": "Page {{current}} / {{total}}",

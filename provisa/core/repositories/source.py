@@ -16,7 +16,8 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, select, update
 
-from provisa.core.models import Source
+from provisa.core.models import BUILT_IN_SOURCE_IDS, Source
+from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import registered_tables, sources
 
 if TYPE_CHECKING:
@@ -97,29 +98,53 @@ async def list_all(conn: "Connection") -> list[dict]:  # REQ-012
     return [dict(r._mapping) for r in result.fetchall()]
 
 
-async def delete(conn: "Connection", source_id: str) -> bool:  # REQ-014
-    """Delete a source and, in the same transaction, every table registered against it.
+class SourceDeleteRefused(Exception):
+    """A source that may not be deleted, and why. ``reason`` is ``"system"`` (a source the
+    deployment keeps) or ``"dependents"`` (objects refer to it; ``dependents`` lists them)."""
 
-    A registered_tables row whose source_id names no source is a referential inconsistency:
-    _refresh_summary._load_source raises on it (REQ-1143), and because refreshPolicySummary is
-    resolved per row inside the `tables` query, one orphan turns that whole query into a partial
-    error — Apollo's default errorPolicy discards the data with it, so every admin view relying
-    on the table list renders empty. `rename` already retargets these rows for the same reason;
-    delete is its missing counterpart.
+    def __init__(
+        self, source_id: str, reason: str, dependents: "list[Dependent] | None" = None
+    ) -> None:
+        self.source_id = source_id
+        self.reason = reason
+        self.dependents = dependents or []
+        if reason == "dependents":
+            named = ", ".join(f"{d.ref.kind} {d.ref.id}" for d in self.dependents)
+            message = f"Source {source_id!r} is still referred to by: {named}"
+        else:
+            message = f"Source {source_id!r} is a system source and cannot be deleted"
+        super().__init__(message)
+
+
+async def delete(conn: "Connection", source_id: str) -> bool:  # REQ-014, REQ-1918
+    """Delete one source: THE delete, for every surface. False when there is no such source.
+
+    Refused (:class:`SourceDeleteRefused`), naming each dependent, while a table is registered
+    against it or a command is bound to it: the operator removes those first, each through its
+    own action. (It used to delete the source's registered tables with it.) A source the
+    deployment keeps is refused. Its parts go with it: its tag assignments and its remote
+    registration rows — an API or Kafka registration with its endpoints or topics. One
+    transaction; no database cascade is relied on.
     """
-    from provisa.core.repositories import glossary as glossary_repo
-
+    ref = ObjectRef("source", source_id)
     async with conn.transaction():
-        # REQ-1591: the domains a departing term belongs to are derived from the very tables about
-        # to be deleted, so the snapshot is taken first and handed to the sweep.
-        domains_before = await glossary_repo.term_domains(conn)
-        await conn.execute_core(
-            _delete(registered_tables).where(registered_tables.c.source_id == source_id)
-        )
-        result = await conn.execute_core(_delete(sources).where(sources.c.id == source_id))
-        # REQ-1387: the table deletes cascaded the glossary refs; settle newly refless terms.
-        await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
-    return (result.rowcount or 0) > 0
+        if await get(conn, source_id) is None:
+            return False
+        if source_id in BUILT_IN_SOURCE_IDS:
+            raise SourceDeleteRefused(source_id, "system")
+        blocking = await guard(conn, ref)
+        if blocking:
+            raise SourceDeleteRefused(source_id, "dependents", blocking)
+        await remove_parts(conn, ref)
+        await conn.execute_core(_delete(sources).where(sources.c.id == source_id))
+    return True
+
+
+async def remove_where(conn: "Connection", *where) -> None:
+    """Remove every source matching ``where`` (clauses on ``sources``) — for the code that
+    declares sources as a set: the config loader's full replace, and the seed retiring a row it
+    wrote. It is not a deletion of one object and does not ask the dependency guard."""
+    await conn.execute_core(_delete(sources).where(*where))
 
 
 async def rename(conn: "Connection", old_id: str, new_id: str) -> bool:  # REQ-012

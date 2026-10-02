@@ -442,7 +442,7 @@ def _compile_cypher_for_result(  # REQ-345, REQ-347, REQ-349, REQ-350, REQ-351
         _cache = getattr(state, "schema_build_cache", {})
         _label_map = CypherLabelMap.from_schema(
             ctx,
-            domain_access=role.get("domain_access"),
+            domain_access=role["domain_access"],
             all_tables=_cache.get("tables"),
             all_relationships=_cache.get("relationships"),
             all_column_types=_cache.get("column_types"),

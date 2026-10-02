@@ -316,20 +316,34 @@ class TestBoltLabelMapCeiling:
         assert "sales" in domains_visible
         assert "hr" in domains_visible
 
-    def test_domain_access_empty_list_grants_all_domains(self):
-        """REQ-808: domain_access=[] means unrestricted (REQ-9e6b552)."""
+    def test_domain_access_empty_list_reaches_no_domain(self, monkeypatch):
+        """REQ-808: a role reaches the domains it lists; an empty list is none, and "*" is the
+        only way to say all."""
+        from provisa.core import domain_policy
         from provisa.security.visibility import visible_tables
 
+        monkeypatch.setattr(domain_policy, "single_domain", lambda: False)
         tables = [
             {"domain_id": "sales", "columns": [{"column_name": "id", "visible_to": ["admin"]}]},
             {"domain_id": "hr", "columns": [{"column_name": "id", "visible_to": ["admin"]}]},
         ]
-        role = {"id": "admin", "domain_access": []}
-        result = visible_tables(tables, role)
-        domains_visible = {t["domain_id"] for t in result}
+        assert visible_tables(tables, {"id": "admin", "domain_access": []}) == []
 
-        assert "sales" in domains_visible
-        assert "hr" in domains_visible
+        everything = visible_tables(tables, {"id": "admin", "domain_access": ["*"]})
+        assert {t["domain_id"] for t in everything} == {"sales", "hr"}
+
+        only_sales = visible_tables(tables, {"id": "admin", "domain_access": ["sales"]})
+        assert {t["domain_id"] for t in only_sales} == {"sales"}
+
+    def test_single_domain_mode_reaches_the_one_domain_whatever_the_list(self, monkeypatch):
+        from provisa.core import domain_policy
+        from provisa.security.visibility import visible_tables
+
+        monkeypatch.setattr(domain_policy, "single_domain", lambda: True)
+        tables = [
+            {"domain_id": "default", "columns": [{"column_name": "id", "visible_to": ["admin"]}]},
+        ]
+        assert len(visible_tables(tables, {"id": "admin", "domain_access": []})) == 1
 
 
 # ---------------------------------------------------------------------------

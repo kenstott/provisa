@@ -1,0 +1,26 @@
+{
+  "dependentsDialog": {
+    "title": "Impossible de supprimer {{name}} pour l’instant",
+    "intro": "Ces objets y font encore référence. Supprimez ou modifiez chacun d’eux, puis supprimez de nouveau.",
+    "open": "Ouvrir la page",
+    "close": "Fermer",
+    "kind": {
+      "table": "Tables et vues",
+      "column": "Autorisations de colonne",
+      "tag_assignment": "Affectations de balises",
+      "relationship": "Relations",
+      "role": "Rôles",
+      "role_assignment": "Attributions de rôles",
+      "row_filter": "Filtres de lignes",
+      "metric": "Métriques",
+      "materialized_view": "Vues matérialisées",
+      "command": "Commandes",
+      "webhook": "Webhooks",
+      "data_product": "Produits de données",
+      "source": "Sources",
+      "remote_registration": "Enregistrements distants",
+      "domain": "Domaines",
+      "glossary_term": "Termes du glossaire"
+    }
+  }
+}

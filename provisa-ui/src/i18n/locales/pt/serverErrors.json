@@ -3,6 +3,7 @@
     "_requestFailed": "{{op}} falhou ({{status}})",
     "actions": {
       "database_not_connected": "Banco de dados não conectado",
+      "domain_required": "{{name}} não indica nenhum domínio: um comando ou webhook pertence a um domínio",
       "function_not_found": "Função '{{name}}' não encontrada",
       "source_not_connected": "Fonte '{{source}}' não conectada",
       "test_endpoint_disabled": "O endpoint de teste está desabilitado (defina PROVISA_ENABLE_TEST_ENDPOINTS para habilitar em ambiente não produtivo).",
@@ -151,6 +152,7 @@
     },
     "openapi": {
       "database_not_connected": "Banco de dados não conectado",
+      "domain_required": "A origem OpenAPI {{source}} declara {{commands}} comando(s) e não indica nenhum domínio: um comando pertence a um domínio, pelo que o registo precisa de um",
       "invalid_json": "JSON inválido: {{error}}",
       "refresh_failed": "Falha na atualização: {{error}}",
       "registration_failed": "Falha no registro: {{error}}",
@@ -195,6 +197,7 @@
     "roles": {
       "cannot_delete_system": "Não é possível excluir funções do sistema",
       "cannot_modify_administrative": "Não é possível modificar funções administrativas",
+      "has_dependents": "O papel {{role}} ainda é referenciado por {{count}} objeto(s); remova primeiro essas referências",
       "not_found": "Função não encontrada",
       "org_selection_required": "Seleção de organização necessária"
     },

@@ -3,6 +3,7 @@
     "_requestFailed": "{{op}} fehlgeschlagen ({{status}})",
     "actions": {
       "database_not_connected": "Datenbank nicht verbunden",
+      "domain_required": "{{name}} nennt keine Domäne: Ein Befehl oder Webhook gehört zu einer Domäne",
       "function_not_found": "Funktion '{{name}}' nicht gefunden",
       "source_not_connected": "Quelle '{{source}}' nicht verbunden",
       "test_endpoint_disabled": "Test-Endpunkt ist deaktiviert (PROVISA_ENABLE_TEST_ENDPOINTS setzen, um ihn außerhalb der Produktion zu aktivieren).",
@@ -151,6 +152,7 @@
     },
     "openapi": {
       "database_not_connected": "Datenbank nicht verbunden",
+      "domain_required": "Die OpenAPI-Quelle {{source}} deklariert {{commands}} Befehl(e) und nennt keine Domäne: Ein Befehl gehört zu einer Domäne, daher benötigt die Registrierung eine",
       "invalid_json": "Ungültiges JSON: {{error}}",
       "refresh_failed": "Aktualisierung fehlgeschlagen: {{error}}",
       "registration_failed": "Registrierung fehlgeschlagen: {{error}}",
@@ -195,6 +197,7 @@
     "roles": {
       "cannot_delete_system": "Systemrollen können nicht gelöscht werden",
       "cannot_modify_administrative": "Administrative Rollen können nicht geändert werden",
+      "has_dependents": "Auf die Rolle {{role}} verweisen noch {{count}} Objekt(e); entfernen Sie zuerst diese Verweise",
       "not_found": "Rolle nicht gefunden",
       "org_selection_required": "Organisationsauswahl erforderlich"
     },

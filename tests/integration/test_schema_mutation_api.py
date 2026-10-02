@@ -173,15 +173,39 @@ class TestRoleInheritance:  # REQ-1677
         assert by_id["junior_analyst_1677"]["parentRoleId"] == "analyst"
 
     async def test_delete_parent_with_heirs_refused(self, client):
+        # A role an administrator created, with an heir: refused naming the heir until it is gone.
+        for role_id, parent in (("lead_1677", "analyst"), ("member_1677", "lead_1677")):
+            made = await _gql(
+                client,
+                f"""
+                mutation {{
+                    createRole(input: {{
+                        id: "{role_id}", capabilities: [], domainAccess: [],
+                        parentRoleId: "{parent}"
+                    }}) {{ success message }}
+                }}
+                """,
+            )
+            assert made["data"]["createRole"]["success"] is True, made
+        result = await _gql(
+            client, 'mutation { deleteRole(id: "lead_1677") { success message code } }'
+        )
+        res = result["data"]["deleteRole"]
+        assert res["success"] is False
+        assert res["code"] == "schema.role_has_dependents"
+        assert "member_1677" in res["message"]
+        for role_id in ("member_1677", "lead_1677", "junior_analyst_1677"):
+            gone = await _gql(client, f'mutation {{ deleteRole(id: "{role_id}") {{ success }} }}')
+            assert gone["data"]["deleteRole"]["success"] is True, role_id
+
+    async def test_delete_seeded_role_refused(self, client):
         result = await _gql(
             client, 'mutation { deleteRole(id: "analyst") { success message code } }'
         )
         res = result["data"]["deleteRole"]
-        assert res["success"] is False
-        assert res["code"] == "schema.role_has_heirs"
-        assert "junior_analyst_1677" in res["message"]
-        gone = await _gql(client, 'mutation { deleteRole(id: "junior_analyst_1677") { success } }')
-        assert gone["data"]["deleteRole"]["success"] is True
+        assert (res["success"], res["code"]) == (False, "schema.role_is_system")
+        listed = await _gql(client, "{ roles { id } }")
+        assert "analyst" in {r["id"] for r in listed["data"]["roles"]}
 
     async def test_unknown_parent_refused(self, client):
         result = await _gql(

@@ -50,6 +50,7 @@ from provisa.compiler.cte_utils import cte_names
 from provisa.compiler.schema_gen import _IMPLICIT_TRAVERSAL_DOMAINS
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.compiler.stage2 import GovernanceContext
+from provisa.security.rights import reaches_all_domains
 
 
 @dataclass
@@ -83,7 +84,7 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
     for meta in ctx.tables.values():
         table_id_to_meta[meta.table_id] = meta
 
-    domain_access: list[str] = role.get("domain_access") or []
+    domain_access: list[str] = role["domain_access"]
 
     violations += _check_domain_access(
         tree, gov_ctx, table_id_to_meta, domain_access, cte_names_set
@@ -242,7 +243,10 @@ def _check_domain_access(  # REQ-039, REQ-263
     domain_access: list[str],
     cte_names_set: frozenset[str] = frozenset(),
 ) -> list[ValidationViolation]:
-    if not domain_access or "*" in domain_access:
+    # A role reaches the domains it lists; "*" is all; an EMPTY list is none, so every table
+    # with a domain is a V001 for it (rights.reaches_all_domains decides, single-domain mode
+    # included).
+    if reaches_all_domains(domain_access):
         return []
 
     violations = []

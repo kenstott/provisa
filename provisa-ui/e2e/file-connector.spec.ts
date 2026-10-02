@@ -6,6 +6,7 @@
 // found in the LICENSE file in the root directory of this source tree.
 
 import { test, expect, BACKEND_URL } from "./coverage";
+import { deleteSourceAndItsTables } from "./delete-source";
 
 const SOURCE_ID = "e2e-northwind";
 const SCHEMA_NAME = "e2e_northwind";
@@ -45,9 +46,7 @@ async function getDomainId(): Promise<string> {
 }
 
 async function cleanupSource() {
-  await gql(`mutation D($id: String!) { deleteSource(id: $id) { success } }`, {
-    id: SOURCE_ID,
-  });
+  await deleteSourceAndItsTables(gql, SOURCE_ID);
 }
 
 test.beforeEach(async () => {

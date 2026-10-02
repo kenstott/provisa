@@ -59,6 +59,15 @@ async def tenant_db():
     engine.dispose()
 
 
+async def _domain_access(db: Database) -> dict[str, list[str]]:
+    async with db.acquire() as conn:
+        result = await conn.execute_core(
+            text("SELECT id, domain_access FROM roles WHERE org_id IS NULL")
+        )
+        rows = result.fetchall()
+    return {r[0]: list(r[1] or []) for r in rows}
+
+
 async def _caps(db: Database) -> dict[str, set[str]]:
     async with db.acquire() as conn:
         result = await conn.execute_core(
@@ -117,6 +126,11 @@ async def test_only_platform_admin_holds_cross_org_in_either_mode(tenant_db, mul
     caps = await _caps(tenant_db)
     # REQ-1327: exactly the two platform rights — no data capability, and nothing standing in for one.
     assert caps["platform_admin"] == {"cross_org", "platform_settings"}
+    # ...and no domain scope: scope is data-plane scope, held by the data roles only.
+    scope = await _domain_access(tenant_db)
+    assert scope["platform_admin"] == []
+    for role_id in ("org_admin", "developer", "analyst"):
+        assert scope[role_id] == ["*"], role_id
     for role_id in ("org_admin", "developer", "analyst"):
         assert "cross_org" not in caps[role_id], role_id
 

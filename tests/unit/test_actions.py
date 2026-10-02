@@ -512,7 +512,9 @@ class TestWebhookApprovalGate:
                 new=AsyncMock(return_value=42),
             ) as cr_create,
         ):
-            result = await create_webhook(request, WebhookInput(name="notify", url="http://x"))
+            result = await create_webhook(
+                request, WebhookInput(name="notify", url="http://x", domainId="ops")
+            )
 
         # webhook registered unapproved (exposure gated until the request is executed)
         assert result["approved"] is False

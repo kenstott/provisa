@@ -381,7 +381,7 @@ def rejected_via_v005(shared_data: dict) -> None:
 def role_without_full_results(shared_data: dict) -> None:
     # An ordinary role carrying no capabilities at all — definitively lacks
     # FULL_RESULTS and must therefore receive the default row cap.
-    role = {"id": "viewer", "capabilities": []}
+    role = {"id": "viewer", "capabilities": [], "domain_access": ["*"]}
     assert not has_capability(role, Capability.FULL_RESULTS)
     shared_data["role"] = role
 

@@ -68,11 +68,16 @@ class FakeCacheStore(CacheStore):
         return f"{tenant_id}:{key}" if tenant_id else key
 
 
+# The scope a FakeState reads and writes under: its org, prod, and the model it loaded.
+SCOPE = "org-1:m1"
+
+
 @dataclass
 class FakeState:
     response_cache_store: CacheStore
     tenant_db: Any = "fake-tenant-db"
-    org_id: str | None = None
+    org_id: str = "org-1"
+    model_stamp: int = 1
 
 
 def _make_plan(sql: str = "SELECT id FROM t", role_id: str = "role-1") -> _Plan:
@@ -108,7 +113,7 @@ async def _seed_hit(
     assert plan.audit is not None
     ck = raw_sql_cache_key(plan.sql, plan.exec_params or [], plan.audit.role_id, wire_formats=None)
     payload = {"data": rows_entry(rows, column_names), "column_types": column_types}
-    await store.set(ck, encode_cache_payload(payload), ttl=60)
+    await store.set(ck, encode_cache_payload(payload), ttl=60, tenant_id=SCOPE)
 
 
 async def _fake_write_audit_noop(pending, status_code, state=None, **outcome) -> None:
@@ -312,7 +317,7 @@ async def test_raw_sql_entry_of_unknown_kind_raises(monkeypatch):
     store = FakeCacheStore()
     assert plan.audit is not None
     ck = raw_sql_cache_key(plan.sql, [], plan.audit.role_id, wire_formats=None)
-    await store_result(store, ck, {"kind": "graphql_response", "data": {}}, ttl=60)
+    await store_result(store, ck, {"kind": "graphql_response", "data": {}}, ttl=60, org_id=SCOPE)
     monkeypatch.setattr("provisa.audit.pipeline.write_audit", _fake_write_audit_noop)
 
     with pytest.raises(ValueError, match="unknown kind 'graphql_response'"):

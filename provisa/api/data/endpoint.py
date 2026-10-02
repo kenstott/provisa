@@ -258,7 +258,9 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
             role_id=role_id,
         )
 
-    role = state.roles.get(role_id)
+    from provisa.security.rights import require_role
+
+    role = require_role(state.roles, role_id)
     _check_role_capability(role, Capability.QUERY_DEVELOPMENT)
 
     # --- APQ (Automatic Persisted Queries, Phase AN) ---
@@ -579,7 +581,7 @@ async def _prepare_compiled(
         semantic_sql_for_validation,
         ctx,
         gov_ctx,
-        role or {},
+        role,
         getattr(state, "tables", []),
         bypass_relationship_guard=True,
     )

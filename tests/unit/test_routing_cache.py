@@ -34,6 +34,7 @@ from provisa.compiler.sql_types import TableMeta
 from provisa.compiler.stage2 import build_governance_context
 from provisa.pgwire._pipeline import _optimize_and_route, _optimize_and_route_cached
 from provisa.transpiler.router import Route
+from tests.helpers import unscoped_role
 
 PG_SOURCE_ID = "pgsrc"
 API_SOURCE_ID = "petstore-api"
@@ -102,7 +103,9 @@ def _state(hot_manager=None) -> SimpleNamespace:
 
 def _gov_ctx(ctx):
     rls = RLSContext.empty()
-    return build_governance_context("analyst", rls, {}, ctx, tables=[])
+    return build_governance_context(
+        "analyst", rls, {}, ctx, tables=[], role=unscoped_role("analyst")
+    )
 
 
 # --------------------------------------------------------------------------- #

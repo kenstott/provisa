@@ -3,6 +3,7 @@
     "_requestFailed": "{{op}} mislukt ({{status}})",
     "actions": {
       "database_not_connected": "Database niet verbonden",
+      "domain_required": "{{name}} noemt geen domein: een opdracht of webhook hoort bij een domein",
       "function_not_found": "Functie '{{name}}' niet gevonden",
       "source_not_connected": "Bron '{{source}}' niet verbonden",
       "test_endpoint_disabled": "Test-endpoint is uitgeschakeld (stel PROVISA_ENABLE_TEST_ENDPOINTS in om dit buiten productie in te schakelen).",
@@ -151,6 +152,7 @@
     },
     "openapi": {
       "database_not_connected": "Database niet verbonden",
+      "domain_required": "OpenAPI-bron {{source}} declareert {{commands}} opdracht(en) en noemt geen domein: een opdracht hoort bij een domein, dus de registratie heeft er een nodig",
       "invalid_json": "Ongeldige JSON: {{error}}",
       "refresh_failed": "Vernieuwen mislukt: {{error}}",
       "registration_failed": "Registratie mislukt: {{error}}",
@@ -195,6 +197,7 @@
     "roles": {
       "cannot_delete_system": "Systeemrollen kunnen niet worden verwijderd",
       "cannot_modify_administrative": "Beheerdersrollen kunnen niet worden gewijzigd",
+      "has_dependents": "Naar rol {{role}} wordt nog verwezen door {{count}} object(en); verwijder eerst die verwijzingen",
       "not_found": "Rol niet gevonden",
       "org_selection_required": "Organisatieselectie vereist"
     },

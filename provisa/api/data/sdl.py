@@ -60,6 +60,25 @@ def _reachable_table_ids(domain_id: str, tables: list[dict], relationships: list
 _ALWAYS_VISIBLE_DOMAINS = {"meta", "ops"}
 
 
+def require_reached_domains(role_id: str, role: dict, domain_ids: list[str]) -> None:  # REQ-039
+    """Refuse a request for a per-domain schema naming a domain the role does not reach.
+
+    A requested domain NARROWS what a role is shown; it never adds to it. Refused by name rather
+    than answered with an empty schema, which would read as "that domain has nothing in it".
+    """
+    from provisa.security.rights import reaches_domain
+
+    for domain_id in domain_ids:
+        if not reaches_domain(role["domain_access"], domain_id):
+            raise ApiError(
+                403,
+                "data.domain_not_accessible",
+                f"Role {role_id!r} does not reach domain {domain_id!r}",
+                role_id=role_id,
+                domain=domain_id,
+            )
+
+
 def _build_domain_schema(role: dict, domain_ids: list[str], cache: dict):
     from provisa.api.app import state
     from provisa.compiler.schema_gen import SchemaInput, generate_schema
@@ -75,14 +94,8 @@ def _build_domain_schema(role: dict, domain_ids: list[str], cache: dict):
     reachable |= seed_ids
     filtered_tables = [t for t in tables if t["id"] in reachable]
     root_ids = seed_ids
-    # Ensure always-visible domains and the requested domains bypass per-role
-    # domain_access check in _build_visible_tables (which skips inaccessible domains).
-    existing = role.get("domain_access") or []
-    if "*" not in existing:
-        role = {
-            **role,
-            "domain_access": list(set(existing) | _ALWAYS_VISIBLE_DOMAINS | set(domain_ids)),
-        }
+    # The role is passed as it is: its own domain_access decides which of these tables it is
+    # shown (_build_visible_tables). The requested domains only chose the roots above.
     si = SchemaInput(
         tables=filtered_tables,
         root_table_ids=root_ids,
@@ -127,22 +140,28 @@ async def get_schema_version():  # REQ-537
 
 
 @router.get("/data/domains")
-async def get_domains(request: Request, x_role: str = Header(None, alias="X-Role")):  # REQ-471
+async def get_domains(  # REQ-471
+    request: Request,
+    x_provisa_role: str = Header(None, alias="X-Provisa-Role"),
+    x_role: str = Header(None, alias="X-Role"),
+):
     """Return domain IDs accessible to the requesting role."""
+    from provisa.api.acting_role import header_role
     from provisa.api.app import state
 
-    auth_role = getattr(request.state, "role", None)
-    role_id = auth_role or x_role
+    role_id = header_role(request, x_provisa_role, x_role)
     if role_id is None:
-        raise ApiError(422, "data.missing_x_role_header", "Missing X-Role header")
+        raise ApiError(422, "data.missing_x_provisa_role_header", "Missing X-Provisa-Role header")
     role = state.roles.get(role_id)
     if role is None:
         raise ApiError(404, "data.no_role", f"No role {role_id!r}", role_id=role_id)
     all_domains = [
         d["id"] for d in (state.schema_build_cache.get("domains") or []) if d["id"] != ""
     ]
-    access = role.get("domain_access") or []
-    if "*" in access:
+    from provisa.security.rights import reaches_all_domains
+
+    access = role["domain_access"]
+    if reaches_all_domains(access):
         return JSONResponse(all_domains)
     return JSONResponse([d for d in all_domains if d in set(access)])
 
@@ -150,22 +169,24 @@ async def get_domains(request: Request, x_role: str = Header(None, alias="X-Role
 @router.get("/data/sdl", response_class=PlainTextResponse)
 async def get_sdl(  # REQ-039, REQ-363
     request: Request,
-    x_role: str = Header(None, alias="X-Role"),
+    x_provisa_role: str = Header(None, alias="X-Provisa-Role"),
     domain: str | None = Query(None),
+    x_role: str = Header(None, alias="X-Role"),
 ):
     """Return the GraphQL SDL for the requesting role's schema, optionally filtered to a domain."""
+    from provisa.api.acting_role import header_role
     from provisa.api.app import state
 
-    auth_role = getattr(request.state, "role", None)
-    role_id = auth_role or x_role
+    role_id = header_role(request, x_provisa_role, x_role)
     if role_id is None:
-        raise ApiError(422, "data.missing_x_role_header", "Missing X-Role header")
+        raise ApiError(422, "data.missing_x_provisa_role_header", "Missing X-Provisa-Role header")
 
     domain_list = [d for d in (domain or "").split(",") if d and d != "all"]
     if domain_list:
         role = state.roles.get(role_id)
         if role is None:
             raise ApiError(404, "data.no_role", f"No role {role_id!r}", role_id=role_id)
+        require_reached_domains(role_id, role, domain_list)
         if not state.schema_build_cache:
             raise ApiError(503, "data.schema_cache_not_ready", "Schema build cache not ready")
         schema = _build_domain_schema(role, domain_list, state.schema_build_cache)
@@ -222,14 +243,15 @@ fragment TypeRef on __Type {
 @router.get("/data/introspection")
 async def get_introspection(  # REQ-039, REQ-363
     request: Request,
-    x_role: str = Header(None, alias="X-Provisa-Role"),
+    x_provisa_role: str = Header(None, alias="X-Provisa-Role"),
     domain: str | None = Query(None),
+    x_role: str = Header(None, alias="X-Role"),
 ):
     """Return GraphQL introspection JSON, optionally filtered to a domain + reachable tables."""
+    from provisa.api.acting_role import header_role
     from provisa.api.app import state
 
-    auth_role = getattr(request.state, "role", None)
-    role_id = auth_role or x_role
+    role_id = header_role(request, x_provisa_role, x_role)
     if role_id is None:
         raise ApiError(422, "data.missing_x_provisa_role_header", "Missing X-Provisa-Role header")
 
@@ -238,6 +260,7 @@ async def get_introspection(  # REQ-039, REQ-363
         role = state.roles.get(role_id)
         if role is None:
             raise ApiError(404, "data.no_role", f"No role {role_id!r}", role_id=role_id)
+        require_reached_domains(role_id, role, domain_list)
         if not state.schema_build_cache:
             raise ApiError(503, "data.schema_cache_not_ready", "Schema build cache not ready")
         schema = _build_domain_schema(role, domain_list, state.schema_build_cache)

@@ -893,13 +893,17 @@ class ProvisaFlightServer(
             except CypherParseError as exc:
                 raise _flight_error(f"Cypher parse error: {exc}", exc) from exc
 
+            from provisa.security.rights import require_role
+
+            # The acting role's own list: it decides whether the catalog is a MATCH root.
+            _role_domain_access = require_role(self._state.roles, role_id)["domain_access"]
             label_map = kept_label_map(
                 self._state,
                 role_id,
-                domain_access=None,
+                domain_access=_role_domain_access,
                 cross_domain=False,
                 business_view=False,
-                build=lambda: CypherLabelMap.from_schema(ctx),
+                build=lambda: CypherLabelMap.from_schema(ctx, domain_access=_role_domain_access),
             )
 
             param_names = collect_param_names(query_text)

@@ -153,7 +153,7 @@ def _make_ctx(owned_table_id: int = 1):
 def test_from_schema_no_cross_domain_params_no_traversal_only():
     """Without cross-domain params, no traversal_only nodes added."""
     ctx = _make_ctx()
-    lm = CypherLabelMap.from_schema(ctx)
+    lm = CypherLabelMap.from_schema(ctx, domain_access=["*"])
     assert all(not nm.traversal_only for nm in lm.nodes.values())
 
 
@@ -430,7 +430,7 @@ def test_from_schema_applies_modeling_roles_from_all_tables():
 
 def test_from_schema_without_all_tables_leaves_role_unset():
     ctx = _make_ctx()
-    lm = CypherLabelMap.from_schema(ctx)
+    lm = CypherLabelMap.from_schema(ctx, domain_access=["*"])
     assert all(nm.modeling_role is None for nm in lm.nodes.values())
 
 

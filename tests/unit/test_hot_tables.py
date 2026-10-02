@@ -240,6 +240,10 @@ class TestHotTableManager:
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(return_value=stored)
         manager._redis = mock_redis
+        # The name is hot here (its rows are not held in this process), so its blob is read.
+        manager._hot_tables["countries"] = HotTableEntry(
+            table_name="countries", catalog="pg", schema="public", pk_column="id"
+        )
 
         result = await manager.get_rows("countries")
         assert len(result) == 2
@@ -299,6 +303,7 @@ class TestHotTableManager:
 class TestRewriteHotJoins:
     def _make_manager(self, hot_entries: dict[str, HotTableEntry]) -> HotTableManager:
         mgr = HotTableManager.__new__(HotTableManager)
+        mgr._places = {}
         mgr._redis_url = ""
         mgr._auto_threshold = 1_000
         mgr._max_rows = 1_000
@@ -476,6 +481,7 @@ class TestMutationInvalidation:
     @pytest.mark.asyncio
     async def test_invalidate_called_on_mutation(self):
         mgr = HotTableManager.__new__(HotTableManager)
+        mgr._places = {}
         mgr._redis_url = ""
         mgr._auto_threshold = 1_000
         mgr._max_rows = 1_000

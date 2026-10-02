@@ -1,0 +1,26 @@
+{
+  "dependentsDialog": {
+    "title": "Todavía no se puede eliminar {{name}}",
+    "intro": "Estos objetos todavía lo referencian. Elimine o cambie cada uno y vuelva a eliminar.",
+    "open": "Abrir la página",
+    "close": "Cerrar",
+    "kind": {
+      "table": "Tablas y vistas",
+      "column": "Permisos de columna",
+      "tag_assignment": "Asignaciones de etiquetas",
+      "relationship": "Relaciones",
+      "role": "Roles",
+      "role_assignment": "Asignaciones de roles",
+      "row_filter": "Filtros de filas",
+      "metric": "Métricas",
+      "materialized_view": "Vistas materializadas",
+      "command": "Comandos",
+      "webhook": "Webhooks",
+      "data_product": "Productos de datos",
+      "source": "Orígenes",
+      "remote_registration": "Registros remotos",
+      "domain": "Dominios",
+      "glossary_term": "Términos del glosario"
+    }
+  }
+}

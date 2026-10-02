@@ -1218,7 +1218,10 @@ class Query:  # REQ-021, REQ-042
         require_capability(info, "observability")
         from provisa.api.app import state
 
-        counts = await state.response_cache_store.table_entry_counts()
+        from provisa.cache.tenancy import cache_place
+
+        # REQ-595: the acting org's entries in the acting environment, no other org's.
+        counts = await state.response_cache_store.table_entry_counts(cache_place(state))
         return [CacheTableStatType(table_id=tid, cached_entries=n) for tid, n in counts.items()]
 
     @strawberry.field

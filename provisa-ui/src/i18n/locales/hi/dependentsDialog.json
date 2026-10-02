@@ -1,0 +1,26 @@
+{
+  "dependentsDialog": {
+    "title": "{{name}} को अभी हटाया नहीं जा सकता",
+    "intro": "ये ऑब्जेक्ट अब भी इसे संदर्भित करते हैं। प्रत्येक को हटाएँ या बदलें, फिर दोबारा हटाएँ।",
+    "open": "पृष्ठ खोलें",
+    "close": "बंद करें",
+    "kind": {
+      "table": "तालिकाएँ और व्यू",
+      "column": "कॉलम अनुमतियाँ",
+      "tag_assignment": "टैग असाइनमेंट",
+      "relationship": "संबंध",
+      "role": "भूमिकाएँ",
+      "role_assignment": "भूमिका असाइनमेंट",
+      "row_filter": "पंक्ति फ़िल्टर",
+      "metric": "मेट्रिक",
+      "materialized_view": "मटेरियलाइज़्ड व्यू",
+      "command": "कमांड",
+      "webhook": "वेबहुक",
+      "data_product": "डेटा उत्पाद",
+      "source": "स्रोत",
+      "remote_registration": "रिमोट पंजीकरण",
+      "domain": "डोमेन",
+      "glossary_term": "शब्दावली शब्द"
+    }
+  }
+}

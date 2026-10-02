@@ -3,6 +3,7 @@
     "_requestFailed": "{{op}} failed ({{status}})",
     "actions": {
       "database_not_connected": "Database not connected",
+      "domain_required": "{{name}} names no domain: a command or webhook sits in a domain",
       "function_not_found": "Function '{{name}}' not found",
       "source_not_connected": "Source '{{source}}' not connected",
       "test_endpoint_disabled": "Test endpoint is disabled (set PROVISA_ENABLE_TEST_ENDPOINTS to enable in non-production).",
@@ -151,6 +152,7 @@
     },
     "openapi": {
       "database_not_connected": "Database not connected",
+      "domain_required": "OpenAPI source {{source}} declares {{commands}} command(s) and names no domain: a command sits in a domain, so the registration needs one",
       "invalid_json": "Invalid JSON: {{error}}",
       "refresh_failed": "Refresh failed: {{error}}",
       "registration_failed": "Registration failed: {{error}}",
@@ -195,6 +197,7 @@
     "roles": {
       "cannot_delete_system": "Cannot delete system roles",
       "cannot_modify_administrative": "Cannot modify administrative roles",
+      "has_dependents": "Role {{role}} is still referred to by {{count}} object(s); remove those references first",
       "not_found": "Role not found",
       "org_selection_required": "Org selection required"
     },

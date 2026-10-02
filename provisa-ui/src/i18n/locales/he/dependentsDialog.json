@@ -1,0 +1,26 @@
+{
+  "dependentsDialog": {
+    "title": "עדיין אי אפשר למחוק את {{name}}",
+    "intro": "האובייקטים האלה עדיין מפנים אליו. הסירו או שנו כל אחד מהם ולאחר מכן מחקו שוב.",
+    "open": "פתיחת הדף",
+    "close": "סגירה",
+    "kind": {
+      "table": "טבלאות ותצוגות",
+      "column": "הרשאות עמודה",
+      "tag_assignment": "שיוכי תגיות",
+      "relationship": "קשרים",
+      "role": "תפקידים",
+      "role_assignment": "שיוכי תפקידים",
+      "row_filter": "מסנני שורות",
+      "metric": "מדדים",
+      "materialized_view": "תצוגות ממומשות",
+      "command": "פקודות",
+      "webhook": "Webhooks",
+      "data_product": "מוצרי נתונים",
+      "source": "מקורות",
+      "remote_registration": "רישומים מרוחקים",
+      "domain": "דומיינים",
+      "glossary_term": "מונחי מילון"
+    }
+  }
+}

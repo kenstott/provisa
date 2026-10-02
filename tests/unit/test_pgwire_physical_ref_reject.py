@@ -32,7 +32,8 @@ def _fake_state():
         admin_db=None,  # as AppState without a control plane: no debug-trace settings
         contexts={"analyst": SimpleNamespace()},
         rls_contexts={},
-        roles={},
+        # A context is written together with its role; governance reads the role, never a default.
+        roles={"analyst": {"id": "analyst", "capabilities": [], "domain_access": ["*"]}},
         source_catalogs={"pet-store-sqlite": "inquiries_sqlite"},
         # What the governed-statement cache (REQ-1877) keys and anchors on.
         schema_boot_id="boot",

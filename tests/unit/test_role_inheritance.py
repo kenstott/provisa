@@ -99,8 +99,8 @@ class TestFlattenDicts:
         with pytest.raises(ValueError, match="cycle"):
             flatten_roles(
                 [
-                    Role(id="a", capabilities=[], domain_access=[], parent_role_id="b"),
-                    Role(id="b", capabilities=[], domain_access=[], parent_role_id="a"),
+                    Role(id="a", capabilities=[], domain_access=["*"], parent_role_id="b"),
+                    Role(id="b", capabilities=[], domain_access=["*"], parent_role_id="a"),
                 ]
             )
 

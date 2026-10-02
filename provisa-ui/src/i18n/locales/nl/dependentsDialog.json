@@ -1,0 +1,26 @@
+{
+  "dependentsDialog": {
+    "title": "{{name}} kan nog niet worden verwijderd",
+    "intro": "Deze objecten verwijzen er nog naar. Verwijder of wijzig elk ervan en verwijder daarna opnieuw.",
+    "open": "Pagina openen",
+    "close": "Sluiten",
+    "kind": {
+      "table": "Tabellen en weergaven",
+      "column": "Kolomrechten",
+      "tag_assignment": "Tagtoewijzingen",
+      "relationship": "Relaties",
+      "role": "Rollen",
+      "role_assignment": "Roltoewijzingen",
+      "row_filter": "Rijfilters",
+      "metric": "Metrieken",
+      "materialized_view": "Gematerialiseerde weergaven",
+      "command": "Opdrachten",
+      "webhook": "Webhooks",
+      "data_product": "Dataproducten",
+      "source": "Bronnen",
+      "remote_registration": "Externe registraties",
+      "domain": "Domeinen",
+      "glossary_term": "Woordenlijsttermen"
+    }
+  }
+}

@@ -3,6 +3,7 @@
     "_requestFailed": "{{op}}: сбой ({{status}})",
     "actions": {
       "database_not_connected": "База данных не подключена",
+      "domain_required": "{{name}} не указывает домен: команда или вебхук относится к домену",
       "function_not_found": "Функция '{{name}}' не найдена",
       "source_not_connected": "Источник '{{source}}' не подключен",
       "test_endpoint_disabled": "Тестовая конечная точка отключена (задайте PROVISA_ENABLE_TEST_ENDPOINTS, чтобы включить вне production).",
@@ -151,6 +152,7 @@
     },
     "openapi": {
       "database_not_connected": "База данных не подключена",
+      "domain_required": "Источник OpenAPI {{source}} объявляет команды ({{commands}}) и не указывает домен: команда относится к домену, поэтому для регистрации он необходим",
       "invalid_json": "Недействительный JSON: {{error}}",
       "refresh_failed": "Сбой обновления: {{error}}",
       "registration_failed": "Сбой регистрации: {{error}}",
@@ -195,6 +197,7 @@
     "roles": {
       "cannot_delete_system": "Нельзя удалять системные роли",
       "cannot_modify_administrative": "Нельзя изменять административные роли",
+      "has_dependents": "На роль {{role}} всё ещё ссылаются объекты ({{count}}); сначала удалите эти ссылки",
       "not_found": "Роль не найдена",
       "org_selection_required": "Требуется выбор организации"
     },
