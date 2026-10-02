@@ -76,6 +76,7 @@ def pipe(monkeypatch):
     state.table_cache = {}
     state.settings_overrides = {}
     state.org_id = "org-a"
+    state.model_stamp = 1
     state.tenant_db = None
     state.federation_engine = _Source(lambda sql, params: [(params[0],)])
     monkeypatch.setattr(app_mod, "state", state, raising=False)

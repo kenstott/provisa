@@ -81,6 +81,7 @@ def _state(store, *, source_cache=None, table_cache=None, default_ttl=300):
         response_cache_store=store,
         tenant_db="fake",
         org_id="org-a",
+        model_stamp=1,
         contexts={
             "analyst": SimpleNamespace(
                 tables={
@@ -276,7 +277,7 @@ async def test_policy_uses_the_shortest_ttl_and_indexes_every_table(bound, monke
     for _ in tee.rows(_stream([_ROWS])).batches():
         pass
     await tee.commit()
-    assert captured == {"ttl": 40, "tenant_id": "org-a", "table_ids": {7, 8}}
+    assert captured == {"ttl": 40, "tenant_id": "org-a:m1", "table_ids": {7, 8}}
 
 
 # -- kinds across surfaces --------------------------------------------------------------------------
@@ -378,7 +379,7 @@ async def test_successful_write_invalidates_its_tables_for_the_org(monkeypatch):
     monkeypatch.setattr(store, "invalidate_by_table", _inv)
     write = _plan(sql="UPDATE t SET x = 1", response_cacheable=False, writes_tables=True)
     await finalize_audit(write, 200, _state(store))
-    assert sorted(dropped) == [(7, "org-a"), (8, "org-a")]
+    assert sorted(dropped) == [(7, "org-a:m1"), (8, "org-a:m1")]
 
     failed = _plan(sql="UPDATE t SET x = 1", response_cacheable=False, writes_tables=True)
     dropped.clear()

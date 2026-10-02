@@ -126,6 +126,7 @@ def _state(store, *, source_cache=None):
         response_cache_store=store,
         tenant_db="fake",
         org_id="org-a",
+        model_stamp=1,
         contexts={
             "analyst": SimpleNamespace(tables={"t": SimpleNamespace(table_id=7, source_id="pg")})
         },

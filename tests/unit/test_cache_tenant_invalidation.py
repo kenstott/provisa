@@ -44,16 +44,16 @@ async def test_a_write_in_org_a_drops_org_as_entry_and_leaves_org_bs():
     from provisa.core.request_context import reset_current_org, set_current_org
 
     store = _store()
-    await store.set("q1", b"a-rows", 60, tenant_id="org-a", table_ids={7})
-    await store.set("q1", b"b-rows", 60, tenant_id="org-b", table_ids={7})
-    state = SimpleNamespace(response_cache_store=store, org_id="default")
+    await store.set("q1", b"a-rows", 60, tenant_id="org-a:m1", table_ids={7})
+    await store.set("q1", b"b-rows", 60, tenant_id="org-b:m1", table_ids={7})
+    state = SimpleNamespace(response_cache_store=store, org_id="default", model_stamp=1)
     token = set_current_org("org-a")
     try:
         await invalidate_tables(state, [7])
     finally:
         reset_current_org(token)
-    assert await store.get("q1", tenant_id="org-a") is None
-    b = await store.get("q1", tenant_id="org-b")
+    assert await store.get("q1", tenant_id="org-a:m1") is None
+    b = await store.get("q1", tenant_id="org-b:m1")
     assert b is not None and b.data == b"b-rows"
 
 
@@ -62,11 +62,11 @@ async def test_an_unbound_request_invalidates_the_deployments_own_org():
     from provisa.cache.tenancy import cache_tenant, invalidate_tables
 
     store = _store()
-    state = SimpleNamespace(response_cache_store=store, org_id="default")
-    assert cache_tenant(state) == "default"
-    await store.set("q1", b"rows", 60, tenant_id="default", table_ids={7})
+    state = SimpleNamespace(response_cache_store=store, org_id="default", model_stamp=1)
+    assert cache_tenant(state) == "default:m1"
+    await store.set("q1", b"rows", 60, tenant_id="default:m1", table_ids={7})
     await invalidate_tables(state, [7])
-    assert await store.get("q1", tenant_id="default") is None
+    assert await store.get("q1", tenant_id="default:m1") is None
 
 
 def test_every_invalidation_goes_through_the_tenant_helper():
