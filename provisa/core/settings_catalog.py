@@ -170,6 +170,44 @@ DECLARED: list[Setting] = [
         min=1,
         unit="seconds",
     ),
+    # --- Replication (REQ-1915) ------------------------------------------------------------------
+    # Live: a build runner reads each when it looks for work, so a change applies to the next
+    # build it starts; builds already running keep what they hold.
+    Setting(
+        key="replication.builds_per_node",
+        card="concurrency",
+        type="int",
+        effect="live",
+        req="REQ-1915",  # 1: one copy at a time on a host until the operator sizes it up
+        env="PROVISA_REPLICATION_BUILDS_PER_NODE",
+        default=1,
+        min=1,
+        unit="builds",
+    ),
+    Setting(
+        key="replication.engine_jobs",
+        card="concurrency",
+        type="int",
+        effect="live",
+        # 2: the engine stays mostly free for requests, which are not counted, and one long
+        # build does not hold every other replica's refresh behind it.
+        req="REQ-1915",
+        env="PROVISA_REPLICATION_ENGINE_JOBS",
+        default=2,
+        min=1,
+        unit="jobs",
+    ),
+    Setting(
+        key="replication.retry_interval",
+        card="concurrency",
+        type="int",
+        effect="live",
+        req="REQ-1915",  # 60: a failing source is asked again once a minute, not once per read
+        env="PROVISA_REPLICATION_RETRY_INTERVAL",
+        default=60,
+        min=0,
+        unit="seconds",
+    ),
     # --- Concurrency -----------------------------------------------------------------------------
     Setting(
         key="concurrency.background_workers",

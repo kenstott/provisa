@@ -1146,6 +1146,29 @@ replica_state = Table(
     Column("table_name", Text, primary_key=True),
     Column("promoted", Boolean, nullable=False, server_default=false()),
     Column("promoted_at", DateTime(timezone=True)),
+    # REQ-1915: the replica's build, one record every worker and instance reads. A replica
+    # exists when ``completed_at`` is set, whatever ``build_state`` says: a refresh that is
+    # requested, running or failed leaves the previous replica readable.
+    # idle → requested → building → idle (completed) | failed.
+    Column("build_state", Text, nullable=False, server_default="idle"),
+    Column("requested_at", DateTime(timezone=True)),
+    Column("requested_reason", Text),  # save | boot | hot | refresh | operator | read
+    Column("build_started_at", DateTime(timezone=True)),
+    Column("build_holder", Text),  # host:pid of the process building it
+    Column("build_method", Text),  # data_replicator.Method
+    Column("rows_copied", BigInteger),  # progress of the running build; the total once complete
+    Column("completed_at", DateTime(timezone=True)),  # NULL: there is no replica
+    Column("next_refresh_at", DateTime(timezone=True)),  # NULL: refreshed only on request
+    Column("content_hash", Text),  # order-independent hash of the last completed build
+    Column("last_error", Text),
+    Column("failed_at", DateTime(timezone=True)),
+    # Why a requested build was not started on the last pass that tried it (the engine at its
+    # job cap, the source at its live-read cap); NULL once it starts.
+    Column("waiting_on", Text),
+    CheckConstraint(
+        "build_state IN ('idle','requested','building','failed')",
+        name="replica_state_build_state_check",
+    ),
 )
 
 # REQ-983 preserved snapshots: a point-in-time dataset MATERIALIZED-AND-SEALED because it is NOT
