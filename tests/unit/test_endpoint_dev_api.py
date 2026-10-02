@@ -111,6 +111,7 @@ async def sql_client(monkeypatch):
         "org_admin": {
             "id": "org_admin",
             "capabilities": ["query_development", "full_results", "usage", "write"],
+            "domain_access": ["*"],  # the seeded org_admin: every domain, said explicitly
         }
     }
     app_mod.state.masking_rules = {}
@@ -444,7 +445,7 @@ class TestProtoEndpoint:
         app_mod.state.roles["org_admin"] = {
             "id": "org_admin",
             "capabilities": ["query_development", "full_results", "usage", "write"],
-            "domain_access": [],
+            "domain_access": ["*"],
         }
         app_mod.state.schema_build_cache = {
             "tables": [
@@ -477,7 +478,7 @@ class TestProtoEndpoint:
         app_mod.state.roles["org_admin"] = {
             "id": "org_admin",
             "capabilities": ["query_development", "full_results", "usage", "write"],
-            "domain_access": [],
+            "domain_access": ["*"],
         }
         app_mod.state.schema_build_cache = {
             "tables": [{"id": 1, "domain_id": "pet_store", "name": "pets"}],
@@ -500,6 +501,79 @@ class TestProtoEndpoint:
         ):
             resp = await sql_client.get("/data/proto/org_admin?domains=pet_store")
         assert resp.status_code == 404
+        app_mod.state.schema_build_cache = {}
+
+    # --- a requested domain narrows a role's proto, never widens it ---------------------------
+
+    _CACHE = {
+        "tables": [
+            {"id": 1, "domain_id": "sales", "name": "orders"},
+            {"id": 2, "domain_id": "finance", "name": "ledger"},
+        ],
+        "relationships": [],
+        "column_types": {},
+        "naming_rules": {},
+        "domains": {"sales": {}, "finance": {}},
+        "domain_prefix": {},
+        "physical_table_map": {},
+        "functions": [],
+        "webhooks": [],
+        "enum_types": {},
+    }
+
+    def _role(self, app_mod, domain_access):
+        app_mod.state.roles["scoped"] = {
+            "id": "scoped",
+            "capabilities": ["query_development", "usage"],
+            "domain_access": domain_access,
+        }
+        app_mod.state.schema_build_cache = dict(self._CACHE)
+
+    @pytest.mark.parametrize("held", [["sales"], []])
+    async def test_a_domain_the_role_does_not_reach_is_refused_by_name(self, sql_client, held):
+        import provisa.api.app as app_mod
+
+        self._role(app_mod, held)
+        with patch("provisa.grpc.proto_gen.generate_proto") as mock_gen:
+            resp = await sql_client.get("/data/proto/scoped?domains=finance")
+        assert resp.status_code == 403, resp.text
+        body = resp.json()
+        assert body["code"] == "data.domain_not_accessible"
+        assert body["params"] == {"role_id": "scoped", "domain": "finance"}
+        mock_gen.assert_not_called()
+        app_mod.state.schema_build_cache = {}
+
+    async def test_one_unreached_domain_refuses_the_whole_request(self, sql_client):
+        import provisa.api.app as app_mod
+
+        self._role(app_mod, ["sales"])
+        with patch("provisa.grpc.proto_gen.generate_proto") as mock_gen:
+            resp = await sql_client.get("/data/proto/scoped?domains=sales,finance")
+        assert resp.status_code == 403, resp.text
+        assert resp.json()["params"]["domain"] == "finance"
+        mock_gen.assert_not_called()
+        app_mod.state.schema_build_cache = {}
+
+    @pytest.mark.parametrize(
+        "held,asked,root_ids",
+        [(["sales"], "sales", {1}), (["*"], "finance", {2}), (["*"], "sales,finance", {1, 2})],
+    )
+    async def test_a_reached_domain_is_served_under_the_roles_own_scope(
+        self, sql_client, held, asked, root_ids
+    ):
+        import provisa.api.app as app_mod
+
+        self._role(app_mod, held)
+        with patch(
+            "provisa.grpc.proto_gen.generate_proto", return_value='syntax = "proto3";'
+        ) as mock_gen:
+            resp = await sql_client.get(f"/data/proto/scoped?domains={asked}")
+        assert resp.status_code == 200, resp.text
+        si = mock_gen.call_args.args[0]
+        # The role goes to the generator exactly as it is held: the request chose the roots and
+        # added nothing to the role's scope.
+        assert si.role["domain_access"] == held
+        assert si.root_table_ids == root_ids
         app_mod.state.schema_build_cache = {}
 
 

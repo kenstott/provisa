@@ -198,6 +198,39 @@ def domain_access_for_claims(  # REQ-1530
     return out
 
 
+#: The one entry in a role's ``domain_access`` that means every domain.
+ALL_DOMAINS = "*"
+
+
+def reaches_all_domains(domain_access: Iterable[str] | None) -> bool:  # REQ-039, REQ-471, REQ-1530
+    """Whether a ROLE's ``domain_access`` reaches every domain — THE one place that is decided.
+
+    A role reaches the domains it lists and no others. ``"*"`` is the only way to say all: an
+    EMPTY list is no domains, never "unrestricted". (A column's or action's ``visible_to=[]`` is a
+    different list with the opposite reading — visible to every role — and is not decided here.)
+
+    The single exemption is single-domain mode (``naming.use_domains: false``): the deployment has
+    one domain, domains are not a gate, and every role reaches it whatever its list says. It is
+    asked here so that no reader re-derives it.
+
+    ``None`` is not a scope. It is a role that was never loaded, and reading it as either answer
+    would be a guess, so it raises.
+    """
+    if domain_access is None:
+        raise ValueError(
+            "a role's domain_access is missing: the column is NOT NULL on the roles table, so "
+            "this is a role that was not loaded, and a missing role reaches nothing by default"
+        )
+    from provisa.core import domain_policy
+
+    return domain_policy.single_domain() or ALL_DOMAINS in domain_access
+
+
+def reaches_domain(domain_access: Iterable[str] | None, domain_id: str) -> bool:
+    """Whether a role's ``domain_access`` reaches ``domain_id`` (see :func:`reaches_all_domains`)."""
+    return reaches_all_domains(domain_access) or domain_id in (domain_access or ())
+
+
 def effective_domain_access_role(role_id: str, roles: dict[str, dict] | None) -> dict:  # REQ-1620
     """``roles[role_id]``, with domain_access widened to the union of every role the caller is
     currently acting as (``request_context.current_role_claims`` — the UI's "Role: All").
