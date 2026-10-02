@@ -283,14 +283,22 @@ async def test_land_ctas_midload_failure_leaves_no_partial_table(tmp_path, monke
     assert not [t for t in names if t.startswith("__ctas_")]  # temp cleaned up
 
 
-# --- pgwire recognition regex -------------------------------------------------------------------
+# --- no client entry ------------------------------------------------------------------------------
 
 
-def test_pgwire_ctas_regex_matches_ctas_not_plain_ddl():
-    from provisa.pgwire.server import _CTAS_RE, _DDL_RE
+def test_no_client_surface_runs_ctas():
+    """``run_ctas`` governed a client's ``CREATE TABLE … AS SELECT`` over pgwire. Nothing is
+    defined through a query protocol any more (provisa/compiler/definitions.py): the statement
+    is refused, and no surface a client reaches imports this module's entry."""
+    import pathlib
 
-    assert _CTAS_RE.match("CREATE TABLE s.t AS SELECT 1")
-    assert _CTAS_RE.match("create table s.t as with cte as (select 1) select * from cte")
-    assert not _CTAS_RE.match("CREATE TABLE s.t (id INT)")
-    # plain column-def DDL still routes to the DDL handler
-    assert _DDL_RE.match("CREATE TABLE s.t (id INT)")
+    import provisa
+
+    root = pathlib.Path(provisa.__file__).parent
+    callers = sorted(
+        str(path.relative_to(root))
+        for path in root.rglob("*.py")
+        if path.name != "ctas.py"
+        and any(use in path.read_text(errors="replace") for use in ("import run_ctas", "run_ctas("))
+    )
+    assert callers == []

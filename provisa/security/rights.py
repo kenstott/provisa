@@ -111,7 +111,11 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     WRITE = "write"  # REQ-868: global mutation-execute capability (alias EXECUTE_MUTATION)
     # The two rights the wire surfaces read off a role's list by name. Members here so that the
     # vocabulary a role may be given (unknown_capabilities) is the vocabulary the code consults.
-    DDL = "ddl"  # CREATE TABLE AS / DDL over pgwire (executor/ctas.py, pgwire/ddl_handler.py)
+    # Held by roles, checked by nothing a client can reach: it gated CREATE TABLE AS and DDL over
+    # pgwire, and nothing is defined through a query protocol any more
+    # (provisa/compiler/definitions.py). Its only remaining check is in executor/ctas.run_ctas,
+    # which no client entry calls.
+    DDL = "ddl"
     NO_AGGREGATIONS = "no_aggregations"  # REQ-197: withholds the _aggregate root fields
 
 

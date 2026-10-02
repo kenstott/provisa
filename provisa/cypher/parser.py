@@ -851,12 +851,26 @@ def _normalize_legacy_params(text: str) -> str:
     return re.sub(r"\{([A-Za-z_]\w*)\}", r"$\1", text)
 
 
+def refuse_cypher_definition(query: str) -> None:
+    """Raise the pipeline's own refusal for a Cypher statement that defines structure.
+
+    Cypher lowers to SQL and its data writes pass the semantic layer's guard as INSERT / UPDATE /
+    DELETE. An index or a constraint has no SQL it lowers to here, so it never reaches that
+    guard: it is recognised before lowering and answered with the same refusal, in the same
+    words, as a SQL definition (provisa/compiler/definitions.py). A data write is not caught:
+    ``CREATE`` is followed there by a pattern, ``(``, not by a word."""
+    from provisa.compiler.definitions import refuse_definition_text
+
+    refuse_definition_text(query)
+
+
 def parse_cypher(query: str) -> CypherAST:  # REQ-345, REQ-346, REQ-571
     """Parse a read-only Cypher query into a CypherAST.
 
     Raises CypherParseError for write clauses, APOC references, or unbounded
     variable-length patterns.
     """
+    refuse_cypher_definition(query)
     # Reject write clauses (case-insensitive)
     tokens_raw = re.findall(r"\b\w+\b", query)
     for tok in tokens_raw:

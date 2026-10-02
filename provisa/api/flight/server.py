@@ -1059,6 +1059,15 @@ class ProvisaFlightServer(
     ) -> flight.RecordBatchStream | flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Dispatch a query to the correct handler based on language."""
         query_text = str(request.get("query", ""))
+        # Before the text's language is guessed: a definition statement (CREATE VIEW, DROP TABLE,
+        # a Cypher CREATE INDEX …) is answered with the pipeline's one refusal — CREATE would
+        # otherwise read as Cypher and DROP / ALTER as GraphQL, each with an error of its own.
+        from provisa.compiler.definitions import DefinitionNotAvailable, refuse_definition_text
+
+        try:
+            refuse_definition_text(query_text)
+        except DefinitionNotAvailable as exc:
+            raise _flight_error(str(exc), exc) from exc
         if _is_cypher(query_text):
             return self._do_get_cypher(request)
         if _is_sql(query_text):

@@ -419,7 +419,6 @@ async def _build_source_pools_and_enums(
     from provisa.executor.drivers.registry import has_driver
     from provisa.transpiler.router import VIRTUAL_SOURCES
     from provisa.compiler.sql_rewrite import FLAT_NAMESPACE_SOURCES
-    from provisa.cache.warm_tables import DEFAULT_ICEBERG_CATALOG as _DEFAULT_ICE_CAT
     from provisa.core.secrets_store import bound_to_request_org
 
     # Catalog names + source types must exist before pools/domains read them (idempotent — also
@@ -480,20 +479,6 @@ async def _build_source_pools_and_enums(
                         # warehouse, ClickHouse scheme) the standard args can't carry (REQ-986/987/988).
                         extra={k: resolve_secrets(v) for k, v in src.federation_hints.items()},
                     )
-
-    _known_engine_catalogs = set(state.source_catalogs.values()) | {
-        _DEFAULT_ICE_CAT,
-        "otel",
-        "results",
-    }
-    for _dom in config.domains:
-        _ddl_cat = _dom.ddl_catalog or _DEFAULT_ICE_CAT
-        if _dom.ddl_catalog and _ddl_cat not in _known_engine_catalogs:
-            raise ValueError(
-                f"Domain {_dom.id!r} ddl_catalog={_dom.ddl_catalog!r} is not a registered source catalog"
-            )
-        _ddl_schema = _dom.ddl_schema or _dom.id
-        state.domain_write_targets[_dom.id] = (_ddl_cat, _ddl_schema)
 
     # WebSocket + RSS sources — register for SSE subscription dispatch
     for _src in (*config.sources, *(extra_sources or ())):

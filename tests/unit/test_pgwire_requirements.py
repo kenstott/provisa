@@ -748,137 +748,105 @@ class TestReq581ParameterSubstitution:
 
 
 # ---------------------------------------------------------------------------
-# REQ-582 — DDL routing: Trino path vs direct path
+# REQ-582 / REQ-583 / REQ-584 — DDL over pgwire: SUPERSEDED
+#
+# These described DDL dispatched to an engine or a source by the domain's ddl_catalog, the
+# created object registered into the creating role's compile context, and the target resolved
+# from ddl_catalog / ddl_schema. Nothing is defined through a query protocol any more
+# (provisa/compiler/definitions.py): the handler, its registration and the two config keys are
+# gone, and what was a test of each is a test of its refusal.
 # ---------------------------------------------------------------------------
+
+_DEFINITIONS = [
+    ("CREATE TABLE foo (id INT)", "CREATE TABLE"),
+    ("CREATE TABLE foo AS SELECT 1", "CREATE TABLE"),
+    ("CREATE VIEW v AS SELECT 1", "CREATE VIEW"),
+    ("CREATE OR REPLACE VIEW v AS SELECT 1", "CREATE VIEW"),
+    ("ALTER TABLE foo ADD COLUMN bar INT", "ALTER TABLE"),
+    ("DROP TABLE foo", "DROP TABLE"),
+    ("DROP VIEW v", "DROP VIEW"),
+    ("CREATE INDEX idx ON foo(id)", "CREATE INDEX"),
+    ("CREATE SEQUENCE s", "CREATE SEQUENCE"),
+    ("CREATE SCHEMA sx", "CREATE SCHEMA"),
+]
 
 
 class TestReq582DdlRouting:
-    """REQ-582: DDL dispatched to Trino or direct path based on ddl_catalog."""
+    """Was REQ-582 (DDL dispatched by ddl_catalog). Every definition statement is refused."""
 
-    def test_trino_path_rejects_alter(self):
-        # REQ-582: Trino path only supports CREATE TABLE
-        from provisa.pgwire.ddl_handler import _CREATE_TABLE_RE
+    @pytest.mark.parametrize("sql,kind", _DEFINITIONS)
+    def test_a_definition_statement_is_refused_naming_its_kind(self, sql, kind):
+        import sqlglot
 
-        ddl_statements = [
-            "ALTER TABLE foo ADD COLUMN bar INT",
-            "DROP TABLE foo",
-            "CREATE INDEX idx ON foo(id)",
-        ]
-        for sql in ddl_statements:
-            assert not _CREATE_TABLE_RE.match(sql), f"Should not match: {sql}"
+        from provisa.compiler.definitions import DefinitionNotAvailable, refuse_definition
 
-    def test_trino_path_accepts_create_table(self):
-        # REQ-582
-        from provisa.pgwire.ddl_handler import _CREATE_TABLE_RE
+        with pytest.raises(DefinitionNotAvailable) as raised:
+            refuse_definition(sqlglot.parse_one(sql, read="postgres"))
+        assert raised.value.kind == kind
+        assert str(raised.value).startswith(f"{kind} is not available here: create it in the model")
 
-        assert _CREATE_TABLE_RE.match("CREATE TABLE foo (id INT)")
+    def test_pgwire_has_no_ddl_handler_and_no_ddl_or_ctas_branch(self):
+        import importlib.util
+        import inspect
 
-    def test_no_path_accepts_create_view(self):
-        # A view is a model object: it is on neither DDL path (tests/unit/test_pgwire_view_refused.py).
-        from provisa.pgwire.ddl_handler import _CREATE_TABLE_RE, creates_view
+        from provisa.pgwire import server
 
-        assert not _CREATE_TABLE_RE.match("CREATE VIEW v AS SELECT 1")
-        assert creates_view("CREATE VIEW v AS SELECT 1")
+        assert importlib.util.find_spec("provisa.pgwire.ddl_handler") is None
+        source = inspect.getsource(server)
+        assert "_DDL_RE" not in source and "_CTAS_RE" not in source
+        assert "run_ctas" not in source and "DdlHandler" not in source
 
-    def test_ddl_handler_raises_for_non_create_on_trino_path(self):
-        # REQ-582: ALTER/DROP on Trino catalog raises ValueError
-        from provisa.pgwire.ddl_handler import _CREATE_TABLE_RE
+    def test_the_refusal_is_answered_as_feature_not_supported(self):
+        """pgwire answers the pipeline's refusal with SQLSTATE 0A000, whatever wrapped it."""
+        from provisa.compiler.definitions import DefinitionNotAvailable, definition_refusal
 
-        sql = "ALTER TABLE foo ADD COLUMN bar INT"
-        assert not _CREATE_TABLE_RE.match(sql)
-
-    def test_role_without_ddl_capability_raises(self):
-        # REQ-582 (also REQ-616): Roles without ddl cap are rejected at the ddl handler
-        from provisa.pgwire.ddl_handler import DdlHandler
-
-        handler = object.__new__(DdlHandler)
-        handler._handler = MagicMock()
-
-        ctx = MagicMock()
-        ctx.session.role_id = "viewer"
-
-        fake_state = MagicMock()
-        fake_state.roles = {"viewer": {"capabilities": [], "domain_access": []}}
-
-        with patch("provisa.pgwire.ddl_handler.state", fake_state):
-            with pytest.raises(PermissionError, match="ddl"):
-                handler.handle(ctx, "CREATE TABLE t (id INT)")
-
-
-# ---------------------------------------------------------------------------
-# REQ-583 — Post-DDL registration into compilation context
-# ---------------------------------------------------------------------------
+        try:
+            try:
+                raise DefinitionNotAvailable("CREATE TABLE")
+            except DefinitionNotAvailable as inner:
+                raise RuntimeError(str(inner)) from inner  # as the handler re-raises it
+        except RuntimeError as wrapped:
+            assert definition_refusal(wrapped) is not None
+        assert definition_refusal(RuntimeError("anything else")) is None
 
 
 class TestReq583PostDdlRegistration:
-    """REQ-583: After DDL execution the new table is registered into role's compilation context."""
+    """Was REQ-583 (the created object joins the creating role's compile context). Nothing is
+    created, so nothing is registered outside the model."""
 
-    def test_register_ddl_object_adds_to_context(self):
-        # REQ-583
-        from provisa.pgwire.ddl_handler import _register_ddl_object
+    def test_nothing_registers_an_object_into_a_roles_context(self):
+        import pathlib
 
-        fake_ctx = MagicMock()
-        fake_ctx.tables = {}
+        import provisa
 
-        fake_state = MagicMock()
-        fake_state.contexts = {"dev": fake_ctx}
-
-        with patch("provisa.pgwire.ddl_handler.state", fake_state):
-            _register_ddl_object("dev", "new_table", "iceberg", "dev_schema", "TABLE")
-
-        assert "new_table" in fake_ctx.tables
-
-    def test_register_ddl_object_no_context_does_not_raise(self):
-        # REQ-583: If role has no context yet, registration is a no-op
-        from provisa.pgwire.ddl_handler import _register_ddl_object
-
-        fake_state = MagicMock()
-        fake_state.contexts = {}
-
-        with patch("provisa.pgwire.ddl_handler.state", fake_state):
-            _register_ddl_object("nobody", "t", "iceberg", "s", "TABLE")
-
-        # contexts is still empty — no context was created for the missing role
-        assert "nobody" not in fake_state.contexts
-
-
-# ---------------------------------------------------------------------------
-# REQ-584 — DDL target resolved from domain ddl_catalog / ddl_schema
-# ---------------------------------------------------------------------------
+        root = pathlib.Path(provisa.__file__).parent
+        holders = [
+            str(path.relative_to(root))
+            for path in root.rglob("*.py")
+            if "_register_ddl_object" in path.read_text(errors="replace")
+        ]
+        assert holders == []
 
 
 class TestReq584DdlTargetResolution:
-    """REQ-584: DDL write target resolved from domain ddl_catalog/ddl_schema config."""
+    """Was REQ-584 (DDL target from the domain's ddl_catalog / ddl_schema). The keys are gone,
+    and a config that still carries one fails validation instead of being read past."""
 
-    def test_resolve_write_target_from_domain_access(self):
-        # REQ-584: role's domain_access drives DDL target lookup
-        from provisa.pgwire.ddl_handler import DdlHandler
+    @pytest.mark.parametrize("key", ["ddl_catalog", "ddl_schema"])
+    def test_a_domain_that_still_names_a_ddl_target_fails_validation(self, key):
+        from provisa.core.models import Domain
 
-        handler = object.__new__(DdlHandler)
-        handler._handler = MagicMock()
+        with pytest.raises(ValueError) as raised:
+            Domain(**{"id": "sales", key: "iceberg"})
+        message = str(raised.value)
+        assert key in message and "'sales'" in message
+        assert "never through a query protocol" in message
 
-        role = {"capabilities": ["ddl"], "domain_access": ["domain1"]}
+    def test_a_domain_without_them_is_valid(self):
+        from provisa.core.models import Domain
 
-        fake_state = MagicMock()
-        fake_state.domain_write_targets = {"domain1": ("iceberg", "domain1")}
-
-        result = handler._resolve_write_target("dev", role, fake_state)
-        assert result == ("iceberg", "domain1")
-
-    def test_resolve_write_target_raises_when_no_ddl_catalog(self):
-        # REQ-584: Raises PermissionError when no domain target configured
-        from provisa.pgwire.ddl_handler import DdlHandler
-
-        handler = object.__new__(DdlHandler)
-        handler._handler = MagicMock()
-
-        role = {"capabilities": ["ddl"], "domain_access": ["domain1"]}
-
-        fake_state = MagicMock()
-        fake_state.domain_write_targets = {}  # no target configured
-
-        with pytest.raises(PermissionError, match="ddl_catalog"):
-            handler._resolve_write_target("dev", role, fake_state)
+        assert Domain(id="sales").id == "sales"
+        assert "ddl_catalog" not in Domain.model_fields and "ddl_schema" not in Domain.model_fields
 
 
 # ---------------------------------------------------------------------------
@@ -1184,15 +1152,6 @@ class TestReq590Timeouts:
     """REQ-590: DDL ops time out after 60s. Query ops run under pgwire's own request timeout
     (REQ-1905: limits.request_timeouts.pgwire, shipped at 300s) — no longer a hard-coded 120s."""
 
-    def test_ddl_timeout_is_60_seconds(self):
-        # REQ-590: Future.result(timeout=60) in DDL handler
-        import inspect
-        from provisa.pgwire import ddl_handler
-
-        source = inspect.getsource(ddl_handler)
-        # The timeout value 60 must appear in future.result calls
-        assert "timeout=60" in source, "DDL handler must use timeout=60"
-
     def test_query_timeout_is_pgwires_request_timeout(self):
         # REQ-590 (amended) / REQ-1905: every statement run asks the one resolver for pgwire's
         # timeout; nothing is hard-coded at 120 any more.
@@ -1251,9 +1210,12 @@ class TestReq614SqlOnly:
 class TestReq615NoDml:
     """REQ-615: pgwire does not support INSERT, UPDATE, DELETE."""
 
-    def test_dml_not_matched_by_ddl_regex(self):
-        # REQ-615: DML statements must NOT be captured by the DDL regex
-        from provisa.pgwire.server import _DDL_RE
+    def test_dml_is_not_taken_for_a_definition(self):
+        # A data write is not a definition: the definitions refusal lets it by, from its text
+        # and from its parsed tree.
+        import sqlglot
+
+        from provisa.compiler.definitions import definition_kind, refuse_definition_text
 
         dml_statements = [
             "INSERT INTO orders VALUES (1, 'x')",
@@ -1261,7 +1223,8 @@ class TestReq615NoDml:
             "DELETE FROM orders WHERE id = 1",
         ]
         for sql in dml_statements:
-            assert not _DDL_RE.match(sql), f"DML should not match DDL regex: {sql}"
+            refuse_definition_text(sql)  # does not raise
+            assert definition_kind(sqlglot.parse_one(sql, read="postgres")) is None, sql
 
     def test_dml_not_matched_by_copy_regex(self):
         # REQ-615: DML is not COPY either
@@ -1281,13 +1244,12 @@ class TestReq615NoDml:
         # Verify that INSERT cannot be dispatched via a dedicated DML write path.
         import sqlglot
         import sqlglot.expressions as exp
-        from provisa.pgwire.server import _DDL_RE, _COPY_RE
+        from provisa.pgwire.server import _COPY_RE
         import provisa.pgwire._pipeline as pipeline_mod
 
         insert_sql = "INSERT INTO orders VALUES (1, 'x')"
 
-        # INSERT must not be captured by DDL or COPY routing
-        assert not _DDL_RE.match(insert_sql), "INSERT must not match DDL regex"
+        # INSERT must not be captured by COPY routing
         assert not _COPY_RE.match(insert_sql), "INSERT must not match COPY regex"
 
         # The pipeline must have no dedicated INSERT/DML entry point
@@ -1309,22 +1271,15 @@ class TestReq615NoDml:
 class TestReq616DdlCapabilityRequired:
     """REQ-616: COPY and DDL require role capability 'ddl'; others get 42501."""
 
-    def test_ddl_handler_checks_ddl_capability(self):
-        # REQ-616
-        from provisa.pgwire.ddl_handler import DdlHandler
+    def test_a_definition_is_refused_whatever_the_roles_capabilities(self):
+        # Was REQ-616's DDL half (DDL requires 'ddl'). No capability makes a definition
+        # available: the refusal takes the statement, not the role.
+        import inspect
 
-        handler = object.__new__(DdlHandler)
-        handler._handler = MagicMock()
+        from provisa.compiler import definitions
 
-        ctx = MagicMock()
-        ctx.session.role_id = "readonly"
-
-        fake_state = MagicMock()
-        fake_state.roles = {"readonly": {"capabilities": ["query"], "domain_access": []}}
-
-        with patch("provisa.pgwire.ddl_handler.state", fake_state):
-            with pytest.raises(PermissionError):
-                handler.handle(ctx, "CREATE TABLE t (id INT)")
+        source = inspect.getsource(definitions)
+        assert "capabilit" not in source and "role_id" not in source
 
     def test_copy_handler_checks_ddl_capability_via_server(self):
         # REQ-616: COPY error surfaces as PermissionError (42501 in handler)
@@ -1335,27 +1290,6 @@ class TestReq616DdlCapabilityRequired:
         assert _COPY_RE.match("COPY orders TO STDOUT")
         assert _COPY_RE.match("COPY orders FROM STDIN")
 
-    def test_role_with_ddl_capability_passes_capability_check(self):
-        # REQ-616: Role WITH ddl capability is not rejected at capability gate
-        from provisa.pgwire.ddl_handler import DdlHandler
-
-        handler = object.__new__(DdlHandler)
-        handler._handler = MagicMock()
-
-        ctx = MagicMock()
-        ctx.session.role_id = "steward"
-
-        fake_state = MagicMock()
-        fake_state.roles = {"steward": {"capabilities": ["ddl"], "domain_access": ["d1"]}}
-        fake_state.domain_write_targets = {}
-        fake_state.source_types = {}
-        fake_state.source_catalogs = {}
-
-        with patch("provisa.pgwire.ddl_handler.state", fake_state):
-            # Should get past the capability check but fail on no domain target
-            with pytest.raises(PermissionError, match="ddl_catalog"):
-                handler.handle(ctx, "CREATE TABLE t (id INT)")
-
     def test_server_routes_copy_to_copy_handler(self):
         # REQ-616: server.handle_query dispatches COPY to CopyHandler
         from provisa.pgwire.server import _COPY_RE
@@ -1364,15 +1298,14 @@ class TestReq616DdlCapabilityRequired:
         sql = "COPY orders TO STDOUT"
         assert _COPY_RE.match(sql), "COPY regex must match COPY statements"
 
-    def test_server_routes_ddl_to_ddl_handler(self):
-        # REQ-616: server.handle_query dispatches DDL to DdlHandler
-        from provisa.pgwire.server import _DDL_RE
+    def test_server_sends_a_definition_to_the_pipeline_not_to_a_handler(self):
+        # Was "server.handle_query dispatches DDL to DdlHandler". A definition statement has no
+        # branch of its own in the statement loop: COPY and cursors do, a definition does not.
+        import inspect
 
-        ddl_statements = [
-            "CREATE TABLE t (id INT)",
-            "CREATE VIEW v AS SELECT 1",
-            "DROP TABLE t",
-            "ALTER TABLE t ADD COLUMN x INT",
-        ]
-        for sql in ddl_statements:
-            assert _DDL_RE.match(sql), f"DDL regex must match: {sql}"
+        from provisa.pgwire import server
+
+        loop = inspect.getsource(server.ProvisaHandler._process_query_stmts)
+        assert "_COPY_RE.match(stmt)" in loop
+        assert "ddl_handler" not in loop and "run_ctas" not in loop
+        assert "_DDL_RE" not in loop and "_CTAS_RE" not in loop

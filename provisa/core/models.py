@@ -16,7 +16,7 @@
 
 import re
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import (
     AliasChoices,
@@ -370,8 +370,23 @@ class Domain(BaseModel):  # REQ-471, REQ-609
     # catalogs (REQ-1070), so an unstewarded domain shows as a gap rather than disappearing.
     steward: str | None = None
     graphql_alias: str | None = None
-    ddl_catalog: str | None = None  # the engine catalog for DDL; defaults to system Iceberg catalog
-    ddl_schema: str | None = None  # schema within ddl_catalog; defaults to domain id
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_definition_target(cls, data: Any) -> Any:
+        # A domain once named where client DDL landed (``ddl_catalog`` / ``ddl_schema``). Nothing
+        # is defined through a query protocol any more (provisa/compiler/definitions.py), so the
+        # keys mean nothing: a config that still carries one is told so, not read past.
+        if isinstance(data, dict):
+            removed = sorted(k for k in ("ddl_catalog", "ddl_schema") if k in data)
+            if removed:
+                raise ValueError(
+                    f"domain {data.get('id')!r}: {', '.join(removed)} "
+                    f"{'is' if len(removed) == 1 else 'are'} no longer a setting — a table or a "
+                    "view is created in the model, or in the data source and admitted into the "
+                    "model, never through a query protocol. Remove the key."
+                )
+        return data
 
 
 class DataProduct(BaseModel):  # REQ-1634, REQ-1660

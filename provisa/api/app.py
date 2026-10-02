@@ -273,9 +273,6 @@ class AppState:
     otel_compact_file_chunk: int = 50  # Parquet files processed per compaction chunk
     otel_compact_max_files_per_run: int = 500  # per-signal file budget for one compaction run
     otel_s3_endpoint: str = "http://minio:9000"  # MinIO/S3 endpoint for compaction
-    domain_write_targets: dict[
-        str, tuple[str, str]
-    ] = {}  # domain_id → (catalog, domain_id) from Domain.catalog
     multitenancy: bool = False
     tenant_context_cache: TenantContextCache | None = None
     kafka_table_physical: dict[
@@ -2524,6 +2521,22 @@ def create_app() -> FastAPI:
         )
 
     from provisa.core.operator_floor import OperatorFloorError as _OperatorFloorError
+
+    from provisa.compiler.definitions import DefinitionNotAvailable as _DefinitionNotAvailable
+
+    @app.exception_handler(_DefinitionNotAvailable)
+    async def _definition_not_available_handler(_req: _Request, exc: _DefinitionNotAvailable):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # Nothing is defined through a query protocol (provisa/compiler/definitions.py). A route
+        # that does not answer the refusal itself answers it here: a client error, in the one
+        # message every surface gives.
+        return _JSONResponse(
+            status_code=400,
+            content={
+                "detail": str(exc),
+                "code": "data.definition_not_available",
+                "params": {"statement": exc.kind},
+            },
+        )
 
     @app.exception_handler(_OperatorFloorError)
     async def _operator_floor_handler(_req: _Request, exc: _OperatorFloorError):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]

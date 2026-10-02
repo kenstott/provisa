@@ -927,188 +927,116 @@ def params_substituted_as_literals(shared_data):
 
 
 # ===========================================================================
-# REQ-582 — DDL dispatch: Trino path vs direct source path
+# REQ-582 / REQ-583 / REQ-584 — DDL over pgwire: SUPERSEDED
+#
+# The three scenarios' wording is the requirements' own (the feature files are generated from
+# them) and describes DDL dispatched by ddl_catalog, its result registered into a role's compile
+# context, and its target defaulted from the domain. Nothing is defined through a query protocol
+# any more (provisa/compiler/definitions.py). Each scenario's steps now prove the refusal that
+# replaced the behaviour its words name; the words change when the requirements do.
 # ===========================================================================
+
+
+def _refusal_of(sql: str):
+    import sqlglot
+
+    from provisa.compiler.definitions import DefinitionNotAvailable, refuse_definition
+
+    try:
+        refuse_definition(sqlglot.parse_one(sql, read="postgres"))
+    except DefinitionNotAvailable as exc:
+        return exc
+    return None
 
 
 @given("a DDL statement submitted over pgwire")
 def ddl_statement_submitted(shared_data):
-    """Prepare mock state with both Trino and direct-source DDL targets."""
-    shared_data["create_table_sql"] = "CREATE TABLE my_table (id INTEGER, name VARCHAR)"
-    shared_data["alter_table_sql"] = "ALTER TABLE my_table ADD COLUMN age INTEGER"
+    shared_data["ddl_statements"] = {
+        "CREATE TABLE my_table (id INTEGER, name VARCHAR)": "CREATE TABLE",
+        "CREATE VIEW my_view AS SELECT 1": "CREATE VIEW",
+        "ALTER TABLE my_table ADD COLUMN age INTEGER": "ALTER TABLE",
+        "DROP TABLE my_table": "DROP TABLE",
+    }
 
 
 @when(
     "ddl_catalog is a Trino catalog only CREATE TABLE and CREATE VIEW are allowed; when it is a registered source ID full DDL is supported"
 )
 def ddl_catalog_routing(shared_data):
-    """Verify the two DDL dispatch paths using DdlHandler internals."""
-    from provisa.pgwire.ddl_handler import _catalog_to_source_id, _CREATE_TABLE_RE
-
-    # Build a minimal mock state for Trino path (iceberg catalog, not a source)
-    trino_state = MagicMock()
-    trino_state.source_catalogs = {}
-    trino_state.source_types = {}
-
-    is_create = _CREATE_TABLE_RE.match(shared_data["create_table_sql"])
-    is_alter = _CREATE_TABLE_RE.match(shared_data["alter_table_sql"])
-
-    shared_data["trino_create_allowed"] = bool(is_create)
-    shared_data["trino_alter_allowed"] = bool(is_alter)
-
-    # For Trino path: source_id is None → goes through Trino
-    source_id_iceberg = _catalog_to_source_id("iceberg", trino_state)
-    shared_data["iceberg_source_id"] = source_id_iceberg
-
-    # Build a mock state where "my_pg" is a registered source
-    direct_state = MagicMock()
-    direct_state.source_catalogs = {"my_pg": "my_pg_catalog"}
-    direct_state.source_types = {"my_pg": "postgresql"}
-
-    source_id_direct = _catalog_to_source_id("my_pg_catalog", direct_state)
-    shared_data["direct_source_id"] = source_id_direct
+    shared_data["refusals"] = {sql: _refusal_of(sql) for sql in shared_data["ddl_statements"]}
 
 
 @then("the statement is dispatched to the correct path")
 def ddl_dispatched_to_correct_path(shared_data):
-    """Assert Trino path rejects ALTER but accepts CREATE; direct path accepts both."""
-    # Trino path: only CREATE TABLE allowed. (A view is on neither path: it is refused over
-    # pgwire, see tests/unit/test_pgwire_view_refused.py; the scenario's wording is REQ-582's.)
-    assert shared_data["trino_create_allowed"] is True, (
-        "CREATE TABLE must match _CREATE_TABLE_RE for Trino path"
-    )
-    assert shared_data["trino_alter_allowed"] is False, (
-        "ALTER TABLE must NOT match _CREATE_TABLE_RE — only CREATE is allowed on Trino path"
-    )
+    """There is one path now, and it is the refusal: every statement, whatever the domain's
+    catalog was, is answered with its kind and where a definition is made."""
+    import importlib.util
 
-    # iceberg is not a registered source → source_id is None → Trino path
-    assert shared_data["iceberg_source_id"] is None, (
-        "iceberg catalog must not resolve to a source_id (goes through Trino path)"
-    )
-
-    # Registered source_id is returned for a direct path catalog
-    assert shared_data["direct_source_id"] == "my_pg", (
-        f"Registered source must be returned; got {shared_data['direct_source_id']!r}"
-    )
-
-
-# ===========================================================================
-# REQ-583 — post-DDL registration into role's compilation context
-# ===========================================================================
+    for sql, kind in shared_data["ddl_statements"].items():
+        refusal = shared_data["refusals"][sql]
+        assert refusal is not None, f"{sql!r} was not refused"
+        assert refusal.kind == kind
+        assert "create it in the model" in str(refusal)
+    assert importlib.util.find_spec("provisa.pgwire.ddl_handler") is None
 
 
 @given("a DDL statement that creates a table")
 def ddl_creates_table(shared_data):
-    """Prepare mock state with a role context to receive DDL registration."""
-    from unittest.mock import MagicMock
-
-    mock_ctx = MagicMock()
-    mock_ctx.tables = {}
-
-    mock_state = MagicMock()
-    mock_state.contexts = {"analyst": mock_ctx}
-
-    shared_data["role_id"] = "analyst"
-    shared_data["table_name"] = "new_orders"
-    shared_data["catalog"] = "iceberg"
-    shared_data["schema"] = "sales"
-    shared_data["mock_state"] = mock_state
-    shared_data["mock_ctx"] = mock_ctx
+    shared_data["create_sql"] = "CREATE TABLE new_table (id INTEGER)"
 
 
 @when("execution completes")
 def ddl_execution_completes(shared_data):
-    """Call _register_ddl_object directly with the mock state patched in."""
-    from provisa.pgwire import ddl_handler
-
-    mock_state = shared_data["mock_state"]
-
-    with patch.object(ddl_handler, "state", mock_state):
-        from provisa.pgwire.ddl_handler import _register_ddl_object
-
-        _register_ddl_object(
-            shared_data["role_id"],
-            shared_data["table_name"],
-            shared_data["catalog"],
-            shared_data["schema"],
-            "TABLE",
-        )
+    shared_data["refusal"] = _refusal_of(shared_data["create_sql"])
 
 
 @then("the table is registered into the role's compilation context and immediately queryable")
 def table_registered_in_context(shared_data):
-    """Assert the new TableMeta was added to the role's context.tables."""
-    mock_ctx = shared_data["mock_ctx"]
-    table_name = shared_data["table_name"]
-    assert table_name in mock_ctx.tables, (
-        f"Table {table_name!r} must be registered in compilation context after DDL; "
-        f"keys: {list(mock_ctx.tables.keys())}"
-    )
-    meta = mock_ctx.tables[table_name]
-    assert meta.table_name == table_name, (
-        f"TableMeta.table_name must be {table_name!r}; got {meta.table_name!r}"
-    )
-    assert meta.catalog_name == shared_data["catalog"].replace("-", "_"), (
-        f"TableMeta.catalog_name must be {shared_data['catalog']!r}; got {meta.catalog_name!r}"
-    )
+    """Nothing executes, so nothing is registered outside the model: the statement is refused
+    and no code adds an object to a role's compile context."""
+    import pathlib
 
+    import provisa
 
-# ===========================================================================
-# REQ-584 — DDL write target defaults: iceberg catalog + domain ID as schema
-# ===========================================================================
+    assert shared_data["refusal"] is not None and shared_data["refusal"].kind == "CREATE TABLE"
+    root = pathlib.Path(provisa.__file__).parent
+    assert not [
+        str(path.relative_to(root))
+        for path in root.rglob("*.py")
+        if "_register_ddl_object" in path.read_text(errors="replace")
+    ]
 
 
 @given("a role with domain_access configured")
 def role_with_domain_access(shared_data):
-    """Set up a mock state where domain 'sales' has no explicit ddl_catalog/ddl_schema."""
-    mock_state = MagicMock()
-    # domain_write_targets is populated by app.py startup logic:
-    # ddl_catalog defaults to "iceberg", ddl_schema defaults to domain id
-    mock_state.domain_write_targets = {
-        "sales": (
-            "iceberg",
-            "sales",
-        ),  # no explicit ddl_catalog → "iceberg"; no ddl_schema → "sales"
-    }
-    mock_state.roles = {
-        "analyst": {
-            "domain_access": ["sales"],
-            "capabilities": ["ddl"],
-        }
-    }
-    shared_data["mock_state"] = mock_state
-    shared_data["role_id"] = "analyst"
+    shared_data["domain"] = {"id": "sales", "description": "Sales"}
 
 
 @when("DDL executes without specifying catalog or schema")
 def ddl_without_catalog_or_schema(shared_data):
-    """Resolve the write target for the role using DdlHandler._resolve_write_target."""
-    from provisa.pgwire.ddl_handler import DdlHandler
+    from provisa.core.models import Domain
 
-    handler_mock = MagicMock()
-    ddl_handler = DdlHandler(handler_mock)
-
-    mock_state = shared_data["mock_state"]
-    role = mock_state.roles[shared_data["role_id"]]
-
-    write_target = ddl_handler._resolve_write_target(
-        shared_data["role_id"],
-        role,
-        mock_state,
-    )
-    shared_data["write_catalog"] = write_target[0]
-    shared_data["write_schema"] = write_target[1]
+    shared_data["plain_domain"] = Domain(**shared_data["domain"])
+    errors = {}
+    for key in ("ddl_catalog", "ddl_schema"):
+        try:
+            Domain(**{**shared_data["domain"], key: "iceberg"})
+        except ValueError as exc:
+            errors[key] = str(exc)
+    shared_data["key_errors"] = errors
 
 
 @then("ddl_catalog defaults to Iceberg and ddl_schema defaults to the domain ID")
 def ddl_defaults_iceberg_and_domain_id(shared_data):
-    """Assert catalog is 'iceberg' and schema is the domain id ('sales')."""
-    assert shared_data["write_catalog"] == "iceberg", (
-        f"ddl_catalog must default to 'iceberg'; got {shared_data['write_catalog']!r}"
-    )
-    assert shared_data["write_schema"] == "sales", (
-        f"ddl_schema must default to the domain ID 'sales'; got {shared_data['write_schema']!r}"
-    )
+    """A domain has no DDL target, defaulted or declared: the keys are gone and a config that
+    still carries one fails validation."""
+    from provisa.core.models import Domain
+
+    assert shared_data["plain_domain"].id == "sales"
+    assert "ddl_catalog" not in Domain.model_fields and "ddl_schema" not in Domain.model_fields
+    assert set(shared_data["key_errors"]) == {"ddl_catalog", "ddl_schema"}
+    for key, message in shared_data["key_errors"].items():
+        assert key in message and "never through a query protocol" in message
 
 
 # ===========================================================================

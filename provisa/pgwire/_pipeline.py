@@ -1037,8 +1037,13 @@ async def govern_statement(
     # or miss alike.
     from provisa.compiler.prepared import prepare_front_end
 
+    from provisa.compiler.definitions import DefinitionNotAvailable
+
     try:
         _front = await prepare_front_end(raw_sql, role_id, state, _localize_inline_commands)
+    except DefinitionNotAvailable:
+        # Not a parse error: a definition statement, refused as itself on every surface.
+        raise
     except Exception as exc:
         raise ValueError(f"SQL parse error: {exc}") from exc
     normalized_sql = _front.normalized_sql
@@ -2953,6 +2958,12 @@ async def _govern_compiled(
     # Flight SQL / gRPC compiled path's own parse, the same class of blocking call the raw-SQL
     # path's prepare_front_end/_govern_and_route_planned already off-load above.
     _compiled_tree = await _off_loop(lambda: _sg.parse_one(sql, read="postgres"))
+    # Nothing is defined through a query protocol: the compiled path's statements (Flight, gRPC,
+    # Cypher, GraphQL, REST) meet the same refusal the raw-SQL path's do, at the same point —
+    # parsed, not yet governed (provisa/compiler/definitions.py).
+    from provisa.compiler.definitions import refuse_definition
+
+    refuse_definition(_compiled_tree)
 
     # REQ-1319: the compiled path serves Flight and the gRPC proxy — a metric ask arriving
     # as semantic SQL (metrics.<name>) must expand through the SAME single expansion the

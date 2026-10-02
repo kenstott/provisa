@@ -36,14 +36,11 @@ Implemented (REQ-1120):
     through the SAME governed write pipeline; gated on the target engine's writability.
     UPDATE/DELETE key rows by the table's PRIMARY KEY, advertised as the airport row
     identity (``is_rowid`` pseudo-column) so a role can only mutate rows it can see.
-  * DDL: create_schema / drop_schema mapped to the Provisa domain catalog; create_table
-    creates the physical table in the target domain's writable source (schema-mutation
-    pipeline) so the new table joins the catalog and accepts a governed INSERT.
-
-Refused with a correct Flight protocol error (never a silent no-op), each justified
-inline: column_statistics, table_function_flight_info, and the physical column/struct
-mutations (add_column / rename_table / add_field / …) — see the handlers for why each
-has no sound meaning for a governed federation catalog on the active engine. UPDATE/
+Refused with a correct Flight protocol error (never a silent no-op): column_statistics
+and table_function_flight_info, each justified inline; and every DDL action — create_schema,
+drop_schema, create_table, drop_table and the column/struct mutations — because nothing is
+defined through a query protocol (provisa/compiler/definitions.py): a table or a domain is
+created in the model, or in the data source and admitted into the model. UPDATE/
 DELETE are refused ONLY per-table, when a table genuinely has no primary key.
 
 Role: taken from the gRPC ``authorization: Bearer <role>`` header (DuckDB airport
@@ -71,11 +68,12 @@ from provisa.api.airport.query import (
     governed_table_scan_stream,
 )
 from provisa.api.airport.transactions import AirportTransactionManager
-from provisa.core.connection_loop import run_on_connection_loop
 from provisa.core.rpc_loop import hold_loop_for_stream, run_rpc
 
 if TYPE_CHECKING:
     from provisa.api.app import AppState
+
+from provisa.compiler.definitions import DefinitionNotAvailable
 
 log = logging.getLogger(__name__)
 
@@ -89,6 +87,25 @@ _CATALOG_VERSION = 1  # is_fixed catalog for the read MVP (DDL bumps the control
 # rows RLS already let it read — a role cannot target a row it cannot see (REQ-1120/REQ-1125).
 _ROWID_FIELD = "rowid"
 _ROWID_META = {b"is_rowid": b"true"}
+
+# The Airport actions that define, alter or drop something, and the statement kind each is.
+_DEFINITION_ACTIONS = {
+    "create_schema": "CREATE SCHEMA",
+    "drop_schema": "DROP SCHEMA",
+    "create_table": "CREATE TABLE",
+    "drop_table": "DROP TABLE",
+    "add_column": "ALTER TABLE",
+    "remove_column": "ALTER TABLE",
+    "rename_column": "ALTER TABLE",
+    "rename_table": "ALTER TABLE",
+    "change_column_type": "ALTER TABLE",
+    "set_not_null": "ALTER TABLE",
+    "drop_not_null": "ALTER TABLE",
+    "set_default": "ALTER TABLE",
+    "add_field": "ALTER TABLE",
+    "rename_field": "ALTER TABLE",
+    "remove_field": "ALTER TABLE",
+}
 
 
 class _HeaderMiddleware(flight.ServerMiddleware):  # pyright: ignore[reportPrivateImportUsage]
@@ -386,13 +403,6 @@ class ProvisaAirportServer(
                 tx_id = tx_id.decode("utf-8")
             status, exists = self._txn.status(tx_id or "")
             return [flight.Result(wire._encode({"status": status, "exists": exists}))]  # pyright: ignore[reportPrivateImportUsage]
-        if atype == "create_schema":
-            return [flight.Result(self._do_create_schema(context, body))]  # pyright: ignore[reportPrivateImportUsage]
-        if atype == "create_table":
-            return [flight.Result(self._do_create_table(context, body))]  # pyright: ignore[reportPrivateImportUsage]
-        if atype == "drop_schema":
-            self._do_drop_schema(context, body)
-            return []  # airport drop_schema returns an empty result stream on success
         if atype == "column_statistics":
             # Refused by protocol error (correct, not a no-op): the governed federation catalog
             # holds no precomputed per-column statistics, and computing DuckDB-format stats here
@@ -410,32 +420,12 @@ class ProvisaAirportServer(
                 "airport: table_function_flight_info unsupported — the governed catalog advertises "
                 "no table functions"
             )
-        if atype in (
-            "drop_table",
-            "add_column",
-            "remove_column",
-            "rename_column",
-            "rename_table",
-            "change_column_type",
-            "set_not_null",
-            "drop_not_null",
-            "set_default",
-            "add_field",
-            "rename_field",
-            "remove_field",
-        ):
-            # Refused: these ALTER an existing physical table's shape. A governed federation catalog
-            # binds a semantic model over heterogeneous, independently-owned sources; airport supplies
-            # only a single-column Arrow schema, with no source dialect / governance policy — so there
-            # is no sound, unambiguous mapping. Physical-shape ALTERs go through the admin schema-
-            # mutation API (update_table) with that context. (Struct-field ops add_field/rename_field/
-            # remove_field have no meaning at all for a relational federation catalog.) create_schema/
-            # drop_schema map to domains; create_table maps to a governed create in the writable source.
-            raise _err(
-                f"airport: action {atype!r} unsupported — physical schema mutation must go through "
-                "Provisa's admin schema-mutation API, which carries the source/governance context "
-                "the airport DDL payload lacks"
-            )
+        definition = _DEFINITION_ACTIONS.get(atype)
+        if definition is not None:
+            # Nothing is defined through a query protocol: an Airport DDL action never becomes
+            # a SQL statement, so it is refused here with the pipeline's own refusal
+            # (provisa/compiler/definitions.py) — the same message every other surface answers.
+            raise _err(str(DefinitionNotAvailable(definition)))
         raise _err(f"airport: unknown action {atype!r}")
 
     def _do_list_schemas(self, context: flight.ServerCallContext) -> bytes:  # pyright: ignore[reportPrivateImportUsage]
@@ -528,187 +518,6 @@ class ProvisaAirportServer(
         return fi.serialize()
 
     # ------------------------------------------------------------- DDL → domain catalog
-    def _do_create_schema(self, context: flight.ServerCallContext, body: bytes) -> bytes:  # pyright: ignore[reportPrivateImportUsage]
-        """create_schema → create a Provisa domain (the airport schema == Provisa domain).
-
-        This is the one DDL verb that maps cleanly onto a governed federation catalog: a schema
-        is a namespace, and Provisa's namespace is the domain. Runs through the control-plane
-        domain repository on the main loop. Returns the airport create_schema response shape
-        (serialized-contents map) so the extension accepts it.
-        """
-        role_id = self._role(context)
-        self._require_admin(role_id)
-        req = wire.decode_action_request(body)
-        name = req.get("schema") or req.get("schema_name") or req.get("name")
-        if isinstance(name, bytes):
-            name = name.decode("utf-8")
-        if not name:
-            raise _err("airport: create_schema requires a schema name")
-        comment = req.get("comment")
-        if isinstance(comment, bytes):
-            comment = comment.decode("utf-8")
-        run_on_connection_loop(self._upsert_domain(str(name), comment or ""))
-        serialized, sha256 = wire.serialize_schema_contents([])
-        return wire._encode({"sha256": sha256, "url": None, "serialized": wire._Str(serialized)})
-
-    def _do_drop_schema(self, context: flight.ServerCallContext, body: bytes) -> None:  # pyright: ignore[reportPrivateImportUsage]
-        role_id = self._role(context)
-        self._require_admin(role_id)
-        req = wire.decode_action_request(body)
-        name = req.get("name") or req.get("schema_name") or req.get("schema")
-        if isinstance(name, bytes):
-            name = name.decode("utf-8")
-        if not name:
-            raise _err("airport: drop_schema requires a schema name")
-        ignore = bool(req.get("ignore_not_found"))
-        deleted = run_on_connection_loop(self._delete_domain(str(name)))
-        if not deleted and not ignore:
-            raise _err(f"airport: schema {name!r} not found")
-
-    def _require_admin(self, role_id: str) -> None:
-        from provisa.security.rights import Capability, has_capability
-
-        role = self._state.roles.get(role_id) or {}
-        if not has_capability(role, Capability.TABLE_REGISTRATION):
-            raise _err(f"airport: role {role_id!r} may not mutate the catalog (DDL)")
-
-    async def _upsert_domain(self, domain_id: str, description: str) -> None:
-        from provisa.core.models import Domain as DomainModel
-        from provisa.core.repositories import domain as domain_repo
-
-        pool = self._state.tenant_db
-        assert pool is not None, "control-plane pool not initialized"  # live at DDL time
-        async with pool.acquire() as conn:
-            await domain_repo.upsert(conn, DomainModel(id=domain_id, description=description))
-
-    async def _delete_domain(self, domain_id: str) -> bool:
-        from provisa.core.repositories import domain as domain_repo
-
-        pool = self._state.tenant_db
-        assert pool is not None, "control-plane pool not initialized"  # live at DDL time
-        async with pool.acquire() as conn:
-            return await domain_repo.delete(conn, domain_id)
-
-    # ------------------------------------------------------------- DDL → physical create_table
-    def _do_create_table(self, context: flight.ServerCallContext, body: bytes) -> bytes:  # pyright: ignore[reportPrivateImportUsage]
-        """create_table → CREATE the physical table in the target domain's WRITABLE source, then
-        register it in the governed model so it joins the airport catalog and accepts a governed
-        INSERT (REQ-1120/REQ-1125).
-
-        The airport ``schema_name`` is a Provisa DOMAIN (sql name). The physical table is created in
-        that domain's single writable source (derived from the domain's existing tables — REQ-1000
-        single-writable-or-reject) via the store write face (the SAME face CTAS uses to create tables
-        in a writable relational source), then registered through the schema-mutation core so the ONE
-        catalog serves it. Admin-capability gated, exactly like create_schema.
-        """
-        role_id = self._role(context)
-        self._require_admin(role_id)
-        req = wire.decode_action_request(body)
-        schema = _as_str(req.get("schema_name") or req.get("schema"))
-        table = _as_str(req.get("table_name") or req.get("name"))
-        if not schema or not table:
-            raise _err("airport: create_table requires schema_name and table_name")
-        raw_schema = req.get("arrow_schema")
-        if not raw_schema:
-            raise _err("airport: create_table requires an arrow_schema")
-        if isinstance(raw_schema, str):
-            raw_schema = raw_schema.encode("latin-1")
-        arrow_schema = pa.ipc.read_schema(pa.py_buffer(raw_schema))
-        columns = _arrow_schema_to_columns(arrow_schema)
-
-        source_id, domain_id, phys_schema = self._resolve_writable_target(role_id, schema)
-        run_on_connection_loop(
-            self._create_and_register_table(source_id, domain_id, phys_schema, table, columns)
-        )
-        # airport create_table response = the new table's FlightInfo protobuf (matches airport-go
-        # buildTableFlightInfo). The fresh table has no PK yet, so it advertises no rowid.
-        return self._table_flight_info(schema, table, arrow_schema).serialize()
-
-    def _resolve_writable_target(self, role_id: str, airport_schema: str) -> tuple[str, str, str]:
-        """Resolve (source_id, domain_id, physical_schema) for a create_table into ``airport_schema``.
-
-        The airport schema is a domain; its writable source is derived from the domain's existing
-        tables (REQ-1000): exactly one writable source is the target, zero is refused (nothing to
-        bind to), more than one is refused as ambiguous — never a silent pick.
-        """
-        from provisa.compiler.naming import domain_to_sql_name
-        from provisa.executor.writable import is_writable_on
-
-        ctx = self._state.contexts[role_id]
-        engine = self._state.federation_engine.engine
-        candidates: dict[str, tuple[str, str]] = {}  # source_id -> (domain_id, physical_schema)
-        for field_name, meta in getattr(ctx, "tables", {}).items():
-            if field_name.endswith(("_aggregate", "_connection", "_group_by", "GroupBy")):
-                continue
-            if (domain_to_sql_name(meta.domain_id) or "default") != airport_schema:
-                continue
-            # Restrict to the SAME source set the airport catalog advertises (see _catalog_for_role):
-            # an external, queryable data pool that is not a streaming (kafka) source. A streaming or
-            # internal/system source is never a valid physical create_table target.
-            if not self._state.source_pools.has(meta.source_id):
-                continue
-            stype = self._state.source_types.get(meta.source_id) or (meta.source_type or "")
-            if stype == "kafka":
-                continue
-            if not is_writable_on(stype, engine):
-                continue
-            candidates.setdefault(meta.source_id, (meta.domain_id, meta.schema_name))
-        if not candidates:
-            raise _err(
-                f"airport: schema {airport_schema!r} has no writable source bound — cannot "
-                "create_table (create the table in the source, or bind a writable source to the domain)"
-            )
-        if len(candidates) > 1:
-            raise _err(
-                f"airport: schema {airport_schema!r} maps to multiple writable sources "
-                f"{sorted(candidates)} — ambiguous create_table target"
-            )
-        source_id, (domain_id, phys_schema) = next(iter(candidates.items()))
-        return source_id, domain_id, phys_schema
-
-    async def _create_and_register_table(
-        self,
-        source_id: str,
-        domain_id: str,
-        phys_schema: str,
-        table: str,
-        columns: list[tuple[str, str]],
-    ) -> None:
-        from provisa.api.admin.schema_helpers import _rebuild_schemas
-        from provisa.api.app import state as app_state
-        from provisa.compiler.naming import apply_convention
-        from provisa.core.models import Column as ColumnModel, Table as TableModel
-        from provisa.core.repositories import table as table_repo
-        from provisa.executor.ctas import _source_sqlalchemy_dsn
-        from provisa.federation import store_writer
-
-        # Physical create in the writable source via the store write face — the SAME primitive CTAS
-        # uses to create a table in a writable relational source (not a parallel DDL path).
-        dsn = _source_sqlalchemy_dsn(app_state, source_id)
-        await store_writer.ensure_table(dsn, schema=phys_schema, table=table, columns=columns)
-
-        # Register in the governed model (schema-mutation core: table_repo.upsert + rebuild) so the
-        # one catalog serves it. Columns are visible+writable to every role — a create_table author
-        # publishes an open governed table; governance can be tightened afterward via the admin API.
-        all_roles = list(self._state.roles.keys()) or ["org_admin"]
-        col_models = [
-            ColumnModel(name=name, data_type=ir_type, visible_to=all_roles, writable_by=all_roles)
-            for name, ir_type in columns
-        ]
-        model = TableModel(
-            source_id=source_id,
-            domain_id=domain_id,
-            schema_name=phys_schema,
-            table_name=table,
-            columns=col_models,
-            alias=apply_convention(table, "apollo_graphql"),
-        )
-        pool = self._state.tenant_db
-        assert pool is not None, "control-plane pool not initialized"  # live at DDL time
-        async with pool.acquire() as conn:
-            await table_repo.upsert(conn, model)
-        await _rebuild_schemas()
-
     # ------------------------------------------------------------- GetFlightInfo
     def get_flight_info(  # pyright: ignore[reportPrivateImportUsage]
         self,

@@ -54,7 +54,6 @@ from provisa.otel_compat import annotate_request as _annotate_request
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
 from provisa.otel_compat import HeldRequestSpan
-from provisa.pgwire.ddl_handler import creates_view
 from provisa.executor.result import ResultStream
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
@@ -120,18 +119,6 @@ _TXN_TAG_RE = re.compile(
 )
 
 _COPY_RE = re.compile(r"^\s*COPY\b", re.IGNORECASE)
-# CTAS: CREATE TABLE ... AS SELECT — a physical data move (REQ-996), NOT plain DDL. Routed to the
-# CTAS handler ahead of _DDL_RE, whose column-def path cannot parse an AS-SELECT body.
-_CTAS_RE = re.compile(
-    r"^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?.+?\bAS\b\s+(?:WITH\b|SELECT\b|\()",
-    re.IGNORECASE | re.DOTALL,
-)
-_DDL_RE = re.compile(
-    r"^\s*(CREATE\s+(TABLE|VIEW|INDEX|UNIQUE\s+INDEX|SEQUENCE|SCHEMA)"
-    r"|ALTER\s+(TABLE|INDEX|SEQUENCE|VIEW)"
-    r"|DROP\s+(TABLE|VIEW|INDEX|SEQUENCE|SCHEMA))\b",
-    re.IGNORECASE,
-)
 # REQ-1862: session-scoped SQL cursors (no BEGIN/COMMIT machinery exists in pgwire today, so
 # every DECLAREd cursor behaves as if WITH HOLD — it lives until CLOSE or disconnect).
 _DECLARE_CURSOR_RE = re.compile(
@@ -1253,6 +1240,20 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             return deadline.expired_error()
         return None
 
+    def send_error(self, exception, ctx: "BVContext | None" = None) -> None:
+        """A statement's failure, as an ErrorResponse. A definition statement the pipeline
+        refused is answered 0A000 (feature_not_supported) with the refusal's own message, on the
+        simple and the extended protocol alike; anything else as the base class sends it."""
+        from provisa.compiler.definitions import definition_refusal
+
+        refusal = definition_refusal(exception)
+        if refusal is None:
+            super().send_error(exception, ctx)
+            return
+        self._send_pg_error("ERROR", "0A000", str(refusal))
+        if ctx:
+            ctx.mark_error()
+
     def _send_request_timeout(self, exc: BaseException) -> None:
         # 57014 query_canceled: what PostgreSQL itself reports for a statement its
         # statement_timeout ended. The message names the transport and the setting.
@@ -2005,56 +2006,9 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                     self._send_pg_error("ERROR", "0A000", str(exc))
                     ctx.mark_error()
                 break
-            if _CTAS_RE.match(stmt):
-                from provisa.executor.ctas import run_ctas
-
-                # role_id lives on the session, not the handler.
-                role = ctx.session.role_id  # type: ignore[attr-defined]
-                if not role:
-                    self._send_pg_error("ERROR", "28000", "Not authenticated")
-                    ctx.mark_error()
-                    break
-                user = ctx.session.user_id  # type: ignore[attr-defined]
-                if not user:
-                    self._send_pg_error("ERROR", "28000", "Not authenticated")
-                    ctx.mark_error()
-                    break
-                from provisa.audit.context import with_audit_identity
-                from provisa.core.connection_loop import run_on_connection_loop
-
-                try:
-                    tag = run_on_connection_loop(
-                        _run_with_org(
-                            ctx.session.org_id,  # type: ignore[attr-defined]
-                            # REQ-074/REQ-1386: the CTAS SELECT runs through the governed pipeline;
-                            # bind its principal inside the coroutine so the row is attributed.
-                            with_audit_identity(user, "pgwire", run_ctas(stmt, role)),
-                        ),
-                        timeout=request_timeout_for("pgwire"),
-                    )
-                    self.send_command_complete(f"{tag}\x00")
-                except PermissionError as exc:
-                    self._send_pg_error("ERROR", "42501", str(exc))
-                    ctx.mark_error()
-                except Exception as exc:
-                    self._send_pg_error("ERROR", "0A000", str(exc))
-                    ctx.mark_error()
-                break
-            if _DDL_RE.match(stmt) or creates_view(stmt):
-                # creates_view: every spelling of CREATE ... VIEW (OR REPLACE, MATERIALIZED,
-                # TEMP) is the DDL handler's to refuse, whatever _DDL_RE's own list holds.
-                from provisa.pgwire.ddl_handler import DdlHandler
-
-                try:
-                    tag = DdlHandler(self).handle(ctx, stmt)
-                    self.send_command_complete(f"{tag}\x00")
-                except PermissionError as exc:
-                    self._send_pg_error("ERROR", "42501", str(exc))
-                    ctx.mark_error()
-                except Exception as exc:
-                    self._send_pg_error("ERROR", "0A000", str(exc))
-                    ctx.mark_error()
-                break
+            # A statement that defines a relation (CREATE TABLE [AS], CREATE VIEW, ALTER, DROP …)
+            # has no handler of its own here: it goes to the pipeline like any statement, which
+            # refuses it (provisa/compiler/definitions.py) — answered 0A000 by send_error below.
             if _DECLARE_CURSOR_RE.match(stmt):
                 self._handle_declare_cursor(ctx, stmt)
                 break

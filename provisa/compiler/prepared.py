@@ -123,6 +123,8 @@ from typing import Any, Literal as TypingLiteral
 import sqlglot
 from sqlglot import expressions as exp
 
+from provisa.compiler.definitions import refuse_definition
+
 # Bounded so a pathological caller issuing endless distinct one-off SQL shapes cannot grow this
 # without limit — an ordinary LRU-by-insertion-order eviction (not a strict LRU-by-access) is
 # enough here: this is a pure speed optimization, never a correctness dependency, so evicting the
@@ -324,6 +326,10 @@ async def prepare_front_end(
     parsed_input = await loop.run_in_executor(
         None, lambda: sqlglot.parse_one(raw_sql, read="postgres")
     )
+    # Nothing is defined through a query protocol (provisa/compiler/definitions.py): a statement
+    # that creates, alters or drops a relation is refused here, as soon as its kind is known and
+    # before any of the pipeline's work on it.
+    refuse_definition(parsed_input)
     shape_digest = _shape_digest_from_tree(parsed_input)
     key = _cache_key(shape_digest, role_id, generation)
 

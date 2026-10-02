@@ -427,45 +427,69 @@ def test_update_denied_for_non_visible_row_is_governed_noop(airport_server_port)
     assert admin_after["rows"][0][0] != "hacked"
 
 
-# ---------------------------------------------------------------- Increment 5: DDL
-def test_create_schema_maps_to_domain(airport_server_port):
-    """CREATE SCHEMA via airport creates a Provisa domain through the schema-mutation pipeline."""
-    # Should not raise — the create_schema DoAction maps to a domain upsert.
-    _run_sql(
-        airport_server_port, "org_admin", ["CREATE SCHEMA provisa.airport_ddl_test"], fetch=False
+# ---------------------------------------------------------------- definitions are refused
+def _refused_sql(port: int, role: str, stmt: str) -> str:
+    """Run ``stmt`` through the real DuckDB airport client, expecting it to fail; its stderr."""
+    result = subprocess.run(
+        [sys.executable, "-c", _SQL_CLIENT_SCRIPT, str(port), role, "0", json.dumps([stmt])],
+        capture_output=True,
+        text=True,
+        timeout=120,
     )
-    # drop_schema maps to domain delete.
-    _run_sql(
-        airport_server_port, "org_admin", ["DROP SCHEMA provisa.airport_ddl_test"], fetch=False
-    )
+    assert result.returncode != 0, f"{stmt!r} was accepted:\nstdout={result.stdout}"
+    return result.stderr
 
 
-def test_create_table_roundtrip_via_airport(airport_server_port):
-    """CREATE TABLE via airport creates the physical table in the domain's single writable source
-    (schema-mutation pipeline) and registers it: the new table then appears in the catalog and
-    accepts a governed INSERT, read back through the same governed path."""
-    _run_sql(
+_HOW = "is not available here: create it in the model"
+
+
+@pytest.mark.parametrize(
+    "stmt,kind",
+    [
+        ("CREATE SCHEMA provisa.airport_ddl_test", "CREATE SCHEMA"),
+        (
+            f'CREATE TABLE provisa."{_SCHEMA}"."ap_created" (x INTEGER, label VARCHAR)',
+            "CREATE TABLE",
+        ),
+        (f'DROP TABLE provisa."{_SCHEMA}"."{_TABLE}"', "DROP TABLE"),
+        (f'ALTER TABLE provisa."{_SCHEMA}"."{_TABLE}" ADD COLUMN extra INTEGER', "ALTER TABLE"),
+    ],
+)
+def test_a_definition_through_airport_is_refused_naming_where_it_is_made(
+    airport_server_port, stmt, kind
+):
+    """Nothing is defined through a query protocol (provisa/compiler/definitions.py): the airport
+    DDL actions answer the same refusal, in the same words, as a definition statement on any
+    other surface. (They used to create a domain, and a physical table registered in the
+    model.)"""
+    stderr = _refused_sql(airport_server_port, "org_admin", stmt)
+    assert f"{kind} {_HOW}" in stderr, stderr
+
+
+def test_the_refused_definitions_changed_nothing(airport_server_port):
+    """After the refusals: the catalog still has the table that DROP and ALTER named, with the
+    columns it had, and no table or schema the CREATEs named."""
+    for stmt in (
+        "CREATE SCHEMA provisa.airport_ddl_test",
+        f'CREATE TABLE provisa."{_SCHEMA}"."ap_created" (x INTEGER, label VARCHAR)',
+        f'DROP TABLE provisa."{_SCHEMA}"."{_TABLE}"',
+        f'ALTER TABLE provisa."{_SCHEMA}"."{_TABLE}" ADD COLUMN extra INTEGER',
+    ):
+        _refused_sql(airport_server_port, "org_admin", stmt)
+    seen = _run_sql(
         airport_server_port,
         "org_admin",
-        [f'CREATE TABLE provisa."{_SCHEMA}"."ap_created" (x INTEGER, label VARCHAR)'],
-        fetch=False,
+        [
+            "SELECT table_schema, table_name, column_name FROM information_schema.columns "
+            "WHERE table_catalog = 'provisa'"
+        ],
     )
-    # A fresh ATTACH re-reads the catalog and sees the newly-registered table; INSERT flows through
-    # the governed write pipeline into the physical table just created.
-    _run_sql(
-        airport_server_port,
-        "org_admin",
-        [f"""INSERT INTO provisa."{_SCHEMA}"."ap_created" (x, label) VALUES (7, 'seven')"""],
-        fetch=False,
-    )
-    back = _run_sql(
-        airport_server_port,
-        "org_admin",
-        [f'SELECT x, label FROM provisa."{_SCHEMA}"."ap_created" ORDER BY x'],
-    )
-    assert len(back["rows"]) == 1, back
-    assert back["rows"][0][back["columns"].index("x")] == 7, back["rows"][0]
-    assert back["rows"][0][back["columns"].index("label")] == "seven", back["rows"][0]
+    held = {(r[0], r[1]) for r in seen["rows"]}
+    columns = {r[2] for r in seen["rows"] if (r[0], r[1]) == (_SCHEMA, _TABLE)}
+    assert (_SCHEMA, _TABLE) in held, sorted(held)
+    assert "extra" not in columns and "id" in columns, sorted(columns)
+    assert (_SCHEMA, "ap_created") not in held
+    assert "airport_ddl_test" not in {schema for schema, _table in held}
 
 
 # ---------------------------------------------------------------- Increment 3: transactions
