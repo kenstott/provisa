@@ -366,9 +366,10 @@ def test_the_parser_is_the_c_backend_by_name():
     assert _json_parser().__name__ == "ijson.backends.yajl2_c"
 
 
-def test_kinds_that_cannot_spool_stay_plain_single_documents():
-    for loader in (sl.make_dq_loader(SimpleNamespace()), sl.make_openapi_loader({}, {})):
-        assert not hasattr(loader, "replica_source")
+def test_a_kind_that_cannot_spool_stays_a_plain_single_document():
+    # A checker's rows are one scan's results, produced by a subprocess: there is no answer to
+    # spool. (An API table's own reader is covered in tests/unit/test_api_replica_read.py.)
+    assert not hasattr(sl.make_dq_loader(SimpleNamespace()), "replica_source")
 
 
 def test_the_spool_directory_is_under_the_nodes_data_directory_and_swept_at_start():

@@ -63,6 +63,11 @@ def _extract_value(row: dict, col: ApiColumn) -> object:
     return str(value)
 
 
+def flatten_item(item: dict, columns: list[ApiColumn]) -> dict:
+    """One response item as a row: each declared column's value, extracted and coerced."""
+    return {col.name: _extract_value(item, col) for col in columns}
+
+
 def flatten_response(  # REQ-295, REQ-297, REQ-299, REQ-316
     data: object,  # object-ok: arbitrary JSON payload from API responses
     root_path: str | None,
@@ -78,15 +83,7 @@ def flatten_response(  # REQ-295, REQ-297, REQ-299, REQ-316
     if response_normalizer:
         # Normalizer returns ready-made row dicts; skip root navigation.
         items = get_normalizer(response_normalizer)(data)
-        rows: list[dict] = []
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            row: dict = {}
-            for col in columns:
-                row[col.name] = _extract_value(item, col)
-            rows.append(row)
-        return rows
+        return [flatten_item(item, columns) for item in items if isinstance(item, dict)]
 
     root = _navigate_path(data, root_path)
 
@@ -109,13 +106,4 @@ def flatten_response(  # REQ-295, REQ-297, REQ-299, REQ-316
             f"Expected dict or list at root path {root_path!r}, got {type(root).__name__}"
         )
 
-    rows: list[dict] = []
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        row: dict = {}
-        for col in columns:
-            row[col.name] = _extract_value(item, col)
-        rows.append(row)
-
-    return rows
+    return [flatten_item(item, columns) for item in items if isinstance(item, dict)]
