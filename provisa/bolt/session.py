@@ -1119,11 +1119,11 @@ async def _maybe_invoke_command_call(
     governed executor (invoke_tracked_function) enforces writable_by/governance, and positional
     args are mapped to the command's declared argument names.
     """
-    fns = getattr(app_state, "tracked_functions", None)
-    if not isinstance(fns, dict):
-        return None
-    # Webhooks are governed commands too (REQ-872): CALL a webhook like any other command.
-    callables = {**fns, **(getattr(app_state, "tracked_webhooks", None) or {})}
+    from provisa.api.data.action_exec import usable_commands
+
+    # Webhooks are governed commands too (REQ-872): CALL a webhook like any other command. Only
+    # the commands this role may call: one it may not reads as an unregistered name.
+    callables = usable_commands(app_state, role_id)
     m = _CALL_CMD_RE.match(cypher.strip())
     if not m:
         return None

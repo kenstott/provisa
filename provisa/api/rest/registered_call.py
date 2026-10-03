@@ -125,16 +125,17 @@ def _parse_call_literal(raw: str, params: dict):
 
 
 def detect_registered_call(
-    query: str, state, params: dict
+    query: str, state, params: dict, role_id: str | None
 ) -> tuple[str, dict, list[tuple[str, str]]] | None:
     """Detect ``CALL <registeredFn>(args) [YIELD cols]`` (REQ-872).
 
     Returns (function name, ordered positional args dict, YIELD (source, alias) pairs) when the
     name is a registered tracked function, else None. YIELD is optional; ``col AS alias`` supported.
     """
-    fns = getattr(state, "tracked_functions", None)
-    if not isinstance(fns, dict):
-        return None
+    from provisa.api.data.action_exec import usable_commands
+
+    # Only the commands this role may call: one it may not reads as an unregistered name.
+    fns = usable_commands(state, role_id, webhooks=False)
     m = _REGISTERED_CALL_RE.match(query.strip())
     if m is None:
         return None
@@ -174,7 +175,7 @@ async def intercept_precompile(body, state, role_id, label_map) -> JSONResponse 
     proc = _detect_procedure(body.query)
     if proc is not None:
         return _handle_procedure(proc, label_map)
-    reg = detect_registered_call(body.query, state, body.params)
+    reg = detect_registered_call(body.query, state, body.params, role_id)
     if reg is not None:
         return await handle_registered_call(reg[0], reg[1], reg[2], state, role_id)
     return None

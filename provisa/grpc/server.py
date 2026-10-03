@@ -354,9 +354,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
         if name == "CallCommand":  # REQ-1156
             return _unary(lambda request, context: self._handle_call_command(request, context))
         if name.startswith("Call"):  # REQ-1156 — per-command typed RPC Call{Cmd}
-            cmd_name = self._resolve_command_rpc(name[len("Call") :])
+            rpc = name[len("Call") :]
+            cmd_name = self._resolve_command_rpc(rpc)
             return _unary(
-                lambda request, context: self._handle_typed_command(request, context, cmd_name)
+                lambda request, context: self._handle_typed_command(request, context, cmd_name, rpc)
             )
         raise AttributeError(f"{type(self).__name__!r} has no attribute {name!r}")
 
@@ -406,7 +407,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 return fn_name
         return None
 
-    async def _handle_typed_command(self, request, context, cmd_name: str | None):
+    async def _handle_typed_command(self, request, context, cmd_name: str | None, rpc: str):
         """Invoke a per-command RPC's command via the one governed executor (REQ-1156).
 
         Reads declared arguments off the typed request message, routes through
@@ -434,8 +435,12 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 if cmd_name
                 else None
             )
-            if fn is None or cmd_name is None:
-                await context.abort(grpc.StatusCode.NOT_FOUND, f"Unknown command {cmd_name!r}")
+            from provisa.api.data.action_exec import command_usable
+
+            if fn is None or cmd_name is None or not command_usable(fn, state, role_id):
+                # One answer, named as the RPC was, whether no command stands behind it or the
+                # role may not call the one that does.
+                await context.abort(grpc.StatusCode.NOT_FOUND, f"Unknown command {rpc!r}")
                 return
             args = {
                 a_name: getattr(request, a_name)
@@ -480,7 +485,9 @@ class ProvisaServicer:  # REQ-045, REQ-143
             return
         try:
             state = self._state
-            if request.name not in getattr(state, "tracked_functions", {}):
+            from provisa.api.data.action_exec import usable_commands
+
+            if request.name not in usable_commands(state, role_id, webhooks=False):
                 await context.abort(grpc.StatusCode.NOT_FOUND, f"Unknown command {request.name!r}")
                 return
             try:

@@ -162,11 +162,21 @@ def test_classifying_a_statement_for_the_pgwire_catalog_parses_its_text_once(sql
 def test_a_statement_naming_no_registered_command_is_not_parsed_to_look_for_one(sqlglot_calls):
     from provisa.pgwire.function_call import detect_sql_function_call
 
-    state = SimpleNamespace(tracked_functions={"send_invoice": object()}, tracked_webhooks={})
-    assert detect_sql_function_call("SELECT order_id FROM perf_bench.orders LIMIT 1", state) is None
+    state = SimpleNamespace(
+        roles={"r": {"id": "r", "domain_access": ["*"]}},
+        tracked_functions={"send_invoice": {"name": "send_invoice", "domain_id": "sales"}},
+        tracked_webhooks={},
+    )
+    assert (
+        detect_sql_function_call("SELECT order_id FROM perf_bench.orders LIMIT 1", state, "r")
+        is None
+    )
     assert sqlglot_calls["parse"] == 0
     # A statement that does name one is still recognised (and parsed to be sure).
-    assert detect_sql_function_call("SELECT send_invoice(7)", state) == ("send_invoice", [7])
+    assert detect_sql_function_call("SELECT send_invoice(7)", state, "r") == ("send_invoice", [7])
     assert sqlglot_calls["parse"] == 1
     # ...and one that only mentions the name inside a composed statement is still left alone.
-    assert detect_sql_function_call("SELECT a FROM t JOIN send_invoice(7) s ON true", state) is None
+    assert (
+        detect_sql_function_call("SELECT a FROM t JOIN send_invoice(7) s ON true", state, "r")
+        is None
+    )

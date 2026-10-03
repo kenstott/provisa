@@ -40,7 +40,7 @@ def _literal_value(node):
     return node.sql()  # fall back to the rendered SQL for anything exotic
 
 
-def detect_sql_function_call(sql: str, state) -> tuple[str, list] | None:
+def detect_sql_function_call(sql: str, state, role_id: str | None) -> tuple[str, list] | None:
     """Return (registered function name, positional arg values) for a STANDALONE function-call SELECT.
 
     Handles only the direct forms where the command IS the whole query: ``SELECT fn(args)`` (scalar)
@@ -50,12 +50,12 @@ def detect_sql_function_call(sql: str, state) -> tuple[str, list] | None:
     shared _govern_and_route pipeline (REQ-1159), so this hook must NOT fire and mis-run one command
     as the whole result.
     """
-    fns = getattr(state, "tracked_functions", None)
-    if not isinstance(fns, dict):
-        return None
+    from provisa.api.data.action_exec import usable_commands
+
     # Webhooks are governed commands too (REQ-872) and route through the same shared executor, so a
-    # webhook call is a standalone-function-call SELECT exactly like a function call.
-    callables = {**fns, **(getattr(state, "tracked_webhooks", None) or {})}
+    # webhook call is a standalone-function-call SELECT exactly like a function call. Only the
+    # commands this role may call are recognized: one it may not reads as an unregistered name.
+    callables = usable_commands(state, role_id)
     # A statement that names no registered command cannot be a call of one: the match below is on
     # the function name as written, and that name is in the text. Asked on every execution, so
     # the common statement — an ordinary read — is answered without a parse.
@@ -96,7 +96,7 @@ async def maybe_invoke_registered_function(sql: str, role_id: str, state):
     Returns a QueryResult, or None to signal the caller should fall through to normal
     governance/routing. writable_by is enforced inside the executor (REQ-869).
     """
-    hit = detect_sql_function_call(sql, state)
+    hit = detect_sql_function_call(sql, state, role_id)
     if hit is None:
         return None
     from provisa.api.data.action_exec import invoke_tracked_function

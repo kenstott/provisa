@@ -671,11 +671,13 @@ async def _localize_inline_commands(tree, role_id: str, state) -> bool:
     governance (DEFINER/INVOKER) and I/O dataset contract are enforced there, identically to a direct
     call — so the outer statement only ever sees ordinary local relations. Returns True on any hit
     (the caller then forces engine execution). No-op when no command is composed in the statement."""
-    commands = getattr(state, "tracked_functions", None)
+    from provisa.api.data.action_exec import invoke_tracked_function, usable_commands
+    from provisa.executor.command_localize import localize_commands
+
+    # Only the commands this role may call: one it may not reads as an unregistered relation.
+    commands = usable_commands(state, role_id, webhooks=False)
     if not commands:
         return False
-    from provisa.api.data.action_exec import invoke_tracked_function
-    from provisa.executor.command_localize import localize_commands
 
     async def _run(name: str, args: dict) -> list[dict]:
         return await invoke_tracked_function(name, args, state, role_id)
@@ -3417,7 +3419,7 @@ async def describe_pgwire_statement(sql: str, role_id: str) -> _Described:  # RE
     from provisa.pgwire.result_shape import derive_result_shape
 
     sql = rewrite_surface_operators(sql)
-    call = detect_sql_function_call(sql, state)
+    call = detect_sql_function_call(sql, state, role_id)
     if call is not None:
         return _Described(_function_call_shape(call[0], state), None)
 

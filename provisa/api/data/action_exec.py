@@ -93,6 +93,34 @@ def list_visible_commands(state, role_id: str | None) -> list[dict]:
     return sorted(out, key=lambda c: (c["domain"], c["name"]))
 
 
+def command_usable(command: dict, state, role_id: str | None) -> bool:
+    """Whether ``role_id`` may call ``command``: the command is assigned to it (``visible_to``;
+    empty assigns it to every role) and sits in a domain the role reaches. A command it may not
+    call is, to it, a command that does not exist."""
+    role = (getattr(state, "roles", None) or {}).get(role_id) if role_id is not None else None
+    if role is None:
+        return False
+    assigned = command.get("visible_to") or []
+    if assigned and role_id not in assigned:
+        return False
+    # The same reach the GraphQL command fields are shown by (compiler/actions_schema.py).
+    access = set(role.get("domain_access") or ())
+    return "*" in access or (command.get("domain_id") or "") in access
+
+
+def usable_commands(state, role_id: str | None, *, webhooks: bool = True) -> dict[str, dict]:
+    """The commands ``role_id`` may call, by name (see :func:`command_usable`)."""
+    pools = [getattr(state, "tracked_functions", None) or {}]
+    if webhooks:
+        pools.append(getattr(state, "tracked_webhooks", None) or {})
+    return {
+        name: command
+        for pool in pools
+        for name, command in pool.items()
+        if command_usable(command, state, role_id)
+    }
+
+
 async def invoke_tracked_function(name: str, args: dict, state, role_id: str | None) -> list[dict]:
     """The one path every surface routes through to invoke a registered function.
 
@@ -104,6 +132,8 @@ async def invoke_tracked_function(name: str, args: dict, state, role_id: str | N
     """
     role = state.roles.get(role_id) if role_id is not None else None
     fn = state.tracked_functions.get(name)
+    if fn and not command_usable(fn, state, role_id):
+        fn = None  # not this role's to call: answered exactly as an unknown command
     if fn:
         require_mutation_write(fn, role, name)
         rows = await dispatch_function(fn, args, state, role_id)
@@ -111,7 +141,8 @@ async def invoke_tracked_function(name: str, args: dict, state, role_id: str | N
     # A webhook is a governed command too (REQ-872): every surface routes here, so a webhook is
     # invocable beyond GraphQL. Kept a distinct path because a webhook is a scalar-argument HTTP
     # POST — the function dispatcher rejects scalar-only external calls (they can't batch).
-    if name in (getattr(state, "tracked_webhooks", None) or {}):
+    webhook = (getattr(state, "tracked_webhooks", None) or {}).get(name)
+    if webhook is not None and command_usable(webhook, state, role_id):
         return await invoke_tracked_webhook(name, args, state, role_id)
     raise HTTPException(status_code=400, detail=f"Unknown function: {name!r}")
 
@@ -138,7 +169,7 @@ async def invoke_tracked_webhook(name: str, args: dict, state, role_id: str | No
     """
     role = state.roles.get(role_id) if role_id is not None else None
     wh = (getattr(state, "tracked_webhooks", None) or {}).get(name)
-    if not wh:
+    if not wh or not command_usable(wh, state, role_id):
         raise HTTPException(status_code=400, detail=f"Unknown webhook: {name!r}")
     require_mutation_write(wh, role, name)
     timeout = wh["timeout_ms"] / 1000

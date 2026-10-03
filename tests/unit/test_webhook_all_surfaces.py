@@ -171,7 +171,7 @@ async def test_invoke_tracked_function_unknown_name_still_raises():
 def test_pgwire_detects_webhook_call():
     from provisa.pgwire.function_call import detect_sql_function_call
 
-    hit = detect_sql_function_call("SELECT * FROM add_pet('Rex', 'available')", _state())
+    hit = detect_sql_function_call("SELECT * FROM add_pet('Rex', 'available')", _state(), "admin")
     assert hit is not None
     name, values = hit
     assert name == "add_pet"

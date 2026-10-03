@@ -61,10 +61,10 @@ def _fn(**over):
 
 
 def _state(*, role_caps=(), writable_by=("ops",), connected=True, pools=None):
-    role = {"id": "ops", "capabilities": list(role_caps)}
+    role = {"id": "ops", "capabilities": list(role_caps), "domain_access": ["*"]}
     pools = pools or _FakePools(connected=connected)
     return SimpleNamespace(
-        roles={"ops": role, "reader": {"id": "reader", "capabilities": []}},
+        roles={"ops": role, "reader": {"id": "reader", "capabilities": [], "domain_access": ["*"]}},
         tracked_functions={"createOrder": _fn(writable_by=list(writable_by))},
         source_pools=pools,
         ephemeral=False,
@@ -149,7 +149,7 @@ def test_parse_call_literal_types():
 
 def test_detect_registered_call_with_yield():
     st = _state(role_caps=[Capability.WRITE.value])
-    got = detect_registered_call("CALL createOrder(7, 'x') YIELD id, name AS n", st, {})
+    got = detect_registered_call("CALL createOrder(7, 'x') YIELD id, name AS n", st, {}, "ops")
     assert got is not None
     name, args, yields = got
     assert name == "createOrder"
@@ -159,11 +159,39 @@ def test_detect_registered_call_with_yield():
 
 def test_detect_registered_call_binds_params():
     st = _state(role_caps=[Capability.WRITE.value])
-    _n, args, _y = detect_registered_call("CALL createOrder($cid)", st, {"cid": 99})
+    _n, args, _y = detect_registered_call("CALL createOrder($cid)", st, {"cid": 99}, "ops")
     assert list(args.values()) == [99]
 
 
 def test_detect_ignores_unregistered_name():
     st = _state(role_caps=[Capability.WRITE.value])
-    assert detect_registered_call("CALL db.labels()", st, {}) is None
-    assert detect_registered_call("CALL somethingElse(1)", st, {}) is None
+    assert detect_registered_call("CALL db.labels()", st, {}, "ops") is None
+    assert detect_registered_call("CALL somethingElse(1)", st, {}, "ops") is None
+
+
+@pytest.mark.asyncio
+async def test_a_command_not_assigned_to_the_role_answers_as_an_unknown_one():
+    st = _state(role_caps=[Capability.WRITE.value], writable_by=["ops"])
+    st.tracked_functions["createOrder"]["visible_to"] = ["someone_else"]
+    with pytest.raises(HTTPException) as hidden:
+        await invoke_tracked_function("createOrder", {}, st, "ops")
+    with pytest.raises(HTTPException) as unknown:
+        await invoke_tracked_function("nosuch", {}, st, "ops")
+    assert (hidden.value.status_code, str(hidden.value.detail).replace("createOrder", "<n>")) == (
+        unknown.value.status_code,
+        str(unknown.value.detail).replace("nosuch", "<n>"),
+    )
+    assert st.source_pools.calls == []
+    assert detect_registered_call("CALL createOrder(1)", st, {}, "ops") is None
+
+
+@pytest.mark.asyncio
+async def test_a_command_outside_the_role_domains_answers_as_an_unknown_one():
+    st = _state(role_caps=[Capability.WRITE.value], writable_by=["ops"])
+    st.tracked_functions["createOrder"]["domain_id"] = "hr"
+    st.roles["ops"]["domain_access"] = ["sales"]
+    with pytest.raises(HTTPException) as hidden:
+        await invoke_tracked_function("createOrder", {}, st, "ops")
+    assert hidden.value.status_code == 400
+    assert "Unknown function: 'createOrder'" in str(hidden.value.detail)
+    assert st.source_pools.calls == []

@@ -25,12 +25,13 @@ pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 def _state():
     return SimpleNamespace(
+        roles={"admin": {"id": "admin", "capabilities": ["write"], "domain_access": ["*"]}},
         tracked_functions={
             "random_python_set": {
                 "name": "random_python_set",
                 "arguments": [{"name": "rows"}, {"name": "seed"}],
             }
-        }
+        },
     )
 
 
