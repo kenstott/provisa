@@ -73738,13 +73738,27 @@
   description: 'Control plane module (`provisa/control_plane/`): manages SLA monitoring, quota enforcement,
     and cluster health aggregation across multi-tenant deployments. Exposes health metrics via Prometheus
     endpoint. Integrates with OTel traces (REQ-302) for latency SLA tracking. Configuration: `control_plane.enabled`,
-    `control_plane.sla_p99_ms` thresholds per role. `tests/unit/test_control_plane.py`'
+    `control_plane.sla_p99_ms` thresholds per role. `tests/unit/test_control_plane.py` (Amended 2026-10-03,
+    SERVICE-LEVEL LIMITS ARE CONFIGURABLE AND THE RESULTS ARE STORED:) The service-level limits (the latency
+    percentile limit and the availability floor) are operator settings, each with its admin UI surface,
+    not constants in code. Every served query''s latency and outcome is recorded, and so is every breach,
+    so that the summary and the breach history are read from stored data and survive a restart. (Amended
+    2026-10-03, QUOTAS ARE THE PLAN CEILINGS:) Quota enforcement is not a separate mechanism of this requirement.
+    It is the plan ceilings already required elsewhere: the per-query ceilings on rows, bytes scanned,
+    memory and time (REQ-1044), the storage ceiling (REQ-1046, REQ-1047) and the limit on sources. This
+    requirement adds the service-level monitoring beside them.'
   notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
     written on 2026-06-20 under the heading ''Control Plane & Deployment''; it was dropped when requirements.md
     became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: provisa/control_plane/
     holds only entitlements.py, models.py, router.py, store.py (org/data-plane registry, REQ-073); no
     SLA monitoring, quota enforcement, control_plane.sla_p99_ms or health aggregation (grep empty). tests/unit/test_control_plane.py
-    covers the org registry only. Accepted by the maintainer 2026-10-03 for the feature-complete line.'
+    covers the org registry only. Accepted by the maintainer 2026-10-03 for the feature-complete line.
+    Maintainer 2026-10-03: the limits must be configurable and the results stored. State of the code:
+    provisa/audit/sla_monitor.py has record_query_sla, get_sla_summary and check_sla_breach and the query_sla_log
+    table, with unit tests, but record_query_sla has no caller, so nothing is stored; the limits are the
+    constants _SLA_P99_LIMIT_MS = 5000 and _SLA_AVAILABILITY_MIN = 99.9 (sla_monitor.py:41-42). Quotas
+    are built and enforced under the requirements named above (provisa/pgwire/_pipeline.py:756, provisa/storage/quota.py:108,
+    provisa/api/admin/schema_mutation.py:490). No Prometheus endpoint is served.'
   target: 2026-Q4
   scenario: 'Given queries served for an org
 
@@ -73755,6 +73769,11 @@
     And an org that exceeds its quota is refused with an error naming the quota
 
     '
+  related_reqs:
+  - REQ-1044
+  - REQ-1046
+  - REQ-1047
+  - REQ-1049
 - id: REQ-507
   status: in-progress
   group: 11. Platform, Infrastructure & Delivery
