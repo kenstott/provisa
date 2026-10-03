@@ -38792,9 +38792,13 @@
   category: HTTP Org-Routing Middleware
   priority: MUST
   type: behavioral
-  description: OrgRoutingMiddleware routes each HTTP request to the active org's runtime, built on-demand
-    from persisted seeded_demo config, gated on multitenancy feature flag. Resolves current_org ContextVar
-    before handlers execute.
+  description: 'OrgRoutingMiddleware routes each HTTP request to the active org''s runtime, built on-demand
+    from persisted seeded_demo config[SUPERSEDED by REQ-1355, 2026-10-03 -- the org routing middleware
+    is registered unconditionally; the flag guard was a defect. Kept here for history; do not implement
+    against it.] , gated on multitenancy feature flag [END SUPERSEDED BLOCK]. Resolves current_org ContextVar
+    before handlers execute. (Amended 2026-10-03, THE MIDDLEWARE ALWAYS RUNS:) The org routing middleware
+    is registered on every deployment, with or without multi-tenancy (REQ-1355): a single-tenant deployment
+    routes every request to its one org through the same path.'
   use_case: Ensures every request executes within its designated org's isolated AppState, enforcing tenant
     isolation at the HTTP boundary.
   code:
@@ -43235,12 +43239,16 @@
   category: Domain Hierarchy
   priority: MUST
   type: structural
-  description: Add hierarchical domain structure via parent_domain_id to Domain model, with flattening
+  description: 'Add hierarchical domain structure via parent_domain_id to Domain model, with flattening
     applied at execution time to governance, addressing, and access control layers. (Amended 2026-10-03,
     THE USE CASE IS A BUSINESS UNIT AND ITS ORGANIZATIONS:) A parent domain represents a business unit
     and its child domains represent the organizations within that business unit. A role granted the business
-    unit's domain reaches every organization's domain under it, including one added later, without the
-    role being edited.
+    unit''s domain reaches every organization''s domain under it, including one added later, without the
+    role being edited. (Amended 2026-10-03, GRANTS, ROW FILTERS AND STEWARDS ACROSS THE TREE:) A role
+    granted a parent domain reaches every domain under it. Row filters across the tree all apply together:
+    a table''s rows are filtered by its own domain''s filter and by the filter of every ancestor domain,
+    so a child domain can only narrow what its ancestors allow. A child domain with no steward inherits
+    the steward of its nearest ancestor that has one.'
   use_case: Enable organizations to structure domains hierarchically for governance metadata and organization,
     while maintaining a single flat execution model and addressing scheme.
   code:
@@ -54403,8 +54411,7 @@
     and the store-level logo, favicon and fonts, which are settings on the store rather than checkout
     options.'
   tests:
-  - .claude/commercial/tests/test_billing_lemonsqueezy.py::TestCheckoutAppearance
-  - .claude/commercial/tests/test_billing_lemonsqueezy.py::TestCheckoutBody
+  - .claude/commercial/tests/test_billing_lemonsqueezy.py
   code:
   - .claude/commercial/provisa_commercial/lemonsqueezy_client.py
   - .claude/commercial/provisa_commercial/router.py
@@ -67080,8 +67087,10 @@
   - provisa/compiler/naming.py
   - provisa/cache/key.py
   tests:
-  - tests/integration/test_pgwire_single_pass.py - tests/unit/test_compiled_query_cache.py - tests/unit/test_routing_cache.py
-    - tests/unit/test_graphql_plan_cache.py
+  - tests/integration/test_pgwire_single_pass.py
+  - tests/unit/test_compiled_query_cache.py
+  - tests/unit/test_routing_cache.py
+  - tests/unit/test_graphql_plan_cache.py
   scenario: 'Given an org with a compiled query that passes governance validation
 
     When the same query (same SQL shape, same user role/person) is submitted again within the TTL window
@@ -68697,9 +68706,8 @@
   - provisa/grpc/server.py
   - provisa/pgwire/_pipeline.py
   tests:
-  - tests/unit/test_grpc_server.py::TestHandleQuery::test_direct_route_takes_fast_path
-  - tests/unit/test_grpc_server.py::TestHandleQuery::test_request_to_sql_to_result_cache_route
-  - tests/unit/test_grpc_requirements.py::TestREQ617RoleSelectionViaMetadata::test_streaming_query_emits_one_message_per_row
+  - tests/unit/test_grpc_server.py
+  - tests/unit/test_grpc_requirements.py
   scenario: 'Given a gRPC query request whose governed plan routes Route.DIRECT to a single reachable
 
     source with a live pooled driver
@@ -70377,9 +70385,7 @@
   code:
   - provisa/federation/pg_runtime.py
   tests:
-  - tests/unit/federation/test_pg_runtime_pool.py::test_run_borrows_from_pool_not_self_con
-  - tests/unit/federation/test_pg_runtime_pool.py::test_run_reuses_pooled_connection_across_calls
-  - tests/unit/federation/test_pg_runtime_pool.py::test_run_discards_connection_on_failure
+  - tests/unit/federation/test_pg_runtime_pool.py
   since: 2026-09
   scenario: 'Given a federated join query is dispatched via run() to the shared asyncio executor
 

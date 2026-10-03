@@ -12814,7 +12814,7 @@ org_prefixed_catalog(org_id, base, *, default_org) returns bare base name for de
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-OrgRoutingMiddleware routes each HTTP request to the active org's runtime, built on-demand from persisted seeded_demo config, gated on multitenancy feature flag. Resolves current_org ContextVar before handlers execute.
+OrgRoutingMiddleware routes each HTTP request to the active org's runtime, built on-demand from persisted seeded_demo config[SUPERSEDED by [REQ-1355](#REQ-1355), 2026-10-03 -- the org routing middleware is registered unconditionally; the flag guard was a defect. Kept here for history; do not implement against it.] , gated on multitenancy feature flag [END SUPERSEDED BLOCK]. Resolves current_org ContextVar before handlers execute. (Amended 2026-10-03, THE MIDDLEWARE ALWAYS RUNS:) The org routing middleware is registered on every deployment, with or without multi-tenancy ([REQ-1355](#REQ-1355)): a single-tenant deployment routes every request to its one org through the same path.
 
 **Use case:** Ensures every request executes within its designated org's isolated AppState, enforcing tenant isolation at the HTTP boundary.
 
@@ -14010,7 +14010,7 @@ In demo mode, all application page chunks must be preloaded and compiled before 
 
 **Status:** ✓ accepted · **Priority:** MUST · **Type:** structural
 
-Add hierarchical domain structure via parent_domain_id to Domain model, with flattening applied at execution time to governance, addressing, and access control layers. (Amended 2026-10-03, THE USE CASE IS A BUSINESS UNIT AND ITS ORGANIZATIONS:) A parent domain represents a business unit and its child domains represent the organizations within that business unit. A role granted the business unit's domain reaches every organization's domain under it, including one added later, without the role being edited.
+Add hierarchical domain structure via parent_domain_id to Domain model, with flattening applied at execution time to governance, addressing, and access control layers. (Amended 2026-10-03, THE USE CASE IS A BUSINESS UNIT AND ITS ORGANIZATIONS:) A parent domain represents a business unit and its child domains represent the organizations within that business unit. A role granted the business unit's domain reaches every organization's domain under it, including one added later, without the role being edited. (Amended 2026-10-03, GRANTS, ROW FILTERS AND STEWARDS ACROSS THE TREE:) A role granted a parent domain reaches every domain under it. Row filters across the tree all apply together: a table's rows are filtered by its own domain's filter and by the filter of every ancestor domain, so a child domain can only narrow what its ancestors allow. A child domain with no steward inherits the steward of its nearest ancestor that has one.
 
 **Use case:** Enable organizations to structure domains hierarchically for governance metadata and organization, while maintaining a single flat execution model and addressing scheme.
 
@@ -16744,7 +16744,7 @@ The Lemon Squeezy checkout is dressed from how the buyer is reading the app: the
 
 **Code:** `.claude/commercial/provisa_commercial/lemonsqueezy_client.py`, `.claude/commercial/provisa_commercial/router.py`, `provisa-ui/src/api/checkoutAppearance.ts`, `provisa-ui/src/api/billing.ts`
 
-**Tests:** `.claude/commercial/tests/test_billing_lemonsqueezy.py::TestCheckoutAppearance`, `.claude/commercial/tests/test_billing_lemonsqueezy.py::TestCheckoutBody`
+**Tests:** `.claude/commercial/tests/test_billing_lemonsqueezy.py`
 
 ## 1. Access Governance & Security
 
@@ -20072,7 +20072,7 @@ Per-organization, in-memory, TTL-evicted cache of governance-pipeline outcomes (
 
 **Code:** `provisa/compiler/compiled_query_cache.py`, `provisa/api/org_runtime.py`, `provisa/api/app.py`, `provisa/pgwire/_pipeline.py`, `provisa/api/admin/schema_mutation.py`, `provisa/api/data/materialization.py`, `provisa/api/data/graphql_plan.py`, `provisa/api/data/endpoint.py`, `provisa/compiler/naming.py`, `provisa/cache/key.py`
 
-**Tests:** `tests/integration/test_pgwire_single_pass.py - tests/unit/test_compiled_query_cache.py - tests/unit/test_routing_cache.py - tests/unit/test_graphql_plan_cache.py`
+**Tests:** `tests/integration/test_pgwire_single_pass.py`, `tests/unit/test_compiled_query_cache.py`, `tests/unit/test_routing_cache.py`, `tests/unit/test_graphql_plan_cache.py`
 
 ## 4. Source Connectors
 
@@ -20252,7 +20252,7 @@ gRPC's `point_lookup`-shaped DIRECT-route queries (`provisa/grpc/server.py:397-5
 
 **Code:** `provisa/grpc/server.py`, `provisa/pgwire/_pipeline.py`
 
-**Tests:** `tests/unit/test_grpc_server.py::TestHandleQuery::test_direct_route_takes_fast_path`, `tests/unit/test_grpc_server.py::TestHandleQuery::test_request_to_sql_to_result_cache_route`, `tests/unit/test_grpc_requirements.py::TestREQ617RoleSelectionViaMetadata::test_streaming_query_emits_one_message_per_row`
+**Tests:** `tests/unit/test_grpc_server.py`, `tests/unit/test_grpc_requirements.py`
 
 ### REQ-1892 · Concurrency {#REQ-1892}
 
@@ -20414,7 +20414,7 @@ The PostgreSQL federation runtime's async `run()` method (executed via `run_in_e
 
 **Code:** `provisa/federation/pg_runtime.py`
 
-**Tests:** `tests/unit/federation/test_pg_runtime_pool.py::test_run_borrows_from_pool_not_self_con`, `tests/unit/federation/test_pg_runtime_pool.py::test_run_reuses_pooled_connection_across_calls`, `tests/unit/federation/test_pg_runtime_pool.py::test_run_discards_connection_on_failure`
+**Tests:** `tests/unit/federation/test_pg_runtime_pool.py`
 
 ### REQ-1907 · Cache {#REQ-1907}
 
