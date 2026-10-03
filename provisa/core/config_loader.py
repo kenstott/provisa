@@ -1732,15 +1732,22 @@ async def load_config(  # REQ-012, REQ-016, REQ-250, REQ-1266, REQ-1730
     Returns the source ids whose engine catalog could not be (re)issued — empty on a clean load.
     A wake MUST check it (see ``engine_wake.restore_shared_terminal``); boot logs and continues.
     """
-    async with pg_conn.transaction():
-        return await _load_config_in_txn(
-            config,
-            pg_conn,
-            engine,
-            catalog_names=catalog_names,
-            extra_sources=extra_sources,
-            origin=require_origin(origin),
-        )
+    from provisa.core import model_change
+
+    origin = require_origin(origin)
+    # REQ-1524: a load is one model change, committed once its transaction has committed. Inside
+    # a request (an upload, an import) it is that request's change, and is named for what it is.
+    async with model_change.scope("config load"):
+        model_change.label("config load" if origin == "config" else "import through the admin")
+        async with pg_conn.transaction():
+            return await _load_config_in_txn(
+                config,
+                pg_conn,
+                engine,
+                catalog_names=catalog_names,
+                extra_sources=extra_sources,
+                origin=origin,
+            )
 
 
 def adopt_loaded_config(config: ProvisaConfig) -> None:  # REQ-1900

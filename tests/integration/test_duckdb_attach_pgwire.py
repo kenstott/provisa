@@ -96,7 +96,7 @@ def _build_state():
         relationships=[],
         column_types=_COL_TYPES,
         naming_rules=[],
-        role={"id": "admin", "domain_access": ["*"], "capabilities": ["ddl"]},
+        role={"id": "admin", "domain_access": ["*"], "capabilities": []},
         domains=[{"id": "sales", "graphql_alias": None}],
     )
     ctx = build_context(si)
@@ -104,7 +104,7 @@ def _build_state():
     state = MagicMock()
     state.contexts = {"admin": ctx}
     state.rls_contexts = {}
-    state.roles = {"admin": {"id": "admin", "capabilities": ["ddl"], "domain_access": ["*"]}}
+    state.roles = {"admin": {"id": "admin", "capabilities": [], "domain_access": ["*"]}}
     state.schema_build_cache = {"column_types": _COL_TYPES, "tables": [], "domains": []}
     # Trust mode: password ignored, username -> role_id.
     state.admin_db = None  # no control plane: no debug-trace settings to read (REQ-1910)

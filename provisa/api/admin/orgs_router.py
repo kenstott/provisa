@@ -22,6 +22,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import and_, delete as _delete, func, select, update
 
+from provisa.core import model_change
 from provisa.api.errors import ApiError
 from provisa.core.connection_loop import spawn_background
 from provisa.core.database import Database
@@ -347,6 +348,7 @@ async def _refresh_root_registry_view() -> None:  # REQ-1301
         reset_current_org(token)
 
 
+@model_change.commits_itself  # REQ-1524: commits the model it writes itself
 async def _provision_org_task(
     org_id: str, include_demo: bool, created_by: str | None, isolated_engine: bool = False
 ) -> None:

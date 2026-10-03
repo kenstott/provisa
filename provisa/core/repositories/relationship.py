@@ -12,6 +12,7 @@
 
 # Requirements: REQ-018, REQ-019, REQ-020, REQ-399, REQ-400
 
+from provisa.core import model_change
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, func, or_, select, update
@@ -36,6 +37,7 @@ async def upsert(
     ``origin`` says where the relationship comes from (``repositories.origin``): written when
     it is CREATED and left alone after, except that a config load takes over one made through
     the admin."""
+    model_change.name("upsert", "relationship", rel.id)  # REQ-1524
     require_origin(origin)
     source_tbl = await table_repo.find_by_table_name(conn, rel.source_table_id)
     if source_tbl is None:
@@ -232,6 +234,7 @@ async def delete(conn: "Connection", rel_id: str) -> bool:  # REQ-019, REQ-1918
     a view joins on the relationship's columns and no other relationship approves that join
     (REQ-1140). Its tag assignments go with it. One transaction; no cascade is relied on.
     """
+    model_change.name("delete", "relationship", rel_id)  # REQ-1524
     ref = ObjectRef("relationship", rel_id)
     async with conn.transaction():
         if await get(conn, rel_id) is None:

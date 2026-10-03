@@ -12,6 +12,7 @@
 
 # Requirements: REQ-1634
 
+from provisa.core import model_change
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, select
@@ -32,6 +33,7 @@ async def upsert(  # REQ-1634, REQ-1919
     """Create the data product, or replace its definition. ``origin`` says where it comes from
     (``repositories.origin``): written at CREATE, left alone after, except that a config load
     takes over an admin-made one."""
+    model_change.name("upsert", "data product", product.id)  # REQ-1524
     require_origin(origin)
     await conn.upsert(
         data_products,
@@ -120,6 +122,7 @@ async def delete(conn: "Connection", product_id: str) -> bool:  # REQ-1634, REQ-
     it — the operator takes them out of the product first. (PostgreSQL used to detach them
     silently; SQLite left them naming a product that was gone.) Its tag assignments go with it.
     One transaction."""
+    model_change.name("delete", "data product", product_id)  # REQ-1524
     ref = ObjectRef("data_product", product_id)
     async with conn.transaction():
         if await get(conn, product_id) is None:

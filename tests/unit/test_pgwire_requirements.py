@@ -1254,11 +1254,11 @@ class TestReq615NoDml:
 
 
 class TestReq616DdlCapabilityRequired:
-    """REQ-616: COPY and DDL require role capability 'ddl'; others get 42501."""
+    """REQ-616: no capability makes a definition available over pgwire."""
 
     def test_a_definition_is_refused_whatever_the_roles_capabilities(self):
-        # Was REQ-616's DDL half (DDL requires 'ddl'). No capability makes a definition
-        # available: the refusal takes the statement, not the role.
+        # No capability makes a definition available: the refusal takes the statement, not
+        # the role.
         import inspect
 
         from provisa.compiler import definitions

@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from provisa.core import model_change
+
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, func as _sa_func, select
@@ -40,6 +42,7 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
     """Upsert a tracked DB function. Returns the row id. ``origin`` says where the command
     comes from (``repositories.origin``): written at CREATE, left alone after, except that a
     config load takes over an admin-made one."""
+    model_change.name("upsert", "command", func.name)  # REQ-1524
     require_origin(origin)
     domain_id = domain_policy.command_domain_id(func.domain_id, func.name)  # REQ-1531
     # REQ-1634: a DataProduct's member commands must all share its domain_id — same gate as
@@ -177,6 +180,7 @@ async def _delete_one(conn: "Connection", kind: str, table, name: str) -> bool: 
 
 async def delete_function(conn: "Connection", name: str) -> bool:  # REQ-205, REQ-1918
     """Delete a tracked function by name: THE delete, for every surface."""
+    model_change.name("delete", "command", name)  # REQ-1524
     return await _delete_one(conn, "command", tracked_functions, name)
 
 
@@ -186,6 +190,7 @@ async def upsert_webhook(
     """Upsert a tracked webhook. Returns the row id. ``origin`` says where it comes from
     (``repositories.origin``): written at CREATE, left alone after, except that a config load
     takes over an admin-made one."""
+    model_change.name("upsert", "webhook", wh.name)  # REQ-1524
     require_origin(origin)
     vals = {
         "origin": origin,  # REQ-1919: on INSERT only — not among the update columns
@@ -259,6 +264,7 @@ async def list_webhooks(conn: "Connection") -> list[dict]:  # REQ-209, REQ-360
 
 async def delete_webhook(conn: "Connection", name: str) -> bool:  # REQ-209, REQ-1918
     """Delete a tracked webhook by name: THE delete, for every surface."""
+    model_change.name("delete", "webhook", name)  # REQ-1524
     return await _delete_one(conn, "webhook", tracked_webhooks, name)
 
 
