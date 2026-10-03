@@ -51,8 +51,11 @@ class ResponseHeadersMiddleware:
         if _lic_emit.should_nag():
             st = _lic_emit.current_state()
             if st is not None:
+                # ASCII, strictly: a header value outside it fails the response it rides on, and
+                # the notice must never fail a request (REQ-1137). nag_message is ASCII by
+                # contract (tests/unit/test_licensing.py holds it to that).
                 extra.append(
-                    (b"x-provisa-license-notice", st.nag_text.replace("\n", " ").encode("latin-1"))
+                    (b"x-provisa-license-notice", st.nag_text.replace("\n", " ").encode("ascii"))
                 )
         started = False
 

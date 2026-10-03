@@ -29,15 +29,18 @@ _REQUEST_EMAIL = "license@provisa.dev"
 
 
 def nag_message(machine_id: str) -> str:
-    """The full self-contained nag text (REQ-1137). Identical across every surface."""
+    """The full self-contained nag text (REQ-1137). Identical across every surface.
+
+    ASCII only: it is carried as an HTTP response header and as gRPC metadata, both of which take
+    ASCII; a character outside it would fail the response the notice rides on."""
     return (
-        "Your Provisa trial period has elapsed. A license is FREE — it exists only so we can gather "
+        "Your Provisa trial period has elapsed. A license is FREE - it exists only so we can gather "
         "basic usage information, because Provisa collects NO telemetry and never phones home. "
         "Functionality is NOT affected or degraded.\n"
         f"To get a license, register at {_REGISTRATION_URL} or email {_REQUEST_EMAIL} with: "
         "company, position/title, role, first name, last name, email, phone (optional).\n"
         f"Include your machine ID: {machine_id}\n"
-        "Then apply the license with `provisa license apply <file>`, upload it in Settings → License, "
+        "Then apply the license with `provisa license apply <file>`, upload it in Settings > License, "
         "or place it at ~/.provisa/license.json."
     )
 
