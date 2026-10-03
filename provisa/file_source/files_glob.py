@@ -158,3 +158,39 @@ def duckdb_glob_relation(
         proj += f', filename AS "{source_file_column}"'
     sql = f"SELECT {proj} FROM {fn}([{placeholders}], {opts})"
     return sql, list(files)
+
+
+def propose_glob_groups(discovered: list[dict], root: str) -> list[dict]:
+    """Group crawled files that share a column set into candidate glob tables (REQ-788).
+
+    ``discovered`` is :func:`provisa.file_source.crawler.crawl_directory`'s output (one descriptor
+    per file). Files in the same directory with the same extension and the same column set are
+    proposed as ONE logical table: ``{glob, columns, type, files}`` with the glob relative to
+    ``root`` (what a table's ``file_glob`` is evaluated against). Only a group of two or more is
+    proposed — a lone file is registered as itself, not a glob. The operator accepts a proposal;
+    nothing is auto-registered (registration is the curation)."""
+    import os
+
+    groups: dict[tuple[str, str, frozenset[str]], dict] = {}
+    for entry in discovered:
+        path = entry["path"]
+        tables = entry.get("tables") or []
+        if len(tables) != 1:  # a multi-table file (e.g. sqlite) is not a glob member
+            continue
+        cols = [c["name"] for c in tables[0].get("columns", [])]
+        if not cols:
+            continue
+        ext = os.path.splitext(path)[1].lower().lstrip(".")
+        reldir = os.path.dirname(os.path.relpath(path, root)) if root else os.path.dirname(path)
+        key = (reldir, ext, frozenset(cols))
+        group = groups.setdefault(
+            key,
+            {
+                "glob": f"{reldir}/*.{ext}" if reldir and reldir != "." else f"*.{ext}",
+                "columns": cols,
+                "type": entry.get("type"),
+                "files": [],
+            },
+        )
+        group["files"].append(path)
+    return [g for g in groups.values() if len(g["files"]) >= 2]

@@ -165,3 +165,50 @@ def test_a_files_glob_table_is_always_floored_to_its_replica():
     # A glob table floors from cold (promoted=False); a plain single-file table does not.
     assert table_floor(src, glob, promoted=False) == "file_glob"
     assert table_floor(src, plain, promoted=False) is None
+
+
+def _desc(path, cols, ext_type="csv"):
+    return {
+        "name": path,
+        "path": path,
+        "type": ext_type,
+        "tables": [{"name": path, "columns": [{"name": c} for c in cols]}],
+    }
+
+
+def test_propose_glob_groups_clusters_files_sharing_a_column_set():
+    from provisa.file_source.files_glob import propose_glob_groups
+
+    discovered = [
+        _desc("/data/orders/jan.csv", ["id", "amount"]),
+        _desc("/data/orders/feb.csv", ["id", "amount"]),
+        _desc(
+            "/data/orders/odd.csv", ["id", "amount", "extra"]
+        ),  # different set: own group, dropped (lone)
+        _desc("/data/lone.csv", ["x"]),  # lone: not proposed
+    ]
+    groups = propose_glob_groups(discovered, "/data")
+    assert len(groups) == 1
+    g = groups[0]
+    assert g["glob"] == "orders/*.csv"
+    assert g["columns"] == ["id", "amount"]
+    assert sorted(g["files"]) == ["/data/orders/feb.csv", "/data/orders/jan.csv"]
+
+
+def test_propose_glob_groups_ignores_multi_table_and_columnless_files():
+    from provisa.file_source.files_glob import propose_glob_groups
+
+    discovered = [
+        {
+            "name": "db",
+            "path": "/d/a.sqlite",
+            "type": "sqlite",
+            "tables": [
+                {"name": "t1", "columns": [{"name": "id"}]},
+                {"name": "t2", "columns": [{"name": "x"}]},
+            ],
+        },
+        _desc("/d/b.csv", []),
+        _desc("/d/c.csv", []),
+    ]
+    assert propose_glob_groups(discovered, "/d") == []

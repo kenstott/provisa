@@ -34,6 +34,7 @@ class CrawlResponse(BaseModel):
     total_files: int
     total_tables: int
     discovered: list[dict]
+    glob_groups: list[dict]  # REQ-788: files sharing a column set, proposed as one logical table
 
 
 @router.post("/crawl", response_model=CrawlResponse)
@@ -48,6 +49,8 @@ async def crawl_directory_endpoint(
     """
     require_capability_request(request, "source_registration")
     from provisa.file_source.crawler import crawl_directory
+
+    from provisa.file_source.files_glob import propose_glob_groups
 
     try:
         discovered = crawl_directory(body.path, body.depth)
@@ -67,6 +70,7 @@ async def crawl_directory_endpoint(
 
     return CrawlResponse(
         path=body.path,
+        glob_groups=propose_glob_groups(discovered, body.path),
         total_files=len(discovered),
         total_tables=total_tables,
         discovered=discovered,
