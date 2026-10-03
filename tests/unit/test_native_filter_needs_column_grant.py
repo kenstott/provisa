@@ -40,6 +40,7 @@ def _table(*, data_visible_to: list[str]) -> dict:
             {"column_name": "name", "visible_to": data_visible_to, "native_filter_type": None},
             {"column_name": "pet_id", "visible_to": [], "native_filter_type": "path"},
         ],
+        "write_ops": ["delete", "insert", "update"],
     }
 
 

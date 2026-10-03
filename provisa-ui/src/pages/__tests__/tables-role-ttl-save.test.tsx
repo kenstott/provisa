@@ -115,6 +115,7 @@ function table(
     enableAggregates: false,
     enableGroupBy: false,
     canDeployToDb: false,
+    writeOps: ["delete", "insert", "update"],
     live: null,
     implicitMeasures: [],
     implicitDimensions: [],

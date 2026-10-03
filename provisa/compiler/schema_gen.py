@@ -230,6 +230,7 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
                 ),
                 enable_group_by=bool(table.get("enable_group_by", False)),
                 read_only=bool(table.get("view_sql")),  # REQ-1157: MV/view → query-only
+                write_ops=frozenset(table["write_ops"]),
                 modeling_role=table.get("modeling_role"),  # REQ-1320
                 modeling_history=table.get("modeling_history"),  # REQ-1320
                 metrics=metrics_by_table.get(table["table_name"], []),  # REQ-1319
@@ -728,20 +729,24 @@ def _build_mutation_fields_for_table(  # REQ-032, REQ-033, REQ-034, REQ-036, REQ
 
     conv = t.gql_convention_override or active_gql_convention()
     result: dict[str, GraphQLField] = {}
-    result[_mutation_name("insert", t.field_name, conv)] = GraphQLField(
-        GraphQLNonNull(response_type),
-        args={"input": GraphQLArgument(GraphQLNonNull(insert_input))},
-    )
-    result[_mutation_name("upsert", t.field_name, conv)] = GraphQLField(
-        GraphQLNonNull(response_type),
-        args={
-            "input": GraphQLArgument(GraphQLNonNull(insert_input)),
-            "on_conflict": GraphQLArgument(
-                GraphQLNonNull(GraphQLList(GraphQLNonNull(conflict_col_enum)))
-            ),
-        },
-    )
-    if where_input:
+    # Exactly the writes the table's source can take (executor/write_capability.py); an upsert
+    # is an insert that may update, so it needs both.
+    if "insert" in t.write_ops:
+        result[_mutation_name("insert", t.field_name, conv)] = GraphQLField(
+            GraphQLNonNull(response_type),
+            args={"input": GraphQLArgument(GraphQLNonNull(insert_input))},
+        )
+    if {"insert", "update"} <= t.write_ops:
+        result[_mutation_name("upsert", t.field_name, conv)] = GraphQLField(
+            GraphQLNonNull(response_type),
+            args={
+                "input": GraphQLArgument(GraphQLNonNull(insert_input)),
+                "on_conflict": GraphQLArgument(
+                    GraphQLNonNull(GraphQLList(GraphQLNonNull(conflict_col_enum)))
+                ),
+            },
+        )
+    if where_input and "update" in t.write_ops:
         result[_mutation_name("update", t.field_name, conv)] = GraphQLField(
             GraphQLNonNull(response_type),
             args={
@@ -749,6 +754,7 @@ def _build_mutation_fields_for_table(  # REQ-032, REQ-033, REQ-034, REQ-036, REQ
                 "where": GraphQLArgument(GraphQLNonNull(where_input)),
             },
         )
+    if where_input and "delete" in t.write_ops:
         result[_mutation_name("delete", t.field_name, conv)] = GraphQLField(
             GraphQLNonNull(response_type),
             args={"where": GraphQLArgument(GraphQLNonNull(where_input))},
@@ -935,8 +941,7 @@ def generate_schema(
 
     query_type = cast(GraphQLObjectType, GraphQLObjectType("Query", lambda: query_fields))
 
-    # Build mutation types for RDBMS tables (REQ-031–REQ-037)
-    nosql_types = {"mongodb", "cassandra"}
+    # Build mutation types for the tables whose sources take writes (REQ-031–REQ-037)
     mutation_fields: dict[str, GraphQLField] = {}
 
     for t in tables:
@@ -952,12 +957,10 @@ def generate_schema(
             and t.domain_id not in _accessible_domains
         ):
             continue
-        if si.source_types and si.source_types.get(t.source_id, "") in nosql_types:
-            continue
         # REQ-1157: a view_sql/MV-backed relation is derived, not a base table. Writes either fail
         # at the source (non-updatable view) or land in the mv_cache snapshot the next refresh
         # overwrites — silent data loss. Expose it query-only; never generate insert/update/delete.
-        if t.read_only:
+        if t.read_only or not t.write_ops:
             continue
         mutation_fields.update(_build_mutation_fields_for_table(t, si.enum_types))
 

@@ -37,6 +37,7 @@ def _ctx():
                 {"column_name": "customer_id", "visible_to": ["admin"]},
                 {"column_name": "amount", "visible_to": ["admin"]},
             ],
+            "write_ops": ["delete", "insert", "update"],
         },
         {
             "id": 2,
@@ -49,6 +50,7 @@ def _ctx():
                 {"column_name": "name", "visible_to": ["admin"]},
                 {"column_name": "email", "visible_to": ["admin"]},
             ],
+            "write_ops": ["delete", "insert", "update"],
         },
     ]
     relationships = [

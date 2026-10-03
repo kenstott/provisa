@@ -139,8 +139,16 @@ def surface(monkeypatch):
         source_types={"sales-pg": "postgresql"},
         table_path_maps={
             _ROLE: {
-                "orders": {"domain_id": "sales", "table_name": "orders"},
-                "customers": {"domain_id": "sales", "table_name": "customers"},
+                "orders": {
+                    "domain_id": "sales",
+                    "table_name": "orders",
+                    "write_ops": ["delete", "insert", "update"],
+                },
+                "customers": {
+                    "domain_id": "sales",
+                    "table_name": "customers",
+                    "write_ops": ["delete", "insert", "update"],
+                },
             }
         },
     )

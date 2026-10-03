@@ -323,6 +323,7 @@ export interface RegisteredTable {
   enableAggregates: boolean;
   enableGroupBy: boolean;
   canDeployToDb: boolean;
+  writeOps: string[]; // the data writes the table's source can take (insert, update, delete)
   live: LiveDeliveryConfig | null;
   modelingRole?: "fact" | "dimension" | null; // REQ-1322: star-schema role for the Explore browser
   modelingHistory?: unknown; // REQ-1322: server-owned modeling audit trail (shape not consumed by UI)

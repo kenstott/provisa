@@ -2094,6 +2094,16 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
 
         _field_numbers = await load_field_number_allocator(conn)
 
+        # The data writes each table's source can take, decided once here and carried on its
+        # record (executor/write_capability.py): the write admission, the GraphQL and gRPC write
+        # surfaces and the admin table page all read it.
+        from provisa.executor.write_capability import table_write_ops
+
+        for _t in tables:
+            # A view has no source of its own to write to; every other table's source is typed.
+            _stype = None if _t.get("view_sql") else state.source_types[_t["source_id"]]
+            _t["write_ops"] = sorted(table_write_ops(_t, _stype, state.federation_engine.engine))
+
         _build_and_register_schemas(
             roles=roles,
             tables=tables,
@@ -2658,6 +2668,20 @@ def create_app() -> FastAPI:
                     "limit": exc.limit,
                     "limit_of": exc.limit_of,
                 },
+            },
+        )
+
+    from provisa.compiler.write_admission import WriteNotSupported as _WriteNotSupported
+
+    @app.exception_handler(_WriteNotSupported)
+    async def _write_not_supported_handler(_req: _Request, exc: _WriteNotSupported):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # A write the table's source cannot take, refused by name (executor/write_capability.py).
+        return _JSONResponse(
+            status_code=400,
+            content={
+                "detail": str(exc),
+                "code": "data.write_not_supported",
+                "params": {"table": exc.table, "operation": exc.operation.upper()},
             },
         )
 

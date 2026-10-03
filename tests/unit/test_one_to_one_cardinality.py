@@ -113,6 +113,7 @@ _TABLES = [
         "columns": [
             {"column_name": "order_id", "visible_to": ["admin"]},
         ],
+        "write_ops": ["delete", "insert", "update"],
     },
     {
         "id": 2,
@@ -123,6 +124,7 @@ _TABLES = [
         "columns": [
             {"column_name": "order_id", "visible_to": ["admin"]},
         ],
+        "write_ops": ["delete", "insert", "update"],
     },
 ]
 

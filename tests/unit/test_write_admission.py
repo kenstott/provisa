@@ -39,6 +39,7 @@ def _gov(
     gov.all_columns = {1: [("id", "integer"), ("region", "varchar")]}
     gov.writable_columns = {1: frozenset(writable)}
     gov.rls_rules = rls or {}
+    gov.write_ops = {1: frozenset({"insert", "update", "delete"})}  # a writable source
     return gov
 
 

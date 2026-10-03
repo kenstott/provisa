@@ -192,7 +192,8 @@ def _wire_apply(monkeypatch) -> dict:
     )
     monkeypatch.setattr(seed, "_resolve_pk_from_sources", _pk)
     monkeypatch.setattr(app_mod, "_rebuild_schemas", _rebuild)
-    monkeypatch.setattr(app_mod.state, "tenant_db", _FakePool(), raising=False)
+    # The org's model store is the handle an import writes through (REQ-1919, REQ-1922).
+    monkeypatch.setattr(app_mod.state, "model_db", _FakePool(), raising=False)
     monkeypatch.setattr(app_mod.state, "federation_engine", None, raising=False)
     monkeypatch.setattr(app_mod.state, "source_catalogs", {"pg1": "org_7_pg1"}, raising=False)
     return seen

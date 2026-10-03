@@ -244,6 +244,7 @@ query TablesQuery {
     enableAggregates
     enableGroupBy
     canDeployToDb
+    writeOps
     modelingRole
     implicitMeasures {
       column

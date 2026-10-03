@@ -130,6 +130,7 @@ def _make_schema_input(convention: str = "snake", domain_prefix: bool = False) -
                         "path": None,
                     },
                 ],
+                "write_ops": ["delete", "insert", "update"],
             }
         ],
         relationships=[],
@@ -417,6 +418,7 @@ class TestDomainPrefixEmptyDomain:
                             "path": None,
                         },
                     ],
+                    "write_ops": ["delete", "insert", "update"],
                 }
             ],
             relationships=[],

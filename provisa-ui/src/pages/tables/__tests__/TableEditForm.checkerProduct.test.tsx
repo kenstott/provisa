@@ -105,6 +105,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     enableAggregates: false,
     enableGroupBy: false,
     canDeployToDb: false,
+    writeOps: ["delete", "insert", "update"],
     live: null,
     uniqueConstraints: [],
     graphqlFieldName: null,

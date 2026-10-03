@@ -85,6 +85,7 @@
       "query_required": "query is required",
       "query_timeout": "Query timed out after {{timeout_s}}s",
       "query_too_complex": "The query's complexity ({{score}}) exceeds the {{limit_of}} limit of {{limit}}.",
+      "redirect_failed": "The result could not be written to the results store: {{error}}",
       "redirect_upload_failed": "Redirect upload failed: {{error}}",
       "request_interrupted": "{{error}}",
       "row_level_key_required": "Table '{{table}}' is replicated row by row and can only be read by its key ({{key}}). Filter on the key with an equality or an IN list, or join the table on a single column.",
@@ -94,7 +95,7 @@
       "unknown_action_field": "Unknown action field: '{{field}}'",
       "unknown_command": "Unknown command '{{name}}'",
       "write_not_admitted": "Role '{{role}}' may not make this write: a write needs the write right, write access to every column it writes, and rows the role's row filter admits.",
-      "redirect_failed": "The result could not be written to the results store: {{error}}"
+      "write_not_supported": "'{{table}}' does not take {{operation}}: its source cannot carry it"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter for '{{source_type}}' does not implement discover_schema",

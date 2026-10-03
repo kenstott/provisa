@@ -85,6 +85,7 @@
       "query_required": "query est requis",
       "query_timeout": "La requête a expiré après {{timeout_s}} s",
       "query_too_complex": "La complexité de la requête ({{score}}) dépasse la limite de {{limit}} ({{limit_of}}).",
+      "redirect_failed": "Le résultat n'a pas pu être écrit dans le magasin de résultats : {{error}}",
       "redirect_upload_failed": "Échec du téléversement par redirection : {{error}}",
       "request_interrupted": "{{error}}",
       "row_level_key_required": "La table '{{table}}' est répliquée ligne par ligne et ne peut être lue que par sa clé ({{key}}). Filtrez sur la clé avec une égalité ou une liste IN, ou joignez la table sur une seule colonne.",
@@ -94,7 +95,7 @@
       "unknown_action_field": "Champ d'action inconnu : « {{field}} »",
       "unknown_command": "Commande « {{name}} » inconnue",
       "write_not_admitted": "Le rôle '{{role}}' ne peut pas effectuer cette écriture : une écriture exige le droit d'écriture, l'accès en écriture à chaque colonne écrite et des lignes admises par le filtre de lignes du rôle.",
-      "redirect_failed": "Le résultat n'a pas pu être écrit dans le magasin de résultats : {{error}}"
+      "write_not_supported": "'{{table}}' n'accepte pas {{operation}} : sa source ne peut pas l'exécuter"
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adaptateur pour « {{source_type}} » n'implémente pas discover_schema",

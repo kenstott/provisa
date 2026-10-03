@@ -55,6 +55,8 @@
     "colTopValues": "最常見值",
     "editDefinitionButton": "編輯定義",
     "editDefinitionTitle": "編輯檢視定義（SQL 或指標／維度選擇器）",
-    "queryTemplate": "Cypher："
+    "queryTemplate": "Cypher：",
+    "writes": "接受的寫入：",
+    "writesNone": "無（唯讀）"
   }
 }

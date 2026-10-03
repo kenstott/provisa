@@ -55,6 +55,8 @@
     "colTopValues": "शीर्ष मान",
     "editDefinitionButton": "परिभाषा संपादित करें",
     "editDefinitionTitle": "व्यू परिभाषा संपादित करें (SQL या मेट्रिक/डाइमेंशन चयनकर्ता)",
-    "queryTemplate": "Cypher:"
+    "queryTemplate": "Cypher:",
+    "writes": "लेखन स्वीकार करता है:",
+    "writesNone": "कोई नहीं (केवल पढ़ने हेतु)"
   }
 }

@@ -105,9 +105,6 @@ _COPY_DONE = b"c"
 _COPY_FAIL = b"f"
 
 
-_WRITABLE_SOURCE_TYPES = {"postgresql", "mysql", "sqlite", "mariadb"}
-
-
 state = None  # module-level reference; replaced by tests via patch()
 
 
@@ -430,12 +427,6 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
             from provisa.api.app import state as _state  # type: ignore[assignment]
 
         tm, col_names = _find_table_meta(schema, table, role_id)
-
-        source_type = _state.source_types.get(tm.source_id, "")
-        if source_type not in _WRITABLE_SOURCE_TYPES:
-            raise PermissionError(
-                f"COPY FROM is not supported for source type {source_type!r} (table {table!r})"
-            )
 
         use_cols = explicit_cols if explicit_cols else col_names
         if not use_cols:

@@ -80,6 +80,9 @@ class _TableInfo:
     enable_aggregates: bool = False  # REQ-653: table-level opt-in for _aggregate root field
     enable_group_by: bool = False  # REQ-653: table-level opt-in for _group_by root field
     read_only: bool = False  # REQ-1157: view_sql/MV-backed relation — query-only, no mutations
+    # The data writes the table's source can take (executor/write_capability.py): a mutation
+    # field is offered for exactly these.
+    write_ops: frozenset[str] = frozenset()
     modeling_role: str | None = None  # REQ-1320: "fact" | "dimension" | None
     modeling_history: str | None = None  # REQ-1320: SCD mode ("scd2" | "snapshot" | None)
     metrics: list[dict] = field(

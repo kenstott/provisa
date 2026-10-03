@@ -948,59 +948,66 @@ class TestReq586CopyFromAdmitted:
     registered table, admitted like one: the write right and the columns' writable_by before any
     data is asked for, the role's row filter over every row before any row is written."""
 
-    def test_a_role_without_the_write_right_is_refused_before_any_data_is_asked_for(self):
+    @staticmethod
+    def _state(capabilities: list[str], write_ops: list[str]):
         from types import SimpleNamespace
 
         from provisa.compiler.rls import RLSContext
-        from provisa.compiler.write_admission import WriteNotAdmitted
+
+        return SimpleNamespace(
+            source_types={"pg": "postgresql"},
+            roles={"dev": {"id": "dev", "capabilities": capabilities, "domain_access": ["*"]}},
+            rls_contexts={"dev": RLSContext.empty()},
+            masking_rules={},
+            contexts={"dev": SimpleNamespace(tables={})},
+            tables=[
+                {
+                    "id": 1,
+                    "source_id": "pg",
+                    "domain_id": "sales",
+                    "schema_name": "public",
+                    "table_name": "orders",
+                    "write_ops": write_ops,
+                    "columns": [
+                        {"column_name": "id", "visible_to": ["dev"], "writable_by": ["dev"]}
+                    ],
+                }
+            ],
+            relationships=[],
+        )
+
+    def _refused(self, state, raised, match):
+        from types import SimpleNamespace
+
         from provisa.pgwire.copy_handler import CopyHandler
 
         handler = object.__new__(CopyHandler)
         handler._h = MagicMock()
         ctx = MagicMock()
-        ctx.session.role_id = "reader"
+        ctx.session.role_id = "dev"
         tm = SimpleNamespace(source_id="pg", table_id=1, domain_id="sales", table_name="orders")
-        fake_state = SimpleNamespace(
-            source_types={"pg": "postgresql"},
-            roles={
-                "reader": {
-                    "id": "reader",
-                    "capabilities": ["query_development"],
-                    "domain_access": ["*"],
-                }
-            },
-            rls_contexts={"reader": RLSContext.empty()},
-            masking_rules={},
-            contexts={"reader": SimpleNamespace(tables={})},
-            tables=[],
-            relationships=[],
-        )
         with (
             patch("provisa.pgwire.copy_handler._find_table_meta", return_value=(tm, ["id"])),
-            patch("provisa.pgwire.copy_handler.state", fake_state),
+            patch("provisa.pgwire.copy_handler.state", state),
         ):
-            with pytest.raises(WriteNotAdmitted, match="'write' right"):
+            with pytest.raises(raised, match=match):
                 handler.handle(ctx, "COPY sales.orders (id) FROM STDIN")
         handler._h.wfile.write.assert_not_called()  # no CopyInResponse: no data asked for
         handler._h.rfile.read.assert_not_called()
 
-    def test_copy_from_a_source_that_takes_no_writes_is_refused(self):
-        from provisa.pgwire.copy_handler import CopyHandler
+    def test_a_role_without_the_write_right_is_refused_before_any_data_is_asked_for(self):
+        from provisa.compiler.write_admission import WriteNotAdmitted
 
-        handler = object.__new__(CopyHandler)
-        handler._h = MagicMock()
-        fake_tm = MagicMock()
-        fake_tm.source_id = "iceberg_source"
-        fake_state = MagicMock()
-        fake_state.source_types = {"iceberg_source": "iceberg"}
-        ctx = MagicMock()
-        ctx.session.role_id = "dev"
-        with (
-            patch("provisa.pgwire.copy_handler._find_table_meta", return_value=(fake_tm, ["id"])),
-            patch("provisa.pgwire.copy_handler.state", fake_state),
-        ):
-            with pytest.raises(PermissionError, match="not supported for source type"):
-                handler._handle_copy_from(ctx, None, "orders", None, "text", "dev")
+        state = self._state(["query_development"], ["delete", "insert", "update"])
+        self._refused(state, WriteNotAdmitted, "'write' right")
+
+    def test_copy_from_a_source_that_takes_no_writes_is_refused(self):
+        # executor/write_capability.py: a table whose source takes no inserts refuses a bulk load
+        # by name, whatever the role holds, before any data is asked for.
+        from provisa.compiler.write_admission import WriteNotSupported
+
+        state = self._state(["query_development", "write"], [])
+        self._refused(state, WriteNotSupported, "'orders' does not take INSERT")
 
     def test_copy_from_column_list_inferred_when_not_provided(self):
         from provisa.pgwire.copy_handler import _PARSE_FROM_RE

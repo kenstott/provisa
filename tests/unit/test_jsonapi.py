@@ -50,6 +50,7 @@ def _build_test_schema():
                 {"column_name": "region", "visible_to": ["admin"]},
                 {"column_name": "created_at", "visible_to": ["admin"]},
             ],
+            "write_ops": ["delete", "insert", "update"],
         },
         {
             "id": 2,
@@ -62,6 +63,7 @@ def _build_test_schema():
                 {"column_name": "name", "visible_to": ["admin"]},
                 {"column_name": "email", "visible_to": ["admin"]},
             ],
+            "write_ops": ["delete", "insert", "update"],
         },
     ]
     relationships = [

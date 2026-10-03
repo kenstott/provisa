@@ -85,6 +85,7 @@
       "query_required": "必須提供 query",
       "query_timeout": "查詢在 {{timeout_s}} 秒後逾時",
       "query_too_complex": "查詢的複雜度（{{score}}）超過上限 {{limit}}（{{limit_of}}）。",
+      "redirect_failed": "無法將結果寫入結果儲存區：{{error}}",
       "redirect_upload_failed": "重新導向上載失敗：{{error}}",
       "request_interrupted": "{{error}}",
       "row_level_key_required": "資料表 '{{table}}' 按列複製，只能透過其鍵 ({{key}}) 讀取。請使用等值條件或 IN 清單按鍵篩選，或在單一欄位上聯結該資料表。",
@@ -94,7 +95,7 @@
       "unknown_action_field": "未知的動作欄位：「{{field}}」",
       "unknown_command": "未知命令「{{name}}」",
       "write_not_admitted": "角色 '{{role}}' 不能執行此寫入：寫入需要寫入權限、對所寫每一欄的寫入權限，以及該角色的行過濾器允許的行。",
-      "redirect_failed": "無法將結果寫入結果儲存區：{{error}}"
+      "write_not_supported": "'{{table}}' 不接受 {{operation}}：其資料來源無法執行"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」的配接器未實作 discover_schema",

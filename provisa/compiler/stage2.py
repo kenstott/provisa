@@ -53,6 +53,9 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     role_id: str = ""
     can_write: bool = False
     writable_columns: dict[int, frozenset[str]] = field(default_factory=dict)
+    # The data writes each table's source can take (executor/write_capability.py), from the
+    # table's record. A table with no entry offers none.
+    write_ops: dict[int, frozenset[str]] = field(default_factory=dict)
 
 
 # --------------------------------------------------------------------------- #
@@ -170,6 +173,8 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         gov.writable_columns[table_id] = frozenset(
             c["column_name"] for c in cols if role_id in (c.get("writable_by") or [])
         )
+        if "write_ops" in tbl:
+            gov.write_ops[table_id] = frozenset(tbl["write_ops"])
 
         # visible_columns — None means "all visible" (no V003 filtering for this table)
         if _domain_by_tid.get(table_id) == META_DOMAIN_ID:

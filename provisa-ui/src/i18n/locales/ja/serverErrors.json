@@ -85,6 +85,7 @@
       "query_required": "query は必須です",
       "query_timeout": "クエリが{{timeout_s}}秒でタイムアウトしました",
       "query_too_complex": "クエリの複雑度（{{score}}）が上限 {{limit}}（{{limit_of}}）を超えています。",
+      "redirect_failed": "結果を結果ストアに書き込めませんでした: {{error}}",
       "redirect_upload_failed": "リダイレクトアップロードに失敗しました：{{error}}",
       "request_interrupted": "{{error}}",
       "row_level_key_required": "テーブル '{{table}}' は行単位で複製されており、キー ({{key}}) でのみ読み取れます。キーを等価条件または IN リストで絞り込むか、単一の列でテーブルを結合してください。",
@@ -94,7 +95,7 @@
       "unknown_action_field": "不明なアクションフィールド：「{{field}}」",
       "unknown_command": "不明なコマンド「{{name}}」です",
       "write_not_admitted": "ロール '{{role}}' はこの書き込みを実行できません。書き込みには、書き込み権限、書き込む各列への書き込みアクセス、およびロールの行フィルターが許可する行が必要です。",
-      "redirect_failed": "結果を結果ストアに書き込めませんでした: {{error}}"
+      "write_not_supported": "'{{table}}' は {{operation}} を受け付けません: そのソースでは実行できません"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」のアダプターは discover_schema を実装していません",

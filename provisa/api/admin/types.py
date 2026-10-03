@@ -298,6 +298,9 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     # (made through the admin) or "seed" (the deployment's own). A load of the config re-applies
     # what the file says about a "config" object, which the UI marks.
     origin: str
+    # The data writes the table's source can take — insert, update, delete — as the write
+    # admission and the write surfaces apply them (executor/write_capability.py).
+    write_ops: list[str]
     alias: str | None
     description: str | None
     cache_ttl: int | None
