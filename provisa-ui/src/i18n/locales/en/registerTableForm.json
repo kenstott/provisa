@@ -93,6 +93,12 @@
     "nlSearchNone": "No table in this schema matches that description.",
     "nlSearchConfidence": "{{percent}}%",
     "nlSearchRegistered": "Registered",
-    "nlSearchUse": "Use"
+    "nlSearchUse": "Use",
+    "fileGlobLabel": "File glob (one table over many files)",
+    "fileGlobHint": "optional — leave blank for a single file",
+    "fileGlobPlaceholder": "e.g. orders/*.csv",
+    "sourceFileColumnLabel": "Source-file column",
+    "sourceFileColumnHint": "optional — a column holding each row's file path",
+    "sourceFileColumnPlaceholder": "e.g. _source_file"
   }
 }
