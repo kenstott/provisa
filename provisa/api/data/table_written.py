@@ -14,7 +14,7 @@ A table is written by a mutation compiled against it, or by a command that write
 source's write operation registered with the table it writes (REQ-1924, REQ-871). Either way
 the same things follow: what is held of the table's rows stops being served."""
 
-# Requirements: REQ-080, REQ-084, REQ-172, REQ-176, REQ-1924
+# Requirements: REQ-080, REQ-084, REQ-172, REQ-176, REQ-1915, REQ-1924
 
 from __future__ import annotations
 
@@ -33,8 +33,8 @@ async def after_table_written(
     source_id: str,
 ) -> None:
     """Drop the table's cached responses (REQ-080), mark the materialized views over it stale
-    (REQ-084), announce the change (REQ-172), run its sinks (REQ-176), and reload it when it is
-    held hot."""
+    (REQ-084), announce the change (REQ-172), run its sinks (REQ-176), ask for a build of its
+    whole-table replica (REQ-1915), and reload it when it is held hot."""
     from provisa.cache.tenancy import invalidate_tables
     from provisa.kafka.change_events import emit_change_event
     from provisa.kafka.sink_executor import trigger_sinks_for_table
@@ -44,6 +44,7 @@ async def after_table_written(
     state.mv_registry.mark_stale(table_name)
     emit_change_event(table_name, source_id)
     spawn_background(trigger_sinks_for_table(table_name, state))
+    await _request_replica_build(state, table_id, source_id)
     if state.hot_manager is None:
         return
     from provisa.cache.hot_tables import HotTableManager
@@ -58,3 +59,36 @@ async def after_table_written(
         await hot_mgr.load_table(
             state.federation_engine, table_name, schema_name, catalog_name, _pk
         )
+
+
+async def _request_replica_build(state: Any, table_id: int, source_id: str) -> None:
+    """REQ-1915, REQ-1924: a table read from its whole-table replica is out of date once it is
+    written, so a build of the replica is asked for. Readers keep the old replica until the new
+    one swaps in. The table is judged as a read judges it (``query_residency``): it is served
+    from a replica when the operator's settings put it there or the engine cannot read its
+    source in place, and only a whole copy is built -- a table replicated row by row, or one
+    with a parameter column, has no whole to rebuild."""
+    from provisa.core.request_context import current_org
+    from provisa.federation import replica_builds, replica_state
+    from provisa.federation.registry_view import registered_sources, registered_tables
+    from provisa.federation.replica_converge import whole_copy
+    from provisa.federation.strategy import engine_attaches
+
+    engine = state.federation_engine
+    source = {s.id: s for s in await registered_sources(state)}.get(source_id)
+    if source is None:
+        return  # a built-in source (registry_view.registered_sources): never landed, no replica
+    table = {t.id: t for t in await registered_tables(state)}[table_id]
+    served_from_replica = table.id in state.replica_routes.floored or not engine_attaches(
+        engine, source.type.value
+    )
+    if not (served_from_replica and whole_copy(source, table, engine)):
+        return
+    async with state.tenant_db.acquire() as conn:
+        requested = await replica_state.request_build(
+            conn,
+            (source.id, table.schema_name, table.table_name),
+            replica_state.REASON_WRITE,
+        )
+    if requested:
+        replica_builds.kick(current_org.get(None))

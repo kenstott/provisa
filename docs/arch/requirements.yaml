@@ -70580,12 +70580,11 @@
   - REQ-309
   since: 2026-10
 - id: REQ-1924
-  status: in-progress
+  status: complete
   group: 4. Source Connectors
   category: Branded API Sources
   priority: SHOULD
   type: behavioral
-  target: 2027-Q1
   description: A source's write operations are registered as commands one at a time, the way its
     tables are registered. Adding a source that has write operations -- the mutations of a remote
     GraphQL source, branded or not, and the non-GET operations of an OpenAPI source -- registers no
@@ -70638,12 +70637,19 @@
     writes is named on the command when it is registered, as one of the registered tables of the
     command's own source, and is optional. After each call that the remote accepts, what follows
     any write to that table follows -- its cached responses are dropped, the materialized views
-    over it are marked stale, its change is announced and its sinks run. Refreshing a replica of
-    it after the call waits on a way to ask for a replica refresh, which is not yet built; until
-    then the replica is refreshed on its own schedule. (Amended 2026-10-02, APPROVAL) A command
+    over it are marked stale, its change is announced and its sinks run. [SUPERSEDED by the
+    2026-10-03 REPLICA AFTER WRITE amendment below -- the build request now exists (REQ-1915).
+    Kept here for history; do not implement against it.] Refreshing a replica of it after the call
+    waits on a way to ask for a replica refresh, which is not yet built; until then the replica is
+    refreshed on its own schedule. [END SUPERSEDED BLOCK] (Amended 2026-10-02, APPROVAL) A command
     that needs approval is put to the deployment's approval hook (REQ-203) before each call, with
     who calls it, as which role, the command and its arguments; it runs only when the hook
-    approves. With no hook configured, such a call is refused.
+    approves. With no hook configured, such a call is refused. (Amended 2026-10-03, REPLICA AFTER
+    WRITE) When the written table is read from its whole-table replica -- the operator's settings
+    put it there, or the engine cannot read its source in place -- a build of that replica is
+    asked for after the call, with the reason "write" (REQ-1915); readers keep the old replica
+    until the new one swaps in. A table replicated row by row, or one with a parameter column,
+    has no whole replica to rebuild. The same follows any write to a table made through Provisa.
   use_case: GitHub offers 267 mutations and a team wants three of them. Registering all of them as
     commands when the source is added would put 264 unwanted commands in the model, each needing a
     domain and a grant; registering them one at a time keeps the model to what the team chose.
@@ -70682,4 +70688,6 @@
   - provisa/pgwire/_pipeline.py
   tests:
   - tests/unit/test_source_operation_commands.py
+  - tests/unit/test_replica_build_after_write.py
   - provisa-ui/src/__tests__/CommandFormFields.test.tsx
+  - provisa-ui/e2e/source-operation-commands.spec.ts

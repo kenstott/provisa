@@ -252,7 +252,7 @@ curl -X POST https://acme.provisa.org/data/rest/engineering/commands/create_issu
 
 远程服务每接受一次调用，Provisa 就将其视为对该数据表的一次写入。它会丢弃该表的缓存应答，将基于它的物化视图标记为过期，发出变更事件，运行该表的 sink，并在该表被保持为热状态时重新加载它。 [tool-verified: `provisa/api/data/table_written.py` `after_table_written`]
 
-调用不会刷新副本。这有待一种请求刷新副本的方式，而该方式尚未构建；在此之前，副本按其自身的计划刷新。 [tool-verified: REQ-1924 WRITTEN TABLE amendment; no replica call in `after_table_written`]
+当该表从其整表副本读取时（运营方的设置将其置于副本上，或引擎无法就地读取其数据源），调用之后会请求构建该副本，原因为 `write`。读取方在新副本替换之前继续使用旧副本。逐行复制的表或带有参数列的表没有可重建的整表副本。 [tool-verified: `provisa/api/data/table_written.py` `_request_replica_build`; `provisa/federation/replica_state.py` `REASON_WRITE`]
 
 ### 为何不能被组合 {: #why-it-cannot-be-composed }
 

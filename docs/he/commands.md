@@ -283,7 +283,7 @@ curl -X POST https://acme.provisa.org/data/rest/engineering/commands/create_issu
 
 אחרי כל קריאה שהשירות המרוחק מקבל, Provisa מתייחס אליה ככתיבה לטבלה זו. הוא משליך את התשובות השמורות במטמון של הטבלה, מסמן כמיושנות את התצוגות הממומשות שמעליה, פולט את אירוע השינוי, מריץ את ה-sinks של הטבלה וטוען מחדש את הטבלה כשהיא מוחזקת במצב hot. [tool-verified: `provisa/api/data/table_written.py` `after_table_written`]
 
-העתקים (replicas) אינם מתרעננים בעקבות הקריאה. זה ממתין לדרך לבקש רענון של העתק, שטרם נבנתה; עד אז העתק מתרענן לפי לוח הזמנים שלו. [tool-verified: REQ-1924 WRITTEN TABLE amendment; no replica call in `after_table_written`]
+כאשר הטבלה נקראת מההעתק המלא שלה (הגדרות המפעיל מציבות אותה שם, או שהמנוע אינו יכול לקרוא את המקור שלה במקומו), לאחר הקריאה מתבקשת בנייה של ההעתק, עם הסיבה `write`. הקוראים שומרים על ההעתק הישן עד שהחדש מחליף אותו. לטבלה המשוכפלת שורה אחר שורה, או לטבלה עם עמודת פרמטר, אין העתק מלא לבנות מחדש. [tool-verified: `provisa/api/data/table_written.py` `_request_replica_build`; `provisa/federation/replica_state.py` `REASON_WRITE`]
 
 ### מדוע אי אפשר להרכיב אותה {: #why-it-cannot-be-composed }
 
