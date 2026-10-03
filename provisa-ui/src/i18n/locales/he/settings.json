@@ -354,6 +354,10 @@
       "secret_key": {
         "label": "מפתח סודי להפניה",
         "help": "המפתח הסודי של אחסון האובייקטים. סוד; מוגן."
+      },
+      "snowflake_storage_integration": {
+        "label": "שילוב אחסון Snowflake לתוצאות",
+        "help": "שילוב האחסון של Snowflake שדרכו מנוע Snowflake כותב תוצאות גדולות לאחסון האובייקטים. ריק: מנוע Snowflake אינו כותב תוצאות בעצמו."
       }
     },
     "otel": {

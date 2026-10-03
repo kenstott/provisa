@@ -354,6 +354,10 @@
       "secret_key": {
         "label": "重定向机密密钥",
         "help": "对象存储的机密密钥。机密；保存前需确认。"
+      },
+      "snowflake_storage_integration": {
+        "label": "用于结果的 Snowflake 存储集成",
+        "help": "Snowflake 引擎将大型结果写入对象存储时所用的 Snowflake 存储集成。为空：Snowflake 引擎不自行写入结果。"
       }
     },
     "otel": {

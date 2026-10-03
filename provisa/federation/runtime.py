@@ -748,8 +748,10 @@ class EngineRuntime:  # REQ-825, REQ-840
         """Whether this engine writes a result in ``output_format`` to an object store itself
         (REQ-1194, the backend's ``result_formats``) and is connected to do it now -- a
         coordinator that is asleep has no connection to run the write on."""
-        return output_format.lower() in self._backend.result_formats and (
-            self._backend.is_connected(self._state)
+        return (
+            output_format.lower() in self._backend.result_formats
+            and self._backend.writes_results_now()
+            and self._backend.is_connected(self._state)
         )
 
     def ctas_redirect(self, physical_sql: str, output_format: str, params: list | None) -> dict:

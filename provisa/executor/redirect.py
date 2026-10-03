@@ -94,6 +94,9 @@ class RedirectConfig:  # REQ-029, REQ-137, REQ-142
     # result is written here and served by /data/redirect-file/<name> instead of a presigned S3 URL —
     # so redirect can be exercised locally without standing up MinIO/S3.
     local_dir: str = ""
+    # REQ-1194: the Snowflake storage integration a Snowflake engine unloads results through; None:
+    # a Snowflake engine does not write results to the object store itself.
+    snowflake_storage_integration: str | None = None
 
     @staticmethod
     def from_env() -> RedirectConfig:
@@ -126,6 +129,7 @@ class RedirectConfig:  # REQ-029, REQ-137, REQ-142
             default_format=_own("default_format"),
             encrypt=deployment("redirect.encrypt"),
             local_dir=deployment("redirect.local_dir"),
+            snowflake_storage_integration=deployment("redirect.snowflake_storage_integration"),
         )
 
 

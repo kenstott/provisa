@@ -67,8 +67,9 @@ class ClickHouseBackend(NativeEngineBackend):
         target = result_sink.new_target(config)
         select_sql, named = bind_parameters(physical_sql, params)
         clickhouse = self._runtime_for(state).connection
-        clickhouse.command(result_sink.clickhouse_insert(select_sql, target, config), named)
-        counted, _names = clickhouse.query(result_sink.clickhouse_count(target, config))
+        insert_sql, store = result_sink.clickhouse_insert(select_sql, target, config)
+        clickhouse.command(insert_sql, {**named, **store})
+        counted, _names = clickhouse.query(*result_sink.clickhouse_count(target, config))
         return {"s3_prefix": target.s3_prefix, "row_count": int(counted[0][0])}
 
     # -- engine-specific Arrow transports (REQ-986) ----------------------------
