@@ -301,3 +301,77 @@ export function buildErdElements(
 
   return { nodes: [...domainNodes, ...tableNodes], edges };
 }
+
+/** REQ-524: the diagram as data — the domains, tables (with their columns) and relationships the
+ *  ERD draws, read from the same elements it renders, so the JSON says exactly what the picture
+ *  shows. A junction table is listed as a table and marked; a relationship drawn as two legs
+ *  through a junction is listed once per leg, as drawn. */
+export interface ErdJson {
+  domains: { id: string; label: string; description: string }[];
+  tables: {
+    id: number;
+    domain: string;
+    name: string;
+    description: string;
+    junction: boolean;
+    columns: {
+      name: string;
+      dataType: string | null;
+      primaryKey: boolean;
+      foreignKey: boolean;
+      description: string | null;
+    }[];
+  }[];
+  relationships: {
+    id: string;
+    source: string;
+    target: string;
+    cardinality: string;
+    label: string;
+    bidirectional: boolean;
+  }[];
+}
+
+export function erdJson(elements: ErdElements): ErdJson {
+  const nodes = elements.nodes.map((n) => n.data);
+  const tables = nodes.filter((n): n is ErdNodeTable => n.type === "table");
+  // An edge ends at a table, or — when that table's domain is collapsed — at the domain's node.
+  const endpoint = new Map<string, string>([
+    ...tables.map((t): [string, string] => [t.id, t.tableName]),
+    ...nodes
+      .filter((n): n is ErdNodeDomain => n.type === "domain")
+      .map((d): [string, string] => [d.id, `domain:${d.domainId}`]),
+  ]);
+  const named = (nodeId: string): string => {
+    const name = endpoint.get(nodeId);
+    if (name === undefined) throw new Error(`ERD edge ends at ${nodeId}, which is not drawn`);
+    return name;
+  };
+  return {
+    domains: nodes
+      .filter((n): n is ErdNodeDomain => n.type === "domain")
+      .map((d) => ({ id: d.domainId, label: d.label, description: d.description })),
+    tables: tables.map((t) => ({
+      id: t.tableId,
+      domain: t.domainId,
+      name: t.tableName,
+      description: t.description,
+      junction: t.junction,
+      columns: t.columns.map((c) => ({
+        name: c.columnName,
+        dataType: c.dataType,
+        primaryKey: c.isPrimaryKey,
+        foreignKey: c.isForeignKey,
+        description: c.description,
+      })),
+    })),
+    relationships: elements.edges.map(({ data: e }) => ({
+      id: e.id,
+      source: named(e.source),
+      target: named(e.target),
+      cardinality: e.cardinality,
+      label: e.label,
+      bidirectional: e.bidirectional,
+    })),
+  };
+}

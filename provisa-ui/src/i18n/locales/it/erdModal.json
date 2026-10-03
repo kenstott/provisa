@@ -23,6 +23,7 @@
     "downloadSvg": "Scarica SVG",
     "downloadPng": "Scarica PNG",
     "downloadJpeg": "Scarica JPEG",
+    "downloadJson": "Scarica il diagramma come JSON (tabelle, colonne, relazioni)",
     "close": "Chiudi",
     "hint": "Fare clic su un gruppo di dominio per comprimerlo / espanderlo · le linee tratteggiate collegano i domini compressi",
     "resizeHandle": "Ridimensiona riquadro del dominio ({{corner}})"
