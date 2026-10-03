@@ -25,6 +25,7 @@ import io
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from tests.integration.conftest import no_replica_routes
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -259,7 +260,7 @@ class TestBoltLabelMapIntegration:
         mock_ctx.gql_governed_object_cols = {}
         mock_ctx.native_filter_columns = {}
 
-        mock_state = MagicMock()
+        mock_state = no_replica_routes(MagicMock())
         mock_state.roles = {"analyst": {"domain_access": role_domain_access}}
         mock_state.schema_build_cache = {}
         mock_state.source_catalogs = {}

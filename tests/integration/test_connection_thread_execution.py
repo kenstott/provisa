@@ -418,7 +418,7 @@ async def test_graphql_governance_runs_on_the_request_thread_in_parallel():
     state.schemas = {"analyst": schema}
     state.contexts = {"analyst": object()}  # type: ignore[dict-item]
     state.rls_contexts = {}
-    state.roles = {"analyst": {}}
+    state.roles = {"analyst": {"id": "analyst", "capabilities": [], "domain_access": ["*"]}}
     state.apq_cache = None
     request_idents: set[int] = set()
     govern_idents: list[int] = []

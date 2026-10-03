@@ -426,6 +426,17 @@ async def _pgw_drop(asyncpg, p: dict) -> None:
         await conn.close()
 
 
+def no_replica_routes(state):
+    """Give a stand-in app state the replica routes a schema build publishes for a registry with
+    no table on a replica (``ReplicaRoutes()``). The governed pipeline reads them for the
+    operator's floor (``registry_view.operator_floor``), which refuses anything else by name — a
+    bare ``MagicMock`` attribute there would otherwise stand in for real routes."""
+    from provisa.federation.replica_address import ReplicaRoutes
+
+    state.replica_routes = ReplicaRoutes()
+    return state
+
+
 def _pgw_build_state(pool):
     from unittest.mock import MagicMock
 
@@ -454,7 +465,7 @@ def _pgw_build_state(pool):
     )
     ctx = build_context(si)
 
-    state = MagicMock()
+    state = no_replica_routes(MagicMock())
     state.security_high = False  # REQ-693: MagicMock auto-creates attrs as truthy; explicit False
     state.contexts = {"admin": ctx}
     state.rls_contexts = {}

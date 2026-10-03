@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import pytest
 from unittest.mock import MagicMock
+from tests.integration.conftest import no_replica_routes
 
 pytestmark = [pytest.mark.integration]
 
@@ -131,7 +132,7 @@ def _make_app_state(schema=None):
         }
     )
 
-    state = MagicMock()
+    state = no_replica_routes(MagicMock())
     state.schemas = {"admin": schema}
     state.contexts = {"admin": ctx}
     state.rls_contexts = {"admin": RLSContext.empty()}

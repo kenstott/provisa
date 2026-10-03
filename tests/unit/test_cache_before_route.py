@@ -84,15 +84,23 @@ def pipe(monkeypatch):
     counts = {"route": 0, "api_lookup": 0, "parses": 0}
     route = _decision("DIRECT")
 
+    # The registered tables each statement reads, as the pipeline handed them to the API-table
+    # lookup: the same ids it then routes on.
+    looked_up: list[tuple[int, ...]] = []
+
     async def _counted_route(*args, **kwargs):
         counts["route"] += 1
+        assert tuple(kwargs["table_ids"]) == looked_up[-1], "routed on other tables than looked up"
         return await route(*args, **kwargs)
 
     real_wmo = materialization.would_materialize_optimize
 
-    def _counted_wmo(exec_sql, st):
+    def _counted_wmo(exec_sql, st, *, table_ids):
         counts["api_lookup"] += 1
-        return real_wmo(exec_sql, st)
+        ids = tuple(table_ids)
+        assert all(isinstance(i, int) for i in ids), f"table ids are registered ids, got {ids!r}"
+        looked_up.append(ids)
+        return real_wmo(exec_sql, st, table_ids=table_ids)
 
     monkeypatch.setattr(materialization, "would_materialize_optimize", _counted_wmo)
     real_parse = sqlglot.parser.Parser.parse

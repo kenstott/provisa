@@ -51,6 +51,7 @@ import pytest_asyncio
 from provisa.executor.result import QueryResult as EngineResult
 from tests.pgwire_describe_parity import describes_as
 from provisa.pgwire.server import ProvisaConnection, ProvisaServer
+from tests.integration.conftest import no_replica_routes
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
@@ -118,7 +119,7 @@ def _make_mock_state(role: str = "admin", provider: str = "simple") -> MagicMock
     ctx = MagicMock()
     ctx.tables = {}
     ctx.joins = {}
-    state = MagicMock()
+    state = no_replica_routes(MagicMock())
     state.contexts = {role: ctx}
     state.rls_contexts = {role: RLSContext.empty()}
     state.roles = {role: {"id": role, "capabilities": [], "domain_access": ["*"]}}
