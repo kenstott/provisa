@@ -30944,7 +30944,7 @@
   - tests/unit/test_billing_lemonsqueezy.py
   - tests/unit/test_org_isolation.py
 - id: REQ-1026
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
   category: First-Customer Deployment
   priority: MUST
@@ -30959,6 +30959,7 @@
   relates_to:
   - REQ-854
   - REQ-121
+  superseded_by: REQ-1279
 - id: REQ-1027
   status: proposed
   group: 11. Platform, Infrastructure & Delivery
@@ -30973,7 +30974,7 @@
   relates_to:
   - REQ-854
 - id: REQ-1028
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
   category: First-Customer Deployment
   priority: MUST
@@ -30988,8 +30989,9 @@
   relates_to:
   - REQ-854
   - REQ-1027
+  superseded_by: REQ-1279
 - id: REQ-1029
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
   category: First-Customer Deployment
   priority: MUST
@@ -31002,8 +31004,9 @@
   relates_to:
   - REQ-696
   - REQ-697
+  superseded_by: REQ-1279
 - id: REQ-1030
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
   category: Email Delivery
   priority: MUST
@@ -31017,6 +31020,7 @@
   - REQ-1330
   - REQ-1021
   - REQ-1022
+  superseded_by: REQ-1330
 - id: REQ-1031
   status: proposed
   group: 11. Platform, Infrastructure & Delivery
@@ -35863,7 +35867,7 @@
 
     '
 - id: REQ-1196
-  status: accepted
+  status: complete
   group: 7. Result Delivery
   category: Large Result Redirect & CTAS
   priority: SHOULD
@@ -35877,7 +35881,7 @@
   use_case: Deferring cartesian blowup control to engine-side governors (memory, CPU, concurrency limits)
     and timeouts keeps the Provisa result path stateless and avoids redundant metering. The default row
     cap provides sufficient protection for typical usage patterns.
-  since: 2026-07
+  since: 2026-06
   scenario: 'Given a cartesian product that would produce 1M rows
 
     When executed against an engine with memory/timeout governors
@@ -35885,6 +35889,14 @@
     Then the engine terminates the query and Provisa never materializes the full result
 
     '
+  code:
+  - provisa/compiler/stage2.py
+  - provisa/core/settings_catalog.py
+  - provisa/security/rights.py
+  - provisa/executor/redirect.py
+  tests:
+  - tests/integration/test_governance_integration.py
+  - tests/unit/test_sampling_rls.py
 - id: REQ-1197
   status: complete
   group: 7. Result Delivery
@@ -37768,7 +37780,7 @@
 
     '
 - id: REQ-1247
-  status: proposed
+  status: superseded
   group: 10. UI & Admin Surfaces
   category: Authentication
   priority: MUST
@@ -37800,6 +37812,7 @@
     Then the signup flow is displayed (REQ-1248 / REQ-1249 / REQ-1250)
 
     '
+  superseded_by: REQ-1289
 - id: REQ-1248
   status: complete
   group: 13. Multi-Tenancy & Organizations
@@ -43650,6 +43663,9 @@
     silently merged or overridden.'
   use_case: Lets thin IdPs be supplemented without forking identity truth; explicit precedence with a
     visible shadowed state keeps attribute provenance auditable.
+  notes: 'Kept by the maintainer 2026-10-03. Audit 2026-10-03: not built (only identity-provider claims
+    feed the session variables, provisa/auth/middleware.py:193-220; no local attribute store for IdP-authenticated
+    users and no provenance display).'
 - id: REQ-1383
   status: accepted
   target: 2026-Q4
@@ -43662,6 +43678,9 @@
     (IdP vs local, and shadowed state) so admins can see why an attribute has its value.
   use_case: RLS authors write one predicate vocabulary regardless of attribute origin; admins can diagnose
     unexpected row visibility from the provenance display.
+  notes: 'Kept by the maintainer 2026-10-03. Audit 2026-10-03: not built (only identity-provider claims
+    feed the session variables, provisa/auth/middleware.py:193-220; no local attribute store for IdP-authenticated
+    users and no provenance display).'
 - id: REQ-1384
   status: accepted
   target: 2026-Q4
@@ -51770,8 +51789,7 @@
   - REQ-1528
   - REQ-1529
 - id: REQ-1540
-  status: proposed
-  target: 2026-Q4
+  status: complete
   group: 10. UI & Admin Surfaces
   category: Admin UI
   priority: SHOULD
@@ -51789,13 +51807,16 @@
     When any user loads the application
 
 
-    Then the navbar shows no organization name and no organization switcher'
+    Then the navbar shows no organization name and no organization switcher
+
+    '
   code:
   - provisa-ui/src/components/OrgSwitcher.tsx
   tests:
   - provisa-ui/src/__tests__/OrgSwitcher.test.tsx
   related_reqs:
   - REQ-1337
+  since: 2026-08
 - id: REQ-1541
   status: complete
   group: 13. Multi-Tenancy & Organizations
@@ -52681,8 +52702,7 @@
   - REQ-1361
   - REQ-1557
 - id: REQ-1559
-  status: proposed
-  target: 2026-Q4
+  status: complete
   group: 10. UI & Admin Surfaces
   category: UI
   priority: SHOULD
@@ -52707,7 +52727,9 @@
     When the page renders
 
 
-    Then the admin entries stand in a vertical rail on the left and the horizontal sub-bar is absent'
+    Then the admin entries stand in a vertical rail on the left and the horizontal sub-bar is absent
+
+    '
   code:
   - provisa-ui/src/components/AdminRail.tsx
   - provisa-ui/src/components/NavBar.tsx
@@ -52716,6 +52738,9 @@
   - provisa-ui/src/App.css
   depends_on:
   - REQ-1351
+  since: 2026-08
+  tests:
+  - provisa-ui/src/__tests__/AdminRail.test.tsx
 - id: REQ-1560
   status: proposed
   target: 2026-Q4
@@ -56514,23 +56539,42 @@
   - provisa/api/metadata_export/snowflake_horizon.py
   target: 2026-Q4
 - id: REQ-1647
-  status: proposed
+  status: complete
   group: 7. Result Delivery
   category: Snowflake Horizon Catalog Export
   priority: SHOULD
   type: behavioral
-  description: Descriptions from the `_landing` physical table/config must propagate to the corresponding
-    per-source SECURE VIEW (at the original db.schema.table address) via COMMENT ON VIEW/TABLE, alongside
-    the existing tag propagation already performed by tag_statements() in snowflake_horizon.py. Currently
+  description: 'Descriptions from the `_landing` physical table/config must propagate to the corresponding
+    per-source SECURE VIEW [SUPERSEDED by REQ-1912, 2026-10-03 -- Comments are set at the table''s published
+    address: the export view in the landing database''s export schema, not the registered address (provisa/federation/snowflake_store.py:20-24;
+    provisa/api/metadata_export/snowflake_horizon.py:115-119; asserted at tests/unit/test_snowflake_horizon_export.py:365-371).
+    Kept here for history; do not implement against it.] (at the original db.schema.table address) [END
+    SUPERSEDED BLOCK] via COMMENT ON VIEW/TABLE, [SUPERSEDED by REQ-1652, 2026-10-03 -- No tag_statements()
+    exists in snowflake_horizon.py any more (the only definition is provisa/federation/databricks_store.py:537).
+    Attributing this to REQ-1652 (keys mirrored as tags by the landing reconcile) is my reading, not verified.
+    Kept here for history; do not implement against it.] alongside the existing tag propagation already
+    performed by tag_statements() in snowflake_horizon.py [END SUPERSEDED BLOCK]. [SUPERSEDED by REQ-1647
+    amendment, 2026-10-03 -- Describes the state before this requirement was built; comment_statements
+    now emits object and column comments. Kept here for history; do not implement against it.] Currently
     the description field is only used in share_statements/listing_statements (Marketplace share/listing
-    text) and is never emitted as an object-level comment, so the per-source view's comment stays empty
-    even though the underlying `_landing` physical table has a populated comment.
+    text) and is never emitted as an object-level comment, so the per-source view''s comment stays empty
+    even though the underlying `_landing` physical table has a populated comment. [END SUPERSEDED BLOCK]'
   use_case: Consumers browsing the per-source view directly in Snowflake (outside of a share/listing)
     should see the same governed description that already reaches the view as tags, so the view is self-describing
     without relying on Marketplace metadata.
   code:
   - provisa/api/metadata_export/snowflake_horizon.py
-  target: 2026-Q4
+  since: 2026-09
+  scenario: 'Given a registered table with a description, published on a Snowflake engine through its
+    export view
+
+    When the metadata export publishes
+
+    Then the view carries the description as its COMMENT and each described column carries its own
+
+    '
+  tests:
+  - tests/unit/test_snowflake_horizon_export.py
 - id: REQ-1648
   status: complete
   since: 2026-09
@@ -70792,8 +70836,11 @@
     lets the operator start a build or refresh. (Amended 2026-10-01, central state and central scheduling:)
     The state of every replica is held in one place, the control plane: for each replicated table, whether
     it is not built, building, ready or failed, the rows copied so far, when it was last completed, when
-    its next refresh is due, the last error, and which process holds the build. Every worker and instance
-    reads that one record; none keeps its own view of whether a replica exists or is fresh. The triggers
+    its next refresh is due, the last error, and which process holds the build. [SUPERSEDED by REQ-1661,
+    2026-10-03 -- REQ-1661 (amended 2026-10-01, staleness decided in memory) gives each process a copy
+    of the record: provisa/federation/replica_state_view.py:10-25, read first at provisa/federation/query_residency.py:381-384.
+    Kept here for history; do not implement against it.] Every worker and instance reads that one record;
+    none keeps its own view of whether a replica exists or is fresh. [END SUPERSEDED BLOCK] The triggers
     are managed centrally as well: the single scheduler holder decides, from that record and the operator
     settings, when a build or a refresh starts, and it is the only thing that starts one, including the
     builds requested by a saved setting, a boot, a Hot threshold crossing, an operator action or the read
