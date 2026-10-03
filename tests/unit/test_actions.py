@@ -502,6 +502,7 @@ class TestWebhookApprovalGate:
         conn = _FakeConn()
         fake_state = MagicMock()
         fake_state.tenant_db = _FakePool(conn)
+        fake_state.model_db = fake_state.tenant_db
         _, request = grant(monkeypatch, "table_registration", state=fake_state)
 
         with (
@@ -561,6 +562,7 @@ class TestWebhookApprovalGate:
         conn = _Conn()
         fake_state = MagicMock()
         fake_state.tenant_db = _FakePool(conn)
+        fake_state.model_db = fake_state.tenant_db
         from tests.unit.gate_identity import grant
 
         _, request = grant(monkeypatch, "table_registration", state=fake_state)

@@ -79,7 +79,7 @@ _ID_IN_LIST_RE = _re.compile(
 )
 
 
-async def _resolve_id_references(query: str, tenant_db: Any, label_map: "CypherLabelMap") -> str:
+async def _resolve_id_references(query: str, model_db: Any, label_map: "CypherLabelMap") -> str:
     """Rewrite id(var) IN [int1, int2, ...] replacing stable node ids with the
     id-column value looked up from node_ids.properties via the label_map."""
 
@@ -93,7 +93,7 @@ async def _resolve_id_references(query: str, tenant_db: Any, label_map: "CypherL
     if not all_ints:
         return query
 
-    async with tenant_db.acquire() as _conn:
+    async with model_db.acquire() as _conn:
         _result = await _conn.execute_core(
             select(node_ids.c.id, node_ids.c.composite_id, node_ids.c.label).where(
                 node_ids.c.id.in_(sorted(all_ints))
@@ -597,8 +597,8 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
 
     # Resolve stable node ids in id(var) IN [...] to id-column values
     query_text = body.query
-    if state.tenant_db is not None:
-        query_text = await _resolve_id_references(query_text, state.tenant_db, label_map)
+    if state.model_db is not None:
+        query_text = await _resolve_id_references(query_text, state.model_db, label_map)
 
     # REQ-1877: a read this role already translated and was admitted for under this schema
     # generation is not parsed, translated or validated again — only its values are bound.
@@ -846,8 +846,8 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     # Register nodes and relationships, replacing composite string IDs with stable integers
     from provisa.cypher.assembler import register_node_ids, register_rel_ids
 
-    await register_node_ids(serializable_rows, state.tenant_db)
-    await register_rel_ids(serializable_rows, state.tenant_db)
+    await register_node_ids(serializable_rows, state.model_db)
+    await register_rel_ids(serializable_rows, state.model_db)
 
     content = _build_stats_content(columns, serializable_rows, physical_sql, stats_enabled, _t0)
     content["type"] = "cypher"

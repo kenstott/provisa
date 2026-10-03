@@ -125,7 +125,7 @@ class TestImputeRelationshipsEdgeGeneration:
     def _make_mock_state(self, pg_rows: list[dict]) -> MagicMock:
         """Build a minimal AppState mock."""
         state = MagicMock()
-        state.tenant_db = MagicMock()
+        state.model_db = state.tenant_db = MagicMock()
 
         conn_ctx = AsyncMock()
         exec_result = MagicMock()
@@ -134,7 +134,7 @@ class TestImputeRelationshipsEdgeGeneration:
         acquire_ctx = MagicMock()
         acquire_ctx.__aenter__ = AsyncMock(return_value=conn_ctx)
         acquire_ctx.__aexit__ = AsyncMock(return_value=False)
-        state.tenant_db.acquire = MagicMock(return_value=acquire_ctx)
+        state.model_db.acquire = MagicMock(return_value=acquire_ctx)
 
         state.contexts = {"default": MagicMock()}
         state.roles = {"default": {}}

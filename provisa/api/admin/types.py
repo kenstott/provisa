@@ -403,9 +403,9 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
 
         checker = state.source_types[self.source_id]
         meta = resolve_contract_target(contract_dataset(self.dq_contract, checker), state.contexts)
-        if state.tenant_db is None:
+        if state.model_db is None:
             raise RuntimeError("tenant database not connected")
-        async with state.tenant_db.acquire() as conn:
+        async with state.model_db.acquire() as conn:
             res = await conn.execute_core(
                 select(registered_tables.c.product_id).where(
                     registered_tables.c.id == meta.table_id

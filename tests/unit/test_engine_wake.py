@@ -271,6 +271,7 @@ def _state_with(runtime, rebuilt: list, default=None):
         federation_engine=_FakeEngine(),
         engine_conn=object(),
         config=None,
+        model_db=None,
         tenant_db=None,
     )
 
@@ -456,6 +457,7 @@ def _state_keyed(runtimes: dict, rebuilt: list):
         federation_engine=_FakeEngine(),
         engine_conn=object(),
         config=None,
+        model_db=None,
         tenant_db=None,
     )
 

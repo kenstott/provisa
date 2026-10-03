@@ -91,8 +91,8 @@ async def impute_relationships(
 
     # Resolve stable ids to id-column values via composite_id ("label|pk_value")
     by_label: dict[str, list[Any]] = {}
-    if int_ids and state.tenant_db:
-        async with state.tenant_db.acquire() as _pg_conn:
+    if int_ids and state.model_db:
+        async with state.model_db.acquire() as _pg_conn:
             _pg_result = await _pg_conn.execute_core(
                 select(node_ids.c.id, node_ids.c.label, node_ids.c.composite_id).where(
                     node_ids.c.id.in_(int_ids)
@@ -154,8 +154,8 @@ async def impute_relationships(
     from provisa.cypher.assembler import register_node_ids, register_rel_ids
 
     serializable_merged = [{"node": r} for r in list(all_nodes.values()) + list(all_edges.values())]
-    await register_node_ids(serializable_merged, state.tenant_db)
-    await register_rel_ids(serializable_merged, state.tenant_db)
+    await register_node_ids(serializable_merged, state.model_db)
+    await register_rel_ids(serializable_merged, state.model_db)
     return JSONResponse(content={"columns": ["node"], "rows": serializable_merged})
 
 

@@ -104,6 +104,7 @@ def _state() -> SimpleNamespace:
             {"source_id": "pg", "schema_name": "public", "table_name": "orders"},
             {"source_id": "api", "schema_name": "public", "table_name": "pets"},
         ],
+        model_db=None,
         tenant_db=None,
         org_id="default",
         active_isolated_org=None,

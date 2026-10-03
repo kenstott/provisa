@@ -514,14 +514,14 @@ async def _resolve_llm_org_ctx(app_state: AppState) -> tuple[dict | None, dict[s
     no bound tenant (startup/discovery paths) resolves to (None, {}) — callers fall back to the
     deployment config / no keys, same as before this existed.
     """
-    tenant_db = getattr(app_state, "tenant_db", None)
-    if tenant_db is None:
+    model_db = getattr(app_state, "model_db", None)
+    if model_db is None:
         return None, {}
     from provisa.core.org_secrets import read_org_api_keys
     from provisa.core.org_settings import resolve_org_config
 
-    config = await resolve_org_config(tenant_db)
-    api_keys = await read_org_api_keys(tenant_db)
+    config = await resolve_org_config(model_db)
+    api_keys = await read_org_api_keys(model_db)
     return config, api_keys
 
 

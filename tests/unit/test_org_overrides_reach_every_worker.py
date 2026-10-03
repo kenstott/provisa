@@ -54,7 +54,7 @@ def _another_worker_writes(db: Database, key: str, value: dict) -> None:
 def served(tenant_db, monkeypatch):
     """A worker serving org ``acme``: its runtime, loaded, in the process's registry."""
     runtime = OrgRuntime(org_id="acme")
-    runtime.tenant_db = tenant_db
+    runtime.model_db = runtime.tenant_db = tenant_db
     state = AppState()
     state.org_registry.set("acme", runtime)
     monkeypatch.setattr(state, "_active_runtime", lambda: runtime)
@@ -64,10 +64,10 @@ def served(tenant_db, monkeypatch):
 
 
 def _watcher_checks(runtime: OrgRuntime) -> list[str]:
-    assert runtime.tenant_db is not None
+    assert runtime.model_db is not None
     target = config_watch.Target(
         name="org acme: settings",
-        db=runtime.tenant_db,
+        db=runtime.model_db,
         kind=config_stamp.SETTINGS,
         loaded=lambda: runtime.settings_stamp,
         reload=lambda: model_reload.reload_org_settings(runtime),

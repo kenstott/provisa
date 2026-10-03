@@ -133,7 +133,11 @@ class OrgRuntime:
     engine_conn: Any = None
     engine_conn_kwargs: dict = field(default_factory=dict)
 
-    # Per-org control plane: Database bound to the org_{id} schema.
+    # REQ-1919/1922: the org's two control-plane handles. ``model_db`` holds its MODEL (shared by
+    # every region the org selects); ``tenant_db`` holds this region's STATE (replica builds,
+    # events, the request record). Two handles even where one database holds both, so a
+    # statement on the wrong one fails everywhere (provisa/core/store_sides.py).
+    model_db: "Database | None" = None
     tenant_db: "Database | None" = None
 
     # Physical connection + source metadata (source_id → …).
@@ -344,7 +348,8 @@ class ActiveOrgPool:  # REQ-1266
     def resolve(self) -> "Database | None":
         from provisa.api.app import state
 
-        return getattr(state, "tenant_db", None)
+        # REQ-1919: what it reads (user_role_assignments) is the org's model.
+        return getattr(state, "model_db", None)
 
     def __bool__(self) -> bool:
         return self.resolve() is not None

@@ -221,9 +221,9 @@ async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:
 
     # Re-drive the live poll engine from the now-current DB state so admin edits
     # to per-table live config take effect without a restart (REQ-565).
-    if state.live_engine is not None and state.tenant_db is not None:
+    if state.live_engine is not None and state.model_db is not None:
         with tolerate_startup_failure("live engine reconcile", exc_info=True):
-            async with state.tenant_db.acquire() as _lc:
+            async with state.model_db.acquire() as _lc:
                 await _reconcile_live_engine(_lc)
 
     # Lower every view's SQL (inline and materialized) against the model-wide context the build

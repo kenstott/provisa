@@ -1035,8 +1035,8 @@ async def _impute_relationships(
     """
     from provisa.compiler.naming import apply_cql_property as _cql_prop
 
-    tenant_db = getattr(app_state, "tenant_db", None)
-    if tenant_db is None:
+    model_db = getattr(app_state, "model_db", None)
+    if model_db is None:
         return ["r"], []
 
     raw_ids = list(parameters.get("existingNodeIds") or []) + list(
@@ -1056,7 +1056,7 @@ async def _impute_relationships(
 
     from provisa.core.schema_org import node_ids
 
-    async with tenant_db.acquire() as conn:
+    async with model_db.acquire() as conn:
         result = await conn.execute_core(
             select(node_ids.c.id, node_ids.c.label, node_ids.c.composite_id).where(
                 node_ids.c.id.in_(int_ids)

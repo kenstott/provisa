@@ -184,7 +184,7 @@ async def reject_candidate(request: Request, candidate_id: int, body: RejectRequ
 async def rejected_count(request: Request):
     """Count rejected candidates."""
     require_capability_request(request, "create_relationship")
-    pool = state.tenant_db
+    pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
         count = await conn.fetchval(

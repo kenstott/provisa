@@ -79,6 +79,7 @@ def _state() -> SimpleNamespace:
         schema_version=1,
         compiled_query_cache=CompiledQueryCache(),
         cypher_label_maps={},
+        model_db=None,
         tenant_db=None,
     )
 

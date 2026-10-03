@@ -171,15 +171,17 @@ class TestWhatTheRedeemerIsGiven:
         async def _create(state, admin_db, tenant_pool, tenant_db, org_id, name, **kw):
             created.append({"org_id": org_id, "name": name, **kw})
 
-        async def _org_tenant_db(org_id):
+        async def _org_model_db(org_id):
             return object()
 
         monkeypatch.setattr("provisa.core.env_create.create_environment", _create)
-        monkeypatch.setattr("provisa.api.admin.orgs_router._org_tenant_db", _org_tenant_db)
+        monkeypatch.setattr("provisa.api.admin.orgs_router._org_model_db", _org_model_db)
         monkeypatch.setattr("provisa.core.env_store.get_env", _no_such_env)
         monkeypatch.setattr(
             "provisa.api.app.state",
-            types.SimpleNamespace(admin_db=object(), tenant_db=object()),
+            types.SimpleNamespace(
+                admin_db=object(), model_db=(_one_db := object()), tenant_db=_one_db
+            ),
             raising=False,
         )
         from provisa.api.invite_env import redeem_env
@@ -205,15 +207,17 @@ class TestWhatTheRedeemerIsGiven:
         async def _create(state, admin_db, tenant_pool, tenant_db, org_id, name, **kw):
             created.append(kw)
 
-        async def _org_tenant_db(org_id):
+        async def _org_model_db(org_id):
             return object()
 
         monkeypatch.setattr("provisa.core.env_create.create_environment", _create)
-        monkeypatch.setattr("provisa.api.admin.orgs_router._org_tenant_db", _org_tenant_db)
+        monkeypatch.setattr("provisa.api.admin.orgs_router._org_model_db", _org_model_db)
         monkeypatch.setattr("provisa.core.env_store.get_env", _no_such_env)
         monkeypatch.setattr(
             "provisa.api.app.state",
-            types.SimpleNamespace(admin_db=object(), tenant_db=object()),
+            types.SimpleNamespace(
+                admin_db=object(), model_db=(_one_db := object()), tenant_db=_one_db
+            ),
             raising=False,
         )
         from provisa.api.invite_env import redeem_env
@@ -268,7 +272,9 @@ class TestAVisitorWhoComesBack:
         monkeypatch.setattr("provisa.core.env_store.set_expiry", _set_expiry)
         monkeypatch.setattr(
             "provisa.api.app.state",
-            types.SimpleNamespace(admin_db=object(), tenant_db=object()),
+            types.SimpleNamespace(
+                admin_db=object(), model_db=(_one_db := object()), tenant_db=_one_db
+            ),
             raising=False,
         )
         from provisa.api.invite_env import redeem_env
@@ -290,15 +296,17 @@ class TestAVisitorWhoComesBack:
         async def _create(state, admin_db, tenant_pool, tenant_db, org_id, name, **kw):
             seen.append(name)
 
-        async def _org_tenant_db(org_id):
+        async def _org_model_db(org_id):
             return object()
 
         monkeypatch.setattr("provisa.core.env_create.create_environment", _create)
-        monkeypatch.setattr("provisa.api.admin.orgs_router._org_tenant_db", _org_tenant_db)
+        monkeypatch.setattr("provisa.api.admin.orgs_router._org_model_db", _org_model_db)
         monkeypatch.setattr("provisa.core.env_store.get_env", _no_such_env)
         monkeypatch.setattr(
             "provisa.api.app.state",
-            types.SimpleNamespace(admin_db=object(), tenant_db=object()),
+            types.SimpleNamespace(
+                admin_db=object(), model_db=(_one_db := object()), tenant_db=_one_db
+            ),
             raising=False,
         )
         from provisa.api.invite_env import redeem_env
@@ -335,7 +343,9 @@ class TestReleasingWhatWasMinted:
         monkeypatch.setattr("provisa.core.env_retire.retire_environment", _retire)
         monkeypatch.setattr(
             "provisa.api.app.state",
-            types.SimpleNamespace(admin_db=object(), tenant_db=object()),
+            types.SimpleNamespace(
+                admin_db=object(), model_db=(_one_db := object()), tenant_db=_one_db
+            ),
             raising=False,
         )
         from provisa.api.invite_env import release_env

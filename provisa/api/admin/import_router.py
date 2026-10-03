@@ -258,14 +258,14 @@ async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApply
     except ValueError as exc:
         raise ApiError(400, "import.invalid_config", f"config is not valid: {exc}") from exc
 
-    tenant_db = state.tenant_db
-    if tenant_db is None:
+    model_db = state.model_db
+    if model_db is None:
         raise ApiError(
             409, "import.no_active_org", "no org is bound to this request; sign in to an org first"
         )
 
     _populate_source_catalog_names(config)
-    async with tenant_db.acquire() as conn:
+    async with model_db.acquire() as conn:
         await load_config(
             config,
             conn,

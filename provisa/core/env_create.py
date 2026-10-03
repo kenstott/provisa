@@ -56,7 +56,7 @@ async def create_environment(
     state,
     admin_db: "Database",
     tenant_pool: "Database",
-    tenant_db: "Database",
+    model_db: "Database",
     org_id: str,
     name: str,
     *,
@@ -114,7 +114,7 @@ async def create_environment(
             env=name,
         )
         report = await copy_model(
-            tenant_db,
+            model_db,
             org_id,
             from_env,
             name,
@@ -137,10 +137,10 @@ async def create_environment(
             # handed against it, and a failure takes the half-made environment rather than leaving
             # it pointed at the original. A stripped copy lands unbound (REQ-1491) with no path to
             # fork, so this is a no-op there without needing to ask.
-            await fork_file_sources(tenant_db, org_id, name)
+            await fork_file_sources(model_db, org_id, name)
         if define_role_from is not None:
             _target, _source = define_role_from
-            await adopt_role_definition(tenant_db, org_id, name, target=_target, source=_source)
+            await adopt_role_definition(model_db, org_id, name, target=_target, source=_source)
         # REQ-1602: the sandbox role reaching every ephemeral environment of the sandbox org is
         # already the copy above's job -- seed=True carries SEEDED_AT_CREATION tables (roles among
         # them) from from_env (always PROD for this caller), and PROD's own row is guaranteed
@@ -176,7 +176,7 @@ async def create_environment(
             # then changed once offered two undos -- the change, and then a step onto the source's
             # model wearing this environment's name.
             await set_origin(admin_db, org_id, name, started)
-        async with tenant_db.acquire() as conn:
+        async with model_db.acquire() as conn:
             await write_through(
                 conn,
                 admin_db,

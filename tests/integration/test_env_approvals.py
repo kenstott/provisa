@@ -70,7 +70,9 @@ async def planes(docker_postgres):
 
         scoped = domains.to_metadata(MetaData(), schema=org_schema(org_id, env))
         async with tenant_db.acquire() as conn:
-            await conn.execute_core(scoped.insert().values(id=domain_id, description=domain_id))
+            await conn.execute_core(
+                scoped.insert().values(id=domain_id, description=domain_id, origin="config")
+            )
 
     yield type(
         "Planes",

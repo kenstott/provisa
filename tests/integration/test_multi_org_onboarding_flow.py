@@ -187,7 +187,7 @@ def planes(monkeypatch):
     # build_org_runtime returns the org's tenant Database so grant_org_role lands the org_admin
     # assignment we verify; provision_org (schema/PG-role/Redis) is a no-op.
     async def _fake_build(org_id, *, include_demo=False, **_kw):  # noqa: ARG001
-        return types.SimpleNamespace(tenant_db=tenant_db)
+        return types.SimpleNamespace(model_db=tenant_db, tenant_db=tenant_db)
 
     async def _noop_provision(*_args, **_kwargs):
         return None

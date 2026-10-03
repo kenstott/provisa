@@ -233,7 +233,9 @@ def ai_models_surface(monkeypatch, resolve_caps):
     monkeypatch.setattr(org_settings_mod, "read_org_overrides", _read)
     monkeypatch.setattr(org_settings_mod, "write_org_overrides", _write)
     monkeypatch.setattr(
-        "provisa.api.app.state", types.SimpleNamespace(tenant_db=object()), raising=False
+        "provisa.api.app.state",
+        types.SimpleNamespace(model_db=(_one_db := object()), tenant_db=_one_db),
+        raising=False,
     )
 
     async def call(body: dict, existing: dict | None = None):
@@ -352,7 +354,9 @@ async def test_nl_builds_its_client_from_the_orgs_resolved_config(monkeypatch):
 
     monkeypatch.setattr(org_settings_mod, "resolve_org_config", _resolve)
     monkeypatch.setattr(org_secrets_mod, "read_org_api_keys", _api_keys)
-    client = await _get_llm(types.SimpleNamespace(tenant_db=object()))
+    client = await _get_llm(
+        types.SimpleNamespace(model_db=(_one_db := object()), tenant_db=_one_db)
+    )
 
     assert (client._vendor, client._model) == ("openai", "gpt-4o")
 

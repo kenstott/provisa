@@ -157,6 +157,7 @@ async def test_a_pending_attach_walk_runs_inside_the_orgs_vault(vault, monkeypat
         config=object(),
         runtime_sources={},
         tables=[],
+        model_db=None,
         tenant_db=None,
     )
     assert await backend._attached_runtime(state) == "runtime"
@@ -180,7 +181,9 @@ async def test_a_statement_with_no_walk_pending_binds_nothing(vault, monkeypatch
 
     backend = _Backend.__new__(_Backend)
     backend._runtime = "runtime"
-    state = SimpleNamespace(config=object(), runtime_sources={}, tables=[], tenant_db=None)
+    state = SimpleNamespace(
+        config=object(), runtime_sources={}, tables=[], model_db=None, tenant_db=None
+    )
     backend._walked = backend._registry_of(state)
     assert await backend._attached_runtime(state) == "runtime"
     assert vault == []

@@ -85,7 +85,9 @@ def org_overrides(monkeypatch):
     monkeypatch.setattr(org_secrets_mod, "read_org_secret", _read_secret)
     monkeypatch.setattr(org_secrets_mod, "write_org_secret", _write_secret)
     monkeypatch.setattr(
-        "provisa.api.app.state", types.SimpleNamespace(tenant_db=object()), raising=False
+        "provisa.api.app.state",
+        types.SimpleNamespace(model_db=(_one_db := object()), tenant_db=_one_db),
+        raising=False,
     )
     return store
 

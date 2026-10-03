@@ -37,7 +37,9 @@ def test_the_report_of_a_worker_with_no_control_plane_has_the_health_shape(monke
 
     monkeypatch.setattr("provisa.core.platform_state.nodes.live", _no_nodes)
     report = asyncio.run(
-        health_report_mod.health_report(SimpleNamespace(tenant_db=None, admin_db=object()))
+        health_report_mod.health_report(
+            SimpleNamespace(model_db=None, tenant_db=None, admin_db=object())
+        )
     )
     assert report == {
         "status": "ok",

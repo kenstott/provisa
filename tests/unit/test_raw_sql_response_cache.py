@@ -81,6 +81,7 @@ def _plan(sql: str = "SELECT id, amount, ts FROM t", *, params=None, role="analy
 def _state(store, *, source_cache=None, table_cache=None, default_ttl=300):
     return SimpleNamespace(
         response_cache_store=store,
+        model_db="fake",
         tenant_db="fake",
         org_id="org-a",
         model_stamp=1,

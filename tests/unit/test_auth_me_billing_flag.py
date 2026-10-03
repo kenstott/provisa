@@ -55,6 +55,7 @@ def client(monkeypatch):
     # plane, and the billing flag is the only thing under test.
     monkeypatch.setattr(app_module.state, "auth_config", None, raising=False)
     monkeypatch.setattr(app_module.state, "tenant_db", _Db(), raising=False)
+    monkeypatch.setattr(app_module.state, "model_db", app_module.state.tenant_db, raising=False)
     monkeypatch.setattr(app_module.state, "org_id", "acme", raising=False)
 
     api = FastAPI()

@@ -378,7 +378,7 @@ class Query:  # REQ-021, REQ-042
     @strawberry.field
     async def domains(self, info: StrawberryInfo) -> list[DomainType]:  # REQ-021, REQ-042
         # REQ-1293: the tenant plane is isolated BY SCHEMA — _get_pool() is the org-routed
-        # state.tenant_db bound to org_<active_org_id>, so every row reachable here already
+        # state.model_db bound to org_<active_org_id>, so every row reachable here already
         # belongs to the active org. A second, row-level `domains.org_id = active_org_id`
         # predicate was not a narrower boundary but a broken one: schema.sql runs inside EVERY
         # org schema and stamps its seeded rows org_id='root', and create_domain never writes

@@ -46,7 +46,7 @@ async def _db(tmp_path):
 
 
 def _state(db: Database) -> types.SimpleNamespace:
-    return types.SimpleNamespace(contexts={"analyst": object()}, tenant_db=db)
+    return types.SimpleNamespace(contexts={"analyst": object()}, model_db=db, tenant_db=db)
 
 
 class TestProposeSource:

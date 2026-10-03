@@ -157,7 +157,7 @@ async def seat_platform_admins(pool) -> int:
     # The assignments live in the ROOT org's schema: platform_admin is only ever conferred there
     # (an invitation carrying it is refused for any other org), so that one schema is the whole
     # list of this deployment's administrators.
-    root_db = state.tenant_db
+    root_db = state.model_db
     if root_db is None:
         raise RuntimeError(
             "REQ-1599: the sandbox org is ready, so the root org's tenant plane is up — "
@@ -174,7 +174,7 @@ async def seat_platform_admins(pool) -> int:
         return 0
 
     rt = await ensure_org_runtime(SANDBOX_ORG_ID)
-    if rt.tenant_db is None:
+    if rt.model_db is None:
         raise RuntimeError(
             f"REQ-1599: the sandbox org is ready but {SANDBOX_ORG_ID} has no runtime"
         )
@@ -182,7 +182,7 @@ async def seat_platform_admins(pool) -> int:
     try:
         for user_id in admins:
             await grant_org_admin(
-                pool, rt.tenant_db, user_id, SANDBOX_ORG_ID, joined_via=JOINED_VIA_ADMIN
+                pool, rt.model_db, user_id, SANDBOX_ORG_ID, joined_via=JOINED_VIA_ADMIN
             )
     finally:
         reset_current_org(token)

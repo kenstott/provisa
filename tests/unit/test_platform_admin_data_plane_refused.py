@@ -795,7 +795,7 @@ def org_runtime(monkeypatch):
         db = _Db(rows)
 
         async def _ensure(_org_id):
-            return types.SimpleNamespace(tenant_db=db)
+            return types.SimpleNamespace(model_db=db, tenant_db=db)
 
         monkeypatch.setattr(appmod, "ensure_org_runtime", _ensure)
         return db

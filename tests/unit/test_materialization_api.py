@@ -519,6 +519,7 @@ class TestMatApiEpTable:
             federation_engine=MagicMock(),
             source_cache={},
             response_cache_default_ttl=300,
+            model_db=None,
             tenant_db=None,
         )
         # param_only: a path param that does NOT also appear in the response, so the endpoint
@@ -544,6 +545,7 @@ class TestMatApiEpTable:
             federation_engine=MagicMock(),
             source_cache={},
             response_cache_default_ttl=300,
+            model_db=None,
             tenant_db=None,
         )
         ep = _ep([_col("id")])
@@ -665,6 +667,7 @@ class TestMatApiEpTable:
             federation_engine=MagicMock(),
             source_cache={},
             response_cache_default_ttl=300,
+            model_db=None,
             tenant_db=None,
         )
         ep = _ep([_col("id")])
@@ -690,6 +693,7 @@ class TestMatApiEpTable:
             federation_engine=MagicMock(),
             source_cache={},
             response_cache_default_ttl=300,
+            model_db=None,
             tenant_db=None,
         )
         ep = _ep([_col("id"), _col("owner_id", param_type=ParamType.path)])
@@ -719,6 +723,7 @@ class TestMatApiEpTable:
             federation_engine=MagicMock(),
             source_cache={},
             response_cache_default_ttl=300,
+            model_db=None,
             tenant_db=None,
         )
         ep = _ep([_col("id"), _col("petId", param_type=ParamType.path)])
@@ -759,6 +764,7 @@ class TestMatApiEpTable:
             federation_engine=MagicMock(),
             source_cache={},
             response_cache_default_ttl=300,
+            model_db=None,
             tenant_db=None,
         )
         ep = _ep([_col("id")])
@@ -790,6 +796,7 @@ class TestMatApiEpTable:
             federation_engine=MagicMock(),
             source_cache={},
             response_cache_default_ttl=300,
+            model_db=None,
             tenant_db=None,
         )
         ep = _ep([_col("id")])
@@ -852,6 +859,7 @@ class TestMatApiEpTable:
             federation_engine=MagicMock(),
             source_cache={},
             response_cache_default_ttl=300,
+            model_db=None,
             tenant_db=None,
         )
         ep = _ep([_col("id")])
@@ -1076,6 +1084,7 @@ class TestMaterializeApiToEngineCache:
             hot_manager=None,
             api_endpoints={"pets": ep},
             graphql_remote_sources={},
+            model_db=None,
             tenant_db=None,
         )
         loc = CacheLocation("cat", "sch", "relational")
