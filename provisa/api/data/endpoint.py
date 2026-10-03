@@ -438,7 +438,6 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
             response = await _handle_mutation(
                 document,
                 ctx,
-                rls,
                 state,
                 effective_variables,
                 role_id,

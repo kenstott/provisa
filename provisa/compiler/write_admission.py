@@ -271,6 +271,12 @@ def _admit_new_values(
         )
 
 
+def written_table_id(tree: exp.Expression, gov: "GovernanceContext") -> int:
+    """The registered table a write targets — what the steps after a successful write act on
+    (its cached reads dropped, its views marked stale, its change event and sinks)."""
+    return _resolve(_target(tree)[0], gov)
+
+
 def admit_write(
     tree: exp.Expression,
     gov: "GovernanceContext",

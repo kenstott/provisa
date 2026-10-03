@@ -173,8 +173,10 @@ class _Plan:
     # cache — a read with no sink delivery and no EXPLAIN. False (the dataclass default) is the
     # fail-closed answer for any plan a constructor does not positively mark as a cacheable read.
     response_cacheable: bool = field(default=False)
-    # REQ-1897: a write statement — on success its tables' cached entries are invalidated.
+    # REQ-1897: a write statement — on success the steps after a write run (:func:`_after_write`).
     writes_tables: bool = field(default=False)
+    # The registered table a write targets (None for a read): what :func:`_after_write` acts on.
+    written_table_id: int | None = field(default=None)
     # REQ-1897: the governed role and the registered tables the statement reads/writes — the
     # response-cache key and policy inputs. Carried on the plan itself, not read off ``audit``: a
     # statement with no acting principal (an unsecured Flight ticket) has no audit record.
@@ -1299,6 +1301,9 @@ async def route_governed(
     # writes. decide_route only applies that rule when told; the raw-SQL surfaces (pgwire, /data/sql)
     # parse the statement themselves, so the type must be passed through explicitly.
     _is_mutation = isinstance(_parsed_input, (exp.Insert, exp.Update, exp.Delete, exp.Merge))
+    from provisa.compiler.write_admission import written_table_id
+
+    _written_table_id = written_table_id(_parsed_input, governed.gov_ctx) if _is_mutation else None
     # REQ-1897: a read whose result is rows — not a write, an EXPLAIN, or a sink delivery.
     _raw_cacheable = not _is_mutation and explain is None and deliver is None
     # REQ-544 (amended 2026-09-30): the response cache is per-request opt-in — a `-- @provisa
@@ -1621,6 +1626,7 @@ async def route_governed(
             cache_as_of=as_of,
             cache_missed=_cache_missed,
             writes_tables=_is_mutation,  # REQ-1897
+            written_table_id=_written_table_id,
             role_id=role_id,  # REQ-1897
             table_ids=_table_ids,  # REQ-1897
             cache_opt_in=_cache_hint.opt_in,  # REQ-544 (amended)
@@ -1701,6 +1707,7 @@ async def route_governed(
             cache_as_of=as_of,
             cache_missed=_cache_missed,
             writes_tables=_is_mutation,  # REQ-1897
+            written_table_id=_written_table_id,
             role_id=role_id,  # REQ-1897
             table_ids=_table_ids,  # REQ-1897
             cache_opt_in=_cache_hint.opt_in,  # REQ-544 (amended)
@@ -1965,12 +1972,12 @@ async def finalize_audit(
         plan.audit_deferred = build_audit_record(plan.audit, status_code, state, route=_route)
     else:
         await write_audit(plan.audit, status_code, state, route=_route, row_count=plan.row_count)
-    # REQ-1897: every terminal finalizes here, so a successful write invalidates the tables it
-    # wrote once, whichever surface ran it.
+    # REQ-1897: every terminal finalizes here, so the steps after a successful write run once,
+    # whichever surface ran it.
     if plan.writes_tables and status_code == 200:
         if state is None:
             from provisa.api.app import state  # type: ignore[assignment]
-        await _invalidate_written_tables(plan, state)
+        await _after_write(plan, state)
 
 
 #: REQ-1695: the reference that can only be answered by an ORG's vault. ``${env:...}`` is the
@@ -2593,12 +2600,50 @@ async def store_executed_result(plan: _Plan, state: Any, result: QueryResult) ->
     await tee.commit()
 
 
-async def _invalidate_written_tables(plan: _Plan, state: Any) -> None:
-    """A successful write drops every cached entry indexed under the tables it wrote (REQ-1897) —
-    raw-SQL and GraphQL entries alike, since both index by table id."""
+async def _after_write(plan: _Plan, state: Any) -> None:
+    """What follows a successful write, on every surface, once (REQ-1897, REQ-080, REQ-084,
+    REQ-172, REQ-176, REQ-544): every cached entry indexed under the tables the statement named is
+    dropped (raw-SQL and GraphQL entries alike, both index by table id); the materialized views
+    over the written table are marked stale; its change event is emitted and its change-event
+    sinks run; a hot copy of it is dropped and reloaded."""
     from provisa.cache.tenancy import invalidate_tables
+    from provisa.core.connection_loop import spawn_background
+    from provisa.kafka.change_events import emit_change_event
+    from provisa.kafka.sink_executor import trigger_sinks_for_table
 
     await invalidate_tables(state, plan.table_ids)
+    if plan.written_table_id is None or plan.role_id is None:
+        raise RuntimeError(
+            "a write plan reached its terminal without the table it wrote or the role it ran as"
+        )
+    written = next(
+        (
+            meta
+            for meta in state.contexts[plan.role_id].tables.values()
+            if meta.table_id == plan.written_table_id
+        ),
+        None,
+    )
+    if written is None:
+        raise RuntimeError(
+            f"the written table {plan.written_table_id} is not in role {plan.role_id!r}'s schema"
+        )
+    state.mv_registry.mark_stale(written.table_name)
+    emit_change_event(written.table_name, written.source_id)
+    spawn_background(trigger_sinks_for_table(written.table_name, state))
+    hot = state.hot_manager
+    if hot is not None:
+        entry = hot.get_entry(written.table_name)
+        if entry is not None:
+            await hot.invalidate(written.table_name)
+            if not entry.is_api:  # an API table is read live until it is promoted again
+                await hot.load_table(
+                    state.federation_engine,
+                    entry.table_name,
+                    entry.schema,
+                    entry.catalog,
+                    entry.pk_column,
+                )
 
 
 async def prepare_residency_and_check_cache(plan: _Plan, state: Any) -> QueryResult | None:
@@ -3130,6 +3175,14 @@ async def _route_compiled(
     _table_ids = table_ids
     _audit = audit
     _cache_hint = cache_hint
+    # A write on a compiled surface (a GraphQL mutation, a Cypher write over HTTP or Bolt) ends
+    # like one on the raw-SQL surfaces: nothing cached, the steps after a write at the terminal.
+    import sqlglot.expressions as exp
+
+    from provisa.compiler.write_admission import written_table_id
+
+    _is_write = isinstance(_compiled_tree, (exp.Insert, exp.Update, exp.Delete, exp.Merge))
+    _written_table_id = written_table_id(_compiled_tree, gov_ctx) if _is_write else None
 
     # Post-governance optimization stage (may REMOVE sources): lower to catalog-physical, then
     # inline hot/API tables as VALUES CTEs, prune unreachable union branches, and rewrite cached
@@ -3312,7 +3365,9 @@ async def _route_compiled(
             # REQ-1897: the compiled surfaces (GraphQL-via-plan, Cypher, REST, JSON:API, gRPC)
             # hand this function a read the compiler built from a query AST; writes take the
             # mutation executor, never this path. A sink delivery returns a handle, not rows.
-            response_cacheable=deliver is None,
+            response_cacheable=deliver is None and not _is_write,
+            writes_tables=_is_write,
+            written_table_id=_written_table_id,
             cache_sql=governed_sql,
             cache_params=cache_params,
             cache_missed=cache_missed,
@@ -3380,7 +3435,9 @@ async def _route_compiled(
             # REQ-1897: the compiled surfaces (GraphQL-via-plan, Cypher, REST, JSON:API, gRPC)
             # hand this function a read the compiler built from a query AST; writes take the
             # mutation executor, never this path. A sink delivery returns a handle, not rows.
-            response_cacheable=deliver is None,
+            response_cacheable=deliver is None and not _is_write,
+            writes_tables=_is_write,
+            written_table_id=_written_table_id,
             cache_sql=governed_sql,
             cache_params=cache_params,
             cache_missed=cache_missed,

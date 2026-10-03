@@ -369,6 +369,8 @@ async def test_chokepoint_stores_buffered_result_and_redirect_is_not_stored(boun
 
 @pytest.mark.asyncio
 async def test_successful_write_invalidates_its_tables_for_the_org(monkeypatch):
+    import provisa.kafka.change_events as change_events
+
     store = FakeCacheStore()
     dropped: list[tuple[int, str | None]] = []
 
@@ -377,14 +379,41 @@ async def test_successful_write_invalidates_its_tables_for_the_org(monkeypatch):
         return 1
 
     monkeypatch.setattr(store, "invalidate_by_table", _inv)
-    write = _plan(sql="UPDATE t SET x = 1", response_cacheable=False, writes_tables=True)
-    await finalize_audit(write, 200, _state(store))
+    monkeypatch.setattr(change_events, "emit_change_event", lambda *a, **k: None)
+    state = _state(store)
+    state.contexts["analyst"].tables["a"].table_name = "t"
+    stale: list[str] = []
+    state.mv_registry = SimpleNamespace(mark_stale=stale.append)
+    state.hot_manager = None
+    state.config = SimpleNamespace(tables=[])  # no change-event sinks declared
+    write = _plan(
+        sql="UPDATE t SET x = 1", response_cacheable=False, writes_tables=True, written_table_id=7
+    )
+    await finalize_audit(write, 200, state)
     assert sorted(dropped) == [(7, "org-a:m1"), (8, "org-a:m1")]
+    assert stale == ["t"]  # the views over the written table, by its name
 
-    failed = _plan(sql="UPDATE t SET x = 1", response_cacheable=False, writes_tables=True)
+    failed = _plan(
+        sql="UPDATE t SET x = 1", response_cacheable=False, writes_tables=True, written_table_id=7
+    )
     dropped.clear()
-    await finalize_audit(failed, 500, _state(store))
+    stale.clear()
+    await finalize_audit(failed, 500, state)
     assert dropped == []
+    assert stale == []
+
+
+@pytest.mark.asyncio
+async def test_a_write_plan_without_its_written_table_is_an_error_not_a_silent_skip(monkeypatch):
+    store = FakeCacheStore()
+
+    async def _inv(table_id, tenant_id=None):
+        return 1
+
+    monkeypatch.setattr(store, "invalidate_by_table", _inv)
+    write = _plan(sql="UPDATE t SET x = 1", response_cacheable=False, writes_tables=True)
+    with pytest.raises(RuntimeError, match="without the table it wrote"):
+        await finalize_audit(write, 200, _state(store))
 
 
 # -- pgwire passthrough (pg_datarows) + the one streaming read/write-through -------------------------

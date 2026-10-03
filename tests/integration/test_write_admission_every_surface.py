@@ -66,10 +66,28 @@ def server():
         extra_config={
             "tables": [orders],
             "roles": [
-                {"id": "org_admin", "capabilities": [*reads, "write"], "domain_access": ["*"]},
+                {
+                    "id": "org_admin",
+                    "capabilities": [*reads, "write", "observability"],
+                    "domain_access": ["*"],
+                },
                 {"id": "east_writer", "capabilities": [*reads, "write"], "domain_access": ["*"]},
                 {"id": "region_only", "capabilities": [*reads, "write"], "domain_access": ["*"]},
                 {"id": "east_reader", "capabilities": reads, "domain_access": ["*"]},
+            ],
+            # A materialized view over the table, for the steps after a write.
+            "views": [
+                {
+                    "id": "orders-by-region",
+                    "sql": "SELECT region, COUNT(*) AS n FROM sales.orders GROUP BY region",
+                    "materialize": True,
+                    "domain_id": "sales",
+                    "source_id": "sales-pg",
+                    "columns": [
+                        {"name": "region", "visible_to": ["org_admin"]},
+                        {"name": "n", "visible_to": ["org_admin"]},
+                    ],
+                }
             ],
             "rls_rules": [
                 {"table_id": "orders", "role_id": "east_writer", "filter": "region = 'east'"},
@@ -462,3 +480,58 @@ def test_a_copy_out_over_pgwire_is_a_governed_read(server):
 
     assert _rows("org_admin") == _SEED
     assert _rows("east_reader") == [(1, "east"), (3, "east")]
+
+
+# --- after a write --------------------------------------------------------------------------------
+
+_VIEW = "view-orders-by-region"
+_CACHED_READ = {"query": "query @cached { s__orders { id region } }"}
+
+
+def _admin_gql(boot, query: str) -> dict:
+    status, body = _http(boot, "org_admin", "POST", "/admin/graphql", {"query": query})
+    assert status == 200, body
+    return json.loads(body)
+
+
+def _view_status(boot) -> str:
+    listed = _admin_gql(boot, "query { mvList { id status lastError } }")["data"]["mvList"]
+    return next(v for v in listed if v["id"] == _VIEW)["status"]
+
+
+def _cached_read(boot) -> tuple[str, list[tuple[int, str]]]:
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{boot.ports['http']}/data/graphql",
+        data=json.dumps(_CACHED_READ).encode(),
+        headers={"Content-Type": "application/json", "x-provisa-role": "org_admin"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        body = json.loads(resp.read().decode())
+        served = resp.headers.get("X-Provisa-Cache", "")
+    rows = sorted((r["id"], r["region"]) for r in body["data"]["s__orders"])
+    return served, rows
+
+
+@pytest.mark.parametrize("surface", _ALL)
+def test_a_write_on_any_surface_is_followed_by_the_same_steps(server, source, surface):
+    """What follows a successful write is the same on every surface: a materialized view over the
+    table is marked stale, and a cached read of the table is not served from before the write."""
+    refreshed = _admin_gql(
+        server, f'mutation {{ refreshMv(mvId: "{_VIEW}") {{ success message }} }}'
+    )
+    assert refreshed["data"]["refreshMv"]["success"], refreshed
+    assert _view_status(server) == "fresh"
+    _cached_read(server)
+    served, rows = _cached_read(server)
+    assert served == "HIT", served  # the read is being served from the cache
+    assert rows == _SEED
+
+    accepted, answer = _SURFACES[surface].insert(server, "org_admin", 60, "north")
+    assert accepted, answer
+    assert (60, "north") in source()
+
+    assert _view_status(server) == "stale"
+    served, rows = _cached_read(server)
+    assert served != "HIT", served
+    assert rows == [*_SEED, (60, "north")]

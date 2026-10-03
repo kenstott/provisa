@@ -43,7 +43,6 @@ if TYPE_CHECKING:
 import re as _re
 from sqlalchemy import select
 
-from provisa.core.connection_loop import spawn_background
 from provisa.core import request_deadline
 from provisa.core.schema_org import node_ids
 from provisa.api.rest.registered_call import (
@@ -173,12 +172,6 @@ def _exec_error(status: int, exc: Exception, sql: str) -> JSONResponse:
 class CypherRequest(BaseModel):  # REQ-345
     query: str
     params: dict[str, Any] = {}
-
-
-def _resolve_table_meta(ctx, table_name: str):  # by GraphQL field name or physical table name
-    return ctx.tables.get(table_name) or next(
-        (m for m in ctx.tables.values() if m.table_name == table_name), None
-    )
 
 
 async def _execute_multi_call(
@@ -530,13 +523,9 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             return JSONResponse(status_code=503, content={"error": "Schema not loaded"})
         _label_map = _build_label_map(_ctx, _role_id, state)
         try:
-            _translator = _WT(_label_map)
-            _mapping = _translator._resolve_mapping(_write_ast.label)
-            _write_sql = _translator.translate(_write_ast)
+            _write_sql = _WT(_label_map).translate(_write_ast)
         except _CWPE as exc:
             return JSONResponse(status_code=400, content={"error": str(exc)})
-        _source_id = _mapping.source_id
-        _table_meta = _resolve_table_meta(_ctx, _mapping.table_name)
 
         # ONE write path: the translated statement goes through the pipeline every other surface's
         # write goes through (Bolt's Cypher writes included) — its admission (the write right, the
@@ -552,35 +541,8 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             return JSONResponse(status_code=500, content={"error": f"Write failed: {exc}"})
         affected = _result.rowcount if _result.rowcount is not None else len(_result.rows)
 
-        # Post-mutation hooks: cache invalidation, MV staleness, Kafka events,
-        # hot-table reload — same as GraphQL mutations.
-        if _table_meta is not None:
-            from provisa.cache.tenancy import invalidate_tables
-
-            # REQ-595: the acting org's entries — the tenant they were written under.
-            await invalidate_tables(state, [_table_meta.table_id])
-            state.mv_registry.mark_stale(_table_meta.table_name)
-            from provisa.kafka.change_events import emit_change_event as _emit_change
-            from provisa.kafka.sink_executor import trigger_sinks_for_table as _trigger_sinks
-
-            _emit_change(_mapping.table_name, _source_id)
-            spawn_background(_trigger_sinks(_mapping.table_name, state))
-            if state.hot_manager is not None:
-                from provisa.cache.hot_tables import HotTableManager as _HotMgr
-
-                _hot = state.hot_manager
-                assert isinstance(_hot, _HotMgr)
-                if _hot.is_hot(_table_meta.table_name):
-                    await _hot.invalidate(_table_meta.table_name)
-                    if _hot.get_entry(_table_meta.table_name) is None:
-                        await _hot.load_table(
-                            state.federation_engine,
-                            _table_meta.table_name,
-                            _table_meta.schema_name,
-                            _table_meta.catalog_name,
-                            "id",
-                        )
-
+        # The steps after a write (cache, views, change events, sinks, hot copy) ran at the
+        # pipeline's terminal (pgwire._pipeline._after_write), as on every surface.
         return JSONResponse(content={"affected_rows": affected, "type": "cypher"})
 
     try:
