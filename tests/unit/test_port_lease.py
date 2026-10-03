@@ -212,3 +212,23 @@ def test_itest_compose_env_keeps_its_own_ports_when_the_e2e_stack_assigns_the_sa
     assert compose == itest
     # Everything else in that env is the live environment.
     assert seen["other"] == seen["project"]
+
+
+def test_ports_issued_before_any_is_bound_are_distinct_across_the_end_of_a_block(tmp_path):
+    """A server leases its HTTP, Flight and Airport ports, then binds them. Issued near the end
+    of a block, the second and third must not wrap to the first port of the same block — that
+    port is issued but not yet bound, so the bind probe passes it (the Airport fixture got one
+    number for its HTTP and its Airport port, and its server exited at the second bind)."""
+    lease = _lease(tmp_path, blocks=2)
+    for _ in range(_BLOCK - 1):
+        lease.transient()  # earlier servers, long since stopped
+    server_ports = [lease.transient() for _ in range(3)]
+    assert len(set(server_ports)) == 3, server_ports
+    assert server_ports[1:] == [_FIRST + _BLOCK, _FIRST + _BLOCK + 1]  # the next block's
+
+
+def test_ports_are_reissued_only_once_no_further_block_can_be_leased(tmp_path):
+    lease = _lease(tmp_path, blocks=1)
+    first_pass = [lease.transient() for _ in range(_BLOCK)]
+    assert first_pass == list(range(_FIRST, _FIRST + _BLOCK))
+    assert lease.transient() == _FIRST  # every block taken: start over at the first free port
