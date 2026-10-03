@@ -71,6 +71,7 @@ from provisa.api.admin.types import (
     DqContractType,
     QueryPreviewType,
     HotTableStatType,
+    ClusterNodeType,
     KaggleDatasetType,
     MaterializeStoreInfoType,
     ReplicaBuildsType,
@@ -1211,6 +1212,28 @@ class Query:  # REQ-021, REQ-042
         # REQ-595: the acting org's entries in the acting environment, no other org's.
         counts = await state.response_cache_store.table_entry_counts(cache_place(state))
         return [CacheTableStatType(table_id=tid, cached_entries=n) for tid, n in counts.items()]
+
+    @strawberry.field
+    async def cluster_nodes(self, info: StrawberryInfo) -> list[ClusterNodeType]:  # REQ-1916
+        """The nodes now in the cluster, each with its mode and — when the platform declares
+        regions — its region: whether any node does coordinator work, and where."""
+        require_capability(info, "observability")
+        from provisa.api.app import state
+        from provisa.core.platform_state import nodes
+
+        assert state.admin_db is not None  # brought up with the control planes at boot
+        return [
+            ClusterNodeType(
+                node_id=n["node_id"],
+                host=n["host"],
+                pid=n["pid"],
+                mode=n["mode"],
+                region=n.get("region"),
+                started_at=n["started_at"].isoformat(),
+                last_seen=n["last_seen"].isoformat(),
+            )
+            for n in await nodes.live(state.admin_db)
+        ]
 
     @strawberry.field
     async def hot_tables(self, info: StrawberryInfo) -> list[HotTableStatType]:

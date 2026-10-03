@@ -2424,6 +2424,16 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
         await register_ready_worker(state.admin_db, _launch)
 
+    # REQ-1916: this node is in the cluster's node list (the platform state store) while it serves,
+    # with its mode and region, beating so a node that dies without stopping drops off.
+    assert state.admin_db is not None  # brought up with the control planes, at the top of boot
+    from provisa.core.platform_state import nodes as _cluster_nodes
+
+    await _cluster_nodes.register(state.admin_db)
+    _node_heartbeat = spawn_long_lived(
+        _cluster_nodes.heartbeat_loop(state.admin_db), name="node-heartbeat"
+    )
+
     # REQ-1882/REQ-1905: while serving, a stop signal ends in-flight requests (their statements
     # are cancelled through the driver) before the server's own shutdown waits for them.
     from provisa.core.request_deadline import expire_on_stop_signals
@@ -2441,6 +2451,9 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         from provisa.core.boot_lock import unregister_worker
 
         await unregister_worker(state.admin_db, _launch)
+
+    _node_heartbeat.cancel()
+    await _cluster_nodes.unregister(state.admin_db)  # REQ-1916: this node leaves the list
 
     # REQ-1629: the engine idle reaper lives in this process, so a shard still up when the control
     # plane goes away has nothing left that can scale it down and bills until somebody notices.
