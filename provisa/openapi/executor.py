@@ -8,19 +8,15 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Execute OpenAPI operations against a remote REST service — cache-aside HTTP execution."""
+"""The auth headers an OpenAPI source's write operations are sent with (REQ-320).
+
+A registered OpenAPI table is read through ``api_source.caller`` from its ``api_endpoints`` row
+(``api_source.openapi_endpoint``); nothing here reads a table."""
 
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
-from typing import cast
 
-import httpx
-
-from provisa.cache.store import CacheStore
-from provisa.openapi.mapper import OpenAPIMutation, OpenAPIQuery
 
 # Requirements: REQ-314, REQ-316, REQ-317, REQ-318, REQ-319, REQ-320
 
@@ -52,82 +48,3 @@ def _build_auth_headers(auth_config: dict[str, str] | None) -> dict[str, str]:  
             raise ValueError("api_key auth requires an 'api_key'")
         return {header_name: api_key}
     return {}
-
-
-async def fetch(  # REQ-316, REQ-318, REQ-319
-    base_url: str,
-    query: OpenAPIQuery,
-    args: dict[str, object],
-    auth_config: dict[str, str] | None,
-    response_cache_store: CacheStore,
-    source_id: str,
-    role: str = "",
-    ttl: int = 300,
-) -> list[dict]:
-    """Execute a GET operation with cache-aside."""
-    args_hash = hashlib.sha256(json.dumps(sorted(args.items())).encode()).hexdigest()[:12]
-    cache_key = f"openapi:{source_id}:{query.operation_id}:{args_hash}:{role}"
-
-    # REQ-595: read and written under the acting org, environment and loaded model, like every
-    # other cached result — the key alone (source id, operation, arguments, role name) is the
-    # same in every org.
-    from provisa.cache import tenancy
-
-    scope = tenancy.acting_scope()
-    cached = await response_cache_store.get(cache_key, tenant_id=scope)
-    if cached is not None:
-        log.debug("Cache hit for %s", cache_key)
-        return json.loads(cached.data)
-
-    url = base_url.rstrip("/") + query.path
-    path_params = {p["name"] for p in query.path_params}
-
-    # Args may have leading '_' on keys when name collides with a visible column (schema_gen renames)
-    def _get_arg(name: str) -> object:
-        return args.get(name, args.get(f"_{name}"))
-
-    query_params: dict[str, object] = {
-        k.lstrip("_") if k.lstrip("_") in path_params else k: v
-        for k, v in args.items()
-        if k.lstrip("_") not in path_params
-    }
-    for p_name in path_params:
-        val = _get_arg(p_name)
-        if val is not None:
-            url = url.replace(f"{{{p_name}}}", str(val))
-
-    headers = _build_auth_headers(auth_config)
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        # httpx accepts primitive query values at runtime; args carry GraphQL
-        # primitives whose static type is opaque (object).
-        resp = await client.get(
-            url,
-            params=cast("httpx.QueryParams", query_params),
-            headers=headers,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-
-    rows = data if isinstance(data, list) else [data]
-    await response_cache_store.set(cache_key, json.dumps(rows).encode(), ttl=ttl, tenant_id=scope)
-    return rows
-
-
-async def execute(  # REQ-317
-    base_url: str,
-    mutation: OpenAPIMutation,
-    input_data: dict[str, object],
-    auth_config: dict[str, str] | None,
-) -> dict:
-    """Execute a non-GET operation (not cached)."""
-    url = base_url.rstrip("/") + mutation.path
-    headers = {"Content-Type": "application/json", **_build_auth_headers(auth_config)}
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.request(
-            mutation.method.upper(),
-            url,
-            json=input_data,
-            headers=headers,
-        )
-        resp.raise_for_status()
-        return resp.json()

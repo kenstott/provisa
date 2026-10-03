@@ -25,8 +25,6 @@ from provisa.api_source.models import (
     PromotionConfig,
 )
 from provisa.core.paging import PaginationConfig
-from provisa.api_source.schema_integration import register_api_columns
-from provisa.compiler.introspect import ColumnMetadata
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -57,14 +55,13 @@ def _resolve_param_only(c: dict) -> bool:
 
 async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
     conn: "Connection",
-    tables: list[dict],
-    col_types: dict[int, list[ColumnMetadata]],
-    roles: list[dict],
     source_types: dict[str, str],
 ) -> tuple[dict[str, ApiEndpoint], dict[str, ApiSource]]:
-    """Load API sources/endpoints from PG. Register into schema tables/col_types.
+    """Load the API sources and the endpoints registered tables are served from.
 
-    Returns (api_endpoints_by_table_name, api_sources_by_id).
+    Returns (api_endpoints_by_table_name, api_sources_by_id). An endpoint is derived from a
+    table's registration and makes nothing readable by itself: a table is in the schema only
+    because it is registered.
     """
     # Load API sources
     from provisa.encryption import encryption_service  # REQ-686
@@ -94,7 +91,6 @@ async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
         "promotions, body_encoding, query_template, response_normalizer FROM api_endpoints"
     )
     api_endpoints: dict[str, ApiEndpoint] = {}
-    api_endpoint_list: list[ApiEndpoint] = []
     for r in ep_rows:
         cols_raw = json.loads(r["columns"]) if isinstance(r["columns"], str) else r["columns"]
         columns = [
@@ -145,22 +141,5 @@ async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
             response_normalizer=r.get("response_normalizer"),
         )
         api_endpoints[ep.table_name] = ep
-        api_endpoint_list.append(ep)
-
-    if api_endpoint_list:
-        role_ids = [r["id"] for r in roles]
-        registered_source_ids = {t["source_id"] for t in tables if t.get("source_id")}
-        unregistered = [ep for ep in api_endpoint_list if ep.source_id not in registered_source_ids]
-        if unregistered:
-            # REQ-119: promoted JSONB columns are registered as first-class columns.
-            promotions_map = {ep.table_name: ep.promotions for ep in unregistered if ep.promotions}
-            register_api_columns(
-                tables,
-                col_types,
-                unregistered,
-                domain_id="api",
-                role_ids=role_ids,
-                promotions_map=promotions_map,
-            )
 
     return api_endpoints, api_sources

@@ -98,10 +98,14 @@ async def source_offer(state: Any, source_id: str) -> tuple[SchemaOffer, dict] |
 
 
 def offered_tables(offer: SchemaOffer, reg: dict) -> list[dict]:
-    """Every table the source offers, each as ``{name, description}`` under the name it
-    registers with."""
+    """Every table the source offers, each as ``{name, description, connection}`` under the
+    name it registers with; ``connection``: its rows sit under a Relay connection."""
     return [
-        {"name": t["sql_name"], "description": t.get("description")}
+        {
+            "name": t["sql_name"],
+            "description": t.get("description"),
+            "connection": bool(t.get("rows_path")),
+        }
         for t in available_tables(offer, reg["namespace"])
     ]
 
