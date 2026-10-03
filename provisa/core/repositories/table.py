@@ -176,6 +176,12 @@ async def upsert(
 
 async def _upsert(conn: "Connection", table: Table, origin: str) -> int | None:
     domain_id = domain_policy.resolve_domain_id(table.domain_id)
+    # A table may not give a name a materialized view reads a second meaning: refused here, the
+    # last write gate, naming the views (provisa/mv/readable_inputs.py).
+    from provisa.api.app import state
+    from provisa.mv.readable_inputs import require_no_view_made_ambiguous
+
+    require_no_view_made_ambiguous(state, table)
     if getattr(table, "row_materialize", False):
         # A table a materialized view reads may not become row-level: refused here, the last
         # write gate, naming the views (provisa/mv/readable_inputs.py).

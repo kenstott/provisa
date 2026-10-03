@@ -87,6 +87,26 @@ def _keys(parts: Iterable[str]) -> str:
     return ".".join(p.lower() for p in parts)
 
 
+def row_spellings(row: dict, catalog: str | None) -> set[str]:
+    """Every spelling a reference may use for the registered table ``row`` (its registry row):
+    its name and SQL name bare, under its domain, under its schema, and under its engine
+    ``catalog`` and schema; its alias bare."""
+    from provisa.compiler.naming import apply_sql_name, domain_to_sql_name
+
+    out: set[tuple[str, ...]] = set()
+    original = row["table_name"]
+    for name in {original, apply_sql_name(original)}:
+        out.add((name,))
+        if row.get("domain_id"):
+            out.add((domain_to_sql_name(row["domain_id"]), name))
+        out.add((row["schema_name"], name))
+        if catalog is not None:
+            out.add((catalog, row["schema_name"], name))
+    if row.get("alias"):
+        out.add((apply_sql_name(row["alias"]),))
+    return {_keys(parts) for parts in out if all(parts)}
+
+
 class ModelIndex:
     """Every spelling a reference may use, mapped to what it names. Built from the model the
     process holds after its schema build: the registered tables (``state.tables``), each table's
@@ -95,7 +115,7 @@ class ModelIndex:
     materialized views in the registry."""
 
     def __init__(self, state: Any) -> None:
-        from provisa.compiler.naming import apply_sql_name, domain_to_sql_name
+        from provisa.compiler.naming import domain_to_sql_name
         from provisa.compiler.sql_rewrite import semantic_table_name
 
         self._names: dict[str, set[tuple[str, Any]]] = {}
@@ -104,18 +124,8 @@ class ModelIndex:
         for row in state.tables:
             table_id = int(row["id"])
             self._rows[table_id] = row
-            target = ("table", table_id)
-            original = row["table_name"]
-            for name in {original, apply_sql_name(original)}:
-                self._add((name,), target)
-                if row.get("domain_id"):
-                    self._add((domain_to_sql_name(row["domain_id"]), name), target)
-                self._add((row["schema_name"], name), target)
-                catalog = catalogs.get(row["source_id"])
-                if catalog is not None:
-                    self._add((catalog, row["schema_name"], name), target)
-            if row.get("alias"):
-                self._add((apply_sql_name(row["alias"]),), target)
+            for key in row_spellings(row, catalogs.get(row["source_id"])):
+                self._names.setdefault(key, set()).add(("table", table_id))
         for ctx in state.contexts.values():
             for meta in ctx.tables.values():
                 target = ("table", meta.table_id)
@@ -132,6 +142,10 @@ class ModelIndex:
         if all(parts):
             self._names.setdefault(_keys(parts), set()).add(target)
 
+    def answering(self, parts: tuple[str, ...]) -> set[tuple[str, Any]]:
+        """Everything ``parts`` names: ``("table", id)`` and ``("view", id)`` pairs."""
+        return set(self._names.get(_keys(parts), set()))
+
     def row(self, table_id: int) -> dict:
         """The registered table ``table_id`` — every resolved id is one of the model's."""
         return self._rows[table_id]
@@ -146,10 +160,15 @@ class ModelIndex:
         return Resolved(ref, table_id=value) if kind == "table" else Resolved(ref, view=value)
 
 
+def view_refs(mv: Any) -> list[tuple[str, ...]]:
+    """The references a view makes: its SQL's, or — for a join-pattern view, which has no SQL
+    of its own — the tables it joins."""
+    return table_refs(mv.sql) if mv.sql else [(name,) for name in mv.source_tables]
+
+
 def resolve_view_inputs(mv: Any, state: Any, index: ModelIndex | None = None) -> list[Resolved]:
     """Every input of ``mv`` resolved against the model: the references its SQL makes, or — for a
     join-pattern view, which has no SQL of its own — the tables it joins. Raises
     :class:`InputUnresolved` for the first reference that names nothing or several things."""
     index = index if index is not None else ModelIndex(state)
-    refs = table_refs(mv.sql) if mv.sql else [(name,) for name in mv.source_tables]
-    return [index.resolve(mv.id, parts) for parts in refs]
+    return [index.resolve(mv.id, parts) for parts in view_refs(mv)]
