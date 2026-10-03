@@ -849,9 +849,9 @@ async def reap_environments() -> None:  # REQ-1523
     from provisa.core.env_reaper import reap_expired
 
     assert state.admin_db is not None  # the job is registered only when the admin plane is bound
-    assert state.tenant_db is not None
+    assert state.model_db is not None
 
-    reaped = await reap_expired(state.tenant_db, state.admin_db, audit=_audit_reaped)
+    reaped = await reap_expired(state.model_db, state.admin_db, audit=_audit_reaped)
     if reaped:
         logger.info("reaped %d expired environment(s)", len(reaped))
 
@@ -863,11 +863,11 @@ async def _audit_reaped(org_id: str, name: str, outcome: dict) -> None:
     environment and a deleted one are the same act reached by two doors; the actor is the platform
     rather than a person, which is what the entry says.
     """
-    from provisa.api.admin.orgs_router import _org_tenant_db
+    from provisa.api.admin.orgs_router import _org_model_db
     from provisa.core.org_membership import record_admin_action
 
     await record_admin_action(
-        await _org_tenant_db(org_id),
+        await _org_model_db(org_id),
         action="environment.expired",
         actor_id="platform",
         subject_id=name,

@@ -80,22 +80,40 @@ async def test_load_keys_runs_bounded_select_through_engine_terminal():
     assert "public" in calls[0] and "orders" in calls[0]
 
 
+def _bound(clause: tuple[str, dict]) -> str:
+    """A clause as the ClickHouse driver sends it: its values bound by clickhouse-connect."""
+    from clickhouse_connect.driver.binding import bind_query
+
+    text, server_params = bind_query(clause[0], clause[1])
+    assert not server_params
+    return str(text)
+
+
 def test_pk_in_clauses_within_splits_under_the_limit_and_names_every_key_once():
     from provisa.events.source_loader import _pk_in_clauses_within
 
     keys = [(i,) for i in range(2, 200_001, 2)]  # no consecutive run: every key in an IN list
-    clauses = _pk_in_clauses_within(["order_id"], keys, 200_000)
+    clauses = [_bound(c) for c in _pk_in_clauses_within(["order_id"], keys, 200_000)]
     assert len(clauses) > 1
     assert all(len(c) <= 200_000 for c in clauses)
     named = [int(v) for c in clauses for v in c.split("IN (", 1)[1].rstrip(")").split(", ")]
     assert named == list(range(2, 200_001, 2))
 
 
+def test_pk_in_clauses_within_never_writes_a_key_value_into_the_text():
+    from provisa.events.source_loader import _pk_in_clauses_within
+
+    hostile = "x\\') OR 1=1 --"
+    ((clause, bound),) = _pk_in_clauses_within(["id"], [(hostile,)], 200_000)
+    assert clause == '"id" IN (%(k1)s)'
+    assert bound == {"k1": hostile}
+
+
 def test_pk_in_clauses_within_names_a_consecutive_integer_run_as_one_between():
     from provisa.events.source_loader import _pk_in_clauses_within
 
     keys = [(i,) for i in range(1, 1_000_001)] + [(2_000_000,), (2_000_002,)]
-    assert _pk_in_clauses_within(["order_id"], keys, 200_000) == [
+    assert [_bound(c) for c in _pk_in_clauses_within(["order_id"], keys, 200_000)] == [
         '("order_id" BETWEEN 1 AND 1000000)',
         '"order_id" IN (2000000, 2000002)',
     ]
@@ -104,9 +122,12 @@ def test_pk_in_clauses_within_names_a_consecutive_integer_run_as_one_between():
 def test_pk_in_clauses_within_keeps_short_runs_and_non_integer_keys_in_in_lists():
     from provisa.events.source_loader import _pk_in_clauses_within
 
-    assert _pk_in_clauses_within(["id"], [(1,), (2,), (5,)], 200_000) == ['"id" IN (1, 2, 5)']
-    assert _pk_in_clauses_within(["id"], [("a",), ("b",)], 200_000) == ["\"id\" IN ('a', 'b')"]
-    assert _pk_in_clauses_within(["id", "r"], [(1, "x"), (2, "x"), (3, "x")], 200_000) == [
+    def within(cols, keys):
+        return [_bound(c) for c in _pk_in_clauses_within(cols, keys, 200_000)]
+
+    assert within(["id"], [(1,), (2,), (5,)]) == ['"id" IN (1, 2, 5)']
+    assert within(["id"], [("a",), ("b",)]) == ["\"id\" IN ('a', 'b')"]
+    assert within(["id", "r"], [(1, "x"), (2, "x"), (3, "x")]) == [
         "(\"id\", \"r\") IN ((1, 'x'), (2, 'x'), (3, 'x'))"
     ]
 
@@ -114,7 +135,9 @@ def test_pk_in_clauses_within_keeps_short_runs_and_non_integer_keys_in_in_lists(
 def test_pk_in_clauses_within_keeps_a_small_key_set_in_one_clause():
     from provisa.events.source_loader import _pk_in_clauses_within
 
-    assert _pk_in_clauses_within(["id"], [(1,), (2,)], 200_000) == ['"id" IN (1, 2)']
+    assert [_bound(c) for c in _pk_in_clauses_within(["id"], [(1,), (2,)], 200_000)] == [
+        '"id" IN (1, 2)'
+    ]
 
 
 @pytest.mark.asyncio
@@ -137,7 +160,8 @@ async def test_clickhouse_keyed_loader_stays_under_max_query_size(monkeypatch):
         async def close(self):
             pass
 
-        async def execute_arrow(self, sql):
+        async def execute_arrow(self, sql, params=None):
+            sql = _bound((sql, params or {})) if params else sql
             import pyarrow as pa
 
             assert len(sql) <= 262_144, "exceeds ClickHouse max_query_size"
@@ -190,7 +214,8 @@ async def test_clickhouse_keyed_arrow_loader_returns_one_columnar_table(monkeypa
         async def close(self):
             pass
 
-        async def execute_arrow(self, sql):
+        async def execute_arrow(self, sql, params=None):
+            sql = _bound((sql, params or {})) if params else sql
             assert '"order_id", "event_type"' in sql
             n = 3 if "BETWEEN" in sql else 1
             return pa.table({"order_id": list(range(n)), "event_type": ["x"] * n})

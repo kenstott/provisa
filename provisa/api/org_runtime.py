@@ -139,6 +139,8 @@ class OrgRuntime:
     # statement on the wrong one fails everywhere (provisa/core/store_sides.py).
     model_db: "Database | None" = None
     tenant_db: "Database | None" = None
+    # REQ-1922: this region's request record (query_audit_log, query_sla_log).
+    record_db: "Database | None" = None
 
     # Physical connection + source metadata (source_id → …).
     source_pools: SourcePool = field(default_factory=SourcePool)
@@ -227,6 +229,11 @@ class OrgRuntime:
     # control-plane round trip per query is not a cost those readers can carry. Empty for an org
     # that has overridden nothing — every read then resolves the deployment value.
     settings_overrides: dict[str, Any] = field(default_factory=dict)
+    # REQ-1922: the org's own response cache and Hot counts, on the cache store its region names.
+    # None on a runtime that has none of its own: it is served the deployment's, held on the
+    # default runtime (AppState.response_cache_store / hot_counts).
+    response_cache_store: Any = None
+    hot_counts: Any = None
 
     # REQ-1914: the config stamps this runtime's copies were loaded at — the tenant plane's
     # ``model`` stamp read before the schema build read the model, and its ``settings`` stamp read

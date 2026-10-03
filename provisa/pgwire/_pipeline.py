@@ -56,16 +56,20 @@ _CURRENT_SETTING_RE = re.compile(
 )
 
 
-def _resolve_session_settings(sql: str, session_vars: dict[str, str]) -> str:
+def _resolve_session_settings(sql: str, session_vars: dict[str, str], dialect: str) -> str:
     """Resolve ``current_setting('provisa.<var>')`` to a SQL literal for engines
     that lack the function (the federation engine). A missing var becomes NULL —
     the RLS predicate then matches no rows, a safe deny-by-default. PostgreSQL
     keeps native ``current_setting`` (fed by ``SET LOCAL``) and is untouched.
     """
 
+    from provisa.compiler.sql_literals import sql_literal
+
     def _sub(m: re.Match) -> str:
+        # ``dialect`` is the dialect ``sql`` is written in: the engine's for transpiled SQL, where
+        # a backslash may be an escape, so each value takes that dialect's one literal rule.
         value = session_vars.get(m.group(1))
-        return "NULL" if value is None else "'" + value.replace("'", "''") + "'"
+        return "NULL" if value is None else sql_literal(value, dialect)
 
     return _CURRENT_SETTING_RE.sub(_sub, sql)
 
@@ -1261,7 +1265,7 @@ async def govern_statement(
     # SETs the variable on a direct Postgres connection, so a native current_setting there raises
     # "unrecognized configuration parameter"; the literal is the one mechanism every route shares.
     # A missing var becomes NULL, the documented deny-by-default (_resolve_session_settings).
-    governed_semantic = _resolve_session_settings(governed_semantic, _session_vars)
+    governed_semantic = _resolve_session_settings(governed_semantic, _session_vars, "postgres")
 
     governed = _Governed(
         sql=sql,
@@ -2851,10 +2855,10 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
 
         result = await _execute_govdata(plan.source_id, plan.sql, state)
     elif plan.source_id == "provisa-admin" or not state.source_pools.has(plan.source_id):
-        # Admin-owned tables (meta.*) live in the provisa tenant_db, not source_pools.
-        tenant_db = state.tenant_db
+        # Admin-owned tables (meta.*) are views over the org's model (REQ-1919): its model store.
+        tenant_db = state.model_db
         if tenant_db is None:
-            raise RuntimeError("Admin tenant_db not available")
+            raise RuntimeError("Admin model_db not available")
         # REQ-1425: the admin terminal is a query terminal like any other — it emits the same
         # provisa.query.* span so meta/ops statements reach the ops queries report.
         _span_name = "provisa.query.postgres" if plan.span_attrs else "admin.execute"
@@ -3232,7 +3236,7 @@ async def _govern_compiled(
     governed_sql = await _off_loop(apply_governance, sql, gov_ctx, session_vars, exec_params)
     # REQ-1682: session-variable predicates resolve to the request's literals on every route (see
     # the raw path above for why the direct Postgres route cannot keep native current_setting).
-    governed_sql = _resolve_session_settings(governed_sql, session_vars)
+    governed_sql = _resolve_session_settings(governed_sql, session_vars, "postgres")
     return _GovernedCompiled(sql, _compiled_tree, gov_ctx, _table_ids, governed_sql)
 
 
@@ -3426,7 +3430,9 @@ async def _route_compiled(
         from provisa.core.request_context import session_vars_for
 
         _session_vars = session_vars_for(state.roles.get(role_id))  # REQ-1682
-        return _engine_sql, _resolve_session_settings(_physical, _session_vars)
+        return _engine_sql, _resolve_session_settings(
+            _physical, _session_vars, state.federation_engine.dialect
+        )
 
     # (Removed 2026-09-26, REQ-1864 reversal:) a single-source neo4j pattern previously
     # reverse-compiled governed_sql back to Cypher (best_effort_cypher_for_sql) and forced

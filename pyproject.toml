@@ -218,6 +218,9 @@ azure = ["azure-keyvault-keys"]       # Azure Key Vault (azure-identity is a bas
 gcp = ["google-cloud-kms"]            # Google Cloud KMS
 kms-all = ["hvac", "azure-keyvault-keys", "google-cloud-kms"]
 dev = [
+    # REQ-1873: the bundled extension binaries the pg-ext install command stages; its tests
+    # install them into real Postgres containers.
+    "provisa-pg-ext==0.1.0",
     "pytest",
     "pytest-asyncio",
     "pytest-bdd",
@@ -315,6 +318,7 @@ markers = [
     "requires_mongodb: requires MongoDB service (docker compose up mongodb)",
     "requires_ldap: requires the OpenLDAP directory service (docker compose up openldap)",
     "requires_saml_idp: requires the SAML identity provider (docker compose up saml-idp)",
+    "requires_pg_ext_targets: requires the external Postgres 15/16 containers (docker compose up pg-ext-target-15 pg-ext-target-16)",
     "requires_mariadb: requires MariaDB service (docker compose up mariadb)",
     "requires_tidb: requires TiDB service (docker compose up tidb)",
     "requires_cockroachdb: requires CockroachDB service (docker compose up cockroachdb)",

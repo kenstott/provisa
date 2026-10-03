@@ -632,6 +632,34 @@ services:
       retries: 24
       start_period: 10s
 
+  # An operator's own Postgres, into which `provisa pg-ext install` stages the bundled extensions
+  # (REQ-1873). linux/amd64 because the bundle is built for linux-x64; 15 because no bundle is
+  # built for it, so it must be refused with nothing written. Unpublished: the test reaches them
+  # with docker exec, as the command does.
+  pg-ext-target-16:
+    image: postgres:16
+    platform: linux/amd64
+    environment:
+      POSTGRES_PASSWORD: provisa
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 36
+      start_period: 10s
+
+  pg-ext-target-15:
+    image: postgres:15
+    platform: linux/amd64
+    environment:
+      POSTGRES_PASSWORD: provisa
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 36
+      start_period: 10s
+
   # Debezium Connect (REQ-824 CDC). Lives here now (was in dev.yml) so it shares the
   # isolated project's network with kafka + postgres and reaches them by service name.
   debezium-connect:

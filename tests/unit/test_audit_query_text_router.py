@@ -57,7 +57,7 @@ async def audit_id(tmp_path, monkeypatch) -> int:
         duration_ms=4,
         encryption=_Reversing(),
     )
-    monkeypatch.setattr(router, "_tenant_pool", lambda: db)
+    monkeypatch.setattr(router, "_record_pool", lambda: db)
     monkeypatch.setattr(router, "encryption_service", lambda: _Reversing())
     async with db.acquire() as conn:
         stored = (

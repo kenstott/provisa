@@ -146,14 +146,14 @@ def move(planes, monkeypatch):
     async def _refresh(*_args, **_kwargs):
         return "none"
 
-    async def _org_tenant_db(org_id):
+    async def _org_model_db(org_id):
         return planes.prod
 
     monkeypatch.setattr(er, "_guard_within", _guard_within)
     monkeypatch.setattr(er, "_audit", _audit)
     monkeypatch.setattr(er, "_refresh", _refresh)
     monkeypatch.setattr(er, "_admin_pool", lambda: planes.admin)
-    monkeypatch.setattr("provisa.api.admin.orgs_router._org_tenant_db", _org_tenant_db)
+    monkeypatch.setattr("provisa.api.admin.orgs_router._org_model_db", _org_model_db)
 
     async def _go(forward: bool) -> dict:
         # Under a request's own change scope, as the undo and redo endpoints run.

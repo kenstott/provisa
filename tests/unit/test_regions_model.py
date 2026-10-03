@@ -30,10 +30,10 @@ _PLATFORM = {
 _STORES = [
     {"id": "eu-pg", "url": "postgresql://eu/db"},
     {"id": "eu-redis", "url": "redis://eu:6379/0"},
-    {"id": "eu-trino", "url": "trino://eu:8080"},
+    {"id": "eu-trino", "url": "trino://eu:8080", "kind": "trino-byo"},
     {"id": "us-pg", "url": "postgresql://us/db"},
     {"id": "us-redis", "url": "redis://us:6379/0"},
-    {"id": "us-trino", "url": "trino://us:8080"},
+    {"id": "us-trino", "url": "trino://us:8080", "kind": "trino-byo"},
 ]
 
 
@@ -145,6 +145,25 @@ def test_a_source_or_table_region_the_org_does_not_select_is_refused():
     assert "table crm/public.orders names region 'us', which the org does not select (eu)" in said
 
 
+def test_a_regions_engine_store_names_an_engine_kind():
+    """REQ-1922: a URL does not identify an engine kind, so the engine store names one."""
+    no_kind = [{**s, "kind": None} if s["id"] == "eu-trino" else s for s in _STORES]
+    said = _refused(_config(platform=_PLATFORM, stores=no_kind, regions=[_region("eu")]))
+    assert "region 'eu' engine store 'eu-trino' names no engine kind" in said
+    bad = [{**s, "kind": "oracle-rac"} if s["id"] == "eu-trino" else s for s in _STORES]
+    said = _refused(_config(platform=_PLATFORM, stores=bad, regions=[_region("eu")]))
+    assert "names engine kind 'oracle-rac', which is not one of" in said
+
+
+def test_a_region_keeps_its_replicas_and_views_in_one_store():
+    """MAINTAINER (REQ-1922): one store for both, for now; the model keeps both fields."""
+    stores = [*_STORES, {"id": "eu-pg2", "url": "postgresql://eu2/db"}]
+    said = _refused(
+        _config(platform=_PLATFORM, stores=stores, regions=[_region("eu", views="eu-pg2")])
+    )
+    assert "names replicas store 'eu-pg' and views store 'eu-pg2'" in said
+
+
 def test_a_region_id_must_be_a_short_lowercase_name():
     said = _refused(_config(platform={"regions": [{"id": "EU-west", "address": "https://x"}]}))
     assert "EU-west" in said
@@ -158,7 +177,7 @@ def test_a_region_others_read_needs_a_replica_store_they_can_attach():
         _config(
             platform=_PLATFORM,
             stores=stores,
-            regions=[_region("eu", replicas="eu-duck"), _region("us")],
+            regions=[_region("eu", replicas="eu-duck", views="eu-duck"), _region("us")],
             tables=[{**_config()["tables"][0], "region": "eu"}],
         )
     )
@@ -212,6 +231,34 @@ async def test_a_source_saved_naming_a_region_the_org_does_not_select_is_refused
             await source_repo.upsert(conn, _source("us"), origin="admin")
 
 
+async def test_a_region_saved_with_an_engine_store_of_no_kind_is_refused(model):
+    from provisa.core.regions import OrgRegion, StoreConfig
+    from provisa.core.repositories import region as region_repo
+
+    async with model.acquire() as conn:
+        for s in _STORES[:3]:
+            await region_repo.upsert_store(conn, StoreConfig(**{**s, "kind": None}), origin="admin")
+        with pytest.raises(ValueError, match="engine store 'eu-trino' names no engine kind"):
+            await region_repo.upsert_region(conn, OrgRegion(**_region("eu")), origin="admin")
+        with pytest.raises(ValueError, match="state store 'eu-mysql' is not declared"):
+            await region_repo.upsert_region(
+                conn, OrgRegion(**_region("eu", state="eu-mysql")), origin="admin"
+            )
+
+
+async def test_a_region_saved_with_replicas_and_views_apart_is_refused(model):
+    from provisa.core.regions import OrgRegion, StoreConfig
+    from provisa.core.repositories import region as region_repo
+
+    async with model.acquire() as conn:
+        for s in [*_STORES[:3], {"id": "eu-pg2", "url": "postgresql://eu2/db"}]:
+            await region_repo.upsert_store(conn, StoreConfig(**s), origin="admin")
+        with pytest.raises(ValueError, match="keeps its replicas and its views in one store"):
+            await region_repo.upsert_region(
+                conn, OrgRegion(**_region("eu", views="eu-pg2")), origin="admin"
+            )
+
+
 async def test_a_region_a_source_names_and_a_store_a_region_names_are_held(model):
     from provisa.core.regions import OrgRegion, StoreConfig
     from provisa.core.repositories import region as region_repo
@@ -249,3 +296,10 @@ async def test_a_node_serves_an_org_only_in_a_region_the_org_selects(model):
         )
         # The one implicit region: every org is served, none selects anything.
         await region_repo.require_serves_here(conn, "acme", DEFAULT_REGION)
+
+
+def test_the_engine_kinds_the_model_names_are_the_ones_built():
+    from provisa.core.engine_kinds import ENGINE_KINDS
+    from provisa.federation.engine import engine_kinds
+
+    assert ENGINE_KINDS == engine_kinds()

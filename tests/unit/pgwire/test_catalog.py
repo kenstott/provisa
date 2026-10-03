@@ -48,6 +48,8 @@ def _make_state(tables: dict, col_types: dict) -> Any:
     ctx = MagicMock()
     ctx.tables = tables
     state = MagicMock()
+    # A single-tenant deployment: its catalog serves the one database, provisa.
+    state.multitenancy = False
     state.contexts = {"testrole": ctx}
     state.schema_build_cache = {"column_types": col_types}
     return state
@@ -362,6 +364,8 @@ def _make_pet_store_state() -> Any:
     ctx.joins = {("Pet", "registered_table"): fk}
     ctx.pk_columns = {10: ["id"], 11: ["id"]}
     state = MagicMock()
+    # A single-tenant deployment: its catalog serves the one database, provisa.
+    state.multitenancy = False
     state.contexts = {"testrole": ctx}
     state.schema_build_cache = {"column_types": col_types, "tables": []}
     return state

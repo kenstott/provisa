@@ -178,7 +178,10 @@ def planes(monkeypatch, smtp):
     registry = OrgRegistry()
     for org_id, db in org_dbs.items():
         registry.set(
-            org_id, OrgRuntime(org_id=org_id, model_db=db, tenant_db=db, roles=dict(loaded_roles))
+            org_id,
+            OrgRuntime(
+                org_id=org_id, model_db=db, tenant_db=db, record_db=db, roles=dict(loaded_roles)
+            ),
         )
     monkeypatch.setattr(app_state, "org_registry", registry, raising=False)
 

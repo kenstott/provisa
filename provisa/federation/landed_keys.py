@@ -322,7 +322,7 @@ async def key_plan_for(state: Any, landed: list[LandedTable]) -> KeyPlan:
     from provisa.api.admin.db_queries import fetch_tables
     from provisa.core.repositories import relationship as relationship_repo
 
-    tdb = getattr(state, "tenant_db", None)
+    tdb = getattr(state, "model_db", None)
     if tdb is None:
         return KeyPlan(tables={t.identity: t for t in landed})
     async with tdb.acquire() as conn:

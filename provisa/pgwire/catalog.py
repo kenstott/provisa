@@ -187,14 +187,16 @@ def _handle_show(sql: str):
     return QueryResult(rows=[(value,)], column_names=[setting])
 
 
-def _handle_scalar(sql: str, role_id: str):
+def _handle_scalar(sql: str, role_id: str, state):
     from provisa.executor.result import QueryResult
 
     s = sql.strip().lower()
     if "current_user" in s or "session_user" in s:
         return QueryResult(rows=[(role_id,)], column_names=["current_user"])
     if "current_database" in s:
-        return QueryResult(rows=[("provisa",)], column_names=["current_database"])
+        from provisa.pgwire.catalog_populate import served_database_name
+
+        return QueryResult(rows=[(served_database_name(state),)], column_names=["current_database"])
     if "version()" in s:
         return QueryResult(rows=[("PostgreSQL 14.0 on Provisa",)], column_names=["version"])
     if "current_schema()" in s:
@@ -275,7 +277,7 @@ def answer(sql: str, role_id: str, state):  # REQ-532
         return _handle_show(stripped)
 
     if _SCALAR_FN_RE.match(stripped):
-        result = _handle_scalar(stripped, role_id)
+        result = _handle_scalar(stripped, role_id, state)
         if result is not None:
             return result
 
@@ -324,7 +326,9 @@ def answer(sql: str, role_id: str, state):  # REQ-532
         # Strip $N params AND any trailing PG type cast (e.g. $1::oid[]) so SQLGlot
         # can parse the query without failing on array-type annotations.
         pre_subst = _re.sub(r"\$\d+(?:::[^\s,)]+)?", "NULL", stripped)
-        rewritten = _rewrite_for_duckdb(pre_subst, role_id)
+        from provisa.pgwire.catalog_populate import served_database_name
+
+        rewritten = _rewrite_for_duckdb(pre_subst, role_id, served_database_name(state))
         cur = db.execute(rewritten)
         rows = [tuple(r) for r in cur.fetchall()]
         col_names = [desc[0] for desc in (cur.description or [])]

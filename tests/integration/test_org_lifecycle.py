@@ -211,7 +211,7 @@ def planes(monkeypatch):
     # runtime at all — which is exactly the state a still-provisioning org is in.
     registry = OrgRegistry()
     for org_id, db in org_dbs.items():
-        registry.set(org_id, OrgRuntime(org_id=org_id, model_db=db, tenant_db=db))
+        registry.set(org_id, OrgRuntime(org_id=org_id, model_db=db, tenant_db=db, record_db=db))
     monkeypatch.setattr(app_state, "org_registry", registry, raising=False)
     # REQ-1337: the loaded roles registry is where a role id becomes the rights it carries. In a real
     # process it comes from the schema.sql seed; these tests build their schemas by hand, so mirror
@@ -233,7 +233,9 @@ def planes(monkeypatch):
     monkeypatch.setattr(registry, "invalidate", _invalidate)
 
     async def _org_runtime(org_id: str, env: str | None = None):
-        return registry.get(org_id) or SimpleNamespace(model_db=None, tenant_db=None)
+        return registry.get(org_id) or SimpleNamespace(
+            model_db=None, tenant_db=None, record_db=None
+        )
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _org_runtime, raising=False)
 

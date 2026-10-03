@@ -459,9 +459,11 @@ async def evaluate(state: Any, *, workers: int) -> Evaluation:
     default_threshold = settings_registry.value("replication.hot_threshold")
     scope = count_scope(current_org.get() or state.org_id, current_env.get() or PROD)
 
-    async with state.tenant_db.acquire() as conn:
+    # REQ-1922: the registry is the model (model store); what is promoted is this region's state.
+    async with state.model_db.acquire() as conn:
         registered = await registered_tables(state, conn)
         sources = {s.id: s for s in await registered_sources(state, conn)}
+    async with state.tenant_db.acquire() as conn:
         promoted_now = await replica_state.promoted_keys(conn)
     candidates, skipped = hot_candidates(
         registered,

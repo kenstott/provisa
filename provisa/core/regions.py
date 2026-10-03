@@ -62,6 +62,9 @@ class StoreConfig(BaseModel):
 
     id: str
     url: str
+    # REQ-1922: the engine kind of a store a region names as its engine (an engine-builder key).
+    # Required there and nowhere else: a URL does not identify an engine kind.
+    kind: str | None = None
 
 
 class OrgRegion(BaseModel):
@@ -112,6 +115,8 @@ def validate_regions(config: "ProvisaConfig") -> None:
                 raise ValueError(
                     f"region {region.id!r} {role} store {store!r} is not declared in stores"
                 )
+        require_engine_kind(region.id, stores[region.engine])
+        require_one_materialize_store(region)
     for what, region in named:
         if region not in selected:
             raise ValueError(
@@ -129,6 +134,33 @@ def validate_regions(config: "ProvisaConfig") -> None:
                     f"region {region!r} replicas store {store!r} is an embedded DuckDB file, "
                     "which the org's other regions cannot read"
                 )
+
+
+def require_one_materialize_store(region: "OrgRegion") -> None:
+    """Refuse a region whose replicas and views name different stores. MAINTAINER (REQ-1922):
+    one store for both for now — every engine attaches one materialize store, which keeps the
+    two in schemas of their own (REQ-1912). The model keeps both fields."""
+    if region.replicas != region.views:
+        raise ValueError(
+            f"region {region.id!r} names replicas store {region.replicas!r} and views store "
+            f"{region.views!r}; a region keeps its replicas and its views in one store"
+        )
+
+
+def require_engine_kind(region: str, store: StoreConfig) -> None:
+    """Refuse a region's engine store that names no engine kind, or one no engine is built for."""
+    from provisa.core.engine_kinds import ENGINE_KINDS as kinds
+
+    if store.kind is None:
+        raise ValueError(
+            f"region {region!r} engine store {store.id!r} names no engine kind; give it one of "
+            f"{', '.join(sorted(kinds))}"
+        )
+    if store.kind not in kinds:
+        raise ValueError(
+            f"region {region!r} engine store {store.id!r} names engine kind {store.kind!r}, which "
+            f"is not one of {', '.join(sorted(kinds))}"
+        )
 
 
 def _named_regions(config: "ProvisaConfig") -> list[tuple[str, str]]:

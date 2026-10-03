@@ -32,18 +32,18 @@ from provisa.security.rights import Capability
 router = APIRouter()
 
 
-def _tenant_pool():
-    """The acting org's control plane — where its query_audit_log lives."""
+def _record_pool():
+    """The acting org's record in this region — where its query_audit_log lives (REQ-1922)."""
     from provisa.api.app import state
 
-    assert state.tenant_db is not None
-    return state.tenant_db
+    assert state.record_db is not None
+    return state.record_db
 
 
 @router.get("/admin/audit/queries/{audit_id}/text")
 async def read_statement_text(request: Request, audit_id: int) -> dict:
     require_capability_request(request, Capability.VIEW_GOVERNANCE.value)
-    text = await read_query_text(_tenant_pool(), audit_id, encryption_service())
+    text = await read_query_text(_record_pool(), audit_id, encryption_service())
     if text is None:
         raise ApiError(404, "audit.statement_not_found", f"No audited statement {audit_id}")
     return {"id": audit_id, "query_text": text}

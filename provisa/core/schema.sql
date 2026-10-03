@@ -6,6 +6,7 @@
 CREATE TABLE IF NOT EXISTS stores (
     id      TEXT PRIMARY KEY,
     url     TEXT NOT NULL,
+    kind    TEXT,                           -- REQ-1922: the engine kind, on a region's engine store
     bound   BOOLEAN NOT NULL DEFAULT TRUE,  -- REQ-1491
     origin  TEXT NOT NULL                   -- REQ-1919
 );

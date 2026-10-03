@@ -254,7 +254,7 @@ async def delete_user(user_id: str, request: Request):  # REQ-1302, REQ-1305, RE
     the person's place in any other org, are not theirs to end. Either way the last org_admin
     of an org is refused, and so is the deployment's last platform_admin.
     """
-    from provisa.api.admin.orgs_router import _caller_user_id, _org_model_db, _org_tenant_db
+    from provisa.api.admin.orgs_router import _caller_user_id, _org_model_db, _org_record_db
     from provisa.core.org_membership import (
         AccountRemovalRefused,
         LastOrgAdminError,
@@ -277,7 +277,7 @@ async def delete_user(user_id: str, request: Request):  # REQ-1302, REQ-1305, RE
                 _pool(request),
                 user_id,
                 model_db_of=_org_model_db,
-                tenant_db_of=_org_tenant_db,
+                record_db_of=_org_record_db,
             )
         except AccountRemovalRefused as refused:
             if refused.reason == "last_org_admin":

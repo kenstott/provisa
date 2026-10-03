@@ -148,6 +148,9 @@ class AppState:
     # ``admin_db`` is the global platform control plane (orgs/users/invites/
     # billing), backed by its own SQLAlchemy URI.
     admin_db: Database | None = None
+    # REQ-1916/1922: the PLATFORM STATE STORE's handle (provisa/core/platform_state): over the
+    # platform database, holding only the deployment's own operating state (the node list).
+    platform_state_db: Database | None = None
     # REQ-1316: ONE tenant-plane Engine shared by every org runtime on a schema-capable
     # backend. Database.acquire() issues the org's search_path on each checkout, so orgs need
     # separate handles, never separate pools. A pool per org multiplies connections by tenant
@@ -171,7 +174,6 @@ class AppState:
     schema_boot_id: str = (
         ""  # random UUID set at startup; combined with schema_version for cache keys
     )
-    response_cache_store: CacheStore = NoopCacheStore()
     # The DEPLOYMENT's default response TTL (cache.default_ttl in the config file). An org may
     # narrow it; the routed `response_cache_default_ttl` property below resolves the org's value
     # over this one. Assigned by _load_and_build, never read directly by the query path.
@@ -303,6 +305,8 @@ class AppState:
         # (which run before any request sets the ContextVar) always have a target.
         self.org_registry = OrgRegistry()
         self.org_registry.set(self.org_id, OrgRuntime(org_id=self.org_id))
+        # The deployment's response cache, until startup builds the configured one (REQ-829).
+        self.response_cache_store = NoopCacheStore()
         # REQ-1909: every AppState is born with its live-read permit store — embedded (per process)
         # until startup rebinds it to the deployment's Redis once redis_url is resolved.
         from provisa.federation.live_concurrency import LivePermitStore
@@ -450,6 +454,15 @@ class AppState:
     def tenant_db(self) -> Database | None:
         """The acting org's STATE store (this region's operating state) — REQ-1920/1922."""
         return self._active_runtime().tenant_db
+
+    @property
+    def record_db(self) -> Database | None:
+        """The acting org's RECORD in this region (query_audit_log, query_sla_log) — REQ-1922."""
+        return self._active_runtime().record_db
+
+    @record_db.setter
+    def record_db(self, value: Database | None) -> None:
+        self._active_runtime().record_db = value
 
     @property
     def model_db(self) -> Database | None:
@@ -726,6 +739,34 @@ class AppState:
     def settings_overrides(self, value: dict) -> None:
         self._active_runtime().settings_overrides = value
 
+    def _cache_runtime(self, field_name: str) -> OrgRuntime:
+        """The runtime whose cache store answers for the active org: its own, when its region
+        named one (REQ-1922); otherwise the default runtime, which holds the deployment's. With no
+        platform regions no runtime has its own, and every org is served the deployment's cache
+        (REQ-1922 amendment; REQ-829: one cache store per deployment)."""
+        rt = self._active_runtime()
+        return rt if getattr(rt, field_name) is not None else self._default_runtime()
+
+    @property
+    def response_cache_store(self) -> CacheStore:
+        store = self._cache_runtime("response_cache_store").response_cache_store
+        assert store is not None  # the default runtime always holds the deployment's store
+        return store
+
+    @response_cache_store.setter
+    def response_cache_store(self, value: CacheStore) -> None:
+        self._active_runtime().response_cache_store = value
+
+    @property
+    def hot_counts(self) -> Any:
+        counts = self._cache_runtime("hot_counts").hot_counts
+        assert counts is not None  # the default runtime always holds the deployment's counts
+        return counts
+
+    @hot_counts.setter
+    def hot_counts(self, value: Any) -> None:
+        self._active_runtime().hot_counts = value
+
     @property
     def response_cache_default_ttl(self) -> int:
         """The response-cache TTL for the active org: its own override, else the deployment's.
@@ -828,9 +869,11 @@ async def _load_and_build(
     from provisa.core import process_region
 
     _launch_config = Path(config_path)
-    process_region.bind_from_environment(
-        read_config_with_includes(_launch_config) if _launch_config.exists() else {}
-    )
+    _launch_raw = read_config_with_includes(_launch_config) if _launch_config.exists() else {}
+    process_region.bind_from_environment(_launch_raw)
+    # REQ-1922: in a region deployment the boot org's engine is the one its region names, bound
+    # before anything below wakes, seeds or attaches an engine.
+    _bind_boot_engine(_launch_raw)
 
     # Use uvicorn's console logger — the root logger's only handler is the OTLP
     # exporter, so provisa.* logs never reach the console / backend.log.
@@ -1191,6 +1234,8 @@ async def _load_and_build(
     _mark("source-pools+ingest+remote")
 
     await _require_org_serves_here(state.org_id)  # REQ-1922
+    await _refuse_boot_lane_conflict()
+    await _bind_region_stores(state.org_id, PROD, initialise=apply)
 
     await _rebuild_schemas(raw_config)
 
@@ -1385,20 +1430,174 @@ async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:
             if _row is None:
                 raise KeyError(f"organization {org_id!r} has no environment {env!r}")
             _ephemeral = _row["expires_at"] is not None
+        external_engine, engine_kind, engine_url, storage_url = (
+            lane.external_engine,
+            lane.engine_kind,
+            lane.engine_url,
+            lane.storage_url,
+        )
+        # REQ-1922: in a region deployment the org's region names its engine and its materialize
+        # store, in its model; the admin-plane row may not name others (refuse_lane_conflict).
+        bound = await _region_lane_of(org_id, env or PROD)
+        if bound is not None:
+            from provisa.core.region_stores import refuse_lane_conflict
+
+            refuse_lane_conflict(
+                org_id,
+                engine_kind=lane.engine_kind,
+                engine_url=lane.engine_url,
+                external_engine=lane.external_engine,
+                storage_url=lane.storage_url,
+            )
+            external_engine, engine_kind, engine_url = bound.endpoint, bound.kind, bound.url
+            storage_url = bound.materialize_url
         return await build_org_runtime(
             org_id,
             env=env or PROD,
             ephemeral=_ephemeral,
             include_demo=lane.seeded_demo,
             isolated_engine=lane.isolated_engine,
-            external_engine=lane.external_engine,
-            engine_kind=lane.engine_kind,
-            engine_url=lane.engine_url,
+            external_engine=external_engine,
+            engine_kind=engine_kind,
+            engine_url=engine_url,
             shard=lane.shard,
-            storage_url=lane.storage_url,
+            storage_url=storage_url,
         )
 
     return await state.org_registry.get_or_build(runtime_key(org_id, env), _builder)
+
+
+def _bind_boot_engine(raw_config: dict) -> None:
+    """REQ-1922: bind the boot org's engine to the engine store its region names in the config
+    file, the same external-engine lane every other org in a region deployment is built on
+    (``ensure_org_runtime``). A no-op with no platform regions: the deployment's engine serves it
+    as today."""
+    from provisa.core.region_stores import region_lane
+    from provisa.core.regions import OrgRegion, StoreConfig
+
+    bound = region_lane(
+        "the boot org",
+        [OrgRegion.model_validate(r) for r in raw_config.get("regions") or []],
+        [StoreConfig.model_validate(s) for s in raw_config.get("stores") or []],
+    )
+    if bound is None:
+        return
+    from provisa.federation.engine import build_engine
+    from provisa.federation.runtime import EngineRuntime
+
+    rt = state._active_runtime()
+    rt.isolated_engine = True
+    rt.engine_endpoint = bound.endpoint
+    rt.engine_kind = bound.kind
+    rt.engine_url = bound.url
+    # REQ-1048 precedence: the org's own store first (provisa/storage/byo.py).
+    rt.storage_url = bound.materialize_url
+    rt.federation_engine = EngineRuntime(build_engine(bound.kind), state)
+    rt.federation_engine.bind_terminal()
+
+
+async def _refuse_boot_lane_conflict() -> None:
+    """REQ-1922: the boot org's admin-plane row may not name an engine or store beside its
+    region (read once the platform plane is up)."""
+    from provisa.core import process_region
+    from provisa.core.region_stores import refuse_lane_conflict
+    from provisa.core.regions import DEFAULT_REGION
+
+    if process_region.region() == DEFAULT_REGION:
+        return
+    lane = await _read_org_flags(state.org_id)
+    refuse_lane_conflict(
+        state.org_id,
+        engine_kind=lane.engine_kind,
+        engine_url=lane.engine_url,
+        external_engine=lane.external_engine,
+        storage_url=lane.storage_url,
+    )
+
+
+async def _region_lane_of(org_id: str, env: str):
+    """REQ-1922: the engine and materialize store the org's model names for this node's region,
+    read from its model store before its runtime (and so its engine) is built. None with no
+    platform regions."""
+    from provisa.core import process_region
+    from provisa.core.config_loader import load_control_plane
+    from provisa.core.database import Capabilities, create_engine_from_url
+    from provisa.core.environments import org_schema
+    from provisa.core.region_stores import region_lane
+    from provisa.core.regions import DEFAULT_REGION
+    from provisa.core.repositories.region import list_regions, list_stores
+
+    if process_region.region() == DEFAULT_REGION:
+        # REQ-1922 amendment: the one implicit region names no engine; the lane decides as today.
+        return None
+    shared = state.tenant_engine
+    assert shared is not None, "tenant engine not built; _init_control_planes must run first"
+    # A not-schema-capable backend keeps each org in its own file (see build_org_runtime).
+    owned = None
+    if not Capabilities.for_dialect(shared.dialect.name).schemas:
+        cp = load_control_plane(config_path_str())
+        owned = create_engine_from_url(cp.resolved_tenant_url(), pool_size=1, max_overflow=0)
+    try:
+        model_db = Database(
+            owned or shared, name="org-model", search_path=org_schema(org_id, env), holds="model"
+        )
+        async with model_db.acquire() as conn:
+            regions, stores = await list_regions(conn), await list_stores(conn)
+    finally:
+        if owned is not None:
+            owned.dispose()
+    return region_lane(org_id, regions, stores)
+
+
+async def _bind_region_stores(org_id: str, env: str, *, initialise: bool) -> None:
+    """REQ-1922: once the org's model is loaded, its state and record handles are bound to the
+    stores the model names for this node's region (a no-op with no platform regions)."""
+    from provisa.core.config_loader import load_control_plane
+    from provisa.core.database import OrgStores
+    from provisa.core.region_stores import bind_region_stores
+
+    assert state.model_db is not None  # opened with the runtime, before its model was loaded
+    cp = load_control_plane(config_path_str())
+    await _bind_region_cache(org_id)
+    state.model_db, state.tenant_db, state.record_db = await bind_region_stores(
+        org_id,
+        env,
+        OrgStores(state.model_db, state.tenant_db, state.record_db),
+        pool_size=cp.pool_max,
+        max_overflow=cp.max_overflow,
+        schema_sql=(Path(__file__).parent.parent / "core" / "schema.sql").read_text(),
+        initialise=initialise,
+    )
+
+
+_region_caches: dict[str, tuple[Any, Any]] = {}
+
+
+async def _bind_region_cache(org_id: str) -> None:
+    """REQ-1922: the org's response cache and Hot counts are kept on the cache store its region
+    names (one client per store URL in this process). With no platform regions the runtime keeps
+    none of its own and is served the deployment's (AppState._cache_runtime)."""
+    from provisa.cache.store import NoopCacheStore, RedisCacheStore
+    from provisa.core import settings_registry
+    from provisa.core.region_stores import region_lane
+    from provisa.core.repositories.region import list_regions, list_stores
+    from provisa.federation.replica_hot import HotCounts
+
+    assert state.model_db is not None  # opened with the runtime, before its model was loaded
+    async with state.model_db.acquire() as conn:
+        regions, stores = await list_regions(conn), await list_stores(conn)
+    lane = region_lane(org_id, regions, stores)
+    if lane is None:
+        return
+    if lane.cache_url not in _region_caches:
+        store = (
+            RedisCacheStore(lane.cache_url)
+            if settings_registry.value("cache.enabled")
+            else NoopCacheStore()
+        )
+        _region_caches[lane.cache_url] = (store, HotCounts(lane.cache_url))
+    rt = state._active_runtime()
+    rt.response_cache_store, rt.hot_counts = _region_caches[lane.cache_url]
 
 
 async def _require_org_serves_here(org_id: str) -> None:
@@ -1443,7 +1642,8 @@ async def build_org_runtime(
     """
     from provisa.api.startup_seed import _seed_built_in_sources, _resolve_pk_from_sources
     from provisa.core.config_loader import load_control_plane
-    from provisa.core.database import Capabilities, create_engine_from_url, org_store_handles
+    from provisa.core.database import Capabilities, create_engine_from_url
+    from provisa.core.region_stores import open_org_stores
     from provisa.core.db import apply_tenancy_role_grants, init_schema
     from provisa.audit.query_log import init_audit_schema
 
@@ -1581,8 +1781,8 @@ async def build_org_runtime(
         # the branch's copy of the model rather than prod's.
         from provisa.core.model_change import ModelPlane
 
-        state.model_db, state.tenant_db = org_store_handles(
-            tenant_engine, org_schema(org_id, env), ModelPlane(org_id, env)
+        state.model_db, state.tenant_db, state.record_db = open_org_stores(
+            org_schema(org_id, env), ModelPlane(org_id, env), model_engine=tenant_engine
         )
 
         schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
@@ -1590,13 +1790,13 @@ async def build_org_runtime(
             raise RuntimeError(
                 f"control-plane schema.sql missing from the package: {schema_sql_path}"
             )
-        await init_schema(state.tenant_db, schema_sql_path.read_text(), org_id=org_id, env=env)
+        await init_schema(state.model_db, schema_sql_path.read_text(), org_id=org_id, env=env)
         # REQ-1337: org_admin holds platform_settings only in a single-tenant deployment.
         # REQ-1623: asserted in the environment being built, whose roles table is its own.
         await apply_tenancy_role_grants(
             state.model_db, org_id, multitenancy=state.multitenancy, env=env
         )
-        await init_audit_schema(state.tenant_db, org_id=org_id, env=env)
+        await init_audit_schema(state.model_db, org_id=org_id, env=env)
 
         # REQ-1349: this org's settings rows, read once here and refreshed by the settings router
         # when the org writes one. The query path (response-cache TTL, large-result redirect)
@@ -1646,6 +1846,7 @@ async def build_org_runtime(
             await _resolve_pk_from_sources()
 
         await _require_org_serves_here(org_id)  # REQ-1922
+        await _bind_region_stores(org_id, env, initialise=True)
 
         # REQ-1266: the org's own domain mode, applied AFTER load_config — which configures the
         # scope from the DEPLOYMENT's naming block — and BEFORE _rebuild_schemas, which reads the
@@ -2441,12 +2642,12 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
     # REQ-1916: this node is in the cluster's node list (the platform state store) while it serves,
     # with its mode and region, beating so a node that dies without stopping drops off.
-    assert state.admin_db is not None  # brought up with the control planes, at the top of boot
+    assert state.platform_state_db is not None  # brought up with the control planes at boot
     from provisa.core.platform_state import nodes as _cluster_nodes
 
-    await _cluster_nodes.register(state.admin_db)
+    await _cluster_nodes.register(state.platform_state_db)
     _node_heartbeat = spawn_long_lived(
-        _cluster_nodes.heartbeat_loop(state.admin_db), name="node-heartbeat"
+        _cluster_nodes.heartbeat_loop(state.platform_state_db), name="node-heartbeat"
     )
 
     # REQ-1882/REQ-1905: while serving, a stop signal ends in-flight requests (their statements
@@ -2468,7 +2669,7 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         await unregister_worker(state.admin_db, _launch)
 
     _node_heartbeat.cancel()
-    await _cluster_nodes.unregister(state.admin_db)  # REQ-1916: this node leaves the list
+    await _cluster_nodes.unregister(state.platform_state_db)  # REQ-1916: this node leaves the list
 
     # REQ-1629: the engine idle reaper lives in this process, so a shard still up when the control
     # plane goes away has nothing left that can scale it down and bills until somebody notices.
@@ -2561,6 +2762,9 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     _shutdown_otel()
 
     await state.response_cache_store.close()
+    for _region_store, _ in _region_caches.values():  # REQ-1922: the regions' cache stores
+        await _region_store.close()
+    _region_caches.clear()
     await state.source_pools.close_all()
     if state.tenant_db:
         await state.tenant_db.close()

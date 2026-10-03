@@ -57,6 +57,7 @@ class _FakeState:
         self.push_listener_disconnects: dict = {}
         self.push_listener_tasks: list = []
         self.tenant_db = MagicMock()
+        self.model_db = self.tenant_db
         self.tenant_db.acquire = MagicMock(
             return_value=MagicMock(
                 __aenter__=AsyncMock(return_value=MagicMock()),

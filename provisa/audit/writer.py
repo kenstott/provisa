@@ -88,7 +88,7 @@ class AuditQueueFull(RuntimeError):
 class AuditRecord:
     """One finished statement's audit row, plus where it goes and what it meters."""
 
-    tenant_db: Any  # Any: the org's Database handle (query_audit_log lives in its schema)
+    record_db: Any  # Any: the org's record handle in this region (query_audit_log, REQ-1922)
     tenant_id: str | None
     user_id: str
     role_id: str
@@ -158,10 +158,10 @@ class AuditRecord:
         }
 
 
-async def _insert_rows(tenant_db: Any, rows: list[dict[str, Any]]) -> None:
+async def _insert_rows(record_db: Any, rows: list[dict[str, Any]]) -> None:
     from provisa.audit.query_log import log_queries
 
-    await log_queries(tenant_db, rows)
+    await log_queries(record_db, rows)
 
 
 async def _deployed_commit(pool: Any, org_id: str, env: str, stamp: int) -> str | None:
@@ -358,11 +358,11 @@ class AuditWriter:
         self._held_rows = self._held_rows + batch
         by_db: dict[int, list[AuditRecord]] = {}
         for rec in self._held_rows:
-            by_db.setdefault(id(rec.tenant_db), []).append(rec)
+            by_db.setdefault(id(rec.record_db), []).append(rec)
         for group in by_db.values():
             try:
                 rows = [rec.row(await self._model_commit(rec)) for rec in group]
-                await self._insert(group[0].tenant_db, rows)
+                await self._insert(group[0].record_db, rows)
             except Exception as exc:
                 self.last_error = f"insert failed: {type(exc).__name__}: {exc}"
                 log.exception(

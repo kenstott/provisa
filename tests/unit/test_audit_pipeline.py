@@ -64,6 +64,7 @@ class _CapturingState:
 
     def __init__(self, org_id: str = "default") -> None:
         self.tenant_db = object()
+        self.record_db = self.tenant_db
         self.org_id = org_id
         # REQ-1454: the audit seam meters the active hour against the control plane. None is the
         # single-tenant/desktop shape — no org registry, so nothing to meter — which is what these
@@ -237,11 +238,11 @@ def test_write_audit_refuses_to_run_without_a_tenant_database(captured):
     wrong place (or nowhere) — that is a wiring defect, not something to swallow."""
 
     class _NoTenant:
-        tenant_db = None
+        record_db = None
         org_id = "default"
 
     pending = PendingAudit("alice", "pgwire", "analyst", "SELECT 1", [], 0.0, 1, {})
-    with pytest.raises(RuntimeError, match="tenant database"):
+    with pytest.raises(RuntimeError, match="record database"):
         _audited(write_audit(pending, 200, _NoTenant()))
     assert captured == []
 

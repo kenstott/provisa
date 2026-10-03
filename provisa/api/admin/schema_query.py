@@ -1229,7 +1229,7 @@ class Query:  # REQ-021, REQ-042
         from provisa.api.app import state
         from provisa.core.platform_state import nodes
 
-        assert state.admin_db is not None  # brought up with the control planes at boot
+        assert state.platform_state_db is not None  # brought up with the control planes at boot
         return [
             ClusterNodeType(
                 node_id=n["node_id"],
@@ -1240,7 +1240,7 @@ class Query:  # REQ-021, REQ-042
                 started_at=n["started_at"].isoformat(),
                 last_seen=n["last_seen"].isoformat(),
             )
-            for n in await nodes.live(state.admin_db)
+            for n in await nodes.live(state.platform_state_db)
         ]
 
     @strawberry.field

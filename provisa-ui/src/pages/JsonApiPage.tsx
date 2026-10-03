@@ -10,7 +10,7 @@
 // permission from the copyright holder.
 
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
-import { useLocation } from "react-router-dom";
+import { useNavPayload } from "../hooks/useNavPayload";
 import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
@@ -213,16 +213,24 @@ const AGG_FUNCS = ["count", "sum", "avg", "stddev", "variance", "min", "max"];
 
 export function JsonApiPage() {
   const { t } = useTranslation();
-  const location = useLocation();
   const { role } = useAuth();
   const roleId = role?.id ?? "";
   const { checkedDomains } = useDomainFilter();
-  const [navUrl] = useState(
-    () => (location.state as { jsonapiUrl?: string } | null)?.jsonapiUrl ?? "",
-  );
-  const [navAutoRun] = useState(
-    () => (location.state as { autoRun?: boolean } | null)?.autoRun === true,
-  );
+  // A JSON:API URL handed to the page (NL "Open in JSON:API", Polly), whether the page was just
+  // opened or already open. Each hand-off has its own sequence number: its pickers are seeded once
+  // and it is run once.
+  const [nav, setNav] = useState<{ url: string; autoRun: boolean; seq: number } | null>(null);
+  useNavPayload<{ jsonapiUrl?: string; autoRun?: boolean }>((payload) => {
+    if (!payload.jsonapiUrl) return;
+    const handed = payload.jsonapiUrl;
+    setNav((prev) => ({
+      url: handed,
+      autoRun: payload.autoRun === true,
+      seq: (prev?.seq ?? 0) + 1,
+    }));
+  });
+  const navUrl = nav?.url ?? "";
+  const navAutoRun = nav?.autoRun === true;
   const { tables, loading } = useTables();
   const { relationships } = useAllRelationships();
   const { domains } = useDomains();
@@ -463,15 +471,17 @@ export function JsonApiPage() {
     [roleId, selectedDomainId, selectedTableName, fetchedGroupByColumns],
   );
 
-  const navInitDoneRef = useRef(false);
+  // The hand-off whose pickers have been seeded. State, not a ref: the auto-run below must see the
+  // URL those pickers produce, which exists only from the next render.
+  const [navInitSeq, setNavInitSeq] = useState<number | null>(null);
   useEffect(() => {
-    if (!parsedNav || tables.length === 0 || navInitDoneRef.current) return;
+    if (!parsedNav || !nav || tables.length === 0 || navInitSeq === nav.seq) return;
     const match = tables.find(
       (t) => t.domainId === parsedNav.domainId && t.tableName === parsedNav.tableName,
     );
     if (!match) return;
-    navInitDoneRef.current = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initializes table selection from navigation URL state after async tables list load; cannot synchronize before tables are available
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- seeds the pickers from a handed URL once the tables list has loaded, once per hand-off; cannot synchronize before tables are available
+    setNavInitSeq(nav.seq);
     setSelectedTable(`${match.domainId}/${match.tableName}`);
     setPageSize(parsedNav.pageSize);
     // REQ-1361: seed the aggregate picker from the nav URL so it's the single source of truth
@@ -484,7 +494,7 @@ export function JsonApiPage() {
       setIncludeNodes(parsedNav.includeNodes);
       setCheckedIncludes(new Set(parsedNav.include));
     }
-  }, [tables, parsedNav]);
+  }, [tables, parsedNav, nav, navInitSeq]);
 
   // Restore the persisted table selection once the table list has loaded (nav-from-NL wins). Gating
   // on tables avoids the "reset selected table if not in list" effect wiping it before load.
@@ -555,7 +565,7 @@ export function JsonApiPage() {
   const url = useMemo(() => {
     if (!effectiveSelectedTable || !selectedDomainId || !selectedTableName) return "";
     // REQ-1359/REQ-1361: aggregate/group-by picker (seeded from the nav URL when navigated from
-    // an NL "Open in JSON:API" aggregate query, see the navInitDoneRef effect above) is the
+    // an NL "Open in JSON:API" aggregate query, see the navInitSeq effect above) is the
     // single source of truth for the fetch URL — no separate nav-only branch, so there's no
     // stale-vs-corrected race between two sources.
     if (selectedFuncs.length > 0) {
@@ -644,14 +654,13 @@ export function JsonApiPage() {
     [roleId],
   );
 
-  const navAutoRunDoneRef = useRef(false);
+  const navAutoRunSeqRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!navAutoRun || !parsedNav || !navInitDoneRef.current || navAutoRunDoneRef.current) return;
-    if (!url) return;
-    navAutoRunDoneRef.current = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch for auto-run-on-navigation; setState occurs inside fetchUrl's promise chain, not synchronously in the effect body
+    if (!navAutoRun || !parsedNav || !nav || navInitSeq !== nav.seq) return;
+    if (navAutoRunSeqRef.current === nav.seq || !url) return;
+    navAutoRunSeqRef.current = nav.seq;
     void fetchUrl(url);
-  }, [navAutoRun, parsedNav, url, fetchUrl]);
+  }, [navAutoRun, parsedNav, nav, navInitSeq, url, fetchUrl]);
 
   async function handleRun() {
     if (!url) return;

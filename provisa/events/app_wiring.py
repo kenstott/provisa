@@ -575,7 +575,9 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         from provisa.federation.engine import UnreachableSource
         from provisa.federation.strategy import Strategy, federate
 
-        calendar_registry = await _load_calendar_registry(db)
+        # REQ-1922: calendars are the model (model store); the loop's own db is this region's state.
+        assert state.model_db is not None  # bound with the runtime, before its event loop
+        calendar_registry = await _load_calendar_registry(state.model_db)
         # REQ-961: a LIVE/scan input federates in place (served at query time), so it is current as of
         # now and fresh-through any snapshot boundary — it never lands, so its missing refresh stamp is
         # expected, not an outage. Collect those nodes so the freshness reader treats them as fresh;

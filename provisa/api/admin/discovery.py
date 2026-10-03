@@ -79,7 +79,7 @@ async def trigger_discovery(
             scope_id = body.domain_id
 
         all_candidates = []
-        pool = state.tenant_db
+        pool = state.model_db
         assert pool is not None
         engine = state.federation_engine
         assert engine is not None
@@ -149,7 +149,7 @@ async def trigger_discovery(
 async def list_candidates(request: Request):  # REQ-612
     """List pending relationship candidates."""
     require_capability_request(request, "create_relationship")
-    pool = state.tenant_db
+    pool = state.model_db
     assert pool is not None
     async with pool.acquire() as _conn:
         return await candidates_repo.list_pending(cast("Connection", _conn))
@@ -161,7 +161,7 @@ async def accept_candidate(
 ):  # REQ-612
     """Accept a relationship candidate."""
     require_capability_request(request, "create_relationship")
-    pool = state.tenant_db
+    pool = state.model_db
     assert pool is not None
     async with pool.acquire() as _conn:
         return await candidates_repo.accept(
@@ -173,7 +173,7 @@ async def accept_candidate(
 async def reject_candidate(request: Request, candidate_id: int, body: RejectRequest):  # REQ-612
     """Reject a relationship candidate."""
     require_capability_request(request, "create_relationship")
-    pool = state.tenant_db
+    pool = state.model_db
     assert pool is not None
     async with pool.acquire() as _conn:
         await candidates_repo.reject(cast("Connection", _conn), candidate_id, body.reason)
@@ -197,7 +197,7 @@ async def rejected_count(request: Request):
 async def clear_rejections(request: Request):
     """Delete all rejected candidates."""
     require_capability_request(request, "create_relationship")
-    pool = state.tenant_db
+    pool = state.model_db
     assert pool is not None
     async with pool.acquire() as _conn:
         count = await candidates_repo.clear_rejections(cast("Connection", _conn))

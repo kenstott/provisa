@@ -289,7 +289,8 @@ def _state(tables, backend, states, *, source=None, attaches=False):
     return SimpleNamespace(
         federation_engine=engine,
         config=SimpleNamespace(sources=[src], tables=tables),
-        tenant_db=_Db(states),
+        model_db=(_one_db := _Db(states)),
+        tenant_db=_one_db,
         # as the schema build publishes it: the tables the operator's settings put on a replica
         replica_routes=ReplicaRoutes(floored=floored),
     )

@@ -410,14 +410,14 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
 
 async def _upsert_relationships_to_semantic_layer(  # REQ-313, REQ-598
     relationships: list[dict],
-    tenant_db,
+    model_db,
     state=None,
 ) -> None:
     """Upsert detected intra-source relationships, then retry any config relationships deferred at startup."""
     from provisa.core.models import Cardinality, Relationship
     from provisa.core.repositories import relationship as rel_repo
 
-    async with tenant_db.acquire() as conn:
+    async with model_db.acquire() as conn:
         for r in relationships or []:
             try:
                 await rel_repo.upsert(

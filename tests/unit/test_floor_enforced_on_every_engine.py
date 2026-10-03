@@ -101,7 +101,8 @@ def _state(monkeypatch, engine, source, registered: list[dict], *, catalog: str)
     return SimpleNamespace(
         org_id=_ORG,
         config=SimpleNamespace(sources=[source], tables=[]),
-        tenant_db=SimpleNamespace(acquire=lambda: _Acquire()),
+        model_db=(_one_db := SimpleNamespace(acquire=lambda: _Acquire())),
+        tenant_db=_one_db,
         federation_engine=SimpleNamespace(engine=engine),
         source_catalogs={source.id: catalog},
     )

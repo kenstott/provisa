@@ -24,6 +24,8 @@ from provisa.pgwire.catalog_populate import _build_catalog_db
 
 def _state_with_functions(functions: dict):
     state = MagicMock()
+    # A single-tenant deployment: its catalog serves the one database, provisa.
+    state.multitenancy = False
     mc = MagicMock()
     mc.tables = {}
     state.contexts = {"alice": mc}

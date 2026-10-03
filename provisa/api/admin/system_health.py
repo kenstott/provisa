@@ -66,10 +66,10 @@ async def collect_system_health() -> SystemHealthType:
     # Tenant metadata DB (control-plane, org-scoped) — any SQLAlchemy dialect, not just PG.
     md_size = md_free = 0
     md_dialect = ""
-    if state.tenant_db is not None:
-        md_size = state.tenant_db.get_size()
-        md_free = state.tenant_db.get_idle_size()
-        md_dialect = state.tenant_db.dialect
+    if state.model_db is not None:
+        md_size = state.model_db.get_size()
+        md_free = state.model_db.get_idle_size()
+        md_dialect = state.model_db.dialect
 
     # Cache: NoopCacheStore = disabled; RedisCacheStore with no URL = embedded fakeredis
     # (always up, in-process); with a URL = a real server that may be online or not.
