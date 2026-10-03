@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import strawberry
 
-from provisa.api.admin.model_commit import ModelCommitExtension
+from provisa.api.admin.model_commit import ModelChangeLabel
 from provisa.api.admin.schema_query import Query
 from provisa.api.admin.schema_mutation import Mutation
 
@@ -42,4 +42,4 @@ from provisa.api.admin.schema_common import (  # noqa: F401
 
 # REQ-1524: the one place every model-changing mutation passes through, so the environment's
 # branch records the change without fifty resolvers each remembering to say so.
-admin_schema = strawberry.Schema(query=Query, mutation=Mutation, extensions=[ModelCommitExtension])
+admin_schema = strawberry.Schema(query=Query, mutation=Mutation, extensions=[ModelChangeLabel])

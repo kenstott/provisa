@@ -1057,8 +1057,8 @@ class Table(
     # REQ-961: allowed_lateness (seconds) extends the claim deadline past window.end.
     mv_allowed_lateness: float = 0.0
     # REQ-961: the freshness-contract inputs — the inputs that must be fresh-through window.end for
-    # the periodic output to be trusted. None = default to ALL SQL-lineage inputs (extract_inputs,
-    # REQ-939); [] = calendar-only (verify nothing).
+    # the periodic output to be trusted, each resolved against the model like the view's SQL. None =
+    # default to every input the view reads (REQ-939); [] = calendar-only (verify nothing).
     mv_expected_events: list[str] | None = None
     # REQ-879: cross-instance MV consistency tier. "shared" = one fleet-coordinated copy (CAS on
     # the shared materialized_views catalog; one instance refreshes at a time). "distributed" =
@@ -1170,13 +1170,6 @@ class ReplicationConfig(BaseModel):  # REQ-826
         60  # seconds: the window the count is taken over, and how often it is judged
     )
     hot_max_rows: int = 10_000_000  # a table larger than this is not replicated for being busy
-
-
-class WarmTablesConfig(BaseModel):  # REQ-544
-    # REQ-238: the engine filesystem (SSD) read-cache settings.
-    fs_cache_enabled: bool = False  # REQ-238: emit fs.cache.* on the Iceberg catalog
-    fs_cache_directories: str = "/tmp/engine-cache"  # nosec B108 - engine-node cache dir, configurable
-    fs_cache_max_sizes: str = "10GB"
 
 
 class RowMaterializeConfig(BaseModel):  # REQ-1865
@@ -2075,7 +2068,6 @@ class ProvisaConfig(BaseModel):
     # REQ-931: Provisa-level Kafka consumer group for inbound CDC (Debezium/Kafka). Receiver-side —
     # one consumer identity across all sources; a source's cdc.consumer_group_id overrides it.
     cdc_consumer_group_id: str = "provisa-debezium"
-    warm_tables: WarmTablesConfig = Field(default_factory=WarmTablesConfig)
     replication: ReplicationConfig = Field(default_factory=ReplicationConfig)  # REQ-826
     materialized_views: MaterializedViewsConfig = Field(default_factory=MaterializedViewsConfig)
     row_materialize: RowMaterializeConfig = Field(default_factory=RowMaterializeConfig)  # REQ-1865

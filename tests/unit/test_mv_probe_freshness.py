@@ -19,7 +19,7 @@ from provisa.mv.input_signals import input_token
 from provisa.mv.models import MVDefinition, MVStatus
 from provisa.mv.refresh import refresh_mv
 from provisa.mv.registry import MVRegistry
-from tests.helpers import RegisteredNames
+from tests.helpers import hold_registered_tables, RegisteredNames
 
 
 # ---- input_token ------------------------------------------------------------
@@ -41,13 +41,19 @@ def test_input_token_is_order_independent():
 # ---- registry gate ----------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _model_holds_orders(monkeypatch):
+    """The registered table these views read (a view's inputs resolve against the model)."""
+    hold_registered_tables(monkeypatch, "orders")
+
+
 def _mv(mv_id, **kw):
     return MVDefinition(
         id=mv_id,
         source_tables=kw.pop("source_tables", ["orders"]),
         target_catalog="pg",
         target_schema="public",
-        sql="SELECT 1",
+        sql="SELECT * FROM orders",  # its input signal is the table its SQL reads
         **kw,
     )
 

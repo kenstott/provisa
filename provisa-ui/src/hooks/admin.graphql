@@ -425,8 +425,8 @@ mutation DryRunDqContract($sourceId: String!, $contractText: String!) {
 }
 
 # REQ-1443: run a checker table's poll job now instead of waiting for its cadence; lands rows.
-mutation RunDqCheckNow($schemaName: String!, $tableName: String!) {
-  runDqCheckNow(schemaName: $schemaName, tableName: $tableName) {
+mutation RunDqCheckNow($tableId: Int!) {
+  runDqCheckNow(tableId: $tableId) {
     ...MutationResult
   }
 }
@@ -1045,6 +1045,18 @@ mutation CreateRole($input: RoleInput!) {
 
 mutation DeleteRole($id: String!) {
   deleteRole(id: $id) {
+    ...MutationResult
+  }
+}
+
+mutation RevokeRoleFromTable($roleId: String!, $tableId: Int!) {
+  revokeRoleFromTable(roleId: $roleId, tableId: $tableId) {
+    ...MutationResult
+  }
+}
+
+mutation RevokeRoleFromObject($roleId: String!, $kind: GrantKind!, $name: String!) {
+  revokeRoleFromObject(roleId: $roleId, kind: $kind, name: $name) {
     ...MutationResult
   }
 }

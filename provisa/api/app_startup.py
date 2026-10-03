@@ -208,6 +208,7 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
                     try:
                         await hot_mgr.load_table(
                             state.federation_engine,
+                            entry.table_id,
                             entry.table_name,
                             entry.schema,
                             entry.catalog,

@@ -16,7 +16,6 @@ mutation execute path (never the engine). Extracted from endpoint.py; leaf modul
 
 from __future__ import annotations
 
-import dataclasses
 import logging
 
 import httpx
@@ -26,7 +25,6 @@ from fastapi import HTTPException
 from provisa.api.errors import ApiError
 from provisa.compiler.mutation_gen import compile_mutation
 from provisa.api.data.action_exec import invoke_tracked_function, require_mutation_write
-from provisa.transpiler.transpile import transpile
 
 
 log = logging.getLogger(__name__)
@@ -276,7 +274,7 @@ def _split_action_fields(document, state) -> tuple[list, list]:
 
 
 async def _handle_mutation(
-    document, ctx, rls, state, variables, role_id, request=None
+    document, ctx, state, variables, role_id, request=None
 ):  # REQ-032, REQ-033, REQ-034, REQ-035, REQ-036, REQ-172, REQ-173, REQ-176
     """Handle a GraphQL mutation operation."""
     action_sels, regular_names = _split_action_fields(document, state)
@@ -311,83 +309,32 @@ async def _handle_mutation(
     if not mutations:
         raise ApiError(400, "data.no_mutation_fields", "No mutation fields found")
 
-    from provisa.compiler.stage2 import apply_governance, build_governance_context
-    from provisa.core.request_context import session_vars_for
-    from provisa.security.rights import effective_domain_access_role
-
-    role = effective_domain_access_role(role_id, state.roles)
-    gov_ctx = build_governance_context(
-        role_id,
-        rls,
-        state.masking_rules,
-        ctx,
-        getattr(state, "tables", []),
-        role=role,
-        relationships=getattr(state, "relationships", None),
-        source_types=state.source_types,
-        engine=getattr(state, "federation_engine", None),
-    )
+    # ONE write path: each mutation's statement goes through the pipeline every surface's write
+    # goes through — the admission (the role's write right, the written columns' writable_by,
+    # its row filter on the rows touched and the rows left behind), the lowering to the source,
+    # the execution, and the steps after a write (pgwire._pipeline._after_write).
+    from provisa.compiler.directives import NO_CACHE_HINT
+    from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
 
     results = []
     for mutation in mutations:
-        # Look up by DB table name (ctx keys are GraphQL field names which may have domain prefix)
-        table_meta = ctx.tables.get(mutation.table_name)
-        if table_meta is None:
-            for meta in ctx.tables.values():
-                if meta.table_name == mutation.table_name:
-                    table_meta = meta
-                    break
-
-        # The one admission every data write passes (compiler/write_admission.py, through the
-        # governance stage): the role's write right, the written columns' ``writable_by``, and
-        # its row filter on the rows the statement touches and the rows it leaves behind.
         try:
-            governed_sql = apply_governance(
-                mutation.sql, gov_ctx, session_vars_for(role), mutation.params
+            plan = await _govern_and_route_compiled(
+                mutation.sql,
+                role_id,
+                exec_params=list(mutation.params) if mutation.params else None,
+                state=state,
+                cache_hint=NO_CACHE_HINT,
             )
         except PermissionError as exc:
             raise ApiError(403, "data.write_not_admitted", str(exc), role=role_id) from exc
-        mutation = dataclasses.replace(mutation, sql=governed_sql)
-
-        # Mutations always route direct
-        source_id = mutation.source_id
-        if not state.source_pools.has(source_id):
-            raise ApiError(
-                503,
-                "data.no_source_pool",
-                f"No connection pool for source {source_id!r}",
-                source=source_id,
-            )
-
-        dialect = state.source_dialects.get(source_id, "postgres")
-        target_sql = transpile(mutation.sql, dialect)
-
         try:
-            result = await state.federation_engine.execute_native(
-                state.source_pools,
-                source_id,
-                target_sql,
-                mutation.params,
-            )
-            results.append(
-                {
-                    "affected_rows": len(result.rows),
-                }
-            )
-            if table_meta:
-                from provisa.api.data.table_written import after_table_written
-
-                await after_table_written(
-                    state,
-                    table_id=table_meta.table_id,
-                    table_name=table_meta.table_name,
-                    schema_name=table_meta.schema_name,
-                    catalog_name=table_meta.catalog_name,
-                    source_id=source_id,
-                )
-        except Exception as e:
+            result = await _execute_plan(plan, state)
+        except Exception as e:  # allow-ble: request boundary — a source or driver error of any type is this mutation's outcome, answered as a 500
             log.exception("Mutation execution failed")
             raise HTTPException(status_code=500, detail=str(e))
+        affected = result.rowcount if result.rowcount is not None else len(result.rows)
+        results.append({"affected_rows": affected})
 
     # Return first mutation result (single mutation support for now)
     mutation_name = None

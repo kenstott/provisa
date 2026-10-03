@@ -27,6 +27,14 @@ scenarios("../features/REQ-231.feature")
 scenarios("../features/REQ-232.feature")
 
 
+# The registered ids of the tables these scenarios hold hot: the hot tier keys each by its id.
+_TABLE_IDS = {"orders": 1, "countries": 2, "currencies": 3}
+
+
+def _table_id(name: str) -> int:
+    return _TABLE_IDS[name]
+
+
 @pytest.fixture
 def shared_data():
     return {}
@@ -112,6 +120,7 @@ def given_hot_table(shared_data):
 
     # Raw rows are stored verbatim — NO governance applied at storage time (REQ-230).
     entry = HotTableEntry(
+        table_id=_table_id(table_name),
         table_name=table_name,
         catalog="c",
         schema="s",
@@ -183,6 +192,7 @@ def given_hot_table_with_refresh_interval(shared_data):
         {"id": 2, "code": "EUR", "name": "Euro"},
     ]
     entry = HotTableEntry(
+        table_id=_table_id(table_name),
         table_name=table_name,
         catalog="c",
         schema="s",
@@ -192,10 +202,10 @@ def given_hot_table_with_refresh_interval(shared_data):
     )
 
     # Register the hot table as loaded and seed Redis with its blob.
-    manager._hot_tables[table_name] = entry
+    manager._hot_tables[_table_id(table_name)] = entry
     # The key the manager itself keeps this table's blob under (scoped to the acting org and
-    # model, and to the table's catalog and schema).
-    blob_key = manager._blob_key(table_name, entry.catalog, entry.schema)
+    # model, and to the table's id).
+    blob_key = manager._blob_key(entry.table_id)
     _run(fake_redis.set(blob_key, json.dumps(rows)))
 
     # A positive refresh_interval (defaulting to materialized_views.default_ttl)
@@ -210,7 +220,7 @@ def given_hot_table_with_refresh_interval(shared_data):
     shared_data["refresh_interval"] = refresh_interval
 
     # The hot table must be live before any invalidation occurs.
-    assert manager.is_hot(table_name), "hot table not registered as live"
+    assert manager.is_hot(_table_id(table_name)), "hot table not registered as live"
     assert _run(fake_redis.exists(blob_key)) == 1, "hot blob missing from cache"
 
 
@@ -220,7 +230,7 @@ def when_ttl_expires_or_mutation(shared_data):
     table_name = shared_data["table_name"]
 
     # A mutation to the source table triggers immediate invalidation.
-    _run(manager.invalidate(table_name))
+    _run(manager.invalidate(_table_id(table_name)))
     shared_data["invalidated"] = True
 
 
@@ -235,11 +245,13 @@ def then_invalidated_reloaded_with_fallback(shared_data):
 
     # Cache invalidation removed the cached blob and the live registration.
     assert _run(redis.exists(blob_key)) == 0, "hot blob was not invalidated"
-    assert not manager.is_hot(table_name), "hot table still registered after invalidation"
+    assert not manager.is_hot(_table_id(table_name)), (
+        "hot table still registered after invalidation"
+    )
 
     # Stale/missing cache forces a fallback to the live source — get_rows returns []
     # (the caller is responsible for routing to the live source on empty result).
-    rows = _run(manager.get_rows(table_name))
+    rows = _run(manager.get_rows(_table_id(table_name)))
     assert rows == [], f"expected empty fallback rows after invalidation, got {rows!r}"
 
     # Async reload capability exists (background refresh loop reloads via load_table).
@@ -270,6 +282,7 @@ def given_query_joins_hot_table(shared_data):
     assert table_name in detected, "lookup table was not detected as hot"
 
     entry = HotTableEntry(
+        table_id=_table_id(table_name),
         table_name=table_name,
         catalog="c",
         schema="s",

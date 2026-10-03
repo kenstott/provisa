@@ -20,7 +20,7 @@ import pytest
 
 from provisa.executor.result import QueryResult
 from tests.helpers import RegisteredNames
-from provisa.mv.models import JoinPattern, MVDefinition, MVStatus
+from provisa.mv.models import TableIdentity, JoinPattern, MVDefinition, MVStatus
 from provisa.mv.refresh import _build_refresh_sql, _target_ref, refresh_mv
 from provisa.mv.registry import MVRegistry
 
@@ -50,10 +50,27 @@ class _FakeEngine(RegisteredNames):
         return QueryResult(rows=[], column_names=[])
 
 
+@pytest.fixture(autouse=True)
+def _model_holds_the_joined_tables(monkeypatch):
+    """The model a view's inputs resolve against (provisa/mv/view_inputs.py): the tables these
+    views join, registered on source ``src``."""
+    from provisa.api.app import state
+
+    monkeypatch.setattr(
+        state,
+        "tables",
+        [
+            {"id": 1, "source_id": "src", "schema_name": "public", "table_name": "orders"},
+            {"id": 2, "source_id": "src", "schema_name": "public", "table_name": "customers"},
+        ],
+    )
+
+
 def _jp_mv(mv_id="mv-orders-customers"):
     return MVDefinition(
         id=mv_id,
         source_tables=["orders", "customers"],
+        inputs=[TableIdentity("src", "public", t) for t in ("orders", "customers")],
         target_catalog="postgresql",
         target_schema="mv_cache",
         join_pattern=JoinPattern(

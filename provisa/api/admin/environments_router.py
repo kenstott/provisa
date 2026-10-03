@@ -34,6 +34,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
+from provisa.core import model_change
 from provisa.api.env_routing import SWITCH_CAPABILITY
 from provisa.api.errors import ApiError
 from provisa.core import env_approvals, env_ci, env_remote
@@ -615,6 +616,7 @@ async def patch_environment(request: Request, org_id: str, name: str, body: Patc
 
 
 @router.post("/{name}/merge")
+@model_change.commits_itself  # REQ-1524: commits the model it writes itself
 async def merge_into_environment(request: Request, org_id: str, name: str, body: MergeBody) -> dict:
     """Merge another environment's model into this one by identity (REQ-1490).
 
@@ -820,6 +822,7 @@ async def _retire(org_id: str, actor: str | None, name: str, *, remote: bool = F
 
 
 @router.post("/{name}/deploy")
+@model_change.commits_itself  # REQ-1524: commits the model it writes itself
 async def deploy_into_environment(
     request: Request, org_id: str, name: str, body: DeployBody
 ) -> dict:
@@ -894,7 +897,11 @@ async def deploy_into_environment(
         await _audit(org_id, actor, "environment.deploy", name, report.as_dict())
         # REQ-1543: a deploy is where the environment now IS, and it ends any run of undos --
         # applying a chosen tree is the environment choosing a future, not resuming the old one.
-        await set_position(_admin_pool(), org_id, name, deployed_sha=sha, redo_sha=None)
+        # No stamp: the stamp the applied model stands at is not known exactly here, so no audit
+        # row names this commit until a write-through confirms the model equals it.
+        await set_position(
+            _admin_pool(), org_id, name, deployed_sha=sha, deployed_stamp=None, redo_sha=None
+        )
         refreshed = await _refresh(org_id, name, connectivity=report.delta.touches_connectivity)
     return {
         "report": report.as_dict(),
@@ -904,6 +911,7 @@ async def deploy_into_environment(
     }
 
 
+@model_change.commits_itself  # REQ-1524: commits the model it writes itself
 async def _move(request: Request, org_id: str, name: str, forward: bool) -> dict:
     """Move the environment one commit along its own history (REQ-1543).
 
@@ -946,7 +954,15 @@ async def _move(request: Request, org_id: str, name: str, forward: bool) -> dict
         if target is None:
             # The run of undos was abandoned by a later edit, so there is no line forward to walk.
             # The cursor is cleared rather than pointed at a commit off this environment's line.
-            await set_position(_admin_pool(), org_id, name, deployed_sha=here, redo_sha=None)
+            # The position does not move, so the stamp that names it stands.
+            await set_position(
+                _admin_pool(),
+                org_id,
+                name,
+                deployed_sha=here,
+                deployed_stamp=row["deployed_stamp"],
+                redo_sha=None,
+            )
             raise ApiError(
                 409,
                 "environments.redo_abandoned",
@@ -981,7 +997,10 @@ async def _move(request: Request, org_id: str, name: str, forward: bool) -> dict
         raise ApiError(
             422, "environments.tree_does_not_hold", str(exc), org=org_id, env=name, ref=target
         ) from exc
-    await set_position(_admin_pool(), org_id, name, deployed_sha=target, redo_sha=cursor)
+    # An undo or redo applies an earlier tree; the stamp it stands at is not known exactly here.
+    await set_position(
+        _admin_pool(), org_id, name, deployed_sha=target, deployed_stamp=None, redo_sha=cursor
+    )
     action = "environment.redo" if forward else "environment.undo"
     await _audit(org_id, actor, action, name, {"from": here, "to": target, **report.as_dict()})
     refreshed = await _refresh(org_id, name, connectivity=report.delta.touches_connectivity)
@@ -1055,6 +1074,7 @@ async def get_merge_request(request: Request, org_id: str, request_id: int) -> d
 
 
 @router.post("/-/merge-requests/{request_id}/decide")
+@model_change.commits_itself  # REQ-1524: commits the model it writes itself
 async def decide_merge_request(
     request: Request, org_id: str, request_id: int, body: DecideBody
 ) -> dict:
@@ -1119,6 +1139,7 @@ async def decide_merge_request(
                 org_id,
                 decided["target_env"],
                 deployed_sha=decided["source_sha"],
+                deployed_stamp=None,  # a deploy: not known exactly (see the direct deploy)
                 redo_sha=None,
             )
         # REQ-1544: an approved request is applied by ``env_approvals``, so the target's cached
@@ -1511,6 +1532,7 @@ async def request_review(request: Request, org_id: str, name: str, body: ReviewB
 
 
 @router.post("/{name}/pull")
+@model_change.commits_itself  # REQ-1524: commits the model it writes itself
 async def pull_environment(request: Request, org_id: str, name: str) -> dict:
     """Take what the remote holds for this environment and MAKE IT THE MODEL (REQ-1547).
 
@@ -1575,7 +1597,9 @@ async def pull_environment(request: Request, org_id: str, name: str) -> dict:
         raise ApiError(
             422, "environments.tree_does_not_hold", str(exc), org=org_id, env=name, ref=sha
         ) from exc
-    await set_position(_admin_pool(), org_id, name, deployed_sha=sha, redo_sha=None)
+    await set_position(
+        _admin_pool(), org_id, name, deployed_sha=sha, deployed_stamp=None, redo_sha=None
+    )
     await _audit(org_id, actor, "environment.repo_pull", name, {"sha": sha, **report.as_dict()})
     refreshed = await _refresh(org_id, name, connectivity=report.delta.touches_connectivity)
     return {

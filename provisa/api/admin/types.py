@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import enum
+
 import strawberry
 
 if TYPE_CHECKING:
@@ -1321,6 +1323,15 @@ class MutationWarning:  # REQ-1919
     code: str
     message: str
     params: JsonScalar | None = None
+
+
+@strawberry.enum
+class GrantKind(enum.Enum):  # REQ-1918
+    """An object whose grant list names roles: a role is taken off it one object at a time."""
+
+    METRIC = "metric"
+    COMMAND = "command"
+    WEBHOOK = "webhook"
 
 
 @strawberry.type

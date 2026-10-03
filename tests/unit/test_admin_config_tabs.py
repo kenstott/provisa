@@ -218,7 +218,7 @@ class TestAiModels:
 
 
 class TestCacheStorageWarmAndMv:
-    def test_put_hot_replication_fs_cache_and_mv_default_persist(self, client, settings_store):
+    def test_put_hot_replication_and_mv_default_persist(self, client, settings_store):
         r = client.put(
             "/admin/cache-storage",
             json={
@@ -227,7 +227,6 @@ class TestCacheStorageWarmAndMv:
                     "hot_interval": 120,
                     "hot_max_rows": 5_000_000,
                 },
-                "warm_tables": {"fs_cache_enabled": True, "fs_cache_max_sizes": "20GB"},
                 "materialized_views": {"default_ttl": 900},
             },
         )
@@ -237,10 +236,7 @@ class TestCacheStorageWarmAndMv:
         assert stored("replication.hot_threshold") == (250, "stored")
         assert stored("replication.hot_interval") == (120, "stored")
         assert stored("replication.hot_max_rows") == (5_000_000, "stored")
-        assert stored("warm_tables.fs_cache_enabled") == (True, "stored")
-        assert stored("warm_tables.fs_cache_max_sizes") == ("20GB", "stored")
         assert stored("materialized_views.default_ttl") == (900, "stored")
-        assert "warm_tables" not in read_config()
         assert "replication" not in read_config()
         # ...and the page reads them back
         shown = client.get("/admin/cache-storage").json()
@@ -249,11 +245,8 @@ class TestCacheStorageWarmAndMv:
             "hot_interval": 120,
             "hot_max_rows": 5_000_000,
         }
-        assert set(shown["warm_tables"]) == {
-            "fs_cache_enabled",
-            "fs_cache_directories",
-            "fs_cache_max_sizes",
-        }
+        # the filesystem read-cache settings are gone (REQ-238): no block for them
+        assert "warm_tables" not in shown
 
 
 # --- Extended OTel tuning via _apply_otel (REQ-545) -----------------------------

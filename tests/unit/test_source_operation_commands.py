@@ -632,8 +632,6 @@ async def test_after_a_call_what_is_held_of_the_written_table_stops_being_served
         {
             "table_id": 3,
             "table_name": "issues",
-            "schema_name": "graphql",
-            "catalog_name": "cat_gh",
             "source_id": "gh",
         }
     ]

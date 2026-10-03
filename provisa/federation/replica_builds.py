@@ -238,8 +238,9 @@ async def run_build(state: Any, key: ReplicaKey, progress: Progress) -> BuildOut
     its input by that stamp), and a build that changed the replica posted to that node so its
     dependents ripple."""
     from provisa.events import queue
+    from provisa.events.nodes import source_node
 
-    node = f"{key[1]}.{key[2]}"
+    node = source_node(*key)
     try:
         outcome = await build_replica(state, key, progress)
     except BaseException:

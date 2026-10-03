@@ -54,8 +54,12 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-def _node(schema_name: str, table_name: str) -> str:
-    return f"{schema_name}.{table_name}"
+def _node(table: Any) -> str:
+    """The event-graph node of a registered table (``provisa.events.nodes.source_node``) — the key
+    its freshness state is held under."""
+    from provisa.events.nodes import source_node
+
+    return source_node(table.source_id, table.schema_name, table.table_name)
 
 
 def _row_cache_ttls(table: Any, source: Any, reader_role: str | None) -> tuple[int, int]:
@@ -141,7 +145,7 @@ def is_stale_of(
     check = fresh_of if fresh_of is not None else freshness_verdict
 
     def _table_stale(source: Any, table: Any) -> bool:
-        state = states.get(_node(table.schema_name, table.table_name))
+        state = states.get(_node(table))
         at = state.get("last_refresh_at") if state else None
         ok = bool(state.get("last_refresh_ok", True)) if state else True
         if at is None or not ok:
@@ -341,7 +345,7 @@ async def ensure_resident(
         check does not report it fresh (REQ-1907; the whole gate is ``is_stale_of``). The plan
         applies the rest: a load-protected table that has a replica is never rebuilt by a read
         (REQ-1141: its refresh is the runner's alone)."""
-        node = _node(table.schema_name, table.table_name)
+        node = _node(table)
         key_ = (source.id, table.schema_name, table.table_name)
         # A standing replica that can no longer answer the model (convergence found a column
         # added or retyped) is one never built, until a build of the model's definition lands.
@@ -1152,7 +1156,9 @@ async def ensure_rows_resident(
             table_name=table.table_name,
         )
         schema, name = address.schema, address.table
-        node = _node(schema, name)
+        # The table's node — the key its row lock is taken under here and by the row-refresh
+        # lifecycle (``events.row_materialize_lifecycle``), so the two serialize the same rows.
+        node = _node(table)
         pk_columns = list(bound.pk_columns)
         cache_table, cached = await _ensure_and_read_row_cache(
             engine, backend, state, schema, name, args.columns, pk_columns, list(bound.values)

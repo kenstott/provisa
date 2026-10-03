@@ -141,6 +141,7 @@ def inject_rls(  # REQ-038, REQ-040, REQ-041, REQ-402, REQ-403
             sql=sql,
             params=compiled.params,
             root_field=compiled.root_field,
+            canonical_field=compiled.canonical_field,
             columns=compiled.columns,
             sources=compiled.sources,
             table_ids=compiled.table_ids,

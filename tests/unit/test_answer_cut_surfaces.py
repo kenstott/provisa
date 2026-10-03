@@ -234,7 +234,10 @@ async def test_a_cypher_statement_reads_a_cut_answer_from_its_own_table_and_neve
         source_catalogs={},
         source_cache={},
         response_cache_default_ttl=60,
-        hot_manager=SimpleNamespace(is_hot=lambda t: False, maybe_promote_dicts=promote),
+        # ``pets`` is a registered table the statement reads (id 5), so the cut alone keeps its
+        # rows from being promoted: a fetch with no arguments is otherwise promotable.
+        tables=[{"id": 5, "table_name": "pets"}],
+        hot_manager=SimpleNamespace(entries_for=lambda _ids: {}, maybe_promote_dicts=promote),
         federation_engine=SimpleNamespace(
             isolated_sync=isolated_sync,
             transpile_physical=lambda sql: sql,
@@ -252,7 +255,9 @@ async def test_a_cypher_statement_reads_a_cut_answer_from_its_own_table_and_neve
         ),
         patch.object(engine_cache, "cache_table_name", lambda *a: "pets_whole"),
     ):
-        rows = await cypher_exec._execute_with_api("SELECT id FROM pets", [], {}, state)
+        rows = await cypher_exec._execute_with_api(
+            "SELECT id FROM pets", [], {}, state, table_ids=[5]
+        )
     assert rows == [{"id": 1}]
     (sql,) = read
     assert '"pets_cut_ab12"' in sql and "pets_whole" not in sql

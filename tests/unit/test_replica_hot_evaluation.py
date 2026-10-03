@@ -85,8 +85,9 @@ class _Engine:
         self.rows = rows
         self.sent: list[str] = []
 
-    async def read_ref(self, table_name: str) -> str:
-        return f'"pg"."public"."{table_name}"'
+    async def read_ref(self, table) -> str:
+        """The registered table (its identity) at its address on this engine."""
+        return f'"{table.source_id}"."{table.schema_name}"."{table.table_name}"'
 
     async def execute_engine(self, sql: str, *_a, **_k):
         self.sent.append(sql)
@@ -306,7 +307,7 @@ async def test_a_promoted_table_that_is_no_longer_registered_is_demoted(world):
 
 
 async def test_a_table_the_redis_hot_tier_manages_is_not_promoted(world):
-    world.state.hot_manager = SimpleNamespace(managed_tables=lambda: {"orders"})
+    world.state.hot_manager = SimpleNamespace(managed_tables=lambda: {1})  # orders
     world.seen(1, 1000)
     world.seen(2, 1000)
     outcome = await evaluate(world.state, workers=1)
@@ -316,7 +317,7 @@ async def test_a_table_the_redis_hot_tier_manages_is_not_promoted(world):
 
 async def test_a_promoted_table_the_hot_tier_takes_is_demoted(world):
     await _promote(world, built=True)
-    world.state.hot_manager = SimpleNamespace(managed_tables=lambda: {"orders"})
+    world.state.hot_manager = SimpleNamespace(managed_tables=lambda: {1})  # orders
     world.seen(1, 1000)
     assert (await evaluate(world.state, workers=1)).demoted == (ORDERS,)
 

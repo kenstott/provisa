@@ -53,6 +53,28 @@ class _Engine:
         return self.rt.mv_store_broker()
 
 
+@pytest.fixture(autouse=True)
+def _model_holds_src(monkeypatch):
+    """The model the refresh resolves the view's inputs against (provisa/mv/view_inputs.py):
+    one registered table ``src``, the one these views read."""
+    from provisa.api.app import state
+
+    monkeypatch.setattr(
+        state,
+        "tables",
+        [
+            {
+                "id": 1,
+                "source_id": "local",
+                "domain_id": "",
+                "schema_name": "main",
+                "table_name": "src",
+                "alias": None,
+            }
+        ],
+    )
+
+
 @pytest.fixture
 def engine(tmp_path):
     rt = DuckDBFederationRuntime(materialize_dsn=f"duckdb:///{tmp_path / 'mat.duckdb'}")

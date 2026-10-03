@@ -416,6 +416,11 @@ environments = Table(
     # future unreachable in intent. Neither column can lose work: both name commits that stay in
     # the object store and stay deployable by sha.
     Column("deployed_sha", Text),
+    # The model stamp (REQ-1914) the model stood at when ``deployed_sha`` was committed from it —
+    # set only when that is exact (the stamp did not move while the tree was read), NULL otherwise.
+    # A statement governed at this stamp ran on the model this commit holds: its audit row may name
+    # the commit (provisa/audit/provenance.py). Any other stamp, or NULL, and it may not.
+    Column("deployed_stamp", BigInteger),
     # WHERE THIS ENVIRONMENT'S OWN LINE BEGINS: the last commit that belongs to the environment it
     # was created from. A branch is seeded at its source's tip so the two share an object history
     # and ordinary git can move between them, which means the commits below that point are the

@@ -85,25 +85,21 @@ def test_the_defaults_are_the_config_models(deployment):
     from provisa.core.models import (
         HotTablesConfig,
         MaterializedViewsConfig,
+        ProvisaConfig,
         ReplicationConfig,
-        WarmTablesConfig,
     )
+    from provisa.core.settings_registry import UnknownSetting
 
     for field in ("auto_threshold", "max_bytes"):
         assert settings_registry.setting(f"hot_tables.{field}").default == (
             HotTablesConfig.model_fields[field].default
         )
-    # REQ-238: what is left of the warm block is the engine's filesystem read cache.
-    assert set(WarmTablesConfig.model_fields) == {
-        "fs_cache_enabled",
-        "fs_cache_directories",
-        "fs_cache_max_sizes",
-    }
-    for field, model_field in WarmTablesConfig.model_fields.items():
-        assert settings_registry.resolve(f"warm_tables.{field}") == (
-            model_field.default,
-            "default",
-        ), field
+    # The warm tier is gone: its promotion settings became replication.hot_* (REQ-826), and its
+    # filesystem read-cache settings reached no engine and were removed (REQ-238).
+    assert "warm_tables" not in ProvisaConfig.model_fields
+    for field in ("fs_cache_enabled", "fs_cache_directories", "fs_cache_max_sizes"):
+        with pytest.raises(UnknownSetting):
+            settings_registry.setting(f"warm_tables.{field}")
     # REQ-826: when a busy table is replicated. The fixture's config file states the threshold.
     for field in ("hot_interval", "hot_max_rows"):
         assert settings_registry.resolve(f"replication.{field}") == (
@@ -131,7 +127,6 @@ async def test_saving_stores_the_tier_settings_and_leaves_the_config_file_alone(
                     "hot_interval": 120,
                     "hot_max_rows": 5_000_000,
                 },
-                "warm_tables": {"fs_cache_enabled": True, "fs_cache_max_sizes": "20GB"},
                 "materialized_views": {"default_ttl": 900},
             }
         )
@@ -146,8 +141,6 @@ async def test_saving_stores_the_tier_settings_and_leaves_the_config_file_alone(
     assert stored("replication.hot_threshold") == (250, "stored")
     assert stored("replication.hot_interval") == (120, "stored")
     assert stored("replication.hot_max_rows") == (5_000_000, "stored")
-    assert stored("warm_tables.fs_cache_enabled") == (True, "stored")
-    assert stored("warm_tables.fs_cache_max_sizes") == ("20GB", "stored")
     assert stored("materialized_views.default_ttl") == (900, "stored")
     assert "replication.hot_threshold" in result["updated"]
     assert deployment.config.read_text() == before

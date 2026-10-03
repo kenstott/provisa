@@ -60,6 +60,10 @@ def app_state(monkeypatch):
         # What a refreshed view's inputs are checked against (provisa/mv/readable_inputs.py).
         api_endpoints={},
         graphql_remote_sources={},
+        tables=[{"id": 1, "source_id": "pg", "schema_name": "public", "table_name": "orders"}],
+        source_catalogs={},
+        contexts={},
+        mv_registry=SimpleNamespace(get_enabled=lambda: []),
     )
     monkeypatch.setattr("provisa.api.app.state", state, raising=False)
     return state

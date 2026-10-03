@@ -42,6 +42,7 @@ vi.mock("../../hooks/useSecurityQueries", () => ({
   useDeleteRole: () => ({ deleteRole: vi.fn(), loading: false }),
   useUpsertRlsRule: () => ({ upsertRlsRule: vi.fn(), loading: false }),
   useDeleteRlsRule: () => ({ deleteRlsRule: vi.fn(), loading: false }),
+  useRevokeRoleGrants: () => ({ revokeFromTable: vi.fn(), revokeFromObject: vi.fn() }),
 }));
 
 import { SecurityPage } from "../SecurityPage";

@@ -23,6 +23,7 @@
     "downloadSvg": "下载 SVG",
     "downloadPng": "下载 PNG",
     "downloadJpeg": "下载 JPEG",
+    "downloadJson": "将图表下载为 JSON（表、列、关系）",
     "close": "关闭",
     "hint": "点击域分组以折叠/展开 · 虚线连接已折叠的域",
     "resizeHandle": "调整域框大小（{{corner}}）"

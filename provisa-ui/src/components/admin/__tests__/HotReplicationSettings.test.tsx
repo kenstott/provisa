@@ -10,7 +10,7 @@
 
 // REQ-826: the three settings that decide when a busy table is replicated — the Default
 // threshold, the interval the count is taken over, and the size ceiling — are shown and saved on
-// the Hot Tables settings panel. The engine's filesystem read cache (REQ-238) stays beside them.
+// the Hot Tables settings panel.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "../../../test-utils/render";
@@ -28,11 +28,6 @@ const STATE: CacheStorageState = {
   cache: { enabled: true, redis_url: "", default_ttl: 300 },
   hot_tables: { auto_threshold: 1000, max_rows: 1000, max_bytes: 1048576, refresh_interval: null },
   replication: { hot_threshold: 100, hot_interval: 60, hot_max_rows: 10000000 },
-  warm_tables: {
-    fs_cache_enabled: false,
-    fs_cache_directories: "/tmp/engine-cache",
-    fs_cache_max_sizes: "10GB",
-  },
   materialized_views: { default_ttl: 300 },
   materialize: { store_url: "", default_store_url: "" },
   restart_required_note: "",
@@ -61,8 +56,8 @@ describe("Hot replication settings", () => {
     expect(screen.getByTestId("replication-hot-interval")).toHaveValue("60");
     expect(screen.getByTestId("replication-hot-max-rows")).toHaveValue("10000000");
     expect(screen.getByText("Default threshold (statements per interval)")).toBeInTheDocument();
-    // the read cache is still here, under its own heading
-    expect(screen.getByText("Engine filesystem read cache (SSD)")).toBeInTheDocument();
+    // the engine filesystem read-cache settings are gone (REQ-238)
+    expect(screen.queryByText("Engine filesystem read cache (SSD)")).toBeNull();
   });
 
   it("saves the replication block with the edited values", async () => {
@@ -77,7 +72,6 @@ describe("Hot replication settings", () => {
       hot_interval: 120,
       hot_max_rows: 10000000,
     });
-    expect(Object.keys(sent).sort()).toEqual(["hot_tables", "replication", "warm_tables"]);
-    expect(sent.warm_tables).toEqual(STATE.warm_tables);
+    expect(Object.keys(sent).sort()).toEqual(["hot_tables", "replication"]);
   });
 });

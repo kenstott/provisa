@@ -891,7 +891,6 @@ _CACHE_STORAGE_SETTINGS = {
     "cache": ("enabled", "redis_url", "default_ttl"),
     "hot_tables": ("auto_threshold", "max_rows", "max_bytes", "refresh_interval"),
     "replication": ("hot_threshold", "hot_interval", "hot_max_rows"),
-    "warm_tables": ("fs_cache_enabled", "fs_cache_directories", "fs_cache_max_sizes"),
     "materialized_views": ("default_ttl",),
 }
 
@@ -933,10 +932,6 @@ async def get_cache_storage(request: Request):  # REQ-917
         "hot_tables": hot,
         # REQ-826: when a busy table is replicated (Default threshold, window, size ceiling)
         "replication": _tier("replication", "hot_threshold", "hot_interval", "hot_max_rows"),
-        # REQ-238: the engine's filesystem read cache
-        "warm_tables": _tier(
-            "warm_tables", "fs_cache_enabled", "fs_cache_directories", "fs_cache_max_sizes"
-        ),
         # REQ-543: default MV refresh TTL for MVs without their own
         "materialized_views": _tier("materialized_views", "default_ttl"),
         "materialize": {

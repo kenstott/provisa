@@ -106,8 +106,8 @@ class _RowLockHandle:
 
 
 def row_lock(node: str, pk_values: tuple[Any, ...]) -> _RowLockHandle:
-    """The lock for one row-materialized key: ``node`` is the physical node (``schema.table``, the
-    SAME string ``land_lock``'s own callers use), ``pk_values`` the row's PK column values in a
+    """The lock for one row-materialized key: ``node`` is the table's event-graph node
+    (``events.nodes.source_node``, the SAME string ``land_lock``'s own callers use), ``pk_values`` the row's PK column values in a
     fixed order. Use as ``async with row_lock(node, pk_values): ...``."""
     return _RowLockHandle((node, pk_values))
 

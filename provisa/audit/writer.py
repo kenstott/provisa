@@ -51,7 +51,7 @@ import queue
 import threading
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -105,6 +105,17 @@ class AuditRecord:
     # for a refused statement, which reached neither.
     route: str | None = None
     row_count: int | None = None
+    # Provenance (provisa/audit/provenance.py). ``enforced`` may be a resolver the writer thread
+    # calls, like ``table_ids``.
+    # Required, by keyword: every record says what it knows of these, None included.
+    model_stamp: int | None = field(kw_only=True)
+    # The environment the statement ran in: with ``meter_pool`` (the control plane) and the org,
+    # where the writer looks up the commit the model at ``model_stamp`` equals (see _model_commit).
+    model_env: str = field(kw_only=True)
+    enforced: "dict[str, Any] | Callable[[], dict[str, Any]] | None" = field(kw_only=True)
+    route_reason: str | None = field(kw_only=True)
+    sources: tuple[str, ...] = field(kw_only=True)
+    data_age: dict[str, Any] | None = field(kw_only=True)
     # REQ-1454: the control-plane pool and org the statement is metered against; no pool = a
     # deployment without a control plane, which has nothing to meter.
     meter_pool: Any = None  # Any: the control-plane Database handle
@@ -115,8 +126,15 @@ class AuditRecord:
     hot_counts: Any = None  # Any: replica_hot.HotCounts
     hot_scope: str = ""
 
-    def row(self) -> dict[str, Any]:
-        """The ``query_audit_log`` row: query text encrypted (REQ-689), its plaintext hash kept."""
+    def row(self, model_commit: str | None) -> dict[str, Any]:
+        """The ``query_audit_log`` row: query text encrypted (REQ-689), its plaintext hash kept.
+
+        ``model_commit``: the environment repository's commit the model at ``model_stamp`` equals,
+        when that is proven (None otherwise). With a commit, the columns each role could see are
+        recoverable from it; without one the row keeps the visible columns it was given."""
+        enforced = self.enforced() if callable(self.enforced) else self.enforced
+        if model_commit is not None and enforced is not None:
+            enforced = {k: v for k, v in enforced.items() if k != "visible_columns"}
         return {
             "tenant_id": self.tenant_id,
             "user_id": self.user_id,
@@ -129,6 +147,12 @@ class AuditRecord:
             "duration_ms": self.duration_ms,
             "route": self.route,
             "row_count": self.row_count,
+            "model_stamp": self.model_stamp,
+            "model_commit": model_commit,
+            "enforced": enforced,
+            "route_reason": self.route_reason,
+            "sources": sorted(self.sources),
+            "data_age": self.data_age,
             "trace_id": self.trace_id,
             "logged_at": self.logged_at,
         }
@@ -138,6 +162,17 @@ async def _insert_rows(tenant_db: Any, rows: list[dict[str, Any]]) -> None:
     from provisa.audit.query_log import log_queries
 
     await log_queries(tenant_db, rows)
+
+
+async def _deployed_commit(pool: Any, org_id: str, env: str, stamp: int) -> str | None:
+    """The commit the environment's model equals at ``stamp``, or None when that is not proven:
+    the environment stands at a commit recorded at exactly this stamp, and has not drifted."""
+    from provisa.core.env_store import get_env
+
+    row = await get_env(pool, org_id, env)
+    if row is None or row["drifted"] or row["deployed_stamp"] != stamp:
+        return None
+    return row["deployed_sha"]
 
 
 async def _meter(pool: Any, org_id: str) -> None:
@@ -172,6 +207,7 @@ class AuditWriter:
         retry_s: float = RETRY_INTERVAL_S,
         insert: Callable[[Any, list[dict[str, Any]]], Awaitable[None]] = _insert_rows,
         meter: Callable[[Any, str], Awaitable[None]] = _meter,
+        deployed_commit: Callable[[Any, str, str, int], Awaitable[str | None]] = _deployed_commit,
         count: "Callable[[list[AuditRecord]], None]" = _count,
     ) -> None:
         self._queue: queue.Queue[AuditRecord] = queue.Queue(maxsize=capacity)
@@ -180,6 +216,10 @@ class AuditWriter:
         self._retry_s = retry_s
         self._insert = insert
         self._meter = meter
+        self._deployed_commit = deployed_commit
+        # (control plane, org, env, stamp) → the commit proven for that stamp. A stamp names one
+        # model, so once proven it does not change; an unproven stamp is asked again next batch.
+        self._proven_commits: dict[tuple[int, str, str, int], str] = {}
         self._count = count
         # Taken off the queue, not yet landed: rows whose insert failed, meters whose call failed.
         self._held_rows: list[AuditRecord] = []
@@ -321,7 +361,8 @@ class AuditWriter:
             by_db.setdefault(id(rec.tenant_db), []).append(rec)
         for group in by_db.values():
             try:
-                await self._insert(group[0].tenant_db, [rec.row() for rec in group])
+                rows = [rec.row(await self._model_commit(rec)) for rec in group]
+                await self._insert(group[0].tenant_db, rows)
             except Exception as exc:
                 self.last_error = f"insert failed: {type(exc).__name__}: {exc}"
                 log.exception(
@@ -350,6 +391,22 @@ class AuditWriter:
             settled += 1
         self._settle(settled)
         return not self._held_rows and not self._held_meters
+
+    async def _model_commit(self, rec: AuditRecord) -> str | None:
+        """The commit ``rec``'s model equals, when proven. A deployment without a control plane,
+        or a record without a stamp, has no environment position to prove one against."""
+        if rec.meter_pool is None or rec.model_stamp is None:
+            return None
+        key = (id(rec.meter_pool), rec.meter_org, rec.model_env, rec.model_stamp)
+        known = self._proven_commits.get(key)
+        if known is not None:
+            return known
+        sha = await self._deployed_commit(
+            rec.meter_pool, rec.meter_org, rec.model_env, rec.model_stamp
+        )
+        if sha is not None:
+            self._proven_commits[key] = sha
+        return sha
 
     def _count_landed(self, group: list[AuditRecord]) -> None:
         """Count a batch whose rows have landed toward Hot replication. Runs after the insert,

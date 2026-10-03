@@ -51,16 +51,26 @@ from provisa.api_source.models import ApiColumn, ApiColumnType, ParamType
 # ---------------------------------------------------------------------------
 
 
+PETS = 7  # the registered id of the ``pets`` table these statements read
+
+
 def _hot_manager() -> SimpleNamespace:
-    """A stand-in hot-table manager: ``hold`` keeps the entry, as the real one does for a name
-    one relation claims."""
+    """A stand-in hot-table manager: ``hold`` keeps the entry under its table id, as the real
+    one does; nothing is hot yet."""
     held: dict = {}
 
-    def hold(entry) -> bool:
-        held[entry.table_name] = entry
-        return True
+    def hold(entry) -> None:
+        held[entry.table_id] = entry
 
-    return SimpleNamespace(_hot_tables=held, hold=hold)
+    return SimpleNamespace(_hot_tables=held, hold=hold, entries_for=lambda table_ids: {})
+
+
+def _statement_hot(manager=None):
+    """The hot tier as a statement reading ``pets`` sees it."""
+    from provisa.api.data.materialization import _StatementHot
+
+    state = SimpleNamespace(tables=[{"id": PETS, "table_name": "pets"}])
+    return _StatementHot(manager, state, [PETS])
 
 
 class TestLookupEp:
@@ -286,13 +296,14 @@ class TestMatStoreRows:
                 loc,
                 "r_abc",
                 500,
-                None,
+                _statement_hot(),
                 response_cols,
                 engine,
                 300,
                 MagicMock(),
                 cache_rewrites,
                 values_cte_entries,
+                whole=True,
             )
             mock_insert.assert_called_once()
 
@@ -319,7 +330,7 @@ class TestMatStoreRows:
                 loc,
                 "r_abc",
                 500,
-                None,
+                _statement_hot(),
                 [_col("id"), _col("photoUrls")],
                 engine,
                 300,
@@ -327,6 +338,7 @@ class TestMatStoreRows:
                 {},
                 values_cte_entries,
                 all_ep_col_names=["id", "photo_urls"],
+                whole=True,
             )
 
         entry = values_cte_entries["pets"]
@@ -353,13 +365,14 @@ class TestMatStoreRows:
                 loc,
                 "r_abc",
                 2,  # hot threshold smaller than row count
-                None,
+                _statement_hot(),
                 response_cols,
                 engine,
                 300,
                 MagicMock(),
                 cache_rewrites,
                 values_cte_entries,
+                whole=True,
             )
 
         assert values_cte_entries == {}
@@ -385,16 +398,47 @@ class TestMatStoreRows:
                 loc,
                 "r_abc",
                 500,
-                hot_mgr,
+                _statement_hot(hot_mgr),
                 response_cols,
                 engine,
                 300,
                 MagicMock(),
                 cache_rewrites,
                 values_cte_entries,
+                whole=True,
             )
 
-        assert "pets" in hot_mgr._hot_tables
+        assert PETS in hot_mgr._hot_tables
+
+    async def test_rows_of_a_parameterized_endpoint_are_not_held(self):
+        """An endpoint with a parameter is a function of its arguments: its rows are inlined for
+        this statement but never held as the table's hot rows."""
+        engine = MagicMock()
+        engine.isolated_sync = _fake_isolated_sync
+        values_cte_entries: dict = {}
+        hot_mgr = _hot_manager()
+        with (
+            patch("provisa.api_source.engine_cache.create_and_insert"),
+            patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
+        ):
+            _mat_store_rows(
+                "pets",
+                [{"id": 1}],
+                ["id"],
+                CacheLocation("cat", "sch", "relational"),
+                "r_abc",
+                500,
+                _statement_hot(hot_mgr),
+                [_col("id")],
+                engine,
+                300,
+                MagicMock(),
+                {},
+                values_cte_entries,
+                whole=False,
+            )
+        assert values_cte_entries["pets"].rows == [{"id": 1}]
+        assert hot_mgr._hot_tables == {}
 
 
 # ---------------------------------------------------------------------------
@@ -412,9 +456,16 @@ class TestPromoteJoinedFromFills:
         ep = SimpleNamespace(table_name="pets")
         with patch(_FILLS, new=AsyncMock(return_value=[{"id": 1, "name": "Fido"}])):
             await _promote_joined_from_fills(
-                SimpleNamespace(), ep, "pets", hot_mgr, ["id", "name"], set(), loc, 500
+                SimpleNamespace(),
+                ep,
+                "pets",
+                _statement_hot(hot_mgr),
+                ["id", "name"],
+                set(),
+                loc,
+                500,
             )
-        assert hot_mgr._hot_tables["pets"].rows == [{"id": 1, "name": "Fido"}]
+        assert hot_mgr._hot_tables[PETS].rows == [{"id": 1, "name": "Fido"}]
 
     async def test_over_threshold_not_promoted(self):
         hot_mgr = _hot_manager()
@@ -424,7 +475,7 @@ class TestPromoteJoinedFromFills:
                 SimpleNamespace(),
                 SimpleNamespace(table_name="pets"),
                 "pets",
-                hot_mgr,
+                _statement_hot(hot_mgr),
                 ["id"],
                 set(),
                 loc,
@@ -441,7 +492,7 @@ class TestPromoteJoinedFromFills:
                 SimpleNamespace(),
                 SimpleNamespace(table_name="pets"),
                 "pets",
-                hot_mgr,
+                _statement_hot(hot_mgr),
                 ["id"],
                 set(),
                 loc,
@@ -481,7 +532,7 @@ class TestMatApiEpTable:
         ):
             m_loc.return_value = CacheLocation("cat", "sch", "relational")
             await _mat_api_ep_table(
-                "pets", ep, state, None, 500, set(), cache_rewrites, values_cte_entries
+                "pets", ep, state, _statement_hot(), 500, set(), cache_rewrites, values_cte_entries
             )
         assert cache_rewrites == {}
         assert values_cte_entries == {}
@@ -505,7 +556,7 @@ class TestMatApiEpTable:
             patch("provisa.api_source.engine_cache.table_known_live", return_value=True),
         ):
             await _mat_api_ep_table(
-                "pets", ep, state, None, 500, set(), cache_rewrites, values_cte_entries
+                "pets", ep, state, _statement_hot(), 500, set(), cache_rewrites, values_cte_entries
             )
         assert cache_rewrites["pets"] == (loc, "r_x")
 
@@ -532,7 +583,7 @@ class TestMatApiEpTable:
             patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
         ):
             await _mat_api_ep_table(
-                "pets", ep, state, None, 500, set(), cache_rewrites, values_cte_entries
+                "pets", ep, state, _statement_hot(), 500, set(), cache_rewrites, values_cte_entries
             )
         assert "pets" in values_cte_entries
         assert values_cte_entries["pets"].rows == [{"id": 1}]
@@ -561,7 +612,9 @@ class TestMatApiEpTable:
             patch("provisa.api_source.engine_cache.create_and_insert"),
             patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
         ):
-            await _mat_api_ep_table("pets", ep, state, None, 500, set(), {}, values_cte_entries)
+            await _mat_api_ep_table(
+                "pets", ep, state, _statement_hot(), 500, set(), {}, values_cte_entries
+            )
 
         # The projection is the col_set the step asks the fills for, which dropped `status` while
         # the response set was keyed on param_type.
@@ -588,17 +641,22 @@ class TestMatApiEpTable:
             patch("provisa.api_source.engine_cache.table_known_live", return_value=True),
         ):
             await _mat_api_ep_table(
-                "pets", ep, state, hot_mgr, 500, set(), cache_rewrites, values_cte_entries
+                "pets",
+                ep,
+                state,
+                _statement_hot(hot_mgr),
+                500,
+                set(),
+                cache_rewrites,
+                values_cte_entries,
             )
             # REQ-1882: promotion is detached onto a background worker thread — wait (bounded)
             # for it, with the fills still standing in for the store.
             deadline = asyncio.get_running_loop().time() + 5
-            while (
-                "pets" not in hot_mgr._hot_tables and asyncio.get_running_loop().time() < deadline
-            ):
+            while PETS not in hot_mgr._hot_tables and asyncio.get_running_loop().time() < deadline:
                 await asyncio.sleep(0.01)
         assert cache_rewrites["pets"] == (loc, "r_x")
-        assert "pets" in hot_mgr._hot_tables
+        assert PETS in hot_mgr._hot_tables
 
     async def test_secondary_table_exists_cache_hit(self):
         state = SimpleNamespace(
@@ -621,7 +679,7 @@ class TestMatApiEpTable:
             patch("provisa.api_source.engine_cache.table_exists", return_value=True),
         ):
             await _mat_api_ep_table(
-                "pets", ep, state, None, 500, set(), cache_rewrites, values_cte_entries
+                "pets", ep, state, _statement_hot(), 500, set(), cache_rewrites, values_cte_entries
             )
         assert cache_rewrites["pets"] == (loc, "r_x")
 
@@ -646,7 +704,7 @@ class TestMatApiEpTable:
             patch("provisa.api_source.engine_cache.table_exists", return_value=False),
         ):
             await _mat_api_ep_table(
-                "pets", ep, state, None, 500, set(), cache_rewrites, values_cte_entries
+                "pets", ep, state, _statement_hot(), 500, set(), cache_rewrites, values_cte_entries
             )
         assert cache_rewrites == {}
         assert values_cte_entries == {}
@@ -683,7 +741,7 @@ class TestMatApiEpTable:
                 "pets",
                 ep,
                 state,
-                None,
+                _statement_hot(),
                 500,
                 set(),
                 cache_rewrites,
@@ -720,7 +778,7 @@ class TestMatApiEpTable:
             ),
         ):
             await _mat_api_ep_table(
-                "pets", ep, state, None, 500, set(), cache_rewrites, values_cte_entries
+                "pets", ep, state, _statement_hot(), 500, set(), cache_rewrites, values_cte_entries
             )
         assert cache_rewrites["pets"] == (loc, "r_x")
         assert values_cte_entries == {}
@@ -753,7 +811,7 @@ class TestMatApiEpTable:
             patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
         ):
             await _mat_api_ep_table(
-                "pets", ep, state, None, 500, set(), cache_rewrites, values_cte_entries
+                "pets", ep, state, _statement_hot(), 500, set(), cache_rewrites, values_cte_entries
             )
         assert values_cte_entries["pets"].rows == [{"id": 7}]
 
@@ -779,7 +837,9 @@ class TestMatApiEpTable:
             patch("provisa.api.data.materialization._mat_fetch_rows_from_rest", new=rest),
             pytest.raises(RuntimeError, match="store down"),
         ):
-            await _mat_api_ep_table("pets", _ep([_col("id")]), state, None, 500, set(), {}, {})
+            await _mat_api_ep_table(
+                "pets", _ep([_col("id")]), state, _statement_hot(), 500, set(), {}, {}
+            )
         rest.assert_not_awaited()
 
     async def test_a_failed_rest_fetch_fails_the_query(self):
@@ -811,7 +871,7 @@ class TestMatApiEpTable:
             pytest.raises(RuntimeError, match="rest down"),
         ):
             await _mat_api_ep_table(
-                "pets", ep, state, None, 500, set(), cache_rewrites, values_cte_entries
+                "pets", ep, state, _statement_hot(), 500, set(), cache_rewrites, values_cte_entries
             )
         assert cache_rewrites == {}
         assert values_cte_entries == {}
@@ -858,7 +918,7 @@ class TestMatGqlRemoteTable:
                 _gql_reg(),
                 _gql_tbl(),
                 state,
-                None,
+                _statement_hot(),
                 500,
                 cache_rewrites,
                 values_cte_entries,
@@ -890,7 +950,7 @@ class TestMatGqlRemoteTable:
                 _gql_reg(),
                 _gql_tbl(),
                 state,
-                None,
+                _statement_hot(),
                 500,
                 cache_rewrites,
                 values_cte_entries,
@@ -928,7 +988,7 @@ class TestMatGqlRemoteTable:
                 _gql_reg(),
                 _gql_tbl(),
                 state,
-                None,
+                _statement_hot(),
                 500,
                 cache_rewrites,
                 values_cte_entries,
@@ -960,7 +1020,7 @@ class TestMatGqlRemoteTable:
         ):
             with pytest.raises(RuntimeError, match="GQL remote fetch failed"):
                 await _mat_gql_remote_table(
-                    "pets", _gql_reg(), _gql_tbl(), state, None, 500, {}, {}
+                    "pets", _gql_reg(), _gql_tbl(), state, _statement_hot(), 500, {}, {}
                 )
 
 
@@ -972,7 +1032,9 @@ class TestMatGqlRemoteTable:
 class TestMaterializeApiToEngineCache:
     async def test_no_api_tables_returns_empty(self):
         state = SimpleNamespace(hot_manager=None)
-        rewrites, ctes, dropped = await _materialize_api_to_engine_cache("SELECT 1", state)
+        rewrites, ctes, dropped = await _materialize_api_to_engine_cache(
+            "SELECT 1", state, table_ids=[PETS]
+        )
         assert rewrites == {}
         assert ctes == {}
         assert dropped == {}
@@ -981,6 +1043,7 @@ class TestMaterializeApiToEngineCache:
         from provisa.cache.hot_tables import HotTableEntry
 
         entry = HotTableEntry(
+            table_id=PETS,
             table_name="pets",
             catalog="cat",
             schema="sch",
@@ -989,11 +1052,17 @@ class TestMaterializeApiToEngineCache:
             column_names=["id"],
         )
         hot_mgr = SimpleNamespace(
-            is_hot=lambda tn: tn == "pets", get_entry=lambda tn: entry, auto_threshold=500
+            entries_for=lambda table_ids: {"pets": entry} if PETS in table_ids else {},
+            auto_threshold=500,
         )
-        state = SimpleNamespace(hot_manager=hot_mgr, api_endpoints={}, graphql_remote_sources={})
+        state = SimpleNamespace(
+            hot_manager=hot_mgr,
+            api_endpoints={},
+            graphql_remote_sources={},
+            tables=[{"id": PETS, "table_name": "pets"}],
+        )
         rewrites, ctes, dropped = await _materialize_api_to_engine_cache(
-            "SELECT * FROM pets", state
+            "SELECT * FROM pets", state, table_ids=[PETS]
         )
         assert rewrites == {}
         assert ctes["pets"] is entry
@@ -1017,7 +1086,7 @@ class TestMaterializeApiToEngineCache:
         step = AsyncMock(side_effect=materialized)
         with patch("provisa.api.data.materialization._mat_api_ep_table", new=step):
             rewrites, ctes, dropped = await _materialize_api_to_engine_cache(
-                "SELECT * FROM pets", state
+                "SELECT * FROM pets", state, table_ids=[PETS]
             )
         assert step.await_args.args[:2] == ("pets", ep)
         assert (rewrites, ctes, dropped) == ({"pets": (loc, "r_x")}, {}, {})
@@ -1042,7 +1111,7 @@ class TestMaterializeApiToEngineCache:
             graphql_remote_sources={"gh": reg},
         )
         rewrites, ctes, dropped = await _materialize_api_to_engine_cache(
-            "SELECT * FROM pets", state, nf_args={}
+            "SELECT * FROM pets", state, nf_args={}, table_ids=[PETS]
         )
         assert dropped == {
             "pets": "requires filter(s) ['name'] — add a WHERE clause with the "
@@ -1061,7 +1130,7 @@ class TestMaterializeApiToEngineCache:
         # the `if ep is None:` branch's `continue`, never reaching dropped_tables — verify
         # a genuinely unknown table produces no rewrite/cte and no crash.
         rewrites, ctes, dropped = await _materialize_api_to_engine_cache(
-            "SELECT * FROM pets", state
+            "SELECT * FROM pets", state, table_ids=[PETS]
         )
         assert rewrites == {}
         assert ctes == {}
@@ -1100,7 +1169,7 @@ class TestMaterializeApiToEngineCache:
             patch("provisa.api_source.engine_cache.table_known_live", return_value=True),
         ):
             rewrites, ctes, dropped = await _materialize_api_to_engine_cache(
-                "SELECT * FROM pets", state, nf_args={"name": "Fido"}
+                "SELECT * FROM pets", state, nf_args={"name": "Fido"}, table_ids=[PETS]
             )
         assert dropped == {}
         assert "pets" in rewrites
@@ -1137,7 +1206,7 @@ class TestMaterializeApiToEngineCache:
             patch("provisa.api_source.engine_cache.table_known_live", return_value=True),
         ):
             rewrites, ctes, dropped = await _materialize_api_to_engine_cache(
-                "SELECT * FROM pets", state
+                "SELECT * FROM pets", state, table_ids=[PETS]
             )
         assert dropped == {}
         assert "pets" in rewrites
@@ -1180,7 +1249,7 @@ class TestMaterializeApiToEngineCache:
             ),
             pytest.raises(RuntimeError, match="remote down"),
         ):
-            await _materialize_api_to_engine_cache("SELECT * FROM pets", state)
+            await _materialize_api_to_engine_cache("SELECT * FROM pets", state, table_ids=[PETS])
 
     async def test_ep_found_but_unmaterializable_dropped(self):
         ep = _ep([_col("id"), _col("owner_id", param_type=ParamType.path)])
@@ -1208,7 +1277,7 @@ class TestMaterializeApiToEngineCache:
         ):
             m_loc.return_value = CacheLocation("cat", "sch", "relational")
             rewrites, ctes, dropped = await _materialize_api_to_engine_cache(
-                "SELECT * FROM pets", state
+                "SELECT * FROM pets", state, table_ids=[PETS]
             )
         assert dropped == {"pets": "could not be materialized"}
         assert rewrites == {}
@@ -1229,7 +1298,7 @@ class TestMaterializeApiToEngineCache:
             pytest.raises(ConnectionError, match="remote 500"),
         ):
             await _materialize_api_to_engine_cache(
-                "SELECT id FROM pets UNION ALL SELECT id FROM pets", state
+                "SELECT id FROM pets UNION ALL SELECT id FROM pets", state, table_ids=[PETS]
             )
 
 
@@ -1265,9 +1334,11 @@ class TestMatGqlRemoteTableCut:
             patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
         ):
             await _mat_gql_remote_table(
-                "pets", _gql_reg(), _gql_tbl(), state, hot_mgr, 500, {}, first
+                "pets", _gql_reg(), _gql_tbl(), state, _statement_hot(hot_mgr), 500, {}, first
             )
-            await _mat_gql_remote_table("pets", _gql_reg(), _gql_tbl(), state, hot_mgr, 500, {}, {})
+            await _mat_gql_remote_table(
+                "pets", _gql_reg(), _gql_tbl(), state, _statement_hot(hot_mgr), 500, {}, {}
+            )
         assert len(set(landed)) == 2  # each cut statement lands its own, found by no other
         assert hot_mgr._hot_tables == {}
         assert first["pets"].rows == [{"id": 1, "name": "Fido"}]  # this statement reads it

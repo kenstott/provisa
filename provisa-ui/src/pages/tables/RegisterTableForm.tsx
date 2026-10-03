@@ -22,6 +22,7 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { toSnakeCase } from "../../naming";
+import { NlTableSearch } from "./NlTableSearch";
 import { MultiSelect } from "../../components/MultiSelect";
 import { useAvailableSchemas, useAvailableTables } from "../../hooks/useAdminQueries";
 import { useQueryPreview } from "../../hooks/useQueryPreview";
@@ -575,11 +576,8 @@ export function RegisterTableForm({
             <DataQualityPanel
               checker={sourceType}
               sourceId={sourceId}
-              schemaName={domainId ? normalizeDomain(domainId) : schemaName}
-              tableName={tableName}
               contractText={dqContract}
               onChange={setDqContract}
-              registered={false}
               onDatasetChange={onDqDatasetChange}
             />
           </div>
@@ -735,6 +733,14 @@ export function RegisterTableForm({
               </Text>
             )}
           </label>
+          {sourceId && schemaName && !allTablesRegistered && (
+            <NlTableSearch
+              sourceId={sourceId}
+              schemaName={schemaName}
+              isRegistered={isRegistered}
+              onPick={setTableName}
+            />
+          )}
         </>
       )}
       <TextInput

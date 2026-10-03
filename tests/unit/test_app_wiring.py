@@ -142,6 +142,10 @@ def _state(*, ready=True):
         federation_engine=engine,
         config=config,
         mv_registry=registry,
+        # the model a view's inputs resolve against (events.nodes.lineage_graph); no views here
+        tables=[],
+        source_catalogs={},
+        contexts={},
     )
 
 
@@ -198,6 +202,8 @@ def _state_with_mv(*, column_types):
         replica_address=_replica_address,
     )
     mv = SimpleNamespace(
+        id="daily",
+        target_catalog="store",
         target_schema="analytics",
         target_table="daily",
         sql="SELECT day AS d, count(*) AS n FROM orders GROUP BY day",
@@ -210,7 +216,20 @@ def _state_with_mv(*, column_types):
         tenant_db=_fake_db([]),
         federation_engine=engine,
         config=SimpleNamespace(sources=[], tables=[]),
-        mv_registry=SimpleNamespace(get_enabled=lambda: [mv]),
+        mv_registry=SimpleNamespace(get_enabled=lambda: [mv], get=lambda _id: None),
+        # the model the view's input ``orders`` resolves against (events.nodes.lineage_graph)
+        tables=[
+            {
+                "id": 1,
+                "source_id": "pg",
+                "domain_id": "sales",
+                "schema_name": "public",
+                "table_name": "orders",
+                "alias": None,
+            }
+        ],
+        source_catalogs={"pg": "pg"},
+        contexts={},
     )
 
 
@@ -278,3 +297,36 @@ async def test_never_raises_into_boot():
         log=_LOG,
     )
     assert n == 0
+
+
+@pytest.mark.asyncio
+async def test_a_view_whose_input_does_not_resolve_fails_wiring_naming_it(caplog):
+    """A view that reads a name the model does not hold was refused when it was declared;
+    meeting one at wiring is a defect — the wiring raises rather than wiring the view with a
+    missing edge, the error is logged naming the view and the reference, and the view is marked
+    failed with that reason, so the admin's view list says why it does not refresh."""
+    st = _state_with_mv(column_types=["date", "bigint"])
+    st.tables = []
+    failed: dict[str, str] = {}
+    st.mv_registry.mark_refresh_failed = failed.__setitem__
+    with caplog.at_level("ERROR"):
+        n = await wire_event_loop(_Sched(), state=st, log=_LOG)
+    assert n == 0
+    said = "not wired into the event loop: materialized view 'daily' reads 'orders'"
+    assert failed["daily"].startswith(said)
+    assert any(r.levelname == "ERROR" and said in r.getMessage() for r in caplog.records)
+
+
+def test_an_unresolved_input_is_not_taken_for_a_lineage_cycle():
+    """The poll-job wiring rejects a cycle with a warning; an input that does not resolve is
+    not a cycle — it raises out of the lineage step with the view marked failed."""
+    from provisa.events.app_wiring import _lineage
+    from provisa.mv.view_inputs import InputUnresolved
+
+    st = _state_with_mv(column_types=["date", "bigint"])
+    st.tables = []
+    failed: dict[str, str] = {}
+    st.mv_registry.mark_refresh_failed = failed.__setitem__
+    with pytest.raises(InputUnresolved):
+        _lineage(st.mv_registry.get_enabled(), st, _LOG)
+    assert list(failed) == ["daily"]

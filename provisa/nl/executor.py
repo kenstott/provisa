@@ -149,7 +149,7 @@ async def _compile_and_execute_graphql(query: str, role: str, app_state: Any) ->
         governed = apply_governance(cq.sql, gov_ctx)
         exec_sql = rewrite_semantic_to_catalog_physical(governed, ctx)
         cache_rewrites, values_ctes, dropped = await _materialize_api_to_engine_cache(
-            exec_sql, app_state, cq.gql_remote_extra_selections
+            exec_sql, app_state, cq.gql_remote_extra_selections, table_ids=cq.table_ids
         )
         exec_sql = apply_dropped_tables(exec_sql, dropped)
         for table_name, entry in values_ctes.items():
@@ -169,7 +169,7 @@ async def _compile_and_execute_graphql(query: str, role: str, app_state: Any) ->
                 nodes_values_ctes,
                 nodes_dropped,
             ) = await _materialize_api_to_engine_cache(
-                nodes_exec_sql, app_state, cq.gql_remote_extra_selections
+                nodes_exec_sql, app_state, cq.gql_remote_extra_selections, table_ids=cq.table_ids
             )
             nodes_exec_sql = apply_dropped_tables(nodes_exec_sql, nodes_dropped)
             for table_name, entry in nodes_values_ctes.items():

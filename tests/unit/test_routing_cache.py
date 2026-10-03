@@ -44,29 +44,29 @@ API_SOURCE_ID = "petstore-api"
 
 
 class _FakeHotManager:
-    """Minimal stand-in for HotTableManager: `is_hot`/`get_entry` flip on demand."""
+    """Minimal stand-in for HotTableManager: which tables are hot flips on demand."""
 
     def __init__(self):
-        self.hot: set[str] = set()
+        self.hot: set[int] = set()
         self.auto_threshold = 500
 
-    def is_hot(self, table_name: str) -> bool:
-        return table_name in self.hot
-
-    def get_entry(self, table_name: str):
+    def entries_for(self, table_ids):
         from provisa.cache.hot_tables import HotTableEntry
 
-        if table_name not in self.hot:
-            return None
-        return HotTableEntry(
-            table_name=table_name,
-            catalog="cat",
-            schema="sch",
-            pk_column="id",
-            rows=[{"id": 1}],
-            column_names=["id"],
-            is_api=True,
-        )
+        return {
+            "orders": HotTableEntry(
+                table_id=table_id,
+                table_name="orders",
+                catalog="cat",
+                schema="sch",
+                pk_column="id",
+                rows=[{"id": 1}],
+                column_names=["id"],
+                is_api=True,
+            )
+            for table_id in table_ids
+            if table_id in self.hot
+        }
 
 
 def _ctx() -> CompilationContext:
@@ -241,13 +241,13 @@ async def test_hot_table_query_never_cached_and_route_tracks_live_state():
     hot_mgr = _FakeHotManager()
     state = _state(hot_manager=hot_mgr)
     # Table has no PG pool and no API registration either — only the hot-mgr flag drives this
-    # test; would_materialize_optimize must return True the instant hot_mgr.is_hot("orders") is
-    # True, regardless of anything else.
+    # test; would_materialize_optimize must return True the instant ``orders`` (id 1)
+    # is hot, regardless of anything else.
     sql = "SELECT * FROM sales.orders"
 
     # Call 1: table is NOT hot -> would_materialize_optimize is False for this call (no live
     # branch reachable) -> eligible for caching.
-    assert would_materialize_optimize(sql, state) is False
+    assert would_materialize_optimize(sql, state, table_ids=_ORDERS_IDS) is False
     r1 = await _optimize_and_route_cached(
         sql, sql, gov_ctx, ctx, state, "analyst", table_ids=_ORDERS_IDS
     )
@@ -255,8 +255,8 @@ async def test_hot_table_query_never_cached_and_route_tracks_live_state():
     assert r1[1].route == Route.DIRECT
 
     # Flip the table hot BEFORE the second call.
-    hot_mgr.hot.add("orders")
-    assert would_materialize_optimize(sql, state) is True
+    hot_mgr.hot.add(1)
+    assert would_materialize_optimize(sql, state, table_ids=_ORDERS_IDS) is True
 
     with patch("provisa.pgwire._pipeline._optimize_and_route", wraps=_optimize_and_route) as m_opt:
         r2 = await _optimize_and_route_cached(
@@ -275,7 +275,7 @@ async def test_hot_table_query_never_cached_and_route_tracks_live_state():
 
     # Flip back to not-hot for a third call: must read the still-valid call-1 cache entry again
     # (proves the live re-check, not just "never cache once a hot table is seen anywhere").
-    hot_mgr.hot.discard("orders")
+    hot_mgr.hot.discard(1)
     with patch("provisa.pgwire._pipeline._optimize_and_route", wraps=_optimize_and_route) as m_opt3:
         r3 = await _optimize_and_route_cached(
             sql, sql, gov_ctx, ctx, state, "analyst", table_ids=_ORDERS_IDS

@@ -294,7 +294,7 @@ def test_a_table_the_redis_hot_tier_manages_is_not_judged():
         frozenset(),
         _ENGINE,
         _DEFAULT,
-        hot_tier=frozenset({"currencies"}),
+        hot_tier=frozenset({1}),  # currencies, by its table id
     )
     assert [c.table_id for c in candidates] == [2]
     assert skipped == {("pg", "public", "currencies"): HOT_TIER}

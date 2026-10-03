@@ -15,6 +15,8 @@ yielding the identical as-of-N set; an unknown version fails loud; an opt-out MV
 from __future__ import annotations
 
 import pytest
+
+from tests.helpers import hold_registered_tables
 from sqlalchemy import insert, select
 from provisa.core.database import create_engine_from_url
 
@@ -34,6 +36,12 @@ from provisa.mv.refresh import refresh_mv
 from provisa.mv.registry import MVRegistry
 
 MV_ID = "mv-orders"
+
+
+@pytest.fixture(autouse=True)
+def _model_holds_orders(monkeypatch):
+    """The registered table these views read (a view's inputs resolve against the model)."""
+    hold_registered_tables(monkeypatch, "orders")
 
 
 def _mv(mv_id=MV_ID, *, capture=True, key=("id",), exclude=()):

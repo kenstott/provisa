@@ -36,6 +36,8 @@ from typing import Any
 from provisa.mv.models import MVDefinition
 
 _ROW_LEVEL = "row-level replicated table"
+_UNRESOLVED = "reference that names no table or view"
+_AMBIGUOUS = "reference more than one table or view answers to"
 _PARAMETERIZED = "API table that needs arguments"
 _REQUEST_CACHE = "per-request cache table"
 
@@ -111,6 +113,13 @@ def view_inputs(mv: MVDefinition) -> list[str]:
     return sorted(mv.source_tables)
 
 
+def read_table_names(sql: str) -> frozenset[str]:
+    """The bare names of the tables a view's semantic SQL reads (``domain.table`` → ``table``)."""
+    from provisa.events.lineage import extract_inputs  # noqa: PLC0415
+
+    return frozenset(name.rsplit(".", 1)[-1] for name in extract_inputs(sql, "postgres"))
+
+
 async def unreadable_inputs(inputs: list[str], state: Any) -> list[UnreadableInput]:
     """Those of ``inputs`` a materialized view may not read, each with its kind and reason.
     Empty when every input is readable."""
@@ -157,9 +166,46 @@ async def unreadable_inputs(inputs: list[str], state: Any) -> list[UnreadableInp
     return found
 
 
+def unresolved_inputs(mv: MVDefinition, state: Any) -> list[UnreadableInput]:
+    """Those of ``mv``'s inputs the model cannot resolve to exactly one registered table or
+    materialized view (``provisa.mv.view_inputs`` — the same resolution the event graph's edges
+    are built from). Empty when every input resolves."""
+    from provisa.mv.view_inputs import InputUnresolved, ModelIndex, view_refs  # noqa: PLC0415
+
+    index = ModelIndex(state)
+    found: list[UnreadableInput] = []
+    for parts in view_refs(mv):
+        try:
+            index.resolve(mv.id, parts)
+        except InputUnresolved as unresolved:
+            if unresolved.candidates:
+                found.append(
+                    UnreadableInput(
+                        unresolved.ref,
+                        _AMBIGUOUS,
+                        f"it names {', '.join(unresolved.candidates)}; qualify it",
+                    )
+                )
+            else:
+                found.append(
+                    UnreadableInput(
+                        unresolved.ref,
+                        _UNRESOLVED,
+                        "no registered table or materialized view has that name",
+                    )
+                )
+    return found
+
+
 async def require_readable_inputs(mv: MVDefinition, state: Any) -> None:
-    """Raise :class:`ViewInputNotReadable` when ``mv`` reads an input a view may not read."""
-    found = await unreadable_inputs(view_inputs(mv), state)
+    """Raise :class:`ViewInputNotReadable` when ``mv`` reads an input a view may not read, or one
+    the model cannot resolve to exactly one table or view (REQ-939: a view's edges are resolved
+    from the model, so a view whose input does not resolve is refused here, when it is declared,
+    and never reaches the event graph)."""
+    unreadable = await unreadable_inputs(view_inputs(mv), state)
+    named = {i.name for i in unreadable}
+    # An input already refused as unreadable is named once, for that.
+    found = [i for i in unresolved_inputs(mv, state) if i.name not in named] + unreadable
     if found:
         raise ViewInputNotReadable(mv.id, found)
 

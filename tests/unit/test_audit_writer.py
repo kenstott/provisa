@@ -69,6 +69,12 @@ def _record(
         route=route,
         hot_counts=hot_counts,
         hot_scope="default:prod",
+        model_stamp=1,
+        model_env="prod",
+        enforced={},
+        route_reason=None,
+        sources=(),
+        data_age=None,
     )
 
 
@@ -245,7 +251,12 @@ def test_a_failed_meter_is_retried_without_inserting_the_row_again(store):
             raise ConnectionError("control plane unreachable")
         metered.append(org_id)
 
-    writer = AuditWriter(interval_s=0.01, retry_s=0.01, insert=store.insert, meter=meter).start()
+    async def no_commit(pool: object, org_id: str, env: str, stamp: int) -> None:
+        return None  # no environment position: the row names no model commit
+
+    writer = AuditWriter(
+        interval_s=0.01, retry_s=0.01, insert=store.insert, meter=meter, deployed_commit=no_commit
+    ).start()
     try:
         writer.enqueue(_record(1, meter_pool=object()))
         assert writer.flush(2.0)
@@ -473,7 +484,7 @@ def test_write_audit_lands_one_row_in_the_tenant_database(tmp_path, monkeypatch)
     )
     monkeypatch.setattr("provisa.encryption.runtime.encryption_service", NullEncryption)
     monkeypatch.setattr("provisa.core.settings_registry.value", lambda key: 60)
-    pending = PendingAudit("alice", "graphql", "analyst", "{ orders { id } }", [7, 9], 0.0)
+    pending = PendingAudit("alice", "graphql", "analyst", "{ orders { id } }", [7, 9], 0.0, 1, {})
     asyncio.run(write_audit(pending, 200, state, route="engine"))
     assert flush_audit(5.0), audit_writer_status()
     assert _logged(path) == [(org, "alice", "analyst", "[7, 9]", "graphql", 200)]
@@ -500,6 +511,12 @@ def _worker(path: str, worker: int, count: int) -> None:
                 logged_at=datetime.now(timezone.utc),
                 trace_id=None,
                 encryption=NullEncryption(),
+                model_stamp=1,
+                model_env="prod",
+                enforced={},
+                route_reason=None,
+                sources=(),
+                data_age=None,
             )
         )
     writer.close(20.0)

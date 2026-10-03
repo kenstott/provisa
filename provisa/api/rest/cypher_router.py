@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import logging
 import time as _time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Header, Query, Request
@@ -43,7 +43,6 @@ if TYPE_CHECKING:
 import re as _re
 from sqlalchemy import select
 
-from provisa.core.connection_loop import spawn_background
 from provisa.core import request_deadline
 from provisa.core.schema_org import node_ids
 from provisa.api.rest.registered_call import (
@@ -176,12 +175,6 @@ class CypherRequest(BaseModel):  # REQ-345
     params: dict[str, Any] = {}
 
 
-def _resolve_table_meta(ctx, table_name: str):  # by GraphQL field name or physical table name
-    return ctx.tables.get(table_name) or next(
-        (m for m in ctx.tables.values() if m.table_name == table_name), None
-    )
-
-
 async def _execute_multi_call(
     non_corr_calls: list,
     label_map: CypherLabelMap,
@@ -270,9 +263,13 @@ async def _dispatch_execution(
     state: AppState,
     span_attrs: dict[str, str],
     *,
+    table_ids: Iterable[int],
     prepare: Callable[[], Awaitable[None]] | None = None,
 ) -> list[dict] | Response:
     """Stage 5: route to the correct executor based on table backing. Returns rows or error Response.
+
+    ``table_ids`` are the registered tables the statement reads, as the pipeline resolved them
+    (the hot rows an API read substitutes are theirs).
 
     ``prepare`` (the ENGINE route's residency landing) runs inside the same error classification as
     execution, so a source that cannot be landed answers with the typed ``error`` field (REQ-778)
@@ -319,7 +316,14 @@ async def _dispatch_execution(
                 )
             elif nf_args or _has_api_tables:
                 rows = await _asyncio.wait_for(
-                    _execute_with_api(clean_exec_sql, clean_params, nf_args, state, span_attrs),
+                    _execute_with_api(
+                        clean_exec_sql,
+                        clean_params,
+                        nf_args,
+                        state,
+                        span_attrs,
+                        table_ids=table_ids,
+                    ),
                     timeout=_timeout,
                 )
             else:
@@ -509,8 +513,10 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     from provisa.cypher.write_translator import (  # noqa: PLC0415
         CypherWriteParseError as _CWPE,
         WriteTranslator as _WT,
+        bind_write_params,
         parse_cypher_write as _pwc,
     )
+    from provisa.cypher.params import CypherParamError  # noqa: PLC0415
 
     _write_ast = None
     try:
@@ -531,13 +537,13 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             return JSONResponse(status_code=503, content={"error": "Schema not loaded"})
         _label_map = _build_label_map(_ctx, _role_id, state)
         try:
-            _translator = _WT(_label_map)
-            _mapping = _translator._resolve_mapping(_write_ast.label)
-            _write_sql = _translator.translate(_write_ast)
-        except _CWPE as exc:
+            # The request's parameters are bound into the statement (``$name`` → ``$k``), so the
+            # admission's new-row check and the source see the values, never their names.
+            _write_sql, _write_params = bind_write_params(
+                _WT(_label_map).translate(_write_ast), body.params
+            )
+        except (_CWPE, CypherParamError) as exc:
             return JSONResponse(status_code=400, content={"error": str(exc)})
-        _source_id = _mapping.source_id
-        _table_meta = _resolve_table_meta(_ctx, _mapping.table_name)
 
         # ONE write path: the translated statement goes through the pipeline every other surface's
         # write goes through (Bolt's Cypher writes included) — its admission (the write right, the
@@ -545,7 +551,13 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         # addressing and dialect, and its execution. This route used to check, address and run
         # the statement itself.
         try:
-            _plan = await _govern_write(_write_sql, _role_id, state=state, cache_hint=_NO_CACHE)
+            _plan = await _govern_write(
+                _write_sql,
+                _role_id,
+                exec_params=_write_params or None,
+                state=state,
+                cache_hint=_NO_CACHE,
+            )
             _result = await _execute_write_plan(_plan, state)
         except PermissionError as exc:
             return JSONResponse(status_code=403, content={"error": str(exc)})
@@ -553,35 +565,8 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             return JSONResponse(status_code=500, content={"error": f"Write failed: {exc}"})
         affected = _result.rowcount if _result.rowcount is not None else len(_result.rows)
 
-        # Post-mutation hooks: cache invalidation, MV staleness, Kafka events,
-        # hot-table reload — same as GraphQL mutations.
-        if _table_meta is not None:
-            from provisa.cache.tenancy import invalidate_tables
-
-            # REQ-595: the acting org's entries — the tenant they were written under.
-            await invalidate_tables(state, [_table_meta.table_id])
-            state.mv_registry.mark_stale(_table_meta.table_name)
-            from provisa.kafka.change_events import emit_change_event as _emit_change
-            from provisa.kafka.sink_executor import trigger_sinks_for_table as _trigger_sinks
-
-            _emit_change(_mapping.table_name, _source_id)
-            spawn_background(_trigger_sinks(_mapping.table_name, state))
-            if state.hot_manager is not None:
-                from provisa.cache.hot_tables import HotTableManager as _HotMgr
-
-                _hot = state.hot_manager
-                assert isinstance(_hot, _HotMgr)
-                if _hot.is_hot(_table_meta.table_name):
-                    await _hot.invalidate(_table_meta.table_name)
-                    if _hot.get_entry(_table_meta.table_name) is None:
-                        await _hot.load_table(
-                            state.federation_engine,
-                            _table_meta.table_name,
-                            _table_meta.schema_name,
-                            _table_meta.catalog_name,
-                            "id",
-                        )
-
+        # The steps after a write (cache, views, change events, sinks, hot copy) ran at the
+        # pipeline's terminal (pgwire._pipeline._after_write), as on every surface.
         return JSONResponse(content={"affected_rows": affected, "type": "cypher"})
 
     try:
@@ -829,7 +814,13 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             # REQ-778: landing runs inside execution's error classification — a source that
             # cannot be landed (e.g. an unreachable broker) answers with the typed `error` field.
             _exec_result = await _dispatch_execution(
-                exec_sql, physical_sql, resolved_params, state, span_attrs, prepare=_land_sources
+                exec_sql,
+                physical_sql,
+                resolved_params,
+                state,
+                span_attrs,
+                table_ids=plan.table_ids,
+                prepare=_land_sources,
             )
     except Exception:
         await finalize_audit(plan, 500, state)
@@ -1027,7 +1018,12 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
                     )
                 else:
                     rows = await _dispatch_execution(
-                        plan.exec_sql or "", plan.physical_sql or "", [], state, {}
+                        plan.exec_sql or "",
+                        plan.physical_sql or "",
+                        [],
+                        state,
+                        {},
+                        table_ids=plan.table_ids,
                     )
             except Exception:
                 await finalize_audit(plan, 500, state)  # REQ-074/REQ-1386

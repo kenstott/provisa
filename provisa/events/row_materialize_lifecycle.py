@@ -246,6 +246,7 @@ async def wire_row_materialize_background(
     longer be resolved is skipped and logged, never aborts wiring for every other table."""
     from apscheduler.triggers.interval import IntervalTrigger
 
+    from provisa.events.nodes import source_node
     from provisa.federation.query_residency import row_materialized_tables_by_name
 
     db = getattr(state, "tenant_db", None)
@@ -256,7 +257,7 @@ async def wire_row_materialize_background(
     row_tables = await row_materialized_tables_by_name(state)
     wired = 0
     for table_name, table in row_tables.items():
-        node = f"{table.schema_name}.{table.table_name}"
+        node = source_node(table.source_id, table.schema_name, table.table_name)
         pk_columns = [c.name for c in table.columns if c.is_primary_key]
         if not pk_columns:
             log.warning("row-materialize %s: no primary key column — skipping wiring", node)

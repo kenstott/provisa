@@ -468,22 +468,22 @@ async def test_a_changed_build_is_posted_to_its_tables_node_so_dependents_ripple
     from provisa.federation.data_replicator import BuildOutcome
 
     key = ("s1", "public", "events")
-    state = SimpleNamespace(tenant_db=_Db(), replica_nodes={key: "public.events"})
+    state = SimpleNamespace(tenant_db=_Db(), replica_nodes={key: "s1/public.events"})
     _built(monkeypatch, BuildOutcome(rows_copied=9, method="stream_batches", changed=True))
     await replica_builds.run_build(state, key, _noop)
-    assert queue.refreshes == [("public.events", True)]
-    assert queue.events == [("public.events", "replace", {"built": True, "rows": 9})]
-    assert queue.fanned == [(1, ["public.events"])]  # to the node itself: it re-posts onward
+    assert queue.refreshes == [("s1/public.events", True)]
+    assert queue.events == [("s1/public.events", "replace", {"built": True, "rows": 9})]
+    assert queue.fanned == [(1, ["s1/public.events"])]  # to the node itself: it re-posts onward
 
 
 async def test_an_unchanged_build_ripples_nothing(queue, monkeypatch):
     from provisa.federation.data_replicator import BuildOutcome
 
     key = ("s1", "public", "events")
-    state = SimpleNamespace(tenant_db=_Db(), replica_nodes={key: "public.events"})
+    state = SimpleNamespace(tenant_db=_Db(), replica_nodes={key: "s1/public.events"})
     _built(monkeypatch, BuildOutcome(rows_copied=9, method="stream_batches", changed=False))
     await replica_builds.run_build(state, key, _noop)
-    assert queue.refreshes == [("public.events", True)] and queue.events == []
+    assert queue.refreshes == [("s1/public.events", True)] and queue.events == []
 
 
 async def test_a_build_of_a_table_with_no_event_loop_node_posts_nothing(queue, monkeypatch):
@@ -492,13 +492,13 @@ async def test_a_build_of_a_table_with_no_event_loop_node_posts_nothing(queue, m
     state = SimpleNamespace(tenant_db=_Db())  # the event loop is not wired, or has no such node
     _built(monkeypatch, BuildOutcome(rows_copied=9, method="stream_batches"))
     await replica_builds.run_build(state, ("s1", "public", "events"), _noop)
-    assert queue.events == [] and queue.refreshes == [("public.events", True)]
+    assert queue.events == [] and queue.refreshes == [("s1/public.events", True)]
 
 
 async def test_a_failed_build_is_stamped_not_fresh_and_ripples_nothing(queue, monkeypatch):
     key = ("s1", "public", "events")
-    state = SimpleNamespace(tenant_db=_Db(), replica_nodes={key: "public.events"})
+    state = SimpleNamespace(tenant_db=_Db(), replica_nodes={key: "s1/public.events"})
     _built(monkeypatch, RuntimeError("source down"))
     with pytest.raises(RuntimeError, match="source down"):
         await replica_builds.run_build(state, key, _noop)
-    assert queue.refreshes == [("public.events", False)] and queue.events == []
+    assert queue.refreshes == [("s1/public.events", False)] and queue.events == []

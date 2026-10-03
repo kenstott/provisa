@@ -372,7 +372,14 @@ def _govern_select(
             if not _is_column_visible(expr, alias_to_tid, gov_ctx):
                 pass  # drop invisible column
             else:
-                new_exprs.append(_maybe_mask_column(expr, alias_to_tid, gov_ctx))
+                masked = _maybe_mask_column(expr, alias_to_tid, gov_ctx)
+                if masked is expr:
+                    new_exprs.append(expr)
+                else:
+                    # The masked value keeps the column's name: a client reads `email`, not a
+                    # nameless expression (`?column?`). The identifier is the column's own, so it
+                    # is quoted exactly as the statement wrote it.
+                    new_exprs.append(exp.Alias(this=masked, alias=expr.this.copy()))
         elif isinstance(expr, exp.Alias) and isinstance(expr.this, exp.Column):
             col = expr.this
             if not _is_column_visible(col, alias_to_tid, gov_ctx):

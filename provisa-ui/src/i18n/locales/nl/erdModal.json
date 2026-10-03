@@ -23,6 +23,7 @@
     "downloadSvg": "SVG downloaden",
     "downloadPng": "PNG downloaden",
     "downloadJpeg": "JPEG downloaden",
+    "downloadJson": "Diagram downloaden als JSON (tabellen, kolommen, relaties)",
     "close": "Sluiten",
     "hint": "Klik op een domeingroep om samen of uit te vouwen · stippellijnen verbinden samengevouwen domeinen",
     "resizeHandle": "Domeinvak vergroten/verkleinen ({{corner}})"

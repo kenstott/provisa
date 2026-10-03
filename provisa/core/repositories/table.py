@@ -12,6 +12,7 @@
 
 # Requirements: REQ-013, REQ-014, REQ-016, REQ-133, REQ-155, REQ-156, REQ-260, REQ-334, REQ-393, REQ-399
 
+from provisa.core import model_change
 from typing import TYPE_CHECKING
 
 from contextlib import contextmanager
@@ -172,6 +173,7 @@ async def upsert(
     to block each other's deletion in a circle. A registration that would drop a column other
     objects refer to is refused (:class:`ColumnDropRefused`). This is the write path the admin
     mutations and the config loader share, so both refuse them."""
+    model_change.name("upsert", "table", table.table_name)  # REQ-1524
     async with conn.transaction():
         view_sql = getattr(table, "view_sql", None)
         if view_sql:
@@ -537,6 +539,7 @@ async def delete(conn: "Connection", table_id: int) -> bool:  # REQ-014, REQ-191
     Data kept for the table outside the control plane (replica, row-level rows, a view's
     storage relation, cache entries) is not removed here; the caller runs what exists for it.
     """
+    model_change.name("delete", "table", table_id)  # REQ-1524
     ref = ObjectRef("table", table_id)
     async with conn.transaction():
         row = await get(conn, table_id)

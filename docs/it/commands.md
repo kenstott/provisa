@@ -286,7 +286,7 @@ Indicare nel campo **Scrive nella tabella** la tabella in cui scrive l'operazion
 
 Dopo ogni chiamata che il servizio remoto accetta, Provisa la tratta come una scrittura su quella tabella. Scarta le risposte in cache della tabella, segna come obsolete le viste materializzate costruite su di essa, emette l'evento di modifica, esegue i sink della tabella e ricarica la tabella quando è tenuta hot. [tool-verified: `provisa/api/data/table_written.py` `after_table_written`]
 
-Le repliche non vengono aggiornate dalla chiamata. Ciò attende un modo per richiedere l'aggiornamento di una replica, che non è costruito; fino ad allora una replica si aggiorna secondo la propria pianificazione. [tool-verified: REQ-1924 WRITTEN TABLE amendment; no replica call in `after_table_written`]
+Quando la tabella viene letta dalla sua replica completa (le impostazioni dell'operatore la collocano lì, o il motore non può leggere la sua sorgente sul posto), dopo la chiamata viene richiesta una costruzione della replica, con il motivo `write`. I lettori mantengono la vecchia replica finché la nuova non la sostituisce. Una tabella replicata riga per riga, o con una colonna parametro, non ha una replica completa da ricostruire. [tool-verified: `provisa/api/data/table_written.py` `_request_replica_build`; `provisa/federation/replica_state.py` `REASON_WRITE`]
 
 ### Perché non può essere composta
 

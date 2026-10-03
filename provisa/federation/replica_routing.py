@@ -25,7 +25,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
+
+if TYPE_CHECKING:
+    from provisa.mv.models import TableIdentity
 
 from provisa.federation.replica_address import (
     ReplicaRoute,
@@ -135,45 +138,32 @@ def live_while_building(source: Any, table: Any, engine: Any) -> bool:
 class UnknownRegisteredTable(LookupError):
     """A statement names a table that is not registered."""
 
-    def __init__(self, table_name: str) -> None:
-        self.table_name = table_name
+    def __init__(self, table: str) -> None:
+        self.table = table
         super().__init__(
-            f"table {table_name!r} is not a registered table, so it has no name on the engine"
+            f"table {table!r} is not a registered table, so it has no name on the engine"
         )
 
 
-class AmbiguousRegisteredTable(LookupError):
-    """A statement names a table by a name more than one source registers."""
+async def registered_table_key(engine: Any, state: Any, table: "TableIdentity") -> TableKey:
+    """The catalog-physical name the bound ``engine`` gives the registered ``table`` (its
+    identity: source, schema, name) — ``(catalog, schema, table)``, the catalog folded into the
+    schema on an engine whose SQL has none — exactly as a lowered statement names it.
 
-    def __init__(self, table_name: str, sources: list[str]) -> None:
-        self.table_name = table_name
-        self.sources = sources
-        super().__init__(
-            f"table {table_name!r} is registered by more than one source ({', '.join(sources)}), "
-            "so the name alone does not say which is meant. Register the tables under different "
-            "names, or define the view by SQL that names the source."
-        )
-
-
-async def registered_table_key(engine: Any, state: Any, table_name: str) -> TableKey:
-    """The catalog-physical name the bound ``engine`` gives the table registered as
-    ``table_name`` — ``(catalog, schema, table)``, the catalog folded into the schema on an
-    engine whose SQL has none — exactly as a lowered statement names it.
-
-    For a caller that holds only a registered table's name (a join-pattern materialized view):
-    a bare name is no engine address, live or replica, so it is resolved here first and then
-    read through the address seam (``EngineRuntime.read_address``). Refused when no registered
-    table has that name, and when more than one source registers it. ``engine`` is the
-    ``FederationEngine``."""
-    from provisa.compiler.naming import apply_sql_name
+    For a caller that holds a registered table rather than a statement (a join-pattern view's
+    bound inputs, a Hot candidate): its identity is no engine address, live or replica, so it is
+    resolved here first and then read through the address seam (``EngineRuntime.read_address``).
+    Refused when no registered table has that identity. ``engine`` is the ``FederationEngine``."""
     from provisa.federation.registry_view import registered_tables
 
-    wanted = {table_name, apply_sql_name(table_name)}
-    found = [t for t in await registered_tables(state) if t.table_name in wanted]
+    found = [
+        t
+        for t in await registered_tables(state)
+        if (t.source_id, t.schema_name, t.table_name)
+        == (table.source_id, table.schema_name, table.table_name)
+    ]
     if not found:
-        raise UnknownRegisteredTable(table_name)
-    if len(found) > 1:
-        raise AmbiguousRegisteredTable(table_name, sorted(t.source_id for t in found))
+        raise UnknownRegisteredTable(table.label)
     reg = found[0]
     physical = getattr(state, "kafka_table_physical", None) or {}
     name = physical.get(reg.table_name, reg.table_name)

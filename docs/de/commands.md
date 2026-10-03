@@ -283,7 +283,7 @@ Tragen Sie im Feld **Schreibt Tabelle** die Tabelle ein, in die die Operation sc
 
 Nach jedem Aufruf, den der externe Dienst annimmt, behandelt Provisa ihn als Schreibvorgang auf diese Tabelle. Es verwirft die zwischengespeicherten Antworten der Tabelle, markiert die materialisierten Sichten darauf als veraltet, sendet das Änderungsereignis, führt die Senken der Tabelle aus und lädt die Tabelle neu, wenn sie im Hot-Bestand gehalten wird. [tool-verified: `provisa/api/data/table_written.py` `after_table_written`]
 
-Replikate werden durch den Aufruf nicht aktualisiert. Das setzt eine Möglichkeit voraus, eine Replikataktualisierung anzufordern, die nicht gebaut ist; bis dahin aktualisiert sich ein Replikat nach seinem eigenen Zeitplan. [tool-verified: REQ-1924 WRITTEN TABLE amendment; no replica call in `after_table_written`]
+Wird die Tabelle aus ihrem Replikat der ganzen Tabelle gelesen (die Einstellungen des Betreibers legen sie dorthin, oder die Engine kann ihre Quelle nicht direkt lesen), wird nach dem Aufruf ein Aufbau des Replikats angefordert, mit dem Grund `write`. Leser behalten das alte Replikat, bis das neue an seine Stelle tritt. Eine zeilenweise replizierte Tabelle oder eine mit einer Parameterspalte hat kein ganzes Replikat, das neu aufzubauen wäre. [tool-verified: `provisa/api/data/table_written.py` `_request_replica_build`; `provisa/federation/replica_state.py` `REASON_WRITE`]
 
 ### Warum er nicht komponierbar ist
 

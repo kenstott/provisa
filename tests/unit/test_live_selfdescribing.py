@@ -13,6 +13,9 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 import pytest
+
+from provisa.events.nodes import source_node, view_node
+from tests.helpers import derived_lineage
 from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
@@ -52,11 +55,24 @@ async def _db(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+def _view(view_id: str, schema: str, sql: str) -> MVDefinition:
+    return MVDefinition(
+        id=view_id,
+        source_tables=[],
+        target_catalog="mem",
+        target_schema=schema,
+        target_table=view_id,
+        sql=sql,
+    )
+
+
 def test_process_is_derived_from_sql_declaration():
     sql = "SELECT id, status, count(*) AS n FROM shop.orders GROUP BY id, status"
     # lineage (fan-out edges) is DERIVED from the SQL — never hand-declared
     assert lineage.extract_inputs(sql) == {"shop.orders"}
-    assert lineage.dependents({"mart.by_status": sql}) == {"shop.orders": ["mart.by_status"]}
+    view = _view("by_status", "mart", sql)
+    graph = derived_lineage([view], [("pg", "shop", "orders")])
+    assert lineage.dependents(graph) == {"pg/shop.orders": ["mart.by_status"]}
     # output schema + PK are DERIVED from the SELECT
     inputs = {"shop.orders": {"id": "bigint", "status": "varchar"}}
     assert lineage.derive_output_schema(sql, inputs) == [
@@ -80,9 +96,10 @@ def test_determinism_proof_obligation_rejects_wall_clock_and_random():
 
 
 def test_acyclic_invariant_derived_from_sql():
-    cyclic = {"a": "SELECT * FROM b", "b": "SELECT * FROM a"}
-    assert lineage.find_cycle(cyclic) is not None
-    assert lineage.find_cycle({"a": "SELECT * FROM src", "b": "SELECT * FROM a"}) is None
+    cyclic = [_view("a", "m", "SELECT * FROM m.b"), _view("b", "m", "SELECT * FROM m.a")]
+    assert lineage.find_cycle(derived_lineage(cyclic, [])) is not None
+    acyclic = [_view("a", "m", "SELECT * FROM src"), _view("b", "m", "SELECT * FROM m.a")]
+    assert lineage.find_cycle(derived_lineage(acyclic, [("pg", "public", "src")])) is None
 
 
 # ---------------------------------------------------------------------------
@@ -99,7 +116,7 @@ async def test_sql_only_mv_auto_processes_zero_config(tmp_path):
         id="hot",
         source_tables=["src"],
         target_catalog="mem",
-        target_schema="",
+        target_schema="mart",
         target_table="hot",
         sql="SELECT id, status FROM src",
     )
@@ -107,8 +124,9 @@ async def test_sql_only_mv_auto_processes_zero_config(tmp_path):
     assert mv.incremental is False
 
     # lineage auto-derived from the SQL; fan-out auto-wired
-    deps = supervisor.dependents_of({"hot": mv.sql})
-    assert deps("src") == ["hot"]
+    src_node, hot_node = source_node("pg", "public", "src"), view_node(mv)
+    deps = supervisor.dependents_of(derived_lineage([mv], [("pg", "public", "src")]))
+    assert deps(src_node) == [hot_node]
 
     async def src_fetch(_pending):
         return [{"id": 1, "status": "new"}]
@@ -136,7 +154,7 @@ async def test_sql_only_mv_auto_processes_zero_config(tmp_path):
         pk_columns=lineage.infer_pk(mv.sql) or ["id"],
     )
     src = SourceTableProcessor(
-        "src",
+        src_node,
         change_signal="ttl",
         watermark_column=None,
         dependents_of=deps,
@@ -145,7 +163,7 @@ async def test_sql_only_mv_auto_processes_zero_config(tmp_path):
         land=land,
     )
     mv_proc = MVTableProcessor(
-        "hot",
+        hot_node,
         change_signal="ttl",
         watermark_column=None,
         dependents_of=deps,
@@ -158,8 +176,8 @@ async def test_sql_only_mv_auto_processes_zero_config(tmp_path):
         mv_proc._db = db
         # seed the source once; the DAG self-organizes and reprocesses in near-real-time
         async with db.acquire() as conn:
-            e = await queue.post_event(conn, source_table="src", event_type="replace")
-            await queue.fan_out(conn, e, ["src"])
+            e = await queue.post_event(conn, source_table=src_node, event_type="replace")
+            await queue.fan_out(conn, e, [src_node])
         await supervisor.drain(db, [src, mv_proc])
     # the MV materialized with no configuration beyond its SQL
     assert [(r[0], r[1]) for r in await _rows(dsn, "hot")] == [(1, "new")]

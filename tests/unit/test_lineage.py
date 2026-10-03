@@ -21,9 +21,10 @@ def test_extract_inputs_qualified_and_ignores_ctes():
 
 
 def test_dependents_inverts_lineage():
+    # each view's inputs as resolved against the model (events.nodes.lineage_graph)
     mvs = {
-        "mv.daily": "SELECT count(*) FROM sales.orders",
-        "mv.by_cust": "SELECT c.name FROM sales.orders o JOIN public.customers c ON o.cid=c.id",
+        "mv.daily": {"sales.orders"},
+        "mv.by_cust": {"sales.orders", "public.customers"},
     }
     dep = dependents(mvs)
     assert dep["sales.orders"] == ["mv.by_cust", "mv.daily"]  # both listen to orders, sorted
@@ -33,17 +34,17 @@ def test_dependents_inverts_lineage():
 def test_find_cycle_none_when_acyclic():
     # a two-level DAG: mv.b reads the base source; mv.a reads mv.b — acyclic
     mvs = {
-        "mv.b": "SELECT * FROM sales.orders",
-        "mv.a": "SELECT * FROM mv.b",
+        "mv.b": {"sales.orders"},
+        "mv.a": {"mv.b"},
     }
     assert find_cycle(mvs) is None
 
 
 def test_find_cycle_detects_transitive_cycle():
     mvs = {
-        "mv.a": "SELECT * FROM mv.b",
-        "mv.b": "SELECT * FROM mv.c",
-        "mv.c": "SELECT * FROM mv.a",  # cycle a → b → c → a
+        "mv.a": {"mv.b"},
+        "mv.b": {"mv.c"},
+        "mv.c": {"mv.a"},  # cycle a → b → c → a
     }
     cycle = find_cycle(mvs)
     assert cycle is not None
@@ -53,4 +54,4 @@ def test_find_cycle_detects_transitive_cycle():
 
 
 def test_self_reference_is_a_cycle():
-    assert find_cycle({"mv.x": "SELECT * FROM mv.x"}) == ["mv.x", "mv.x"]
+    assert find_cycle({"mv.x": {"mv.x"}}) == ["mv.x", "mv.x"]

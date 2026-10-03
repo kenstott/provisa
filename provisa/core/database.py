@@ -64,7 +64,7 @@ import weakref
 from collections.abc import Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator
+from typing import TYPE_CHECKING, Any, AsyncGenerator
 
 import sqlalchemy as sa
 from sqlalchemy import Table, event, text
@@ -72,6 +72,9 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.pool import NullPool, QueuePool, SingletonThreadPool, StaticPool
 
 from provisa.core import request_deadline
+
+if TYPE_CHECKING:
+    from provisa.core.model_change import ModelPlane
 
 log = logging.getLogger(__name__)
 
@@ -647,11 +650,27 @@ class Connection:
     Every method is ``async def`` only to keep the awaitable call-site contract; each body runs
     synchronously on the calling request thread."""
 
-    def __init__(self, sc: sa.Connection, caps: Capabilities) -> None:
+    def __init__(
+        self, sc: sa.Connection, caps: Capabilities, database: "Database | None" = None
+    ) -> None:
         self._sc = sc
         self.capabilities = caps
         self._tx_depth = 0
         self._cancel: Callable[[], None] | None = None
+        # REQ-1524: the Database this connection came from, when it holds an environment's model.
+        self._model_db = database if database is not None and database.model is not None else None
+
+    def _record_write(self, target: tuple[str, str, str | None] | None, rowcount: int) -> None:
+        """REQ-1524: a write that changed a row of the model is recorded for its commit
+        (``provisa.core.model_change``). A rowcount the driver does not report (-1) counts as a
+        change; 0 does not."""
+        if target is None or self._model_db is None or rowcount == 0:
+            return
+        from provisa.core import model_change
+
+        verb, table, schema = target
+        assert self._model_db.model is not None
+        model_change.record(self._model_db, self._model_db.model, verb, table, schema)
 
     def _statement_cancel(self) -> Callable[[], None]:
         if self._cancel is None:
@@ -681,7 +700,14 @@ class Connection:
 
     def _exec(self, stmt: Any, params: Any = None) -> Any:
         with self._cancellable():
-            return _buffered(self._sc.execute(stmt, params))
+            result = _buffered(self._sc.execute(stmt, params))
+        if self._model_db is not None:
+            from provisa.core.model_change import core_target, raw_target
+
+            target = raw_target(stmt.text) if isinstance(stmt, sa.TextClause) else core_target(stmt)
+            rowcount = getattr(result, "rowcount", -1)
+            self._record_write(target, -1 if rowcount is None else rowcount)
+        return result
 
     def _run(self, sql: str, args: tuple) -> Any:
         stmt, params = _translate(sql, args, self.capabilities.dialect)
@@ -1096,12 +1122,23 @@ class Connection:
                 cur.close()
             if self._tx_depth == 0:
                 dbapi_conn.commit()
+            for statement in sql.split(";"):
+                self._record_script(statement.strip())
             return
         for stmt in sql.split(";"):
             stmt = stmt.strip()
             if stmt:
                 with self._cancellable():
                     self._sc.exec_driver_sql(stmt)
+                self._record_script(stmt)
+
+    def _record_script(self, sql: str) -> None:
+        """REQ-1524: a script's write to the model is recorded like any other statement's."""
+        if self._model_db is None:
+            return
+        from provisa.core.model_change import raw_target
+
+        self._record_write(raw_target(sql), -1)
 
     # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
     async def execute_script(self, sql: str) -> None:
@@ -1135,10 +1172,18 @@ class Database:
     the org in the file, so this is a no-op there — org = which engine.
     """
 
-    def __init__(self, engine: Engine, name: str, search_path: str | None = None) -> None:
+    def __init__(
+        self,
+        engine: Engine,
+        name: str,
+        search_path: str | None = None,
+        model: "ModelPlane | None" = None,
+    ) -> None:
         self._engine = engine
         self.name = name
         self.search_path = search_path
+        # REQ-1524: the environment whose model this handle holds; its writes are committed.
+        self.model = model
         self.dialect = engine.dialect.name
         self.capabilities = Capabilities.for_dialect(self.dialect)
         self._listener: _PgListener | None = None
@@ -1165,7 +1210,7 @@ class Database:
                 if self.search_path and (sql := self.capabilities.enter_org_sql(self.search_path)):
                     sc.execute(text(sql))
                     sc.commit()
-                yield Connection(sc, self.capabilities)
+                yield Connection(sc, self.capabilities, self)
             except BaseException:
                 # A statement that failed inside the block (a duplicate-key INSERT a caller
                 # catches as its success case) leaves a PostgreSQL transaction aborted, and an

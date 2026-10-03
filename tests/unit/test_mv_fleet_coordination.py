@@ -22,6 +22,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
+
+from tests.helpers import hold_registered_tables
 from sqlalchemy import insert, select, update
 from provisa.core.database import create_engine_from_url
 
@@ -249,6 +251,12 @@ class _FakeEngine:
         if "COUNT(*)" in sql:
             return QueryResult(rows=[(self.count,)], column_names=[])
         return QueryResult(rows=[], column_names=[])
+
+
+@pytest.fixture(autouse=True)
+def _model_holds_orders(monkeypatch):
+    """The registered table these views read (a view's inputs resolve against the model)."""
+    hold_registered_tables(monkeypatch, "orders")
 
 
 def _mv():

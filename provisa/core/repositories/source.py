@@ -12,6 +12,7 @@
 
 # Requirements: REQ-012, REQ-013, REQ-014, REQ-250, REQ-1695
 
+from provisa.core import model_change
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, select, update
@@ -77,6 +78,7 @@ async def upsert(  # REQ-012, REQ-250, REQ-1919
     """Create the source, or replace its definition. ``origin`` says where it comes from
     (``repositories.origin``): written when the source is CREATED and left alone after, except
     that a config load takes over a source made through the admin."""
+    model_change.name("upsert", "source", source.id)  # REQ-1524
     require_origin(origin)
     values = _source_values(source)
     await conn.upsert(
@@ -149,6 +151,7 @@ async def delete(conn: "Connection", source_id: str) -> bool:  # REQ-014, REQ-19
     registration rows — an API or Kafka registration with its endpoints or topics. One
     transaction; no database cascade is relied on.
     """
+    model_change.name("delete", "source", source_id)  # REQ-1524
     ref = ObjectRef("source", source_id)
     async with conn.transaction():
         if await get(conn, source_id) is None:

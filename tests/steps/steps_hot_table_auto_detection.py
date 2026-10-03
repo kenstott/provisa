@@ -17,7 +17,6 @@ import pytest
 from pytest_bdd import given, when, then, scenarios
 
 from provisa.cache.hot_tables import (
-    HOT_PREFIX,
     HotTableEntry,
     HotTableManager,
     detect_hot_tables,
@@ -25,6 +24,14 @@ from provisa.cache.hot_tables import (
 
 scenarios("../features/REQ-236.feature")
 scenarios("../features/REQ-237.feature")
+
+
+# The registered ids of the tables these scenarios hold hot: the hot tier keys each by its id.
+_TABLE_IDS = {"orders": 1, "countries": 2, "currencies": 3}
+
+
+def _table_id(name: str) -> int:
+    return _TABLE_IDS[name]
 
 
 @pytest.fixture
@@ -93,9 +100,10 @@ def when_schema_built(shared_data):
         async def _cache():
             await manager._connect()
             await manager._redis.ping()
-            blob_key = HOT_PREFIX + "countries:blob"
+            blob_key = manager._blob_key(_table_id("countries"))
             await manager._redis.set(blob_key, json.dumps(rows))
-            manager._hot_tables["countries"] = HotTableEntry(
+            manager._hot_tables[_table_id("countries")] = HotTableEntry(
+                table_id=_table_id("countries"),
                 table_name="countries",
                 catalog="c",
                 schema="s",
@@ -103,7 +111,7 @@ def when_schema_built(shared_data):
                 rows=rows,
                 column_names=["id", "name"],
             )
-            fetched = await manager.get_rows("countries")
+            fetched = await manager.get_rows(_table_id("countries"))
             await manager.close()
             return fetched
 
@@ -118,9 +126,10 @@ def when_schema_built(shared_data):
         manager._redis = mock_redis
 
         async def _cache():
-            blob_key = HOT_PREFIX + "countries:blob"
+            blob_key = manager._blob_key(_table_id("countries"))
             await manager._redis.set(blob_key, json.dumps(rows))
-            manager._hot_tables["countries"] = HotTableEntry(
+            manager._hot_tables[_table_id("countries")] = HotTableEntry(
+                table_id=_table_id("countries"),
                 table_name="countries",
                 catalog="c",
                 schema="s",
@@ -146,7 +155,7 @@ def then_designated_hot_and_cached(shared_data):
     assert "orders" not in detected
 
     # Registered as hot in the manager.
-    assert manager.is_hot("countries")
+    assert manager.is_hot(_table_id("countries"))
 
     # Cached rows round-tripped through Redis intact.
     assert shared_data["cached_rows"] == shared_data["rows"]
@@ -208,14 +217,15 @@ def when_schema_rebuilt(shared_data):
         async def _cache():
             await manager._connect()
             await manager._redis.ping()
-            blob_key = HOT_PREFIX + "countries:blob"
+            blob_key = manager._blob_key(_table_id("countries"))
             # Ensure a clean slate from any prior rebuild.
             await manager._redis.delete(blob_key)
             for tbl in detected:
-                bk = HOT_PREFIX + tbl + ":blob"
+                bk = manager._blob_key(_table_id(tbl))
                 rows = [{"id": 1, "name": "US"}]
                 await manager._redis.set(bk, json.dumps(rows))
-                manager._hot_tables[tbl] = HotTableEntry(
+                manager._hot_tables[_table_id(tbl)] = HotTableEntry(
+                    table_id=_table_id(tbl),
                     table_name=tbl,
                     catalog="c",
                     schema="s",
@@ -239,10 +249,11 @@ def when_schema_rebuilt(shared_data):
 
         async def _cache():
             for tbl in detected:
-                bk = HOT_PREFIX + tbl + ":blob"
+                bk = manager._blob_key(_table_id(tbl))
                 rows = [{"id": 1, "name": "US"}]
                 await manager._redis.set(bk, json.dumps(rows))
-                manager._hot_tables[tbl] = HotTableEntry(
+                manager._hot_tables[_table_id(tbl)] = HotTableEntry(
+                    table_id=_table_id(tbl),
                     table_name=tbl,
                     catalog="c",
                     schema="s",
@@ -250,7 +261,7 @@ def when_schema_rebuilt(shared_data):
                     rows=rows,
                     column_names=["id", "name"],
                 )
-            blob_key = HOT_PREFIX + "countries:blob"
+            blob_key = manager._blob_key(_table_id("countries"))
             return bool(await manager._redis.exists(blob_key))
 
         shared_data["countries_blob_exists"] = asyncio.run(_cache())
@@ -269,7 +280,7 @@ def then_not_cached_despite_criteria(shared_data):
     )
 
     # Not registered as hot in the manager.
-    assert not manager.is_hot("countries")
+    assert not manager.is_hot(_table_id("countries"))
 
     # No Redis blob was written for the opted-out table.
     assert shared_data["countries_blob_exists"] is False

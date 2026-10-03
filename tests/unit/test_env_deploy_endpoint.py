@@ -113,7 +113,7 @@ def wired(monkeypatch):
     from provisa.api.admin import orgs_router
     from provisa.core import env_repo
 
-    async def set_position(db, org_id, name, *, deployed_sha, redo_sha):
+    async def set_position(db, org_id, name, *, deployed_sha, deployed_stamp, redo_sha):
         # REQ-1543: an apply records WHERE the environment now is and ends any run of undos.
         calls["position"].append((org_id, name, deployed_sha, redo_sha))
 

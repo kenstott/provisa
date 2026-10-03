@@ -70,6 +70,10 @@ def _make_trino_conn_mock(rows: list[tuple], columns: list[str]):
     return _FakeEngine()
 
 
+# The registered ids of the tables these queries read.
+TABLE_IDS = {"orders": 1, "products": 2, "big_table": 3, "customers": 4, "missing_table": 5}
+
+
 def _make_compiled(sql: str, root_field: str = "orders") -> CompiledQuery:
     return CompiledQuery(
         sql=sql,
@@ -77,6 +81,7 @@ def _make_compiled(sql: str, root_field: str = "orders") -> CompiledQuery:
         root_field=root_field,
         columns=[ColumnRef(alias="t0", column="id", field_name="id", nested_in=None)],
         sources={"test-pg"},
+        table_ids=frozenset(TABLE_IDS.values()),  # every table these queries read
     )
 
 
@@ -86,6 +91,7 @@ def _make_manager_with_entry(
     """Build a HotTableManager with a pre-loaded in-memory entry (no Redis)."""
     mgr = _make_hot_manager()
     entry = HotTableEntry(
+        table_id=TABLE_IDS[table_name],
         table_name=table_name,
         catalog="test_pg",
         schema="public",
@@ -93,7 +99,7 @@ def _make_manager_with_entry(
         rows=rows,
         column_names=column_names,
     )
-    mgr._hot_tables[table_name] = entry
+    mgr.hold(entry)
     return mgr
 
 
@@ -120,10 +126,12 @@ class TestHotTableLoading:
         mock_redis.pipeline = MagicMock(return_value=mock_pipe)
         mgr._redis = mock_redis
 
-        count = await mgr.load_table(conn, "products", "public", "test_pg", "id")
+        count = await mgr.load_table(
+            conn, TABLE_IDS["products"], "products", "public", "test_pg", "id"
+        )
         assert count == 2
-        assert mgr.is_hot("products")
-        entry = mgr.get_entry("products")
+        assert mgr.is_hot(TABLE_IDS["products"])
+        entry = mgr.get_entry(TABLE_IDS["products"])
         assert entry is not None
         assert entry.column_names == engine_cols
         assert len(entry.rows) == 2
@@ -139,9 +147,11 @@ class TestHotTableLoading:
         mock_redis = AsyncMock()
         mgr._redis = mock_redis
 
-        count = await mgr.load_table(conn, "big_table", "public", "test_pg", "id")
+        count = await mgr.load_table(
+            conn, TABLE_IDS["big_table"], "big_table", "public", "test_pg", "id"
+        )
         assert count == 10
-        assert not mgr.is_hot("big_table")
+        assert not mgr.is_hot(TABLE_IDS["big_table"])
 
     async def test_hot_table_cached_in_redis(self):
         """After load_table, get_rows retrieves rows via Redis blob key."""
@@ -158,11 +168,15 @@ class TestHotTableLoading:
         mock_redis.get = AsyncMock(return_value=serialized)
         mgr._redis = mock_redis
         # The name is hot here (its rows are not held in this process), so its blob is read.
-        mgr._hot_tables["products"] = HotTableEntry(
-            table_name="products", catalog="pg", schema="public", pk_column="id"
+        mgr._hot_tables[TABLE_IDS["products"]] = HotTableEntry(
+            table_id=TABLE_IDS["products"],
+            table_name="products",
+            catalog="pg",
+            schema="public",
+            pk_column="id",
         )
 
-        rows = await mgr.get_rows("products")
+        rows = await mgr.get_rows(TABLE_IDS["products"])
         assert len(rows) == 2
         assert rows[0]["name"] == "Alpha"
         assert rows[1]["id"] == 2
@@ -179,7 +193,7 @@ class TestHotTableLoading:
         mock_redis.get = AsyncMock(return_value=None)
         mgr._redis = mock_redis
 
-        rows = await mgr.get_rows("products")
+        rows = await mgr.get_rows(TABLE_IDS["products"])
         assert rows == [{"id": 1, "name": "Zing"}]
 
     async def test_hot_table_not_found_returns_empty(self):
@@ -189,7 +203,7 @@ class TestHotTableLoading:
         mock_redis.get = AsyncMock(return_value=None)
         mgr._redis = mock_redis
 
-        assert await mgr.get_rows("missing_table") == []
+        assert await mgr.get_rows(TABLE_IDS["missing_table"]) == []
 
 
 # ---------------------------------------------------------------------------
@@ -253,13 +267,16 @@ class TestHotJoinRewriting:
             [{"id": 1, "name": "Alice"}],
             ["id", "name"],
         )
-        mgr._hot_tables["products"] = HotTableEntry(
-            table_name="products",
-            catalog="test_pg",
-            schema="public",
-            pk_column="id",
-            rows=[{"id": 10, "label": "Widget"}],
-            column_names=["id", "label"],
+        mgr.hold(
+            HotTableEntry(
+                table_id=TABLE_IDS["products"],
+                table_name="products",
+                catalog="test_pg",
+                schema="public",
+                pk_column="id",
+                rows=[{"id": 10, "label": "Widget"}],
+                column_names=["id", "label"],
+            )
         )
 
         sql = (
@@ -290,6 +307,7 @@ class TestHotJoinRewriting:
             root_field="orders",
             columns=[],
             sources={"test-pg"},
+            table_ids=frozenset({TABLE_IDS["orders"], TABLE_IDS["customers"]}),
         )
         result = rewrite_hot_joins(compiled, mgr)
         assert result.params == ["us-east"]

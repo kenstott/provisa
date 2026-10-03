@@ -34,6 +34,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from provisa.core import model_change
 from provisa.core import settings_registry
 from provisa.core.env_copy import REPLACE, CopyReport, adopt_role_definition, copy_model
 from provisa.core.env_source_files import fork_file_sources
@@ -50,6 +51,7 @@ def _schema_sql() -> str:
     return path.read_text() if path.exists() else ""
 
 
+@model_change.commits_itself  # REQ-1524: commits the model it writes itself
 async def create_environment(
     state,
     admin_db: "Database",
@@ -164,7 +166,11 @@ async def create_environment(
 
         started = start_branch(ensure_repo(org_id), name, from_env)
         if started is not None:
-            await set_position(admin_db, org_id, name, deployed_sha=started, redo_sha=None)
+            # No stamp: the copied model is projected just below, and that write-through records
+            # the stamp when the tree it reads equals this one.
+            await set_position(
+                admin_db, org_id, name, deployed_sha=started, deployed_stamp=None, redo_sha=None
+            )
             # And that sha is the FLOOR of this environment's history: the commits at and below it
             # are the source's, trees this environment never held. Without it a branch created and
             # then changed once offered two undos -- the change, and then a step onto the source's

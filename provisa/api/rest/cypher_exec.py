@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
 from fastapi import Request
@@ -123,8 +124,12 @@ async def _execute_with_api(
     nf_args: dict,
     state: Any,
     span_attrs: dict[str, str] | None = None,
+    *,
+    table_ids: Iterable[int],
 ) -> list[dict]:
     """Phase 1 (REST) + Phase 2 (the engine) execution for ALL API-backed tables in the query.
+    ``table_ids`` are the registered tables it reads, as the pipeline resolved them: the hot rows
+    substituted, and the rows fetched and promoted, are theirs.
 
     For each API-backed table referenced in FROM/JOIN clauses:
       1. Derive URL params from nf_args columns that match the endpoint's native params.
@@ -155,15 +160,18 @@ async def _execute_with_api(
     if not api_endpoints_in_sql:
         raise RuntimeError(f"No API endpoint found for tables: {table_names}")
 
+    from provisa.api.data.materialization import _StatementHot
+
     hot_mgr = getattr(state, "hot_manager", None)
+    hot = _StatementHot(hot_mgr, state, table_ids)
 
     # Hot table bypass: only applies when there is exactly one API table and it is hot.
     if len(api_endpoints_in_sql) == 1:
         table_name, endpoint = api_endpoints_in_sql[0]
-        if hot_mgr is not None and hot_mgr.is_hot(table_name):
+        entry = hot.entries.get(table_name)
+        if entry is not None:
             from provisa.cache.values_cte import build_values_cte_sql
 
-            entry = hot_mgr.get_entry(table_name)
             hot_sql = build_values_cte_sql(exec_sql, table_name, entry)
             physical_sql = state.federation_engine.transpile_physical(hot_sql)
             log.info("[HOT TABLE] hit — %s (%d rows inline)", table_name, len(entry.rows))
@@ -270,8 +278,17 @@ async def _execute_with_api(
                 state.federation_engine, _cache_loc, result.cache_table, ttl, redirect_config
             )
 
-            if hot_mgr is not None and result.rows and result.cut is None:
-                spawn_background(hot_mgr.maybe_promote_dicts(table_name, result.rows))
+            promoted = hot.table_id(table_name)
+            # Only a fetch with no arguments, and not cut (REQ-1350), returned the resource's
+            # whole rows.
+            if (
+                hot_mgr is not None
+                and promoted is not None
+                and result.rows
+                and not url_params
+                and result.cut is None
+            ):
+                spawn_background(hot_mgr.maybe_promote_dicts(promoted, result.rows))
         else:
             log.info("[API CACHE] hit — %s", cache_tbl)
 
@@ -510,7 +527,12 @@ async def _execute_call_body(
     try:
         if nf_args or has_api:
             rows = await _execute_with_api(
-                clean_exec_sql, clean_params, nf_args, state, _cb_span_attrs
+                clean_exec_sql,
+                clean_params,
+                nf_args,
+                state,
+                _cb_span_attrs,
+                table_ids=plan.table_ids,
             )
         elif has_gql_remote:
             rows = await _execute_with_gql_remote(

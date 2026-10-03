@@ -51,12 +51,21 @@ async def hot_mgr():
     await mgr.close()
 
 
+# The table ids these tests hold hot are drawn from a range no registered table uses here, so
+# their blobs (keyed by table id) can be wiped by pattern.
+_ID_BASE = 99_000_000
+
+
+def _table_id() -> int:
+    return _ID_BASE + uuid.uuid4().int % 1_000_000
+
+
 @pytest_asyncio.fixture(autouse=True, scope="module")
 async def _clean_redis_keys(hot_mgr):
-    """Wipe provisa:hot:ht_test_* keys before and after the module."""
+    """Wipe the blobs of this module's test tables before and after the module."""
 
     async def _wipe():
-        async for key in hot_mgr._redis.scan_iter(match=HOT_PREFIX + "ht_test_*"):
+        async for key in hot_mgr._redis.scan_iter(match=HOT_PREFIX + "*:t99??????:blob"):
             await hot_mgr._redis.delete(key)
 
     await _wipe()
@@ -72,61 +81,60 @@ async def _clean_redis_keys(hot_mgr):
 class TestHotTableRedisRoundTrip:
     async def test_set_and_get_rows(self, hot_mgr):
         """Rows stored in Redis blob key are retrieved intact."""
-        table = f"ht_test_{uuid.uuid4().hex[:8]}"
+        table_id = _table_id()
         rows = [{"id": 1, "name": "alpha"}, {"id": 2, "name": "beta"}]
-        blob_key = HOT_PREFIX + table + ":blob"
 
         # REQ-688: store via the manager (encrypts at rest), then read back decrypted.
-        await hot_mgr._store_rows(table, rows, "id", "cat", "sch")
-        hot_mgr._hot_tables.clear()  # force the read through Redis + decrypt
+        await hot_mgr._store_rows(table_id, "ht_test_t", rows, "id", "cat", "sch")
+        # The rows this process holds are not what is read: the blob is read first.
+        hot_mgr._hot_tables[table_id].rows = []
 
-        raw = await hot_mgr._redis.get(blob_key)
+        raw = await hot_mgr._redis.get(hot_mgr._blob_key(table_id))
         assert "alpha" not in raw  # ciphertext at rest, not plaintext JSON
-        fetched = await hot_mgr.get_rows(table)
+        fetched = await hot_mgr.get_rows(table_id)
         assert fetched == rows
 
     async def test_invalidate_removes_rows(self, hot_mgr):
         """Invalidating a hot table removes it from Redis."""
-        table = f"ht_test_{uuid.uuid4().hex[:8]}"
-        blob_key = HOT_PREFIX + table + ":blob"
-        pk_key = HOT_PREFIX + table + ":pk:1"
+        table_id = _table_id()
+        blob_key = hot_mgr._blob_key(table_id)
 
         await hot_mgr._redis.set(blob_key, json.dumps([{"id": 1}]))
-        await hot_mgr._redis.set(pk_key, json.dumps({"id": 1}))
 
         from provisa.cache.hot_tables import HotTableEntry
 
-        hot_mgr._hot_tables[table] = HotTableEntry(
-            table_name=table, catalog="c", schema="s", pk_column="id"
+        hot_mgr._hot_tables[table_id] = HotTableEntry(
+            table_id=table_id, table_name="ht_test_t", catalog="c", schema="s", pk_column="id"
         )
 
-        await hot_mgr.invalidate(table)
+        await hot_mgr.invalidate(table_id)
 
         assert not await hot_mgr._redis.exists(blob_key)
-        assert not hot_mgr.is_hot(table)
+        assert not hot_mgr.is_hot(table_id)
 
     async def test_get_rows_miss_raises(self, hot_mgr):
         """Cache miss returns empty list (REQ-231: caller falls back to live source)."""
-        result = await hot_mgr.get_rows("ht_test_nonexistent_xyz")
+        result = await hot_mgr.get_rows(_table_id())
         assert result == []
 
     async def test_is_hot_reflects_loaded_state(self, hot_mgr):
         """is_hot() returns True only after an entry is registered."""
-        table = f"ht_test_{uuid.uuid4().hex[:8]}"
-        assert not hot_mgr.is_hot(table)
+        table_id = _table_id()
+        assert not hot_mgr.is_hot(table_id)
 
         from provisa.cache.hot_tables import HotTableEntry
 
-        hot_mgr._hot_tables[table] = HotTableEntry(
-            table_name=table,
+        hot_mgr._hot_tables[table_id] = HotTableEntry(
+            table_id=table_id,
+            table_name="ht_test_t",
             catalog="c",
             schema="s",
             pk_column="id",
             rows=[{"id": 1}],
             column_names=["id"],
         )
-        assert hot_mgr.is_hot(table)
-        del hot_mgr._hot_tables[table]
+        assert hot_mgr.is_hot(table_id)
+        del hot_mgr._hot_tables[table_id]
 
 
 class TestHotTableCTERewrite:
@@ -136,13 +144,15 @@ class TestHotTableCTERewrite:
         from provisa.compiler.sql_gen import rewrite_hot_joins, CompiledQuery
 
         table = "ht_test_products"
+        table_id = _table_id()
         rows = [
             {"id": 1, "name": "Widget A", "price": 19.99},
             {"id": 2, "name": "Widget B", "price": 29.99},
         ]
-        blob_key = HOT_PREFIX + table + ":blob"
+        blob_key = hot_mgr._blob_key(table_id)
         await hot_mgr._redis.set(blob_key, json.dumps(rows))
-        hot_mgr._hot_tables[table] = HotTableEntry(
+        hot_mgr._hot_tables[table_id] = HotTableEntry(
+            table_id=table_id,
             table_name=table,
             catalog="postgresql",
             schema="public",
@@ -162,6 +172,7 @@ class TestHotTableCTERewrite:
                 root_field="orders",
                 columns=[],
                 sources={"postgresql"},
+                table_ids=frozenset({table_id}),
             )
 
             result = rewrite_hot_joins(compiled, hot_mgr)
@@ -171,7 +182,7 @@ class TestHotTableCTERewrite:
                 f"Expected WITH/VALUES CTE in rewritten SQL, got: {result.sql}"
             )
         finally:
-            del hot_mgr._hot_tables[table]
+            del hot_mgr._hot_tables[table_id]
             await hot_mgr._redis.delete(blob_key)
 
     async def test_rewrite_skips_non_hot_tables(self, hot_mgr):

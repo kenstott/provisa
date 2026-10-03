@@ -31,46 +31,47 @@ from __future__ import annotations
 
 import logging
 
+from typing import TYPE_CHECKING
+
 from provisa.lineage import InputVersion
+
+if TYPE_CHECKING:
+    from provisa.mv.models import TableIdentity
 
 log = logging.getLogger(__name__)
 
 # Registry of source-table watermark columns (REQ-260) lives in the config DB, which
 # the engine exposes as the provisa_admin catalog.
 _WATERMARK_LOOKUP_SQL = (
-    "SELECT table_name, watermark_column "
+    "SELECT source_id, schema_name, table_name, watermark_column "
     "FROM provisa_admin.public.registered_tables "
     "WHERE watermark_column IS NOT NULL"
 )
 
 
-def _base_name(table: str) -> str:
-    """Bare table name from a possibly catalog/schema-qualified, possibly quoted ref."""
-    return table.split(".")[-1].strip('"')
-
-
-async def _watermark_columns(engine) -> dict[str, str]:
-    """Map ``table_name -> watermark_column`` from the config registry. {} on failure.
+async def _watermark_columns(engine) -> dict[tuple[str, str, str], str]:
+    """Map each registered table's identity ``(source_id, schema, table)`` to its watermark
+    column, from the config registry. {} on failure.
 
     A read of the control plane's own registry through the engine's ``provisa_admin`` catalog,
     by design: it is not a source table, it has no replica, and it is not addressed (REQ-1912)."""
     try:
         rows = (await engine.execute_engine(_WATERMARK_LOOKUP_SQL)).rows
-        return {row[0]: row[1] for row in rows if row[0] and row[1]}
+        return {(row[0], row[1], row[2]): row[3] for row in rows if row[2] and row[3]}
     except Exception as exc:  # noqa: BLE001 — best-effort; missing registry is not fatal
         log.debug("watermark-column lookup unavailable: %s", exc)
         return {}
 
 
-async def _iceberg_snapshot(engine, table: str) -> str | None:
+async def _iceberg_snapshot(engine, table: "TableIdentity") -> str | None:
     """Latest committed Iceberg snapshot id for ``table``, or None if not Iceberg.
 
-    ``table`` is a registered table's name; the snapshot list is the SOURCE's own metadata table
+    ``table`` is a registered table; the snapshot list is the SOURCE's own metadata table
     (``<table>$snapshots``), so it is read at the table's registered address on the engine, by
     design, never at a replica (a replica has no snapshots). A table served from its replica has
     no live attach to read it through and contributes no snapshot signal."""
     try:
-        catalog, schema, name = await engine.registered_key(_base_name(table))
+        catalog, schema, name = await engine.registered_key(table)
         from provisa.federation.runtime import quoted_name
 
         rows = (
@@ -81,30 +82,30 @@ async def _iceberg_snapshot(engine, table: str) -> str | None:
         ).rows
         row = rows[0] if rows else None
     except Exception as exc:  # noqa: BLE001 — non-Iceberg tables have no $snapshots
-        log.debug("no iceberg snapshot for %s: %s", table, exc)
+        log.debug("no iceberg snapshot for %s: %s", table.label, exc)
         return None
     return str(row[0]) if row and row[0] is not None else None
 
 
-async def _table_watermark(engine, table: str, column: str) -> str | None:
+async def _table_watermark(engine, table: "TableIdentity", column: str) -> str | None:
     """``MAX(column)`` for ``table`` as an RDB watermark value, or None on failure.
 
-    ``table`` is a registered table's name, read where the engine reads it (REQ-1912): the view
+    ``table`` is a registered table, read where the engine reads it (REQ-1912): the view
     built from it reads that same address, so this is the version of what the view will read."""
     try:
         rows = (
             await engine.execute_engine(
-                f'SELECT MAX("{column}") FROM {await engine.read_ref(_base_name(table))}'
+                f'SELECT MAX("{column}") FROM {await engine.read_ref(table)}'
             )
         ).rows
         row = rows[0] if rows else None
     except Exception as exc:  # noqa: BLE001 — column/table may be unqueryable here
-        log.debug("no watermark for %s.%s: %s", table, column, exc)
+        log.debug("no watermark for %s.%s: %s", table.label, column, exc)
         return None
     return str(row[0]) if row and row[0] is not None else None
 
 
-def input_token(signals: list[InputVersion], source_tables: list[str]) -> str | None:
+def input_token(signals: list[InputVersion], source_tables: list) -> str | None:
     """A stable per-MV change token from per-source signals, or None (REQ-881).
 
     Usable ONLY when EVERY source produced a signal (len == len(source_tables)); a partial
@@ -116,7 +117,7 @@ def input_token(signals: list[InputVersion], source_tables: list[str]) -> str | 
     return ";".join(sorted(f"{s.kind}:{s.value}" for s in signals))
 
 
-async def gather_input_signals(engine, source_tables: list[str]) -> list[InputVersion]:
+async def gather_input_signals(engine, source_tables: list["TableIdentity"]) -> list[InputVersion]:
     """Gather the strongest available input-version signal per source table (REQ-862).
 
     Prefers an Iceberg snapshot id; falls back to an RDB watermark when the source
@@ -130,7 +131,7 @@ async def gather_input_signals(engine, source_tables: list[str]) -> list[InputVe
         if snapshot is not None:
             signals.append(InputVersion(snapshot, "iceberg_snapshot"))
             continue
-        column = watermarks.get(_base_name(table))
+        column = watermarks.get((table.source_id, table.schema_name, table.table_name))
         if column:
             value = await _table_watermark(engine, table, column)
             if value is not None:

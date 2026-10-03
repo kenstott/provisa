@@ -86,6 +86,13 @@
     "errorNeo4jPreviewFirst": "カラムとその型を確定するため、先に Cypher をプレビューしてください。",
     "sparqlQueryLabel": "SPARQL クエリ",
     "sparqlQueryHint": "変数がカラムになる SELECT(すべてのバインディングはテキスト)",
-    "sparqlQueryPlaceholder": "SELECT ?name ?city WHERE { ?a <urn:name> ?name ; <urn:city> ?city }"
+    "sparqlQueryPlaceholder": "SELECT ?name ?city WHERE { ?a <urn:name> ?name ; <urn:city> ?city }",
+    "nlSearchLabel": "説明でテーブルを検索",
+    "nlSearchPlaceholder": "例: 顧客の請求と支払のテーブル",
+    "nlSearchButton": "検索",
+    "nlSearchNone": "このスキーマにその説明に一致するテーブルはありません。",
+    "nlSearchConfidence": "{{percent}}%",
+    "nlSearchRegistered": "登録済み",
+    "nlSearchUse": "使用"
   }
 }

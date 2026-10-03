@@ -4,6 +4,9 @@
     "intro": "Questi oggetti vi fanno ancora riferimento. Rimuovere o modificare ciascuno, quindi eliminare di nuovo.",
     "open": "Apri la pagina",
     "close": "Chiudi",
+    "removeTableGrants": "Rimuovi questo ruolo dalle autorizzazioni di questa tabella",
+    "removeGrant": "Rimuovi l'autorizzazione di questo ruolo",
+    "removeAssignment": "Rimuovi assegnazione",
     "kind": {
       "table": "Tabelle e viste",
       "column": "Autorizzazioni di colonna",

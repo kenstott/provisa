@@ -23,5 +23,6 @@ _locks: dict[str, CrossLoopLock] = {}
 
 
 def land_lock(node: str) -> CrossLoopLock:
-    """The lock for ``node`` (``schema.table``, the registered name both paths use)."""
+    """The lock for ``node`` (``events.nodes.source_node``, the registered identity both paths
+    use)."""
     return _locks.setdefault(node, CrossLoopLock())

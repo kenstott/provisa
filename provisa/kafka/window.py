@@ -111,6 +111,7 @@ def inject_kafka_filters(  # REQ-148, REQ-149
         sql=sql,
         params=compiled.params,
         root_field=compiled.root_field,
+        canonical_field=compiled.canonical_field,
         columns=compiled.columns,
         sources=compiled.sources,
         table_ids=compiled.table_ids,

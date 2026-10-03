@@ -21,6 +21,7 @@ Table aliases (t0, t1, ...) used when JOINs are present.
 from __future__ import annotations
 
 
+from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Protocol
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
@@ -536,9 +537,7 @@ class HotTableSource(Protocol):  # REQ-1678
     """What the hot-join rewrite needs from the cache: the manager satisfies it structurally, so
     the compiler never imports the cache manager (which pulls the file-source and DuckDB stack)."""
 
-    def is_hot(self, table_name: str) -> bool: ...
-
-    def get_entry(self, table_name: str) -> "HotRows | None": ...
+    def entries_for(self, table_ids: Iterable[int]) -> "Mapping[str, HotRows]": ...
 
 
 def rewrite_hot_joins(  # REQ-230, REQ-232
@@ -546,9 +545,10 @@ def rewrite_hot_joins(  # REQ-230, REQ-232
 ) -> CompiledQuery:
     """Rewrite references to hot-cached tables to use VALUES-based CTEs.
 
-    When the query references a hot-cached table, replace the table reference
-    with a CTE containing the cached rows as VALUES. This works cross-source
-    since the data travels as constants in the query.
+    When the query reads a hot-cached table, replace the table reference with a CTE containing
+    the cached rows as VALUES. This works cross-source since the data travels as constants in the
+    query. The hot tables are those among the tables the query reads (``compiled.table_ids``),
+    each under the name the SQL carries for it.
 
     REQ-913: structural, AST-only. The set of hot tables is read from the parsed
     tree and each rewrite is delegated to ``build_values_cte_sql``, which renames
@@ -560,23 +560,16 @@ def rewrite_hot_joins(  # REQ-230, REQ-232
 
     from provisa.cache.values_cte import build_values_cte_sql
 
+    hot = hot_manager.entries_for(compiled.table_ids)
     tree = sqlglot.parse_one(compiled.sql, read="postgres")
     hot_names: list[str] = []
-    seen: set[str] = set()
     for tbl in tree.find_all(exp.Table):
-        name = tbl.name
-        if name in seen:
-            continue
-        seen.add(name)
-        if hot_manager.is_hot(name):
-            hot_names.append(name)
+        if tbl.name in hot and tbl.name not in hot_names:
+            hot_names.append(tbl.name)
 
     sql = compiled.sql
     for name in hot_names:
-        entry = hot_manager.get_entry(name)
-        if entry is None or not entry.rows:
-            continue
-        sql = build_values_cte_sql(sql, name, entry)
+        sql = build_values_cte_sql(sql, name, hot[name])
 
     if sql != compiled.sql:
         return CompiledQuery(

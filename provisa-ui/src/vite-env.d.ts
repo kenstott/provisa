@@ -76,6 +76,8 @@ declare module "*.graphql" {
   export const DeleteRlsRule: DocumentNode;
   export const CreateRole: DocumentNode;
   export const DeleteRole: DocumentNode;
+  export const RevokeRoleFromTable: DocumentNode;
+  export const RevokeRoleFromObject: DocumentNode;
   export const DeployViewToDb: DocumentNode;
   export const RefreshMv: DocumentNode;
   export const ToggleMv: DocumentNode;
@@ -178,6 +180,8 @@ declare module "*.gql" {
   export const DeleteRlsRule: DocumentNode;
   export const CreateRole: DocumentNode;
   export const DeleteRole: DocumentNode;
+  export const RevokeRoleFromTable: DocumentNode;
+  export const RevokeRoleFromObject: DocumentNode;
   export const DeployViewToDb: DocumentNode;
   export const RefreshMv: DocumentNode;
   export const ToggleMv: DocumentNode;

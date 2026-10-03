@@ -183,8 +183,10 @@ class _Plan:
     # cache — a read with no sink delivery and no EXPLAIN. False (the dataclass default) is the
     # fail-closed answer for any plan a constructor does not positively mark as a cacheable read.
     response_cacheable: bool = field(default=False)
-    # REQ-1897: a write statement — on success its tables' cached entries are invalidated.
+    # REQ-1897: a write statement — on success the steps after a write run (:func:`_after_write`).
     writes_tables: bool = field(default=False)
+    # The registered table a write targets (None for a read): what :func:`_after_write` acts on.
+    written_table_id: int | None = field(default=None)
     # REQ-1897: the governed role and the registered tables the statement reads/writes — the
     # response-cache key and policy inputs. Carried on the plan itself, not read off ``audit``: a
     # statement with no acting principal (an unsecured Flight ticket) has no audit record.
@@ -303,7 +305,7 @@ async def _optimize_and_route(
     from provisa.transpiler.router import Route, decide_route
 
     _rewrites, _values_ctes, _dropped = await _materialize_api_to_engine_cache(
-        exec_sql, state, nf_args=nf_args
+        exec_sql, state, nf_args=nf_args, table_ids=table_ids
     )
     _actually_dropped: set[str] = set()
     if _dropped:
@@ -516,7 +518,7 @@ async def _optimize_and_route_cached(
     """
     from provisa.api.data.materialization import would_materialize_optimize
 
-    if would_materialize_optimize(exec_sql, state):
+    if would_materialize_optimize(exec_sql, state, table_ids=table_ids):
         return await _optimize_and_route(
             exec_sql,
             governed_sql,
@@ -1336,7 +1338,7 @@ async def route_governed(
 
     # REQ-074/REQ-1386: open the audit record for this execution of the governed statement. The
     # terminal finalizes it with the real status and duration.
-    _audit = begin_audit(sql, role_id, _parsed_input, gov_ctx)
+    _audit = begin_audit(sql, role_id, _parsed_input, gov_ctx, state.model_stamp)
 
     # REQ-863 pipeline order: governance → post-governance optimization → routing.
     # Lower the ONE accepted reference model — the semantic domain.table the catalog
@@ -1356,6 +1358,9 @@ async def route_governed(
     # writes. decide_route only applies that rule when told; the raw-SQL surfaces (pgwire, /data/sql)
     # parse the statement themselves, so the type must be passed through explicitly.
     _is_mutation = isinstance(_parsed_input, (exp.Insert, exp.Update, exp.Delete, exp.Merge))
+    from provisa.compiler.write_admission import written_table_id
+
+    _written_table_id = written_table_id(_parsed_input, governed.gov_ctx) if _is_mutation else None
     # REQ-1897: a read whose result is rows — not a write, an EXPLAIN, or a sink delivery.
     _raw_cacheable = not _is_mutation and explain is None and deliver is None
     # REQ-544 (amended 2026-09-30): the response cache is per-request opt-in — a `-- @provisa
@@ -1678,6 +1683,7 @@ async def route_governed(
             cache_as_of=as_of,
             cache_missed=_cache_missed,
             writes_tables=_is_mutation,  # REQ-1897
+            written_table_id=_written_table_id,
             role_id=role_id,  # REQ-1897
             table_ids=_table_ids,  # REQ-1897
             cache_opt_in=_cache_hint.opt_in,  # REQ-544 (amended)
@@ -1758,6 +1764,7 @@ async def route_governed(
             cache_as_of=as_of,
             cache_missed=_cache_missed,
             writes_tables=_is_mutation,  # REQ-1897
+            written_table_id=_written_table_id,
             role_id=role_id,  # REQ-1897
             table_ids=_table_ids,  # REQ-1897
             cache_opt_in=_cache_hint.opt_in,  # REQ-544 (amended)
@@ -1990,9 +1997,13 @@ async def finalize_audit(
     state: Any | None = None,
     *,
     cache_hit: bool = False,
+    cache_entry: Any = None,
     defer_to_drain: bool = False,
 ) -> None:
     """Write ``plan``'s audit row (REQ-074/REQ-1386). Idempotent per plan.
+
+    ``cache_entry``: the response-cache entry a hit was served from — its age is the age of the
+    rows the statement was answered with.
 
     The row records the route the statement was answered by (``cache`` for a response-cache hit,
     else the plan's) and ``plan.row_count``, which a terminal sets before it finalizes.
@@ -2016,18 +2027,40 @@ async def finalize_audit(
     observe_plan(plan, status_code, cache_hit=cache_hit)
 
     _route = "cache" if cache_hit else cast("Route", plan.route).name.lower()
+    if cache_hit and cache_entry is None:
+        raise RuntimeError(
+            "a statement answered from the response cache was finalized without the entry it was "
+            "served from: its audit row could not say how old the rows were"
+        )
+    from provisa.audit.provenance import data_age
+
+    # Provenance (provisa/audit/provenance.py): why the plan took its route, what it read, and
+    # how old the rows it was answered with are — decided by now, recorded here.
+    _outcome = {
+        "route_reason": plan.route_reason,
+        "sources": plan.sources,
+        "data_age": (
+            data_age(plan, cache_entry if cache_hit else None)
+            if status_code == 200  # noqa: PLR2004 - HTTP OK
+            else None
+        ),
+    }
     if defer_to_drain and status_code == 200:  # noqa: PLR2004 - HTTP OK
         from provisa.audit.pipeline import build_audit_record
 
-        plan.audit_deferred = build_audit_record(plan.audit, status_code, state, route=_route)
+        plan.audit_deferred = build_audit_record(
+            plan.audit, status_code, state, route=_route, **_outcome
+        )
     else:
-        await write_audit(plan.audit, status_code, state, route=_route, row_count=plan.row_count)
-    # REQ-1897: every terminal finalizes here, so a successful write invalidates the tables it
-    # wrote once, whichever surface ran it.
+        await write_audit(
+            plan.audit, status_code, state, route=_route, row_count=plan.row_count, **_outcome
+        )
+    # REQ-1897: every terminal finalizes here, so the steps after a successful write run once,
+    # whichever surface ran it.
     if plan.writes_tables and status_code == 200:
         if state is None:
             from provisa.api.app import state  # type: ignore[assignment]
-        await _invalidate_written_tables(plan, state)
+        await _after_write(plan, state)
 
 
 #: REQ-1695: the reference that can only be answered by an ORG's vault. ``${env:...}`` is the
@@ -2470,11 +2503,11 @@ async def _account_cache_hit(
     try:
         result = _apply_output_cap(plan, result)
     except Exception:
-        await finalize_audit(plan, 402, state, cache_hit=True)
+        await finalize_audit(plan, 402, state, cache_hit=True, cache_entry=stored)
         raise
     result.cache_entry = stored
     plan.row_count = len(result.rows)
-    await finalize_audit(plan, 200, state, cache_hit=True)
+    await finalize_audit(plan, 200, state, cache_hit=True, cache_entry=stored)
     return result
 
 
@@ -2655,12 +2688,40 @@ async def store_executed_result(plan: _Plan, state: Any, result: QueryResult) ->
     await tee.commit()
 
 
-async def _invalidate_written_tables(plan: _Plan, state: Any) -> None:
-    """A successful write drops every cached entry indexed under the tables it wrote (REQ-1897) —
-    raw-SQL and GraphQL entries alike, since both index by table id."""
+async def _after_write(plan: _Plan, state: Any) -> None:
+    """What follows a successful write, on every surface, once (REQ-1897): every cached entry
+    indexed under the OTHER tables the statement named is dropped (a write that reads them may
+    have changed what a cached join shows), and the written table gets the one after-write step
+    (:func:`provisa.api.data.table_written.after_table_written` — its cached responses, the
+    views over it, its change event and sinks, its replica build, its hot copy)."""
+    from provisa.api.data.table_written import after_table_written
     from provisa.cache.tenancy import invalidate_tables
 
-    await invalidate_tables(state, plan.table_ids)
+    if plan.written_table_id is None or plan.role_id is None:
+        raise RuntimeError(
+            "a write plan reached its terminal without the table it wrote or the role it ran as"
+        )
+    written = next(
+        (
+            meta
+            for meta in state.contexts[plan.role_id].tables.values()
+            if meta.table_id == plan.written_table_id
+        ),
+        None,
+    )
+    if written is None:
+        raise RuntimeError(
+            f"the written table {plan.written_table_id} is not in role {plan.role_id!r}'s schema"
+        )
+    others = [tid for tid in plan.table_ids if tid != written.table_id]
+    if others:
+        await invalidate_tables(state, others)
+    await after_table_written(
+        state,
+        table_id=written.table_id,
+        table_name=written.table_name,
+        source_id=written.source_id,
+    )
 
 
 async def prepare_residency_and_check_cache(plan: _Plan, state: Any) -> QueryResult | None:
@@ -3001,7 +3062,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     _table_ids, governed_sql = _governed.table_ids, _governed.governed_sql
     # REQ-1910: request entry on the compiled path (GraphQL over Flight, Cypher, gRPC, MCP, REST).
     await resolve_trace_scope(state, role_id, hint=cache_hint.debug_trace)
-    _audit = begin_audit(sql, role_id, _compiled_tree, gov_ctx)
+    _audit = begin_audit(sql, role_id, _compiled_tree, gov_ctx, state.model_stamp)
 
     # REQ-1897 (amended 2026-10-01): the cache before the route (see route_governed). A sink
     # delivery returns a handle, not rows, and is never answered from it.
@@ -3197,6 +3258,14 @@ async def _route_compiled(
     _table_ids = table_ids
     _audit = audit
     _cache_hint = cache_hint
+    # A write on a compiled surface (a GraphQL mutation, a Cypher write over HTTP or Bolt) ends
+    # like one on the raw-SQL surfaces: nothing cached, the steps after a write at the terminal.
+    import sqlglot.expressions as exp
+
+    from provisa.compiler.write_admission import written_table_id
+
+    _is_write = isinstance(_compiled_tree, (exp.Insert, exp.Update, exp.Delete, exp.Merge))
+    _written_table_id = written_table_id(_compiled_tree, gov_ctx) if _is_write else None
 
     # Post-governance optimization stage (may REMOVE sources): lower to catalog-physical, then
     # inline hot/API tables as VALUES CTEs, prune unreachable union branches, and rewrite cached
@@ -3379,7 +3448,9 @@ async def _route_compiled(
             # REQ-1897: the compiled surfaces (GraphQL-via-plan, Cypher, REST, JSON:API, gRPC)
             # hand this function a read the compiler built from a query AST; writes take the
             # mutation executor, never this path. A sink delivery returns a handle, not rows.
-            response_cacheable=deliver is None,
+            response_cacheable=deliver is None and not _is_write,
+            writes_tables=_is_write,
+            written_table_id=_written_table_id,
             cache_sql=governed_sql,
             cache_params=cache_params,
             cache_missed=cache_missed,
@@ -3447,7 +3518,9 @@ async def _route_compiled(
             # REQ-1897: the compiled surfaces (GraphQL-via-plan, Cypher, REST, JSON:API, gRPC)
             # hand this function a read the compiler built from a query AST; writes take the
             # mutation executor, never this path. A sink delivery returns a handle, not rows.
-            response_cacheable=deliver is None,
+            response_cacheable=deliver is None and not _is_write,
+            writes_tables=_is_write,
+            written_table_id=_written_table_id,
             cache_sql=governed_sql,
             cache_params=cache_params,
             cache_missed=cache_missed,

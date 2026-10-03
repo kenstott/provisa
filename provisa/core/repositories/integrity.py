@@ -114,10 +114,20 @@ class Dependent:
     ref: ObjectRef
     via: tuple[str, ...]  # the referring columns, as "table.column"
     name: str = ""  # what an operator knows it by: a table's name, "table.column", a holder
+    # What the dependent is changed through, beside its own id: a column's ``table_id`` (a
+    # column grant is revoked per table) and an assignment's ``user_id`` (it is removed from its
+    # holder). Empty for every other kind.
+    owner: tuple[tuple[str, Any], ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
-        """The dependent as a refusal reports it."""
-        return {"kind": self.ref.kind, "id": self.ref.id, "name": self.name, "via": list(self.via)}
+        """The dependent as a refusal reports it, with its ``owner`` keys when it has any."""
+        return {
+            "kind": self.ref.kind,
+            "id": self.ref.id,
+            "name": self.name,
+            "via": list(self.via),
+            **dict(self.owner),
+        }
 
 
 KINDS: dict[str, Kind] = {
@@ -396,10 +406,31 @@ async def _name_of(conn: "Connection", ref: ObjectRef) -> str:
     return str(ref.id)
 
 
+_OWNER_OF: dict[str, tuple[str, str]] = {
+    "column": ("table_columns", "table_id"),
+    "role_assignment": ("user_role_assignments", "user_id"),
+}
+
+
+async def _owner_of(conn: "Connection", ref: ObjectRef) -> tuple[tuple[str, Any], ...]:
+    """What a column or a role assignment is changed through (see :class:`Dependent`)."""
+    if ref.kind not in _OWNER_OF:
+        return ()
+    table, column = _OWNER_OF[ref.kind]
+    tbl = metadata.tables[table]
+    found = (await conn.execute_core(select(tbl.c[column]).where(tbl.c.id == ref.id))).fetchone()
+    return () if found is None else ((column, found[0]),)
+
+
 async def _dependents(conn: "Connection", blocking: dict[ObjectRef, set[str]]) -> list[Dependent]:
     """``blocking`` (object → the columns it refers through) as the sorted, named list."""
     named = [
-        Dependent(referrer, tuple(sorted(via)), await _name_of(conn, referrer))
+        Dependent(
+            referrer,
+            tuple(sorted(via)),
+            await _name_of(conn, referrer),
+            await _owner_of(conn, referrer),
+        )
         for referrer, via in blocking.items()
     ]
     return sorted(named, key=lambda d: (d.ref.kind, str(d.ref.id)))

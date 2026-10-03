@@ -37,7 +37,6 @@ from provisa.core.schema_org import (
     table_columns as _table_columns_t,
     tracked_functions as _tracked_functions_t,
 )
-from provisa.core.environments import active_org_schema
 from provisa.core.secrets import resolve_secrets
 from provisa.api._meta_views import _OPS_LOG_TABLE_ALIAS  # REQ-884
 from provisa.api.admin.db_queries import parse_mask_value as _parse_mask_value
@@ -48,7 +47,7 @@ from typing import TYPE_CHECKING, Any, cast  # noqa: F401
 if TYPE_CHECKING:
     from provisa.api.app import AppState
     from provisa.core.database import Connection
-    from provisa.mv.models import MVDefinition
+    from provisa.mv.models import MVDefinition, TableIdentity
 
 log = logging.getLogger(__name__)
 
@@ -544,6 +543,66 @@ async def _load_openapi_specs() -> None:
             }
 
 
+def _config_identities(raw_config: dict) -> dict[str, list[TableIdentity]]:
+    """The config's tables by every name a join-pattern view may use for one (its name and SQL
+    name), each with its identity."""
+    from provisa.compiler.naming import apply_sql_name
+    from provisa.mv.models import TableIdentity
+
+    out: dict[str, list[TableIdentity]] = {}
+    for tbl in raw_config.get("tables", []):
+        name = tbl.get("table") or tbl.get("table_name")
+        if not name or tbl.get("view_sql"):
+            continue
+        identity = TableIdentity(tbl["source_id"], tbl.get("schema") or tbl["schema_name"], name)
+        for spelled in {name, apply_sql_name(name)}:
+            out.setdefault(spelled, []).append(identity)
+    return out
+
+
+def _bind_join_inputs(
+    view_id: str, names: list[str], identities: dict[str, list[TableIdentity]]
+) -> list[TableIdentity]:
+    """A join-pattern view's inputs, bound when it is declared (REQ-939): each table it joins is
+    the one config table of that name. A name no table, or more than one, answers to is refused,
+    naming the view — it would not say which table the view reads. A name may be written
+    qualified, ``source_id/schema.table`` (as an export of the view writes it), to say which."""
+    known = {i for found in identities.values() for i in found}
+    bound = []
+    for name in names:
+        if "/" in name:
+            source_id, _, rest = name.partition("/")
+            schema, _, table = rest.partition(".")
+            found = [
+                i
+                for i in known
+                if (i.source_id, i.schema_name, i.table_name) == (source_id, schema, table)
+            ]
+        else:
+            found = identities.get(name, [])
+        if len(found) != 1:
+            why = (
+                "no table has that name"
+                if not found
+                else "more than one table has that name ("
+                + ", ".join(sorted(i.label for i in found))
+                + ")"
+            )
+            raise ValueError(f"materialized view {view_id!r} joins {name!r}: {why}")
+        bound.append(found[0])
+    return bound
+
+
+def _joined_names(listed: list[str], jp: Any) -> list[str]:
+    """The tables a join-pattern view reads: those it lists, then any its pattern joins that the
+    list leaves out (a listed name may be qualified, ``source_id/schema.table``)."""
+    if jp is None:
+        return list(listed)
+    bare = {name.partition("/")[2].partition(".")[2] if "/" in name else name for name in listed}
+    joined = [jp.left_table, jp.right_table] + ([jp.via_table] if jp.via_table else [])
+    return list(listed) + [t for t in joined if t not in bare]
+
+
 def _load_mv_and_views_config(
     raw_config: dict,
 ) -> list[MVDefinition]:  # REQ-086, REQ-133, REQ-135, REQ-158, REQ-159, REQ-160
@@ -556,6 +615,7 @@ def _load_mv_and_views_config(
     from provisa.mv.models import MVDefinition, JoinPattern, SDLConfig
 
     loaded: list[MVDefinition] = []
+    identities = _config_identities(raw_config)
 
     # REQ-1443/description pull-forward: base-table column descriptions, keyed by table name, as
     # declared BEFORE this function appends any MV/view-derived table entries — a pass-through MV
@@ -618,9 +678,21 @@ def _load_mv_and_views_config(
         # Default the target to the store the ACTIVE engine materializes into (DuckDB → mat_store,
         # not postgresql); an explicit config value still wins.
         _def_cat, _def_schema = state.federation_engine.materialize_store_target(state.org_id)
+        # A view with SQL names its inputs in it; a join-pattern view's are bound here — the
+        # tables it lists and any its pattern joins that the list leaves out.
+        inputs = (
+            []
+            if mvc.get("sql")
+            else _bind_join_inputs(
+                mvc["id"], _joined_names(mvc.get("source_tables", []), jp), identities
+            )
+        )
         mv = MVDefinition(
             id=mvc["id"],
-            source_tables=mvc.get("source_tables", []),
+            source_tables=(
+                [i.table_name for i in inputs] if inputs else mvc.get("source_tables", [])
+            ),
+            inputs=inputs,
             target_catalog=mvc.get("target_catalog", _def_cat),
             target_schema=mvc.get("target_schema", _def_schema),
             target_table=mvc.get("target_table"),
@@ -647,70 +719,9 @@ def _load_mv_and_views_config(
             }
             raw_config.setdefault("tables", []).append(mv_table)
 
-    # Process views — governed computed datasets
-    views_config = raw_config.get("views", [])
-    if views_config:
-        _view_log = logging.getLogger(__name__)
-        for view_cfg in views_config:
-            view_id = view_cfg["id"]
-            view_sql = view_cfg["sql"]
-            materialize = view_cfg.get("materialize", False)
-            domain_id = view_cfg["domain_id"]
-            description = view_cfg.get("description")
-            refresh_interval = view_cfg.get("refresh_interval", 300)
-
-            view_source_id = view_cfg.get("source_id", "postgresql")
-            view_table_name = f"view_{view_id.replace('-', '_')}"
-            # REQ-1623: a materialized view lands in the environment's own cache schema.
-            view_schema = active_org_schema(state.org_id, "_mv_cache" if materialize else "")
-
-            view_columns = view_cfg.get("columns", [])
-            # REQ-1443/description pull-forward: a materialized custom-SQL view is a real
-            # landed table (like an MV), so its declared source_tables give real lineage; a
-            # non-materialized view is inline-expanded SQL with no landed columns to pull into.
-            if materialize:
-                _pull_forward_descriptions(view_columns, view_cfg.get("source_tables", []))
-
-            view_table = {
-                "source_id": view_source_id,
-                "domain_id": domain_id,
-                "schema": view_schema,
-                "table": view_table_name,
-                "description": description,
-                "alias": view_cfg.get("alias"),
-                "columns": view_columns,
-            }
-            raw_config.setdefault("tables", []).append(view_table)
-
-            # EVERY view is inline-expandable (live path); a materialized view is ALSO registered as
-            # an MV for acceleration when fresh. Keeping the view_sql_map entry makes a materialized
-            # view queryable before/without a refresh (its raw source catalog would otherwise reach
-            # the engine → "Catalog does not exist").
-            state.view_sql_map[view_table_name] = view_sql.strip()
-            if materialize:
-                # Target the store the ACTIVE engine materializes into (never a hardcoded catalog).
-                _tgt_cat, _tgt_schema = state.federation_engine.materialize_store_target(
-                    state.org_id
-                )
-                mv = MVDefinition(
-                    id=f"view-{view_id}",
-                    source_tables=[],
-                    target_catalog=_tgt_cat,
-                    target_schema=_tgt_schema,
-                    target_table=view_table_name,
-                    refresh_interval=refresh_interval,
-                    enabled=True,
-                    sql=view_sql,
-                    expose_in_sdl=False,
-                    preprocess=view_cfg.get(
-                        "preprocess"
-                    ),  # REQ-957 (purity-checked at boot compile)
-                )
-                state.mv_registry.register(mv)
-                loaded.append(mv)
-                _view_log.info("Registered materialized view: %s", view_id)
-            else:
-                _view_log.info("Registered inline view: %s", view_id)
+    # A ``views:`` block was turned into table entries where the config was read
+    # (core/config_loader.py views_as_tables): those are stored by the load and registered by the
+    # schema build like every view, so nothing of it is left to do here.
 
     # Auto-generate MVs from cross-source relationships with materialize=true
     _table_source_map: dict[str, str] = {}
@@ -773,6 +784,7 @@ def _load_mv_and_views_config(
             mv = MVDefinition(
                 id=mv_id,
                 source_tables=source_tables,
+                inputs=_bind_join_inputs(mv_id, source_tables, identities),
                 target_catalog=_rel_cat,
                 target_schema=_rel_schema,
                 refresh_interval=rel_cfg.get("refresh_interval", 300),
@@ -1563,6 +1575,24 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
     # projects through state.contexts[role] (grpc/server.py _handle_query_bound) and is governed by
     # _govern_and_route_compiled, so a column the role cannot see is never SELECTed and its proto
     # field is left unset. Per-role client stubs still come from GET /data/proto/{role}.
+    # A view's SQL is a model object: it is lowered to physical against the WHOLE model, not
+    # against whichever role's context came first (which named only the tables THAT role could
+    # see, and left a view over any other table unresolved — its refresh failed "schema does not
+    # exist", and an inline view's meaning depended on role-id order). This context belongs to no
+    # role and never answers a request; a view's rows are governed when the view is read.
+    _model_role = {
+        "id": "__model__",
+        "domain_access": ["*"],
+        # The catalog's governance columns are part of the model a view may read.
+        "capabilities": [Capability.VIEW_GOVERNANCE.value],
+    }
+    _model_tables = [
+        {**t, "columns": [{**c, "visible_to": ["*"]} for c in t["columns"]]} for t in tables
+    ]
+    state.view_context = build_context(
+        _schema_input(_model_role, _model_tables, [{**m, "visible_to": []} for m in metrics])
+    )
+
     _wire_role = {
         "id": "__wire__",
         "domain_access": ["*"],

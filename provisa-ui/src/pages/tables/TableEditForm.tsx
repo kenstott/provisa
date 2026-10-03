@@ -709,8 +709,7 @@ export function TableEditForm({
         <DataQualityPanel
           checker={(editSource.type ?? "").toLowerCase()}
           sourceId={editSource.id}
-          schemaName={editingTable.schemaName}
-          tableName={editingTable.tableName}
+          tableId={editingTable.id}
           contractText={editingTable.dqContract ?? ""}
           onChange={(text) => setEditingTable({ ...editingTable, dqContract: text || null })}
         />

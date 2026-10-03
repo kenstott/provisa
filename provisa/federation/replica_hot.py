@@ -223,7 +223,7 @@ def hot_candidates(
     engine: Any,
     default_threshold: int,
     *,
-    hot_tier: frozenset[str] = frozenset(),
+    hot_tier: frozenset[int] = frozenset(),
 ) -> tuple[list[HotCandidate], dict[tuple[str, str, str], str]]:
     """The tables Hot promotion judges on ``engine``, and those it leaves alone with the reason.
     ``registered``: the registered tables as ``registry_view.registered_tables`` returns them
@@ -256,7 +256,7 @@ def hot_candidates(
         if not attach[source.id]:
             continue
         key = (reg.source_id, reg.schema_name, reg.table_name)
-        if reg.table_name in hot_tier:
+        if reg.id in hot_tier:
             skipped[key] = HOT_TIER
             continue
         # The one rule for what a build may copy whole (convergence, the read backstop and the
@@ -286,8 +286,9 @@ def judge(count: float, threshold: int, *, promoted: bool) -> str | None:
     return DEMOTE if count < threshold / 2 else None
 
 
-def hot_tier_tables(state: Any) -> frozenset[str]:
-    """The tables the Redis hot tier manages in this process (REQ-241); none without that tier."""
+def hot_tier_tables(state: Any) -> frozenset[int]:
+    """The ids of the tables the Redis hot tier manages in this process (REQ-241); none without
+    that tier."""
     manager = state.hot_manager
     return frozenset(manager.managed_tables()) if manager is not None else frozenset()
 
@@ -323,6 +324,15 @@ async def busy_replicas(state: Any) -> list[dict]:
 # -- what the admin summary states -----------------------------------------------------------------
 
 
+def _registered_id(state: Any, key: tuple[str, str, str]) -> int | None:
+    """The id of the registered table ``key`` (source, schema, table) names; None for a table not
+    registered (a draft in the editor)."""
+    for row in state.tables:
+        if (row["source_id"], row["schema_name"], row["table_name"]) == key:
+            return int(row["id"])
+    return None
+
+
 def hot_view(state: Any, source: Any, table: Any) -> "HotView":
     """Where ``table`` stands with Hot replication in this deployment (REQ-826): the settings in
     force, whether promotion is decided here at all, and whether the table is promoted, served
@@ -344,7 +354,7 @@ def hot_view(state: Any, source: Any, table: Any) -> "HotView":
     skipped: str | None = None
     if threshold_of(source, table, default_threshold) is not None:
         scope = count_scope(current_org.get() or state.org_id, current_env.get() or PROD)
-        if table.table_name in hot_tier_tables(state):
+        if _registered_id(state, key) in hot_tier_tables(state):
             skipped = HOT_TIER
         elif not whole_copy(source, table, state.federation_engine):
             skipped = NOT_WHOLE
@@ -409,9 +419,12 @@ class _SizeChecks:
 _size_checks = _SizeChecks()
 
 
-async def _row_count(state: Any, table_name: str) -> int:
-    """How many rows the table holds, counted through the engine where it reads the table now."""
-    ref = await state.federation_engine.read_ref(table_name)
+async def _row_count(state: Any, key: tuple[str, str, str]) -> int:
+    """How many rows the table ``key`` (source, schema, table) holds, counted through the engine
+    where it reads the table now."""
+    from provisa.mv.models import TableIdentity
+
+    ref = await state.federation_engine.read_ref(TableIdentity(*key))
     result = await state.federation_engine.execute_engine(f"SELECT COUNT(*) FROM {ref}")
     return int(result.rows[0][0])
 
@@ -464,7 +477,7 @@ async def evaluate(state: Any, *, workers: int) -> Evaluation:
             demote.append(candidate.key)
         elif verdict == PROMOTE:
             try:
-                rows = await _row_count(state, candidate.key[2])
+                rows = await _row_count(state, candidate.key)
             except Exception as exc:  # allow-ble: an engine or driver error of any type IS this table's size-check outcome — it is recorded and logged by _size_checks, the table stays live, and the other tables are still judged
                 _size_checks.failed(scope, candidate.key, exc)
                 continue

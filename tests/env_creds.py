@@ -28,7 +28,31 @@ import os
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-_ENV_FILE = _REPO_ROOT / ".env"
+
+
+def env_file(repo_root: Path = _REPO_ROOT) -> Path | None:
+    """The .env this checkout's tests read credentials from, or None when there is none.
+
+    ``PROVISA_ENV_FILE`` names it explicitly. Otherwise it is the checkout's own ``.env``; and a
+    linked git worktree, which never carries one (a .env in a worktree publishes the canary site
+    from its post-commit hook), reads the primary checkout's -- the worktree's ``.git`` file
+    points into the primary's ``.git/worktrees/<name>``. Without this every worktree run
+    collected the credentialed tests credential-less."""
+    named = os.environ.get("PROVISA_ENV_FILE")
+    if named:
+        return Path(named)
+    own = repo_root / ".env"
+    if own.is_file():
+        return own
+    pointer = repo_root / ".git"
+    if pointer.is_file():
+        gitdir = Path(pointer.read_text().split("gitdir:", 1)[1].strip())
+        primary = gitdir.parent.parent.parent  # <primary>/.git/worktrees/<name>
+        candidate = primary / ".env"
+        if candidate.is_file():
+            return candidate
+    return None
+
 
 # External-SaaS provider prefixes only. Anything naming a host/port/URL of the local stack
 # is deliberately absent -- see the module docstring.
@@ -75,17 +99,19 @@ def _parse_env_file(path: Path) -> dict[str, str]:
     return values
 
 
-def load_provider_creds() -> list[str]:
-    """Export external-provider creds from .env. Returns the names it set.
+def load_provider_creds(path: Path | None = None) -> list[str]:
+    """Export external-provider creds from ``path`` (default: :func:`env_file`). Returns the
+    names it set; none when there is no .env to read.
 
     Called at import of tests/conftest.py so the values are present before any module-level
     skipif condition is evaluated.
     """
-    if not _ENV_FILE.is_file():
+    source = path if path is not None else env_file()
+    if source is None:
         return []
 
     loaded: list[str] = []
-    for key, value in _parse_env_file(_ENV_FILE).items():
+    for key, value in _parse_env_file(source).items():
         if os.environ.get(key):
             continue  # a caller-exported value always wins
         os.environ[key] = value
@@ -94,7 +120,8 @@ def load_provider_creds() -> list[str]:
     # .env authors the SharePoint Azure AD app under the SP_ prefix, but the sharepoint e2e
     # reads SHAREPOINT_* (its own naming). Bridge the names so a credential that IS present
     # is actually used instead of skipping on a name mismatch. certificate_path is authored
-    # relative (./sharepoint.pfx); resolve it so the test works from any cwd.
+    # relative (./sharepoint.pfx) to the .env that names it; resolve it so the test works from
+    # any cwd and from a worktree reading the primary checkout's .env.
     for sp_key, sharepoint_key in (
         ("SP_SITE_URL", "SHAREPOINT_SITE_URL"),
         ("SP_TENANT_ID", "SHAREPOINT_TENANT_ID"),
@@ -108,7 +135,7 @@ def load_provider_creds() -> list[str]:
             loaded.append(sharepoint_key)
     cert = os.environ.get("SP_CERT_PATH")
     if cert and not os.environ.get("SHAREPOINT_CERT_PATH"):
-        os.environ["SHAREPOINT_CERT_PATH"] = str((_REPO_ROOT / cert).resolve())
+        os.environ["SHAREPOINT_CERT_PATH"] = str((source.parent / cert).resolve())
         loaded.append("SHAREPOINT_CERT_PATH")
 
     # The Google Sheets API is enabled for the credentialed project and the key_file secret
