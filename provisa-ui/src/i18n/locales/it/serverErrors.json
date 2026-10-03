@@ -85,6 +85,7 @@
       "query_required": "query è obbligatoria",
       "query_timeout": "Query scaduta dopo {{timeout_s}}s",
       "query_too_complex": "La complessità della query ({{score}}) supera il limite di {{limit}} ({{limit_of}}).",
+      "redirect_failed": "Impossibile scrivere il risultato nell'archivio dei risultati: {{error}}",
       "redirect_upload_failed": "Caricamento con redirect non riuscito: {{error}}",
       "request_interrupted": "{{error}}",
       "row_level_key_required": "La tabella '{{table}}' è replicata riga per riga e può essere letta solo tramite la sua chiave ({{key}}). Filtra sulla chiave con un'uguaglianza o un elenco IN, oppure unisci la tabella su una singola colonna.",
@@ -94,7 +95,7 @@
       "unknown_action_field": "Campo azione sconosciuto: '{{field}}'",
       "unknown_command": "Comando '{{name}}' sconosciuto",
       "write_not_admitted": "Il ruolo '{{role}}' non può eseguire questa scrittura: una scrittura richiede il diritto di scrittura, l'accesso in scrittura a ogni colonna scritta e righe ammesse dal filtro di riga del ruolo.",
-      "redirect_failed": "Impossibile scrivere il risultato nell'archivio dei risultati: {{error}}"
+      "write_not_supported": "'{{table}}' non accetta {{operation}}: la sua origine non può eseguirlo"
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adattatore per '{{source_type}}' non implementa discover_schema",

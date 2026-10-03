@@ -56,6 +56,7 @@ def _build_schema_and_ctx(enable_aggregates: bool = True, enable_group_by: bool 
                 {"column_name": "region", "visible_to": ["admin"]},
                 {"column_name": "status", "visible_to": ["admin"]},
             ],
+            "write_ops": ["delete", "insert", "update"],
         },
     ]
     column_types = {
@@ -347,6 +348,7 @@ def _build_schema_with_relationship():
                 {"column_name": "amount", "visible_to": ["admin"]},
                 {"column_name": "region", "visible_to": ["admin"]},
             ],
+            "write_ops": ["delete", "insert", "update"],
         },
         {
             "id": 2,
@@ -360,6 +362,7 @@ def _build_schema_with_relationship():
                 {"column_name": "email", "visible_to": ["admin"]},
                 {"column_name": "region_id", "visible_to": ["admin"]},
             ],
+            "write_ops": ["delete", "insert", "update"],
         },
         {
             "id": 3,
@@ -371,6 +374,7 @@ def _build_schema_with_relationship():
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "name", "visible_to": ["admin"]},
             ],
+            "write_ops": ["delete", "insert", "update"],
         },
     ]
     relationships = [

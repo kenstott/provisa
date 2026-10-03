@@ -55,6 +55,8 @@
     "colTopValues": "Valori principali",
     "editDefinitionButton": "Modifica definizione",
     "editDefinitionTitle": "Modifica la definizione della vista (SQL o selettore metrica/dimensione)",
-    "queryTemplate": "Cypher:"
+    "queryTemplate": "Cypher:",
+    "writes": "Accetta scritture:",
+    "writesNone": "Nessuna (sola lettura)"
   }
 }

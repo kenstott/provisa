@@ -65,6 +65,7 @@ def _schema_input() -> SchemaInput:
                     {"column_name": "user_id", "visible_to": []},
                     {"column_name": "pet_id", "visible_to": []},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 2,
@@ -79,6 +80,7 @@ def _schema_input() -> SchemaInput:
                     {"column_name": "name", "visible_to": []},
                     {"column_name": "breed_name", "visible_to": []},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
         ],
         relationships=[
@@ -126,7 +128,13 @@ def client(monkeypatch):
     state.rls_contexts = {"org_admin": RLSContext.empty()}
     state.roles = {"org_admin": si.role}
     state.table_path_maps = {
-        "org_admin": {gql_table: {"domain_id": "pet-store", "table_name": "inquiries"}}
+        "org_admin": {
+            gql_table: {
+                "domain_id": "pet-store",
+                "table_name": "inquiries",
+                "write_ops": ["delete", "insert", "update"],
+            }
+        }
     }
     state.masking_rules = {}
     state.source_types = {"pet-store-sqlite": "sqlite"}

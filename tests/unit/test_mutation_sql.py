@@ -41,6 +41,7 @@ def _build():
                 {"column_name": "amount", "visible_to": ["admin"]},
                 {"column_name": "region", "visible_to": ["admin"]},
             ],
+            "write_ops": ["delete", "insert", "update"],
         },
     ]
     col_types = {
@@ -117,11 +118,15 @@ class TestDeleteMutation:
 
 class TestNoSQLRejection:
     def test_nosql_source_rejected(self):
-        schema, ctx = _build()
-        # Override source type to mongodb
+        # A table whose source takes no writes (a MongoDB collection, executor/write_capability.py)
+        # is refused by the one write admission, naming the table and the operation.
+        from provisa.compiler.write_admission import WriteNotSupported
+
+        _schema, ctx = _build()
         doc = parse('mutation { insertOrders(input: { region: "x" }) { affected_rows } }')
-        with pytest.raises(ValueError, match="NoSQL"):
-            compile_mutation(doc, ctx, {"sales-pg": "mongodb"})
+        m = compile_mutation(doc, ctx, {"sales-pg": "mongodb"})[0]
+        with pytest.raises(WriteNotSupported, match="does not take INSERT"):
+            admitted(m.sql, write_governance(_ORDERS, write_ops={1: set()}), m.params)
 
 
 _ORDERS = {"public.orders": (1, ["id", "region", "amount", "status"])}

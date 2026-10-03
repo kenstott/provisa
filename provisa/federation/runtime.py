@@ -73,6 +73,20 @@ class UnsupportedCapabilityError(Exception):  # REQ-825
         super().__init__(f"engine {engine!r} does not support transport {capability.value!r}")
 
 
+def _authorized(authorization: "ExecutionAuthorization | None", sql: str) -> None:
+    """REQ-1760: what authorizes an engine call — a governed plan's stamp (GovernedPlanAuth) or
+    the system's own work (SystemAuth), verified here. Not yet required: the query paths that do
+    not pass the one pipeline (the GraphQL endpoint, Cypher over API sources, NL, live polling,
+    command row governance) carry no stamp until they are routed through it. Such a call is
+    logged, never treated as authorized."""
+    if authorization is not None:
+        from provisa.federation.execution_auth import verify_execution_authorization
+
+        verify_execution_authorization(authorization, sql)
+        return
+    log.debug("engine call with no authorization (REQ-1760, pending consolidation): %s", sql[:200])
+
+
 class EngineRuntime:  # REQ-825, REQ-840
     """Binds a FederationEngine to AppState and owns terminal-route execution."""
 
@@ -232,21 +246,8 @@ class EngineRuntime:  # REQ-825, REQ-840
         the engine supplies its own reconnection parameters, so callers never touch a raw
         connection.
 
-        ``authorization`` (REQ-1760): a GovernedPlanAuth or SystemAuth (provisa.federation.
-        execution_auth) naming what authorizes this call. Verified when supplied. Optional for
-        now — most of this terminal's ~45 call sites across the codebase predate REQ-1760 and
-        are not yet migrated; making it required is a separate, dedicated migration, not bundled
-        into this change. A caller with no authorization is logged, not silently normalized as
-        trusted, so real usage can be inventoried before that migration."""
-        if authorization is not None:
-            from provisa.federation.execution_auth import verify_execution_authorization
-
-            verify_execution_authorization(authorization, sql)
-        else:
-            log.debug(
-                "execute_engine called with no authorization (REQ-1760 migration pending): %s",
-                sql[:200],
-            )
+        ``authorization`` (REQ-1760): see :func:`_authorized`."""
+        _authorized(authorization, sql)
         return await self._backend.execute(
             self._state,
             sql,
@@ -264,6 +265,7 @@ class EngineRuntime:  # REQ-825, REQ-840
         params: list | None = None,
         *,
         session_hints: dict[str, str] | None = None,
+        authorization: "ExecutionAuthorization | None" = None,
     ) -> ResultStream:
         """SYNCHRONOUS ENGINE terminal — for callers already on a worker thread (Arrow
         Flight, pgwire socketserver, API-response materialization, OTEL compaction) that must
@@ -271,7 +273,8 @@ class EngineRuntime:  # REQ-825, REQ-840
         lazily (batched cursor), Trino materializes; consumers that call ``.rows`` buffer
         explicitly. ``session_hints`` carries per-plan session properties (e.g. the FTE
         ``retry_policy`` for non-replayable sources); Trino injects them, native engines ignore
-        them exactly as their async ``execute`` does."""
+        them exactly as their async ``execute`` does. ``authorization``: see :func:`_authorized`."""
+        _authorized(authorization, sql)
         return self._backend.execute_sync(self._state, sql, params, session_hints=session_hints)
 
     def describe_engine_sync(self, sql: str, params: list | None = None) -> ResultStream | None:
@@ -800,6 +803,7 @@ class EngineRuntime:  # REQ-825, REQ-840
         conn_kwargs: dict | None = None,
         span_attrs: dict[str, str] | None = None,
         extra_table_attrs: list[dict[str, str]] | None = None,
+        authorization: "ExecutionAuthorization | None" = None,
     ) -> QueryResult:
         """Dispatch a decided route to its terminal: DIRECT native driver, else ENGINE (REQ-825)."""
         from provisa.transpiler.router import Route
@@ -819,4 +823,5 @@ class EngineRuntime:  # REQ-825, REQ-840
             conn_kwargs=conn_kwargs,
             span_attrs=span_attrs,
             extra_table_attrs=extra_table_attrs,
+            authorization=authorization,
         )

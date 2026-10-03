@@ -85,6 +85,7 @@
       "query_required": "query es obligatorio",
       "query_timeout": "La consulta agotó el tiempo de espera tras {{timeout_s}}s",
       "query_too_complex": "La complejidad de la consulta ({{score}}) supera el límite de {{limit}} ({{limit_of}}).",
+      "redirect_failed": "No se pudo escribir el resultado en el almacén de resultados: {{error}}",
       "redirect_upload_failed": "Error en la carga por redirección: {{error}}",
       "request_interrupted": "{{error}}",
       "row_level_key_required": "La tabla '{{table}}' se replica fila por fila y solo puede leerse por su clave ({{key}}). Filtre por la clave con una igualdad o una lista IN, o una la tabla por una sola columna.",
@@ -94,7 +95,7 @@
       "unknown_action_field": "Campo de acción desconocido: '{{field}}'",
       "unknown_command": "Comando desconocido: '{{name}}'",
       "write_not_admitted": "El rol '{{role}}' no puede realizar esta escritura: una escritura requiere el derecho de escritura, acceso de escritura a cada columna que escribe y filas que admita el filtro de filas del rol.",
-      "redirect_failed": "No se pudo escribir el resultado en el almacén de resultados: {{error}}"
+      "write_not_supported": "'{{table}}' no admite {{operation}}: su origen no puede realizarlo"
     },
     "discovery": {
       "adapter_missing_discover_schema": "El adaptador para '{{source_type}}' no implementa discover_schema",

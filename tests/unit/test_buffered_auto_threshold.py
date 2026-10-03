@@ -74,7 +74,7 @@ class _FakeEngine:
         self._closed = closed_flag
         self.calls: list[str] = []
 
-    def execute_engine_sync(self, sql, params=None, *, session_hints=None):
+    def execute_engine_sync(self, sql, params=None, *, session_hints=None, authorization=None):
         self.calls.append(sql)
         return _FakeStream(self._rows, self._closed)
 
@@ -174,7 +174,7 @@ class _Source:
         self.statements.append((source_id, sql, list(params or [])))
         return QueryResult(rows=self._rows_for(sql, params), column_names=["id"])
 
-    def execute_engine_sync(self, sql, params=None, *, session_hints=None):
+    def execute_engine_sync(self, sql, params=None, *, session_hints=None, authorization=None):
         self.engine_statements.append(sql)
         raise AssertionError("a single-source buffered read reached the engine")
 

@@ -416,12 +416,16 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         # one — read by effective_domain_access_role at the one governance injection point
         # (pgwire._pipeline) so every surface unions domain_access the same way.
         rc_token = set_role_claims(getattr(request.state, "roles", None))
+        from provisa.core.request_context import current_acting_role
+
+        ar_token = current_acting_role.set(getattr(request.state, "role", None))
         try:
             with audit_identity_scope(identity.user_id, "http"):
                 await self.app(scope, receive, send)
         finally:
             reset_session_vars(sv_token)
             reset_role_claims(rc_token)
+            current_acting_role.reset(ar_token)
 
     async def _process(self, request: Request):  # REQ-486
         if request.url.path in _SKIP_PATHS or request.url.path.startswith("/public/invite-info/"):

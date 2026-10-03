@@ -85,6 +85,7 @@
       "query_required": "query is vereist",
       "query_timeout": "Query verlopen na {{timeout_s}}s",
       "query_too_complex": "De complexiteit van de query ({{score}}) overschrijdt de limiet van {{limit}} ({{limit_of}}).",
+      "redirect_failed": "Het resultaat kon niet naar de resultatenopslag worden geschreven: {{error}}",
       "redirect_upload_failed": "Redirect-upload mislukt: {{error}}",
       "request_interrupted": "{{error}}",
       "row_level_key_required": "Tabel '{{table}}' wordt rij voor rij gerepliceerd en kan alleen via de sleutel ({{key}}) worden gelezen. Filter op de sleutel met een gelijkheid of een IN-lijst, of koppel de tabel op één kolom.",
@@ -94,7 +95,7 @@
       "unknown_action_field": "Onbekend actieveld: '{{field}}'",
       "unknown_command": "Onbekende opdracht '{{name}}'",
       "write_not_admitted": "De rol '{{role}}' mag deze schrijfbewerking niet uitvoeren: een schrijfbewerking vereist het schrijfrecht, schrijftoegang tot elke kolom die wordt geschreven en rijen die het rijfilter van de rol toelaat.",
-      "redirect_failed": "Het resultaat kon niet naar de resultatenopslag worden geschreven: {{error}}"
+      "write_not_supported": "'{{table}}' accepteert geen {{operation}}: de bron kan het niet uitvoeren"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter voor '{{source_type}}' implementeert discover_schema niet",

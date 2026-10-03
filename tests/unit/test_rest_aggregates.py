@@ -57,6 +57,7 @@ def _build_schema_and_ctx(enable_aggregates: bool = True, enable_group_by: bool 
                 {"column_name": "status", "visible_to": ["admin"]},
                 {"column_name": "created_at", "visible_to": ["admin"]},
             ],
+            "write_ops": ["delete", "insert", "update"],
         },
     ]
     column_types = {
@@ -101,6 +102,7 @@ def _build_schema_and_ctx_with_relationship(enable_group_by: bool = True):
                 {"column_name": "amount", "visible_to": ["admin"]},
                 {"column_name": "region", "visible_to": ["admin"]},
             ],
+            "write_ops": ["delete", "insert", "update"],
         },
         {
             "id": 2,
@@ -114,6 +116,7 @@ def _build_schema_and_ctx_with_relationship(enable_group_by: bool = True):
                 {"column_name": "email", "visible_to": ["admin"]},
                 {"column_name": "home_region_id", "visible_to": ["admin"]},
             ],
+            "write_ops": ["delete", "insert", "update"],
         },
         {
             "id": 3,
@@ -125,6 +128,7 @@ def _build_schema_and_ctx_with_relationship(enable_group_by: bool = True):
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "name", "visible_to": ["admin"]},
             ],
+            "write_ops": ["delete", "insert", "update"],
         },
     ]
     relationships = [
@@ -458,6 +462,7 @@ def _make_state(enable_aggregates: bool = True, enable_group_by: bool = True):
         "orders": {
             "domain_id": "sales",
             "table_name": "orders",
+            "write_ops": ["delete", "insert", "update"],
         }
     }
     # The router keeps a request's compiled form in the org's plan store (REQ-1877), so the state

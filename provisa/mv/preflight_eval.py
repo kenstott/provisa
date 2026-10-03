@@ -34,6 +34,8 @@ import asyncio
 from collections.abc import Awaitable, Callable, Iterable
 from typing import Any
 
+from provisa.federation.execution_auth import system_auth
+
 from provisa.mv.preflight import Verdict, run_preflight
 from provisa.mv.preflight_sql import _quoted_from, translate
 from provisa.mv.preprocess import compile_preprocess
@@ -75,7 +77,9 @@ async def evaluate_streams(
     sqlpf = translate(source)
     if sqlpf is not None:
         # REQ-1912: the probe counts the input where the engine reads it.
-        res = await engine.execute_engine(engine.address_replicas(sqlpf.count_sql()))
+        res = await engine.execute_engine(
+            engine.address_replicas(sqlpf.count_sql()), authorization=system_auth("view preflight")
+        )
         return sqlpf.verdict_for(res.rows[0][0])
     from provisa.federation.runtime import EngineCapability  # noqa: PLC0415
 

@@ -81,6 +81,7 @@ def _tables() -> list[dict]:
                     "native_filter_type": None,
                 }
             ],
+            "write_ops": ["delete", "insert", "update"],
         }
         for tid in (SALES, FINANCE, META, OPS)
     ]

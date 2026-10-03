@@ -31,6 +31,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from provisa.federation.execution_auth import system_auth
+
 from provisa.events import supervisor
 from provisa.events.boot import build_processors, register_runtime, specs_from_config
 from provisa.events.nodes import view_node
@@ -500,7 +502,8 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
             _key = view_node(_m)
             try:
                 _probe = await engine.execute_engine(
-                    f"SELECT * FROM ({engine.address_replicas(_sql)}) AS _mv_probe LIMIT 0"
+                    f"SELECT * FROM ({engine.address_replicas(_sql)}) AS _mv_probe LIMIT 0",
+                    authorization=system_auth("event signal"),
                 )
             except Exception:
                 log.exception("event loop: MV %s not introspectable yet — skipping", _key)
@@ -530,7 +533,9 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         def mv_run_query(mv: Any) -> Any:
             async def _run() -> list[dict]:
                 # REQ-1912: a replica-served input is read at its replica's address.
-                result = await engine.execute_engine(engine.address_replicas(mv.sql))
+                result = await engine.execute_engine(
+                    engine.address_replicas(mv.sql), authorization=system_auth("event signal")
+                )
                 return [dict(zip(result.column_names, row)) for row in result.rows]
 
             return _run
@@ -559,7 +564,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         # engine terminal — the same read path as the row loader, returning the single scalar.
         def probe_scalar(_src: Any, _tbl: Any) -> Any:
             async def _scalar(sql: str) -> Any:
-                result = await engine.execute_engine(sql)
+                result = await engine.execute_engine(sql, authorization=system_auth("event signal"))
                 return result.rows[0][0] if result.rows else None
 
             return _scalar
@@ -754,7 +759,7 @@ async def wire_new_poll_jobs(*, state: Any, log: Any) -> int:
 
         def probe_scalar(_src: Any, _tbl: Any) -> Any:
             async def _scalar(sql: str) -> Any:
-                result = await engine.execute_engine(sql)
+                result = await engine.execute_engine(sql, authorization=system_auth("event signal"))
                 return result.rows[0][0] if result.rows else None
 
             return _scalar

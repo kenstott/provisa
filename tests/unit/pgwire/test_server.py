@@ -295,7 +295,7 @@ class TestProvisaSessionEngineStreaming:
 
         monkeypatch.setattr(_pipeline, "govern_pgwire_plan", _govern)
 
-        def _execute_engine_sync(physical_sql, params, *, session_hints=None):
+        def _execute_engine_sync(physical_sql, params, *, session_hints=None, authorization=None):
             captured["physical_sql"] = physical_sql
             captured["params"] = params
             captured["session_hints"] = session_hints

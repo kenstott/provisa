@@ -341,7 +341,6 @@ def generate_proto(
     lines.append("")
 
     # --- Data + Filter + Request messages ---
-    nosql_types = {"mongodb", "cassandra"}
     for t in sorted(tables, key=lambda t: t.type_name):
         sorted_cols = sorted(t.visible_columns, key=lambda c: c["column_name"])
         col_names = [
@@ -440,7 +439,7 @@ def generate_proto(
 
     # --- Mutation input messages ---
     for t in sorted(tables, key=lambda t: t.type_name):
-        if si.source_types and si.source_types.get(t.source_id, "") in nosql_types:
+        if "insert" not in t.write_ops:  # executor/write_capability.py
             continue
         sorted_cols = sorted(t.visible_columns, key=lambda c: c["column_name"])
         input_col_names = [
@@ -528,7 +527,7 @@ def generate_proto(
                 f"returns (stream {t.type_name}GroupByRow);"
             )
     for t in sorted(tables, key=lambda t: t.type_name):
-        if si.source_types and si.source_types.get(t.source_id, "") in nosql_types:
+        if "insert" not in t.write_ops:  # executor/write_capability.py
             continue
         lines.append(f"  rpc Insert{t.type_name}({t.type_name}Input) returns (MutationResponse);")
     lines.append("}")

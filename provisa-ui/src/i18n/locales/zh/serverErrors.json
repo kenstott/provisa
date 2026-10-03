@@ -85,6 +85,7 @@
       "query_required": "query 为必填项",
       "query_timeout": "查询在 {{timeout_s}} 秒后超时",
       "query_too_complex": "查询的复杂度（{{score}}）超过上限 {{limit}}（{{limit_of}}）。",
+      "redirect_failed": "无法将结果写入结果存储：{{error}}",
       "redirect_upload_failed": "重定向上传失败：{{error}}",
       "request_interrupted": "{{error}}",
       "row_level_key_required": "表 '{{table}}' 按行复制，只能通过其键 ({{key}}) 读取。请使用等值条件或 IN 列表按键筛选，或在单个列上联接该表。",
@@ -94,7 +95,7 @@
       "unknown_action_field": "未知操作字段：'{{field}}'",
       "unknown_command": "未知命令 '{{name}}'",
       "write_not_admitted": "角色 '{{role}}' 不能执行此写入：写入需要写入权限、对所写每一列的写入权限，以及该角色的行过滤器允许的行。",
-      "redirect_failed": "无法将结果写入结果存储：{{error}}"
+      "write_not_supported": "'{{table}}' 不接受 {{operation}}：其数据源无法执行"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' 的适配器未实现 discover_schema",

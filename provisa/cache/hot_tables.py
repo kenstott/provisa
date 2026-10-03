@@ -21,6 +21,8 @@ from decimal import Decimal
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
+from provisa.federation.execution_auth import system_auth
+
 from provisa.compiler.naming import source_to_catalog
 
 if TYPE_CHECKING:
@@ -238,7 +240,10 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         fqn = f'"{catalog}"."{schema}"."{table_name}"'
         # The registered catalog.schema.table name, in the bound engine's own table addressing
         # and dialect (REQ-1730: an engine with no catalog level folds it into the schema).
-        res = await engine.execute_engine(engine.engine_physical(f"SELECT * FROM {fqn}"))
+        res = await engine.execute_engine(
+            engine.engine_physical(f"SELECT * FROM {fqn}"),
+            authorization=system_auth("hot-table load"),
+        )
         rows_raw = res.rows
         columns = res.column_names
 
@@ -622,7 +627,10 @@ async def count_table_rows(engine, table_name: str, schema: str, catalog: str) -
     """SELECT COUNT(*) for auto-detection sizing, through the engine terminal."""
     fqn = f'"{catalog}"."{schema}"."{table_name}"'
     # In the bound engine's own table addressing and dialect — see HotTableManager.load_table.
-    res = await engine.execute_engine(engine.engine_physical(f"SELECT COUNT(*) FROM {fqn}"))
+    res = await engine.execute_engine(
+        engine.engine_physical(f"SELECT COUNT(*) FROM {fqn}"),
+        authorization=system_auth("hot-table load"),
+    )
     return res.rows[0][0] if res.rows else 0
 
 

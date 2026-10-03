@@ -72,6 +72,7 @@ def _build():
                 {"column_name": "amount", "visible_to": ["admin"]},
                 {"column_name": "region", "visible_to": ["admin"]},
             ],
+            "write_ops": ["delete", "insert", "update"],
         },
     ]
     col_types = {
@@ -337,6 +338,7 @@ def schema_and_ctx():
                 {"column_name": "amount", "visible_to": ["admin"]},
                 {"column_name": "region", "visible_to": ["admin"]},
             ],
+            "write_ops": ["delete", "insert", "update"],
         },
     ]
     col_types = {

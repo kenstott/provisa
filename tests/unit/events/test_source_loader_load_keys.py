@@ -66,7 +66,7 @@ async def test_load_keys_runs_bounded_select_through_engine_terminal():
         def address_replicas(self, sql):
             return sql  # this stand-in's tables are all read where the statement names them
 
-        async def execute_engine(self, sql):
+        async def execute_engine(self, sql, authorization=None):
             calls.append(sql)
             return _FakeResult()
 

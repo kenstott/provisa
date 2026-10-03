@@ -27,6 +27,8 @@ import re
 from collections.abc import Callable, Iterable, Iterator
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
+from provisa.federation.execution_auth import plan_authorization
+
 import jwt
 import pyarrow as pa
 import pyarrow.flight as flight
@@ -1020,7 +1022,11 @@ class ProvisaFlightServer(
                 _permits = acquire_plan_permits(self._state, plan)
                 # REQ-1882: the sync engine terminal runs on this handler thread (not a raw cursor,
                 # and not a second thread).
-                res = engine.execute_engine_sync(physical_sql, resolved_params or [])
+                res = engine.execute_engine_sync(
+                    physical_sql,
+                    resolved_params or [],
+                    authorization=plan_authorization(plan),
+                )
                 # REQ-1897: write-through to the raw-SQL response cache (stored as the drain ends,
                 # on this RPC's loop, still bound inside do_get).
                 from provisa.pgwire._pipeline import response_cache_tee

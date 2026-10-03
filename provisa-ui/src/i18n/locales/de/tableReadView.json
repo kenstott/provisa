@@ -55,6 +55,8 @@
     "colTopValues": "Häufigste Werte",
     "editDefinitionButton": "Definition bearbeiten",
     "editDefinitionTitle": "Sichtdefinition bearbeiten (SQL oder Metrik-/Dimensionsauswahl)",
-    "queryTemplate": "Cypher:"
+    "queryTemplate": "Cypher:",
+    "writes": "Nimmt Schreibvorgänge an:",
+    "writesNone": "Keine (nur lesend)"
   }
 }

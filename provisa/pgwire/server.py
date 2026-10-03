@@ -37,6 +37,8 @@ from dataclasses import dataclass
 from dataclasses import field as _dc_field
 from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional, Tuple
 
+from provisa.federation.execution_auth import plan_authorization
+
 import jwt
 
 from buenavista.core import BVType, Connection, QueryResult as BVQueryResult, Session
@@ -1065,6 +1067,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                                 engine_plan.physical_sql,
                                 engine_plan.exec_params,
                                 session_hints=engine_plan.session_hints,
+                                authorization=plan_authorization(engine_plan),
                             ),
                         )
                 elif (

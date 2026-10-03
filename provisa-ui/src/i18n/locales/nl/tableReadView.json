@@ -55,6 +55,8 @@
     "colTopValues": "Meest voorkomende waarden",
     "editDefinitionButton": "Definitie bewerken",
     "editDefinitionTitle": "De viewdefinitie bewerken (SQL of metriek-/dimensiekiezer)",
-    "queryTemplate": "Cypher:"
+    "queryTemplate": "Cypher:",
+    "writes": "Accepteert schrijfacties:",
+    "writesNone": "Geen (alleen lezen)"
   }
 }

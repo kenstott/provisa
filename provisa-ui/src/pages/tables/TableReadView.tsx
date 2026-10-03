@@ -241,6 +241,18 @@ export function TableReadView({
           <Text c="dimmed">{t("tableReadView.dataProductNo")}</Text>
         )}
       </Group>
+      <Group px="0.75rem" py="0.5rem" gap="0.4rem" data-testid="table-read-view-writes">
+        <Text c="dimmed">{t("tableReadView.writes")}</Text>
+        {table.writeOps.length > 0 ? (
+          table.writeOps.map((op) => (
+            <Badge key={op} variant="light" size="sm">
+              {op.toUpperCase()}
+            </Badge>
+          ))
+        ) : (
+          <Text c="dimmed">{t("tableReadView.writesNone")}</Text>
+        )}
+      </Group>
       <Group justify="flex-start" p="0.5rem" gap="0.5rem" wrap="wrap">
         {table.viewSql && (
           <Button

@@ -24,6 +24,8 @@ import secrets
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
+from provisa.federation.execution_auth import ExecutionAuthorization, plan_authorization
+
 from fastapi import Request
 
 if TYPE_CHECKING:
@@ -126,6 +128,7 @@ async def _execute_with_api(
     span_attrs: dict[str, str] | None = None,
     *,
     table_ids: Iterable[int],
+    authorization: "ExecutionAuthorization",
 ) -> list[dict]:
     """Phase 1 (REST) + Phase 2 (the engine) execution for ALL API-backed tables in the query.
     ``table_ids`` are the registered tables it reads, as the pipeline resolved them: the hot rows
@@ -176,7 +179,7 @@ async def _execute_with_api(
             physical_sql = state.federation_engine.transpile_physical(hot_sql)
             log.info("[HOT TABLE] hit — %s (%d rows inline)", table_name, len(entry.rows))
             engine_result = await state.federation_engine.execute_engine(
-                physical_sql, params, span_attrs=span_attrs
+                physical_sql, params, span_attrs=span_attrs, authorization=authorization
             )
             return [dict(zip(engine_result.column_names, row)) for row in engine_result.rows]
 
@@ -296,7 +299,7 @@ async def _execute_with_api(
     physical_sql = state.federation_engine.transpile_physical(rewritten_sql)
 
     result = await state.federation_engine.execute_engine(
-        physical_sql, params, fresh=True, span_attrs=span_attrs
+        physical_sql, params, fresh=True, span_attrs=span_attrs, authorization=authorization
     )
     return [dict(zip(result.column_names, row)) for row in result.rows]
 
@@ -307,6 +310,8 @@ async def _execute_with_gql_remote(
     nf_args: dict,
     state: Any,
     span_attrs: dict[str, str] | None = None,
+    *,
+    authorization: "ExecutionAuthorization",
 ) -> list[dict]:
     """Materialize graphql_remote tables into the engine cache and execute the query."""
     import asyncio
@@ -460,13 +465,18 @@ async def _execute_with_gql_remote(
     physical_sql = state.federation_engine.transpile_physical(rewritten_sql)
 
     result = await state.federation_engine.execute_engine(
-        physical_sql, params, fresh=True, span_attrs=span_attrs
+        physical_sql, params, fresh=True, span_attrs=span_attrs, authorization=authorization
     )
     return [dict(zip(result.column_names, row)) for row in result.rows]
 
 
 async def _execute(
-    sql: str, params: list, state: Any, span_attrs: dict[str, str] | None = None
+    sql: str,
+    params: list,
+    state: Any,
+    span_attrs: dict[str, str] | None = None,
+    *,
+    authorization: "ExecutionAuthorization",
 ) -> list[dict]:
     """Execute SQL against the federation engine and return rows as dicts.
 
@@ -475,7 +485,9 @@ async def _execute(
     backend's execute() owns that contract and raises only when the terminal has NEITHER a
     connection nor kwargs, so gating on is_connected() here refused every first query.
     """
-    result = await state.federation_engine.execute_engine(sql, params or [], span_attrs=span_attrs)
+    result = await state.federation_engine.execute_engine(
+        sql, params or [], span_attrs=span_attrs, authorization=authorization
+    )
     return [dict(zip(result.column_names, row)) for row in result.rows]
 
 
@@ -533,13 +545,25 @@ async def _execute_call_body(
                 state,
                 _cb_span_attrs,
                 table_ids=plan.table_ids,
+                authorization=plan_authorization(plan),
             )
         elif has_gql_remote:
             rows = await _execute_with_gql_remote(
-                exec_sql, resolved_params, nf_args, state, _cb_span_attrs
+                exec_sql,
+                resolved_params,
+                nf_args,
+                state,
+                _cb_span_attrs,
+                authorization=plan_authorization(plan),
             )
         elif physical_sql:
-            rows = await _execute(physical_sql, resolved_params, state, _cb_span_attrs)
+            rows = await _execute(
+                physical_sql,
+                resolved_params,
+                state,
+                _cb_span_attrs,
+                authorization=plan_authorization(plan),
+            )
         else:
             from provisa.pgwire._pipeline import _execute_plan as _exec_plan
 

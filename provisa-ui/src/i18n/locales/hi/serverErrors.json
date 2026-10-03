@@ -85,6 +85,7 @@
       "query_required": "query आवश्यक है",
       "query_timeout": "क्वेरी {{timeout_s}} सेकंड के बाद टाइम आउट हो गई",
       "query_too_complex": "क्वेरी की जटिलता ({{score}}) सीमा {{limit}} ({{limit_of}}) से अधिक है।",
+      "redirect_failed": "परिणाम को परिणाम स्टोर में नहीं लिखा जा सका: {{error}}",
       "redirect_upload_failed": "रीडायरेक्ट अपलोड विफल हुआ: {{error}}",
       "request_interrupted": "{{error}}",
       "row_level_key_required": "तालिका '{{table}}' पंक्ति-दर-पंक्ति प्रतिकृत की जाती है और केवल उसकी कुंजी ({{key}}) से पढ़ी जा सकती है। कुंजी पर समानता या IN सूची से फ़िल्टर करें, या तालिका को एक ही कॉलम पर जोड़ें।",
@@ -94,7 +95,7 @@
       "unknown_action_field": "अज्ञात एक्शन फ़ील्ड: '{{field}}'",
       "unknown_command": "अज्ञात कमांड '{{name}}'",
       "write_not_admitted": "भूमिका '{{role}}' यह लेखन नहीं कर सकती: लेखन के लिए लेखन अधिकार, लिखे जाने वाले हर कॉलम पर लेखन पहुँच, और ऐसी पंक्तियाँ चाहिए जिन्हें भूमिका का पंक्ति फ़िल्टर स्वीकार करे।",
-      "redirect_failed": "परिणाम को परिणाम स्टोर में नहीं लिखा जा सका: {{error}}"
+      "write_not_supported": "'{{table}}' {{operation}} स्वीकार नहीं करता: इसका स्रोत इसे नहीं कर सकता"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' का अडैप्टर discover_schema लागू नहीं करता",

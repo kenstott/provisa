@@ -55,6 +55,8 @@
     "colTopValues": "ערכים נפוצים",
     "editDefinitionButton": "עריכת הגדרה",
     "editDefinitionTitle": "עריכת הגדרת ה-View (SQL או בחירת מדד/ממד)",
-    "queryTemplate": "Cypher:"
+    "queryTemplate": "Cypher:",
+    "writes": "מקבלת כתיבות:",
+    "writesNone": "אין (קריאה בלבד)"
   }
 }

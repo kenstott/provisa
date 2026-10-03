@@ -31,7 +31,6 @@ from provisa.compiler.sql_where import _extract_value
 
 
 # NoSQL source types — mutations not supported
-NOSQL_TYPES: set[str] = {"mongodb", "cassandra"}
 
 
 _INT_TYPES = frozenset({"integer", "int", "int4", "int2", "int8", "bigint", "smallint", "tinyint"})
@@ -343,13 +342,6 @@ def compile_mutation(  # REQ-031, REQ-032, REQ-033, REQ-036, REQ-037
                 continue
 
             op, _, table = _get_mutation_meta(sel.name.value, ctx)
-
-            # Reject NoSQL mutations
-            stype = source_types.get(table.source_id, "")
-            if stype in NOSQL_TYPES:
-                raise ValueError(
-                    f"Mutations not supported for NoSQL source {table.source_id!r} (type: {stype})"
-                )
 
             if op == "upsert":
                 results.append(compile_upsert(sel, table, variables, headers))

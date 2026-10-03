@@ -47,6 +47,7 @@ def _build_schema_and_ctx(
                     {"column_name": "status", "visible_to": ["admin"]},
                     {"column_name": "created_at", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 2,
@@ -59,6 +60,7 @@ def _build_schema_and_ctx(
                     {"column_name": "name", "visible_to": ["admin", "analyst"]},
                     {"column_name": "email", "visible_to": ["admin", "analyst"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
         ]
     if relationships is None:
@@ -381,6 +383,7 @@ class TestPagination:
                 "schema_name": "public",
                 "table_name": "orders",
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 2,
@@ -392,6 +395,7 @@ class TestPagination:
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 3,
@@ -403,6 +407,7 @@ class TestPagination:
                     {"column_name": "table_name", "visible_to": ["admin"]},
                     {"column_name": "query", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
         ]
         column_types = {
@@ -431,6 +436,7 @@ class TestPagination:
                 "schema_name": "public",
                 "table_name": "orders",
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 2,
@@ -442,6 +448,7 @@ class TestPagination:
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 4,
@@ -453,6 +460,7 @@ class TestPagination:
                     {"column_name": "table_name", "visible_to": ["admin"]},
                     {"column_name": "trace_id", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
         ]
         column_types = {
@@ -481,6 +489,7 @@ class TestPagination:
                 "schema_name": "public",
                 "table_name": "orders",
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 2,
@@ -492,6 +501,7 @@ class TestPagination:
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 3,
@@ -503,6 +513,7 @@ class TestPagination:
                     {"column_name": "table_name", "visible_to": ["admin"]},
                     {"column_name": "query", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
         ]
         column_types = {
@@ -673,6 +684,7 @@ class TestNestedRelationship:
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "name", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 2,
@@ -685,6 +697,7 @@ class TestNestedRelationship:
                     {"column_name": "customer_id", "visible_to": ["admin"]},
                     {"column_name": "amount", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
         ]
         relationships = [
@@ -740,6 +753,7 @@ class TestNestedRelationship:
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "name", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 2,
@@ -752,6 +766,7 @@ class TestNestedRelationship:
                     {"column_name": "customer_id", "visible_to": ["admin"]},
                     {"column_name": "amount", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
         ]
         relationships = [
@@ -793,6 +808,7 @@ class TestNestedRelationship:
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "name", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 2,
@@ -805,6 +821,7 @@ class TestNestedRelationship:
                     {"column_name": "customer_id", "visible_to": ["admin"]},
                     {"column_name": "amount", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
         ]
         relationships = [
@@ -846,6 +863,7 @@ class TestNestedRelationship:
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "name", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 2,
@@ -858,6 +876,7 @@ class TestNestedRelationship:
                     {"column_name": "dept_id", "visible_to": ["admin"]},
                     {"column_name": "name", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 3,
@@ -870,6 +889,7 @@ class TestNestedRelationship:
                     {"column_name": "emp_id", "visible_to": ["admin"]},
                     {"column_name": "amount", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
         ]
         relationships = [
@@ -919,6 +939,7 @@ class TestNestedRelationship:
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "cust_id", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 2,
@@ -930,6 +951,7 @@ class TestNestedRelationship:
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "name", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
         ]
         rels = [
@@ -1000,6 +1022,7 @@ class TestJoinTypeCast:
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "product_id", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 2,
@@ -1011,6 +1034,7 @@ class TestJoinTypeCast:
                     {"column_name": "product_id", "visible_to": ["admin"]},
                     {"column_name": "rating", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
         ]
         rels = [
@@ -1053,6 +1077,7 @@ class TestJoinTypeCast:
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "ext_ref", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 2,
@@ -1064,6 +1089,7 @@ class TestJoinTypeCast:
                     {"column_name": "ref_id", "visible_to": ["admin"]},
                     {"column_name": "label", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
         ]
         rels = [
@@ -1149,6 +1175,7 @@ class TestRelationshipVisibility:
                     },  # NOT visible to 'limited'
                     {"column_name": "amount", "visible_to": ["admin", "limited"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 2,
@@ -1160,6 +1187,7 @@ class TestRelationshipVisibility:
                     {"column_name": "id", "visible_to": ["admin", "limited"]},
                     {"column_name": "name", "visible_to": ["admin", "limited"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
         ]
         rels = [
@@ -1260,6 +1288,7 @@ class TestOpsDefaultLimit:
                 "schema_name": "public",
                 "table_name": "orders",
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 2,
@@ -1271,6 +1300,7 @@ class TestOpsDefaultLimit:
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "table_name", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 3,
@@ -1282,6 +1312,7 @@ class TestOpsDefaultLimit:
                     {"column_name": "table_name", "visible_to": ["admin"]},
                     {"column_name": "query", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
         ]
         column_types = {
@@ -1346,6 +1377,7 @@ class TestGqlJsonBlobExtraction:
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "name", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 2,
@@ -1365,6 +1397,7 @@ class TestGqlJsonBlobExtraction:
                         ],
                     },
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
         ]
         relationships = [

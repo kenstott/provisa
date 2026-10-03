@@ -24,6 +24,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from provisa.federation.execution_auth import system_auth
+
 import httpx
 import pyarrow as pa
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -551,12 +553,13 @@ def _ensure_iceberg_table(
         f"({', '.join(col_defs)}) "
         f"WITH (partitioning = ARRAY[{', '.join(partition_cols)}], format = 'PARQUET')"
     )
-    engine.execute_engine_sync(create_ddl)
+    engine.execute_engine_sync(create_ddl, authorization=system_auth("scheduled job"))
     if signal == "traces":
         try:
             engine.execute_engine_sync(
                 f"ALTER TABLE otel.signals.{signal} "
-                f"SET PROPERTIES partitioning = ARRAY[{', '.join(partition_cols)}]"
+                f"SET PROPERTIES partitioning = ARRAY[{', '.join(partition_cols)}]",
+                authorization=system_auth("scheduled job"),
             )
         except Exception as exc:
             logger.warning("compact_otel: could not evolve partition spec for %s: %s", signal, exc)
@@ -699,13 +702,17 @@ def _execute_batch_inserts(
         )
         over_chars = pending + len(rendered) > _MAX_INSERT_SQL_CHARS
         if values and (over_chars or len(values) >= batch_size):
-            engine.execute_engine_sync(prefix + ", ".join(values))
+            engine.execute_engine_sync(
+                prefix + ", ".join(values), authorization=system_auth("scheduled job")
+            )
             values = []
             pending = len(prefix)
         values.append(rendered)
         pending += len(rendered) + 2
     if values:
-        engine.execute_engine_sync(prefix + ", ".join(values))
+        engine.execute_engine_sync(
+            prefix + ", ".join(values), authorization=system_auth("scheduled job")
+        )
 
 
 async def reclaim_otel_storage() -> None:  # REQ-302, REQ-303
@@ -764,7 +771,9 @@ async def reclaim_otel_storage() -> None:  # REQ-302, REQ-303
 
 def _insert_otel_iceberg(engine, signal: str, table: pa.Table, dt: datetime) -> None:
     """Create Iceberg table from schema and INSERT the rows (runs in thread, sync engine)."""
-    engine.execute_engine_sync("CREATE SCHEMA IF NOT EXISTS otel.signals")
+    engine.execute_engine_sync(
+        "CREATE SCHEMA IF NOT EXISTS otel.signals", authorization=system_auth("scheduled job")
+    )
 
     col_defs = _build_iceberg_col_defs(signal, table)
     partition_cols = ["'_date'", "'table_name'"] if signal == "traces" else ["'_date'"]
@@ -774,7 +783,9 @@ def _insert_otel_iceberg(engine, signal: str, table: pa.Table, dt: datetime) -> 
     # ``otel.signals.*`` are Provisa's own telemetry tables in the engine's Iceberg catalog — the
     # store this job writes, read where it writes them. They are not tables of a registered
     # source and have no replica, so nothing here passes the address seam (REQ-1912).
-    _cols = engine.execute_engine_sync(f"SHOW COLUMNS FROM otel.signals.{signal}")
+    _cols = engine.execute_engine_sync(
+        f"SHOW COLUMNS FROM otel.signals.{signal}", authorization=system_auth("scheduled job")
+    )
     engine_cols = {row[0].lower(): row[1].lower() for row in _cols.rows}
     table = _cast_table_to_physical_schema(signal, table, engine_cols)
 

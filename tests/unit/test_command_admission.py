@@ -59,3 +59,13 @@ def test_a_filter_it_cannot_apply_is_refused_by_name(args, named):
     assert refused.value.status_code == 400
     assert named in str(refused.value.detail)
     assert str(refused.value.detail).startswith("s__orders_by:")
+
+
+@pytest.mark.parametrize("key", ["governance", "requires_approval"])
+def test_a_webhook_asking_for_an_approval_is_refused_by_name(key):
+    from provisa.core.models import Webhook
+
+    with pytest.raises(ValidationError, match=f"'{key}' is not supported on a webhook"):
+        Webhook.model_validate(
+            {"name": "notify", "url": "https://x/hook", key: "requires_approval"}
+        )

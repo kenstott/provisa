@@ -55,6 +55,8 @@
     "colTopValues": "上位の値",
     "editDefinitionButton": "定義を編集",
     "editDefinitionTitle": "ビュー定義を編集します（SQLまたはメトリクス/ディメンション選択）",
-    "queryTemplate": "Cypher:"
+    "queryTemplate": "Cypher:",
+    "writes": "受け付ける書き込み:",
+    "writesNone": "なし（読み取り専用）"
   }
 }
