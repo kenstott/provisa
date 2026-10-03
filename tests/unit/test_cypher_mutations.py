@@ -584,3 +584,56 @@ def test_e2e_update_with_the_filter():
     assert '"email"' in governed
     assert "region\" = 'EU'" in governed
     assert "AND" in governed.upper()
+
+
+# ---------------------------------------------------------------------------
+# Parameters: an unquoted $name is a value the request supplies, never text
+# ---------------------------------------------------------------------------
+
+
+def test_a_parameter_in_a_create_is_bound_not_written_as_its_name():
+    from provisa.cypher.write_translator import bind_write_params
+
+    sql = _translated("CREATE (n:Person {name: $name, age: $age, email: 'pay $x'})")
+    bound, values = bind_write_params(sql, {"name": "Ann", "age": 3})
+    assert bound == (
+        'INSERT INTO "mycat"."public"."persons" ("name", "age", "email") '
+        "VALUES ($1, $2, 'pay $x')"  # a quoted '$x' is text and stays so
+    )
+    assert values == ["Ann", 3]
+
+
+def test_parameters_in_set_and_where_are_bound_in_order_and_a_repeat_is_one_value():
+    from provisa.cypher.write_translator import bind_write_params
+
+    sql = _translated("MATCH (n:Person) WHERE n.id = $id AND n.name <> $name SET n.name = $name")
+    bound, values = bind_write_params(sql, {"id": 1, "name": "B", "unused": 9})
+    assert bound == (
+        'UPDATE "mycat"."public"."persons" SET "name" = $1 WHERE "id" = $2 AND "name" <> $1'
+    )
+    assert values == ["B", 1]
+
+
+def test_a_parameter_the_request_does_not_supply_is_refused_by_name():
+    from provisa.cypher.params import CypherParamError
+    from provisa.cypher.write_translator import bind_write_params
+
+    sql = _translated("MATCH (n:Person) WHERE n.id = $id DELETE n")
+    with pytest.raises(CypherParamError, match=r"\['id'\]"):
+        bind_write_params(sql, {})
+
+
+def test_a_bound_value_is_checked_against_the_row_filter_like_a_literal():
+    from provisa.cypher.write_translator import bind_write_params
+
+    sql, values = bind_write_params(
+        _translated("CREATE (n:Person {name: $name, tenant_id: $tenant})"),
+        {"name": "Bob", "tenant": "beta"},
+    )
+    with pytest.raises(WriteNotAdmitted, match="outside role"):
+        admitted(sql, _person_gov(rls=_ACME), values)
+    sql, values = bind_write_params(
+        _translated("CREATE (n:Person {name: $name, tenant_id: $tenant})"),
+        {"name": "Bob", "tenant": "acme"},
+    )
+    assert admitted(sql, _person_gov(rls=_ACME), values) == sql

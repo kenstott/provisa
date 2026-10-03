@@ -501,8 +501,10 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     from provisa.cypher.write_translator import (  # noqa: PLC0415
         CypherWriteParseError as _CWPE,
         WriteTranslator as _WT,
+        bind_write_params,
         parse_cypher_write as _pwc,
     )
+    from provisa.cypher.params import CypherParamError  # noqa: PLC0415
 
     _write_ast = None
     try:
@@ -523,8 +525,12 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             return JSONResponse(status_code=503, content={"error": "Schema not loaded"})
         _label_map = _build_label_map(_ctx, _role_id, state)
         try:
-            _write_sql = _WT(_label_map).translate(_write_ast)
-        except _CWPE as exc:
+            # The request's parameters are bound into the statement (``$name`` → ``$k``), so the
+            # admission's new-row check and the source see the values, never their names.
+            _write_sql, _write_params = bind_write_params(
+                _WT(_label_map).translate(_write_ast), body.params
+            )
+        except (_CWPE, CypherParamError) as exc:
             return JSONResponse(status_code=400, content={"error": str(exc)})
 
         # ONE write path: the translated statement goes through the pipeline every other surface's
@@ -533,7 +539,13 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         # addressing and dialect, and its execution. This route used to check, address and run
         # the statement itself.
         try:
-            _plan = await _govern_write(_write_sql, _role_id, state=state, cache_hint=_NO_CACHE)
+            _plan = await _govern_write(
+                _write_sql,
+                _role_id,
+                exec_params=_write_params or None,
+                state=state,
+                cache_hint=_NO_CACHE,
+            )
             _result = await _execute_write_plan(_plan, state)
         except PermissionError as exc:
             return JSONResponse(status_code=403, content={"error": str(exc)})

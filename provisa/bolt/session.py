@@ -1326,7 +1326,9 @@ async def _execute_cypher(
         try:
             parse_cypher_write(cypher)
             return (
-                *await _execute_write_cypher(cypher, role_id, ctx, include_ops, app_state),
+                *await _execute_write_cypher(
+                    cypher, parameters, role_id, ctx, include_ops, app_state
+                ),
                 None,
             )
         except CypherWriteParseError:
@@ -1453,11 +1455,13 @@ async def _execute_cypher(
 
 
 async def _execute_write_cypher(
-    cypher: str, role_id: str, ctx: Any, include_ops: bool, app_state: Any
+    cypher: str, parameters: dict, role_id: str, ctx: Any, include_ops: bool, app_state: Any
 ) -> tuple[list[str], list[list[Any]]]:
+    from provisa.cypher.params import CypherParamError
     from provisa.cypher.write_translator import (
         CypherWriteParseError,
         WriteTranslator,
+        bind_write_params,
         parse_cypher_write,
     )
     from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
@@ -1469,9 +1473,16 @@ async def _execute_write_cypher(
 
     label_map = _bolt_label_map(ctx, role_id, include_ops, app_state)
     translator = WriteTranslator(label_map)
-    sql = translator.translate(write_ast)
+    try:
+        # The run's parameters are bound into the statement ($name → $k): the admission and the
+        # source see the values, never their names.
+        sql, bound = bind_write_params(translator.translate(write_ast), parameters)
+    except CypherParamError as exc:
+        raise ValueError(str(exc)) from exc
 
-    plan = await _govern_and_route_compiled(sql, role_id, cache_hint=NO_CACHE_HINT)
+    plan = await _govern_and_route_compiled(
+        sql, role_id, exec_params=bound or None, cache_hint=NO_CACHE_HINT
+    )
     result = await _execute_plan(plan)
     rows = [list(row) for row in result.rows]
     return result.column_names, rows

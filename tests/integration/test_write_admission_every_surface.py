@@ -541,3 +541,117 @@ def test_a_write_on_any_surface_is_followed_by_the_same_steps(server, source, su
     served, rows = _cached_read(server, surface)
     assert served != "HIT", served
     assert rows == [*_SEED, (60, "north")]
+
+
+# --- Cypher parameters ----------------------------------------------------------------------------
+
+
+def _cypher_http_params(boot, role: str, query: str, params: dict) -> tuple[bool, str]:
+    status, body = _http(boot, role, "POST", "/data/cypher", {"query": query, "params": params})
+    return status == 200, f"{status} {body}"
+
+
+def _bolt_params(boot, role: str, query: str, params: dict) -> tuple[bool, str]:
+    from neo4j import GraphDatabase
+    from neo4j.exceptions import Neo4jError
+
+    driver = GraphDatabase.driver(f"bolt://127.0.0.1:{boot.ports['bolt']}", auth=(role, ""))
+    try:
+        with driver.session() as session:
+            return True, json.dumps([r.data() for r in session.run(query, params)], default=str)
+    except Neo4jError as exc:
+        return False, str(exc)
+    finally:
+        driver.close()
+
+
+_WITH_PARAMS = {"cypher_http": _cypher_http_params, "bolt": _bolt_params}
+
+
+@pytest.mark.parametrize("surface", sorted(_WITH_PARAMS))
+def test_a_cypher_write_binds_its_parameters(server, source, surface):
+    send = _WITH_PARAMS[surface]
+    accepted, answer = send(
+        server,
+        "org_admin",
+        "CREATE (n:Orders {id: $id, region: $region})",
+        {"id": 70, "region": "north"},
+    )
+    assert accepted, answer
+    assert (70, "north") in source()  # the values, never "$id" / "$region"
+
+    accepted, answer = send(
+        server,
+        "org_admin",
+        "MATCH (n:Orders) WHERE n.id = $id SET n.region = $region",
+        {"id": 70, "region": "south"},
+    )
+    assert accepted, answer
+    assert (70, "south") in source()
+
+    accepted, answer = send(
+        server, "org_admin", "MATCH (n:Orders) WHERE n.id = $id DELETE n", {"id": 70}
+    )
+    assert accepted, answer
+    assert source() == _SEED
+
+
+@pytest.mark.parametrize("surface", sorted(_WITH_PARAMS))
+def test_a_parameterised_write_affects_the_rows_its_literal_form_does(server, source, surface):
+    if surface == "cypher_http":
+        literal = json.loads(
+            _cypher_http(
+                server,
+                "org_admin",
+                "MATCH (n:Orders) WHERE n.region = 'east' SET n.region = 'east'",
+            )[1].split(" ", 1)[1]
+        )["affected_rows"]
+        bound = json.loads(
+            _cypher_http_params(
+                server,
+                "org_admin",
+                "MATCH (n:Orders) WHERE n.region = $r SET n.region = $r",
+                {"r": "east"},
+            )[1].split(" ", 1)[1]
+        )["affected_rows"]
+        assert bound == literal == 2
+    accepted, answer = _WITH_PARAMS[surface](
+        server, "org_admin", "MATCH (n:Orders) WHERE n.region = $r DELETE n", {"r": "west"}
+    )
+    assert accepted, answer
+    assert source() == [(1, "east"), (3, "east")]
+
+
+@pytest.mark.parametrize("surface", sorted(_WITH_PARAMS))
+def test_a_parameter_the_request_does_not_supply_is_refused(server, source, surface):
+    accepted, answer = _WITH_PARAMS[surface](
+        server, "org_admin", "CREATE (n:Orders {id: $id, region: $region})", {"id": 71}
+    )
+    assert not accepted, answer
+    assert "Unbound Cypher parameters: ['region']" in answer, answer
+    assert source() == _SEED
+
+
+@pytest.mark.parametrize("surface", sorted(_WITH_PARAMS))
+def test_a_bound_value_is_admitted_against_the_row_filter_like_a_literal(server, source, surface):
+    accepted, answer = _WITH_PARAMS[surface](
+        server,
+        "east_writer",
+        "CREATE (n:Orders {id: $id, region: $region})",
+        {"id": 72, "region": "west"},
+    )
+    assert not accepted, answer
+    assert "outside role 'east_writer'" in answer, answer
+    assert source() == _SEED
+
+
+@pytest.mark.parametrize("surface", sorted(_WITH_PARAMS))
+def test_a_cypher_read_binds_its_parameters(server, source, surface):
+    accepted, answer = _WITH_PARAMS[surface](
+        server,
+        "org_admin",
+        "MATCH (n:Orders) WHERE n.id = $id RETURN n.region AS region",
+        {"id": 2},
+    )
+    assert accepted, answer
+    assert "west" in answer and "east" not in answer, answer
