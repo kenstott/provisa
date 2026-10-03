@@ -9386,7 +9386,7 @@ A derived node's store-table schema is DERIVED from its SQL SELECT (output colum
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
 
-Column-level data masking MUST be expressed as semantic SQL projection expressions within the governed IR so that masking participates in expression/projection pushdown exactly as RLS predicates participate in predicate pushdown. Where a connector can evaluate the mask expression at the source, the mask MUST push down so the raw, unmasked column value never crosses the wire into the middle tier. Any mask that does NOT push down to the source MUST be evaluated in a bounded-memory streaming stage — either engine-side (the fed engine computes the mask expression and streams results) or per-event/per-batch in the middle tier (as the subscription path already does via _mask_row over an async event stream). It is FORBIDDEN to materialize the full unmasked relation in the middle tier to mask it (no fetchall()-style buffer-then-mask). This streaming constraint ensures masking correctness never depends on fed-engine pushdown capability — a capability gap must never become a data leak — and bounds middle-tier memory to O(batch), not O(relation), minimizing the amount of cleartext resident in the tier at any instant.
+Column-level data masking MUST be expressed as semantic SQL projection expressions within the governed IR so that masking participates in expression/projection pushdown exactly as RLS predicates participate in predicate pushdown. Where a connector can evaluate the mask expression at the source, the mask MUST push down so the raw, unmasked column value never crosses the wire into the middle tier. Any mask that does NOT push down to the source MUST be evaluated in a bounded-memory streaming stage — either engine-side (the fed engine computes the mask expression and streams results) or per-event/per-batch in the middle tier (as the subscription path already does via _mask_row over an async event stream). It is FORBIDDEN to materialize the full unmasked relation in the middle tier to mask it (no fetchall()-style buffer-then-mask). This streaming constraint ensures masking correctness never depends on fed-engine pushdown capability — a capability gap must never become a data leak — and bounds middle-tier memory to O(batch), not O(relation), minimizing the amount of cleartext resident in the tier at any instant. (Amended 2026-10-03, MASKS APPLY IN EVERY CLAUSE BUT WHERE AND HAVING:) A masked column is masked wherever a statement uses it: select-list expressions, ORDER BY, GROUP BY, JOIN ON, window definitions and nested SELECTs. WHERE and HAVING are the exception and are unchanged: a masked column there is refused before execution ([REQ-531](#REQ-531)).
 
 **Use case:** Masking today injects scalar SQL expressions (REGEXP_REPLACE, DATE_TRUNC, constant) into the governed SELECT projection after RLS injection. This works correctly but lacks first-class pushdown capability: the planner cannot reason about whether a mask pushed to the source, and no Capability flag tracks whether the source can evaluate the mask's functions. Without projection pushdown, the raw cleartext value must transit to the engine even if the source could mask it — a confidentiality gap analogous to forcing RLS evaluation server-side when the source supports it. The design must model masking as a pushdown-capable expression so confidentiality-aware masking (including a governance guard that acknowledges non-pushable masks) becomes explicit in the planner. For masks that cannot push down, the fallback must evaluate them in a streaming stage to prevent the middle tier from buffering the full unmasked relation into memory — rationale: masking correctness must never depend on pushdown capability (a gap is never a data leak), and the middle tier must bound memory to O(batch), not O(relation), with minimal cleartext residence time.
 
@@ -22121,3 +22121,17 @@ Approval workflow: registration changes flag affected entries for re-review.
 **Code:** —
 
 **Tests:** —
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1931 · Multi-Tenancy & Organizations {#REQ-1931}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A sandbox visitor's account is deleted when the visitor leaves the sandbox. Signing out of the sandbox org asks the visitor to confirm, and on confirmation the visitor's sign-in identity at the identity provider, their sandbox membership and role assignments, and their profile are removed. The deletion is refused unless the sandbox is the caller's only org membership, so an account that also belongs to another org is never deleted this way. The identity provider's record is deleted first, so a failure there leaves the rest in place.
+
+**Use case:** A visitor who tried the sandbox leaves nothing behind, and a person who also holds a real org membership cannot lose their account by leaving the sandbox.
+
+**Code:** `provisa/api/auth_router.py`, `provisa/auth/providers/firebase.py`, `provisa/core/org_membership.py`, `provisa-ui/src/components/NavBar.tsx`, `provisa-ui/src/api/admin.ts`
+
+**Tests:** `tests/integration/test_org_lifecycle.py`

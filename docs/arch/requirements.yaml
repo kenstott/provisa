@@ -29266,7 +29266,7 @@
   category: Data Masking & Expression Pushdown
   priority: MUST
   type: constraint
-  description: Column-level data masking MUST be expressed as semantic SQL projection expressions within
+  description: 'Column-level data masking MUST be expressed as semantic SQL projection expressions within
     the governed IR so that masking participates in expression/projection pushdown exactly as RLS predicates
     participate in predicate pushdown. Where a connector can evaluate the mask expression at the source,
     the mask MUST push down so the raw, unmasked column value never crosses the wire into the middle tier.
@@ -29277,6 +29277,10 @@
     buffer-then-mask). This streaming constraint ensures masking correctness never depends on fed-engine
     pushdown capability — a capability gap must never become a data leak — and bounds middle-tier memory
     to O(batch), not O(relation), minimizing the amount of cleartext resident in the tier at any instant.
+    (Amended 2026-10-03, MASKS APPLY IN EVERY CLAUSE BUT WHERE AND HAVING:) A masked column is masked
+    wherever a statement uses it: select-list expressions, ORDER BY, GROUP BY, JOIN ON, window definitions
+    and nested SELECTs. WHERE and HAVING are the exception and are unchanged: a masked column there is
+    refused before execution (REQ-531).'
   use_case: 'Masking today injects scalar SQL expressions (REGEXP_REPLACE, DATE_TRUNC, constant) into
     the governed SELECT projection after RLS injection. This works correctly but lacks first-class pushdown
     capability: the planner cannot reason about whether a mask pushed to the source, and no Capability
@@ -75314,3 +75318,52 @@
     Query Registry), the only place this requirement''s text was written; the id was never entered in
     requirements.yaml. Text verbatim from the plan''s bullets. The persisted query registry was removed
     (REQ-001, REQ-003), so it is superseded.'
+- id: REQ-1931
+  status: complete
+  group: 13. Multi-Tenancy & Organizations
+  category: Multi-Tenancy & Organizations
+  priority: MUST
+  type: behavioral
+  since: 2026-09
+  description: A sandbox visitor's account is deleted when the visitor leaves the sandbox. Signing out
+    of the sandbox org asks the visitor to confirm, and on confirmation the visitor's sign-in identity
+    at the identity provider, their sandbox membership and role assignments, and their profile are removed.
+    The deletion is refused unless the sandbox is the caller's only org membership, so an account that
+    also belongs to another org is never deleted this way. The identity provider's record is deleted first,
+    so a failure there leaves the rest in place.
+  use_case: A visitor who tried the sandbox leaves nothing behind, and a person who also holds a real
+    org membership cannot lose their account by leaving the sandbox.
+  code:
+  - provisa/api/auth_router.py
+  - provisa/auth/providers/firebase.py
+  - provisa/core/org_membership.py
+  - provisa-ui/src/components/NavBar.tsx
+  - provisa-ui/src/api/admin.ts
+  tests:
+  - tests/integration/test_org_lifecycle.py
+  scenario: 'Given a visitor whose only org membership is the sandbox
+
+    When they confirm leaving the sandbox
+
+    Then their sign-in identity, sandbox membership and profile are deleted
+
+
+    Given a user who belongs to the sandbox and to another org
+
+    When the same deletion is requested
+
+    Then it is refused and nothing is deleted
+
+    '
+  integration_test: required
+  integration_test_reason: The deletion spans the identity provider, the control plane and the sandbox
+    org's schema.
+  related_reqs:
+  - REQ-1594
+  - REQ-1595
+  - REQ-1597
+  - REQ-1598
+  notes: Reverse-engineered 2026-10-03 from the code; no requirement stated it. The code and tests cite
+    REQ-1630 for it, which is a different requirement (provisa/api/auth_router.py:822 DELETE /auth/sandbox-account;
+    provisa/auth/providers/firebase.py:78; provisa-ui/src/components/NavBar.tsx:103; provisa-ui/src/api/admin.ts:74;
+    tests/integration/test_org_lifecycle.py:104, 865, 911, 932). First appeared in commit 1e9ab46ce.
