@@ -183,6 +183,8 @@
     "domainDeleted": "Eliminato \"{{id}}\"",
     "policyApplied": "Criterio dei domini applicato.",
     "policyApplyFailed": "Applicazione del criterio di dominio non riuscita",
-    "settingsPanel": "Impostazioni"
+    "settingsPanel": "Impostazioni",
+    "maxRows": "Numero massimo di righe per lettura",
+    "maxRowsHint": "Il numero massimo di righe che una lettura di una tabella remota paginata preleva, seguendone il cursore pagina per pagina."
   }
 }

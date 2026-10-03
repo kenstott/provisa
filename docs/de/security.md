@@ -183,6 +183,23 @@ Der NL-Abfragedienst (`POST /query/nl`) hat ein unabhängiges Limit über `nl.ra
 
 Der Zustand der Ratenbegrenzung liegt in Redis (`cache.redis_url`) als gleitender Fensterzähler vor — kein Zustand pro Instanz — sodass die Limits über alle horizontal skalierten Provisa-Instanzen hinweg gelten. (REQ-371)
 
+## Limit für Abfragekomplexität
+
+Ein Ratenlimit begrenzt, wie viele Anfragen eine Rolle sendet. Das Komplexitätslimit begrenzt, was eine einzelne Anweisung anfordern darf. (REQ-1174)
+
+Jede Anweisung hat einen Komplexitätswert: die Relationen, die sie liest, ihre Joins, die ausgewählten Spalten (ein `*` zählt als die Spalten, für die es steht) und die in ihr verschachtelten Abfragen. Eine Relation aus einer entfernten API-Quelle (OpenAPI, Remote-GraphQL, Remote-gRPC) zählt 10, weil jeder Lesevorgang ein Budget verbraucht, das das entfernte System für alle Nutzer dieser Quelle festlegt.
+
+Das Limit ist `max_query_complexity` im `rate_limit` einer Rolle. Die organisationsweite Einstellung `limits.max_query_complexity` ist die Obergrenze für jede Rolle: Eine Rolle kann ein niedrigeres Limit setzen, ein höheres hat keine Wirkung. Standardmäßig ist keines von beiden gesetzt.
+
+```yaml
+roles:
+  - id: analyst
+    rate_limit:
+      max_query_complexity: 200
+```
+
+Der Wert wird gemessen, nachdem eine Anfrage geparst wurde und bevor sie der Governance unterzogen oder ausgeführt wird. Deshalb gilt ein Limit auf jeder Schnittstelle, über die eine Anweisung eintreffen kann: GraphQL, SQL über HTTP, pgwire, Arrow Flight, gRPC, Cypher, JSON:API und MCP. Eine Anweisung über dem Limit wird mit ihrem Wert, dem Limit und dem Angeforderten abgelehnt. HTTP-Schnittstellen antworten mit 413. Die Ablehnung wird als Richtlinienverweigerung protokolliert.
+
 ## Authentifizierung
 Austauschbare Authentifizierungsanbieter: (REQ-120)
 
@@ -271,7 +288,7 @@ gRPC, Arrow Flight und MCP übergeben ihre Zertifikate an Bibliotheken, die kein
 **So prüfen Sie, ob ein Deployment im Modus läuft:** Das Startprotokoll nennt ihn, eine `/data/sql`-Anfrage ohne KMS-Schlüssel antwortet mit 403 und einer Meldung, die REQ-693 nennt, und die Ports für pgwire, Bolt und MCP lauschen nicht.
 
 ## ABAC-Genehmigungs-Hook
-Ein optionaler externer Richtlinien-Hook, der vor der Ausführung der Abfrage ausgelöst wird. (REQ-203) Bei entsprechender Konfiguration ruft Provisa Ihre Policy-Engine mit der Benutzeridentität, den Rollen, den Tabellen, den Spalten und der Operation auf. Die Antwort bestimmt, ob die Abfrage fortgesetzt wird. (REQ-203)
+Ein optionaler externer Richtlinien-Hook, der vor der Ausführung der Abfrage ausgelöst wird. (REQ-203) Bei entsprechender Konfiguration ruft Provisa Ihre Policy-Engine mit der Benutzeridentität, den Rollen, den Tabellen, den Spalten und der Operation auf. Die Antwort bestimmt, ob die Abfrage fortgesetzt wird. (REQ-203) Ein Command, der mit **Erfordert Genehmigung** registriert ist, wird vor jedem Aufruf demselben Hook vorgelegt; siehe [Command-Aufrufe](#command-aufrufe). (REQ-1924)
 
 ### Geltungsbereich
 Der Hook wird nur ausgelöst, wenn die Abfrage eine Tabelle oder Quelle im festgelegten Geltungsbereich berührt — kein Overhead für alles andere. (REQ-204)
@@ -304,6 +321,9 @@ message ApprovalRequest {
   repeated string tables = 3;
   repeated string columns = 4;
   string operation = 5;
+  map<string, string> session_vars = 6;
+  string command = 7;         // a command call's name; empty for a query
+  string arguments_json = 8;  // a command call's arguments as a JSON object
 }
 
 message ApprovalResponse {
@@ -323,9 +343,34 @@ Alle drei Transporte übertragen dieselbe Nutzlast: (REQ-246)
 | `roles` | string[] | Provisa-Rollen des Benutzers |
 | `tables` | string[] | In der Abfrage referenzierte Tabellen-IDs |
 | `columns` | string[] | In der Abfrage ausgewählte Spalten |
-| `operation` | string | `"query"` oder `"mutation"` |
+| `operation` | string | `"query"` oder `"mutation"`; `"command"` für einen Command-Aufruf |
+| `command` | string | Der Name des Commands bei einem Command-Aufruf; leer bei einer Abfrage |
+| `arguments` | object | Die Argumente, mit denen ein Command aufgerufen wird; leer bei einer Abfrage |
 
-Die Transporte Webhook und Unix-Socket tauschen JSON aus. Die Antwort muss `approved` (bool) enthalten und optional `reason` (string). (REQ-246)
+Die Transporte Webhook und Unix-Socket tauschen JSON aus, mit `command` und `arguments` als Schlüsseln. Bei gRPC werden die Argumente als JSON-Text `arguments_json` übertragen. Die Antwort muss `approved` (bool) enthalten und optional `reason` (string). (REQ-246) [tool-verified: `provisa/auth/approval_hook.py` `ApprovalRequest`, `_request_to_dict`, `GrpcApprovalHook` (`arguments_json=json.dumps(request.arguments, default=str)`); `provisa/auth/approval.proto`]
+
+### Command-Aufrufe
+
+Ein Command mit gesetztem `requires_approval` (der Schalter **Erfordert Genehmigung** im Command-Formular) geht vor jedem Aufruf an den Hook, auf jeder Oberfläche. Er läuft nur, wenn der Hook genehmigt. Die Anfrage enthält `operation: "command"`, den Namen des Commands und seine Argumente; `tables` und `columns` sind leer. (REQ-1924) [tool-verified: `provisa/api/data/action_exec.py` `_require_approval` (`operation="command"`, `tables=[]`, `columns=[]`, `command=fn["name"]`, `arguments=args`)]
+
+```json
+{
+  "user": "analyst",
+  "roles": ["analyst"],
+  "tables": [],
+  "columns": [],
+  "operation": "command",
+  "command": "create_issue",
+  "arguments": {"input": {"title": "Crash on save"}}
+}
+```
+
+[inferred: the payload also carries `session_vars`; values shown are placeholders]
+
+Zwei Ablehnungen, beide 403 [tool-verified: `_require_approval`]:
+
+- `functions.approval_unavailable`: Es ist kein Hook konfiguriert. Anders als eine Abfrage wird ein Command, der eine Genehmigung braucht, nie ohne Hook durchgelassen.
+- `functions.approval_denied`: Der Hook hat `approved: false` geantwortet. Die Begründung steht in der Meldung.
 
 ### Timeout und Fallback
 ```yaml

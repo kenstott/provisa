@@ -9,7 +9,8 @@
       "test_endpoint_disabled": "テストエンドポイントは無効です（非本番環境で有効にするには PROVISA_ENABLE_TEST_ENDPOINTS を設定してください）。",
       "unknown_action_type": "不明な actionType「{{action_type}}」です",
       "unknown_role": "不明なロール「{{role}}」です",
-      "webhook_not_found": "Webhook「{{name}}」が見つかりません"
+      "webhook_not_found": "Webhook「{{name}}」が見つかりません",
+      "written_table_not_registered": "'{{table}}' はソース '{{source_id}}' の登録済みテーブルではありません"
     },
     "ai_models": {
       "vector_model_fields_required": "各 vector_models エントリには id、provider、dimensions が必要です"
@@ -84,7 +85,8 @@
       "sql_generation_failed": "3回試行しましたが有効な SQL を生成できませんでした：{{error}}",
       "table_not_found": "テーブル「{{table}}」が見つかりません",
       "unknown_action_field": "不明なアクションフィールド：「{{field}}」",
-      "unknown_command": "不明なコマンド「{{name}}」です"
+      "unknown_command": "不明なコマンド「{{name}}」です",
+      "query_too_complex": "クエリの複雑度（{{score}}）が上限 {{limit}}（{{limit_of}}）を超えています。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」のアダプターは discover_schema を実装していません",
@@ -108,18 +110,25 @@
       "coordinator_waking": "環境を起動しています。約 2 分で準備が整います。"
     },
     "functions": {
+      "approval_denied": "'{{name}}' の承認が拒否されました: {{reason}}",
+      "approval_unavailable": "コマンド '{{name}}' には承認が必要ですが、承認フックが構成されていません",
       "binding_missing_key": "kind「{{kind}}」の関数バインディングに必須キー「{{key}}」がありません",
       "egress_denied": "「{{endpoint}}」への外部送信は拒否されました：ホストが UDF 外部送信許可リストにありません（REQ-885 デフォルト拒否）。許可するには udf_egress_allowlist に追加してください。",
       "grpc_call_failed": "grpc 呼び出し {{target}}{{path}} が失敗しました：{{status}}：{{details}}",
       "grpc_method_invalid": "grpc メソッド「{{method}}」は「Service/Method」または「pkg.Service.Method」の形式である必要があります",
+      "json_argument_invalid": "'{{name}}' の引数 '{{argument}}' は JSON リテラルではありません",
       "non_tabular_payload": "関数が表形式ではないペイロードを返しました：{{payload_type}}",
+      "not_a_remote_source": "ソース '{{source_id}}' は書き込み操作を提供していません",
+      "operation_not_offered": "ソース '{{source_id}}' は操作 '{{operation}}' を提供していません",
       "python_callable_invalid": "python callable「{{spec}}」は「module:attr」の形式である必要があります",
+      "remote_refused": "{{source_id}} が {{operation}} を拒否しました: {{answer}}",
       "result_set_ref_invalid": "result_set 参照「{{ref}}」は source.schema.table の形式である必要があります",
       "rowwise_external": "関数「{{name}}」（kind={{impl_kind}}）は行単位の外部関数です：すべての引数がスカラーの column_value です。呼び出しがセット単位でバッチ処理されるよう、table_ref/result_set のリレーション引数を宣言してください（REQ-885）。",
       "script_failed": "スクリプトが終了コード {{returncode}} で終了しました：{{stderr}}",
       "source_not_connected": "ソース「{{source_id}}」が接続されていません",
       "unknown_arg_kind": "「{{name}}」の arg_kind「{{arg_kind}}」は不明です",
-      "unknown_impl_kind": "不明な関数 impl_kind：「{{impl_kind}}」"
+      "unknown_impl_kind": "不明な関数 impl_kind：「{{impl_kind}}」",
+      "written_table_missing": "コマンド '{{name}}' は登録されていない '{{table}}' に書き込みます"
     },
     "graphql_remote": {
       "introspection_failed": "イントロスペクションに失敗しました：{{error}}",
@@ -155,7 +164,6 @@
     },
     "openapi": {
       "database_not_connected": "データベースが接続されていません",
-      "domain_required": "OpenAPI ソース {{source}} は {{commands}} 個のコマンドを宣言していますが、ドメインが指定されていません。コマンドはドメインに属するため、登録にはドメインが必要です",
       "invalid_json": "無効な JSON です：{{error}}",
       "refresh_failed": "更新に失敗しました：{{error}}",
       "registration_failed": "登録に失敗しました：{{error}}",
@@ -312,7 +320,10 @@
       "webhook_name_required": "Webhook トリガーには webhook_name が必要です",
       "webhook_not_found": "Webhook「{{webhook}}」が見つかりません",
       "replicate_invalid": "レプリケートは「デフォルト」「しない」「常に」または 0 より大きいしきい値である必要があります（指定値: {{value}}）",
-      "replicate_contradicts_load_protected": "負荷保護はレプリケート =「しない」と併用できません。負荷保護されたテーブルはライブで読まれることがありません"
+      "replicate_contradicts_load_protected": "負荷保護はレプリケート =「しない」と併用できません。負荷保護されたテーブルはライブで読まれることがありません",
+      "table_registered_fields_omitted": "テーブル「{{table}}」を登録しました（id={{id}}）。ソースの資格情報では読み取れないため除外しました: {{fields}}",
+      "table_not_readable": "このソースの資格情報では {{table}} を読み取れません: {{reason}}",
+      "table_too_complex": "テーブル「{{table}}」は選択した列では登録されませんでした: {{reason}}。列を減らしてください。"
     },
     "secrets": {
       "still_referenced": "{{secret}} は、この組織に保存されている {{count}} 件の値からまだ参照されています。それぞれを変更または削除してから、もう一度削除してください。"

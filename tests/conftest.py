@@ -889,6 +889,22 @@ def _operator_settings_do_not_cross_tests():  # pyright: ignore
     settings_registry._config, settings_registry._frozen = config, frozen
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _operator_settings_do_not_cross_modules():  # pyright: ignore
+    """REQ-1913: the same, for a module. An app a module-scoped fixture boots freezes the restart
+    settings before the per-test snapshot above is taken, so that snapshot keeps them, and every
+    later module's readers answered from the values that app booted on instead of their own
+    environment. A module-scoped autouse fixture is set up before the module's other
+    module-scoped fixtures and torn down after them, so this puts back what was there before the
+    module's app booted.
+    """
+    from provisa.core import settings_registry
+
+    config, frozen = settings_registry._config, settings_registry._frozen
+    yield
+    settings_registry._config, settings_registry._frozen = config, frozen
+
+
 def _server_reachable(url: str) -> bool:
     """True if the server answers liveness within a short retry budget.
 

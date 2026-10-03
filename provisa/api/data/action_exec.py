@@ -20,6 +20,7 @@ from __future__ import annotations
 import httpx
 from fastapi import HTTPException
 
+from provisa.api.errors import ApiError
 from provisa.executor.function_dispatch import dispatch_function
 from provisa.security.mutation_authz import (
     MutationNotPermitted,
@@ -106,7 +107,11 @@ async def invoke_tracked_function(name: str, args: dict, state, role_id: str | N
     fn = state.tracked_functions.get(name)
     if fn:
         require_mutation_write(fn, role, name)
+        if fn.get("requires_approval"):
+            await _require_approval(fn, args, state, role_id, role)
         rows = await dispatch_function(fn, args, state, role_id)
+        if fn.get("writes_table"):
+            await _table_was_written(fn, state)
         return await _governed(rows, fn, state, role_id)
     # A webhook is a governed command too (REQ-872): every surface routes here, so a webhook is
     # invocable beyond GraphQL. Kept a distinct path because a webhook is a scalar-argument HTTP
@@ -147,6 +152,68 @@ async def invoke_tracked_webhook(name: str, args: dict, state, role_id: str | No
     body = resp.json()
     rows = body if isinstance(body, list) else [body]
     return await _governed(rows, wh, state, role_id)
+
+
+async def _table_was_written(fn: dict, state) -> None:
+    """REQ-1924, REQ-871: the command wrote the table it was registered as writing; what follows
+    any write to that table follows this one."""
+    from provisa.api.data.table_written import after_table_written
+    from provisa.executor.source_operation import written_table
+
+    table = written_table(state, fn["source_id"], fn["writes_table"])
+    if table is None:
+        raise ApiError(
+            500,
+            "functions.written_table_missing",
+            f"command {fn['name']!r} writes {fn['writes_table']!r}, which is not registered",
+            name=fn["name"],
+            table=fn["writes_table"],
+        )
+    await after_table_written(
+        state,
+        table_id=table["id"],
+        table_name=table["table_name"],
+        schema_name=table["schema_name"],
+        catalog_name=state.catalog_for(fn["source_id"]),
+        source_id=fn["source_id"],
+    )
+
+
+async def _require_approval(fn: dict, args: dict, state, role_id: str | None, role) -> None:
+    """REQ-1924: a command that needs approval runs only when the deployment's approval hook
+    (REQ-203) approves the call -- who calls it, as which role, with what arguments. A
+    deployment with no hook cannot approve one, so the call is refused."""
+    from provisa.auth.approval_hook import ApprovalRequest
+    from provisa.core.request_context import session_vars_for
+
+    hook = getattr(state, "approval_hook", None)
+    if hook is None:
+        raise ApiError(
+            403,
+            "functions.approval_unavailable",
+            f"command {fn['name']!r} needs approval and no approval hook is configured",
+            name=fn["name"],
+        )
+    verdict = await hook.evaluate(
+        ApprovalRequest(
+            user=role_id or "",
+            roles=[role_id] if role_id else [],
+            tables=[],
+            columns=[],
+            operation="command",
+            session_vars=session_vars_for(role),
+            command=fn["name"],
+            arguments=args,
+        )
+    )
+    if not verdict.approved:
+        raise ApiError(
+            403,
+            "functions.approval_denied",
+            f"Approval denied for {fn['name']!r}: {verdict.reason}",
+            name=fn["name"],
+            reason=str(verdict.reason),
+        )
 
 
 async def _governed(rows: list[dict], action: dict, state, role_id: str | None) -> list[dict]:

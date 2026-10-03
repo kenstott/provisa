@@ -33,7 +33,7 @@ import {
   openRegisterForm,
   openSourcesForm,
   pickSchemaAndTable,
-  registeredTableNames,
+  registerOfferedTable,
   submitRegisterAndExpectListed,
   submitSourceAndExpectListed,
 } from "./source-to-query-helpers";
@@ -1125,30 +1125,11 @@ export async function registerGraphqlRemote(page: Page, endpointOverride?: strin
   await page.getByTestId("graphql-namespace-input").fill(namespace);
   await submitSourceAndExpectListed(page, sourceId);
 
-  const tableNames = await registeredTableNames(page, sourceId);
-  const breedTable = tableNames.find((n) => n.includes("animal_breed"));
-  expect(breedTable, `no animal_breeds table registered for ${sourceId}`).toBeTruthy();
-  const grant = await page.request.post("/admin/graphql", {
-    data: {
-      query: `mutation($t: TableInput!) { updateTable(input: $t) { success message } }`,
-      variables: {
-        t: {
-          sourceId,
-          domainId: "",
-          schemaName: "graphql",
-          tableName: breedTable,
-          columns: [
-            { name: "name", visibleTo: ["*"] },
-            { name: "species", visibleTo: ["*"] },
-          ],
-        },
-      },
-    },
-  });
-  expect(grant.ok(), await grant.text()).toBeTruthy();
-  const grantJson = await grant.json();
-  expect(grantJson.errors, JSON.stringify(grantJson.errors)).toBeUndefined();
-  expect(grantJson.data.updateTable.success, grantJson.data.updateTable.message).toBeTruthy();
+  // REQ-308: adding the source registers nothing; the table is registered on its own.
+  const breedTable = await registerOfferedTable(page, sourceId, "graphql", "animal_breed", [
+    "name",
+    "species",
+  ]);
 
   return {
     label: "graphql_remote",
@@ -1187,31 +1168,12 @@ export async function registerGrpcRemote(page: Page, port: number): Promise<Regi
   await page.getByTestId("grpc-namespace-input").fill(namespace);
   await submitSourceAndExpectListed(page, sourceId);
 
-  const tableNames = await registeredTableNames(page, sourceId);
-  const breedTable = tableNames.find((n) => n.includes("ListBreeds"));
-  expect(breedTable, `no ListBreeds table registered for ${sourceId}`).toBeTruthy();
-  const grant = await page.request.post("/admin/graphql", {
-    data: {
-      query: `mutation($t: TableInput!) { updateTable(input: $t) { success message } }`,
-      variables: {
-        t: {
-          sourceId,
-          domainId: "",
-          schemaName: "grpc_remote",
-          tableName: breedTable,
-          columns: [
-            { name: "name", visibleTo: ["*"] },
-            { name: "species", visibleTo: ["*"] },
-            { name: "avg_lifespan_years", visibleTo: ["*"] },
-          ],
-        },
-      },
-    },
-  });
-  expect(grant.ok(), await grant.text()).toBeTruthy();
-  const grantJson = await grant.json();
-  expect(grantJson.errors, JSON.stringify(grantJson.errors)).toBeUndefined();
-  expect(grantJson.data.updateTable.success, grantJson.data.updateTable.message).toBeTruthy();
+  // REQ-322: adding the source registers nothing; the table is registered on its own.
+  const breedTable = await registerOfferedTable(page, sourceId, "grpc_remote", "ListBreeds", [
+    "name",
+    "species",
+    "avg_lifespan_years",
+  ]);
 
   return {
     label: "grpc_remote",

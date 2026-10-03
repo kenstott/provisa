@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -44,6 +45,9 @@ class ApprovalRequest:  # REQ-555
     columns: list[str]
     operation: str
     session_vars: dict[str, str] = field(default_factory=dict)
+    # REQ-1924: a command call's name and the arguments it is called with; empty for a query.
+    command: str = ""
+    arguments: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -195,6 +199,8 @@ class GrpcApprovalHook(ApprovalHook):  # REQ-246
                 columns=list(request.columns),
                 operation=request.operation,
                 session_vars=dict(request.session_vars),
+                command=request.command,
+                arguments_json=json.dumps(request.arguments, default=str),
             )
             proto_resp = await self._stub.Evaluate(proto_req, timeout=self._timeout)
             self._breaker.record_success()
@@ -324,4 +330,6 @@ def _request_to_dict(request: ApprovalRequest) -> dict:
         "columns": request.columns,
         "operation": request.operation,
         "session_vars": request.session_vars,
+        "command": request.command,
+        "arguments": request.arguments,
     }

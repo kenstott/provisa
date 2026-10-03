@@ -158,12 +158,12 @@ def _normalize_mat_value(v):
 
 
 async def _fetch_gql_remote_rows(
-    gql_reg, gql_tbl, col_selections, variables, gql_to_sql, max_items
+    gql_reg, gql_tbl, col_selections, variables, gql_to_sql, max_items, max_rows
 ):
     """Fetch a graphql_remote field (with its native-filter args) and remap each row's GQL field
     keys to the sql column names the store lands under. A single-record field returns null (→ [None])
     when nothing matches — drop non-dict rows so the caller lands an empty result, not a crash."""
-    from provisa.graphql_remote.executor import execute_remote
+    from provisa.graphql_remote.executor import NO_POLICY, execute_remote
 
     rows = await execute_remote(
         url=gql_reg["url"],
@@ -174,6 +174,9 @@ async def _fetch_gql_remote_rows(
         required_args=gql_tbl.get("required_args") or None,
         limit=max_items,
         pagination=gql_tbl.get("pagination"),
+        rows_path=gql_tbl.get("rows_path"),
+        max_rows=max_rows,
+        error_policy=gql_reg.get("error_policy") or NO_POLICY,
     )
     return [
         {gql_to_sql.get(k, k): v for k, v in row.items()} for row in rows if isinstance(row, dict)
@@ -305,9 +308,10 @@ async def _mat_gql_remote_table(
         0
     ]
     _max_items = state.config.graphql_remote.max_list_items
+    _max_rows = state.config.graphql_remote.max_rows
     if _store_scheme == "sqlite":
         gql_rows = await _fetch_gql_remote_rows(
-            gql_reg, gql_tbl, col_selections, variables, _gql_to_sql, _max_items
+            gql_reg, gql_tbl, col_selections, variables, _gql_to_sql, _max_items, _max_rows
         )
         # Inline THIS query only — never register in hot_mgr: a parameterized fetch is keyed by its
         # arg, so caching it under the bare table name would serve one arg's rows for another.
@@ -332,7 +336,7 @@ async def _mat_gql_remote_table(
     # Cache miss — fetch from remote
     try:
         gql_rows = await _fetch_gql_remote_rows(
-            gql_reg, gql_tbl, col_selections, variables, _gql_to_sql, _max_items
+            gql_reg, gql_tbl, col_selections, variables, _gql_to_sql, _max_items, _max_rows
         )
     except Exception as fetch_exc:
         raise RuntimeError(f"GQL remote fetch failed for {tn!r}: {fetch_exc}") from fetch_exc

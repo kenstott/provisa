@@ -129,6 +129,10 @@ export const SOURCE_TYPES = [
   // API
   { value: "openapi", label: "REST API (OpenAPI)", category: "API", defaultPort: 443 },
   { value: "graphql", label: "GraphQL", category: "API", defaultPort: 443 },
+  // REQ-1923: a branded source — the remote GraphQL source with the system's endpoint, schema
+  // and credential handling already supplied. The user sees the brand as an ordinary type.
+  { value: "github", label: "GitHub", category: "API", defaultPort: 443 },
+  { value: "gitlab", label: "GitLab", category: "API", defaultPort: 443 },
   { value: "grpc", label: "gRPC", category: "API", defaultPort: 50051 },
   // Streaming
   { value: "kafka", label: "Kafka", category: "Streaming", defaultPort: 9092 },
@@ -249,6 +253,13 @@ export const HOST_PORT_ONLY = new Set(["airport", "websocket", "rss", "pinot", "
 // Source types needing no connection fields at all beyond id/description (REQ-1739): ingest is a
 // pure push receiver, soda/great_expectations are DQ checkers that scan through pgwire.
 export const NO_CONNECTION_TYPES = new Set(["ingest", "soda", "great_expectations"]);
+
+// REQ-1923: branded source types → the UI type that carries them. A brand is registered and
+// classified as its carrier; the source row records the brand in federation_hints.brand.
+export const BRAND_CARRIER: Record<string, string> = {
+  github: "graphql",
+  gitlab: "graphql",
+};
 
 // UI source-type values → backend SourceType vocabulary where the two differ (REQ-947).
 export const TYPE_ALIAS: Record<string, string> = {

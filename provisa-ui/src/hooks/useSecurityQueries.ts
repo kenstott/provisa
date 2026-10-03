@@ -98,8 +98,7 @@ export function useUpsertRole() {
       domainAccess: string[];
       rateLimit?: {
         requestsPerSecond: number | null;
-        maxQueryDepth: number | null;
-        maxQueryNodes: number | null;
+        maxQueryComplexity: number | null;
         maxQueryTimeMs: number | null;
       } | null;
       parentRoleId?: string | null; // REQ-1677

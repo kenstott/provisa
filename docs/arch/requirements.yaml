@@ -4326,10 +4326,35 @@
   category: GraphQL Remote Schema Connector (REQ-307–313)
   priority: SHOULD
   type: behavioral
-  description: Each Query field on the remote schema is exposed as a virtual read-only table in Provisa.
-    Column names and types are inferred from the field's return type (object fields → columns). Each Mutation
+  description: Remote GraphQL fields as tables. [SUPERSEDED by the 2026-10-02 REGISTRATION IS CURATION
+    amendment below -- a Query field is OFFERED as a table and becomes one only when the steward
+    registers it; nothing is registered when the source is added. Kept here for history; do not
+    implement against it.] Each Query field on the remote schema is exposed as a virtual read-only
+    table in Provisa. [END SUPERSEDED BLOCK]
+    Column names and types are inferred from the field's return type (object fields → columns). [SUPERSEDED by REQ-1924, 2026-10-02 -- a
+    mutation is offered and registered as a command one at a time, not exposed when the source is
+    added. Kept here for history; do not implement against it.] Each Mutation
     field is exposed as a tracked function with `return_schema` derived from the mutation's return type.
-    This eliminates manual table and function registration for remote GraphQL APIs.
+    This eliminates manual table and function registration for remote GraphQL APIs. [END SUPERSEDED
+    BLOCK] (Amended 2026-10-02,
+    RELAY CONNECTIONS) A schema that follows the Relay connection convention maps to tables that can be
+    read. A connection -- a type with page information beside a row list -- is a table whose rows are
+    its nodes -- a root field that returns a connection is one table, and each connection on the single
+    object a root field returns is a table of its own that takes the root field's required arguments
+    (`repository(owner, name)` and its `issues` give the table `repositoryIssues`). A connection is never
+    a column, and a connection that cannot be read page by page, or whose rows are a union, is not a
+    table. A field that needs an argument is not a column. A row limit is put only on a list field
+    that declares one. An interface-typed field selects the fields the interface declares, and a
+    union-typed field its type name. Along any one path a type is entered once, so a schema whose
+    types refer back to each other maps in bounded size. A nested-object column is selected under its
+    stored column name. A caller may ask for named tables in full and the rest by name only.
+    (Amended 2026-10-02, REGISTRATION IS CURATION) Adding a remote GraphQL source registers no tables. Every table the source offers is listed by the Register Table picker, and the steward registers the ones wanted through the mutation every source uses; that registration is the curation step, and a registered table is then governed like any other (REQ-1923). The
+    source's schema is read when the source is added, to confirm the endpoint and its credential, and
+    again when a table is listed or registered. How a registered table is read -- its root field, row
+    path, required arguments and page arguments -- is stored with the source when the table is
+    registered, so a restarted process reads it without asking the remote for its schema. A refresh
+    reads the schema again and brings the registered tables up to date with it, and registers nothing
+    new.
   use_case: Auto-registering remote Query fields as tables and Mutation fields as functions eliminates
     manual registration.
   code:
@@ -4343,15 +4368,20 @@
   - tests/integration/test_graphql_remote_source.py
   - tests/unit/test_graphql_remote_introspect.py
   - tests/unit/test_graphql_remote_mapper.py
+  - tests/unit/test_graphql_remote_relay.py
   - tests/unit/test_graphql_remote_update_table_columns.py
   - tests/unit/test_remote_adapter_contract.py
   - tests/unit/test_schema_service.py
   since: 2026-01
-  scenario: 'Given a remote GraphQL schema is registered in Provisa
+  scenario: 'Given a remote GraphQL source has been added
 
-    When introspection completes
+    When the steward opens the Register Table picker for it
 
-    Then Query fields are auto-registered as virtual read-only tables and Mutation fields as tracked functions
+    Then every table its schema offers is listed and none is registered
+
+    And a table the steward registers is readable, with the columns chosen
+
+    And the tables not registered remain unregistered
 
     '
   integration_test: required
@@ -4375,7 +4405,14 @@
     GraphQL query and forwards it to the remote endpoint. The response rows are materialized as Parquet
     in a Trino Iceberg table on S3 (`results.api_cache`, `s3a://provisa-results/api_cache/`). Repeated
     calls within TTL are served from the Iceberg table via Trino — zero remote hops. The cache table is
-    automatically dropped after TTL expires.
+    automatically dropped after TTL expires. (Amended 2026-10-02, PAGED READS) A connection table
+    (REQ-308) is read page by page, `graphql_remote.max_list_items` rows a page, following the remote's
+    cursor until it reports no next page or `graphql_remote.max_rows` rows are read; a read that stops
+    at that bound logs it. When the remote's gateway gives up on a page, the page is asked for again
+    at half the size. When the remote answers that the caller is rate limited and names a wait of two
+    minutes or less, the request is sent again after that wait, three times at most. A source may
+    declare which of its remote's errors mean "this one field of this one row" and which mean "this
+    page asks too much" (REQ-1923); every other error fails the read.
   use_case: S3/Iceberg materialization of remote schema results eliminates repeated network hops and enables
     federated SQL (WHERE/ORDER BY/LIMIT) over cached data.
   code:
@@ -4658,9 +4695,14 @@
   category: OpenAPI Auto-Registration Connector
   priority: SHOULD
   type: behavioral
-  description: On registration, Provisa parses the spec and auto-registers all GET operations as virtual
-    query tables. Path parameters and query parameters become GraphQL arguments. The `responses.200` (or
-    `responses.2xx`) schema determines the virtual table's column set.
+  description: OpenAPI GET operations as tables. [SUPERSEDED by the 2026-10-02 REGISTRATION IS
+    CURATION amendment below -- a GET operation is OFFERED as a table and becomes one only when the
+    steward registers it. Kept here for history; do not implement against it.] On registration,
+    Provisa parses the spec and auto-registers all GET operations as virtual query tables. [END
+    SUPERSEDED BLOCK] Path parameters and query parameters become GraphQL arguments. The `responses.200` (or
+    `responses.2xx`) schema determines the virtual table's column set. (Amended 2026-10-02,
+    REGISTRATION IS CURATION) Adding an OpenAPI source registers no tables. Every table the source offers is listed by the Register Table picker, and the steward registers the ones wanted through the mutation every source uses; that registration is the curation step, and a registered table is then governed like any other (REQ-1923). The spec is
+    parsed when the source is added and kept with it; each GET operation is a table on offer.
   use_case: GET operation auto-registration maps path and query params to GraphQL arguments automatically.
   code:
   - provisa/openapi/
@@ -4668,12 +4710,13 @@
   - tests/unit/test_openapi_loader.py
   - tests/integration/test_openapi_source.py
   since: 2026-01
-  scenario: 'Given an OpenAPI spec is registered
+  scenario: 'Given an OpenAPI source has been added
 
-    When Provisa parses the spec
+    When the steward opens the Register Table picker for it
 
-    Then all GET operations are auto-registered as virtual query tables with path/query params as GraphQL
-    arguments
+    Then every GET operation of the spec is listed as a table and none is registered
+
+    And a table the steward registers has path/query params as GraphQL arguments
 
     '
   integration_test: not_required
@@ -4695,8 +4738,11 @@
   category: OpenAPI Auto-Registration Connector
   priority: SHOULD
   type: behavioral
-  description: All non-GET operations (POST, PUT, PATCH, DELETE) are auto-registered as tracked functions
-    (mutations). Request body schema properties become GraphQL mutation input arguments. The `responses.200`/`2xx`
+  description: OpenAPI write operations as commands. [SUPERSEDED by REQ-1924, 2026-10-02 -- a source's
+    write operations are offered and registered one at a time, not registered when the source is
+    added. Kept here for history; do not implement against it.] All non-GET operations (POST, PUT,
+    PATCH, DELETE) are auto-registered as tracked functions (mutations). [END SUPERSEDED BLOCK]
+    Request body schema properties become GraphQL mutation input arguments. The `responses.200`/`2xx`
     schema becomes the mutation's `return_schema`.
   use_case: Non-GET operations auto-registered as mutations expose REST write endpoints as governed GraphQL
     mutations.
@@ -4887,9 +4933,14 @@
   priority: SHOULD
   type: structural
   description: Provisa supports a "grpc_remote" source type. The steward registers an external gRPC server
-    address plus a `.proto` file path or URL. Provisa parses the proto and auto-registers virtual tables
-    and tracked functions. The `provisa/grpc_remote/` module handles all external gRPC connectivity and
-    is entirely distinct from `provisa/grpc/`, which serves Provisa's own gRPC server.
+    address plus a `.proto` file path or URL. [SUPERSEDED by the 2026-10-02 REGISTRATION IS CURATION
+    amendment below -- tables are offered and registered one at a time (REQ-1923), commands likewise
+    (REQ-1924). Kept here for history; do not implement against it.] Provisa parses the proto and
+    auto-registers virtual tables and tracked functions. [END SUPERSEDED BLOCK] The `provisa/grpc_remote/` module handles all external gRPC connectivity and
+    is entirely distinct from `provisa/grpc/`, which serves Provisa's own gRPC server. (Amended
+    2026-10-02, REGISTRATION IS CURATION) Adding a gRPC source registers no tables. Every table the source offers is listed by the Register Table picker, and the steward registers the ones wanted through the mutation every source uses; that registration is the curation step, and a registered table is then governed like any other (REQ-1923). The proto is
+    parsed when the source is added and kept with it; each method that returns rows is a table on
+    offer.
   use_case: gRPC remote source type lets stewards expose external gRPC services as governed GraphQL tables
     and mutations.
   code:
@@ -5035,7 +5086,9 @@
   type: behavioral
   description: Each mutation-classified gRPC method is exposed as a tracked function (mutation). Input
     message fields become GraphQL mutation input arguments. The output message schema becomes the mutation's
-    `return_schema`.
+    `return_schema`. (Amended 2026-10-02, REGISTRATION IS CURATION) A mutation-classified method is a command
+    on offer. Adding or refreshing the source records none; each one wanted is registered on its own
+    (REQ-1924), and the add and refresh responses count the ones on offer in `available_mutations`.
   use_case: Mutation-classified gRPC methods exposed as tracked functions let clients call remote services
     via GraphQL mutations.
   code:
@@ -34743,25 +34796,59 @@
   category: Query Complexity Limits
   priority: MUST
   type: constraint
-  description: Per-role query complexity limits (max_query_depth, max_query_nodes, max_query_time_ms)
+  description: 'Per-role query limits complement per-role request-rate limits (REQ-369).
+    [SUPERSEDED by the amendment below, 2026-10-02 -- max_query_depth and max_query_nodes measured a
+    GraphQL document, so they held on GraphQL requests only; they are retired. max_query_time_ms
+    is unchanged. Kept here for history; do not implement against it.]
+    Per-role query complexity limits (max_query_depth, max_query_nodes, max_query_time_ms)
     complement per-role request-rate limits (REQ-369). Enforced at the GraphQL→IR compile boundary; over-limit
     requests return HTTP 413. Limits persist on the roles table and are configurable via admin API.
+    [END SUPERSEDED BLOCK]
+    (Amended 2026-10-02, ONE SCORE AT THE SEMANTIC LAYER) The query complexity guard is measured on
+    the semantic statement -- the form a request takes on every surface once it is parsed and before
+    it is governed -- so one limit holds for GraphQL, SQL, Cypher, pgwire, Arrow Flight, gRPC,
+    JSON:API and MCP alike, by one measure. A statement''s complexity is one score, the sum of the
+    relations it reads, its joins, the columns it projects (a star counting as the columns the role
+    may see of what it stands for) and the query blocks nested inside it; a reference to a common
+    table expression is not a relation read again. A relation fetched from a remote API on each
+    read (an OpenAPI, remote GraphQL or remote gRPC source) counts for ten, since every read spends
+    a budget the remote sets and every reader of that source shares. The limit is a number on the
+    role, max_query_complexity, beside its other limits. The org sets a ceiling for every role,
+    limits.max_query_complexity, that a role may tighten and not loosen -- the smaller of the two
+    that are set applies; neither is set as shipped, and a role under no limit is not measured. A
+    statement over the limit is refused before it is governed or run, with its score, the limit,
+    whose limit it is and what the statement asked for; the refusal is recorded as a policy denial;
+    HTTP surfaces answer 413 and the others answer in their own error shape with the same message.
+    A Hasura node_limit is imported as max_query_complexity; a Hasura depth_limit has no
+    counterpart, since a deeper query is a statement with more relations and joins.'
   use_case: Query complexity limits prevent resource exhaustion from complex or malicious queries, complementing
     request-rate limiting. Provides Hasura api_limits parity.
   code:
+  - provisa/compiler/complexity.py
   - provisa/compiler/limits.py
-  - provisa/api/models/role.py
-  - provisa/admin/admin_api.py
+  - provisa/pgwire/_pipeline.py
+  - provisa/api/data/endpoint.py
+  - provisa/core/settings_catalog.py
+  - provisa/core/models.py
   tests:
   - tests/unit/test_query_limits.py
   - tests/unit/test_hasura_api_limits.py
+  - tests/integration/test_complexity_guard_every_surface.py
+  - provisa-ui/src/pages/__tests__/SecurityPage.roleLimits.test.tsx
   - provisa-ui/e2e/security-query-limits.spec.ts
   since: 2026-07
-  scenario: 'Given a role with max_query_depth=3, max_query_nodes=100, max_query_time_ms=5000
+  scenario: 'Given a role with max_query_complexity=4
 
-    When a GraphQL query is submitted that exceeds any limit
+    When a statement that scores 6 is sent as that role through SQL over HTTP, GraphQL, pgwire,
+    Arrow Flight or MCP
 
-    Then the request is rejected with HTTP 413 at the GraphQL→IR compile boundary
+    Then it is refused before it is governed, with its score, the limit and what it asked for
+
+    And HTTP surfaces answer 413
+
+    And a statement that scores 3 runs on every one of them
+
+    And a role with no limit runs the statement that scores 6
 
     '
   competitive_position:
@@ -57777,8 +57864,12 @@
   unit_test_reason: The bug was a REST registration endpoint bypassing the createSource/registerTable
     mutation path's in-memory state population and reconcile step — verifiable only through the actual
     registration-to-query round trip a real backend performs, already covered by source-to-query.spec.ts.
-  description: 'A graphql_remote source registered through the Sources form introspects, auto-registers
-    its tables, and is immediately queryable. Its REST registration endpoint upserted the `sources` row
+  description: 'A graphql_remote source added through the Sources form. [SUPERSEDED by REQ-308 as
+    amended 2026-10-02 -- adding the source registers no tables; the steward registers the ones
+    wanted. The repair this requirement records still holds for the tables that are registered.
+    Kept here for history; do not implement against it.] A graphql_remote source registered through
+    the Sources form introspects, auto-registers its tables, and is immediately queryable. [END
+    SUPERSEDED BLOCK] Its REST registration endpoint upserted the `sources` row
     and the auto-discovered `registered_tables` rows directly, bypassing every step the ordinary createSource/registerTable
     mutations perform: it never populated the in-memory `state.source_catalogs` entry catalog_for() needs,
     and it never re-entered the convergent landed-table reconcile (REQ-846/932) that creates a MATERIALIZED
@@ -57798,9 +57889,9 @@
 
     When the source is submitted
 
-    Then its tables auto-register, a visibility grant on one succeeds, and querying it on the SQL
+    Then its tables are offered, registering one and granting visibility on it succeeds, and querying
 
-    page returns rows
+    it on the SQL page returns rows
 
     '
 - id: REQ-1728
@@ -65620,7 +65711,15 @@
     "FDW," or "captive instance." The Docker prereq badge (above) needs end-user-appropriate wording ("requires
     a local container runtime" or similar), not an internals-revealing one. Internal code/comments/requirements
     can and should keep naming the real mechanism (as this REQ does) — the constraint is user-facing surfaces
-    only.'
+    only.
+
+    (Amended 2026-10-02, SCOPE NARROWED) This pattern is no longer the default route for the `wrappers`
+    catalog. A system whose vendor publishes a usable OpenAPI spec is reached as a branded preset over
+    the OpenAPI source (REQ-1923), and a system better reached through its own SDK or protocol gets a
+    direct loader. The captive instance is kept for a system with neither. Each system is investigated
+    on its own and given one verdict; the use_case list below is superseded by those verdicts. The
+    `s3` SourceType stub named above is removed -- S3 objects are already reached by csv and parquet
+    (s3:// paths) and by files (mapping.storage_type "s3").'
   use_case: Gives access to wrappers' whole catalog (mongodb, Stripe, HubSpot, Airtable, Notion, Auth0,
     AWS Cognito, Cloudflare D1, Logflare, Calendly) without hand-rolling a bespoke Calcite adapter per
     source, and without needing the pg ENGINE itself to carry `wrappers`-specific connector code or link
@@ -65640,44 +65739,52 @@
   priority: SHOULD
   type: behavioral
   since: 2026-09
-  description: The GraphQL remote source registration endpoint supports a "known schema" fast path for
+  description: 'Known schemas for well-known public GraphQL APIs.
+    [SUPERSEDED by REQ-1923, 2026-10-02 -- a known schema is selected by the brand a source names,
+    not by matching its URL; adding the source registers no tables; and there is no refresh. Kept
+    here for history; do not implement against it.]
+    The GraphQL remote source registration endpoint supports a "known schema" fast path for
     a small allowlist of well-known public GraphQL APIs (e.g., GitHub) by loading pre-baked introspection
     artifacts instead of expensive live schema walking, while still performing lightweight live auth verification
-    to ensure the caller's token is valid. Refresh operations deliberately bypass the fast path and always
+    to ensure the caller''s token is valid. Refresh operations deliberately bypass the fast path and always
     perform full live introspection.
+    [END SUPERSEDED BLOCK]
+    (Amended 2026-10-02, SHIPPED WITH THE BRAND) The schema of a branded GraphQL source (REQ-1923)
+    ships with Provisa as the introspection result itself, compressed, one file per brand
+    (provisa/graphql_remote/_known_schemas/), regenerated by hand with
+    scripts/bake_graphql_brand_schema.py. A registration that names a brand reads that file and asks
+    the remote only to confirm the credential with a minimal query; a credential the remote does not
+    accept fails the registration. The file is mapped to tables on demand, one table at a time, so
+    nothing mapped is stored and the deployment''s traversal settings and each credential''s reach
+    apply at the time a table is registered. A source that names no brand is introspected live, as
+    before.'
   use_case: Registration of large public GraphQL APIs (e.g., GitHub with 1835 types) takes ~9 minutes
     via live introspection. Pre-baked schemas reduce this to seconds. The fast path is restricted to known
     public, versioned schemas identical for all consumers; private or customer-specific endpoints are
     never eligible and always use live introspection.
   code:
-  - provisa/graphql_remote/known_schemas.py
+  - provisa/graphql_remote/brands.py
   - provisa/api/admin/graphql_remote_router.py
-  - scripts/bake_github_graphql_schema.py
-  scenario: 'Given a registration request for GitHub''s GraphQL API at a known URL
+  - scripts/bake_graphql_brand_schema.py
+  tests:
+  - tests/unit/test_graphql_brand_source.py
+  - tests/integration/test_graphql_remote_source.py
+  scenario: 'Given a registration request that names the brand github and supplies a token
 
-    When the URL matches a KNOWN_SCHEMAS entry
+    When the registration is made
 
-    Then the endpoint loads the pre-baked schema artifact
+    Then the brand''s shipped schema is used and the remote is not introspected
 
-    And issues a lightweight live auth query (e.g., { viewer { login } })
+    And a minimal live query confirms the token
 
-    And if auth succeeds, registration completes using the baked schema
-
-    And if auth fails, an error is raised (never silently falls back)
+    And if the remote does not accept the token, the registration fails and no source is added
 
 
-    Given a registration request for a private or unknown GraphQL endpoint
+    Given a registration request for a remote GraphQL endpoint that names no brand
 
-    When the URL does not match any KNOWN_SCHEMAS entry
+    When the registration is made
 
     Then full live introspection and schema mapping is performed
-
-
-    Given an explicit refresh request for a previously registered GraphQL remote source
-
-    When the refresh endpoint is called
-
-    Then full live introspection is performed, bypassing any fast path
 
     '
 - id: REQ-1876
@@ -70389,3 +70496,190 @@
   - REQ-1916
   - REQ-1914
   since: 2026-10
+- id: REQ-1923
+  status: in-progress
+  group: 4. Source Connectors
+  category: Branded API Sources
+  priority: SHOULD
+  type: structural
+  target: 2027-Q1
+  description: Branded source types implemented over the generic API sources. A branded source is a named
+    source type (Stripe, HubSpot, GitHub and so on) that adds only what is specific to that system on
+    top of a generic source Provisa already has, and never a connector of its own. Two generic sources
+    carry them. One, the remote GraphQL source, for a system whose API is GraphQL -- GitHub is the
+    first, reached by the generic connector with its schema loaded from a baked artifact (REQ-1875).
+    Two, the OpenAPI source (REQ-314..321), for a system whose vendor publishes a usable OpenAPI
+    spec -- the preset is a pinned spec, an auth template, the
+    pagination of each list operation, and, where the API offers one, the parameter a refresh uses to
+    pull only what changed. A preset chooses no subset of the API. Adding a branded source makes every
+    table the system offers available and registers none of them; the steward registers the tables
+    wanted, as for any source, and that registration is the curation.
+    A spec is usable only when it is well typed -- every list operation chosen as a table declares a
+    response schema with named, typed properties, since the table's columns are read from it (REQ-316).
+    A spec whose responses are untyped objects, or absent, does not qualify, and a preset never
+    patches the gap with a hand-written schema of its own.
+    The steward picks the brand name and supplies credentials; nothing else is asked. A branded source
+    is always a replica, like every OpenAPI and remote GraphQL source. This is the preferred route for
+    the Supabase `wrappers` catalog whose SourceType stubs exist (provisa/core/models.py) -- the captive
+    Postgres pattern of REQ-1874 is kept for a system with neither a GraphQL API nor a usable spec, and
+    a system better reached through its own SDK or protocol gets a direct loader. Each system in that
+    catalog is investigated on its own and given one verdict -- GraphQL preset, OpenAPI preset, wrapper,
+    direct loader, already covered, or dropped. The mechanism is never shown to the user; they see the
+    brand name as an ordinary source type. (Amended 2026-10-02, GITHUB AS BUILT) GitHub is the first
+    brand. It is picked as GitHub in the source list, asks for an access token and an optional table
+    name prefix, and is shown as GitHub afterwards; the source row is a remote GraphQL source that
+    records its brand. The token goes to the org's secrets vault and the row carries the reference, so
+    a restarted process reads the source again without the token being re-entered. The tables on offer
+    are listed by the Register Table picker from the schema that ships with Provisa (REQ-1875), and a
+    table is registered through the same mutation every source uses. Three things are particular to
+    a brand and declared by it, never inferred. One, the error type its remote returns, before running
+    a query, for a field outside the credential's grant -- when a table is registered its query is
+    offered to the remote once, each field so refused is left out of the table, and the registration
+    names what was left out; a table the credential may not read at all is refused with the remote's
+    reason. Two, the error types its remote returns beside the data for one field of one row -- that
+    field is null in that row, as the remote returned it, the read stands, and the error is logged;
+    an error naming the table itself fails the read. Three, the error types that mean a page asked
+    for more than the remote computes in one query -- the page is asked for again at half the size.
+    A brand also sets how deep a nested object column is selected, since its schema is larger and more
+    cross-referenced than the deployment-wide setting is sized for.
+    (Amended 2026-10-02, PRICED QUERIES AND GITLAB) Some systems price a query and refuse one over a
+    price -- GitLab allows 200 points to an anonymous caller and 250 with a token, and refuses a query
+    over 10,000 characters. Such a system cannot serve a wide table whole, so its tables are registered
+    with the columns wanted. A count of columns is not the measure -- what a column costs depends on
+    its kind and on the page size -- so the system's own answer is. When a table is registered, its
+    query with the columns chosen is offered to the remote once at the page size a read asks for; a
+    brand declares how its remote's message starts when it refuses a query as too costly or too
+    large, and a registration so refused fails, changes nothing, and carries the remote's message
+    with its numbers. GitLab is the second brand, reaching gitlab.com. A brand's credential check
+    treats a null answer to its who-am-I query as a refusal, since a remote that also serves
+    anonymous callers answers an unrecognized credential that way and not with an error.
+  use_case: A team wants its Stripe, HubSpot or GitHub data beside its databases. A preset over a generic
+    API source reaches it with no container to run, no Docker prerequisite on a desktop install, and on
+    every engine, where a Postgres instance per source would be a heavy way to run a periodic fetch.
+  code:
+  - provisa/graphql_remote/brands.py
+  - provisa/graphql_remote/probe.py
+  - provisa/graphql_remote/executor.py
+  - provisa/api/admin/_graphql_brand_registration.py
+  - provisa/api/admin/graphql_remote_router.py
+  - provisa/api/app_loaders.py
+  - provisa-ui/src/pages/sources/sourceHelpers.ts
+  tests:
+  - tests/unit/test_graphql_brand_source.py
+  - tests/unit/test_graphql_remote_relay.py
+  - tests/integration/test_graphql_remote_source.py
+  - provisa-ui/src/__tests__/sourceBrand.test.ts
+  related_reqs:
+  - REQ-314
+  - REQ-317
+  - REQ-320
+  - REQ-1875
+  - REQ-1871
+  - REQ-1874
+  - REQ-308
+  - REQ-309
+  since: 2026-10
+- id: REQ-1924
+  status: in-progress
+  group: 4. Source Connectors
+  category: Branded API Sources
+  priority: SHOULD
+  type: behavioral
+  target: 2027-Q1
+  description: A source's write operations are registered as commands one at a time, the way its
+    tables are registered. Adding a source that has write operations -- the mutations of a remote
+    GraphQL source, branded or not, and the non-GET operations of an OpenAPI source -- registers no
+    commands. Every write operation the source offers is listed where a command is added, and the
+    steward registers the ones wanted, each into a domain with who may call it and whether a call
+    needs approval; that registration is the curation, as it is for tables (REQ-1923). A command's
+    argument may be a JSON object. An operation whose input is an object -- a GraphQL mutation's
+    input type, an OpenAPI request body -- takes that object as one argument and passes it to the
+    remote as it was given, on every surface a command can be called from; the remote's own
+    validation of it is reported to the caller as the remote stated it. A command registered from
+    a source is called with the source's credential. [SUPERSEDED by the 2026-10-02 CREDENTIAL AT
+    CALL amendment below -- a write cannot be tried without being performed. Kept here for
+    history; do not implement against it.] At registration it is held to the same check a table
+    is -- an operation the credential may not perform is refused then, with the remote's
+    reason. [END SUPERSEDED BLOCK] [SUPERSEDED by the 2026-10-02 PASS-THROUGH amendment below -- a mutator has no
+    input contract; it is passed through as is. Kept here for history; do not implement against
+    it.] (Amended 2026-10-02, INPUT CONTRACT) Where the source's schema describes an
+    operation's input, that shape is recorded on the command when it is registered as its input
+    contract -- named fields with canonical types. The contract is the stored truth and each
+    surface projects it -- GraphQL as a typed input object, MCP as the tool's JSON Schema, Cypher
+    as a map, SQL as a JSON literal -- so a caller builds the object from primitives in the
+    surface's own syntax. A call is checked against what the contract states (required fields,
+    field types, no unknown field) and everything else is the remote's to accept or refuse. An
+    operation whose input the schema does not describe has no contract, takes an untyped JSON
+    object and is checked by the remote alone. [END SUPERSEDED BLOCK] (Amended 2026-10-02,
+    PASS-THROUGH) A mutator is passed through as is. Provisa does not shape, type or check its
+    input -- the caller's JSON object goes to the remote unchanged, and the remote's answer, its
+    refusal included, comes back unchanged. What Provisa governs is the security of the call --
+    that the operation is registered, which domain it sits in, which roles may call it, whether a
+    call needs approval, that it is made with the source's credential, and that each call is
+    recorded. (Amended 2026-10-02, AN ACTION, NOT A TRANSFORM) A
+    write operation creates, changes or deletes something in the remote system. It is an action
+    and not a derivation of data, so it is not of the category of commands that take a dataset
+    and return one (REQ-885, REQ-1159) and it is not a lineage node (REQ-1160) -- lineage is for
+    those commands and for transforms. A command registered from a source's write operation is
+    called on its own and is not composed in a view or a materialized view, whose definition
+    would otherwise perform the write each time it is read or refreshed. What is recorded about
+    it is what is recorded about any write -- who called it, as which role, with what input, and
+    what the remote answered -- and which table it writes, where that is known (REQ-871), so the
+    table's replica is refreshed after the call. (Amended 2026-10-02, THREE KINDS OF COMMAND) A
+    command is one of three kinds. A dataset transform takes a relation and returns a relation and
+    is a lineage node. A column transform takes values of a row and returns a value and is a named
+    step inside a projection's lineage. A mutator creates, updates or deletes something outside
+    Provisa and is an action, outside lineage. All three are registered one at a time and then
+    governed; a source's write operations are mutators. (Amended 2026-10-02, CREDENTIAL AT CALL)
+    A table is checked against the source's credential at registration by reading it; a write
+    cannot be tried that way without being performed, so whether the credential may perform an
+    operation is answered by the remote when it is called, and its refusal comes back to the
+    caller as the remote stated it. (Amended 2026-10-02, WRITTEN TABLE) The table a command
+    writes is named on the command when it is registered, as one of the registered tables of the
+    command's own source, and is optional. After each call that the remote accepts, what follows
+    any write to that table follows -- its cached responses are dropped, the materialized views
+    over it are marked stale, its change is announced and its sinks run. Refreshing a replica of
+    it after the call waits on a way to ask for a replica refresh, which is not yet built; until
+    then the replica is refreshed on its own schedule. (Amended 2026-10-02, APPROVAL) A command
+    that needs approval is put to the deployment's approval hook (REQ-203) before each call, with
+    who calls it, as which role, the command and its arguments; it runs only when the hook
+    approves. With no hook configured, such a call is refused.
+  use_case: GitHub offers 267 mutations and a team wants three of them. Registering all of them as
+    commands when the source is added would put 264 unwanted commands in the model, each needing a
+    domain and a grant; registering them one at a time keeps the model to what the team chose.
+  scenario: 'Given a GitHub source has been added
+
+    When the steward opens the form that adds a command
+
+    Then the mutations GitHub offers are listed and none is registered
+
+
+    Given the steward registers createIssue into a domain
+
+    When a role that may call it calls it with a JSON object for its input
+
+    Then the mutation is sent to GitHub with that object and the source''s token
+
+    And the other mutations remain unregistered
+
+    '
+  related_reqs:
+  - REQ-1923
+  - REQ-308
+  - REQ-317
+  - REQ-205
+  - REQ-872
+  - REQ-871
+  - REQ-1159
+  - REQ-1160
+  since: 2026-10
+  code:
+  - provisa/executor/source_operation.py
+  - provisa/executor/function_dispatch.py
+  - provisa/api/admin/actions_router.py
+  - provisa/api/data/action_exec.py
+  - provisa/api/data/table_written.py
+  - provisa/pgwire/_pipeline.py
+  tests:
+  - tests/unit/test_source_operation_commands.py
+  - provisa-ui/src/__tests__/CommandFormFields.test.tsx

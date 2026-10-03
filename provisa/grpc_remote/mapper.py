@@ -87,6 +87,12 @@ class GrpcMutation:  # REQ-326
     return_columns: list[ColumnDef] = field(default_factory=list)
 
 
+def query_table_name(namespace: str, query) -> str:  # REQ-322, REQ-325
+    """The name a gRPC query method's table registers under."""
+    prefix = f"{namespace}__" if namespace else ""
+    return f"{prefix}{query.service}__{query.method}"
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

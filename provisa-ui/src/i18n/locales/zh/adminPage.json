@@ -183,6 +183,8 @@
     "domainDeleted": "已删除“{{id}}”",
     "policyApplied": "域策略已应用。",
     "policyApplyFailed": "应用域策略失败",
-    "settingsPanel": "设置"
+    "settingsPanel": "设置",
+    "maxRows": "每次读取的最大行数",
+    "maxRowsHint": "对分页的远程表进行一次读取时，逐页跟随其游标所获取的最大行数。"
   }
 }

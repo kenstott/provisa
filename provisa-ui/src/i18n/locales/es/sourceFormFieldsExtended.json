@@ -98,6 +98,9 @@
     "maxLiveConcurrencyPlaceholder": "sin límite",
     "maxLiveConcurrencyInvalid": "Introduzca un número entero de 1 o más, o déjelo vacío para no poner límite.",
     "loadManagementFixErrors": "Corrija los ajustes de Gestión de carga y actualidad antes de guardar.",
-    "cacheTtlRequiredForSignal": "La señal de cambio {{signal}} evalúa la actualidad según el TTL de caché, así que defina un TTL de caché."
+    "cacheTtlRequiredForSignal": "La señal de cambio {{signal}} evalúa la actualidad según el TTL de caché, así que defina un TTL de caché.",
+    "accessToken": "Token de acceso",
+    "accessTokenHint": "Se guarda en el almacén de secretos. También se acepta una referencia ${secret:NAME} o ${env:NAME}.",
+    "brandNamespaceHint": "Prefijo de los nombres de tabla de este origen. Déjelo en blanco para usar el predeterminado."
   }
 }

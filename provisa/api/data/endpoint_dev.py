@@ -38,6 +38,7 @@ from provisa.core import domain_policy
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical
 from provisa.security.rights import Capability, InsufficientRightsError, check_capability
+from provisa.compiler.complexity import ComplexityLimitExceeded
 
 log = logging.getLogger(__name__)
 
@@ -341,6 +342,8 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     # documented boundary contract, not silent error handling.
     try:
         result = await execute_sql_batch(request.sql, role_id, state, as_of=_as_of)
+    except ComplexityLimitExceeded:
+        raise  # REQ-1174: answered as 413 by the app's handler
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
     except TimeoutError as exc:
@@ -404,6 +407,8 @@ async def sql_explain_endpoint(  # REQ-1519
     # dialect or an arbitrary query the source rejects is a 400 carrying the reason.
     try:
         return await analyze_sql(request.sql, role_id, state, analyze=request.analyze, as_of=_as_of)
+    except ComplexityLimitExceeded:
+        raise  # REQ-1174: answered as 413 by the app's handler
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
     except ExplainUnsupported as exc:

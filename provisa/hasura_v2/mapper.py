@@ -248,25 +248,25 @@ def _api_limit_dim(api_limits: dict, name: str, role_id: str) -> object | None:
 def _role_api_limits(api_limits: dict, role_id: str) -> RoleRateLimit | None:
     """Map Hasura ``api_limits`` for ``role_id`` to a :class:`RoleRateLimit` (REQ-1174). Returns None
     when the role has no limits. Hasura's rate is per-MINUTE; Provisa's requests_per_second is
-    per-SECOND, so convert (floor at 1). depth/node map directly; time_limit (seconds) → ms."""
+    per-SECOND, so convert (floor at 1). ``time_limit`` (seconds) → ms. ``node_limit`` caps the
+    fields one query selects and becomes ``max_query_complexity``, which counts the same things on
+    the statement the query compiles to. ``depth_limit`` has no counterpart: a deeper query is a
+    statement with more relations and joins, which the complexity limit already prices."""
     if not api_limits:
         return None
     rate = _api_limit_dim(api_limits, "rate_limit", role_id)
     rps = None
     if isinstance(rate, dict) and isinstance(rate.get("max_reqs_per_min"), int):
         rps = max(1, round(rate["max_reqs_per_min"] / 60))
-    depth = _api_limit_dim(api_limits, "depth_limit", role_id)
     nodes = _api_limit_dim(api_limits, "node_limit", role_id)
     time_s = _api_limit_dim(api_limits, "time_limit", role_id)
-    depth = depth if isinstance(depth, int) else None
     nodes = nodes if isinstance(nodes, int) else None
     time_ms = time_s * 1000 if isinstance(time_s, int) else None
-    if rps is None and depth is None and nodes is None and time_ms is None:
+    if rps is None and nodes is None and time_ms is None:
         return None
     return RoleRateLimit(
         requests_per_second=rps,
-        max_query_depth=depth,
-        max_query_nodes=nodes,
+        max_query_complexity=nodes,
         max_query_time_ms=time_ms,
     )
 

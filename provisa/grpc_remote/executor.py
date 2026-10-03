@@ -18,9 +18,11 @@ and loaded dynamically via importlib (same pattern as provisa/grpc/server.py).
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import logging
 import sys
+import weakref
 
 import grpc
 import grpc.aio
@@ -99,6 +101,24 @@ def open_channel(server_address: str, tls: bool) -> grpc.aio.Channel:
     return grpc.aio.insecure_channel(server_address)
 
 
+def channel_for(reg: dict) -> grpc.aio.Channel:  # REQ-327, REQ-1882
+    """The source's channel on the running event loop.
+
+    A ``grpc.aio`` channel belongs to the loop it was opened on, and each request runs on a loop
+    of its own, checked out of a bounded pool (REQ-1882). One channel opened when the source was
+    added served only the request that added it; every later request on another loop failed
+    with "attached to a different loop". So the source keeps one channel per loop, opened the
+    first time a request on that loop calls the source; a loop that is let go takes its channel
+    with it."""
+    loop = asyncio.get_running_loop()
+    channels: weakref.WeakKeyDictionary = reg.setdefault("channels", weakref.WeakKeyDictionary())
+    channel = channels.get(loop)
+    if channel is None:
+        channel = open_channel(reg["server_address"], reg.get("tls", False))
+        channels[loop] = channel
+    return channel
+
+
 # ---------------------------------------------------------------------------
 # Execution
 # ---------------------------------------------------------------------------
@@ -162,3 +182,25 @@ async def execute_mutation(  # REQ-326, REQ-327
     )
     response = await unary_callable(request)
     return _msg_to_dict(response)
+
+
+class MutationRefused(Exception):
+    """The remote refused a mutation call: its status code and what it said (REQ-1924)."""
+
+
+async def call_mutation(  # REQ-1924
+    channel: grpc.aio.Channel,
+    full_method_path: str,
+    pb2,
+    input_message_name: str,
+    output_message_name: str,
+    args: dict,
+) -> dict:
+    """:func:`execute_mutation`, with the remote's refusal raised as :class:`MutationRefused`
+    stating its status code and details as the remote gave them."""
+    try:
+        return await execute_mutation(
+            channel, full_method_path, pb2, input_message_name, output_message_name, args
+        )
+    except grpc.aio.AioRpcError as exc:
+        raise MutationRefused(f"{exc.code().name}: {exc.details()}") from exc

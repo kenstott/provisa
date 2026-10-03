@@ -38,6 +38,7 @@ from provisa.api.generated_plan import compile_generated_graphql
 from provisa.compiler.naming import apply_gql_name
 from provisa.compiler.parser import GraphQLValidationError
 from provisa.executor.serialize import serialize_aggregate, serialize_group_by
+from provisa.compiler.complexity import ComplexityLimitExceeded
 
 log = logging.getLogger(__name__)
 
@@ -643,6 +644,8 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
                     cache_hint=NO_CACHE_HINT,
                 )
                 nodes_result = await _execute_plan(nodes_plan, state)
+        except ComplexityLimitExceeded:
+            raise  # REQ-1174: answered as 413 by the app's handler
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc))
         except HTTPException:
@@ -801,6 +804,8 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
 
         try:
             rows = await invoke_tracked_function(command_name, body, state, role_id)
+        except ComplexityLimitExceeded:
+            raise  # REQ-1174: answered as 413 by the app's handler
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc))
 

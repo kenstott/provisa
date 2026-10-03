@@ -536,6 +536,7 @@ def record_query(
 # transport type recorded per implementation kind (REQ-886)
 TRANSPORT_BY_KIND: dict[str, str] = {
     "source_procedure": "sql",
+    "source_operation": "source",  # REQ-1924: a source's write operation, over its own protocol
     "script": "script",
     "http": "http",
     "grpc": "grpc",

@@ -98,6 +98,9 @@
     "maxLiveConcurrencyPlaceholder": "aucune limite",
     "maxLiveConcurrencyInvalid": "Saisissez un nombre entier de 1 ou plus, ou laissez vide pour aucune limite.",
     "loadManagementFixErrors": "Corrigez les réglages de Gestion de la charge et fraîcheur avant d'enregistrer.",
-    "cacheTtlRequiredForSignal": "Le signal de changement {{signal}} évalue la fraîcheur selon le TTL du cache ; définissez donc un TTL du cache."
+    "cacheTtlRequiredForSignal": "Le signal de changement {{signal}} évalue la fraîcheur selon le TTL du cache ; définissez donc un TTL du cache.",
+    "accessToken": "Jeton d'accès",
+    "accessTokenHint": "Stocké dans le coffre de secrets. Une référence ${secret:NAME} ou ${env:NAME} est également acceptée.",
+    "brandNamespaceHint": "Préfixe des noms de table de cette source. Laissez vide pour la valeur par défaut."
   }
 }

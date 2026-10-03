@@ -1970,8 +1970,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         rate_limit = (
             RoleRateLimit(
                 requests_per_second=rl.requests_per_second,
-                max_query_depth=rl.max_query_depth,
-                max_query_nodes=rl.max_query_nodes,
+                max_query_complexity=rl.max_query_complexity,
                 max_query_time_ms=rl.max_query_time_ms,
             )
             if rl is not None

@@ -893,61 +893,71 @@ def _build_native_filter_columns_for_graphql(field: dict) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-@given("a remote GraphQL schema is registered in Provisa", target_fixture="shared_data")
-def step_given_remote_gql_schema_registered(shared_data: dict) -> dict:
-    schema = _make_req308_schema()
-    shared_data["schema"] = schema
-    shared_data["namespace"] = "shop"
-    shared_data["source_id"] = "shop-remote"
+@given("a remote GraphQL source has been added", target_fixture="shared_data")
+def step_given_remote_gql_source_added(shared_data: dict) -> dict:
+    from provisa.graphql_remote.brands import LiveSchema
+
+    # Adding the source reads its schema and registers nothing (REQ-308, amended 2026-10-02).
+    shared_data["offer"] = LiveSchema(
+        label="shop-remote",
+        introspected=_make_req308_schema(),
+        max_object_depth=5,
+        max_list_depth=2,
+        max_list_items=100,
+    )
+    shared_data["reg"] = {
+        "source_id": "shop-remote",
+        "url": "https://shop.example/graphql",
+        "namespace": "shop",
+        "auth": None,
+        "tables": [],
+    }
     return shared_data
 
 
-@when("introspection completes")
-def step_when_introspection_completes(shared_data: dict) -> None:
-    from provisa.graphql_remote.mapper import map_schema
+@when("the steward opens the Register Table picker for it")
+def step_when_steward_opens_register_table_picker(shared_data: dict) -> None:
+    from provisa.api.admin._graphql_table_registration import offered_tables
 
-    tables, functions, relationships = map_schema(
-        shared_data["schema"],
-        shared_data["namespace"],
-        shared_data["source_id"],
+    shared_data["offered"] = offered_tables(shared_data["offer"], shared_data["reg"])
+
+
+@then("every table its schema offers is listed and none is registered")
+def step_then_every_table_listed_none_registered(shared_data: dict) -> None:
+    names = {t["name"] for t in shared_data["offered"]}
+    assert {"shop__products", "shop__orders"} <= names, names
+    assert shared_data["reg"]["tables"] == []
+
+
+@then("a table the steward registers is readable, with the columns chosen")
+def step_then_registered_table_readable_with_chosen_columns(shared_data: dict) -> None:
+    import asyncio
+
+    from graphql import parse
+
+    from provisa.api.admin._graphql_table_registration import columns_to_register
+    from provisa.core.models import Column
+    from provisa.graphql_remote.executor import column_selection, table_query
+
+    chosen = [Column(name="id", visible_to=["analyst"]), Column(name="name", visible_to=[])]
+    columns, omitted, fitted = asyncio.run(
+        columns_to_register(
+            shared_data["offer"], shared_data["reg"], "shop__products", "sales", chosen, 100
+        )
     )
-    shared_data["tables"] = tables
-    shared_data["functions"] = functions
-    shared_data["relationships"] = relationships
+    assert omitted == []
+    assert {c.name for c in columns} == {"id", "name"}
+    assert all(c.data_type for c in columns)
+    assert next(c for c in columns if c.name == "id").visible_to == ["analyst"]
+    query = table_query(fitted, [column_selection(c) for c in fitted["columns"]])
+    parse(query)
+    assert "products" in query and "price" not in query
+    shared_data["reg"]["tables"].append({**fitted, "sql_name": "shop__products"})
 
 
-@then(
-    "Query fields are auto-registered as virtual read-only tables and Mutation fields as tracked functions"
-)
-def step_then_query_fields_registered_as_tables_mutation_as_functions(shared_data: dict) -> None:
-    tables = shared_data["tables"]
-    functions = shared_data["functions"]
-
-    table_field_names = {t["field_name"] for t in tables}
-    func_field_names = {f["field_name"] for f in functions}
-
-    # Query fields with OBJECT return types → virtual tables
-    assert "products" in table_field_names, f"Expected 'products' table, got {table_field_names}"
-    assert "orders" in table_field_names, f"Expected 'orders' table, got {table_field_names}"
-
-    # Mutation fields → tracked functions
-    assert "createOrder" in func_field_names, (
-        f"Expected 'createOrder' function, got {func_field_names}"
-    )
-    assert "updateProduct" in func_field_names, (
-        f"Expected 'updateProduct' function, got {func_field_names}"
-    )
-
-    # Tables must have columns derived from the GQL return type
-    products_table = next(t for t in tables if t["field_name"] == "products")
-    col_names = {c["name"] for c in products_table["columns"]}
-    assert "id" in col_names
-    assert "name" in col_names
-    assert "price" in col_names
-
-    # Functions must have return_schema
-    create_fn = next(f for f in functions if f["field_name"] == "createOrder")
-    assert create_fn["return_schema"], "createOrder must have a return_schema"
+@then("the tables not registered remain unregistered")
+def step_then_other_tables_remain_unregistered(shared_data: dict) -> None:
+    assert [t["sql_name"] for t in shared_data["reg"]["tables"]] == ["shop__products"]
 
 
 # ---------------------------------------------------------------------------

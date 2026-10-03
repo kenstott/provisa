@@ -6,11 +6,12 @@
 
 ## 实现种类
 
-支持五种 `impl_kind` 取值 [tool-verified: `_EXECUTORS` dict in function_dispatch.py:420-426]：
+支持六种 `impl_kind` 取值 [tool-verified: `_EXECUTORS` dict in `provisa/executor/function_dispatch.py`]：
 
 | `impl_kind` | 传输方式 |
 | --- | --- |
 | `source_procedure` | 已注册数据源上的原生存储过程 |
+| `source_operation` | OpenAPI、远程 GraphQL 或 gRPC 来源的写入操作，原样透传（见[远程来源的写入操作](#a-remote-sources-write-operation-req-1924)） |
 | `script` | 本地子进程，从 stdin 喂入 JSON，从 stdout 读取 JSON |
 | `http` | HTTP/S 终结点；JSON 请求体，JSON 响应 |
 | `grpc` | gRPC 一元调用；无 proto 的 JSON 桥接 |
@@ -126,7 +127,7 @@ gRPC 变体（`enrich_grpc_set`）遵循同样的模式，只是指定 `impl_kin
 
 ## 内联组合（REQ-1159）
 
-命令可以出现在更大的 SQL 语句**内部**——被联接、被作为子查询、或被投影。你不必局限于 `SELECT * FROM fn(args)`。
+命令可以出现在更大的 SQL 语句**内部**——被联接、被作为子查询、或被投影。你不必局限于 `SELECT * FROM fn(args)`。例外是远程来源的写入操作，它只能单独调用（见[为何不能被组合](#why-it-cannot-be-composed)）。
 
 ```sql
 -- Enrich the orders relation and join the result back inline.
@@ -145,6 +146,125 @@ command_localize.py:178-222]
 
 本地化后的语句照常路由。单源查询留在数据源上；只有真正的跨源查询才会走联邦引擎。[tool-verified: _pipeline.py:304 comment
 "REQ-1159: a localized statement carries an inline local relation..."]
+
+## 远程来源的写入操作（REQ-1924） {: #a-remote-sources-write-operation-req-1924 }
+
+OpenAPI、远程 GraphQL 或 gRPC 来源会提供写入操作。将其中一个注册为命令后，便可从所有界面调用，并受治理、被审计。添加来源不会注册其中任何一个；你要逐个注册所需的操作，方式与注册数据表相同。注册即为策展。 [tool-verified: `provisa/executor/source_operation.py` module docstring; `provisa/api/admin/schema_common.py` `remote_source_counts`, `"mutations": 0`]
+
+来源提供的内容 [tool-verified: `provisa/executor/source_operation.py` `offered_operations`]：
+
+| 来源类型 | 提供的操作 | 操作名称 |
+| --- | --- | --- |
+| `openapi` | 规范中的每个非 GET 操作 | `operationId` |
+| `graphql_remote` | 远程 `Mutation` 类型的每个字段 | 字段名称 |
+| `grpc_remote` | 每个被归类为 mutation 的方法 | `Service.Method` |
+
+### 注册一个 {: #register-one }
+
+1. 打开 **建模 → 命令** 并添加一个命令。
+2. 选择远程来源。表单会切换为操作选择器，列出该来源所提供的操作。
+3. 选择操作、一个域，以及可以调用它的角色。
+4. 可选：开启 **需要审批**，并填写 **写入表** 字段。
+
+[tool-verified: `provisa-ui/src/components/navGroups.ts` (`/commands` in the Model group); `provisa-ui/src/pages/commands/CommandFormFields.tsx` `isSourceOperation`, `command-requires-approval-switch`, `writesTable`; `provisa/api/admin/schema_query.py` `available_functions` ("Listing them registers none")]
+
+通过管理 GraphQL API，`availableFunctions(sourceId, schemaName)` 会列出这些操作。模式名称依来源类型而定，为 `openapi`、`graphql` 或 `grpc_remote`。 [tool-verified: `OPERATION_SCHEMA` in `source_operation.py`; `available_functions` returns `[]` when the schema name does not match the source type]
+
+其余一切均由操作决定，而非由表单所发送的内容决定。`_as_source_operation` 会覆盖以下字段：
+
+```python
+body.implKind = "source_operation"
+body.kind = "mutation"
+body.schemaName = OPERATION_SCHEMA[source_type]
+body.returns = ""
+body.binding = {}
+body.materialize = False
+body.arguments = [{"name": a, "type": "json"} for a in operation.arguments]
+```
+
+[tool-verified: `provisa/api/admin/actions_router.py` `_as_source_operation`]
+
+每个参数的类型均为 `json`。操作的参数即其 OpenAPI 路径参数（操作带请求体时另加 `body`）、其 GraphQL mutation 参数，或其 gRPC 请求字段。 [tool-verified: `_openapi_operations`, `_graphql_operations`, `_grpc_operations` in `source_operation.py`] 来源未提供的操作会被拒绝，返回 422，`functions.operation_not_offered`。 [tool-verified: `offered_operation`]
+
+### 调用 {: #calling-it }
+
+Provisa 不会对输入进行整形、类型化或检查。每个参数都原样连同来源的凭据发往远程服务，远程服务的应答也原样返回。Provisa 负责治理谁可以调用、在哪个域中调用、是否需要审批，并记录该调用。 [tool-verified: `source_operation.py` module docstring]
+
+远程服务如何接收参数：
+
+- **OpenAPI.** 路径参数填入路径模板。`body` 是 JSON 请求体。其余每个参数都放在查询字符串中。 [tool-verified: `_call_openapi`]
+- **GraphQL.** 参数以类型化变量发送，每个变量均按远程模式给定的类型声明。mutation 会回取应答中的标量字段和枚举字段，以及其内部对象的这类字段，最多深入两层。 [tool-verified: `mutation_document`, `_selection`, `_ANSWER_DEPTH = 2`]
+- **gRPC.** 这些参数成为 `Service.Method` 的请求消息。 [tool-verified: `_call_grpc`]
+
+应答即命令的行：一个对象是一行，对象列表即其各行，其他任何内容都是一行 `{"result": ...}`。 [tool-verified: `_rows`]
+
+在 GraphQL 中，命令是一个 mutation 字段，其应答是 JSON 标量。 [tool-verified: `provisa/compiler/actions_schema.py` (`gql_return = JSONScalar` for `source_operation`; `kind` defaults to `"mutation"`)]
+
+```graphql
+mutation {
+  createIssue(input: {repositoryId: "R_kgDO...", title: "Crash on save"})
+}
+```
+
+[inferred: argument names are those of the remote operation; the example call was not run]
+
+在 SQL 界面（pgwire 及其他传递 SQL 的界面）上，将每个参数写成字符串中的 JSON 字面量。`'{"title": "x"}'` 是对象，`'"text"'` 是字符串，`'3'` 是数字。不是有效 JSON 的字面量会失败，返回 422，`functions.json_argument_invalid`。 [tool-verified: `_json_arguments_from_sql` in `function_dispatch.py`]
+
+```sql
+SELECT * FROM create_issue('{"repositoryId": "R_kgDO...", "title": "Crash on save"}');
+```
+
+[inferred: the first-argument shape follows `_json_arguments_from_sql`; the statement was not run, and the command's argument list is the operation's]
+
+在 REST 上，向 `/data/rest/{domain}/commands/{command}` 以 POST 发送由参数组成的 JSON 对象。`json` 参数在生成的规范中被记录为任意值。 [tool-verified: `provisa/api/rest/openapi_spec.py` `cmd_path = f"/{cmd_domain}/commands/{cmd_name}"`, `_arg_type_to_openapi` (`"json"` returns `{}`)]
+
+```bash
+curl -X POST https://acme.provisa.org/data/rest/engineering/commands/create_issue \
+  -H "Content-Type: application/json" \
+  -d '{"input": {"repositoryId": "R_kgDO...", "title": "Crash on save"}}'
+```
+
+[inferred: host, domain and command name are placeholders; not run]
+
+### 拒绝 {: #refusals }
+
+远程服务的拒绝按其原样返回。 [tool-verified: `_refused` in `source_operation.py`]
+
+| 远程服务 | Provisa 应答 |
+| --- | --- |
+| 拒绝该调用（HTTP 4xx、GraphQL `errors`、被拒绝的 gRPC 调用） | 422，`functions.remote_refused`，附带 `remote_status` 和 `answer` |
+| 失败（HTTP 5xx） | 502, `functions.remote_refused` |
+
+来源的凭据能否执行该操作，由远程服务在调用该操作时决定。Provisa 无法在注册时试写而不真正执行它。 [tool-verified: REQ-1924 CREDENTIAL AT CALL amendment in `docs/arch/requirements.yaml`; no credential check in `_as_source_operation`]
+
+### 审批 {: #approval }
+
+开启 **需要审批** 后，每次调用在运行前都会提交给部署的审批钩子。仅当钩子批准时才会运行。 [tool-verified: `provisa/api/data/action_exec.py` `_require_approval`]
+
+- 未配置钩子：403，`functions.approval_unavailable`。
+- 钩子拒绝：403，`functions.approval_denied`，附带钩子给出的原因。
+
+钩子会收到调用者、角色、命令名称及其参数。参见[ABAC批准钩子](security.md#abac-hook)。该标志存储为 `Function.requires_approval`，该检查适用于任何设置了它的命令。 [tool-verified: `action_exec.py` `if fn.get("requires_approval")`]
+
+### 写入表 {: #writes-table }
+
+在 **写入表** 字段中填写该操作所写入的数据表，格式为 `schema.table`。它必须是该命令自身来源下的已注册数据表，否则保存会被拒绝，返回 422，`actions.written_table_not_registered`。该设置可选。 [tool-verified: `_check_written_table` in `actions_router.py`; `written_table` in `source_operation.py`]
+
+远程服务每接受一次调用，Provisa 就将其视为对该数据表的一次写入。它会丢弃该表的缓存应答，将基于它的物化视图标记为过期，发出变更事件，运行该表的 sink，并在该表被保持为热状态时重新加载它。 [tool-verified: `provisa/api/data/table_written.py` `after_table_written`]
+
+调用不会刷新副本。这有待一种请求刷新副本的方式，而该方式尚未构建；在此之前，副本按其自身的计划刷新。 [tool-verified: REQ-1924 WRITTEN TABLE amendment; no replica call in `after_table_written`]
+
+### 为何不能被组合 {: #why-it-cannot-be-composed }
+
+写入操作是一个动作，而不是对数据的转换。包含它的视图或物化视图会在每次被读取或刷新时执行该写入。因此该调用必须单独存在：单独的 `SELECT * FROM create_issue(...)` 会运行它，而同一调用出现在更大的语句内则会被拒绝，无论位于何处——联接、子查询或投影中。 [tool-verified: `provisa/pgwire/_pipeline.py` `_refuse_composed_mutators`; `provisa/executor/source_operation.py` `writes_called_in`]
+
+若视图或物化视图的定义调用了它，保存时会被拒绝。只要注册了任何写入操作，无法解析的定义也会被拒绝，因为无法证明它没有调用任何一个。 [tool-verified: `refuse_writes_in_definition` in `source_operation.py`, called from `provisa/api/admin/_table_ops.py` `_build_columns_for_input` (views) and `provisa/api/admin/schema_common.py` (materialized views)]
+
+```text
+command 'create_issue' writes to its source and is called on its own: it cannot be composed in a query, a view or a materialized view (REQ-1924)
+```
+
+来源操作也不是血缘节点：血缘读取自视图和查询的 SQL，命令在其中表现为节点，而任何已保存的定义都无法调用来源操作。 [tool-verified: `provisa/lineage/graph.py` (`kind="command"` for a call in the SQL); `refuse_writes_in_definition`]
 
 ## 命令与血缘
 

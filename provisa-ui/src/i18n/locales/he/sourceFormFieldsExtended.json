@@ -98,6 +98,9 @@
     "maxLiveConcurrencyPlaceholder": "ללא הגבלה",
     "maxLiveConcurrencyInvalid": "יש להזין מספר שלם של 1 ומעלה, או להשאיר ריק ללא הגבלה.",
     "loadManagementFixErrors": "יש לתקן את הגדרות ניהול עומס ועדכניות לפני השמירה.",
-    "cacheTtlRequiredForSignal": "אות השינוי {{signal}} קובע עדכניות לפי TTL של מטמון, לכן יש להגדיר TTL של מטמון."
+    "cacheTtlRequiredForSignal": "אות השינוי {{signal}} קובע עדכניות לפי TTL של מטמון, לכן יש להגדיר TTL של מטמון.",
+    "accessToken": "אסימון גישה",
+    "accessTokenHint": "נשמר בכספת הסודות. מתקבלת גם הפניה מסוג ${secret:NAME} או ${env:NAME}.",
+    "brandNamespaceHint": "קידומת לשמות הטבלאות של מקור זה. השאירו ריק לברירת המחדל."
   }
 }

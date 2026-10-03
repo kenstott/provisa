@@ -39,7 +39,7 @@ import {
   openRegisterForm,
   openSourcesForm,
   pickSchemaAndTable,
-  registeredTableNames,
+  registerOfferedTable,
   runSqlOnPage,
   submitRegisterAndExpectListed,
   submitSourceAndExpectListed,
@@ -602,12 +602,12 @@ test.describe("source to query through the UI (REQ-1671)", () => {
   });
 
   // REQ-1727: graphql_remote is baked in (graphql-demo) and queried everywhere, but the Sources
-  // form's own combined create+introspect+auto-register flow (POST /admin/sources/graphql-remote)
+  // form's own create+introspect flow (POST /admin/sources/graphql-remote)
   // had never been driven. Points at the same live graphql-demo mock the baked-in source reads
   // (fetched from it rather than hardcoded, so this survives the e2e harness reassigning ports). A
-  // distinct namespace keeps the auto-registered tables from colliding with graphql-demo's own —
+  // distinct namespace keeps the registered table from colliding with graphql-demo's own —
   // registration qualifies every table name as `namespace__field` (graphql_remote/mapper.py).
-  test("graphql_remote: add the source, auto-register its tables, query one on the SQL page", async ({
+  test("graphql_remote: add the source, register one of its tables, query it on the SQL page", async ({
     page,
   }) => {
     test.setTimeout(180000);
@@ -616,8 +616,8 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     const namespace = `e2e_gql_${stamp}`;
     const endpoint = await existingSourcePath(page, "graphql-demo");
 
-    // 1. Sources form — this type registers the source AND every table in one submit; there is no
-    // separate Register Table step (graphql_remote_router.py: introspect + auto-register).
+    // 1. Sources form — adds the source and reads its schema. No table is registered by it
+    // (REQ-308): every table the schema maps to is on offer to Register Table.
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("graphql");
@@ -625,41 +625,15 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     await page.getByTestId("graphql-namespace-input").fill(namespace);
     await submitSourceAndExpectListed(page, sourceId);
 
-    // 2. The breed catalog table registered itself under this source — no Register Table screen.
-    // Auto-registered columns start with visible_to: [] (graphql_remote_router.py preserves an
-    // EXISTING grant across a refresh; on first registration there is none to preserve) — the
-    // manual Register Table form's own sensible default never runs for this one-shot path, so a
-    // grant is the missing step here, not a bug: it's the same zero-trust default every new
-    // column starts behind, everywhere else closed by a human on the Tables page.
-    const tableNames = await registeredTableNames(page, sourceId);
-    const breedTable = tableNames.find((n) => n.includes("animal_breed"));
-    expect(breedTable, `no animal_breeds table registered for ${sourceId}`).toBeTruthy();
-    const grant = await page.request.post("/admin/graphql", {
-      data: {
-        query: `mutation($t: TableInput!) { updateTable(input: $t) { success message } }`,
-        variables: {
-          t: {
-            sourceId,
-            domainId: "",
-            schemaName: "graphql",
-            tableName: breedTable,
-            columns: [
-              { name: "name", visibleTo: ["*"] },
-              { name: "species", visibleTo: ["*"] },
-              { name: "care_level", visibleTo: ["*"] },
-              { name: "avg_lifespan_years", visibleTo: ["*"] },
-              { name: "typical_habitat", visibleTo: ["*"] },
-              { name: "description", visibleTo: ["*"] },
-            ],
-          },
-        },
-      },
-    });
-    expect(grant.ok(), await grant.text()).toBeTruthy();
-    const grantJson = await grant.json();
-    expect(grantJson.errors, JSON.stringify(grantJson.errors)).toBeUndefined();
-    const grantBody = grantJson.data.updateTable;
-    expect(grantBody.success, grantBody.message).toBeTruthy();
+    // 2. Register the one table wanted, with the columns wanted.
+    const breedTable = await registerOfferedTable(page, sourceId, "graphql", "animal_breed", [
+      "name",
+      "species",
+      "care_level",
+      "avg_lifespan_years",
+      "typical_habitat",
+      "description",
+    ]);
 
     // 3. SQL page — the 6 breeds demo/graphql_server/server.py seeds (schema is always "graphql",
     // regardless of the SQL-plane domain — graphql_remote_router.py hardcodes it).
@@ -679,10 +653,9 @@ test.describe("source to query through the UI (REQ-1671)", () => {
   });
 
   // REQ-1728: openapi is baked in (petstore-api) and queried everywhere, but the Sources form's own
-  // spec-driven create step (POST /admin/openapi/register) had never been driven. Unlike
-  // graphql_remote, openapi source creation does NOT auto-register tables ("Users register them
-  // individually via the Register Table... UI" — openapi_router.py) — so this still exercises the
-  // ordinary Register Table form afterward, the same as sqlite/mongodb above.
+  // spec-driven create step (POST /admin/openapi/register) had never been driven. Adding the source
+  // registers no table (REQ-316), so this exercises the ordinary Register Table form afterward, the
+  // same as sqlite/mongodb above.
   test("openapi: add the source, register an operation, query it on the SQL page", async ({
     page,
   }) => {

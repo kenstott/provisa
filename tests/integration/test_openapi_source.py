@@ -164,7 +164,7 @@ async def test_preview_returns_queries_and_mutations(client, spec_file):
     assert "createUser" in mutation_ids
 
 
-async def test_register_creates_tables_and_functions(client, spec_file):
+async def test_register_offers_tables_and_commands_and_registers_none(client, spec_file):
     resp = await client.post(
         "/admin/openapi/register",
         json={
@@ -178,11 +178,13 @@ async def test_register_creates_tables_and_functions(client, spec_file):
     assert resp.status_code == 200
     body = resp.json()
     assert body["source_id"] == "test-openapi"
-    assert body["tables"] == 2  # listUsers, getUser
-    assert body["mutations"] == 1  # createUser
+    # Adding the source registers nothing (REQ-316); it reports what it offers.
+    assert body["tables"] == 0 and body["mutations"] == 0
+    assert body["available_tables"] == 2  # listUsers, getUser
+    assert body["available_mutations"] == 1  # createUser
 
 
-async def test_refresh_reruns_registration(client, spec_file):
+async def test_refresh_rereads_the_spec_and_registers_nothing(client, spec_file):
     # First register so it's in state
     await client.post(
         "/admin/openapi/register",
@@ -197,7 +199,7 @@ async def test_refresh_reruns_registration(client, spec_file):
     assert resp.status_code == 200
     body = resp.json()
     assert body["source_id"] == "test-openapi-refresh"
-    assert body["tables"] >= 1
+    assert body["tables"] == 0 and body["available_tables"] >= 1
 
 
 async def test_get_spec_returns_stored_spec(client, spec_file):

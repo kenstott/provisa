@@ -9,13 +9,29 @@
 // permission from the copyright holder.
 
 import type { FederationEngineState } from "../../api/admin";
-import { SOURCE_TYPES, TYPE_ALIAS } from "./constants";
+import { BRAND_CARRIER, SOURCE_TYPES, TYPE_ALIAS } from "./constants";
 
 export function getCategory(type: string) {
   return SOURCE_TYPES.find((s) => s.value === type)?.category ?? "RDBMS";
 }
 
-export const backendType = (uiValue: string) => TYPE_ALIAS[uiValue] ?? uiValue;
+export const backendType = (uiValue: string) => {
+  const carrier = BRAND_CARRIER[uiValue] ?? uiValue;
+  return TYPE_ALIAS[carrier] ?? carrier;
+};
+
+/** The brand a source row records (federation_hints.brand, REQ-1923), or null for a plain source. */
+export function sourceBrand(federationHintsJson: string | null | undefined): string | null {
+  if (!federationHintsJson) return null;
+  const brand = (JSON.parse(federationHintsJson) as Record<string, unknown>).brand;
+  return typeof brand === "string" && brand in BRAND_CARRIER ? brand : null;
+}
+
+/** The type a source is shown as: its brand when it has one, else its own type. */
+export function sourceTypeLabel(type: string, federationHintsJson: string | null | undefined) {
+  const shown = sourceBrand(federationHintsJson) ?? uiType(type);
+  return SOURCE_TYPES.find((st) => st.value === shown)?.label ?? type;
+}
 
 const REVERSE_TYPE_ALIAS: Record<string, string> = Object.fromEntries(
   Object.entries(TYPE_ALIAS).map(([uiValue, backendValue]) => [backendValue, uiValue]),

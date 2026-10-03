@@ -629,6 +629,21 @@ export function FederationSettingsCards() {
                       })
                     }
                   />
+                  <NumberInput
+                    label={t("adminPage.maxRows")}
+                    description={t("adminPage.maxRowsHint")}
+                    min={1}
+                    value={remote.max_rows}
+                    onChange={(v) =>
+                      setSettings({
+                        ...settings,
+                        graphql_remote: {
+                          ...remote,
+                          max_rows: typeof v === "number" ? v : 0,
+                        },
+                      })
+                    }
+                  />
                 </Stack>
               </Card>
               <ServerLimitsCard />

@@ -1459,7 +1459,53 @@ def make_dq_loader(app_state: Any) -> AdapterLoader:
     return _load
 
 
-def make_graphql_remote_loader(gql_sources: dict[str, Any]) -> AdapterLoader:
+def make_grpc_remote_loader(grpc_sources: dict[str, Any]) -> AdapterLoader:  # REQ-325, REQ-327
+    """Build the grpc_remote adapter row-fetch (REQ-941/846): find the query method the table is
+    registered from in ``state.grpc_remote_sources``, call it with no request fields on the
+    source's channel for the running loop, and return its rows with the columns the table was
+    registered with. A table no query method of the source registers as raises
+    :class:`UnsupportedSourceFetch`."""
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        from provisa.compiler.naming import apply_sql_name
+        from provisa.grpc_remote.executor import channel_for, execute_query
+        from provisa.grpc_remote.mapper import query_table_name
+
+        reg = grpc_sources.get(source.id) or {}
+        namespace = reg.get("namespace", "")
+        names = {table.table_name, apply_sql_name(table.table_name)}
+        query = next(
+            (
+                q
+                for q in reg.get("queries") or []
+                if {query_table_name(namespace, q), apply_sql_name(query_table_name(namespace, q))}
+                & names
+            ),
+            None,
+        )
+        if query is None:
+            raise UnsupportedSourceFetch(
+                f"grpc_remote source {source.id!r} table {table.table_name!r}: no query method of "
+                "the source registers as it"
+            )
+        rows = await execute_query(
+            channel_for(reg),
+            query.full_method_path,
+            reg["pb2"],
+            query.input_message,
+            query.output_message,
+            {},
+            server_streaming=query.server_streaming,
+        )
+        registered = [c.name for c in table.columns if not c.name.startswith("_nf_")]
+        return [{name: row.get(name) for name in registered} for row in rows]
+
+    return _load
+
+
+def make_graphql_remote_loader(
+    gql_sources: dict[str, Any], max_rows: int | None = None
+) -> AdapterLoader:
     """Build the graphql_remote adapter row-fetch (REQ-941/846): resolve the table's registration in
     ``state.graphql_remote_sources`` (by ``sql_name``), forward a minimal GraphQL query to the remote
     endpoint via :func:`execute_remote`, and return the rows. Refreshes from the remote source — the
@@ -1473,6 +1519,7 @@ def make_graphql_remote_loader(gql_sources: dict[str, Any]) -> AdapterLoader:
     def _request(source: Any, table: Any) -> dict:
         """The remote call for ``table``: url, auth, field name and column selections."""
         from provisa.compiler.naming import apply_gql_name, apply_sql_name
+        from provisa.graphql_remote.executor import NO_POLICY
 
         normalised = apply_sql_name(table.table_name)
         for reg in gql_sources.values():
@@ -1498,6 +1545,8 @@ def make_graphql_remote_loader(gql_sources: dict[str, Any]) -> AdapterLoader:
                         "auth": reg.get("auth"),
                         "field_name": tbl.get("field_name") or tbl["name"],
                         "columns": col_selections,
+                        "rows_path": tbl.get("rows_path"),
+                        "error_policy": reg.get("error_policy") or NO_POLICY,
                     }
         raise UnsupportedSourceFetch(
             f"graphql_remote source {source.id!r} table {table.table_name!r}: no matching "
@@ -1507,16 +1556,26 @@ def make_graphql_remote_loader(gql_sources: dict[str, Any]) -> AdapterLoader:
     async def _load(source: Any, table: Any) -> list[dict]:
         from provisa.graphql_remote.executor import execute_remote
 
-        return await execute_remote(**_request(source, table))
+        return await execute_remote(**_request(source, table), max_rows=max_rows)
 
     def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        from provisa.federation.replica_source import DocumentSource
         from provisa.federation.replica_spool import SpooledDocumentSource
         from provisa.graphql_remote.executor import iter_remote_rows_spooled
 
         request = _request(source, table)
+        if request["rows_path"]:
+            # REQ-1923: a connection table is read by cursor, a page per request, up to the
+            # read's max_rows -- the read execute_remote makes; there is no one answer to spool.
+            return DocumentSource(lambda: _load(source, table), columns)
         return SpooledDocumentSource(
             lambda spooled: iter_remote_rows_spooled(
-                request["url"], request["auth"], request["field_name"], request["columns"], spooled
+                request["url"],
+                request["auth"],
+                request["field_name"],
+                request["columns"],
+                spooled,
+                request["error_policy"],
             ),
             columns,
             table=f"{source.id}.{table.table_name}",
