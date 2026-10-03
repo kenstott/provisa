@@ -9,8 +9,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { useNavPayload } from "../hooks/useNavPayload";
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { format as formatSql } from "sql-formatter";
@@ -55,7 +56,6 @@ import { ViewModal } from "./sql/ViewModal";
 export function SqlPage() {
   const { t } = useTranslation();
   const { checkedDomains, ensureDomainChecked } = useDomainFilter();
-  const location = useLocation();
   const navigate = useNavigate();
   const canCreateView = useCapability("create_view");
   const canRequestView = useCapability("query_development");
@@ -84,23 +84,13 @@ export function SqlPage() {
   const tables = tablesData;
   const existingRels = relsData;
   const [topTab, setTopTab] = useState<TopTab>("sql");
-  const viewTable = (location.state as { viewTable?: RegisteredTable } | null)?.viewTable ?? null;
+  // Set from a navigation hand-off (useNavPayload below), never read from location.state in
+  // render: a handled payload is removed from the history entry.
+  const [viewTable, setViewTable] = useState<RegisteredTable | null>(null);
 
   // Query tabs. Working state (sqlText/nlText/result*) mirrors the active tab; inactive
   // tabs retain their content in the `tabs` array and are persisted per-tab.
-  const initialTabs = useMemo(() => {
-    const loaded = loadTabsMeta();
-    const locSql = (location.state as { sql?: string } | null)?.sql;
-    if (locSql != null) {
-      const id = newTabId();
-      const title = nextTabTitle(loaded.tabs);
-      const newTab = emptyTab(id, title, locSql);
-      loaded.tabs = [...loaded.tabs, newTab];
-      loaded.activeId = id;
-    }
-    return loaded;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional mount-only memo; location.state is consumed once on mount, not tracked reactively
-  }, []);
+  const initialTabs = useMemo(() => loadTabsMeta(), []);
   const active0 = initialTabs.tabs.find((t) => t.id === initialTabs.activeId)!;
   const [tabs, setTabs] = useState<SqlTab[]>(initialTabs.tabs);
   const [activeTabId, setActiveTabId] = useState<string>(initialTabs.activeId);
@@ -182,9 +172,7 @@ export function SqlPage() {
   const [copied, setCopied] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const editorViewRef = useRef<EditorView | null>(null);
-  const pendingAutoRunRef = useRef(
-    (location.state as { autoRun?: boolean } | null)?.autoRun === true,
-  );
+  const pendingAutoRunRef = useRef(false);
   const pendingRunAfterFormatRef = useRef(false);
   const [nlText, setNlText] = useState(active0.nlText);
   const [nlLoading, setNlLoading] = useState(false);
@@ -462,6 +450,19 @@ export function SqlPage() {
     setActiveTabId(tab.id);
     loadTabIntoWorkingState(tab);
   }, [mergeActive, loadTabIntoWorkingState]);
+
+  // A hand-off from another page or from Polly: open the SQL in a new tab (and run it when asked),
+  // or offer to save a view of a table. Handled whether or not the page was already open.
+  useNavPayload<{ sql?: string; autoRun?: boolean; viewTable?: RegisteredTable }>((payload) => {
+    if (payload.viewTable) setViewTable(payload.viewTable);
+    if (payload.sql == null) return;
+    const merged = mergeActive();
+    const tab = emptyTab(newTabId(), nextTabTitle(merged), payload.sql);
+    setTabs([...merged, tab]);
+    setActiveTabId(tab.id);
+    loadTabIntoWorkingState(tab);
+    pendingAutoRunRef.current = payload.autoRun === true;
+  });
 
   // REQ-1322: the server expansion severs the metric link permanently (no re-ingestion path), so it
   // opens as a NEW query rather than overwriting the one it came from: the metric-referencing SQL is

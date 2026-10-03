@@ -10,7 +10,7 @@
 // permission from the copyright holder.
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useLocation } from "react-router-dom";
+import { useNavPayload } from "../hooks/useNavPayload";
 import { useTranslation } from "react-i18next";
 import { GrpcCodeView } from "./grpc/GrpcCodeView";
 import { Badge, Button, Checkbox, Group, MultiSelect, Select, Tabs, Text } from "@mantine/core";
@@ -167,59 +167,64 @@ function buildMessageTemplate(
   return JSON.stringify(input, null, 2);
 }
 
+interface GrpcHandoff {
+  method: string;
+  byColumns: string[] | null;
+  funcs: string[] | null;
+  projection: NodeProjection | null;
+  autoRun: boolean;
+  seq: number;
+}
+
+function listArg(signature: string, pattern: RegExp): string[] | null {
+  const m = signature.match(pattern);
+  return m
+    ? m[1]
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean)
+    : null;
+}
+
+/** The call syntax a hand-off carries, read once: by-columns, funcs and the nodes projection.
+ *  REQ-1401/REQ-1408: the NL page hands over the whole call syntax, so the projection it chose is
+ *  read out of it too, or the page runs a narrower query than the one the visitor opened. */
+function parseGrpcHandoff(signature: string, autoRun: boolean, seq: number): GrpcHandoff {
+  const projection: NodeProjection | null = /include_nodes\s*=\s*true/.test(signature)
+    ? { includeNodes: true, include: listArg(signature, /include=\[([^\]]*)\]/) ?? [] }
+    : null;
+  return {
+    method: signature,
+    byColumns: listArg(signature, /\(by=\[([^\]]*)\]/),
+    funcs: listArg(signature, /funcs=\[([^\]]*)\]/),
+    projection,
+    autoRun,
+    seq,
+  };
+}
+
 export function GrpcPage() {
   const { t } = useTranslation();
-  const location = useLocation();
   const { role } = useAuth();
   const { checkedDomains } = useDomainFilter();
   const roleId = role?.id ?? "";
   const domainsParam = checkedDomains.size > 0 ? [...checkedDomains].join(",") : "";
 
-  const [navMethod] = useState(
-    () => (location.state as { grpcMethod?: string } | null)?.grpcMethod ?? "",
-  );
-  const [navByColumns] = useState<string[] | null>(() => {
-    const m = ((location.state as { grpcMethod?: string } | null)?.grpcMethod ?? "").match(
-      /\(by=\[([^\]]*)\]/,
+  // A method handed to the page (NL "Open in gRPC", Polly) with the call syntax it was chosen with,
+  // whether the page was just opened or already open (useNavPayload below). Each hand-off has its
+  // own sequence number: the proto fetch selects it, and the auto-run effect runs it once.
+  const [handoff, setHandoff] = useState<GrpcHandoff | null>(null);
+  useNavPayload<{ grpcMethod?: string; autoRun?: boolean }>((payload) => {
+    if (!payload.grpcMethod) return;
+    const signature = payload.grpcMethod;
+    setHandoff((prev) =>
+      parseGrpcHandoff(signature, payload.autoRun === true, (prev?.seq ?? 0) + 1),
     );
-    return m
-      ? m[1]
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : null;
   });
-  const [navFuncs] = useState<string[] | null>(() => {
-    const m = ((location.state as { grpcMethod?: string } | null)?.grpcMethod ?? "").match(
-      /funcs=\[([^\]]*)\]/,
-    );
-    return m
-      ? m[1]
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : null;
-  });
-  // REQ-1401/REQ-1408: the NL page hands over the whole call syntax, so the projection it chose
-  // must be read out of it too — parsing only by/funcs silently dropped the nodes selection and
-  // the gRPC page ran a narrower query than the one the visitor clicked "Open in gRPC" on.
-  const [navProjection] = useState<NodeProjection | null>(() => {
-    const sig = (location.state as { grpcMethod?: string } | null)?.grpcMethod ?? "";
-    if (!/include_nodes\s*=\s*true/.test(sig)) return null;
-    const m = sig.match(/include=\[([^\]]*)\]/);
-    return {
-      includeNodes: true,
-      include: m
-        ? m[1]
-            .split(",")
-            .map((x) => x.trim())
-            .filter(Boolean)
-        : [],
-    };
-  });
-  const [navAutoRun] = useState(
-    () => (location.state as { autoRun?: boolean } | null)?.autoRun === true,
-  );
+  const navMethod = handoff?.method ?? "";
+  const navByColumns = handoff?.byColumns ?? null;
+  const navFuncs = handoff?.funcs ?? null;
+  const navProjection = handoff?.projection ?? null;
 
   const [protoText, setProtoText] = useState("");
   const [protoError, setProtoError] = useState("");
@@ -506,12 +511,17 @@ export function GrpcPage() {
     }
   }, [selectedMethod, roleId, messageText]);
 
-  const navAutoRunDoneRef = useRef(false);
+  const navAutoRunSeqRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!navAutoRun || navAutoRunDoneRef.current || !selectedMethod) return;
-    navAutoRunDoneRef.current = true;
+    if (!handoff?.autoRun || navAutoRunSeqRef.current === handoff.seq || !selectedMethod) return;
+    // Wait until the handed method is the selected one (the proto fetch selects it).
+    if (handoff.method.replace(/^Query/, "").replace(/\(.*$/, "") !== selectedMethod.typeName) {
+      return;
+    }
+    navAutoRunSeqRef.current = handoff.seq;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- runs a handed-over call once per hand-off, guarded by navAutoRunSeqRef; the run's setState calls happen in its async body
     void handleRun();
-  }, [selectedMethod, navAutoRun, handleRun]);
+  }, [selectedMethod, handoff, handleRun]);
 
   const visibleMethods = allMethods.filter((m) => m.operation === opType);
 

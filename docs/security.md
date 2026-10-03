@@ -315,13 +315,16 @@ Under multitenancy every request names the org it is for. Belonging to exactly o
 | ------- | -------------------------- |
 | HTTP (UI, REST, GraphQL) | The org's own hostname, `acme.provisa.dev`, or the `X-Org-Provisa` header on the control-plane host |
 | pgwire | The database name (`psql -d acme`, a BI tool's database field), or the org's own hostname dialed over TLS |
-| Bolt | The org's own hostname dialed over TLS |
+| Bolt | The database name, `<org>.provisa_<role>` (or `<org>.provisa_ops_<role>`), or the org's own hostname dialed over TLS |
 | Arrow Flight | `"org"` in the ticket |
 | gRPC | The `x-provisa-org` metadata header |
 | MCP (HTTP transport) | The org's own hostname, or the `X-Org-Provisa` header |
 | Python client | `org=` on `ProvisaClient`, `connect()` and `adbc_connect()`; `?org=` in a SQLAlchemy URL |
 
-A pgwire client that dials a hostname over TLS sends it in the TLS ClientHello, and Provisa reads the org from there (REQ-1234). When the hostname and the database name both name an org and the two differ, the connection is refused; neither is preferred. The database name `provisa`, the default, names no org.
+A pgwire client that dials a hostname over TLS sends it in the TLS ClientHello, and Provisa reads the org from there (REQ-1234). When the hostname and the database name both name an org and the two differ, the connection is refused; neither is preferred. The database name `provisa`, the default, names no org, and a BI tool connected to an org shows
+that org as its database. On Bolt, `SHOW DATABASES` lists one `<org>.provisa_<role>` per org the
+user belongs to; a bare `provisa_<role>` is refused under multitenancy, and a session stays in the
+org it first named.
 
 A name is a request, not a grant. It reaches the same resolver everywhere, which refuses an org the authenticated principal is neither a member of nor holds the cross-org right for.
 

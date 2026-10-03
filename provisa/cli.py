@@ -541,6 +541,40 @@ def _abort_unsupported_interpreter() -> None:
     )
 
 
+def _cmd_pg_ext_install(args: argparse.Namespace) -> int:  # REQ-1873
+    from provisa_pg_ext import ext_root  # type: ignore[import-not-found]  # the provisa-pg-ext wheel
+
+    from provisa.pg_extensions.external_install import (
+        BundleUnavailable,
+        DockerTarget,
+        LocalTarget,
+        apply_preload,
+        create_extensions,
+        install,
+    )
+
+    target = DockerTarget(args.docker) if args.docker else LocalTarget()
+    try:
+        installed = install(target, ext_root())
+    except BundleUnavailable as exc:
+        print(f"Nothing installed: {exc}", file=sys.stderr)
+        return 2
+    print(f"Installed {', '.join(installed.extensions)} into {target.label}.")
+    if not args.create:
+        if apply_preload(target, args.user, args.database, installed.needs_preload):
+            print(
+                f"{', '.join(installed.needs_preload)} must be preloaded: shared_preload_libraries "
+                "was extended. Restart the server, then run again with --create."
+            )
+        else:
+            print("Run again with --create to create the extensions.")
+        return 0
+    outcome = create_extensions(target, args.user, args.database, installed.extensions)
+    for name, error in outcome.items():
+        print(f"  {name}: {'created' if error is None else 'NOT created: ' + error}")
+    return 0 if all(e is None for e in outcome.values()) else 1
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
     _require_supported_interpreter()
     data_dir = Path(args.data_dir).expanduser()
@@ -680,6 +714,27 @@ def main(argv: list[str] | None = None) -> int:
     # that a machine may never deploy -- it is that a deploy is always an invocation carrying an
     # identity against a named control plane, never something a control plane does to itself on
     # noticing a commit.
+    # REQ-1873: stage the bundled extensions into the operator's own Postgres.
+    pgext = sub.add_parser("pg-ext", help="Bundled Postgres extensions")
+    pgext_sub = pgext.add_subparsers(dest="pg_ext_command", required=True)
+    pgext_install = pgext_sub.add_parser(
+        "install",
+        help="Install the bundled extensions into your own Postgres (Docker or this machine)",
+    )
+    where = pgext_install.add_mutually_exclusive_group(required=True)
+    where.add_argument("--docker", metavar="CONTAINER", help="a running Postgres container")
+    where.add_argument(
+        "--local", action="store_true", help="the Postgres whose pg_config is on PATH"
+    )
+    pgext_install.add_argument("--user", default="postgres", help="database user for SQL steps")
+    pgext_install.add_argument("--database", default="postgres", help="database for SQL steps")
+    pgext_install.add_argument(
+        "--create",
+        action="store_true",
+        help="after a restart, CREATE EXTENSION for every installed extension",
+    )
+    pgext_install.set_defaults(func=_cmd_pg_ext_install)
+
     env = sub.add_parser("env", help="Environment operations against a running Provisa")
     env_sub = env.add_subparsers(dest="env_command", required=True)
     env_deploy = env_sub.add_parser(

@@ -167,7 +167,7 @@ def _rewrite_pg_cast(node, _transform):
     return None
 
 
-def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
+def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
     """Rewrite catalog table refs for DuckDB and transpile from postgres dialect."""
     import sqlglot.expressions as exp
     import re as _pre_re
@@ -381,7 +381,7 @@ def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
             if fn in ("current_user", "session_user"):
                 return exp.Literal.string(role_id)
             if fn in ("current_database",):
-                return exp.Literal.string("provisa")
+                return exp.Literal.string(database)
             if fn == "version":
                 return exp.Literal.string("PostgreSQL 14.0 on Provisa")
             if "set_config" in fn:
@@ -393,7 +393,7 @@ def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
         if type(node).__name__ == "CurrentUser":
             return exp.Literal.string(role_id)
         if type(node).__name__ == "CurrentDatabase":
-            return exp.Literal.string("provisa")
+            return exp.Literal.string(database)
         if type(node).__name__ == "CurrentSchema":
             return exp.Literal.string("public")
         if isinstance(node, exp.Dot):

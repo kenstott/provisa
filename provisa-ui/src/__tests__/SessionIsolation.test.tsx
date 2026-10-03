@@ -127,7 +127,9 @@ describe("session-scoped client state (REQ-1326)", () => {
     );
 
     await waitFor(() => expect(screen.getByTestId("active-org")).toHaveTextContent("default"));
-    expect(localStorage.getItem("provisa_org")).toBeNull();
+    // REQ-1235: the stale org is gone, replaced by the org the server answered; the requests that
+    // follow name it, since a multi-tenant request naming no org is refused.
+    expect(localStorage.getItem("provisa_org")).toBe("default");
   });
 
   it("resolves to no org when the stored one is stale and the server names none", async () => {

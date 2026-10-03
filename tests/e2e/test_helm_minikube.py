@@ -27,16 +27,33 @@ from pathlib import Path
 
 import pytest
 
-# `cluster`: this test deploys the Helm chart to a live minikube and stops other
-# containers to free VM RAM — destructive to the shared suite. Runs in its own
-# lane (pytest -m cluster) against the already-running minikube; deselected from
-# the default suite (see pyproject addopts). Not a skip — a separate invocation.
+# `cluster`: this test deploys the Helm chart to a minikube profile of its own, created for this
+# run and deleted after it. Run it through the one-heavy-job slot; it stops no other container.
+# Every minikube, kubectl and helm call is pinned to that profile's context (see _pin), so it can
+# never reach whatever cluster the machine's current kube context names. Runs in its own lane
+# (pytest -m cluster); deselected from the default suite (see pyproject addopts).
 pytestmark = [pytest.mark.e2e, pytest.mark.cluster]
 
 CHART_DIR = Path(__file__).parents[2] / "helm" / "provisa"
 RELEASE = "provisa-test"
 NAMESPACE = "provisa-e2e"
 TIMEOUT = "1200s"
+# This run's own minikube profile, and so its own kube context. Never the default profile, and
+# never the machine's current context, which may name a production cluster.
+PROFILE = f"provisa-itest-{os.getpid()}"
+
+# REQ-1265: the chart renders only once a provider is chosen. This cluster runs the break-glass
+# account alone, so the install proves the auth block reaches the API.
+_AUTH_SETS = [
+    "--set",
+    "auth.provider=local",
+    "--set",
+    "auth.sessionSecret.existingSecret=provisa-session",
+    "--set",
+    "auth.breakGlass.username=platform-admin",
+    "--set",
+    "auth.breakGlass.existingSecret=provisa-break-glass",
+]
 
 _LOCAL_BIN = Path.home() / ".local" / "bin"
 
@@ -63,7 +80,7 @@ def _ensure_tools() -> None:
 
     try:
         status = subprocess.run(
-            ["minikube", "status", "--format={{.Host}}"],
+            _pin(["minikube", "status", "--format={{.Host}}"]),
             capture_output=True,
             text=True,
             timeout=10,
@@ -74,7 +91,7 @@ def _ensure_tools() -> None:
 
     if not running:
         start = subprocess.run(
-            ["minikube", "start", "--driver=docker", "--memory=6144", "--cpus=4"],
+            _pin(["minikube", "start", "--driver=docker", "--memory=6144", "--cpus=4"]),
             capture_output=True,
             text=True,
             timeout=600,
@@ -83,8 +100,32 @@ def _ensure_tools() -> None:
             pytest.fail(f"minikube start failed:\n{start.stderr}")
 
 
+def _pin(cmd: list[str]) -> list[str]:
+    """``cmd`` pinned to this run's profile: no cluster command may use the current context."""
+    tool = cmd[0]
+    if tool == "minikube":
+        return [tool, "-p", PROFILE, *cmd[1:]]
+    if tool == "kubectl":
+        return [tool, f"--context={PROFILE}", *cmd[1:]]
+    if tool == "helm":
+        return [tool, f"--kube-context={PROFILE}", *cmd[1:]]
+    return cmd
+
+
+def _assert_own_context() -> None:
+    """Refuse to go on unless this run's profile has a context of its own to pin to."""
+    names = subprocess.run(
+        ["kubectl", "config", "get-contexts", "-o", "name"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    ).stdout.split()
+    if PROFILE not in names:
+        pytest.fail(f"minikube profile {PROFILE!r} has no kube context; refusing to run")
+
+
 def _run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=1260, **kwargs)
+    return subprocess.run(_pin(cmd), capture_output=True, text=True, timeout=1260, **kwargs)
 
 
 def _kubectl(*args: str) -> subprocess.CompletedProcess:
@@ -97,30 +138,28 @@ def _get_pods() -> list[dict]:
     return json.loads(result.stdout)["items"]
 
 
-def _get_running_containers() -> list[str]:
-    """Return names of all running Docker containers except minikube itself."""
-    r = subprocess.run(
-        ["docker", "ps", "--format={{.Names}}"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    if r.returncode != 0:
-        return []
-    return [n for n in r.stdout.strip().splitlines() if n and n != "minikube"]
-
-
 @pytest.fixture(scope="module", autouse=True)
-def helm_install():
+def helm_install(request):
     """Install the Provisa Helm chart into a dedicated minikube namespace."""
-    _ensure_tools()
+    # A kubeconfig of this run's own: `minikube start` writes and selects its context in whatever
+    # kubeconfig is in force, and the machine's own may hold a production context the operator
+    # has selected. With this one, nothing outside the run's own file is read or changed.
+    import tempfile
 
-    # Minikube pods need Docker VM RAM headroom. Stop ALL external containers
-    # (except minikube itself) so the full 12 GB Docker VM is available.
-    # They are restarted in teardown so the broader e2e suite is unaffected.
-    stopped = _get_running_containers()
-    for c in stopped:
-        subprocess.run(["docker", "stop", c], capture_output=True, timeout=30)
+    previous = os.environ.get("KUBECONFIG")
+    os.environ["KUBECONFIG"] = str(Path(tempfile.mkdtemp(prefix="kubeconfig-")) / "config")
+
+    def _cleanup() -> None:
+        subprocess.run(["minikube", "delete", "-p", PROFILE], capture_output=True, timeout=300)
+        if previous is None:
+            os.environ.pop("KUBECONFIG", None)
+        else:
+            os.environ["KUBECONFIG"] = previous
+
+    # Registered before the profile exists, so a failure anywhere below still deletes it.
+    request.addfinalizer(_cleanup)
+    _ensure_tools()
+    _assert_own_context()
 
     # Build provisa:latest and load into minikube so IfNotPresent can find it
     repo_root = Path(__file__).parents[2]
@@ -142,10 +181,12 @@ def helm_install():
         pytest.fail(f"docker build failed:\n{build.stdout}\n{build.stderr}")
 
     load = subprocess.run(
-        ["minikube", "image", "load", "provisa:latest"],
+        _pin(["minikube", "image", "load", "provisa:latest"]),
         capture_output=True,
         text=True,
-        timeout=300,
+        # A fresh profile holds no image yet, so the whole image is copied in: a deadline sized
+        # for a multi-gigabyte copy on a loaded machine.
+        timeout=1500,
     )
     if load.returncode != 0:
         pytest.fail(f"minikube image load failed:\n{load.stdout}\n{load.stderr}")
@@ -158,10 +199,12 @@ def helm_install():
         timeout=10,
     )
     zload = subprocess.run(
-        ["minikube", "image", "load", "zaychik:latest"],
+        _pin(["minikube", "image", "load", "zaychik:latest"]),
         capture_output=True,
         text=True,
-        timeout=300,
+        # A fresh profile holds no image yet, so the whole image is copied in: a deadline sized
+        # for a multi-gigabyte copy on a loaded machine.
+        timeout=1500,
     )
     if zload.returncode != 0:
         pytest.fail(f"minikube image load (zaychik) failed:\n{zload.stdout}\n{zload.stderr}")
@@ -171,7 +214,7 @@ def helm_install():
     # so the provisioner doesn't re-claim stale data with wrong permissions.
     _run(["kubectl", "delete", "namespace", NAMESPACE, "--ignore-not-found=true", "--wait=true"])
     subprocess.run(
-        ["minikube", "ssh", f"sudo rm -rf /tmp/hostpath-provisioner/{NAMESPACE}/"],
+        _pin(["minikube", "ssh", f"sudo rm -rf /tmp/hostpath-provisioner/{NAMESPACE}/"]),
         capture_output=True,
         text=True,
         timeout=30,
@@ -181,7 +224,6 @@ def helm_install():
     # The chart requires the deployment's master key (a Secret, or a persistent data volume):
     # without one it does not render. A key of this test's own, held as a Secret.
     import base64
-    import os
 
     _run(
         [
@@ -194,6 +236,20 @@ def helm_install():
             f"--from-literal=master-key={base64.b64encode(os.urandom(32)).decode()}",
         ]
     )
+    # REQ-1265: the chart is installed with auth.provider=local, the break-glass account alone;
+    # its session key and password come from Secrets, as an operator supplies them.
+    for name, key in (("provisa-session", "session-secret"), ("provisa-break-glass", "password")):
+        _run(
+            [
+                "kubectl",
+                "create",
+                "secret",
+                "generic",
+                name,
+                f"--namespace={NAMESPACE}",
+                f"--from-literal={key}={base64.b64encode(os.urandom(36)).decode()}",
+            ]
+        )
 
     # Use minimal values: single replicas, no autoscaling, no ingress.
     # flightService.type=ClusterIP avoids LoadBalancer pending-IP stall in minikube.
@@ -208,10 +264,7 @@ def helm_install():
             f"--namespace={NAMESPACE}",
             "--set",
             "encryption.existingSecret=provisa-master-key",
-            # REQ-1265: the chart renders only once a provider is chosen; this cluster is
-            # exercised without one.
-            "--set",
-            "auth.provider=none",
+            *_AUTH_SETS,
             "--set",
             "provisa.replicaCount=1",
             "--set",
@@ -275,15 +328,11 @@ def helm_install():
     _run(["helm", "uninstall", RELEASE, f"--namespace={NAMESPACE}"])
     _run(["kubectl", "delete", "namespace", NAMESPACE, "--ignore-not-found=true"])
     subprocess.run(
-        ["minikube", "ssh", f"sudo rm -rf /tmp/hostpath-provisioner/{NAMESPACE}/"],
+        _pin(["minikube", "ssh", f"sudo rm -rf /tmp/hostpath-provisioner/{NAMESPACE}/"]),
         capture_output=True,
         text=True,
         timeout=30,
     )
-
-    # Restart heavy containers that were stopped to free memory for minikube pods.
-    for c in stopped:
-        subprocess.run(["docker", "start", c], capture_output=True, timeout=60)
 
 
 class TestPodsRunning:
@@ -407,6 +456,9 @@ class TestWorkerScaling:
                 str(CHART_DIR),
                 f"--namespace={NAMESPACE}",
                 "--set",
+                "encryption.existingSecret=provisa-master-key",
+                *_AUTH_SETS,
+                "--set",
                 "provisa.replicaCount=1",
                 "--set",
                 "provisa.hpa.enabled=false",
@@ -439,6 +491,9 @@ class TestWorkerScaling:
                 str(CHART_DIR),
                 f"--namespace={NAMESPACE}",
                 "--set",
+                "encryption.existingSecret=provisa-master-key",
+                *_AUTH_SETS,
+                "--set",
                 "provisa.replicaCount=1",
                 "--set",
                 "provisa.hpa.enabled=false",
@@ -454,3 +509,25 @@ class TestWorkerScaling:
                 f"--timeout={TIMEOUT}",
             ]
         )
+
+
+class TestAuthReachesTheApi:
+    """REQ-1265: the provider chosen at install is the one the running API is configured with."""
+
+    def test_the_api_config_carries_the_break_glass_block(self):
+        import yaml
+
+        result = _kubectl("get", "configmap", f"{RELEASE}-config", "-o", "json")
+        assert result.returncode == 0, result.stderr
+        config = yaml.safe_load(json.loads(result.stdout)["data"]["provisa.yaml"])
+        assert config["auth"]["provider"] == "basic"
+        assert config["auth"]["allow_registration"] is False
+        assert config["auth"]["superuser"]["username"] == "platform-admin"
+
+    def test_the_api_reads_the_password_from_the_secret(self):
+        result = _kubectl("get", "deployment", f"{RELEASE}-provisa", "-o", "json")
+        assert result.returncode == 0, result.stderr
+        containers = json.loads(result.stdout)["spec"]["template"]["spec"]["containers"]
+        env = {e["name"]: e for c in containers if c["name"] == "provisa" for e in c["env"]}
+        ref = env["PROVISA_AUTH_BREAK_GLASS_PASSWORD"]["valueFrom"]["secretKeyRef"]
+        assert ref == {"name": "provisa-break-glass", "key": "password"}

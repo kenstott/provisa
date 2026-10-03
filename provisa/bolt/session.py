@@ -440,7 +440,19 @@ class BoltSession:
         ssl_object = get_extra_info("ssl_object") if get_extra_info is not None else None
         return org_from_host(indicated_host(ssl_object))
 
-    async def _ensure_org(self) -> None:
+    async def _member_orgs(self) -> list[str]:
+        """The orgs this session's user belongs to (for SHOW DATABASES under multi-tenancy)."""
+        from provisa.api.app import state as app_state
+        from provisa.core.org_membership import bindable_memberships
+
+        # Called only for an authenticated session on a multi-tenant deployment, which always has
+        # a platform plane and a user.
+        assert app_state.admin_db is not None and self.user_id is not None
+        async with app_state.admin_db.acquire() as conn:
+            result = await conn.execute_core(bindable_memberships(self.user_id))
+            return sorted(dict(r._mapping)["org_id"] for r in result.fetchall())
+
+    async def _ensure_org(self, database_org: str | None = None) -> None:
         """Resolve+build this session's org runtime once (REQ-1266).
 
         Bolt's org request is the hostname the driver dialed, carried in TLS SNI (REQ-1234) — the
@@ -448,11 +460,21 @@ class BoltSession:
         the principal is not a member of is refused below, so the org is still derived from
         membership (REQ-1235: an org nobody named is refused, a lone membership included; platform
         admin → default runtime — no silent cross-tenant default). Runs on the event loop, so a plain set/reset
-        around handle_run's execution binds it (no thread hop, unlike pgwire)."""
+        around handle_run's execution binds it (no thread hop, unlike pgwire).
+
+        REQ-1235: ``database_org`` is the org the database name names (``<org>.provisa_<role>``).
+        A session is bound to one org: a later database naming another is refused."""
+        from provisa.api.org_resolve import OrgResolutionError
+
         if self._org_resolved:
+            if database_org is not None and database_org != self.org_id:
+                raise OrgResolutionError(
+                    f"this session is bound to org {self.org_id!r}; "
+                    f"open a new session for {database_org!r}"
+                )
             return
         from provisa.api.app import ensure_org_runtime, state as app_state
-        from provisa.api.org_resolve import resolve_session_org
+        from provisa.api.org_resolve import org_named_by_host_or_database, resolve_session_org
 
         # REQ-1337: resolve the claims to RIGHTS and test cross_org — never the role name.
         caps = capabilities_for_claims(self.roles, getattr(app_state, "roles", {}))
@@ -460,9 +482,12 @@ class BoltSession:
             app_state,
             user_id=self.user_id,
             can_act_any_org=can_act_cross_org(caps),
-            requested_org=self._requested_org(),
+            requested_org=org_named_by_host_or_database(self._requested_org(), database_org),
             credential_org=self._credential_org,
-            named_by="connect over TLS to the org's own hostname (<org>.<domain>), which names it",
+            named_by=(
+                "use the database <org>.provisa_<role>, or connect over TLS to the org's own "
+                "hostname (<org>.<domain>)"
+            ),
         )
         if org_id is not None:
             await ensure_org_runtime(org_id)
@@ -477,6 +502,16 @@ class BoltSession:
 
         # db selection: autocommit RUN carries `db` in extra; explicit-tx inherits BEGIN's db.
         db = extra.get("db", self._tx_db)
+        # REQ-1235: under multi-tenancy the database name carries the org, <org>.provisa_<role>.
+        from provisa.api.app import state as _app_state
+        from provisa.api.org_resolve import OrgResolutionError
+
+        multitenant = bool(getattr(_app_state, "multitenancy", False))
+        try:
+            database_org, db = select_database(db, multitenancy=multitenant)
+        except OrgResolutionError as exc:
+            self.send_failure("Neo.ClientError.Database.DatabaseNotFound", str(exc))
+            return
         resolved = self._resolve_db(db) if self.roles else None
 
         import logging as _logging
@@ -508,10 +543,9 @@ class BoltSession:
 
         # REQ-1266: resolve this session's org (once) and bind it around execution so every
         # state.X read below routes to the org's runtime. Ambiguous membership fails the RUN.
-        from provisa.api.org_resolve import OrgResolutionError
-
         try:
-            await self._ensure_org()
+            await self._ensure_org(database_org)
+            member_orgs = await self._member_orgs() if multitenant else None
         except OrgResolutionError as exc:
             self.send_failure("Neo.ClientError.Security.Forbidden", str(exc))
             return
@@ -553,6 +587,7 @@ class BoltSession:
                     role_id,
                     include_ops=include_ops,
                     roles=self.roles,
+                    orgs=member_orgs,
                     deliver=delivery,
                 )
                 # The result is ready only now: not handed over once the deadline has passed.
@@ -841,8 +876,37 @@ def _business_view(base: Any) -> Any:
     )
 
 
-def _show_databases_rows(roles: list[str]) -> tuple[list[str], list[list[Any]]]:
-    """One database per (view × role): provisa_<role> (business) and provisa_ops_<role>."""
+def select_database(db: Any, *, multitenancy: bool) -> tuple[str | None, Any]:  # REQ-1235
+    """Split a Bolt database name into (the org it names, the role database).
+
+    Multi-tenant names carry the org: ``<org>.provisa_<role>``; a bare role database is refused,
+    naming the form. The system database (empty, ``system``) names no org. Single-tenant names
+    have no org part.
+    """
+    from provisa.api.org_resolve import OrgResolutionError
+
+    if not isinstance(db, str) or db in ("", "system"):
+        return None, db
+    org, dot, rest = db.partition(".")
+    if not multitenancy:
+        if dot:
+            raise OrgResolutionError(
+                f"database {db!r} does not exist: this deployment has no org part in its "
+                "database names"
+            )
+        return None, db
+    if not dot or not org:
+        raise OrgResolutionError(f"database {db!r} names no org; use <org>.{db}, e.g. acme.{db}")
+    return org, rest
+
+
+def _show_databases_rows(
+    roles: list[str], orgs: list[str] | None = None
+) -> tuple[list[str], list[list[Any]]]:
+    """One database per (view × role): provisa_<role> (business) and provisa_ops_<role>.
+
+    REQ-1235: ``orgs`` (multi-tenant) prefixes each with every org the user belongs to; None is a
+    single-tenant deployment, whose names have no org part."""
     cols = [
         "name",
         "type",
@@ -860,26 +924,29 @@ def _show_databases_rows(roles: list[str]) -> tuple[list[str], list[list[Any]]]:
     ]
     default_role = roles[0] if roles else None
     rows: list[list[Any]] = []
-    for r in roles:
-        for name in (f"provisa_{r}", f"provisa_ops_{r}"):
-            is_home = name == f"provisa_{default_role}"
-            rows.append(
-                [
-                    name,
-                    "standard",
-                    [],
-                    "read-write",
-                    "localhost:17687",
-                    "primary",
-                    True,
-                    "online",
-                    "online",
-                    "",
-                    is_home,
-                    is_home,
-                    [],
-                ]
-            )
+    prefixes = [f"{o}." for o in orgs] if orgs is not None else [""]
+    home_prefix = prefixes[0] if prefixes else ""
+    for prefix in prefixes:
+        for r in roles:
+            for name in (f"{prefix}provisa_{r}", f"{prefix}provisa_ops_{r}"):
+                is_home = name == f"{home_prefix}provisa_{default_role}"
+                rows.append(
+                    [
+                        name,
+                        "standard",
+                        [],
+                        "read-write",
+                        "localhost:17687",
+                        "primary",
+                        True,
+                        "online",
+                        "online",
+                        "",
+                        is_home,
+                        is_home,
+                        [],
+                    ]
+                )
     return cols, rows
 
 
@@ -890,6 +957,7 @@ def _system_query(
     include_ops: bool,
     app_state: Any,
     roles: list[str] | None = None,
+    orgs: list[str] | None = None,
 ) -> tuple[list[str], list[list[Any]]] | None:
     """Handle Neo4j Browser system/catalog queries. Return None to fall through."""
     import logging as _logging
@@ -902,7 +970,7 @@ def _system_query(
     # SHOW DATABASES / SHOW DEFAULT DATABASE — one db per (view × role) the user holds.
     if q_upper.startswith("SHOW DATABASE") or q_upper.startswith("SHOW DEFAULT DATABASE"):
         _dbg.warning("[BOLT] _system_query: intercepted SHOW DATABASES roles=%r", roles)
-        return _show_databases_rows(roles or ([role_id] if role_id else []))
+        return _show_databases_rows(roles or ([role_id] if role_id else []), orgs)
 
     # SHOW ALIASES
     if q_upper.startswith("SHOW ALIASES"):
@@ -1260,6 +1328,7 @@ async def _execute_cypher(
     include_ops: bool = True,
     roles: list[str] | None = None,
     deliver: Any = None,
+    orgs: list[str] | None = None,
 ) -> tuple[list[str], list[list[Any]], dict | None]:
     """Run Cypher through the Provisa pipeline; return (columns, rows-of-values, redirect-handle).
 
@@ -1289,7 +1358,7 @@ async def _execute_cypher(
     if ctx is None:
         raise PermissionError("Schema not loaded")
 
-    result = _system_query(cypher, ctx, role_id, include_ops, app_state, roles)
+    result = _system_query(cypher, ctx, role_id, include_ops, app_state, roles, orgs)
     if result is not None:
         return (*result, None)
 

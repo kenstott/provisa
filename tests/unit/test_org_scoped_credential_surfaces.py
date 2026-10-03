@@ -362,3 +362,44 @@ class TestPgwireDatabaseNamesTheOrg:
         from provisa.pgwire.server import _resolve_and_build_org
 
         assert await _resolve_and_build_org(_SingleTenantState(), _person(), "x", "y") is None
+
+
+# --- pgwire: the catalog shows the connected org as the database -------------------------------
+
+
+class TestPgwireCatalogNamesTheOrg:
+    """A BI tool lists the database it connected to. Under multi-tenancy that is the org."""
+
+    def _served(self, multitenancy: bool, org: str | None):
+        from types import SimpleNamespace
+
+        from provisa.core.request_context import reset_current_org, set_current_org
+        from provisa.pgwire.catalog_populate import served_database_name
+
+        token = set_current_org(org) if org is not None else None
+        try:
+            return served_database_name(SimpleNamespace(multitenancy=multitenancy))
+        finally:
+            if token is not None:
+                reset_current_org(token)
+
+    def test_multi_tenant_shows_the_bound_org(self):
+        assert self._served(True, "acme") == "acme"
+
+    def test_single_tenant_shows_provisa(self):
+        assert self._served(False, "acme") == "provisa"
+
+    def test_current_database_answers_the_org(self):
+        from types import SimpleNamespace
+
+        from provisa.core.request_context import reset_current_org, set_current_org
+        from provisa.pgwire.catalog import _handle_scalar
+
+        token = set_current_org("acme")
+        try:
+            result = _handle_scalar(
+                "select current_database()", "analyst", SimpleNamespace(multitenancy=True)
+            )
+        finally:
+            reset_current_org(token)
+        assert result.rows == [("acme",)]
