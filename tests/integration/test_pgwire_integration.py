@@ -995,16 +995,14 @@ class TestPgwireSQLOnlyRestrictions:
 # ---------------------------------------------------------------------------
 
 
-class TestPgwireDDLCapability:
-    """REQ-616: COPY/DDL blocked without ddl capability (42501)."""
+class TestPgwireCopyFrom:
+    """REQ-615: COPY FROM STDIN is a write, and pgwire takes no writes."""
 
-    async def test_copy_without_ddl_capability_rejected(self, pgwire_srv):
-        """COPY TO STDOUT without ddl capability raises 42501."""
+    async def test_copy_from_stdin_is_refused(self, pgwire_srv):
+        """COPY FROM STDIN is refused with 0A000 before the client is asked for data."""
         port, _ = pgwire_srv
         provider = _stub_auth_provider("admin", "secret")
-        # Role has no "ddl" capability
         state = _make_mock_state("admin", "simple")
-        state.roles["admin"]["capabilities"] = []
 
         with (
             patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
@@ -1017,8 +1015,8 @@ class TestPgwireDDLCapability:
                 password="secret",
                 database="provisa",
             )
-            with pytest.raises(asyncpg.PostgresError):
-                await conn.execute("COPY orders TO STDOUT")
+            with pytest.raises(asyncpg.FeatureNotSupportedError):
+                await conn.execute("COPY orders FROM STDIN")
             await conn.close()
 
 

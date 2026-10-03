@@ -25,6 +25,7 @@ in service, defined, and grounded in a physical column.
 
 # Requirements: REQ-1387, REQ-1591
 
+from provisa.core import model_change
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, select, update
@@ -567,6 +568,7 @@ async def create_abstract_term(
     # (normalize_term case-folds), so a manually-created one that isn't would be the one
     # inconsistent entry, and silently invite a same-word duplicate differing only in case
     # ("Sepal Length" alongside "sepal length"). Never left to the caller to remember.
+    model_change.name("create", "glossary term", name)  # REQ-1524
     name = name.strip().lower()
     if not name:
         raise ValueError("term name is required")
@@ -624,6 +626,7 @@ async def upsert_declared_term(
     This is also how a config entry grounds an already-physical term: naming an existing
     rooted term adds a definition without touching its ``is_abstract`` flag or column refs.
     """
+    model_change.name("upsert", "glossary term", name)  # REQ-1524
     name = name.strip().lower()  # REQ-1844: every term name in this catalog is lowercase
     if not name:
         raise ValueError("term name is required")

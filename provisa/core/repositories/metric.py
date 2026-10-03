@@ -17,6 +17,7 @@ expression here — an unparsable or non-aggregate expression is a hard error, n
 
 # Requirements: REQ-1317, REQ-1319, REQ-1320
 
+from provisa.core import model_change
 from typing import TYPE_CHECKING
 
 import sqlglot
@@ -52,6 +53,7 @@ async def upsert(  # REQ-1317, REQ-1320, REQ-1919
     """Upsert a metric by name. The expression is validated on every write (hard error).
     ``origin`` says where it comes from (``repositories.origin``): written when the metric is
     CREATED and left alone after, except that a config load takes over an admin-made one."""
+    model_change.name("upsert", "metric", metric.name)  # REQ-1524
     require_origin(origin)
     validate_expression(metric.expression)
     vals = {
@@ -114,6 +116,7 @@ async def delete(conn: "Connection", name: str) -> bool:  # REQ-1317, REQ-1918
     Refused (:class:`MetricDeleteRefused`), naming each, while a view is composed from it (its
     ``view_metrics`` lists the metric) or a view's SQL reads it as ``metrics.<name>``. One
     transaction; no database cascade is relied on."""
+    model_change.name("delete", "metric", name)  # REQ-1524
     ref = ObjectRef("metric", name)
     async with conn.transaction():
         if await get(conn, name) is None:

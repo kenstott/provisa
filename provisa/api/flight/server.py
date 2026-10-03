@@ -985,6 +985,7 @@ class ProvisaFlightServer(
             return self._cypher_stream(
                 [dict(zip(direct.column_names, row, strict=False)) for row in direct.rows],
                 graph_vars,
+                plan.warnings,
             )
         # REQ-1661: this govern-then-execute terminal never reaches _execute_plan, so its own
         # ensure_resident call is the ONLY place a MATERIALIZED source this plan reads gets landed
@@ -1036,12 +1037,12 @@ class ProvisaFlightServer(
             plan.row_count = len(raw_rows)
             self._finalize_audit(plan, 200)  # REQ-074/REQ-1386
 
-        return self._cypher_stream(raw_rows, graph_vars)
+        return self._cypher_stream(raw_rows, graph_vars, plan.warnings)
 
     @staticmethod
     def _cypher_stream(
-        raw_rows: list[dict[str, object]], graph_vars: dict[str, Any]
-    ) -> flight.RecordBatchStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        raw_rows: list[dict[str, object]], graph_vars: dict[str, Any], warnings: Any = ()
+    ) -> flight.RecordBatchStream | flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Assemble a Cypher result's rows into graph values and return them as an Arrow stream."""
         from provisa.cypher.assembler import assemble_rows, to_serializable
 
@@ -1053,7 +1054,7 @@ class ProvisaFlightServer(
             empty = {col: pa.array([], type=pa.utf8()) for col in columns}
             _catalog = pa.table(empty)
             _report_table(_catalog)
-            return record_batch_stream(_catalog)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            return record_batch_stream(_catalog, warnings)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         col_names = list(serialized[0].keys())
         col_data: dict[str, list[object]] = {c: [] for c in col_names}
@@ -1063,7 +1064,7 @@ class ProvisaFlightServer(
                 col_data[col].append(json.dumps(val) if isinstance(val, (dict, list)) else val)
         _catalog = pa.table(col_data)
         _report_table(_catalog)
-        return record_batch_stream(_catalog)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return record_batch_stream(_catalog, warnings)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     def _execute_query(
         self, request: dict[str, object]
@@ -1085,7 +1086,7 @@ class ProvisaFlightServer(
             return self._do_get_sql_governed(request)
         return self._do_get_graphql(request)
 
-    def _license_stream(self, table: "pa.Table", role_id: str):  # REQ-1137
+    def _license_stream(self, table: "pa.Table", role_id: str, warnings: Any = ()):  # REQ-1137
         """Return a Flight stream for ``table``, attaching the license nag as app_metadata on the
         first batch when nagging (out-of-band — the row data is untouched). Once per role/session."""
         _report_table(table)
@@ -1096,7 +1097,7 @@ class ProvisaFlightServer(
         except Exception:
             text = None
         if not text:
-            return record_batch_stream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            return record_batch_stream(table, warnings)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         meta = pa.py_buffer(text.replace("\n", " ").encode("utf-8"))
 
         def _gen():
@@ -1108,9 +1109,11 @@ class ProvisaFlightServer(
                 else:
                     yield batch
 
-        return generator_stream(table.schema, _gen())  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return generator_stream(table.schema, _gen(), warnings)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
-    def _license_stream_gen(self, schema, batch_gen, role_id: str):  # REQ-1137, REQ-1214
+    def _license_stream_gen(
+        self, schema, batch_gen, role_id: str, warnings: Any = ()
+    ):  # REQ-1137, REQ-1214
         """Return a Flight GeneratorStream over a LAZY record-batch generator, attaching the license
         nag as app_metadata on the first batch when nagging (out-of-band — row data untouched). The
         streaming counterpart of :meth:`_license_stream`: the result never materializes as a Table."""
@@ -1135,7 +1138,7 @@ class ProvisaFlightServer(
                 else:
                     yield batch
 
-        return generator_stream(schema, _gen())  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return generator_stream(schema, _gen(), warnings)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     def _do_get_sql_governed(
         self, request: dict[str, object]
@@ -1188,7 +1191,7 @@ class ProvisaFlightServer(
                 from provisa.pgwire._pipeline import check_response_cache_arrow
 
                 table = self._run_on_loop(check_response_cache_arrow(plan, self._state))
-                return self._license_stream(table, role_id)  # REQ-1137
+                return self._license_stream(table, role_id, plan.warnings)  # REQ-1137
             if plan.route == Route.ENGINE:
                 assert plan.physical_sql is not None
                 # REQ-1661: this govern-then-stream terminal never reaches _execute_plan (see the
@@ -1200,11 +1203,13 @@ class ProvisaFlightServer(
                 # REQ-1887/REQ-1897: see _engine_arrow_through_cache.
                 cached_table, arrow_schema, batch_gen = self._engine_arrow_through_cache(plan, [])
                 if cached_table is not None:
-                    return self._license_stream(cached_table, role_id)  # REQ-1137
+                    return self._license_stream(cached_table, role_id, plan.warnings)  # REQ-1137
                 # The stream is drained after do_get returns: the row is written when it ends.
                 self._finalize_audit(plan, 200, defer_to_drain=True)
                 batch_gen = _audited_arrow(plan, batch_gen)
-                return self._license_stream_gen(arrow_schema, batch_gen, role_id)  # REQ-1137
+                return self._license_stream_gen(
+                    arrow_schema, batch_gen, role_id, plan.warnings
+                )  # REQ-1137
             elif plan.route == Route.DIRECT:
                 if self._state.source_pools.has(
                     plan.source_id
@@ -1257,7 +1262,7 @@ class ProvisaFlightServer(
                     # REQ-1882: the cursor is pumped on this RPC's loop as pyarrow drains the
                     # stream after do_get returns, so the stream holds the loop until it ends.
                     return self._license_stream_gen(
-                        arrow_schema, _hold_loop_for_stream(batch_gen), role_id
+                        arrow_schema, _hold_loop_for_stream(batch_gen), role_id, plan.warnings
                     )  # REQ-1137
                 from provisa.pgwire._pipeline import serve_buffered_through_cache
 
@@ -1277,7 +1282,7 @@ class ProvisaFlightServer(
                 table = rows_to_arrow_table(result.rows, columns)
                 plan.row_count = len(result.rows)
                 self._finalize_audit(plan, 200)
-                return self._license_stream(table, role_id)  # REQ-1137
+                return self._license_stream(table, role_id, plan.warnings)  # REQ-1137
             else:
                 raise _flight_error(f"Route {plan.route!r} is not supported for SQL via Flight")
         except Exception:
@@ -1398,7 +1403,7 @@ class ProvisaFlightServer(
                 table = rows_to_arrow_table(result.rows, compiled.columns)
                 plan.row_count = len(result.rows)
                 self._finalize_audit(plan, 200)
-                return record_batch_stream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                return record_batch_stream(table, plan.warnings)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
             assert plan.physical_sql is not None
             # REQ-1661/REQ-1887/REQ-1897: see _engine_arrow_through_cache.
@@ -1406,13 +1411,13 @@ class ProvisaFlightServer(
                 plan, compiled.params
             )
             if cached_table is not None:
-                return record_batch_stream(cached_table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                return record_batch_stream(cached_table, plan.warnings)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             self._finalize_audit(plan, 200, defer_to_drain=True)
             batch_gen = _audited_arrow(plan, batch_gen)
             # REQ-1905: pulled after do_get returns; the stream stays under its deadline.
             from provisa.api.flight.deadline import stream_within_deadline
 
-            return generator_stream(arrow_schema, stream_within_deadline(batch_gen))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            return generator_stream(arrow_schema, stream_within_deadline(batch_gen), plan.warnings)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         except Exception:
             self._finalize_audit(plan, 500)
             raise

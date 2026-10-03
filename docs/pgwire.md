@@ -121,33 +121,26 @@ CLOSE ALL;   -- release every open cursor on this connection
 
 **Cursor lifetime.** Provisa's pgwire server has no transaction state machine (`ProvisaSession.in_transaction()` is hardcoded `False`). Every cursor therefore behaves as if declared `WITH HOLD`: it lives for the duration of the connection, not until `COMMIT`. [tool-verified: `server.py:200` — `in_transaction()` always returns `False`] The `WITH HOLD` and `WITHOUT HOLD` keywords are accepted and silently ignored — there is no per-transaction cursor lifecycle to enforce.
 
-### DDL
+### Definitions (CREATE, ALTER, DROP, TRUNCATE)
 
-DDL statements are detected by the regex in `server.py` and dispatched to `DdlHandler`. The role must have the `"ddl"` capability. (REQ-042) Without it, the statement is rejected with SQLSTATE 42501. [tool-verified: `ddl_handler.py:82-83`]
+Nothing is defined through pgwire. A statement that creates, alters or drops an object (`CREATE TABLE`, `CREATE TABLE … AS SELECT`, `CREATE VIEW`, `ALTER`, `DROP`, an index, a sequence or a schema) is refused with SQLSTATE 0A000, whatever the role holds; a session's own temporary table is the exception. A table or view is a model object: create it in the model (admin pages, admin API or config), or create it in the data source and admit it into the model. `TRUNCATE` is refused the same way; `DELETE` is the governed way to remove rows. [tool-verified: `provisa/compiler/definitions.py`]
 
-The recognized DDL forms are:
+The refusal is made once, in the pipeline every SQL surface passes through, so SQL over HTTP, Flight and MCP refuse the same statements with the same message.
 
-```sql
-CREATE TABLE / VIEW / INDEX / UNIQUE INDEX / SEQUENCE / SCHEMA
-ALTER TABLE / INDEX / SEQUENCE / VIEW
-DROP TABLE / VIEW / INDEX / SEQUENCE / SCHEMA
-```
+### Data writes (INSERT, UPDATE, DELETE, MERGE, COPY FROM STDIN)
 
-[tool-verified: `server.py:56-61`]
+Rows of an existing registered table are written through pgwire as on every other SQL surface, through the one write admission (`provisa/compiler/write_admission.py`):
 
-Two execution paths exist depending on `ddl_catalog`: (REQ-582)
+1. **The right.** The role holds `write`. (REQ-868)
+2. **The columns.** Every column the statement writes names the role in its `writable_by`; a column that declares none is writable by nobody. (REQ-663)
+3. **The rows it may touch.** The role's row filter, the same predicate its reads carry, is added to the `WHERE` of an `UPDATE` or `DELETE`.
+4. **The rows it leaves behind.** A filtered role may only write rows it could then read: an `INSERT`'s rows, and the new values of an `UPDATE` that sets a column the filter reads, are checked against the filter before anything is sent to the source.
 
-**Trino path** — used when `ddl_catalog` is an Iceberg, Hive, or other non-registered Trino catalog (e.g. `iceberg`, `hive`, `otel`, `results`). Only `CREATE TABLE` and `CREATE VIEW` are supported on this path. Attempting `ALTER`, `DROP`, or `CREATE INDEX` raises an error. The table name is fully qualified as `catalog.schema.table`. [tool-verified: `ddl_handler.py:92-100`]
-
-**Direct path** — used when `ddl_catalog` matches a registered source ID. Full DDL is supported: CREATE, ALTER, DROP, indexes, sequences. `CREATE TABLE` and `CREATE VIEW` are schema-qualified as `schema.table`. All other DDL (ALTER, DROP, CREATE INDEX) passes through as-is after setting the schema context. For PostgreSQL and SQLite sources, context is set with `SET search_path TO schema`. For MySQL and MariaDB, context is set with `USE schema`. [tool-verified: `ddl_handler.py:139-170`, `ddl_handler.py:207-213`]
-
-After DDL on either path, the new table is registered into the role's compilation context so it is immediately queryable. (REQ-583) [tool-verified: `ddl_handler.py:216-250`]
-
-**Write target resolution.** The DDL catalog and schema come from the domain's `ddl_catalog` and `ddl_schema` fields. If `ddl_catalog` is not set, the system defaults to the Iceberg catalog. If `ddl_schema` is not set, it defaults to the domain ID. The domain is resolved through the role's `domain_access` list. (REQ-584) [tool-verified: `app.py:804-811`, `ddl_handler.py:104-115`]
+Whatever cannot be decided is refused by name rather than admitted on doubt (an `INSERT … SELECT`, a value that is neither a literal nor a bound parameter, a filter that reads a column the statement does not supply). [inferred: pgwire's admission of data writes is being changed to this; see the write admission module for the rules]
 
 ### COPY
 
-`COPY ... TO STDOUT` and `COPY ... FROM STDIN` are both supported. (REQ-585) [tool-verified: `copy_handler.py:231-257`]
+`COPY ... TO STDOUT` and `COPY ... FROM STDIN` are both supported. (REQ-585)
 
 **COPY TO STDOUT** — exports query results in PG COPY wire format. Two forms work:
 
@@ -161,13 +154,7 @@ COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 
 Supported formats: `text` (tab-delimited, default) and `csv`. Binary format is not supported on COPY output. [tool-verified: `copy_handler.py:36-52`]
 
-**COPY FROM STDIN** — inserts rows into a target table. Restricted to sources with types `postgresql`, `mysql`, `sqlite`, or `mariadb`. (REQ-586) Attempting COPY FROM against a Trino-only source (e.g. Iceberg) raises a permission error. [tool-verified: `copy_handler.py:65`, `copy_handler.py:351-356`]
-
-```sql
-COPY my_table (col1, col2) FROM STDIN WITH (FORMAT text)
-```
-
-If no column list is provided, columns are inferred from the registered schema. [tool-verified: `copy_handler.py:357`]
+**COPY FROM STDIN** is a data write into an existing registered table: it is admitted by the same write admission as an `INSERT` of the same rows (see [Data writes](#data-writes-insert-update-delete-merge-copy-from-stdin)).
 
 ### Transactions and Session Commands
 
@@ -252,19 +239,15 @@ Some JDBC-based BI tools send a burst of `information_schema` and `pg_catalog` q
 
 ## Caveats and Constraints
 
-**SQL only; no DML mutations.** The pgwire listener parses and executes SQL only — GraphQL and Cypher strings are not accepted. (REQ-614) Plain `INSERT`, `UPDATE`, and `DELETE` are not routed to a write path. (REQ-615) Write data through `COPY FROM STDIN` (writable sources) or `CREATE TABLE AS`; row-level mutations go through the GraphQL, Cypher, or Trino write paths instead.
+**SQL only.** The pgwire listener parses and executes SQL only — GraphQL and Cypher strings are not accepted. (REQ-614) Data writes to existing tables are admitted by the role's rights, its column grants and its row filter; see [Data writes](#data-writes-insert-update-delete-merge-copy-from-stdin).
 
-**COPY and DDL require the `ddl` capability.** Both `COPY` (in either direction) and DDL are gated on the role's `ddl` capability; roles without it receive SQLSTATE 42501. (REQ-616)
+**No definitions.** `CREATE`, `ALTER`, `DROP` and `TRUNCATE` are refused with SQLSTATE 0A000 whatever the role holds, except a session's own temporary table; see [Definitions](#definitions-create-alter-drop-truncate). (REQ-616)
 
 **No real transaction support.** BEGIN/COMMIT/ROLLBACK are accepted and silently ignored. Each statement runs independently. (REQ-587) [tool-verified: `server.py:146-158` — `in_transaction()` always returns `False`]
 
-**60-second DDL timeout, 120-second query timeout.** These are hard-coded in the handler threads. (REQ-590) Long-running DDL against remote sources (schema changes on large tables) may time out. [tool-verified: `ddl_handler.py:136`, `server.py:186`]
-
-**COPY FROM is writable-source-only.** Iceberg, Hive, Trino-only sources, and read-only source types do not accept COPY FROM. The error is SQLSTATE 42501. (REQ-586) [tool-verified: `copy_handler.py:65`]
+**Query timeout.** A statement may take pgwire's own request timeout, `limits.request_timeouts.pgwire`, or the shared `limits.request_timeout` when that is unset; both are operator settings. (REQ-590, REQ-1905) [tool-verified: `provisa/core/limits.py`, `server.py`]
 
 **COPY output format is text or csv.** PG binary COPY format (`FORMAT binary`) is not implemented. [inferred: only `text` and `csv` branches exist in `_rows_to_copy_text` / `_rows_to_copy_csv`]
-
-**DDL on Trino path is CREATE only.** ALTER, DROP, and CREATE INDEX against Iceberg or Hive catalogs are not supported. Use a registered SQL source as `ddl_catalog` if you need full DDL. (REQ-582) [tool-verified: `ddl_handler.py:92-100`]
 
 **Parameter substitution is literal.** `$1`, `$2`, ... parameters are substituted as SQL literals before execution, not sent as bind parameters to the upstream engine. This means the upstream engine never sees a prepared statement. For Trino this has no practical impact; for direct-pool sources it bypasses prepared-statement caching. (REQ-581) [tool-verified: `server.py:78-85`]
 

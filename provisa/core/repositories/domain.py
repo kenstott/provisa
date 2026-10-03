@@ -12,6 +12,7 @@
 
 # Requirements: REQ-021, REQ-154, REQ-367, REQ-402
 
+from provisa.core import model_change
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, select
@@ -32,6 +33,7 @@ async def upsert(  # REQ-021, REQ-367, REQ-1919
     """Create the domain, or replace its definition. ``origin`` says where it comes from
     (``repositories.origin``): written when the domain is CREATED and left alone after, except
     that a config load takes over a domain made through the admin."""
+    model_change.name("upsert", "domain", domain.id)  # REQ-1524
     require_origin(origin)
     await conn.upsert(
         domains,
@@ -89,6 +91,7 @@ async def delete(conn: "Connection", domain_id: str) -> bool:  # REQ-021, REQ-19
     in it, a role lists it, an assignment is scoped to it, or a source allows it. It has no
     parts, so the delete removes the one row. A domain the deployment keeps is refused.
     """
+    model_change.name("delete", "domain", domain_id)  # REQ-1524
     from provisa.core import domain_policy
 
     ref = ObjectRef("domain", domain_id)

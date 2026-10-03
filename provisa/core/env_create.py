@@ -34,6 +34,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from provisa.core import model_change
 from provisa.core import settings_registry
 from provisa.core.env_copy import REPLACE, CopyReport, adopt_role_definition, copy_model
 from provisa.core.env_source_files import fork_file_sources
@@ -50,6 +51,7 @@ def _schema_sql() -> str:
     return path.read_text() if path.exists() else ""
 
 
+@model_change.commits_itself  # REQ-1524: commits the model it writes itself
 async def create_environment(
     state,
     admin_db: "Database",

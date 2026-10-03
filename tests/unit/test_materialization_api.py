@@ -26,6 +26,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from provisa.graphql_remote.executor import RemoteAnswer
 from provisa.api.data.materialization import (
     _lookup_ep,
     _lookup_gql_remote_table,
@@ -910,7 +911,7 @@ class TestMatGqlRemoteTable:
         values_cte_entries: dict = {}
         with patch(
             "provisa.graphql_remote.executor.execute_remote",
-            new=AsyncMock(return_value=[{"id": 1, "name": "Fido"}]),
+            new=AsyncMock(return_value=RemoteAnswer([{"id": 1, "name": "Fido"}])),
         ):
             await _mat_gql_remote_table(
                 "pets",
@@ -977,7 +978,7 @@ class TestMatGqlRemoteTable:
             patch("provisa.api_source.engine_cache.table_known_live", return_value=False),
             patch(
                 "provisa.graphql_remote.executor.execute_remote",
-                new=AsyncMock(return_value=[{"id": 1, "name": "Fido"}]),
+                new=AsyncMock(return_value=RemoteAnswer([{"id": 1, "name": "Fido"}])),
             ),
             patch("provisa.api_source.engine_cache.land_api_cache", new=AsyncMock()),
             patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
@@ -1308,3 +1309,43 @@ class TestMaterializeApiToEngineCache:
             await _materialize_api_to_engine_cache(
                 "SELECT id FROM pets UNION ALL SELECT id FROM pets", state, table_ids=[PETS]
             )
+
+
+class TestMatGqlRemoteTableCut:
+    """REQ-1350: a remote GraphQL answer cut at max_rows is this statement's alone."""
+
+    async def test_a_cut_answer_lands_under_a_name_of_its_own_and_is_never_held_hot(self):
+        state = SimpleNamespace(
+            graphql_remote_sources={},
+            org_id="default",
+            federation_engine=SimpleNamespace(
+                materialize_store_dsn=lambda: "postgresql://x/y",
+                cache_catalog=lambda: "cat",
+                isolated_sync=_fake_isolated_sync,
+            ),
+            config=SimpleNamespace(graphql_remote=SimpleNamespace(max_list_items=100, max_rows=1)),
+        )
+        landed: list[str] = []
+
+        async def land(engine, loc, tbl, rows, cols):
+            landed.append(tbl)
+
+        hot_mgr = _hot_manager()
+        first: dict = {}
+        with (
+            patch("provisa.api_source.engine_cache.ensure_cache_schema"),
+            patch("provisa.api_source.engine_cache.table_known_live", return_value=False),
+            patch(
+                "provisa.graphql_remote.executor.execute_remote",
+                new=AsyncMock(return_value=RemoteAnswer([{"id": 1, "name": "Fido"}], cut=True)),
+            ),
+            patch("provisa.api_source.engine_cache.land_api_cache", new=land),
+            patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
+        ):
+            await _mat_gql_remote_table(
+                "pets", _gql_reg(), _gql_tbl(), state, hot_mgr, 500, {}, first
+            )
+            await _mat_gql_remote_table("pets", _gql_reg(), _gql_tbl(), state, hot_mgr, 500, {}, {})
+        assert len(set(landed)) == 2  # each cut statement lands its own, found by no other
+        assert hot_mgr._hot_tables == {}
+        assert first["pets"].rows == [{"id": 1, "name": "Fido"}]  # this statement reads it

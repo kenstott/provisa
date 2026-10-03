@@ -26,6 +26,7 @@ import oracledb  # pyright: ignore[reportMissingImports]
 from provisa.core import request_deadline
 from provisa.core.sync_pool import BlockingPool
 from provisa.executor.drivers.base import DirectDriver
+from provisa.executor.drivers.cursor_stream import PooledCursorStream, fetch_chunked
 from provisa.executor.result import QueryResult
 
 
@@ -80,7 +81,7 @@ class OracleDriver(DirectDriver):  # REQ-052, REQ-229, REQ-550
                 with conn.cursor() as cur:
                     with request_deadline.cancel_on_deadline(conn.cancel):
                         cur.execute(exec_sql, bound)
-                        rows = cur.fetchall() if cur.description else []
+                        rows = fetch_chunked(cur) if cur.description else []
                     # ``desc.name``, not ``desc[0]``: a FetchInfo indexes as the DB-API 7-tuple
                     # whose members span str, int, bool and None, so only the named attribute is
                     # the column name.
@@ -93,7 +94,32 @@ class OracleDriver(DirectDriver):  # REQ-052, REQ-229, REQ-550
                 if not _is_broken(exc):
                     conn.rollback()
                 raise
-        return QueryResult(rows=list(rows), column_names=columns)
+        return QueryResult(rows=rows, column_names=columns)
+
+    @property
+    def supports_streaming(self) -> bool:  # REQ-1190
+        return True
+
+    # Async only for the DirectDriver awaitable contract; opens synchronously in-thread.
+    async def open_stream(
+        self, sql: str, params: list | None = None
+    ) -> PooledCursorStream:  # REQ-1190
+        """The result a batch at a time: oracledb reads from the server as fetchmany asks,
+        ``arraysize`` rows per round trip — set to the batch each fetch asks for, so the driver
+        buffers one batch."""
+        from provisa.compiler.params import bind_positionally
+
+        exec_sql, bound = bind_positionally(sql, params, lambda k: f":{k}")
+        return PooledCursorStream(
+            self._require_pool(),
+            open_cursor=lambda conn: conn.cursor(),
+            per_fetch=lambda cur, size: setattr(cur, "arraysize", size),
+            execute=lambda cur: cur.execute(exec_sql, bound),
+            columns=lambda cur: [desc.name.lower() for desc in cur.description],
+            cancel=lambda conn, _cur: conn.cancel(),
+            # Statement-level commit, as execute() does (autocommit semantics).
+            finish=lambda conn: conn.commit(),
+        )
 
     # Async only for the DirectDriver awaitable contract; closes synchronously in-thread.
     async def close(self) -> None:

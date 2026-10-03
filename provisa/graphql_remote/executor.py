@@ -15,11 +15,15 @@ import asyncio
 import json
 import logging
 import re
-from collections.abc import Iterator
+from collections.abc import AsyncGenerator, Iterator
+from contextlib import aclosing
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
+
+from provisa.core.statement_warnings import ServerWarning, warn
+from provisa.federation.replica_errors import BuildFailure
 from provisa.graphql_remote.introspect import _build_headers
 
 # Requirements: REQ-307, REQ-309, REQ-310, REQ-313
@@ -326,31 +330,148 @@ def _page_rows(connection: dict, by_edges: bool) -> list[dict]:
     return [r for r in page if isinstance(r, dict)]
 
 
-async def _execute_connection(  # REQ-309
-    read: _ConnectionRead, page_size: int, max_rows: int | None
-) -> list[dict]:
-    """Read a connection table page by page, following its cursor until the remote reports no
-    next page or ``max_rows`` rows are read. A missing parent (the root field returned null)
-    has no rows."""
-    rows: list[dict] = []
+class RowLimitReached(BuildFailure, ValueError):
+    """A build read ``max_rows`` rows of a connection table and the remote had more.
+
+    A replica is served as the whole table, so a build never swaps in a table cut at the bound:
+    it fails, naming it (REQ-1915)."""
+
+    code = "replication.row_limit_reached"
+
+    def __init__(self, table: str, max_rows: int, rows: int) -> None:
+        self.params = {"table": table, "max_rows": max_rows, "rows": rows}
+        super().__init__(
+            f"the replica of {table} was not built: a read of it stops at max_rows={max_rows} "
+            f"(graphql_remote.max_rows), and the remote had more after {rows:,} rows. A replica "
+            "is the whole table, so it is not cut at the bound. Raise graphql_remote.max_rows."
+        )
+
+
+def answer_row_cut_warning(table: str, max_rows: int) -> ServerWarning:
+    """The warning a statement answered from a connection read cut at ``max_rows`` carries
+    (REQ-1350)."""
+    return ServerWarning(
+        code="api.answer_row_cut",
+        params={"table": table, "max_rows": max_rows},
+        message=(
+            f"the answer for {table} was cut at max_rows={max_rows}: the remote has more. "
+            "Raise graphql_remote.max_rows to read it all."
+        ),
+    )
+
+
+async def connection_pages(  # REQ-309
+    read: _ConnectionRead, page_size: int
+) -> AsyncGenerator[tuple[list[dict], bool]]:
+    """A connection table's pages, in order, following its cursor: each page's rows and whether
+    the remote reports a page after it. A missing parent (the root field returned null) has no
+    pages. One page is held at a time."""
     cursor: str | None = None
     async with httpx.AsyncClient(timeout=30.0) as client:
         while True:
             connection, page_size = await _connection_page(client, read, cursor, page_size)
             if connection is None:
-                return rows
-            rows.extend(_page_rows(connection, read.by_edges))
-            if max_rows is not None and len(rows) >= max_rows:
-                log.warning(
-                    "graphql_remote %s: stopped at max_rows=%d with more pages remaining",
-                    read.table,
-                    max_rows,
-                )
-                return rows[:max_rows]
+                return
             page_info = connection.get("pageInfo") or {}
-            if not page_info.get("hasNextPage"):
-                return rows
+            more = bool(page_info.get("hasNextPage"))
+            yield _page_rows(connection, read.by_edges), more
+            if not more:
+                return
             cursor = page_info.get("endCursor")
+
+
+async def bounded_pages(
+    read: _ConnectionRead, page_size: int, max_rows: int | None
+) -> AsyncGenerator[tuple[list[dict], int | None]]:
+    """:func:`connection_pages` up to ``max_rows`` rows: each page's rows (the last one trimmed
+    to the bound) and, on the page where the read stops at the bound with more to read, the
+    total the remote had at least (``None`` on every other page)."""
+    read_so_far = 0
+    async with aclosing(connection_pages(read, page_size)) as pages:
+        async for rows, more in pages:
+            read_so_far += len(rows)
+            if (
+                max_rows is not None
+                and read_so_far >= max_rows
+                and (more or read_so_far > max_rows)
+            ):
+                yield rows[: len(rows) - (read_so_far - max_rows)], read_so_far
+                return
+            yield rows, None
+
+
+def _connection_read(
+    url: str,
+    auth: dict | None,
+    field_name: str,
+    columns: list[str],
+    rows_path: list[str],
+    variables: dict | None,
+    required_args: list[dict] | None,
+    error_policy: ErrorPolicy,
+) -> _ConnectionRead:
+    return _ConnectionRead(
+        url=url,
+        headers={"Content-Type": "application/json", **_build_headers(auth)},
+        field_name=field_name,
+        columns=list(columns),
+        rows_path=rows_path,
+        variables=variables or {},
+        required_args=[a for a in required_args or [] if a["name"] in (variables or {})],
+        policy=error_policy,
+    )
+
+
+async def whole_connection(  # REQ-1915, REQ-1923
+    url: str,
+    auth: dict | None,
+    field_name: str,
+    columns: list[str],
+    rows_path: list[str],
+    *,
+    table: str,
+    max_rows: int | None,
+    error_policy: ErrorPolicy = NO_POLICY,
+) -> AsyncGenerator[list[dict]]:
+    """A connection table's whole collection, a page at a time, for a read that must have all of
+    it (a replica build, an event-loop land): the read never holds more than one page, and one
+    that reaches ``max_rows`` with more to read fails by name (:class:`RowLimitReached`, naming
+    ``table``) instead of yielding a table cut at the bound."""
+    read = _connection_read(url, auth, field_name, columns, rows_path, None, None, error_policy)
+    async with aclosing(bounded_pages(read, _CONNECTION_PAGE_SIZE, max_rows)) as pages:
+        async for page, cut_at in pages:
+            if cut_at is not None:
+                assert max_rows is not None  # a cut is reported only under a bound
+                raise RowLimitReached(table, max_rows, cut_at)
+            _flatten_scalar_projections(page, read.columns)
+            yield page
+
+
+@dataclass(frozen=True)
+class RemoteAnswer:
+    """What a request's read of a remote GraphQL table returned. ``cut``: the read stopped at
+    ``max_rows`` with more to read -- the statement carries ``api.answer_row_cut``, and the rows
+    are never cached as the table's answer (REQ-1350)."""
+
+    rows: list[dict]
+    cut: bool = False
+
+
+async def _execute_connection(  # REQ-309
+    read: _ConnectionRead, page_size: int, max_rows: int | None
+) -> RemoteAnswer:
+    """A request's read of a connection table, up to ``max_rows`` rows. An answer cut at the
+    bound is what the request gets, and it says so (REQ-1350)."""
+    rows: list[dict] = []
+    cut = False
+    async with aclosing(bounded_pages(read, page_size, max_rows)) as pages:
+        async for page, cut_at in pages:
+            rows.extend(page)
+            if cut_at is not None:
+                assert max_rows is not None  # a cut is reported only under a bound
+                warn(answer_row_cut_warning(read.table, max_rows))
+                cut = True
+    return RemoteAnswer(rows, cut)
 
 
 async def execute_remote(  # REQ-309, REQ-307, REQ-310, REQ-313
@@ -366,10 +487,10 @@ async def execute_remote(  # REQ-309, REQ-307, REQ-310, REQ-313
     rows_path: list[str] | None = None,
     max_rows: int | None = None,
     error_policy: ErrorPolicy = NO_POLICY,
-) -> list[dict]:
+) -> RemoteAnswer:
     """Build a minimal GraphQL query and forward to the remote endpoint.
 
-    Returns list of row dicts from data.<field_name>.
+    Returns the row dicts from data.<field_name> (:class:`RemoteAnswer`).
     Raises httpx.HTTPError on network failure.
     Raises ValueError if the response contains errors.
 
@@ -386,19 +507,12 @@ async def execute_remote(  # REQ-309, REQ-307, REQ-310, REQ-313
     if rows_path:
         # A connection table (mapper._map_connection_table): its rows sit under ``rows_path`` and
         # are read by cursor. ``limit`` is the page size here, ``max_rows`` the bound on the read.
-        read = _ConnectionRead(
-            url=url,
-            headers=headers,
-            field_name=field_name,
-            columns=selected_cols,
-            rows_path=rows_path,
-            variables=variables or {},
-            required_args=[a for a in required_args or [] if a["name"] in (variables or {})],
-            policy=error_policy,
+        read = _connection_read(
+            url, auth, field_name, selected_cols, rows_path, variables, required_args, error_policy
         )
-        rows = await _execute_connection(read, limit or _CONNECTION_PAGE_SIZE, max_rows)
-        _flatten_scalar_projections(rows, selected_cols)
-        return rows
+        answer = await _execute_connection(read, limit or _CONNECTION_PAGE_SIZE, max_rows)
+        _flatten_scalar_projections(answer.rows, selected_cols)
+        return answer
 
     pagination_arg_strs: list[str] = []
     if pagination and limit is not None:
@@ -438,7 +552,7 @@ async def execute_remote(  # REQ-309, REQ-307, REQ-310, REQ-313
     rows = (data.get("data") or {}).get(field_name, [])
     rows = rows if isinstance(rows, list) else [rows]
     _flatten_scalar_projections(rows, selected_cols)
-    return rows
+    return RemoteAnswer(rows)
 
 
 def iter_remote_rows_spooled(  # REQ-1915, REQ-1923

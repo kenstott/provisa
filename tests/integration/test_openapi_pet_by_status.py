@@ -140,14 +140,7 @@ async def pg_conn(tenant_db, platform_admin_db):
     # platform_admin_db: load_config binds the org vault (REQ-1580/REQ-1730), read off
     # state.admin_db — this module brings its own rather than inheriting another module's.
     # load_config runs against the control-plane Database shim (advisory_xact_lock,
-    # execute_core), scoped to org_default — the same connection the app uses.
-    # tenant_db itself leaves search_path unset (public), per tests/conftest.py's
-    # tenant_db fixture docstring — callers that need org_default must set it
-    # per-acquire, same as test_schema_gen.py's _load_config fixture. This module
-    # is marked group_sources and is not guaranteed to run after another group's
-    # test module has bootstrapped the org_default schema (e.g. `-m group_sources`
-    # deselects the app-boot tests that would otherwise create it), so init_schema
-    # is called here too — idempotent (CREATE SCHEMA/TABLE IF NOT EXISTS).
+    # execute_core), as the app does; init_schema creates the org schema it loads into.
     #
     # REQ-1919: the org schema is this module's own. A config load removes what its file no
     # longer declares, so loading this module's file into the org other modules load a different

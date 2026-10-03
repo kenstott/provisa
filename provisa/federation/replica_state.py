@@ -180,6 +180,7 @@ REASON_HOT = "hot"
 REASON_REFRESH = "refresh"
 REASON_OPERATOR = "operator"
 REASON_READ = "read"
+REASON_WRITE = "write"  # REQ-1924: the table was just written through Provisa
 REASONS = (
     REASON_MODEL,
     REASON_DEFINITION,
@@ -187,6 +188,7 @@ REASONS = (
     REASON_REFRESH,
     REASON_OPERATOR,
     REASON_READ,
+    REASON_WRITE,
 )
 
 _t = replica_state.c

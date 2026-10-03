@@ -15,6 +15,10 @@
     "ai_models": {
       "vector_model_fields_required": "elk vector_models-item vereist id, provider en dimensions"
     },
+    "api": {
+      "answer_cut": "Het antwoord voor {{table}} is afgekapt bij max_pages={{max_pages}} ({{rows}} rijen): de API heeft meer. Verhoog max_pages of de paginagrootte van het endpoint om alles te lezen.",
+      "answer_row_cut": "Het antwoord voor {{table}} is afgekapt bij max_rows={{max_rows}}: de remote heeft meer. Verhoog graphql_remote.max_rows om alles te lezen."
+    },
     "auth": {
       "authentication_required": "Verificatie vereist",
       "auto_join_not_offered": "Die organisatie biedt niet aan je toe te laten",
@@ -216,7 +220,8 @@
       "table_gone": "Tabel {{schema}}.{{table}} van bron {{source}} is niet meer geregistreerd, dus de replica ervan wordt niet gebouwd.",
       "page_limit_reached": "De replica van {{table}} is niet gebouwd: de paginering van het endpoint stopt bij max_pages={{max_pages}}, en het endpoint had meer gegevens na pagina {{max_pages}} ({{rows}} rijen gelezen). Een replica is de hele tabel en wordt dus niet afgekapt bij de limiet. Verhoog max_pages of de paginagrootte van het endpoint.",
       "waiting_engine_jobs": "de engine zit aan zijn limiet voor achtergrondtaken (replication.engine_jobs)",
-      "waiting_source_cap": "de bron zit aan zijn limiet voor live-leesbewerkingen (max_live_concurrency)"
+      "waiting_source_cap": "de bron zit aan zijn limiet voor live-leesbewerkingen (max_live_concurrency)",
+      "row_limit_reached": "De replica van {{table}} is niet gebouwd: een leesactie stopt bij max_rows={{max_rows}} (graphql_remote.max_rows), en de remote had meer gegevens na {{rows}} rijen. Een replica is de hele tabel en wordt dus niet afgekapt bij de limiet. Verhoog graphql_remote.max_rows."
     },
     "roles": {
       "cannot_delete_system": "Systeemrollen kunnen niet worden verwijderd",

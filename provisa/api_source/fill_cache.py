@@ -37,7 +37,14 @@ from typing import Any
 
 import sqlglot.expressions as exp
 
-from provisa.api_source.caller import ApiCallError, ApiNotFoundError, call_api
+from provisa.api_source.caller import (
+    AnswerCut,
+    ApiCallError,
+    ApiNotFoundError,
+    answer_cut_warning,
+    answer_rows,
+    call_api,
+)
 from provisa.api_source import engine_cache
 from provisa.api_source.engine_cache import (
     CacheLocation,
@@ -47,8 +54,8 @@ from provisa.api_source.engine_cache import (
     ensure_cache_schema,
     org_cache_schema,
 )
-from provisa.api_source.flattener import flatten_response
 from provisa.api_source.models import ApiEndpoint
+from provisa.core.statement_warnings import warn
 
 log = logging.getLogger(__name__)
 
@@ -241,9 +248,19 @@ def _ensure(conn: Any, table: FillTable) -> None:
         _shapes[key] = table.shape
 
 
-def store(conn: Any, table: FillTable, fills: dict[str, list[dict]], ttl: int) -> int:
+def store(
+    conn: Any,
+    table: FillTable,
+    fills: dict[str, list[dict]],
+    ttl: int,
+    cut: frozenset[str] = frozenset(),
+) -> int:
     """Replace the rows of each hash group in ``fills`` with the rows fetched for it. A group
-    fetched with no rows is emptied: the remote's answer for those arguments is now nothing."""
+    fetched with no rows is emptied: the remote's answer for those arguments is now nothing.
+
+    A group in ``cut`` was answered short (the call stopped at the endpoint's max_pages): its
+    rows serve the statement that fetched them, but carry no fetch time, so the group is never
+    fresh and the next request calls again — a cut answer is never cached as complete."""
     if not fills:
         return 0
     _ensure(conn, table)
@@ -254,14 +271,15 @@ def store(conn: Any, table: FillTable, fills: dict[str, list[dict]], ttl: int) -
     conn.fetchall()
     now = time.time()
     rows = [
-        {**row, PARAMS_HASH: phash, CACHED_AT: now}
+        {**row, PARAMS_HASH: phash, CACHED_AT: None if phash in cut else now}
         for phash, group in fills.items()
         for row in group
     ]
     if rows:
         create_and_insert(conn, table.loc, table.name, rows, list(table.columns))
     for phash in fills:
-        _mark_fresh(table, phash, ttl)
+        if phash not in cut:
+            _mark_fresh(table, phash, ttl)
     log.info(
         "[API FILLS] %d rows of %d argument set(s) → %s.%s",
         len(rows),
@@ -310,29 +328,27 @@ def _reported_error(page: Any, error_path: str | None) -> str | None:
     return str(value) if value else None
 
 
-async def fetch(endpoint: ApiEndpoint, api_source: Any, params: dict) -> list[dict]:
+async def fetch(
+    endpoint: ApiEndpoint, api_source: Any, params: dict
+) -> tuple[list[dict], AnswerCut | None]:
     """The rows the remote answers ``params`` with, through the one remote call every path
-    uses. A 404 is an answer with no rows. An answer that reports an error at the endpoint's
-    ``error_path``, or a call that fails, fails the request (REQ-1661): it is never logged and
-    answered with whatever the cache held."""
+    uses, and how the answer was cut (None when it is whole). A 404 is an answer with no rows.
+    An answer that reports an error at the endpoint's ``error_path``, or a call that fails,
+    fails the request (REQ-1661): it is never logged and answered with whatever the cache held."""
     try:
-        pages = await call_api(endpoint, params, base_url=api_source.base_url, auth=api_source.auth)
+        answer = await call_api(
+            endpoint, params, base_url=api_source.base_url, auth=api_source.auth
+        )
     except ApiNotFoundError:
-        return []
-    rows: list[dict] = []
-    for page in pages:
+        return [], None
+    for page in answer.pages:
         reported = _reported_error(page, endpoint.error_path)
         if reported:
             raise ApiCallError(
                 f"the API answered {endpoint.table_name!r} with an error at "
                 f"{endpoint.error_path!r}: {reported}"
             )
-        rows.extend(
-            flatten_response(
-                page, endpoint.response_root, endpoint.columns, endpoint.response_normalizer
-            )
-        )
-    return rows
+    return answer_rows(endpoint, answer)
 
 
 async def fill(
@@ -349,6 +365,14 @@ async def fill(
         stale = stale_hashes(conn, table, list(by_hash), ttl)
     if not stale:
         return 0
-    fetched = {h: await fetch(endpoint, api_source, by_hash[h]) for h in stale}
+    fetched: dict[str, list[dict]] = {}
+    cut: set[str] = set()
+    for phash in stale:
+        rows, short = await fetch(endpoint, api_source, by_hash[phash])
+        fetched[phash] = rows
+        if short is not None:
+            cut.add(phash)
+            # The statement answered from it says so (REQ-1350).
+            warn(answer_cut_warning(endpoint.table_name, short))
     with engine.isolated_sync() as conn:
-        return store(conn, table, fetched, ttl)
+        return store(conn, table, fetched, ttl, frozenset(cut))

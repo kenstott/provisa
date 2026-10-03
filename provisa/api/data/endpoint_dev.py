@@ -221,6 +221,16 @@ def _with_cache_headers(payload, cache_headers: dict[str, str]):  # REQ-536
     return ORJSONResponse(jsonable_encoder(payload), headers=cache_headers)
 
 
+def _with_warnings(body: dict) -> dict:
+    """``body`` with what the request's answer says about itself (REQ-1350) in
+    ``extensions.warnings``, as the GraphQL endpoint does; unchanged when there is nothing."""
+    from provisa.core.statement_warnings import as_entries
+
+    if warnings := as_entries():
+        body.setdefault("extensions", {})["warnings"] = warnings
+    return body
+
+
 @router.post("/sql")
 async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     raw_request: Request,
@@ -292,11 +302,13 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
                 # same way stdlib json does) — only the final encode step moves to orjson.
                 return ORJSONResponse(
                     jsonable_encoder(
-                        {
-                            "data": {"sql": rows_as_dicts},
-                            "columns": list(result.column_names),
-                            "provisa_stats": qs.to_dict(),
-                        }
+                        _with_warnings(
+                            {
+                                "data": {"sql": rows_as_dicts},
+                                "columns": list(result.column_names),
+                                "provisa_stats": qs.to_dict(),
+                            }
+                        )
                     ),
                     headers=cache_headers,
                 )
@@ -308,7 +320,9 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
             # matches nothing collapsed the grid to bare text — taking the header row, and with it
             # the filter inputs, away. There was then no control left to clear the filter with.
             return _with_cache_headers(
-                {"data": {"sql": rows_as_dicts}, "columns": list(result.column_names)},
+                _with_warnings(
+                    {"data": {"sql": rows_as_dicts}, "columns": list(result.column_names)}
+                ),
                 cache_headers,
             )
         from provisa.compiler.sql_gen import ColumnRef

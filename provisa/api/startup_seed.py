@@ -713,7 +713,15 @@ async def _init_control_planes(
     # REQ-1316: every later org runtime reuses THIS engine (see build_org_runtime) — one tenant
     # pool for the whole process, orgs separated by the per-checkout search_path.
     state.tenant_engine = tenant_engine
-    state.tenant_db = Database(tenant_engine, name="org", search_path=f"org_{org_id}")
+    from provisa.core.environments import PROD, org_schema
+    from provisa.core.model_change import ModelPlane
+
+    state.tenant_db = Database(
+        tenant_engine,
+        name="org",
+        search_path=org_schema(org_id, PROD),
+        model=ModelPlane(org_id, PROD),  # REQ-1524: its model's changes are committed
+    )
     state.admin_db = await bring_up_platform(
         cp.resolved_platform_url(),
         pool_size=cp.pool_max,
@@ -726,6 +734,14 @@ async def _init_control_planes(
     from provisa.core import deployment_settings
 
     deployment_settings.bind(state.admin_db)
+    # REQ-1524: every environment's position and drift are rows of the platform plane, so from
+    # here a model change is committed to its environment's branch.
+    from provisa.core import model_change
+
+    from provisa.core.env_deploy import PROJECTED
+    from provisa.core.env_repo import write_through
+
+    model_change.attach(state.admin_db, commit=write_through, projected=PROJECTED)
 
     # schema.sql ships in the wheel (pyproject package-data). It is REQUIRED: the PG path runs it
     # verbatim, and on SQLite its presence gates the portable create_all bootstrap. A missing file

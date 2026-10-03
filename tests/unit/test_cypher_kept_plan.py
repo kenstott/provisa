@@ -371,7 +371,9 @@ def test_flight_serves_a_direct_routed_cypher_statement(monkeypatch, builds):
     monkeypatch.setattr(srv, "_run_on_loop", lambda coro, *, timeout=None: asyncio.run(coro))
     monkeypatch.setattr("provisa.compiler.sql_rewrite.make_semantic_sql", lambda sql, _ctx: sql)
 
-    plan = SimpleNamespace(route=Route.DIRECT, source_id="pg", sql="SELECT 1", physical_sql=None)
+    plan = SimpleNamespace(
+        route=Route.DIRECT, source_id="pg", sql="SELECT 1", physical_sql=None, warnings=[]
+    )
     monkeypatch.setattr(_pipeline, "_govern_and_route_compiled", AsyncMock(return_value=plan))
     monkeypatch.setattr(_pipeline, "require_governed_plan", lambda _p: None)
     terminal = AsyncMock(return_value=QueryResult(rows=[(10.5,)], column_names=["amount"]))

@@ -15,6 +15,10 @@
     "ai_models": {
       "vector_model_fields_required": "प्रत्येक vector_models प्रविष्टि के लिए id, provider और dimensions आवश्यक हैं"
     },
+    "api": {
+      "answer_cut": "{{table}} का उत्तर max_pages={{max_pages}} पर काट दिया गया ({{rows}} पंक्तियाँ): API में और डेटा है। सब पढ़ने के लिए एंडपॉइंट का max_pages या पृष्ठ आकार बढ़ाएँ।",
+      "answer_row_cut": "{{table}} का उत्तर max_rows={{max_rows}} पर काट दिया गया: रिमोट में और डेटा है। सब पढ़ने के लिए graphql_remote.max_rows बढ़ाएँ।"
+    },
     "auth": {
       "authentication_required": "प्रमाणीकरण आवश्यक है",
       "auto_join_not_offered": "वह संगठन आपको प्रवेश देने की पेशकश नहीं कर रहा है",
@@ -216,7 +220,8 @@
       "table_gone": "स्रोत {{source}} की तालिका {{schema}}.{{table}} अब पंजीकृत नहीं है, इसलिए इसकी रेप्लिका नहीं बनाई जाती।",
       "page_limit_reached": "{{table}} की रेप्लिका नहीं बनाई गई: इसके एंडपॉइंट का पेजिंग max_pages={{max_pages}} पर रुक जाता है, और पृष्ठ {{max_pages}} के बाद एंडपॉइंट में और डेटा था ({{rows}} पंक्तियाँ पढ़ी गईं)। रेप्लिका पूरी तालिका होती है, इसलिए इसे सीमा पर काटा नहीं जाता। एंडपॉइंट का max_pages या पृष्ठ आकार बढ़ाएँ।",
       "waiting_engine_jobs": "इंजन अपनी बैकग्राउंड जॉब सीमा पर है (replication.engine_jobs)",
-      "waiting_source_cap": "स्रोत अपनी लाइव-रीड सीमा पर है (max_live_concurrency)"
+      "waiting_source_cap": "स्रोत अपनी लाइव-रीड सीमा पर है (max_live_concurrency)",
+      "row_limit_reached": "{{table}} की रेप्लिका नहीं बनाई गई: इसका एक रीड max_rows={{max_rows}} (graphql_remote.max_rows) पर रुक जाता है, और {{rows}} पंक्तियों के बाद रिमोट में और डेटा था। रेप्लिका पूरी तालिका होती है, इसलिए इसे सीमा पर काटा नहीं जाता। graphql_remote.max_rows बढ़ाएँ।"
     },
     "roles": {
       "cannot_delete_system": "सिस्टम भूमिकाएँ हटाई नहीं जा सकतीं",

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 from collections.abc import Iterable
 from typing import Any
 
@@ -221,13 +222,14 @@ def _normalize_mat_value(v):
 
 async def _fetch_gql_remote_rows(
     gql_reg, gql_tbl, col_selections, variables, gql_to_sql, max_items, max_rows
-):
+) -> tuple[list[dict], bool]:
     """Fetch a graphql_remote field (with its native-filter args) and remap each row's GQL field
     keys to the sql column names the store lands under. A single-record field returns null (→ [None])
-    when nothing matches — drop non-dict rows so the caller lands an empty result, not a crash."""
+    when nothing matches — drop non-dict rows so the caller lands an empty result, not a crash.
+    The flag: the read stopped at max_rows with more to read (REQ-1350)."""
     from provisa.graphql_remote.executor import NO_POLICY, execute_remote
 
-    rows = await execute_remote(
+    answer = await execute_remote(
         url=gql_reg["url"],
         auth=gql_reg.get("auth"),
         field_name=gql_tbl.get("field_name") or gql_tbl["name"],
@@ -240,9 +242,12 @@ async def _fetch_gql_remote_rows(
         max_rows=max_rows,
         error_policy=gql_reg.get("error_policy") or NO_POLICY,
     )
-    return [
-        {gql_to_sql.get(k, k): v for k, v in row.items()} for row in rows if isinstance(row, dict)
+    rows = [
+        {gql_to_sql.get(k, k): v for k, v in row.items()}
+        for row in answer.rows
+        if isinstance(row, dict)
     ]
+    return rows, answer.cut
 
 
 async def _mat_gql_remote_table(
@@ -371,7 +376,7 @@ async def _mat_gql_remote_table(
     _max_items = state.config.graphql_remote.max_list_items
     _max_rows = state.config.graphql_remote.max_rows
     if _store_scheme == "sqlite":
-        gql_rows = await _fetch_gql_remote_rows(
+        gql_rows, _cut = await _fetch_gql_remote_rows(
             gql_reg, gql_tbl, col_selections, variables, _gql_to_sql, _max_items, _max_rows
         )
         # Inline THIS query only — never held by the hot tier: a parameterized fetch is keyed by
@@ -388,11 +393,17 @@ async def _mat_gql_remote_table(
 
     # Cache miss — fetch from remote
     try:
-        gql_rows = await _fetch_gql_remote_rows(
+        gql_rows, cut = await _fetch_gql_remote_rows(
             gql_reg, gql_tbl, col_selections, variables, _gql_to_sql, _max_items, _max_rows
         )
     except Exception as fetch_exc:
         raise RuntimeError(f"GQL remote fetch failed for {tn!r}: {fetch_exc}") from fetch_exc
+    if cut:
+        # REQ-1350: an answer cut at max_rows lands under a name of this statement's own, so no
+        # later statement finds it as the table's answer, and it is never held hot.
+        gql_cache_tbl = cache_table_name(
+            gql_reg["source_id"], tn, {**_cache_hash, "__cut__": secrets.token_hex(8)}
+        )
 
     # Hydrate to the engine cache (best-effort)
     try:
@@ -412,7 +423,8 @@ async def _mat_gql_remote_table(
             pk_column=col_names[0] if col_names else "id",
             rows=gql_rows,
             column_names=col_names,
-            whole=not variables,
+            # A fetch with variables, or a cut answer (REQ-1350), is not the table's rows.
+            whole=not variables and not cut,
         )
         values_cte_entries[tn] = entry
         log.warning("[GQL REMOTE] VALUES CTE inline for %s (%d rows)", tn, len(gql_rows))
@@ -906,6 +918,12 @@ async def _mat_api_ep_table(
         if rows is None:
             return  # already written to cache_rewrites by _mat_fetch_rows_from_rest
 
+    # A cut answer (the call stopped at max_pages with more to read, warned earlier in this
+    # statement) is never cached as complete: its rows go to a table of this statement's own,
+    # which no later request looks up, and never to the hot tier.
+    cut = _cut_in_statement(ep.table_name)
+    if cut:
+        cache_tbl = cache_table_name(source_id, tn, {"__cut__": secrets.token_hex(8)})
     _mat_store_rows(
         tn,
         rows,
@@ -921,8 +939,16 @@ async def _mat_api_ep_table(
         cache_rewrites,
         values_cte_entries,
         all_ep_col_names=all_ep_col_names,
-        whole=whole,
+        # A cut answer (REQ-1350) is the rows this statement asked for, never the table's.
+        whole=whole and not cut,
     )
+
+
+def _cut_in_statement(table_name: str) -> bool:
+    """Whether this statement already warned that ``table_name``'s answer was cut."""
+    from provisa.core.statement_warnings import raised
+
+    return any(w.code == "api.answer_cut" and w.params.get("table") == table_name for w in raised())
 
 
 def would_materialize_optimize(exec_sql: str, state, *, table_ids: Iterable[int]) -> bool:

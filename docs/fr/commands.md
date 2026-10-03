@@ -290,7 +290,7 @@ Indiquez dans le champ **Écrit dans la table** la table dans laquelle l'opérat
 
 Après chaque appel que le service distant accepte, Provisa le traite comme une écriture dans cette table. Il supprime les réponses en cache de la table, marque comme périmées les vues matérialisées qui s'appuient sur elle, émet l'événement de changement, exécute les sinks de la table et recharge la table lorsqu'elle est conservée à chaud. [tool-verified: `provisa/api/data/table_written.py` `after_table_written`]
 
-Les réplicas ne sont pas rafraîchis par l'appel. Cela attend un moyen de demander le rafraîchissement d'un réplica, qui n'est pas construit ; d'ici là, un réplica se rafraîchit selon son propre calendrier. [tool-verified: REQ-1924 WRITTEN TABLE amendment; no replica call in `after_table_written`]
+Lorsque la table est lue depuis son réplica de table entière (les paramètres de l'opérateur l'y placent, ou le moteur ne peut pas lire sa source sur place), une construction du réplica est demandée après l'appel, avec le motif `write`. Les lecteurs conservent l'ancien réplica jusqu'à ce que le nouveau le remplace. Une table répliquée ligne par ligne, ou dotée d'une colonne de paramètre, n'a pas de réplica entier à reconstruire. [tool-verified: `provisa/api/data/table_written.py` `_request_replica_build`; `provisa/federation/replica_state.py` `REASON_WRITE`]
 
 ### Pourquoi elle ne peut pas être composée
 

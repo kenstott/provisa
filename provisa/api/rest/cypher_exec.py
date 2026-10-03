@@ -20,6 +20,7 @@ from cypher_router.py; leaf module (no route handlers).
 from __future__ import annotations
 
 import logging
+import secrets
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
@@ -270,11 +271,23 @@ async def _execute_with_api(
                 or getattr(state, "response_cache_default_ttl", None)
                 or endpoint.ttl
             )
-            schedule_drop(state.federation_engine, _cache_loc, cache_tbl, ttl, redirect_config)
+            # REQ-1350: a cut answer landed under a name of its own (handle_api_query): the
+            # statement reads that one, and its rows are never promoted as the table's.
+            cache_rewrites[table_name] = (_cache_loc, result.cache_table)
+            schedule_drop(
+                state.federation_engine, _cache_loc, result.cache_table, ttl, redirect_config
+            )
 
             promoted = hot.table_id(table_name)
-            # Only a fetch with no arguments returned the resource's whole rows.
-            if hot_mgr is not None and promoted is not None and result.rows and not url_params:
+            # Only a fetch with no arguments, and not cut (REQ-1350), returned the resource's
+            # whole rows.
+            if (
+                hot_mgr is not None
+                and promoted is not None
+                and result.rows
+                and not url_params
+                and result.cut is None
+            ):
                 spawn_background(hot_mgr.maybe_promote_dicts(promoted, result.rows))
         else:
             log.info("[API CACHE] hit — %s", cache_tbl)
@@ -408,7 +421,7 @@ async def _execute_with_gql_remote(
         hit = await loop.run_in_executor(None, _check_or_create_cache, None)
         if not hit:
             col_selections = [_gql_selection(c) for c in info["columns"]]
-            fetched_rows = await execute_remote(
+            answer = await execute_remote(
                 url=info["url"],
                 auth=info["auth"],
                 field_name=info["field_name"],
@@ -419,7 +432,14 @@ async def _execute_with_gql_remote(
                 max_rows=state.config.graphql_remote.max_rows,
                 error_policy=info["error_policy"],
             )
-            await loop.run_in_executor(None, _check_or_create_cache, fetched_rows)
+            if answer.cut:
+                # REQ-1350: an answer cut at max_rows lands under a name of this statement's
+                # own, so no later statement finds it as the table's answer.
+                cache_tbl = cache_table_name(
+                    info["source_id"], tn, {**gql_vars, "__cut__": secrets.token_hex(8)}
+                )
+                cache_rewrites[tn] = (cache_loc, cache_tbl)
+            await loop.run_in_executor(None, _check_or_create_cache, answer.rows)
             # REQ-1688: statistics where the table lives, off the query's critical path.
             from provisa.api_source.engine_cache import analyze_cache_table
 

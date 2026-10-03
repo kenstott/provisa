@@ -22,6 +22,7 @@ import httpx
 
 from provisa.api_source.models import (
     ApiEndpoint,
+    PaginationConfig,
     PaginationType,
 )
 
@@ -427,6 +428,69 @@ def prepare_call(
     return PreparedCall(endpoint.method, url, query_params, headers, json_body, form_body)
 
 
+@dataclass(frozen=True)
+class AnswerCut:
+    """An answer that stopped at the endpoint's ``max_pages`` while the endpoint had more."""
+
+    max_pages: int
+    rows: int
+
+
+@dataclass(frozen=True)
+class ApiAnswer:
+    """What one API call returned: its pages, and what the paging knows about whether the
+    endpoint had more when the call stopped."""
+
+    pages: list[Any]
+    pagination: PaginationConfig | None = None
+    #: The answer's own word on whether there is more (a next link, a next cursor); None where
+    #: only the size of the last page can say (offset and page-number paging).
+    more: bool | None = None
+
+    def cut(self, last_page_rows: int) -> bool:
+        """Whether the call stopped at ``max_pages`` with more to read. ``last_page_rows``: the
+        rows the last page held, for paging whose answer does not say."""
+        paging = self.pagination
+        if paging is None or len(self.pages) < paging.max_pages:
+            return False
+        if self.more is not None:
+            return self.more
+        return last_page_rows >= paging.page_size
+
+
+def answer_rows(endpoint: ApiEndpoint, answer: ApiAnswer) -> tuple[list[dict], AnswerCut | None]:
+    """The rows of ``answer`` flattened as ``endpoint`` declares, and how it was cut (None when
+    it is the whole answer)."""
+    from provisa.api_source.flattener import flatten_response
+
+    rows: list[dict] = []
+    last = 0
+    for page in answer.pages:
+        page_rows = flatten_response(
+            page, endpoint.response_root, endpoint.columns, endpoint.response_normalizer
+        )
+        last = len(page_rows)
+        rows.extend(page_rows)
+    if not answer.cut(last):
+        return rows, None
+    assert answer.pagination is not None  # cut() is True only for a paged call
+    return rows, AnswerCut(answer.pagination.max_pages, len(rows))
+
+
+def answer_cut_warning(table: str, cut: AnswerCut) -> Any:
+    """The warning a statement answered from a cut API answer carries (REQ-1350)."""
+    from provisa.core.statement_warnings import ServerWarning
+
+    return ServerWarning(
+        code="api.answer_cut",
+        params={"table": table, "max_pages": cut.max_pages, "rows": cut.rows},
+        message=(
+            f"the answer for {table} was cut at max_pages={cut.max_pages} ({cut.rows} rows): "
+            "the API has more. Raise the endpoint's max_pages or its page size to read it all."
+        ),
+    )
+
+
 async def call_api(  # REQ-295, REQ-297, REQ-298, REQ-316
     endpoint: ApiEndpoint,
     resolved_params: dict,
@@ -434,29 +498,36 @@ async def call_api(  # REQ-295, REQ-297, REQ-298, REQ-316
     auth=None,
     timeout: float = _DEFAULT_TIMEOUT,
     total_timeout: float = _DEFAULT_TOTAL_TIMEOUT,
-) -> list[dict]:
-    """Make the API call and return raw response data (list of page responses).
+) -> ApiAnswer:
+    """Make the API call and return its pages, with whether the endpoint had more when the
+    call stopped at its ``max_pages`` (:class:`ApiAnswer`; :func:`answer_rows` flattens it).
 
     ``timeout`` bounds each individual connect/read/write op (httpx semantics); ``total_timeout``
     bounds the whole call's wall-clock time, including every paginated page, so a response that
     streams continuously without ever idling still fails explicitly instead of outrunning a
     caller's own external deadline (see module docstring on ``_DEFAULT_TOTAL_TIMEOUT``)."""
     if endpoint.method == "RPC":
-        return await _call_grpc(endpoint, resolved_params, base_url)
+        return ApiAnswer(await _call_grpc(endpoint, resolved_params, base_url))
     call = prepare_call(endpoint, resolved_params, base_url, auth)
 
-    async def _run() -> list[dict]:
+    async def _run() -> ApiAnswer:
+        paging = Paging()
         async with httpx.AsyncClient() as client:
-            return await _paginate(
-                client,
-                endpoint,
-                call.url,
-                call.params,
-                call.headers,
-                body=call.json_body,
-                timeout=timeout,
-                form_body=call.form_body,
-            )
+            pages = [
+                page
+                async for page in _pages(
+                    client,
+                    endpoint,
+                    call.url,
+                    call.params,
+                    call.headers,
+                    call.json_body,
+                    timeout,
+                    form_body=call.form_body,
+                    paging=paging,
+                )
+            ]
+        return ApiAnswer(pages, endpoint.pagination, paging.more)
 
     try:
         return await asyncio.wait_for(_run(), timeout=total_timeout)

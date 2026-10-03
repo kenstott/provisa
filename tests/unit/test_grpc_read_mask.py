@@ -241,7 +241,7 @@ def _servicer():
     pb2 = SimpleNamespace(Orders=msg_cls)
     state = SimpleNamespace(contexts={"admin": _ctx()}, multitenancy=False)
     servicer = ProvisaServicer(state, pb2, MagicMock())
-    servicer._emit_license_nag = MagicMock()
+    servicer._emit_trailing_metadata = MagicMock()
     servicer._meter_msg = lambda msg: msg
     return servicer, msg_cls
 
@@ -255,7 +255,7 @@ def _context():
 async def _run(servicer, request, context, result):
     from provisa.transpiler.router import Route
 
-    plan = SimpleNamespace(route=Route.CACHE, source_id=None, cache_hit=None)
+    plan = SimpleNamespace(route=Route.CACHE, source_id=None, cache_hit=None, warnings=[])
     with (
         patch(
             "provisa.pgwire._pipeline._govern_and_route_compiled",

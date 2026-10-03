@@ -437,16 +437,18 @@ class TestGitHubBrandedSource:
         # And the table reads: the query goes to the connection, with the token.
         from provisa.graphql_remote.executor import execute_remote
 
-        rows = await execute_remote(
-            reg["url"],
-            reg["auth"],
-            table["field_name"],
-            ["title", "number"],
-            variables={"owner": "apache", "name": "calcite"},
-            required_args=table["required_args"],
-            rows_path=table["rows_path"],
-            error_policy=reg["error_policy"],
-        )
+        rows = (
+            await execute_remote(
+                reg["url"],
+                reg["auth"],
+                table["field_name"],
+                ["title", "number"],
+                variables={"owner": "apache", "name": "calcite"},
+                required_args=table["required_args"],
+                rows_path=table["rows_path"],
+                error_policy=reg["error_policy"],
+            )
+        ).rows
         assert rows == [{"title": "First issue", "number": 1}]
 
     @respx.mock

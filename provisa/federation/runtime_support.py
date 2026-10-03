@@ -22,6 +22,7 @@ from decimal import Decimal
 from itertools import islice
 from typing import Any, Callable
 
+from provisa.core import request_deadline
 from provisa.executor.result import (
     QueryResult,
     ResultStream,
@@ -47,6 +48,34 @@ _STREAM_BATCH_ROWS = 65_536
 # the DBAPI fetch batch: an Arrow batch is columnar and cheap to hold, and fewer/larger batches cut
 # per-batch transport overhead. Matches the native Arrow runtimes' record-batch size.
 _ARROW_STREAM_BATCH_ROWS = 65_536
+
+
+def take_shielded(take: Callable[[], Any]) -> Any:
+    """Take a resource (a cursor, a pooled connection) in a section the request's deadline does
+    not interrupt (REQ-1905): a raise landing after the resource exists and before the caller
+    holds it would leak it. Release it with :func:`release_shielded`."""
+    shield = request_deadline.shielded()
+    with shield.lock:
+        shield.settle()
+        return take()
+
+
+def release_shielded(release: Callable[[], None]) -> None:
+    """Give a resource back in a section the request's deadline does not interrupt (REQ-1905)."""
+    shield = request_deadline.shielded()
+    with shield.lock:
+        shield.settle()
+        release()
+
+
+def open_cursor(conn: Any) -> Any:
+    """A cursor on ``conn``, taken under the shield (:func:`take_shielded`)."""
+    return take_shielded(conn.cursor)
+
+
+def close_cursor(cur: Any) -> None:
+    """Close ``cur`` under the shield (:func:`release_shielded`)."""
+    release_shielded(cur.close)
 
 
 def result_from_dbapi(obj: Any) -> QueryResult:

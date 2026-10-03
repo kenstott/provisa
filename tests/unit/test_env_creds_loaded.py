@@ -20,46 +20,108 @@ If this test fails, a credential is present in .env but absent from the process 
 tests gated on it are phantom-skipping, not passing.
 """
 
+import ast
 import os
 from pathlib import Path
 
 import pytest
 
-from tests.env_creds import _ENV_FILE, _parse_env_file, load_provider_creds
+from tests import env_creds
+from tests.env_creds import _parse_env_file, env_file, load_provider_creds
+
+_TESTS = Path(__file__).resolve().parents[1]
 
 
-def test_every_env_provider_cred_is_exported():
-    if not _ENV_FILE.is_file():
-        pytest.skip(".env absent (CI); nothing on disk to phantom-skip against")
-
-    on_disk = _parse_env_file(_ENV_FILE)
-    if not on_disk:
-        pytest.skip(".env carries no external-provider credentials")
-
-    missing = [k for k, v in on_disk.items() if v and not os.environ.get(k)]
-    assert not missing, (
-        f"credentials present in .env but not loaded into the pytest process: {missing}. "
-        "Tests gated on these are skipping while the creds exist -- "
-        "tests/conftest.py must call tests.env_creds.load_provider_creds() at import."
-    )
+@pytest.fixture
+def clean_env(monkeypatch):
+    """No provider credential, and no named .env, in the process for the test."""
+    for key in list(os.environ):
+        if key.startswith(env_creds._CRED_PREFIXES) or key.startswith("SHAREPOINT_"):
+            monkeypatch.delenv(key)
+    monkeypatch.delenv("PROVISA_ENV_FILE", raising=False)
+    monkeypatch.delenv("PROVISA_GSHEETS_LIVE", raising=False)
 
 
-def test_local_stack_vars_are_never_loaded_from_env_file():
+def test_the_test_session_loads_the_credentials_at_import():
+    """tests/conftest.py calls load_provider_creds() at module level, before any module-level
+    skipif reads os.environ."""
+    tree = ast.parse((_TESTS / "conftest.py").read_text())
+    calls = [
+        node.value.func.id
+        for node in tree.body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+    ]
+    assert "load_provider_creds" in calls
+
+
+def test_every_provider_cred_in_the_file_is_exported(tmp_path, clean_env):
+    dotenv = tmp_path / ".env"
+    dotenv.write_text("SNOWFLAKE_ACCOUNT=acct\nexport DATABRICKS_TOKEN='tok'\n# GOOGLE_X=no\n")
+    loaded = load_provider_creds(dotenv)
+    assert sorted(loaded) == ["DATABRICKS_TOKEN", "SNOWFLAKE_ACCOUNT"]
+    assert (os.environ["SNOWFLAKE_ACCOUNT"], os.environ["DATABRICKS_TOKEN"]) == ("acct", "tok")
+
+
+def test_an_exported_value_wins_over_the_file(tmp_path, clean_env, monkeypatch):
+    dotenv = tmp_path / ".env"
+    dotenv.write_text("SNOWFLAKE_ACCOUNT=from-file\n")
+    monkeypatch.setenv("SNOWFLAKE_ACCOUNT", "exported")
+    assert load_provider_creds(dotenv) == []
+    assert os.environ["SNOWFLAKE_ACCOUNT"] == "exported"
+
+
+def test_local_stack_vars_are_never_loaded_from_env_file(tmp_path, clean_env, monkeypatch):
     """The whitelist must not pull in anything that repoints the isolated Docker stack."""
-    if not _ENV_FILE.is_file():
-        pytest.skip(".env absent (CI)")
-
+    dotenv = tmp_path / ".env"
+    dotenv.write_text(
+        "PG_HOST=dev-db\nPOSTGRES_HOST=dev-db\nTRINO_HOST=dev\nREDIS_URL=redis://dev\n"
+        "MINIO_ENDPOINT=dev\nKAFKA_BOOTSTRAP=dev\nPROVISA_ENGINE=trino\nSNOWFLAKE_USER=u\n"
+    )
     forbidden = ("PG_", "POSTGRES_", "TRINO_", "REDIS_", "MINIO_", "KAFKA_", "PROVISA_ENGINE")
-    leaked = [k for k in _parse_env_file(_ENV_FILE) if k.startswith(forbidden)]
-    assert not leaked, f"local-stack vars leaked through the cred whitelist: {leaked}"
+    for key in (
+        "PG_HOST",
+        "POSTGRES_HOST",
+        "TRINO_HOST",
+        "REDIS_URL",
+        "MINIO_ENDPOINT",
+        "KAFKA_BOOTSTRAP",
+        "PROVISA_ENGINE",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    assert [k for k in _parse_env_file(dotenv) if k.startswith(forbidden)] == []
+    assert load_provider_creds(dotenv) == ["SNOWFLAKE_USER"]
+    assert not [k for k in os.environ if k.startswith(forbidden) and os.environ[k] == "dev-db"]
 
 
-def test_sharepoint_cert_path_is_absolute(monkeypatch):
-    """SP_CERT_PATH is authored relative; the bridge must resolve it or the e2e skips by cwd."""
-    monkeypatch.setenv("SP_CERT_PATH", "./sharepoint.pfx")
-    monkeypatch.delenv("SHAREPOINT_CERT_PATH", raising=False)
-    load_provider_creds()
-    resolved = os.environ.get("SHAREPOINT_CERT_PATH")
-    if resolved is None:
-        pytest.skip(".env absent, so load_provider_creds() returns before the bridge")
-    assert Path(resolved).is_absolute()
+def test_sharepoint_cert_path_resolves_beside_the_env_file(tmp_path, clean_env):
+    """SP_CERT_PATH is authored relative to the .env; the bridge resolves it there, so it is
+    found from any cwd and from a worktree reading the primary checkout's .env."""
+    dotenv = tmp_path / "primary" / ".env"
+    dotenv.parent.mkdir()
+    dotenv.write_text("SP_CERT_PATH=./sharepoint.pfx\nSP_CLIENT_ID=cid\n")
+    load_provider_creds(dotenv)
+    assert os.environ["SHAREPOINT_CERT_PATH"] == str(tmp_path / "primary" / "sharepoint.pfx")
+    assert os.environ["SHAREPOINT_CLIENT_ID"] == "cid"
+
+
+def test_a_worktree_reads_the_primary_checkouts_env_file(tmp_path, clean_env):
+    primary = tmp_path / "primary"
+    (primary / ".git" / "worktrees" / "feature").mkdir(parents=True)
+    (primary / ".env").write_text("SNOWFLAKE_ACCOUNT=acct\n")
+    worktree = tmp_path / "primary" / ".claude" / "worktrees" / "feature"
+    worktree.mkdir(parents=True)
+    (worktree / ".git").write_text(f"gitdir: {primary / '.git' / 'worktrees' / 'feature'}\n")
+    assert env_file(worktree) == primary / ".env"
+
+
+def test_a_checkouts_own_env_file_and_a_named_one_come_first(tmp_path, clean_env, monkeypatch):
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    assert env_file(checkout) is None  # no .env anywhere: nothing to read, nothing loaded
+    (checkout / ".env").write_text("")
+    assert env_file(checkout) == checkout / ".env"
+    named = tmp_path / "named.env"
+    monkeypatch.setenv("PROVISA_ENV_FILE", str(named))
+    assert env_file(checkout) == named

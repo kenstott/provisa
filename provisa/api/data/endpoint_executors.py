@@ -40,6 +40,7 @@ from provisa.executor.serialize import (
 from provisa.executor import stats as _qs_mod
 from provisa.transpiler.router import Route
 from provisa.transpiler.transpile import transpile
+from provisa.core.statement_warnings import raised
 from provisa.api.data.hydration import _hydrate_api_tables_before_engine
 from provisa.api.data.materialization import (
     _materialize_api_to_engine_cache,
@@ -718,8 +719,8 @@ async def _store_response_cache(
 ) -> None:
     """Store response_data in the response cache — only for a request that opted in (REQ-544,
     amended 2026-09-30) and only where the operator's settings permit."""
-    if not cache_opt_in:
-        return
+    if not cache_opt_in or raised():
+        return  # a warned answer (one cut short) is never stored as the request's answer
     from provisa.cache.policy import opt_in_ttl
 
     # Resolve the root table by its ctx.tables key. canonical_field is the pre-alias schema
@@ -754,8 +755,8 @@ async def _store_api_source_cache(
 ) -> None:
     """Store API-source response_data in the response cache — opted-in requests only (REQ-544,
     amended 2026-09-30), where the operator's settings permit."""
-    if not cache_opt_in:
-        return
+    if not cache_opt_in or raised():
+        return  # a warned answer (one cut short) is never stored as the request's answer
     from provisa.cache.policy import opt_in_ttl
 
     # Resolve by ctx.tables key. canonical_field is the pre-alias schema field (variant keys

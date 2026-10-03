@@ -33,7 +33,12 @@ from provisa.core import request_deadline
 from provisa.federation.land_guard import LandGuard
 from provisa.executor.result import QueryResult
 from provisa.executor.result import ResultStream
-from provisa.federation.runtime_support import run_async_materialized, stream_rows_from_arrow
+from provisa.federation.runtime_support import (
+    close_cursor,
+    open_cursor,
+    run_async_materialized,
+    stream_rows_from_arrow,
+)
 
 
 def _arrow_result(cur: Any) -> bool:
@@ -147,12 +152,12 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
 
         refuse_live_in_write_surface(schema, table)  # REQ-1912
         stage = f"provisa_stg_{table}"
-        cur = self._conn.cursor()
+        cur = open_cursor(self._conn)
         try:
             for stmt in stage_and_external_table_ddl(database, schema, table, stage, entry.details):
                 cur.execute(stmt)
         finally:
-            cur.close()
+            close_cursor(cur)
         return None
 
     def detach_source(self, source: Any) -> None:
@@ -164,11 +169,11 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
 
         if self._engine_for().resolve(source).mechanism not in LIVE_IN_PLACE:
             return
-        cur = self._conn.cursor()
+        cur = open_cursor(self._conn)
         try:
             cur.execute(f"DROP EXTERNAL TABLE IF EXISTS {qualified(self._phys_parts(source))}")
         finally:
-            cur.close()
+            close_cursor(cur)
 
     # -- materialization store -------------------------------------------------
 
@@ -181,12 +186,12 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         to an empty string, which produced unquoted-empty-identifier DDL."""
         if self._database:
             return self._database
-        cur = self._conn.cursor()
+        cur = open_cursor(self._conn)
         try:
             cur.execute("SELECT CURRENT_DATABASE()")
             row = cur.fetchone()
         finally:
-            cur.close()
+            close_cursor(cur)
         if not row or not row[0]:
             raise RuntimeError(
                 "Snowflake session has no default database; specify one in the "
@@ -221,13 +226,13 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         parts = (self.ensure_materialize_attached(), schema, table)
 
         def _run() -> str:
-            cur = self._conn.cursor()
+            cur = open_cursor(self._conn)
             try:
                 return reconcile_snowflake_native(
                     cur, parts=parts, columns=columns, pk_columns=pk_columns
                 )
             finally:
-                cur.close()
+                close_cursor(cur)
 
         return await self._land_guard.run(_run)
 
@@ -247,11 +252,11 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         view = (database, view_schema, view_table)
 
         def _run() -> None:
-            cur = self._conn.cursor()
+            cur = open_cursor(self._conn)
             try:
                 expose_view(cur, view=view, replica=replica, replace=replace)
             finally:
-                cur.close()
+                close_cursor(cur)
 
         await self._land_guard.run(_run)
 
@@ -279,7 +284,7 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         landing_shape = shape or select_landing_shape(change_signal, watermark_column)
 
         def _run() -> str:
-            cur = self._conn.cursor()
+            cur = open_cursor(self._conn)
             try:
                 return land_snowflake_native(
                     cur,
@@ -290,7 +295,7 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
                     pk_columns=pk_columns,
                 )
             finally:
-                cur.close()
+                close_cursor(cur)
 
         return await self._land_guard.run(_run)
 
@@ -306,7 +311,7 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         targets = plan_targets(plan)
 
         def _run() -> int:
-            cur = self._conn.cursor()
+            cur = open_cursor(self._conn)
             try:
                 return reconcile_metadata_native(
                     cur,
@@ -316,7 +321,7 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
                     known_tags=plan.known_tags,
                 )
             finally:
-                cur.close()
+                close_cursor(cur)
 
         return await self._land_guard.run(_run)
 
@@ -337,13 +342,13 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         parts = (self.ensure_materialize_attached(), schema, table)
 
         def _run() -> str:
-            cur = self._conn.cursor()
+            cur = open_cursor(self._conn)
             try:
                 return reconcile_snowflake_native(
                     cur, parts=parts, columns=columns, pk_columns=pk_columns
                 )
             finally:
-                cur.close()
+                close_cursor(cur)
 
         return await self._land_guard.run(_run)
 
@@ -373,7 +378,7 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         parts = (self.ensure_materialize_attached(), schema, table)
 
         def _run() -> str:
-            cur = self._conn.cursor()
+            cur = open_cursor(self._conn)
             try:
                 if persist == "upsert":
                     return merge_snowflake_native(
@@ -392,7 +397,7 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
                     pk_columns=pk_columns,
                 )
             finally:
-                cur.close()
+                close_cursor(cur)
 
         return await self._land_guard.run(_run)
 
@@ -419,7 +424,7 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         """Execute Snowflake-dialect SQL and return a ``pyarrow.Table`` — Snowflake exports Arrow
         natively (``fetch_arrow_all``), so no Python rows are materialized for the Flight transport.
         An empty result set yields an empty table rather than ``None``."""
-        cur = self._conn.cursor()
+        cur = open_cursor(self._conn)
         try:
             _execute_within_deadline(cur, sql, params)
             if not _arrow_result(cur):
@@ -430,7 +435,7 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
                 return pa.table({name: [] for name in names})
             return table
         finally:
-            cur.close()
+            close_cursor(cur)
 
     def run_arrow_stream(self, sql: str, params: list | None = None) -> tuple[Any, Any]:
         """Execute Snowflake-dialect SQL and return ``(schema, batch_generator)`` for lazy
@@ -440,19 +445,25 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         so the full result never materializes — peak memory is bounded by one chunk. The private
         cursor closes when the generator drains or the consumer stops early. A zero-row result yields
         an empty-schema stream (column names from the cursor description, no rows)."""
-        cur = self._conn.cursor()
-        _execute_within_deadline(cur, sql, params)
-        if not _arrow_result(cur):
-            table = _status_table(cur)
-            cur.close()
-            return table.schema, iter(table.to_batches())
-        batch_iter = iter(cur.fetch_arrow_batches())
-        first = next(batch_iter, None)
-        if first is None:  # snowflake yields no batches for a zero-row result
-            names = [d[0] for d in (cur.description or [])]
-            cur.close()
-            return pa.table({name: [] for name in names}).schema, iter(())
-        schema = first.schema
+        cur = open_cursor(self._conn)
+        try:
+            _execute_within_deadline(cur, sql, params)
+            if not _arrow_result(cur):
+                table = _status_table(cur)
+                close_cursor(cur)
+                return table.schema, iter(table.to_batches())
+            batch_iter = iter(cur.fetch_arrow_batches())
+            first = next(batch_iter, None)
+            if first is None:  # snowflake yields no batches for a zero-row result
+                names = [d[0] for d in (cur.description or [])]
+                close_cursor(cur)
+                return pa.table({name: [] for name in names}).schema, iter(())
+            schema = first.schema
+        except BaseException:
+            # A statement the deadline cut short, or one that failed: the cursor is closed here,
+            # since no stream will ever own it (REQ-1905).
+            close_cursor(cur)
+            raise
 
         def _batches():
             try:
@@ -460,7 +471,7 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
                 for tbl in batch_iter:
                     yield from tbl.to_batches()
             finally:
-                cur.close()
+                close_cursor(cur)
 
         return schema, _batches()
 
@@ -509,12 +520,12 @@ def resolve_snowflake_iceberg_metadata_location(source: Any) -> str:  # REQ-1867
         role=hints.get("role"),
     )
     try:
-        cur = conn.cursor()
+        cur = open_cursor(conn)
         try:
             cur.execute(f"SELECT SYSTEM$GET_ICEBERG_TABLE_INFORMATION('{table}')")
             row = cur.fetchone()
         finally:
-            cur.close()
+            close_cursor(cur)
     finally:
         conn.close()
     if row is None:

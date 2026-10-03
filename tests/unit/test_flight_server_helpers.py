@@ -203,6 +203,7 @@ class TestFlightSqlDispatchHopCount:
         calls = self._counting_run_on_loop(monkeypatch, srv)
 
         plan = SimpleNamespace(
+            warnings=[],  # REQ-1350: nothing to say
             route=Route.DIRECT,
             source_id="src1",
             sql="SELECT 1",
@@ -244,6 +245,7 @@ class TestFlightSqlDispatchHopCount:
         calls = self._counting_run_on_loop(monkeypatch, srv)
 
         plan = SimpleNamespace(
+            warnings=[],  # REQ-1350: nothing to say
             route=Route.ENGINE,
             physical_sql="SELECT 1",
             sources=["src1"],
