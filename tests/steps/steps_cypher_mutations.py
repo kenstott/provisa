@@ -456,13 +456,13 @@ def _run_after_write(table_id: int, table_name: str, source_id: str) -> dict[str
         written_table_id=table_id,
     )
 
-    async def _no_replica(_state, _table_id, _source_id):
-        return None  # no replica store here: the build request has its own tests
+    async def _no_replica(_state, _table_id, _source_id, _reason):
+        return False  # no replica store here: the build request has its own tests
 
     with (
         patch.object(_change_mod, "emit_change_event", lambda *a: calls["events"].append(a)),
         patch.object(_sink_mod, "trigger_sinks_for_table", _sinks),
-        patch("provisa.api.data.table_written._request_replica_build", _no_replica),
+        patch("provisa.federation.replica_builds.request_if_replicated", _no_replica),
     ):
 
         async def _finalize():

@@ -326,6 +326,41 @@ def wire_replica_runner(scheduler: Any, *, state: Any, platform_url: str) -> Non
     )
 
 
+async def request_if_replicated(state: Any, table_id: int, source_id: str, reason: str) -> bool:
+    """Ask for a build of the whole-table replica of a table whose rows changed at its source
+    (REQ-1915): a write made through Provisa (REQ-1924), or a change its source reported
+    (REQ-1861). True when the request stands -- made now, or kept on a build already running
+    (``replica_state.request_build``).
+
+    The table is judged as a read judges it (``query_residency``): it is served from a replica
+    when the operator's settings put it there or the engine cannot read its source in place, and
+    only a whole copy is built -- a table replicated row by row, or one with a parameter column,
+    has no whole to rebuild. Nothing is asked for a table that is not."""
+    from provisa.core.request_context import current_org
+    from provisa.federation import replica_state
+    from provisa.federation.registry_view import registered_sources, registered_tables
+    from provisa.federation.replica_converge import whole_copy
+    from provisa.federation.strategy import engine_attaches
+
+    engine = state.federation_engine
+    source = {s.id: s for s in await registered_sources(state)}.get(source_id)
+    if source is None:
+        return False  # a built-in source (registry_view.registered_sources): never replicated
+    table = {t.id: t for t in await registered_tables(state)}[table_id]
+    served_from_replica = table.id in state.replica_routes.floored or not engine_attaches(
+        engine, source.type.value
+    )
+    if not (served_from_replica and whole_copy(source, table, engine)):
+        return False
+    async with state.tenant_db.acquire() as conn:
+        requested = await replica_state.request_build(
+            conn, (source.id, table.schema_name, table.table_name), reason
+        )
+    if requested:
+        kick(current_org.get(None))
+    return True
+
+
 def kick(org_id: str | None) -> None:
     """Start this process's build pass for ``org_id`` now, without waiting for its next
     scheduled one — a read has just asked for a build. Does nothing in a process with no
