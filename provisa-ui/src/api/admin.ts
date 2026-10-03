@@ -2102,3 +2102,32 @@ export async function updateSettingsCatalog(
   }
   return resp.json();
 }
+
+/** REQ-464: one candidate a natural-language table search ranked, with the confidence and the
+ *  reasoning the ranker gave (empty when no model ranked it). */
+export interface TableSearchCandidate {
+  schema_name: string;
+  table_name: string;
+  comment: string | null;
+  confidence: number;
+  reasoning: string;
+  cache_warm: boolean;
+}
+
+/** REQ-464: search a source's schema for the tables a description fits. The steward chooses;
+ *  nothing is registered by a search. */
+export async function searchSourceTables(
+  sourceId: string,
+  query: string,
+  schemaName: string,
+): Promise<TableSearchCandidate[]> {
+  const params = new URLSearchParams({ q: query, schema_name: schemaName });
+  const res = await fetch(
+    `${API_BASE}/admin/sources/${encodeURIComponent(sourceId)}/tables/search?${params}`,
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(serverMessage(body, requestFailed("table search", res.status)));
+  }
+  return res.json();
+}

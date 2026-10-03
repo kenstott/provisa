@@ -22,6 +22,7 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { toSnakeCase } from "../../naming";
+import { NlTableSearch } from "./NlTableSearch";
 import { MultiSelect } from "../../components/MultiSelect";
 import { useAvailableSchemas, useAvailableTables } from "../../hooks/useAdminQueries";
 import { useQueryPreview } from "../../hooks/useQueryPreview";
@@ -717,6 +718,14 @@ export function RegisterTableForm({
               </Text>
             )}
           </label>
+          {sourceId && schemaName && !allTablesRegistered && (
+            <NlTableSearch
+              sourceId={sourceId}
+              schemaName={schemaName}
+              isRegistered={isRegistered}
+              onPick={setTableName}
+            />
+          )}
         </>
       )}
       <TextInput
