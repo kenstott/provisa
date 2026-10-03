@@ -14,8 +14,6 @@
     "selectTable": "Selecionar tabela...",
     "visibleTo": "Visível para (funções, separadas por vírgula)",
     "visibleToPlaceholder": "admin, analyst",
-    "writableBy": "Gravável por (funções, separadas por vírgula)",
-    "writableByPlaceholder": "admin",
     "url": "URL",
     "urlPlaceholder": "https://api.example.com/action",
     "method": "Método",

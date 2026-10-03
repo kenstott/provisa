@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json אינו JSON תקין: {{error}}",
       "args_json_not_object": "args_json חייב להיות אובייקט JSON",
       "column_not_writable": "לתפקיד '{{role}}' אין גישת כתיבה לעמודה '{{column}}'",
+      "command_filter_refused": "{{field}}: {{reason}}",
       "definition_not_available": "{{statement}} אינו זמין כאן: הגדרות נוצרות במודל או במקור הנתונים, ושורות מוסרות באמצעות DELETE.",
       "engine_not_connected": "המנוע אינו מחובר",
       "grpc_source_not_registered": "מקור gRPC מרוחק '{{source_id}}' אינו רשום",
@@ -119,6 +120,9 @@
     "functions": {
       "approval_denied": "האישור נדחה עבור '{{name}}': {{reason}}",
       "approval_unavailable": "הפקודה '{{name}}' דורשת אישור ולא מוגדר hook לאישור",
+      "argument_count": "{{signature}} מקבל {{count}} ארגומנטים; נמסרו {{given}}",
+      "argument_missing": "{{signature}}: הארגומנט '{{argument}}' לא נמסר",
+      "argument_not_declared": "{{signature}}: הארגומנט '{{argument}}' אינו מוצהר",
       "binding_missing_key": "לקישור הפונקציה עבור kind '{{kind}}' חסר מפתח חובה '{{key}}'",
       "egress_denied": "יציאה אל '{{endpoint}}' נדחתה: המארח אינו ברשימת ההיתרים ליציאת UDF (REQ-885 deny-by-default). הוסיפו אותו ל-udf_egress_allowlist כדי להתיר.",
       "grpc_call_failed": "קריאת grpc {{target}}{{path}} נכשלה: {{status}}: {{details}}",
@@ -134,6 +138,7 @@
       "script_failed": "הסקריפט הסתיים בקוד {{returncode}}: {{stderr}}",
       "source_not_connected": "המקור '{{source_id}}' אינו מחובר",
       "unknown_arg_kind": "arg_kind לא מוכר '{{arg_kind}}' עבור '{{name}}'",
+      "unknown_command": "פקודה לא ידועה: '{{name}}'",
       "unknown_impl_kind": "impl_kind לא מוכר של פונקציה: '{{impl_kind}}'",
       "written_table_missing": "הפקודה '{{name}}' כותבת אל '{{table}}', שאינה רשומה"
     },
@@ -334,6 +339,8 @@
       "task_not_found": "המשימה '{{task}}' לא נמצאה",
       "trigger_exists": "הטריגר '{{trigger}}' כבר קיים",
       "trigger_fields_required": "id, name ו-cron הם שדות חובה",
+      "trigger_role_required": "טריגר '{{trigger}}': טריגר SQL פועל כתפקיד של ארגון זה",
+      "trigger_sql_refused": "{{reason}}",
       "unknown_request_type": "סוג בקשה לא מוכר '{{type}}'",
       "unknown_trigger_kind": "סוג טריגר לא מוכר '{{kind}}'",
       "url_sql_exclusive": "url ו-sql מוציאים זה את זה",
@@ -397,6 +404,9 @@
       "no_fields_to_update": "אין שדות לעדכון",
       "self_role_change": "משתמש אינו יכול לשנות את התפקיד של עצמו. פנו למנהל אחר (REQ-1308).",
       "user_not_found": "המשתמש לא נמצא"
+    },
+    "cypher": {
+      "command_call_refused": "{{reason}}"
     }
   }
 }

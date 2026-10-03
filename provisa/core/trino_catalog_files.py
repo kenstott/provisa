@@ -202,6 +202,13 @@ def write_table_definitions(
 # --- Kafka catalog file generation (REQ-250) ---
 
 
+def _named_brokers(kafka_source: dict) -> str:
+    """The brokers a Kafka source names — never a default one (REQ-812)."""
+    if not kafka_source.get("bootstrap_servers"):
+        raise ValueError(f"Kafka source {kafka_source.get('id')!r} names no bootstrap_servers")
+    return kafka_source["bootstrap_servers"]
+
+
 def _kafka_source_config(kafka_source: dict):
     """Build a KafkaSourceConfig from a raw ``kafka_sources[]`` config entry."""
     from pydantic import TypeAdapter
@@ -240,7 +247,7 @@ def _kafka_source_config(kafka_source: dict):
     ]
     return KafkaSourceConfig(
         id=kafka_source["id"],
-        bootstrap_servers=resolve_secrets(kafka_source.get("bootstrap_servers", "localhost:9092")),
+        bootstrap_servers=resolve_secrets(_named_brokers(kafka_source)),
         schema_registry_url=kafka_source.get("schema_registry_url"),
         topics=topics,
         auth=auth,

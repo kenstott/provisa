@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json 不是有效的 JSON：{{error}}",
       "args_json_not_object": "args_json 必须是 JSON 对象",
       "column_not_writable": "角色 '{{role}}' 没有列 '{{column}}' 的写入权限",
+      "command_filter_refused": "{{field}}: {{reason}}",
       "definition_not_available": "{{statement}} 在此不可用：定义在模型或数据源中创建，删除行请使用 DELETE。",
       "engine_not_connected": "引擎未连接",
       "grpc_source_not_registered": "gRPC 远程数据源 '{{source_id}}' 未注册",
@@ -119,6 +120,9 @@
     "functions": {
       "approval_denied": "'{{name}}' 的审批被拒绝：{{reason}}",
       "approval_unavailable": "命令 '{{name}}' 需要审批，但未配置审批钩子",
+      "argument_count": "{{signature}} 接受 {{count}} 个参数；提供了 {{given}} 个",
+      "argument_missing": "{{signature}}：未提供参数 '{{argument}}'",
+      "argument_not_declared": "{{signature}}：参数 '{{argument}}' 未声明",
       "binding_missing_key": "类型为 '{{kind}}' 的函数绑定缺少必需的键 '{{key}}'",
       "egress_denied": "拒绝出站访问 '{{endpoint}}'：主机不在 UDF 出站允许列表中（REQ-885 默认拒绝）。将其添加到 udf_egress_allowlist 以允许。",
       "grpc_call_failed": "grpc 调用 {{target}}{{path}} 失败：{{status}}：{{details}}",
@@ -134,6 +138,7 @@
       "script_failed": "脚本以 {{returncode}} 退出：{{stderr}}",
       "source_not_connected": "数据源 '{{source_id}}' 未连接",
       "unknown_arg_kind": "'{{name}}' 的 arg_kind '{{arg_kind}}' 未知",
+      "unknown_command": "未知命令：'{{name}}'",
       "unknown_impl_kind": "未知的函数 impl_kind：'{{impl_kind}}'",
       "written_table_missing": "命令 '{{name}}' 写入 '{{table}}'，但该表未注册"
     },
@@ -334,6 +339,8 @@
       "task_not_found": "未找到任务 '{{task}}'",
       "trigger_exists": "触发器 '{{trigger}}' 已存在",
       "trigger_fields_required": "id、name 和 cron 为必填项",
+      "trigger_role_required": "触发器 '{{trigger}}'：SQL 触发器以本组织的某个角色运行",
+      "trigger_sql_refused": "{{reason}}",
       "unknown_request_type": "未知的请求类型 '{{type}}'",
       "unknown_trigger_kind": "未知的触发器类型 '{{kind}}'",
       "url_sql_exclusive": "url 和 sql 互斥",
@@ -397,6 +404,9 @@
       "no_fields_to_update": "没有要更新的字段",
       "self_role_change": "用户不能更改自己的角色。请联系另一位管理员（REQ-1308）。",
       "user_not_found": "未找到用户"
+    },
+    "cypher": {
+      "command_call_refused": "{{reason}}"
     }
   }
 }

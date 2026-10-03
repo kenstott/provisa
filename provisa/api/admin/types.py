@@ -1325,6 +1325,7 @@ class ScheduledTaskType:  # REQ-533
     webhook_url: str | None
     kind: str  # REQ-1003: "webhook" | "sql"
     sql: str | None  # REQ-1003: SQL statement for a SQL trigger
+    role: str | None  # the role a SQL trigger runs as
     enabled: bool
     last_run_at: str | None
     next_run_at: str | None

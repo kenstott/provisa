@@ -47,8 +47,9 @@ class KafkaConnection:  # REQ-1730
     def build(cls, host: str, port: int | None) -> "KafkaConnection":
         # The source's ``host`` may list several brokers, comma-separated (same convention as
         # push_wiring.py's CDC listener and TrinoKafkaConnector.details()'s kafka.nodes).
-        servers = f"{host}:{port}" if port else (host or "localhost:9092")
-        return cls(bootstrap_servers=servers)
+        if not host:
+            raise ValueError("a Kafka source names its brokers in host; this one names none")
+        return cls(bootstrap_servers=f"{host}:{port}" if port else host)
 
 
 def _decode_row(raw: bytes | str | None) -> dict | None:

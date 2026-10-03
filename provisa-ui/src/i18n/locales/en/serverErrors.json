@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json not valid JSON: {{error}}",
       "args_json_not_object": "args_json must be a JSON object",
       "column_not_writable": "Role '{{role}}' does not have write access to column '{{column}}'",
+      "command_filter_refused": "{{field}}: {{reason}}",
       "definition_not_available": "{{statement}} is not available here: definitions are made in the model or in the data source, and rows are removed with DELETE.",
       "engine_not_connected": "the engine not connected",
       "grpc_source_not_registered": "gRPC remote source '{{source_id}}' not registered",
@@ -119,6 +120,9 @@
     "functions": {
       "approval_denied": "Approval denied for '{{name}}': {{reason}}",
       "approval_unavailable": "command '{{name}}' needs approval and no approval hook is configured",
+      "argument_count": "{{signature}} takes {{count}} argument(s); {{given}} given",
+      "argument_missing": "{{signature}}: argument '{{argument}}' was not given",
+      "argument_not_declared": "{{signature}}: argument '{{argument}}' is not one it declares",
       "binding_missing_key": "function binding for kind '{{kind}}' is missing required key '{{key}}'",
       "egress_denied": "egress to '{{endpoint}}' is denied: host not on the UDF egress allow-list (REQ-885 deny-by-default). Add it to udf_egress_allowlist to permit.",
       "grpc_call_failed": "grpc call {{target}}{{path}} failed: {{status}}: {{details}}",
@@ -134,6 +138,7 @@
       "script_failed": "script exited {{returncode}}: {{stderr}}",
       "source_not_connected": "Source '{{source_id}}' not connected",
       "unknown_arg_kind": "Unknown arg_kind '{{arg_kind}}' for '{{name}}'",
+      "unknown_command": "Unknown command: '{{name}}'",
       "unknown_impl_kind": "Unknown function impl_kind: '{{impl_kind}}'",
       "written_table_missing": "command '{{name}}' writes '{{table}}', which is not registered"
     },
@@ -334,6 +339,8 @@
       "task_not_found": "Task '{{task}}' not found",
       "trigger_exists": "Trigger '{{trigger}}' already exists",
       "trigger_fields_required": "id, name, and cron are required",
+      "trigger_role_required": "Trigger '{{trigger}}': a SQL trigger runs as a role of this org",
+      "trigger_sql_refused": "{{reason}}",
       "unknown_request_type": "Unknown request type '{{type}}'",
       "unknown_trigger_kind": "Unknown trigger kind '{{kind}}'",
       "url_sql_exclusive": "url and sql are mutually exclusive",
@@ -397,6 +404,9 @@
       "no_fields_to_update": "No fields to update",
       "self_role_change": "A user cannot change their own role. Ask another administrator (REQ-1308).",
       "user_not_found": "User not found"
+    },
+    "cypher": {
+      "command_call_refused": "{{reason}}"
     }
   }
 }

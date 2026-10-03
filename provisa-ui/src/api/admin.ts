@@ -1559,6 +1559,7 @@ export interface ScheduledTask {
   webhookUrl: string | null;
   kind: string;
   sql: string | null;
+  role: string | null;
   enabled: boolean;
   lastRunAt: string | null;
   nextRunAt: string | null;

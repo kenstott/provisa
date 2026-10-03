@@ -3802,11 +3802,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         webhook_name: Optional[str] = None,
         args_json: Optional[str] = None,
         sql: Optional[str] = None,
+        role: Optional[str] = None,
     ) -> MutationResult:
         """Create a scheduled trigger (webhook or SQL) and register it live (REQ-1003/1004)."""
         require_capability(info, "org_settings")
         return await _ops.create_scheduled_task_op(
-            id, name, cron, kind, webhook_name, args_json, sql
+            id, name, cron, kind, webhook_name, args_json, sql, role
         )
 
     @strawberry.mutation

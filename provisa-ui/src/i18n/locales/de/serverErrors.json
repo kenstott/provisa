@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json ist kein gültiges JSON: {{error}}",
       "args_json_not_object": "args_json muss ein JSON-Objekt sein",
       "column_not_writable": "Rolle '{{role}}' hat keinen Schreibzugriff auf Spalte '{{column}}'",
+      "command_filter_refused": "{{field}}: {{reason}}",
       "definition_not_available": "{{statement}} ist hier nicht verfügbar: Definitionen werden im Modell oder in der Datenquelle angelegt, und Zeilen werden mit DELETE entfernt.",
       "engine_not_connected": "Engine nicht verbunden",
       "grpc_source_not_registered": "gRPC-Remotequelle '{{source_id}}' nicht registriert",
@@ -119,6 +120,9 @@
     "functions": {
       "approval_denied": "Genehmigung für '{{name}}' verweigert: {{reason}}",
       "approval_unavailable": "Befehl '{{name}}' erfordert eine Genehmigung, und es ist kein Genehmigungs-Hook konfiguriert",
+      "argument_count": "{{signature}} nimmt {{count}} Argument(e); {{given}} angegeben",
+      "argument_missing": "{{signature}}: Argument '{{argument}}' wurde nicht angegeben",
+      "argument_not_declared": "{{signature}}: Argument '{{argument}}' ist nicht deklariert",
       "binding_missing_key": "Funktionsbindung für Art '{{kind}}' fehlt der erforderliche Schlüssel '{{key}}'",
       "egress_denied": "Ausgehender Zugriff auf '{{endpoint}}' verweigert: Host steht nicht auf der UDF-Egress-Zulassungsliste (REQ-885 deny-by-default). Fügen Sie ihn zu udf_egress_allowlist hinzu, um ihn zuzulassen.",
       "grpc_call_failed": "gRPC-Aufruf {{target}}{{path}} fehlgeschlagen: {{status}}: {{details}}",
@@ -134,6 +138,7 @@
       "script_failed": "Skript wurde mit {{returncode}} beendet: {{stderr}}",
       "source_not_connected": "Quelle '{{source_id}}' nicht verbunden",
       "unknown_arg_kind": "Unbekanntes arg_kind '{{arg_kind}}' für '{{name}}'",
+      "unknown_command": "Unbekannter Befehl: '{{name}}'",
       "unknown_impl_kind": "Unbekanntes Funktions-impl_kind: '{{impl_kind}}'",
       "written_table_missing": "Befehl '{{name}}' schreibt '{{table}}', die nicht registriert ist"
     },
@@ -334,6 +339,8 @@
       "task_not_found": "Aufgabe '{{task}}' nicht gefunden",
       "trigger_exists": "Trigger '{{trigger}}' existiert bereits",
       "trigger_fields_required": "id, name und cron sind erforderlich",
+      "trigger_role_required": "Trigger '{{trigger}}': Ein SQL-Trigger läuft als Rolle dieser Organisation",
+      "trigger_sql_refused": "{{reason}}",
       "unknown_request_type": "Unbekannter Anfragetyp '{{type}}'",
       "unknown_trigger_kind": "Unbekannte Trigger-Art '{{kind}}'",
       "url_sql_exclusive": "url und sql schließen sich gegenseitig aus",
@@ -397,6 +404,9 @@
       "no_fields_to_update": "Keine Felder zu aktualisieren",
       "self_role_change": "Ein Benutzer kann seine eigene Rolle nicht ändern. Bitten Sie einen anderen Administrator (REQ-1308).",
       "user_not_found": "Benutzer nicht gefunden"
+    },
+    "cypher": {
+      "command_call_refused": "{{reason}}"
     }
   }
 }

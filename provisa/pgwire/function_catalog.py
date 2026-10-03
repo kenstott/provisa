@@ -13,8 +13,7 @@
 The tracked_functions registry is the single source of truth; this projects it into
 the pgwire emulation's pg_proc and information_schema.routines/parameters so a SQL
 client (psql \\df, DBeaver, Explore) can DISCOVER registered functions. Invocation and
-per-mutation writable_by authorization are enforced by the shared executor at call time,
-not by catalog visibility.
+the command admission are the shared executor's at call time, not catalog visibility.
 """
 
 from __future__ import annotations

@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json が有効な JSON ではありません：{{error}}",
       "args_json_not_object": "args_json は JSON オブジェクトである必要があります",
       "column_not_writable": "ロール「{{role}}」には列「{{column}}」への書き込みアクセス権がありません",
+      "command_filter_refused": "{{field}}: {{reason}}",
       "definition_not_available": "{{statement}} はここでは使用できません。定義はモデルまたはデータソースで作成し、行の削除には DELETE を使用します。",
       "engine_not_connected": "エンジンが接続されていません",
       "grpc_source_not_registered": "gRPC リモートソース「{{source_id}}」が登録されていません",
@@ -119,6 +120,9 @@
     "functions": {
       "approval_denied": "'{{name}}' の承認が拒否されました: {{reason}}",
       "approval_unavailable": "コマンド '{{name}}' には承認が必要ですが、承認フックが構成されていません",
+      "argument_count": "{{signature}} の引数は {{count}} 個です。{{given}} 個が渡されました",
+      "argument_missing": "{{signature}}: 引数 '{{argument}}' が渡されていません",
+      "argument_not_declared": "{{signature}}: 引数 '{{argument}}' は宣言されていません",
       "binding_missing_key": "kind「{{kind}}」の関数バインディングに必須キー「{{key}}」がありません",
       "egress_denied": "「{{endpoint}}」への外部送信は拒否されました：ホストが UDF 外部送信許可リストにありません（REQ-885 デフォルト拒否）。許可するには udf_egress_allowlist に追加してください。",
       "grpc_call_failed": "grpc 呼び出し {{target}}{{path}} が失敗しました：{{status}}：{{details}}",
@@ -134,6 +138,7 @@
       "script_failed": "スクリプトが終了コード {{returncode}} で終了しました：{{stderr}}",
       "source_not_connected": "ソース「{{source_id}}」が接続されていません",
       "unknown_arg_kind": "「{{name}}」の arg_kind「{{arg_kind}}」は不明です",
+      "unknown_command": "不明なコマンド: '{{name}}'",
       "unknown_impl_kind": "不明な関数 impl_kind：「{{impl_kind}}」",
       "written_table_missing": "コマンド '{{name}}' は登録されていない '{{table}}' に書き込みます"
     },
@@ -334,6 +339,8 @@
       "task_not_found": "タスク「{{task}}」が見つかりません",
       "trigger_exists": "トリガー「{{trigger}}」は既に存在します",
       "trigger_fields_required": "id、name、cron は必須です",
+      "trigger_role_required": "トリガー '{{trigger}}': SQL トリガーはこの組織のロールとして実行されます",
+      "trigger_sql_refused": "{{reason}}",
       "unknown_request_type": "不明なリクエストタイプ「{{type}}」です",
       "unknown_trigger_kind": "不明なトリガー種別「{{kind}}」です",
       "url_sql_exclusive": "url と sql は同時に指定できません",
@@ -397,6 +404,9 @@
       "no_fields_to_update": "更新するフィールドがありません",
       "self_role_change": "ユーザーは自分自身のロールを変更できません。別の管理者に依頼してください（REQ-1308）。",
       "user_not_found": "ユーザーが見つかりません"
+    },
+    "cypher": {
+      "command_call_refused": "{{reason}}"
     }
   }
 }

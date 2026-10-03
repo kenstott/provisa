@@ -1417,8 +1417,10 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     function_name: str
     returns: str  # registered table id (source_id.schema.table)
     arguments: list[FunctionArgument] = Field(default_factory=list)
+    # The one list of roles the command is assigned to; empty assigns it to every role. A role
+    # calls it when it is assigned, reaches its domain, and — for a mutation — holds the write
+    # right (security/mutation_authz.admit_command).
     visible_to: list[str] = Field(default_factory=list)
-    writable_by: list[str] = Field(default_factory=list)
     domain_id: str = ""
     description: str | None = None
     kind: str = "mutation"  # "mutation" or "query"
@@ -1456,6 +1458,18 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
 
     model_config = ConfigDict(populate_by_name=True)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _one_role_list(cls, data: Any) -> Any:
+        """A command carries one role list, ``visible_to``. A configuration still naming a second
+        one fails here, by name, rather than being read as something it no longer is."""
+        if isinstance(data, dict) and "writable_by" in data:
+            raise ValueError(
+                f"command {data.get('name')!r}: 'writable_by' is not a command key — a command "
+                "is assigned to roles by 'visible_to' alone"
+            )
+        return data
+
 
 class Webhook(BaseModel):  # REQ-209, REQ-210, REQ-211
     """External HTTP webhook exposed as a GraphQL query or mutation."""
@@ -1487,7 +1501,23 @@ class ScheduledTrigger(BaseModel):
     # Mutually exclusive with url/function. REQ-1004: the text may contain {{date-token}}
     # placeholders substituted with the run's execution date/time before execution.
     sql: str | None = None
+    # The role a SQL trigger's statement runs as, through the one write admission. Required for a
+    # SQL trigger: a schedule acts as a role someone chose, never as a built-in one.
+    role: str | None = None
     enabled: bool = True
+
+    @model_validator(mode="after")
+    def _sql_trigger_writes_rows_as_a_role(self) -> "ScheduledTrigger":
+        if self.sql is None:
+            return self
+        if not self.role:
+            raise ValueError(f"trigger {self.id!r}: a SQL trigger names the role it runs as")
+        from datetime import datetime, timezone
+
+        from provisa.scheduler.trigger_sql import checked_trigger_sql
+
+        checked_trigger_sql(self.sql, self.id, datetime.now(timezone.utc))
+        return self
 
 
 class LoginThrottleConfig(BaseModel):  # REQ-1393

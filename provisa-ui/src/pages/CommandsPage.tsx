@@ -149,7 +149,6 @@ export function CommandsPage() {
         functionName: fn.functionName,
         returns: fn.returns,
         visibleTo: fn.visibleTo.join(", "),
-        writablBy: fn.writableBy.join(", "),
         domainId: fn.domainId,
         description: fn.description ?? "",
         arguments: fn.arguments.length > 0 ? fn.arguments : [],
@@ -179,7 +178,6 @@ export function CommandsPage() {
         functionName: "",
         returns: wh.returns ?? "",
         visibleTo: wh.visibleTo.join(", "),
-        writablBy: "",
         domainId: wh.domainId,
         description: wh.description ?? "",
         arguments: wh.arguments.length > 0 ? wh.arguments : [],
@@ -214,10 +212,6 @@ export function CommandsPage() {
         .map((s) => s.trim())
         .filter(Boolean);
       if (form.actionType === "function") {
-        const writableBy = form.writablBy
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
         // REQ-1159: output is a dataset. In "dataset" mode the IR-typed columns are the sole
         // contract; return_schema (the GraphQL projection) is DERIVED, never authored.
         const outputColumns = form.outputColumns.filter((c) => c.name.trim() !== "");
@@ -230,7 +224,6 @@ export function CommandsPage() {
           returns: isDataset ? "" : form.returns,
           arguments: form.arguments,
           visibleTo,
-          writableBy,
           domainId: form.domainId,
           description: form.description || undefined,
           kind: form.kind,
@@ -536,14 +529,6 @@ export function CommandsPage() {
                                   </Table.Td>
                                   <Table.Td>
                                     {fn.visibleTo.join(", ") || t("commandsPage.all")}
-                                  </Table.Td>
-                                </Table.Tr>
-                                <Table.Tr>
-                                  <Table.Td c="dimmed">
-                                    <strong>{t("commandsPage.detailWritableBy")}</strong>
-                                  </Table.Td>
-                                  <Table.Td>
-                                    {fn.writableBy.join(", ") || t("commandsPage.all")}
                                   </Table.Td>
                                 </Table.Tr>
                                 <Table.Tr>

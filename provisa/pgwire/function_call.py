@@ -13,7 +13,7 @@
 Detects a bare ``SELECT * FROM fn(args)`` / ``SELECT fn(args)`` whose ``fn`` is a
 registered tracked function, coerces its literal arguments, and adapts the executor's
 row dicts back to a pgwire QueryResult. Invocation routes through the one shared
-``invoke_tracked_function`` executor, which enforces per-mutation writable_by.
+``invoke_tracked_function`` executor and its command admission.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ def _literal_value(node):
     return node.sql()  # fall back to the rendered SQL for anything exotic
 
 
-def detect_sql_function_call(sql: str, state) -> tuple[str, list] | None:
+def detect_sql_function_call(sql: str, state, role_id: str) -> tuple[str, list] | None:
     """Return (registered function name, positional arg values) for a STANDALONE function-call SELECT.
 
     Handles only the direct forms where the command IS the whole query: ``SELECT fn(args)`` (scalar)
@@ -50,12 +50,12 @@ def detect_sql_function_call(sql: str, state) -> tuple[str, list] | None:
     shared _govern_and_route pipeline (REQ-1159), so this hook must NOT fire and mis-run one command
     as the whole result.
     """
-    fns = getattr(state, "tracked_functions", None)
-    if not isinstance(fns, dict):
-        return None
+    from provisa.api.data.action_exec import usable_commands
+
     # Webhooks are governed commands too (REQ-872) and route through the same shared executor, so a
-    # webhook call is a standalone-function-call SELECT exactly like a function call.
-    callables = {**fns, **(getattr(state, "tracked_webhooks", None) or {})}
+    # webhook call is a standalone-function-call SELECT exactly like a function call. Only the
+    # commands this role may call are recognized: one it may not reads as an unregistered name.
+    callables = usable_commands(state, role_id)
     # A statement that names no registered command cannot be a call of one: the match below is on
     # the function name as written, and that name is in the text. Asked on every execution, so
     # the common statement — an ordinary read — is answered without a parse.
@@ -94,14 +94,17 @@ async def maybe_invoke_registered_function(sql: str, role_id: str, state):
     """If *sql* is a registered-function-call SELECT, run it via the shared executor.
 
     Returns a QueryResult, or None to signal the caller should fall through to normal
-    governance/routing. writable_by is enforced inside the executor (REQ-869).
+    governance/routing. The command admission is the executor's (REQ-869).
     """
-    hit = detect_sql_function_call(sql, state)
+    hit = detect_sql_function_call(sql, state, role_id)
     if hit is None:
         return None
-    from provisa.api.data.action_exec import invoke_tracked_function
+    from provisa.api.data.action_exec import bind_command_args, invoke_tracked_function
 
     name, values = hit
+    # Admitted and its count checked against the signature here; passed on by position (a0, a1 …),
+    # the form the executor reads a SQL call's literal arguments in (function_dispatch).
+    bind_command_args(name, values, state, role_id)
     args = {f"a{i}": v for i, v in enumerate(values)}
     rows = await invoke_tracked_function(name, args, state, role_id)
     return rows_to_query_result(rows)

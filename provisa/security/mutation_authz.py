@@ -18,13 +18,14 @@ OpenAPI, gRPC, Hasura):
    anything unknown is WRITE, so an unclassifiable operation is treated as a mutation
    and default-denied rather than silently executed.
 
-2. AUTHORIZE a write: a role may invoke a mutation only when it holds the global WRITE
-   capability (REQ-868) AND appears in that specific mutation's ``writable_by`` list —
-   which is empty by default, i.e. default-deny (REQ-867). Nothing bypasses the list: the
-   ACL is the author's statement of who may write, and it is the whole answer.
+2. ADMIT a command call (``admit_command``), the one admission every surface's call passes:
+   the role is assigned the command (its one role list, ``visible_to``; empty assigns it to
+   every role), reaches the command's domain, and — for a mutation — holds the global WRITE
+   capability (REQ-868). A command the role may not use is not found, the same as one never
+   registered. No capability stands above the assignment.
 
-Execute-time enforcement (wiring this into the action executor) lives in the endpoint;
-this module is pure and unit-testable with no I/O.
+The executor (api/data/action_exec.py) renders these as the API's answers; this module is pure
+and unit-testable with no I/O.
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ from provisa.security.rights import Capability, InsufficientRightsError, has_cap
 
 
 class MutationNotPermitted(PermissionError):
-    """REQ-869: a write the role's rights and the action's ``writable_by`` do not admit. The API
+    """REQ-869: a command call the role's rights do not admit. The API
     layer renders it as a 403 ApiError (REQ-1678: the gate itself never imports the API)."""
 
     def __init__(self, field_name: str, reason: str) -> None:
@@ -110,28 +111,6 @@ def classify_kind(kind: str | None) -> MutationKind:
     return MutationKind.READ if kind.lower() == "query" else MutationKind.WRITE
 
 
-def authorize_mutation(
-    role: dict[str, object] | None,
-    writable_by: list[str] | None,
-) -> tuple[bool, str]:  # REQ-867, REQ-868, REQ-1621
-    """Decide whether ``role`` may invoke a write whose ACL is ``writable_by``.
-
-    Returns ``(allowed, reason)``. Allowed only when the role holds the global WRITE
-    capability AND its id is in ``writable_by`` (empty = default-deny). A missing role is denied.
-
-    No capability stands above the list (REQ-1327, REQ-1621): the ACL is the author's own
-    statement of who may write through the mutation — often a call to a REMOTE system the
-    deployment does not own — and it stands with nobody above it, in every environment.
-    """
-    if role is None:
-        return False, "no role in context"
-    if not has_capability(role, Capability.WRITE):
-        return False, "role lacks the WRITE capability"
-    if role.get("id") not in (writable_by or []):
-        return False, "role is not listed in the mutation's writable_by (default-deny)"
-    return True, ""
-
-
 def reclassify_kind(
     role: dict[str, object] | None, current_kind: str | None, target_kind: str | None
 ) -> str:  # REQ-870
@@ -157,17 +136,44 @@ def reclassify_kind(
     return "query"
 
 
-def require_mutation_write(
-    action: dict, role: dict | None, field_name: str
-) -> None:  # REQ-869, REQ-1621
-    """Execute-time gate for a tracked function/webhook action.
+class CommandNotFound(LookupError):
+    """A command that does not exist for the calling role — unregistered, not assigned to it, or
+    in a domain it does not reach. One answer for all three, so a call never learns that a
+    command it may not use exists."""
 
-    A ``kind=mutation`` action (or any unknown kind) is a write and is authorized via
-    ``authorize_mutation``; a read (``kind=query``) passes untouched — read visibility is
-    enforced elsewhere. Raises HTTP 403 when a write is not permitted (default-deny).
-    """
-    if classify_kind(action.get("kind")) is MutationKind.READ:
-        return
-    allowed, reason = authorize_mutation(role, action.get("writable_by") or [])
-    if not allowed:
-        raise MutationNotPermitted(field_name, reason)
+    def __init__(self, name: str) -> None:
+        super().__init__(f"Unknown command: {name!r}")
+        self.name = name
+
+
+def command_assigned(command: dict, role_id: str) -> bool:
+    """Whether ``command`` is assigned to ``role_id``: its one list of assigned roles,
+    ``visible_to`` — empty assigns it to every role."""
+    assigned = command.get("visible_to") or []
+    return not assigned or role_id in assigned
+
+
+def command_reachable(command: dict, role: dict) -> bool:
+    """Whether ``role`` may see ``command`` at all: assigned it, and reaching its domain."""
+    from provisa.security.rights import reaches_domain
+
+    return command_assigned(command, str(role.get("id", ""))) and reaches_domain(
+        role.get("domain_access"), command.get("domain_id") or ""
+    )
+
+
+def admit_command(command: dict, role: dict | None, name: str) -> None:  # REQ-869, REQ-1758
+    """The one command admission, for every surface: the role is assigned the command, reaches
+    its domain, and — for a command declared ``mutation`` (or of unknown kind) — holds the write
+    right. Approval, where the command declares it, is the caller's next step.
+
+    A command is opaque within these rights: what it does once admitted is not inspected here.
+    There is no call without a role (REQ-1758)."""
+    if role is None:
+        raise MutationNotPermitted(name, "no acting role: a command is called as a role")
+    if not command_reachable(command, role):
+        raise CommandNotFound(name)
+    if classify_kind(command.get("kind")) is MutationKind.WRITE and not has_capability(
+        role, Capability.WRITE
+    ):
+        raise MutationNotPermitted(name, "role lacks the WRITE capability")

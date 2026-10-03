@@ -31,17 +31,17 @@ class TestParseSinkUri:
         assert broker == "broker1:9092"
         assert topic == "my-topic"
 
-    def test_topic_only_uses_env_or_default(self, monkeypatch):
+    def test_a_uri_without_a_broker_is_refused(self, monkeypatch):
+        # REQ-812: the caller resolves the broker to the operator's cluster before this point;
+        # a URI without one is refused, never filled from a default.
         monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
-        broker, topic = _parse_sink_uri("kafka:///events")
-        assert broker == "localhost:9092"
-        assert topic == "events"
+        with pytest.raises(ValueError, match="No broker"):
+            _parse_sink_uri("kafka:///events")
 
-    def test_env_broker_fallback(self, monkeypatch):
+    def test_the_environment_supplies_no_broker_here(self, monkeypatch):
         monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "kafka-host:9093")
-        broker, topic = _parse_sink_uri("kafka:///orders")
-        assert broker == "kafka-host:9093"
-        assert topic == "orders"
+        with pytest.raises(ValueError, match="No broker"):
+            _parse_sink_uri("kafka:///orders")
 
     def test_missing_topic_raises(self):
         with pytest.raises(ValueError, match="No topic"):
@@ -285,3 +285,27 @@ class TestSinkBranchDecision:
         mock_launch.assert_called_once()
         call_kwargs = mock_launch.call_args.kwargs
         assert "directive-topic" in call_kwargs["sink_header"]
+
+
+class TestKafkaSubscriptionBrokers:
+    """REQ-812: a subscription to a Kafka-backed table reads its source's own brokers — never a
+    default one (it used to read ``localhost:9092`` whatever the source named)."""
+
+    def test_the_source_brokers_are_used(self):
+        from types import SimpleNamespace
+
+        from provisa.api.data.subscribe import _build_provider_config
+
+        state = SimpleNamespace(kafka_bootstrap={"events-src": "k1:9093,k2:9093"})
+        config = _build_provider_config("kafka", "events-src", "order_events", None, state)
+        assert config == {"bootstrap_servers": "k1:9093,k2:9093"}
+
+    def test_a_source_without_brokers_is_refused_by_name(self):
+        from types import SimpleNamespace
+
+        from provisa.api.data.subscribe import _build_provider_config
+
+        with pytest.raises(ValueError, match="'events-src'"):
+            _build_provider_config(
+                "kafka", "events-src", "t", None, SimpleNamespace(kafka_bootstrap={})
+            )
