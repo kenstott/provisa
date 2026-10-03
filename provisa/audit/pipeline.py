@@ -229,11 +229,11 @@ def build_audit_record(
     from provisa.federation.replica_hot import count_scope
     from provisa.otel_compat import current_udf_correlation_id
 
-    tenant_db = state.tenant_db
-    if tenant_db is None:
+    record_db = state.record_db
+    if record_db is None:
         raise RuntimeError(
-            "audit write has no tenant database — query_audit_log lives in the org's tenant "
-            "schema and the org runtime must be bound before a governed statement runs"
+            "audit write has no record database — query_audit_log lives in the org's record "
+            "in this region and the org runtime must be bound before a governed statement runs"
         )
     # The tenant IS the org (REQ-594): `current_org` when a surface bound one, the default org
     # otherwise — the same resolution AppState._active_runtime uses to pick the tenant_db this row
@@ -242,7 +242,7 @@ def build_audit_record(
     # audit row carried a NULL tenant and every ops report showed a NULL tenant column.
     org_id = current_org.get() or state.org_id
     return AuditRecord(
-        tenant_db=tenant_db,
+        record_db=record_db,
         tenant_id=org_id,
         user_id=pending.user_id,
         role_id=pending.role_id,

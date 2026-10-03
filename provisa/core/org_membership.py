@@ -428,7 +428,7 @@ class AccountRemovalRefused(Exception):  # REQ-1302, REQ-1307
 
 
 async def remove_account(  # REQ-1307, REQ-1312, REQ-1918
-    admin_db: "Database", platform_db: "Database", user_id: str, *, model_db_of, tenant_db_of
+    admin_db: "Database", platform_db: "Database", user_id: str, *, model_db_of, record_db_of
 ) -> dict:
     """Remove a person's account from the deployment: THE removal, for the person themselves
     and for an administrator who holds the cross-org right.
@@ -442,8 +442,8 @@ async def remove_account(  # REQ-1307, REQ-1312, REQ-1918
     registered in them stay: they are the org's, not the person's.
 
     ``platform_db`` is the model store that holds the platform_admin assignments;
-    ``model_db_of`` returns one org's model store (its role assignments) and ``tenant_db_of`` its
-    state store in this region (its audit entries) — REQ-1919/1922.
+    ``model_db_of`` returns one org's model store (its role assignments and admin trail) and
+    ``record_db_of`` its record in this region (its query audit entries) — REQ-1919/1922.
     """
     from provisa.auth.scram_store import delete_verifier
     from provisa.core.schema_admin import (
@@ -516,8 +516,8 @@ async def remove_account(  # REQ-1307, REQ-1312, REQ-1918
     # Audit attributions carry the tombstone too. Audit entries are NEVER deleted (REQ-1312) — a
     # trail that erases on request is not a trail.
     for org_id in member_org_ids:
-        # The record is this region's (tenant_db); the admin trail is the org's (model_db).
-        async with (await tenant_db_of(org_id)).acquire() as conn:
+        # The record is this region's (record_db); the admin trail is the org's (model_db).
+        async with (await record_db_of(org_id)).acquire() as conn:
             await conn.execute_core(
                 update(query_audit_log)
                 .where(query_audit_log.c.user_id == user_id)

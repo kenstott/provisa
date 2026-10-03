@@ -42,7 +42,7 @@ router = APIRouter(prefix="/admin/sources/neo4j", tags=["admin", "neo4j"])
 
 def _control_plane(state):
     """The tenant control plane the rows land in; registration without one is a 503, not a dict."""
-    db = getattr(state, "tenant_db", None)
+    db = getattr(state, "model_db", None)
     if db is None:
         raise ApiError(503, "neo4j.database_not_connected", "Database not connected")
     return db

@@ -86,6 +86,7 @@ def audited(monkeypatch):
     )
     harness = _endpoint_harness(monkeypatch)
     harness.state.tenant_db = object()
+    harness.state.record_db = harness.state.tenant_db
     harness.state.hot_counts = None  # REQ-826: no Hot-count store; counting has its own tests
     harness.state.org_id = "acme"
     harness.state.contexts = {"analyst": _CTX}

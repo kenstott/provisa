@@ -139,6 +139,8 @@ class OrgRuntime:
     # statement on the wrong one fails everywhere (provisa/core/store_sides.py).
     model_db: "Database | None" = None
     tenant_db: "Database | None" = None
+    # REQ-1922: this region's request record (query_audit_log, query_sla_log).
+    record_db: "Database | None" = None
 
     # Physical connection + source metadata (source_id → …).
     source_pools: SourcePool = field(default_factory=SourcePool)

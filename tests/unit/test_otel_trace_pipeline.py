@@ -774,7 +774,7 @@ class TestNonEngineTerminalsAreReported:
                 return False
 
         class _State:
-            tenant_db = _TenantDB()
+            model_db = _TenantDB()  # the admin terminal reads the model store (REQ-1919)
             source_pools = _Pools()
             source_types: dict = {}
             federation_engine = None

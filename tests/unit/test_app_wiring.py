@@ -139,7 +139,8 @@ def _state(*, ready=True):
     ]
     registry = SimpleNamespace(get_enabled=lambda: [])
     return SimpleNamespace(
-        tenant_db=_fake_db(registered),
+        model_db=(_one_db := _fake_db(registered)),
+        tenant_db=_one_db,
         federation_engine=engine,
         config=config,
         mv_registry=registry,
@@ -214,7 +215,8 @@ def _state_with_mv(*, column_types):
         debounce_max_delay=None,
     )
     return SimpleNamespace(
-        tenant_db=_fake_db([]),
+        model_db=(_one_db := _fake_db([])),
+        tenant_db=_one_db,
         federation_engine=engine,
         config=SimpleNamespace(sources=[], tables=[]),
         mv_registry=SimpleNamespace(get_enabled=lambda: [mv], get=lambda _id: None),
@@ -284,6 +286,7 @@ async def test_registered_checker_table_carries_its_contract_to_the_loop(monkeyp
             }
         ]
     )
+    st.model_db = st.tenant_db
     await wire_event_loop(_Sched(), state=st, log=_LOG)
     assert [t.dq_contract for t in seen["tables"]] == [contract]
 
@@ -294,7 +297,10 @@ async def test_never_raises_into_boot():
     n = await wire_event_loop(
         _Sched(),
         state=SimpleNamespace(
-            tenant_db=object(), federation_engine=SimpleNamespace(), config=SimpleNamespace()
+            model_db=(_one_db := object()),
+            tenant_db=_one_db,
+            federation_engine=SimpleNamespace(),
+            config=SimpleNamespace(),
         ),
         log=_LOG,
     )

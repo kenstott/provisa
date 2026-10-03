@@ -118,7 +118,7 @@ def _audit_record(stamp: int | None, enforced: dict):
     from provisa.encryption import NullEncryption
 
     return AuditRecord(
-        tenant_db=object(),
+        record_db=object(),
         tenant_id="acme",
         user_id="alice",
         role_id="analyst",

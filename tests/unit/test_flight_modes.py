@@ -47,6 +47,7 @@ class FakeState:
         self.source_types = {}
         self.source_dialects = {}
         self.tenant_db = None
+        self.model_db = self.tenant_db
         self.engine_conn = None
         self.flight_client = None
         self.rate_limiter: object | None = None

@@ -193,6 +193,7 @@ def _wire_apply(monkeypatch) -> dict:
     monkeypatch.setattr(seed, "_resolve_pk_from_sources", _pk)
     monkeypatch.setattr(app_mod, "_rebuild_schemas", _rebuild)
     monkeypatch.setattr(app_mod.state, "tenant_db", _FakePool(), raising=False)
+    monkeypatch.setattr(app_mod.state, "model_db", app_mod.state.tenant_db, raising=False)
     monkeypatch.setattr(app_mod.state, "federation_engine", None, raising=False)
     monkeypatch.setattr(app_mod.state, "source_catalogs", {"pg1": "org_7_pg1"}, raising=False)
     return seen

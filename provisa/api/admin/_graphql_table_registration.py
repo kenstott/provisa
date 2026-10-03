@@ -342,7 +342,7 @@ async def sync_detected_relationships(state: Any, source_id: str) -> int:
         only=set(registered),
     )
     stored = 0
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:
         for rel in detected:
             source = registered.get(rel["source_table_id"])
             target = registered.get(rel["target_table_id"])

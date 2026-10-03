@@ -100,10 +100,10 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
         if servers:
             resolved_base_url = servers[0].get("url", "")
 
-    if state.tenant_db is None:
+    if state.model_db is None:
         raise ApiError(503, "openapi.database_not_connected", "Database not connected")
 
-    pool = state.tenant_db
+    pool = state.model_db
     assert pool is not None
     async with pool.acquire() as _conn:
         from provisa.core.models import Source, SourceType
@@ -143,7 +143,7 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
     if relationships:
         from provisa.api.admin.graphql_remote_router import _upsert_relationships_to_semantic_layer
 
-        await _upsert_relationships_to_semantic_layer(relationships, state.tenant_db, state)
+        await _upsert_relationships_to_semantic_layer(relationships, state.model_db, state)
 
     if not hasattr(state, "openapi_specs"):
         state.openapi_specs = {}

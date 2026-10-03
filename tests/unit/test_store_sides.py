@@ -48,7 +48,9 @@ async def test_each_handle_reads_and_writes_its_own_tables(handles):
 async def test_the_state_handle_refuses_a_model_table_by_name(handles):
     _, tenant_db = handles
     async with tenant_db.acquire() as conn:
-        with pytest.raises(StoreSideViolation, match="registered_tables is a model table"):
+        with pytest.raises(
+            StoreSideViolation, match="registered_tables is a model table, use the org.s model_db"
+        ):
             await conn.execute_core(select(registered_tables.c.id))
         with pytest.raises(StoreSideViolation, match="registered_tables"):
             await conn.fetch("SELECT t.id FROM org_x.registered_tables t JOIN events e ON true")
@@ -73,12 +75,16 @@ async def test_a_handle_that_holds_no_side_refuses_nothing(tmp_path):
 
 
 def test_every_org_table_is_kept_in_one_store_or_named_as_in_both():
-    from provisa.core.store_sides import BOTH, MODEL_SIDE, STATE_SIDE, TABLES
+    from provisa.core.store_sides import BOTH, PLATFORM_STATE_SIDE, TABLES
 
     org = set(metadata.tables)
-    model, state = TABLES[MODEL_SIDE], TABLES[STATE_SIDE]
-    assert not model & state
-    assert model | state | BOTH == org, org - (model | state | BOTH)
+    assert not TABLES[PLATFORM_STATE_SIDE] & org  # the deployment's, not an org's
+    sides = [tables for side, tables in TABLES.items() if side != PLATFORM_STATE_SIDE]
+    for i, one in enumerate(sides):
+        for other in sides[i + 1 :]:
+            assert not one & other
+    kept = frozenset().union(*sides) | BOTH
+    assert kept == org, org - kept
 
 
 async def test_the_org_handles_are_one_of_each(tmp_path):
@@ -86,9 +92,15 @@ async def test_the_org_handles_are_one_of_each(tmp_path):
     from provisa.core.model_change import ModelPlane
 
     engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'org.db'}")
-    model_db, tenant_db = org_store_handles(engine, "org_acme", ModelPlane("acme", None))
-    assert (model_db.holds, tenant_db.holds) == ("model", "state")
-    assert model_db.model is not None and tenant_db.model is None
+    model_db, tenant_db, record_db = org_store_handles(
+        "org_acme",
+        ModelPlane("acme", None),
+        model_engine=engine,
+        state_engine=engine,
+        record_engine=engine,
+    )
+    assert (model_db.holds, tenant_db.holds, record_db.holds) == ("model", "state", "record")
+    assert model_db.model is not None and tenant_db.model is None and record_db.model is None
 
 
 async def test_a_schema_statement_is_not_refused(handles):
@@ -100,3 +112,22 @@ async def test_a_schema_statement_is_not_refused(handles):
         await conn.execute("DROP TABLE IF EXISTS registered_tables_x")
         with pytest.raises(StoreSideViolation):
             await conn.fetch("-- a comment first\nSELECT id FROM registered_tables")
+
+
+async def test_the_record_is_kept_apart_from_the_state(tmp_path):
+    """REQ-1922: a region names the store its record is kept in, so the record handle refuses
+    the region's state and the state handle refuses the record."""
+    from provisa.core.schema_org import query_audit_log
+
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'org.db'}")
+    with engine.begin() as raw:
+        metadata.create_all(raw)
+    record_db = Database(engine, "record", holds="record")
+    tenant_db = Database(engine, "state", holds="state")
+    async with record_db.acquire() as conn:
+        await conn.execute_core(select(query_audit_log.c.id))
+        with pytest.raises(StoreSideViolation, match="replica_state is a state table"):
+            await conn.execute_core(select(replica_state.c.source_id))
+    async with tenant_db.acquire() as conn:
+        with pytest.raises(StoreSideViolation, match="query_audit_log is a record table"):
+            await conn.execute_core(select(query_audit_log.c.id))

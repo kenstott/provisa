@@ -64,7 +64,7 @@ import weakref
 from collections.abc import Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, AsyncGenerator
+from typing import TYPE_CHECKING, Any, AsyncGenerator, NamedTuple
 
 import sqlalchemy as sa
 from sqlalchemy import Table, event, text
@@ -645,19 +645,24 @@ def _array_elem(value: Any) -> str:
 
 
 class StoreSideViolation(RuntimeError):
-    """A statement on one store's handle touched the other store's tables (REQ-1922): the model
-    store (``model_db``) and an org region's state store (``tenant_db``) are separate databases in
-    a region deployment, so such a statement could not run there."""
+    """A statement on one store's handle touched another store's tables (REQ-1922): the model
+    store (``model_db``), an org region's state store (``tenant_db``) and its record
+    (``record_db``) are separate databases in a region deployment, and the deployment's own state
+    (``platform_state_db``) is no org's, so such a statement could not run there."""
 
     def __init__(self, handle: str, holds: str, tables: frozenset[str]) -> None:
-        other = "state" if holds == "model" else "model"
-        use = "tenant_db" if other == "state" else "model_db"
-        named = ", ".join(sorted(tables))
-        kind = f"a {other} table" if len(tables) == 1 else f"{other} tables"
-        verb = "is" if len(tables) == 1 else "are"
+        from provisa.core.store_sides import HANDLE, PLATFORM_STATE_SIDE, side_of
+
+        def _use(side: str) -> str:
+            # The deployment has one platform-state handle; every other side is an org's.
+            whose = "the deployment's" if side == PLATFORM_STATE_SIDE else "the org's"
+            return f"{whose} {HANDLE[side]}"
+
+        said = "; ".join(
+            f"{t} is a {side_of(t)} table, use {_use(side_of(t))}" for t in sorted(tables)
+        )
         super().__init__(
-            f"{named} {verb} {kind}, read through the {handle!r} handle, which holds the "
-            f"{holds} store; use the org's {use}"
+            f"{said} (read through the {handle!r} handle, which holds the {holds} store)"
         )
 
 
@@ -1212,8 +1217,11 @@ class Database:
         # REQ-1922: which store this handle holds — "model" (the org's model, shared across its
         # regions) or "state" (an org region's operating state) — and so which tables it refuses
         # (provisa/core/store_sides.py). None for a handle that is neither (the platform plane).
-        if holds is not None and holds not in ("model", "state"):
-            raise ValueError(f"a database handle holds 'model' or 'state', not {holds!r}")
+        if holds is not None:
+            from provisa.core.store_sides import TABLES as _SIDES
+
+            if holds not in _SIDES:
+                raise ValueError(f"a database handle holds one of {sorted(_SIDES)}, not {holds!r}")
         self.holds = holds
         # REQ-1524: the environment whose model this handle holds; its writes are committed.
         self.model = model
@@ -1637,15 +1645,31 @@ class OrgRouter:
         self._cache.clear()
 
 
+class OrgStores(NamedTuple):
+    """An org's three control-plane handles in this region (REQ-1919, REQ-1920, REQ-1922)."""
+
+    model_db: "Database"  # its model, shared by every region it selects
+    # This region's operating state and its request record. None only between building a runtime
+    # in a region deployment and loading the model that names their stores (region_stores.py).
+    tenant_db: "Database | None"
+    record_db: "Database | None"
+
+
 def org_store_handles(
-    engine: Engine, search_path: str, model: "ModelPlane"
-) -> tuple["Database", "Database"]:
-    """An org's two control-plane handles over ``engine`` (REQ-1919, REQ-1920, REQ-1922): the
-    MODEL store (its writes committed to the environment's model, REQ-1524) and the STATE store.
-    Each refuses the other's tables. Where a region keeps its state in its own database the state
-    handle is built over that database's engine instead."""
-    model_db = Database(
-        engine, name="org-model", search_path=search_path, model=model, holds="model"
+    search_path: str,
+    model: "ModelPlane",
+    *,
+    model_engine: Engine,
+    state_engine: Engine,
+    record_engine: Engine,
+) -> OrgStores:
+    """An org's handles, each over the engine of the store that keeps its side: the MODEL store
+    (its writes committed to the environment's model, REQ-1524), the region's STATE store and its
+    RECORD. Each refuses the others' tables (``provisa/core/store_sides.py``)."""
+    return OrgStores(
+        Database(
+            model_engine, name="org-model", search_path=search_path, model=model, holds="model"
+        ),
+        Database(state_engine, name="org-state", search_path=search_path, holds="state"),
+        Database(record_engine, name="org-record", search_path=search_path, holds="record"),
     )
-    tenant_db = Database(engine, name="org-state", search_path=search_path, holds="state")
-    return model_db, tenant_db

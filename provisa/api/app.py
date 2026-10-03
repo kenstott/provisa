@@ -148,6 +148,9 @@ class AppState:
     # ``admin_db`` is the global platform control plane (orgs/users/invites/
     # billing), backed by its own SQLAlchemy URI.
     admin_db: Database | None = None
+    # REQ-1916/1922: the PLATFORM STATE STORE's handle (provisa/core/platform_state): over the
+    # platform database, holding only the deployment's own operating state (the node list).
+    platform_state_db: Database | None = None
     # REQ-1316: ONE tenant-plane Engine shared by every org runtime on a schema-capable
     # backend. Database.acquire() issues the org's search_path on each checkout, so orgs need
     # separate handles, never separate pools. A pool per org multiplies connections by tenant
@@ -449,6 +452,15 @@ class AppState:
     def tenant_db(self) -> Database | None:
         """The acting org's STATE store (this region's operating state) — REQ-1920/1922."""
         return self._active_runtime().tenant_db
+
+    @property
+    def record_db(self) -> Database | None:
+        """The acting org's RECORD in this region (query_audit_log, query_sla_log) — REQ-1922."""
+        return self._active_runtime().record_db
+
+    @record_db.setter
+    def record_db(self, value: Database | None) -> None:
+        self._active_runtime().record_db = value
 
     @property
     def model_db(self) -> Database | None:
@@ -1193,6 +1205,7 @@ async def _load_and_build(
     _mark("source-pools+ingest+remote")
 
     await _require_org_serves_here(state.org_id)  # REQ-1922
+    await _bind_region_stores(state.org_id, PROD, initialise=apply)
 
     await _rebuild_schemas(raw_config)
 
@@ -1403,6 +1416,26 @@ async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:
     return await state.org_registry.get_or_build(runtime_key(org_id, env), _builder)
 
 
+async def _bind_region_stores(org_id: str, env: str, *, initialise: bool) -> None:
+    """REQ-1922: once the org's model is loaded, its state and record handles are bound to the
+    stores the model names for this node's region (a no-op with no platform regions)."""
+    from provisa.core.config_loader import load_control_plane
+    from provisa.core.database import OrgStores
+    from provisa.core.region_stores import bind_region_stores
+
+    assert state.model_db is not None  # opened with the runtime, before its model was loaded
+    cp = load_control_plane(config_path_str())
+    state.model_db, state.tenant_db, state.record_db = await bind_region_stores(
+        org_id,
+        env,
+        OrgStores(state.model_db, state.tenant_db, state.record_db),
+        pool_size=cp.pool_max,
+        max_overflow=cp.max_overflow,
+        schema_sql=(Path(__file__).parent.parent / "core" / "schema.sql").read_text(),
+        initialise=initialise,
+    )
+
+
 async def _require_org_serves_here(org_id: str) -> None:
     """REQ-1922: a node serves its region of every org that selects it; an org whose model does
     not select this node's region is refused here, by name, before its schemas are built."""
@@ -1445,7 +1478,8 @@ async def build_org_runtime(
     """
     from provisa.api.startup_seed import _seed_built_in_sources, _resolve_pk_from_sources
     from provisa.core.config_loader import load_control_plane
-    from provisa.core.database import Capabilities, create_engine_from_url, org_store_handles
+    from provisa.core.database import Capabilities, create_engine_from_url
+    from provisa.core.region_stores import open_org_stores
     from provisa.core.db import apply_tenancy_role_grants, init_schema
     from provisa.audit.query_log import init_audit_schema
 
@@ -1583,8 +1617,8 @@ async def build_org_runtime(
         # the branch's copy of the model rather than prod's.
         from provisa.core.model_change import ModelPlane
 
-        state.model_db, state.tenant_db = org_store_handles(
-            tenant_engine, org_schema(org_id, env), ModelPlane(org_id, env)
+        state.model_db, state.tenant_db, state.record_db = open_org_stores(
+            org_schema(org_id, env), ModelPlane(org_id, env), model_engine=tenant_engine
         )
 
         schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
@@ -1592,13 +1626,13 @@ async def build_org_runtime(
             raise RuntimeError(
                 f"control-plane schema.sql missing from the package: {schema_sql_path}"
             )
-        await init_schema(state.tenant_db, schema_sql_path.read_text(), org_id=org_id, env=env)
+        await init_schema(state.model_db, schema_sql_path.read_text(), org_id=org_id, env=env)
         # REQ-1337: org_admin holds platform_settings only in a single-tenant deployment.
         # REQ-1623: asserted in the environment being built, whose roles table is its own.
         await apply_tenancy_role_grants(
             state.model_db, org_id, multitenancy=state.multitenancy, env=env
         )
-        await init_audit_schema(state.tenant_db, org_id=org_id, env=env)
+        await init_audit_schema(state.model_db, org_id=org_id, env=env)
 
         # REQ-1349: this org's settings rows, read once here and refreshed by the settings router
         # when the org writes one. The query path (response-cache TTL, large-result redirect)
@@ -1648,6 +1682,7 @@ async def build_org_runtime(
             await _resolve_pk_from_sources()
 
         await _require_org_serves_here(org_id)  # REQ-1922
+        await _bind_region_stores(org_id, env, initialise=True)
 
         # REQ-1266: the org's own domain mode, applied AFTER load_config — which configures the
         # scope from the DEPLOYMENT's naming block — and BEFORE _rebuild_schemas, which reads the
@@ -2433,12 +2468,12 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
     # REQ-1916: this node is in the cluster's node list (the platform state store) while it serves,
     # with its mode and region, beating so a node that dies without stopping drops off.
-    assert state.admin_db is not None  # brought up with the control planes, at the top of boot
+    assert state.platform_state_db is not None  # brought up with the control planes at boot
     from provisa.core.platform_state import nodes as _cluster_nodes
 
-    await _cluster_nodes.register(state.admin_db)
+    await _cluster_nodes.register(state.platform_state_db)
     _node_heartbeat = spawn_long_lived(
-        _cluster_nodes.heartbeat_loop(state.admin_db), name="node-heartbeat"
+        _cluster_nodes.heartbeat_loop(state.platform_state_db), name="node-heartbeat"
     )
 
     # REQ-1882/REQ-1905: while serving, a stop signal ends in-flight requests (their statements
@@ -2460,7 +2495,7 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         await unregister_worker(state.admin_db, _launch)
 
     _node_heartbeat.cancel()
-    await _cluster_nodes.unregister(state.admin_db)  # REQ-1916: this node leaves the list
+    await _cluster_nodes.unregister(state.platform_state_db)  # REQ-1916: this node leaves the list
 
     # REQ-1629: the engine idle reaper lives in this process, so a shard still up when the control
     # plane goes away has nothing left that can scale it down and bills until somebody notices.
