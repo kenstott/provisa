@@ -16,7 +16,8 @@
       "vector_model_fields_required": "каждая запись vector_models требует id, provider и dimensions"
     },
     "api": {
-      "answer_cut": "Ответ для {{table}} обрезан на max_pages={{max_pages}} (строк: {{rows}}): у API есть ещё данные. Увеличьте max_pages или размер страницы конечной точки, чтобы прочитать всё."
+      "answer_cut": "Ответ для {{table}} обрезан на max_pages={{max_pages}} (строк: {{rows}}): у API есть ещё данные. Увеличьте max_pages или размер страницы конечной точки, чтобы прочитать всё.",
+      "answer_row_cut": "Ответ для {{table}} обрезан на max_rows={{max_rows}}: у удалённого источника есть ещё данные. Увеличьте graphql_remote.max_rows, чтобы прочитать всё."
     },
     "auth": {
       "authentication_required": "Требуется аутентификация",
@@ -219,7 +220,8 @@
       "table_gone": "Таблица {{schema}}.{{table}} источника {{source}} больше не зарегистрирована, поэтому её реплика не собирается.",
       "page_limit_reached": "Реплика {{table}} не собрана: постраничное чтение конечной точки останавливается на max_pages={{max_pages}}, а после страницы {{max_pages}} у конечной точки оставались данные (прочитано строк: {{rows}}). Реплика — это вся таблица, поэтому она не обрезается по лимиту. Увеличьте max_pages или размер страницы конечной точки.",
       "waiting_engine_jobs": "движок достиг лимита фоновых заданий (replication.engine_jobs)",
-      "waiting_source_cap": "источник достиг лимита прямых чтений (max_live_concurrency)"
+      "waiting_source_cap": "источник достиг лимита прямых чтений (max_live_concurrency)",
+      "row_limit_reached": "Реплика {{table}} не собрана: чтение останавливается на max_rows={{max_rows}} (graphql_remote.max_rows), а после {{rows}} строк у удалённого источника оставались данные. Реплика — это вся таблица, поэтому она не обрезается по лимиту. Увеличьте graphql_remote.max_rows."
     },
     "roles": {
       "cannot_delete_system": "Нельзя удалять системные роли",

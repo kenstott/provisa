@@ -16,7 +16,8 @@
       "vector_model_fields_required": "每个 vector_models 条目都需要 id、provider 和 dimensions"
     },
     "api": {
-      "answer_cut": "{{table}} 的响应在 max_pages={{max_pages}} 处被截断（{{rows}} 行）：API 还有更多数据。请提高端点的 max_pages 或页面大小以读取全部数据。"
+      "answer_cut": "{{table}} 的响应在 max_pages={{max_pages}} 处被截断（{{rows}} 行）：API 还有更多数据。请提高端点的 max_pages 或页面大小以读取全部数据。",
+      "answer_row_cut": "{{table}} 的响应在 max_rows={{max_rows}} 处被截断：远程端还有更多数据。请提高 graphql_remote.max_rows 以读取全部数据。"
     },
     "auth": {
       "authentication_required": "需要身份验证",
@@ -219,7 +220,8 @@
       "table_gone": "源 {{source}} 的表 {{schema}}.{{table}} 已不再注册，因此不会构建其副本。",
       "page_limit_reached": "未构建 {{table}} 的副本：其端点的分页在 max_pages={{max_pages}} 处停止，而端点在第 {{max_pages}} 页之后仍有数据（已读取 {{rows}} 行）。副本是整张表，因此不会在上限处截断。请提高端点的 max_pages 或页面大小。",
       "waiting_engine_jobs": "引擎已达到后台作业上限 (replication.engine_jobs)",
-      "waiting_source_cap": "源已达到实时读取上限 (max_live_concurrency)"
+      "waiting_source_cap": "源已达到实时读取上限 (max_live_concurrency)",
+      "row_limit_reached": "未构建 {{table}} 的副本：其读取在 max_rows={{max_rows}}（graphql_remote.max_rows）处停止，而远程端在 {{rows}} 行之后仍有数据。副本是整张表，因此不会在上限处截断。请提高 graphql_remote.max_rows。"
     },
     "roles": {
       "cannot_delete_system": "无法删除系统角色",

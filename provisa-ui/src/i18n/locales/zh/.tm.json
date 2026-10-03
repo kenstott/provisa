@@ -4729,5 +4729,7 @@
   "zh/serverErrors.json::serverErrors.actions.written_table_not_registered": "'{{table}}' is not a registered table of source '{{source_id}}'",
   "zh/serverErrors.json::serverErrors.functions.written_table_missing": "command '{{name}}' writes '{{table}}', which is not registered",
   "zh/commandFormFields.json::commandFormFields.writesTable": "Writes table",
-  "zh/commandFormFields.json::commandFormFields.writesTableHint": "The registered table this command changes. After each call, cached results and materialized views over it are refreshed."
+  "zh/commandFormFields.json::commandFormFields.writesTableHint": "The registered table this command changes. After each call, cached results and materialized views over it are refreshed.",
+  "zh/serverErrors.json::serverErrors.api.answer_row_cut": "The answer for {{table}} was cut at max_rows={{max_rows}}: the remote has more. Raise graphql_remote.max_rows to read it all.",
+  "zh/serverErrors.json::serverErrors.replication.row_limit_reached": "The replica of {{table}} was not built: a read of it stops at max_rows={{max_rows}} (graphql_remote.max_rows), and the remote had more after {{rows}} rows. A replica is the whole table, so it is not cut at the bound. Raise graphql_remote.max_rows."
 }

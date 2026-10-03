@@ -235,11 +235,11 @@ async def test_a_field_github_withholds_on_one_row_is_null_in_that_row():
             200, json={"data": {"repository": {"forks": page}}, "errors": [forbidden]}
         )
     )
-    rows = await execute_remote(
+    rows = (await execute_remote(
         GITHUB.url, None, table["field_name"], ["name", "viewerPermission"],
         variables={"owner": "o", "name": "n"}, required_args=table["required_args"],
         rows_path=table["rows_path"], error_policy=GITHUB.error_policy,
-    )  # fmt: skip
+    )).rows  # fmt: skip
     assert rows == [{"name": "calcite", "viewerPermission": None}]
 
 
@@ -274,10 +274,10 @@ async def test_a_page_the_gateway_gives_up_on_is_asked_for_again_at_half_the_siz
             httpx.Response(200, json={"data": {"repository": {"forks": page}}}),
         ]
     )
-    rows = await execute_remote(
+    rows = (await execute_remote(
         GITHUB.url, None, table["field_name"], ["name"], variables={"owner": "o", "name": "n"},
         required_args=table["required_args"], rows_path=table["rows_path"], limit=100,
-    )  # fmt: skip
+    )).rows  # fmt: skip
     assert rows == [{"name": "a"}]
     sent = [json.loads(c.request.content)["query"] for c in route.calls]
     assert "first: 100" in sent[0] and "first: 50" in sent[1]
@@ -298,11 +298,11 @@ async def test_a_page_that_costs_more_than_github_computes_is_asked_for_at_half_
             httpx.Response(200, json={"data": {"repository": {"watchers": page}}}),
         ]
     )
-    rows = await execute_remote(
+    rows = (await execute_remote(
         GITHUB.url, None, table["field_name"], ["login"], variables={"owner": "o", "name": "n"},
         required_args=table["required_args"], rows_path=table["rows_path"], limit=40,
         error_policy=GITHUB.error_policy,
-    )  # fmt: skip
+    )).rows  # fmt: skip
     assert rows == [{"login": "a"}]
     sent = [json.loads(c.request.content)["query"] for c in route.calls]
     assert "first: 40" in sent[0] and "first: 20" in sent[1]

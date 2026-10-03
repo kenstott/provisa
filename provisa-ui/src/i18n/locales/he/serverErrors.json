@@ -16,7 +16,8 @@
       "vector_model_fields_required": "כל רשומת vector_models דורשת id, provider ו-dimensions"
     },
     "api": {
-      "answer_cut": "התשובה עבור {{table}} נחתכה ב-max_pages={{max_pages}} ({{rows}} שורות): ל-API יש עוד. הגדילו את max_pages או את גודל העמוד של נקודת הקצה כדי לקרוא הכול."
+      "answer_cut": "התשובה עבור {{table}} נחתכה ב-max_pages={{max_pages}} ({{rows}} שורות): ל-API יש עוד. הגדילו את max_pages או את גודל העמוד של נקודת הקצה כדי לקרוא הכול.",
+      "answer_row_cut": "התשובה עבור {{table}} נחתכה ב-max_rows={{max_rows}}: למקור המרוחק יש עוד. הגדילו את graphql_remote.max_rows כדי לקרוא הכול."
     },
     "auth": {
       "authentication_required": "נדרש אימות",
@@ -219,7 +220,8 @@
       "table_gone": "הטבלה {{schema}}.{{table}} של המקור {{source}} אינה רשומה עוד, ולכן הרפליקה שלה אינה נבנית.",
       "page_limit_reached": "הרפליקה של {{table}} לא נבנתה: העימוד של נקודת הקצה נעצר ב-max_pages={{max_pages}}, ולנקודת הקצה היו נתונים נוספים אחרי עמוד {{max_pages}} ({{rows}} שורות נקראו). רפליקה היא הטבלה כולה, ולכן אינה נחתכת במגבלה. הגדילו את max_pages או את גודל העמוד של נקודת הקצה.",
       "waiting_engine_jobs": "המנוע הגיע למגבלת משימות הרקע שלו (replication.engine_jobs)",
-      "waiting_source_cap": "המקור הגיע למגבלת הקריאות החיות שלו (max_live_concurrency)"
+      "waiting_source_cap": "המקור הגיע למגבלת הקריאות החיות שלו (max_live_concurrency)",
+      "row_limit_reached": "הרפליקה של {{table}} לא נבנתה: קריאה שלה נעצרת ב-max_rows={{max_rows}} (graphql_remote.max_rows), ולמקור המרוחק היו נתונים נוספים אחרי {{rows}} שורות. רפליקה היא הטבלה כולה, ולכן אינה נחתכת במגבלה. הגדילו את graphql_remote.max_rows."
     },
     "roles": {
       "cannot_delete_system": "לא ניתן למחוק תפקידי מערכת",

@@ -20,6 +20,7 @@ from cypher_router.py; leaf module (no route handlers).
 from __future__ import annotations
 
 import logging
+import secrets
 from typing import TYPE_CHECKING, Any
 
 from fastapi import Request
@@ -403,7 +404,7 @@ async def _execute_with_gql_remote(
         hit = await loop.run_in_executor(None, _check_or_create_cache, None)
         if not hit:
             col_selections = [_gql_selection(c) for c in info["columns"]]
-            fetched_rows = await execute_remote(
+            answer = await execute_remote(
                 url=info["url"],
                 auth=info["auth"],
                 field_name=info["field_name"],
@@ -414,7 +415,14 @@ async def _execute_with_gql_remote(
                 max_rows=state.config.graphql_remote.max_rows,
                 error_policy=info["error_policy"],
             )
-            await loop.run_in_executor(None, _check_or_create_cache, fetched_rows)
+            if answer.cut:
+                # REQ-1350: an answer cut at max_rows lands under a name of this statement's
+                # own, so no later statement finds it as the table's answer.
+                cache_tbl = cache_table_name(
+                    info["source_id"], tn, {**gql_vars, "__cut__": secrets.token_hex(8)}
+                )
+                cache_rewrites[tn] = (cache_loc, cache_tbl)
+            await loop.run_in_executor(None, _check_or_create_cache, answer.rows)
             # REQ-1688: statistics where the table lives, off the query's critical path.
             from provisa.api_source.engine_cache import analyze_cache_table
 

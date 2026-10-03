@@ -16,7 +16,8 @@
       "vector_model_fields_required": "cada entrada de vector_models requer id, provider e dimensions"
     },
     "api": {
-      "answer_cut": "A resposta para {{table}} foi cortada em max_pages={{max_pages}} ({{rows}} linhas): a API tem mais. Aumente max_pages ou o tamanho de página do endpoint para ler tudo."
+      "answer_cut": "A resposta para {{table}} foi cortada em max_pages={{max_pages}} ({{rows}} linhas): a API tem mais. Aumente max_pages ou o tamanho de página do endpoint para ler tudo.",
+      "answer_row_cut": "A resposta para {{table}} foi cortada em max_rows={{max_rows}}: o remoto tem mais. Aumente graphql_remote.max_rows para ler tudo."
     },
     "auth": {
       "authentication_required": "Autenticação necessária",
@@ -219,7 +220,8 @@
       "table_gone": "A tabela {{schema}}.{{table}} da origem {{source}} não está mais registrada, portanto sua réplica não é compilada.",
       "page_limit_reached": "A réplica de {{table}} não foi compilada: a paginação do endpoint para em max_pages={{max_pages}}, e o endpoint tinha mais dados após a página {{max_pages}} ({{rows}} linhas lidas). Uma réplica é a tabela inteira, portanto não é cortada no limite. Aumente max_pages ou o tamanho de página do endpoint.",
       "waiting_engine_jobs": "o mecanismo está no limite de tarefas em segundo plano (replication.engine_jobs)",
-      "waiting_source_cap": "a origem está no limite de leituras ao vivo (max_live_concurrency)"
+      "waiting_source_cap": "a origem está no limite de leituras ao vivo (max_live_concurrency)",
+      "row_limit_reached": "A réplica de {{table}} não foi compilada: uma leitura para em max_rows={{max_rows}} (graphql_remote.max_rows), e o remoto tinha mais dados após {{rows}} linhas. Uma réplica é a tabela inteira, portanto não é cortada no limite. Aumente graphql_remote.max_rows."
     },
     "roles": {
       "cannot_delete_system": "Não é possível excluir funções do sistema",

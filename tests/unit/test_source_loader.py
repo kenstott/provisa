@@ -150,7 +150,9 @@ async def test_make_graphql_remote_loader_forwards_query(monkeypatch):
             rows_path=rows_path,
             max_rows=max_rows,
         )
-        return [{"id": 1}, {"id": 2}]
+        from provisa.graphql_remote.executor import RemoteAnswer
+
+        return RemoteAnswer([{"id": 1}, {"id": 2}])
 
     monkeypatch.setattr("provisa.graphql_remote.executor.execute_remote", _fake_execute_remote)
 
@@ -202,3 +204,47 @@ async def test_rss_loader_raises_when_the_feed_fetch_fails(monkeypatch):
     source = SimpleNamespace(federation_hints={"feed_url": "http://feed.invalid/rss"})
     with pytest.raises(ConnectionError, match="feed down"):
         await make_rss_loader()(source, SimpleNamespace(table_name="items"))
+
+
+@pytest.mark.asyncio
+async def test_a_connection_tables_replica_source_reads_it_a_page_at_a_time(monkeypatch):
+    """REQ-1915/REQ-1923: a connection table's build is a cursor over its pages (one held at a
+    time), not a document read whole into memory; and a land of it is the whole table."""
+    from provisa.federation.replica_source import CursorSource
+
+    pulled: list[str] = []
+
+    async def _pages(url, auth, field_name, columns, rows_path, *, table, max_rows, error_policy):
+        assert (table, max_rows) == ("gql.issues", 500)
+        for page in ([{"id": 1}, {"id": 2}], [{"id": 3}]):
+            pulled.append("page")
+            yield page
+
+    monkeypatch.setattr("provisa.graphql_remote.executor.whole_connection", _pages)
+    gql_sources = {
+        "gql": {
+            "url": "https://gql.test/graphql",
+            "tables": [
+                {
+                    "sql_name": "issues",
+                    "field_name": "issues",
+                    "rows_path": ["nodes"],
+                    "columns": [{"name": "id"}],
+                }
+            ],
+        }
+    }
+    load = make_graphql_remote_loader(gql_sources, max_rows=500)
+    source = load.replica_source(
+        _src("gql", "graphql_remote"), _tbl("default", "issues"), [("id", "bigint")]
+    )
+    assert isinstance(source, CursorSource)
+    batches = source.batches(10)
+    first = await anext(batches)
+    assert first.to_pylist() == [{"id": 1}, {"id": 2}] and pulled == ["page"]
+    assert [b.to_pylist() async for b in batches] == [[{"id": 3}]]
+    assert await load(_src("gql", "graphql_remote"), _tbl("default", "issues")) == [
+        {"id": 1},
+        {"id": 2},
+        {"id": 3},
+    ]

@@ -16,7 +16,8 @@
       "vector_model_fields_required": "每個 vector_models 項目都需要 id、provider 及 dimensions"
     },
     "api": {
-      "answer_cut": "{{table}} 的回應在 max_pages={{max_pages}} 處被截斷（{{rows}} 列）：API 還有更多資料。請提高端點的 max_pages 或頁面大小以讀取全部資料。"
+      "answer_cut": "{{table}} 的回應在 max_pages={{max_pages}} 處被截斷（{{rows}} 列）：API 還有更多資料。請提高端點的 max_pages 或頁面大小以讀取全部資料。",
+      "answer_row_cut": "{{table}} 的回應在 max_rows={{max_rows}} 處被截斷：遠端還有更多資料。請提高 graphql_remote.max_rows 以讀取全部資料。"
     },
     "auth": {
       "authentication_required": "需要驗證",
@@ -219,7 +220,8 @@
       "table_gone": "來源 {{source}} 的資料表 {{schema}}.{{table}} 已不再註冊，因此不會建置其複本。",
       "page_limit_reached": "未建置 {{table}} 的複本：其端點的分頁在 max_pages={{max_pages}} 處停止，而端點在第 {{max_pages}} 頁之後仍有資料（已讀取 {{rows}} 列）。複本是整張資料表，因此不會在上限處截斷。請提高端點的 max_pages 或頁面大小。",
       "waiting_engine_jobs": "引擎已達到背景作業上限 (replication.engine_jobs)",
-      "waiting_source_cap": "來源已達到即時讀取上限 (max_live_concurrency)"
+      "waiting_source_cap": "來源已達到即時讀取上限 (max_live_concurrency)",
+      "row_limit_reached": "未建置 {{table}} 的複本：其讀取在 max_rows={{max_rows}}（graphql_remote.max_rows）處停止，而遠端在 {{rows}} 列之後仍有資料。複本是整張資料表，因此不會在上限處截斷。請提高 graphql_remote.max_rows。"
     },
     "roles": {
       "cannot_delete_system": "無法刪除系統角色",

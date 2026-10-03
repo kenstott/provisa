@@ -257,3 +257,69 @@ async def test_a_cypher_statement_reads_a_cut_answer_from_its_own_table_and_neve
     (sql,) = read
     assert '"pets_cut_ab12"' in sql and "pets_whole" not in sql
     assert promoted == []
+
+
+async def test_a_cypher_statement_lands_a_remote_graphql_answer_cut_at_max_rows_as_its_own():
+    """A remote GraphQL answer cut at max_rows lands under a name of this statement's own: the
+    statement reads it, and the next identical statement does not find it as the answer."""
+    from contextlib import contextmanager
+
+    from provisa.api.rest import cypher_exec
+    from provisa.api_source import engine_cache
+    from provisa.graphql_remote import executor
+    from provisa.graphql_remote.executor import RemoteAnswer
+
+    created: list[str] = []
+    read: list[str] = []
+
+    @contextmanager
+    def isolated_sync():
+        yield None
+
+    async def execute_engine(sql, params, **kw):
+        read.append(sql)
+        return SimpleNamespace(column_names=["id"], rows=[(1,)])
+
+    async def remote(**kw):
+        return RemoteAnswer([{"id": 1}], cut=True)
+
+    state = SimpleNamespace(
+        graphql_remote_sources={
+            "gh": {
+                "source_id": "gh",
+                "url": "https://gh.test/graphql",
+                "tables": [
+                    {
+                        "sql_name": "issues",
+                        "name": "issues",
+                        "field_name": "issues",
+                        "rows_path": ["nodes"],
+                        "columns": [{"name": "id", "type": "integer"}],
+                    }
+                ],
+            }
+        },
+        config=SimpleNamespace(graphql_remote=SimpleNamespace(max_rows=1)),
+        federation_engine=SimpleNamespace(
+            cache_catalog=lambda: "c",
+            isolated_sync=isolated_sync,
+            transpile_physical=lambda sql: sql,
+            execute_engine=execute_engine,
+        ),
+    )
+    with (
+        patch.object(executor, "execute_remote", remote),
+        patch.object(engine_cache, "ensure_cache_schema", lambda conn, loc: None),
+        patch.object(engine_cache, "table_exists", lambda conn, loc, t: t in created),
+        patch.object(
+            engine_cache, "create_and_insert", lambda conn, loc, t, rows, cols: created.append(t)
+        ),
+        patch.object(engine_cache, "schedule_drop", lambda *a, **k: None),
+        patch.object(engine_cache, "org_cache_schema", lambda state, suffix=None: "s"),
+        patch.object(engine_cache, "analyze_cache_table", lambda *a: None),
+        patch.object(cypher_exec, "spawn_background", lambda coro: None),
+    ):
+        for _ in range(2):
+            await cypher_exec._execute_with_gql_remote("SELECT id FROM issues", [], {}, state)
+    assert len(set(created)) == 2  # each cut statement landed its own; neither found the other's
+    assert [f'"{name}"' in sql for name, sql in zip(created, read)] == [True, True]

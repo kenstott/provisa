@@ -16,7 +16,8 @@
       "vector_model_fields_required": "各 vector_models エントリには id、provider、dimensions が必要です"
     },
     "api": {
-      "answer_cut": "{{table}} の応答は max_pages={{max_pages}} で切り詰められました（{{rows}} 行）。API にはまだデータがあります。すべて読み取るには、エンドポイントの max_pages またはページサイズを増やしてください。"
+      "answer_cut": "{{table}} の応答は max_pages={{max_pages}} で切り詰められました（{{rows}} 行）。API にはまだデータがあります。すべて読み取るには、エンドポイントの max_pages またはページサイズを増やしてください。",
+      "answer_row_cut": "{{table}} の応答は max_rows={{max_rows}} で切り詰められました。リモートにはまだデータがあります。すべて読み取るには graphql_remote.max_rows を増やしてください。"
     },
     "auth": {
       "authentication_required": "認証が必要です",
@@ -219,7 +220,8 @@
       "table_gone": "ソース {{source}} のテーブル {{schema}}.{{table}} は登録されなくなったため、レプリカはビルドされません。",
       "page_limit_reached": "{{table}} のレプリカはビルドされませんでした: エンドポイントのページングは max_pages={{max_pages}} で止まり、ページ {{max_pages}} の後にもデータがありました（{{rows}} 行を読み取り）。レプリカはテーブル全体であるため、上限で切り詰められることはありません。エンドポイントの max_pages またはページサイズを増やしてください。",
       "waiting_engine_jobs": "エンジンがバックグラウンドジョブの上限に達しています (replication.engine_jobs)",
-      "waiting_source_cap": "ソースがライブ読み取りの上限に達しています (max_live_concurrency)"
+      "waiting_source_cap": "ソースがライブ読み取りの上限に達しています (max_live_concurrency)",
+      "row_limit_reached": "{{table}} のレプリカはビルドされませんでした: 読み取りは max_rows={{max_rows}}（graphql_remote.max_rows）で止まり、{{rows}} 行の後にもリモートにデータがありました。レプリカはテーブル全体であるため、上限で切り詰められることはありません。graphql_remote.max_rows を増やしてください。"
     },
     "roles": {
       "cannot_delete_system": "システムロールは削除できません",

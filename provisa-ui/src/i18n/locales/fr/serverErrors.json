@@ -16,7 +16,8 @@
       "vector_model_fields_required": "chaque entrée vector_models requiert id, provider et dimensions"
     },
     "api": {
-      "answer_cut": "La réponse pour {{table}} a été tronquée à max_pages={{max_pages}} ({{rows}} lignes) : l'API en a davantage. Augmentez max_pages ou la taille de page du point de terminaison pour tout lire."
+      "answer_cut": "La réponse pour {{table}} a été tronquée à max_pages={{max_pages}} ({{rows}} lignes) : l'API en a davantage. Augmentez max_pages ou la taille de page du point de terminaison pour tout lire.",
+      "answer_row_cut": "La réponse pour {{table}} a été tronquée à max_rows={{max_rows}} : le service distant en a davantage. Augmentez graphql_remote.max_rows pour tout lire."
     },
     "auth": {
       "authentication_required": "Authentification requise",
@@ -219,7 +220,8 @@
       "table_gone": "La table {{schema}}.{{table}} de la source {{source}} n'est plus enregistrée ; sa réplique n'est donc pas construite.",
       "page_limit_reached": "La réplique de {{table}} n'a pas été construite : la pagination de son point de terminaison s'arrête à max_pages={{max_pages}}, et le point de terminaison avait encore des données après la page {{max_pages}} ({{rows}} lignes lues). Une réplique est la table entière ; elle n'est donc pas tronquée à la limite. Augmentez max_pages ou la taille de page du point de terminaison.",
       "waiting_engine_jobs": "le moteur a atteint sa limite de tâches d'arrière-plan (replication.engine_jobs)",
-      "waiting_source_cap": "la source a atteint sa limite de lectures en direct (max_live_concurrency)"
+      "waiting_source_cap": "la source a atteint sa limite de lectures en direct (max_live_concurrency)",
+      "row_limit_reached": "La réplique de {{table}} n'a pas été construite : une lecture s'arrête à max_rows={{max_rows}} (graphql_remote.max_rows), et le service distant avait encore des données après {{rows}} lignes. Une réplique est la table entière ; elle n'est donc pas tronquée à la limite. Augmentez graphql_remote.max_rows."
     },
     "roles": {
       "cannot_delete_system": "Impossible de supprimer les rôles système",

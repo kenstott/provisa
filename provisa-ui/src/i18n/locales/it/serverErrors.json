@@ -16,7 +16,8 @@
       "vector_model_fields_required": "ogni voce di vector_models richiede id, provider e dimensions"
     },
     "api": {
-      "answer_cut": "La risposta per {{table}} è stata troncata a max_pages={{max_pages}} ({{rows}} righe): l'API ha altri dati. Aumenta max_pages o la dimensione di pagina dell'endpoint per leggerla tutta."
+      "answer_cut": "La risposta per {{table}} è stata troncata a max_pages={{max_pages}} ({{rows}} righe): l'API ha altri dati. Aumenta max_pages o la dimensione di pagina dell'endpoint per leggerla tutta.",
+      "answer_row_cut": "La risposta per {{table}} è stata troncata a max_rows={{max_rows}}: il remoto ha altri dati. Aumenta graphql_remote.max_rows per leggerla tutta."
     },
     "auth": {
       "authentication_required": "Autenticazione richiesta",
@@ -219,7 +220,8 @@
       "table_gone": "La tabella {{schema}}.{{table}} della sorgente {{source}} non è più registrata, quindi la sua replica non viene creata.",
       "page_limit_reached": "La replica di {{table}} non è stata creata: la paginazione del suo endpoint si ferma a max_pages={{max_pages}} e l'endpoint aveva altri dati dopo la pagina {{max_pages}} ({{rows}} righe lette). Una replica è l'intera tabella, quindi non viene troncata al limite. Aumenta max_pages o la dimensione di pagina dell'endpoint.",
       "waiting_engine_jobs": "il motore ha raggiunto il limite di job in background (replication.engine_jobs)",
-      "waiting_source_cap": "la sorgente ha raggiunto il limite di letture live (max_live_concurrency)"
+      "waiting_source_cap": "la sorgente ha raggiunto il limite di letture live (max_live_concurrency)",
+      "row_limit_reached": "La replica di {{table}} non è stata creata: una lettura si ferma a max_rows={{max_rows}} (graphql_remote.max_rows) e il remoto aveva altri dati dopo {{rows}} righe. Una replica è l'intera tabella, quindi non viene troncata al limite. Aumenta graphql_remote.max_rows."
     },
     "roles": {
       "cannot_delete_system": "Impossibile eliminare i ruoli di sistema",
