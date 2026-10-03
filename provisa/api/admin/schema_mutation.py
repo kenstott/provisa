@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from provisa.core.database import Connection
 
 from provisa.compiler.sql_types import key_list
+from provisa.core.paging import stored_paging
 from provisa.core.repositories import rls as rls_repo
 from provisa.core.repositories import origin as origin_repo
 from provisa.api.admin._config_io import config_path as _config_path, read_config
@@ -2275,15 +2276,16 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
             if _owner_conflict:
                 return MutationResult(success=False, message=_owner_conflict)
-            # REQ-1907: TableInput carries no cache_ttl / role_ttl / row_materialize -- they are
-            # saved through updateTableCache / updateTableRoleTtl -- so the upsert keeps the
-            # stored values instead of resetting them.
+            # REQ-1907/REQ-318: TableInput carries no cache_ttl / role_ttl / row_materialize /
+            # pagination -- they are saved through updateTableCache / updateTableRoleTtl /
+            # updateTablePaging -- so the upsert keeps the stored values instead of resetting them.
             _kept = await _conn.execute_core(
                 select(
                     registered_tables.c.cache_ttl,
                     registered_tables.c.role_ttl,
                     registered_tables.c.row_materialize,
                     registered_tables.c.replicate,
+                    registered_tables.c.pagination,
                 ).where(
                     (registered_tables.c.source_id == model.source_id)
                     & (registered_tables.c.schema_name == model.schema_name)
@@ -2294,6 +2296,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             if _kept_row is not None:
                 model.cache_ttl = _kept_row.cache_ttl
                 model.role_ttl = dict(_kept_row.role_ttl)
+                model.pagination = stored_paging(_kept_row.pagination)
                 model.row_materialize = bool(_kept_row.row_materialize)
                 # replicate is saved through updateTableReplicate, never by this upsert: the
                 # stored value is kept (and is the one the checks below judge).
