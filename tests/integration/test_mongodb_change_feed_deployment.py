@@ -64,7 +64,8 @@ def servers():
         _answering(replica_port)
         pymongo.MongoClient("127.0.0.1", replica_port, directConnection=True).admin.command(
             "replSetInitiate",
-            {"_id": "rs0", "members": [{"_id": 0, "host": f"127.0.0.1:{replica_port}"}]},
+            # The member is named as the server sees itself, inside its container.
+            {"_id": "rs0", "members": [{"_id": 0, "host": "localhost:27017"}]},
         )
         yield standalone_port, replica_port, closed_port
     finally:
