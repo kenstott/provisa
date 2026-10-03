@@ -107,13 +107,3 @@ class ApiEndpoint(BaseModel):  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, RE
                 f"api endpoint {self.table_name!r}: its pagination declares no paging type"
             )
         return self
-
-
-class ApiEndpointCandidate(BaseModel):
-    id: int | None = None
-    source_id: str
-    path: str
-    method: str = "GET"
-    table_name: str | None = None
-    columns: list[ApiColumn]
-    status: str = "discovered"

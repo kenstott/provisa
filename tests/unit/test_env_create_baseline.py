@@ -92,7 +92,7 @@ def created(monkeypatch):
         started.append((env, from_env))
         return source_tip[0]
 
-    async def _set_position(db, org_id, name, *, deployed_sha, redo_sha):
+    async def _set_position(db, org_id, name, *, deployed_sha, deployed_stamp, redo_sha):
         positions.append((name, deployed_sha))
 
     async def _set_origin(db, org_id, name, origin_sha):

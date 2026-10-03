@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json मान्य JSON नहीं है: {{error}}",
       "args_json_not_object": "args_json एक JSON ऑब्जेक्ट होना चाहिए",
       "column_not_writable": "भूमिका '{{role}}' के पास कॉलम '{{column}}' पर लेखन (write) पहुँच नहीं है",
+      "definition_not_available": "{{statement}} यहाँ उपलब्ध नहीं है: परिभाषाएँ मॉडल में या डेटा स्रोत में बनाई जाती हैं, और पंक्तियाँ DELETE से हटाई जाती हैं।",
       "engine_not_connected": "इंजन कनेक्ट नहीं है",
       "grpc_source_not_registered": "gRPC रिमोट स्रोत '{{source_id}}' पंजीकृत नहीं है",
       "invalid_as_of": "अमान्य X-Provisa-As-Of: {{error}}",
@@ -90,7 +91,8 @@
       "sql_generation_failed": "3 प्रयासों के बाद भी मान्य SQL उत्पन्न नहीं किया जा सका: {{error}}",
       "table_not_found": "टेबल '{{table}}' नहीं मिली",
       "unknown_action_field": "अज्ञात एक्शन फ़ील्ड: '{{field}}'",
-      "unknown_command": "अज्ञात कमांड '{{name}}'"
+      "unknown_command": "अज्ञात कमांड '{{name}}'",
+      "write_not_admitted": "भूमिका '{{role}}' यह लेखन नहीं कर सकती: लेखन के लिए लेखन अधिकार, लिखे जाने वाले हर कॉलम पर लेखन पहुँच, और ऐसी पंक्तियाँ चाहिए जिन्हें भूमिका का पंक्ति फ़िल्टर स्वीकार करे।"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' का अडैप्टर discover_schema लागू नहीं करता",

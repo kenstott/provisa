@@ -66,10 +66,27 @@ def server():
         extra_config={
             "tables": [orders],
             "roles": [
-                {"id": "org_admin", "capabilities": [*reads, "write"], "domain_access": ["*"]},
+                {
+                    "id": "org_admin",
+                    "capabilities": [*reads, "write", "observability"],
+                    "domain_access": ["*"],
+                },
                 {"id": "east_writer", "capabilities": [*reads, "write"], "domain_access": ["*"]},
                 {"id": "region_only", "capabilities": [*reads, "write"], "domain_access": ["*"]},
                 {"id": "east_reader", "capabilities": reads, "domain_access": ["*"]},
+            ],
+            # A materialized view over the table, for the steps after a write.
+            "views": [
+                {
+                    "id": "orders-by-region",
+                    "sql": "SELECT region, COUNT(*) AS n FROM sales.orders GROUP BY region",
+                    "materialize": True,
+                    "domain_id": "sales",
+                    "columns": [
+                        {"name": "region", "data_type": "varchar", "visible_to": ["org_admin"]},
+                        {"name": "n", "data_type": "bigint", "visible_to": ["org_admin"]},
+                    ],
+                }
             ],
             "rls_rules": [
                 {"table_id": "orders", "role_id": "east_writer", "filter": "region = 'east'"},
@@ -462,3 +479,179 @@ def test_a_copy_out_over_pgwire_is_a_governed_read(server):
 
     assert _rows("org_admin") == _SEED
     assert _rows("east_reader") == [(1, "east"), (3, "east")]
+
+
+# --- after a write --------------------------------------------------------------------------------
+
+_VIEW = "view-view_orders_by_region"  # a view's MV is named for its table
+
+
+# Each case reads its own statement (its own limit), so its cache entry is its own: the source
+# fixture resets the table behind Provisa's back, which no cache entry hears about.
+def _cached_query(case: str) -> dict:
+    return {
+        "query": f"query @cached {{ s__orders(limit: {1000 + _ALL.index(case)}) {{ id region }} }}"
+    }
+
+
+def _admin_gql(boot, query: str) -> dict:
+    status, body = _http(boot, "org_admin", "POST", "/admin/graphql", {"query": query})
+    assert status == 200, body
+    return json.loads(body)
+
+
+def _view_status(boot) -> str:
+    listed = _admin_gql(boot, "query { mvList { id status lastError } }")["data"]["mvList"]
+    return next(v for v in listed if v["id"] == _VIEW)["status"]
+
+
+def _cached_read(boot, case: str) -> tuple[str, list[tuple[int, str]]]:
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{boot.ports['http']}/data/graphql",
+        data=json.dumps(_cached_query(case)).encode(),
+        headers={"Content-Type": "application/json", "x-provisa-role": "org_admin"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        body = json.loads(resp.read().decode())
+        served = resp.headers.get("X-Provisa-Cache", "")
+    rows = sorted((r["id"], r["region"]) for r in body["data"]["s__orders"])
+    return served, rows
+
+
+@pytest.mark.parametrize("surface", _ALL)
+def test_a_write_on_any_surface_is_followed_by_the_same_steps(server, source, surface):
+    """What follows a successful write is the same on every surface: a materialized view over the
+    table is marked stale, and a cached read of the table is not served from before the write."""
+    refreshed = _admin_gql(
+        server, f'mutation {{ refreshMv(mvId: "{_VIEW}") {{ success message }} }}'
+    )
+    assert refreshed["data"]["refreshMv"]["success"], refreshed
+    assert _view_status(server) == "fresh"
+    _cached_read(server, surface)
+    served, rows = _cached_read(server, surface)
+    assert served == "HIT", served  # the read is being served from the cache
+    assert rows == _SEED
+
+    accepted, answer = _SURFACES[surface].insert(server, "org_admin", 60, "north")
+    assert accepted, answer
+    assert (60, "north") in source()
+
+    assert _view_status(server) == "stale"
+    served, rows = _cached_read(server, surface)
+    assert served != "HIT", served
+    assert rows == [*_SEED, (60, "north")]
+
+
+# --- Cypher parameters ----------------------------------------------------------------------------
+
+
+def _cypher_http_params(boot, role: str, query: str, params: dict) -> tuple[bool, str]:
+    status, body = _http(boot, role, "POST", "/data/cypher", {"query": query, "params": params})
+    return status == 200, f"{status} {body}"
+
+
+def _bolt_params(boot, role: str, query: str, params: dict) -> tuple[bool, str]:
+    from neo4j import GraphDatabase
+    from neo4j.exceptions import Neo4jError
+
+    driver = GraphDatabase.driver(f"bolt://127.0.0.1:{boot.ports['bolt']}", auth=(role, ""))
+    try:
+        with driver.session() as session:
+            return True, json.dumps([r.data() for r in session.run(query, params)], default=str)
+    except Neo4jError as exc:
+        return False, str(exc)
+    finally:
+        driver.close()
+
+
+_WITH_PARAMS = {"cypher_http": _cypher_http_params, "bolt": _bolt_params}
+
+
+@pytest.mark.parametrize("surface", sorted(_WITH_PARAMS))
+def test_a_cypher_write_binds_its_parameters(server, source, surface):
+    send = _WITH_PARAMS[surface]
+    accepted, answer = send(
+        server,
+        "org_admin",
+        "CREATE (n:Orders {id: $id, region: $region})",
+        {"id": 70, "region": "north"},
+    )
+    assert accepted, answer
+    assert (70, "north") in source()  # the values, never "$id" / "$region"
+
+    accepted, answer = send(
+        server,
+        "org_admin",
+        "MATCH (n:Orders) WHERE n.id = $id SET n.region = $region",
+        {"id": 70, "region": "south"},
+    )
+    assert accepted, answer
+    assert (70, "south") in source()
+
+    accepted, answer = send(
+        server, "org_admin", "MATCH (n:Orders) WHERE n.id = $id DELETE n", {"id": 70}
+    )
+    assert accepted, answer
+    assert source() == _SEED
+
+
+@pytest.mark.parametrize("surface", sorted(_WITH_PARAMS))
+def test_a_parameterised_write_affects_the_rows_its_literal_form_does(server, source, surface):
+    if surface == "cypher_http":
+        literal = json.loads(
+            _cypher_http(
+                server,
+                "org_admin",
+                "MATCH (n:Orders) WHERE n.region = 'east' SET n.region = 'east'",
+            )[1].split(" ", 1)[1]
+        )["affected_rows"]
+        bound = json.loads(
+            _cypher_http_params(
+                server,
+                "org_admin",
+                "MATCH (n:Orders) WHERE n.region = $r SET n.region = $r",
+                {"r": "east"},
+            )[1].split(" ", 1)[1]
+        )["affected_rows"]
+        assert bound == literal == 2
+    accepted, answer = _WITH_PARAMS[surface](
+        server, "org_admin", "MATCH (n:Orders) WHERE n.region = $r DELETE n", {"r": "west"}
+    )
+    assert accepted, answer
+    assert source() == [(1, "east"), (3, "east")]
+
+
+@pytest.mark.parametrize("surface", sorted(_WITH_PARAMS))
+def test_a_parameter_the_request_does_not_supply_is_refused(server, source, surface):
+    accepted, answer = _WITH_PARAMS[surface](
+        server, "org_admin", "CREATE (n:Orders {id: $id, region: $region})", {"id": 71}
+    )
+    assert not accepted, answer
+    assert "Unbound Cypher parameters: ['region']" in answer, answer
+    assert source() == _SEED
+
+
+@pytest.mark.parametrize("surface", sorted(_WITH_PARAMS))
+def test_a_bound_value_is_admitted_against_the_row_filter_like_a_literal(server, source, surface):
+    accepted, answer = _WITH_PARAMS[surface](
+        server,
+        "east_writer",
+        "CREATE (n:Orders {id: $id, region: $region})",
+        {"id": 72, "region": "west"},
+    )
+    assert not accepted, answer
+    assert "outside role 'east_writer'" in answer, answer
+    assert source() == _SEED
+
+
+@pytest.mark.parametrize("surface", sorted(_WITH_PARAMS))
+def test_a_cypher_read_binds_its_parameters(server, source, surface):
+    accepted, answer = _WITH_PARAMS[surface](
+        server,
+        "org_admin",
+        "MATCH (n:Orders) WHERE n.id = $id RETURN n.region AS region",
+        {"id": 2},
+    )
+    assert accepted, answer
+    assert "west" in answer and "east" not in answer, answer

@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json не является допустимым JSON: {{error}}",
       "args_json_not_object": "args_json должен быть объектом JSON",
       "column_not_writable": "Роль '{{role}}' не имеет доступа на запись к столбцу '{{column}}'",
+      "definition_not_available": "{{statement}} здесь недоступен: определения создаются в модели или в источнике данных, а строки удаляются с помощью DELETE.",
       "engine_not_connected": "движок не подключен",
       "grpc_source_not_registered": "Удаленный источник gRPC '{{source_id}}' не зарегистрирован",
       "invalid_as_of": "недействительный X-Provisa-As-Of: {{error}}",
@@ -90,7 +91,8 @@
       "sql_generation_failed": "Не удалось сгенерировать корректный SQL за 3 попытки: {{error}}",
       "table_not_found": "Таблица '{{table}}' не найдена",
       "unknown_action_field": "Неизвестное поле действия: '{{field}}'",
-      "unknown_command": "Неизвестная команда '{{name}}'"
+      "unknown_command": "Неизвестная команда '{{name}}'",
+      "write_not_admitted": "Роль '{{role}}' не может выполнить эту запись: для записи нужны право записи, доступ на запись к каждому записываемому столбцу и строки, которые допускает фильтр строк роли."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Адаптер для '{{source_type}}' не реализует discover_schema",

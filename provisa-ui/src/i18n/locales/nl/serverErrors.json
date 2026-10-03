@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json is geen geldige JSON: {{error}}",
       "args_json_not_object": "args_json moet een JSON-object zijn",
       "column_not_writable": "Rol '{{role}}' heeft geen schrijftoegang tot kolom '{{column}}'",
+      "definition_not_available": "{{statement}} is hier niet beschikbaar: definities worden gemaakt in het model of in de gegevensbron, en rijen worden verwijderd met DELETE.",
       "engine_not_connected": "de engine is niet verbonden",
       "grpc_source_not_registered": "Externe gRPC-bron '{{source_id}}' niet geregistreerd",
       "invalid_as_of": "ongeldige X-Provisa-As-Of: {{error}}",
@@ -90,7 +91,8 @@
       "sql_generation_failed": "Kon na 3 pogingen geen geldige SQL genereren: {{error}}",
       "table_not_found": "Tabel '{{table}}' niet gevonden",
       "unknown_action_field": "Onbekend actieveld: '{{field}}'",
-      "unknown_command": "Onbekende opdracht '{{name}}'"
+      "unknown_command": "Onbekende opdracht '{{name}}'",
+      "write_not_admitted": "De rol '{{role}}' mag deze schrijfbewerking niet uitvoeren: een schrijfbewerking vereist het schrijfrecht, schrijftoegang tot elke kolom die wordt geschreven en rijen die het rijfilter van de rol toelaat."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter voor '{{source_type}}' implementeert discover_schema niet",

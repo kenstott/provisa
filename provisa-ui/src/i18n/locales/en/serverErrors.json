@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json not valid JSON: {{error}}",
       "args_json_not_object": "args_json must be a JSON object",
       "column_not_writable": "Role '{{role}}' does not have write access to column '{{column}}'",
+      "definition_not_available": "{{statement}} is not available here: definitions are made in the model or in the data source, and rows are removed with DELETE.",
       "engine_not_connected": "the engine not connected",
       "grpc_source_not_registered": "gRPC remote source '{{source_id}}' not registered",
       "invalid_as_of": "invalid X-Provisa-As-Of: {{error}}",
@@ -90,7 +91,8 @@
       "sql_generation_failed": "Could not generate valid SQL after 3 attempts: {{error}}",
       "table_not_found": "Table '{{table}}' not found",
       "unknown_action_field": "Unknown action field: '{{field}}'",
-      "unknown_command": "Unknown command '{{name}}'"
+      "unknown_command": "Unknown command '{{name}}'",
+      "write_not_admitted": "Role '{{role}}' may not make this write: a write needs the write right, write access to every column it writes, and rows the role's row filter admits."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter for '{{source_type}}' does not implement discover_schema",

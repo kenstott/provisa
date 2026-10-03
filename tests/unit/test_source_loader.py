@@ -122,7 +122,9 @@ async def test_make_openapi_loader_calls_and_flattens(monkeypatch):
         response_normalizer=None,
     )
     api_source = SimpleNamespace(id="api", base_url="https://x.test", auth=None)
-    load = make_openapi_loader({"events": endpoint}, {"api": api_source})
+    load = make_openapi_loader(
+        SimpleNamespace(api_endpoints={"events": endpoint}, api_sources={"api": api_source})
+    )
 
     rows = await load(_src("api", "openapi"), _tbl("default", "events"))
     assert rows == [{"id": 1}, {"id": 2}]
@@ -131,7 +133,11 @@ async def test_make_openapi_loader_calls_and_flattens(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_make_openapi_loader_missing_endpoint_raises():
-    load = make_openapi_loader({}, {"api": SimpleNamespace(id="api", base_url="", auth=None)})
+    load = make_openapi_loader(
+        SimpleNamespace(
+            api_endpoints={}, api_sources={"api": SimpleNamespace(id="api", base_url="", auth=None)}
+        )
+    )
     with pytest.raises(UnsupportedSourceFetch, match="no registered endpoint"):
         await load(_src("api", "openapi"), _tbl("default", "events"))
 

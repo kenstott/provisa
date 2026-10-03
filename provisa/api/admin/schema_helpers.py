@@ -33,7 +33,7 @@ from provisa.core.schema_org import (
 if TYPE_CHECKING:
     from provisa.core.database import Database
 
-from provisa.core.config_loader import _normalize_op_id
+from provisa.api_source.openapi_endpoint import normalize_op_id
 from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.api.admin.types import (
     AvailableColumnType,
@@ -371,7 +371,7 @@ async def _fetch_table_with_columns(
                 (
                     q
                     for q in queries
-                    if _normalize_op_id(q.operation_id) == _normalize_op_id(table_name)
+                    if normalize_op_id(q.operation_id) == normalize_op_id(table_name)
                 ),
                 None,
             )

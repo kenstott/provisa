@@ -362,6 +362,23 @@ async def register_table(
             _qa_precheck = await persist_query_api_registration(_conn, model)
             if _qa_precheck is not None:
                 return _qa_precheck
+        if input.pagination is not None:
+            # REQ-318: the paging the steward registers the table with (accepted or edited from
+            # what the source suggested), refused by name when the table cannot take it.
+            from provisa.api.admin._table_paging import declared_paging
+            from provisa.api.app import state as _paging_state
+
+            _source_type = (
+                await _conn.execute_core(
+                    select(sources.c.type).where(sources.c.id == input.source_id)
+                )
+            ).scalar_one()
+            _paging = declared_paging(
+                _paging_state, _source_type, input.source_id, input.table_name, input.pagination
+            )
+            if isinstance(_paging, MutationResult):
+                return _paging
+            model.pagination = _paging
         _was = await origin_repo.of_registration(
             _conn, model.source_id, model.schema_name, model.table_name
         )
@@ -387,6 +404,13 @@ async def register_table(
             _qa_err = await persist_query_api_registration(_conn, model)
             if _qa_err is not None:
                 return _qa_err
+        # REQ-316/REQ-318: an OpenAPI table's endpoint row, derived from its registration.
+        from provisa.api.admin._openapi_table_registration import persist_openapi_endpoint
+        from provisa.api.app import state as _app_state
+
+        _oa_err = await persist_openapi_endpoint(_app_state, _conn, model)
+        if _oa_err is not None:
+            return _oa_err
         _sres = await _conn.execute_core(
             select(sources.c.type, sources.c.path).where(sources.c.id == input.source_id)
         )

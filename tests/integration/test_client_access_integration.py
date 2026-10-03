@@ -44,6 +44,7 @@ import pytest
 
 from provisa.compiler.compiled_query_cache import CompiledQueryCache
 import pytest_asyncio
+from tests.integration.conftest import no_replica_routes
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
@@ -116,7 +117,7 @@ def _make_app_state_with_orders():
 
     from provisa.cache.store import NoopCacheStore
 
-    state = MagicMock()
+    state = no_replica_routes(MagicMock())
     # REQ-1910: a bare MagicMock attribute is not None, which reads as a control plane to
     # resolve the debug-trace scope from. This stand-in has none: no window, no permitted hint.
     state.admin_db = None

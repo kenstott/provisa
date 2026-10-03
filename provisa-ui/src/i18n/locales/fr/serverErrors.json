@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json n'est pas un JSON valide : {{error}}",
       "args_json_not_object": "args_json doit être un objet JSON",
       "column_not_writable": "Le rôle « {{role}} » n'a pas d'accès en écriture à la colonne « {{column}} »",
+      "definition_not_available": "{{statement}} n'est pas disponible ici : les définitions se créent dans le modèle ou dans la source de données, et les lignes se suppriment avec DELETE.",
       "engine_not_connected": "le moteur n'est pas connecté",
       "grpc_source_not_registered": "Source distante gRPC « {{source_id}} » non enregistrée",
       "invalid_as_of": "X-Provisa-As-Of invalide : {{error}}",
@@ -90,7 +91,8 @@
       "sql_generation_failed": "Impossible de générer du SQL valide après 3 tentatives : {{error}}",
       "table_not_found": "Table « {{table}} » introuvable",
       "unknown_action_field": "Champ d'action inconnu : « {{field}} »",
-      "unknown_command": "Commande « {{name}} » inconnue"
+      "unknown_command": "Commande « {{name}} » inconnue",
+      "write_not_admitted": "Le rôle '{{role}}' ne peut pas effectuer cette écriture : une écriture exige le droit d'écriture, l'accès en écriture à chaque colonne écrite et des lignes admises par le filtre de lignes du rôle."
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adaptateur pour « {{source_type}} » n'implémente pas discover_schema",

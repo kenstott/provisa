@@ -17,8 +17,9 @@ from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.mutation_gen import (
     apply_column_presets,
     compile_mutation,
-    inject_rls_into_mutation,
 )
+from provisa.compiler.write_admission import WriteNotAdmitted
+from tests.write_governance import admitted, write_governance
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.context import build_context
 
@@ -123,42 +124,47 @@ class TestNoSQLRejection:
             compile_mutation(doc, ctx, {"sales-pg": "mongodb"})
 
 
+_ORDERS = {"public.orders": (1, ["id", "region", "amount", "status"])}
+_US = {1: "region = 'us'"}
+
+
 class TestRLSOnMutation:
+    """The role's row filter on a compiled mutation is applied by the one write admission
+    (compiler/write_admission.py) in the governance stage every surface's write passes."""
+
+    def _compiled(self, mutation: str):
+        _schema, ctx = _build()
+        return compile_mutation(parse(mutation), ctx, {"sales-pg": "postgresql"})[0]
+
     def test_rls_injected_into_update(self):
-        schema, ctx = _build()
-        doc = parse("""
-            mutation { updateOrders(set: { amount: 1.0 }, where: { id: { eq: 1 } }) { affected_rows } }
-        """)
-        results = compile_mutation(doc, ctx, {"sales-pg": "postgresql"})
-        m = results[0]
-        m = inject_rls_into_mutation(m, 1, {1: "region = 'us'"})
-        assert "region = 'us'" in m.sql
-        assert "AND" in m.sql
+        m = self._compiled(
+            "mutation { updateOrders(set: { amount: 1.0 }, where: { id: { eq: 1 } }) "
+            "{ affected_rows } }"
+        )
+        governed = admitted(m.sql, write_governance(_ORDERS, rls=_US), m.params)
+        assert "\"region\" = 'us'" in governed
+        assert " AND " in governed
 
     def test_rls_injected_into_delete(self):
-        schema, ctx = _build()
-        doc = parse("mutation { deleteOrders(where: { id: { eq: 1 } }) { affected_rows } }")
-        results = compile_mutation(doc, ctx, {"sales-pg": "postgresql"})
-        m = results[0]
-        m = inject_rls_into_mutation(m, 1, {1: "region = 'us'"})
-        assert "region = 'us'" in m.sql
+        m = self._compiled("mutation { deleteOrders(where: { id: { eq: 1 } }) { affected_rows } }")
+        governed = admitted(m.sql, write_governance(_ORDERS, rls=_US), m.params)
+        assert "\"region\" = 'us'" in governed
 
-    def test_rls_not_injected_into_insert(self):
-        schema, ctx = _build()
-        doc = parse('mutation { insertOrders(input: { region: "x" }) { affected_rows } }')
-        results = compile_mutation(doc, ctx, {"sales-pg": "postgresql"})
-        m = results[0]
-        m = inject_rls_into_mutation(m, 1, {1: "region = 'us'"})
-        assert "region = 'us'" not in m.sql  # INSERT has no WHERE
+    def test_an_insert_is_checked_against_the_filter_not_narrowed_by_it(self):
+        outside = self._compiled(
+            'mutation { insertOrders(input: { region: "x" }) { affected_rows } }'
+        )
+        with pytest.raises(WriteNotAdmitted, match="outside role"):
+            admitted(outside.sql, write_governance(_ORDERS, rls=_US), outside.params)
+        inside = self._compiled(
+            'mutation { insertOrders(input: { region: "us" }) { affected_rows } }'
+        )
+        # INSERT has no WHERE: admitted as compiled
+        assert admitted(inside.sql, write_governance(_ORDERS, rls=_US), inside.params) == inside.sql
 
     def test_no_rls_when_no_rule(self):
-        schema, ctx = _build()
-        doc = parse("mutation { deleteOrders(where: { id: { eq: 1 } }) { affected_rows } }")
-        results = compile_mutation(doc, ctx, {"sales-pg": "postgresql"})
-        m = results[0]
-        original_sql = m.sql
-        m = inject_rls_into_mutation(m, 1, {})  # no rules
-        assert m.sql == original_sql
+        m = self._compiled("mutation { deleteOrders(where: { id: { eq: 1 } }) { affected_rows } }")
+        assert admitted(m.sql, write_governance(_ORDERS), m.params) == m.sql
 
 
 class TestUpsertMutation:

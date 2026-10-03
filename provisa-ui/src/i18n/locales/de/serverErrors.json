@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json ist kein gültiges JSON: {{error}}",
       "args_json_not_object": "args_json muss ein JSON-Objekt sein",
       "column_not_writable": "Rolle '{{role}}' hat keinen Schreibzugriff auf Spalte '{{column}}'",
+      "definition_not_available": "{{statement}} ist hier nicht verfügbar: Definitionen werden im Modell oder in der Datenquelle angelegt, und Zeilen werden mit DELETE entfernt.",
       "engine_not_connected": "Engine nicht verbunden",
       "grpc_source_not_registered": "gRPC-Remotequelle '{{source_id}}' nicht registriert",
       "invalid_as_of": "ungültiges X-Provisa-As-Of: {{error}}",
@@ -90,7 +91,8 @@
       "sql_generation_failed": "Nach 3 Versuchen konnte kein gültiges SQL erzeugt werden: {{error}}",
       "table_not_found": "Tabelle '{{table}}' nicht gefunden",
       "unknown_action_field": "Unbekanntes Aktionsfeld: '{{field}}'",
-      "unknown_command": "Unbekannter Befehl '{{name}}'"
+      "unknown_command": "Unbekannter Befehl '{{name}}'",
+      "write_not_admitted": "Die Rolle '{{role}}' darf diesen Schreibvorgang nicht ausführen: Ein Schreibvorgang erfordert das Schreibrecht, Schreibzugriff auf jede geschriebene Spalte und Zeilen, die der Zeilenfilter der Rolle zulässt."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter für '{{source_type}}' implementiert discover_schema nicht",

@@ -308,3 +308,17 @@ async def test_duckdb_reads_the_replica_once_a_live_attached_table_is_floored(
     assert await _count(statement, state) == 1  # the same statement now reads the replica
     with pytest.raises(duckdb.Error):
         await runtime.run(f"SELECT COUNT(*) FROM {live_name}")  # no live view is left to read
+
+
+def test_a_state_whose_replica_routes_are_not_replica_routes_is_rejected():
+    """A stand-in state (a bare MagicMock) answers ``replica_routes.floored.get`` with another
+    mock, which the floor read unpacked into a confusing "expected 2, got 0" deep in routing. The
+    read names what is wrong instead."""
+    from unittest.mock import MagicMock
+
+    import pytest
+
+    from provisa.federation.registry_view import operator_floor
+
+    with pytest.raises(TypeError, match="replica_routes is a MagicMock, not ReplicaRoutes"):
+        operator_floor(MagicMock(), [1])

@@ -34,6 +34,17 @@ from provisa.cypher.label_map import CypherLabelMap, NodeMapping
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class CypherParam:
+    """An unquoted ``$name`` in a write: a value the request supplies, not text. It reaches the
+    SQL as a parameter and is bound by :func:`bind_write_params` — never written as its name."""
+
+    name: str
+
+
+_PARAM_REF_RE = re.compile(r"\$([A-Za-z_]\w*)")
+
+
 @dataclass
 class WriteAST:
     """Minimal AST for a Cypher write statement."""
@@ -83,6 +94,9 @@ _UPDATE_RE = re.compile(
 def _parse_literal(text: str) -> Any:
     """Parse a simple Cypher literal value to a Python value."""
     text = text.strip()
+    param = _PARAM_REF_RE.fullmatch(text)
+    if param:
+        return CypherParam(param.group(1))
     if (text.startswith("'") and text.endswith("'")) or (
         text.startswith('"') and text.endswith('"')
     ):
@@ -266,6 +280,8 @@ def parse_cypher_write(query: str) -> WriteAST:
 
 def _sql_literal(val: Any, col_type: str | None = None) -> str:
     """Render a Python value as a SQL literal, applying type coercion."""
+    if isinstance(val, CypherParam):
+        return f"${val.name}"  # bound by bind_write_params, never as text
     if val is None:
         return "NULL"
     if isinstance(val, bool):
@@ -333,27 +349,6 @@ def _rewrite_where(where_expr: str, variable: str, mapping: NodeMapping) -> str:
 # ---------------------------------------------------------------------------
 # WriteTranslator
 # ---------------------------------------------------------------------------
-
-
-def write_acl_error(table_meta, ast: WriteAST, mapping: NodeMapping, role_id: str):
-    """Return (status, detail) if role lacks writable_by access for a CREATE/SET write.
-
-    Enforces the writable_by column ACL uniformly with the GraphQL/SQL mutation
-    path (REQ-663) by delegating to the shared endpoint check on the mapped
-    physical columns. Returns None when access is allowed or the write is a
-    DELETE (which carries no column writes). REQ-663.
-    """
-    if table_meta is None or ast.kind not in ("create", "update"):
-        return None
-    from provisa.security.mutation_authz import ColumnNotWritable, check_writable_by  # noqa: PLC0415
-
-    props = list(ast.props) if ast.kind == "create" else [p for p, _ in ast.set_assignments]
-    cols = [mapping.properties.get(p, p) for p in props]
-    try:
-        check_writable_by(table_meta, cols, role_id)
-    except ColumnNotWritable as exc:
-        return 403, str(exc)
-    return None
 
 
 class WriteTranslator:
@@ -457,3 +452,31 @@ class WriteTranslator:
         set_sql = ", ".join(set_parts)
         where_sql = _rewrite_where(ast.where_expr, ast.variable, mapping)
         return f"UPDATE {table} SET {set_sql} WHERE {where_sql}"
+
+
+def bind_write_params(sql: str, provided: dict[str, Any]) -> tuple[str, list[Any]]:
+    """``sql`` (a translated write) with each ``$name`` parameter made positional (``$1``, …),
+    and the request's values for them, in that order.
+
+    Read off the parsed statement, so a ``$`` inside a string literal is text and stays so.
+    A parameter the request does not supply is refused by name: a write is never sent with an
+    unbound value, and never with a parameter's name in a value's place."""
+    import sqlglot  # noqa: PLC0415
+    import sqlglot.expressions as exp  # noqa: PLC0415
+
+    from provisa.cypher.params import CypherParamError  # noqa: PLC0415
+
+    tree = sqlglot.parse_one(sql, read="postgres")
+    named = [p for p in tree.find_all(exp.Parameter) if isinstance(p.this, exp.Var)]
+    order: list[str] = []
+    for p in named:
+        if p.this.name not in order:
+            order.append(p.this.name)
+    missing = [n for n in order if n not in provided]
+    if missing:
+        raise CypherParamError(
+            f"Unbound Cypher parameters: {missing!r}. Provide values in the request's parameters."
+        )
+    for p in named:
+        p.replace(exp.Parameter(this=exp.Literal.number(order.index(p.this.name) + 1)))
+    return tree.sql(dialect="postgres"), [provided[n] for n in order]

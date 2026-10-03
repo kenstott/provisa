@@ -831,24 +831,6 @@ creation_requests = Table(
     ),
 )
 
-api_endpoint_candidates = Table(
-    "api_endpoint_candidates",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("source_id", Text, ForeignKey("api_sources.id", ondelete="CASCADE"), nullable=False),
-    Column("path", Text, nullable=False),
-    Column("method", Text, nullable=False, server_default="GET"),
-    Column("table_name", Text),
-    Column("columns", JSON, nullable=False),
-    Column("status", Text, nullable=False, server_default="discovered"),
-    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-    UniqueConstraint("source_id", "path", "method"),
-    CheckConstraint(
-        "status IN ('discovered', 'registered', 'rejected')",
-        name="api_endpoint_candidates_status_check",
-    ),
-)
-
 live_query_state = Table(
     "live_query_state",
     metadata,
@@ -1088,6 +1070,18 @@ query_audit_log = Table(
     # REQ-886: correlation id of the UDF invocation this row was written under, joining the
     # audit row back to the engine-side UDF trace. Null for non-UDF queries.
     Column("trace_id", Text),
+    # Provenance (provisa/audit/provenance.py): the model stamp the statement was governed under
+    # (REQ-1914); what was enforced on it (row filters with the names of the session variables
+    # they read, masks by kind, row caps, a write's table and columns); why it took its route and
+    # the sources it read; how old the rows it was answered with were (null: read live).
+    Column("model_stamp", BigInteger),
+    # The environment repository's commit (REQ-1524) the model at model_stamp equals — only when
+    # that is proven; NULL otherwise, and then ``enforced`` lists the visible columns too.
+    Column("model_commit", Text),
+    Column("enforced", JSON(none_as_null=True)),
+    Column("route_reason", Text),
+    Column("sources", JSON(none_as_null=True)),
+    Column("data_age", JSON(none_as_null=True)),
     Column("logged_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
