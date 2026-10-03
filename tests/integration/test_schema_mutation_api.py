@@ -693,7 +693,7 @@ class TestScheduledTasks:
             mutation {
                 createScheduledTask(
                     id: "smtest-task-5", name: "n", cron: "* * * * *", kind: "sql",
-                    sql: "SELECT 1"
+                    sql: "DELETE FROM sales.orders WHERE id < 0", role: "analyst"
                 ) { success message }
             }
             """,
@@ -708,7 +708,7 @@ class TestScheduledTasks:
             mutation {
                 createScheduledTask(
                     id: "smtest-task-5", name: "n", cron: "* * * * *", kind: "sql",
-                    sql: "SELECT 1"
+                    sql: "DELETE FROM sales.orders WHERE id < 0", role: "analyst"
                 ) { success message }
             }
             """,
@@ -722,6 +722,25 @@ class TestScheduledTasks:
         )
         assert delete["data"]["deleteScheduledTask"]["success"] is True
         assert delete["data"]["deleteScheduledTask"]["message"] == "Task 'smtest-task-5' deleted"
+
+    async def test_a_sql_task_that_is_no_row_write_or_has_no_role_is_refused(self, client):
+        for args, said in (
+            ('sql: "CREATE TABLE x AS SELECT 1", role: "analyst"', "creates an object"),
+            ('sql: "SELECT 1", role: "analyst"', "this one is SELECT"),
+            ('sql: "DELETE FROM sales.orders WHERE id < 0"', "runs as a role"),
+        ):
+            data = await _gql(
+                client,
+                f"""
+                mutation {{
+                    createScheduledTask(
+                        id: "smtest-task-6", name: "n", cron: "* * * * *", kind: "sql", {args}
+                    ) {{ success message }}
+                }}
+                """,
+            )
+            result = data["data"]["createScheduledTask"]
+            assert result["success"] is False and said in result["message"], result
 
 
 class TestDeployViewToDb:
