@@ -55945,66 +55945,95 @@
     full-data 'replace' event per source every boot) — that wiring remains unimplemented pending this
     requirement's acceptance.
 - id: REQ-1633
-  status: proposed
+  status: complete
   group: 6. Execution, Routing, Caching & Performance
   category: Federation Engine Native Landing Terminals
   priority: MUST
   type: behavioral
-  target: 2026-Q4
-  description: 'Every federation engine runtime must implement `attach_landed_source` (DDL-only zero-row
-    reconcile, dispatched from native_backend.py''s reconcile_landed_tables()) so REQ-1632''s eager boot-time/post-edit
-    landing works uniformly regardless of which engine is configured, AND `land_table` (the event-queue-triggered
-    full-data landing terminal dispatched from land_source_table() via `hasattr(runtime, "land_table")`),
-    so a MATERIALIZE_ONLY source''s rows land in that engine''s own store rather than silently falling
-    back to the generic store_writer DSN path against the platform database (REQ-1730). As of 2026-09-21:
-    DuckDBFederationRuntime, SnowflakeFederationRuntime, BigQueryFederationRuntime, DatabricksFederationRuntime,
-    PgFederationRuntime, and SqlAlchemyFederationRuntime implement both `land_table` and `attach_landed_source`
-    (Databricks'' `land_table` adapts to its own `materialize_source` signature, same pattern as BigQuery''s
-    — verified live via the engine-swap harness, a redis source rebooted into Databricks queried 0 rows
-    with no error before this). ClickHouseFederationRuntime and MssqlWarehouseRuntime (backing both fabric
-    and synapse) implement none of the three terminals — for these, NativeEngineBackend.reconcile_landed_tables()
-    (native_backend.py:315-316) silently returns an empty list with no error, so REQ-1632''s zero-row
-    replica never appears in that engine''s own catalog, and land_source_table() falls back to the generic
-    store_writer DSN path. Trino is NOT affected by this gap: TrinoBackend overrides reconcile_landed_tables()
-    independently (provisa/federation/backend.py:634) via store_writer.reconcile_table(), which already
-    performs the same DDL-only zero-row convergence against Trino''s own materialize store.
+  description: '[SUPERSEDED by REQ-1912, 2026-10-03 -- attach_landed_source no longer exists anywhere
+    in provisa/; commit cf0bd1df2 (REQ-1912, 2026-10-02) replaced it with reconcile_replica, which converges
+    the table at its replica address and creates nothing at the registered name (native_backend.py:420,433).
+    Kept here for history; do not implement against it.] Every federation engine runtime must implement
+    `attach_landed_source` (DDL-only zero-row reconcile, dispatched from native_backend.py''s reconcile_landed_tables())
+    [END SUPERSEDED BLOCK] so REQ-1632''s eager boot-time/post-edit landing works uniformly regardless
+    of which engine is configured, AND `land_table` (the event-queue-triggered full-data landing terminal
+    dispatched from land_source_table() via `hasattr(runtime, "land_table")`), so a MATERIALIZE_ONLY source''s
+    rows land in that engine''s own store rather than silently falling back to the generic store_writer
+    DSN path against the platform database (REQ-1730). As of 2026-09-21: DuckDBFederationRuntime, SnowflakeFederationRuntime,
+    BigQueryFederationRuntime, DatabricksFederationRuntime, PgFederationRuntime, and SqlAlchemyFederationRuntime
+    [SUPERSEDED by REQ-1912, 2026-10-03 -- Same rename: the eight runtimes implement land_table and reconcile_replica;
+    attach_landed_source is gone. Kept here for history; do not implement against it.] implement both
+    `land_table` and `attach_landed_source` [END SUPERSEDED BLOCK] (Databricks'' `land_table` adapts to
+    its own `materialize_source` signature, same pattern as BigQuery''s — verified live via the engine-swap
+    harness, a redis source rebooted into Databricks queried 0 rows with no error before this). [SUPERSEDED
+    by REQ-1633 amendment, 2026-10-03 -- Both runtimes now implement the reconcile and land terminals
+    (clickhouse_runtime.py:468,490; mssql_warehouse_runtime.py:287,326; commits fc3c72db0 and 7d866ba02,
+    2026-09-21). Kept here for history; do not implement against it.] ClickHouseFederationRuntime and
+    MssqlWarehouseRuntime (backing both fabric and synapse) implement none of the three terminals — for
+    these, NativeEngineBackend.reconcile_landed_tables() (native_backend.py:315-316) silently returns
+    an empty list with no error, so REQ-1632''s zero-row replica never appears in that engine''s own catalog,
+    and land_source_table() falls back to the generic store_writer DSN path. [END SUPERSEDED BLOCK] Trino
+    is NOT affected by this gap: TrinoBackend overrides reconcile_landed_tables() independently (provisa/federation/backend.py:634)
+    via store_writer.reconcile_table(), which already performs the same DDL-only zero-row convergence
+    against Trino''s own materialize store.
 
-    (Amended 2026-09-30, T-SQL reserved schema names:) On Fabric/Synapse a table lands and attaches at
-    its registered schema, but `public` (every Postgres-derived source''s default schema) is a T-SQL fixed
-    database role and cannot be a schema (CREATE SCHEMA [public] fails 2714). The registered schema stays
-    `public`; its physical T-SQL name is `provisa_public`, from ONE mapping (transpiler.transpile.tsql_physical_schema)
-    used both by MssqlWarehouseRuntime._phys_parts for DDL/landing and by the tsql transpile for every
-    query, so the object is created and read under the same name. A warehouse attach failure (pyodbc error)
-    makes only that table unqueryable, as on the DuckDB/PG backends (native_backend._attach_errors), never
-    every query on the engine.'
+    (Amended 2026-09-30, T-SQL reserved schema names:) [SUPERSEDED by REQ-1912, 2026-10-03 -- A replica
+    now lands in the replicas schema (mssql_warehouse_runtime.py:287-295 docstring, _store_parts at :278);
+    only the attach of an external link uses the registered schema (_phys_parts :171). The public -> provisa_public
+    mapping still applies to both. Kept here for history; do not implement against it.] On Fabric/Synapse
+    a table lands and attaches at its registered schema [END SUPERSEDED BLOCK], but `public` (every Postgres-derived
+    source''s default schema) is a T-SQL fixed database role and cannot be a schema (CREATE SCHEMA [public]
+    fails 2714). The registered schema stays `public`; its physical T-SQL name is `provisa_public`, from
+    ONE mapping (transpiler.transpile.tsql_physical_schema) used both by MssqlWarehouseRuntime._phys_parts
+    for DDL/landing and by the tsql transpile for every query, so the object is created and read under
+    the same name. A warehouse attach failure (pyodbc error) makes only that table unqueryable, as on
+    the DuckDB/PG backends (native_backend._attach_errors), never every query on the engine.'
   use_case: Uniform native landing terminals let every federation engine participate in boot-time eager
     landing (REQ-1632) and post-edit replica reconciliation, so MATERIALIZED sources land native, zero-row-then-refreshed
     replicas visible in that engine's own catalog product (Snowflake Horizon Catalog, BigQuery Dataplex,
     Databricks Unity Catalog, etc.) consistently across every supported engine, not only the ones exercised
     by existing tests.
   code:
-  - provisa/federation/mssql_warehouse_backend.py
-  - provisa/transpiler/transpile.py
   - provisa/federation/native_backend.py
   - provisa/federation/backend.py
   - provisa/federation/duckdb_runtime.py
-  - provisa/federation/databricks_runtime.py
-  - provisa/federation/bigquery_runtime.py
-  - provisa/federation/snowflake_runtime.py
-  - provisa/federation/clickhouse_runtime.py
   - provisa/federation/pg_runtime.py
   - provisa/federation/sqlalchemy_runtime.py
+  - provisa/federation/snowflake_runtime.py
+  - provisa/federation/bigquery_runtime.py
+  - provisa/federation/databricks_runtime.py
+  - provisa/federation/clickhouse_runtime.py
+  - provisa/federation/clickhouse_store.py
   - provisa/federation/mssql_warehouse_runtime.py
-  - provisa/federation/store_connection.py
+  - provisa/federation/mssql_warehouse_backend.py
+  - provisa/transpiler/transpile.py
   tests:
+  - tests/unit/federation/test_land_on_request_thread.py
+  - tests/unit/test_reconcile_landed.py
   - tests/unit/test_mssql_warehouse_attach_errors.py
-  - tests/integration/test_snowflake_federation_engine_e2e.py — exercises Snowflake-as-engine query/RLS
-    round trip only, via manually-seeded raw DDL/INSERT against the account; never calls land_table/attach_landed_source/materialize_source
-    (none exist), so it provides no coverage of this requirement and is also skipped in this environment
-    (no Snowflake creds/driver installed) — no engine besides DuckDB has empirical landing-terminal test
-    coverage today.
+  - tests/unit/test_floor_enforced_on_every_engine.py
+  - tests/integration/test_fabric_federation_engine_e2e.py
   depends_on:
   - REQ-1632
+  since: 2026-09
+  scenario: 'Given a federation engine of any native kind (DuckDB, PG, SQLAlchemy, Snowflake, BigQuery,
+    Databricks, ClickHouse, Fabric/Synapse)
+
+    When the registered tables are reconciled at boot or after an edit
+
+    Then the runtime''s reconcile_replica converges each replica''s DDL with no rows copied
+
+    When rows of a source the engine cannot attach are landed
+
+    Then NativeEngineBackend.land_source_table dispatches to the runtime''s land_table and the rows land
+    in that engine''s own store
+
+    Given a Fabric/Synapse source registered under schema public
+
+    Then DDL and every transpiled query address it as provisa_public, and a pyodbc attach failure makes
+    only that table unqueryable
+
+    '
 - id: REQ-1634
   status: accepted
   group: 1. Access Governance & Security
@@ -65900,54 +65929,61 @@
     into a landed replica strictly when a query''s compiled plan resolves a concrete primary-key equality/IN
     bound against that table — never eagerly, never a background pre-fetch of a key nothing has queried.
     The table must declare at least one is_primary_key column and resolve a cache_ttl (own or inherited
-    from its source); each cached row carries its own _row_cached_at/_row_expires_at freshness clock,
-    independent of every other row''s, driven by that same cache_ttl duration. A query whose predicate
-    does not resolve to a bounded PK set [SUPERSEDED by REQ-1915, 2026-10-01 -- a row-level table has
-    no whole-table fallback; an unfiltered read is refused at planning and a filtered read replicates
-    the rows its filter matches. Kept here for history; do not implement against it.] falls back to the
-    table''s ordinary whole-table materialize/live resolution unchanged. [END SUPERSEDED BLOCK] For a push change_signal source, an incoming CDC event for a key already present
-    in the row cache triggers an out-of-band background refresh (queued, not inline); a key not already
-    cached is dropped, never triggering an insert. A key the source no longer returns is tombstoned (deleted)
-    from the cache synchronously. A periodic out-of-band reaper deletes rows expired past an operator-configured
-    reap_grace_period. row_materialize is mutually exclusive with the view_sql-CTAS materialize flag.
-    A declared primary key is trusted, never runtime-verified for uniqueness against the live source.
-    (Amended 2026-09-30, row_materialize applies only where the engine cannot attach:) The choice is made
-    from the bound engine''s DECLARED capability. When the engine declares it can direct-attach the table''s
-    source type (strategy.engine_attaches -- its connector reads in place), the engine attaches and reads
-    the source live and row_materialize is ignored for that engine, by design (row_materialize is the
-    reach for a source the engine cannot attach, not an alternative to an attach). If that attach fails,
-    the failure is an error -- it is never routed through the row cache or a landed replica instead. row_materialize
-    applies only when the engine declares it cannot direct-attach the source. Every row-materialize consumer
-    (bound extraction, key pushdown, row fetch, background refresh/reap wiring) selects its tables through
-    query_residency.active_row_materialize_tables, so an attach-capable engine never pays a probe query,
-    a keyed fetch or a cache land it would not read -- confirmed live on the perf bench: the DuckDB engine
-    (which attaches MongoDB) ran the key-pushdown probe and landed order_docs rows for large_federated_join
-    while its query read the live MONGO_SCAN. (Amended 2026-09-30, key pushdown fails loudly and lands
-    at scale:) A key-pushdown probe or keyed fetch that fails raises; it is never logged and skipped,
-    which left the table unlanded and the query answered from whatever the row cache already held -- confirmed
-    live, large_federated_join returned 3030 rows instead of ~3.03M because ClickHouse rejected the 1..1M
-    order_id IN list ("Max query size exceeded") and the failure was swallowed. A keyed fetch names its
-    keys in predicates that each fit the source''s statement-size limit (ClickHouse: max_query_size, 262144
-    bytes by default), together naming every key once: a run of three or more consecutive integers of
-    a single-column key is one BETWEEN (exact over integers), the rest are IN batches. The row-cache freshness
-    read joins the candidate keys as a registered frame, never a bound IN list, and reports a key repeated
-    in the cache at its earliest expiry. A key-pushdown fetch lands columnar: SourceRowLoader. load_keys_arrow
-    returns one Arrow table (ClickHouse fetches it natively via query_arrow; a type without an Arrow fetch
-    converts its rows), the _row_cached_at/_row_expires_at stamps are added as Arrow columns (naive UTC),
-    and the DuckDB store upserts it through the broker in one DELETE of the carried keys and one INSERT
-    ... SELECT -- no per-row Python objects. ClickHouse''s Arrow output encodes DateTime as uint32 seconds
-    and Date as uint16 days; a column the registry declares temporal is re-typed to the Arrow timestamp/date
-    it encodes. A DuckDB-store cache land applies its batch set-based -- each key ends at its last event
-    in stream order (one DELETE of every touched key, one bulk INSERT of the keys whose last event is
-    an upsert) -- never one DELETE/INSERT per row, which held the store lock for over ten minutes landing
-    ~3M rows. (Amended 2026-09-30, no request bypass:) A route=direct request hint never reaches a row_materialize
-    source live: decide_route never makes a VIRTUAL source (neo4j included, though a driver is registered
-    for it) direct on a hint (REQ-030). (Amended 2026-10-01, bound resolution reads the in-memory registry:)
-    Resolving a statement''s PK bounds (`_resolve_pk_bounds`) runs for every governed statement on every
-    surface, so it reads no control plane: the row_materialize tables come from the registry `_rebuild_schemas`
-    publishes in memory (`state.tables`), selected and keyed exactly as `row_materialized_tables_by_name`
-    does (flag set, engine cannot direct-attach the source type; bare table name and alias). A statement
-    that touches no such table pays a list scan.'
+    from its source); [SUPERSEDED by REQ-1907, 2026-10-03 -- Freshness is now judged per reader from _row_cached_at
+    against max(cache_ttl, role_ttl(role)); _row_expires_at is only the reaper horizon, stamped with the
+    longest TTL any reader accepts (query_residency.py:61-73, 1021-1034), and a push-fed table''s rows
+    are never stale on the clock (:569-574). Kept here for history; do not implement against it.] each
+    cached row carries its own _row_cached_at/_row_expires_at freshness clock, independent of every other
+    row''s, driven by that same cache_ttl duration [END SUPERSEDED BLOCK]. A query whose predicate does
+    not resolve to a bounded PK set [SUPERSEDED by REQ-1915, 2026-10-01 -- a row-level table has no whole-table
+    fallback; an unfiltered read is refused at planning and a filtered read replicates the rows its filter
+    matches. Kept here for history; do not implement against it.] falls back to the table''s ordinary
+    whole-table materialize/live resolution unchanged. [END SUPERSEDED BLOCK] For a push change_signal
+    source, an incoming CDC event for a key already present in the row cache triggers an out-of-band background
+    refresh (queued, not inline); a key not already cached is dropped, never triggering an insert. A key
+    the source no longer returns is tombstoned (deleted) from the cache synchronously. A periodic out-of-band
+    reaper deletes rows expired past an operator-configured reap_grace_period. row_materialize is mutually
+    exclusive with the view_sql-CTAS materialize flag. A declared primary key is trusted, never runtime-verified
+    for uniqueness against the live source. (Amended 2026-09-30, row_materialize applies only where the
+    engine cannot attach:) The choice is made from the bound engine''s DECLARED capability. When the engine
+    declares it can direct-attach the table''s source type (strategy.engine_attaches -- its connector
+    reads in place), the engine attaches and reads the source live and row_materialize is ignored for
+    that engine, by design (row_materialize is the reach for a source the engine cannot attach, not an
+    alternative to an attach). If that attach fails, the failure is an error -- it is never routed through
+    the row cache or a landed replica instead. row_materialize applies only when the engine declares it
+    cannot direct-attach the source. Every row-materialize consumer (bound extraction, key pushdown, row
+    fetch, background refresh/reap wiring) selects its tables through query_residency.active_row_materialize_tables,
+    so an attach-capable engine never pays a probe query, a keyed fetch or a cache land it would not read
+    -- confirmed live on the perf bench: the DuckDB engine (which attaches MongoDB) ran the key-pushdown
+    probe and landed order_docs rows for large_federated_join while its query read the live MONGO_SCAN.
+    (Amended 2026-09-30, key pushdown fails loudly and lands at scale:) A key-pushdown probe or keyed
+    fetch that fails raises; it is never logged and skipped, which left the table unlanded and the query
+    answered from whatever the row cache already held -- confirmed live, large_federated_join returned
+    3030 rows instead of ~3.03M because ClickHouse rejected the 1..1M order_id IN list ("Max query size
+    exceeded") and the failure was swallowed. A keyed fetch names its keys in predicates that each fit
+    the source''s statement-size limit (ClickHouse: max_query_size, 262144 bytes by default), together
+    naming every key once: a run of three or more consecutive integers of a single-column key is one BETWEEN
+    (exact over integers), the rest are IN batches. The row-cache freshness read joins the candidate keys
+    as a registered frame, never a bound IN list, [SUPERSEDED by REQ-1907, 2026-10-03 -- The freshness
+    read returns min(_row_cached_at) per key, the oldest landed-at stamp, not an expiry (store_connection.py:411-415;
+    query_residency.py:540-566). Kept here for history; do not implement against it.] and reports a key
+    repeated in the cache at its earliest expiry [END SUPERSEDED BLOCK]. A key-pushdown fetch lands columnar:
+    SourceRowLoader. load_keys_arrow returns one Arrow table (ClickHouse fetches it natively via query_arrow;
+    a type without an Arrow fetch converts its rows), the _row_cached_at/_row_expires_at stamps are added
+    as Arrow columns (naive UTC), and the DuckDB store upserts it through the broker in one DELETE of
+    the carried keys and one INSERT ... SELECT -- no per-row Python objects. ClickHouse''s Arrow output
+    encodes DateTime as uint32 seconds and Date as uint16 days; a column the registry declares temporal
+    is re-typed to the Arrow timestamp/date it encodes. A DuckDB-store cache land applies its batch set-based
+    -- each key ends at its last event in stream order (one DELETE of every touched key, one bulk INSERT
+    of the keys whose last event is an upsert) -- never one DELETE/INSERT per row, which held the store
+    lock for over ten minutes landing ~3M rows. (Amended 2026-09-30, no request bypass:) A route=direct
+    request hint never reaches a row_materialize source live: decide_route never makes a VIRTUAL source
+    (neo4j included, though a driver is registered for it) direct on a hint (REQ-030). (Amended 2026-10-01,
+    bound resolution reads the in-memory registry:) Resolving a statement''s PK bounds (`_resolve_pk_bounds`)
+    runs for every governed statement on every surface, so it reads no control plane: the row_materialize
+    tables come from the registry `_rebuild_schemas` publishes in memory (`state.tables`), selected and
+    keyed exactly as `row_materialized_tables_by_name` does (flag set, engine cannot direct-attach the
+    source type; bare table name and alias). A statement that touches no such table pays a list scan.'
   use_case: A large, expensive-to-fully-land source table (e.g. a multi-million-row Neo4j query_template
     scan) can serve point-lookup queries in milliseconds via a per-row cache instead of paying a 60-120s
     full re-land for a handful of rows, without ever pre-warming keys nothing has asked for.
@@ -66501,7 +66537,7 @@
 
     '
 - id: REQ-1876
-  status: proposed
+  status: superseded
   group: 6. Execution, Routing, Caching & Performance
   category: Compilation Caching
   priority: SHOULD
@@ -66538,6 +66574,7 @@
   - provisa/pgwire/_pipeline.py
   - provisa/federation/connector_base.py
   target: 2027-Q1
+  superseded_by: REQ-1880
 - id: REQ-1877
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -67520,7 +67557,7 @@
     '
   target: 2026-Q3
 - id: REQ-1884
-  status: in-progress
+  status: complete
   group: 6. Execution, Routing, Caching & Performance
   category: gRPC Row Streaming
   priority: SHOULD
@@ -67555,19 +67592,22 @@
     dynamically GENERATED (message_factory) message types — the role-specific-schema design is preserved
     either way, and there is no message_factory construction cost to mitigate.
 
-    Flagged, NOT implemented (bigger architectural decisions needing the maintainer''s call): (a) Batching
-    multiple rows into fewer, larger stream messages (a `repeated` sub-message field, or a columnar encoding)
-    instead of one message per row — would cut per-message gRPC framing overhead 2,000,000x down to (row_count
-    / batch_size)x, but changes the RPC response shape any real client depends on (one `{Type}` message
-    per stream item today) — a wire-protocol-breaking change, out of scope here. (b) Response compression
-    (gzip or another codec) is not enabled anywhere in provisa/grpc/server.py''s `grpc.aio.server(...)`
-    construction today (verified: no `compression=` argument, no `options=` with compression keys) — untested
-    here per the no- live-VM constraint; for compact scalar rows compression could cut wire bytes or could
-    simply add CPU cost for little size win, and needs a real measurement, not a guess. (c) Reusing/ caching
-    message instances instead of constructing a new `msg_cls(**kwargs)` per row was considered and NOT
-    pursued — protobuf messages aren''t designed for a clear/reuse cycle in the generator-yield pattern
-    used here, and the constructor cost was not shown to dominate versus the import/lookup fixes actually
-    made.'
+    Flagged, NOT implemented (bigger architectural decisions needing the maintainer''s call): [SUPERSEDED
+    by REQ-1899, 2026-10-03 -- Batched streaming was built as an additive Query{Type}Batch RPC with a
+    client batch_rows option (provisa/grpc/server.py:43,337-340,538-578), so the sentence''s ''NOT implemented''
+    status is false; the per-row Query{Type} shape is unchanged. Kept here for history; do not implement
+    against it.] (a) Batching multiple rows into fewer, larger stream messages (a `repeated` sub-message
+    field, or a columnar encoding) instead of one message per row — would cut per-message gRPC framing
+    overhead 2,000,000x down to (row_count / batch_size)x, but changes the RPC response shape any real
+    client depends on (one `{Type}` message per stream item today) — a wire-protocol-breaking change,
+    out of scope here. [END SUPERSEDED BLOCK] (b) Response compression (gzip or another codec) is not
+    enabled anywhere in provisa/grpc/server.py''s `grpc.aio.server(...)` construction today (verified:
+    no `compression=` argument, no `options=` with compression keys) — untested here per the no- live-VM
+    constraint; for compact scalar rows compression could cut wire bytes or could simply add CPU cost
+    for little size win, and needs a real measurement, not a guess. (c) Reusing/ caching message instances
+    instead of constructing a new `msg_cls(**kwargs)` per row was considered and NOT pursued — protobuf
+    messages aren''t designed for a clear/reuse cycle in the generator-yield pattern used here, and the
+    constructor cost was not shown to dominate versus the import/lookup fixes actually made.'
   use_case: 'Exploratory task this session: investigate gRPC row-streaming throughput vs the ~14x-faster
     Flight transport for the same query, implement safe/contained/verified fixes, flag bigger wire-protocol
     changes rather than implementing them. No live VM/SSH/network access was available or used — all verification
@@ -67579,6 +67619,7 @@
   - tests/unit/test_grpc_aggregates.py
   - tests/unit/test_grpc_requirements.py
   - tests/unit/test_grpc_proxy_translation.py
+  - tests/unit/test_interval_bytea_types.py
   scenario: 'Given the ENGINE-route streaming RPC handler serving a large unfiltered scan
 
     When each row is converted to a proto message via `_kwargs_for` + `msg_cls(**kwargs)`
@@ -67597,7 +67638,6 @@
     behavior changes)
 
     '
-  target: 2026-Q4
 - id: REQ-1893
   status: complete
   group: 6. Execution, Routing, Caching & Performance
