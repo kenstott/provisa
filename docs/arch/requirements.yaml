@@ -70608,7 +70608,9 @@
     afterwards, when the statement runs over the kept rows, as they are today. So a reader outside a country
     cannot cause a row that must stay in the country to be kept in their region. (Amended 2026-10-03,
     HOT COUNTS ARE THE HOME REGION'S:) A table's Hot count (REQ-239) is the traffic of its home region
-    only.
+    only. (Amended 2026-10-03, A TABLE'S REGION IS ONE OF ITS ORG'S REGIONS:) The region a table or source
+    names as its home must be one of the regions its org has selected (REQ-1922). Any other is refused
+    at save and at load, with an error naming the org's regions.
   use_case: A regulated enterprise holds data that must stay in a country but still wants one governed
     layer over the whole estate, in which most data may be read from anywhere. Rules on user attributes
     already limit who sees what; what was missing was a guarantee that the platform itself never quietly
@@ -70660,29 +70662,50 @@
     cluster is the work and what it leaves -- each cluster builds and refreshes only its own replicas
     and views, writes only its own cache, state store and record, which stay in its region, and applies
     the limits on background work (REQ-1915) to itself. A change to the model reaches every cluster by
-    the same stamp (REQ-1914); each cluster then converges on its own. The model declares the regions
-    and, for each, its engine, storage, cache and address, and may declare for a source or table which
-    region is its home (REQ-1921). A cluster that cannot reach the model store keeps serving the model
-    it last loaded and reports that it is behind. A deployment with one cluster is the ordinary case and
-    needs none of this declared. (Amended 2026-10-02, REGION FLAG) A node is launched in a region by a
-    command line flag, beside its mode (REQ-1916). A node started with no region belongs to the deployment''s
-    single cluster. The additions to the model are few -- the list of regions with each one''s engine,
-    storage, cache, state store, record and address, and an optional region on a source or table that
-    says where whole-table copies of it are allowed (REQ-1921). (Amended 2026-10-02, HOW LITTLE CHANGES)
-    A node does what it does today. It is launched in a region and reads from the one model which engine,
-    replica and view storage, cache, state store and record belong to that region; from then on it addresses
-    them exactly as a node in a deployment with a single cluster does, and no address gains a region.
-    The changes are these and no others. To the model -- the list of regions, each with its stores and
-    its address, and an optional region on a source or table. To the run time -- two rules. One, an identity
-    processing within a node carries the node''s region as its region attribute, so a build such as a
-    materialized view''s is governed for the region it is built in (REQ-1921). Two, a table that names
-    a region is replicated only by that region''s nodes, and a node of another region reads that replica
-    in the named region''s storage, which it finds from the model. (Amended 2026-10-03, A NODE MUST NAME
-    ITS REGION, AND STATE IS PER REGION FROM THE FIRST VERSION:) A node started without `--region` while
-    the model declares regions refuses to start and prints the regions available. The per-region split
-    of the state store and the record is part of the first version: in a region the model store holds
-    the connection to the shared model database and `tenant_db` is the region''s own database, and model
-    reads that bypass the model store move into it.'
+    the same stamp (REQ-1914); each cluster then converges on its own. [SUPERSEDED by REQ-1922 amendment,
+    2026-10-03 -- the platform declares the physical regions; each org''s model selects the regions it
+    uses and declares its own stores in each. Kept here for history; do not implement against it.] The
+    model declares the regions and, for each, its engine, storage, cache and address, and may declare
+    for a source or table which region is its home (REQ-1921). [END SUPERSEDED BLOCK] A cluster that cannot
+    reach the model store keeps serving the model it last loaded and reports that it is behind. A deployment
+    with one cluster is the ordinary case and needs none of this declared. (Amended 2026-10-02, REGION
+    FLAG) A node is launched in a region by a command line flag, beside its mode (REQ-1916). A node started
+    with no region belongs to the deployment''s single cluster. The additions to the model are few --
+    the list of regions with each one''s engine, storage, cache, state store, record and address, and
+    an optional region on a source or table that says where whole-table copies of it are allowed (REQ-1921).
+    (Amended 2026-10-02, HOW LITTLE CHANGES) A node does what it does today. It is launched in a region
+    and reads from the one model which engine, replica and view storage, cache, state store and record
+    belong to that region; from then on it addresses them exactly as a node in a deployment with a single
+    cluster does, and no address gains a region. The changes are these and no others. To the model --
+    the list of regions, each with its stores and its address, and an optional region on a source or table.
+    To the run time -- two rules. One, an identity processing within a node carries the node''s region
+    as its region attribute, so a build such as a materialized view''s is governed for the region it is
+    built in (REQ-1921). Two, a table that names a region is replicated only by that region''s nodes,
+    and a node of another region reads that replica in the named region''s storage, which it finds from
+    the model. (Amended 2026-10-03, A NODE MUST NAME ITS REGION, AND STATE IS PER REGION FROM THE FIRST
+    VERSION:) A node started without `--region` while the model declares regions refuses to start and
+    prints the regions available. The per-region split of the state store and the record is part of the
+    first version: in a region the model store holds the connection to the shared model database and `tenant_db`
+    is the region''s own database, and model reads that bypass the model store move into it. (Amended
+    2026-10-03, AN ORG IS A COLLECTION OF REGIONS:) The platform declares the physical regions its nodes
+    run in (for example eu and us), and a node is started with `--region` naming one of them. Each org''s
+    model selects which platform regions the org uses and declares the org''s own stores in each: engine,
+    replica and view storage, cache, state store, record and address. A node started in a region serves
+    that region of every org that uses it. An org that does not use the region is not served by that node,
+    and a request for it there is refused with an error naming the org and the region. Each org has one
+    model store, shared by all its regions; its state store and its record are per org and region. The
+    rule that a node started without `--region` refuses to start and prints the regions available applies
+    when the platform declares regions, and the regions printed are the platform''s. The region of a table
+    or a source must be one of its org''s selected regions; any other is refused when the object is saved
+    and when a configuration is loaded, with an error naming the org''s regions. (Amended 2026-10-03,
+    WITH NO REGIONS DECLARED THERE IS ONE IMPLICIT REGION, AND NO USER SEES IT:) When the platform declares
+    no regions there is one implicit region, held as an internal default value, as a single-tenant install
+    has one implicit org. Region is then not a concept anywhere a user sees: the admin UI shows no region
+    field, column, badge or setting; a node needs no `--region` flag; a source or table carries no region,
+    and a configuration that sets one is refused with an error saying the platform declares no regions;
+    and the record''s visible columns carry no region. Every per-region store is simply the org''s store.
+    The UI shows regions only when the platform declares them. This implicit region is a default this
+    requirement mandates, not a fallback.'
   use_case: A regulated enterprise needs some data processed and kept inside a country, with the rest
     of the estate readable from anywhere, under one set of definitions. Two independent deployments would
     each need their own definitions, which could diverge. Two clusters on one shared model give each region
@@ -71161,7 +71184,7 @@
 
     '
 - id: REQ-569
-  status: proposed
+  status: complete
   group: 9. Live Data & Events
   category: Subscriptions
   priority: SHOULD
@@ -71174,16 +71197,27 @@
   code:
   - provisa/subscriptions/pg_triggers.py
   tests:
-  - tests/unit/test_subscribe.py
+  - tests/unit/test_pg_notify_trigger_sql.py
+  - tests/integration/test_pg_notify_payload_limit.py
   - tests/integration/test_sse_subscriptions.py
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on an earlier date under the heading '(requirements table)'; it was dropped when requirements.md
-    became generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on an earlier date under the heading ''(requirements table)''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: pg_triggers.py
+    installs AFTER INSERT/UPDATE/DELETE triggers calling pg_notify on provisa_{table}, so any writer fires;
+    tests/unit/test_pg_notify_trigger_sql.py and tests/integration/test_pg_notify_payload_limit.py cover
+    it.'
+  since: 2026-05
+  scenario: 'Given a registered PostgreSQL subscription table with the trigger installed
+
+    When a row is inserted, updated or deleted by any client
+
+    Then NOTIFY fires on provisa_{table} and subscribers receive the event
+
+    '
 - id: REQ-570
-  status: proposed
-  group: 9. Live Data & Events
-  category: Subscriptions
+  status: superseded
+  group: 8. Client Access & Protocols
+  category: API & Integration
   priority: SHOULD
   type: behavioral
   description: 'Any GraphQL subscription sent to `POST /data/graphql` with an `X-Provisa-Sink: kafka://[broker:port]/topic`
@@ -71193,28 +71227,27 @@
     `localhost:9092`).'
   use_case: Header-based Kafka sink redirect lets ad-hoc consumers redirect any subscription to a Kafka
     topic without pre-configuring a sink in provisa.yaml.
-  code:
-  - provisa/api/data/subscription_sse.py
-  tests:
-  - tests/unit/test_subscribe.py
-  - tests/integration/test_sse_subscriptions.py
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on an earlier date under the heading '(requirements table)'; it was dropped when requirements.md
-    became generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on an earlier date under the heading ''(requirements table)''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: REQ-812
+    (amended 2026-09-30) governs X-Provisa-Sink: broker may only repeat the operator''s KAFKA_BOOTSTRAP_SERVERS
+    and the localhost:9092 default is a silent fallback; subscription_sse.py:375 still has it.'
+  superseded_by: REQ-812
 - id: REQ-435
-  status: proposed
+  status: rejected
   group: 1. Access Governance & Security
   category: Security
   priority: SHOULD
   type: behavioral
   description: RLS rule enforcement and column-level masking both become meaningfully scoped only after
     identity propagation is implemented (identities assigned domain-role pairs).
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-04-28 under the heading 'Security'; it was dropped when requirements.md became generated
-    from requirements.yaml. Text verbatim. Status, type, priority and group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-04-28 under the heading ''Security''; it was dropped when requirements.md became generated
+    from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: '
+  rejection_reason: Sequencing note, not a testable rule. RLS and masking are keyed by the role from AuthIdentity
+    (REQ-120, REQ-551); no (role, domain) pair propagation exists or is planned (REQ-808).
 - id: REQ-436
-  status: proposed
+  status: rejected
   group: 1. Access Governance & Security
   category: Security
   priority: SHOULD
@@ -71222,69 +71255,153 @@
   description: An identity is granted a set of (role, domain) pairs. All access decisions — table access,
     column visibility, column masking — are derived solely from those pairs. No separate per-table grants
     exist.
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-04-28 under the heading 'Security'; it was dropped when requirements.md became generated
-    from requirements.yaml. Text verbatim. Status, type, priority and group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-04-28 under the heading ''Security''; it was dropped when requirements.md became generated
+    from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: '
+  rejection_reason: Pair model not built. Identities hold roles; a role carries domain_access (visibility.py:24,
+    REQ-808, REQ-1530). Access derives from role domain_access plus visible_to/unmasked_to, not per-identity
+    (role, domain) pairs.
 - id: REQ-437
-  status: proposed
+  status: complete
   group: 1. Access Governance & Security
   category: Security
   priority: SHOULD
   type: behavioral
-  description: 'Table access: an identity can access a table if they hold a (role, domain) pair where
-    domain matches the table''s domain_id AND the role appears in visible_to on at least one column of
-    that table.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-04-28 under the heading 'Security'; it was dropped when requirements.md became generated
-    from requirements.yaml. Text verbatim. Status, type, priority and group are provisional pending audit.
+  description: 'Table access: an identity can access a table if they [SUPERSEDED by REQ-808, 2026-10-03
+    -- domain comes from the role''s domain_access list, not an identity (role, domain) pair. Kept here
+    for history; do not implement against it.] hold a (role, domain) pair where domain matches the table''s
+    domain_id [END SUPERSEDED BLOCK] AND the role appears in visible_to on at least one column of that
+    table.'
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-04-28 under the heading ''Security''; it was dropped when requirements.md became generated
+    from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: visibility.py:22-40 visible_tables
+    checks role domain_access and visible_to; test_visibility.py.'
+  since: 2026-04
+  code:
+  - provisa/security/visibility.py
+  - provisa/compiler/sql_validator.py
+  tests:
+  - tests/unit/test_visibility.py
+  - tests/unit/test_empty_domain_access_reaches_nothing.py
+  scenario: 'Given a role whose domain_access includes the table''s domain and visible_to on at least
+    one column
+
+    When the role lists tables
+
+    Then the table is visible; otherwise it is excluded
+
+    '
 - id: REQ-438
-  status: proposed
+  status: complete
   group: 1. Access Governance & Security
   category: Security
   priority: SHOULD
   type: behavioral
-  description: Column visibility is determined by visible_to on each column, checked against the identity's
-    role for the matching domain.
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-04-28 under the heading 'Security'; it was dropped when requirements.md became generated
-    from requirements.yaml. Text verbatim. Status, type, priority and group are provisional pending audit.
+  description: Column visibility is determined by visible_to on each column, [SUPERSEDED by REQ-808, 2026-10-03
+    -- checked against the role; domain gating is the role's domain_access. Kept here for history; do
+    not implement against it.] checked against the identity's role for the matching domain [END SUPERSEDED
+    BLOCK].
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-04-28 under the heading ''Security''; it was dropped when requirements.md became generated
+    from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: visibility.py:42-50 is_column_visible;
+    test_schema_visibility_filters.py:75-83.'
+  since: 2026-04
+  code:
+  - provisa/security/visibility.py
+  tests:
+  - tests/unit/test_visibility.py
+  - tests/unit/test_schema_visibility_filters.py
+  scenario: 'Given a column with visible_to listing role A
+
+    When role A and role B query
+
+    Then only A sees the column
+
+    '
 - id: REQ-439
-  status: proposed
+  status: complete
   group: 1. Access Governance & Security
   category: Security
   priority: SHOULD
   type: behavioral
-  description: Column masking is determined by unmasked_to on each column, checked against the identity's
-    role for the matching domain. Role proliferation is the accepted trade-off for keeping visible_to/unmasked_to
-    as plain role ID lists (no domain-role pair syntax in column config).
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-04-28 under the heading 'Security'; it was dropped when requirements.md became generated
-    from requirements.yaml. Text verbatim. Status, type, priority and group are provisional pending audit.
+  description: Column masking is determined by unmasked_to on each column, [SUPERSEDED by REQ-808, 2026-10-03
+    -- checked against the role only; domain scoping is role.domain_access. Kept here for history; do
+    not implement against it.] checked against the identity's role for the matching domain [END SUPERSEDED
+    BLOCK]. Role proliferation is the accepted trade-off for keeping visible_to/unmasked_to as plain role
+    ID lists (no domain-role pair syntax in column config).
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-04-28 under the heading ''Security''; it was dropped when requirements.md became generated
+    from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: e2e test_admin_email_unmasked:76
+    vs test_analyst_email_regex_masked:113; unmasked_to is a plain role id list.'
+  since: 2026-04
+  code:
+  - provisa/security/masking.py
+  - provisa/compiler/mask_inject.py
+  tests:
+  - tests/e2e/test_masking.py
+  - tests/unit/test_inherited_roles.py
+  scenario: 'Given a column with unmasked_to listing role A
+
+    When role A and role B query
+
+    Then A sees raw values and B sees masked values
+
+    '
 - id: REQ-440
-  status: proposed
+  status: complete
   group: 1. Access Governance & Security
   category: Security
   priority: SHOULD
   type: behavioral
   description: Domain boundaries are permission gates. Within a domain a role can query any table freely.
-    To access data in another domain, the query must traverse a registered relationship — there is no
-    other path.
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-04-28 under the heading 'Security'; it was dropped when requirements.md became generated
-    from requirements.yaml. Text verbatim. Status, type, priority and group are provisional pending audit.
+    To access data in another domain, the query must traverse a registered relationship — [SUPERSEDED
+    by REQ-367, 2026-10-03 -- cross-domain data may also enter a domain through an intradomain view. Kept
+    here for history; do not implement against it.] there is no other path [END SUPERSEDED BLOCK].
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-04-28 under the heading ''Security''; it was dropped when requirements.md became generated
+    from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: sql_validator.py:8-9 V001/V002;
+    test_sql_endpoint_governance.py:394-420; test_domain_views.py:53 shows the view path (REQ-367).'
+  since: 2026-04
+  code:
+  - provisa/compiler/sql_validator.py
+  - provisa/compiler/schema_gen.py
+  tests:
+  - tests/unit/test_sql_endpoint_governance.py
+  - tests/unit/test_domain_views.py
+  scenario: 'Given a role limited to domain A
+
+    When it queries domain B directly or joins without a registered relationship
+
+    Then V001/V002 reject it
+
+    '
 - id: REQ-441
-  status: proposed
+  status: complete
   group: 1. Access Governance & Security
   category: Security
   priority: SHOULD
   type: behavioral
   description: GraphQL enforces cross-domain access control by not exposing cross-domain tables as root
     types; they are only reachable as nested fields via registered relationships.
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-04-28 under the heading 'Security'; it was dropped when requirements.md became generated
-    from requirements.yaml. Text verbatim. Status, type, priority and group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-04-28 under the heading ''Security''; it was dropped when requirements.md became generated
+    from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: schema_gen.py:863-868,947
+    root_table_ids gate; test_visibility.py:127, test_requested_domain_narrows.py:205.'
+  since: 2026-04
+  code:
+  - provisa/compiler/schema_gen.py
+  tests:
+  - tests/unit/test_visibility.py
+  - tests/unit/test_requested_domain_narrows.py
+  scenario: 'Given a role limited to domain A with a relationship to domain B
+
+    When the GraphQL schema is built
+
+    Then B tables are not root fields and only appear as nested relationship fields
+
+    '
 - id: REQ-442
-  status: proposed
+  status: complete
   group: 1. Access Governance & Security
   category: Security
   priority: SHOULD
@@ -71292,11 +71409,27 @@
   description: 'Cypher enforces cross-domain access control at translator/parse time: starting node labels
     must map to a domain in the role''s domain_access; cross-domain hops must follow a registered relationship.
     Direct MATCH on a node label outside the role''s domain_access is rejected.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-04-28 under the heading 'Security'; it was dropped when requirements.md became generated
-    from requirements.yaml. Text verbatim. Status, type, priority and group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-04-28 under the heading ''Security''; it was dropped when requirements.md became generated
+    from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: label_map.py:67 traversal_only;
+    translator.py:638-648 rejection; test_cypher_translator.py:1546 section.'
+  since: 2026-04
+  code:
+  - provisa/cypher/label_map.py
+  - provisa/cypher/translator.py
+  - provisa/cypher/translator_union.py
+  tests:
+  - tests/unit/test_cypher_translator.py
+  - tests/unit/test_cypher_label_map.py
+  scenario: 'Given a cross-domain node marked traversal_only
+
+    When a Cypher query starts MATCH on it
+
+    Then the translator rejects it, while a registered relationship hop is allowed
+
+    '
 - id: REQ-443
-  status: proposed
+  status: complete
   group: 1. Access Governance & Security
   category: Security
   priority: SHOULD
@@ -71305,11 +71438,25 @@
     AST: any cross-domain table reference must be connected to an in-domain table via a JOIN whose column
     pair matches a registered relationship''s source_column/target_column. Unapproved cross-domain references
     are rejected.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-04-28 under the heading 'Security'; it was dropped when requirements.md became generated
-    from requirements.yaml. Text verbatim. Status, type, priority and group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-04-28 under the heading ''Security''; it was dropped when requirements.md became generated
+    from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: sql_validator.py:273-401
+    V002 via sqlglot AST; test_sql_endpoint_governance.py:408 test_join_to_regular_domain_without_rel_is_blocked.'
+  since: 2026-04
+  code:
+  - provisa/compiler/sql_validator.py
+  tests:
+  - tests/unit/test_sql_endpoint_governance.py
+  - tests/unit/test_sql_validator_bypass.py
+  scenario: 'Given a SQL query joining an in-domain table to a cross-domain table
+
+    When the join pair is not a registered relationship
+
+    Then validation rejects with V002
+
+    '
 - id: REQ-444
-  status: proposed
+  status: complete
   group: 1. Access Governance & Security
   category: Security
   priority: SHOULD
@@ -71317,11 +71464,28 @@
   description: The registered relationships table is the single authority for what cross-domain connections
     are permitted across all three interfaces (GraphQL, Cypher, SQL). The enforcement logic is designed
     for reuse across interfaces.
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-04-28 under the heading 'Security'; it was dropped when requirements.md became generated
-    from requirements.yaml. Text verbatim. Status, type, priority and group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-04-28 under the heading ''Security''; it was dropped when requirements.md became generated
+    from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: All three surfaces derive
+    from the same registry: schema_gen joins, label_map.from_schema relationships, sql_validator V002.'
+  since: 2026-04
+  code:
+  - provisa/compiler/sql_validator.py
+  - provisa/cypher/label_map.py
+  - provisa/compiler/schema_gen.py
+  tests:
+  - tests/unit/test_sql_endpoint_governance.py
+  - tests/unit/test_cypher_label_map.py
+  - tests/unit/test_visibility.py
+  scenario: 'Given the registered relationships table
+
+    When a cross-domain connection is attempted over GraphQL, Cypher or SQL
+
+    Then only registered relationships permit it
+
+    '
 - id: REQ-445
-  status: proposed
+  status: superseded
   group: 1. Access Governance & Security
   category: Security
   priority: SHOULD
@@ -71333,13 +71497,16 @@
     Any foreign table reachable only through unregistered joins is rejected. Order and direction of the
     join condition are irrelevant; only graph reachability via registered edges matters. This validation
     applies to Views only, not to general query execution.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-04-28 under the heading 'Security'; it was dropped when requirements.md became generated
-    from requirements.yaml. Text verbatim. Status, type, priority and group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-04-28 under the heading ''Security''; it was dropped when requirements.md became generated
+    from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: No save-time transitive-reachability
+    validation of views exists; view creation is governed by approval or originator rights (REQ-366) and
+    cross-domain entry via views (REQ-367/REQ-610). grep found no implementation.'
+  superseded_by: REQ-366
 - id: REQ-446
   status: proposed
-  group: 1. Access Governance & Security
-  category: Security
+  group: 5. Query Languages, Compilation & Operations
+  category: Graph Analytics Pipeline
   priority: SHOULD
   type: behavioral
   description: 'The Cypher compiler must support a high-value subset of `CALL gds.*` procedure syntax,
@@ -71349,59 +71516,90 @@
     filtered by RLS and domain permissions) is materialized by Provisa before being passed to igraph —
     no data outside the caller''s access is visible to the algorithm. Results are returned as tabular
     output consistent with all other Cypher query responses.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-04-29 under the heading 'Security'; it was dropped when requirements.md became generated
-    from requirements.yaml. Text verbatim. Status, type, priority and group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-04-29 under the heading ''Security''; it was dropped when requirements.md became generated
+    from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: No CALL gds.* support
+    and no igraph usage in provisa/ (grep); CALL only does correlated subqueries (cypher/correlated_call.py).
+    Graph analytics is the NetworkX endpoint REQ-642. Category/group moved from Security.'
 - id: REQ-447
-  status: proposed
+  status: superseded
   group: 8. Client Access & Protocols
   category: API & Integration
   priority: SHOULD
   type: behavioral
   description: Originally defined an Arrow Flight approved-queries listing path with a `limit`. Removed
     — there are no approved queries to list; Flight exposes registered tables/views governed by rights.
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-05-04, SUPERSEDED 2026-06-16 under the heading 'API & Integration'; it was dropped
-    when requirements.md became generated from requirements.yaml. Text verbatim. Status, type, priority
-    and group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-05-04, SUPERSEDED 2026-06-16 under the heading ''API & Integration''; it was dropped
+    when requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against
+    the code: Text states approved-queries listing was removed; access is governed solely by rights (REQ-001;
+    schema.sql:758 notes the registry is gone).'
+  superseded_by: REQ-001
 - id: REQ-448
-  status: proposed
+  status: rejected
   group: 8. Client Access & Protocols
   category: API & Integration
   priority: SHOULD
   type: behavioral
   description: GraphQL synthetic ops traversal fields including `_queries` and `_traces` must accept a
     `limit` argument in SDL and apply it when compiling the traversal SQL.
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-05-04 under the heading 'API & Integration'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-05-04 under the heading ''API & Integration''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: '
+  rejection_reason: _queries ops traversal belonged to the approved-query registry, removed per REQ-001/REQ-003;
+    no _queries/_traces synthetic ops fields exist in provisa/ (grep).
 - id: REQ-449
-  status: proposed
+  status: in-progress
   group: 8. Client Access & Protocols
   category: API & Integration
   priority: SHOULD
   type: behavioral
   description: GraphQL DB-backed fields used as nested paths must expose root-query controls (`limit`,
     `offset`, `where`, `order_by`, `distinct_on`) and apply them during SQL compilation.
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-05-04 under the heading 'API & Integration'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-05-04 under the heading ''API & Integration''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: schema_gen.py:490-497
+    gives one-to-many nested fields args via _build_db_field_args (where/order_by/distinct_on/limit/offset);
+    no test asserts the nested field args, so not complete.'
+  code:
+  - provisa/compiler/schema_gen.py
+  - provisa/compiler/sql_gen.py
+  - provisa/compiler/sql_selection.py
+  scenario: 'Given a GraphQL DB-backed field used as a nested path
+
+    When a query passes limit, offset, where, order_by or distinct_on on it
+
+    Then the schema accepts those arguments
+
+    And SQL compilation applies them to the nested selection
+
+    '
 - id: REQ-450
-  status: proposed
+  status: in-progress
   group: 8. Client Access & Protocols
   category: API & Integration
   priority: SHOULD
   type: behavioral
   description: Every GraphQL one-to-many nested path must expose the same query arguments as the related
     target table's root query field.
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-05-04 under the heading 'API & Integration'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-05-04 under the heading ''API & Integration''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: schema_gen.py:490-497
+    one-to-many fields reuse target table''s where/order_by/distinct_enum args; no unit test asserts schema
+    arg parity.'
+  code:
+  - provisa/compiler/schema_gen.py
+  scenario: 'Given a one-to-many relationship to a target table
+
+    When the schema is generated
+
+    Then the nested field exposes the same arguments as the target table''s root query field
+
+    And a query using them compiles successfully
+
+    '
 - id: REQ-451
-  status: proposed
+  status: in-progress
   group: 8. Client Access & Protocols
   category: API & Integration
   priority: SHOULD
@@ -71409,27 +71607,39 @@
   description: GraphQL object relationship paths (`many-to-one` and `one-to-one`) must not expose collection
     query arguments such as `limit`, `offset`, `where`, `order_by`, or `distinct_on`; this follows Hasura
     v2 object relationship behavior.
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-05-04 under the heading 'API & Integration'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-05-04 under the heading ''API & Integration''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: schema_gen.py:485-489
+    many-to-one/one-to-one GraphQLField has no args; no test asserts absence.'
+  code:
+  - provisa/compiler/schema_gen.py
+  scenario: 'Given a many-to-one or one-to-one relationship
+
+    When the schema is generated
+
+    Then the object relationship field exposes no limit, offset, where, order_by or distinct_on arguments
+
+    And a query passing one is rejected by validation
+
+    '
 - id: REQ-452
   status: proposed
-  group: 8. Client Access & Protocols
+  group: 10. UI & Admin Surfaces
   category: API & Integration
   priority: SHOULD
-  type: behavioral
+  type: ui
   description: 'A top-level Data Quality page (peer to Tables, Sources, etc.) OR a tab within registered
     tables—user preference TBD. Enables stewards to configure periodic data quality checks per table (configurable
     schedule, check types), stores and displays most recent check results. Builds on existing per-table
     Profile button (TABLESAMPLE-based column profiling). Aggregate DQ dashboard view by domain is a follow-on
     feature. Status: deferred.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-05-05 under the heading 'API & Integration'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-05-05 under the heading ''API & Integration''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: Description
+    itself says deferred; provisa/dq/ serves external DQ-checker sources (REQ-1443/REQ-1663), not a per-table
+    steward schedule page; no DQ page in provisa-ui/src/pages.'
 - id: REQ-453
-  status: proposed
+  status: in-progress
   group: 8. Client Access & Protocols
   category: API & Integration
   priority: SHOULD
@@ -71438,12 +71648,28 @@
     return type is a scalar (not an object or message) MUST be registered as a tracked function with `return_schema
     [{"name": "value", "type": <scalar_type>}]`, not as a virtual table. Object-returning operations are
     registered as virtual tables; scalar-returning operations are registered as tracked functions.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-05-15 under the heading 'API & Integration'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-05-15 under the heading ''API & Integration''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: graphql_remote/mapper.py:410-421
+    emits return_schema [{name:value,...}] for scalar queries as functions; openapi/mapper.py:216-219
+    routes scalar-returning GETs to mutations, not tracked functions; gRPC not implemented.'
+  code:
+  - provisa/graphql_remote/mapper.py
+  - provisa/openapi/mapper.py
+  tests:
+  - tests/unit/test_graphql_remote_mapper.py
+  scenario: 'Given a remote schema adapter (GraphQL, gRPC or OpenAPI) with a root query whose return type
+    is a scalar
+
+    When the source is registered
+
+    Then it is registered as a tracked function with return_schema [{name: value, type: <scalar_type>}]
+
+    And an object-returning operation is registered as a virtual table
+
+    '
 - id: REQ-454
-  status: proposed
+  status: in-progress
   group: 8. Client Access & Protocols
   category: API & Integration
   priority: SHOULD
@@ -71452,110 +71678,173 @@
     vs. object detection, virtual-table vs. tracked-function registration, return_schema derivation) MUST
     be implemented identically across all remote schema adapter types (GraphQL, gRPC, OpenAPI). No adapter-specific
     divergence in classification logic is permitted.
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-05-15 under the heading 'API & Integration'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-05-15 under the heading ''API & Integration''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: GraphQL
+    remote and OpenAPI classify scalar returns differently (graphql_remote/mapper.py:410 vs openapi/mapper.py:216-219);
+    no shared classifier.'
+  code:
+  - provisa/graphql_remote/mapper.py
+  - provisa/openapi/mapper.py
+  - provisa/grpc/proto_gen.py
+  scenario: 'Given the same scalar-returning and object-returning operations exposed by GraphQL, gRPC
+    and OpenAPI sources
+
+    When each source is registered
+
+    Then scalar versus object detection, virtual-table versus function registration and return_schema
+    derivation give identical results
+
+    And no adapter has its own classification logic
+
+    '
 - id: REQ-455
-  status: proposed
+  status: superseded
   group: 1. Access Governance & Security
   category: Security
   priority: SHOULD
-  type: behavioral
+  type: constraint
   description: Originally defined an `ad_hoc_query` right gating free-query vs governed-query-by-ID execution.
     Reversed — governed-query-by-ID and the `ad_hoc_query` right are removed. All access is governed solely
     by table/view + relationship rights (REQ-001).
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-05-15, SUPERSEDED 2026-06-16 under the heading 'Security'; it was dropped when requirements.md
-    became generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-05-15, SUPERSEDED 2026-06-16 under the heading ''Security''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: Text
+    itself records the ad_hoc_query right removed; access governed by table/relationship rights, restated
+    by REQ-001.'
+  superseded_by: REQ-001
 - id: REQ-456
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
-  category: Infrastructure
+  category: Multi-Tenancy
   priority: SHOULD
-  type: behavioral
+  type: structural
   description: 'SaaS multi-tenancy model: all ProvisaConfig entities (Source, Table, Relationship, Role,
     RLSRule, etc.) are stored in a shared admin database with a tenant_id foreign key on every entity.
     Config is loaded per-request from the database, not from a YAML file.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-05-15 under the heading 'Infrastructure'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-05-15 under the heading ''Infrastructure''; it was dropped when requirements.md became
+    generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: tenant_id FK
+    on every entity replaced by per-org schema isolation (REQ-695); org_config_db.py stores per-org config.'
+  superseded_by: REQ-695
 - id: REQ-457
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
-  category: Infrastructure
+  category: SaaS Billing
   priority: SHOULD
-  type: behavioral
+  type: structural
   description: 'Tenant model with fields: id (PK), stripe_customer_id, plan (trial/starter/pro enum),
     created_at timestamp, source_limit (integer). A tenant is created before or during payment signup.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-05-15 under the heading 'Infrastructure'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-05-15 under the heading ''Infrastructure''; it was dropped when requirements.md became
+    generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: Stripe customer/plan
+    tenant model replaced by orgs and Lemon Squeezy billing (provisa/api/billing).'
+  superseded_by: REQ-1075
 - id: REQ-458
-  status: proposed
+  status: in-progress
   group: 1. Access Governance & Security
-  category: Security
+  category: Encryption
   priority: SHOULD
   type: behavioral
-  description: 'Provisa-managed KMS envelope encryption: one AWS KMS key per tenant. All tenant config
-    data in the admin database is encrypted at rest. The encryption key is fetched from KMS at config
-    load time; plaintext config is held only for the duration of the request.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-05-15 under the heading 'Security'; it was dropped when requirements.md became generated
-    from requirements.yaml. Text verbatim. Status, type, priority and group are provisional pending audit.
+  description: 'Provisa-managed KMS envelope encryption: [SUPERSEDED by REQ-1087, 2026-10-03 -- KMS is
+    one pluggable provider; isolation unit is the org, not tenant. Kept here for history; do not implement
+    against it.] one AWS KMS key per tenant [END SUPERSEDED BLOCK]. All tenant config data in the admin
+    database is encrypted at rest. The encryption key is fetched from KMS at config load time; plaintext
+    config is held only for the duration of the request.'
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-05-15 under the heading ''Security''; it was dropped when requirements.md became generated
+    from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: org_config_db.py:11 stores
+    per-org encrypted config (cites REQ-458); KMS is one provider among several (providers.py:155), not
+    a mandated per-tenant AWS key.'
+  code:
+  - provisa/core/org_config_db.py
+  - provisa/encryption/providers.py
+  - provisa/encryption/registry.py
+  tests:
+  - tests/unit/test_org_encryption_ring.py
+  - tests/unit/test_encryption_providers.py
+  scenario: 'Given an org''s config entities stored in the control plane
+
+    When they are written
+
+    Then they are encrypted at rest under the org''s key
+
+    And when config is loaded the key is obtained from the key provider
+
+    And plaintext is held only for the duration of the request
+
+    '
 - id: REQ-459
-  status: proposed
+  status: rejected
   group: 1. Access Governance & Security
   category: Security
   priority: SHOULD
   type: behavioral
   description: 'Trial mode enforcement: plan=''trial'' is enforced when a new source is registered. Trial
     plan has a source limit (exact limit TBD). Trial mode is zero cost.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-05-15 under the heading 'Security'; it was dropped when requirements.md became generated
-    from requirements.yaml. Text verbatim. Status, type, priority and group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-05-15 under the heading ''Security''; it was dropped when requirements.md became generated
+    from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: No plan=''trial'' source_limit
+    enforcement in code; trial is time-boxed licensing (REQ-1136) and credit/evaluation (REQ-1474).'
+  rejection_reason: Source-count trial limit abandoned; trial is time-boxed (REQ-1136/REQ-1474), source_limit
+    TBD never defined.
 - id: REQ-460
-  status: proposed
+  status: superseded
   group: 1. Access Governance & Security
-  category: Security
+  category: SaaS Billing
   priority: SHOULD
   type: behavioral
   description: 'Stripe integration: Stripe Checkout and webhook events gate plan tier transitions. Webhook
     events update the tenant''s plan field in the admin database. Tenant record is created before payment
     is processed (during trial signup).'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-05-15 under the heading 'Security'; it was dropped when requirements.md became generated
-    from requirements.yaml. Text verbatim. Status, type, priority and group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-05-15 under the heading ''Security''; it was dropped when requirements.md became generated
+    from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: Stripe removed; Lemon
+    Squeezy is merchant of record.'
+  superseded_by: REQ-1075
 - id: REQ-461
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
-  category: Infrastructure
+  category: Multi-Tenancy
   priority: SHOULD
-  type: behavioral
+  type: constraint
   description: Trino catalog naming in multi-tenant mode must follow the pattern {tenant_id}_{source_id}
     to prevent cross-tenant catalog collisions.
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-05-15 under the heading 'Infrastructure'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-05-15 under the heading ''Infrastructure''; it was dropped when requirements.md became
+    generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: Catalog naming
+    now org-prefixed via org_prefixed_catalog.'
+  superseded_by: REQ-1269
 - id: REQ-462
-  status: proposed
+  status: in-progress
   group: 11. Platform, Infrastructure & Delivery
-  category: Infrastructure
+  category: Multi-Tenancy
   priority: SHOULD
   type: behavioral
   description: 'Config cache with TTL: decrypted tenant config is cached in memory with a short TTL (5
-    minutes) to avoid KMS latency on every request. The cache must support invalidation when config is
-    changed.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-05-15 under the heading 'Infrastructure'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+    minutes) [SUPERSEDED by REQ-1268, 2026-10-03 -- per-org runtime registry now holds org state. Kept
+    here for history; do not implement against it.] to avoid KMS latency on every request [END SUPERSEDED
+    BLOCK]. The cache must support invalidation when config is changed.'
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-05-15 under the heading ''Infrastructure''; it was dropped when requirements.md became
+    generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: tenant_context.py:34-47
+    TenantContextCache has 300s TTL; no test file references it and invalidation/KMS-fetch linkage is
+    not shown.'
+  code:
+  - provisa/core/tenant_context.py
+  scenario: 'Given decrypted tenant config cached in memory with a 5 minute TTL
+
+    When a request arrives within the TTL
+
+    Then the cached config is used without refetching the key
+
+    And when the config is changed the cache entry is invalidated
+
+    And the next request reloads it
+
+    '
 - id: REQ-463
-  status: proposed
+  status: complete
   group: 1. Access Governance & Security
   category: Security
   priority: SHOULD
@@ -71563,29 +71852,54 @@
   description: 'The `ignore_relationships` capability allows a role to execute joins between tables that
     have no registered relationship. A role without this capability is restricted to joins that follow
     registered relationship edges (the relationship guard). The capability does not bypass any other governance
-    control — RLS, column visibility, masking, and domain access rules all apply normally. Enforcement
-    is in `provisa/pgwire/_pipeline.py`, `provisa/api/data/endpoint_dev.py`. The `relationship_guard:
-    bool` role flag plus SQL comment opt-out remains as a backward-compatible alternative mechanism.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-22 under the heading 'Security'; it was dropped when requirements.md became generated
-    from requirements.yaml. Text verbatim. Status, type, priority and group are provisional pending audit.
+    control — RLS, column visibility, masking, and domain access rules all apply normally. [SUPERSEDED
+    by REQ-1176, 2026-10-03 -- enforcement is in the one shared pipeline; endpoint_dev.py does not reference
+    the capability. Kept here for history; do not implement against it.] Enforcement is in `provisa/pgwire/_pipeline.py`,
+    `provisa/api/data/endpoint_dev.py`. [END SUPERSEDED BLOCK] The `relationship_guard: bool` role flag
+    plus SQL comment opt-out remains as a backward-compatible alternative mechanism.'
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-22 under the heading ''Security''; it was dropped when requirements.md became generated
+    from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: pgwire/_pipeline.py:1153
+    bypasses guard with Capability.IGNORE_RELATIONSHIPS; tested at test_high_security_relationship_guard.py:128
+    (high-security mode disables it per REQ-693).'
+  since: 2026-06
+  code:
+  - provisa/security/rights.py
+  - provisa/pgwire/_pipeline.py
+  tests:
+  - tests/unit/test_high_security_relationship_guard.py
+  scenario: 'Given a role with ignore_relationships
+
+    When it runs a join between tables with no registered relationship
+
+    Then the relationship guard is bypassed
+
+    Given a role without it
+
+    When it runs such a join
+
+    Then the join is rejected
+
+    '
 - id: REQ-1930
-  status: proposed
-  group: 3. Source Registration & Data Modeling
-  category: Data & Storage
+  status: superseded
+  group: 11. Platform, Infrastructure & Delivery
+  category: Multi-Tenancy
   priority: SHOULD
-  type: behavioral
+  type: structural
   description: 'Materialized and cached data isolation via per-tenant S3 prefixes: DuckDB, Parquet, and
     Arrow caches for each tenant are stored under s3://bucket/{tenant_id}/.... Cross-tenant prefix reads
     are prohibited.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-05-15 under the heading 'Data & Storage'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit. The old file used REQ-463 for two requirements; this one is renumbered.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-05-15 under the heading ''Data & Storage''; it was dropped when requirements.md became
+    generated from requirements.yaml. Text verbatim. The old file used REQ-463 for two requirements; this
+    one is renumbered. Audited 2026-10-03 against the code: Per-tenant S3 prefixes and tenant_id are not
+    the design; isolation is per-org schema (REQ-695, REQ-1293); no s3 tenant prefix code in provisa/.'
+  superseded_by: REQ-695
 - id: REQ-464
-  status: proposed
-  group: 1. Access Governance & Security
-  category: Security
+  status: in-progress
+  group: 3. Source Registration & Data Modeling
+  category: Registration & Governance
   priority: SHOULD
   type: behavioral
   description: 'NL-assisted table candidate discovery for registration. When a registered source has a
@@ -71594,30 +71908,67 @@
     tables"). A two-pass approach: fast fuzzy text filter narrows candidates, then LLM (haiku) provides
     semantic ranking with confidence scores. Steward judgment is required — feature surfaces candidates,
     does not claim them. Implementation in admin API and unclaimed tables UI.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-05-15 under the heading 'Security'; it was dropped when requirements.md became generated
-    from requirements.yaml. Text verbatim. Status, type, priority and group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-05-15 under the heading ''Security''; it was dropped when requirements.md became generated
+    from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: Backend fuzzy+haiku search
+    at table_search_router.py:122; no reference to the endpoint in provisa-ui/src, so the unclaimed-tables
+    UI is missing.'
+  code:
+  - provisa/discovery/table_search.py
+  - provisa/api/admin/table_search_router.py
+  - provisa/discovery/catalog_cache.py
+  tests:
+  - tests/unit/test_table_search.py
+  scenario: 'Given a source with a large schema
+
+    When a steward searches in natural language such as customer invoicing and payment tables
+
+    Then a fuzzy text filter narrows candidates
+
+    And the LLM ranks them with confidence scores
+
+    And candidates are surfaced for the steward to choose, never registered automatically
+
+    '
 - id: REQ-465
-  status: proposed
+  status: in-progress
   group: 3. Source Registration & Data Modeling
-  category: Data & Storage
+  category: Naming Convention
   priority: SHOULD
   type: behavioral
   description: 'Dataset name normalization must be centralized. Dataset names may be normalized to a semantic
     standard (e.g., snake_case) and may carry aliases. Name comparison for registry membership, alias
     lookups, duplicate detection, and cross-source name matching must always use a canonical centralized
-    normalization function — never inline equality checks or ad-hoc transforms. UI canonical comparator:
-    `toSnakeCase` from TablesPage.tsx. Backend equivalent: use the same canonical function for all name
-    comparisons. This applies to: isRegistered checks, alias lookups, duplicate detection, cross-source
-    relationship name matching.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-07 under the heading 'Data & Storage'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+    normalization function — never inline equality checks or ad-hoc transforms. [SUPERSEDED by REQ-194,
+    2026-10-03 -- comparator now lives in provisa-ui/src/naming.ts, naming authority is REQ-194. Kept
+    here for history; do not implement against it.] UI canonical comparator: `toSnakeCase` from TablesPage.tsx.
+    [END SUPERSEDED BLOCK] Backend equivalent: use the same canonical function for all name comparisons.
+    This applies to: isRegistered checks, alias lookups, duplicate detection, cross-source relationship
+    name matching.'
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-07 under the heading ''Data & Storage''; it was dropped when requirements.md became
+    generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: UI toSnakeCase
+    exists (naming.ts:53) but there is no single backend comparator; config_loader.py:318 uses its own
+    _normalize_op_id.'
+  code:
+  - provisa-ui/src/naming.ts
+  - provisa/compiler/naming.py
+  tests:
+  - tests/unit/test_naming.py
+  scenario: 'Given a dataset name carrying an alias or different casing
+
+    When registry membership, alias lookup, duplicate detection or cross-source name matching compares
+    names
+
+    Then every comparison goes through one canonical normalization function
+
+    And no inline equality or ad-hoc transform is used
+
+    '
 - id: REQ-466
   status: proposed
   group: 3. Source Registration & Data Modeling
-  category: Data & Storage
+  category: Naming Convention
   priority: SHOULD
   type: behavioral
   description: 'Dataset identity resolution requires centralized service. Every registered dataset has
@@ -71627,14 +71978,14 @@
     and `same_dataset(ref_a, ref_b) -> bool`. Frontend: shared utility, no per-component name-matching
     logic. Cross-form comparison resolves both sides to `(sourceId, normalizedName)` tuple first. Documented
     in docs/arch/dataset-handling-standards.md under "Dataset Identity".'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-06 under the heading 'Data & Storage'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-06 under the heading ''Data & Storage''; it was dropped when requirements.md became
+    generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: provisa/core/dataset_identity
+    does not exist; grep for same_dataset/dataset_identity finds no implementation.'
 - id: REQ-467
   status: proposed
   group: 3. Source Registration & Data Modeling
-  category: Data & Storage
+  category: Naming Convention
   priority: SHOULD
   type: behavioral
   description: Query-language dataset name resolution via centralized identity service (extends REQ-466).
@@ -71646,148 +71997,256 @@
     produces the correct form for a given language. All inline normalization (e.g., `_normalize_op_id`
     in config_loader.py:104) must be replaced by this service. Documented in docs/arch/dataset-handling-standards.md
     under "Query-language representations".
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-07 under the heading 'Data & Storage'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-07 under the heading ''Data & Storage''; it was dropped when requirements.md became
+    generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: No dataset_identity
+    service; _normalize_op_id still at provisa/core/config_loader.py:81.'
 - id: REQ-468
-  status: proposed
+  status: superseded
   group: 3. Source Registration & Data Modeling
-  category: Data & Storage
+  category: Execution Integrity
   priority: SHOULD
-  type: behavioral
+  type: constraint
   description: 'Transpilation is a compiler responsibility, never a transport responsibility. Regardless
     of transport (pgwire, Arrow Flight, REST, GraphQL), all incoming queries go through a single shared
     pipeline: name resolution (front-end SQL/GQL/CQL names → physical), governance enforcement, dialect
     transpilation, and routing. Transports receive the output of this pipeline — they do not implement
     any part of it. No transport performs its own name rewriting, dialect conversion, or governance logic.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-11 under the heading 'Data & Storage'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-11 under the heading ''Data & Storage''; it was dropped when requirements.md became
+    generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: Single shared
+    govern/route/execute pipeline is REQ-1176 and REQ-1214.'
+  superseded_by: REQ-1176
 - id: REQ-469
-  status: proposed
+  status: in-progress
   group: 3. Source Registration & Data Modeling
-  category: Data & Storage
+  category: Registration & Governance
   priority: SHOULD
   type: behavioral
   description: Catalog preparation is centralized per query language. SQL catalog (pg_catalog served via
     pgwire/DBeaver), GraphQL SDL (schema introspection), and Cypher catalog (Nodes/Relationships schema)
     are each the responsibility of a single dedicated module. No transport implements catalog logic directly
     — transports consume the output of the centralized catalog module for their language.
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-11 under the heading 'Data & Storage'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-11 under the heading ''Data & Storage''; it was dropped when requirements.md became
+    generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: SQL catalog
+    is in provisa/pgwire/catalog.py and Cypher label_map is in provisa/cypher/label_map.py, but provisa/bolt/session.py:899-915
+    answers db.labels()/db.relationshipTypes() inside the Bolt transport itself, so catalog logic is not
+    fully centralized; no test asserts the centralization.'
+  code:
+  - provisa/pgwire/catalog.py
+  - provisa/cypher/label_map.py
+  - provisa/bolt/session.py
+  scenario: 'Given a transport serving catalog metadata
+
+    When it answers a catalog request
+
+    Then it consumes the language''s single catalog module
+
+    '
 - id: REQ-470
-  status: proposed
+  status: superseded
   group: 3. Source Registration & Data Modeling
-  category: Data & Storage
+  category: Naming & Schema
   priority: SHOULD
-  type: behavioral
+  type: constraint
   description: 'Heuristic name matching is never permitted. All name conversions and lookups must be deterministic:
     the canonical form (e.g. `sql_name`) is computed once at registration time and stored. Lookup code
     uses exact equality on the pre-computed canonical form — no runtime normalization, no multi-predicate
     fallback chains, no `to_snake_case` inline at call sites. Any code path that computes a canonical
     form at lookup time rather than at registration time is a violation. Extends REQ-465, REQ-466, REQ-467.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-15 under the heading 'Data & Storage'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-15 under the heading ''Data & Storage''; it was dropped when requirements.md became
+    generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: REQ-640 (complete)
+    mandates the opposite: both sides of a name comparison are normalized through the centralized function
+    at comparison time (compiler/naming.py, naming.ts); ''no runtime normalization'' contradicts it.'
+  superseded_by: REQ-640
 - id: REQ-472
-  status: proposed
+  status: complete
   group: 3. Source Registration & Data Modeling
-  category: Data & Storage
+  category: Domain Model
   priority: SHOULD
-  type: behavioral
+  type: structural
   description: '`naming.default_domain` configuration (str, default "default", must be non-empty valid
     identifier) sets the fallback domain for tables/functions/webhooks when use_domains=false. Falsy domain_id
     values ("" / None) coerce to default_domain at registration time.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-15 under the heading 'Data & Storage'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-15 under the heading ''Data & Storage''; it was dropped when requirements.md became
+    generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: domain_policy.resolve_domain_id
+    coerces falsy to default_domain (provisa/core/domain_policy.py:128-142); tested in tests/unit/test_domain_policy.py::test_single_domain_coerces_falsy_to_default
+    and NamingConfig identifier tests (:137-145).'
+  since: 2026-06
+  code:
+  - provisa/core/domain_policy.py
+  - provisa/core/config_loader.py
+  - provisa/core/models.py
+  tests:
+  - tests/unit/test_domain_policy.py
+  scenario: 'Given naming.use_domains=false and default_domain ''global''
+
+    When a table is registered with an empty or null domain_id
+
+    Then the domain_id coerces to ''global''
+
+    '
 - id: REQ-473
-  status: proposed
+  status: complete
   group: 3. Source Registration & Data Modeling
-  category: Data & Storage
+  category: Domain Model
   priority: SHOULD
-  type: behavioral
+  type: constraint
   description: Registering any table/function/webhook with an explicit non-default, non-empty domain_id
     while use_domains=false is a hard error — no silent coercion or fallback. Error message names the
     offending registration and states the policy violation.
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-15 under the heading 'Data & Storage'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-15 under the heading ''Data & Storage''; it was dropped when requirements.md became
+    generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: resolve_domain_id
+    raises ValueError ''naming.use_domains=false: cannot register domain ...'' (domain_policy.py:136-140);
+    tests/unit/test_domain_policy.py:61 test_single_domain_rejects_foreign_domain.'
+  since: 2026-06
+  code:
+  - provisa/core/domain_policy.py
+  - provisa/core/config_loader.py
+  - provisa/core/models.py
+  tests:
+  - tests/unit/test_domain_policy.py
+  scenario: 'Given naming.use_domains=false with default_domain ''global''
+
+    When a table, function or webhook is registered with domain ''sales''
+
+    Then registration fails with an error naming the policy violation
+
+    '
 - id: REQ-474
-  status: proposed
+  status: complete
   group: 3. Source Registration & Data Modeling
-  category: Data & Storage
+  category: Domain Model
   priority: SHOULD
-  type: behavioral
+  type: constraint
   description: use_domains=false with a non-empty `domains:` config list is a hard error (mutually exclusive
     policy). Error surfaces at startup during config validation.
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-15 under the heading 'Data & Storage'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-15 under the heading ''Data & Storage''; it was dropped when requirements.md became
+    generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: ProvisaConfig
+    validator rejects it; tests/unit/test_domain_policy.py:196 test_single_domain_rejects_domains_list
+    matches ''mutually exclusive''.'
+  since: 2026-06
+  code:
+  - provisa/core/models.py
+  tests:
+  - tests/unit/test_domain_policy.py
+  scenario: 'Given use_domains=false and a non-empty domains list
+
+    When the config is validated at startup
+
+    Then validation fails as mutually exclusive
+
+    '
 - id: REQ-475
-  status: proposed
+  status: complete
   group: 3. Source Registration & Data Modeling
-  category: Data & Storage
+  category: Domain Model
   priority: SHOULD
-  type: behavioral
+  type: constraint
   description: '`naming.default_domain` must be non-empty. Empty default_domain is rejected at startup
     config validation with a hard error.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-15 under the heading 'Data & Storage'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-15 under the heading ''Data & Storage''; it was dropped when requirements.md became
+    generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: NamingConfig
+    validation; tests/unit/test_domain_policy.py:137 test_single_domain_requires_nonempty_default (match
+    ''non-empty'').'
+  since: 2026-06
+  code:
+  - provisa/core/models.py
+  tests:
+  - tests/unit/test_domain_policy.py
+  scenario: 'Given use_domains=false
+
+    When default_domain is empty
+
+    Then config validation raises a hard error
+
+    '
 - id: REQ-476
-  status: proposed
+  status: complete
   group: 3. Source Registration & Data Modeling
-  category: Data & Storage
+  category: Domain Model
   priority: SHOULD
   type: behavioral
-  description: 'use_domains and default_domain are runtime-editable via settings_router and trigger a
-    full rebuild (_load_and_build). On reload, existing registered_tables are validated: dynamically-registered
-    tables whose domain_id violates the new policy raise a hard error naming the offenders. No silent
-    rewrite; offenders must be re-registered. This is an accepted consequential decision.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-15 under the heading 'Data & Storage'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  description: '[SUPERSEDED by REQ-1349, 2026-10-03 -- settings_router explicitly excludes them (settings_router.py:498);
+    the policy is set per org via POST /admin/domain-policy, which is refused while the org has a catalog
+    (set_domain_policy, settings_router.py:661-720), not a reload that validates tables. Kept here for
+    history; do not implement against it.] use_domains and default_domain are runtime-editable via settings_router
+    and trigger a full rebuild (_load_and_build). [END SUPERSEDED BLOCK] On reload, existing registered_tables
+    are validated: dynamically-registered tables whose domain_id violates the new policy raise a hard
+    error naming the offenders. No silent rewrite; offenders must be re-registered. This is an accepted
+    consequential decision.'
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-15 under the heading ''Data & Storage''; it was dropped when requirements.md became
+    generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: Reload sweep
+    _validate_existing_domains raises RuntimeError naming offenders (config_loader.py:1670-1690, called
+    at :1176) with no silent rewrite; editing path described in the first sentence is no longer true (settings_router.py:496-499,
+    661-720).'
+  since: 2026-06
+  code:
+  - provisa/core/config_loader.py
+  - provisa/api/admin/settings_router.py
+  tests:
+  - tests/unit/test_domain_policy_switch_refused.py
+  - tests/unit/test_domain_policy.py
+  scenario: 'Given use_domains=false
+
+    When existing registered_tables hold a domain_id outside the policy
+
+    Then load fails with a hard error naming the offenders and nothing is rewritten
+
+    '
 - id: REQ-477
-  status: proposed
+  status: in-progress
   group: 3. Source Registration & Data Modeling
-  category: Data & Storage
+  category: Domain Model
   priority: SHOULD
   type: behavioral
   description: When use_domains=false, domain_prefix is forced off (internally overridden to false) and
     domain-based access gating is bypassed entirely.
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-15 under the heading 'Data & Storage'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-15 under the heading ''Data & Storage''; it was dropped when requirements.md became
+    generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: domain_prefix
+    forced off at provisa/api/app_schema_build.py:102-104 and gating bypassed via single_domain() at provisa/security/rights.py:277;
+    gating bypass is tested (test_empty_domain_access_reaches_nothing.py:160,200) but no test found for
+    the domain_prefix override.'
+  code:
+  - provisa/api/app_schema_build.py
+  - provisa/security/rights.py
+  tests:
+  - tests/unit/test_empty_domain_access_reaches_nothing.py
+  scenario: 'Given use_domains=false
+
+    When the schema is built and access is evaluated
+
+    Then domain_prefix is off and domain gating is bypassed
+
+    '
 - id: REQ-479
-  status: proposed
-  group: 7. Result Delivery
-  category: Output & Delivery
+  status: superseded
+  group: 5. Query Languages, Compilation & Operations
+  category: Compiler & Schema
   priority: SHOULD
   type: behavioral
   description: Per-role aggregate gating is enforced via the existing role `capabilities` array — a role
     carrying the "no_aggregations" capability has its `<table>_aggregate` root fields suppressed in provisa/compiler/schema_gen.py.
     Default is allow. Chosen over a new roles.allow_aggregations column to honor the V1 "never add migrations"
     rule (a new column breaks existing databases).
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-19 under the heading 'Output & Delivery'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-19 under the heading ''Output & Delivery''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: REQ-653
+    (complete) states enable_aggregates replaces the role-level no_aggregations capability as the gate
+    for {table}_aggregate fields.'
+  superseded_by: REQ-653
 - id: REQ-480
-  status: proposed
-  group: 7. Result Delivery
-  category: Output & Delivery
+  status: complete
+  group: 5. Query Languages, Compilation & Operations
+  category: Tracked Functions & Custom Mutations
   priority: SHOULD
   type: behavioral
   description: Webhook mutations are exposed only after steward approval, tracked entirely through the
@@ -71795,41 +72254,76 @@
     has status 'executed'. Registering or editing a webhook (provisa/api/admin/actions_router.py) enqueues
     a fresh pending "webhook_registration" request, which resets approval. No `approved` column on tracked_webhooks
     (V1 no-migration).
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-19 under the heading 'Output & Delivery'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-19 under the heading ''Output & Delivery''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: app_loaders.py:1345-1357
+    exposes only webhooks whose latest ''webhook'' creation_request is ''executed''; actions_router.py:448-471
+    enqueues a pending request on save; tests/unit/test_creation_requests.py:93-125.'
+  since: 2026-06
+  code:
+  - provisa/api/admin/actions_router.py
+  - provisa/api/app_loaders.py
+  - provisa/core/repositories/creation_request.py
+  tests:
+  - tests/unit/test_creation_requests.py
+  - tests/unit/test_actions.py
+  scenario: 'Given a registered webhook
+
+    When its most recent webhook creation_request is not executed
+
+    Then it is not exposed, and editing it enqueues a fresh pending request
+
+    '
 - id: REQ-481
-  status: proposed
-  group: 7. Result Delivery
-  category: Output & Delivery
+  status: superseded
+  group: 5. Query Languages, Compilation & Operations
+  category: Cypher Query Frontend (Phase AU)
   priority: SHOULD
   type: behavioral
   description: '**WITHDRAWN same day.** Cross-source Cypher rejection was removed at the user''s direction
     — Trino joins across catalogs natively and cross-source graph traversal is a supported capability.
     The translator no longer raises CypherCrossSourceError; the error class remains declared but unused.
     See REQ-353.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-19 under the heading 'Output & Delivery'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-19 under the heading ''Output & Delivery''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: Entry
+    is a same-day withdrawal note that points to REQ-353; REQ-353 (complete) carries the withdrawal text
+    (cross-source Cypher allowed).'
+  superseded_by: REQ-353
 - id: REQ-482
-  status: proposed
-  group: 7. Result Delivery
-  category: Output & Delivery
+  status: complete
+  group: 3. Source Registration & Data Modeling
+  category: Registration & Governance
   priority: SHOULD
   type: behavioral
   description: register_table(discover=true) auto-infers columns from the live source via the adapter
     discover_schema dispatch; explicitly-provided columns take precedence (provisa/discovery/column_inference.py:merge_discovered_columns).
     Elasticsearch uses a live GET /<index>/_mapping bridge. Discovery raises on failure rather than registering
     an empty schema; Cassandra discovery raises (no live CQL session is maintained).
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-19 under the heading 'Output & Delivery'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-19 under the heading ''Output & Delivery''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: _table_ops.py:~425-445
+    merges via merge_discovered_columns and returns schema.discovery_failed on exception; ES fetch_index_mapping
+    at provisa/elasticsearch/source.py:199; tests/unit/test_discover_inference.py.'
+  since: 2026-06
+  code:
+  - provisa/discovery/column_inference.py
+  - provisa/api/admin/_table_ops.py
+  - provisa/elasticsearch/source.py
+  - provisa/cassandra/source.py
+  tests:
+  - tests/unit/test_discover_inference.py
+  scenario: 'Given register_table with discover=true
+
+    When the source schema is read
+
+    Then discovered columns fill in, explicit columns win, and a discovery failure is returned as an error
+    rather than an empty schema
+
+    '
 - id: REQ-483
-  status: proposed
-  group: 7. Result Delivery
+  status: complete
+  group: 6. Execution, Routing, Caching & Performance
   category: Output & Delivery
   priority: SHOULD
   type: behavioral
@@ -71838,12 +72332,27 @@
     the live source instead of serving stale data. materialized_views.default_ttl config sets the default
     refresh interval. Materialization is opt-in (per-table/relationship materialize flag); there is no
     cost-based auto-materialization.
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-19 under the heading 'Output & Delivery'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-19 under the heading ''Output & Delivery''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: MVDefinition.is_fresh_at
+    (provisa/mv/models.py:213) and registry.get_fresh (provisa/mv/registry.py:62-69); default_ttl in provisa/core/models.py:1195
+    region; tests/unit/test_mv_registry.py:80. Note REQ-199 still mentions auto-materialization.'
+  since: 2026-06
+  code:
+  - provisa/mv/models.py
+  - provisa/mv/registry.py
+  - provisa/core/models.py
+  tests:
+  - tests/unit/test_mv_registry.py
+  scenario: 'Given a FRESH MV whose last refresh is older than refresh_interval
+
+    When get_fresh() is evaluated
+
+    Then the MV is excluded and the query runs against the live source
+
+    '
 - id: REQ-484
-  status: proposed
+  status: complete
   group: 7. Result Delivery
   category: Output & Delivery
   priority: SHOULD
@@ -71856,17 +72365,35 @@
     keys are preserved — source_column lives on the parent table, target_column on the child — and auto-included
     when not projected, so a consumer can load the small tables into a BI tool and replay the same query
     to reconstruct the denormalized view locally. Each per-table query is governed identically to the
-    normal path (_prepare_compiled) and written to S3 via execute_ctas_redirect (Trino CTAS); the endpoint
-    returns a manifest of {table, path, url, rowCount}. A relationship whose join is computed (source_expr/source_constant/source_json_key)
-    has no key column and cannot be normalized — such queries are rejected with HTTP 400.
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-19 under the heading 'Output & Delivery'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+    normal path (_prepare_compiled) and [SUPERSEDED by REQ-840, 2026-10-03 -- _handle_normalized calls
+    state.federation_engine.ctas_redirect (endpoint.py:203), the engine abstraction, not a Trino-specific
+    CTAS. Kept here for history; do not implement against it.] written to S3 via execute_ctas_redirect
+    (Trino CTAS) [END SUPERSEDED BLOCK]; the endpoint returns a manifest of {table, path, url, rowCount}.
+    A relationship whose join is computed (source_expr/source_constant/source_json_key) has no key column
+    and cannot be normalized — such queries are rejected with HTTP 400.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-19 under the heading ''Output & Delivery''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: endpoint.py:411-416
+    routes the header to _handle_normalized, which builds the manifest (:183-216); tests/unit/test_normalized_endpoint.py:44,92,127.'
+  since: 2026-06
+  code:
+  - provisa/compiler/normalize.py
+  - provisa/api/data/endpoint.py
+  tests:
+  - tests/unit/test_normalized_endpoint.py
+  - tests/unit/test_normalize.py
+  scenario: 'Given a nested query with X-Provisa-Normalized true
+
+    When it executes
+
+    Then one governed table per entity is written and a manifest of table/path/url/rowCount is returned,
+    and computed-join queries return 400
+
+    '
 - id: REQ-485
-  status: proposed
+  status: complete
   group: 7. Result Delivery
-  category: Output & Delivery
+  category: Arrow Flight
   priority: SHOULD
   type: behavioral
   description: '**REQ-146 WITHDRAWN.** The Arrow Flight Trino route hard-requires the Zaychik Flight SQL
@@ -71874,12 +72401,25 @@
     configuration (startup always dials ZAYCHIK_HOST defaulting to localhost:8480 and create_flight_connection
     raises on failure), so flight_client is None means a failed connection — a REST fallback would silently
     mask an outage, violating the no-silent-fallback rule.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-19 under the heading 'Output & Delivery'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-19 under the heading ''Output & Delivery''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: backend.py:1248-1262
+    _flight_transport raises when state.flight_client is None; tests/unit/test_engine_runtime.py:148.
+    Live REQ-146 still carries the contradicted fallback text and remains complete (needs amending).'
+  since: 2026-06
+  code:
+  - provisa/federation/backend.py
+  tests:
+  - tests/unit/test_engine_runtime.py
+  scenario: 'Given the Zaychik Flight proxy is not configured or down
+
+    When a Flight transport is requested
+
+    Then a RuntimeError is raised and there is no Trino REST fallback
+
+    '
 - id: REQ-486
-  status: proposed
+  status: complete
   group: 8. Client Access & Protocols
   category: Client Access & Protocols
   priority: SHOULD
@@ -71891,26 +72431,56 @@
     when that role is among the authenticated token''s assignments — otherwise it returns 403. When no
     auth provider is configured (unsecured deployment), the middleware honors any supplied role by design
     (no identity to validate against). provisa/auth/middleware.py.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-19 under the heading 'Client Access & Protocols (Group 8)'; it was dropped when
-    requirements.md became generated from requirements.yaml. Text verbatim. Status, type, priority and
-    group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-19 under the heading ''Client Access & Protocols (Group 8)''; it was dropped when
+    requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against
+    the code: middleware.py:852-873 honors the requested role only if assigned, else 403; unsecured mode
+    honors supplied role (:416-432).'
+  since: 2026-06
+  code:
+  - provisa/auth/middleware.py
+  - provisa-client/provisa_client/dbapi.py
+  tests:
+  - tests/unit/test_path_role_is_held.py
+  - tests/unit/test_auth_middleware_multitenancy.py
+  - tests/unit/test_protocol_clients.py
+  scenario: 'Given an authenticated token assigned role A
+
+    When a client sends X-Provisa-Role for a role not in its assignments
+
+    Then the middleware returns 403
+
+    '
 - id: REQ-487
-  status: proposed
+  status: complete
   group: 8. Client Access & Protocols
-  category: Client Access & Protocols
+  category: Query Development Tools
   priority: SHOULD
   type: behavioral
   description: A compile-only REST route `POST /data/compile` (REQ-161) exposes the Stage-1 compiler without
     execution, wrapping provisa.api.admin.dev_queries.compile_query. The role is derived from auth (`request.state.role`)
     or the `X-Provisa-Role` header — never client-trusted; an unknown role returns 403 and a compile ValueError
     returns 400. provisa/api/data/endpoint.py.
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-19 under the heading 'Client Access & Protocols (Group 8)'; it was dropped when
-    requirements.md became generated from requirements.yaml. Text verbatim. Status, type, priority and
-    group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-19 under the heading ''Client Access & Protocols (Group 8)''; it was dropped when
+    requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against
+    the code: endpoint.py:151-175 compile_endpoint; tests/unit/test_compile_route.py:25,77,96,110. Role
+    header is only used when unauthenticated.'
+  since: 2026-06
+  code:
+  - provisa/api/data/endpoint.py
+  - provisa/api/admin/dev_queries.py
+  tests:
+  - tests/unit/test_compile_route.py
+  scenario: 'Given an authenticated or header-supplied role
+
+    When POST /data/compile is called
+
+    Then governed SQL is returned without execution, unknown role gets 403 and compile error gets 400
+
+    '
 - id: REQ-488
-  status: proposed
+  status: complete
   group: 8. Client Access & Protocols
   category: Client Access & Protocols
   priority: SHOULD
@@ -71918,38 +72488,59 @@
   description: APQ (automatic persisted queries) TTL is bound to the `apq.ttl` config key with a `PROVISA_APQ_TTL`
     env override (default 86400s), and the APQ Redis cache reuses the shared `redis_url` rather than a
     separate `REDIS_URL` env var. provisa/api/app.py.
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-19 under the heading 'Client Access & Protocols (Group 8)'; it was dropped when
-    requirements.md became generated from requirements.yaml. Text verbatim. Status, type, priority and
-    group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-19 under the heading ''Client Access & Protocols (Group 8)''; it was dropped when
+    requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against
+    the code: settings_catalog.py:674-684 apq.ttl with env PROVISA_APQ_TTL default 86400; app.py:1028
+    and app_startup.py:574 build RedisAPQCache(state.redis_url, ttl=state.apq_ttl).'
+  since: 2026-06
+  code:
+  - provisa/api/app.py
+  - provisa/api/app_startup.py
+  - provisa/apq/cache.py
+  - provisa/core/settings_catalog.py
+  tests:
+  - tests/unit/test_cache_requirements.py
+  - tests/unit/test_settings_readers.py
+  scenario: 'Given apq.ttl or PROVISA_APQ_TTL is set
+
+    When the APQ cache is built
+
+    Then it uses that TTL (default 86400) and the shared redis_url
+
+    '
 - id: REQ-489
-  status: proposed
+  status: superseded
   group: 8. Client Access & Protocols
-  category: Client Access & Protocols
+  category: JDBC/ODBC Integration
   priority: SHOULD
   type: behavioral
   description: '**REQ-129 amended.** The JDBC driver''s result transport is Arrow IPC over Flight, not
     Parquet. Parquet was never an implemented contract; the requirement is restated to Arrow IPC.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-19 under the heading 'Client Access & Protocols (Group 8)'; it was dropped when
-    requirements.md became generated from requirements.yaml. Text verbatim. Status, type, priority and
-    group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-19 under the heading ''Client Access & Protocols (Group 8)''; it was dropped when
+    requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against
+    the code: REQ-129 (complete) already carries ''(Amended 2026-06-19: transport is Arrow IPC / JSON,
+    not Parquet''.'
+  superseded_by: REQ-129
 - id: REQ-490
-  status: proposed
+  status: superseded
   group: 8. Client Access & Protocols
-  category: Client Access & Protocols
+  category: JDBC/ODBC Integration
   priority: SHOULD
-  type: behavioral
+  type: structural
   description: '**REQ-132 amended** to "self-contained shaded JAR." The fat JAR cannot drop Gson (no JDK-native
     JSON; used in four driver classes), so maven-shade `<relocations>` move com.google.{gson,protobuf,common}
     under io.provisa.shaded.* to prevent host-classpath collisions. Apache Arrow Flight (gRPC/Netty) is
     acknowledged as a deliberate transport dependency rather than a violation. jdbc-driver/pom.xml.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-19 under the heading 'Client Access & Protocols (Group 8)'; it was dropped when
-    requirements.md became generated from requirements.yaml. Text verbatim. Status, type, priority and
-    group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-19 under the heading ''Client Access & Protocols (Group 8)''; it was dropped when
+    requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against
+    the code: REQ-132 (complete) already carries the 2026-06-19 amendment (shade relocation under io.provisa.shaded.*;
+    jdbc-driver/pom.xml:234-250).'
+  superseded_by: REQ-132
 - id: REQ-491
-  status: proposed
+  status: in-progress
   group: 4. Source Connectors
   category: Source Connectors
   priority: SHOULD
@@ -71958,12 +72549,26 @@
     Authenticates via service account JSON key or OAuth2. Columns inferred from sheet header row. Multiple
     sheets per spreadsheet each register as a separate table. Refresh interval configurable (default:
     5 minutes). Read-only; no mutations. `tests/unit/test_google_sheets_source.py`'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-20 under the heading 'Source Connectors'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-20 under the heading ''Source Connectors''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: provisa/google_sheets/source.py:12-40
+    is a config mapping onto the metadata sheet; reach is REQ-1445/REQ-906. No dedicated POST /admin/sources/google_sheets
+    route, no OAuth2, no 5-minute refresh setting in provisa/ (grep).'
+  code:
+  - provisa/google_sheets/source.py
+  - provisa/federation/connector_duckdb.py
+  tests:
+  - tests/unit/test_gsheets_trino_connector.py
+  - tests/integration/test_google_sheets_source_e2e.py
+  scenario: 'Given a google_sheets source with a service-account key and a metadata sheet
+
+    When a table is registered on it
+
+    Then it is read-only and reachable on Trino (gsheets connector) and DuckDB (read_gsheet)
+
+    '
 - id: REQ-492
-  status: proposed
+  status: superseded
   group: 4. Source Connectors
   category: Source Connectors
   priority: SHOULD
@@ -71971,10 +72576,12 @@
   description: 'GovData source adapter (`provisa/govdata/`): registers US Government Open Data (data.gov)
     datasets via CKAN API. Discovers available datasets/resources, infers column schema from CKAN datastore
     field definitions. Paginated fetch via CKAN datastore_search. Read-only. `tests/unit/test_govdata_source.py`'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-20 under the heading 'Source Connectors'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-20 under the heading ''Source Connectors''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: provisa/govdata/source.py:11-35
+    reads through the askamerica engine JDBC connection (no CKAN, no datastore_search; grep finds none).
+    Current GovData contract is REQ-540/541.'
+  superseded_by: REQ-540
 - id: REQ-493
   status: proposed
   group: 4. Source Connectors
@@ -71984,80 +72591,172 @@
   description: 'Apache Accumulo source adapter (`provisa/accumulo/`): exposes Accumulo tables as relational
     via Trino''s Accumulo connector. Column family/qualifier mapping DSL required (per REQ-251). Read-only;
     no mutations (NoSQL, non-relational). `tests/unit/test_accumulo_source.py`'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-20 under the heading 'Source Connectors'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-20 under the heading ''Source Connectors''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: provisa/accumulo/
+    does not exist; grep of provisa/ for accumulo finds nothing; no accumulo in SourceType (provisa/core/models.py).
+    Not built, not contradicted.'
 - id: REQ-494
-  status: proposed
+  status: complete
   group: 4. Source Connectors
   category: Source Connectors
   priority: SHOULD
   type: behavioral
-  description: 'Apache Cassandra source adapter (`provisa/cassandra/`): exposes Cassandra keyspace/tables
-    via Trino''s Cassandra connector. CQL type mapping to SQL types. Partition key designated as primary
-    key. Read-only; no mutations. Discovery raises (no live CQL session maintained; per REQ-482). `tests/unit/test_cassandra.py`'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-20 under the heading 'Source Connectors'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  description: 'Apache Cassandra source adapter (`provisa/cassandra/`): [SUPERSEDED by REQ-951, 2026-10-03
+    -- reach is engine-relative; engines without the connector read natively over CQL and replicate. Kept
+    here for history; do not implement against it.] exposes Cassandra keyspace/tables via Trino''s Cassandra
+    connector [END SUPERSEDED BLOCK]. CQL type mapping to SQL types. Partition key designated as primary
+    key. Read-only; no mutations. [SUPERSEDED by REQ-1672, 2026-10-03 -- provisa/cassandra/fetch.py:11-14
+    is a native cassandra-driver reader that opens a session for keyspace/table/column discovery. Kept
+    here for history; do not implement against it.] Discovery raises (no live CQL session maintained;
+    per REQ-482) [END SUPERSEDED BLOCK]. `tests/unit/test_cassandra.py`'
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-20 under the heading ''Source Connectors''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: provisa/cassandra/fetch.py:11
+    native reader; tests/unit/test_cassandra_fetch.py:94 asserts typed columns with partition keys marked.'
+  since: 2026-06
+  code:
+  - provisa/cassandra/source.py
+  - provisa/cassandra/fetch.py
+  tests:
+  - tests/unit/test_cassandra_fetch.py
+  - tests/integration/test_cassandra_native_fetch.py
+  - tests/integration/test_cassandra_source_e2e.py
+  scenario: 'Given a cassandra source
+
+    When Register Table lists keyspaces, tables and columns
+
+    Then CQL types map to SQL types, partition keys are marked, and the source is read-only
+
+    '
 - id: REQ-495
-  status: proposed
+  status: complete
   group: 4. Source Connectors
   category: Source Connectors
   priority: SHOULD
   type: behavioral
-  description: 'Elasticsearch source adapter (`provisa/elasticsearch/`): exposes ES indices as tables
-    via Trino''s Elasticsearch connector. Schema inference via `GET /<index>/_mapping` (per REQ-482).
-    Nested field paths flattened to columns per mapping DSL (per REQ-251). Read-only; no mutations. `tests/unit/test_elasticsearch_source.py`'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-20 under the heading 'Source Connectors'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  description: 'Elasticsearch source adapter (`provisa/elasticsearch/`): [SUPERSEDED by REQ-1672, 2026-10-03
+    -- engines without a connector read the index over HTTP and replicate. Kept here for history; do not
+    implement against it.] exposes ES indices as tables via Trino''s Elasticsearch connector [END SUPERSEDED
+    BLOCK]. Schema inference via `GET /<index>/_mapping` (per REQ-482). Nested field paths flattened to
+    columns per mapping DSL (per REQ-251). Read-only; no mutations. `tests/unit/test_elasticsearch_source.py`'
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-20 under the heading ''Source Connectors''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: provisa/elasticsearch/fetch.py:78
+    GET /{index}/_mapping then discover_schema; covered by tests/unit/test_elasticsearch_fetch.py.'
+  since: 2026-06
+  code:
+  - provisa/elasticsearch/source.py
+  - provisa/elasticsearch/fetch.py
+  tests:
+  - tests/unit/test_elasticsearch_fetch.py
+  - tests/integration/test_elasticsearch_introspect.py
+  - tests/integration/test_elasticsearch_native_fetch.py
+  scenario: 'Given an elasticsearch source
+
+    When Register Table introspects an index
+
+    Then GET /<index>/_mapping drives schema inference with nested fields flattened, and the source is
+    read-only
+
+    '
 - id: REQ-496
-  status: proposed
+  status: complete
   group: 4. Source Connectors
   category: Source Connectors
   priority: SHOULD
   type: behavioral
-  description: 'MongoDB source adapter (`provisa/mongodb/`): exposes MongoDB collections as tables via
-    Trino''s MongoDB connector. Document schema inferred from a configurable sample size (default: 1000
-    documents). Nested documents and arrays flattened per mapping DSL (per REQ-251). Read-only; no mutations.
-    `tests/unit/test_mongodb_source.py`'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-20 under the heading 'Source Connectors'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  description: 'MongoDB source adapter (`provisa/mongodb/`): [SUPERSEDED by REQ-1730, 2026-10-03 -- a
+    mongodb source registered once is also read natively over pymongo on engines without the connector.
+    Kept here for history; do not implement against it.] exposes MongoDB collections as tables via Trino''s
+    MongoDB connector [END SUPERSEDED BLOCK]. Document schema inferred from a configurable sample size
+    (default: 1000 documents). Nested documents and arrays flattened per mapping DSL (per REQ-251). Read-only;
+    no mutations. `tests/unit/test_mongodb_source.py`'
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-20 under the heading ''Source Connectors''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: provisa/mongodb/source.py:108
+    discover_schema(sample_docs); provisa/mongodb/fetch.py:11 native pymongo reader (REQ-1730). The default-1000
+    sample size is not a mongodb-specific setting in code (sampling.default_sample_size, settings_catalog.py:120).'
+  since: 2026-06
+  code:
+  - provisa/mongodb/source.py
+  - provisa/mongodb/fetch.py
+  tests:
+  - tests/unit/test_mongodb_discovery.py
+  - tests/integration/test_mongodb_pipeline_e2e.py
+  scenario: 'Given a mongodb source
+
+    When a collection is discovered
+
+    Then the schema is inferred from sample documents and the source is read-only
+
+    '
 - id: REQ-497
-  status: proposed
+  status: complete
   group: 4. Source Connectors
   category: Source Connectors
   priority: SHOULD
   type: behavioral
-  description: 'Redis source adapter (`provisa/redis/`): exposes Redis keys as relational rows via Trino''s
-    Redis connector. Key pattern and hash field → column mapping DSL required (per REQ-251). Read-only;
-    no mutations. Distinct from Redis-as-cache-store (REQ-230–237) and Redis-as-rate-limit-store (REQ-371).
-    `tests/unit/test_redis_source.py`'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-20 under the heading 'Source Connectors'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  description: 'Redis source adapter (`provisa/redis/`): [SUPERSEDED by REQ-1675, 2026-10-03 -- engines
+    without the Trino connector read through redis-py and replicate. Kept here for history; do not implement
+    against it.] exposes Redis keys as relational rows via Trino''s Redis connector [END SUPERSEDED BLOCK].
+    Key pattern and hash field → column mapping DSL required (per REQ-251). Read-only; no mutations. Distinct
+    from Redis-as-cache-store (REQ-230–237) and Redis-as-rate-limit-store (REQ-371). `tests/unit/test_redis_source.py`'
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-20 under the heading ''Source Connectors''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: provisa/redis/fetch.py:11-18
+    native reader with the mapping DSL (REQ-251); tests/unit/test_redis_source.py.'
+  since: 2026-06
+  code:
+  - provisa/redis/source.py
+  - provisa/redis/fetch.py
+  tests:
+  - tests/unit/test_redis_source.py
+  - tests/unit/test_redis_fetch.py
+  - tests/integration/test_redis_native_fetch.py
+  scenario: 'Given a redis source with a mapping.tables entry
+
+    When Register Table lists tables
+
+    Then key prefixes become tables with hash fields as columns and the source is read-only
+
+    '
 - id: REQ-498
-  status: proposed
+  status: complete
   group: 4. Source Connectors
   category: Source Connectors
   priority: SHOULD
   type: behavioral
   description: 'Prometheus metrics source adapter (`provisa/prometheus/`): exposes Prometheus instant
     query results as relational rows. Metric name maps to table; label names map to columns; value and
-    timestamp are fixed columns. Mapping DSL: `metric_name`, `label_columns`, `value_column`. Read-only;
-    no mutations. Queries execute via Prometheus HTTP API (`/api/v1/query`). `tests/unit/test_prometheus_source.py`'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-20 under the heading 'Source Connectors'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+    timestamp are fixed columns. [SUPERSEDED by REQ-1689, 2026-10-03 -- the mapping keys are metric, labels_as_columns,
+    value_column (provisa/prometheus/source.py:33,87; fetch.py:101). Kept here for history; do not implement
+    against it.] Mapping DSL: `metric_name`, `label_columns`, `value_column`. [END SUPERSEDED BLOCK] Read-only;
+    no mutations. [SUPERSEDED by REQ-1689, 2026-10-03 -- the reader issues a ranged read (start/end/step)
+    plus label/series/metadata calls (fetch.py:73-114), not only instant query. Kept here for history;
+    do not implement against it.] Queries execute via Prometheus HTTP API (`/api/v1/query`). [END SUPERSEDED
+    BLOCK] `tests/unit/test_prometheus_source.py`'
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-20 under the heading ''Source Connectors''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: provisa/prometheus/fetch.py:11
+    native reader with the Trino connector''s table shape (REQ-1689).'
+  since: 2026-06
+  code:
+  - provisa/prometheus/source.py
+  - provisa/prometheus/fetch.py
+  tests:
+  - tests/unit/test_prometheus_source.py
+  - tests/unit/test_prometheus_fetch.py
+  - tests/integration/test_prometheus_native_fetch.py
+  scenario: 'Given a prometheus source
+
+    When Register Table lists metrics
+
+    Then each metric is a table with label columns plus fixed value and timestamp columns, read-only
+
+    '
 - id: REQ-499
-  status: proposed
+  status: superseded
   group: 4. Source Connectors
   category: Source Connectors
   priority: SHOULD
@@ -72066,12 +72765,14 @@
     file sources (CSV, Parquet, Excel). Implements the design from REQ-423 (lazy cache on first query).
     Provides a common `FileSourceAdapter` base that CSV, Parquet, and Excel adapters inherit. Integrates
     with the file change watcher (REQ-424–426). `tests/unit/test_file_source.py`'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-20 under the heading 'Source Connectors'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-20 under the heading ''Source Connectors''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: provisa/file_source/
+    has crawler.py/source.py only; FileSourceAdapter and a lazy-cache pipeline do not exist (grep). Copies
+    of file sources are replicas built by the data replicator (REQ-826).'
+  superseded_by: REQ-826
 - id: REQ-500
-  status: proposed
+  status: superseded
   group: 4. Source Connectors
   category: Source Connectors
   priority: SHOULD
@@ -72080,63 +72781,125 @@
     table, Chroma, Qdrant) as a Provisa table. Columns include the embedding vector, a configurable text/metadata
     column set, and an ID column. Supports vector similarity search as a special filter operator (`_vector_near`).
     Governed via standard RLS and visibility rules. `tests/unit/test_vector_source.py`'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-20 under the heading 'Source Connectors'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-20 under the heading ''Source Connectors''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: provisa/vector/
+    exists but is the registry/capability/fallback/generation design of REQ-419..431; no `_vector_near`
+    operator (grep of provisa/ finds none); the similarity operator is cosine_similarity (REQ-423).'
+  superseded_by: REQ-431
 - id: REQ-501
-  status: proposed
+  status: complete
   group: 4. Source Connectors
   category: Source Connectors
   priority: SHOULD
   type: behavioral
-  description: 'ClickHouse source adapter: connects via Trino ClickHouse connector. Supports ClickHouse-specific
+  description: 'ClickHouse source adapter: [SUPERSEDED by REQ-840, 2026-10-03 -- reach is engine-relative;
+    native engines attach or scan ClickHouse directly (REQ-951). Kept here for history; do not implement
+    against it.] connects via Trino ClickHouse connector [END SUPERSEDED BLOCK]. Supports ClickHouse-specific
     types (LowCardinality, Nullable, FixedString). Read-only; mutations not supported. `tests/unit/test_clickhouse_source.py`'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-20 under the heading 'Source Connectors'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-20 under the heading ''Source Connectors''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: provisa/federation/clickhouse_http_scan.py:136
+    unwraps Nullable/LowCardinality; tests/unit/test_clickhouse_connectors.py (18 tests).'
+  since: 2026-06
+  code:
+  - provisa/federation/clickhouse_http_scan.py
+  - provisa/federation/connector_duckdb.py
+  tests:
+  - tests/integration/test_clickhouse_source_e2e.py
+  - tests/unit/test_clickhouse_connectors.py
+  scenario: 'Given a clickhouse source
+
+    When tables are registered and queried
+
+    Then Nullable and LowCardinality wrapped types are mapped and mutations are not supported
+
+    '
 - id: REQ-502
-  status: proposed
+  status: complete
   group: 4. Source Connectors
   category: Source Connectors
   priority: SHOULD
   type: behavioral
-  description: 'Snowflake source adapter: connects via Trino Snowflake connector. Warehouse, database,
-    schema, and role configurable per source registration. Read-only by default; mutations supported if
-    `allow_mutations: true`. `tests/unit/test_snowflake_source.py`'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-20 under the heading 'Source Connectors'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  description: 'Snowflake source adapter: [SUPERSEDED by REQ-840, 2026-10-03 -- reach is engine-relative.
+    Kept here for history; do not implement against it.] connects via Trino Snowflake connector [END SUPERSEDED
+    BLOCK]. Warehouse, database, schema, and role configurable per source registration. Read-only by default;
+    [SUPERSEDED by REQ-664, 2026-10-03 -- no allow_mutations flag exists (grep of provisa/ finds none);
+    writability is the connector''s declared write capability. Kept here for history; do not implement
+    against it.] mutations supported if `allow_mutations: true` [END SUPERSEDED BLOCK]. `tests/unit/test_snowflake_source.py`'
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-20 under the heading ''Source Connectors''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: tests/unit/test_snowflake_connectors.py
+    (5 tests); live e2e skips without creds (tests/integration/test_snowflake_source_e2e.py).'
+  since: 2026-06
+  code:
+  - provisa/federation/connector_duckdb.py
+  - provisa/federation/connector_base.py
+  tests:
+  - tests/unit/test_snowflake_connectors.py
+  - tests/integration/test_snowflake_source_e2e.py
+  scenario: 'Given a snowflake source with account and warehouse in federation_hints
+
+    When it is registered and queried
+
+    Then the live table is read through the engine''s connector
+
+    '
 - id: REQ-503
-  status: proposed
+  status: complete
   group: 4. Source Connectors
   category: Source Connectors
   priority: SHOULD
   type: behavioral
-  description: 'BigQuery source adapter: connects via Trino BigQuery connector. Project, dataset, and
-    credentials (service account JSON) configurable per source registration. Read-only; no mutations (BigQuery
-    is analytical). `tests/unit/test_bigquery_source.py`'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-20 under the heading 'Source Connectors'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  description: 'BigQuery source adapter: [SUPERSEDED by REQ-840, 2026-10-03 -- reach is engine-relative.
+    Kept here for history; do not implement against it.] connects via Trino BigQuery connector [END SUPERSEDED
+    BLOCK]. Project, dataset, and credentials (service account JSON) configurable per source registration.
+    Read-only; no mutations (BigQuery is analytical). `tests/unit/test_bigquery_source.py`'
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-20 under the heading ''Source Connectors''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: tests/unit/test_bigquery_connectors.py
+    (6 tests); SourceType.bigquery at provisa/core/models.py:76.'
+  since: 2026-06
+  code:
+  - provisa/federation/connector_duckdb.py
+  - provisa/federation/connector_base.py
+  tests:
+  - tests/unit/test_bigquery_connectors.py
+  - tests/integration/test_bigquery_federation_engine_e2e.py
+  scenario: 'Given a bigquery source with project, dataset and service-account credentials
+
+    When it is registered
+
+    Then it is read-only and queried through the engine''s connector
+
+    '
 - id: REQ-504
-  status: proposed
+  status: in-progress
   group: 4. Source Connectors
   category: Source Connectors
   priority: SHOULD
   type: behavioral
-  description: 'DuckDB source adapter: connects via in-process DuckDB (direct, not Trino). Database file
-    path or `:memory:` configurable. Read-only by default. Suitable for local development and analytical
-    queries over Parquet/CSV files via DuckDB''s native scan functions. `tests/unit/test_duckdb_source.py`'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-20 under the heading 'Source Connectors'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  description: 'DuckDB source adapter: connects via in-process DuckDB (direct, not Trino). [SUPERSEDED
+    by REQ-900, 2026-10-03 -- a duckdb source is a standalone .duckdb file attached by the DuckDB engine
+    only; no :memory: option exists. Kept here for history; do not implement against it.] Database file
+    path or `:memory:` configurable. [END SUPERSEDED BLOCK] Read-only by default. Suitable for local development
+    and analytical queries over Parquet/CSV files via DuckDB''s native scan functions. `tests/unit/test_duckdb_source.py`'
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-20 under the heading ''Source Connectors''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: provisa/federation/connector_duckdb.py:165-185
+    DuckDBDuckdbConnector ATTACH ''<path>'' (TYPE duckdb); no test names this connector (grep tests for
+    DuckDBDuckdbConnector empty).'
+  code:
+  - provisa/federation/connector_duckdb.py
+  scenario: 'Given a duckdb source with a database file path
+
+    When it is registered on the DuckDB engine
+
+    Then the file is attached in place
+
+    '
 - id: REQ-505
-  status: proposed
+  status: superseded
   group: 4. Source Connectors
   category: Source Connectors
   priority: SHOULD
@@ -72144,10 +72907,12 @@
   description: 'SQLite source adapter: ingested into the lazy-cache pipeline (REQ-499) rather than a live
     Trino connector (no Trino SQLite connector exists). Database file registered by path; schema inferred
     at ingest time. Read-only. Change watcher (REQ-424) monitors mtime. `tests/unit/test_sqlite_source.py`'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-20 under the heading 'Source Connectors'; it was dropped when requirements.md became
-    generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-20 under the heading ''Source Connectors''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: REQ-1660
+    states a sqlite source is read by the sqlite connector and landed per engine, and removes the registration-time
+    migration and mtime stale loop; the lazy-cache pipeline (REQ-499) no longer exists.'
+  superseded_by: REQ-1660
 - id: REQ-506
   status: proposed
   group: 11. Platform, Infrastructure & Delivery
@@ -72158,55 +72923,94 @@
     and cluster health aggregation across multi-tenant deployments. Exposes health metrics via Prometheus
     endpoint. Integrates with OTel traces (REQ-302) for latency SLA tracking. Configuration: `control_plane.enabled`,
     `control_plane.sla_p99_ms` thresholds per role. `tests/unit/test_control_plane.py`'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-20 under the heading 'Control Plane & Deployment'; it was dropped when requirements.md
-    became generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-20 under the heading ''Control Plane & Deployment''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: provisa/control_plane/
+    holds only entitlements.py, models.py, router.py, store.py (org/data-plane registry, REQ-073); no
+    SLA monitoring, quota enforcement, control_plane.sla_p99_ms or health aggregation (grep empty). tests/unit/test_control_plane.py
+    covers the org registry only.'
 - id: REQ-507
-  status: proposed
+  status: in-progress
   group: 11. Platform, Infrastructure & Delivery
   category: Control Plane & Deployment
   priority: SHOULD
-  type: behavioral
+  type: infrastructure
   description: 'Helm chart (`helm/`): Kubernetes deployment via Helm chart. Values schema (`values.schema.json`)
     validates all configurable values at `helm install` time. Chart includes: provisa-api, trino, postgresql,
     redis, minio deployments; optional observability stack (otel-collector, grafana, tempo, prometheus)
     via `observability.enabled` flag. `tests/e2e/test_helm_deploy.py`'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-20 under the heading 'Control Plane & Deployment'; it was dropped when requirements.md
-    became generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-20 under the heading ''Control Plane & Deployment''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: Chart
+    has provisa, trino, postgresql, redis, minio and observability.enabled-gated otel-collector/grafana/tempo/prometheus
+    templates (grafana.yaml:1), but helm/provisa/values.schema.json does not exist and tests/e2e/test_helm_deploy.py
+    does not exist.'
+  code:
+  - helm/provisa/Chart.yaml
+  - helm/provisa/values.yaml
+  - helm/provisa/templates/provisa-deployment.yaml
+  - helm/provisa/templates/trino-coordinator.yaml
+  - helm/provisa/templates/postgresql.yaml
+  - helm/provisa/templates/redis.yaml
+  - helm/provisa/templates/minio.yaml
+  - helm/provisa/templates/grafana.yaml
+  tests:
+  - tests/e2e/test_helm_minikube.py
+  - tests/integration/test_helm_master_key.py
+  - tests/unit/test_infra_requirements.py
 - id: REQ-508
-  status: proposed
+  status: complete
   group: 11. Platform, Infrastructure & Delivery
   category: Control Plane & Deployment
   priority: SHOULD
-  type: behavioral
+  type: infrastructure
   description: 'Docker Compose service catalog: multiple compose file variants cover different deployment
     profiles. `docker-compose.core.yml`: provisa-api + trino + postgresql + redis + minio. `docker-compose.app.yml`:
-    adds MinIO console and pgAdmin. `docker-compose.observability.yml`: adds OTel Collector, Grafana,
-    Tempo, Prometheus (per REQ-330). `docker-compose.airgap.yml`: all images bundled, no pull at startup
-    (per REQ-294). `docker-compose.dev.yml`: development mode with hot-reload.'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-20 under the heading 'Control Plane & Deployment'; it was dropped when requirements.md
-    became generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+    [SUPERSEDED by REQ-815, 2026-10-03 -- docker-compose.app.yml defines only provisa and provisa-ui;
+    minio lives in core and there is no pgAdmin in any compose file. Kept here for history; do not implement
+    against it.] adds MinIO console and pgAdmin [END SUPERSEDED BLOCK]. `docker-compose.observability.yml`:
+    adds OTel Collector, Grafana, Tempo, Prometheus (per REQ-330). `docker-compose.airgap.yml`: all images
+    bundled, no pull at startup (per REQ-294). `docker-compose.dev.yml`: development mode with hot-reload.'
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-20 under the heading ''Control Plane & Deployment''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: All five
+    variants exist; observability overlay has otlp2parquet/otel-collector/prometheus/tempo/grafana (docker-compose.observability.yml);
+    tests/unit/test_infra_requirements.py:421 airgap exists.'
+  since: 2026-06
+  code:
+  - docker-compose.core.yml
+  - docker-compose.app.yml
+  - docker-compose.observability.yml
+  - docker-compose.airgap.yml
+  - docker-compose.dev.yml
+  tests:
+  - tests/unit/test_infra_requirements.py
 - id: REQ-509
-  status: proposed
+  status: in-progress
   group: 11. Platform, Infrastructure & Delivery
   category: Control Plane & Deployment
   priority: SHOULD
-  type: behavioral
+  type: infrastructure
   description: 'WSL2 Windows deployment: `start-ui.sh` and install scripts detect WSL2 environment and
     adjust host network bindings accordingly. Docker socket path defaults to `/var/run/docker.sock` on
     Linux/WSL2; detected at startup via `uname -r | grep -i microsoft`. Documented in deployment guide.
     `tests/e2e/test_wsl2_install.py`'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-20 under the heading 'Control Plane & Deployment'; it was dropped when requirements.md
-    became generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-20 under the heading ''Control Plane & Deployment''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: start-ui-install.sh:98
+    is_wsl() greps /proc/version (not uname -r) and adjusts MCP connect guidance only; start-ui.sh has
+    no WSL detection and no docker.sock handling; tests/e2e/test_wsl2_install.py does not exist.'
+  code:
+  - start-ui-install.sh
+  scenario: 'Given start-ui-install.sh runs under WSL2
+
+    When is_wsl detects the Windows kernel string in /proc/version
+
+    Then it prints the WSL IP connect line for Windows clients
+
+    '
 - id: REQ-510
-  status: proposed
+  status: in-progress
   group: 11. Platform, Infrastructure & Delivery
   category: Control Plane & Deployment
   priority: SHOULD
@@ -72216,14 +73020,30 @@
     in `registered_tables` and exposed via the graph-schema endpoint (REQ-398) as `scl1`/`scl2`/`scl3`
     fields per node label. Clustering runs at schema build time and is re-run when tables are added/removed.
     Enables the graph UI to group and color nodes by cluster. `tests/unit/test_schema_clusters.py`'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-20 under the heading 'Control Plane & Deployment'; it was dropped when requirements.md
-    became generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-20 under the heading ''Control Plane & Deployment''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: provisa/schema_clusters.py:18
+    compute_clusters; startup_seed.py:912 and settings_router.py:1500 are the only triggers, so no automatic
+    re-run on table add/remove; cypher_router.py:886 emits scl1.'
+  code:
+  - provisa/schema_clusters.py
+  - provisa/api/startup_seed.py
+  - provisa/api/admin/settings_router.py
+  - provisa/api/rest/cypher_router.py
+  tests:
+  - tests/integration/test_settings_router_api.py
+  - tests/unit/test_graph_grouping_requirements.py
+  scenario: 'Given registered tables with relationships
+
+    When clustering runs at startup or POST /admin/schema-clusters/recompute
+
+    Then Louvain l1/l2/l3 labels are stored on registered_tables and returned as scl1/scl2/scl3
+
+    '
 - id: REQ-511
-  status: proposed
-  group: 11. Platform, Infrastructure & Delivery
-  category: Control Plane & Deployment
+  status: superseded
+  group: 4. Source Connectors
+  category: SharePoint Connector
   priority: SHOULD
   type: behavioral
   description: 'SharePoint source adapter (`provisa/sharepoint/`): registered via `POST /admin/sources/sharepoint`.
@@ -72232,14 +73052,15 @@
     fields mapped to their text representation. Supports SharePoint Online (Graph API: `GET /sites/{site}/lists/{list}/items`)
     and SharePoint Server (REST API). Paginates via `@odata.nextLink`. Read-only; no mutations. Refresh
     interval configurable (default: 15 minutes). `provisa/sharepoint/source.py`, `tests/unit/test_sharepoint_source.py`'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-20 under the heading 'Control Plane & Deployment'; it was dropped when requirements.md
-    became generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-20 under the heading ''Control Plane & Deployment''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: provisa/sharepoint/
+    does not exist; SharePoint is served through the Calcite connector (REQ-726, tests/unit/test_sharepoint_connector.py).'
+  superseded_by: REQ-726
 - id: REQ-512
-  status: proposed
-  group: 11. Platform, Infrastructure & Delivery
-  category: Control Plane & Deployment
+  status: superseded
+  group: 4. Source Connectors
+  category: Splunk Connector
   priority: SHOULD
   type: behavioral
   description: 'Splunk source adapter (`provisa/splunk/`): registered via `POST /admin/sources/splunk`.
@@ -72249,16 +73070,17 @@
     always included when present. Registered table stores the SPL query template; native filter columns
     (`_nf_` prefix) map to SPL search terms appended to the base query. Read-only; no mutations. `provisa/splunk/source.py`,
     `tests/unit/test_splunk_source.py`'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-20 under the heading 'Control Plane & Deployment'; it was dropped when requirements.md
-    became generated from requirements.yaml. Text verbatim. Status, type, priority and group are provisional
-    pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-20 under the heading ''Control Plane & Deployment''; it was dropped when requirements.md
+    became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: provisa/splunk/
+    does not exist; Splunk is served through the Calcite connector (REQ-721, tests/unit/test_splunk_connector.py).'
+  superseded_by: REQ-721
 - id: REQ-513
-  status: proposed
-  group: 13. Multi-Tenancy & Organizations
-  category: Multi-Tenant Organization Isolation
-  priority: SHOULD
-  type: behavioral
+  status: superseded
+  group: 1. Access Governance & Security
+  category: Data Isolation
+  priority: MUST
+  type: constraint
   description: All backend data queries and mutations must be scoped to the user's active organization,
     enforced at the GraphQL API layer and every backend router. Every query and mutation compiles to SQL
     that includes `WHERE org_id = $org_id` via Stage 2 governance. Non-superadmin users can only access
@@ -72266,45 +73088,76 @@
     via the org switcher. | Server-side org scoping prevents users from accessing data outside their assigned
     organization. | provisa/api/, provisa/compiler/stage2.py, provisa/security/ | tests/unit/test_org_scoping.py,
     tests/integration/test_org_isolation.py
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-21 under the heading 'Multi-Tenant Organization Isolation'; it was dropped when
-    requirements.md became generated from requirements.yaml. Text verbatim. Status, type, priority and
-    group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-21 under the heading ''Multi-Tenant Organization Isolation''; it was dropped when
+    requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against
+    the code: Row-level `WHERE org_id` scoping and stage2.py are not the design; isolation is per-org
+    schema (REQ-1293, REQ-695); tests named do not exist.'
+  superseded_by: REQ-1293
 - id: REQ-514
-  status: proposed
-  group: 13. Multi-Tenancy & Organizations
-  category: Multi-Tenant Organization Isolation
+  status: complete
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
   priority: SHOULD
-  type: behavioral
-  description: Superadmin org switcher component in NavBar, styled identically to the existing role selector.
-    Displays current active organization and dropdown to select a different org from the user's membership
-    list. Active org stored in X-Org-Id header on all subsequent API requests. Non-superadmin users see
-    only their single org name (read-only, no dropdown). | Superadmin org switcher enables context switching
-    for testing and administration across multiple organizations. | provisa-ui/src/components/NavBar.tsx,
-    provisa-ui/src/hooks/useOrgSelection.ts | tests/e2e/test_org_switcher.py
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-21 under the heading 'Multi-Tenant Organization Isolation'; it was dropped when
-    requirements.md became generated from requirements.yaml. Text verbatim. Status, type, priority and
-    group are provisional pending audit.
+  type: ui
+  description: '[SUPERSEDED by REQ-1605, 2026-10-03 -- The switcher lists only orgs the caller holds a
+    membership in, for any member; platform_admin gets no extra orgs. Kept here for history; do not implement
+    against it.] Superadmin org switcher component in NavBar [END SUPERSEDED BLOCK], styled identically
+    to the existing role selector. Displays current active organization and dropdown to select a different
+    org from the user''s membership list. [SUPERSEDED by REQ-1276, 2026-10-03 -- The org is carried by
+    the x-org-provisa header or subdomain; X-Org-Id was replaced. Kept here for history; do not implement
+    against it.] Active org stored in X-Org-Id header on all subsequent API requests. [END SUPERSEDED
+    BLOCK] Non-superadmin users see only their single org name (read-only, no dropdown). | Superadmin
+    org switcher enables context switching for testing and administration across multiple organizations.
+    | provisa-ui/src/components/NavBar.tsx, provisa-ui/src/hooks/useOrgSelection.ts | tests/e2e/test_org_switcher.py'
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-21 under the heading ''Multi-Tenant Organization Isolation''; it was dropped when
+    requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against
+    the code: OrgSwitcher.tsx:11-45 renders a dropdown for multi-membership users and static name for
+    one, nothing when multitenancy is off; covered by provisa-ui/src/__tests__/OrgSwitcher.test.tsx. Org
+    is sent as x-org-provisa (authFetch.ts:29), not X-Org-Id; switcher serves any multi-org member, not
+    only superadmin.'
+  since: 2026-06
+  code:
+  - provisa-ui/src/components/OrgSwitcher.tsx
+  - provisa-ui/src/components/NavBar.tsx
+  - provisa-ui/src/lib/authFetch.ts
+  tests:
+  - provisa-ui/src/__tests__/OrgSwitcher.test.tsx
+  scenario: 'Given a user with memberships in several orgs in a multi-tenant deployment
+
+    When the NavBar renders
+
+    Then an org dropdown lists those orgs and selecting one changes the active org
+
+    Given a user with one membership
+
+    When the NavBar renders
+
+    Then the org name shows read-only with no dropdown
+
+    '
 - id: REQ-515
-  status: proposed
+  status: superseded
   group: 13. Multi-Tenancy & Organizations
-  category: Multi-Tenant Organization Isolation
-  priority: SHOULD
+  category: Subdomain-based Org Resolution
+  priority: MUST
   type: behavioral
   description: Every backend HTTP router and GraphQL mutation handler validates X-Org-Id header and enforces
     that the authenticated user is a member of that organization before processing the request. Requests
     with missing, invalid, or unauthorized X-Org-Id header are rejected with HTTP 403. | Header validation
     prevents unauthorized access attempts and ensures every request respects org boundaries. | provisa/api/middleware/,
     provisa/security/org_enforcement.py | tests/unit/test_org_header_validation.py, tests/integration/test_org_enforcement.py
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-21 under the heading 'Multi-Tenant Organization Isolation'; it was dropped when
-    requirements.md became generated from requirements.yaml. Text verbatim. Status, type, priority and
-    group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-21 under the heading ''Multi-Tenant Organization Isolation''; it was dropped when
+    requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against
+    the code: X-Org-Id validation was replaced by subdomain/x-org-provisa resolution in provisa/auth/middleware.py:88-100
+    (REQ-1276); named files and tests do not exist.'
+  superseded_by: REQ-1276
 - id: REQ-516
-  status: proposed
+  status: superseded
   group: 13. Multi-Tenancy & Organizations
-  category: Multi-Tenant Organization Isolation
+  category: Org Invitations
   priority: SHOULD
   type: behavioral
   description: Invite links (existing infrastructure) automatically register new users into the specific
@@ -72312,32 +73165,36 @@
     login via an invite link completes org membership enrollment. | Invite-based onboarding assigns new
     users directly to their organization without manual admin intervention. | provisa/auth/, provisa/core/repositories/org.py
     | tests/unit/test_invite_onboarding.py, tests/integration/test_invite_flow.py
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-21 under the heading 'Multi-Tenant Organization Isolation'; it was dropped when
-    requirements.md became generated from requirements.yaml. Text verbatim. Status, type, priority and
-    group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-21 under the heading ''Multi-Tenant Organization Isolation''; it was dropped when
+    requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against
+    the code: Invite onboarding is specified and built by REQ-1287 and REQ-1572 (invitation is the admission
+    decision); named tests absent, replaced by tests/integration/test_redeem_invite.py.'
+  superseded_by: REQ-1287
 - id: REQ-517
-  status: proposed
-  group: 13. Multi-Tenancy & Organizations
-  category: Multi-Tenant Organization Isolation
-  priority: SHOULD
-  type: behavioral
+  status: superseded
+  group: 1. Access Governance & Security
+  category: Access Control
+  priority: MUST
+  type: constraint
   description: The Admin/Orgs page is superadmin-only, enforced by an `isSuperAdmin` gate that checks
     the user's global superadmin status regardless of active org context. Non-superadmin users cannot
     access this page; navigation entry is hidden, direct URL access rejected with a 403 permission error.
     | Superadmin-only enforcement of the Orgs admin page prevents non-admins from viewing or managing
     organizations. | provisa-ui/src/pages/AdminOrgsPage.tsx, provisa/api/admin/orgs_router.py | tests/unit/test_orgs_page_access.py,
     tests/e2e/test_admin_orgs_guard.py
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-21 under the heading 'Multi-Tenant Organization Isolation'; it was dropped when
-    requirements.md became generated from requirements.yaml. Text verbatim. Status, type, priority and
-    group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-21 under the heading ''Multi-Tenant Organization Isolation''; it was dropped when
+    requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against
+    the code: isSuperAdmin gate contradicts REQ-1337 (every gate tests a capability); AdminOrgsPage.tsx
+    and orgs_router tests named do not exist as described.'
+  superseded_by: REQ-1337
 - id: REQ-518
-  status: proposed
-  group: 13. Multi-Tenancy & Organizations
-  category: Multi-Tenant Organization Isolation
+  status: in-progress
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
   priority: SHOULD
-  type: behavioral
+  type: ui
   description: 'ERD modal: The Entity Relationship Diagram is presented as a modal dialog (not an inline
     panel or separate page), rendering a Cytoscape-based visualization of all registered tables and their
     relationships. Modal is self-contained, no new backend endpoints required; data sourced from existing
@@ -72346,104 +73203,199 @@
     | Toolbar-accessible ERD modal lets stewards explore table schemas and relationships without context-switching.
     | provisa-ui/src/components/graph/CytoscapeErd.tsx, provisa-ui/src/pages/TablesPage.tsx, provisa-ui/src/pages/RelationshipsPage.tsx
     | tests/e2e/test_erd_modal.py'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-21 under the heading 'Multi-Tenant Organization Isolation'; it was dropped when
-    requirements.md became generated from requirements.yaml. Text verbatim. Status, type, priority and
-    group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-21 under the heading ''Multi-Tenant Organization Isolation''; it was dropped when
+    requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against
+    the code: ErdModal.tsx wraps ErdPanel (Cytoscape) and is opened from TablesPage.tsx:1422 and RelationshipsPage.tsx:1034;
+    no test exercises the modal (no erd-modal e2e or component test; tests/e2e/test_erd_modal.py absent).
+    CytoscapeErd.tsx is now components/erd/ErdPanel.tsx.'
+  code:
+  - provisa-ui/src/components/erd/ErdModal.tsx
+  - provisa-ui/src/components/erd/ErdPanel.tsx
+  - provisa-ui/src/pages/TablesPage.tsx
+  - provisa-ui/src/pages/RelationshipsPage.tsx
+  scenario: 'Given registered tables and relationships
+
+    When the steward clicks the ERD toolbar button on the Tables or Relationships page
+
+    Then a modal opens rendering the Cytoscape ERD from existing hooks
+
+    '
 - id: REQ-519
-  status: proposed
-  group: 13. Multi-Tenancy & Organizations
-  category: Multi-Tenant Organization Isolation
+  status: complete
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
   priority: SHOULD
-  type: behavioral
+  type: ui
   description: Tables in the ERD are grouped into compound nodes (domain clusters) by domain; each domain
     becomes a visually distinct parent node containing all its registered tables as child nodes. Domain
     grouping preserves the `RegisteredTable` and `Relationship` types from `provisa-ui/src/types/admin.ts`.
     | Domain clustering in the ERD organizes tables semantically without requiring new data types. | provisa-ui/src/components/graph/CytoscapeErd.tsx
     | tests/e2e/test_erd_modal.py
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-21 under the heading 'Multi-Tenant Organization Isolation'; it was dropped when
-    requirements.md became generated from requirements.yaml. Text verbatim. Status, type, priority and
-    group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-21 under the heading ''Multi-Tenant Organization Isolation''; it was dropped when
+    requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against
+    the code: erd-model.ts buildErdElements creates domain parent nodes with tables as children; provisa-ui/src/__tests__/erd-model.test.ts:217-233
+    asserts it.'
+  since: 2026-06
+  code:
+  - provisa-ui/src/components/erd/erd-model.ts
+  - provisa-ui/src/components/erd/ErdPanel.tsx
+  tests:
+  - provisa-ui/src/__tests__/erd-model.test.ts
+  scenario: 'Given tables in two domains
+
+    When the ERD elements are built
+
+    Then each domain is a parent node containing its tables as children
+
+    '
 - id: REQ-520
-  status: proposed
-  group: 13. Multi-Tenancy & Organizations
-  category: Multi-Tenant Organization Isolation
+  status: complete
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
   priority: SHOULD
-  type: behavioral
+  type: ui
   description: Domain groups in the ERD support collapse/expand toggling to hide/show their child tables.
     Toggling a domain updates the Cytoscape graph layout without re-fetching data. State of collapsed
     domains is transient (not persisted). | Collapse/expand domain grouping prevents visual overload in
     large ERDs. | provisa-ui/src/components/graph/CytoscapeErd.tsx | tests/e2e/test_erd_modal.py
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-21 under the heading 'Multi-Tenant Organization Isolation'; it was dropped when
-    requirements.md became generated from requirements.yaml. Text verbatim. Status, type, priority and
-    group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-21 under the heading ''Multi-Tenant Organization Isolation''; it was dropped when
+    requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against
+    the code: ErdPanel.tsx:113 keeps collapsedDomains in transient useState and toggles at 442 without
+    refetch; provisa-ui/src/__tests__/erd-model.test.ts:241-330 covers collapsed-domain elements.'
+  since: 2026-06
+  code:
+  - provisa-ui/src/components/erd/erd-model.ts
+  - provisa-ui/src/components/erd/ErdPanel.tsx
+  tests:
+  - provisa-ui/src/__tests__/erd-model.test.ts
+  scenario: 'Given an ERD with domain groups
+
+    When a domain is collapsed
+
+    Then its tables are hidden, proxy edges remain, and no data is refetched
+
+    '
 - id: REQ-521
-  status: proposed
-  group: 13. Multi-Tenancy & Organizations
-  category: Multi-Tenant Organization Isolation
+  status: complete
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
   priority: SHOULD
-  type: behavioral
+  type: ui
   description: 'The ERD includes a column-detail toggle with three levels: show all columns, show only
     key columns (PK/FK marked via `is_primary_key` / `is_foreign_key`), or show no columns. Toggle updates
     the graph display without re-fetching data. | Multi-level column detail reduces visual noise while
     preserving access to column-level relationships. | provisa-ui/src/components/graph/CytoscapeErd.tsx
     | tests/e2e/test_erd_modal.py'
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-21 under the heading 'Multi-Tenant Organization Isolation'; it was dropped when
-    requirements.md became generated from requirements.yaml. Text verbatim. Status, type, priority and
-    group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-21 under the heading ''Multi-Tenant Organization Isolation''; it was dropped when
+    requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against
+    the code: ErdPanel.tsx:854-863 offers all/key/none column detail; buildTableLabel tested at provisa-ui/src/__tests__/erd-model.test.ts:156-190.'
+  since: 2026-06
+  code:
+  - provisa-ui/src/components/erd/erd-model.ts
+  - provisa-ui/src/components/erd/ErdPanel.tsx
+  tests:
+  - provisa-ui/src/__tests__/erd-model.test.ts
+  scenario: 'Given an ERD
+
+    When the column detail is set to all, key, or none
+
+    Then table labels show all columns, only PK/FK columns, or only the name
+
+    '
 - id: REQ-522
-  status: proposed
-  group: 13. Multi-Tenancy & Organizations
-  category: Multi-Tenant Organization Isolation
+  status: in-progress
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
   priority: SHOULD
-  type: behavioral
+  type: ui
   description: Hover tooltips on domain groups, table nodes, and column items display their descriptions.
     Descriptions are sourced from `domain.description`, `table.description`, and `column.description`
     fields from registered metadata. Missing descriptions fall back to empty. | Hover tooltips provide
     in-context documentation without cluttering the diagram. | provisa-ui/src/components/graph/CytoscapeErd.tsx
     | tests/e2e/test_erd_modal.py
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-21 under the heading 'Multi-Tenant Organization Isolation'; it was dropped when
-    requirements.md became generated from requirements.yaml. Text verbatim. Status, type, priority and
-    group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-21 under the heading ''Multi-Tenant Organization Isolation''; it was dropped when
+    requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against
+    the code: erd-model.ts:153,184 carry domain/table description and ErdPanel.tsx:457-495 shows tooltips;
+    only the domain description is asserted (erd-model.test.ts:358), table/column tooltips are untested.'
+  code:
+  - provisa-ui/src/components/erd/erd-model.ts
+  - provisa-ui/src/components/erd/ErdPanel.tsx
+  tests:
+  - provisa-ui/src/__tests__/erd-model.test.ts
+  scenario: 'Given domains, tables and columns with descriptions
+
+    When the user hovers a domain, table or column
+
+    Then a tooltip shows the description
+
+    '
 - id: REQ-523
-  status: proposed
-  group: 13. Multi-Tenancy & Organizations
-  category: Multi-Tenant Organization Isolation
+  status: complete
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
   priority: SHOULD
-  type: behavioral
+  type: ui
   description: The ERD respects the currently selected domain filter on the Tables/Relationships page
     (if any). If a domain filter is active, the ERD displays only tables and relationships within that
     domain. If no filter is active, all domains and tables are shown. Filter state is read from the page
     context and updates reactively. | Domain-filtered ERD view keeps visualization focused on the steward's
     current domain context. | provisa-ui/src/components/graph/CytoscapeErd.tsx, provisa-ui/src/pages/TablesPage.tsx,
     provisa-ui/src/pages/RelationshipsPage.tsx | tests/e2e/test_erd_modal.py
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-21 under the heading 'Multi-Tenant Organization Isolation'; it was dropped when
-    requirements.md became generated from requirements.yaml. Text verbatim. Status, type, priority and
-    group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-21 under the heading ''Multi-Tenant Organization Isolation''; it was dropped when
+    requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against
+    the code: ErdPanel.tsx:116-120 hides domains outside checkedDomains; provisa-ui/src/__tests__/erd-model.test.ts:328-355
+    covers hidden-domain filtering.'
+  since: 2026-06
+  code:
+  - provisa-ui/src/components/erd/erd-model.ts
+  - provisa-ui/src/components/erd/ErdPanel.tsx
+  - provisa-ui/src/pages/TablesPage.tsx
+  - provisa-ui/src/pages/RelationshipsPage.tsx
+  tests:
+  - provisa-ui/src/__tests__/erd-model.test.ts
+  scenario: 'Given a domain filter on the page
+
+    When the ERD opens
+
+    Then only tables and relationships of checked domains are drawn
+
+    '
 - id: REQ-524
-  status: proposed
-  group: 13. Multi-Tenancy & Organizations
-  category: Multi-Tenant Organization Isolation
+  status: in-progress
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
   priority: SHOULD
-  type: behavioral
+  type: ui
   description: The ERD modal provides download buttons for exporting the current diagram as SVG, PNG,
     or JSON. The export functions reuse existing utilities from `provisa-ui/src/components/graph/graph-export.ts`
     (`downloadGraphSvg`, `compositeGraphDownload`, `downloadBlob`). | Export buttons let stewards save
     ERD visualizations for documentation, sharing, and offline reference. | provisa-ui/src/components/graph/CytoscapeErd.tsx,
     provisa-ui/src/components/graph/graph-export.ts | tests/e2e/test_erd_modal.py
-  notes: Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-06-21 under the heading 'Multi-Tenant Organization Isolation'; it was dropped when
-    requirements.md became generated from requirements.yaml. Text verbatim. Status, type, priority and
-    group are provisional pending audit.
+  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
+    written on 2026-06-21 under the heading ''Multi-Tenant Organization Isolation''; it was dropped when
+    requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against
+    the code: ErdPanel.tsx:778-966 exports SVG, PNG and JPEG via downloadBlob; there is no JSON export
+    (REQ text says JSON), and no test covers export. downloadGraphSvg/compositeGraphDownload are not used.'
+  code:
+  - provisa-ui/src/components/erd/ErdPanel.tsx
+  - provisa-ui/src/components/graph/graph-export.ts
+  scenario: 'Given an open ERD
+
+    When the user clicks an export button
+
+    Then the diagram downloads as SVG, PNG or JSON
+
+    '
 - id: REQ-1019
-  status: proposed
-  group: 2. Authentication & Identity
-  category: Role-Based Access Control
+  status: superseded
+  group: 1. Access Governance & Security
+  category: Access Control
   priority: MUST
   type: structural
   target: 2026-Q3
@@ -72452,16 +73404,16 @@
     and grant or change other members'' roles.'
   use_case: Delegates org governance to admins without requiring platform-wide superadmin involvement.
     Establishes role hierarchy within a single org with clear permission boundaries.
-  code:
-  - provisa/core/schema_admin.py
-  - provisa/api/admin/invites_router.py
   relates_to:
   - REQ-833
   - REQ-839
-  notes: Restored 2026-10-03 verbatim from requirements.yaml as of commit 323866ef (2026-07-15), where
-    it was added; it later vanished from the file without a recorded decision. Status pending audit.
+  notes: 'Restored 2026-10-03 verbatim from requirements.yaml as of commit 323866ef (2026-07-15), where
+    it was added; it later vanished from the file without a recorded decision. Audited 2026-10-03 against
+    the code: Role vocabulary admin/developer/analyst is retired (REQ-1297 five roles: platform_admin,
+    org_admin, ...); gating is by capability (REQ-1337), invite/role-grant authz in invites_router.py:162-194.'
+  superseded_by: REQ-1337
 - id: REQ-1021
-  status: proposed
+  status: superseded
   group: 11. Platform, Infrastructure & Delivery
   category: Email Delivery
   priority: MUST
@@ -72472,14 +73424,14 @@
     org_invites row insert) and retried on transient SMTP failure.
   use_case: Ensures invitees are notified and provides the accept mechanism. Transactional outbox pattern
     guarantees delivery retry without manual intervention or duplicate emails.
-  code:
-  - provisa/api/admin/invites_router.py
-  - provisa/email/
   relates_to:
   - REQ-942
   - REQ-1019
-  notes: Restored 2026-10-03 verbatim from requirements.yaml as of commit 323866ef (2026-07-15), where
-    it was added; it later vanished from the file without a recorded decision. Status pending audit.
+  notes: 'Restored 2026-10-03 verbatim from requirements.yaml as of commit 323866ef (2026-07-15), where
+    it was added; it later vanished from the file without a recorded decision. Audited 2026-10-03 against
+    the code: Invite email goes through the EmailSender port (provisa/core/mail.py, REQ-1330); invites_router.py
+    has no outbox enqueue and no provisa/email/ package exists.'
+  superseded_by: REQ-1330
 - id: REQ-1022
   status: proposed
   group: 11. Platform, Infrastructure & Delivery
@@ -72488,19 +73440,23 @@
   type: behavioral
   target: 2026-Q3
   description: When a creation or approval request is raised, admin approvers for the org are notified
-    by email with approve/deny links, delivered via the same EmailProvider + outbox path.
+    by email with approve/deny links, [SUPERSEDED by REQ-1330, 2026-10-03 -- Mail is sent through the
+    EmailSender port; no EmailProvider or REQ-942 outbox path exists for it. Kept here for history; do
+    not implement against it.] delivered via the same EmailProvider + outbox path [END SUPERSEDED BLOCK].
   use_case: Alerts approvers to pending org-governance decisions. Provides direct approve/deny action
     links to avoid portal navigation.
   code:
-  - provisa/api/admin/
-  - provisa/email/
+  - provisa/api/admin/creation_requests_router.py
+  - provisa/core/mail.py
   relates_to:
   - REQ-942
   - REQ-1019
-  notes: Restored 2026-10-03 verbatim from requirements.yaml as of commit 323866ef (2026-07-15), where
-    it was added; it later vanished from the file without a recorded decision. Status pending audit.
+  notes: 'Restored 2026-10-03 verbatim from requirements.yaml as of commit 323866ef (2026-07-15), where
+    it was added; it later vanished from the file without a recorded decision. Audited 2026-10-03 against
+    the code: creation_requests_router.py has no email notification; mail.py/mail_router.py send only
+    invites. Still wanted as a future transactional mail under REQ-1330.'
 - id: REQ-087
-  status: proposed
+  status: complete
   group: 1. Access Governance & Security
   category: Column-Level Masking
   priority: SHOULD
@@ -72509,21 +73465,32 @@
     — raw data never reaches the client. Masking is per-column, per-role. Same column can have different
     masks for different roles. Masking is applied at SQL level — the mask expression replaces the column
     in the SELECT projection. The DB engine performs the transformation. A column can be both visible
-    AND masked — the user sees the column exists and can filter/sort on it, but the returned values are
-    masked.
+    AND masked — the user sees the column exists and [SUPERSEDED by REQ-531, 2026-10-03 -- masked columns
+    are rejected from WHERE and HAVING (V005, sql_validator.py:15). Kept here for history; do not implement
+    against it.] can filter/sort on it [END SUPERSEDED BLOCK], but the returned values are masked.
   code:
   - provisa/security/masking.py
   - provisa/compiler/mask_inject.py
   tests:
   - tests/unit/test_masking_edge_cases.py
-  - tests/unit/test_inherited_roles.py
   - tests/e2e/test_masking.py
+  - tests/unit/test_inherited_roles.py
   notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (2026-06-20), Phase
     Q: Column-Level Masking, the only place this requirement''s text was written; that file was deleted
     in 903defcc and the id was never entered in requirements.yaml, though code and tests cite it. Text
-    taken from the plan''s own sentences. Status, type and priority are provisional pending audit.'
+    taken from the plan''s own sentences. Audited 2026-10-03 against the code: mask_inject.py rewrites
+    SELECT projection; test_masking.py::test_analyst_gets_regex_viewer_gets_constant:343. Filtering on
+    masked columns now rejected by V005/REQ-531.'
+  since: 2026-01
+  scenario: 'Given a column with different mask rules for two roles
+
+    When each role queries it
+
+    Then each gets its own masked values and the mask expression replaces the column in the SELECT projection
+
+    '
 - id: REQ-088
-  status: proposed
+  status: complete
   group: 1. Access Governance & Security
   category: Column-Level Masking
   priority: SHOULD
@@ -72533,13 +73500,23 @@
   code:
   - provisa/security/masking.py
   tests:
+  - tests/unit/test_masking_edge_cases.py
   - tests/e2e/test_masking.py
   notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (2026-06-20), Phase
     Q: Column-Level Masking, the only place this requirement''s text was written; that file was deleted
     in 903defcc and the id was never entered in requirements.yaml, though code and tests cite it. Text
-    taken from the plan''s own sentences. Status, type and priority are provisional pending audit.'
+    taken from the plan''s own sentences. Audited 2026-10-03 against the code: masking.py:163 emits ANSI
+    REGEXP_REPLACE; test_masking_edge_cases.py:319, e2e test_masking.py:113.'
+  since: 2026-01
+  scenario: 'Given a regex mask rule on a string column
+
+    When a masked role queries it
+
+    Then the projection is REGEXP_REPLACE(col, pattern, replace)
+
+    '
 - id: REQ-089
-  status: proposed
+  status: complete
   group: 1. Access Governance & Security
   category: Column-Level Masking
   priority: SHOULD
@@ -72550,13 +73527,23 @@
   code:
   - provisa/security/masking.py
   tests:
+  - tests/unit/test_masking_edge_cases.py
   - tests/e2e/test_masking.py
   notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (2026-06-20), Phase
     Q: Column-Level Masking, the only place this requirement''s text was written; that file was deleted
     in 903defcc and the id was never entered in requirements.yaml, though code and tests cite it. Text
-    taken from the plan''s own sentences. Status, type and priority are provisional pending audit.'
+    taken from the plan''s own sentences. Audited 2026-10-03 against the code: masking.py:117-131 _resolve_constant
+    incl. MAX/MIN; test_masking_edge_cases.py:330-395.'
+  since: 2026-01
+  scenario: 'Given a constant mask rule (NULL, 0, custom, MAX or MIN)
+
+    When a masked role queries the column
+
+    Then the projection is the literal, with MAX/MIN resolved to the integer type bounds
+
+    '
 - id: REQ-090
-  status: proposed
+  status: complete
   group: 1. Access Governance & Security
   category: Column-Level Masking
   priority: SHOULD
@@ -72566,13 +73553,23 @@
   code:
   - provisa/security/masking.py
   tests:
+  - tests/unit/test_masking_edge_cases.py
   - tests/e2e/test_masking.py
   notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (2026-06-20), Phase
     Q: Column-Level Masking, the only place this requirement''s text was written; that file was deleted
     in 903defcc and the id was never entered in requirements.yaml, though code and tests cite it. Text
-    taken from the plan''s own sentences. Status, type and priority are provisional pending audit.'
+    taken from the plan''s own sentences. Audited 2026-10-03 against the code: masking.py:173 truncate
+    branch; test_masking_edge_cases.py:324,364; e2e test_created_at_truncated:241.'
+  since: 2026-01
+  scenario: 'Given a truncate mask with precision year on a date column
+
+    When a masked role queries it
+
+    Then the projection is DATE_TRUNC(''year'', col)
+
+    '
 - id: REQ-091
-  status: proposed
+  status: complete
   group: 1. Access Governance & Security
   category: Column-Level Masking
   priority: SHOULD
@@ -72589,9 +73586,18 @@
   notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (2026-06-20), Phase
     Q: Column-Level Masking, the only place this requirement''s text was written; that file was deleted
     in 903defcc and the id was never entered in requirements.yaml, though code and tests cite it. Text
-    taken from the plan''s own sentences. Status, type and priority are provisional pending audit.'
+    taken from the plan''s own sentences. Audited 2026-10-03 against the code: masking.py:86-115 validation
+    raises on non-string regex and NOT NULL NULL; e2e test_regex_on_integer_rejected:387.'
+  since: 2026-01
+  scenario: 'Given a regex mask on a numeric column, or NULL constant on a NOT NULL column
+
+    When config is validated
+
+    Then a validation error is raised
+
+    '
 - id: REQ-116
-  status: proposed
+  status: in-progress
   group: 4. Source Connectors
   category: Kafka Sources & Sink
   priority: SHOULD
@@ -72604,4 +73610,272 @@
   notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (2026-06-20), Phase
     V: Kafka Sources & Sink, the only place this requirement''s text was written; that file was deleted
     in 903defcc and the id was never entered in requirements.yaml, though code and tests cite it. Text
-    taken from the plan''s own sentences. Status, type and priority are provisional pending audit.'
+    taken from the plan''s own sentences. Audited 2026-10-03 against the code: Avro/JSON mapping and registry
+    client exist (schema_registry.py:89-135); Protobuf returns [] with a warning (line 168) and no schema-evolution
+    detection/flagging of registered tables exists (only check_compatibility:77).'
+  tests:
+  - tests/unit/test_kafka_schema.py
+  scenario: 'Given a Kafka source configured with a Schema Registry
+
+    When a topic''s subject is fetched
+
+    Then its Avro, Protobuf or JSON Schema is mapped to column definitions
+
+    And a later change to the subject''s schema flags the registered tables it affects for review
+
+    '
+- id: REQ-916
+  status: complete
+  group: 10. UI & Admin Surfaces
+  category: Admin Configuration
+  priority: SHOULD
+  type: ui
+  since: 2026-07
+  description: 'The federation engine is selectable from a registry. The registry lists every selectable
+    engine with a label, a description and a config schema; each config field names the platform-config
+    key it persists to and declares a type of string, number, boolean or select. Embedded (Provisa-managed)
+    and bring-your-own variants of an engine are separate entries: the embedded Trino entry carries node
+    role and execution tuning, the bring-your-own entry carries only the connection. An administrator
+    with platform-settings rights reads the persisted selection, the running engine, any environment pin
+    and the registry from GET /admin/federation-engine, and persists a selection with PUT /admin/federation-engine,
+    which rejects a key not in the registry and stores only the fields the chosen engine declares, resetting
+    keys declared only by other engines. The change takes effect at the next service restart, because
+    the engine is bound once at boot. The admin UI renders the selector and the selected engine''s fields
+    generically from the registry.'
+  use_case: A platform administrator picks DuckDB, Trino or a warehouse as the deployment's federation
+    engine and enters its connection settings from the admin UI without editing config files.
+  code:
+  - provisa/federation/engine.py
+  - provisa/api/trino_setup.py
+  - provisa/api/admin/settings_router.py
+  - provisa-ui/src/components/admin/FederationEngineTab.tsx
+  - provisa-ui/src/api/admin.ts
+  tests:
+  - tests/unit/test_federation_engine.py
+  - tests/unit/test_admin_config_tabs.py
+  scenario: 'Given the federation-engine registry lists several engines
+
+    When an administrator saves a registered engine key with its config fields
+
+    Then the selection and only that engine''s declared fields are persisted and the response says a restart
+    is required
+
+    Given an engine key not in the registry
+
+    When the administrator saves it
+
+    Then the request is rejected with a 400 and nothing is persisted
+
+    '
+  notes: 'Reverse-engineered 2026-10-03 from the code that cites this id; its text was never committed
+    anywhere in git history. First cited in commit 8752d084 2026-07-06. Citing files: provisa/federation/engine.py:1099,
+    provisa/api/trino_setup.py:167, provisa/api/admin/settings_router.py:765, provisa/api/admin/settings_router.py:812,
+    provisa-ui/src/components/admin/FederationEngineTab.tsx:34, provisa-ui/src/api/admin.ts:823, tests/unit/test_federation_engine.py:118,
+    tests/unit/test_federation_engine.py:326. Later rulings: REQ-1575: the S3 spool secret key is never
+    returned and a URL field is returned without its password (GET reports a secret_set bit). REQ-1913:
+    the surface is gated to platform administrators and sizing keys are stored in the control plane, not
+    the node config file. REQ-1512: the deployment-wide surface is not offered on hosted deployments.
+    REQ-1421: registry additionally carries one kind per relational database plus sqlalchemy catch-all.'
+- id: REQ-918
+  status: complete
+  group: 1. Access Governance & Security
+  category: Encryption
+  priority: MUST
+  type: behavioral
+  since: 2026-07
+  description: 'Encryption is configured from the admin UI. The registry of encryption providers is shown
+    with each provider''s label, description, availability and config fields; a provider whose runtime
+    is not installed is shown but cannot be saved, so selection fails closed. An administrator with platform-settings
+    rights reads the selected provider, the key id and whether a local master key is present, and saves
+    a provider with its own config fields; the provider binds at startup, so a provider change takes effect
+    on restart. A fresh AES-256 master key can be provisioned into the OS keychain, or the host file keystore,
+    under a key id; provisioning takes effect immediately, without a restart, by rebuilding the live encryption
+    service on the same provider. The key is never returned: when no keystore can hold it, provisioning
+    refuses and the operator supplies the key out of band through PROVISA_ENCRYPTION_KEY.'
+  use_case: A platform administrator selects an encryption provider and provisions its master key, and
+    sees whether a key is present, without the key ever being shown.
+  code:
+  - provisa/encryption/providers.py
+  - provisa/api/admin/settings_router.py
+  - provisa-ui/src/components/admin/EncryptionTab.tsx
+  - provisa-ui/src/api/admin.ts
+  tests:
+  - tests/unit/test_encryption_providers.py
+  - tests/unit/test_admin_config_tabs.py
+  scenario: 'Given the local encryption provider is selected and no master key exists
+
+    When an administrator generates a key for a key id
+
+    Then the key is stored in the keychain, the live encryption service is rebuilt, and the response carries
+    only stored=true and the key id
+
+    Given no keystore can hold the key
+
+    When an administrator generates a key
+
+    Then the request is refused with 503 naming PROVISA_ENCRYPTION_KEY and no key is returned
+
+    '
+  notes: 'Reverse-engineered 2026-10-03 from the code that cites this id; its text was never committed
+    anywhere in git history. First cited in commit 8752d084 2026-07-06. Citing files: provisa/encryption/providers.py:286,
+    provisa/api/admin/settings_router.py:1010, provisa/api/admin/settings_router.py:1033, provisa/api/admin/settings_router.py:1061,
+    provisa/api/admin/settings_router.py:1199, provisa-ui/src/components/admin/EncryptionTab.tsx:25, provisa-ui/src/api/admin.ts:1130,
+    tests/unit/test_admin_config_tabs.py:358, tests/unit/test_admin_config_tabs.py:457, tests/unit/test_encryption_providers.py:9.
+    Later rulings: Amended by REQ-1574: the one-time key display is removed; no surface ever returns a
+    key value, only a fingerprint (REQ-1574). REQ-1575: KMS credentials marked secret are write-only on
+    GET (secret_set bit). REQ-1801: key generation takes effect immediately without restart. REQ-1802:
+    file keystore fallback under the host data directory. REQ-1913: platform administrators only.'
+- id: REQ-919
+  status: complete
+  group: 2. Authentication & Identity
+  category: Authentication
+  priority: SHOULD
+  type: ui
+  since: 2026-07
+  description: 'The authentication provider is configured from the admin UI. The registry lists the providers
+    none, firebase, keycloak, oauth/OIDC and simple, each with its config fields, secret fields marked.
+    An administrator with platform-settings rights reads the selected provider, the per-provider config
+    and the common role settings (default role, assignments source, trust upstream, allow simple auth)
+    from GET /admin/auth, and saves them with PUT /admin/auth. An unknown provider is rejected with a
+    400, and only the config keys the chosen provider declares are persisted. The provider binds at startup,
+    so a change takes effect after a service restart. Secret fields, the simple provider''s JWT signing
+    secret and client secrets, are write-only: the GET returns a bit saying whether a value is set, never
+    the value.'
+  use_case: A platform administrator switches the deployment from open access to an OIDC or Firebase provider
+    and sets the default role from the admin UI.
+  code:
+  - provisa/api/admin/settings_router.py
+  - provisa-ui/src/components/admin/AuthTab.tsx
+  - provisa-ui/src/api/admin.ts
+  tests:
+  - tests/integration/test_settings_router_api.py
+  - tests/unit/test_deployment_endpoints_gate.py
+  scenario: 'Given the auth provider is none
+
+    When an administrator saves provider oauth with a discovery URL and client id
+
+    Then the provider and only its declared config keys are persisted and the response says a restart
+    is required
+
+    Given a provider key not in the registry
+
+    When the administrator saves it
+
+    Then the request is rejected with a 400
+
+    '
+  notes: 'Reverse-engineered 2026-10-03 from the code that cites this id; its text was never committed
+    anywhere in git history. First cited in commit 8752d084 2026-07-06. Citing files: provisa/api/admin/settings_router.py:1328,
+    provisa/api/admin/settings_router.py:1367, provisa-ui/src/components/admin/AuthTab.tsx:31, provisa-ui/src/api/admin.ts:1196.
+    Later rulings: REQ-1575: secret fields are write-only on GET. REQ-1913: gated to platform administrators.'
+- id: REQ-1398
+  status: complete
+  group: 13. Multi-Tenancy & Organizations
+  category: Org AI Model Configuration
+  priority: SHOULD
+  type: behavioral
+  since: 2026-08
+  description: 'An organization may hold its own API key for each LLM vendor whose provider takes a plain
+    api key; the set is anthropic, openai, cohere, groq, mistral, xai, deepseek, together, fireworks,
+    nebius, sambanova and inception, plus a separate Jev key. The keys are org secrets, encrypted at rest,
+    and an administrator sets, replaces or clears them on Admin / AI Models; a blank value clears a vendor''s
+    key. The keys are write-only: the surface reports only which vendors have a key set, never a value.
+    When the org''s LLM calls, model listing and natural-language queries build a client, they use the
+    org''s key for the role''s vendor; a vendor with no org key falls through to the deployment''s environment
+    credential. Vendors whose auth needs more than a key, and keyless local endpoints, are not offered.
+    A stored value may be a ${secret:NAME} reference to the org vault, resolved when the client is built
+    (REQ-1580).'
+  use_case: An organization uses its own Anthropic or OpenAI account for the model-backed features instead
+    of the deployment's shared credential.
+  code:
+  - provisa/llm/vendor_models.py
+  - provisa/llm/client.py
+  - provisa/core/org_secrets.py
+  - provisa/nl/runner.py
+  - provisa/api/admin/ai_models_router.py
+  - provisa/api/admin/discovery.py
+  - provisa/api/admin/schema_helpers.py
+  - provisa-ui/src/components/admin/AiModelsTab.tsx
+  - provisa-ui/src/api/aiModels.ts
+  tests:
+  - tests/integration/test_org_secrets.py
+  - tests/unit/test_llm_client_endpoints.py
+  - tests/unit/test_admin_config_tabs.py
+  scenario: 'Given an org has set its own OpenAI key and the deployment has none
+
+    When an LLM call runs for that org with an OpenAI role
+
+    Then the call uses the org''s key
+
+    Given the org then clears the key
+
+    When the same call runs
+
+    Then it uses the deployment''s environment credential if one exists
+
+    '
+  notes: 'Reverse-engineered 2026-10-03 from the code that cites this id; its text was never committed
+    anywhere in git history. First cited in commit 335bd133 2026-08-08. Citing files: provisa/llm/client.py:54,
+    provisa/llm/vendor_models.py:17, provisa/core/org_secrets.py:11, provisa/core/org_secrets.py:38, provisa/nl/runner.py:513,
+    provisa/api/admin/ai_models_router.py:82, provisa/api/admin/ai_models_router.py:278, provisa/api/admin/discovery.py:98,
+    provisa/api/admin/schema_helpers.py:454, provisa-ui/src/components/admin/AiModelsTab.tsx:63, provisa-ui/src/api/aiModels.ts:49,
+    tests/integration/test_org_secrets.py:131. Later rulings: REQ-1580: a stored key may be a ${secret:NAME}
+    reference, resolved against the org vault at client build. REQ-1918 delete guard: the code does NOT
+    apply it to clearing an AI key. Clearing goes through write_org_secret(None), a plain row delete (provisa/core/org_secrets.py:147)
+    with no dependents check; the guard (provisa/core/secrets_store.py:337-381, called from secrets_router.py:231)
+    governs deleting an org VAULT secret, and treats org_secrets rows (secret_references.py:56) as referrers
+    that can block that delete. Nothing refers to an AI key by name, so none is blocked, but a vault secret
+    named by an AI key reference is refused deletion.'
+- id: REQ-1401
+  status: complete
+  group: 8. Client Access & Protocols
+  category: REST API
+  priority: SHOULD
+  type: behavioral
+  since: 2026-08
+  description: A grouped or aggregate result may carry the underlying rows of each group. On REST and
+    JSON:API the includeNodes query parameter, and on gRPC the include_nodes request field, append a nodes
+    sub-selection of the base table's scalar columns to each group of the group-by result; without it
+    only the group key and aggregates are returned. The natural-language executor and the gRPC Explorer
+    proxy pass the same parameter through. The result is the same rows GraphQL's group-by row returns
+    under its nodes field, shaped into each surface's own envelope. The REST parameter is declared in
+    the generated OpenAPI spec so that the explorer renders an input for it.
+  use_case: A client that groups orders by customer also receives each customer's order rows in the same
+    response.
+  code:
+  - provisa/grpc/query_ir.py
+  - provisa/nl/executor.py
+  - provisa/api/jsonapi/generator.py
+  - provisa/api/rest/generator.py
+  - provisa/api/rest/openapi_spec.py
+  - provisa/api/data/endpoint_grpc_proxy.py
+  - provisa/compiler/schema_gen.py
+  tests:
+  - tests/unit/test_rest_aggregates.py
+  - tests/unit/test_grpc_aggregates.py
+  - tests/unit/test_nl_aggregation_routing.py
+  - tests/unit/test_openapi_spec.py
+  - tests/unit/test_group_by.py
+  - tests/integration/test_grpc_proxy.py
+  scenario: 'Given a table exposes a group-by endpoint
+
+    When a client calls it with groupBy and includeNodes=true
+
+    Then each group carries its aggregates and a nodes array of the group''s base-table rows
+
+    Given the same call without includeNodes
+
+    When the response is read
+
+    Then no nodes are present
+
+    '
+  notes: 'Reverse-engineered 2026-10-03 from the code that cites this id; its text was never committed
+    anywhere in git history. First cited in commit 335bd133 2026-08-08. Citing files: provisa/grpc/query_ir.py:601,
+    provisa/nl/executor.py:478, provisa/api/jsonapi/generator.py:365, provisa/api/jsonapi/generator.py:483,
+    provisa/api/jsonapi/generator.py:783, provisa/api/data/endpoint_grpc_proxy.py:308, provisa/api/rest/openapi_spec.py:321,
+    provisa/api/rest/generator.py:154, provisa/api/rest/generator.py:347, provisa/api/rest/generator.py:428,
+    provisa/api/rest/generator.py:565, tests/integration/test_grpc_proxy.py:199. Later rulings: REQ-1402:
+    includeNodes accepts a field projection (JSON array or comma list of dot paths) in addition to true/false.
+    REQ-1408: a separate include selects related columns inside nodes. REQ-1929: surfaces derive from
+    GraphQL; this parameter only toggles a selection GraphQL already exposes, so it is consistent.'
