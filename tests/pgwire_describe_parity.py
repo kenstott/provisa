@@ -36,7 +36,7 @@ class RuntimeEngine:
         self.executed: list[str] = []
         self.described: list[str] = []
 
-    def execute_engine_sync(self, sql, params, *, session_hints=None):
+    def execute_engine_sync(self, sql, params, *, session_hints=None, authorization=None):
         self.executed.append(sql)
         return self._rt.run_sync(sql, params)
 
