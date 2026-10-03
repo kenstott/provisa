@@ -47918,62 +47918,65 @@
     accidentally create one bound to production. Making the behaviour depend on where the model came from
     would put the guarantee behind a judgement about provenance, and the case that gets it wrong is the
     case that matters. Binding is therefore always a second, deliberate act against an environment that
-    already exists, and REQ-1499 is the only way credentials ever arrive by copy. (Amended 2026-08-21,
-    checkout keeps bindings:) Loading a different branch or sha into an environment that ALREADY EXISTS
-    is a checkout, and it is not the creation of REQ-1488: it replaces the carried classes wholesale --
-    not a merge by identity, since a checkout is what the operator asked for -- and it KEEPS the environment''s
-    bindings, secrets, members and grants untouched. That follows from the tree never having held them:
-    there is nothing in the incoming tree to overwrite them with. It is also the point of the whole arrangement
-    -- switch to a colleague''s branch and keep pointing at your own database -- and it is why creation
-    strips unconditionally while checkout strips nothing: creation has no bindings to preserve, and a
-    checkout''s bindings were established by the deliberate act this requirement demands. A source that
-    arrives in the incoming tree and has no binding in this environment is unbound in the marked sense
-    above, not broken. (Amended 2026-08-21:) The second act this requirement demands does not have to
-    be a form: REQ-1529''s binding profiles make it a single click on a target an org_admin authored,
-    which keeps the guarantee while removing the reason to avoid branching. (Amended 2026-08-21, WHERE
-    the model came from decides whether bindings are stripped:) The unconditional strip above is narrowed
-    to what it was actually protecting against -- a model arriving from OUTSIDE this organization''s control
-    plane. An uploaded config, an exported file set (REQ-1502), a foreign repository sha and any other
-    import produce an environment in which every source is unbound, absolutely and with no argument, because
-    the connection values in them were authored elsewhere and nobody here vouched for what they point
-    at. A branch taken from the organization''s OWN environment inside the same control plane is not that
-    case: the credentials never leave the org, are never disclosed to the brancher, and were already reachable
-    by whoever could read that environment. Such a branch INHERITS its parent''s bindings, and the developer
-    types nothing. TWO CONDITIONS MAKE THAT SAFE, and both are structural. First, an inherited binding
-    is a REFERENCE to the parent environment''s binding and never a copy of it: no host, username or secret
-    key is materialized in the branch, so a branch discloses nothing, rotating the parent''s credential
-    re-points the branch in the same act, and revoking it revokes the branch''s reach. [SUPERSEDED by
-    REQ-1539, 2026-10-03 -- REQ-1539 (and this requirement''s own 2026-08-22 amendment) withdrew the read-only
-    mode; the block is not tagged SUPERSEDED. The scenario line ''it is refused whatever rights they hold,
-    because an inherited binding is read-only'' is stale for the same reason. Kept here for history; do
-    not implement against it.] Second, an inherited binding is READ-ONLY -- a write through one is refused
-    whatever rights the writer holds, including the environment authority of REQ-1528. [END SUPERSEDED
-    BLOCK] That is precisely REQ-1492''s compound failure taken apart: [SUPERSEDED by REQ-1539, 2026-10-03
-    -- Write permission is the roles'' answer; an inherited binding is writable (tests/unit/test_env_binding_writes.py:55-63).
-    Kept here for history; do not implement against it.] the branch inherits where its parent points but
-    never the ability to write there, so a branch of prod can read prod-shaped data and cannot damage
-    prod. [END SUPERSEDED BLOCK] Writing needs a binding the environment established for itself -- a REQ-1529
-    profile an org_admin authored, or a credential an org_admin issued (REQ-1503) -- which is the deliberate
-    second act this requirement has always demanded, now demanded only where a write is actually wanted.
-    A branch therefore reaches exactly what its creator could already reach, in exactly the mode they
-    could already reach it, and no single action still creates an environment that can WRITE to production.
-    (Amended 2026-08-21, the mode is the BASE''s:) [SUPERSEDED by REQ-1539, 2026-10-03 -- branch_writable
-    and the branch policy were removed; no such flag exists in code. Kept here for history; do not implement
-    against it.] whether an inherited binding is read-only is not fixed at read-only for every branch
-    -- it is the branch policy REQ-1529 puts on the base the branch came from, defaulting to read-only.
-    A branch of a base bound to a dev database may write to it if the org_admin marked that base branch-writable;
-    a branch of a base bound to production may not, because nobody marked it so. [END SUPERSEDED BLOCK]
-    The guarantee is unchanged in the case it exists for: no member action produces an environment that
-    can write where an org_admin did not say branches may write. (Amended 2026-08-22, THE BRANCH POLICY
-    IS WITHDRAWN, REQ-1539:) the read-only-by-default mode and the branch-writable flag that widened it
-    are both removed. They answered the wrong question. What a person may do to DATA is what their ROLES
-    say, in a branch exactly as in the org, and an environment is a namespace for the MODEL rather than
-    a second permission system layered over the one that already answers it. The compound failure this
-    requirement names is still taken apart, but at the half that actually caused it: the authority REQ-1528
-    confers on whoever creates an environment no longer includes write, full_results or usage, so no member
-    action produces write authority over data anywhere. What survives on the write path is REQ-1491 alone
-    -- a write through a source unbound here and in everything it inherited from is refused, because there
-    is no established target to write to.'
+    already exists, [SUPERSEDED by REQ-1491 amendment, 2026-10-03 -- REQ-1499 (replicating an environment
+    whole) is rejected as out of V1 scope, so no copy carries credentials. Kept here for history; do not
+    implement against it.] and REQ-1499 is the only way credentials ever arrive by copy [END SUPERSEDED
+    BLOCK]. (Amended 2026-08-21, checkout keeps bindings:) Loading a different branch or sha into an environment
+    that ALREADY EXISTS is a checkout, and it is not the creation of REQ-1488: it replaces the carried
+    classes wholesale -- not a merge by identity, since a checkout is what the operator asked for -- and
+    it KEEPS the environment''s bindings, secrets, members and grants untouched. That follows from the
+    tree never having held them: there is nothing in the incoming tree to overwrite them with. It is also
+    the point of the whole arrangement -- switch to a colleague''s branch and keep pointing at your own
+    database -- and it is why creation strips unconditionally while checkout strips nothing: creation
+    has no bindings to preserve, and a checkout''s bindings were established by the deliberate act this
+    requirement demands. A source that arrives in the incoming tree and has no binding in this environment
+    is unbound in the marked sense above, not broken. (Amended 2026-08-21:) The second act this requirement
+    demands does not have to be a form: REQ-1529''s binding profiles make it a single click on a target
+    an org_admin authored, which keeps the guarantee while removing the reason to avoid branching. (Amended
+    2026-08-21, WHERE the model came from decides whether bindings are stripped:) The unconditional strip
+    above is narrowed to what it was actually protecting against -- a model arriving from OUTSIDE this
+    organization''s control plane. An uploaded config, an exported file set (REQ-1502), a foreign repository
+    sha and any other import produce an environment in which every source is unbound, absolutely and with
+    no argument, because the connection values in them were authored elsewhere and nobody here vouched
+    for what they point at. A branch taken from the organization''s OWN environment inside the same control
+    plane is not that case: the credentials never leave the org, are never disclosed to the brancher,
+    and were already reachable by whoever could read that environment. Such a branch INHERITS its parent''s
+    bindings, and the developer types nothing. TWO CONDITIONS MAKE THAT SAFE, and both are structural.
+    First, an inherited binding is a REFERENCE to the parent environment''s binding and never a copy of
+    it: no host, username or secret key is materialized in the branch, so a branch discloses nothing,
+    rotating the parent''s credential re-points the branch in the same act, and revoking it revokes the
+    branch''s reach. [SUPERSEDED by REQ-1539, 2026-10-03 -- REQ-1539 (and this requirement''s own 2026-08-22
+    amendment) withdrew the read-only mode; the block is not tagged SUPERSEDED. The scenario line ''it
+    is refused whatever rights they hold, because an inherited binding is read-only'' is stale for the
+    same reason. Kept here for history; do not implement against it.] Second, an inherited binding is
+    READ-ONLY -- a write through one is refused whatever rights the writer holds, including the environment
+    authority of REQ-1528. [END SUPERSEDED BLOCK] That is precisely REQ-1492''s compound failure taken
+    apart: [SUPERSEDED by REQ-1539, 2026-10-03 -- Write permission is the roles'' answer; an inherited
+    binding is writable (tests/unit/test_env_binding_writes.py:55-63). Kept here for history; do not implement
+    against it.] the branch inherits where its parent points but never the ability to write there, so
+    a branch of prod can read prod-shaped data and cannot damage prod. [END SUPERSEDED BLOCK] Writing
+    needs a binding the environment established for itself -- a REQ-1529 profile an org_admin authored,
+    or a credential an org_admin issued (REQ-1503) -- which is the deliberate second act this requirement
+    has always demanded, now demanded only where a write is actually wanted. A branch therefore reaches
+    exactly what its creator could already reach, in exactly the mode they could already reach it, and
+    no single action still creates an environment that can WRITE to production. (Amended 2026-08-21, the
+    mode is the BASE''s:) [SUPERSEDED by REQ-1539, 2026-10-03 -- branch_writable and the branch policy
+    were removed; no such flag exists in code. Kept here for history; do not implement against it.] whether
+    an inherited binding is read-only is not fixed at read-only for every branch -- it is the branch policy
+    REQ-1529 puts on the base the branch came from, defaulting to read-only. A branch of a base bound
+    to a dev database may write to it if the org_admin marked that base branch-writable; a branch of a
+    base bound to production may not, because nobody marked it so. [END SUPERSEDED BLOCK] The guarantee
+    is unchanged in the case it exists for: no member action produces an environment that can write where
+    an org_admin did not say branches may write. (Amended 2026-08-22, THE BRANCH POLICY IS WITHDRAWN,
+    REQ-1539:) the read-only-by-default mode and the branch-writable flag that widened it are both removed.
+    They answered the wrong question. What a person may do to DATA is what their ROLES say, in a branch
+    exactly as in the org, and an environment is a namespace for the MODEL rather than a second permission
+    system layered over the one that already answers it. The compound failure this requirement names is
+    still taken apart, but at the half that actually caused it: the authority REQ-1528 confers on whoever
+    creates an environment no longer includes write, full_results or usage, so no member action produces
+    write authority over data anywhere. What survives on the write path is REQ-1491 alone -- a write through
+    a source unbound here and in everything it inherited from is refused, because there is no established
+    target to write to.'
   use_case: A newly created dev environment is inert until an administrator says what it reaches, and
     cannot reach production by inheriting a connection or a credential reference.
   code:
@@ -48087,8 +48090,7 @@
   - REQ-869
   - REQ-1529
 - id: REQ-1493
-  status: proposed
-  target: 2026-Q4
+  status: rejected
   group: 13. Multi-Tenancy & Organizations
   category: Environments
   priority: SHOULD
@@ -48127,9 +48129,9 @@
   - REQ-1491
   - REQ-1494
   - REQ-1495
+  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
 - id: REQ-1494
-  status: proposed
-  target: 2026-Q4
+  status: rejected
   group: 13. Multi-Tenancy & Organizations
   category: Environments
   priority: SHOULD
@@ -48164,9 +48166,9 @@
   related_reqs:
   - REQ-1493
   - REQ-1489
+  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
 - id: REQ-1495
-  status: proposed
-  target: 2026-Q4
+  status: rejected
   group: 13. Multi-Tenancy & Organizations
   category: Environments
   priority: MAY
@@ -48199,6 +48201,7 @@
   related_reqs:
   - REQ-1493
   - REQ-1320
+  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
 - id: REQ-1496
   status: proposed
   target: 2026-Q4
@@ -48392,7 +48395,7 @@
   - REQ-1486
   - REQ-1348
 - id: REQ-1498
-  status: proposed
+  status: accepted
   target: 2026-Q4
   group: 13. Multi-Tenancy & Organizations
   category: Environments
@@ -48438,9 +48441,9 @@
   - REQ-1491
   - REQ-1492
   - REQ-1496
+  notes: Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built.
 - id: REQ-1499
-  status: proposed
-  target: 2026-Q4
+  status: rejected
   group: 13. Multi-Tenancy & Organizations
   category: Environments
   priority: MAY
@@ -48487,9 +48490,9 @@
   - REQ-1491
   - REQ-1492
   - REQ-1493
+  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
 - id: REQ-1500
-  status: proposed
-  target: 2026-Q4
+  status: rejected
   group: 13. Multi-Tenancy & Organizations
   category: Environments
   priority: MAY
@@ -48530,6 +48533,7 @@
   - REQ-1498
   - REQ-1493
   - REQ-1487
+  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
 - id: REQ-1501
   status: proposed
   target: 2026-Q4
@@ -48627,7 +48631,7 @@
   - REQ-1498
   - REQ-1524
 - id: REQ-1503
-  status: proposed
+  status: accepted
   target: 2026-Q4
   group: 13. Multi-Tenancy & Organizations
   category: Environments
@@ -48664,6 +48668,7 @@
   - REQ-1487
   - REQ-1489
   - REQ-1529
+  notes: Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built.
 - id: REQ-1504
   status: proposed
   target: 2026-Q4
@@ -48767,7 +48772,7 @@
   - REQ-1490
   since: 2026-08
 - id: REQ-1506
-  status: proposed
+  status: accepted
   target: 2026-Q4
   group: 13. Multi-Tenancy & Organizations
   category: Environments
@@ -48806,8 +48811,9 @@
   - REQ-1490
   - REQ-1502
   - REQ-1504
+  notes: Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built.
 - id: REQ-1507
-  status: proposed
+  status: accepted
   target: 2026-Q4
   group: 13. Multi-Tenancy & Organizations
   category: Environments
@@ -48865,6 +48871,7 @@
   - REQ-1370
   - REQ-1452
   - REQ-1502
+  notes: Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built.
 - id: REQ-1508
   status: proposed
   target: 2026-Q4
@@ -50915,13 +50922,17 @@
     WITH OR WITHOUT A BEARER: a deployment with auth disabled branches its model exactly as an authenticated
     one does, and gating this on a token would pin every such deployment to prod with no way to say otherwise.
     AN UNSELECTED ENVIRONMENT SENDS NO HEADER rather than sending ``prod``: the server serves prod to
-    a request naming none, so clearing the selection is deleting the key. SWITCHING RELOADS THE DOCUMENT
-    rather than re-rendering, because the Apollo cache holds the previous environment''s domains, tables
-    and roles and a re-render would keep serving them. A SELECTION THE ORG NO LONGER HAS IS REPAIRED,
-    NOT FALLEN BACK FROM: the switcher drops a stored name absent from the org''s list and reloads --
-    the server''s own answer to an unknown environment is a 404 and never prod, and the two must not disagree.
-
-    '
+    a request naming none, so clearing the selection is deleting the key. [SUPERSEDED by REQ-1532 amendment,
+    2026-10-03 -- switching does not reload the document; it resets the client''s cached model. Kept here
+    for history; do not implement against it.] SWITCHING RELOADS THE DOCUMENT rather than re-rendering,
+    because the Apollo cache holds the previous environment''s domains, tables and roles and a re-render
+    would keep serving them. [END SUPERSEDED BLOCK] A SELECTION THE ORG NO LONGER HAS IS REPAIRED, NOT
+    FALLEN BACK FROM: the switcher drops a stored name absent from the org''s list and reloads -- the
+    server''s own answer to an unknown environment is a 404 and never prod, and the two must not disagree.
+    (Amended 2026-10-03, SWITCHING DOES NOT RELOAD THE DOCUMENT:) Switching environments keeps the document
+    and discards what the client holds of the previous environment''s model: the Apollo store is reset
+    and the persisted cache dropped, so nothing of the previous environment''s domains, tables or roles
+    is served. A stored selection the org no longer has is still dropped and the page reloaded.'
   use_case: A modeler picks `dev` from the switcher beside the org name; the page reloads and every screen
     -- REST and GraphQL alike -- is reading the dev branch of the model until they pick prod again.
   scenario: 'Given an org with more than one environment
@@ -51691,18 +51702,23 @@
   priority: SHOULD
   type: behavioral
   description: 'A MERGE LANDS AS ONE COMMIT on the target''s branch -- the source''s line squashed FROM
-    ITS CURRENT SHA BACK to where the two branches parted. The merge of REQ-1490 copies a model by identity
-    rather than replaying a history, so what the target gains is a single new state, and the only projection
-    that matches it is a single commit. Until now the merge wrote model rows and committed nothing, which
-    left the target holding a model its branch did not describe: the very drift the write-through of REQ-1524
-    exists to prevent. The squash carries the provenance a reader needs and nothing it cannot honour --
-    the message names the source environment and the sha it was at, which is the one end of the range
-    the target took; the other end is the merge base and is derivable from the two branches. THE SOURCE
-    IS NOT REWRITTEN. Its commits stay in the object store, stay reachable by sha and stay deployable,
-    so a squash adds a state to the target rather than removing one from anywhere. The same single commit
-    lands whether the merge was direct or approved (REQ-1504), because what an approver approved was the
-    state and not a history, and it records the target''s position (REQ-1543) so an undo steps back from
-    the merge rather than through it.'
+    ITS CURRENT SHA BACK to where the two branches parted. [SUPERSEDED by REQ-1548, 2026-10-03 -- the
+    landing half of a merge goes through the one deploy path, not a row copy between schemas. Kept here
+    for history; do not implement against it.] The merge of REQ-1490 copies a model by identity rather
+    than replaying a history, so what the target gains is a single new state, and the only projection
+    that matches it is a single commit. [END SUPERSEDED BLOCK] Until now the merge wrote model rows and
+    committed nothing, which left the target holding a model its branch did not describe: the very drift
+    the write-through of REQ-1524 exists to prevent. The squash carries the provenance a reader needs
+    and nothing it cannot honour -- the message names the source environment and the sha it was at, which
+    is the one end of the range the target took; the other end is the merge base and is derivable from
+    the two branches. THE SOURCE IS NOT REWRITTEN. Its commits stay in the object store, stay reachable
+    by sha and stay deployable, so a squash adds a state to the target rather than removing one from anywhere.
+    The same single commit lands whether the merge was direct or approved (REQ-1504), because what an
+    approver approved was the state and not a history, and it records the target''s position (REQ-1543)
+    so an undo steps back from the merge rather than through it. (Amended 2026-10-03, THE MERGE LANDS
+    THROUGH THE ONE DEPLOY PATH:) The landing half of a merge is the one deploy path (REQ-1548): the merged
+    tree is applied to the target as a deploy applies any tree, and that apply produces the one commit
+    this requirement describes. There is no separate row copy between the two schemas.'
   use_case: A feature environment is merged into staging and staging's branch gains one commit naming
     the source and its sha.
   scenario: 'Given a source environment at a sha with several commits since the branch point
@@ -51853,14 +51869,19 @@
     a different one is possible and is an explicit act. What lands is one commit (REQ-1545), and the state
     it holds is the source''s CURRENT POSITION rather than its branch tip -- which matters exactly when
     the source has stepped back (REQ-1543), because an environment that undid its last two commits means
-    to merge what it is showing, not what it abandoned. This needs no special case: the merge copies the
-    model the source HOLDS, and after an undo the model it holds is the tree at the undo point. Two options
-    ride the merge and both are off by default. ``retire_source`` ends the source once its work has landed
-    -- its schemas, its row, its branch. ``retire_remote`` also deletes the branch on the org''s git host,
-    and is separate because the remote copy is what survives a lost volume (REQ-1546): ending an environment
-    here never implies ending it there. Both ride the approval row when the target is protected, because
-    an approver approves a specific operation and "merge this", "merge this and end the branch" and "merge
-    this and end it everywhere" are three of them.'
+    to merge what it is showing, not what it abandoned. [SUPERSEDED by REQ-1548, 2026-10-03 -- the merge
+    applies the tree at the source''s current position through the one deploy path, not a row copy. Kept
+    here for history; do not implement against it.] This needs no special case: the merge copies the model
+    the source HOLDS, and after an undo the model it holds is the tree at the undo point. [END SUPERSEDED
+    BLOCK] Two options ride the merge and both are off by default. ``retire_source`` ends the source once
+    its work has landed -- its schemas, its row, its branch. ``retire_remote`` also deletes the branch
+    on the org''s git host, and is separate because the remote copy is what survives a lost volume (REQ-1546):
+    ending an environment here never implies ending it there. Both ride the approval row when the target
+    is protected, because an approver approves a specific operation and "merge this", "merge this and
+    end the branch" and "merge this and end it everywhere" are three of them. (Amended 2026-10-03, WHAT
+    LANDS IS THE SOURCE''S CURRENT TREE, THROUGH THE ONE DEPLOY PATH:) The merge takes the tree at the
+    source''s current position, which after an undo is the tree at the undo point, and lands it on the
+    target through the one deploy path (REQ-1548).'
   use_case: A finished feature environment merges back into the environment it branched from and is removed
     locally and on the git host in the same act.
   scenario: 'Given a feature environment branched from staging and sitting at an undo point
