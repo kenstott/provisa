@@ -20868,9 +20868,9 @@ Views feature (domain SQL views) must validate that all foreign tables reference
 
 ### REQ-446 · Graph Analytics Pipeline {#REQ-446}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-642](#REQ-642) · **Priority:** SHOULD · **Type:** behavioral
 
-The Cypher compiler must support a high-value subset of `CALL gds.*` procedure syntax, implemented via igraph rather than a Neo4j GDS dependency. Target procedures: `gds.pageRank.stream`, `gds.louvain.stream` (community detection), `gds.betweenness.stream`, `gds.closeness.stream`, `gds.wcc.stream` (weakly connected components), `gds.nodeSimilarity.stream`. The governed subgraph (nodes and edges, filtered by RLS and domain permissions) is materialized by Provisa before being passed to igraph — no data outside the caller's access is visible to the algorithm. Results are returned as tabular output consistent with all other Cypher query responses.
+Graph analytics over a query result are provided by the Graph Explorer in the browser, automatically: the statistics panel ([REQ-642](#REQ-642)) and the degree values each node carries ([REQ-643](#REQ-643)).
 
 **Code:** —
 

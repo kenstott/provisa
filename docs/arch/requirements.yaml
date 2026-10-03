@@ -72484,24 +72484,19 @@
     cross-domain entry via views (REQ-367/REQ-610). grep found no implementation.'
   superseded_by: REQ-366
 - id: REQ-446
-  status: proposed
+  status: superseded
   group: 5. Query Languages, Compilation & Operations
   category: Graph Analytics Pipeline
   priority: SHOULD
   type: behavioral
-  description: 'The Cypher compiler must support a high-value subset of `CALL gds.*` procedure syntax,
-    implemented via igraph rather than a Neo4j GDS dependency. Target procedures: `gds.pageRank.stream`,
-    `gds.louvain.stream` (community detection), `gds.betweenness.stream`, `gds.closeness.stream`, `gds.wcc.stream`
-    (weakly connected components), `gds.nodeSimilarity.stream`. The governed subgraph (nodes and edges,
-    filtered by RLS and domain permissions) is materialized by Provisa before being passed to igraph —
-    no data outside the caller''s access is visible to the algorithm. Results are returned as tabular
-    output consistent with all other Cypher query responses.'
-  notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
-    written on 2026-04-29 under the heading ''Security''; it was dropped when requirements.md became generated
-    from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: No CALL gds.* support
-    and no igraph usage in provisa/ (grep); CALL only does correlated subqueries (cypher/correlated_call.py).
-    Graph analytics is the NetworkX endpoint REQ-642. Category/group moved from Security. Maintainer 2026-10-03:
-    unbuilt; prioritised by score.'
+  description: 'Graph analytics over a query result are provided by the Graph Explorer in the browser,
+    automatically: the statistics panel (REQ-642) and the degree values each node carries (REQ-643).'
+  notes: 'Maintainer 2026-10-03: the automatic browser-based features are sufficient; rescoped and considered
+    done. The earlier text asked for graph procedures called from Cypher (pagerank, betweenness, community
+    detection and others, run server-side); that wording is removed at the maintainer''s direction. Rescoped,
+    it states what REQ-642 and REQ-643 already state, so it is superseded by REQ-642 rather than kept
+    as a third copy. Originally restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^.'
+  superseded_by: REQ-642
 - id: REQ-447
   status: superseded
   group: 8. Client Access & Protocols
