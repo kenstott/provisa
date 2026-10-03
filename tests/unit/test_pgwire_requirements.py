@@ -924,47 +924,75 @@ class TestReq585CopySupport:
 
 
 # ---------------------------------------------------------------------------
-# REQ-586 / REQ-615 — COPY FROM is a write, and pgwire takes no writes
+# REQ-586 — COPY FROM is a bulk INSERT, admitted like one
 # ---------------------------------------------------------------------------
 
 
-class TestReq586CopyFromRefused:
-    """REQ-586 as ruled 2026-10-02: ``COPY … FROM STDIN`` is refused on every source type, with
-    the refusal an INSERT over pgwire gets (REQ-615), before the client is asked for any data."""
+class TestReq586CopyFromAdmitted:
+    """``COPY … FROM STDIN`` (maintainer correction 2026-10-03) is a bulk INSERT into an existing
+    registered table, admitted like one: the write right and the columns' writable_by before any
+    data is asked for, the role's row filter over every row before any row is written."""
 
-    @pytest.mark.parametrize(
-        "statement",
-        [
-            "COPY orders FROM STDIN",
-            "COPY sales.orders (id, region) FROM STDIN",
-            "copy sales.orders from stdin with (format csv)",
-        ],
-    )
-    def test_copy_from_is_refused_before_any_data_is_asked_for(self, statement):
-        from provisa.compiler.definitions import definition_refusal
-        from provisa.pgwire._pipeline import WriteNotAvailableOverPgwire
+    def test_a_role_without_the_write_right_is_refused_before_any_data_is_asked_for(self):
+        from types import SimpleNamespace
+
+        from provisa.compiler.rls import RLSContext
+        from provisa.compiler.write_admission import WriteNotAdmitted
         from provisa.pgwire.copy_handler import CopyHandler
 
         handler = object.__new__(CopyHandler)
         handler._h = MagicMock()
         ctx = MagicMock()
-        ctx.session.role_id = "org_admin"
-
-        with pytest.raises(WriteNotAvailableOverPgwire) as raised:
-            handler.handle(ctx, statement)
-        assert "COPY ... FROM STDIN is not available over pgwire" in str(raised.value)
-        # the refusal pgwire answers with SQLSTATE 0A000
-        assert definition_refusal(raised.value) is raised.value
-        # no CopyInResponse was sent and nothing was read from the client
-        handler._h.wfile.write.assert_not_called()
+        ctx.session.role_id = "reader"
+        tm = SimpleNamespace(source_id="pg", table_id=1, domain_id="sales", table_name="orders")
+        fake_state = SimpleNamespace(
+            source_types={"pg": "postgresql"},
+            roles={
+                "reader": {
+                    "id": "reader",
+                    "capabilities": ["query_development"],
+                    "domain_access": ["*"],
+                }
+            },
+            rls_contexts={"reader": RLSContext.empty()},
+            masking_rules={},
+            contexts={"reader": SimpleNamespace(tables={})},
+            tables=[],
+            relationships=[],
+        )
+        with (
+            patch("provisa.pgwire.copy_handler._find_table_meta", return_value=(tm, ["id"])),
+            patch("provisa.pgwire.copy_handler.state", fake_state),
+        ):
+            with pytest.raises(WriteNotAdmitted, match="'write' right"):
+                handler.handle(ctx, "COPY sales.orders (id) FROM STDIN")
+        handler._h.wfile.write.assert_not_called()  # no CopyInResponse: no data asked for
         handler._h.rfile.read.assert_not_called()
 
-    def test_no_bulk_load_write_path_remains(self):
-        import provisa.pgwire.copy_handler as copy_handler
+    def test_copy_from_a_source_that_takes_no_writes_is_refused(self):
+        from provisa.pgwire.copy_handler import CopyHandler
 
-        for name in ("_insert_rows", "_WRITABLE_SOURCE_TYPES", "_find_table_meta"):
-            assert not hasattr(copy_handler, name), name
-        assert not hasattr(copy_handler.CopyHandler, "_handle_copy_from")
+        handler = object.__new__(CopyHandler)
+        handler._h = MagicMock()
+        fake_tm = MagicMock()
+        fake_tm.source_id = "iceberg_source"
+        fake_state = MagicMock()
+        fake_state.source_types = {"iceberg_source": "iceberg"}
+        ctx = MagicMock()
+        ctx.session.role_id = "dev"
+        with (
+            patch("provisa.pgwire.copy_handler._find_table_meta", return_value=(fake_tm, ["id"])),
+            patch("provisa.pgwire.copy_handler.state", fake_state),
+        ):
+            with pytest.raises(PermissionError, match="not supported for source type"):
+                handler._handle_copy_from(ctx, None, "orders", None, "text", "dev")
+
+    def test_copy_from_column_list_inferred_when_not_provided(self):
+        from provisa.pgwire.copy_handler import _PARSE_FROM_RE
+
+        m = _PARSE_FROM_RE.match("COPY orders FROM STDIN")
+        assert m is not None
+        assert m.group("cols") is None
 
 
 # ---------------------------------------------------------------------------

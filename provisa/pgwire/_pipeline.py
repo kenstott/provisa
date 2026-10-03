@@ -34,7 +34,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
 from provisa.audit.pipeline import PendingAudit
-from provisa.compiler.definitions import NotAvailableHere
 from provisa.executor.result import QueryResult
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
@@ -3541,19 +3540,6 @@ async def _route_compiled(
         )
 
 
-class WriteNotAvailableOverPgwire(NotAvailableHere):
-    """REQ-615: a data write sent over pgwire."""
-
-    def __init__(self, kind: str) -> None:
-        self.kind = kind
-        super().__init__(
-            f"{kind} is not available over pgwire: this listener takes no INSERT, UPDATE, DELETE "
-            "or MERGE. Write through a GraphQL mutation, SQL over HTTP (POST /data/sql), Cypher "
-            "(Bolt or POST /data/cypher) or the MCP run_sql tool, where a write is admitted by "
-            "the role's rights."
-        )
-
-
 _OPENING_WRITE_RE = re.compile(
     r"(?:\s+|--[^\n]*\n?|/\*.*?\*/)*(?P<verb>INSERT|UPDATE|DELETE|MERGE)\b",
     re.IGNORECASE | re.DOTALL,
@@ -3564,13 +3550,6 @@ def opening_write_verb(sql: str) -> str | None:
     """The verb ``sql`` opens with when it opens as a data write, else None."""
     m = _OPENING_WRITE_RE.match(sql)
     return m.group("verb").upper() if m else None
-
-
-def refuse_pgwire_write(sql: str) -> None:
-    """Raise :class:`WriteNotAvailableOverPgwire` when ``sql`` opens as a data write."""
-    verb = opening_write_verb(sql)
-    if verb is not None:
-        raise WriteNotAvailableOverPgwire(verb)
 
 
 async def plan_pgwire_sql(sql: str, role_id: str) -> _Plan:  # REQ-267
@@ -3603,10 +3582,6 @@ async def govern_pgwire_plan(  # REQ-028, REQ-266
     # surface is opted in for this deployment.
     from provisa.pgwire.ext_surfaces import rewrite_surface_operators
 
-    # REQ-615: pgwire carries no data writes. Refused here, on the statement's own words, before
-    # it is rewritten, governed or sent anywhere.
-    refuse_pgwire_write(sql)
-
     sql = rewrite_surface_operators(sql)
 
     # REQ-872: a bare SELECT of a registered tracked function routes to the shared executor
@@ -3631,9 +3606,6 @@ async def govern_pgwire_plan(  # REQ-028, REQ-266
     plan = await _govern_and_route(
         sql, role_id, params=params, serve_cached=True, wire_formats=wire_formats
     )
-    if plan.writes_tables:
-        # A write the opening words did not show (a WITH … INSERT): refused before it runs.
-        raise WriteNotAvailableOverPgwire("A data write")
     return plan
 
 
@@ -3677,7 +3649,6 @@ async def describe_pgwire_statement(sql: str, role_id: str) -> _Described:  # RE
     from provisa.pgwire.function_call import detect_sql_function_call
     from provisa.pgwire.result_shape import derive_result_shape
 
-    refuse_pgwire_write(sql)  # REQ-615: refused at Parse/Describe as at Execute
     sql = rewrite_surface_operators(sql)
     call = detect_sql_function_call(sql, state)
     if call is not None:
