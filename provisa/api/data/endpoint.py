@@ -517,15 +517,37 @@ async def _prepare_compiled(
     as-of reconstruction over each one's append log (default, without it, reads current state)."""
     from provisa.compiler.stage2 import apply_governance, build_governance_context
 
+    # The role's governance, built first: it decides what a view reference becomes (below) and
+    # then governs the whole statement.
+    gov_ctx = build_governance_context(
+        role_id,
+        rls,
+        state.masking_rules,
+        ctx,
+        getattr(state, "tables", []),
+        role=role,
+        relationships=getattr(state, "relationships", None),
+    )
+
     if state.view_sql_map:
         from provisa.compiler.view_expand import expand_views
+        from provisa.mv.view_read import split_for_whole_statement_governance
 
         _vmap = state.view_sql_map
         if as_of and getattr(state, "bitemporal_view_reads", None):
             from provisa.mv.bitemporal import as_of_view_map
 
             _vmap = as_of_view_map(state.view_sql_map, state.bitemporal_view_reads, as_of)
-        compiled = expand_views(compiled, _vmap)
+        # Each view reference becomes what THIS reader may read of it (mv/view_read.py): the
+        # view's SQL now — the statement's validation and governance below reach the tables
+        # inside — or, for a materialized view this reader may read whole, its stored rows,
+        # substituted once the statement has been validated and governed.
+        _views_now, _views_stored = split_for_whole_statement_governance(
+            compiled.sql, _vmap, state, gov_ctx
+        )
+        compiled = expand_views(compiled, _views_now)
+    else:
+        _views_stored = {}
 
     original_sources = set(compiled.sources)
     compiled = rewrite_if_mv_match(compiled, fresh_mvs)
@@ -554,17 +576,7 @@ async def _prepare_compiled(
             state.kafka_table_configs,
         )
 
-    # Governance: compile → semantic SQL → apply RLS/masking/visibility
-    gov_ctx = build_governance_context(
-        role_id,
-        rls,
-        state.masking_rules,
-        ctx,
-        getattr(state, "tables", []),
-        role=role,
-        relationships=getattr(state, "relationships", None),
-    )
-
+    # Governance: compile → semantic SQL → apply RLS/masking/visibility (gov_ctx built above)
     # Validate semantic SQL — V002 (join relationship check) is always skipped for
     # GraphQL because the SDL defines valid relationships by design.
     from provisa.compiler.sql_validator import validate_sql
@@ -610,6 +622,12 @@ async def _prepare_compiled(
             apply_governance(make_semantic_sql(compiled.nodes_sql, ctx), gov_ctx),
             _session_vars_for(role),
         )
+    if _views_stored:
+        from provisa.compiler.view_expand import expand_view_refs
+
+        compiled.sql = expand_view_refs(compiled.sql, _views_stored)
+        if compiled.nodes_sql is not None:
+            compiled.nodes_sql = expand_view_refs(compiled.nodes_sql, _views_stored)
 
     # ABAC approval hook (Phase AE, REQ-203) — evaluated AFTER RLS injection and
     # BEFORE execution. May deny the operation or return an additional filter that is

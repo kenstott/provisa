@@ -1639,7 +1639,15 @@ async def route_governed(
                 from provisa.mv.bitemporal import as_of_view_map
 
                 _vmap = as_of_view_map(_view_map, state.bitemporal_view_reads, as_of)
-            _qualified = expand_view_refs(_qualified, _vmap)
+            # What each view reference becomes for THIS reader (mv/view_read.py): the view's SQL
+            # with the reader's rules on every table it reads, or — for a materialized view and a
+            # reader with no narrower rule on any of its inputs — its stored rows.
+            from provisa.mv.view_read import view_bodies
+
+            _qualified = expand_view_refs(
+                _qualified,
+                view_bodies(_qualified, _vmap, state, gov_ctx),
+            )
             # View bodies are stored in semantic form; after expansion, lower any
             # newly-introduced semantic refs to catalog-physical (same pass the outer SQL
             # went through at line 456 before routing).
@@ -3278,8 +3286,10 @@ async def _route_compiled(
     _view_map = getattr(state, "view_sql_map", None)
     if _view_map:
         from provisa.compiler.view_expand import expand_view_refs
+        from provisa.mv.view_read import view_bodies
 
-        _exec_sql = expand_view_refs(_exec_sql, _view_map)
+        # As on the raw-SQL stage: each view reference becomes what THIS reader may read of it.
+        _exec_sql = expand_view_refs(_exec_sql, view_bodies(_exec_sql, _view_map, state, gov_ctx))
     from provisa.compiler.nf_extractor import extract_nf_args
 
     _exec_sql, _nf_clean_params, _extracted_nf = extract_nf_args(_exec_sql, exec_params or [])
