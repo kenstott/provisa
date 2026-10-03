@@ -528,8 +528,12 @@ class BoltSession:
         self._end_request()  # a RUN over a result that was never drained ends that request
         shield = request_deadline.shielded()
         deadline = request_deadline.open_request("bolt")
+        from provisa.core.statement_warnings import collecting
+
         try:
-            with _audit_scope, request_deadline.bound(deadline):
+            # REQ-1350: one collector for the RUN; what its statements' answers say about
+            # themselves is sent as notifications with the RUN's SUCCESS.
+            with _audit_scope, request_deadline.bound(deadline), collecting() as run_warnings:
                 columns, rows, redirect = await _execute_cypher(
                     cypher,
                     parameters,
@@ -574,9 +578,21 @@ class BoltSession:
         in_tx = self.state in (State.TX_READY, State.TX_STREAMING)
         self.state = State.TX_STREAMING if in_tx else State.STREAMING
         meta: dict = {"fields": columns, "t_first": 0}
+        notifications = [
+            {
+                "code": f"Provisa.{w.code}",
+                "severity": "WARNING",
+                "category": "GENERIC",
+                "title": w.code,
+                "description": w.message,
+            }
+            for w in run_warnings
+        ]
         note = self._license_nag_notification()  # REQ-1137
         if note is not None:
-            meta["notifications"] = [note]
+            notifications.append(note)
+        if notifications:
+            meta["notifications"] = notifications
         self.send_success(meta)
 
     def _license_nag_notification(self) -> dict | None:

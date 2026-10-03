@@ -13,6 +13,8 @@
 - ``X-Schema-Version`` on ``/admin/graphql`` responses (the admin UI's stale-schema check).
 - ``X-Provisa-License-Notice`` on any response while the post-trial nag is active (REQ-1137): an
   out-of-band header — never the response body or a schema-typed field, never a gate.
+- ``X-Provisa-Warnings`` on any response whose request raised statement warnings (REQ-1350):
+  ASCII-escaped JSON ``[{code, params, message}]``, so every HTTP surface carries them.
 - A client that disconnected before any response started is answered 499.
 
 Plain ASGI, not ``@app.middleware("http")`` (Starlette's ``BaseHTTPMiddleware``): that class runs
@@ -22,7 +24,7 @@ its own thread and each of those is another relay to the accepting loop (REQ-188
 ``send`` only and reads nothing.
 """
 
-# Requirements: REQ-1137, REQ-1882
+# Requirements: REQ-1137, REQ-1350, REQ-1882
 
 from __future__ import annotations
 
@@ -58,19 +60,34 @@ class ResponseHeadersMiddleware:
                     (b"x-provisa-license-notice", st.nag_text.replace("\n", " ").encode("ascii"))
                 )
         started = False
+        from provisa.core.statement_warnings import collecting, header_value
 
         async def send_with_headers(message: Any) -> None:
             nonlocal started
             if message["type"] == "http.response.start":
                 started = True
-                if extra:
-                    message = {**message, "headers": [*message.get("headers", ()), *extra]}
+                headers = [*extra]
+                if warnings:
+                    # REQ-1350: what this request's answers say about themselves, on every HTTP
+                    # surface; ASCII-escaped JSON, since a header value outside ASCII fails the
+                    # response it rides on.
+                    headers.append((b"x-provisa-warnings", header_value(warnings).encode("ascii")))
+                if headers:
+                    message = {**message, "headers": [*message.get("headers", ()), *headers]}
             await send(message)
 
+        # One collector for the request (REQ-1350): a statement it runs, on whatever thread, adds
+        # to it (the request's thread runs in a copy of this context).
+        with collecting() as warnings:
+            await self._call(scope, receive, send, send_with_headers, lambda: started)
+
+    async def _call(
+        self, scope: Any, receive: Any, send: Any, send_with_headers: Any, started: Any
+    ) -> None:
         try:
             await self.app(scope, receive, send_with_headers)
         except ClientDisconnect:
-            if started:
+            if started():
                 raise
             await send(
                 {"type": "http.response.start", "status": _CLIENT_CLOSED_REQUEST, "headers": []}

@@ -40,7 +40,7 @@ async def _cp(tmp_path):
 async def test_change_propagates_through_dag_in_one_drain(tmp_path):
     store = f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
     # lineage: mv.daily depends on s.orders  ->  dependents_of(s.orders) == [mv.daily]
-    dep = supervisor.dependents_of({"mv.daily": "SELECT count(*) FROM s.orders"})
+    dep = supervisor.dependents_of({"mv.daily": {"s.orders"}})
 
     async def fetch(_pending):
         return [{"id": 1, "status": "new"}, {"id": 2, "status": "sold"}]
@@ -114,7 +114,7 @@ async def test_reap_reclaims_stale(tmp_path):
 
 def test_dependents_of_rejects_cycle():
     with pytest.raises(ValueError, match="cycle"):
-        supervisor.dependents_of({"mv.a": "SELECT * FROM mv.b", "mv.b": "SELECT * FROM mv.a"})
+        supervisor.dependents_of({"mv.a": {"mv.b"}, "mv.b": {"mv.a"}})
 
 
 @pytest.mark.asyncio
@@ -122,9 +122,7 @@ async def test_three_level_cascade_one_recompute_per_node(tmp_path):
     """REQ-965/966: a root change propagates s.orders → mv.a → mv.b in one drain, each node firing
     exactly once (replace emit), reaching quiescence."""
     store = f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
-    dep = supervisor.dependents_of(
-        {"mv.a": "SELECT count(*) FROM s.orders", "mv.b": "SELECT * FROM mv.a"}
-    )
+    dep = supervisor.dependents_of({"mv.a": {"s.orders"}, "mv.b": {"mv.a"}})
 
     calls = {"src": 0, "a": 0, "b": 0}
 
@@ -206,7 +204,7 @@ async def test_debounced_intermediate_defers_then_ripples_once(tmp_path, monkeyp
     from provisa.federation import store_writer
 
     store = f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
-    dep = supervisor.dependents_of({"mv.b": "SELECT * FROM mv.a"})  # mv.a -> mv.b
+    dep = supervisor.dependents_of({"mv.b": {"mv.a"}})  # mv.a -> mv.b
 
     calls = {"a": 0, "b": 0}
 

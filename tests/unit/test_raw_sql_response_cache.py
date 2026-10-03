@@ -382,6 +382,11 @@ async def test_successful_write_invalidates_its_tables_for_the_org(monkeypatch):
 
     monkeypatch.setattr(store, "invalidate_by_table", _inv)
     monkeypatch.setattr(change_events, "emit_change_event", lambda *a, **k: None)
+
+    async def _no_replica(_state, _table_id, _source_id):
+        return None  # no replica store here: the build request has its own tests
+
+    monkeypatch.setattr("provisa.api.data.table_written._request_replica_build", _no_replica)
     state = _state(store)
     state.contexts["analyst"].tables["a"].table_name = "t"
     stale: list[str] = []

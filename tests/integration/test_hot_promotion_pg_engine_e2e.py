@@ -8,13 +8,18 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Integration: the warm-table sweep addresses a table the way the pg engine does (REQ-239).
+"""Integration: Hot promotion sizes a busy table the way the pg engine addresses it (REQ-826,
+REQ-239).
 
 A real server on the Postgres federation engine, over a Postgres source it reaches through
 postgres_fdw. Postgres has no catalog level — ``"catalog"."schema"."table"`` is refused with
 "cross-database references are not implemented" — so the engine exposes a source's table as
-``"<catalog>_<schema>"."<table>"``. Once a table passes the query threshold, the sweep's size check
-must name it that way.
+``"<catalog>_<schema>"."<table>"``. Once the governed statements that read a table pass its
+threshold, the evaluation's size check must name it that way; a table over the size ceiling is
+then left live, and the admin summary says why.
+
+One server process and the embedded Redis: the one process sees every statement, so promotion
+is decided here (``replica_hot.promotion_runs``).
 
 The Postgres here is the test's own container (engine, control plane and source in one server,
 listening on the same port inside the container as on the host, so the engine's foreign server and
@@ -22,7 +27,7 @@ the host's direct driver dial the same address). It logs every statement, which 
 sees what the sweep actually sent.
 """
 
-# Requirements: REQ-239, REQ-1730
+# Requirements: REQ-826, REQ-239, REQ-1730
 
 from __future__ import annotations
 
@@ -104,14 +109,19 @@ def _config(pg: _Postgres) -> dict:
         },
         "naming": {"domain_prefix": False, "rules": []},
         "cache": {"enabled": False},
-        # Promoted after 3 queries, swept every second; the table is larger than max_rows, so the
-        # sweep sizes it on every pass and never goes on to copy it.
-        "warm_tables": {"query_threshold": 3, "max_rows": _ROWS - 1, "refresh_interval": 1},
+        # Judged every second against 3 statements per second. The table holds more rows than
+        # the ceiling, so each evaluation that finds it busy sizes it and leaves it live.
+        "replication": {"hot_threshold": 3, "hot_max_rows": _ROWS - 1, "hot_interval": 1},
         "domains": [{"id": "shop", "description": "Shop"}],
         "roles": [
             {
                 "id": _ROLE,
-                "capabilities": ["source_registration", "table_registration", "query_development"],
+                "capabilities": [
+                    "source_registration",
+                    "table_registration",
+                    "query_development",
+                    "observability",
+                ],
                 "domain_access": ["*"],
             }
         ],
@@ -124,6 +134,9 @@ def _config(pg: _Postgres) -> dict:
                 "database": "shop",
                 "username": "provisa",
                 "password": "provisa",
+                # The replication clock a Default table needs before it may be promoted (REQ-1907):
+                # without one it is left live however busy, and never sized.
+                "cache_ttl": 86400,
             }
         ],
         "tables": [
@@ -172,36 +185,61 @@ def stack():
         work.cleanup()
 
 
-def _wait_for(pg: _Postgres, text: str, *, count: int, timeout: float = 40.0) -> str:
-    deadline = time.monotonic() + timeout
-    while True:
-        log = pg.log()
-        if log.count(text) >= count:
-            return log
-        if time.monotonic() > deadline:
-            raise AssertionError(
-                f"{text!r} seen {log.count(text)}x, wanted {count}:\n{log[-3000:]}"
-            )
-        time.sleep(0.5)
+def _read(srv, limit: int) -> None:
+    response = httpx.post(
+        f"{srv.base_url}/data/graphql",
+        json={"query": f"{{ orders(limit: {limit}) {{ id amount }} }}"},
+        headers={"X-Provisa-Role": _ROLE},
+        timeout=srv.request_timeout + 10,
+    )
+    assert response.status_code == 200, response.text
+    assert len(response.json()["data"]["orders"]) == limit
 
 
-def test_the_sweep_sizes_a_busy_table_in_the_pg_engines_own_naming(stack):
+def _admin(srv, query: str) -> dict:
+    response = httpx.post(
+        f"{srv.base_url}/admin/graphql",
+        json={"query": query},
+        headers={"X-Provisa-Role": _ROLE},
+        timeout=srv.request_timeout + 10,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert not body.get("errors"), body
+    return body["data"]
+
+
+def test_the_evaluation_sizes_a_busy_table_in_the_pg_engines_own_naming(stack):
     srv, pg = stack
-    # Distinct statements: the counter the sweep reads counts compiled queries.
-    for limit in range(1, 7):
-        response = httpx.post(
-            f"{srv.base_url}/data/graphql",
-            json={"query": f"{{ orders(limit: {limit}) {{ id amount }} }}"},
-            headers={"X-Provisa-Role": _ROLE},
-            timeout=srv.request_timeout + 10,
+    # Keep the table busy — well past 3 governed statements a second — until an evaluation has
+    # found it so and sized it through the engine.
+    deadline = time.monotonic() + 60
+    while _SIZE_CHECK not in pg.log():
+        assert time.monotonic() < deadline, (
+            f"the table was never sized:\n{srv.dump_stderr_debug()[-3000:]}"
         )
-        assert response.status_code == 200, response.text
-        assert len(response.json()["data"]["orders"]) == limit
+        for limit in range(1, 9):
+            _read(srv, limit)
 
-    # Several sweeps, each sizing the table through the engine.
-    log = _wait_for(pg, _SIZE_CHECK, count=3)
+    log = pg.log()
     assert "cross-database references are not implemented" not in log
     assert '"warm_src"."public"."orders"' not in log
     stderr = srv.dump_stderr_debug()
-    assert "Warm-table" not in stderr, stderr[-3000:]
-    assert "Error in warm-table sweep" not in stderr, stderr[-3000:]
+    assert "could not size the table" not in stderr, stderr[-3000:]
+    assert "Hot promotion evaluation failed" not in stderr, stderr[-3000:]
+
+    # Over the ceiling: not promoted, read live, and — while it stays busy — the summary states
+    # the reason (the reason is kept for two intervals after the evaluation that found it).
+    deadline = time.monotonic() + 60
+    while True:
+        for limit in range(1, 9):
+            _read(srv, limit)  # still answered, from the source
+        tables = _admin(srv, "{ tables { tableName refreshPolicySummary { text serving } } }")
+        orders = next(t for t in tables["tables"] if t["tableName"] == "orders")
+        assert orders["refreshPolicySummary"]["serving"] == "live", orders
+        if "replication.hot_max_rows" in orders["refreshPolicySummary"]["text"]:
+            break
+        assert time.monotonic() < deadline, orders
+    assert f"more than {_ROWS - 1} rows" in orders["refreshPolicySummary"]["text"], orders
+    kept = _admin(srv, "{ hotTables { tableName kind } }")["hotTables"]
+    assert [t for t in kept if t["tableName"] == "orders"] == [], kept

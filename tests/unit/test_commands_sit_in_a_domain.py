@@ -11,9 +11,8 @@
 """Every command and webhook sits in a domain (REQ-1531).
 
 Saving one with an empty domain is refused by every path that saves one: the REST create and
-update, and the model store's own upserts, which the config loader and the remote registrations
-use. The caller must reach the domain it saves into, and on an update the domain it moves the
-command out of. A stored row that names no domain is shown to no role: the same fail-closed
+update, and the model store's own upserts, which the config loader uses. The caller must reach
+the domain it saves into, and on an update the domain it moves the command out of. A stored row that names no domain is shown to no role: the same fail-closed
 reading as a role that lists no domain.
 """
 
@@ -55,7 +54,9 @@ async def plane(monkeypatch) -> Database:
         for domain_id in ("sales", "finance"):
             await conn.execute_core(insert(domains).values(id=domain_id, origin="admin"))
         for table in (tracked_functions, tracked_webhooks):
-            await conn.execute_core(insert(table).values(name="in_finance", domain_id="finance"))
+            await conn.execute_core(
+                insert(table).values(origin="admin", name="in_finance", domain_id="finance")
+            )
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "roles", ROLES, raising=False)
     monkeypatch.setattr(domain_policy, "single_domain", lambda: False)
@@ -99,16 +100,18 @@ async def test_the_model_store_refuses_a_command_or_webhook_with_no_domain(plane
                 Function(
                     name="refund", source_id="pg", function_name="refund", returns="", domain_id=""
                 ),
+                origin="admin",
             )
         with pytest.raises(ValueError, match="'notify' names no domain"):
             await function_repo.upsert_webhook(
-                conn, Webhook(name="notify", url="http://x", domain_id="")
+                conn, Webhook(name="notify", url="http://x", domain_id=""), origin="admin"
             )
         await function_repo.upsert_function(
             conn,
             Function(
                 name="refund", source_id="pg", function_name="refund", returns="", domain_id="sales"
             ),
+            origin="admin",
         )
     assert await _domain_of(plane, tracked_functions, "refund") == "sales"
     assert await _domain_of(plane, tracked_webhooks, "notify") is None
@@ -220,7 +223,7 @@ def test_a_stored_command_with_no_domain_is_shown_to_no_role(access):
     assert not any("in_none" in f or "inNone" in f for f in shown), shown
 
 
-# --- an OpenAPI registration whose spec declares commands ----------------------------------------
+# --- an OpenAPI source whose spec declares commands ----------------------------------------------
 
 
 def _spec_with_a_mutation() -> dict:
@@ -255,22 +258,34 @@ def _spec_with_a_mutation() -> dict:
     }
 
 
-async def test_a_registration_with_commands_and_no_domain_is_refused_before_anything_is_written(
-    plane,
-):
+async def test_a_spec_with_commands_needs_no_domain_because_it_saves_no_command(plane, monkeypatch):
+    """REQ-317 (amended 2026-10-02, REQ-1924): a spec's commands are on offer, not saved, so
+    storing the spec needs no domain. A command is saved when one is registered, and that is
+    refused without a domain (test_creating_one_with_no_domain_is_refused above)."""
+    from provisa.api.admin.openapi_router import put_openapi_spec
     from provisa.core.schema_org import registered_tables
-    from provisa.openapi.register import CommandsNeedDomain, auto_register_openapi_source
 
+    monkeypatch.setattr(appmod.state, "openapi_specs", {}, raising=False)
+
+    class _Req:
+        state = _request("everywhere").state
+
+        async def json(self) -> dict:
+            return _spec_with_a_mutation()
+
+    monkeypatch.setattr(
+        "provisa.api.admin.openapi_router.require_capability_request", lambda *_a: None
+    )
+    reply = await put_openapi_spec("pg", _Req())  # type: ignore[arg-type]
+
+    assert reply == {
+        "source_id": "pg",
+        "tables": 0,
+        "available_tables": 1,
+        "mutations": 0,
+        "available_mutations": 1,
+    }
     async with plane.acquire() as conn:
-        with pytest.raises(CommandsNeedDomain) as err:
-            await auto_register_openapi_source("pg", _spec_with_a_mutation(), conn, "")
-        assert (err.value.source_id, err.value.commands) == ("pg", 1)
-        assert "declares 1 command(s) and names no domain" in str(err.value)
-        # Not half-registered: neither its table nor its command landed.
         assert (await conn.execute_core(select(registered_tables.c.id))).fetchall() == []
-        assert await _domain_of(plane, tracked_functions, "create_pet") is None
-
-        tables, commands, _ = await auto_register_openapi_source(
-            "pg", _spec_with_a_mutation(), conn, "sales", base_url="http://x"
-        )
-    assert (tables, commands) == (1, 1)
+    assert await _domain_of(plane, tracked_functions, "create_pet") is None
+    assert await _domain_of(plane, tracked_functions, "createPet") is None

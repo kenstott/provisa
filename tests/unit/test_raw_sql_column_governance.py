@@ -32,6 +32,7 @@ from unittest.mock import patch
 import pytest
 
 from provisa.compiler.compiled_query_cache import CompiledQueryCache
+from provisa.federation.replica_address import ReplicaRoutes
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.compiler.stage2 import build_governance_context, apply_governance
@@ -274,6 +275,8 @@ def _fake_pipeline_state(*, tables: list[dict]) -> SimpleNamespace:
         schema_version=1,
         compiled_query_cache=CompiledQueryCache(),
         routing_cache=CompiledQueryCache(),
+        # as the schema build publishes it: no table is served from a replica (REQ-826)
+        replica_routes=ReplicaRoutes(),
     )
 
 

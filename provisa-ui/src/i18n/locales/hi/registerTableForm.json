@@ -86,6 +86,13 @@
     "errorNeo4jPreviewFirst": "पहले Cypher का प्रीव्यू करें ताकि कॉलम और उनके प्रकार ज्ञात हों।",
     "sparqlQueryLabel": "SPARQL क्वेरी",
     "sparqlQueryHint": "एक SELECT जिसके वेरिएबल कॉलम बनते हैं (हर बाइंडिंग टेक्स्ट है)",
-    "sparqlQueryPlaceholder": "SELECT ?name ?city WHERE { ?a <urn:name> ?name ; <urn:city> ?city }"
+    "sparqlQueryPlaceholder": "SELECT ?name ?city WHERE { ?a <urn:name> ?name ; <urn:city> ?city }",
+    "nlSearchLabel": "विवरण से तालिकाएँ खोजें",
+    "nlSearchPlaceholder": "जैसे ग्राहक बिलिंग और भुगतान तालिकाएँ",
+    "nlSearchButton": "खोजें",
+    "nlSearchNone": "इस स्कीमा में कोई तालिका उस विवरण से मेल नहीं खाती।",
+    "nlSearchConfidence": "{{percent}}%",
+    "nlSearchRegistered": "पंजीकृत",
+    "nlSearchUse": "उपयोग करें"
   }
 }

@@ -161,6 +161,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
     },
     "relationships": {
         "id": "Relationship identifier, unique across the catalog",
+        "origin": "Where it came from: config (a config file declares it), admin (made through "
+        "the admin) or seed (the deployment's own)",
         "source_table_id": "Table the edge starts at",
         "target_table_id": "Table the edge points to",
         "source_column": "Column on the source table that carries the key",
@@ -188,6 +190,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
     },
     "rls_rules": {
         "id": "Rule identifier",
+        "origin": "Where it came from: config (a config file declares it), admin (made through "
+        "the admin) or seed (the deployment's own)",
         "table_id": "Table the predicate is applied to",
         "domain_id": "Domain the rule belongs to",
         "role_id": "Role the predicate applies to",

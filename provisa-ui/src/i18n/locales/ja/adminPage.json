@@ -183,6 +183,8 @@
     "domainDeleted": "「{{id}}」を削除しました",
     "policyApplied": "ドメインポリシーを適用しました。",
     "policyApplyFailed": "ドメインポリシーの適用に失敗しました",
-    "settingsPanel": "設定"
+    "settingsPanel": "設定",
+    "maxRows": "読み取りあたりの最大行数",
+    "maxRowsHint": "ページ分割されたリモートテーブルの1回の読み取りで、カーソルをページごとにたどって取得する最大行数。"
   }
 }

@@ -28,6 +28,7 @@ import pyodbc
 from provisa.core import request_deadline
 from provisa.core.sync_pool import BlockingPool
 from provisa.executor.drivers.base import DirectDriver
+from provisa.executor.drivers.cursor_stream import PooledCursorStream, fetch_chunked
 from provisa.executor.result import QueryResult
 
 
@@ -89,11 +90,31 @@ class SQLServerDriver(DirectDriver):  # REQ-052, REQ-068, REQ-229, REQ-550
             try:
                 with request_deadline.cancel_on_deadline(cur.cancel):
                     cur.execute(exec_sql, bound)
-                    rows = cur.fetchall() if cur.description else []
+                    rows = fetch_chunked(cur) if cur.description else []
                 columns = [desc[0] for desc in cur.description] if cur.description else []
             finally:
                 cur.close()
-        return QueryResult(rows=[tuple(r) for r in rows], column_names=columns)
+        return QueryResult(rows=rows, column_names=columns)
+
+    @property
+    def supports_streaming(self) -> bool:  # REQ-1190
+        return True
+
+    # Async only for the DirectDriver awaitable contract; opens synchronously in-thread.
+    async def open_stream(
+        self, sql: str, params: list | None = None
+    ) -> PooledCursorStream:  # REQ-1190
+        """The result a batch at a time: pyodbc reads from the server as fetchmany asks."""
+        from provisa.compiler.params import bind_positionally
+
+        exec_sql, bound = bind_positionally(sql, params, "?")
+        return PooledCursorStream(
+            self._require_pool(),
+            open_cursor=lambda conn: conn.cursor(),
+            execute=lambda cur: cur.execute(exec_sql, bound),
+            columns=lambda cur: [desc[0] for desc in cur.description],
+            cancel=lambda _conn, cur: cur.cancel(),
+        )
 
     # Async only for the DirectDriver awaitable contract; closes synchronously in-thread.
     async def close(self) -> None:

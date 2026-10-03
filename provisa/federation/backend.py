@@ -228,7 +228,11 @@ class EngineBackend:
         fixed = fixed_catalog_for(self.engine)
         if fixed:
             return fixed
-        return self.materialize_store_target(state, active_org_id(state))[0]
+        return self._store_catalog(state, active_org_id(state))
+
+    def _store_catalog(self, state: Any, org_id: str) -> str:
+        """The catalog this engine names its materialization store by: that of its MV target."""
+        return self.materialize_store_target(state, org_id)[0]
 
     def pending_lands(
         self,

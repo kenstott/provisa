@@ -86,6 +86,13 @@
     "errorNeo4jPreviewFirst": "請先預覽 Cypher，以便得知欄位及其類型。",
     "sparqlQueryLabel": "SPARQL 查詢",
     "sparqlQueryHint": "其變數成為欄位的 SELECT（每個繫結皆為文字）",
-    "sparqlQueryPlaceholder": "SELECT ?name ?city WHERE { ?a <urn:name> ?name ; <urn:city> ?city }"
+    "sparqlQueryPlaceholder": "SELECT ?name ?city WHERE { ?a <urn:name> ?name ; <urn:city> ?city }",
+    "nlSearchLabel": "按描述尋找表",
+    "nlSearchPlaceholder": "例如：客戶發票及付款表",
+    "nlSearchButton": "搜尋",
+    "nlSearchNone": "此結構描述中沒有與該描述相符的表。",
+    "nlSearchConfidence": "{{percent}}%",
+    "nlSearchRegistered": "已註冊",
+    "nlSearchUse": "使用"
   }
 }

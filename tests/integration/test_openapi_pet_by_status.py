@@ -136,35 +136,34 @@ def _make_config(spec_path: str) -> dict:
 
 
 @pytest_asyncio.fixture(scope="module")
-async def pg_conn(tenant_db):
+async def pg_conn(tenant_db, platform_admin_db):
+    # platform_admin_db: load_config binds the org vault (REQ-1580/REQ-1730), read off
+    # state.admin_db — this module brings its own rather than inheriting another module's.
     # load_config runs against the control-plane Database shim (advisory_xact_lock,
-    # execute_core), scoped to org_default — the same connection the app uses.
-    # tenant_db itself leaves search_path unset (public), per tests/conftest.py's
-    # tenant_db fixture docstring — callers that need org_default must set it
-    # per-acquire, same as test_schema_gen.py's _load_config fixture. This module
-    # is marked group_sources and is not guaranteed to run after another group's
-    # test module has bootstrapped the org_default schema (e.g. `-m group_sources`
-    # deselects the app-boot tests that would otherwise create it), so init_schema
-    # is called here too — idempotent (CREATE SCHEMA/TABLE IF NOT EXISTS).
-    await init_schema(tenant_db, _SCHEMA_SQL)
+    # execute_core), as the app does; init_schema creates the org schema it loads into.
+    #
+    # REQ-1919: the org schema is this module's own. A config load removes what its file no
+    # longer declares, so loading this module's file into the org other modules load a different
+    # file into would judge their models as dropped. A deployment has one file; so does this org.
     async with tenant_db.acquire() as conn:
-        await conn.execute("SET search_path TO org_default")
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_ORG_SCHEMA} CASCADE")
+    await init_schema(tenant_db, _SCHEMA_SQL, org_id=_ORG_ID)
+    async with tenant_db.acquire() as conn:
+        await conn.execute(f"SET search_path TO {_ORG_SCHEMA}")
         yield conn
+
+
+_ORG_ID = "openapipets"
+_ORG_SCHEMA = f"org_{_ORG_ID}"
 
 
 @pytest_asyncio.fixture(scope="module", autouse=True)
 async def _cleanup_mock_source(pg_conn):
-    """Remove all DB state written by load_config calls in this module."""
+    """Remove all DB state written by load_config calls in this module: its org schema, and the
+    landing table the API source filled."""
     yield
-    await pg_conn.execute("DELETE FROM api_endpoints WHERE source_id = 'mock-petstore-api'")
-    await pg_conn.execute("DELETE FROM api_sources WHERE id = 'mock-petstore-api'")
-    await pg_conn.execute("DELETE FROM registered_tables WHERE source_id = 'mock-petstore-api'")
-    await pg_conn.execute("DELETE FROM sources WHERE id = 'mock-petstore-api'")
-    await pg_conn.execute("DELETE FROM domains WHERE id = 'pets'")
-    try:
-        await pg_conn.execute('DROP TABLE IF EXISTS "default"."find_pets_by_status"')
-    except Exception:
-        pass
+    await pg_conn.execute(f"DROP SCHEMA IF EXISTS {_ORG_SCHEMA} CASCADE")
+    await pg_conn.execute('DROP TABLE IF EXISTS "default"."find_pets_by_status"')
 
 
 async def test_default_params_from_spec_extracts_enum_values():
@@ -223,34 +222,39 @@ async def test_default_params_from_spec_ignores_path_params():
     assert result == {"format": ["json", "xml"]}
 
 
-async def test_openapi_config_load_prepopulates_table_with_enum_defaults(pg_conn):
-    """config load pre-populates the PG cache table using enum values from spec."""
-    from provisa.core.config_loader import load_config
+async def test_openapi_config_load_registers_the_enum_defaults_and_fetches_nothing(pg_conn):
+    """REQ-1915: a config load registers the endpoint with the default parameters its spec
+    names (the enum values of a query parameter) — what a build of its replica calls with —
+    and calls nothing: rows fetched from a remote are never written into the control plane."""
+    from provisa.core.config_loader import load_config, parse_config_dict
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(MOCK_SPEC, f)
         spec_path = f.name
 
-    config_data = _make_config(spec_path)
-
-    from provisa.core.config_loader import parse_config_dict
-
-    config = parse_config_dict(config_data)
+    config = parse_config_dict(_make_config(spec_path))
 
     # integration: mock-justified — respx intercepts outbound HTTP to a 3rd-party
     # OpenAPI endpoint (MOCK_BASE_URL). This is not a docker-compose service; the
     # test exercises the real PG path (pg_conn fixture) and real config loader logic.
     with respx.mock(assert_all_called=False) as rx:
-        # Mock the API call with enum status values
-        rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(
+        route = rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(
             return_value=httpx.Response(200, json=MOCK_PETS)
         )
 
-        await load_config(config, pg_conn, replace=False, origin="config")
+        await load_config(config, pg_conn, origin="config")
 
-    # The PG table should have rows pre-populated from the mock API response
-    row_count = await pg_conn.fetchval('SELECT COUNT(*) FROM "default"."find_pets_by_status"')
-    assert row_count > 0, "find_pets_by_status must be pre-populated at config load time"
+    assert route.call_count == 0, "a config load must not call the API"
+    default_params = await pg_conn.fetchval(
+        "SELECT default_params FROM api_endpoints WHERE table_name = $1", "find_pets_by_status"
+    )
+    if isinstance(default_params, str):
+        default_params = json.loads(default_params)
+    assert default_params == {"status": ["available", "pending", "sold"]}
+    in_control_plane = await pg_conn.fetchval(
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'find_pets_by_status'"
+    )
+    assert in_control_plane == 0, "no table of API rows may be made in the control plane"
 
 
 async def test_openapi_config_load_registers_api_endpoint(pg_conn):
@@ -269,7 +273,7 @@ async def test_openapi_config_load_registers_api_endpoint(pg_conn):
         rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(
             return_value=httpx.Response(200, json=MOCK_PETS)
         )
-        await load_config(config, pg_conn, replace=False, origin="config")
+        await load_config(config, pg_conn, origin="config")
 
     ep = await pg_conn.fetchrow(
         "SELECT path, source_id FROM api_endpoints WHERE table_name = $1",
@@ -296,7 +300,7 @@ async def test_openapi_config_load_registers_api_source(pg_conn):
         rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(
             return_value=httpx.Response(200, json=MOCK_PETS)
         )
-        await load_config(config, pg_conn, replace=False, origin="config")
+        await load_config(config, pg_conn, origin="config")
 
     src = await pg_conn.fetchrow(
         "SELECT base_url FROM api_sources WHERE id = $1",
@@ -304,27 +308,3 @@ async def test_openapi_config_load_registers_api_source(pg_conn):
     )
     assert src is not None, "api_sources must have a row for mock-petstore-api"
     assert src["base_url"] == MOCK_BASE_URL
-
-
-async def test_openapi_config_load_empty_table_when_api_returns_no_rows(pg_conn):
-    """When the API returns no rows, the table exists but is empty (no crash)."""
-    from provisa.core.config_loader import load_config, parse_config_dict
-
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-        json.dump(MOCK_SPEC, f)
-        spec_path = f.name
-
-    config = parse_config_dict(_make_config(spec_path))
-
-    # integration: mock-justified — respx intercepts outbound HTTP to a 3rd-party
-    # OpenAPI endpoint (MOCK_BASE_URL), not a docker-compose service.
-    with respx.mock(assert_all_called=False) as rx:
-        rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(return_value=httpx.Response(200, json=[]))
-        await load_config(config, pg_conn, replace=False, origin="config")
-
-    # Table must exist (even if empty)
-    exists = await pg_conn.fetchval(
-        "SELECT EXISTS(SELECT 1 FROM information_schema.tables"
-        " WHERE table_schema = 'default' AND table_name = 'find_pets_by_status')"
-    )
-    assert exists, "find_pets_by_status table must exist even when API returns no rows"

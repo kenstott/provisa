@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
+from datetime import datetime
 import dataclasses
 import functools
 import logging
@@ -128,6 +129,15 @@ class _Plan:
     # audited by the one pipeline instead of each transport calling log_query itself. None when
     # nothing user-initiated is running (seeding, rebuilds); see provisa.audit.context.
     audit: PendingAudit | None = field(default=None)
+    # REQ-1915: every replica this statement read, with the completion time (UTC) of the build
+    # its read was answered from (``query_residency.Residency.replicas_read``) — the audit
+    # record's data age. Empty: no replica was read (a live read, or residency never ran).
+    replicas_read: dict[tuple[str, str, str], datetime] = field(default_factory=dict)
+    # REQ-1350: what this statement's answer must say about itself (an API answer cut at its
+    # max_pages), collected while it was governed (``core.statement_warnings``); every surface
+    # reports them in its own warning channel. A warned result is never stored in the response
+    # cache.
+    warnings: list[Any] = field(default_factory=list)
     # Guards against a second finalize for one statement: the streaming surfaces finalize at their
     # own terminal, and a plan that also passes through _execute_plan must still write one row.
     audit_written: bool = field(default=False)
@@ -295,7 +305,7 @@ async def _optimize_and_route(
     from provisa.transpiler.router import Route, decide_route
 
     _rewrites, _values_ctes, _dropped = await _materialize_api_to_engine_cache(
-        exec_sql, state, nf_args=nf_args
+        exec_sql, state, nf_args=nf_args, table_ids=table_ids
     )
     _actually_dropped: set[str] = set()
     if _dropped:
@@ -367,13 +377,15 @@ async def _optimize_and_route(
 
 
 @functools.lru_cache(maxsize=4096)
-def _routing_key(exec_sql: str, role_id: str, schema_boot_id: str, schema_version: int) -> str:
+def _routing_key(
+    exec_sql: str, role_id: str, schema_boot_id: str, schema_version: int, replica_generation: int
+) -> str:
     """``routing_cache_key`` for these inputs, derived once: the key is a pure function of them,
     and deriving it parses and re-generates the statement — on every execution, to look up a
     cache whose point is to skip per-execution work."""
     from provisa.compiler.compiled_query_cache import routing_cache_key
 
-    return routing_cache_key(exec_sql, role_id, schema_boot_id, schema_version)
+    return routing_cache_key(exec_sql, role_id, schema_boot_id, schema_version, replica_generation)
 
 
 async def _kept_lowering(memo: dict[str, Any], lower: Callable[[], str]) -> str:
@@ -506,7 +518,7 @@ async def _optimize_and_route_cached(
     """
     from provisa.api.data.materialization import would_materialize_optimize
 
-    if would_materialize_optimize(exec_sql, state):
+    if would_materialize_optimize(exec_sql, state, table_ids=table_ids):
         return await _optimize_and_route(
             exec_sql,
             governed_sql,
@@ -521,7 +533,13 @@ async def _optimize_and_route_cached(
 
     from provisa.compiler.compiled_query_cache import RoutingOutcome
 
-    _rt_key = _routing_key(exec_sql, role_id, state.schema_boot_id, state.schema_version)
+    _rt_key = _routing_key(
+        exec_sql,
+        role_id,
+        state.schema_boot_id,
+        state.schema_version,
+        state.replica_routes.generation,
+    )
     _cached = state.routing_cache.get(_rt_key)
     if _cached is not None:
         from provisa.transpiler.router import Route, RouteDecision
@@ -676,6 +694,20 @@ async def _reject_unbound_writes(parsed: Any, state: Any) -> None:
         )
 
 
+def _refuse_composed_mutators(tree, commands: dict) -> None:
+    """REQ-1924: a source's write operation is an action, called on its own. Composed in a larger
+    statement -- a join, a subquery, a view or a materialized view whose definition holds it --
+    it would perform the write each time the statement is read or refreshed, so it is refused."""
+    from provisa.executor.source_operation import writes_called_in
+
+    called = writes_called_in(tree, commands)
+    if called:
+        raise PermissionError(
+            f"command {called[0]!r} writes to its source and is called on its own: it cannot be "
+            "composed in a query, a view or a materialized view (REQ-1924)"
+        )
+
+
 async def _localize_inline_commands(tree, role_id: str, state) -> bool:
     """REQ-1159: rewrite every inline command call in ``tree`` to a typed local relation, in place.
 
@@ -688,6 +720,8 @@ async def _localize_inline_commands(tree, role_id: str, state) -> bool:
         return False
     from provisa.api.data.action_exec import invoke_tracked_function
     from provisa.executor.command_localize import localize_commands
+
+    _refuse_composed_mutators(tree, commands)
 
     async def _run(name: str, args: dict) -> list[dict]:
         return await invoke_tracked_function(name, args, state, role_id)
@@ -901,19 +935,23 @@ async def _govern_and_route(
     ``serve_cached`` / ``wire_formats``: see :func:`route_governed`."""
     from provisa.api.app import state
 
+    from provisa.core.statement_warnings import collecting
+
     await _wake_before_governing(state)
-    plan = await _govern_and_route_planned(
-        sql,
-        role_id,
-        session_vars=session_vars,
-        as_of=as_of,
-        deliver=deliver,
-        buffered=buffered,
-        explain=explain,
-        params=params,
-        serve_cached=serve_cached,
-        wire_formats=wire_formats,
-    )
+    with collecting() as found:
+        plan = await _govern_and_route_planned(
+            sql,
+            role_id,
+            session_vars=session_vars,
+            as_of=as_of,
+            deliver=deliver,
+            buffered=buffered,
+            explain=explain,
+            params=params,
+            serve_cached=serve_cached,
+            wire_formats=wire_formats,
+        )
+    plan.warnings = list(found)
     return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
 
 
@@ -1004,6 +1042,24 @@ def governed_statement_is_current(governed: _Governed, state: Any) -> bool:
         state.schema_boot_id,
         state.schema_version,
     )
+
+
+async def _guard_complexity(
+    sql: str, role_id: str, tree: Any, gov_ctx: Any, ctx: Any, state: Any
+) -> None:  # REQ-1174
+    """The complexity guard, at the semantic layer of the pipeline: the statement is parsed and
+    its governance context built, and nothing has been governed or routed. Both governing stages
+    call it, so every surface that lowers to a statement is held to the same limit by the same
+    measure (provisa.compiler.complexity). A statement over the limit is a refusal like any
+    other: it is recorded as a denial and raised."""
+    from provisa.audit.pipeline import write_denial
+    from provisa.compiler.complexity import ComplexityLimitExceeded, guard_complexity
+
+    try:
+        guard_complexity(tree, gov_ctx, ctx, getattr(state, "roles", {}).get(role_id))
+    except ComplexityLimitExceeded:
+        await write_denial(sql, role_id, tree, gov_ctx, state)  # REQ-1386
+        raise
 
 
 async def govern_statement(
@@ -1100,6 +1156,7 @@ async def govern_statement(
         source_types=state.source_types,
         engine=getattr(state, "federation_engine", None),
     )
+    await _guard_complexity(sql, role_id, _parsed_input, gov_ctx, ctx, state)
 
     from provisa.security.rights import Capability, has_capability
 
@@ -2061,10 +2118,10 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  
     # scheduled jobs, rebuilds) and runs unbounded by a request budget, as it always has.
     if plan.audit is None:
         return await _execute_plan_bound(plan, state)
-    from provisa.compiler.limits import role_query_limits
+    from provisa.compiler.limits import role_max_query_time_ms
 
     # REQ-1174: the role's own limit, on every transport, when it is the tighter one.
-    _role_ms = role_query_limits(getattr(state, "roles", {}).get(plan.role_id))[2]
+    _role_ms = role_max_query_time_ms(getattr(state, "roles", {}).get(plan.role_id))
     outer = request_deadline.current()
     if outer is not None:
         if _role_ms is None or _role_ms / 1000.0 >= outer.remaining():
@@ -2150,7 +2207,10 @@ async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-0
             plan.exec_params,
             reader_role=plan.role_id,
         )
-    await ensure_resident(state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids)
+    residency = await ensure_resident(
+        state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids
+    )
+    plan.replicas_read = residency.replicas_read
     # REQ-1897: the result cache is GraphQL's Route.CACHE candidate route, extended here so every
     # other raw-SQL surface that reaches this one chokepoint (Bolt, pgwire's non-COPY path) gets
     # the same served-without-touching-the-engine hit -- with the same audit row and tier/egress
@@ -2512,6 +2572,8 @@ async def check_response_cache_datarows(  # REQ-1897
 
 
 def _cache_tee(plan: _Plan, state: Any, run: Any | None, wire_formats: list[int] | None) -> Any:
+    if plan.warnings:
+        return None  # a warned answer (one cut short) is never stored as the statement's answer
     ck = _response_cache_key(plan, wire_formats=wire_formats)
     store = state.response_cache_store  # always set (NoopCacheStore when caching is off)
     if ck is None or not store.stores_results:
@@ -2627,17 +2689,14 @@ async def store_executed_result(plan: _Plan, state: Any, result: QueryResult) ->
 
 
 async def _after_write(plan: _Plan, state: Any) -> None:
-    """What follows a successful write, on every surface, once (REQ-1897, REQ-080, REQ-084,
-    REQ-172, REQ-176, REQ-544): every cached entry indexed under the tables the statement named is
-    dropped (raw-SQL and GraphQL entries alike, both index by table id); the materialized views
-    over the written table are marked stale; its change event is emitted and its change-event
-    sinks run; a hot copy of it is dropped and reloaded."""
+    """What follows a successful write, on every surface, once (REQ-1897): every cached entry
+    indexed under the OTHER tables the statement named is dropped (a write that reads them may
+    have changed what a cached join shows), and the written table gets the one after-write step
+    (:func:`provisa.api.data.table_written.after_table_written` — its cached responses, the
+    views over it, its change event and sinks, its replica build, its hot copy)."""
+    from provisa.api.data.table_written import after_table_written
     from provisa.cache.tenancy import invalidate_tables
-    from provisa.core.connection_loop import spawn_background
-    from provisa.kafka.change_events import emit_change_event
-    from provisa.kafka.sink_executor import trigger_sinks_for_table
 
-    await invalidate_tables(state, plan.table_ids)
     if plan.written_table_id is None or plan.role_id is None:
         raise RuntimeError(
             "a write plan reached its terminal without the table it wrote or the role it ran as"
@@ -2654,22 +2713,15 @@ async def _after_write(plan: _Plan, state: Any) -> None:
         raise RuntimeError(
             f"the written table {plan.written_table_id} is not in role {plan.role_id!r}'s schema"
         )
-    state.mv_registry.mark_stale(written.table_name)
-    emit_change_event(written.table_name, written.source_id)
-    spawn_background(trigger_sinks_for_table(written.table_name, state))
-    hot = state.hot_manager
-    if hot is not None:
-        entry = hot.get_entry(written.table_name)
-        if entry is not None:
-            await hot.invalidate(written.table_name)
-            if not entry.is_api:  # an API table is read live until it is promoted again
-                await hot.load_table(
-                    state.federation_engine,
-                    entry.table_name,
-                    entry.schema,
-                    entry.catalog,
-                    entry.pk_column,
-                )
+    others = [tid for tid in plan.table_ids if tid != written.table_id]
+    if others:
+        await invalidate_tables(state, others)
+    await after_table_written(
+        state,
+        table_id=written.table_id,
+        table_name=written.table_name,
+        source_id=written.source_id,
+    )
 
 
 async def prepare_residency_and_check_cache(plan: _Plan, state: Any) -> QueryResult | None:
@@ -2942,18 +2994,22 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
     :func:`route_governed`."""
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
+    from provisa.core.statement_warnings import collecting
+
     await _wake_before_governing(state)
-    plan = await _govern_and_route_compiled_planned(
-        sql,
-        role_id,
-        exec_params=exec_params,
-        state=state,
-        api_args=api_args,
-        deliver=deliver,
-        buffered=buffered,
-        cache_hint=cache_hint,
-        serve_cached=serve_cached,
-    )
+    with collecting() as found:
+        plan = await _govern_and_route_compiled_planned(
+            sql,
+            role_id,
+            exec_params=exec_params,
+            state=state,
+            api_args=api_args,
+            deliver=deliver,
+            buffered=buffered,
+            cache_hint=cache_hint,
+            serve_cached=serve_cached,
+        )
+    plan.warnings = list(found)
     return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
 
 
@@ -3151,6 +3207,7 @@ async def _govern_compiled(
         source_types=state.source_types,
         engine=getattr(state, "federation_engine", None),
     )
+    await _guard_complexity(sql, role_id, _compiled_tree, gov_ctx, ctx, state)
 
     _table_ids = tuple(resolve_table_ids(_compiled_tree, gov_ctx))  # REQ-1897
 

@@ -183,6 +183,8 @@
     "domainDeleted": "„{{id}}“ gelöscht",
     "policyApplied": "Domänenrichtlinie angewendet.",
     "policyApplyFailed": "Anwenden der Domänenrichtlinie fehlgeschlagen",
-    "settingsPanel": "Einstellungen"
+    "settingsPanel": "Einstellungen",
+    "maxRows": "Max. Zeilen pro Lesevorgang",
+    "maxRowsHint": "Die maximale Anzahl Zeilen, die ein Lesevorgang einer seitenweise gelesenen entfernten Tabelle holt, indem er ihrem Cursor Seite für Seite folgt."
   }
 }

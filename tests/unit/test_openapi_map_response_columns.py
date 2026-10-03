@@ -10,12 +10,13 @@
 
 """A JSON Schema response with only additionalProperties (a key->scalar map, e.g.
 Petstore's /store/inventory returning {"available": 3, "sold": 12}) has no fixed
-property names. pg_cache._normalize_rows already flattens such a response into
-{"status": k, "count": v} rows; the column-inference helpers that determine what
-columns the cache table is created with must agree, or the table is silently never
-created (regression: "no such table" on every surface querying it)."""
+property names. The registered columns are {status, count}, and the flattener turns such
+an answer into {"status": k, "count": v} rows under exactly those columns; the two must
+agree, or every row of the table is empty (regression: "no such table" on every surface
+querying it, when the cache table was created from different columns)."""
 
-from provisa.openapi.pg_cache import _schema_to_pg_cols
+from provisa.api_source.flattener import flatten_response
+from provisa.api_source.models import ApiColumn, ApiColumnType
 from provisa.openapi.register import _schema_to_columns
 
 MAP_SCHEMA = {
@@ -24,13 +25,23 @@ MAP_SCHEMA = {
 }
 
 
-def test_pg_cache_infers_status_count_columns_for_map_schema():
-    assert _schema_to_pg_cols(MAP_SCHEMA) == [("status", "TEXT"), ("count", "BIGINT")]
+def test_a_map_answer_flattens_to_status_count_rows_under_the_registered_columns():
+    columns = [
+        ApiColumn(name=c["name"], type=ApiColumnType(c["type"]))
+        for c in _schema_to_columns(MAP_SCHEMA)
+    ]
+    assert flatten_response({"available": 3, "sold": 12}, None, columns) == [
+        {"status": "available", "count": 3},
+        {"status": "sold", "count": 12},
+    ]
 
 
-def test_pg_cache_returns_columns_for_object_schema_unchanged():
+def test_an_object_answer_flattens_to_one_row_of_its_properties():
     schema = {"type": "object", "properties": {"id": {"type": "integer"}}}
-    assert _schema_to_pg_cols(schema) == [("id", "BIGINT")]
+    columns = [
+        ApiColumn(name=c["name"], type=ApiColumnType(c["type"])) for c in _schema_to_columns(schema)
+    ]
+    assert flatten_response({"id": 7}, None, columns) == [{"id": 7}]
 
 
 def test_register_infers_status_count_columns_for_map_schema():

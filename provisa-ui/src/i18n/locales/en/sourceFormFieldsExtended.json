@@ -98,6 +98,9 @@
     "maxLiveConcurrencyPlaceholder": "no cap",
     "maxLiveConcurrencyInvalid": "Enter a whole number of 1 or more, or leave empty for no cap.",
     "loadManagementFixErrors": "Fix the Load Management and Timeliness settings before saving.",
-    "cacheTtlRequiredForSignal": "The {{signal}} change signal judges staleness by the Cache TTL, so set a Cache TTL."
+    "cacheTtlRequiredForSignal": "The {{signal}} change signal judges staleness by the Cache TTL, so set a Cache TTL.",
+    "accessToken": "Access token",
+    "accessTokenHint": "Stored in the secrets vault. A ${secret:NAME} or ${env:NAME} reference is also accepted.",
+    "brandNamespaceHint": "Prefix of this source's table names. Leave blank for the default."
   }
 }

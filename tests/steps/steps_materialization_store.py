@@ -37,7 +37,7 @@ from provisa.mv.aggregate_catalog import (
 from provisa.mv.input_signals import input_token
 from provisa.mv.models import MVDefinition, MVStatus
 from provisa.mv.refresh import refresh_mv
-from tests.helpers import RegisteredNames
+from tests.helpers import RegisteredNames, hold_registered_tables
 from provisa.mv.registry import MVRegistry
 
 scenarios("../features/REQ-881.feature")
@@ -48,6 +48,12 @@ scenarios("../features/REQ-845.feature")
 # ---------------------------------------------------------------------------
 # Shared state fixture
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _model_holds_the_read_tables(monkeypatch):
+    """The registered tables the probe views read (a view's inputs resolve against the model)."""
+    hold_registered_tables(monkeypatch, "orders", "products")
 
 
 @pytest.fixture
@@ -296,12 +302,14 @@ class _FakeConn(RegisteredNames):
 
 
 def _make_probe_mv(mv_id: str, source_tables=None, **kw) -> MVDefinition:
+    tables = source_tables or ["orders"]
     return MVDefinition(
         id=mv_id,
-        source_tables=source_tables or ["orders"],
+        source_tables=tables,
         target_catalog="pg",
         target_schema="public",
-        sql="SELECT 1",
+        # Its input signals are the tables its SQL reads (provisa/mv/view_inputs.read_tables).
+        sql="SELECT * FROM " + ", ".join(tables),
         freshness_mode="probe",
         **kw,
     )

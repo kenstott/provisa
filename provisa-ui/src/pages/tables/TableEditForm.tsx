@@ -45,6 +45,7 @@ import { DataQualityPanel } from "./DataQualityPanel";
 import { ColumnGlossaryHover } from "./ColumnGlossaryHover";
 import { useLivePolicyPreview } from "./useLivePolicyPreview";
 import { RoleTtlField } from "./RoleTtlField";
+import { PagingField } from "./PagingField";
 import { tableTtlSignalError } from "./roleTtl";
 import { ReplicateSelect } from "../../components/admin/ReplicateSelect";
 import { ReplicaBuildLine } from "./ReplicaBuildLine";
@@ -271,6 +272,14 @@ export function TableEditForm({
               roles={roles}
               floorTtl={floorTtl}
             />
+            {editingTable.pagingKind !== null && (
+              <PagingField
+                kind={editingTable.pagingKind}
+                paging={editingTable.pagination}
+                onChange={(pagination) => setEditingTable({ ...editingTable, pagination })}
+                ceilingRows={editingTable.pagingCeilingRows}
+              />
+            )}
             <ReplicateSelect
               value={editingTable.replicate}
               onChange={(replicate) => setEditingTable({ ...editingTable, replicate })}
@@ -700,8 +709,7 @@ export function TableEditForm({
         <DataQualityPanel
           checker={(editSource.type ?? "").toLowerCase()}
           sourceId={editSource.id}
-          schemaName={editingTable.schemaName}
-          tableName={editingTable.tableName}
+          tableId={editingTable.id}
           contractText={editingTable.dqContract ?? ""}
           onChange={(text) => setEditingTable({ ...editingTable, dqContract: text || null })}
         />

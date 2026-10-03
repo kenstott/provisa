@@ -19,6 +19,7 @@ it. System-tag immutability is enforced at the mutation layer.
 
 # Requirements: REQ-1373, REQ-1375, REQ-1377
 
+from provisa.core import model_change
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, select
@@ -34,6 +35,8 @@ from provisa.core.models import (
     base_tag_id,
 )
 from provisa.core.repositories.integrity import ObjectRef, remove_parts
+from provisa.core.repositories.origin import require as require_origin
+from provisa.core.repositories.origin import take_over
 from provisa.core.schema_org import (
     registered_tables,
     tag_assignments,
@@ -64,11 +67,17 @@ def _user_tag_row(row) -> dict:
     return {**dict(row._mapping), "derived": False}
 
 
-async def upsert(conn: "Connection", tag: Tag) -> None:
+async def upsert(conn: "Connection", tag: Tag, *, origin: str) -> None:  # REQ-1373, REQ-1919
+    """Create the tag, or replace its definition. ``origin`` says where it comes from
+    (``repositories.origin``): written at CREATE, left alone after, except that a config load
+    takes over an admin-made one."""
+    model_change.name("upsert", "tag", tag.id)  # REQ-1524
+    require_origin(origin)
     await conn.upsert(
         tags,
         {
             "id": tag.id,
+            "origin": origin,  # REQ-1919: on INSERT only
             "description": tag.description,
             "applies_to": tag.applies_to,
             "is_system": tag.is_system,
@@ -85,6 +94,7 @@ async def upsert(conn: "Connection", tag: Tag) -> None:
             "param_policy",
         ],
     )
+    await take_over(conn, tags, (tags.c.id == tag.id,), kind="tag", ident=tag.id, origin=origin)
 
 
 async def get(conn: "Connection", tag_id: str) -> dict | None:
@@ -120,6 +130,7 @@ async def delete(conn: "Connection", tag_id: str) -> bool:  # REQ-1918
     """
     # The base id, not tag_id: a parameterized tag's assignments are stored in "{tag}:{value}"
     # form, so matching on tag_id would leave every one of them orphaned (REQ-1467).
+    model_change.name("delete", "tag", tag_id)  # REQ-1524
     base = base_tag_id(tag_id)
     ref = ObjectRef("tag", base)
     async with conn.transaction():
@@ -139,10 +150,18 @@ async def assignment_count(conn: "Connection", tag_id: str) -> int:
     return len(result.fetchall())
 
 
-async def assign(conn: "Connection", assignment: TagAssignment) -> None:
+async def assign(  # REQ-1377, REQ-1919
+    conn: "Connection", assignment: TagAssignment, *, origin: str
+) -> None:
+    """Put the tag on the object, or change that assignment. ``origin`` says where the
+    assignment comes from (``repositories.origin``): written when it is CREATED, left alone
+    after, except that a config load takes over an admin-made one."""
+    model_change.name("assign", "tag", assignment.tag_id)  # REQ-1524
+    require_origin(origin)
     await conn.upsert(
         tag_assignments,
         {
+            "origin": origin,  # REQ-1919: on INSERT only
             "tag_id": assignment.tag_id,
             "base_tag_id": assignment.base_tag_id(),
             "object_type": assignment.object_type,
@@ -160,11 +179,23 @@ async def assign(conn: "Connection", assignment: TagAssignment) -> None:
         # correction of the parameter, which is the only way to change one (REQ-1467).
         update_columns=["tag_id", "object_type", "reason", "expires_on"],
     )
+    await take_over(
+        conn,
+        tag_assignments,
+        (
+            tag_assignments.c.base_tag_id == assignment.base_tag_id(),
+            tag_assignments.c.object_key == assignment.object_key(),
+        ),
+        kind="tag assignment",
+        ident=f"{assignment.tag_id} on {assignment.object_key()}",
+        origin=origin,
+    )
 
 
 async def unassign(conn: "Connection", tag_id: str, object_key: str) -> bool:
     # Matched on the base id so removing "the entity tag" from a column succeeds whether the
     # caller names the parameter or not; (base_tag_id, object_key) is unique, so it is exact.
+    model_change.name("unassign", "tag", tag_id)  # REQ-1524
     result = await conn.execute_core(
         _delete(tag_assignments).where(
             (tag_assignments.c.base_tag_id == base_tag_id(tag_id))

@@ -43,15 +43,23 @@ import asyncio
 import logging
 import time
 from collections.abc import Iterable
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from provisa.federation.replica_state import ReplicaKey
 
 
 log = logging.getLogger(__name__)
 
 
-def _node(schema_name: str, table_name: str) -> str:
-    return f"{schema_name}.{table_name}"
+def _node(table: Any) -> str:
+    """The event-graph node of a registered table (``provisa.events.nodes.source_node``) — the key
+    its freshness state is held under."""
+    from provisa.events.nodes import source_node
+
+    return source_node(table.source_id, table.schema_name, table.table_name)
 
 
 def _row_cache_ttls(table: Any, source: Any, reader_role: str | None) -> tuple[int, int]:
@@ -137,7 +145,7 @@ def is_stale_of(
     check = fresh_of if fresh_of is not None else freshness_verdict
 
     def _table_stale(source: Any, table: Any) -> bool:
-        state = states.get(_node(table.schema_name, table.table_name))
+        state = states.get(_node(table))
         at = state.get("last_refresh_at") if state else None
         ok = bool(state.get("last_refresh_ok", True)) if state else True
         if at is None or not ok:
@@ -171,16 +179,44 @@ def _replicated(state: Any, tables: list[Any]) -> bool:
     return any(t.id in floored for t in tables)
 
 
+@dataclass(frozen=True)
+class Residency:
+    """What :func:`ensure_resident` did for one statement.
+
+    ``built``: the (source_id, table_name) pairs it waited for a build of. ``replicas_read``:
+    every replica the statement reads — found fresh or waited for — with the completion time
+    (UTC) of the build its read is answered from; a table read live is not in it. The audit
+    record's data age (REQ-1915) is read from it."""
+
+    built: list[tuple[str, str]] = field(default_factory=list)
+    replicas_read: dict[ReplicaKey, datetime] = field(default_factory=dict)
+
+
+class ReplicaAgeUnknown(RuntimeError):
+    """A statement reads a replica whose build has no completion time in this store. The read
+    is not answered: the audit record would otherwise claim live data for a replica read."""
+
+    def __init__(self, replica: str) -> None:
+        self.replica = replica
+        super().__init__(
+            f"the replica of {replica} is read but its build has no completion time in this "
+            "engine's store"
+        )
+
+
 async def ensure_resident(
     state: Any,
     source_ids: Iterable[str],
     *,
     reader_role: str | None,
     table_ids: Iterable[int],
-) -> list[tuple[str, str]]:
+) -> Residency:
     """Have every replica a query reads built and fresh before it reads (REQ-1661, REQ-1915).
-    Returns the (source_id, table_name) pairs it waited for. A no-op without an engine, config
-    or tenant store, or when every replica the statement reads is fresh for its reader.
+    Returns the builds it waited for and every replica the statement reads with the completion
+    time of the build it is answered from (:class:`Residency`). A no-op without an engine,
+    config or tenant store, or when every replica the statement reads is fresh for its reader:
+    a fresh replica's completion time is this process's copy of its record, with no
+    control-plane read.
 
     This is the read's backstop, not where replicas are built: builds are requested when the
     model declares a replica, and run by the build runner (``replica_builds``). A read that
@@ -214,13 +250,13 @@ async def ensure_resident(
     config = getattr(state, "config", None)
     db = getattr(state, "tenant_db", None)
     if not wanted or engine is None or backend is None or config is None or db is None:
-        return []
+        return Residency()
     from provisa.federation.registry_view import registered_sources, registered_tables
 
     # REQ-1674: the registry, not the config file — see registry_view.
     sources = [s for s in await registered_sources(state) if s.id in wanted]
     if not sources:
-        return []
+        return Residency()
     from provisa.federation.strategy import engine_attaches
 
     _attached_types = {s.id: engine_attaches(engine, s.type.value) for s in sources}
@@ -309,7 +345,7 @@ async def ensure_resident(
         check does not report it fresh (REQ-1907; the whole gate is ``is_stale_of``). The plan
         applies the rest: a load-protected table that has a replica is never rebuilt by a read
         (REQ-1141: its refresh is the runner's alone)."""
-        node = _node(table.schema_name, table.table_name)
+        node = _node(table)
         key_ = (source.id, table.schema_name, table.table_name)
         # A standing replica that can no longer answer the model (convergence found a column
         # added or retyped) is one never built, until a build of the model's definition lands.
@@ -322,6 +358,14 @@ async def ensure_resident(
 
     retry_interval = float(settings_registry.value("replication.retry_interval"))
     waiting: list[tuple[Any, Any, replica_state.ReplicaKey]] = []
+    replicas_read: dict[ReplicaKey, datetime] = {}
+
+    def _read_from(key: ReplicaKey, record: Any) -> None:
+        """The statement reads this replica: keep the completion time of its build."""
+        if record is None or not record.exists_in(_store()):
+            raise ReplicaAgeUnknown(".".join(key))
+        replicas_read[key] = record.completed_at
+
     for source in sources:
         tables = tables_by_source.get(source.id)
         if not tables:
@@ -340,13 +384,16 @@ async def ensure_resident(
             # copy says is fresh for this reader is served with no control-plane read.
             known, record = view.known(org_id, key)
             if known and not _stale(source, t, record):
+                _read_from(key, record)
                 continue
             # Stale or unknown by the copy: re-read this ONE record, and ask for the build,
             # under the replica's lock — a burst of stale reads makes one read and one request.
             async with view.lock(org_id, key):
                 known, record = view.known(org_id, key)
                 if known and not _stale(source, t, record):
-                    continue  # another reader of this process re-read it while this one waited
+                    # Another reader of this process re-read it while this one waited.
+                    _read_from(key, record)
+                    continue
                 if not (known and _joins(record, view.age(org_id, key))):
                     async with db.acquire() as conn:
                         record = await replica_state.read(conn, key)
@@ -357,6 +404,7 @@ async def ensure_resident(
                             record = await replica_state.read(conn, key)
                     view.read(org_id, key, record)
             if not _stale(source, t, record):
+                _read_from(key, record)
                 continue
             if record is not None and record.build_state == replica_state.FAILED:
                 # Failed too recently to ask again (replication.retry_interval): the read fails
@@ -366,7 +414,7 @@ async def ensure_resident(
                 continue  # read live while the build runs; the build is requested, not awaited
             waiting.append((source, t, key))
     if not waiting:
-        return []
+        return Residency(replicas_read=replicas_read)
     replica_builds.kick(org_id)
     built = [(key[0], key[2]) for _source, _table, key in waiting]
     started = time.monotonic()
@@ -381,6 +429,8 @@ async def ensure_resident(
                     raise replica_state.ReplicaBuildFailed(".".join(key), record.last_error)
                 if _stale(source, t, record):
                     still.append((source, t, key))
+                else:
+                    _read_from(key, record)
         waiting = still
         if not waiting:
             break
@@ -391,7 +441,7 @@ async def ensure_resident(
             raise replica_state.ReplicaBuilding(".".join(waiting[0][2]), waited)
         await asyncio.sleep(_BUILD_POLL_S)
     log.info("query residency: %s built before the read", built)
-    return built
+    return Residency(built=built, replicas_read=replicas_read)
 
 
 #: How often a read waiting for a build looks at its record.
@@ -1106,7 +1156,9 @@ async def ensure_rows_resident(
             table_name=table.table_name,
         )
         schema, name = address.schema, address.table
-        node = _node(schema, name)
+        # The table's node — the key its row lock is taken under here and by the row-refresh
+        # lifecycle (``events.row_materialize_lifecycle``), so the two serialize the same rows.
+        node = _node(table)
         pk_columns = list(bound.pk_columns)
         cache_table, cached = await _ensure_and_read_row_cache(
             engine, backend, state, schema, name, args.columns, pk_columns, list(bound.values)
@@ -1200,4 +1252,7 @@ async def prepare_engine_residency(state: Any, plan: Any) -> None:
         plan.exec_params,
         reader_role=plan.role_id,
     )
-    await ensure_resident(state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids)
+    residency = await ensure_resident(
+        state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids
+    )
+    plan.replicas_read = residency.replicas_read

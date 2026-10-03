@@ -148,6 +148,7 @@ class TestExecuteApiSource:
         compiled = _compiled()
         ep = SimpleNamespace(columns=[_col("id")], source_id="api1", table_name="pets")
         hot_entry = HotTableEntry(
+            table_id=1,  # pets, as _make_ctx registers it
             table_name="pets",
             catalog="",
             schema="",
@@ -156,9 +157,10 @@ class TestExecuteApiSource:
             column_names=["id", "name"],
             is_api=True,
         )
+        hot = {1: hot_entry}
         hot_mgr = SimpleNamespace(
-            is_hot=lambda tn: True,
-            get_entry=lambda tn: hot_entry,
+            is_hot=lambda table_id: table_id in hot,
+            get_entry=hot.get,
         )
         engine = SimpleNamespace(
             transpile_physical=lambda s: s,
@@ -604,7 +606,7 @@ class TestExecuteEngineStandard:
             execute_engine=AsyncMock(return_value=engine_result),
             engine=SimpleNamespace(catalog_qualified=True),
         )
-        hot_mgr = SimpleNamespace(maybe_promote=AsyncMock())
+        hot_mgr = SimpleNamespace(promote_on_read=AsyncMock())
         state = SimpleNamespace(
             federation_engine=engine,
             source_types={"pg": "postgresql"},
@@ -628,7 +630,9 @@ class TestExecuteEngineStandard:
             import asyncio
 
             await asyncio.sleep(0)
-        hot_mgr.maybe_promote.assert_called_once()
+        # The read is the cue; the table (the root's id, pets) is loaded whole, not from the
+        # read's own rows.
+        hot_mgr.promote_on_read.assert_called_once_with(engine, 1)
 
 
 # ---------------------------------------------------------------------------
@@ -692,7 +696,7 @@ class TestStoreResponseCache:
             ) as mock_store,
         ):
             await _store_response_cache(
-                state, "ck1", {"data": {}}, "pets", ctx, compiled, None, True
+                state, "ck1", {"data": {"pets": []}}, "pets", ctx, compiled, None, True
             )
         mock_store.assert_called_once()
 
@@ -715,7 +719,7 @@ class TestStoreResponseCache:
             ) as mock_store,
         ):
             await _store_response_cache(
-                state, "ck1", {"data": {}}, "pets", ctx, compiled, None, False
+                state, "ck1", {"data": {"pets": []}}, "pets", ctx, compiled, None, False
             )
         mock_store.assert_not_called()
 
@@ -737,7 +741,7 @@ class TestStoreResponseCache:
             ) as mock_store,
         ):
             await _store_response_cache(
-                state, "ck1", {"data": {}}, "pets", ctx, compiled, None, True
+                state, "ck1", {"data": {"pets": []}}, "pets", ctx, compiled, None, True
             )
         mock_store.assert_not_called()
 
@@ -760,7 +764,7 @@ class TestStoreApiSourceCache:
             ) as mock_store,
         ):
             await _store_api_source_cache(
-                state, "ck1", {"data": {}}, "pets", "pets", ctx, "api1", None, True
+                state, "ck1", {"data": {"pets": []}}, "pets", "pets", ctx, "api1", None, True
             )
         mock_store.assert_called_once()
 

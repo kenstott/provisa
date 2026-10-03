@@ -43,7 +43,7 @@ def deployment(tmp_path, monkeypatch):
             monkeypatch.delenv(s.env, raising=False)
     monkeypatch.delenv(settings_registry.IGNORE_STORED_ENV, raising=False)
     cfg = tmp_path / "provisa.yaml"
-    cfg.write_text(yaml.safe_dump({"sources": [], "warm_tables": {"query_threshold": 150}}))
+    cfg.write_text(yaml.safe_dump({"sources": [], "replication": {"hot_threshold": 150}}))
     monkeypatch.setenv("PROVISA_CONFIG", str(cfg))
     monkeypatch.setattr(settings_registry, "_config", yaml.safe_load(cfg.read_text()))
     monkeypatch.setattr(settings_registry, "_frozen", None)
@@ -82,20 +82,31 @@ def deployment(tmp_path, monkeypatch):
 
 
 def test_the_defaults_are_the_config_models(deployment):
-    from provisa.core.models import HotTablesConfig, MaterializedViewsConfig, WarmTablesConfig
+    from provisa.core.models import (
+        HotTablesConfig,
+        MaterializedViewsConfig,
+        ProvisaConfig,
+        ReplicationConfig,
+    )
+    from provisa.core.settings_registry import UnknownSetting
 
     for field in ("auto_threshold", "max_bytes"):
         assert settings_registry.setting(f"hot_tables.{field}").default == (
             HotTablesConfig.model_fields[field].default
         )
-    for field, model_field in WarmTablesConfig.model_fields.items():
-        if field == "query_threshold":
-            continue  # the fixture's config file states it
-        assert settings_registry.resolve(f"warm_tables.{field}") == (
-            model_field.default,
+    # The warm tier is gone: its promotion settings became replication.hot_* (REQ-826), and its
+    # filesystem read-cache settings reached no engine and were removed (REQ-238).
+    assert "warm_tables" not in ProvisaConfig.model_fields
+    for field in ("fs_cache_enabled", "fs_cache_directories", "fs_cache_max_sizes"):
+        with pytest.raises(UnknownSetting):
+            settings_registry.setting(f"warm_tables.{field}")
+    # REQ-826: when a busy table is replicated. The fixture's config file states the threshold.
+    for field in ("hot_interval", "hot_max_rows"):
+        assert settings_registry.resolve(f"replication.{field}") == (
+            ReplicationConfig.model_fields[field].default,
             "default",
         ), field
-    assert settings_registry.resolve("warm_tables.query_threshold") == (150, "config")
+    assert settings_registry.resolve("replication.hot_threshold") == (150, "config")
     assert settings_registry.resolve("materialized_views.default_ttl") == (
         MaterializedViewsConfig.model_fields["default_ttl"].default,
         "default",
@@ -111,11 +122,10 @@ async def test_saving_stores_the_tier_settings_and_leaves_the_config_file_alone(
             {
                 "cache": {"enabled": False, "default_ttl": 45},
                 "hot_tables": {"auto_threshold": 500, "max_rows": "", "refresh_interval": 60},
-                "warm_tables": {
-                    "query_threshold": 250,
-                    "max_rows": 5_000_000,
-                    "fs_cache_enabled": True,
-                    "fs_cache_max_sizes": "20GB",
+                "replication": {
+                    "hot_threshold": 250,
+                    "hot_interval": 120,
+                    "hot_max_rows": 5_000_000,
                 },
                 "materialized_views": {"default_ttl": 900},
             }
@@ -128,12 +138,11 @@ async def test_saving_stores_the_tier_settings_and_leaves_the_config_file_alone(
     assert stored("hot_tables.auto_threshold") == (500, "stored")
     assert stored("hot_tables.max_rows") == (None, "default")  # blank clears
     assert stored("hot_tables.refresh_interval") == (60, "stored")
-    assert stored("warm_tables.query_threshold") == (250, "stored")
-    assert stored("warm_tables.max_rows") == (5_000_000, "stored")
-    assert stored("warm_tables.fs_cache_enabled") == (True, "stored")
-    assert stored("warm_tables.fs_cache_max_sizes") == ("20GB", "stored")
+    assert stored("replication.hot_threshold") == (250, "stored")
+    assert stored("replication.hot_interval") == (120, "stored")
+    assert stored("replication.hot_max_rows") == (5_000_000, "stored")
     assert stored("materialized_views.default_ttl") == (900, "stored")
-    assert "warm_tables.query_threshold" in result["updated"]
+    assert "replication.hot_threshold" in result["updated"]
     assert deployment.config.read_text() == before
 
 
@@ -143,10 +152,10 @@ async def test_a_value_that_cannot_be_used_is_refused_naming_the_field(deploymen
     with pytest.raises(ApiError) as err:
         await set_cache_storage(
             deployment.request(
-                {"hot_tables": {"auto_threshold": 500}, "warm_tables": {"max_rows": "many"}}
+                {"hot_tables": {"auto_threshold": 500}, "replication": {"hot_max_rows": "many"}}
             )
         )
-    assert (err.value.status_code, err.value.params["field"]) == (400, "warm_tables.max_rows")
+    assert (err.value.status_code, err.value.params["field"]) == (400, "replication.hot_max_rows")
     assert settings_registry.resolve("hot_tables.auto_threshold").source == "default"
 
 
@@ -156,7 +165,7 @@ async def test_the_page_reads_back_what_was_saved(deployment):
     first = await get_cache_storage(deployment.request())
     # The response cache is ON unless turned off; the page used to report it off when unset.
     assert first["cache"]["enabled"] is True
-    assert first["warm_tables"]["query_threshold"] == 150
+    assert first["replication"]["hot_threshold"] == 150
     # REQ-230: with no ceiling of its own, the hot tier's row ceiling is its auto threshold.
     assert first["hot_tables"]["max_rows"] == first["hot_tables"]["auto_threshold"]
     await set_cache_storage(

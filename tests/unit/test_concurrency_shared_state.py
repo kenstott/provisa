@@ -17,7 +17,7 @@ to reproduce. Hermetic (in-process, fakeredis); no docker, no Trino.
 
 Covers the shared-state points enumerated for the wedge path:
   - ingest.engine.get_engine      lazy per-source engine cache      (was found-race → hardened)
-  - warm_tables.QueryCounter      per-table frequency counter       (lock — verify no lost updates)
+  - replica_hot.HotCounts         per-table statement count         (store increment — verify no lost updates)
   - source_adapters.get_adapter   lazy adapter-module cache         (verify single module)
   - cache.hot_tables.HotTableMgr  hot-cache entry map               (verify entry coherence)
 """
@@ -125,32 +125,37 @@ class TestIngestEngineCacheRace:
             assert len({id(e) for e in sink}) == 1, "get_engine handed out >1 engine for one source"
 
 
-# ── 2. warm_tables.QueryCounter — no lost updates ───────────────────────────────
+# ── 2. replica_hot.HotCounts — no lost updates ──────────────────────────────────
 
 
-class TestQueryCounterNoLostUpdates:
-    """The lock must make increment atomic: N threads each incrementing M times must total N*M with
-    no lost read-modify-writes."""
+class TestHotCountsNoLostUpdates:
+    """The count is incremented in the store (INCRBY), never read-modified-written here: N threads
+    each adding M batches must total N*M. One client is shared by every thread, as in a server."""
 
     def test_count_is_exact_under_contention(self):
-        from provisa.cache.warm_tables import QueryCounter
+        import uuid
 
-        n_threads, per_thread = 32, 500
-        for _ in range(10):
-            counter = QueryCounter()
+        from provisa.federation.replica_hot import HotCounts
+
+        n_threads, per_thread, interval = 16, 100, 60
+        for _ in range(3):
+            scope = f"org-{uuid.uuid4().hex}:prod"
+            counts = HotCounts(None, clock=lambda: 6_000_000.0)
             barrier = threading.Barrier(n_threads)
 
             def w():
                 barrier.wait()
                 for _ in range(per_thread):
-                    counter.increment("t")
+                    counts.add({(scope, 7): 1}, interval)
 
             ts = [threading.Thread(target=w) for _ in range(n_threads)]
             for t in ts:
                 t.start()
             for t in ts:
                 t.join()
-            assert counter.get_count("t") == n_threads * per_thread, "lost update in QueryCounter"
+            assert counts.counts(scope, [7], interval)[7] == n_threads * per_thread, (
+                "lost update in HotCounts"
+            )
 
 
 # ── 3. source_adapters.get_adapter — single module per type ─────────────────────
@@ -198,7 +203,9 @@ async def test_hot_table_entry_coherence_under_concurrent_promotion():
 
     mgr = HotTableManager(redis_url=None, auto_threshold=1000, max_rows=1000)  # embedded fakeredis
     mgr.register_candidate(
-        HotTableCandidate(table_name="orders", pk_column="id", catalog="pg", schema="public")
+        HotTableCandidate(
+            table_id=1, table_name="orders", pk_column="id", catalog="pg", schema="public"
+        )
     )
 
     stop = False
@@ -214,7 +221,7 @@ async def test_hot_table_entry_coherence_under_concurrent_promotion():
                     f"torn entry: column_names={entry.column_names} rows[0]={list(expected_cols)}"
                 )
         # is_hot() must agree with the entry's own row presence.
-        if bool(entry.rows) != mgr.is_hot("orders"):
+        if bool(entry.rows) != mgr.is_hot(1):
             violations.append("is_hot disagrees with entry.rows")
 
     async def promoter(seed: int):
@@ -222,12 +229,12 @@ async def test_hot_table_entry_coherence_under_concurrent_promotion():
         for i in range(50):
             cols = {f"c{j}": seed * 100 + i for j in range(1 + (seed % 3))}
             cols["id"] = seed * 1000 + i
-            await mgr.maybe_promote_dicts("orders", [dict(cols)])
+            await mgr.maybe_promote_dicts(1, [dict(cols)])
             await asyncio.sleep(0)  # yield to interleave with readers/other promoters
 
     async def reader():
         while not stop:
-            _check_entry(mgr.get_entry("orders"))
+            _check_entry(mgr.get_entry(1))
             await asyncio.sleep(0)
 
     readers = [asyncio.create_task(reader()) for _ in range(8)]
@@ -282,7 +289,7 @@ async def test_source_pool_add_creates_one_driver_under_concurrency():
         P.create_driver = orig  # type: ignore[assignment]
 
 
-# ── 6. openapi.pg_cache._mem_fresh — prune must not race the writers ────────────
+# ── 6. api_source.fill_cache._mem_fresh — prune must not race the writers ──────────
 
 
 class TestMemFreshPruneRace:
@@ -290,7 +297,11 @@ class TestMemFreshPruneRace:
     trip 'dict changed size during iteration' (a loud crash) nor lose the just-written key."""
 
     def test_concurrent_mark_fresh_is_safe(self):
-        from provisa.openapi import pg_cache
+        from provisa.api_source import fill_cache
+        from provisa.api_source.engine_cache import CacheLocation
+
+        def _table(name):
+            return fill_cache.FillTable(CacheLocation("c", "s", "relational"), name, ())
 
         def worker(barrier, sink):
             barrier.wait()
@@ -300,14 +311,14 @@ class TestMemFreshPruneRace:
                     # has entries to delete while peers keep inserting — maximises the iterate/mutate
                     # overlap that would crash an unguarded prune.
                     ttl = 5 if i % 2 else -1
-                    pg_cache._mark_fresh("s", f"t{threading.get_ident()}_{i}", "h", ttl)
+                    fill_cache._mark_fresh(_table(f"t{threading.get_ident()}_{i}"), "h", ttl)
             except Exception as exc:  # noqa: BLE001 — a raced prune surfaces as RuntimeError here
                 sink.append(repr(exc))
 
-        rounds = _hammer(worker, n_threads=32, trials=5, setup=pg_cache._mem_fresh.clear)
+        rounds = _hammer(worker, n_threads=32, trials=5, setup=fill_cache._mem_fresh.clear)
         # INVARIANT: no iteration-vs-mutation crash on any thread, any round.
         assert all(not s for s in rounds), f"prune raced a writer: {rounds}"
-        pg_cache._mem_fresh.clear()
+        fill_cache._mem_fresh.clear()
 
 
 # ── 7. api_source.engine_cache._TABLE_EXISTS_CACHE — atomic get/set/pop ─────────

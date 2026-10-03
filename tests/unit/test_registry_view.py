@@ -107,8 +107,10 @@ async def test_registered_tables_carry_config_settings_only_where_declared(monke
             "table_name": "orders",
             "dq_contract": None,
             "role_ttl": {},  # REQ-1907
+            "pagination": None,  # REQ-318: the table sets no paging
             "replicate": None,
             "load_protected": None,
+            "change_signal": "ttl",  # REQ-929: saved on the row by the config load
             "columns": [
                 {
                     "column_name": "id",
@@ -125,8 +127,10 @@ async def test_registered_tables_carry_config_settings_only_where_declared(monke
             "table_name": "product_reviews",
             "dq_contract": None,
             "role_ttl": {},  # REQ-1907
+            "pagination": None,  # REQ-318: the table sets no paging
             "replicate": None,
             "load_protected": None,
+            "change_signal": None,  # REQ-929: the table sets none
             "columns": [
                 {
                     "column_name": "rating",

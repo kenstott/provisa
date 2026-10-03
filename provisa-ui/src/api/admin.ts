@@ -760,6 +760,7 @@ export interface PlatformSettings {
     max_object_depth: number;
     max_list_depth: number;
     max_list_items: number;
+    max_rows: number;
   };
   cdc?: {
     consumer_group_id: string;
@@ -1088,14 +1089,8 @@ export interface CacheStorageState {
     max_bytes: number;
     refresh_interval: number | null;
   };
-  warm_tables: {
-    query_threshold: number;
-    max_rows: number;
-    refresh_interval: number | null;
-    fs_cache_enabled: boolean;
-    fs_cache_directories: string;
-    fs_cache_max_sizes: string;
-  };
+  // REQ-826: when a busy table is replicated (Default threshold, window, size ceiling).
+  replication: { hot_threshold: number; hot_interval: number; hot_max_rows: number };
   materialized_views: { default_ttl: number | null };
   materialize: { store_url: string; default_store_url: string };
   restart_required_note: string;
@@ -1111,7 +1106,7 @@ export async function setCacheStorage(
   body: Partial<{
     cache: Partial<CacheStorageState["cache"]>;
     hot_tables: Partial<CacheStorageState["hot_tables"]>;
-    warm_tables: Partial<CacheStorageState["warm_tables"]>;
+    replication: Partial<CacheStorageState["replication"]>;
     materialized_views: Partial<CacheStorageState["materialized_views"]>;
     materialize: { store_url: string };
   }>,
@@ -1511,8 +1506,10 @@ export interface HotTableStat {
   schemaName: string;
   rowCount: number;
   // What is being kept for this table: a registered promotion candidate with nothing mirrored yet
-  // ("hot_candidate"), a mirrored hot copy ("hot"), or an Iceberg warm copy ("warm").
-  kind: "hot_candidate" | "hot" | "warm";
+  // ("hot_candidate"), a mirrored hot copy ("hot"), a table past its Hot threshold and served
+  // from its replica ("replica", REQ-826), or one past its threshold whose replica is still
+  // being built and which is read live meanwhile ("replica_building").
+  kind: "hot_candidate" | "hot" | "replica" | "replica_building";
 }
 
 export interface MaterializeStoreInfo {
@@ -2097,4 +2094,33 @@ export async function updateSettingsCatalog(
     );
   }
   return resp.json();
+}
+
+/** REQ-464: one candidate a natural-language table search ranked, with the confidence and the
+ *  reasoning the ranker gave (empty when no model ranked it). */
+export interface TableSearchCandidate {
+  schema_name: string;
+  table_name: string;
+  comment: string | null;
+  confidence: number;
+  reasoning: string;
+  cache_warm: boolean;
+}
+
+/** REQ-464: search a source's schema for the tables a description fits. The steward chooses;
+ *  nothing is registered by a search. */
+export async function searchSourceTables(
+  sourceId: string,
+  query: string,
+  schemaName: string,
+): Promise<TableSearchCandidate[]> {
+  const params = new URLSearchParams({ q: query, schema_name: schemaName });
+  const res = await fetch(
+    `${API_BASE}/admin/sources/${encodeURIComponent(sourceId)}/tables/search?${params}`,
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(serverMessage(body, requestFailed("table search", res.status)));
+  }
+  return res.json();
 }

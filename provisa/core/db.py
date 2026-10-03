@@ -331,7 +331,9 @@ async def _init_schema_portable(pool: "Database") -> None:
         # REQ-1914: the stamp rows and the triggers that advance them, once every table exists.
         from provisa.core import config_stamp
 
-        config_stamp.install(conn, config_stamp.TENANT_TABLES)
+        config_stamp.install(
+            conn, config_stamp.TENANT_TABLES, advanced=config_stamp.TENANT_ADVANCED
+        )
     async with pool.acquire() as conn:
         for domain_id, description, steward in _SEED_DOMAINS:
             result = await conn.execute_core(select(domains.c.id).where(domains.c.id == domain_id))
@@ -404,7 +406,12 @@ async def init_schema(
             # REQ-1914: the stamp rows and the triggers that advance them, once every table exists.
             from provisa.core import config_stamp
 
-            config_stamp.install(sa_conn, config_stamp.TENANT_TABLES, schema_name)
+            config_stamp.install(
+                sa_conn,
+                config_stamp.TENANT_TABLES,
+                schema_name,
+                advanced=config_stamp.TENANT_ADVANCED,
+            )
 
 
 async def _apply_tenancy_role_grants_portable(pool: "Database", *, multitenancy: bool) -> None:

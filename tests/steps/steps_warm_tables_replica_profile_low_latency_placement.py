@@ -12,16 +12,13 @@
 
 from __future__ import annotations
 
-import asyncio
 import time
 from dataclasses import dataclass, field
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 from pytest_bdd import given, scenarios, then, when
 
-from provisa.cache.warm_tables import QueryCounter, WarmTableManager
 from provisa.mv.models import MVDefinition, MVStatus
 
 scenarios("../features/REQ-238.feature")
@@ -238,154 +235,57 @@ def step_then_result_from_ssd_cache_low_latency(shared_data: dict[str, Any]) -> 
     )
 
 
+# ---------------------------------------------------------------------------
+# REQ-239: a busy table is promoted, a table whose traffic fell away is demoted
+# ---------------------------------------------------------------------------
+#
+# Since REQ-826 the count is taken where a statement's audit row is written and kept in Redis,
+# promotion sets the replica state and requests a build of the data replicator, and demotion
+# clears the flag. The scenario's wording predates that; the steps drive the mechanism as it is.
+
 scenarios("../features/REQ-239.feature")
 
 
-# ---------------------------------------------------------------------------
-# Helpers for REQ-239 auto-promotion / demotion
-# ---------------------------------------------------------------------------
+@pytest.fixture
+def hot_world(tmp_path, monkeypatch):
+    from tests.steps.hot_replication_world import World
 
-
-def _mock_cursor_req239(count_result=5000):
-    cursor = MagicMock()
-    cursor.fetchone.return_value = (count_result,)
-    cursor.fetchall.return_value = []
-    return cursor
-
-
-def _mock_trino_req239(cursor):
-    """Mock federation engine: async execute_engine delegates to *cursor* and reports fetchone as rows."""
-    engine = MagicMock()
-
-    async def _execute_engine(sql, *args, **kwargs):
-        cursor.execute(sql)
-        result = MagicMock()
-        result.rows = [cursor.fetchone.return_value]
-        return result
-
-    engine.execute_engine = _execute_engine
-    # An engine that addresses catalog.schema.table as written: its own form of a statement is
-    # the statement (``EngineRuntime.engine_physical``, which the warm-table manager calls for
-    # every statement). A bare MagicMock would hand back another mock in place of the SQL.
-    engine.engine_physical = lambda sql: sql
-    return engine
-
-
-# ---------------------------------------------------------------------------
-# Steps: REQ-239 default behaviour
-# ---------------------------------------------------------------------------
+    built = World(tmp_path, monkeypatch, {"hot_table": 1, "cold_table": 2})
+    yield built
+    built.close()
 
 
 @given("a table whose query count exceeds warm_tables.query_threshold within a refresh interval")
-def step_given_table_exceeds_query_threshold(shared_data: dict[str, Any]) -> None:
-    """
-    Set up a QueryCounter where 'hot_table' has been queried 120 times
-    (exceeding the default threshold of 100) and 'cold_table' has been
-    queried only 30 times (below threshold, so it should be demoted if warm).
-    """
-    counter = QueryCounter()
-    for _ in range(120):
-        counter.increment("analytics.hot_table")
-    for _ in range(30):
-        counter.increment("analytics.cold_table")
+def step_given_table_exceeds_query_threshold(hot_world, shared_data: dict[str, Any]) -> None:
+    """``hot_table`` was read by 120 governed statements in the interval (threshold 100);
+    ``cold_table`` was promoted earlier and is now read by 10 — below half the threshold."""
+    from tests.steps.hot_replication_world import THRESHOLD
 
-    # Verify counts are as expected before the promotion check
-    assert counter.get_count("analytics.hot_table") == 120, "hot_table must have 120 query hits"
-    assert counter.get_count("analytics.cold_table") == 30, "cold_table must have 30 query hits"
-
-    # Build Trino mock returning a row count within the size guard limit
-    cursor = _mock_cursor_req239(count_result=5_000)
-    conn = _mock_trino_req239(cursor)
-
-    mgr = WarmTableManager(iceberg_catalog="iceberg", iceberg_schema="warm")
-
-    # Pre-warm cold_table so it can be demoted on the next refresh cycle
-    cold_cursor = _mock_cursor_req239(count_result=200)
-    cold_conn = _mock_trino_req239(cold_cursor)
-    cold_counter = QueryCounter()
-    for _ in range(110):
-        cold_counter.increment("analytics.cold_table")
-    asyncio.run(mgr.check_promotions(cold_counter, cold_conn, threshold=100, max_rows=10_000_000))
-    assert "analytics.cold_table" in mgr.get_warm_tables(), (
-        "cold_table must be pre-warmed before the demotion test"
-    )
-
-    shared_data["counter"] = counter
-    shared_data["conn"] = conn
-    shared_data["cursor"] = cursor
-    shared_data["mgr"] = mgr
-    shared_data["threshold"] = 100
+    hot_world.statements_read("hot_table", 120)
+    hot_world.promoted_and_built("cold_table")
+    hot_world.statements_read("cold_table", 10)
+    assert hot_world.count("hot_table") > THRESHOLD
+    assert hot_world.count("cold_table") < THRESHOLD / 2
+    assert hot_world.promotion()[0] == frozenset({hot_world.key("cold_table")})
 
 
 @when("the promotion check runs")
-def step_when_promotion_check_runs(shared_data: dict[str, Any]) -> None:
-    """
-    Run WarmTableManager.check_promotions with the current counter state.
-    Also run check_demotions so tables below threshold lose their warm status.
-    """
-    mgr: WarmTableManager = shared_data["mgr"]
-    counter: QueryCounter = shared_data["counter"]
-    conn = shared_data["conn"]
-    threshold: int = shared_data["threshold"]
-
-    promoted = asyncio.run(
-        mgr.check_promotions(counter, conn, threshold=threshold, max_rows=10_000_000)
-    )
-    shared_data["promoted"] = promoted
-
-    # Run demotion pass — tables below threshold should be evicted
-    if hasattr(mgr, "check_demotions"):
-        demoted = asyncio.run(mgr.check_demotions(counter, conn, threshold=threshold))
-        shared_data["demoted"] = demoted
-    else:
-        # Fallback: manually inspect warm tables vs counter to determine demotion
-        warm = set(mgr.get_warm_tables())
-        counts = counter.get_counts()
-        demoted = [t for t in warm if counts.get(t, 0) < threshold]
-        shared_data["demoted"] = demoted
+def step_when_promotion_check_runs(hot_world, shared_data: dict[str, Any]) -> None:
+    shared_data["outcome"] = hot_world.evaluate()
 
 
 @then("the table is auto-materialized into Iceberg; tables falling below threshold are demoted")
-def step_then_hot_promoted_cold_demoted(shared_data: dict[str, Any]) -> None:
-    """
-    Assert:
-    1. analytics.hot_table (120 queries) was promoted into the Iceberg warm tier.
-    2. analytics.hot_table now appears in the WarmTableManager's warm set.
-    3. A CREATE TABLE … AS SELECT … was issued for the hot table.
-    4. analytics.cold_table (30 queries) was demoted (not in promoted list;
-       if demotion ran, it should no longer be in the warm set or it is in demoted).
-    """
-    promoted: list[str] = shared_data["promoted"]
-    mgr: WarmTableManager = shared_data["mgr"]
-    cursor = shared_data["cursor"]
-    demoted: list[str] = shared_data.get("demoted", [])
+def step_then_hot_promoted_cold_demoted(hot_world, shared_data: dict[str, Any]) -> None:
+    """The busy table is promoted with its build requested; the quiet one is read live again
+    and its replica is left for the replicator to retire."""
+    outcome = shared_data["outcome"]
+    assert outcome.promoted == (hot_world.key("hot_table"),), outcome
+    hot = hot_world.record("hot_table")
+    assert (hot.build_state, hot.requested_reason) == ("requested", "hot")
+    # Promoted, not yet served: its replica has not been built, so it is still read live.
+    promoted, serving = hot_world.promotion()
+    assert hot_world.key("hot_table") in promoted and hot_world.key("hot_table") not in serving
 
-    # --- promotion assertion ---
-    assert "analytics.hot_table" in promoted, (
-        f"Expected analytics.hot_table to be auto-promoted but promoted={promoted}"
-    )
-    assert "analytics.hot_table" in mgr.get_warm_tables(), (
-        "analytics.hot_table must be registered in the WarmTableManager warm set"
-    )
-
-    # --- CTAS assertion for hot_table ---
-    execute_calls = [str(c) for c in cursor.execute.call_args_list]
-    ctas_issued = any("CREATE TABLE" in call and "hot_table" in call for call in execute_calls)
-    assert ctas_issued, (
-        f"Expected a CREATE TABLE … AS SELECT for analytics.hot_table but "
-        f"calls were: {execute_calls}"
-    )
-
-    # --- cold_table must NOT have been promoted in this run ---
-    assert "analytics.cold_table" not in promoted, (
-        "analytics.cold_table is below threshold and must not appear in promoted list"
-    )
-
-    # --- demotion assertion for cold_table ---
-    # cold_table was pre-warmed but now has only 30 queries; it should be demoted
-    cold_still_warm = "analytics.cold_table" in mgr.get_warm_tables()
-    cold_explicitly_demoted = "analytics.cold_table" in demoted
-    assert cold_explicitly_demoted or not cold_still_warm, (
-        "analytics.cold_table (30 queries < threshold 100) must be demoted: "
-        f"demoted={demoted}, warm_tables={mgr.get_warm_tables()}"
-    )
+    assert outcome.demoted == (hot_world.key("cold_table"),), outcome
+    assert hot_world.key("cold_table") not in promoted
+    assert hot_world.record("cold_table").exists

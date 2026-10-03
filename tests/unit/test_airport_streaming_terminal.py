@@ -99,6 +99,7 @@ def _plan(route, **kwargs):
         writes_tables=False,  # REQ-1897: finalize_audit invalidates a write's tables
         live_caps=(),  # REQ-1909: the capped live sources the pipeline binds at mint (none here)
         live_caps_org=None,
+        warnings=[],  # REQ-1350: what the statement's answer says about itself (nothing here)
         **kwargs,
     )
 
@@ -191,7 +192,9 @@ def test_a_direct_scan_that_reports_no_column_types_is_refused():
 
 
 def test_an_engine_scan_streams_the_engines_own_reader(airport, main_loop):
-    schema, batches = governed_table_scan_stream(airport.state, "SELECT id FROM orders", "analyst")
+    schema, batches, _warnings = governed_table_scan_stream(
+        airport.state, "SELECT id FROM orders", "analyst"
+    )
 
     assert schema == airport.engine_schema
     assert airport.reader.pulled == 0  # nothing pulled until the client reads
@@ -201,7 +204,9 @@ def test_an_engine_scan_streams_the_engines_own_reader(airport, main_loop):
 def test_a_direct_scan_streams_through_the_sources_cursor(airport, main_loop):
     airport.plan = _plan(airport.route.DIRECT)
 
-    schema, batches = governed_table_scan_stream(airport.state, "SELECT id FROM orders", "analyst")
+    schema, batches, _warnings = governed_table_scan_stream(
+        airport.state, "SELECT id FROM orders", "analyst"
+    )
 
     assert schema.names == ["id"]
     assert airport.direct.consumed == 0

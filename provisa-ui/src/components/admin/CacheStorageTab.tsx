@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 /**
- * REQ-917: the hot-cache (Redis), warm-tier and materialize-store settings, split out of the
+ * REQ-917: the hot-cache (Redis), Hot replication, read-cache and materialize-store settings, split out of the
  * single "Setup" tab they used to share into one expandable Settings panel per cache type — the
  * store connection with the response cache it backs, the promotion thresholds with the hot tables
  * they promote, the MV TTL and store URL with the materialized store.
@@ -42,7 +42,7 @@ import { usePanelState } from "../../hooks/usePanelState";
 import { PlatformRequired } from "./PlatformRequired";
 import { isForbidden } from "./isForbidden";
 
-type StorageBlock = "cache" | "hot_tables" | "warm_tables" | "materialized_views" | "materialize";
+type StorageBlock = "cache" | "hot_tables" | "replication" | "materialized_views" | "materialize";
 
 /** Load the cache-storage config and save back only `blocks`. */
 function useCacheStorage(blocks: StorageBlock[]) {
@@ -219,12 +219,15 @@ export function ResponseCacheSettingsPanel({ platform }: { platform: boolean }) 
   );
 }
 
-/** Hot Tables → Settings: the promotion thresholds for the hot tier and the warm tier below it. */
+/**
+ * Hot Tables → Settings: the hot tier's promotion thresholds, and when a busy table is
+ * replicated (REQ-826).
+ */
 export function HotTablesSettingsPanel() {
   const { t } = useTranslation();
   const { s, setS, save, saving, msg, error, forbidden } = useCacheStorage([
     "hot_tables",
-    "warm_tables",
+    "replication",
   ]);
   if (forbidden) return <PlatformRequired />;
   if (!s) return error ? <Alert color="red">{error}</Alert> : null;
@@ -251,66 +254,40 @@ export function HotTablesSettingsPanel() {
         />
       </SimpleGrid>
 
-      <Title order={5}>{t("cacheStorageTab.warmHeading")}</Title>
+      <Title order={5}>{t("cacheStorageTab.hotReplicationHeading")}</Title>
       <Text c="dimmed" size="sm">
-        {t("cacheStorageTab.warmIntro")}
+        {t("cacheStorageTab.hotReplicationIntro")}
       </Text>
       <SimpleGrid cols={{ base: 1, sm: 3 }}>
         <NumberInput
-          label={t("cacheStorageTab.warmQueryThresholdLabel")}
-          value={s.warm_tables.query_threshold}
+          label={t("cacheStorageTab.hotThresholdLabel")}
+          data-testid="replication-hot-threshold"
+          min={1}
+          value={s.replication.hot_threshold}
           onChange={(v) =>
-            setS({ ...s, warm_tables: { ...s.warm_tables, query_threshold: Number(v) } })
+            setS({ ...s, replication: { ...s.replication, hot_threshold: Number(v) } })
           }
         />
         <NumberInput
-          label={t("cacheStorageTab.warmMaxRowsLabel")}
-          value={s.warm_tables.max_rows}
-          onChange={(v) => setS({ ...s, warm_tables: { ...s.warm_tables, max_rows: Number(v) } })}
+          label={t("cacheStorageTab.hotIntervalLabel")}
+          data-testid="replication-hot-interval"
+          min={1}
+          value={s.replication.hot_interval}
+          onChange={(v) =>
+            setS({ ...s, replication: { ...s.replication, hot_interval: Number(v) } })
+          }
         />
         <NumberInput
-          label={t("cacheStorageTab.warmRefreshLabel")}
-          value={s.warm_tables.refresh_interval ?? ""}
+          label={t("cacheStorageTab.hotMaxRowsLabel")}
+          data-testid="replication-hot-max-rows"
+          min={1}
+          value={s.replication.hot_max_rows}
           onChange={(v) =>
-            setS({
-              ...s,
-              warm_tables: { ...s.warm_tables, refresh_interval: v === "" ? null : Number(v) },
-            })
+            setS({ ...s, replication: { ...s.replication, hot_max_rows: Number(v) } })
           }
         />
       </SimpleGrid>
-      <Checkbox
-        label={t("cacheStorageTab.fsCacheEnabledLabel")}
-        checked={s.warm_tables.fs_cache_enabled}
-        onChange={(e) =>
-          setS({
-            ...s,
-            warm_tables: { ...s.warm_tables, fs_cache_enabled: e.currentTarget.checked },
-          })
-        }
-      />
-      <SimpleGrid cols={{ base: 1, sm: 2 }}>
-        <TextInput
-          label={t("cacheStorageTab.fsCacheDirsLabel")}
-          value={s.warm_tables.fs_cache_directories}
-          onChange={(e) =>
-            setS({
-              ...s,
-              warm_tables: { ...s.warm_tables, fs_cache_directories: e.currentTarget.value },
-            })
-          }
-        />
-        <TextInput
-          label={t("cacheStorageTab.fsCacheMaxSizesLabel")}
-          value={s.warm_tables.fs_cache_max_sizes}
-          onChange={(e) =>
-            setS({
-              ...s,
-              warm_tables: { ...s.warm_tables, fs_cache_max_sizes: e.currentTarget.value },
-            })
-          }
-        />
-      </SimpleGrid>
+
       <StorageSaveRow
         save={save}
         saving={saving}

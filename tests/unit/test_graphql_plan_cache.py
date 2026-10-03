@@ -243,9 +243,8 @@ def _endpoint_harness(monkeypatch, *, approval_hook=None):
 
     import provisa.api.app as app_module
     from provisa.api.data import endpoint
-    from provisa.compiler import limits
 
-    calls = {"parse": 0, "limits": 0, "compile": 0, "prepare": 0, "execute": 0}
+    calls = {"parse": 0, "compile": 0, "prepare": 0, "execute": 0}
     document = SimpleNamespace(definitions=[])
 
     def _parse(schema, query, variables=None):
@@ -271,9 +270,6 @@ def _endpoint_harness(monkeypatch, *, approval_hook=None):
 
     async def _awake(state):
         return None
-
-    def _limits(doc, **kwargs):
-        calls["limits"] += 1
 
     state = SimpleNamespace(
         admin_db=None,  # as AppState without a control plane: no debug-trace settings
@@ -309,7 +305,6 @@ def _endpoint_harness(monkeypatch, *, approval_hook=None):
         endpoint, "_build_directives_with_legacy", lambda query, doc, hints: _DIRECTIVES
     )
     monkeypatch.setattr(endpoint, "cache_tenant", lambda st: "org")
-    monkeypatch.setattr(limits, "enforce_limits", _limits)
 
     def call(query="{ orders { orderId } }", variables=None, **headers):
         raw = SimpleNamespace(state=SimpleNamespace(role="analyst", tenant_id=None))
@@ -336,10 +331,10 @@ def _endpoint_harness(monkeypatch, *, approval_hook=None):
 def test_a_repeated_query_compiles_and_governs_once(monkeypatch):
     h = _endpoint_harness(monkeypatch)
     h.call()
-    assert h.calls == {"parse": 1, "limits": 1, "compile": 1, "prepare": 1, "execute": 1}
+    assert h.calls == {"parse": 1, "compile": 1, "prepare": 1, "execute": 1}
     for _ in range(3):
         h.call()
-    assert h.calls == {"parse": 1, "limits": 1, "compile": 1, "prepare": 1, "execute": 4}
+    assert h.calls == {"parse": 1, "compile": 1, "prepare": 1, "execute": 4}
     governed = 'SELECT "order_id" FROM "sales"."orders" /* governed */'
     assert h.seen_sql == [governed] * 4, "a hit must execute the governed SQL the miss produced"
 

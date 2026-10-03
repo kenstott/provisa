@@ -12,10 +12,15 @@
 
 # Requirements: REQ-013, REQ-014, REQ-016, REQ-133, REQ-155, REQ-156, REQ-260, REQ-334, REQ-393, REQ-399
 
+from provisa.core import model_change
 from typing import TYPE_CHECKING
+
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 from sqlalchemy import delete as _delete, select, update
 
+from provisa.core.paging import paging_row
 from provisa.core import domain_policy
 from provisa.core.models import Table
 from provisa.core.repositories import data_product as data_product_repo
@@ -162,6 +167,7 @@ async def upsert(
     to block each other's deletion in a circle. A registration that would drop a column other
     objects refer to is refused (:class:`ColumnDropRefused`). This is the write path the admin
     mutations and the config loader share, so both refuse them."""
+    model_change.name("upsert", "table", table.table_name)  # REQ-1524
     async with conn.transaction():
         view_sql = getattr(table, "view_sql", None)
         if view_sql:
@@ -260,6 +266,7 @@ async def _upsert(conn: "Connection", table: Table, origin: str) -> int | None:
         "row_materialize": getattr(table, "row_materialize", False),
         "cache_ttl": getattr(table, "cache_ttl", None),
         "role_ttl": dict(table.role_ttl),  # REQ-1907
+        "pagination": paging_row(table.pagination),  # REQ-318
     }
     _update_columns = [
         "domain_id",
@@ -305,6 +312,7 @@ async def _upsert(conn: "Connection", table: Table, origin: str) -> int | None:
         "row_materialize",  # REQ-1865
         "cache_ttl",  # REQ-1865
         "role_ttl",  # REQ-1907
+        "pagination",  # REQ-318
     ]
     table_id = await conn.upsert_returning(
         registered_tables,
@@ -452,23 +460,42 @@ async def get_by_name(
     return result_dict
 
 
+#: REQ-1919: the tables the config load in progress (in this context) will remove at its end,
+#: because its file no longer declares them. A lookup by name during that load does not see them:
+#: the model the file produces does not have them, so a relationship, row filter or tag the file
+#: declares by a table's name means the table the file declares. Empty outside a config load.
+_LEAVING: ContextVar[frozenset[int]] = ContextVar(
+    "tables_leaving_with_this_load", default=frozenset()
+)
+
+
+@contextmanager
+def leaving(table_ids: "frozenset[int]"):
+    """For the length of the block, lookups by name do not see ``table_ids`` (see ``_LEAVING``)."""
+    token = _LEAVING.set(table_ids)
+    try:
+        yield
+    finally:
+        _LEAVING.reset(token)
+
+
 async def find_by_table_name(
     conn: "Connection", table_name: str
 ) -> dict | None:  # REQ-014, REQ-155
     """Find a registered table by its virtual name.
 
     The virtual name is alias when set, otherwise table_name.
-    Raises ValueError if multiple tables match.
+    Raises ValueError if multiple tables match. During a config load, a table the load will
+    remove is not seen (``leaving``).
     """
-    result = await conn.execute_core(
-        select(registered_tables).where(
-            (registered_tables.c.alias == table_name)
-            | (
-                (registered_tables.c.alias.is_(None))
-                & (registered_tables.c.table_name == table_name)
-            )
-        )
+    statement = select(registered_tables).where(
+        (registered_tables.c.alias == table_name)
+        | ((registered_tables.c.alias.is_(None)) & (registered_tables.c.table_name == table_name))
     )
+    gone = _LEAVING.get()
+    if gone:
+        statement = statement.where(registered_tables.c.id.not_in(sorted(gone)))
+    result = await conn.execute_core(statement)
     rows = result.fetchall()
     if not rows:
         return None
@@ -506,6 +533,7 @@ async def delete(conn: "Connection", table_id: int) -> bool:  # REQ-014, REQ-191
     Data kept for the table outside the control plane (replica, row-level rows, a view's
     storage relation, cache entries) is not removed here; the caller runs what exists for it.
     """
+    model_change.name("delete", "table", table_id)  # REQ-1524
     ref = ObjectRef("table", table_id)
     async with conn.transaction():
         row = await get(conn, table_id)

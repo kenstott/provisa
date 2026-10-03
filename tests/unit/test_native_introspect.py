@@ -146,13 +146,15 @@ async def test_native_schemas_graphql_remote():
 @pytest.mark.asyncio
 async def test_native_schemas_grpc():
     result = await native_schemas("src", "grpc", _empty_pool(), _no_conn())
-    assert result == ["grpc"]
+    # The schema a gRPC source's tables register under (REQ-322), so a picked table is
+    # registered where its readers look for it.
+    assert result == ["grpc_remote"]
 
 
 @pytest.mark.asyncio
 async def test_native_schemas_grpc_remote():
     result = await native_schemas("src", "grpc_remote", _empty_pool(), _no_conn())
-    assert result == ["grpc"]
+    assert result == ["grpc_remote"]
 
 
 @pytest.mark.asyncio
@@ -564,14 +566,25 @@ async def test_native_tables_openapi_pagination_wrapper_included():
 
 
 @pytest.mark.asyncio
-async def test_native_tables_graphql_filters_non_list():
+async def test_native_tables_graphql_offers_every_table_the_schema_maps():
+    """REQ-308 (amended 2026-10-02): the picker lists what can be registered -- every table the
+    schema maps to, a single-object field included (it registers as a table whose required
+    argument is its filter), under the name it registers with."""
     state = MagicMock()
-    state.graphql_remote_sources = {"src": {"url": "http://example.com/graphql", "auth": None}}
+    state.graphql_remote_sources = {
+        "src": {
+            "source_id": "src",
+            "url": "http://example.com/graphql",
+            "auth": None,
+            "namespace": "shop",
+        }
+    }
     config_conn = AsyncMock()
     schema = {
         "queryType": {"name": "Query"},
         "types": [
             {
+                "kind": "OBJECT",
                 "name": "Query",
                 "fields": [
                     {
@@ -584,6 +597,7 @@ async def test_native_tables_graphql_filters_non_list():
                         "description": "One pet",
                         "type": {"kind": "OBJECT", "name": "Pet"},
                     },
+                    {"name": "petCount", "type": {"kind": "SCALAR", "name": "Int"}},
                 ],
             }
         ],
@@ -594,41 +608,48 @@ async def test_native_tables_graphql_filters_non_list():
         result = await native_tables("src", "graphql", "graphql", _empty_pool(), config_conn, state)
 
     assert result is not None
-    assert len(result) == 1
-    assert result[0].name == "pets"
+    assert {t.name: t.comment for t in result} == {
+        "shop__pets": "All pets",
+        "shop__pet": "One pet",
+    }  # petCount returns a scalar: a function, not a table
 
 
 @pytest.mark.asyncio
-async def test_native_tables_grpc_streaming_only():
+async def test_native_tables_graphql_source_this_process_does_not_hold_offers_nothing():
     state = MagicMock()
-    state.grpc_remote_sources = {"src": {"proto_text": "syntax = 'proto3';"}}
-    proto_dict = {
-        "messages": {
-            "PetResponse": [{"name": "id", "repeated": False}],
-            "PetListResponse": [{"name": "pets", "repeated": True}],
-        },
-        "services": [
-            {
-                "methods": [
-                    {"name": "StreamPets", "server_streaming": True, "output_type": "PetResponse"},
-                    {"name": "GetPet", "server_streaming": False, "output_type": "PetResponse"},
-                    {
-                        "name": "ListPets",
-                        "server_streaming": False,
-                        "output_type": "PetListResponse",
-                    },
-                ]
-            }
-        ],
-    }
-    with patch("provisa.grpc_remote.loader.parse_proto_text", return_value=proto_dict):
-        result = await native_tables("src", "grpc", "grpc", _empty_pool(), _no_conn(), state)
+    state.graphql_remote_sources = {}
+    result = await native_tables("src", "graphql", "graphql", _empty_pool(), AsyncMock(), state)
+    assert result == []
 
+
+@pytest.mark.asyncio
+async def test_native_tables_grpc_offers_every_query_method_by_its_registered_name():
+    """REQ-322 (amended 2026-10-02): the picker lists what can be registered -- one table per
+    query method of the proto, under the name it registers with and the schema it registers
+    in."""
+    from provisa.grpc_remote.mapper import GrpcQuery
+
+    def _query(method: str) -> GrpcQuery:
+        return GrpcQuery(
+            service="PetService",
+            method=method,
+            full_method_path=f"/pets.PetService/{method}",
+            input_message="Req",
+            output_message="Res",
+        )
+
+    state = MagicMock()
+    state.grpc_remote_sources = {
+        "src": {"namespace": "pets", "queries": [_query("StreamPets"), _query("ListPets")]}
+    }
+    result = await native_tables("src", "grpc", "grpc_remote", _empty_pool(), _no_conn(), state)
     assert result is not None
-    names = [t.name for t in result]
-    assert "StreamPets" in names
-    assert "ListPets" in names
-    assert "GetPet" not in names
+    assert [t.name for t in result] == [
+        "pets__PetService__StreamPets",
+        "pets__PetService__ListPets",
+    ]
+    # The schema the tables do not register in offers nothing.
+    assert await native_tables("src", "grpc", "grpc", _empty_pool(), _no_conn(), state) == []
 
 
 # ── _openapi_is_table via parse_spec (petstore regression) ───────────────────

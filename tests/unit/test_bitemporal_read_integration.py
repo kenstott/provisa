@@ -19,6 +19,8 @@ from __future__ import annotations
 import duckdb
 import pytest
 
+from tests.helpers import hold_registered_tables
+
 import provisa.mv.refresh as refresh_mod
 from provisa.compiler.sql_gen import CompiledQuery
 from provisa.compiler.view_expand import expand_views
@@ -99,6 +101,12 @@ async def _materialize(monkeypatch, mode: str):
     view_sql_map = {VIEW: view_read_sql(mv_ref, spec)}
     bitemporal_reads = {VIEW: (mv_ref, spec)}
     return con, view_sql_map, bitemporal_reads, spec
+
+
+@pytest.fixture(autouse=True)
+def _model_holds_base(monkeypatch):
+    """The registered table the view reads (its input resolves against the model)."""
+    hold_registered_tables(monkeypatch, "base")
 
 
 @pytest.mark.asyncio

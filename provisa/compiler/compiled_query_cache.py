@@ -182,6 +182,7 @@ def routing_cache_key(
     role_id: str,
     schema_boot_id: str,
     schema_version: int,
+    replica_generation: int,
 ) -> str:
     """Build the routing-cache key. Deliberately narrower than `compiled_query_cache_key`: routing
     (`extract_sources`/`decide_route`) depends only on the exec SQL's table/join STRUCTURE, the
@@ -190,11 +191,17 @@ def routing_cache_key(
     `exec_sql` here is the already-governed, catalog-physical SQL passed into `_optimize_and_route`
     (post-`apply_governance`/post-session-var-resolution), not the caller's original raw text —
     shape-hashed for the same literal-independence reason `compiled_query_cache_key` shape-hashes
-    its SQL component."""
+    its SQL component.
+
+    ``replica_generation`` (REQ-826): the route also depends on which of the statement's tables
+    are served from a replica (the operator's floor). That set changes without a schema build —
+    a busy table is promoted or demoted, a promoted table's replica completes — and each change
+    advances this generation, so no cached route outlives the routes it was decided under."""
     return "\x00".join(
         [
             schema_boot_id,
             str(schema_version),
+            str(replica_generation),
             role_id,
             sql_shape_digest(exec_sql),
         ]

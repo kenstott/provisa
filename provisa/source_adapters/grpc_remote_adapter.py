@@ -31,13 +31,12 @@ def _args_hash(args: dict) -> str:
 
 
 def _get_channel(grpc_remote_sources: dict, source_id: str) -> grpc.aio.Channel:  # REQ-327
+    from provisa.grpc_remote.executor import channel_for
+
     reg = grpc_remote_sources.get(source_id)
     if reg is None:
         raise KeyError(f"gRPC remote source {source_id!r} not registered")
-    channel = reg.get("channel")
-    if channel is None:
-        raise RuntimeError(f"No active channel for gRPC source {source_id!r}")
-    return channel
+    return channel_for(reg)
 
 
 async def fetch(  # REQ-325, REQ-327, REQ-328

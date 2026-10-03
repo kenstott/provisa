@@ -247,6 +247,21 @@ export interface RoleTtl {
   ttl: number;
 }
 
+// REQ-318: a table's paging as declared — a paged REST endpoint's type and parameters, or a
+// connection table's row bound (provisa/core/paging.py). Unset fields are null.
+export type PagingKind = "endpoint" | "connection";
+export type PagingType = "link_header" | "cursor" | "offset" | "page_number";
+export interface Paging {
+  type: PagingType | null;
+  cursorField: string | null;
+  cursorParam: string | null;
+  pageParam: string | null;
+  pageSizeParam: string | null;
+  pageSize: number | null;
+  maxPages: number | null;
+  maxRows: number | null;
+}
+
 export interface RegisteredTable {
   id: number;
   sourceId: string;
@@ -258,6 +273,11 @@ export interface RegisteredTable {
   description: string | null;
   cacheTtl: number | null;
   roleTtl: RoleTtl[]; // REQ-1907: role → TTL; effective = max(cache_ttl, role_ttl(role))
+  // REQ-318: what reads the table page by page (null: nothing does), its declared paging, and
+  // the operator's graphql_remote.max_rows a connection table's own bound may only lower.
+  pagingKind: PagingKind | null;
+  pagination: Paging | null;
+  pagingCeilingRows: number | null;
   replicate: number | null; // REQ-826: null = inherit source
   loadProtected: boolean | null; // REQ-1141: null = inherit source
   offPeakWindow: string | null; // REQ-1141: "HH:MM-HH:MM" window override
@@ -516,6 +536,7 @@ export interface RLSRule {
   actionName?: string | null; // REQ-1679: a tracked function/webhook target, by name
   roleId: string;
   filterExpr: string;
+  origin: Origin; // REQ-1919: a config's rule is removed when the file stops declaring it
 }
 
 // REQ-1484: an artifact that references a column the administrator is about to rename or drop.

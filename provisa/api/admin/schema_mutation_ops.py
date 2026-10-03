@@ -28,7 +28,7 @@ from provisa.core.schema_org import (
     sources,
     table_meta_links,
 )
-from provisa.api.admin.types import MutationResult, TableInput
+from provisa.api.admin.types import MutationResult, MutationWarning, TableInput
 from provisa.api.admin.schema_helpers import (
     _dataset_ownership_conflict,
     _domain_table_conflict,
@@ -107,6 +107,7 @@ async def _apply_mv_relationship_gate(
                         cardinality=Cardinality.many_to_one,
                         owner=getattr(_identity_user(info), "user_id", None),
                     ),
+                    origin="admin",
                 )
             return None
 
@@ -131,6 +132,43 @@ def _identity_user(info: StrawberryInfo):
     from provisa.api.admin.capabilities import _identity_from_info
 
     return _identity_from_info(info)
+
+
+async def _registered_result(
+    input: TableInput, table_id: int | None, *, warnings: list[MutationWarning]
+) -> MutationResult:
+    """What a successful registration answers. A table of a remote GraphQL source may have had
+    fields left out because the source's credential may not read them (REQ-1923); they are
+    named. Registering it may also complete a relationship between two of the source's
+    registered tables (REQ-313), which is stored here, once both exist. ``warnings`` are the
+    registration's notices about a config-declared table it edited (REQ-1919)."""
+    from provisa.api.admin._graphql_table_registration import sync_detected_relationships
+    from provisa.api.admin._table_ops import take_omitted_fields
+    from provisa.api.app import state
+
+    if await sync_detected_relationships(state, input.source_id):
+        await _rebuild_schemas()
+
+    omitted = take_omitted_fields(input.source_id, input.table_name)
+    if not omitted:
+        return MutationResult(
+            success=True,
+            message=f"Table {input.table_name!r} registered (id={table_id})",
+            code="schema.table_registered",
+            params={"table": input.table_name, "id": table_id},
+            warnings=warnings,
+        )
+    fields = ", ".join(sorted({o["field"] for o in omitted}))
+    return MutationResult(
+        success=True,
+        message=(
+            f"Table {input.table_name!r} registered (id={table_id}). Left out, because the "
+            f"source's credential may not read them: {fields}"
+        ),
+        code="schema.table_registered_fields_omitted",
+        params={"table": input.table_name, "id": table_id, "fields": fields, "omitted": omitted},
+        warnings=warnings,
+    )
 
 
 async def register_table(
@@ -473,12 +511,8 @@ async def register_table(
         from provisa.api.admin.schema_common import activate_view_mv
 
         await activate_view_mv(input.table_name)
-    return MutationResult(
-        success=True,
-        message=f"Table {input.table_name!r} registered (id={table_id})",
-        code="schema.table_registered",
-        params={"table": input.table_name, "id": table_id},
-        warnings=config_warnings("table", input.table_name, _was, "edited"),
+    return await _registered_result(
+        input, table_id, warnings=config_warnings("table", input.table_name, _was, "edited")
     )
 
 

@@ -18,12 +18,10 @@ go through tolerate_startup_failure.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
-from provisa.core.connection_loop import spawn_background
-from provisa.core.database import Database
 from provisa.core.schema_org import registered_tables as _registered_tables_t
 from provisa.api.startup_resilience import tolerate_startup_failure
 from provisa.core.models import DERIVED_SOURCE_ID
@@ -58,45 +56,6 @@ def compile_registry_mvs_to_physical(mv_registry, ctx) -> None:
     for mv in mv_registry._mvs.values():
         if mv.sql:
             mv.sql = compile_view_sql_to_physical(mv.sql, ctx)
-
-
-async def _bg_hydrate_api_endpoints() -> None:
-    """Background-hydrate zero-param API endpoints (no path params → full collection known at startup)."""
-    from provisa.api.app import state
-
-    _zero_param_eps = [
-        (ep, state.api_sources[ep.source_id])
-        for ep in state.api_endpoints.values()
-        if "{" not in ep.path and ep.source_id in state.api_sources and ep.method == "GET"
-    ]
-    if not _zero_param_eps:
-        return
-
-    assert state.tenant_db is not None
-
-    async def _bg_hydrate(eps=_zero_param_eps, pool: Database = state.tenant_db):
-        from provisa.openapi.pg_cache import fill_api_table
-
-        async with pool.acquire() as _conn:
-            for _ep, _src in eps:
-                # Best-effort: one endpoint's hydration failing must not stop the rest.
-                with tolerate_startup_failure(f"BG hydration for {_ep.table_name}"):
-                    await fill_api_table(
-                        _src.base_url,
-                        _ep.path,
-                        _ep.default_params,
-                        cast("Connection", _conn),
-                        "default",
-                        _ep.table_name,
-                        _ep.ttl,
-                        _ep.response_root,
-                        _ep.error_path,
-                        _ep.pk_column,
-                    )
-
-    # Outlives the rebuild that started it: on the process loop even when the rebuild runs on a
-    # connection-thread loop (REQ-1882, amended 2026-09-29).
-    spawn_background(_bg_hydrate(), name="api-endpoint-hydrate")
 
 
 async def _reconcile_live_engine(conn: "Connection") -> None:  # REQ-565, REQ-813

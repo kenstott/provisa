@@ -55,6 +55,81 @@ class PolicySummary:  # REQ-1143
     warning: str | None = None
 
 
+@dataclass(frozen=True)
+class HotView:  # REQ-826
+    """What Hot replication comes to for one table in this deployment, for the summary to state:
+    the settings in force, whether promotion is decided here at all, and where the table stands."""
+
+    default_threshold: int  # replication.hot_threshold
+    interval: int  # replication.hot_interval, seconds
+    max_rows: int  # replication.hot_max_rows
+    # False: the counts are per process (embedded Redis) and several workers serve requests, so
+    # no count is the table's and nothing is promoted (replica_hot.promotion_runs).
+    runs: bool = True
+    promoted: bool = False  # it passed its threshold
+    serving: bool = False  # ...and its replica exists: reads come from it
+    # Why it is not replicated however busy: replica_hot.HOT_TIER / NOT_WHOLE / NO_CLOCK /
+    # TOO_LARGE.
+    skipped: str | None = None
+
+
+def _fmt_half(threshold: int) -> str:
+    return str(threshold // 2) if threshold % 2 == 0 else f"{threshold / 2:g}"
+
+
+def _describe_live_under_threshold(
+    threshold: int, hot: HotView, *, explicit: bool
+) -> PolicySummary:
+    """A table read live that is replicated once busy (Default, or Hot-N when ``explicit``)."""
+    from provisa.federation.replica_hot import HOT_TIER, NO_CLOCK, NOT_WHOLE, TOO_LARGE
+
+    per = f"{threshold} governed statements per {_fmt_cadence(hot.interval)}"
+    reason: str | None = None
+    if not hot.runs:
+        reason = (
+            "Hot promotion needs shared Redis when more than one worker serves requests; this "
+            "table stays live."
+        )
+    elif hot.skipped == HOT_TIER:
+        reason = (
+            "It is not replicated when busy: the hot tier keeps it in Redis, and a table lives "
+            "in one tier."
+        )
+    elif hot.skipped == NOT_WHOLE:
+        reason = (
+            "It is not replicated when busy: it is read by its parameters or row by row, so it "
+            "has no whole copy to build."
+        )
+    elif hot.skipped == NO_CLOCK:
+        reason = (
+            "It is not replicated when busy: its change signal is TTL-based and neither it nor "
+            "its source declares a Cache TTL, so a replica would have no refresh clock."
+        )
+    elif hot.skipped == TOO_LARGE:
+        reason = (
+            f"It is not replicated when busy: it holds more than {hot.max_rows} rows "
+            "(replication.hot_max_rows)."
+        )
+    if reason is not None:
+        # A Hot-N the operator chose that cannot take effect is a setting with no effect: flagged.
+        return PolicySummary(
+            f"Live — read directly from the source. {reason}",
+            Serving.LIVE,
+            warning=reason if explicit else None,
+        )
+    if hot.promoted:
+        return PolicySummary(
+            f"Live — it passed {per} and its replica is being built; reads stay live until the "
+            "replica exists.",
+            Serving.LIVE,
+        )
+    return PolicySummary(
+        f"Live — read directly from the source. Replicated once it passes {per} (best effort), "
+        f"and back to live below {_fmt_half(threshold)}.",
+        Serving.LIVE,
+    )
+
+
 def _fmt_window(w: OffPeakWindow) -> str:
     def hhmm(m: int) -> str:
         return f"{m // 60:02d}:{m % 60:02d}"
@@ -103,7 +178,7 @@ def describe_refresh_policy(
     engine: FederationEngine,
     default_ttl: int = 300,
     *,
-    promoted: bool = False,
+    hot: HotView,
 ) -> PolicySummary:
     """Derive the plain-English refresh-policy summary for one (source, table, engine) (REQ-1143).
 
@@ -115,9 +190,10 @@ def describe_refresh_policy(
 
     ``default_ttl`` is the global response-cache TTL (``state.response_cache_default_ttl``). It is the
     read-through refresh cadence a table gets when it sets no explicit ``cache_ttl`` — the SAME chain
-    the Effective-TTL column resolves (table → source → global). ``promoted``: the table passed its
-    threshold and is in the promoted set."""
+    the Effective-TTL column resolves (table → source → global). ``hot``: the Hot replication
+    settings in force and where this table stands (promoted, served from its replica, skipped)."""
     from provisa.core.replicate import NEVER, floor_of, resolved_replicate
+    from provisa.federation.replica_hot import threshold_of
 
     policy = resolve_refresh_policy(source, table)
     live = _live_reachable(source, engine)
@@ -134,16 +210,24 @@ def describe_refresh_policy(
 
     # 2. The operator's setting puts reads on the replica: Always, load protection, or a table
     # past its threshold. The source is not read by a query on any engine.
-    if floor_of(replicate, policy.load_protected, promoted=promoted) is not None:
+    threshold = threshold_of(source, table, hot.default_threshold)
+    if floor_of(replicate, policy.load_protected, promoted=hot.serving) is not None:
+        # Replicated because it is busy: say what put it there and what takes it back.
+        busy = (
+            f" It passed {threshold} governed statements per {_fmt_cadence(hot.interval)}; it "
+            f"returns to live below {_fmt_half(threshold)}."
+            if threshold is not None
+            else ""
+        )
         if policy.cadence is not None:
             return PolicySummary(
                 "Replicated — reads come from the replica, refreshed on access when older than "
-                f"{_fmt_cadence(policy.cadence)}.",
+                f"{_fmt_cadence(policy.cadence)}.{busy}",
                 Serving.CACHE,
             )
         return PolicySummary(
             "Replicated — reads come from the replica. It is built once and refreshed only "
-            "when the source reports a change or the scheduler runs.",
+            f"when the source reports a change or the scheduler runs.{busy}",
             Serving.CACHE,
         )
 
@@ -153,14 +237,12 @@ def describe_refresh_policy(
             return PolicySummary(
                 "Live — read directly from the source; never replicated.", Serving.LIVE
             )
-        if replicate is not None:
-            return PolicySummary(
-                f"Live — read directly from the source until it passes {replicate} governed "
-                "statements per interval, then served from its replica (best effort: reads stay "
-                "live while the replica is built).",
-                Serving.LIVE,
+        if threshold is None:
+            raise AssertionError(
+                f"table {table.table_name!r}: read live with replicate={replicate!r} and no "
+                "threshold — Always and load protection are replicated, Never is handled above"
             )
-        return PolicySummary("Live — reached directly, always fresh.", Serving.LIVE)
+        return _describe_live_under_threshold(threshold, hot, explicit=replicate is not None)
 
     # 4. This engine cannot read the source in place: the replica is the only way to reach it,
     # whatever the setting. Never is best effort, and here it cannot be met.

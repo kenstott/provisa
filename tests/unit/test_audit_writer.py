@@ -30,6 +30,7 @@ import logging
 import multiprocessing
 import threading
 import time
+import uuid
 from datetime import datetime, timezone
 
 import pytest
@@ -41,7 +42,15 @@ from provisa.encryption import NullEncryption
 _DB = object()
 
 
-def _record(n: int, *, db: object = _DB, meter_pool: object | None = None) -> AuditRecord:
+def _record(
+    n: int,
+    *,
+    db: object = _DB,
+    meter_pool: object | None = None,
+    hot_counts: object | None = None,
+    route: str | None = None,
+    status_code: int = 200,
+) -> AuditRecord:
     return AuditRecord(
         tenant_db=db,
         tenant_id="default",
@@ -50,13 +59,16 @@ def _record(n: int, *, db: object = _DB, meter_pool: object | None = None) -> Au
         query_text=f"SELECT {n}",
         table_ids=(7,),
         source="pgwire",
-        status_code=200,
+        status_code=status_code,
         duration_ms=n,
         logged_at=datetime.now(timezone.utc),
         trace_id=None,
         encryption=NullEncryption(),
         meter_pool=meter_pool,
         meter_org="default",
+        route=route,
+        hot_counts=hot_counts,
+        hot_scope="default:prod",
         model_stamp=1,
         model_env="prod",
         enforced={},
@@ -254,6 +266,103 @@ def test_a_failed_meter_is_retried_without_inserting_the_row_again(store):
         writer.close(5.0)
 
 
+# -- Hot counts (REQ-826): counted where the audit row is written, after it has landed -------------
+
+
+class _Counts:
+    """Stands in for the count store: records each batch it is handed."""
+
+    def __init__(self, *, fail: Exception | None = None) -> None:
+        self.added: list[tuple[dict, int]] = []
+        self.fail = fail
+
+    def add(self, hits: dict, interval: int) -> None:
+        if self.fail is not None:
+            raise self.fail
+        self.added.append((dict(hits), interval))
+
+
+def _counting_writer(store, **kw) -> AuditWriter:
+    return AuditWriter(
+        capacity=1000, batch_size=100, interval_s=0.05, retry_s=0.05, insert=store.insert, **kw
+    ).start()
+
+
+def test_a_landed_batch_is_counted_once_per_table_after_its_rows_are_inserted(store, monkeypatch):
+    monkeypatch.setattr("provisa.core.settings_registry.value", lambda key: 60)
+    counts = _Counts()
+    order: list[str] = []
+    insert = store.insert
+
+    async def _insert(db, rows):
+        await insert(db, rows)
+        order.append("insert")
+
+    add = counts.add
+    counts.add = lambda hits, interval: (order.append("count"), add(hits, interval))[1]
+    w = AuditWriter(
+        capacity=1000, batch_size=100, interval_s=0.05, retry_s=0.05, insert=_insert
+    ).start()
+    try:
+        for n in range(3):
+            w.enqueue(_record(n, hot_counts=counts, route="engine"))
+        w.enqueue(_record(9, hot_counts=counts, route="cache"))  # reached no data
+        w.enqueue(_record(10, hot_counts=counts, route=None, status_code=403))  # refused
+        assert w.flush(5.0)
+    finally:
+        w.close(5.0)
+    assert len(store.rows()) == 5  # every statement is audited
+    assert sum(hits[("default:prod", 7)] for hits, _ in counts.added if hits) == 3
+    assert {interval for _hits, interval in counts.added} == {60}
+    assert order[0] == "insert", "a batch was counted before its audit rows had landed"
+
+
+def test_a_batch_whose_insert_failed_is_not_counted_until_it_lands(store, monkeypatch):
+    monkeypatch.setattr("provisa.core.settings_registry.value", lambda key: 60)
+    counts = _Counts()
+    store.fail_next = 2
+    w = _counting_writer(store)
+    try:
+        w.enqueue(_record(1, hot_counts=counts, route="direct"))
+        assert w.flush(5.0)
+    finally:
+        w.close(5.0)
+    assert [hits for hits, _ in counts.added] == [{("default:prod", 7): 1}]
+
+
+def test_a_count_store_failure_loses_no_audit_row_and_is_logged(store, monkeypatch, caplog):
+    """REQ-826 / REQ-1920: the count is derived state; the audit row is the record."""
+    from redis.exceptions import ConnectionError as RedisConnectionError
+
+    monkeypatch.setattr("provisa.core.settings_registry.value", lambda key: 60)
+    counts = _Counts(fail=RedisConnectionError("redis unreachable"))
+    w = _counting_writer(store)
+    try:
+        with caplog.at_level("ERROR", logger="provisa.audit.writer"):
+            w.enqueue(_record(1, hot_counts=counts, route="engine"))
+            w.enqueue(_record(2, hot_counts=counts, route="engine"))
+            assert w.flush(5.0), "the writer held the batch for a count it could not record"
+    finally:
+        w.close(5.0)
+    assert len(store.rows()) == 2
+    assert w.pending() == 0 and w.last_error is None
+    assert any(
+        "Hot count not recorded for a batch of" in r.getMessage() and r.exc_info
+        for r in caplog.records
+    )
+
+
+def test_a_record_with_no_count_store_is_not_counted(store, monkeypatch):
+    monkeypatch.setattr("provisa.core.settings_registry.value", lambda key: 60)
+    w = _counting_writer(store)
+    try:
+        w.enqueue(_record(1, route="engine"))
+        assert w.flush(5.0)
+    finally:
+        w.close(5.0)
+    assert len(store.rows()) == 1
+
+
 def test_shutdown_writes_what_is_queued(store):
     writer = AuditWriter(batch_size=10, interval_s=5.0, retry_s=0.05, insert=store.insert).start()
     store.gate.clear()
@@ -366,12 +475,21 @@ def test_write_audit_lands_one_row_in_the_tenant_database(tmp_path, monkeypatch)
     from provisa.audit.writer import audit_writer_status, flush_audit
 
     path = str(tmp_path / "tenant.db")
-    state = SimpleNamespace(tenant_db=_tenant_db(path), org_id="default", admin_db=None)
+    from provisa.federation.replica_hot import HotCounts
+
+    org = f"audit-seam-{uuid.uuid4().hex}"
+    counts = HotCounts(None)
+    state = SimpleNamespace(
+        tenant_db=_tenant_db(path), org_id=org, admin_db=None, hot_counts=counts
+    )
     monkeypatch.setattr("provisa.encryption.runtime.encryption_service", NullEncryption)
+    monkeypatch.setattr("provisa.core.settings_registry.value", lambda key: 60)
     pending = PendingAudit("alice", "graphql", "analyst", "{ orders { id } }", [7, 9], 0.0, 1, {})
-    asyncio.run(write_audit(pending, 200, state))
+    asyncio.run(write_audit(pending, 200, state, route="engine"))
     assert flush_audit(5.0), audit_writer_status()
-    assert _logged(path) == [("default", "alice", "analyst", "[7, 9]", "graphql", 200)]
+    assert _logged(path) == [(org, "alice", "analyst", "[7, 9]", "graphql", 200)]
+    # REQ-826: and each table the statement read is counted once, in this org environment.
+    assert counts.counts(f"{org}:prod", [7, 9, 11], 60) == {7: 1.0, 9: 1.0, 11: 0.0}
 
 
 def _worker(path: str, worker: int, count: int) -> None:

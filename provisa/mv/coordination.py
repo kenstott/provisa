@@ -66,7 +66,9 @@ async def ensure_mv_row(store: "Database", mv: "MVDefinition") -> None:
     fleet instance seeded it first — is the success case and is swallowed."""
     stmt = insert(_mvt).values(
         id=mv.id,
-        source_tables=mv.source_tables,
+        # A join-pattern view's tables as it was bound to them (source/schema.table), so the
+        # record — and an export of it — names exactly the tables it reads (REQ-939).
+        source_tables=[i.label for i in mv.inputs] if mv.inputs else mv.source_tables,
         target_catalog=mv.target_catalog,
         target_schema=mv.target_schema,
         target_table=mv.target_table,

@@ -29,6 +29,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 
+from provisa.core import model_change
 from provisa.core.config_location import config_path_str
 from provisa.core.connection_loop import CrossLoopLock, LongLived, run_lifecycle_work
 from provisa.api.data.endpoint import router as data_router
@@ -54,7 +55,6 @@ from provisa.api.app_loaders import (
     _setup_approval_hook,
 )
 from provisa.api.app_rebuild import (
-    _bg_hydrate_api_endpoints,
     _finalize_rebuild_state,
     _register_user_views_in_state,
 )
@@ -82,7 +82,6 @@ from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import CompilationContext
 from sqlalchemy import select
 from provisa.core.config_loader import (
-    config_replace_mode,
     load_config,
     parse_config_dict,
     read_config_with_includes,
@@ -122,7 +121,6 @@ from provisa.api.admin.db_queries import (
 )
 from provisa.api.otel_setup import setup_otel as _setup_otel, shutdown_otel as _shutdown_otel
 from provisa.mv.registry import MVRegistry
-from provisa.cache.warm_tables import WarmTableManager
 from provisa.apq.cache import APQCache, NoopAPQCache
 from provisa.api_source.models import ApiEndpoint as ApiEndpoint, ApiSource as ApiSource
 from provisa.core.models import ProvisaConfig  # noqa: F401
@@ -223,8 +221,7 @@ class AppState:
     api_sources: dict[str, Any] = {}  # source_id → ApiSource
     hot_manager: HotTableManager | None = None
     _hot_refresh_task: LongLived | None = None
-    warm_manager: WarmTableManager = WarmTableManager()
-    _warm_task: LongLived | None = None
+    _replica_hot_task: LongLived | None = None  # REQ-826: the Hot promotion evaluation
     # Readiness (REQ /ready): False until the boot warmup probe has primed the lazy per-request paths
     # (materialize-store attach + a warm engine terminal). /ready returns 503 while this is False so a
     # launcher/orchestrator holds traffic — and the browser open — until the first interaction is warm.
@@ -310,6 +307,10 @@ class AppState:
         from provisa.federation.live_concurrency import LivePermitStore
 
         self.live_permit_store = LivePermitStore(None)
+        # REQ-826: and with its Hot-count store, rebound to the deployment's Redis the same way.
+        from provisa.federation.replica_hot import HotCounts
+
+        self.hot_counts = HotCounts(None)
 
         # The registry must exist first: federation_engine is a routed property (REQ-1244) and
         # this assignment lands on the default-org runtime — the SHARED engine every org without
@@ -335,6 +336,10 @@ class AppState:
             return
         rt = self.org_registry.get(old)
         if rt is not None:
+            # The runtime says which org it serves: whoever binds a request context from it (the
+            # config watcher's reloads, the Hot promotion evaluation) must bind THIS id, the one
+            # requests bind and the one it is registered under — not the compile-time one.
+            rt.org_id = value
             self.org_registry.set(value, rt)
             self.org_registry.invalidate(old)
 
@@ -1038,6 +1043,10 @@ async def _load_and_build(
     from provisa.federation.live_concurrency import LivePermitStore
 
     state.live_permit_store = LivePermitStore(state.redis_url)
+    # REQ-826: Hot counts share it too — deployment-wide with a Redis, this process's own without.
+    from provisa.federation.replica_hot import HotCounts
+
+    state.hot_counts = HotCounts(state.redis_url)
     if settings_registry.value("cache.enabled"):
         # REQ-829: RedisCacheStore(None) transparently uses embedded fakeredis, so
         # desktop exercises the same result-cache code path as production.
@@ -1049,11 +1058,10 @@ async def _load_and_build(
     async with tenant_db.acquire() as conn:
         # Single-writer cluster invariant: every node loads the byte-identical baked config, but only
         # the primary may DELETE rows. A secondary's upserts are idempotent no-ops (the advisory lock
-        # in load_config serializes them), so it stays consistent with the primary; replace mode would
-        # let a secondary wipe primary-registered rows, so it is hard-disabled off the primary. Secrets
+        # in load_config serializes them), so it stays consistent with the primary; the load's
+        # removal of what the file dropped runs on the primary only (REQ-1229, REQ-1919). Secrets
         # (source passwords) are file-only by design — schema.sql never stores them — so every node must
         # parse this file for source pools; PG holds only the shared, primary-written schema.
-        _replace_mode = config_replace_mode(os.environ)
         # REQ-1730: a source registered purely through the UI (createSource mutation, no
         # `sources:` entry in this config) is invisible to config.sources — without this, its
         # engine catalog is never (re)issued on boot or on a PUT /admin/config reload, on
@@ -1079,7 +1087,6 @@ async def _load_and_build(
                 config,
                 conn,
                 None if engine_deferred else state.federation_engine,
-                replace=_replace_mode,
                 extra_sources=_extra_sources,
                 origin="config",
             )
@@ -1159,7 +1166,7 @@ async def _load_and_build(
         async with state.tenant_db.acquire() as _retry_conn:
             for _rel in state.config.relationships:
                 try:
-                    await _rel_repo.upsert(_retry_conn, _rel)
+                    await _rel_repo.upsert(_retry_conn, _rel, origin="config")
                 except ValueError:
                     pass
 
@@ -1181,7 +1188,7 @@ async def _load_and_build(
     # Initialize hot tables (Phase AD6)
     from provisa.cache.hot_tables import init_hot_tables
 
-    hot_mgr = await init_hot_tables(raw_config, state.federation_engine)
+    hot_mgr = await init_hot_tables(raw_config, state.federation_engine, state.tables)
     if hot_mgr is not None:
         state.hot_manager = hot_mgr
 
@@ -1193,6 +1200,7 @@ async def _load_and_build(
     _mark("prod-baseline")
 
 
+@model_change.commits_itself  # REQ-1524: commits the model it writes itself
 async def _ensure_environment_baselines() -> None:
     """Give every environment of the booted org the starting point its history is supposed to have.
 
@@ -1539,7 +1547,14 @@ async def build_org_runtime(
         # REQ-1488: the environment IS the schema. Every repository query this runtime issues goes
         # through this handle, so scoping it here is what makes an unmodified repository query read
         # the branch's copy of the model rather than prod's.
-        state.tenant_db = Database(tenant_engine, name="org", search_path=org_schema(org_id, env))
+        from provisa.core.model_change import ModelPlane
+
+        state.tenant_db = Database(
+            tenant_engine,
+            name="org",
+            search_path=org_schema(org_id, env),
+            model=ModelPlane(org_id, env),  # REQ-1524: its model's changes are committed
+        )
 
         schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
         if not schema_sql_path.exists():
@@ -1585,7 +1600,6 @@ async def build_org_runtime(
                     config,
                     conn,
                     state.federation_engine,
-                    replace=False,
                     catalog_names=rt.source_catalogs,
                     origin="config",
                 )
@@ -1958,9 +1972,9 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         # find column metadata for. DDL only, best-effort like the other two call sites.
         # REQ-1912: which tables are read from their replica, and where — published before the
         # reconcile and before any statement is lowered against this registry.
-        from provisa.federation.replica_routing import replica_routes as _replica_routes
+        from provisa.api.model_reload import publish_replica_routes
 
-        state.replica_routes = await _replica_routes(state)
+        await publish_replica_routes(_stamped_runtime)
         try:
             _landed = await state.federation_engine.reconcile_landed_tables()
             if _landed:
@@ -1997,7 +2011,8 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
             state.source_types,
         )
 
-        await _bg_hydrate_api_endpoints()
+        # REQ-1915: no boot fill of an API table's collection. Its replica is built by the
+        # runner when the model declares one; a request's own calls are fills in the store.
 
         # Load RLS rules — domain_id is required so domain-scoped rules (REQ-402)
         # are not silently dropped by build_rls_context. Read through the repo so the
@@ -2221,7 +2236,7 @@ class _DebugLogBufferHandler(logging.Handler):
 def _boot_generation(launch: str | None) -> str | None:  # REQ-1900
     """The generation this process's once-per-launch boot work belongs to, or ``None`` for a
     process that is not a worker of a launch. Everything that work is derived from is in it — the
-    control-plane schema, the config as it stands on disk, the engine, the replace mode — so a
+    control-plane schema, the config as it stands on disk, the engine — so a
     worker whose inputs differ from the ones the work was done for does the work itself."""
     if launch is None:
         return None
@@ -2234,7 +2249,6 @@ def _boot_generation(launch: str | None) -> str | None:  # REQ-1900
         schema=hashlib.sha256(schema_sql.encode()).hexdigest(),
         config=read_config_with_includes(path) if path.exists() else None,
         engine=state.federation_engine.name,
-        replace=config_replace_mode(os.environ),
     )
 
 
@@ -2308,13 +2322,16 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         with control_plane_boot_lock(_cp.resolved_platform_url()) as _boot:
             _applied_elsewhere = _boot.completed(_scope, _boot_generation(_launch))
             if not _applied_elsewhere:
-                await _once_per_launch()
+                # REQ-1524: what the boot writes to the model is one change, committed at its end.
+                async with model_change.scope("boot"):
+                    await _once_per_launch()
                 # Computed again: the work above may have rewritten the config file (the auth
                 # section), and the generation the other workers compute is of the file as it now
                 # stands.
                 _boot.mark_completed(_scope, _boot_generation(_launch))
         if _applied_elsewhere:
-            await _load_and_build(apply=False)
+            async with model_change.scope("boot"):
+                await _load_and_build(apply=False)
         _log.warning(
             "startup phase %-20s %s pid=%d",
             "once-per-launch",
@@ -2425,10 +2442,6 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         _grpc_stopped = state._grpc_server.stop(grace=5)
         await asyncio.to_thread(_grpc_stopped.wait)
 
-    # Cancel warm-table task
-    if state._warm_task:
-        await _stop_long_lived(state._warm_task)
-
     # Cancel the readiness warmup probe (it may still be priming if shutdown raced boot)
     if state._warmup_task:
         await _stop_long_lived(state._warmup_task)
@@ -2436,6 +2449,10 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     # Cancel hot-table refresh task (Phase AD6)
     if state._hot_refresh_task:
         await _stop_long_lived(state._hot_refresh_task)
+
+    # Stop the Hot promotion evaluation (REQ-826)
+    if state._replica_hot_task:
+        await _stop_long_lived(state._replica_hot_task)
     if state.hot_manager is not None:
         from provisa.cache.hot_tables import HotTableManager
 
@@ -2521,6 +2538,7 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
                         reset_current_org(_tok)
     state.federation_engine.close()
     if state.admin_db is not None:
+        model_change.detach()
         with tolerate_shutdown_failure("admin_db close"):
             await state.admin_db.close()
 
@@ -2585,6 +2603,25 @@ def create_app() -> FastAPI:
         )
 
     from provisa.core.operator_floor import OperatorFloorError as _OperatorFloorError
+
+    from provisa.compiler.complexity import ComplexityLimitExceeded as _ComplexityLimitExceeded
+
+    @app.exception_handler(_ComplexityLimitExceeded)
+    async def _complexity_limit_handler(_req: _Request, exc: _ComplexityLimitExceeded):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1174: a statement over the role's complexity limit. A route that does not answer
+        # the refusal itself answers it here: 413, the query asks for too much.
+        return _JSONResponse(
+            status_code=413,
+            content={
+                "detail": str(exc),
+                "code": "data.query_too_complex",
+                "params": {
+                    "score": exc.complexity.score,
+                    "limit": exc.limit,
+                    "limit_of": exc.limit_of,
+                },
+            },
+        )
 
     from provisa.compiler.definitions import DefinitionNotAvailable as _DefinitionNotAvailable
 
@@ -3163,6 +3200,12 @@ def create_app() -> FastAPI:
             ):
                 await serve_within_deadline(self._inner, scope, receive, send, deadline)
 
+    # REQ-1524: one HTTP request is one model change. Registered before the transport middleware,
+    # so it runs inside it, on the request's own thread: what the request writes to a model is
+    # committed once, before its response starts, so the caller reads its answer after the commit.
+    from provisa.api.model_change_middleware import ModelChangeMiddleware
+
+    app.add_middleware(ModelChangeMiddleware)
     app.add_middleware(_RequestTransportMiddleware)
 
     from provisa.core.request_thread import RequestThreadMiddleware

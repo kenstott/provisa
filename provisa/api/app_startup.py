@@ -30,7 +30,7 @@ from provisa.core.schema_org import (
     sources as _sources_t,
 )
 from provisa.api_source.models import ApiEndpoint as ApiEndpoint, ApiSource as ApiSource
-from provisa.core.config_location import config_path, config_path_str
+from provisa.core.config_location import config_path_str
 from provisa.core.connection_loop import spawn_background, spawn_long_lived
 from provisa.core.models import ProvisaConfig  # noqa: F401
 from typing import TYPE_CHECKING, Any, cast  # noqa: F401
@@ -154,8 +154,8 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
     #   mv-reclamation     shared — drops tables in the shared materialization store.
     #   hot-table-refresh  shared when a Redis is configured (it rewrites the cached rows there);
     #                      this process's own when Redis is the embedded, in-process one.
-    #   warm-tables        shared — it sizes source tables through the engine and creates/drops
-    #                      the warm copies in the engine's store (cache/warm_tables.sweep_loop).
+    #   replica-hot        shared — it promotes and demotes busy tables in the shared replica
+    #                      state (federation/replica_hot.evaluation_loop).
     #   idle reaper        NOT gated — it measures idleness from THIS process's activity.
     _holder = _scheduler_holder(state)
 
@@ -176,49 +176,14 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
         )
 
     if state.federation_engine.is_connected():
-        from provisa.compiler.sql_gen import query_counter as _qc
+        from provisa.core.boot_lock import expected_workers
+        from provisa.federation.replica_hot import evaluation_loop as _hot_evaluation_loop
 
-        # REQ-240: warm-tier thresholds + sweep interval come from config (warm_tables.*),
-        # not Python constants. Per-table warm: true/false sets force/opt-out.
-        _raw: dict = {}
-        _warm_cfg_path = config_path()
-        if _warm_cfg_path.exists():
-            # REQ-1669: includes-aware, so a wrapper config's fragments are seen.
-            from provisa.core.config_loader import read_config_with_includes
-
-            _raw = read_config_with_includes(_warm_cfg_path)
-        # REQ-1913: the warm tier's thresholds are operator settings.
-        from provisa.core import settings_registry as _settings
-
-        _warm_threshold = _settings.value("warm_tables.query_threshold")
-        _warm_max_rows = _settings.value("warm_tables.max_rows")
-        _warm_interval = _settings.value("warm_tables.refresh_interval")
-        _warm_forced: set[str] = set()
-        _warm_excluded: set[str] = set()
-        for _t in _raw.get("tables", []):
-            _tn = _t.get("table") or _t.get("table_name")
-            if _tn and "warm" in _t:
-                (_warm_forced if _t["warm"] else _warm_excluded).add(_tn)
-
-        from provisa.cache.warm_tables import sweep_loop as _warm_sweep_loop
-
-        state._warm_task = spawn_long_lived(
-            _warm_sweep_loop(
-                state.warm_manager,
-                _qc,
-                engine=lambda: state.federation_engine,
-                # REQ-241: hot-over-warm precedence — exclude tables the hot tier manages.
-                hot_tables=lambda: (
-                    state.hot_manager.managed_tables() if state.hot_manager is not None else set()
-                ),
-                should_run=_holder.holds,
-                interval=_warm_interval,
-                threshold=_warm_threshold,
-                max_rows=_warm_max_rows,
-                excluded=_warm_excluded,
-                forced=_warm_forced,
-            ),
-            name="warm-tables",
+        # REQ-826: which busy tables are replicated is a decision taken once per deployment —
+        # the holder's. It counts through the engine and writes the shared replica state.
+        state._replica_hot_task = spawn_long_lived(
+            _hot_evaluation_loop(state, should_run=_holder.holds, workers=expected_workers()),
+            name="replica-hot",
         )
 
     if state.hot_manager is not None and state.federation_engine.is_connected():
@@ -243,6 +208,7 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
                     try:
                         await hot_mgr.load_table(
                             state.federation_engine,
+                            entry.table_id,
                             entry.table_name,
                             entry.schema,
                             entry.catalog,
@@ -939,6 +905,7 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
                                     cardinality=Cardinality(_card),
                                     **({} if _alias is None else {"alias": _alias}),
                                 ),
+                                origin="seed",
                             )
                         except Exception:
                             _log.warning("Failed to upsert %s", _rel_id, exc_info=True)
@@ -959,6 +926,7 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
                                 source_json_key="id",
                                 disable_cypher=True,
                             ),
+                            origin="seed",
                         )
                     except Exception:
                         _log.warning(

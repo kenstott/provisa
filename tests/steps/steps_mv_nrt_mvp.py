@@ -109,7 +109,10 @@ def _register(ctx, monkeypatch):
     registered: list = []
     state = types.SimpleNamespace(
         mv_registry=types.SimpleNamespace(
-            get=lambda _: None, register=lambda mv: registered.append(mv), unregister=lambda _: None
+            get=lambda _: None,
+            register=lambda mv: registered.append(mv),
+            unregister=lambda _: None,
+            get_enabled=lambda: [],
         ),
         org_id="t",
         engine=None,
@@ -121,6 +124,10 @@ def _register(ctx, monkeypatch):
         # What a saved view's inputs are checked against (provisa/mv/readable_inputs.py).
         api_endpoints={},
         graphql_remote_sources={},
+        # The model those inputs resolve against (provisa/mv/view_inputs.py): ``orders``.
+        tables=[{"id": 1, "source_id": "pg", "schema_name": "public", "table_name": "orders"}],
+        source_catalogs={},
+        contexts={},
     )
     mod = types.ModuleType("provisa.api.app")
     mod.state = state  # type: ignore[attr-defined]

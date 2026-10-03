@@ -122,7 +122,10 @@ def test_a_platform_right_is_granted_only_by_its_holder():
 
 
 def test_a_capability_outside_the_vocabulary_is_named():
-    assert unknown_capabilities(["usage", "write", "ddl", "no_aggregations"]) == []
+    assert unknown_capabilities(["usage", "write", "no_aggregations"]) == []
+    # "ddl" gated definitions over pgwire; nothing is defined through a query protocol
+    # (provisa/compiler/definitions.py), so it is no longer a right a role may carry.
+    assert unknown_capabilities(["usage", "ddl"]) == ["ddl"]
     assert unknown_capabilities(["usage", "root", "everything"]) == ["everything", "root"]
     assert unknown_capabilities(None) == []
 

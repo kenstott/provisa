@@ -288,3 +288,97 @@ def test_another_sources_statement_is_not_floored_by_it():
     state = _published()
     assert operator_floor(state, [_OTHER_SOURCE_TABLE]) == {}
     assert _route(state, [_OTHER_SOURCE_TABLE], {"crm"}).route == Route.DIRECT
+
+
+# -- promoted, not yet built (REQ-826) -------------------------------------------------------------
+
+
+async def test_a_promoted_table_is_the_replicators_before_its_reads_go_to_the_replica(monkeypatch):
+    """From its promotion the table is in the set the replicator builds, keeps and retires by
+    (``replica_tables``) — so it is built and is not retired — while reads keep going to the
+    source until its first build completes (the serving set routing reads)."""
+    from provisa.federation import replica_routing
+
+    reg = {
+        "id": 1,
+        "source_id": "pg",
+        "schema_name": "public",
+        "table_name": "orders",
+        "replicate": 500,
+        "load_protected": None,
+        "columns": [{"column_name": "id", "native_filter_type": None}],
+    }
+    key = ("pg", "public", "orders")
+    registry = replica_routing._Registry(
+        [reg], {"pg": _attachable()}, serving=frozenset(), promoted=frozenset({key})
+    )
+
+    async def _registry(_state):
+        return registry
+
+    monkeypatch.setattr(replica_routing, "_registry", _registry)
+    assert [r["table_name"] for _s, r in await replica_routing.replica_tables(_ENGINE, None)] == [
+        "orders"
+    ]
+    # reads: not yet
+    assert replica_routing._served_from_replica(_ENGINE, registry, registry.serving) == []
+    assert replica_routing._floored(registry) == {}
+    # once built in this engine's store, both
+    built = registry._replace(serving=frozenset({key}))
+    assert [
+        r["table_name"]
+        for _s, r in replica_routing._served_from_replica(_ENGINE, built, built.serving)
+    ] == ["orders"]
+    assert replica_routing._floored(built) == {1: ("pg", "replicate")}
+
+
+async def test_a_deployment_with_no_store_and_nothing_replicated_reads_its_routes(
+    tmp_path, monkeypatch
+):
+    """Trino is not its own store; with no materialization store configured and none to fall
+    back on, ``store_identity`` raises. A deployment that replicates nothing must still build
+    its routes and floored set, as it did before Hot replication read the replica state."""
+    import asyncio as _asyncio
+
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.db import init_schema
+    from provisa.federation import replica_routing
+    from provisa.federation.engine import MaterializeStoreUnconfigured
+
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'tenant.db'}")
+    db = Database(engine, name="org")
+    await init_schema(db, "", org_id="default")
+    monkeypatch.delenv("TENANT_DATABASE_URL", raising=False)
+    monkeypatch.delenv("PROVISA_MATERIALIZE_URL", raising=False)
+    monkeypatch.setattr("provisa.federation.engine.configured_materialize_url", lambda: None)
+    trino = build_engine("trino")
+    with pytest.raises(MaterializeStoreUnconfigured):
+        trino.materialize_store()
+
+    reg = {
+        "id": 1,
+        "source_id": "pg",
+        "schema_name": "public",
+        "table_name": "orders",
+        "replicate": None,
+        "load_protected": None,
+        "columns": [{"column_name": "id", "native_filter_type": None}],
+    }
+
+    async def _tables(_conn):
+        return [reg]
+
+    async def _sources(_state, _conn=None):
+        return [_attachable()]
+
+    monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _tables)
+    monkeypatch.setattr("provisa.federation.registry_view.registered_sources", _sources)
+    state = SimpleNamespace(
+        tenant_db=db, config=SimpleNamespace(), federation_engine=SimpleNamespace(engine=trino)
+    )
+    try:
+        assert await replica_routing.replica_tables(trino, state) == []
+        assert await replica_routing.floored_tables(state) == {}
+    finally:
+        engine.dispose()
+    del _asyncio

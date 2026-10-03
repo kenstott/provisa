@@ -31,8 +31,6 @@
     "warningLocation": "Locatie",
     "configHeading": "Gegenereerde configuratie",
     "configHelp": "Bewerk deze voor het toepassen als de conversie verkeerd gokte — verbindingsgegevens, domeinnamen, rolnamen. Wat u toepast is precies wat hier staat.",
-    "replace": "De bestaande semantische laag vervangen",
-    "replaceHelp": "Verwijdert elke gegevensbron, tabel, rol en regel die niet in deze configuratie staat. Laat uit om de import samen te voegen met wat de organisatie al heeft.",
     "apply": "Toepassen op deze organisatie",
     "applied": "Toegepast: {{sources}} gegevensbronnen, {{tables}} tabellen, {{roles}} rollen.",
     "domainNew": "nieuw domein",

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from itertools import islice
-from typing import TYPE_CHECKING, Any, Iterator
+from typing import TYPE_CHECKING, Any, Iterator, NamedTuple
 
 import pyarrow as pa
 
@@ -60,12 +60,21 @@ def _plan_for_scan(
     return plan
 
 
+class ScanStream(NamedTuple):
+    """A governed scan: its schema, its lazily pulled batches, and what the statement's answer
+    says about itself (REQ-1350), which the transport sends ahead of the rows."""
+
+    schema: pa.Schema
+    batches: Iterator[pa.RecordBatch]
+    warnings: list
+
+
 def governed_table_scan_stream(
     state: AppState,
     sql: str,
     role_id: str,
-) -> tuple[pa.Schema, Iterator[pa.RecordBatch]]:
-    """Stream ``sql`` for ``role_id`` through the ONE governed pipeline as ``(schema, batch gen)``.
+) -> ScanStream:
+    """Stream ``sql`` for ``role_id`` through the ONE governed pipeline (:class:`ScanStream`).
 
     The airport transport drains the streaming terminal like Flight SQL's _do_get_sql_governed
     (streaming-uniformity Defect 5, superseding REQ-1218) — a large governed scan is never fully
@@ -108,16 +117,16 @@ def governed_table_scan_stream(
                 )
 
             run_on_connection_loop(_prep_residency())
-            run_on_connection_loop(
+            plan.replicas_read = run_on_connection_loop(
                 ensure_resident(
                     state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids
                 )
-            )
+            ).replicas_read
             # REQ-1909: the permits ride the batch generator until the scan is fully pulled.
             permits = acquire_plan_permits(state, plan)
             schema, batch_gen = state.federation_engine.execute_engine_stream(plan.physical_sql, [])
             _finalize_scan_audit(plan, 200, state)
-            return schema, permits.guard(_audited(plan, batch_gen))
+            return ScanStream(schema, permits.guard(_audited(plan, batch_gen)), plan.warnings)
         if plan.route == Route.DIRECT:
             permits = acquire_plan_permits(state, plan)  # REQ-1909
             if state.source_pools.has(plan.source_id) and state.source_pools.supports_stream(
@@ -144,7 +153,11 @@ def governed_table_scan_stream(
                 )
             typed = _direct_typed_schema(stream.column_names, stream.column_types)
             _finalize_scan_audit(plan, 200, state)
-            return typed, permits.guard(_audited(plan, _typed_batches_from_rows(stream, typed)))
+            return ScanStream(
+                typed,
+                permits.guard(_audited(plan, _typed_batches_from_rows(stream, typed))),
+                plan.warnings,
+            )
     except Exception:
         if permits is not None:
             permits.release()
@@ -216,9 +229,9 @@ def governed_table_scan_schema(
             )
 
         run_on_connection_loop(_prep_residency())
-        run_on_connection_loop(
+        plan.replicas_read = run_on_connection_loop(
             ensure_resident(state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids)
-        )
+        ).replicas_read
         from provisa.federation.live_concurrency import acquire_plan_permits
 
         # REQ-1909: binding the probe reads the live source too; held only while it opens.

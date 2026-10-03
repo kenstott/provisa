@@ -22,6 +22,7 @@ const buildContract = vi.fn();
 const checkCatalog = vi.fn();
 const buildCheck = vi.fn();
 const dryRunContract = vi.fn();
+const runCheckNow = vi.fn();
 
 // vmThreads shares the module registry, so declare a complete pass-through and replace only the one
 // hook under test — a partial mock would drop the other hooks this module exports.
@@ -33,6 +34,7 @@ vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
     checkCatalog,
     buildCheck,
     dryRunContract,
+    runCheckNow,
   }),
   // The dataset field's table picklist is scoped to this list, not to the fake TABLES_QUERY data
   // MockedProvider would otherwise leave unresolved.
@@ -79,8 +81,7 @@ function renderPanel(onChange = vi.fn(), contractText = SODA) {
     <DataQualityPanel
       checker="soda"
       sourceId="dq"
-      schemaName="sales"
-      tableName="orders"
+      tableId={42}
       contractText={contractText}
       onChange={onChange}
     />,
@@ -326,5 +327,12 @@ describe("DataQualityPanel", () => {
     expect(await screen.findByTestId("dq-dry-run-result")).toHaveTextContent(
       "The dry run returned no response.",
     );
+  });
+
+  it("runs the registered table's own checker by its id", async () => {
+    runCheckNow.mockResolvedValue({ success: true, message: "ran" });
+    renderPanel();
+    fireEvent.click(await screen.findByTestId("dq-run-now"));
+    await waitFor(() => expect(runCheckNow).toHaveBeenCalledWith({ tableId: 42 }));
   });
 });

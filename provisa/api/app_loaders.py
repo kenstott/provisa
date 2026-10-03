@@ -47,7 +47,7 @@ from typing import TYPE_CHECKING, Any, cast  # noqa: F401
 if TYPE_CHECKING:
     from provisa.api.app import AppState
     from provisa.core.database import Connection
-    from provisa.mv.models import MVDefinition
+    from provisa.mv.models import MVDefinition, TableIdentity
 
 log = logging.getLogger(__name__)
 
@@ -543,6 +543,66 @@ async def _load_openapi_specs() -> None:
             }
 
 
+def _config_identities(raw_config: dict) -> dict[str, list[TableIdentity]]:
+    """The config's tables by every name a join-pattern view may use for one (its name and SQL
+    name), each with its identity."""
+    from provisa.compiler.naming import apply_sql_name
+    from provisa.mv.models import TableIdentity
+
+    out: dict[str, list[TableIdentity]] = {}
+    for tbl in raw_config.get("tables", []):
+        name = tbl.get("table") or tbl.get("table_name")
+        if not name or tbl.get("view_sql"):
+            continue
+        identity = TableIdentity(tbl["source_id"], tbl.get("schema") or tbl["schema_name"], name)
+        for spelled in {name, apply_sql_name(name)}:
+            out.setdefault(spelled, []).append(identity)
+    return out
+
+
+def _bind_join_inputs(
+    view_id: str, names: list[str], identities: dict[str, list[TableIdentity]]
+) -> list[TableIdentity]:
+    """A join-pattern view's inputs, bound when it is declared (REQ-939): each table it joins is
+    the one config table of that name. A name no table, or more than one, answers to is refused,
+    naming the view — it would not say which table the view reads. A name may be written
+    qualified, ``source_id/schema.table`` (as an export of the view writes it), to say which."""
+    known = {i for found in identities.values() for i in found}
+    bound = []
+    for name in names:
+        if "/" in name:
+            source_id, _, rest = name.partition("/")
+            schema, _, table = rest.partition(".")
+            found = [
+                i
+                for i in known
+                if (i.source_id, i.schema_name, i.table_name) == (source_id, schema, table)
+            ]
+        else:
+            found = identities.get(name, [])
+        if len(found) != 1:
+            why = (
+                "no table has that name"
+                if not found
+                else "more than one table has that name ("
+                + ", ".join(sorted(i.label for i in found))
+                + ")"
+            )
+            raise ValueError(f"materialized view {view_id!r} joins {name!r}: {why}")
+        bound.append(found[0])
+    return bound
+
+
+def _joined_names(listed: list[str], jp: Any) -> list[str]:
+    """The tables a join-pattern view reads: those it lists, then any its pattern joins that the
+    list leaves out (a listed name may be qualified, ``source_id/schema.table``)."""
+    if jp is None:
+        return list(listed)
+    bare = {name.partition("/")[2].partition(".")[2] if "/" in name else name for name in listed}
+    joined = [jp.left_table, jp.right_table] + ([jp.via_table] if jp.via_table else [])
+    return list(listed) + [t for t in joined if t not in bare]
+
+
 def _load_mv_and_views_config(
     raw_config: dict,
 ) -> list[MVDefinition]:  # REQ-086, REQ-133, REQ-135, REQ-158, REQ-159, REQ-160
@@ -555,6 +615,7 @@ def _load_mv_and_views_config(
     from provisa.mv.models import MVDefinition, JoinPattern, SDLConfig
 
     loaded: list[MVDefinition] = []
+    identities = _config_identities(raw_config)
 
     # REQ-1443/description pull-forward: base-table column descriptions, keyed by table name, as
     # declared BEFORE this function appends any MV/view-derived table entries — a pass-through MV
@@ -617,9 +678,21 @@ def _load_mv_and_views_config(
         # Default the target to the store the ACTIVE engine materializes into (DuckDB → mat_store,
         # not postgresql); an explicit config value still wins.
         _def_cat, _def_schema = state.federation_engine.materialize_store_target(state.org_id)
+        # A view with SQL names its inputs in it; a join-pattern view's are bound here — the
+        # tables it lists and any its pattern joins that the list leaves out.
+        inputs = (
+            []
+            if mvc.get("sql")
+            else _bind_join_inputs(
+                mvc["id"], _joined_names(mvc.get("source_tables", []), jp), identities
+            )
+        )
         mv = MVDefinition(
             id=mvc["id"],
-            source_tables=mvc.get("source_tables", []),
+            source_tables=(
+                [i.table_name for i in inputs] if inputs else mvc.get("source_tables", [])
+            ),
+            inputs=inputs,
             target_catalog=mvc.get("target_catalog", _def_cat),
             target_schema=mvc.get("target_schema", _def_schema),
             target_table=mvc.get("target_table"),
@@ -711,6 +784,7 @@ def _load_mv_and_views_config(
             mv = MVDefinition(
                 id=mv_id,
                 source_tables=source_tables,
+                inputs=_bind_join_inputs(mv_id, source_tables, identities),
                 target_catalog=_rel_cat,
                 target_schema=_rel_schema,
                 refresh_interval=rel_cfg.get("refresh_interval", 300),
@@ -950,10 +1024,51 @@ def _build_graphql_remote_table(tr: dict, col_rows: list[dict], source_id: str) 
     }
 
 
+async def _graphql_remote_auth(state, src: dict) -> dict | None:
+    """Rebuild a graphql_remote source's auth from its row: the scheme recorded in
+    ``federation_hints`` at registration (graphql_remote_router._persist_source) and the
+    credential its ``password_ref`` names, read from the org's vault (REQ-1695). None for a
+    source registered with no auth."""
+    from provisa.core import secrets_store
+    from provisa.core.secrets import resolve_secrets
+
+    auth_type = (src["federation_hints"] or {}).get("auth_type")
+    if not auth_type:
+        return None
+    ref = src["password_ref"] or ""
+    if "${secret:" in ref and secrets_store.bound_org_id() != state.active_org_id:
+        async with secrets_store.bound(state.admin_db, state.active_org_id):
+            secret = resolve_secrets(ref)
+    else:
+        secret = resolve_secrets(ref)
+    if auth_type == "bearer":
+        return {"type": "bearer", "token": secret}
+    if auth_type == "basic":
+        return {"type": "basic", "username": src["username"], "password": secret}
+    raise ValueError(f"graphql_remote source {src['id']!r}: unknown auth_type {auth_type!r}")
+
+
+def _apply_brand_table_spec(table: dict, brand, namespace: str) -> bool:
+    """Give a branded source's registered table the way it is read (REQ-1923): its root field,
+    row path, required arguments and page arguments come from the brand's shipped schema, which
+    is where they were taken from when the table was registered. False when that schema no
+    longer offers the table."""
+    from provisa.graphql_remote.brands import table_spec
+
+    spec = table_spec(brand, namespace, table["sql_name"])
+    if spec is None:
+        return False
+    for key in ("name", "field_name", "gql_type_name", "required_args", "pagination", "rows_path"):
+        if key in spec:
+            table[key] = spec[key]
+    return True
+
+
 async def _load_graphql_remote_sources_from_db() -> None:
     """Load persisted graphql_remote sources from DB into state.graphql_remote_sources."""
     from provisa.api.app import state
     from provisa.core.secrets import resolve_secrets
+    from provisa.graphql_remote.brands import NAMESPACE_HINT, brand_of
 
     if state.tenant_db is None:
         log.warning("[GQL REMOTE] tenant_db is None — skipping DB load")
@@ -966,9 +1081,14 @@ async def _load_graphql_remote_sources_from_db() -> None:
                 dict(_r._mapping)
                 for _r in (
                     await _conn.execute_core(
-                        select(_sources_t.c.id, _sources_t.c.path).where(
-                            _sources_t.c.type == "graphql_remote"
-                        )
+                        select(
+                            _sources_t.c.id,
+                            _sources_t.c.path,
+                            _sources_t.c.username,
+                            _sources_t.c.password_ref,
+                            _sources_t.c.federation_hints,
+                            _sources_t.c.mapping,
+                        ).where(_sources_t.c.type == "graphql_remote")
                     )
                 ).fetchall()
             ]
@@ -977,8 +1097,18 @@ async def _load_graphql_remote_sources_from_db() -> None:
                 # A config-declared path may be a secret reference (${env:...}); the loader posts
                 # to the resolved endpoint (REQ-1685).
                 url = resolve_secrets(src["path"] or "")
-                if source_id in getattr(state, "graphql_remote_sources", {}):
+                hints = src["federation_hints"] or {}
+                brand = brand_of(hints)
+                # A plain source's entry is kept up to date in this process as its tables are
+                # registered (admin/_graphql_table_registration.remember_table), and holds the
+                # schema read from its endpoint; it is loaded here only when this process never
+                # saw it. A branded source's entry is rebuilt from the registry every time: how
+                # its tables are read comes from the brand's shipped schema (REQ-1923).
+                if brand is None and source_id in getattr(state, "graphql_remote_sources", {}):
                     continue
+                # How each table a plain source registered one at a time is read, as stored
+                # with the source when it was registered (REQ-308).
+                specs = (src["mapping"] or {}).get("tables") or {}
                 tbl_rows = [
                     dict(_r._mapping)
                     for _r in (
@@ -995,6 +1125,7 @@ async def _load_graphql_remote_sources_from_db() -> None:
                         )
                     ).fetchall()
                 ]
+                namespace = hints.get(NAMESPACE_HINT, "")
                 tables: list[dict] = []
                 for tr in tbl_rows:
                     col_rows = [
@@ -1011,22 +1142,40 @@ async def _load_graphql_remote_sources_from_db() -> None:
                             )
                         ).fetchall()
                     ]
-                    tables.append(_build_graphql_remote_table(tr, col_rows, source_id))
-                if not tables:
-                    continue
-                namespace = ""
+                    table = _build_graphql_remote_table(tr, col_rows, source_id)
+                    # A table with no stored spec is a root field of its own name, as a model
+                    # written by hand declares it; one with a spec is read as the spec says.
+                    table.update(specs.get(tr["table_name"]) or {})
+                    if brand is not None and not _apply_brand_table_spec(table, brand, namespace):
+                        log.error(
+                            "[GQL REMOTE] %s source %s: registered table %s is not in the "
+                            "shipped schema and cannot be read",
+                            brand.label,
+                            source_id,
+                            tr["table_name"],
+                        )
+                        continue
+                    tables.append(table)
                 if not hasattr(state, "graphql_remote_sources"):
                     state.graphql_remote_sources = {}
                 state.graphql_remote_sources[source_id] = {
                     "source_id": source_id,
                     "url": url,
                     "namespace": namespace,
-                    "domain_id": tables[0]["domain_id"],
-                    "auth": None,
+                    "domain_id": tables[0]["domain_id"] if tables else "",
+                    "auth": await _graphql_remote_auth(state, src),
                     "cache_ttl": 300,
                     "tables": tables,
                     "functions": [],
                     "relationships": [],
+                    **(
+                        {
+                            "brand": brand.id,
+                            "error_policy": brand.error_policy,
+                        }
+                        if brand is not None
+                        else {}
+                    ),
                 }
                 log.warning(
                     "[GQL REMOTE] Loaded source %s from DB (%d tables)", source_id, len(tables)

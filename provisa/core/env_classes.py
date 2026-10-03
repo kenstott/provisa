@@ -61,6 +61,9 @@ CARRIED: frozenset[str] = frozenset(
         "tracked_functions",
         "tracked_webhooks",
         "table_meta_links",
+        # REQ-1919: which seeded roles and domains a config file redefined. It travels with the
+        # rows it speaks about, and like ``roles`` only when an environment is created.
+        "seed_redefinitions",
     }
 )
 
@@ -70,7 +73,9 @@ CARRIED: frozenset[str] = frozenset(
 #: later copy touches them. A merge is a statement about the MODEL, and prod's ``developer`` row
 #: holding nothing is precisely the guarantee a merge from an unrestricted dev must not overwrite;
 #: were these to travel on merge, the review path itself would become the escalation route.
-SEEDED_AT_CREATION: frozenset[str] = frozenset({"roles", "user_role_assignments"})
+SEEDED_AT_CREATION: frozenset[str] = frozenset(
+    {"roles", "user_role_assignments", "seed_redefinitions"}
+)
 
 #: The source rows carry their id, type and governance fields; WHERE THEY POINT stays behind
 #: (REQ-1491). They cannot simply be excluded — registered_tables references a source, and dropping

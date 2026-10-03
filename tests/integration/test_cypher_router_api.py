@@ -41,9 +41,7 @@ async def client():
     # Point the app at the fixture config (sales-pg / orders / customers / products)
     # rather than the shipped demo config, matching test_compile_endpoint.py.
     _prev_config = os.environ.get("PROVISA_CONFIG")
-    _prev_replace = os.environ.get("PROVISA_CONFIG_REPLACE")
     os.environ["PROVISA_CONFIG"] = str(_FIXTURE_CONFIG)
-    os.environ["PROVISA_CONFIG_REPLACE"] = "1"
 
     app = create_app()
 
@@ -57,10 +55,6 @@ async def client():
             os.environ.pop("PROVISA_CONFIG", None)
         else:
             os.environ["PROVISA_CONFIG"] = _prev_config
-        if _prev_replace is None:
-            os.environ.pop("PROVISA_CONFIG_REPLACE", None)
-        else:
-            os.environ["PROVISA_CONFIG_REPLACE"] = _prev_replace
 
 
 async def _cypher(client: AsyncClient, query: str, params: dict | None = None, headers=None):

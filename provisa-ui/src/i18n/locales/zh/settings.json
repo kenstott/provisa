@@ -32,6 +32,10 @@
           "grpc": "gRPC",
           "mcp": "MCP"
         }
+      },
+      "max_query_complexity": {
+        "label": "查询复杂度上限",
+        "help": "单条语句可有的最高复杂度分数，适用于所有角色。角色可自行设置更低的上限。留空则不限制。"
       }
     },
     "sampling": {
@@ -556,6 +560,10 @@
       "max_list_items": {
         "label": "远程 GraphQL 列表项数",
         "help": "从远程 GraphQL 数据源的单个列表中读取的最大项数。"
+      },
+      "max_rows": {
+        "label": "远程 GraphQL 每次读取的行数",
+        "help": "对分页的远程 GraphQL 表进行一次读取时所获取的最大行数。"
       }
     },
     "provisioning": {

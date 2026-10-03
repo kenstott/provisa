@@ -50,12 +50,14 @@ from provisa.api.admin.types import (
     EnforcementType,
     EntityInput,
     FactInput,
+    GrantKind,
     KaggleStageResultType,
     MetricInput,
     MutationResult,
     RelationshipInput,
     RLSRuleInput,
     RoleInput,
+    PagingInput,
     RoleTtlInput,
     SourceInput,
     TableInput,
@@ -235,7 +237,7 @@ async def _upsert_relationship_impl(
     )
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
-        await rel_repo.upsert(_conn, model)
+        await rel_repo.upsert(_conn, model, origin="admin")
         if _cross_domain:
             # REQ-1531: re-assert AFTER the upsert. rel_repo.upsert clears needs_review on conflict
             # (REQ-020 treats a save as an explicit re-review), and a cross-domain edge is not the
@@ -624,9 +626,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def run_dq_check_now(  # REQ-1443: "run now and retain" from the DQ check detail
-        self, info: StrawberryInfo, schema_name: str, table_name: str
+        self,
+        info: StrawberryInfo,
+        table_id: int | None = None,
+        schema_name: str | None = None,
+        table_name: str | None = None,
     ) -> MutationResult:
-        """Fire a checker table's poll job immediately instead of waiting for its cadence.
+        """Fire a checker table's poll job immediately instead of waiting for its cadence. The
+        table is named by its registered id, or by schema and table name (refused when more than
+        one source registers that name).
 
         Reuses the same registered poll job the event loop already runs on cadence (REQ-941) — this
         does not re-scan into the response like the dry run; it lands the scan's rows the normal way,
@@ -649,6 +657,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 cast("Connection", conn),
                 scheduler=state._scheduler,
                 org_id=org_id,
+                table_id=table_id,
                 schema_name=schema_name,
                 table_name=table_name,
             )
@@ -1516,7 +1525,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 support=input.support,
                 custom_properties=input.custom_properties,
             )
-            await data_product_repo.upsert(conn, model)
+            await data_product_repo.upsert(conn, model, origin="admin")
         return MutationResult(
             success=True,
             message=f"Data product {input.id!r} created",
@@ -1632,7 +1641,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            await tag_repo.upsert(cast("Connection", conn), model)
+            await tag_repo.upsert(cast("Connection", conn), model, origin="admin")
         await _refresh_config_tags()
         return MutationResult(
             success=True,
@@ -1804,7 +1813,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.tag_scope_mismatch",
                     params={"tag": input.tag_id, "objectType": input.object_type},
                 )
-            await tag_repo.assign(cast("Connection", conn), model)
+            await tag_repo.assign(cast("Connection", conn), model, origin="admin")
         await _refresh_config_tags()
         return MutationResult(
             success=True,
@@ -1970,8 +1979,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         rate_limit = (
             RoleRateLimit(
                 requests_per_second=rl.requests_per_second,
-                max_query_depth=rl.max_query_depth,
-                max_query_nodes=rl.max_query_nodes,
+                max_query_complexity=rl.max_query_complexity,
                 max_query_time_ms=rl.max_query_time_ms,
             )
             if rl is not None
@@ -2106,7 +2114,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # REQ-1320: each fact measure auto-registers as a governed metric (upsert by name).
         async with pool.acquire() as conn:
             for m in fact_metrics:
-                await metric_repo.upsert(cast("Connection", conn), m)
+                await metric_repo.upsert(cast("Connection", conn), m, origin="admin")
         if fact_metrics:
             await _rebuild_schemas()  # republish state.metrics + schema metric blocks
         return MutationResult(
@@ -2144,7 +2152,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         pool = await _get_pool()
         try:
             async with pool.acquire() as conn:
-                await metric_repo.upsert(cast("Connection", conn), model)
+                await metric_repo.upsert(cast("Connection", conn), model, origin="admin")
                 # REQ-1318: every registered view whose view_metrics spec references this
                 # metric regenerates its stored view_sql against the UPDATED definition.
                 # Free-hand view_sql born from inline metric() calls carries no stored
@@ -2458,8 +2466,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             from provisa.cache.tenancy import invalidate_tables
 
             await invalidate_tables(state, [id])
-            if state.hot_manager is not None and held is not None:
-                await state.hot_manager.invalidate(held["table_name"])
+            if state.hot_manager is not None:
+                await state.hot_manager.invalidate(id)
             await _rebuild_schemas()
             return MutationResult(
                 success=True,
@@ -2525,6 +2533,95 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
+    async def revoke_role_from_table(
+        self, info: StrawberryInfo, role_id: str, table_id: int
+    ) -> MutationResult:  # REQ-1918
+        """Take a role off every column grant of one table (read, write, unmasked), so the role
+        can be deleted. A role the table does not grant is a success that changed nothing."""
+        from provisa.api.admin.capabilities import require_capability
+        from provisa.api.admin.domain_guard import require_table_domain
+        from provisa.core.repositories import grants
+
+        require_capability(info, "table_registration")
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            c = cast("Connection", conn)
+            _was = await origin_repo.of(c, "table", table_id)
+            if _was is None:
+                return MutationResult(
+                    success=False,
+                    message=f"Table {table_id} not found",
+                    code="schema.table_id_not_found",
+                    params={"id": table_id},
+                )
+            await require_table_domain(info, c, table_id)
+            changed = await grants.revoke_from_table(c, table_id, role_id)
+        if changed:
+            await _rebuild_schemas()
+        return MutationResult(
+            success=True,
+            message=f"Role {role_id!r} removed from the grants of table {table_id}",
+            code="schema.role_revoked_from_table",
+            params={"role": role_id, "id": table_id},
+            warnings=_config_warnings("table", table_id, _was, "edited") if changed else [],
+        )
+
+    @strawberry.mutation
+    async def revoke_role_from_object(
+        self, info: StrawberryInfo, role_id: str, kind: GrantKind, name: str
+    ) -> MutationResult:  # REQ-1918
+        """Take a role off a metric's, command's or webhook's assigned roles, so the role can be
+        deleted. A role the object does not grant is a success that changed nothing."""
+        from provisa.api.admin.capabilities import require_capability
+        from provisa.api.admin.domain_guard import metric_domains, require_domains
+        from provisa.core.repositories import grants
+        from provisa.core.schema_org import metrics, tracked_functions, tracked_webhooks
+
+        require_capability(info, "table_registration")
+        table = {
+            GrantKind.METRIC: metrics,
+            GrantKind.COMMAND: tracked_functions,
+            GrantKind.WEBHOOK: tracked_webhooks,
+        }[kind]
+        object_kind = kind.value
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            c = cast("Connection", conn)
+            row = (
+                await c.execute_core(
+                    select(
+                        *[
+                            table.c.origin,
+                            *([table.c.domain_id] if kind != GrantKind.METRIC else []),
+                        ]
+                    ).where(table.c.name == name)
+                )
+            ).fetchone()
+            if row is None:
+                return MutationResult(
+                    success=False,
+                    message=f"No {object_kind} named {name!r}",
+                    code="schema.grant_object_not_found",
+                    params={"kind": object_kind, "name": name},
+                )
+            if kind == GrantKind.METRIC:
+                domains = await metric_domains(c, name)
+                if domains is not None:
+                    require_domains(info, domains)
+            else:
+                require_domains(info, [row.domain_id])
+            changed = await grants.revoke_from_object(c, object_kind, name, role_id)
+        if changed:
+            await _rebuild_schemas()
+        return MutationResult(
+            success=True,
+            message=f"Role {role_id!r} removed from {object_kind} {name!r}",
+            code="schema.role_revoked_from_object",
+            params={"role": role_id, "kind": object_kind, "name": name},
+            warnings=_config_warnings(object_kind, name, row.origin, "edited") if changed else [],
+        )
+
+    @strawberry.mutation
     async def upsert_rls_rule(
         self, info: StrawberryInfo, input: RLSRuleInput
     ) -> MutationResult:  # REQ-041, REQ-402, REQ-1531, REQ-1676
@@ -2580,7 +2677,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
         try:
             async with pool.acquire() as conn:
-                await rls_repo.upsert(cast("Connection", conn), model)
+                await rls_repo.upsert(cast("Connection", conn), model, origin="admin")
         except ValueError as e:
             return MutationResult(success=False, message=str(e))
         # state.rls_contexts[role_id] is only ever populated by _rebuild_schemas's own
@@ -2977,6 +3074,20 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             code="schema.table_role_ttl_updated",
             params={"table": table_id},
         )
+
+    @strawberry.mutation
+    async def update_table_paging(
+        self, info: StrawberryInfo, table_id: int, paging: PagingInput | None = None
+    ) -> MutationResult:  # REQ-318
+        """Replace a table's paging (null clears it): a paged REST endpoint's type and parameters,
+        or a connection table's max_rows, which may only lower graphql_remote.max_rows."""
+        from provisa.api.admin._table_paging import save_table_paging
+        from provisa.api.app import state
+
+        require_capability(info, "table_registration")
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            return await save_table_paging(state, conn, table_id, paging)
 
     @strawberry.mutation
     async def update_source_replicate(
@@ -3444,8 +3555,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     params={"table": table_id},
                 )
             schema_name, table_name, source_id = row[0], row[1], row[2]
-            node = f"{schema_name}.{table_name}"
-            if state.mv_registry.get(f"view-{table_name}") is not None:
+            from provisa.events.nodes import source_node, view_node
+
+            view = state.mv_registry.get(f"view-{table_name}")
+            node = (
+                view_node(view)
+                if view is not None
+                else source_node(source_id, schema_name, table_name)
+            )
+            if view is not None:
                 scope = "node"  # a derived view: recompute its SQL without re-landing its inputs
             else:
                 scope = "source"
@@ -3883,6 +4001,7 @@ async def _upsert_action_rls_rule(
         await rls_repo.upsert(
             cast("Connection", conn),
             RLSRuleModel(action_name=name, role_id=input.role_id, filter=input.filter_expr),
+            origin="admin",
         )
     # See upsert_rls_rule's own matching rebuild — this action-RLS path bypasses that function
     # entirely (early-returns before it), so it needs the identical rebuild call itself.

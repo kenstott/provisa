@@ -159,8 +159,7 @@ def _role_from_row(row, *, detail: bool = True) -> RoleType:
     if isinstance(rl, dict):
         rate_limit = RoleRateLimitType(
             requests_per_second=rl.get("requests_per_second"),
-            max_query_depth=rl.get("max_query_depth"),
-            max_query_nodes=rl.get("max_query_nodes"),
+            max_query_complexity=rl.get("max_query_complexity"),
             max_query_time_ms=rl.get("max_query_time_ms"),
         )
     return RoleType(
@@ -239,6 +238,7 @@ def _rls_from_row(row) -> RLSRuleType:
         domain_id=row["domain_id"],
         role_id=row["role_id"],
         filter_expr=row["filter_expr"],
+        origin=row["origin"],  # REQ-1919
         action_name=row.get("action_name"),  # REQ-1679
     )
 

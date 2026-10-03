@@ -232,6 +232,32 @@
     "loadManagementInfoLabel": "Über Laststeuerung und Aktualität",
     "loadManagementInfo": "Wägt ab, wie aktuell die Daten jedes Lesers sind, gegenüber der Last auf der Plattform und auf den Upstream-Quellen. Idealerweise steuert die Upstream-Quelle ihre Last selbst; der Betreiber schützt die Plattform und die Upstream-Quelle, wenn sie sich nicht selbst schützen kann. Diese Einstellungen sind die Untergrenze des Betreibers – keine Abfrage und kein Anfragehinweis kann aktuellere Daten erhalten oder eine Quelle stärker belasten, als sie zulassen. Leser können nur wählen, für mehr Geschwindigkeit ältere Daten zu akzeptieren. Eine Tabelle, die die Engine live liest, ignoriert die TTL-Einstellungen; sie gelten, sobald die Tabelle aus ihrem Replikat bedient wird („Replizieren“ oder „Lastgeschützt“).",
     "cacheTtlRequiredForSignal": "Das Änderungssignal {{signal}} bewertet die Aktualität anhand der Cache-TTL. Legen Sie daher hier oder an der Quelle eine Cache-TTL fest.",
-    "loadManagementFixErrors": "Korrigieren Sie die Einstellungen unter Laststeuerung und Aktualität vor dem Speichern."
+    "loadManagementFixErrors": "Korrigieren Sie die Einstellungen unter Laststeuerung und Aktualität vor dem Speichern.",
+    "pagingLabel": "Paginierung",
+    "pagingEndpointHelp": "Wie dieser Endpunkt seitenweise gelesen wird. Ein Lesevorgang endet nach Max. Seiten; eine Antwort, zu der die API mehr hatte, wird als abgeschnitten gemeldet und nie als vollständig zwischengespeichert.",
+    "pagingConnectionHelp": "Die meisten Zeilen, die ein Lesevorgang dieser Connection-Tabelle liest. Leer lassen, um Zeilen pro Lesevorgang bei Remote-GraphQL zu verwenden; eine Tabelle darf den Wert senken, nie erhöhen.",
+    "pagingMaxRows": "Max. Zeilen pro Lesevorgang",
+    "pagingMaxRowsDefault": "Standard: {{ceiling}}",
+    "pagingType": "Paginierungstyp",
+    "pagingNone": "Nicht paginiert",
+    "pagingTypes": {
+      "offset": "Offset und Limit",
+      "page_number": "Seitennummer",
+      "cursor": "Cursor",
+      "link_header": "Link-Header"
+    },
+    "pagingFields": {
+      "pageParam": "Seitenparameter",
+      "pageSizeParam": "Parameter für Seitengröße",
+      "pageSize": "Seitengröße",
+      "cursorParam": "Cursor-Parameter",
+      "cursorField": "Feld für nächsten Cursor",
+      "maxPages": "Max. Seiten"
+    },
+    "pagingCutNote": "Ein Lesevorgang, der Max. Seiten erreicht, während die API mehr hat, wird als abgeschnitten gemeldet.",
+    "pagingTypeRequired": "Wählen Sie einen Paginierungstyp oder leeren Sie die Paginierungsfelder.",
+    "pagingPositive": "Verwenden Sie eine ganze Zahl ab 1.",
+    "pagingAboveCeiling": "Höchstens {{ceiling}}: Eine Tabelle darf die Grenze des Betreibers senken, nie erhöhen.",
+    "pagingFixErrors": "Beheben Sie die Paginierungsfehler vor dem Speichern."
   }
 }

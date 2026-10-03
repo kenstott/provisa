@@ -20,6 +20,8 @@ from cypher_router.py; leaf module (no route handlers).
 from __future__ import annotations
 
 import logging
+import secrets
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
 from fastapi import Request
@@ -96,6 +98,8 @@ def _lookup_api_endpoint(state: AppState, table_name: str):
 
 def _lookup_gql_remote_table(state: AppState, table_name: str) -> dict | None:
     """Look up graphql_remote source info by SQL table name (snake_case)."""
+    from provisa.graphql_remote.executor import NO_POLICY
+
     for reg in getattr(state, "graphql_remote_sources", {}).values():
         for t in reg.get("tables", []):
             if t["sql_name"] == table_name:
@@ -106,6 +110,8 @@ def _lookup_gql_remote_table(state: AppState, table_name: str) -> dict | None:
                     "field_name": t.get("field_name", t["name"]),
                     "columns": t.get("columns", []),
                     "required_args": t.get("required_args", []),
+                    "rows_path": t.get("rows_path"),
+                    "error_policy": reg.get("error_policy") or NO_POLICY,
                     "cache_ttl": reg.get("cache_ttl", 300),
                     "cache_catalog": reg.get("cache_catalog", "provisa_admin"),
                 }
@@ -118,8 +124,12 @@ async def _execute_with_api(
     nf_args: dict,
     state: Any,
     span_attrs: dict[str, str] | None = None,
+    *,
+    table_ids: Iterable[int],
 ) -> list[dict]:
     """Phase 1 (REST) + Phase 2 (the engine) execution for ALL API-backed tables in the query.
+    ``table_ids`` are the registered tables it reads, as the pipeline resolved them: the hot rows
+    substituted, and the rows fetched and promoted, are theirs.
 
     For each API-backed table referenced in FROM/JOIN clauses:
       1. Derive URL params from nf_args columns that match the endpoint's native params.
@@ -150,15 +160,18 @@ async def _execute_with_api(
     if not api_endpoints_in_sql:
         raise RuntimeError(f"No API endpoint found for tables: {table_names}")
 
+    from provisa.api.data.materialization import _StatementHot
+
     hot_mgr = getattr(state, "hot_manager", None)
+    hot = _StatementHot(hot_mgr, state, table_ids)
 
     # Hot table bypass: only applies when there is exactly one API table and it is hot.
     if len(api_endpoints_in_sql) == 1:
         table_name, endpoint = api_endpoints_in_sql[0]
-        if hot_mgr is not None and hot_mgr.is_hot(table_name):
+        entry = hot.entries.get(table_name)
+        if entry is not None:
             from provisa.cache.values_cte import build_values_cte_sql
 
-            entry = hot_mgr.get_entry(table_name)
             hot_sql = build_values_cte_sql(exec_sql, table_name, entry)
             physical_sql = state.federation_engine.transpile_physical(hot_sql)
             log.info("[HOT TABLE] hit — %s (%d rows inline)", table_name, len(entry.rows))
@@ -258,10 +271,24 @@ async def _execute_with_api(
                 or getattr(state, "response_cache_default_ttl", None)
                 or endpoint.ttl
             )
-            schedule_drop(state.federation_engine, _cache_loc, cache_tbl, ttl, redirect_config)
+            # REQ-1350: a cut answer landed under a name of its own (handle_api_query): the
+            # statement reads that one, and its rows are never promoted as the table's.
+            cache_rewrites[table_name] = (_cache_loc, result.cache_table)
+            schedule_drop(
+                state.federation_engine, _cache_loc, result.cache_table, ttl, redirect_config
+            )
 
-            if hot_mgr is not None and result.rows:
-                spawn_background(hot_mgr.maybe_promote_dicts(table_name, result.rows))
+            promoted = hot.table_id(table_name)
+            # Only a fetch with no arguments, and not cut (REQ-1350), returned the resource's
+            # whole rows.
+            if (
+                hot_mgr is not None
+                and promoted is not None
+                and result.rows
+                and not url_params
+                and result.cut is None
+            ):
+                spawn_background(hot_mgr.maybe_promote_dicts(promoted, result.rows))
         else:
             log.info("[API CACHE] hit — %s", cache_tbl)
 
@@ -285,6 +312,7 @@ async def _execute_with_gql_remote(
     import asyncio
     from dataclasses import dataclass
     from provisa.graphql_remote.executor import execute_remote
+    from provisa.federation.registry_view import connection_rows
     from provisa.api_source.engine_cache import (
         org_cache_schema,
         cache_table_name,
@@ -394,15 +422,25 @@ async def _execute_with_gql_remote(
         hit = await loop.run_in_executor(None, _check_or_create_cache, None)
         if not hit:
             col_selections = [_gql_selection(c) for c in info["columns"]]
-            fetched_rows = await execute_remote(
+            answer = await execute_remote(
                 url=info["url"],
                 auth=info["auth"],
                 field_name=info["field_name"],
                 columns=col_selections,
                 variables=gql_vars or None,
                 required_args=required_args or None,
+                rows_path=info["rows_path"],
+                max_rows=await connection_rows(state, info["source_id"], tn),  # REQ-318
+                error_policy=info["error_policy"],
             )
-            await loop.run_in_executor(None, _check_or_create_cache, fetched_rows)
+            if answer.cut:
+                # REQ-1350: an answer cut at max_rows lands under a name of this statement's
+                # own, so no later statement finds it as the table's answer.
+                cache_tbl = cache_table_name(
+                    info["source_id"], tn, {**gql_vars, "__cut__": secrets.token_hex(8)}
+                )
+                cache_rewrites[tn] = (cache_loc, cache_tbl)
+            await loop.run_in_executor(None, _check_or_create_cache, answer.rows)
             # REQ-1688: statistics where the table lives, off the query's critical path.
             from provisa.api_source.engine_cache import analyze_cache_table
 
@@ -489,7 +527,12 @@ async def _execute_call_body(
     try:
         if nf_args or has_api:
             rows = await _execute_with_api(
-                clean_exec_sql, clean_params, nf_args, state, _cb_span_attrs
+                clean_exec_sql,
+                clean_params,
+                nf_args,
+                state,
+                _cb_span_attrs,
+                table_ids=plan.table_ids,
             )
         elif has_gql_remote:
             rows = await _execute_with_gql_remote(

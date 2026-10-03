@@ -98,6 +98,9 @@
     "maxLiveConcurrencyPlaceholder": "कोई सीमा नहीं",
     "maxLiveConcurrencyInvalid": "1 या अधिक की पूर्ण संख्या दर्ज करें, या कोई सीमा न रखने के लिए खाली छोड़ें।",
     "loadManagementFixErrors": "सहेजने से पहले लोड प्रबंधन और समयबद्धता सेटिंग्स ठीक करें।",
-    "cacheTtlRequiredForSignal": "{{signal}} परिवर्तन संकेत कैश TTL से नवीनता आँकता है, इसलिए कैश TTL सेट करें।"
+    "cacheTtlRequiredForSignal": "{{signal}} परिवर्तन संकेत कैश TTL से नवीनता आँकता है, इसलिए कैश TTL सेट करें।",
+    "accessToken": "एक्सेस टोकन",
+    "accessTokenHint": "सीक्रेट वॉल्ट में संग्रहीत होता है। ${secret:NAME} या ${env:NAME} संदर्भ भी स्वीकार्य है।",
+    "brandNamespaceHint": "इस स्रोत की टेबल के नामों का उपसर्ग। डिफ़ॉल्ट के लिए खाली छोड़ें।"
   }
 }

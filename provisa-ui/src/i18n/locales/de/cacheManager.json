@@ -40,11 +40,12 @@
       "rows": "Zeilen",
       "kind": "Art",
       "unknown": "—",
-      "warmTables": "Warme Tabellen",
+      "busyReplicas": "Bei Last repliziert",
       "kind_hot": "heiß",
       "kind_hot_candidate": "Heiß-Kandidat",
-      "kind_warm": "warm",
-      "warmDescription": "Warme Tabellen sind größere Tabellen, die häufig genug abgefragt werden, um eine Iceberg-Kopie in der Föderations-Engine zu erhalten; Abfragen lesen die Kopie, die wieder verworfen wird, wenn der Verkehr unter den Schwellenwert fällt."
+      "kind_replica": "repliziert (Last)",
+      "kind_replica_building": "Replikat wird erstellt",
+      "busyDescription": "Eine Tabelle, deren Einstellung „Replizieren“ auf „Standard“ oder einem Hot-Schwellenwert steht, wird repliziert, sobald die Anweisungen, die sie lesen, ihren Schwellenwert überschreiten; Lesezugriffe kommen dann aus dem Replikat und gehen wieder an die Quelle, wenn die Last unter die Hälfte des Schwellenwerts fällt. Solange ihr erstes Replikat erstellt wird, wird die Tabelle weiterhin live gelesen."
     },
     "materialized": {
       "description": "Dauerhafter Store, in dem nicht anbindbare Quellen landen und materialisierte Sichten geschrieben werden. Getrennt vom Response-Cache und der Hot-Ebene; eine Abfrage kann jede Kombination der drei nutzen.",

@@ -59,6 +59,7 @@ vi.mock("../../hooks/useSecurityQueries", () => ({
         actionName: "customer_lookup",
         roleId: "analyst",
         filterExpr: "region = 'east'",
+        origin: "config",
       },
     ],
     loading: false,
@@ -68,6 +69,7 @@ vi.mock("../../hooks/useSecurityQueries", () => ({
   useDeleteRole: () => ({ deleteRole: vi.fn(), loading: false }),
   useUpsertRlsRule: () => ({ upsertRlsRule: upsertRlsRuleSpy, loading: false }),
   useDeleteRlsRule: () => ({ deleteRlsRule: deleteRlsRuleSpy, loading: false }),
+  useRevokeRoleGrants: () => ({ revokeFromTable: vi.fn(), revokeFromObject: vi.fn() }),
 }));
 
 import { SecurityRlsPage } from "../SecurityPage";
@@ -86,6 +88,12 @@ describe("SecurityPage — RLS rules on actions (REQ-1679)", () => {
   it("lists an action-scoped rule with its action", () => {
     render(<SecurityRlsPage />);
     expect(screen.getByTestId("rule-scope-9")).toHaveTextContent("customer_lookup");
+  });
+
+  it("marks a rule a config file declares", () => {
+    // REQ-1919: a load of a file that stops declaring it removes it, so the row says whose it is.
+    render(<SecurityRlsPage />);
+    expect(screen.getByTestId("origin-badge")).toHaveTextContent("declared in config");
   });
 
   it("stages actionName when the scope is an action", async () => {

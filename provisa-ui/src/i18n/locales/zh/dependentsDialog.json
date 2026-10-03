@@ -4,6 +4,9 @@
     "intro": "这些对象仍在引用它。请移除或更改每一个，然后再次删除。",
     "open": "打开页面",
     "close": "关闭",
+    "removeTableGrants": "从此表的授权中移除此角色",
+    "removeGrant": "移除此角色的授权",
+    "removeAssignment": "移除分配",
     "kind": {
       "table": "表和视图",
       "column": "列授权",

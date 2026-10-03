@@ -139,7 +139,7 @@ async def test_grpc_columns_carry_the_proto_resolved_type(monkeypatch):
         input_fields=[SimpleNamespace(name="order_id", type="bigint", object_fields=[])],
     )
     conn = _FakeConn()
-    await mod._register_schema("g", [q], [], conn, "ns", "d")
+    await mod._register_schema("g", [q], conn, "ns", "d")
 
     cols = {c.name: c.data_type for c in captured[0].columns}
     assert cols == {"id": "integer", "items": "jsonb", "_nf_order_id": "bigint"}

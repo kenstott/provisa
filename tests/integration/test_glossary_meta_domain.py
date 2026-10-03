@@ -239,10 +239,10 @@ async def test_a_term_reaches_the_tags_on_the_columns_it_binds(tenant_db):
             """
             INSERT INTO tag_assignments
                 (tag_id, base_tag_id, object_type, source_id, table_id, column_name,
-                 object_key, reason)
+                 object_key, reason, origin)
             VALUES
-                ('pii', 'pii', 'column', 'pg1', $1, 'cust_id', $2, 'identity'),
-                ('deprecated', 'deprecated', 'table', 'pg1', $1, NULL, $3, 'migrating')
+                ('pii', 'pii', 'column', 'pg1', $1, 'cust_id', $2, 'identity', 'admin'),
+                ('deprecated', 'deprecated', 'table', 'pg1', $1, NULL, $3, 'migrating', 'admin')
             """,
             table_id,
             f"column:{table_id}:cust_id",

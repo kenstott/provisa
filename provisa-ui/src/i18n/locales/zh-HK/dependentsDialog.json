@@ -4,6 +4,9 @@
     "intro": "這些物件仍在引用它。請移除或更改每一個，然後再次刪除。",
     "open": "開啟頁面",
     "close": "關閉",
+    "removeTableGrants": "從此表的授權中移除此角色",
+    "removeGrant": "移除此角色的授權",
+    "removeAssignment": "移除分配",
     "kind": {
       "table": "資料表和檢視",
       "column": "欄位授權",

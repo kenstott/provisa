@@ -41,9 +41,10 @@ class _Db:
         raise AssertionError("a row-level replica table was read as an API cache table")
 
 
-def _endpoint(source_id: str):
+def _endpoint(source_id: str, table_name: str):
     return SimpleNamespace(
         source_id=source_id,
+        table_name=table_name,
         ttl=300,
         columns=[],
         path="/",
@@ -55,7 +56,10 @@ def _endpoint(source_id: str):
 
 def _state(tables):
     return SimpleNamespace(
-        api_endpoints={"bench_order_node": _endpoint("neo"), "bench_placed_edge": _endpoint("neo")},
+        api_endpoints={
+            "bench_order_node": _endpoint("neo", "bench_order_node"),
+            "bench_placed_edge": _endpoint("neo", "bench_placed_edge"),
+        },
         api_sources={"neo": SimpleNamespace(base_url="http://neo")},
         tenant_db=_Db(),
         tables=tables,
@@ -70,8 +74,8 @@ def _fresh_expiry(monkeypatch):
 async def test_a_row_level_table_is_not_filled_as_an_api_cache_table(monkeypatch):
     filled: list[str] = []
 
-    async def _collection(src, endpoint, pg_table, pg_schema, *args):
-        filled.append(pg_table)
+    async def _collection(src, endpoint, *args):
+        filled.append(endpoint.table_name)
 
     monkeypatch.setattr(hydration, "_hydrate_collection", _collection)
     state = _state(

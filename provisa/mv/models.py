@@ -79,6 +79,20 @@ class SDLConfig:  # REQ-653
     columns: list[dict] | None = None  # [{name, visible_to: [roles]}]
 
 
+@dataclass(frozen=True)
+class TableIdentity:  # REQ-939
+    """A registered table by its identity — the source it is registered on, its schema and its
+    name. Two sources may both hold a ``schema.table``; this names exactly one."""
+
+    source_id: str
+    schema_name: str
+    table_name: str
+
+    @property
+    def label(self) -> str:
+        return f"{self.source_id}/{self.schema_name}.{self.table_name}"
+
+
 @dataclass
 class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ-235
     """A materialized view definition."""
@@ -88,6 +102,10 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     target_catalog: str
     target_schema: str
     target_table: str | None = None  # auto-generated if not specified
+    # REQ-939: a join-pattern view's inputs (it has no SQL), bound to registered tables when the
+    # view is declared — so another source registering the same name later does not change what
+    # it reads. One per ``source_tables`` entry; empty for a view with SQL.
+    inputs: list[TableIdentity] = field(default_factory=list)
     tenant_id: str | None = None  # when set, Iceberg schema = f"{tenant_id}_mv"
     refresh_interval: int = 300  # seconds
     enabled: bool = True

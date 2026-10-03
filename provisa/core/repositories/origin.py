@@ -30,7 +30,13 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from sqlalchemy import select, update
 
-from provisa.core.schema_org import domains, registered_tables, roles, sources
+from provisa.core.schema_org import (
+    domains,
+    registered_tables,
+    roles,
+    seed_redefinitions,
+    sources,
+)
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -42,6 +48,10 @@ CONFIG: Origin = "config"
 ADMIN: Origin = "admin"
 SEED: Origin = "seed"
 ORIGINS: tuple[Origin, ...] = (CONFIG, ADMIN, SEED)
+
+#: The kinds the deployment seeds with a definition a config file can redefine and a load can put
+#: back: the seeded roles and domains (``provisa.core.db``).
+SEED_DEFINED_KINDS = frozenset({"role", "domain"})
 
 
 def require(origin: str) -> Origin:
@@ -60,6 +70,21 @@ async def take_over(
     is left as it is."""
     if origin != CONFIG:
         return False
+    if kind in SEED_DEFINED_KINDS and _seed_defines(kind, ident):
+        seeded = (
+            await conn.execute_core(select(table.c.id).where(*where, table.c.origin == SEED))
+        ).fetchone()
+        if seeded is not None:
+            # A seeded object the file redefines stays the deployment's own; the load remembers
+            # the file changed it, so a load of a file that no longer declares it puts the seed's
+            # definition back (``seed_definitions``).
+            await conn.upsert(
+                seed_redefinitions,
+                {"kind": kind, "object_id": str(ident)},
+                index_elements=["kind", "object_id"],
+                update_columns=[],
+            )
+            return False
     result = await conn.execute_core(
         update(table).where(*where, table.c.origin == ADMIN).values(origin=CONFIG)
     )
@@ -72,6 +97,13 @@ async def take_over(
             ident,
         )
     return taken
+
+
+def _seed_defines(kind: str, ident: object) -> bool:
+    """Whether the seed has its own definition of this role or domain to put back."""
+    from provisa.core.repositories.seed_definitions import seed_domain, seed_role
+
+    return (seed_role if kind == "role" else seed_domain)(str(ident)) is not None
 
 
 _TABLE_OF_KIND = {"source": sources, "domain": domains, "role": roles, "table": registered_tables}

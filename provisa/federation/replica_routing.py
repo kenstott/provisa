@@ -23,8 +23,12 @@ with (``replica_address.address_replicas``).
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any, NamedTuple
+
+if TYPE_CHECKING:
+    from provisa.mv.models import TableIdentity
 
 from provisa.federation.replica_address import (
     ReplicaRoute,
@@ -60,7 +64,8 @@ def table_floor(source: Any, table: Any, *, promoted: bool) -> str | None:
     None when they may be live: the floor of its source (``core.operator_floor.floor_setting`` —
     a floored source has no live attach, so every table of it is served from its replica), else
     the table's own resolved ``load_protected`` / ``replicate`` (``core.replicate.floor_of``).
-    ``promoted``: the table passed its threshold and is in the promoted set."""
+    ``promoted``: the table passed its threshold AND its replica exists in this engine's store
+    (``replica_state.promotion``'s serving set) — until then it is read live."""
     from provisa.core.operator_floor import floor_setting
     from provisa.core.replicate import floor_of, resolved_load_protected, resolved_replicate
 
@@ -133,45 +138,32 @@ def live_while_building(source: Any, table: Any, engine: Any) -> bool:
 class UnknownRegisteredTable(LookupError):
     """A statement names a table that is not registered."""
 
-    def __init__(self, table_name: str) -> None:
-        self.table_name = table_name
+    def __init__(self, table: str) -> None:
+        self.table = table
         super().__init__(
-            f"table {table_name!r} is not a registered table, so it has no name on the engine"
+            f"table {table!r} is not a registered table, so it has no name on the engine"
         )
 
 
-class AmbiguousRegisteredTable(LookupError):
-    """A statement names a table by a name more than one source registers."""
+async def registered_table_key(engine: Any, state: Any, table: "TableIdentity") -> TableKey:
+    """The catalog-physical name the bound ``engine`` gives the registered ``table`` (its
+    identity: source, schema, name) — ``(catalog, schema, table)``, the catalog folded into the
+    schema on an engine whose SQL has none — exactly as a lowered statement names it.
 
-    def __init__(self, table_name: str, sources: list[str]) -> None:
-        self.table_name = table_name
-        self.sources = sources
-        super().__init__(
-            f"table {table_name!r} is registered by more than one source ({', '.join(sources)}), "
-            "so the name alone does not say which is meant. Register the tables under different "
-            "names, or define the view by SQL that names the source."
-        )
-
-
-async def registered_table_key(engine: Any, state: Any, table_name: str) -> TableKey:
-    """The catalog-physical name the bound ``engine`` gives the table registered as
-    ``table_name`` — ``(catalog, schema, table)``, the catalog folded into the schema on an
-    engine whose SQL has none — exactly as a lowered statement names it.
-
-    For a caller that holds only a registered table's name (a join-pattern materialized view):
-    a bare name is no engine address, live or replica, so it is resolved here first and then
-    read through the address seam (``EngineRuntime.read_address``). Refused when no registered
-    table has that name, and when more than one source registers it. ``engine`` is the
-    ``FederationEngine``."""
-    from provisa.compiler.naming import apply_sql_name
+    For a caller that holds a registered table rather than a statement (a join-pattern view's
+    bound inputs, a Hot candidate): its identity is no engine address, live or replica, so it is
+    resolved here first and then read through the address seam (``EngineRuntime.read_address``).
+    Refused when no registered table has that identity. ``engine`` is the ``FederationEngine``."""
     from provisa.federation.registry_view import registered_tables
 
-    wanted = {table_name, apply_sql_name(table_name)}
-    found = [t for t in await registered_tables(state) if t.table_name in wanted]
+    found = [
+        t
+        for t in await registered_tables(state)
+        if (t.source_id, t.schema_name, t.table_name)
+        == (table.source_id, table.schema_name, table.table_name)
+    ]
     if not found:
-        raise UnknownRegisteredTable(table_name)
-    if len(found) > 1:
-        raise AmbiguousRegisteredTable(table_name, sorted(t.source_id for t in found))
+        raise UnknownRegisteredTable(table.label)
     reg = found[0]
     physical = getattr(state, "kafka_table_physical", None) or {}
     name = physical.get(reg.table_name, reg.table_name)
@@ -186,23 +178,36 @@ def _data_columns(reg: dict) -> list[dict]:
     return [c for c in reg["columns"] if c["native_filter_type"] is None]
 
 
-async def _registry(state: Any) -> tuple[list[dict], dict[str, Any], frozenset]:
-    """The registered tables, their sources by id and the promoted set, read together from the
-    control plane (REQ-1674): the names the compiler emits; a source created in the UI and a
-    table registered at runtime count exactly like config-declared ones."""
+class _Registry(NamedTuple):
+    """One read of the control plane: the registered tables, their sources by id, and where Hot
+    replication stands (REQ-826) — ``promoted``: the tables past their threshold; ``serving``:
+    those of them whose replica exists in this engine's store, the only ones whose reads go to
+    their replica."""
+
+    registered: list[dict]
+    sources: dict[str, Any]
+    serving: frozenset[tuple[str, str, str]]
+    promoted: frozenset[tuple[str, str, str]]
+
+
+async def _registry(state: Any) -> _Registry:
+    """The registered tables, their sources by id and the Hot replication sets, read together
+    from the control plane (REQ-1674): the names the compiler emits; a source created in the UI
+    and a table registered at runtime count exactly like config-declared ones."""
     from provisa.api.admin.db_queries import fetch_tables
     from provisa.federation.registry_view import registered_sources
-    from provisa.federation.replica_state import promoted_keys
+    from provisa.federation.replica_builds import store_identity
+    from provisa.federation.replica_state import promotion
 
     config = getattr(state, "config", None)
     tdb = getattr(state, "tenant_db", None)
     if config is None or tdb is None:
-        return [], {}, frozenset()
+        return _Registry([], {}, frozenset(), frozenset())
     async with tdb.acquire() as conn:
         registered = await fetch_tables(conn)
         sources = {s.id: s for s in await registered_sources(state, conn)}
-        promoted = await promoted_keys(conn)
-    return registered, sources, promoted
+        promoted, serving = await promotion(conn, lambda: store_identity(state))
+    return _Registry(registered, sources, serving, promoted)
 
 
 def _replica_key(reg: dict) -> tuple[str, str, str]:
@@ -210,9 +215,12 @@ def _replica_key(reg: dict) -> tuple[str, str, str]:
 
 
 def _served_from_replica(
-    engine: Any, registry: tuple[list[dict], dict[str, Any], frozenset]
+    engine: Any, registry: _Registry, busy: frozenset[tuple[str, str, str]]
 ) -> list[tuple[Any, dict]]:
-    registered, sources, promoted = registry
+    """The tables with a replica on ``engine`` by the one decision (``reads_replica``), where the
+    tables replicated for being busy are ``busy``: the serving set for what reads go to, the
+    promoted set for what has (or is to have) a replica."""
+    registered, sources, _serving, _promoted = registry
     out: list[tuple[Any, dict]] = []
     for reg in registered:
         src = sources.get(reg["source_id"])
@@ -220,28 +228,32 @@ def _served_from_replica(
             continue
         if not _data_columns(reg):
             continue
-        if reads_replica(src, reg, engine, promoted=_replica_key(reg) in promoted):
+        if reads_replica(src, reg, engine, promoted=_replica_key(reg) in busy):
             out.append((src, reg))
     return out
 
 
-def _floored(registry: tuple[list[dict], dict[str, Any], frozenset]) -> dict[int, tuple[str, str]]:
-    registered, sources, promoted = registry
+def _floored(registry: _Registry) -> dict[int, tuple[str, str]]:
+    registered, sources, serving, _promoted = registry
     floored: dict[int, tuple[str, str]] = {}
     for reg in registered:
         src = sources.get(reg["source_id"])
         if src is None or _source_type(src) in _NO_REPLICA_TYPES:
             continue
-        setting = table_floor(src, reg, promoted=_replica_key(reg) in promoted)
+        setting = table_floor(src, reg, promoted=_replica_key(reg) in serving)
         if setting is not None:
             floored[reg["id"]] = (src.id, setting)
     return floored
 
 
 async def replica_tables(engine: Any, state: Any) -> list[tuple[Any, dict]]:
-    """Every registered table served from a replica on ``engine``, as ``(source, registry row)``
-    — by the one decision (``reads_replica``), with the promoted set the control plane holds."""
-    return _served_from_replica(engine, await _registry(state))
+    """Every registered table that has, or is to have, a replica on ``engine``, as
+    ``(source, registry row)`` — by the one decision (``reads_replica``). A table promoted for
+    being busy is here from its promotion, before its first build completes (REQ-826): this is
+    what the replicator builds, keeps and retires by, so a promoted table is built and is not
+    retired while its reads still go to the source. Where reads go is ``replica_routes``."""
+    registry = await _registry(state)
+    return _served_from_replica(engine, registry, registry.promoted)
 
 
 async def floored_tables(state: Any) -> dict[int, tuple[str, str]]:
@@ -322,9 +334,14 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
     routes: dict[TableKey, ReplicaRoute] = {}
     ambiguous: dict[TableKey, tuple[str, ...]] = {}
     registry = await _registry(state)
-    tables = _served_from_replica(engine, registry)
+    # Reads go to a replica only once it exists: a promoted table is served when its first
+    # build has completed in this engine's store.
+    tables = _served_from_replica(engine, registry, registry.serving)
     if tables:
-        read_catalog = backend.replica_read_catalog(state)
+        # The store's catalog dials no source, but naming it may open the store (a native engine
+        # attaches it on first use): off the event loop, so a slow store holds no request on this
+        # worker (REQ-1882).
+        read_catalog = await asyncio.to_thread(backend.replica_read_catalog, state)
     for src, reg in tables:
         name = physical.get(reg["table_name"], reg["table_name"])
         keys = engine_table_keys(engine, state.source_catalogs[src.id], reg["schema_name"], name)
@@ -351,7 +368,11 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
         routes=routes,
         ambiguous=ambiguous,
         floored=(floored := _floored(registry)),
-        unfloored={reg["id"]: reg["source_id"] for reg in registry[0] if reg["id"] not in floored},
+        unfloored={
+            reg["id"]: reg["source_id"] for reg in registry.registered if reg["id"] not in floored
+        },
+        promoted=registry.promoted,
+        serving=registry.serving,
         # The backend's own record, by reference: a later reconcile is seen without republishing.
         unreconciled=backend.unreconciled,
     )

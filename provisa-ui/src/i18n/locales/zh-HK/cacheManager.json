@@ -40,11 +40,12 @@
       "rows": "列數",
       "kind": "種類",
       "unknown": "—",
-      "warmTables": "溫表",
+      "busyReplicas": "繁忙時複製",
       "kind_hot": "熱",
       "kind_hot_candidate": "熱候選",
-      "kind_warm": "溫",
-      "warmDescription": "溫表是查詢夠頻密、因而在聯邦引擎中取得 Iceberg 副本的較大表；查詢讀取該副本，流量低於門檻時副本會被刪除。"
+      "kind_replica": "已複製（繁忙）",
+      "kind_replica_building": "複本建立中",
+      "busyDescription": "「複製」設定為「預設」或某個 Hot 閾值的數據表，在讀取它的語句超過其閾值後會被複製；此後讀取來自複本，當流量降至閾值的一半以下時回到數據來源。在其第一個複本建立期間，該數據表仍被即時讀取。"
     },
     "materialized": {
       "description": "耐久儲存區，用於存放無法附加的數據來源，並寫入具體化檢視。有別於回應快取及熱門層；一個查詢可任意組合使用三者。",

@@ -60,6 +60,10 @@
     "maskPattern": "パターン",
     "maskReplace": "置換",
     "maskValue": "値",
-    "maskPrecision": "精度"
+    "maskPrecision": "精度",
+    "requiresApproval": "承認が必要",
+    "requiresApprovalHint": "各呼び出しは承認フックが承認した後にのみ実行されます。フックが構成されていない場合、呼び出しは拒否されます。",
+    "writesTable": "書き込み先テーブル",
+    "writesTableHint": "このコマンドが変更する登録済みテーブル。各呼び出しの後、そのテーブルのキャッシュ結果とマテリアライズドビューが更新されます。"
   }
 }

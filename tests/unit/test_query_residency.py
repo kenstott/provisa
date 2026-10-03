@@ -80,11 +80,12 @@ def test_is_stale_of_honours_never_landed_failure_and_ttl():
     # REQ-1907 (amended 2026-09-30): a ttl-signal source needs a cache_ttl -- none is an error.
     sources = [_source(sid, cache_ttl=60) for sid in ("fresh", "ttl", "bad", "never")]
     tables = {sid: [_table(sid, sid, cache_ttl=None)] for sid in ("fresh", "ttl", "bad", "never")}
+    # Keyed by each table's event-graph node: its registered identity (events.nodes.source_node).
     states = {
-        "pet_store.fresh": {"last_refresh_at": 1000.0, "last_refresh_ok": True},
-        "pet_store.ttl": {"last_refresh_at": 900.0, "last_refresh_ok": True},
-        "pet_store.bad": {"last_refresh_at": 1000.0, "last_refresh_ok": False},
-        "pet_store.never": None,
+        "fresh/pet_store.fresh": {"last_refresh_at": 1000.0, "last_refresh_ok": True},
+        "ttl/pet_store.ttl": {"last_refresh_at": 900.0, "last_refresh_ok": True},
+        "bad/pet_store.bad": {"last_refresh_at": 1000.0, "last_refresh_ok": False},
+        "never/pet_store.never": None,
     }
     is_stale = is_stale_of(sources, tables, states, 1000.0, reader_role=None)
     assert not is_stale("fresh")
@@ -259,13 +260,18 @@ async def _record(plane, table):
         return await replica_state.read(conn, _key(table))
 
 
-async def _ensure(state, sources, tables=None, **kw):
+async def _residency(state, sources, tables=None, **kw):
     return await ensure_resident(
         state,
         sources,
         reader_role=kw.get("reader_role"),
         table_ids=_read(state) if tables is None else tables,
     )
+
+
+async def _ensure(state, sources, tables=None, **kw):
+    """The builds the read waited for."""
+    return (await _residency(state, sources, tables, **kw)).built
 
 
 @pytest.mark.asyncio
@@ -448,7 +454,9 @@ async def test_a_read_whose_deadline_passes_while_the_build_runs_says_so(wiring,
 @pytest.mark.asyncio
 async def test_without_an_engine_or_store_nothing_happens():
     state = SimpleNamespace(federation_engine=None, config=None, tenant_db=None)
-    assert await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=set()) == []
+    assert (
+        await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=set())
+    ).built == []
 
 
 @pytest.mark.asyncio
@@ -598,3 +606,90 @@ async def test_the_flag_applies_when_the_engine_cannot_attach_the_source(wiring,
     )
     state.federation_engine.engine.connectors = {}
     assert await _ensure(state, {"mongo"}) == [("mongo", "order_tags")]
+
+
+# -- what the statement read, for the audit record's data age (REQ-1915) ------------------------
+
+
+@pytest.mark.asyncio
+async def test_every_replica_read_is_returned_with_the_completion_of_the_build_it_is_read_from(
+    wiring, plane
+):
+    """A replica found fresh and a replica waited for are both read, each with the completion
+    time of the build its read is answered from; a fresh one costs no control-plane read."""
+    at = datetime.now(UTC).replace(microsecond=0) - timedelta(seconds=30)
+    pets = _table("pets-db", "pets")
+    owners = _table("pets-db", "owners")
+    state = _state([_source("pets-db")], [pets, owners], _Backend(), plane)
+    await _built(plane, pets, at=at)
+    first = await _residency(state, {"pets-db"})
+    assert first.built == [("pets-db", "owners")]
+    owners_at = (await _record(plane, owners)).completed_at
+    assert first.replicas_read == {_key(pets): at, _key(owners): owners_at}
+    assert all(t.tzinfo is not None for t in first.replicas_read.values())
+
+    before = state.tenant_db.acquires
+    again = await _residency(state, {"pets-db"})
+    assert again.built == [] and again.replicas_read == first.replicas_read
+    assert state.tenant_db.acquires == before  # decided from this process's copy
+
+
+@pytest.mark.asyncio
+async def test_a_table_read_live_is_not_in_what_was_read_from_a_replica(wiring, plane):
+    pets = _table("live-db", "pets")
+    state = _state([_source("live-db")], [pets], _Backend(live={"live-db"}), plane)
+    assert (await _residency(state, {"live-db"})).replicas_read == {}
+    order = _table("bench-neo4j", "bench_order_node", schema="neo4j", row_materialize=True)
+    state = _state([_source("bench-neo4j")], [order], _Backend(), plane)
+    assert (await _residency(state, {"bench-neo4j"})).replicas_read == {}
+
+
+@pytest.mark.asyncio
+async def test_a_replica_read_with_no_build_in_this_store_is_refused_not_left_out(wiring, plane):
+    """The plan may decide a replica needs no build (a load-protected table is never rebuilt
+    by a read). If that replica has no completed build in this store, the read is refused: the
+    audit record must not say live data for a replica read."""
+    from provisa.federation.query_residency import ReplicaAgeUnknown
+
+    class _NoReadBuilds(_Backend):
+        def pending_lands(self, sources, *, is_stale, **kw):
+            # Served from a replica (asked with nothing built), never built by a read.
+            return [s.id for s in sources] if kw["resident_of"] is None else []
+
+    pets = _table("pets-db", "pets")
+    state = _state([_source("pets-db")], [pets], _NoReadBuilds(), plane)
+    await _built(plane, pets, store="another-store")
+    with pytest.raises(ReplicaAgeUnknown, match="pets-db.pet_store.pets"):
+        await _residency(state, {"pets-db"})
+
+
+@pytest.mark.asyncio
+async def test_the_engine_residency_step_puts_what_was_read_on_the_plan(monkeypatch):
+    """pgwire and Flight SQL share this step: what the statement read from replicas goes on the
+    plan, where the audit record takes its data age from."""
+    from provisa.federation import query_residency
+    from provisa.federation.query_residency import Residency, prepare_engine_residency
+
+    read = {("s", "public", "t"): datetime(2026, 10, 2, tzinfo=UTC)}
+
+    async def nothing(*args, **kwargs):
+        return None
+
+    async def resident(*args, **kwargs):
+        return Residency(built=[], replicas_read=read)
+
+    monkeypatch.setattr(query_residency, "ensure_rows_resident", nothing)
+    monkeypatch.setattr(query_residency, "pushdown_row_materialize", nothing)
+    monkeypatch.setattr(query_residency, "ensure_resident", resident)
+    plan = SimpleNamespace(
+        pk_bounds={},
+        role_id="r",
+        physical_sql="SELECT 1",
+        exec_params=[],
+        sources={"s"},
+        table_ids=(1,),
+        replicas_read={},
+    )
+    state = SimpleNamespace(federation_engine=SimpleNamespace(dialect="postgres"))
+    await prepare_engine_residency(state, plan)
+    assert plan.replicas_read == read

@@ -520,6 +520,7 @@ type RLSRuleType {
   domainId: String
   roleId: String!
   filterExpr: String!
+  origin: String!
   actionName: String
 }
 

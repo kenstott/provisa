@@ -101,17 +101,3 @@ class TestSchemaRenameReload:
                 "the stale (source_id, 'public', 'order_events') row must be purged, not left "
                 "alongside the new (source_id, 'default', 'order_events') row"
             )
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_schema_change_survives_replace_mode_too(self, tenant_db, graphql_client):
-        async with tenant_db.acquire() as conn:
-            await load_config(
-                parse_config_dict(_config("public")), conn, replace=True, origin="config"
-            )
-            await load_config(
-                parse_config_dict(_config("default")), conn, replace=True, origin="config"
-            )
-            rows = await conn.fetch(
-                "SELECT schema_name FROM registered_tables WHERE table_name = 'order_events'"
-            )
-            assert [r["schema_name"] for r in rows] == ["default"]

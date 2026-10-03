@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from provisa.core import model_change
+
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, func as _sa_func, select
@@ -22,6 +24,8 @@ from provisa.core import domain_policy
 from provisa.core.models import Function, FunctionArgument, InlineType, Webhook
 from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
+from provisa.core.repositories.origin import require as require_origin
+from provisa.core.repositories.origin import take_over
 from provisa.core.schema_org import tracked_functions, tracked_webhooks
 
 if TYPE_CHECKING:
@@ -32,8 +36,14 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
     conn: "Connection",
     func: Function,
     return_schema: dict | None = None,
+    *,
+    origin: str,
 ) -> int | None:
-    """Upsert a tracked DB function. Returns the row id."""
+    """Upsert a tracked DB function. Returns the row id. ``origin`` says where the command
+    comes from (``repositories.origin``): written at CREATE, left alone after, except that a
+    config load takes over an admin-made one."""
+    model_change.name("upsert", "command", func.name)  # REQ-1524
+    require_origin(origin)
     domain_id = domain_policy.command_domain_id(func.domain_id, func.name)  # REQ-1531
     # REQ-1634: a DataProduct's member commands must all share its domain_id — same gate as
     # table.py's upsert, so config load, admin GraphQL, and introspection are all covered.
@@ -69,6 +79,8 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
         "impl_kind": func.impl_kind,
         "binding": func.binding,
         "materialize": func.materialize,
+        "requires_approval": func.requires_approval,  # REQ-1924
+        "writes_table": func.writes_table,  # REQ-1924, REQ-871
     }
     # REQ-870: re-introspection registers discovered mutations with an empty writable_by; existing
     # admin grants are preserved. An explicit, non-empty writable_by still applies. The preserve
@@ -90,17 +102,28 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
         "impl_kind",
         "binding",
         "materialize",
+        "requires_approval",
+        "writes_table",
     ]
     if func.writable_by:
         update_cols.append("writable_by")
-    return await conn.upsert_returning(
+    function_id = await conn.upsert_returning(
         tracked_functions,
-        vals,
+        {**vals, "origin": origin},  # REQ-1919: on INSERT only — not among the update columns
         index_elements=["name"],
         returning="id",
         update_columns=update_cols,
         set_extra={"updated_at": _sa_func.now()},
     )
+    await take_over(
+        conn,
+        tracked_functions,
+        (tracked_functions.c.name == func.name,),
+        kind="command",
+        ident=func.name,
+        origin=origin,
+    )
+    return function_id
 
 
 async def get_function(conn: "Connection", name: str) -> dict | None:  # REQ-205, REQ-304
@@ -157,14 +180,20 @@ async def _delete_one(conn: "Connection", kind: str, table, name: str) -> bool: 
 
 async def delete_function(conn: "Connection", name: str) -> bool:  # REQ-205, REQ-1918
     """Delete a tracked function by name: THE delete, for every surface."""
+    model_change.name("delete", "command", name)  # REQ-1524
     return await _delete_one(conn, "command", tracked_functions, name)
 
 
 async def upsert_webhook(
-    conn: "Connection", wh: Webhook
-) -> int | None:  # REQ-209, REQ-210, REQ-211
-    """Upsert a tracked webhook. Returns the row id."""
+    conn: "Connection", wh: Webhook, *, origin: str
+) -> int | None:  # REQ-209, REQ-210, REQ-211, REQ-1919
+    """Upsert a tracked webhook. Returns the row id. ``origin`` says where it comes from
+    (``repositories.origin``): written at CREATE, left alone after, except that a config load
+    takes over an admin-made one."""
+    model_change.name("upsert", "webhook", wh.name)  # REQ-1524
+    require_origin(origin)
     vals = {
+        "origin": origin,  # REQ-1919: on INSERT only — not among the update columns
         "name": wh.name,
         "url": wh.url,
         "method": wh.method,
@@ -178,7 +207,7 @@ async def upsert_webhook(
         "description": wh.description,
         "kind": wh.kind,
     }
-    return await conn.upsert_returning(
+    webhook_id = await conn.upsert_returning(
         tracked_webhooks,
         vals,
         index_elements=["name"],
@@ -196,6 +225,15 @@ async def upsert_webhook(
             "kind",
         ],
     )
+    await take_over(
+        conn,
+        tracked_webhooks,
+        (tracked_webhooks.c.name == wh.name,),
+        kind="webhook",
+        ident=wh.name,
+        origin=origin,
+    )
+    return webhook_id
 
 
 async def get_webhook(conn: "Connection", name: str) -> dict | None:  # REQ-209, REQ-210
@@ -226,6 +264,7 @@ async def list_webhooks(conn: "Connection") -> list[dict]:  # REQ-209, REQ-360
 
 async def delete_webhook(conn: "Connection", name: str) -> bool:  # REQ-209, REQ-1918
     """Delete a tracked webhook by name: THE delete, for every surface."""
+    model_change.name("delete", "webhook", name)  # REQ-1524
     return await _delete_one(conn, "webhook", tracked_webhooks, name)
 
 
@@ -254,6 +293,8 @@ def function_from_dict(d: dict) -> Function:  # REQ-205, REQ-304
         impl_kind=d.get("impl_kind", "source_procedure"),
         binding=d.get("binding") or {},
         materialize=bool(d.get("materialize", False)),
+        requires_approval=bool(d.get("requires_approval", False)),
+        writes_table=d.get("writes_table"),
     )
 
 

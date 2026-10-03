@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import logging
 import time as _time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Header, Query, Request
@@ -67,6 +67,7 @@ from provisa.api.rest.cypher_exec import (
     _resolve_role_id,
 )
 from provisa.observability.span_attrs import span_attrs_from_semantic_sql
+from provisa.compiler.complexity import ComplexityLimitExceeded
 
 log = logging.getLogger(__name__)
 
@@ -262,9 +263,13 @@ async def _dispatch_execution(
     state: AppState,
     span_attrs: dict[str, str],
     *,
+    table_ids: Iterable[int],
     prepare: Callable[[], Awaitable[None]] | None = None,
 ) -> list[dict] | Response:
     """Stage 5: route to the correct executor based on table backing. Returns rows or error Response.
+
+    ``table_ids`` are the registered tables the statement reads, as the pipeline resolved them
+    (the hot rows an API read substitutes are theirs).
 
     ``prepare`` (the ENGINE route's residency landing) runs inside the same error classification as
     execution, so a source that cannot be landed answers with the typed ``error`` field (REQ-778)
@@ -311,7 +316,14 @@ async def _dispatch_execution(
                 )
             elif nf_args or _has_api_tables:
                 rows = await _asyncio.wait_for(
-                    _execute_with_api(clean_exec_sql, clean_params, nf_args, state, span_attrs),
+                    _execute_with_api(
+                        clean_exec_sql,
+                        clean_params,
+                        nf_args,
+                        state,
+                        span_attrs,
+                        table_ids=table_ids,
+                    ),
                     timeout=_timeout,
                 )
             else:
@@ -716,6 +728,8 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             # REQ-1897: an opted-in read is looked up in the response cache before it is routed.
             serve_cached=True,
         )
+    except ComplexityLimitExceeded:
+        raise  # REQ-1174: answered as 413 by the app's handler
     except PermissionError as exc:
         return JSONResponse(status_code=403, content={"error": str(exc)})
     except Exception as exc:
@@ -800,7 +814,13 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             # REQ-778: landing runs inside execution's error classification — a source that
             # cannot be landed (e.g. an unreachable broker) answers with the typed `error` field.
             _exec_result = await _dispatch_execution(
-                exec_sql, physical_sql, resolved_params, state, span_attrs, prepare=_land_sources
+                exec_sql,
+                physical_sql,
+                resolved_params,
+                state,
+                span_attrs,
+                table_ids=plan.table_ids,
+                prepare=_land_sources,
             )
     except Exception:
         await finalize_audit(plan, 500, state)
@@ -998,7 +1018,12 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
                     )
                 else:
                     rows = await _dispatch_execution(
-                        plan.exec_sql or "", plan.physical_sql or "", [], state, {}
+                        plan.exec_sql or "",
+                        plan.physical_sql or "",
+                        [],
+                        state,
+                        {},
+                        table_ids=plan.table_ids,
                     )
             except Exception:
                 await finalize_audit(plan, 500, state)  # REQ-074/REQ-1386

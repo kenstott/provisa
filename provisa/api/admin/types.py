@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import enum
+
 import strawberry
 
 if TYPE_CHECKING:
@@ -271,6 +273,21 @@ class RoleTtlType:  # REQ-1907
 
 
 @strawberry.type
+class PagingType:  # REQ-318
+    """A table's paging as declared (provisa.core.paging): a paged REST endpoint's type and
+    parameters, or a connection table's row bound. Unset fields are null."""
+
+    type: str | None = None
+    cursor_field: str | None = None
+    cursor_param: str | None = None
+    page_param: str | None = None
+    page_size_param: str | None = None
+    page_size: int | None = None
+    max_pages: int | None = None
+    max_rows: int | None = None
+
+
+@strawberry.type
 class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     id: int
     source_id: str
@@ -298,6 +315,12 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     api_endpoint: str | None = None
     # REQ-1907: operator-set role -> TTL seconds (effective = max(cache_ttl, ttl)); empty = none.
     role_ttl: list[RoleTtlType] = strawberry.field(default_factory=list)
+    # REQ-318: what reads the table page by page ("endpoint" | "connection"), null when nothing
+    # does; its declared paging; and the operator's graphql_remote.max_rows a connection table's
+    # own bound may only lower.
+    paging_kind: str | None = None
+    pagination: PagingType | None = None
+    paging_ceiling_rows: int | None = None
     view_sql: str | None = None
     view_metrics: ViewMetricsType | None = None  # REQ-1318: metric-composed view spec
     # REQ-1443: the data-quality contract this table's rows are the scan results of, verbatim.
@@ -568,8 +591,7 @@ class RoleRateLimitType:  # REQ-1174
     """Per-role rate + query-complexity limits (None = unlimited on that dimension)."""
 
     requests_per_second: int | None = None
-    max_query_depth: int | None = None
-    max_query_nodes: int | None = None
+    max_query_complexity: int | None = None
     max_query_time_ms: int | None = None
 
 
@@ -603,10 +625,25 @@ class RLSRuleType:  # REQ-041, REQ-402, REQ-1679
     domain_id: str | None
     role_id: str
     filter_expr: str
+    # REQ-1919: where the rule came from — "config", "admin" or "seed". A rule a config file
+    # declares is removed by a load of a file that no longer declares it.
+    origin: str
     action_name: str | None = None  # REQ-1679
 
 
 # --- Input types for mutations ---
+
+
+@strawberry.input
+class PagingInput:  # REQ-318
+    type: str | None = None
+    cursor_field: str | None = None
+    cursor_param: str | None = None
+    page_param: str | None = None
+    page_size_param: str | None = None
+    page_size: int | None = None
+    max_pages: int | None = None
+    max_rows: int | None = None
 
 
 @strawberry.input
@@ -1104,8 +1141,7 @@ class MetricInput:  # REQ-1317
 @strawberry.input
 class RoleRateLimitInput:  # REQ-1174
     requests_per_second: int | None = None
-    max_query_depth: int | None = None
-    max_query_nodes: int | None = None
+    max_query_complexity: int | None = None
     max_query_time_ms: int | None = None
 
 
@@ -1170,7 +1206,9 @@ class HotTableStatType:
     # What Provisa is keeping for this table, as one value rather than a tier/state pair:
     # "hot_candidate" (registered for promotion, nothing mirrored yet, so no row count),
     # "hot" (mirrored into the response store for JOIN inlining),
-    # "warm" (landed as an Iceberg copy). REQ-241 makes the tiers exclusive.
+    # "replica" (past its Hot threshold and served from its replica, REQ-826),
+    # "replica_building" (past its threshold, read live while its replica is built; no row
+    # count yet). REQ-241 makes the tiers exclusive.
     kind: str
 
 
@@ -1277,6 +1315,15 @@ class MutationWarning:  # REQ-1919
     code: str
     message: str
     params: JsonScalar | None = None
+
+
+@strawberry.enum
+class GrantKind(enum.Enum):  # REQ-1918
+    """An object whose grant list names roles: a role is taken off it one object at a time."""
+
+    METRIC = "metric"
+    COMMAND = "command"
+    WEBHOOK = "webhook"
 
 
 @strawberry.type

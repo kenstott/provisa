@@ -380,6 +380,15 @@ async def _fetch_table_with_columns(
         except Exception:
             pass
 
+    # REQ-318: what reads the table page by page, and its declared paging.
+    from provisa.api.admin._table_paging import paging_type, table_paging_kind
+    from provisa.api.app import state as _state
+
+    _source_type = (
+        await conn.execute_core(select(sources.c.type).where(sources.c.id == row["source_id"]))
+    ).scalar_one()
+    _paging_kind = table_paging_kind(_state, _source_type, row["source_id"], row["table_name"])
+
     view_sql = row.get("view_sql")
     can_deploy = False
     if (
@@ -413,6 +422,9 @@ async def _fetch_table_with_columns(
         role_ttl=[
             RoleTtlType(role=role, ttl=ttl) for role, ttl in dict(row["role_ttl"]).items()
         ],  # REQ-1907
+        paging_kind=_paging_kind,  # REQ-318
+        pagination=paging_type(row["pagination"]),
+        paging_ceiling_rows=_state.config.graphql_remote.max_rows,
         view_sql=view_sql,
         dq_contract=row.get("dq_contract"),  # REQ-1443
         query_template=_query_template_for(row["table_name"]),  # REQ-1670

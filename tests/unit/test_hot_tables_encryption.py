@@ -35,43 +35,43 @@ def _mgr(encryption=None):
     return HotTableManager(redis_url=None, auto_threshold=100, max_rows=100, encryption=encryption)
 
 
-async def _raw(mgr, table):
+async def _raw(mgr, table_id: int):
     await mgr._connect()
-    return await mgr._redis.get(mgr._blob_key(table, "cat", "sch"))
+    return await mgr._redis.get(mgr._blob_key(table_id))
 
 
 async def test_payload_stored_encrypted_and_roundtrips():
     mgr = _mgr(EnvelopeEncryption(LocalKeychain(os.urandom(32))))
-    await mgr._store_rows("t", _ROWS, "id", "cat", "sch")
-    raw = await _raw(mgr, "t")
+    await mgr._store_rows(1, "t", _ROWS, "id", "cat", "sch")
+    raw = await _raw(mgr, 1)
     assert "alice" not in raw  # ciphertext at rest — no plaintext row values
-    assert await mgr.get_rows("t") == _ROWS
+    assert await mgr.get_rows(1) == _ROWS
 
 
 async def test_wrong_key_cannot_read():
     key_a = LocalKeychain(os.urandom(32))
     mgr = _mgr(EnvelopeEncryption(key_a))
-    await mgr._store_rows("t", _ROWS, "id", "cat", "sch")
+    await mgr._store_rows(1, "t", _ROWS, "id", "cat", "sch")
     # A second manager on the shared fakeredis server with a different key.
     mgr2 = _mgr(EnvelopeEncryption(LocalKeychain(os.urandom(32))))
     await mgr2._connect()
     # The table is hot for this process too, with no rows held in it, so the read must go
     # through Redis + decrypt.
-    mgr2._hot_tables["t"] = HotTableEntry(
-        table_name="t", catalog="cat", schema="sch", pk_column="id"
+    mgr2._hot_tables[1] = HotTableEntry(
+        table_id=1, table_name="t", catalog="cat", schema="sch", pk_column="id"
     )
     with pytest.raises(Exception):
-        await mgr2.get_rows("t")
+        await mgr2.get_rows(1)
 
 
 async def test_null_encryption_default_passthrough():
     mgr = _mgr(NullEncryption())
-    await mgr._store_rows("t", _ROWS, "id", "cat", "sch")
-    assert await mgr.get_rows("t") == _ROWS
+    await mgr._store_rows(1, "t", _ROWS, "id", "cat", "sch")
+    assert await mgr.get_rows(1) == _ROWS
 
 
 async def test_default_encryption_is_null():
     # No encryption arg → platform default passthrough, behaviour preserved.
     mgr = _mgr()
-    await mgr._store_rows("t", _ROWS, "id", "cat", "sch")
-    assert await mgr.get_rows("t") == _ROWS
+    await mgr._store_rows(1, "t", _ROWS, "id", "cat", "sch")
+    assert await mgr.get_rows(1) == _ROWS

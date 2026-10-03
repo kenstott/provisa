@@ -36,10 +36,9 @@ from provisa.api_source.models import (
     ApiColumn,
     ApiColumnType,
     ApiEndpoint,
-    PaginationConfig,
-    PaginationType,
     ParamType,
 )
+from provisa.core.paging import PaginationConfig, PaginationType
 from provisa.core.auth_models import (
     ApiAuthApiKey,
     ApiAuthBasic,
@@ -550,7 +549,7 @@ class TestCallApi:
         mock_ctx.__aexit__ = AsyncMock(return_value=False)
         with patch("provisa.api_source.caller.httpx.AsyncClient", return_value=mock_ctx):
             pages = await call_api(endpoint, {"status": "open"}, base_url="http://api.test")
-        assert pages == [{"items": [1]}]
+        assert pages.pages == [{"items": [1]}]
         call_kwargs = mock_client.request.await_args.kwargs
         assert call_kwargs["params"] == {"status": "open"}
 
@@ -630,7 +629,7 @@ class TestCallApi:
         ) as grpc_mock:
             pages = await call_api(endpoint, {}, base_url="host:1234")
         grpc_mock.assert_awaited_once()
-        assert pages == [{"ok": True}]
+        assert pages.pages == [{"ok": True}]
 
     @pytest.mark.asyncio
     async def test_json_body_encoding_neo4j(self):

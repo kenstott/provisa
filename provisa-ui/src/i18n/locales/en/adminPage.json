@@ -44,6 +44,8 @@
     "maxListDepthHint": "Nesting depth at which list fields stop being followed.",
     "maxListItems": "Max list items",
     "maxListItemsHint": "The first: argument Provisa sends on a remote list field.",
+    "maxRows": "Max rows per read",
+    "maxRowsHint": "The most rows one read of a paged remote table takes, following its cursor page by page.",
     "serverLimits": "Request timeouts",
     "serverLimitsHint": "Different transports carry different workloads; set how long a request on each may run. A request can shorten its own deadline but not exceed this.",
     "rowLimit": "Default row limit",

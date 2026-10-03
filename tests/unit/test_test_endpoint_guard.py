@@ -38,7 +38,12 @@ class TestTestEndpointGuard:
         assert resp.status_code == 404
 
     def test_endpoint_passes_guard_when_enabled(self, monkeypatch):
-        # Enabled → guard passes; with no DB connected the handler returns 503, not 404.
+        # Enabled → guard passes; with no DB connected the handler returns 503, not 404. The app
+        # state is process-wide, so the test disconnects it itself rather than relying on no
+        # earlier test having booted an app.
+        import provisa.api.app as appmod
+
+        monkeypatch.setattr(appmod.state, "tenant_db", None, raising=False)
         monkeypatch.setenv("PROVISA_ENABLE_TEST_ENDPOINTS", "true")
         resp = _client().post("/admin/actions/test", json={"actionType": "function", "name": "x"})
-        assert resp.status_code != 404
+        assert resp.status_code == 503

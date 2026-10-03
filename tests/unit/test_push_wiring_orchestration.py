@@ -95,7 +95,7 @@ async def test_wires_a_listener_for_a_valid_kafka_table():
         tasks = await wire_push_listeners(state=state, log=logging.getLogger("test"))
 
     assert len(tasks) == 1
-    assert "s.orders" in state.push_listener_disconnects
+    assert "kafka_src/s.orders" in state.push_listener_disconnects  # the table's node
     await shutdown_push_listeners(state)
     for t in tasks:
         assert t.done()

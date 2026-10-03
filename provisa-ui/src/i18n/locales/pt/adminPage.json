@@ -183,6 +183,8 @@
     "domainDeleted": "Excluído \"{{id}}\"",
     "policyApplied": "Política de domínios aplicada.",
     "policyApplyFailed": "Falha ao aplicar a política de domínio",
-    "settingsPanel": "Configurações"
+    "settingsPanel": "Configurações",
+    "maxRows": "Máximo de linhas por leitura",
+    "maxRowsHint": "O máximo de linhas que uma leitura de uma tabela remota paginada obtém, seguindo o cursor página a página."
   }
 }

@@ -1,0 +1,67 @@
+# REQ-826: Hot replication, end to end. One source the engine reads in place; `busy_items` is set
+# to Hot-3 (replicated once 3 governed statements read it within the interval), `quiet_items` is
+# left at Default (the global threshold, which this test never reaches). The interval is short so
+# the test sees a promotion and a demotion; the engine is named by the test.
+auth:
+  provider: none
+  assignments_source: provisa
+  default_assignments:
+    - domain_id: '*'
+      role_id: org_admin
+naming:
+  domain_prefix: false
+  rules: []
+cache:
+  enabled: false
+replication:
+  hot_interval: 4
+  hot_threshold: 1000
+server:
+  config_reload_interval: 1
+domains:
+  - id: hot
+    description: Hot replication
+roles:
+  - id: org_admin
+    capabilities:
+      - source_registration
+      - table_registration
+      - access_config
+      - query_development
+      - full_results
+      - observability
+    domain_access:
+      - '*'
+sources:
+  - id: hot-pg
+    type: postgresql
+    host: ${env:PG_HOST}
+    port: ${env:PG_PORT}
+    database: ${env:PG_DATABASE}
+    username: ${env:PG_USER}
+    password: ${env:PG_PASSWORD}
+    cache_ttl: 86400
+tables:
+  - source_id: hot-pg
+    table: busy_items
+    schema: hot_repl_e2e
+    domain_id: hot
+    replicate: 3
+    columns:
+      - name: id
+        data_type: integer
+        visible_to: [org_admin]
+      - name: name
+        data_type: varchar
+        visible_to: [org_admin]
+  - source_id: hot-pg
+    table: quiet_items
+    schema: hot_repl_e2e
+    domain_id: hot
+    columns:
+      - name: id
+        data_type: integer
+        visible_to: [org_admin]
+      - name: name
+        data_type: varchar
+        visible_to: [org_admin]

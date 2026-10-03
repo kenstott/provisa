@@ -32,6 +32,10 @@
           "grpc": "gRPC",
           "mcp": "MCP"
         }
+      },
+      "max_query_complexity": {
+        "label": "Max. querycomplexiteit",
+        "help": "De hoogste complexiteitsscore die één statement mag hebben, voor elke rol. Een rol kan een eigen, lagere limiet instellen. Laat leeg voor geen limiet."
       }
     },
     "sampling": {
@@ -556,6 +560,10 @@
       "max_list_items": {
         "label": "Lijstitems van externe GraphQL",
         "help": "Het maximale aantal items dat uit één lijst van een externe GraphQL-bron wordt gelezen."
+      },
+      "max_rows": {
+        "label": "Rijen per leesbewerking van externe GraphQL",
+        "help": "Het maximale aantal rijen dat één leesbewerking van een gepagineerde externe GraphQL-tabel ophaalt."
       }
     },
     "provisioning": {

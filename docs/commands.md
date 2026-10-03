@@ -13,11 +13,12 @@ is none of those things.
 
 ## Implementation kinds
 
-Five `impl_kind` values are supported [tool-verified: `_EXECUTORS` dict in function_dispatch.py:420-426]:
+Six `impl_kind` values are supported [tool-verified: `_EXECUTORS` dict in `provisa/executor/function_dispatch.py`]:
 
 | `impl_kind` | Transport |
 | --- | --- |
 | `source_procedure` | Native stored procedure on a registered source |
+| `source_operation` | A write operation of an OpenAPI, remote GraphQL or gRPC source, passed through as is (see [A remote source's write operation](#a-remote-sources-write-operation-req-1924)) |
 | `script` | Local subprocess fed JSON on stdin, reads JSON from stdout |
 | `http` | HTTP/S endpoint; JSON request body, JSON response |
 | `grpc` | gRPC unary; proto-less JSON bridge |
@@ -153,7 +154,7 @@ register or update the command without a config reload. [inferred from CommandFo
 ## Inline composition (REQ-1159)
 
 Commands may appear **inside** a larger SQL statement — joined, sub-queried, or projected. You
-are not limited to `SELECT * FROM fn(args)`.
+are not limited to `SELECT * FROM fn(args)`. The exception is a remote source's write operation, which is called on its own (see [Why it cannot be composed](#why-it-cannot-be-composed)).
 
 ```sql
 -- Enrich the orders relation and join the result back inline.
@@ -176,6 +177,125 @@ above that threshold it registers as a named local relation in the engine.
 A localized statement routes normally. Single-source queries stay on the source; only genuinely
 cross-source queries go to the federation engine. [tool-verified: _pipeline.py:304 comment
 "REQ-1159: a localized statement carries an inline local relation..."]
+
+## A remote source's write operation (REQ-1924)
+
+An OpenAPI, remote GraphQL or gRPC source offers write operations. Registering one as a command makes it callable, governed, and audited from every surface. Adding the source registers none of them; you register the ones you want, one at a time, the way you register tables. The registration is the curation. [tool-verified: `provisa/executor/source_operation.py` module docstring; `provisa/api/admin/schema_common.py` `remote_source_counts`, `"mutations": 0`]
+
+What a source offers [tool-verified: `provisa/executor/source_operation.py` `offered_operations`]:
+
+| Source type | Operations offered | Operation name |
+| --- | --- | --- |
+| `openapi` | Every non-GET operation in the spec | The `operationId` |
+| `graphql_remote` | Every field of the remote `Mutation` type | The field name |
+| `grpc_remote` | Every method classified as a mutation | `Service.Method` |
+
+### Register one
+
+1. Open **Model → Commands** and add a command.
+2. Pick the remote source. The form switches to an operation picker, listing what the source offers.
+3. Pick the operation, a domain, and the roles that may call it.
+4. Optionally switch on **Requires approval** and pick the **Writes table**.
+
+[tool-verified: `provisa-ui/src/components/navGroups.ts` (`/commands` in the Model group); `provisa-ui/src/pages/commands/CommandFormFields.tsx` `isSourceOperation`, `command-requires-approval-switch`, `writesTable`; `provisa/api/admin/schema_query.py` `available_functions` ("Listing them registers none")]
+
+Through the admin GraphQL API, `availableFunctions(sourceId, schemaName)` lists the operations. The schema name is `openapi`, `graphql` or `grpc_remote`, by source type. [tool-verified: `OPERATION_SCHEMA` in `source_operation.py`; `available_functions` returns `[]` when the schema name does not match the source type]
+
+Everything else follows from the operation, not from what the form sends. `_as_source_operation` overwrites these fields:
+
+```python
+body.implKind = "source_operation"
+body.kind = "mutation"
+body.schemaName = OPERATION_SCHEMA[source_type]
+body.returns = ""
+body.binding = {}
+body.materialize = False
+body.arguments = [{"name": a, "type": "json"} for a in operation.arguments]
+```
+
+[tool-verified: `provisa/api/admin/actions_router.py` `_as_source_operation`]
+
+Every argument is typed `json`. The operation's arguments are its OpenAPI path parameters (plus `body` when the operation takes a request body), its GraphQL mutation arguments, or its gRPC request fields. [tool-verified: `_openapi_operations`, `_graphql_operations`, `_grpc_operations` in `source_operation.py`] An operation the source does not offer is refused with 422, `functions.operation_not_offered`. [tool-verified: `offered_operation`]
+
+### Calling it
+
+Provisa does not shape, type or check the input. Each argument goes to the remote unchanged, with the source's credential, and the remote's answer comes back unchanged. Provisa governs who may call, in which domain, whether approval is needed, and records the call. [tool-verified: `source_operation.py` module docstring]
+
+How the remote receives the arguments:
+
+- **OpenAPI.** Path parameters fill the path template. `body` is the JSON request body. Every other argument goes on the query string. [tool-verified: `_call_openapi`]
+- **GraphQL.** Arguments are sent as typed variables, each declared with the type the remote schema gives it. The mutation asks back the answer's scalar and enum fields, and those of objects inside it down to two levels. [tool-verified: `mutation_document`, `_selection`, `_ANSWER_DEPTH = 2`]
+- **gRPC.** The arguments become the request message of the `Service.Method`. [tool-verified: `_call_grpc`]
+
+The answer is the command's rows: an object is one row, a list of objects is its rows, anything else is one row `{"result": ...}`. [tool-verified: `_rows`]
+
+On GraphQL the command is a mutation field and its answer is the JSON scalar. [tool-verified: `provisa/compiler/actions_schema.py` (`gql_return = JSONScalar` for `source_operation`; `kind` defaults to `"mutation"`)]
+
+```graphql
+mutation {
+  createIssue(input: {repositoryId: "R_kgDO...", title: "Crash on save"})
+}
+```
+
+[inferred: argument names are those of the remote operation; the example call was not run]
+
+On the SQL surfaces (pgwire and the others that pass SQL) write each argument as a JSON literal in a string. `'{"title": "x"}'` is an object, `'"text"'` a string, `'3'` a number. A literal that is not valid JSON fails with 422, `functions.json_argument_invalid`. [tool-verified: `_json_arguments_from_sql` in `function_dispatch.py`]
+
+```sql
+SELECT * FROM create_issue('{"repositoryId": "R_kgDO...", "title": "Crash on save"}');
+```
+
+[inferred: the first-argument shape follows `_json_arguments_from_sql`; the statement was not run, and the command's argument list is the operation's]
+
+On REST, POST a JSON object of arguments to `/data/rest/{domain}/commands/{command}`. A `json` argument is documented in the generated spec as any value. [tool-verified: `provisa/api/rest/openapi_spec.py` `cmd_path = f"/{cmd_domain}/commands/{cmd_name}"`, `_arg_type_to_openapi` (`"json"` returns `{}`)]
+
+```bash
+curl -X POST https://acme.provisa.org/data/rest/engineering/commands/create_issue \
+  -H "Content-Type: application/json" \
+  -d '{"input": {"repositoryId": "R_kgDO...", "title": "Crash on save"}}'
+```
+
+[inferred: host, domain and command name are placeholders; not run]
+
+### Refusals
+
+The remote's refusal comes back as the remote stated it. [tool-verified: `_refused` in `source_operation.py`]
+
+| Remote | Provisa answers |
+| --- | --- |
+| Refuses the call (HTTP 4xx, GraphQL `errors`, a refused gRPC call) | 422, `functions.remote_refused`, carrying `remote_status` and `answer` |
+| Fails (HTTP 5xx) | 502, `functions.remote_refused` |
+
+Whether the source's credential may perform the operation is the remote's to say, when the operation is called. Provisa cannot try a write at registration without performing it. [tool-verified: REQ-1924 CREDENTIAL AT CALL amendment in `docs/arch/requirements.yaml`; no credential check in `_as_source_operation`]
+
+### Approval
+
+Switch on **Requires approval** and each call is put to the deployment's approval hook before it runs. It runs only when the hook approves. [tool-verified: `provisa/api/data/action_exec.py` `_require_approval`]
+
+- No hook configured: 403, `functions.approval_unavailable`.
+- Hook denies: 403, `functions.approval_denied`, with the hook's reason.
+
+The hook receives the caller, the role, the command name and its arguments. See [ABAC Approval Hook](security.md#abac-approval-hook). The flag is stored as `Function.requires_approval`, and the check applies to any command that sets it. [tool-verified: `action_exec.py` `if fn.get("requires_approval")`]
+
+### Writes table
+
+Pick the table the operation writes in **Writes table**, as `schema.table`. It must be a registered table of the command's own source, or the save is refused with 422, `actions.written_table_not_registered`. The setting is optional. [tool-verified: `_check_written_table` in `actions_router.py`; `written_table` in `source_operation.py`]
+
+After each call the remote accepts, Provisa treats it as a write to that table. It drops the table's cached responses, marks the materialized views over it stale, emits the change event, runs the table's sinks, and reloads the table when it is held hot. [tool-verified: `provisa/api/data/table_written.py` `after_table_written`]
+
+When the table is read from its whole-table replica (the operator's settings put it there, or the engine cannot read its source in place), a build of the replica is asked for after the call, with the reason `write`. Readers keep the old replica until the new one swaps in. A table replicated row by row, or one with a parameter column, has no whole replica to rebuild. [tool-verified: `provisa/api/data/table_written.py` `_request_replica_build`; `provisa/federation/replica_state.py` `REASON_WRITE`]
+
+### Why it cannot be composed
+
+A write operation is an action, not a transform of data. A view or materialized view that held one would perform the write each time it was read or refreshed. So the call stands alone: `SELECT * FROM create_issue(...)` on its own runs it, and the same call inside a larger statement is refused, wherever it sits -- in a join, a subquery or a projection. [tool-verified: `provisa/pgwire/_pipeline.py` `_refuse_composed_mutators`; `provisa/executor/source_operation.py` `writes_called_in`]
+
+A view or materialized view whose definition calls one is refused when it is saved. A definition that does not parse is refused too while any write operation is registered, since it cannot be shown to call none. [tool-verified: `refuse_writes_in_definition` in `source_operation.py`, called from `provisa/api/admin/_table_ops.py` `_build_columns_for_input` (views) and `provisa/api/admin/schema_common.py` (materialized views)]
+
+```text
+command 'create_issue' writes to its source and is called on its own: it cannot be composed in a query, a view or a materialized view (REQ-1924)
+```
+
+A source operation is also not a lineage node: lineage is read from the SQL of views and queries, where a command appears as a node, and no saved definition can call a source operation. [tool-verified: `provisa/lineage/graph.py` (`kind="command"` for a call in the SQL); `refuse_writes_in_definition`]
 
 ## Commands and lineage
 

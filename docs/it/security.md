@@ -219,6 +219,23 @@ Il servizio di query in linguaggio naturale (`POST /query/nl`) ha un limite indi
 
 Lo stato del rate limiting risiede in Redis (`cache.redis_url`) come contatore a finestra scorrevole — nessuno stato per istanza — cosicché i limiti si mantengono su tutte le istanze Provisa orizzontali. (REQ-371)
 
+## Limite di complessità delle query
+
+Un limite di frequenza stabilisce quante richieste un ruolo può inviare. Il limite di complessità stabilisce che cosa può chiedere una singola istruzione. (REQ-1174)
+
+Ogni istruzione ha un punteggio di complessità: le relazioni che legge, i suoi join, le colonne che seleziona (un `*` conta quanto le colonne che rappresenta) e le query annidate al suo interno. Una relazione letta da un'origine API remota (OpenAPI, GraphQL remoto, gRPC remoto) conta 10, perché ogni lettura consuma un budget che il sistema remoto fissa per tutti coloro che usano quell'origine.
+
+Il limite è `max_query_complexity` nel `rate_limit` di un ruolo. L'impostazione a livello di organizzazione `limits.max_query_complexity` è il tetto per ogni ruolo: un ruolo può fissare un limite più basso, e uno più alto non ha effetto. Per impostazione predefinita nessuno dei due è impostato.
+
+```yaml
+roles:
+  - id: analyst
+    rate_limit:
+      max_query_complexity: 200
+```
+
+Il punteggio viene misurato dopo l'analisi della richiesta e prima che sia governata o eseguita, quindi lo stesso limite vale su ogni interfaccia da cui può arrivare un'istruzione: GraphQL, SQL su HTTP, pgwire, Arrow Flight, gRPC, Cypher, JSON:API e MCP. Un'istruzione oltre il limite viene rifiutata con il suo punteggio, il limite e ciò che chiedeva. Le interfacce HTTP rispondono 413. Il rifiuto viene registrato come diniego di policy.
+
 ## Autenticazione
 
 Provider di autenticazione collegabili: (REQ-120)
@@ -314,7 +331,7 @@ gRPC, Arrow Flight e MCP consegnano i propri certificati a librerie che non espo
 
 ## Hook di approvazione ABAC
 
-Un hook di policy esterno opzionale che si attiva prima dell'esecuzione della query. (REQ-203) Quando configurato, Provisa effettua una chiamata al motore di policy con l'identità dell'utente, i ruoli, le tabelle, le colonne e l'operazione. La risposta determina se la query prosegue. (REQ-203)
+Un hook di policy esterno opzionale che si attiva prima dell'esecuzione della query. (REQ-203) Quando configurato, Provisa effettua una chiamata al motore di policy con l'identità dell'utente, i ruoli, le tabelle, le colonne e l'operazione. La risposta determina se la query prosegue. (REQ-203) Un comando registrato con **Richiede approvazione** viene sottoposto allo stesso hook prima di ogni chiamata; vedi [Chiamate di comando](#chiamate-di-comando). (REQ-1924)
 
 ### Ambito
 
@@ -349,6 +366,9 @@ message ApprovalRequest {
   repeated string tables = 3;
   repeated string columns = 4;
   string operation = 5;
+  map<string, string> session_vars = 6;
+  string command = 7;         // a command call's name; empty for a query
+  string arguments_json = 8;  // a command call's arguments as a JSON object
 }
 
 message ApprovalResponse {
@@ -369,9 +389,34 @@ Tutti e tre i trasporti veicolano lo stesso payload: (REQ-246)
 | `roles` | string[] | Ruoli Provisa dell'utente |
 | `tables` | string[] | ID delle tabelle referenziate nella query |
 | `columns` | string[] | Colonne selezionate nella query |
-| `operation` | string | `"query"` o `"mutation"` |
+| `operation` | string | `"query"` o `"mutation"`; `"command"` per una chiamata di comando |
+| `command` | string | Il nome del comando per una chiamata di comando; vuoto per una query |
+| `arguments` | object | Gli argomenti con cui viene chiamato un comando; vuoto per una query |
 
-I trasporti webhook e Unix socket scambiano JSON. La risposta deve includere `approved` (bool) e, facoltativamente, `reason` (string). (REQ-246)
+I trasporti webhook e Unix socket scambiano JSON, con `command` e `arguments` come chiavi. Con gRPC gli argomenti viaggiano come testo JSON `arguments_json`. La risposta deve includere `approved` (bool) e, facoltativamente, `reason` (string). (REQ-246) [tool-verified: `provisa/auth/approval_hook.py` `ApprovalRequest`, `_request_to_dict`, `GrpcApprovalHook` (`arguments_json=json.dumps(request.arguments, default=str)`); `provisa/auth/approval.proto`]
+
+### Chiamate di comando
+
+Un comando con `requires_approval` impostato (l'interruttore **Richiede approvazione** nel modulo del comando) passa dall'hook prima di ogni chiamata, su ogni superficie. Viene eseguito solo se l'hook approva. La richiesta contiene `operation: "command"`, il nome del comando e i suoi argomenti; `tables` e `columns` sono vuoti. (REQ-1924) [tool-verified: `provisa/api/data/action_exec.py` `_require_approval` (`operation="command"`, `tables=[]`, `columns=[]`, `command=fn["name"]`, `arguments=args`)]
+
+```json
+{
+  "user": "analyst",
+  "roles": ["analyst"],
+  "tables": [],
+  "columns": [],
+  "operation": "command",
+  "command": "create_issue",
+  "arguments": {"input": {"title": "Crash on save"}}
+}
+```
+
+[inferred: the payload also carries `session_vars`; values shown are placeholders]
+
+Due rifiuti, entrambi 403 [tool-verified: `_require_approval`]:
+
+- `functions.approval_unavailable`: nessun hook è configurato. A differenza di una query, un comando che richiede approvazione non viene mai lasciato passare senza un hook.
+- `functions.approval_denied`: l'hook ha risposto `approved: false`. Il motivo è nel messaggio.
 
 ### Timeout e fallback
 

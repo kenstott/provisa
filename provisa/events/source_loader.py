@@ -26,6 +26,8 @@ lands nothing for that node and logs; it never fabricates an empty snapshot).
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
+from contextlib import aclosing
 
 from typing import Any
 
@@ -300,6 +302,17 @@ def _pk_in_clause(pk_columns: list[str], keys: list[tuple[Any, ...]]) -> str:
     return f"({cols}) IN ({tuples})"
 
 
+def _whole(source: Any, table: Any, rows: list[dict], cut: Any) -> list[dict]:
+    """``rows`` when they are the whole answer. What a land writes is a replica's rows, and a
+    replica is never cut: an answer that stopped at the endpoint's ``max_pages`` with more to
+    read fails the land by name (``replication.page_limit_reached``), as a build does."""
+    if cut is None:
+        return rows
+    from provisa.api_source.replica_read import PageLimitReached
+
+    raise PageLimitReached(f"{source.id}.{table.table_name}", cut.max_pages, cut.rows)
+
+
 def make_openapi_loader(
     endpoints_by_table: dict[str, Any], sources_by_id: dict[str, Any]
 ) -> AdapterLoader:
@@ -322,24 +335,16 @@ def make_openapi_loader(
         return endpoint, api_source
 
     async def _load(source: Any, table: Any) -> list[dict]:
-        from provisa.api_source.caller import call_api
-        from provisa.api_source.flattener import flatten_response
+        from provisa.api_source.caller import answer_rows, call_api
 
         endpoint, api_source = _registered(source, table)
-        pages = await call_api(
+        answer = await call_api(
             endpoint,
             dict(endpoint.default_params),
             base_url=api_source.base_url,
             auth=api_source.auth,
         )
-        rows: list[dict] = []
-        for page in pages:
-            rows.extend(
-                flatten_response(
-                    page, endpoint.response_root, endpoint.columns, endpoint.response_normalizer
-                )
-            )
-        return rows
+        return _whole(source, table, *answer_rows(endpoint, answer))
 
     def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
         # REQ-1915: a build reads the collection a page or a row at a time; only an answer
@@ -372,8 +377,7 @@ def make_neo4j_keyed_loader(
     async def _load(
         source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
     ) -> list[dict]:
-        from provisa.api_source.caller import call_api
-        from provisa.api_source.flattener import flatten_response
+        from provisa.api_source.caller import answer_rows, call_api
         from provisa.cypher.query_template_filter import inject_keys_filter
 
         endpoint = endpoints_by_table.get(table.table_name)
@@ -390,20 +394,13 @@ def make_neo4j_keyed_loader(
             )
         wrapped_template = inject_keys_filter(endpoint.query_template, pk_columns[0])
         wrapped_endpoint = endpoint.model_copy(update={"query_template": wrapped_template})
-        pages = await call_api(
+        answer = await call_api(
             wrapped_endpoint,
             {**endpoint.default_params, "keys": [k[0] for k in keys]},
             base_url=api_source.base_url,
             auth=api_source.auth,
         )
-        rows: list[dict] = []
-        for page in pages:
-            rows.extend(
-                flatten_response(
-                    page, endpoint.response_root, endpoint.columns, endpoint.response_normalizer
-                )
-            )
-        return rows
+        return _whole(source, table, *answer_rows(wrapped_endpoint, answer))
 
     return _load
 
@@ -1459,7 +1456,51 @@ def make_dq_loader(app_state: Any) -> AdapterLoader:
     return _load
 
 
-def make_graphql_remote_loader(gql_sources: dict[str, Any]) -> AdapterLoader:
+def make_grpc_remote_loader(grpc_sources: dict[str, Any]) -> AdapterLoader:  # REQ-325, REQ-327
+    """Build the grpc_remote adapter row-fetch (REQ-941/846): find the query method the table is
+    registered from in ``state.grpc_remote_sources``, call it with no request fields on the
+    source's channel for the running loop, and return its rows with the columns the table was
+    registered with. A table no query method of the source registers as raises
+    :class:`UnsupportedSourceFetch`."""
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        from provisa.compiler.naming import apply_sql_name
+        from provisa.grpc_remote.executor import channel_for, execute_query
+        from provisa.grpc_remote.mapper import query_table_name
+
+        reg = grpc_sources.get(source.id) or {}
+        namespace = reg.get("namespace", "")
+        names = {table.table_name, apply_sql_name(table.table_name)}
+        query = next(
+            (
+                q
+                for q in reg.get("queries") or []
+                if {query_table_name(namespace, q), apply_sql_name(query_table_name(namespace, q))}
+                & names
+            ),
+            None,
+        )
+        if query is None:
+            raise UnsupportedSourceFetch(
+                f"grpc_remote source {source.id!r} table {table.table_name!r}: no query method of "
+                "the source registers as it"
+            )
+        rows = await execute_query(
+            channel_for(reg),
+            query.full_method_path,
+            reg["pb2"],
+            query.input_message,
+            query.output_message,
+            {},
+            server_streaming=query.server_streaming,
+        )
+        registered = [c.name for c in table.columns if not c.name.startswith("_nf_")]
+        return [{name: row.get(name) for name in registered} for row in rows]
+
+    return _load
+
+
+def make_graphql_remote_loader(gql_sources: dict[str, Any], max_rows: int) -> AdapterLoader:
     """Build the graphql_remote adapter row-fetch (REQ-941/846): resolve the table's registration in
     ``state.graphql_remote_sources`` (by ``sql_name``), forward a minimal GraphQL query to the remote
     endpoint via :func:`execute_remote`, and return the rows. Refreshes from the remote source — the
@@ -1473,6 +1514,7 @@ def make_graphql_remote_loader(gql_sources: dict[str, Any]) -> AdapterLoader:
     def _request(source: Any, table: Any) -> dict:
         """The remote call for ``table``: url, auth, field name and column selections."""
         from provisa.compiler.naming import apply_gql_name, apply_sql_name
+        from provisa.graphql_remote.executor import NO_POLICY
 
         normalised = apply_sql_name(table.table_name)
         for reg in gql_sources.values():
@@ -1498,25 +1540,67 @@ def make_graphql_remote_loader(gql_sources: dict[str, Any]) -> AdapterLoader:
                         "auth": reg.get("auth"),
                         "field_name": tbl.get("field_name") or tbl["name"],
                         "columns": col_selections,
+                        "rows_path": tbl.get("rows_path"),
+                        "error_policy": reg.get("error_policy") or NO_POLICY,
                     }
         raise UnsupportedSourceFetch(
             f"graphql_remote source {source.id!r} table {table.table_name!r}: no matching "
             f"registration in graphql_remote_sources"
         )
 
+    def _pages(source: Any, table: Any) -> Any:
+        """A connection table's whole collection, page by page; a read reaching max_rows with
+        more to read fails by name (``replication.row_limit_reached``)."""
+        from provisa.graphql_remote.executor import whole_connection
+
+        from provisa.core.paging import connection_max_rows
+
+        request = _request(source, table)
+        return whole_connection(
+            request["url"],
+            request["auth"],
+            request["field_name"],
+            request["columns"],
+            request["rows_path"],
+            table=f"{source.id}.{table.table_name}",
+            # REQ-318: the table's own bound where it set one (registry row), else the operator's.
+            max_rows=connection_max_rows(table.pagination, max_rows),
+            error_policy=request["error_policy"],
+        )
+
     async def _load(source: Any, table: Any) -> list[dict]:
         from provisa.graphql_remote.executor import execute_remote
 
-        return await execute_remote(**_request(source, table))
+        request = _request(source, table)
+        if request["rows_path"]:
+            # A land is the whole table: never one cut at max_rows (REQ-1915).
+            async with aclosing(_pages(source, table)) as pages:
+                return [row async for page in pages for row in page]
+        return (await execute_remote(**request, max_rows=max_rows)).rows
 
     def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        from provisa.federation.replica_source import CursorSource
         from provisa.federation.replica_spool import SpooledDocumentSource
         from provisa.graphql_remote.executor import iter_remote_rows_spooled
 
         request = _request(source, table)
+        if request["rows_path"]:
+            # REQ-1923: a connection table is read by cursor, a page per request: the build
+            # holds one page at a time, and a read reaching max_rows with more fails by name.
+            async def _row_batches(batch_rows: int) -> AsyncIterator[list[dict]]:
+                async with aclosing(_pages(source, table)) as pages:
+                    async for page in pages:
+                        yield page
+
+            return CursorSource(_row_batches, columns)
         return SpooledDocumentSource(
             lambda spooled: iter_remote_rows_spooled(
-                request["url"], request["auth"], request["field_name"], request["columns"], spooled
+                request["url"],
+                request["auth"],
+                request["field_name"],
+                request["columns"],
+                spooled,
+                request["error_policy"],
             ),
             columns,
             table=f"{source.id}.{table.table_name}",

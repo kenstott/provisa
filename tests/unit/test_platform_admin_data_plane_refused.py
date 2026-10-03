@@ -550,7 +550,7 @@ def test_an_ordinary_definition_is_accepted():
     req = _request(*ORG_ADMIN, org="acme")
     assert (
         role_definition_problem(
-            req, ["usage", "query_development", "ddl"], role_id="x", domain_access=["sales"]
+            req, ["usage", "query_development", "write"], role_id="x", domain_access=["sales"]
         )
         is None
     )

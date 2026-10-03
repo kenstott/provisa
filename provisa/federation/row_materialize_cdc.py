@@ -34,8 +34,8 @@ def row_refresh_claim_node(node: str) -> str:
     resolve to MATERIALIZED (design doc section 3a: row_materialize does not suppress the
     is_stale / replica-build fallback), in which case ``provisa.events.boot.
     build_source_node_spec`` registers a plain ``SourceTableProcessor`` under the EXACT SAME
-    node string this module uses (``f"{schema_name}.{table_name}"``, the same convention
-    ``land_lock``/``ensure_resident`` key on). ``queue.claim`` claims ALL pending unclaimed work
+    node string this module uses (``events.nodes.source_node``, the same key
+    ``land_lock``/``ensure_resident`` use). ``queue.claim`` claims ALL pending unclaimed work
     for a ``dependent_table`` regardless of ``event_type`` -- it has no event-type filter. If a
     ``row_refresh`` event were fanned to the bare node, whichever processor's tick fires first
     (the ordinary source processor or this mechanism's background drain) claims it indiscriminately:

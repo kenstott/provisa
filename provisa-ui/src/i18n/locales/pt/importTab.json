@@ -31,8 +31,6 @@
     "warningLocation": "Local",
     "configHeading": "Configuração gerada",
     "configHelp": "Edite antes de aplicar se a conversão errou — dados de conexão, nomes de domínio, nomes de papéis. O que você aplica é exatamente o que aparece aqui.",
-    "replace": "Substituir a camada semântica existente",
-    "replaceHelp": "Exclui toda fonte de dados, tabela, papel e regra que não esteja nesta configuração. Deixe desativado para mesclar a importação ao que a organização já tem.",
     "apply": "Aplicar a esta organização",
     "applied": "Aplicado: {{sources}} fontes de dados, {{tables}} tabelas, {{roles}} papéis.",
     "domainNew": "novo domínio",

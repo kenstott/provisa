@@ -28,6 +28,7 @@ from pydantic import (
     model_validator,
 )
 
+from provisa.core.paging import PaginationConfig
 from provisa.core.source_registry import (
     _MYSQL_WIRE_TYPES,
     _PG_WIRE_TYPES,
@@ -145,14 +146,15 @@ class SourceType(str, Enum):
     # Postgres and never sharing a captive instance across two of these types. Full catalog per
     # fdw.dev/catalog (2026-09-28): native wrappers already covered by an existing SourceType
     # (bigquery, clickhouse, duckdb, iceberg, mongodb, mysql, redis, sqlserver — snowflake is a
-    # Wasm wrapper in their catalog, also already covered) are NOT duplicated here.
+    # Wasm wrapper in their catalog, also already covered) are NOT duplicated here. Their `s3`
+    # wrapper (CSV/JSONL/Parquet objects) is likewise not duplicated: csv/parquet take s3:// paths
+    # and `files` takes mapping.storage_type "s3".
     airtable = "airtable"
     auth0 = "auth0"
     aws_cognito = "aws_cognito"
     dynamodb = "dynamodb"
     firebase = "firebase"
     logflare = "logflare"
-    s3 = "s3"  # generic S3 object access via wrappers — distinct from csv/parquet's own S3 paths
     s3_vectors = "s3_vectors"
     stripe = "stripe"
     calcom = "calcom"
@@ -975,10 +977,11 @@ class Table(
     off_peak_tz: str | None = None  # None = inherit source off_peak_tz
     gql_naming_convention: str | None = None  # overrides source; None = inherit
     hot: bool | None = None  # None = auto-detect, True = force hot, False = opt out
-    warm: bool | None = (
-        None  # REQ-240: None = auto by query frequency, True = force, False = opt out
-    )
     relay_pagination: bool | None = None  # None = inherit from source/global NamingConfig
+    # REQ-318: how this table is read page by page -- a paged REST endpoint's paging, or a
+    # connection table's row bound (provisa.core.paging). Authored here only; the api_endpoints
+    # row a REST table is served from carries a copy written from it.
+    pagination: PaginationConfig | None = None
     live: LiveDeliveryConfig | None = None  # live query delivery config (Phase AM)
     # REQ-924/926/927: the single watermark column (an existing column). Set → append landing +
     # incremental refresh (WHERE wm > cursor) + poll-path subscription (insert/update grain, no
@@ -1054,8 +1057,8 @@ class Table(
     # REQ-961: allowed_lateness (seconds) extends the claim deadline past window.end.
     mv_allowed_lateness: float = 0.0
     # REQ-961: the freshness-contract inputs — the inputs that must be fresh-through window.end for
-    # the periodic output to be trusted. None = default to ALL SQL-lineage inputs (extract_inputs,
-    # REQ-939); [] = calendar-only (verify nothing).
+    # the periodic output to be trusted, each resolved against the model like the view's SQL. None =
+    # default to every input the view reads (REQ-939); [] = calendar-only (verify nothing).
     mv_expected_events: list[str] | None = None
     # REQ-879: cross-instance MV consistency tier. "shared" = one fleet-coordinated copy (CAS on
     # the shared materialized_views catalog; one instance refreshes at a time). "distributed" =
@@ -1157,14 +1160,16 @@ class HotTablesConfig(BaseModel):  # REQ-544
     max_bytes: int = 10 * 1024 * 1024  # REQ-230: serialized-blob ceiling (10 MB)
 
 
-class WarmTablesConfig(BaseModel):  # REQ-544
-    # REQ-240: tier promotion thresholds + the engine filesystem (SSD) read-cache settings.
-    query_threshold: int = 100  # promote a table after this many queries
-    max_rows: int = 10_000_000  # do not promote tables larger than this
-    refresh_interval: int = 60  # seconds between promotion/demotion sweeps
-    fs_cache_enabled: bool = False  # REQ-238: emit fs.cache.* on the Iceberg catalog
-    fs_cache_directories: str = "/tmp/engine-cache"  # nosec B108 - engine-node cache dir, configurable
-    fs_cache_max_sizes: str = "10GB"
+class ReplicationConfig(BaseModel):  # REQ-826
+    """When a table left at Default (or set to Hot-N) is replicated because it is busy."""
+
+    # The Default threshold: governed statements per ``hot_interval`` that read the table. A
+    # table set to Hot-N uses its own N. It goes back to live below half its threshold.
+    hot_threshold: int = 100
+    hot_interval: int = (
+        60  # seconds: the window the count is taken over, and how often it is judged
+    )
+    hot_max_rows: int = 10_000_000  # a table larger than this is not replicated for being busy
 
 
 class RowMaterializeConfig(BaseModel):  # REQ-1865
@@ -1237,21 +1242,20 @@ class Relationship(BaseModel):  # REQ-019, REQ-020, REQ-158, REQ-159, REQ-399, R
 
 
 class RoleRateLimit(BaseModel):
-    """Per-role rate limits (REQ-369) + query-complexity limits (REQ-1174, Hasura api_limits parity).
-    None = unlimited for that dimension.
+    """Per-role rate limits (REQ-369) and query limits (REQ-1174). None = unlimited for that
+    dimension.
 
-    ``requests_per_second`` throttles REQUEST VOLUME; the complexity limits below cap a SINGLE
-    query's cost — a guard rate limiting cannot provide (one deeply-nested / huge query is far more
-    damaging than volume). ``max_query_depth`` (AST selection nesting) and ``max_query_nodes``
-    (selected field count) are checked at the GraphQL→IR compile boundary; ``max_query_time_ms`` caps
-    execution wall-time per request for the role."""
+    ``requests_per_second`` throttles REQUEST VOLUME; the query limits cap a SINGLE statement,
+    which a rate limit cannot (one huge statement does more harm than many small ones).
+    ``max_query_complexity`` caps the statement's complexity score, measured on the semantic
+    statement before it is governed, so it holds on every surface
+    (provisa.compiler.complexity); the org's ``limits.max_query_complexity`` is the ceiling a
+    role may tighten. ``max_query_time_ms`` caps execution wall-time per request for the role."""
 
     requests_per_second: int | None = None
     max_sse_subscriptions: int | None = None
     max_flight_streams: int | None = None
-    # REQ-1174: per-role query-complexity limits (Hasura api_limits: depth_limit / node_limit / time).
-    max_query_depth: int | None = None
-    max_query_nodes: int | None = None
+    max_query_complexity: int | None = None
     max_query_time_ms: int | None = None
 
 
@@ -1410,7 +1414,9 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     # REQ-885: implementation-kind dimension. Addressing (name/function_name) is decoupled
     # from binding (transport + location, swappable). ``source_procedure`` is the existing
     # REQ-205–208 path; the others are Provisa-hosted / external implementations.
-    #   source_procedure | script | http | grpc | python
+    #   source_procedure | source_operation | script | http | grpc | python
+    # source_operation (REQ-1924): a write operation of a remote source (OpenAPI, GraphQL, gRPC),
+    # named by source_id and function_name and passed through as is.
     impl_kind: str = "source_procedure"
     # Per-kind transport+location. Never a fallback: dispatch fails loud when a hosted kind
     # is registered without the binding keys its transport requires (REQ-885).
@@ -1428,6 +1434,13 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     # returns, symmetric with each input dataset arg's `columns`. Validated on the way out (fail-loud).
     # This is the source of truth; return_schema is its GraphQL projection. None ⇒ output unvalidated.
     output_columns: list[DatasetColumn] | None = None
+    # REQ-1924: each call is put to the deployment's approval hook (REQ-203) before it runs, and
+    # runs only when the hook approves it. With no hook configured the call is refused.
+    requires_approval: bool = False
+    # REQ-1924, REQ-871: the registered table of the same source this command writes, as
+    # "schema.table", where it is known. After a call, what is held of that table's rows stops
+    # being served, as after any write to it.
+    writes_table: str | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -1749,6 +1762,10 @@ class GraphQLRemoteConfig(BaseModel):
     max_object_depth: int = 5
     max_list_depth: int = 2
     max_list_items: int = 100
+    # The most rows one read of a Relay connection table takes, following its cursor page by
+    # page (max_list_items rows a page). A connection can hold more rows than a rate-limited
+    # remote will serve in one sitting; a read that reaches this bound stops and logs it.
+    max_rows: int = 10000
 
 
 class VectorModelConfig(BaseModel):  # REQ-500
@@ -2051,7 +2068,7 @@ class ProvisaConfig(BaseModel):
     # REQ-931: Provisa-level Kafka consumer group for inbound CDC (Debezium/Kafka). Receiver-side —
     # one consumer identity across all sources; a source's cdc.consumer_group_id overrides it.
     cdc_consumer_group_id: str = "provisa-debezium"
-    warm_tables: WarmTablesConfig = Field(default_factory=WarmTablesConfig)
+    replication: ReplicationConfig = Field(default_factory=ReplicationConfig)  # REQ-826
     materialized_views: MaterializedViewsConfig = Field(default_factory=MaterializedViewsConfig)
     row_materialize: RowMaterializeConfig = Field(default_factory=RowMaterializeConfig)  # REQ-1865
     observability: OtelConfig = Field(default_factory=OtelConfig)
@@ -2085,7 +2102,7 @@ class ProvisaConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _roles_state_their_domains(cls, data: object) -> object:
+    def _roles_state_their_domains(cls, data: Any) -> Any:
         """A role that omits ``domain_access`` fails the load BY NAME. There is no default: a
         missing list would have to be read as either every domain or none."""
         if isinstance(data, dict):

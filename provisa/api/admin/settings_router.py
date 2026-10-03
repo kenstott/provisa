@@ -262,6 +262,9 @@ async def get_settings(request: Request):  # REQ-165, REQ-302, REQ-303, REQ-416,
             "max_list_items": gqr_cfg.get(
                 "max_list_items", GraphQLRemoteConfig.model_fields["max_list_items"].default
             ),
+            "max_rows": gqr_cfg.get(
+                "max_rows", GraphQLRemoteConfig.model_fields["max_rows"].default
+            ),
         },
     }
 
@@ -481,7 +484,7 @@ def _apply_graphql_remote(g: dict, updated: list) -> None:
     path = config_path()
     cfg = read_config()
     gqr = dict(cfg.get("graphql_remote", {}) or {})
-    for k in ("max_object_depth", "max_list_depth", "max_list_items"):
+    for k in ("max_object_depth", "max_list_depth", "max_list_items", "max_rows"):
         if k in g:
             gqr[k] = int(g[k])
             updated.append(f"graphql_remote.{k}")
@@ -887,14 +890,7 @@ async def set_federation_engine(request: Request):  # REQ-916
 _CACHE_STORAGE_SETTINGS = {
     "cache": ("enabled", "redis_url", "default_ttl"),
     "hot_tables": ("auto_threshold", "max_rows", "max_bytes", "refresh_interval"),
-    "warm_tables": (
-        "query_threshold",
-        "max_rows",
-        "refresh_interval",
-        "fs_cache_enabled",
-        "fs_cache_directories",
-        "fs_cache_max_sizes",
-    ),
+    "replication": ("hot_threshold", "hot_interval", "hot_max_rows"),
     "materialized_views": ("default_ttl",),
 }
 
@@ -934,15 +930,8 @@ async def get_cache_storage(request: Request):  # REQ-917
             "default_ttl": saved("cache.default_ttl").value,
         },
         "hot_tables": hot,
-        "warm_tables": _tier(  # REQ-240: tier-promotion thresholds + engine filesystem read-cache
-            "warm_tables",
-            "query_threshold",
-            "max_rows",
-            "refresh_interval",
-            "fs_cache_enabled",
-            "fs_cache_directories",
-            "fs_cache_max_sizes",
-        ),
+        # REQ-826: when a busy table is replicated (Default threshold, window, size ceiling)
+        "replication": _tier("replication", "hot_threshold", "hot_interval", "hot_max_rows"),
         # REQ-543: default MV refresh TTL for MVs without their own
         "materialized_views": _tier("materialized_views", "default_ttl"),
         "materialize": {

@@ -21,6 +21,7 @@ Table aliases (t0, t1, ...) used when JOINs are present.
 from __future__ import annotations
 
 
+from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Protocol
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
@@ -38,7 +39,6 @@ from graphql import (
 )
 
 from provisa.compiler.params import ParamCollector
-from provisa.cache.warm_tables import QueryCounter
 from provisa.core.source_registry import TIME_TRAVEL_SOURCES
 
 from provisa.compiler.sql_types import (
@@ -77,10 +77,6 @@ _tracer = _get_tracer(__name__)
 # Hard cap on rows returned when the caller supplies no explicit LIMIT — REQ-1678: read from
 # core.limits, which the API layer publishes at config load, never from api.app.
 from provisa.core.limits import default_row_limit as _get_default_row_limit  # noqa: E402
-
-
-# Module-level query counter for warm-table tracking (REQ-AD5)
-query_counter = QueryCounter()
 
 
 def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035, REQ-036, REQ-151, REQ-152, REQ-153, REQ-262, REQ-264, REQ-265, REQ-300, REQ-301, REQ-372, REQ-403, REQ-478
@@ -541,9 +537,7 @@ class HotTableSource(Protocol):  # REQ-1678
     """What the hot-join rewrite needs from the cache: the manager satisfies it structurally, so
     the compiler never imports the cache manager (which pulls the file-source and DuckDB stack)."""
 
-    def is_hot(self, table_name: str) -> bool: ...
-
-    def get_entry(self, table_name: str) -> "HotRows | None": ...
+    def entries_for(self, table_ids: Iterable[int]) -> "Mapping[str, HotRows]": ...
 
 
 def rewrite_hot_joins(  # REQ-230, REQ-232
@@ -551,9 +545,10 @@ def rewrite_hot_joins(  # REQ-230, REQ-232
 ) -> CompiledQuery:
     """Rewrite references to hot-cached tables to use VALUES-based CTEs.
 
-    When the query references a hot-cached table, replace the table reference
-    with a CTE containing the cached rows as VALUES. This works cross-source
-    since the data travels as constants in the query.
+    When the query reads a hot-cached table, replace the table reference with a CTE containing
+    the cached rows as VALUES. This works cross-source since the data travels as constants in the
+    query. The hot tables are those among the tables the query reads (``compiled.table_ids``),
+    each under the name the SQL carries for it.
 
     REQ-913: structural, AST-only. The set of hot tables is read from the parsed
     tree and each rewrite is delegated to ``build_values_cte_sql``, which renames
@@ -565,23 +560,16 @@ def rewrite_hot_joins(  # REQ-230, REQ-232
 
     from provisa.cache.values_cte import build_values_cte_sql
 
+    hot = hot_manager.entries_for(compiled.table_ids)
     tree = sqlglot.parse_one(compiled.sql, read="postgres")
     hot_names: list[str] = []
-    seen: set[str] = set()
     for tbl in tree.find_all(exp.Table):
-        name = tbl.name
-        if name in seen:
-            continue
-        seen.add(name)
-        if hot_manager.is_hot(name):
-            hot_names.append(name)
+        if tbl.name in hot and tbl.name not in hot_names:
+            hot_names.append(tbl.name)
 
     sql = compiled.sql
     for name in hot_names:
-        entry = hot_manager.get_entry(name)
-        if entry is None or not entry.rows:
-            continue
-        sql = build_values_cte_sql(sql, name, entry)
+        sql = build_values_cte_sql(sql, name, hot[name])
 
     if sql != compiled.sql:
         return CompiledQuery(
@@ -780,15 +768,6 @@ def compile_query(  # REQ-007, REQ-009, REQ-010, REQ-011, REQ-262, REQ-263, REQ-
                             flat=flat,
                         )
                     span.set_attribute("db.statement", compiled.sql[:1000])
-                # Track source tables for warm-table promotion (REQ-AD5)
-                table_meta = ctx.tables.get(field_name)
-                if table_meta:
-                    fqn = (
-                        f'"{table_meta.catalog_name}"'
-                        f'."{table_meta.schema_name}"'
-                        f'."{table_meta.table_name}"'
-                    )
-                    query_counter.increment(fqn)
                 results.append(compiled)
 
     return results

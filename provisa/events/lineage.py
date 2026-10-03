@@ -10,11 +10,13 @@
 
 """MV lineage — the DAG edges, derived from SQL (REQ-939), that drive event fan-out.
 
-Every MV is SQL authored to reference its inputs, so SQLGlot extracts the dependency edges — no
-hand-declared lineage that can drift. ``extract_inputs`` gives one MV's input tables; ``dependents``
-inverts the graph to source_table → the MVs that listen for it (what the dispatcher fans an event
-out to); ``find_cycle`` enforces the acyclic invariant at registration (an MV that transitively
-depends on itself would fan out forever).
+Every MV is SQL authored to reference its inputs, so the edges are derived from it — no
+hand-declared lineage that can drift. The references are resolved against the model by
+``provisa.events.nodes.lineage_graph``; ``dependents`` inverts that graph to node → the MVs that
+listen for it (what the dispatcher fans an event out to); ``find_cycle`` enforces the acyclic
+invariant at registration (an MV that transitively depends on itself would fan out forever).
+``extract_inputs`` gives the relation names a statement reads, as text — for reading them, never
+for naming a node.
 """
 
 from __future__ import annotations
@@ -34,9 +36,10 @@ _UNDETERMINED = frozenset({exp.DataType.Type.UNKNOWN, exp.DataType.Type.NULL})
 
 
 def extract_inputs(sql: str, dialect: str = "postgres") -> set[str]:
-    """The qualified input tables an MV's SQL reads — its lineage edges. Names are joined
-    ``[catalog.]schema.table`` (whatever parts the SQL qualifies) to match the ``source_table`` an
-    event carries. A CTE name defined in the same query is not an input (it is resolved locally)."""
+    """The qualified relation names an MV's SQL reads, joined ``[catalog.]schema.table`` (whatever
+    parts the SQL qualifies). A CTE name defined in the same query is not an input (it is resolved
+    locally). Text, as the SQL spells it — the event graph's edges resolve these against the model
+    (``provisa.events.nodes``)."""
     tree = sqlglot.parse_one(sql, read=dialect)
     ctes = {c.alias_or_name for c in tree.find_all(exp.CTE)}
     out: set[str] = set()
@@ -174,29 +177,30 @@ def is_incrementalizable(sql: str, dialect: str = "postgres") -> bool:
     return tree.find(exp.AggFunc) is None and tree.find(exp.Window) is None
 
 
-def dependents(mvs: dict[str, str], dialect: str = "postgres") -> dict[str, list[str]]:
-    """Invert the lineage: ``source_table -> [mv nodes that depend on it]`` — the fan-out target set
-    the dispatcher uses when an event on ``source_table`` arrives. ``mvs`` maps mv node name → its
-    SQL. Dependents are returned in a stable (sorted) order."""
+def dependents(graph: dict[str, set[str]]) -> dict[str, list[str]]:
+    """Invert the lineage: ``input node -> [view nodes that read it]`` — the fan-out target set the
+    dispatcher uses when an event on that node arrives. ``graph`` maps each view node to the nodes
+    it reads, resolved from the model (``provisa.events.nodes.lineage_graph``). Dependents are
+    returned in a stable (sorted) order."""
     rev: dict[str, set[str]] = {}
-    for mv, sql in mvs.items():
-        for inp in extract_inputs(sql, dialect):
-            rev.setdefault(inp, set()).add(mv)
-    return {src: sorted(deps) for src, deps in rev.items()}
+    for view, inputs in graph.items():
+        for node in inputs:
+            rev.setdefault(node, set()).add(view)
+    return {node: sorted(views) for node, views in rev.items()}
 
 
-def find_cycle(mvs: dict[str, str], dialect: str = "postgres") -> list[str] | None:
-    """Return a cycle in the MV DAG (an MV transitively depending on itself) as an ordered node list,
-    or None if acyclic. Enforced at registration — a cycle would make fan-out never terminate. Only
-    edges between MV nodes count (an input that is a base source is a leaf)."""
-    graph = {mv: extract_inputs(sql, dialect) & set(mvs) for mv, sql in mvs.items()}
+def find_cycle(graph: dict[str, set[str]]) -> list[str] | None:
+    """Return a cycle among the views of ``graph`` (a view transitively depending on itself) as an
+    ordered node list, or None if acyclic. A cycle would make fan-out never terminate. Only edges
+    between view nodes count (an input that is a source table is a leaf)."""
+    views = {view: inputs & set(graph) for view, inputs in graph.items()}
     WHITE, GREY, BLACK = 0, 1, 2
-    color = dict.fromkeys(graph, WHITE)
+    color = dict.fromkeys(views, WHITE)
 
     def visit(node: str, stack: list[str]) -> list[str] | None:
         color[node] = GREY
         stack.append(node)
-        for dep in sorted(graph.get(node, ())):
+        for dep in sorted(views.get(node, ())):
             if color[dep] == GREY:  # back-edge → cycle
                 return stack[stack.index(dep) :] + [dep]
             if color[dep] == WHITE:
@@ -207,9 +211,9 @@ def find_cycle(mvs: dict[str, str], dialect: str = "postgres") -> list[str] | No
         stack.pop()
         return None
 
-    for mv in sorted(graph):
-        if color[mv] == WHITE:
-            cycle = visit(mv, [])
+    for view in sorted(views):
+        if color[view] == WHITE:
+            cycle = visit(view, [])
             if cycle:
                 return cycle
     return None

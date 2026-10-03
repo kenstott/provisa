@@ -60,8 +60,7 @@ query RolesQuery {
     parentRoleId
     rateLimit {
       requestsPerSecond
-      maxQueryDepth
-      maxQueryNodes
+      maxQueryComplexity
       maxQueryTimeMs
     }
   }
@@ -186,6 +185,18 @@ query TablesQuery {
       role
       ttl
     }
+    pagingKind
+    pagination {
+      type
+      cursorField
+      cursorParam
+      pageParam
+      pageSizeParam
+      pageSize
+      maxPages
+      maxRows
+    }
+    pagingCeilingRows
     replicate
     loadProtected
     offPeakWindow
@@ -414,8 +425,8 @@ mutation DryRunDqContract($sourceId: String!, $contractText: String!) {
 }
 
 # REQ-1443: run a checker table's poll job now instead of waiting for its cadence; lands rows.
-mutation RunDqCheckNow($schemaName: String!, $tableName: String!) {
-  runDqCheckNow(schemaName: $schemaName, tableName: $tableName) {
+mutation RunDqCheckNow($tableId: Int!) {
+  runDqCheckNow(tableId: $tableId) {
     ...MutationResult
   }
 }
@@ -498,6 +509,7 @@ query AllRelationshipsQuery {
 query RLSRulesQuery {
   rlsRules {
     id
+    origin
     tableId
     domainId
     actionName
@@ -921,6 +933,12 @@ mutation UpdateTableRoleTtl($tableId: Int!, $roleTtl: [RoleTtlInput!]!) {
   }
 }
 
+mutation UpdateTablePaging($tableId: Int!, $paging: PagingInput) {
+  updateTablePaging(tableId: $tableId, paging: $paging) {
+    ...MutationResult
+  }
+}
+
 mutation ForceRegen($tableId: Int!, $reason: String!) {
   forceRegen(tableId: $tableId, reason: $reason) {
     ...MutationResult
@@ -1015,6 +1033,18 @@ mutation CreateRole($input: RoleInput!) {
 
 mutation DeleteRole($id: String!) {
   deleteRole(id: $id) {
+    ...MutationResult
+  }
+}
+
+mutation RevokeRoleFromTable($roleId: String!, $tableId: Int!) {
+  revokeRoleFromTable(roleId: $roleId, tableId: $tableId) {
+    ...MutationResult
+  }
+}
+
+mutation RevokeRoleFromObject($roleId: String!, $kind: GrantKind!, $name: String!) {
+  revokeRoleFromObject(roleId: $roleId, kind: $kind, name: $name) {
     ...MutationResult
   }
 }

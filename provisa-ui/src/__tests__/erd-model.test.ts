@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { describe, it, expect } from "vitest";
-import { buildTableLabel, buildErdElements } from "../components/erd/erd-model";
+import { buildTableLabel, buildErdElements, erdJson } from "../components/erd/erd-model";
 import type { RegisteredTable, Relationship, Domain, TableColumn } from "../types/admin";
 
 // ── fixtures ──────────────────────────────────────────────────────────────────
@@ -54,6 +54,9 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     description: null,
     cacheTtl: null,
     roleTtl: [],
+    pagingKind: null,
+    pagination: null,
+    pagingCeilingRows: null,
     replicate: null,
     loadProtected: null,
     offPeakWindow: null,
@@ -624,5 +627,61 @@ describe("buildErdElements — complementary rows", () => {
     );
     expect(edges.map((e) => e.data.id)).toEqual(["r:1"]);
     expect(edges[0].data.bidirectional).toBe(true);
+  });
+});
+
+// ── erdJson (REQ-524) ─────────────────────────────────────────────────────────
+
+describe("erdJson", () => {
+  const orders = makeTable({
+    id: 1,
+    domainId: "sales",
+    tableName: "orders",
+    columns: [
+      makeCol({ columnName: "id", dataType: "integer", isPrimaryKey: true }),
+      makeCol({ columnName: "customer_id", dataType: "integer", isForeignKey: true }),
+    ],
+  });
+  const customers = makeTable({ id: 2, domainId: "sales", tableName: "customers" });
+  const employees = makeTable({ id: 3, domainId: "hr", tableName: "employees" });
+  const tables = [orders, customers, employees];
+  const domains = [DOMAIN_SALES, DOMAIN_HR];
+  const rels = [
+    makeRel({ id: 1, sourceTableId: 1, targetTableId: 2 }),
+    makeRel({ id: 2, sourceTableId: 1, targetTableId: 3, targetTableName: "employees" }),
+  ];
+
+  it("lists the drawn domains, tables with their columns, and relationships by table name", () => {
+    const json = erdJson(buildErdElements(tables, rels, domains, new Set(), NO_HIDDEN, "all"));
+    expect(json.domains.map((d) => d.id).sort()).toEqual(["hr", "sales"]);
+    expect(json.tables.map((t) => t.name).sort()).toEqual(["customers", "employees", "orders"]);
+    expect(json.tables.find((t) => t.name === "orders")?.columns).toEqual([
+      { name: "id", dataType: "integer", primaryKey: true, foreignKey: false, description: null },
+      {
+        name: "customer_id",
+        dataType: "integer",
+        primaryKey: false,
+        foreignKey: true,
+        description: null,
+      },
+    ]);
+    expect(json.relationships.map((r) => [r.source, r.target, r.cardinality])).toEqual([
+      ["orders", "customers", "many-to-one"],
+      ["orders", "employees", "many-to-one"],
+    ]);
+  });
+
+  it("says what is drawn: a collapsed domain stands in for its tables", () => {
+    const json = erdJson(
+      buildErdElements(tables, rels, domains, new Set(["hr"]), NO_HIDDEN, "none"),
+    );
+    expect(json.tables.map((t) => t.name)).not.toContain("employees");
+    expect(json.relationships.map((r) => r.target)).toContain("domain:hr");
+  });
+
+  it("is the same JSON whatever the column detail of the picture", () => {
+    const all = erdJson(buildErdElements(tables, rels, domains, new Set(), NO_HIDDEN, "all"));
+    const none = erdJson(buildErdElements(tables, rels, domains, new Set(), NO_HIDDEN, "none"));
+    expect(none).toEqual(all);
   });
 });

@@ -86,6 +86,13 @@
     "errorNeo4jPreviewFirst": "הציגו תחילה תצוגה מקדימה של ה-Cypher כדי שהעמודות וסוגיהן יהיו ידועים.",
     "sparqlQueryLabel": "שאילתת SPARQL",
     "sparqlQueryHint": "SELECT שהמשתנים שלו הופכים לעמודות (כל קישור הוא טקסט)",
-    "sparqlQueryPlaceholder": "SELECT ?name ?city WHERE { ?a <urn:name> ?name ; <urn:city> ?city }"
+    "sparqlQueryPlaceholder": "SELECT ?name ?city WHERE { ?a <urn:name> ?name ; <urn:city> ?city }",
+    "nlSearchLabel": "חפש טבלאות לפי תיאור",
+    "nlSearchPlaceholder": "לדוגמה: טבלאות חשבוניות ותשלומים של לקוחות",
+    "nlSearchButton": "חפש",
+    "nlSearchNone": "אין טבלה בסכמה זו התואמת את התיאור.",
+    "nlSearchConfidence": "{{percent}}%",
+    "nlSearchRegistered": "רשומה",
+    "nlSearchUse": "השתמש"
   }
 }

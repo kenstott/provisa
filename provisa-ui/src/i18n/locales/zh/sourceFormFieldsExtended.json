@@ -98,6 +98,9 @@
     "maxLiveConcurrencyPlaceholder": "不限制",
     "maxLiveConcurrencyInvalid": "请输入不小于 1 的整数，或留空表示不限制。",
     "loadManagementFixErrors": "保存前请修正“负载管理与时效性”设置。",
-    "cacheTtlRequiredForSignal": "变更信号 {{signal}} 根据缓存 TTL 判断数据是否过期，因此请设置缓存 TTL。"
+    "cacheTtlRequiredForSignal": "变更信号 {{signal}} 根据缓存 TTL 判断数据是否过期，因此请设置缓存 TTL。",
+    "accessToken": "访问令牌",
+    "accessTokenHint": "存储在密钥保管库中。也接受 ${secret:NAME} 或 ${env:NAME} 引用。",
+    "brandNamespaceHint": "此数据源表名的前缀。留空则使用默认值。"
   }
 }

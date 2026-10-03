@@ -65,8 +65,10 @@ def test_per_role_wins_and_units_convert():
     )
     assert rl is not None
     assert rl.requests_per_second == 2  # 120/min -> 2/s
-    assert rl.max_query_depth == 5
-    assert rl.max_query_nodes == 500
+    # node_limit becomes the complexity limit; depth_limit has no counterpart (a deeper query
+    # is a statement with more relations and joins, which the complexity limit prices).
+    assert rl.max_query_complexity == 500
+    assert not hasattr(rl, "max_query_depth")
     assert rl.max_query_time_ms == 3000  # 3s -> ms
 
 
@@ -74,7 +76,7 @@ def test_global_fallback_when_no_per_role():
     rl = _user_limits(
         _md_with_limits({"depth_limit": {"global": 8}, "node_limit": {"global": 1000}})
     )
-    assert rl.max_query_depth == 8 and rl.max_query_nodes == 1000
+    assert rl.max_query_complexity == 1000
     assert rl.requests_per_second is None and rl.max_query_time_ms is None
 
 

@@ -20,6 +20,8 @@ import {
   DeleteRlsRule,
   CreateRole,
   DeleteRole,
+  RevokeRoleFromTable,
+  RevokeRoleFromObject,
 } from "./admin.graphql";
 import { firstLoad } from "./useAdminQueries";
 
@@ -98,8 +100,7 @@ export function useUpsertRole() {
       domainAccess: string[];
       rateLimit?: {
         requestsPerSecond: number | null;
-        maxQueryDepth: number | null;
-        maxQueryNodes: number | null;
+        maxQueryComplexity: number | null;
         maxQueryTimeMs: number | null;
       } | null;
       parentRoleId?: string | null; // REQ-1677
@@ -121,5 +122,30 @@ export function useDeleteRole() {
       return (result.data?.deleteRole ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
+  };
+}
+
+/** The grant kinds a role is taken off one object at a time (REQ-1918). */
+export type GrantKind = "METRIC" | "COMMAND" | "WEBHOOK";
+
+/** Take a role off a table's column grants, or off a metric's, command's or webhook's assigned
+ *  roles, so the role can be deleted (REQ-1918). */
+export function useRevokeRoleGrants() {
+  const [fromTable] = useMutation<{ revokeRoleFromTable: MutationResult }>(RevokeRoleFromTable);
+  const [fromObject] = useMutation<{ revokeRoleFromObject: MutationResult }>(
+    RevokeRoleFromObject,
+  );
+  return {
+    revokeFromTable: async (roleId: string, tableId: number) => {
+      const answer = (await fromTable({ variables: { roleId, tableId } })).data?.revokeRoleFromTable;
+      if (!answer) throw new Error("revokeRoleFromTable returned no result");
+      return answer;
+    },
+    revokeFromObject: async (roleId: string, kind: GrantKind, name: string) => {
+      const answer = (await fromObject({ variables: { roleId, kind, name } })).data
+        ?.revokeRoleFromObject;
+      if (!answer) throw new Error("revokeRoleFromObject returned no result");
+      return answer;
+    },
   };
 }

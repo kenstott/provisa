@@ -14,8 +14,8 @@ A periodic MV's declared expected-events list is its report's freshness contract
 must be fresh-THROUGH ``window.end`` for the output to be trusted. It is verified by a PULL against
 per-input freshness state at fire time — NOT by receiving events (there is no NO_CHANGE event type).
 
-- List length is the trust/latency dial. Default (undeclared) = all SQL-lineage inputs (REQ-939
-  ``extract_inputs``). Empty = calendar-only (compute the closed period, verify nothing).
+- List length is the trust/latency dial. Default (undeclared) = every input the view reads, resolved
+  against the model (REQ-939, ``events.nodes.expected_event_nodes``). Empty = calendar-only (compute the closed period, verify nothing).
 - "fresh-through window.end" = the input's source successfully refreshed to cover the window
   (``last_refresh_ok`` AND ``last_refresh_at >= window.end``), with zero or more rows — a fresh input
   with zero rows is a TRUSTWORTHY ZERO.

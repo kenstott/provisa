@@ -17,6 +17,7 @@ expression here — an unparsable or non-aggregate expression is a hard error, n
 
 # Requirements: REQ-1317, REQ-1319, REQ-1320
 
+from provisa.core import model_change
 from typing import TYPE_CHECKING
 
 import sqlglot
@@ -26,6 +27,8 @@ from sqlalchemy import delete as _delete, select
 
 from provisa.core.models import Metric
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
+from provisa.core.repositories.origin import require as require_origin
+from provisa.core.repositories.origin import take_over
 from provisa.core.schema_org import metrics
 
 if TYPE_CHECKING:
@@ -44,8 +47,14 @@ def validate_expression(expression: str) -> None:  # REQ-1317
         )
 
 
-async def upsert(conn: "Connection", metric: Metric) -> None:  # REQ-1317, REQ-1320
-    """Upsert a metric by name. The expression is validated on every write (hard error)."""
+async def upsert(  # REQ-1317, REQ-1320, REQ-1919
+    conn: "Connection", metric: Metric, *, origin: str
+) -> None:
+    """Upsert a metric by name. The expression is validated on every write (hard error).
+    ``origin`` says where it comes from (``repositories.origin``): written when the metric is
+    CREATED and left alone after, except that a config load takes over an admin-made one."""
+    model_change.name("upsert", "metric", metric.name)  # REQ-1524
+    require_origin(origin)
     validate_expression(metric.expression)
     vals = {
         "name": metric.name,
@@ -55,6 +64,7 @@ async def upsert(conn: "Connection", metric: Metric) -> None:  # REQ-1317, REQ-1
         "ai_context": metric.ai_context,  # REQ-1319
         "visible_to": list(metric.visible_to),
         "from_fact": metric.from_fact,  # REQ-1320
+        "origin": origin,  # REQ-1919: on INSERT only
     }
     await conn.upsert(
         metrics,
@@ -68,6 +78,14 @@ async def upsert(conn: "Connection", metric: Metric) -> None:  # REQ-1317, REQ-1
             "visible_to",
             "from_fact",
         ],
+    )
+    await take_over(
+        conn,
+        metrics,
+        (metrics.c.name == metric.name,),
+        kind="metric",
+        ident=metric.name,
+        origin=origin,
     )
 
 
@@ -98,6 +116,7 @@ async def delete(conn: "Connection", name: str) -> bool:  # REQ-1317, REQ-1918
     Refused (:class:`MetricDeleteRefused`), naming each, while a view is composed from it (its
     ``view_metrics`` lists the metric) or a view's SQL reads it as ``metrics.<name>``. One
     transaction; no database cascade is relied on."""
+    model_change.name("delete", "metric", name)  # REQ-1524
     ref = ObjectRef("metric", name)
     async with conn.transaction():
         if await get(conn, name) is None:

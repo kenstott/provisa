@@ -12,12 +12,15 @@
 
 # Requirements: REQ-041, REQ-402, REQ-403
 
+from provisa.core import model_change
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, select
 
 from provisa.core.models import RLSRule
 from provisa.core.repositories import table as table_repo
+from provisa.core.repositories.origin import require as require_origin
+from provisa.core.repositories.origin import take_over
 from provisa.core.schema_org import rls_rules
 from provisa.encryption import encryption_service
 
@@ -40,36 +43,46 @@ def _decrypt_row(row) -> dict:  # REQ-686
     return d
 
 
-async def upsert(conn: "Connection", rule: RLSRule) -> None:  # REQ-041, REQ-402, REQ-686
-    """Upsert an RLS rule. Resolves table_id from table name for table-level rules."""
+async def upsert(  # REQ-041, REQ-402, REQ-686, REQ-1919
+    conn: "Connection", rule: RLSRule, *, origin: str
+) -> None:
+    """Upsert an RLS rule. Resolves table_id from table name for table-level rules.
+
+    ``origin`` says where the rule comes from (``repositories.origin``): written when the rule
+    is CREATED and left alone after, except that a config load takes over an admin-made one."""
+    model_change.name(
+        "upsert", "row filter", f"{rule.role_id} on {rule.table_id or rule.domain_id}"
+    )  # REQ-1524
+    require_origin(origin)
     filter_enc = _encrypt_filter(rule.filter)
     if rule.action_name:  # REQ-1679
-        await conn.upsert(
-            rls_rules,
-            {"action_name": rule.action_name, "role_id": rule.role_id, "filter_expr": filter_enc},
-            index_elements=["action_name", "role_id"],
-            update_columns=["filter_expr"],
-        )
-        return
-    if rule.domain_id:
-        await conn.upsert(
-            rls_rules,
-            {"domain_id": rule.domain_id, "role_id": rule.role_id, "filter_expr": filter_enc},
-            index_elements=["domain_id", "role_id"],
-            update_columns=["filter_expr"],
-        )
+        scope = {"action_name": rule.action_name}
+    elif rule.domain_id:
+        scope = {"domain_id": rule.domain_id}
     else:
         if not rule.table_id:
             raise ValueError("Either table_id or domain_id must be provided")
         tbl = await table_repo.find_by_table_name(conn, rule.table_id)
         if tbl is None:
             raise ValueError(f"Table not registered: {rule.table_id}")
-        await conn.upsert(
-            rls_rules,
-            {"table_id": tbl["id"], "role_id": rule.role_id, "filter_expr": filter_enc},
-            index_elements=["table_id", "role_id"],
-            update_columns=["filter_expr"],
-        )
+        scope = {"table_id": tbl["id"]}
+    ((scope_column, scope_value),) = scope.items()
+    await conn.upsert(
+        rls_rules,
+        # REQ-1919: origin on INSERT only — the one update column is the predicate.
+        {**scope, "role_id": rule.role_id, "filter_expr": filter_enc, "origin": origin},
+        index_elements=[scope_column, "role_id"],
+        update_columns=["filter_expr"],
+    )
+    await take_over(
+        conn,
+        rls_rules,
+        (rls_rules.c[scope_column] == scope_value, rls_rules.c.role_id == rule.role_id),
+        kind="row filter",
+        ident=f"{rule.role_id} on {scope_column.removesuffix('_id').removesuffix('_name')} "
+        f"{rule.action_name or rule.domain_id or rule.table_id}",
+        origin=origin,
+    )
 
 
 async def get_for_table_role(  # REQ-041, REQ-403
@@ -103,6 +116,7 @@ async def delete(  # REQ-041, REQ-402
     domain_id: str | None = None,
     action_name: str | None = None,
 ) -> bool:
+    model_change.name("delete", "row filter", f"{role_id} on {table_id or domain_id}")  # REQ-1524
     if action_name:  # REQ-1679
         stmt = _delete(rls_rules).where(
             rls_rules.c.action_name == action_name, rls_rules.c.role_id == role_id

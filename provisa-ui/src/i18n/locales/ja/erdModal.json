@@ -23,6 +23,7 @@
     "downloadSvg": "SVGをダウンロード",
     "downloadPng": "PNGをダウンロード",
     "downloadJpeg": "JPEGをダウンロード",
+    "downloadJson": "図を JSON でダウンロード（テーブル、列、リレーションシップ）",
     "close": "閉じる",
     "hint": "ドメイングループをクリックで折りたたみ／展開 · 破線は折りたたまれたドメインを接続します",
     "resizeHandle": "ドメインボックスのサイズ変更（{{corner}}）"

@@ -19,6 +19,7 @@ pure rewrite, and the manager module pulls the file-source and DuckDB connector 
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Protocol
@@ -33,6 +34,15 @@ class HotRows(Protocol):
 
     @property
     def rows(self) -> list[dict]: ...
+
+
+@dataclass(frozen=True)
+class InlineRows:
+    """Rows fetched for one statement and substituted into it alone — never held by the hot
+    tier (a parameterized fetch, or rows above the hot threshold's reach)."""
+
+    rows: list[dict]
+    column_names: list[str]
 
 
 def _sql_literal(val) -> str:

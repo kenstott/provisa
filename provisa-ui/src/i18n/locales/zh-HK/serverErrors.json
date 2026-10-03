@@ -9,10 +9,15 @@
       "test_endpoint_disabled": "測試端點已停用（在非生產環境設定 PROVISA_ENABLE_TEST_ENDPOINTS 以啟用）。",
       "unknown_action_type": "未知的 actionType「{{action_type}}」",
       "unknown_role": "未知角色「{{role}}」",
-      "webhook_not_found": "找不到 Webhook「{{name}}」"
+      "webhook_not_found": "找不到 Webhook「{{name}}」",
+      "written_table_not_registered": "'{{table}}' 不是資料來源 '{{source_id}}' 的已註冊表"
     },
     "ai_models": {
       "vector_model_fields_required": "每個 vector_models 項目都需要 id、provider 及 dimensions"
+    },
+    "api": {
+      "answer_cut": "{{table}} 的回應在 max_pages={{max_pages}} 處被截斷（{{rows}} 列）：API 還有更多資料。請提高端點的 max_pages 或頁面大小以讀取全部資料。",
+      "answer_row_cut": "{{table}} 的回應在 max_rows={{max_rows}} 處被截斷：遠端還有更多資料。請提高 graphql_remote.max_rows 以讀取全部資料。"
     },
     "auth": {
       "authentication_required": "需要驗證",
@@ -78,6 +83,7 @@
       "no_source_pool": "數據來源「{{source}}」沒有連線集區",
       "query_required": "必須提供 query",
       "query_timeout": "查詢在 {{timeout_s}} 秒後逾時",
+      "query_too_complex": "查詢的複雜度（{{score}}）超過上限 {{limit}}（{{limit_of}}）。",
       "redirect_upload_failed": "重新導向上載失敗：{{error}}",
       "request_interrupted": "{{error}}",
       "row_level_key_required": "資料表 '{{table}}' 按列複製，只能透過其鍵 ({{key}}) 讀取。請使用等值條件或 IN 清單按鍵篩選，或在單一欄位上聯結該資料表。",
@@ -110,18 +116,25 @@
       "coordinator_waking": "環境正在啟動，大約兩分鐘後就緒。"
     },
     "functions": {
+      "approval_denied": "'{{name}}' 的審批被拒絕：{{reason}}",
+      "approval_unavailable": "命令 '{{name}}' 需要審批，但未設定審批鉤子",
       "binding_missing_key": "類型「{{kind}}」的函數繫結缺少必要索引鍵「{{key}}」",
       "egress_denied": "拒絕連出至「{{endpoint}}」：主機不在 UDF 連出允許清單上（REQ-885 預設拒絕）。請將其加入 udf_egress_allowlist 以允許。",
       "grpc_call_failed": "gRPC 呼叫 {{target}}{{path}} 失敗：{{status}}：{{details}}",
       "grpc_method_invalid": "gRPC 方法「{{method}}」必須為「Service/Method」或「pkg.Service.Method」",
+      "json_argument_invalid": "'{{name}}' 的參數 '{{argument}}' 不是 JSON 字面值",
       "non_tabular_payload": "函數傳回非表格式承載：{{payload_type}}",
+      "not_a_remote_source": "資料來源 '{{source_id}}' 不提供寫入操作",
+      "operation_not_offered": "資料來源 '{{source_id}}' 不提供操作 '{{operation}}'",
       "python_callable_invalid": "Python 可呼叫物件「{{spec}}」必須為「module:attr」",
+      "remote_refused": "{{source_id}} 拒絕了 {{operation}}：{{answer}}",
       "result_set_ref_invalid": "result_set 參考「{{ref}}」必須為 source.schema.table",
       "rowwise_external": "函數「{{name}}」（kind={{impl_kind}}）屬逐行外部呼叫：所有引數都是純量 column_value。請宣告一個 table_ref/result_set 關係引數，使呼叫以集合方式批次執行（REQ-885）。",
       "script_failed": "指令碼以 {{returncode}} 結束：{{stderr}}",
       "source_not_connected": "數據來源「{{source_id}}」未連線",
       "unknown_arg_kind": "「{{name}}」的 arg_kind「{{arg_kind}}」未知",
-      "unknown_impl_kind": "未知的函數 impl_kind：「{{impl_kind}}」"
+      "unknown_impl_kind": "未知的函數 impl_kind：「{{impl_kind}}」",
+      "written_table_missing": "命令 '{{name}}' 寫入 '{{table}}'，但該表未註冊"
     },
     "graphql_remote": {
       "introspection_failed": "內省失敗：{{error}}",
@@ -157,7 +170,6 @@
     },
     "openapi": {
       "database_not_connected": "數據庫未連線",
-      "domain_required": "OpenAPI 資料來源 {{source}} 宣告了 {{commands}} 個指令但未指定網域：指令必須屬於某個網域，因此註冊時需要指定網域",
       "invalid_json": "JSON 無效：{{error}}",
       "refresh_failed": "重新整理失敗：{{error}}",
       "registration_failed": "註冊失敗：{{error}}",
@@ -168,8 +180,8 @@
       "already_exists": "組織已存在",
       "auth_required_create": "建立組織需要驗證",
       "auth_required_leave": "離開組織需要驗證",
-      "auto_join_public_domain": "auto_join 需要一條限定於您所控制網域的電郵規則——目前這條符合的是 {{domain}}。",
       "auto_join_breadth_unacknowledged": "請仔細審閱此自動加入規則，否則可能讓你的組織以外的人加入：除了 {{domains}}，它還會接受如 {{admits}} 的地址。你無法控制的網域中的任何人，隨後都可自動加入你的組織。請確認你接受此風險後再儲存。",
+      "auto_join_public_domain": "auto_join 需要一條限定於您所控制網域的電郵規則——目前這條符合的是 {{domain}}。",
       "auto_join_requires_role": "auto_join 需要 auto_join_role",
       "auto_join_rule_taken": "另一個組織已自動接納所有符合此規則的人。兩個組織不能聲稱擁有相同的地址 — 請向對方索取邀請，或將你的規則收窄至只有你的組織使用的網域。",
       "auto_join_rule_unbounded": "此自動加入規則沒有邊界：它會接納你無法控制的網域中的地址。請將它限定在你擁有的網域，例如 \"@acme\\\\.com$\"。",
@@ -193,9 +205,9 @@
       "config_object_edited": "{{name}} 已於設定中宣告。變更已儲存；下次載入設定時將重新套用檔案中的內容。"
     },
     "platform": {
+      "control_plane_role_required": "需要平台管理員。",
       "right_required": "需要 {{right}} 能力",
-      "settings_capability_required": "需要 platform_settings 能力",
-      "control_plane_role_required": "需要平台管理員。"
+      "settings_capability_required": "需要 platform_settings 能力"
     },
     "profile": {
       "database_unavailable": "數據庫不可用",
@@ -204,11 +216,12 @@
       "table_not_found": "找不到資料表 {{table_id}}"
     },
     "replication": {
-      "spool_full": "{{table}} 的複本建置被拒絕：暫存其來源的回應需要此節點暫存目錄中的 {{needed}} 位元組，超過了 {{limit}} 的上限 (replication.spool_max_bytes)。",
       "answer_not_json": "為 {{table}} 的複本讀取的回應不是有效的 JSON：{{cause}}（位於回應第 {{before_byte}} 位元組之前的 {{kib}} KiB 內）。",
       "no_whole_copy": "來源 {{source}} 的資料表 {{schema}}.{{table}} 沒有可建置的完整複本：它按列複製，或者帶有參數欄。",
-      "table_gone": "來源 {{source}} 的資料表 {{schema}}.{{table}} 已不再註冊，因此不會建置其複本。",
       "page_limit_reached": "未建置 {{table}} 的複本：其端點的分頁在 max_pages={{max_pages}} 處停止，而端點在第 {{max_pages}} 頁之後仍有資料（已讀取 {{rows}} 列）。複本是整張資料表，因此不會在上限處截斷。請提高端點的 max_pages 或頁面大小。",
+      "row_limit_reached": "未建置 {{table}} 的複本：其讀取在 max_rows={{max_rows}}（graphql_remote.max_rows）處停止，而遠端在 {{rows}} 列之後仍有資料。複本是整張資料表，因此不會在上限處截斷。請提高 graphql_remote.max_rows。",
+      "spool_full": "{{table}} 的複本建置被拒絕：暫存其來源的回應需要此節點暫存目錄中的 {{needed}} 位元組，超過了 {{limit}} 的上限 (replication.spool_max_bytes)。",
+      "table_gone": "來源 {{source}} 的資料表 {{schema}}.{{table}} 已不再註冊，因此不會建置其複本。",
       "waiting_engine_jobs": "引擎已達到背景作業上限 (replication.engine_jobs)",
       "waiting_source_cap": "來源已達到即時讀取上限 (max_live_concurrency)"
     },
@@ -240,6 +253,7 @@
       "domain_deleted": "領域「{{domain}}」已刪除",
       "domain_not_found": "找不到領域「{{domain}}」",
       "fact_registered": "事實「{{fact}}」已註冊，包含 {{links}} 個維度連結及 {{metrics}} 個指標",
+      "grant_object_not_found": "沒有名為 '{{name}}' 的 {{kind}}",
       "invalid_askamerica_key": "AskAmerica API 密鑰無效：{{error}}",
       "invalid_calendar": "行事曆無效：{{error}}",
       "invalid_cardinality": "基數無效：「{{cardinality}}」",
@@ -259,12 +273,19 @@
       "no_tables_for_source": "數據來源「{{source}}」沒有已註冊的資料表",
       "no_view_sql": "資料表沒有 view_sql",
       "not_virtual_view": "資料表不是虛擬 Provisa 檢視（source_id != '__derived__'）",
+      "paging_above_ceiling": "資料表 {{table}}：max_rows={{max_rows}} 高於 graphql_remote.max_rows={{ceiling}}；資料表可以降低營運者的上限，但不能提高。",
+      "paging_connection_rows_only": "資料表 {{table}} 是連接資料表：它按其結構描述的參數分頁，只能設定資料列上限。",
+      "paging_endpoint_needs_type": "資料表 {{table}} 是 REST 端點：其分頁需要指明分頁類型。",
+      "paging_invalid": "資料表 {{table}}：{{reason}}",
+      "paging_not_paged": "資料表 {{table}} 並非逐頁讀取，因此不接受分頁。",
       "query_engine_unavailable": "查詢引擎不可用",
       "rejection_reason_required": "必須提供拒絕原因",
       "relationship_deleted": "關係「{{relationship}}」已刪除",
       "relationship_not_found": "找不到關係「{{relationship}}」",
       "relationship_saved": "關係「{{relationship}}」已儲存",
       "remigrated": "已重新遷移 {{source}}.{{table}}",
+      "replicate_contradicts_load_protected": "負載保護不能與複製 =「永不」同時使用：受負載保護的數據表永不被即時讀取",
+      "replicate_invalid": "複製必須是「預設」、「永不」、「一律」或大於 0 的閾值；收到 {{value}}",
       "request_executed": "已執行建立請求 #{{id}}",
       "request_not_pending": "找不到請求或請求已被處理",
       "request_rejected": "已拒絕建立請求 #{{id}}",
@@ -275,6 +296,8 @@
       "role_created": "角色「{{role}}」已建立",
       "role_deleted": "角色「{{role}}」已刪除",
       "role_not_found": "找不到角色「{{role}}」",
+      "role_revoked_from_object": "已從 {{kind}} '{{name}}' 中移除角色 '{{role}}'",
+      "role_revoked_from_table": "已從表 {{id}} 的授權中移除角色 '{{role}}'",
       "scheduled_task_created": "排程任務「{{task}}」已建立",
       "schemas_rebuilt": "結構描述已重建",
       "source_cache_updated": "已更新數據來源「{{source}}」的快取設定",
@@ -286,18 +309,23 @@
       "source_naming_updated": "已更新數據來源「{{source}}」的命名慣例",
       "source_no_connection": "數據來源「{{source}}」沒有作用中的連線",
       "source_not_found": "找不到數據來源「{{source}}」",
-      "source_replicate_set": "已為數據來源「{{source}}」設定複製",
       "source_renamed": "數據來源已由「{{old}}」重新命名為「{{new}}」",
+      "source_replicate_set": "已為數據來源「{{source}}」設定複製",
       "source_type_not_sqlite": "數據來源類型「{{type}}」不是 sqlite",
       "source_updated": "數據來源「{{source}}」已更新",
       "sql_required": "SQL 觸發程序必須提供 sql",
       "table_cache_updated": "已更新資料表 {{table}} 的快取 TTL",
       "table_deleted": "資料表 {{table}} 已刪除",
+      "table_id_not_found": "找不到表 {{id}}",
       "table_load_protection_set": "已為資料表 {{table}} 設定負載保護",
       "table_naming_updated": "已更新資料表 {{table}} 的命名慣例",
       "table_not_found": "找不到資料表 {{table}}",
-      "table_replicate_set": "已為資料表 {{table}} 設定複製",
+      "table_not_readable": "此來源的憑證無權讀取 {{table}}：{{reason}}",
+      "table_paging_updated": "已更新資料表 {{table}} 的分頁。",
       "table_registered": "資料表「{{table}}」已註冊（id={{id}}）",
+      "table_registered_fields_omitted": "資料表「{{table}}」已註冊（id={{id}}）。因來源的憑證無權讀取而略過：{{fields}}",
+      "table_replicate_set": "已為資料表 {{table}} 設定複製",
+      "table_too_complex": "資料表「{{table}}」未能以所選欄位註冊：{{reason}}。請選擇較少欄位。",
       "table_updated": "資料表「{{table}}」已更新（id={{id}}）",
       "task_deleted": "任務「{{task}}」已刪除",
       "task_disabled": "任務「{{task}}」已停用",
@@ -312,9 +340,7 @@
       "view_spans_sources": "檢視橫跨多個數據來源：{{sources}}",
       "webhook_approved": "已批准 Webhook「{{webhook}}」",
       "webhook_name_required": "Webhook 觸發程序必須提供 webhook_name",
-      "webhook_not_found": "找不到 Webhook「{{webhook}}」",
-      "replicate_invalid": "複製必須是「預設」、「永不」、「一律」或大於 0 的閾值；收到 {{value}}",
-      "replicate_contradicts_load_protected": "負載保護不能與複製 =「永不」同時使用：受負載保護的數據表永不被即時讀取"
+      "webhook_not_found": "找不到 Webhook「{{webhook}}」"
     },
     "secrets": {
       "still_referenced": "本機構中仍有 {{count}} 個已儲存的值引用 {{secret}}。請更改或移除每一個，然後再次刪除。"

@@ -54,7 +54,7 @@ def _servicer(p) -> ProvisaServicer:
     p.state.source_pools.supports_stream = lambda _source_id: False  # the buffered DIRECT read
     p.state.multitenancy = False
     servicer = ProvisaServicer(p.state, SimpleNamespace(Orders=_Order), MagicMock())
-    servicer._emit_license_nag = MagicMock()
+    servicer._emit_trailing_metadata = MagicMock()
     servicer._meter_msg = lambda msg: msg
     return servicer
 

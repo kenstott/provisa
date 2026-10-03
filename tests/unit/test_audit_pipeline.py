@@ -70,6 +70,9 @@ class _CapturingState:
         # tests exercise; the metering itself has its own suite.
         self.admin_db = None
         self.model_stamp = 1
+        # REQ-826: no Hot-count store — these tests are about the audit row; counting has its
+        # own (test_replica_hot.py, test_audit_writer.py).
+        self.hot_counts = None
 
 
 @pytest.fixture

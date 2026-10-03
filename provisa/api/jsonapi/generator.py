@@ -1099,8 +1099,13 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
             doc["meta"]["total"] = total_count
         else:
             del doc["meta"]["total"]
-            if not doc["meta"]:
-                del doc["meta"]
+        # REQ-1350: what the request's answer says about itself (an API answer cut short).
+        from provisa.core.statement_warnings import as_entries
+
+        if warnings := as_entries():
+            doc["meta"]["warnings"] = warnings
+        if not doc["meta"]:
+            del doc["meta"]
 
         # Pagination links — preserve role, sort, sparse fieldset, filters, and include
         base_path = f"/data/jsonapi/{domain_id}/{table_name}"

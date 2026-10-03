@@ -300,7 +300,16 @@ class _Scheduler:
 
 
 def _contract_conn(dq_contract: str | None = "dataset: provisa/sales/orders\n"):
-    return _Conn(_Rows([{"dq_contract": dq_contract}]))
+    return _Conn(_Rows([_checker_row("dq", dq_contract)]))
+
+
+def _checker_row(source_id: str, dq_contract: str | None = "dataset: provisa/sales/orders\n"):
+    return {
+        "source_id": source_id,
+        "schema_name": "sales",
+        "table_name": "orders",
+        "dq_contract": dq_contract,
+    }
 
 
 @pytest.mark.asyncio
@@ -310,7 +319,7 @@ async def test_run_now_finds_the_bare_job_id_in_single_org_mode():
     must pass org_id=None here, not a resolved "default" org string — that would look up a
     ':org_default'-suffixed id the scheduler never registered."""
     job = _Job()
-    scheduler = _Scheduler("poll:sales.orders", job)
+    scheduler = _Scheduler("poll:dq/sales.orders", job)
     result = await run_dq_check_now(
         cast("Connection", _contract_conn()),
         scheduler=scheduler,
@@ -325,7 +334,7 @@ async def test_run_now_finds_the_bare_job_id_in_single_org_mode():
 @pytest.mark.asyncio
 async def test_run_now_namespaces_the_job_id_when_an_org_is_given():
     job = _Job()
-    scheduler = _Scheduler("poll:sales.orders:org_acme", job)
+    scheduler = _Scheduler("poll:dq/sales.orders:org_acme", job)
     result = await run_dq_check_now(
         cast("Connection", _contract_conn()),
         scheduler=scheduler,
@@ -342,7 +351,7 @@ async def test_run_now_reports_the_missing_job_by_its_own_id_not_a_mismatched_on
     """Regression: resolving org_id via `current_org.get() or state.org_id` in single-org mode
     produced the string "default", which looks up a suffixed id the bare-id job never has —
     this is the exact bug behind "quality.pets_scan has no scheduled poll job yet"."""
-    scheduler = _Scheduler("poll:sales.orders", _Job())
+    scheduler = _Scheduler("poll:dq/sales.orders", _Job())
     result = await run_dq_check_now(
         cast("Connection", _contract_conn()),
         scheduler=scheduler,
@@ -352,3 +361,66 @@ async def test_run_now_reports_the_missing_job_by_its_own_id_not_a_mismatched_on
     )
     assert result["success"] is False
     assert "has no scheduled poll job yet" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_run_now_refuses_a_name_two_sources_register():
+    """A checker table is one source's ``sales.orders``; when two sources both register it, the
+    name alone does not say whose poll job to fire."""
+    scheduler = _Scheduler("poll:dq/sales.orders", _Job())
+    both = _Conn(
+        _Rows(
+            [
+                _checker_row("dq"),
+                _checker_row("dq2"),
+            ]
+        )
+    )
+    result = await run_dq_check_now(
+        cast("Connection", both),
+        scheduler=scheduler,
+        org_id=None,
+        schema_name="sales",
+        table_name="orders",
+    )
+    assert result == {
+        "success": False,
+        "message": "more than one source registers sales.orders (dq, dq2)",
+    }
+
+
+@pytest.mark.asyncio
+async def test_run_now_by_table_id_fires_that_tables_job():
+    """The panel names the table by its registered id: whichever source holds it, its own poll
+    job runs."""
+    job = _Job()
+    result = await run_dq_check_now(
+        cast("Connection", _Conn(_Rows([_checker_row("dq2")]))),
+        scheduler=_Scheduler("poll:dq2/sales.orders", job),
+        org_id=None,
+        table_id=42,
+    )
+    assert result == {"success": True, "message": "ran dq2/sales.orders now"}
+    assert job.called is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "named",
+    [
+        {},
+        {"schema_name": "sales"},
+        {"table_id": 42, "table_name": "orders"},
+    ],
+)
+async def test_run_now_needs_the_id_or_both_names(named):
+    result = await run_dq_check_now(
+        cast("Connection", _contract_conn()),
+        scheduler=_Scheduler("poll:dq/sales.orders", _Job()),
+        org_id=None,
+        **named,
+    )
+    assert result == {
+        "success": False,
+        "message": "name the table by its id, or by its schema and table name",
+    }

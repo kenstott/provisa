@@ -187,7 +187,8 @@ def _gate_env(monkeypatch):
         table_repo, "find_by_table_name", lambda conn, name: _async({"id": hash(name) % 1000})
     )
 
-    async def _upsert(conn, rel):
+    async def _upsert(conn, rel, *, origin):
+        assert origin == "admin"  # REQ-1919: a relationship made through the admin
         rec["created"].append(rel.id)
 
     monkeypatch.setattr(rel_repo, "upsert", _upsert)

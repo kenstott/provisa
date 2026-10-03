@@ -37,7 +37,10 @@ import {
   useDeleteRole,
   useUpsertRlsRule,
   useDeleteRlsRule,
+  useRevokeRoleGrants,
 } from "../hooks/useSecurityQueries";
+import { RoleGrantAction } from "../components/RoleGrantAction";
+import { removeUserAssignment } from "../api/admin";
 import type { Role, Capability } from "../types/auth";
 import type { RLSRule } from "../types/admin";
 import { fetchActions } from "../api/actions";
@@ -100,8 +103,7 @@ const EMPTY_ROLE = {
   parentRoleId: "" as string, // REQ-1677: "" = no parent
   // REQ-1174: per-role rate + query-complexity limits ("" = unlimited on that dimension).
   reqPerSec: "" as number | "",
-  maxDepth: "" as number | "",
-  maxNodes: "" as number | "",
+  maxComplexity: "" as number | "",
   maxTimeMs: "" as number | "",
 };
 const EMPTY_RULE = {
@@ -142,8 +144,20 @@ function CapabilityGrid({
 }
 
 export function SecurityRolesPage() {
-  // REQ-1918: a delete is refused while anything depends on the object; this lists them.
-  const refusal = useDependentsDialog();
+  // REQ-1918: a delete is refused while anything depends on the object; this lists them, and
+  // offers to take the role off each grant and assignment that can be removed in place.
+  const { revokeFromTable, revokeFromObject } = useRevokeRoleGrants();
+  const refusal = useDependentsDialog((roleId, dependent, all, handled) => (
+    <RoleGrantAction
+      roleId={roleId}
+      dependent={dependent}
+      all={all}
+      handled={handled}
+      revokeFromTable={revokeFromTable}
+      revokeFromObject={revokeFromObject}
+      removeAssignment={removeUserAssignment}
+    />
+  ));
   const { t } = useTranslation();
   const { setDomains: setContextDomains, setSelectedDomain } = useDomainFilter();
   const { roles, loading: rolesLoading, refetch: refetchRoles } = useRoles();
@@ -187,8 +201,7 @@ export function SecurityRolesPage() {
       const _n = (v: number | "") => (v === "" ? null : Number(v));
       const rateLimit = {
         requestsPerSecond: _n(roleForm.reqPerSec),
-        maxQueryDepth: _n(roleForm.maxDepth),
-        maxQueryNodes: _n(roleForm.maxNodes),
+        maxQueryComplexity: _n(roleForm.maxComplexity),
         maxQueryTimeMs: _n(roleForm.maxTimeMs),
       };
       const hasLimit = Object.values(rateLimit).some((v) => v !== null);
@@ -240,8 +253,7 @@ export function SecurityRolesPage() {
       domainAccess: [...role.domain_access],
       parentRoleId: role.parentRoleId ?? "", // REQ-1677
       reqPerSec: role.rateLimit?.requestsPerSecond ?? "",
-      maxDepth: role.rateLimit?.maxQueryDepth ?? "",
-      maxNodes: role.rateLimit?.maxQueryNodes ?? "",
+      maxComplexity: role.rateLimit?.maxQueryComplexity ?? "",
       maxTimeMs: role.rateLimit?.maxQueryTimeMs ?? "",
     });
     setEditingRoleInRow(role.id);
@@ -360,27 +372,21 @@ export function SecurityRolesPage() {
               }
             />
             <NumberInput
-              label={t("securityPage.maxQueryDepth", "Max query depth")}
+              label={t("securityPage.maxQueryComplexity", "Max query complexity")}
+              description={t(
+                "securityPage.maxQueryComplexityHint",
+                "Relations, joins, columns and nested queries of one statement, on every interface. The org limit still applies.",
+              )}
               placeholder={t("securityPage.unlimited", "unlimited")}
               min={1}
-              data-testid="role-max-depth"
-              value={roleForm.maxDepth}
+              data-testid="role-max-complexity"
+              value={roleForm.maxComplexity}
               onChange={(v) =>
-                setRoleForm({ ...roleForm, maxDepth: typeof v === "number" ? v : "" })
+                setRoleForm({ ...roleForm, maxComplexity: typeof v === "number" ? v : "" })
               }
             />
           </Group>
           <Group grow>
-            <NumberInput
-              label={t("securityPage.maxQueryNodes", "Max query nodes")}
-              placeholder={t("securityPage.unlimited", "unlimited")}
-              min={1}
-              data-testid="role-max-nodes"
-              value={roleForm.maxNodes}
-              onChange={(v) =>
-                setRoleForm({ ...roleForm, maxNodes: typeof v === "number" ? v : "" })
-              }
-            />
             <NumberInput
               label={t("securityPage.maxQueryTimeMs", "Max query time (ms)")}
               placeholder={t("securityPage.unlimited", "unlimited")}
@@ -923,7 +929,12 @@ export function SecurityRlsPage() {
                       (tableLabelById[r.tableId!] ?? String(r.tableId))
                     )}
                   </Table.Td>
-                  <Table.Td>{r.roleId}</Table.Td>
+                  <Table.Td>
+                    <Group gap="0.35rem" wrap="nowrap">
+                      {r.roleId}
+                      <OriginBadge origin={r.origin} />
+                    </Group>
+                  </Table.Td>
                   <Table.Td>
                     <Text component="code">{r.filterExpr}</Text>
                   </Table.Td>

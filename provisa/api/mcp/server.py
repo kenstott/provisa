@@ -97,6 +97,17 @@ async def _resolve_token_role_async(token: str, state: Any) -> str:
     return _role_for_identity(await _validate_mcp_token(token, state), state)
 
 
+def _with_warnings(result: Any, found: list) -> Any:
+    """``result`` with the call's warnings (REQ-1350) under ``warnings`` — a dict result carries
+    them beside its own keys, any other is wrapped as ``{"result", "warnings"}``."""
+    if not found:
+        return result
+    entries = [w.as_dict() for w in found]
+    if isinstance(result, dict):
+        return {**result, "warnings": entries}
+    return {"result": result, "warnings": entries}
+
+
 def _role_for_identity(identity: Any, state: Any) -> str:
     """The provisa role a validated MCP identity acts as (REQ-1105)."""
     from provisa.auth.role_mapping import resolve_role
@@ -243,10 +254,15 @@ def build_mcp_server(state: Any):
         async def _on_request_thread(*args: Any, **kwargs: Any) -> Any:
             # Async on the MCP loop by necessity: the MCP SDK dispatches tools as coroutines on
             # its own loop, which must keep serving other calls while this one runs.
+            from provisa.core.statement_warnings import collecting
+
             with _request_span(_tracer, f"mcp.{fn.__name__}", transport="mcp"):  # REQ-1910
-                return await run_on_request_thread(
-                    lambda: _within_request(lambda: fn(*args, **kwargs))
-                )
+                # REQ-1350: what a tool's answers say about themselves goes in its result.
+                with collecting() as found:
+                    result = await run_on_request_thread(
+                        lambda: _within_request(lambda: fn(*args, **kwargs))
+                    )
+                return _with_warnings(result, found)
 
         return mcp.tool()(_on_request_thread)
 
@@ -311,11 +327,20 @@ def build_mcp_server(state: Any):
         """Execute SQL through the governed pipeline; returns row-capped JSON rows."""
         # REQ-1882: governance and execution run on this call's request thread; the license nag
         # below writes to the MCP session, whose streams belong to the MCP loop, so it stays here.
-        result = await run_on_request_thread(
-            lambda: _within_request(
-                lambda: tools.run_sql(state, _role(role), sql, limit=limit, offset=offset)
+        from provisa.core.statement_warnings import collecting
+
+        # REQ-1350: one collector for the call (the request thread runs in a copy of this
+        # context); what the answer says about itself goes in the result, under "warnings",
+        # and as a warning log notification.
+        with collecting() as found:
+            result = await run_on_request_thread(
+                lambda: _within_request(
+                    lambda: tools.run_sql(state, _role(role), sql, limit=limit, offset=offset)
+                )
             )
-        )
+        result = _with_warnings(result, found)
+        for warning in found:
+            await ctx.warning(warning.message)
         await _emit_mcp_nag(ctx)  # REQ-1137: out-of-band license nag, once per session
         return result
 

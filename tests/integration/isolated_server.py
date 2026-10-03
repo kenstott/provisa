@@ -212,7 +212,6 @@ class IsolatedServer:
             "ORG_ID": self.org_id,
             "PROVISA_ENGINE": self._engine,
             "PROVISA_CONFIG": self._cfg_path,
-            "PROVISA_CONFIG_REPLACE": "true",
             "PROVISA_IDP": "",
             "PG_PASSWORD": os.environ.get("PG_PASSWORD", "provisa"),
             "FLIGHT_PORT": str(self.flight_port),
@@ -269,8 +268,13 @@ class IsolatedServer:
                     break
             except Exception:
                 if time.monotonic() >= deadline:
+                    # What the server said is read before stop_process removes the file: a
+                    # server that hangs at boot says why in its log, as one that exits does.
+                    _err = self.dump_stderr_debug()
                     self.stop_process()
-                    raise RuntimeError("isolated server did not become healthy in time")
+                    raise RuntimeError(
+                        f"isolated server did not become healthy in time:\n{_err[-3000:]}"
+                    )
                 time.sleep(1)
         if self._await_flight:
             self._await_port(self.flight_port, deadline, "Arrow Flight")

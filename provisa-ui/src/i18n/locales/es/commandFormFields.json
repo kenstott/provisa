@@ -60,6 +60,10 @@
     "maskPattern": "Patrón",
     "maskReplace": "Reemplazar",
     "maskValue": "Valor",
-    "maskPrecision": "Precisión"
+    "maskPrecision": "Precisión",
+    "requiresApproval": "Requiere aprobación",
+    "requiresApprovalHint": "Cada llamada se ejecuta solo cuando el hook de aprobación la aprueba. Sin un hook configurado, las llamadas se rechazan.",
+    "writesTable": "Escribe en la tabla",
+    "writesTableHint": "La tabla registrada que modifica este comando. Tras cada llamada se actualizan los resultados en caché y las vistas materializadas sobre ella."
   }
 }

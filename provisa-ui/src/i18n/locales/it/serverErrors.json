@@ -9,10 +9,15 @@
       "test_endpoint_disabled": "L'endpoint di test è disabilitato (impostare PROVISA_ENABLE_TEST_ENDPOINTS per abilitarlo in ambienti non di produzione).",
       "unknown_action_type": "actionType '{{action_type}}' sconosciuto",
       "unknown_role": "Ruolo '{{role}}' sconosciuto",
-      "webhook_not_found": "Webhook '{{name}}' non trovato"
+      "webhook_not_found": "Webhook '{{name}}' non trovato",
+      "written_table_not_registered": "'{{table}}' non è una tabella registrata della sorgente '{{source_id}}'"
     },
     "ai_models": {
       "vector_model_fields_required": "ogni voce di vector_models richiede id, provider e dimensions"
+    },
+    "api": {
+      "answer_cut": "La risposta per {{table}} è stata troncata a max_pages={{max_pages}} ({{rows}} righe): l'API ha altri dati. Aumenta max_pages o la dimensione di pagina dell'endpoint per leggerla tutta.",
+      "answer_row_cut": "La risposta per {{table}} è stata troncata a max_rows={{max_rows}}: il remoto ha altri dati. Aumenta graphql_remote.max_rows per leggerla tutta."
     },
     "auth": {
       "authentication_required": "Autenticazione richiesta",
@@ -78,6 +83,7 @@
       "no_source_pool": "Nessun pool di connessioni per l'origine '{{source}}'",
       "query_required": "query è obbligatoria",
       "query_timeout": "Query scaduta dopo {{timeout_s}}s",
+      "query_too_complex": "La complessità della query ({{score}}) supera il limite di {{limit}} ({{limit_of}}).",
       "redirect_upload_failed": "Caricamento con redirect non riuscito: {{error}}",
       "request_interrupted": "{{error}}",
       "row_level_key_required": "La tabella '{{table}}' è replicata riga per riga e può essere letta solo tramite la sua chiave ({{key}}). Filtra sulla chiave con un'uguaglianza o un elenco IN, oppure unisci la tabella su una singola colonna.",
@@ -110,18 +116,25 @@
       "coordinator_waking": "L'ambiente si sta avviando. Sarà pronto tra circa due minuti."
     },
     "functions": {
+      "approval_denied": "Approvazione negata per '{{name}}': {{reason}}",
+      "approval_unavailable": "il comando '{{name}}' richiede approvazione e non è configurato alcun hook di approvazione",
       "binding_missing_key": "al binding di funzione per il kind '{{kind}}' manca la chiave obbligatoria '{{key}}'",
       "egress_denied": "uscita verso '{{endpoint}}' negata: host non presente nell'elenco consentiti di uscita UDF (REQ-885 rifiuto predefinito). Aggiungerlo a udf_egress_allowlist per consentirlo.",
       "grpc_call_failed": "chiamata grpc {{target}}{{path}} non riuscita: {{status}}: {{details}}",
       "grpc_method_invalid": "il metodo grpc '{{method}}' deve essere 'Service/Method' o 'pkg.Service.Method'",
+      "json_argument_invalid": "l'argomento '{{argument}}' di '{{name}}' non è un letterale JSON",
       "non_tabular_payload": "la funzione ha restituito un payload non tabellare: {{payload_type}}",
+      "not_a_remote_source": "La sorgente '{{source_id}}' non offre operazioni di scrittura",
+      "operation_not_offered": "La sorgente '{{source_id}}' non offre l'operazione '{{operation}}'",
       "python_callable_invalid": "il callable python '{{spec}}' deve essere 'module:attr'",
+      "remote_refused": "{{source_id}} ha rifiutato {{operation}}: {{answer}}",
       "result_set_ref_invalid": "il riferimento result_set '{{ref}}' deve essere source.schema.table",
       "rowwise_external": "la funzione '{{name}}' (kind={{impl_kind}}) è esterna riga per riga: tutti gli argomenti sono column_value scalari. Dichiarare un argomento relazione table_ref/result_set affinché le chiamate siano per insiemi e raggruppate in batch (REQ-885).",
       "script_failed": "script terminato con codice {{returncode}}: {{stderr}}",
       "source_not_connected": "Origine '{{source_id}}' non connessa",
       "unknown_arg_kind": "arg_kind '{{arg_kind}}' sconosciuto per '{{name}}'",
-      "unknown_impl_kind": "impl_kind della funzione sconosciuto: '{{impl_kind}}'"
+      "unknown_impl_kind": "impl_kind della funzione sconosciuto: '{{impl_kind}}'",
+      "written_table_missing": "il comando '{{name}}' scrive '{{table}}', che non è registrata"
     },
     "graphql_remote": {
       "introspection_failed": "Introspezione non riuscita: {{error}}",
@@ -157,7 +170,6 @@
     },
     "openapi": {
       "database_not_connected": "Database non connesso",
-      "domain_required": "L’origine OpenAPI {{source}} dichiara {{commands}} comando/i e non indica alcun dominio: un comando appartiene a un dominio, quindi la registrazione ne richiede uno",
       "invalid_json": "JSON non valido: {{error}}",
       "refresh_failed": "Aggiornamento non riuscito: {{error}}",
       "registration_failed": "Registrazione non riuscita: {{error}}",
@@ -168,8 +180,8 @@
       "already_exists": "Organizzazione già esistente",
       "auth_required_create": "Autenticazione richiesta per creare un'organizzazione",
       "auth_required_leave": "Autenticazione richiesta per lasciare un'organizzazione",
-      "auto_join_public_domain": "auto_join richiede una regola e-mail limitata a un dominio che controlli: questa corrisponde a {{domain}}.",
       "auto_join_breadth_unacknowledged": "Esamina con attenzione questa regola di adesione automatica o potresti ammettere persone esterne alla tua organizzazione: oltre a {{domains}}, accetta anche indirizzi come {{admits}}. Chiunque appartenga a un dominio che non controlli potrebbe quindi unirsi automaticamente alla tua organizzazione. Conferma di accettare questo rischio per salvarla.",
+      "auto_join_public_domain": "auto_join richiede una regola e-mail limitata a un dominio che controlli: questa corrisponde a {{domain}}.",
       "auto_join_requires_role": "auto_join richiede auto_join_role",
       "auto_join_rule_taken": "Un'altra organizzazione ammette già automaticamente tutti gli indirizzi corrispondenti a questa regola. Due organizzazioni non possono rivendicare gli stessi indirizzi: chiedi loro un invito, oppure restringi la regola a un dominio usato solo dalla tua organizzazione.",
       "auto_join_rule_unbounded": "Questa regola di adesione automatica non ha limiti: ammetterebbe indirizzi di domini che non controlli. Ancorala a un dominio di tua proprietà, ad es. \"@acme\\\\.com$\".",
@@ -193,9 +205,9 @@
       "config_object_edited": "{{name}} è dichiarato nella configurazione. La modifica è salvata; il prossimo caricamento della configurazione riapplicherà il contenuto del file."
     },
     "platform": {
+      "control_plane_role_required": "È richiesto un amministratore della piattaforma.",
       "right_required": "Capacità {{right}} richiesta",
-      "settings_capability_required": "Capacità platform_settings richiesta",
-      "control_plane_role_required": "È richiesto un amministratore della piattaforma."
+      "settings_capability_required": "Capacità platform_settings richiesta"
     },
     "profile": {
       "database_unavailable": "Database non disponibile",
@@ -204,11 +216,12 @@
       "table_not_found": "Tabella {{table_id}} non trovata"
     },
     "replication": {
-      "spool_full": "La build della replica di {{table}} è stata rifiutata: lo spooling della risposta della sorgente richiede {{needed}} byte della directory di spool di questo nodo, oltre il limite di {{limit}} (replication.spool_max_bytes).",
       "answer_not_json": "La risposta letta per la replica di {{table}} non è JSON valido: {{cause}} (nei {{kib}} KiB prima del byte {{before_byte}} della risposta).",
       "no_whole_copy": "La tabella {{schema}}.{{table}} della sorgente {{source}} non ha una copia completa da creare: è replicata riga per riga oppure ha una colonna parametro.",
-      "table_gone": "La tabella {{schema}}.{{table}} della sorgente {{source}} non è più registrata, quindi la sua replica non viene creata.",
       "page_limit_reached": "La replica di {{table}} non è stata creata: la paginazione del suo endpoint si ferma a max_pages={{max_pages}} e l'endpoint aveva altri dati dopo la pagina {{max_pages}} ({{rows}} righe lette). Una replica è l'intera tabella, quindi non viene troncata al limite. Aumenta max_pages o la dimensione di pagina dell'endpoint.",
+      "row_limit_reached": "La replica di {{table}} non è stata creata: una lettura si ferma a max_rows={{max_rows}} (graphql_remote.max_rows) e il remoto aveva altri dati dopo {{rows}} righe. Una replica è l'intera tabella, quindi non viene troncata al limite. Aumenta graphql_remote.max_rows.",
+      "spool_full": "La build della replica di {{table}} è stata rifiutata: lo spooling della risposta della sorgente richiede {{needed}} byte della directory di spool di questo nodo, oltre il limite di {{limit}} (replication.spool_max_bytes).",
+      "table_gone": "La tabella {{schema}}.{{table}} della sorgente {{source}} non è più registrata, quindi la sua replica non viene creata.",
       "waiting_engine_jobs": "il motore ha raggiunto il limite di job in background (replication.engine_jobs)",
       "waiting_source_cap": "la sorgente ha raggiunto il limite di letture live (max_live_concurrency)"
     },
@@ -240,6 +253,7 @@
       "domain_deleted": "Dominio '{{domain}}' eliminato",
       "domain_not_found": "Dominio '{{domain}}' non trovato",
       "fact_registered": "Fatto '{{fact}}' registrato con {{links}} collegamento/i a dimensioni e {{metrics}} metrica/che",
+      "grant_object_not_found": "Nessun {{kind}} chiamato '{{name}}'",
       "invalid_askamerica_key": "Chiave API AskAmerica non valida: {{error}}",
       "invalid_calendar": "calendario non valido: {{error}}",
       "invalid_cardinality": "Cardinalità non valida: '{{cardinality}}'",
@@ -259,12 +273,19 @@
       "no_tables_for_source": "Nessuna tabella registrata per l'origine '{{source}}'",
       "no_view_sql": "La tabella non ha view_sql",
       "not_virtual_view": "La tabella non è una vista virtuale Provisa (source_id != '__derived__')",
+      "paging_above_ceiling": "Tabella {{table}}: max_rows={{max_rows}} supera graphql_remote.max_rows={{ceiling}}; una tabella può abbassare il limite dell'operatore, mai alzarlo.",
+      "paging_connection_rows_only": "La tabella {{table}} è una tabella di connessione: pagina tramite gli argomenti del suo schema e imposta solo il numero massimo di righe.",
+      "paging_endpoint_needs_type": "La tabella {{table}} è un endpoint REST: la sua paginazione indica il tipo di paginazione.",
+      "paging_invalid": "Tabella {{table}}: {{reason}}",
+      "paging_not_paged": "La tabella {{table}} non viene letta pagina per pagina, quindi non accetta paginazione.",
       "query_engine_unavailable": "Motore di query non disponibile",
       "rejection_reason_required": "È richiesto un motivo di rifiuto",
       "relationship_deleted": "Relazione '{{relationship}}' eliminata",
       "relationship_not_found": "Relazione '{{relationship}}' non trovata",
       "relationship_saved": "Relazione '{{relationship}}' salvata",
       "remigrated": "Ripetuta la migrazione di {{source}}.{{table}}",
+      "replicate_contradicts_load_protected": "La protezione dal carico non può essere combinata con Replicare = «Mai»: una tabella protetta dal carico non viene mai letta in tempo reale",
+      "replicate_invalid": "Replicare deve essere «Predefinito», «Mai», «Sempre» o una soglia superiore a 0; ricevuto {{value}}",
       "request_executed": "Eseguita la richiesta di creazione n. {{id}}",
       "request_not_pending": "Richiesta non trovata o già risolta",
       "request_rejected": "Rifiutata la richiesta di creazione n. {{id}}",
@@ -275,6 +296,8 @@
       "role_created": "Ruolo '{{role}}' creato",
       "role_deleted": "Ruolo '{{role}}' eliminato",
       "role_not_found": "Ruolo '{{role}}' non trovato",
+      "role_revoked_from_object": "Ruolo '{{role}}' rimosso da {{kind}} '{{name}}'",
+      "role_revoked_from_table": "Ruolo '{{role}}' rimosso dalle autorizzazioni della tabella {{id}}",
       "scheduled_task_created": "Attività pianificata '{{task}}' creata",
       "schemas_rebuilt": "Schemi ricostruiti",
       "source_cache_updated": "Impostazioni della cache aggiornate per l'origine '{{source}}'",
@@ -286,18 +309,23 @@
       "source_naming_updated": "Convenzione di denominazione aggiornata per l'origine '{{source}}'",
       "source_no_connection": "l'origine '{{source}}' non ha una connessione attiva",
       "source_not_found": "Origine '{{source}}' non trovata",
-      "source_replicate_set": "Replicare impostato per l'origine '{{source}}'",
       "source_renamed": "Origine rinominata '{{old}}' → '{{new}}'",
+      "source_replicate_set": "Replicare impostato per l'origine '{{source}}'",
       "source_type_not_sqlite": "Il tipo di origine '{{type}}' non è sqlite",
       "source_updated": "Origine '{{source}}' aggiornata",
       "sql_required": "sql è obbligatorio per un trigger SQL",
       "table_cache_updated": "TTL della cache aggiornato per la tabella {{table}}",
       "table_deleted": "Tabella {{table}} eliminata",
+      "table_id_not_found": "Tabella {{id}} non trovata",
       "table_load_protection_set": "protezione dal carico impostata per la tabella {{table}}",
       "table_naming_updated": "Convenzione di denominazione aggiornata per la tabella {{table}}",
       "table_not_found": "Tabella {{table}} non trovata",
-      "table_replicate_set": "Replicare impostato per la tabella {{table}}",
+      "table_not_readable": "La credenziale di questa origine non può leggere {{table}}: {{reason}}",
+      "table_paging_updated": "Paginazione aggiornata per la tabella {{table}}.",
       "table_registered": "Tabella '{{table}}' registrata (id={{id}})",
+      "table_registered_fields_omitted": "Tabella '{{table}}' registrata (id={{id}}). Omessi, perché la credenziale dell'origine non può leggerli: {{fields}}",
+      "table_replicate_set": "Replicare impostato per la tabella {{table}}",
+      "table_too_complex": "La tabella '{{table}}' non è stata registrata con le colonne selezionate: {{reason}}. Scegliere meno colonne.",
       "table_updated": "Tabella '{{table}}' aggiornata (id={{id}})",
       "task_deleted": "Attività '{{task}}' eliminata",
       "task_disabled": "Attività '{{task}}' disabilitata",
@@ -312,9 +340,7 @@
       "view_spans_sources": "la vista copre più origini: {{sources}}",
       "webhook_approved": "Webhook '{{webhook}}' approvato",
       "webhook_name_required": "webhook_name è obbligatorio per un trigger webhook",
-      "webhook_not_found": "Webhook '{{webhook}}' non trovato",
-      "replicate_invalid": "Replicare deve essere «Predefinito», «Mai», «Sempre» o una soglia superiore a 0; ricevuto {{value}}",
-      "replicate_contradicts_load_protected": "La protezione dal carico non può essere combinata con Replicare = «Mai»: una tabella protetta dal carico non viene mai letta in tempo reale"
+      "webhook_not_found": "Webhook '{{webhook}}' non trovato"
     },
     "secrets": {
       "still_referenced": "{{secret}} è ancora nominato da {{count}} valore/i memorizzato/i in questa organizzazione. Modifica o rimuovi ciascuno, poi eliminalo di nuovo."

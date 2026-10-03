@@ -97,6 +97,7 @@ async def _relate(db: Database, rel_id: str, source: str, column: str, target: s
                 source_column=column,
                 target_column=key,
                 cardinality="many-to-one",
+                origin="admin",
             )
         )
 
@@ -115,6 +116,7 @@ async def test_a_relationship_nothing_is_published_over_goes_with_its_tags(plane
                 object_type="relationship",
                 object_key="orders_customers",
                 relationship_id="orders_customers",
+                origin="admin",
             )
         )
         assert await rel_repo.delete(conn, "orders_customers") is True

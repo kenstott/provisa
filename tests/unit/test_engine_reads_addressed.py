@@ -282,43 +282,48 @@ def _registry(monkeypatch, *tables: tuple[str, str, str]) -> SimpleNamespace:
     return SimpleNamespace(catalog_for=lambda source_id: source_id.replace("-", "_"))
 
 
-async def test_a_registered_name_resolves_to_its_catalog_physical_name(monkeypatch):
+async def test_a_registered_table_resolves_to_its_catalog_physical_name(monkeypatch):
     from provisa.federation.replica_routing import registered_table_key
+    from provisa.mv.models import TableIdentity
 
     state = _registry(monkeypatch, ("sales-pg", "public", "orders"), ("crm", "main", "customers"))
-    assert await registered_table_key(build_engine("trino"), state, "orders") == (
+    orders = TableIdentity("sales-pg", "public", "orders")
+    assert await registered_table_key(build_engine("trino"), state, orders) == (
         "sales_pg",
         "public",
         "orders",
     )
     # An engine whose SQL has no catalog names the table with the catalog folded into the schema.
-    assert await registered_table_key(build_engine("pg"), state, "orders") == (
+    assert await registered_table_key(build_engine("pg"), state, orders) == (
         None,
         "sales_pg_public",
         "orders",
     )
 
 
-async def test_a_name_no_table_registers_or_two_sources_register_is_refused(monkeypatch):
-    from provisa.federation.replica_routing import (
-        AmbiguousRegisteredTable,
-        UnknownRegisteredTable,
-        registered_table_key,
-    )
+async def test_two_sources_same_named_tables_each_resolve_and_an_unknown_one_is_refused(
+    monkeypatch,
+):
+    """Two sources both register ``orders``: each is addressed by its identity, never by the
+    name alone."""
+    from provisa.federation.replica_routing import UnknownRegisteredTable, registered_table_key
+    from provisa.mv.models import TableIdentity
 
     state = _registry(monkeypatch, ("sales-pg", "public", "orders"), ("erp", "dbo", "orders"))
     engine = build_engine("trino")
-    with pytest.raises(UnknownRegisteredTable):
-        await registered_table_key(engine, state, "customers")
-    with pytest.raises(AmbiguousRegisteredTable) as refused:
-        await registered_table_key(engine, state, "orders")
-    assert "erp" in str(refused.value) and "sales-pg" in str(refused.value)
+    assert await registered_table_key(engine, state, TableIdentity("erp", "dbo", "orders")) == (
+        "erp",
+        "dbo",
+        "orders",
+    )
+    with pytest.raises(UnknownRegisteredTable, match="sales-pg/public.customers"):
+        await registered_table_key(engine, state, TableIdentity("sales-pg", "public", "customers"))
 
 
 async def test_a_join_pattern_reads_a_replica_served_table_at_its_replica(monkeypatch):
     """The reason the names are resolved: once a join-pattern table has an engine name, the
     address seam can serve it from its replica."""
-    from provisa.mv.models import JoinPattern, MVDefinition
+    from provisa.mv.models import JoinPattern, MVDefinition, TableIdentity
     from provisa.mv.refresh import _build_refresh_sql
 
     rt = _Runtime()
@@ -327,6 +332,7 @@ async def test_a_join_pattern_reads_a_replica_served_table_at_its_replica(monkey
     mv = MVDefinition(
         id="mv-orders-customers",
         source_tables=["orders", "customers"],
+        inputs=[TableIdentity("src", "public", t) for t in ("orders", "customers")],
         target_catalog="provisa_admin",
         target_schema="org_acme_mv_cache",
         join_pattern=JoinPattern(
@@ -341,3 +347,40 @@ async def test_a_join_pattern_reads_a_replica_served_table_at_its_replica(monkey
 
     assert 'FROM "provisa_admin"."org_acme_replicas"."src__public__orders" AS "orders" ' in sql
     assert 'JOIN "src"."public"."customers" AS "customers" ON ' in sql
+
+
+async def test_a_join_pattern_view_keeps_reading_its_table_after_another_source_registers_it(
+    monkeypatch,
+):
+    """The view was bound to src's ``customers`` when it was declared. Another source registers a
+    ``customers`` afterwards — that registration is not refused — and the view's refresh still
+    reads src's."""
+    from provisa.mv.models import JoinPattern, MVDefinition, TableIdentity
+    from provisa.mv.refresh import _build_refresh_sql
+
+    rt = _Runtime()
+    state = _registry(
+        monkeypatch,
+        ("src", "public", "orders"),
+        ("src", "public", "customers"),
+        ("crm", "public", "customers"),  # registered after the view
+    )
+    rt._state.catalog_for = state.catalog_for
+    mv = MVDefinition(
+        id="mv-orders-customers",
+        source_tables=["orders", "customers"],
+        inputs=[TableIdentity("src", "public", t) for t in ("orders", "customers")],
+        target_catalog="provisa_admin",
+        target_schema="org_acme_mv_cache",
+        join_pattern=JoinPattern(
+            left_table="orders",
+            left_column="customer_id",
+            right_table="customers",
+            right_column="id",
+        ),
+    )
+
+    sql = await _build_refresh_sql(mv, rt)
+
+    assert 'JOIN "src"."public"."customers" AS "customers" ON ' in sql
+    assert '"crm"' not in sql

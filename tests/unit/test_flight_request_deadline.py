@@ -206,4 +206,4 @@ def test_every_lazy_stream_do_get_returns_is_under_the_deadline():
     assert "flight.GeneratorStream(" not in src
     assert src.count("generator_stream(") == 3  # the third streams a materialized table
     assert "_metered_batches(stream_within_deadline(batch_gen))" in src
-    assert "generator_stream(arrow_schema, stream_within_deadline(batch_gen))" in src
+    assert "generator_stream(arrow_schema, stream_within_deadline(batch_gen), plan.warnings)" in src

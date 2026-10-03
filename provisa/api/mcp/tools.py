@@ -679,7 +679,7 @@ async def create_data_product(  # REQ-1855
             sla=sla,
             support=support,
         )
-        await data_product_repo.upsert(conn, model)
+        await data_product_repo.upsert(conn, model, origin="admin")
     return {"id": id}
 
 
@@ -735,7 +735,7 @@ async def upsert_metric(  # REQ-1856
     pool = state.tenant_db
     assert pool is not None
     async with pool.acquire() as conn:
-        await metric_repo.upsert(conn, model)
+        await metric_repo.upsert(conn, model, origin="admin")
         from provisa.api.admin._metric_views import regenerate_metric_views
 
         regenerated = await regenerate_metric_views(conn, name)

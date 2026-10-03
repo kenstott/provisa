@@ -80,7 +80,7 @@ async def _writable_by(conn):
 async def test_reintrospection_preserves_admin_grant(db):
     async with db.acquire() as conn:
         # 1. Discovered mutation registers default-deny (empty writable_by).
-        await function_repo.upsert_function(conn, _fn([]))
+        await function_repo.upsert_function(conn, _fn([]), origin="admin")
         assert await _writable_by(conn) == []
 
         # 2. Admin grants the mutation to a role (by name). writable_by is JSONB, so bind
@@ -94,14 +94,14 @@ async def test_reintrospection_preserves_admin_grant(db):
         assert await _writable_by(conn) == ["ops"]
 
         # 3. Re-introspection upserts by name with empty writable_by — grant must survive.
-        await function_repo.upsert_function(conn, _fn([]))
+        await function_repo.upsert_function(conn, _fn([]), origin="admin")
         assert await _writable_by(conn) == ["ops"]
 
 
 async def test_explicit_nonempty_grant_still_applies(db):
     async with db.acquire() as conn:
-        await function_repo.upsert_function(conn, _fn(["ops"]))
+        await function_repo.upsert_function(conn, _fn(["ops"]), origin="admin")
         assert await _writable_by(conn) == ["ops"]
         # An explicit, non-empty writable_by (e.g. config-declared) overrides.
-        await function_repo.upsert_function(conn, _fn(["ops", "analysts"]))
+        await function_repo.upsert_function(conn, _fn(["ops", "analysts"]), origin="admin")
         assert await _writable_by(conn) == ["ops", "analysts"]

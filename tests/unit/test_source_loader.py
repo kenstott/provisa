@@ -38,8 +38,9 @@ def _src(sid, stype):
     return SimpleNamespace(id=sid, type=SimpleNamespace(value=stype))
 
 
-def _tbl(schema, table):
-    return SimpleNamespace(schema_name=schema, table_name=table)
+def _tbl(schema, table, pagination=None):
+    # A registry row (registry_view): it carries the table's paging, None when it sets none.
+    return SimpleNamespace(schema_name=schema, table_name=table, pagination=pagination)
 
 
 @pytest.mark.asyncio
@@ -103,7 +104,9 @@ async def test_make_openapi_loader_calls_and_flattens(monkeypatch):
         calls["params"] = params
         calls["base_url"] = base_url
         calls["auth"] = auth
-        return [{"data": [{"id": 1}, {"id": 2}]}]
+        from provisa.api_source.caller import ApiAnswer
+
+        return ApiAnswer([{"data": [{"id": 1}, {"id": 2}]}])
 
     def _fake_flatten(page, root, columns, normalizer):
         return list(page[root])  # trivial: root points at the row list
@@ -137,9 +140,20 @@ async def test_make_openapi_loader_missing_endpoint_raises():
 async def test_make_graphql_remote_loader_forwards_query(monkeypatch):
     captured: dict = {}
 
-    async def _fake_execute_remote(*, url, auth, field_name, columns):
-        captured.update(url=url, auth=auth, field_name=field_name, columns=columns)
-        return [{"id": 1}, {"id": 2}]
+    async def _fake_execute_remote(
+        *, url, auth, field_name, columns, rows_path, max_rows, error_policy
+    ):
+        captured.update(
+            url=url,
+            auth=auth,
+            field_name=field_name,
+            columns=columns,
+            rows_path=rows_path,
+            max_rows=max_rows,
+        )
+        from provisa.graphql_remote.executor import RemoteAnswer
+
+        return RemoteAnswer([{"id": 1}, {"id": 2}])
 
     monkeypatch.setattr("provisa.graphql_remote.executor.execute_remote", _fake_execute_remote)
 
@@ -160,9 +174,11 @@ async def test_make_graphql_remote_loader_forwards_query(monkeypatch):
             ],
         }
     }
-    load = make_graphql_remote_loader(gql_sources)
+    load = make_graphql_remote_loader(gql_sources, max_rows=500)
     rows = await load(_src("gql", "graphql_remote"), _tbl("default", "orders"))
     assert rows == [{"id": 1}, {"id": 2}]
+    assert captured["rows_path"] is None  # not a connection table
+    assert captured["max_rows"] == 500
     assert captured["url"] == "https://gql.test/graphql"
     assert captured["field_name"] == "allOrders"  # field_name overrides the table name
     assert captured["columns"] == ["id", "total { amount }"]  # gql_selection overrides the name
@@ -170,7 +186,7 @@ async def test_make_graphql_remote_loader_forwards_query(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_make_graphql_remote_loader_missing_registration_raises():
-    load = make_graphql_remote_loader({})
+    load = make_graphql_remote_loader({}, max_rows=500)
     with pytest.raises(UnsupportedSourceFetch, match="no matching"):
         await load(_src("gql", "graphql_remote"), _tbl("default", "orders"))
 
@@ -189,3 +205,76 @@ async def test_rss_loader_raises_when_the_feed_fetch_fails(monkeypatch):
     source = SimpleNamespace(federation_hints={"feed_url": "http://feed.invalid/rss"})
     with pytest.raises(ConnectionError, match="feed down"):
         await make_rss_loader()(source, SimpleNamespace(table_name="items"))
+
+
+@pytest.mark.asyncio
+async def test_a_connection_tables_replica_source_reads_it_a_page_at_a_time(monkeypatch):
+    """REQ-1915/REQ-1923: a connection table's build is a cursor over its pages (one held at a
+    time), not a document read whole into memory; and a land of it is the whole table."""
+    from provisa.federation.replica_source import CursorSource
+
+    pulled: list[str] = []
+
+    async def _pages(url, auth, field_name, columns, rows_path, *, table, max_rows, error_policy):
+        assert (table, max_rows) == ("gql.issues", 500)
+        for page in ([{"id": 1}, {"id": 2}], [{"id": 3}]):
+            pulled.append("page")
+            yield page
+
+    monkeypatch.setattr("provisa.graphql_remote.executor.whole_connection", _pages)
+    gql_sources = {
+        "gql": {
+            "url": "https://gql.test/graphql",
+            "tables": [
+                {
+                    "sql_name": "issues",
+                    "field_name": "issues",
+                    "rows_path": ["nodes"],
+                    "columns": [{"name": "id"}],
+                }
+            ],
+        }
+    }
+    load = make_graphql_remote_loader(gql_sources, max_rows=500)
+    source = load.replica_source(
+        _src("gql", "graphql_remote"), _tbl("default", "issues"), [("id", "bigint")]
+    )
+    assert isinstance(source, CursorSource)
+    batches = source.batches(10)
+    first = await anext(batches)
+    assert first.to_pylist() == [{"id": 1}, {"id": 2}] and pulled == ["page"]
+    assert [b.to_pylist() async for b in batches] == [[{"id": 3}]]
+    assert await load(_src("gql", "graphql_remote"), _tbl("default", "issues")) == [
+        {"id": 1},
+        {"id": 2},
+        {"id": 3},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_connection_table_is_read_up_to_its_own_bound_when_it_sets_one(monkeypatch):
+    """REQ-318: a connection table's pagination.max_rows (which may only lower the operator's
+    graphql_remote.max_rows) is the bound its build reads to; with none, the operator's."""
+    from provisa.core.paging import PaginationConfig
+
+    bounds: list[int] = []
+
+    async def _pages(url, auth, field_name, columns, rows_path, *, table, max_rows, error_policy):
+        bounds.append(max_rows)
+        yield [{"id": 1}]
+
+    monkeypatch.setattr("provisa.graphql_remote.executor.whole_connection", _pages)
+    gql_sources = {
+        "gql": {
+            "url": "https://gql.test/graphql",
+            "tables": [
+                {"sql_name": "issues", "field_name": "issues", "rows_path": ["nodes"],
+                 "columns": [{"name": "id"}]}
+            ],
+        }
+    }  # fmt: skip
+    load = make_graphql_remote_loader(gql_sources, max_rows=500)
+    own = _tbl("default", "issues", PaginationConfig(max_rows=20))
+    await load(_src("gql", "graphql_remote"), own)
+    await load(_src("gql", "graphql_remote"), _tbl("default", "issues"))
+    assert bounds == [20, 500]

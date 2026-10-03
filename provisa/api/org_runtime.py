@@ -232,6 +232,11 @@ class OrgRuntime:
     # force here within the reload interval; no request reads the control plane for it.
     model_stamp: int | None = None
     settings_stamp: int | None = None
+    # REQ-826: the tenant plane's ``replica`` stamp ``replica_routes`` was published at (read
+    # before the registry was). The stamp moves when a busy table is promoted or demoted and
+    # when a promoted table's first replica completes; the watcher then republishes the routes
+    # (``replica_routes.generation`` moves only when they differ).
+    replica_stamp: int | None = None
     # REQ-1914: what each ``sources`` row held when this runtime last built its per-source state
     # (pool, dialect, catalog name), so a reload rebuilds that state only for a source whose row
     # was added, changed or removed. ``None`` until the first schema build.

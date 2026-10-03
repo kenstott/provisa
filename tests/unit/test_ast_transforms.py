@@ -19,14 +19,20 @@ from provisa.cache.values_cte import build_values_cte_sql
 from provisa.compiler.sql_gen import CompiledQuery, rewrite_hot_joins
 
 
+# The registered ids of the tables these queries read.
+_IDS = {"orders": 1, "countries": 2, "customers": 3}
+
+
 def _mgr(entries: dict[str, HotTableEntry]) -> HotTableManager:
     mgr = HotTableManager(redis_url=None, auto_threshold=1000, max_rows=1000)
-    mgr._hot_tables = entries
+    for entry in entries.values():
+        mgr.hold(entry)
     return mgr
 
 
 def _entry(name: str, rows: list[dict], cols: list[str]) -> HotTableEntry:
     return HotTableEntry(
+        table_id=_IDS[name],
         table_name=name,
         catalog="pg",
         schema="public",
@@ -37,7 +43,14 @@ def _entry(name: str, rows: list[dict], cols: list[str]) -> HotTableEntry:
 
 
 def _compiled(sql: str) -> CompiledQuery:
-    return CompiledQuery(sql=sql, params=[], root_field="orders", columns=[], sources={"pg"})
+    return CompiledQuery(
+        sql=sql,
+        params=[],
+        root_field="orders",
+        columns=[],
+        sources={"pg"},
+        table_ids=frozenset(_IDS.values()),
+    )
 
 
 def test_hot_cte_output_is_parseable_and_structure_preserved():

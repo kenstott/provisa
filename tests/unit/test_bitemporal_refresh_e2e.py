@@ -16,6 +16,8 @@ from __future__ import annotations
 import duckdb
 import pytest
 
+from tests.helpers import hold_registered_tables
+
 from provisa.executor.result import QueryResult
 from provisa.mv.bitemporal import BitemporalSpec, reconstruct_as_of_sql
 from provisa.mv.models import MVDefinition
@@ -41,6 +43,12 @@ class DuckEngine:
         if desc is None:
             return QueryResult(rows=[], column_names=[])
         return QueryResult(rows=cur.fetchall(), column_names=[d[0] for d in desc])
+
+
+@pytest.fixture(autouse=True)
+def _model_holds_base(monkeypatch):
+    """The registered table the view reads (its input resolves against the model)."""
+    hold_registered_tables(monkeypatch, "base")
 
 
 def _mv(mode: str) -> MVDefinition:

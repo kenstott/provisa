@@ -343,6 +343,9 @@ def _check_egress(state, endpoint: str, kind: str) -> None:
 # --------------------------------------------------------------------------- #
 
 _EXTERNAL_KINDS = frozenset({"http", "grpc"})
+# Kinds whose arguments go to the implementation as given: a source's own procedure, and a
+# source's write operation, which is passed through as is (REQ-1924).
+_PASSED_THROUGH_KINDS = frozenset({"source_procedure", "source_operation"})
 _RELATION_ARG_KINDS = frozenset({"table_ref", "result_set"})
 
 
@@ -391,6 +394,42 @@ async def _exec_source_procedure(fn: dict, args: dict, state, _payload, _session
 
     cols = result.column_names
     return [{c: _convert_value(v) for c, v in zip(cols, r)} for r in result.rows]
+
+
+def _json_arguments_from_sql(fn: dict, args: dict) -> dict:
+    """REQ-1924: a source operation's arguments are JSON values. The SQL surfaces pass a call's
+    arguments by position (``a0``, ``a1`` …) as SQL literals, so each is written there as a JSON
+    literal -- ``'{"title": "x"}'``, ``'"text"'``, ``'3'`` -- and is read here as the JSON it
+    spells. Arguments passed by name come from a surface that carries JSON values already."""
+    keys = list(args)
+    if not (keys and all(k == f"a{i}" for i, k in enumerate(keys))):
+        return args
+    bound = _bind_arg_names(fn, args)
+    decoded: dict = {}
+    for name, value in bound.items():
+        if not isinstance(value, str):
+            decoded[name] = value
+            continue
+        try:
+            decoded[name] = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ApiError(
+                422,
+                "functions.json_argument_invalid",
+                f"argument {name!r} of {fn.get('name', '')!r} is not a JSON literal: {exc}",
+                name=fn.get("name", ""),
+                argument=name,
+            ) from exc
+    return decoded
+
+
+async def _exec_source_operation(fn: dict, args: dict, state, _payload, _session) -> list[dict]:
+    """REQ-1924: a source's write operation, called with the arguments as given."""
+    from provisa.executor.source_operation import call_operation
+
+    return await call_operation(
+        state, fn["source_id"], fn["function_name"], _json_arguments_from_sql(fn, args)
+    )
 
 
 async def _exec_script(
@@ -460,6 +499,7 @@ def _rows_from_response(
 
 _EXECUTORS = {
     "source_procedure": _exec_source_procedure,
+    "source_operation": _exec_source_operation,
     "script": _exec_script,
     "http": _exec_http,
     "grpc": _exec_grpc,
@@ -508,7 +548,7 @@ async def dispatch_function(  # REQ-885, REQ-886
     identity = "definer" if fn.get("materialize") else "invoker"
     _reject_rowwise_external(fn)
 
-    if impl_kind == "source_procedure":
+    if impl_kind in _PASSED_THROUGH_KINDS:
         payload: dict = args
         input_refs: list[str] = []
     else:

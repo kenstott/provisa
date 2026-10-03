@@ -39,6 +39,7 @@ from graphql import GraphQLSyntaxError, OperationType
 from pydantic import BaseModel
 
 from provisa.core import request_deadline
+from provisa.core.statement_warnings import collecting
 from provisa.api.errors import ApiError
 from provisa.cache.key import cache_key, is_cacheable
 from provisa.cache.middleware import build_cache_headers, check_cache, decode_cached_result
@@ -74,6 +75,7 @@ from provisa.api.data.endpoint_helpers import (
     _detect_introspection,
     _inject_probe_limit,
     _inject_stats_into_response,
+    _inject_warnings_into_response,
     _parse_accept,
     _record_per_source_stats,
 )
@@ -332,19 +334,6 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
             )
             return JSONResponse({"data": result.data})
 
-        # REQ-1174: per-role query-complexity guard at the IR-compile boundary. Introspection
-        # above is exempt (schema meta — depth-limiting it breaks GraphQL tooling). Depth is
-        # measured on the AST (the normalized IR flattens nesting into joins, so it is not
-        # recoverable there); a query over a role's depth/node limit is rejected BEFORE any SQL is
-        # planned or run. 413 = "query too large".
-        from provisa.compiler.limits import QueryLimitError, enforce_limits, role_query_limits
-
-        _max_depth, _max_nodes, _ = role_query_limits(role)
-        try:
-            enforce_limits(document, max_depth=_max_depth, max_nodes=_max_nodes)
-        except QueryLimitError as e:
-            raise HTTPException(status_code=413, detail=str(e))
-        # (the role's max_query_time_ms is applied where execution is wrapped — _handle_query.)
     steward_hint = directives.steward_hint
 
     # REQ-1910: request entry for GraphQL over HTTP — the same resolution the pipeline's other
@@ -429,58 +418,61 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     # What the request's terminal notes for that record: the route(s), the rows, and whether a
     # statement of the request already wrote its own row (an action field).
     _audit_outcome = bind_request_audit()
-    try:
-        if (x_provisa_normalized or "").lower() == "true" and not is_mut:
-            response = await _handle_normalized(
-                document, ctx, rls, state, effective_variables, role_id, role
-            )
-        elif is_mut:
-            response = await _handle_mutation(
-                document,
-                ctx,
+    # REQ-1350: one collector for the request: whatever its statements find to say about their
+    # answers (an API answer cut at max_pages) goes into extensions.warnings below.
+    with collecting() as _request_warnings:
+        try:
+            if (x_provisa_normalized or "").lower() == "true" and not is_mut:
+                response = await _handle_normalized(
+                    document, ctx, rls, state, effective_variables, role_id, role
+                )
+            elif is_mut:
+                response = await _handle_mutation(
+                    document,
+                    ctx,
+                    state,
+                    effective_variables,
+                    role_id,
+                    raw_request,
+                )
+            else:
+                response = await _handle_query(
+                    document,
+                    ctx,
+                    rls,
+                    state,
+                    effective_variables,
+                    role,
+                    output_format,
+                    role_id,
+                    force_redirect=force_redirect,
+                    redirect_threshold=effective_threshold,
+                    redirect_format=redirect_format,
+                    as_of=_as_of,  # REQ-1163
+                    steward_hint=steward_hint,
+                    query_session_props=directives.to_session_props(),
+                    cache_ttl=directives.cache_ttl,
+                    cache_opt_in=directives.cache_opt_in,  # REQ-544 (amended): per-request opt-in
+                    query_text=request.query,
+                    # REQ-595: the response-cache tenant every surface shares (cache.tenancy) — the
+                    # one write paths invalidate under.
+                    org_id=cache_tenant(state),
+                    plan=plan,
+                    plan_request=plan_request,
+                    directives=directives,
+                )
+        except Exception as exc:
+            # The refusal or failure is the fact the row records (policy_denials reads the 403s).
+            audit_graphql_request(
                 state,
-                effective_variables,
                 role_id,
-                raw_request,
-            )
-        else:
-            response = await _handle_query(
-                document,
+                request.query,
                 ctx,
-                rls,
-                state,
-                effective_variables,
-                role,
-                output_format,
-                role_id,
-                force_redirect=force_redirect,
-                redirect_threshold=effective_threshold,
-                redirect_format=redirect_format,
-                as_of=_as_of,  # REQ-1163
-                steward_hint=steward_hint,
-                query_session_props=directives.to_session_props(),
-                cache_ttl=directives.cache_ttl,
-                cache_opt_in=directives.cache_opt_in,  # REQ-544 (amended): per-request opt-in
-                query_text=request.query,
-                # REQ-595: the response-cache tenant every surface shares (cache.tenancy) — the
-                # one write paths invalidate under.
-                org_id=cache_tenant(state),
-                plan=plan,
-                plan_request=plan_request,
-                directives=directives,
+                getattr(exc, "status_code", 500),
+                _audit_started,
+                _audit_outcome,
             )
-    except Exception as exc:
-        # The refusal or failure is the fact the row records (policy_denials reads the 403s).
-        audit_graphql_request(
-            state,
-            role_id,
-            request.query,
-            ctx,
-            getattr(exc, "status_code", 500),
-            _audit_started,
-            _audit_outcome,
-        )
-        raise
+            raise
     audit_graphql_request(
         state,
         role_id,
@@ -491,6 +483,8 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
         _audit_started,
         _audit_outcome,
     )
+    if _request_warnings:
+        response = _inject_warnings_into_response(response, _request_warnings)
     if (x_provisa_normalized or "").lower() == "true" and not is_mut:
         return response
 
@@ -590,6 +584,20 @@ async def _prepare_compiled(
             detail={"violations": [{"code": v.code, "message": v.message} for v in _violations]},
         )
 
+    # REQ-1174: the complexity guard, on the semantic statement and before it is governed -- the
+    # same check the pipeline's other two governing stages make (pgwire._pipeline). 413: the
+    # query asks for too much, not for something the role may not see.
+    import sqlglot
+
+    from provisa.compiler.complexity import ComplexityLimitExceeded, guard_complexity
+
+    try:
+        guard_complexity(
+            sqlglot.parse_one(semantic_sql_for_validation, read="postgres"), gov_ctx, ctx, role
+        )
+    except ComplexityLimitExceeded as too_complex:
+        raise HTTPException(status_code=413, detail=str(too_complex)) from too_complex
+
     compiled.sql = apply_governance(semantic_sql_for_validation, gov_ctx)
     # REQ-1682: session-variable predicates resolve to the request's literals on every route —
     # nothing SETs them on a direct Postgres connection, so a native current_setting would raise.
@@ -645,14 +653,15 @@ async def _prepare_compiled(
     return compiled, mv_used
 
 
-def cached_field_rows(cached: CachedResult, root_field: str) -> Any:  # REQ-544, REQ-1896
-    """The rows a GraphQL Route.CACHE hit serves for ``root_field``: the MISS stored the whole
-    serialized response (``{"data": {root_field: rows}}``, _store_response_cache) through the typed
-    codec, so the rows sit under ``data`` -> ``root_field`` of the decoded payload. Indexed, not
-    ``.get(..., [])``: a missing key is a writer/reader shape mismatch, and defaulting it served an
-    empty result for every hit."""
+def cached_field_rows(cached: CachedResult, compiled: Any) -> Any:  # REQ-544, REQ-1896
+    """The rows a GraphQL Route.CACHE hit serves for the field ``compiled`` reads. The MISS stored
+    the field's rows alias-free (``{"data": {<field>: rows}}``, ``response_cache_entry``) through
+    the typed codec: the key decides the rows (every alias below the root is in the SQL), so two
+    reads of one field under different aliases share the entry, and the caller places the rows
+    under its own alias. Indexed, not ``.get(..., [])``: a missing key is a writer/reader shape
+    mismatch, and defaulting it served an empty result for every hit."""
     cached_data, _ = decode_cached_result(cached)  # REQ-1896: typed binary, not lossy JSON
-    return cached_data["data"][root_field]
+    return cached_data["data"][compiled.canonical_field]
 
 
 async def _execute_one_field(
@@ -731,7 +740,7 @@ async def _execute_one_field(
         else decision.route.name.lower()
     )
     if decision.route == Route.CACHE and cached is not None:
-        field_rows = cached_field_rows(cached, root_field)
+        field_rows = cached_field_rows(cached, compiled)
         _qs_mod.record(
             field=root_field,
             source="cache",
@@ -1061,11 +1070,11 @@ async def _handle_query(
     # REQ-1174: cap execution wall-time at the tighter of this transport's request timeout
     # (REQ-1905: GraphQL's own value, else the default) and the role's max_query_time_ms (None →
     # the transport's only). Applied to every wait_for below.
-    from provisa.compiler.limits import role_query_limits as _rql
+    from provisa.compiler.limits import role_max_query_time_ms
     from provisa.core.limits import request_timeout_for, request_timeout_setting
 
     _transport_timeout = request_timeout_for("graphql")
-    _rt_ms = _rql(role)[2]
+    _rt_ms = role_max_query_time_ms(role)
     _role_timeout = (
         _transport_timeout if _rt_ms is None else min(_transport_timeout, _rt_ms / 1000.0)
     )

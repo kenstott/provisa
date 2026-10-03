@@ -535,21 +535,21 @@ Four background loops start during app lifespan (`api/app.py`):
 | Service | Interval | Purpose |
 | --------- | ---------- | --------- |
 | MV refresh loop | 30 s | Polls `get_due_for_refresh()`, executes CTAS or DELETE+INSERT on stale MVs |
-| Warm table manager | Configurable | Promotes frequently-queried tables to Iceberg local SSD cache |
+| Hot replication evaluation | `replication.hot_interval` | Promotes a table whose statement count passed its threshold and requests its replica; demotes one that fell below half. Runs in the one process holding the scheduler lock |
 | Hot table loader | Configurable | Loads small reference tables into in-memory cache for sub-millisecond access |
 | API source poller | Per-source interval | Re-fetches and re-caches remote REST/GraphQL/gRPC sources |
 
 (REQ-160, REQ-238, REQ-239, REQ-236)
 
-### Hot/Warm Table Caching Tiers
+### Hot Tables and Replicated-When-Busy Tables
 
 | Tier | Storage | Promotion criteria | Access latency |
 | ------ | --------- | ------------------- | ---------------- |
 | Hot | In-process memory | Row count < threshold, or is a relationship target | <1 ms |
-| Warm | Iceberg on local SSD | Query frequency threshold exceeded | ~5–20 ms |
+| Replicated when busy | Replica in the engine's store | `replicate` is Default or Hot-N and the governed statements reading the table passed its threshold | The engine's own read of its store |
 | Cold | Remote source | Default | 50–500 ms |
 
-(REQ-230, REQ-236, REQ-238, REQ-241)
+A table lives in at most one of the two: a table the hot tier manages is not replicated for being busy. (REQ-230, REQ-236, REQ-238, REQ-241, REQ-826)
 
 ## Metadata Import (Hasura v2 / DDN)
 

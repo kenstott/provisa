@@ -56,32 +56,46 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import and_, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
+from provisa.core import config_stamp
 from provisa.core.schema_org import replica_state
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from provisa.core.database import Connection
 
 #: A replica's key: the registered identity of its table.
 ReplicaKey = tuple[str, str, str]
 
 
-async def set_promoted(conn: "Connection", key: ReplicaKey, promoted: bool) -> None:
+async def set_promoted(conn: "Connection", key: ReplicaKey, promoted: bool) -> bool:
     """Record that the table ``key`` is (or is no longer) promoted. The one write site of the
-    promoted flag."""
+    promoted flag. True when the flag changed.
+
+    A change is one of the two transitions that move a table between its live read and its
+    replica (the other is ``mark_first_completion``): it advances the replica-state stamp in
+    the same transaction, so every process republishes its routes. Demotion takes the table
+    out of ``serving_keys`` at once; its replica is left for the replicator to retire."""
     source_id, schema_name, table_name = key
-    values = {
-        "source_id": source_id,
-        "schema_name": schema_name,
-        "table_name": table_name,
-        "promoted": promoted,
-    }
-    if promoted:
-        values["promoted_at"] = datetime.now(UTC)
-    await conn.upsert(
-        replica_state,
-        values,
-        index_elements=["source_id", "schema_name", "table_name"],
-    )
+    async with conn.transaction():
+        row = (await conn.execute_core(select(replica_state.c.promoted).where(_is(key)))).fetchone()
+        if (bool(row[0]) if row is not None else False) == promoted:
+            return False
+        values = {
+            "source_id": source_id,
+            "schema_name": schema_name,
+            "table_name": table_name,
+            "promoted": promoted,
+        }
+        if promoted:
+            values["promoted_at"] = datetime.now(UTC)
+        await conn.upsert(
+            replica_state,
+            values,
+            index_elements=["source_id", "schema_name", "table_name"],
+        )
+        await config_stamp.advance(conn, config_stamp.REPLICA)
+    return True
 
 
 async def promoted_keys(conn: "Connection") -> frozenset[ReplicaKey]:
@@ -92,6 +106,64 @@ async def promoted_keys(conn: "Connection") -> frozenset[ReplicaKey]:
         ).where(replica_state.c.promoted.is_(True))
     )
     return frozenset((r[0], r[1], r[2]) for r in result.fetchall())
+
+
+async def promotion(
+    conn: "Connection", store: "Callable[[], str]"
+) -> tuple[frozenset[ReplicaKey], frozenset[ReplicaKey]]:
+    """``(promoted, serving)``: the tables that passed their Hot threshold (REQ-826), and those
+    of them whose replica exists in the store ``store`` identifies
+    (``replica_builds.store_identity``) — the ones whose reads go to their replica. A promoted
+    table that is not serving is read live while its replica is built; a replica built in
+    another engine's store is not one this engine can read."""
+    result = await conn.execute_core(
+        select(
+            replica_state.c.source_id,
+            replica_state.c.schema_name,
+            replica_state.c.table_name,
+            replica_state.c.completed_at,
+            replica_state.c.built_store,
+        ).where(replica_state.c.promoted.is_(True))
+    )
+    rows = result.fetchall()
+    built = [r for r in rows if r[3] is not None]
+    # ``store`` is asked only when a promoted table has a completed build to place: a deployment
+    # with nothing promoted needs no store, and may have none (an engine that is not its own
+    # store, with none configured) — its registry is read all the same.
+    here = store() if built else None
+    return (
+        frozenset((r[0], r[1], r[2]) for r in rows),
+        frozenset((r[0], r[1], r[2]) for r in built if r[4] == here),
+    )
+
+
+async def serving_keys(conn: "Connection", store: str) -> frozenset[ReplicaKey]:
+    """The promoted tables served from their replica in ``store`` (see :func:`promotion`)."""
+    return (await promotion(conn, lambda: store))[1]
+
+
+async def mark_first_completion(conn: "Connection", key: ReplicaKey, store: str) -> bool:
+    """Called by ``record_completed``, inside its transaction, BEFORE it writes the completion:
+    whether this completion is the one that makes a PROMOTED table's replica readable in
+    ``store`` for the first time — and if so, advance the replica-state stamp, so every process
+    moves the table's reads onto the replica.
+
+    False, and no stamp, for a table that is not promoted (Always and load-protected tables are
+    addressed at their replica from the moment the setting is saved: nothing about their route
+    changes when a build completes) and for every refresh after the first."""
+    row = (
+        await conn.execute_core(
+            select(replica_state.c.promoted, replica_state.c.completed_at, _t.built_store).where(
+                _is(key)
+            )
+        )
+    ).fetchone()
+    if row is None or not row[0]:
+        return False
+    if row[1] is not None and row[2] == store:
+        return False
+    await config_stamp.advance(conn, config_stamp.REPLICA)
+    return True
 
 
 # -- the replica's build (REQ-1915) ----------------------------------------------------------
@@ -108,6 +180,7 @@ REASON_HOT = "hot"
 REASON_REFRESH = "refresh"
 REASON_OPERATOR = "operator"
 REASON_READ = "read"
+REASON_WRITE = "write"  # REQ-1924: the table was just written through Provisa
 REASONS = (
     REASON_MODEL,
     REASON_DEFINITION,
@@ -115,6 +188,7 @@ REASONS = (
     REASON_REFRESH,
     REASON_OPERATOR,
     REASON_READ,
+    REASON_WRITE,
 )
 
 _t = replica_state.c
@@ -419,32 +493,35 @@ async def record_completed(
 ) -> None:
     """The build finished and its table was swapped in, in the store ``store`` identifies.
     ``definition_hash`` and ``built_columns`` say what it was built from and which columns it
-    has (None from a caller that does not track them: the next convergence asks again)."""
-    # CALL SITE (replica-layout-2, Job 3): ``await mark_first_completion(conn, key)`` goes
-    # here, in this function's transaction — it bumps the REPLICA stamp for a promoted row's
-    # first completion. This function never touches the stamp itself.
-    await conn.execute_core(
-        update(replica_state)
-        .where(_is(key))
-        .values(
-            build_state=IDLE,
-            build_holder=None,
-            rows_copied=rows_copied,
-            build_method=method,
-            completed_at=now,
-            next_refresh_at=next_refresh_at,
-            content_hash=content_hash,
-            built_store=store,
-            definition_hash=definition_hash,
-            built_columns=built_columns,
-            last_error=None,
-            last_error_code=None,
-            last_error_params=None,
-            failed_at=None,
-            failed_attempts=0,
-            waiting_on=None,
+    has (None from a caller that does not track them: the next convergence asks again).
+
+    When this is the first replica of a promoted table in this store, the replica-state stamp
+    advances with the completion (REQ-826, ``mark_first_completion``): the completion and the
+    stamp are one transaction, so no process is told of a replica that was not recorded."""
+    async with conn.transaction():
+        await mark_first_completion(conn, key, store)
+        await conn.execute_core(
+            update(replica_state)
+            .where(_is(key))
+            .values(
+                build_state=IDLE,
+                build_holder=None,
+                rows_copied=rows_copied,
+                build_method=method,
+                completed_at=now,
+                next_refresh_at=next_refresh_at,
+                content_hash=content_hash,
+                built_store=store,
+                definition_hash=definition_hash,
+                built_columns=built_columns,
+                last_error=None,
+                last_error_code=None,
+                last_error_params=None,
+                failed_at=None,
+                failed_attempts=0,
+                waiting_on=None,
+            )
         )
-    )
 
 
 async def record_failed(

@@ -124,10 +124,12 @@ class NativeEngineBackend(EngineBackend):
     def __init__(self, engine: Any) -> None:
         super().__init__(engine)
         self._runtime: Any = None
-        self._attached: set[str] = set()
+        # Each table by its identity (source_id, schema, table): two sources may both hold
+        # ``schema.table``, and each has its own attach.
+        self._attached: set[tuple[str, str, str]] = set()
         # Tables whose live attach this process has removed because their reads moved to the
         # replica (REQ-1912) — removed once, whichever process created it.
-        self._detached: set[str] = set()
+        self._detached: set[tuple[str, str, str]] = set()
         # The registry state the last complete walk covered: the identities of (config,
         # runtime_sources, tables, tenant_db). A schema rebuild REPLACES those objects (app.py
         # publishes a new source map and a new table list; nothing mutates them in place), so an
@@ -136,7 +138,7 @@ class NativeEngineBackend(EngineBackend):
         # Tables whose attach was refused for a DECLARED reason in the walked registry state (a
         # source type this engine lands instead of attaching, REQ-841). Not retried until the
         # registry changes. A driver error is not remembered: an offline source is retried.
-        self._refused: set[str] = set()
+        self._refused: set[tuple[str, str, str]] = set()
         self._refused_in: tuple[Any, Any, Any, Any] | None = None
         self._walk_lock = threading.Lock()
 
@@ -151,12 +153,25 @@ class NativeEngineBackend(EngineBackend):
 
     def _runtime_for(self, state: Any) -> Any:
         """The persistent runtime with every registered table attached (idempotent, lazy)."""
+        runtime = self._store_runtime()
+        self._attach_registered(state)
+        return runtime
+
+    def _store_runtime(self) -> Any:
+        """The persistent runtime, built if this process has none yet, with no source attached by
+        this call: for what is answered from the engine and its store alone."""
         if self._runtime is None:
             with self._walk_lock:
                 if self._runtime is None:
                     self._runtime = self._new_runtime()
-        self._attach_registered(state)
         return self._runtime
+
+    def _store_catalog(self, state: Any, org_id: str) -> str:
+        """The catalog the store is read under, from the runtime's store attach alone (REQ-1912):
+        where a replica is read is a property of the engine and its store, so no registered source
+        is dialed for it (the attach walk is not run)."""
+        del state, org_id  # the store's catalog is the runtime's, whichever org is served
+        return self._store_runtime().ensure_materialize_attached()
 
     def _attach_registered(self, state: Any) -> None:
         """ATTACH every registered table into the runtime: one walk per registry state, not one per
@@ -259,7 +274,9 @@ class NativeEngineBackend(EngineBackend):
         from provisa.core.secrets import resolve_secrets
 
         complete = True
-        tried: set[str] = set()  # a table listed by both the config and the registry: one attempt
+        # A table listed by both the config and the registry: one attempt. Keyed by the table's
+        # identity — two sources may both hold ``schema.table``, and each is attached.
+        tried: set[tuple[str, str, str]] = set()
         sources = {s.id: s for s in config.sources}
 
         # Merge in dynamically created sources that exist in the DB but not in the YAML config.
@@ -299,7 +316,7 @@ class NativeEngineBackend(EngineBackend):
         def _attach_tbl(src: Any, schema_name: str, table_name: str) -> None:
             """Attach one table into the runtime; skip if already attached or attach fails."""
             nonlocal complete
-            key = f"{schema_name}.{table_name}"
+            key = (src.id, schema_name, table_name)
             if key in tried:
                 return
             if floor_setting(src) is not None:

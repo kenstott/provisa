@@ -24,10 +24,12 @@ from collections.abc import Callable
 from typing import Any
 
 import pymysql
+import pymysql.cursors
 
 from provisa.core import request_deadline
 from provisa.core.sync_pool import BlockingPool
 from provisa.executor.drivers.base import DirectDriver
+from provisa.executor.drivers.cursor_stream import PooledCursorStream, fetch_chunked
 from provisa.executor.result import QueryResult
 
 
@@ -114,9 +116,32 @@ class MySQLDriver(DirectDriver):  # REQ-052, REQ-068, REQ-229, REQ-550
             with conn.cursor() as cur:
                 with request_deadline.cancel_on_deadline(lambda: self._kill_query(thread_id)):
                     cur.execute(exec_sql, bound or None)
-                    rows = cur.fetchall()
+                    rows = fetch_chunked(cur) if cur.description else []
                 columns = [desc[0] for desc in cur.description] if cur.description else []
-        return QueryResult(rows=list(rows), column_names=columns)
+        return QueryResult(rows=rows, column_names=columns)
+
+    @property
+    def supports_streaming(self) -> bool:  # REQ-1190
+        return True
+
+    # Async only for the DirectDriver awaitable contract; opens synchronously in-thread.
+    async def open_stream(
+        self, sql: str, params: list | None = None
+    ) -> PooledCursorStream:  # REQ-1190
+        """The result a batch at a time, through PyMySQL's UNBUFFERED cursor: its default cursor
+        reads the whole result into memory at execute, so a fetchmany over it bounds nothing."""
+        from provisa.compiler.params import bind_positionally
+
+        exec_sql, bound = sql, []
+        if params:
+            exec_sql, bound = bind_positionally(sql.replace("%", "%%"), params, "%s")
+        return PooledCursorStream(
+            self._require_pool(),
+            open_cursor=lambda conn: conn.cursor(pymysql.cursors.SSCursor),
+            execute=lambda cur: cur.execute(exec_sql, bound or None),
+            columns=lambda cur: [desc[0] for desc in cur.description],
+            cancel=lambda conn, _cur: self._kill_query(conn.thread_id()),
+        )
 
     # Async only for the DirectDriver awaitable contract; closes synchronously in-thread.
     async def close(self) -> None:

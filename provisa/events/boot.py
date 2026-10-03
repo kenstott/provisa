@@ -27,6 +27,7 @@ from typing import Any
 
 from provisa.core.change_signal import is_poll, is_push
 from provisa.events import queue, supervisor
+from provisa.events.nodes import source_node, view_node
 from provisa.events.injector import Probe
 from provisa.events.processor import (
     MVTableProcessor,
@@ -94,18 +95,22 @@ def _probe_factory(
 
 
 def _resolve_mv_deadline(
-    mv: Any, calendar_registry: Any, freshness_of: Callable[[str], Any] | None, dialect: str
+    mv: Any,
+    calendar_registry: Any,
+    freshness_of: Callable[[str], Any] | None,
+    expected_events_of: Callable[[Any], list[str]] | None,
 ) -> tuple[Any | None, list[str] | None, Callable[[str], Any] | None, float, float | None]:
     """Resolve an MV's deadline source (REQ-961/962/963). A declared ``calendar`` → a periodic
-    :class:`PeriodicCalendar` source with its freshness contract (declared expected-events, else all
-    SQL-lineage inputs) and a required registry + freshness reader; otherwise the live debounce knobs
-    flow through unchanged. Returns (deadline_source, expected_events, freshness_of, quiet, max_delay)."""
+    :class:`PeriodicCalendar` source with its freshness contract — the input nodes
+    ``expected_events_of`` resolves for it (declared expected-events, else every input it reads,
+    ``events.nodes.expected_event_nodes``) — and a required registry + freshness reader; otherwise
+    the live debounce knobs flow through unchanged. Returns (deadline_source, expected_events,
+    freshness_of, quiet, max_delay)."""
     calendar = getattr(mv, "calendar", None)
     if calendar is None:
         return None, None, None, mv.debounce_quiet, mv.debounce_max_delay
     from provisa.events.calendars import parse_grain_spec
     from provisa.events.deadlines import PeriodicCalendar
-    from provisa.events.lineage import extract_inputs
 
     if calendar_registry is None:
         raise ValueError(f"MV {mv.target_table!r} declares calendar {calendar!r} but no registry")
@@ -120,9 +125,12 @@ def _resolve_mv_deadline(
         allowed_lateness=float(getattr(mv, "allowed_lateness", 0.0)),
         business_day=bool(getattr(mv, "business_day_grain", False)),
     )
-    declared = getattr(mv, "expected_events", None)
-    expected = declared if declared is not None else sorted(extract_inputs(mv.sql, dialect))
-    return source, expected, freshness_of, 0.0, None
+    if expected_events_of is None:
+        raise ValueError(
+            f"MV {mv.target_table!r} declares calendar {calendar!r} but no expected-events "
+            "resolution was given"
+        )
+    return source, expected_events_of(mv), freshness_of, 0.0, None
 
 
 def build_source_node_spec(
@@ -174,7 +182,8 @@ def build_source_node_spec(
         args = resolve_landing_args(src, tbl, platform=engine.dialect)
     except ValueError:
         return None  # a column's type is not yet resolved — reconcile skips it too
-    node = f"{tbl.schema_name}.{tbl.table_name}"
+    # The node is the table's registered identity (two sources may both hold ``schema.table``).
+    node = source_node(src.id, tbl.schema_name, tbl.table_name)
     # REQ-1912: the replica's address — the same on every engine, and the same address the
     # backend's reconcile converges and a read is rewritten to.
     address = engine_runtime.replica_address(
@@ -263,6 +272,7 @@ def specs_from_config(
     mv_bitemporal_append: Callable[[Any], Callable[[str | None], Any]] | None = None,
     replica_build: Callable[[tuple[str, str, str]], Any] | None = None,
     write_lock: Callable[[tuple[str, str, str]], Any] | None = None,
+    expected_events_of: Callable[[Any], list[str]] | None = None,
 ) -> list[NodeSpec]:
     """Bind the config to :class:`NodeSpec`s (REQ-941). A MATERIALIZED source table (``federate`` ==
     MATERIALIZED) becomes a source spec — its landing args resolved from config, its ``fetch`` the
@@ -297,7 +307,7 @@ def specs_from_config(
         cols = mv_columns(mv)
         if not cols:
             continue  # output columns not resolvable yet (live introspection) — bound on a later pass
-        node = f"{mv.target_schema}.{mv.target_table}"
+        node = view_node(mv)
         # REQ-965: the operator's PERSISTENCE outcome + the derived-table PK (REQ-970: declared or
         # GROUP-BY-inferred). require_pk fails loud if persist=upsert / emit=delta lacks a PK.
         from provisa.events.lineage import infer_pk
@@ -357,9 +367,10 @@ def specs_from_config(
         )
         # REQ-961/962: a declared calendar makes the MV PERIODIC (calendar-boundary trigger + a
         # freshness contract), mutually exclusive with REQ-963 live debounce. Undeclared expected-
-        # events default to ALL SQL-lineage inputs (extract_inputs, REQ-939).
+        # events default to every input the view reads, resolved against the model (REQ-939,
+        # events.nodes.expected_event_nodes).
         deadline_source, expected, fresh_reader, quiet, max_delay = _resolve_mv_deadline(
-            mv, calendar_registry, freshness_of, engine.dialect
+            mv, calendar_registry, freshness_of, expected_events_of
         )
         # REQ-957/964/1165: bind the MV's preflight gate. A bad hook raises here (purity gate), and a
         # streaming check on a non-ARROW_STREAM engine ALSO fails loud here — boot rejects it rather

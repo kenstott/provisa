@@ -15,7 +15,7 @@ from __future__ import annotations
 from provisa.executor.result import QueryResult
 from provisa.lineage import resolve_input_version
 from provisa.mv.input_signals import gather_input_signals
-from tests.helpers import RegisteredNames
+from tests.helpers import RegisteredNames, src_table
 
 _WATERMARK_SQL_MARK = "registered_tables"
 
@@ -33,7 +33,11 @@ class _FakeEngine(RegisteredNames):
     async def execute_engine(self, sql, *a, **k):
         self.queries.append(sql)
         if _WATERMARK_SQL_MARK in sql:
-            return QueryResult(rows=list(self.watermark_registry.items()), column_names=[])
+            # Each registered table by its identity, with its watermark column.
+            return QueryResult(
+                rows=[("src", "public", t, c) for t, c in self.watermark_registry.items()],
+                column_names=[],
+            )
         # Every probe names its table catalog-physically, resolved from the registry.
         if "$snapshots" in sql:
             base = sql.split('FROM "src"."public"."')[1].split("$snapshots")[0]
@@ -48,7 +52,7 @@ class _FakeEngine(RegisteredNames):
 
 async def test_iceberg_snapshot_is_strongest_signal():
     engine = _FakeEngine(iceberg={"orders": 5551212})
-    signals = await gather_input_signals(engine, ["orders"])
+    signals = await gather_input_signals(engine, [src_table("orders")])
     assert [(s.value, s.kind) for s in signals] == [("5551212", "iceberg_snapshot")]
     # Resolver keeps the iceberg signal over the refresh epoch.
     assert resolve_input_version(signals, "1000").kind == "iceberg_snapshot"
@@ -59,7 +63,7 @@ async def test_watermark_used_when_not_iceberg():
         watermark_registry={"events": "updated_at"},
         watermark_values={"events": "2026-07-04T00:00:00"},
     )
-    signals = await gather_input_signals(engine, ["events"])
+    signals = await gather_input_signals(engine, [src_table("events")])
     assert [(s.value, s.kind) for s in signals] == [("2026-07-04T00:00:00", "watermark")]
 
 
@@ -69,13 +73,13 @@ async def test_iceberg_preferred_over_watermark_for_same_table():
         watermark_registry={"orders": "updated_at"},
         watermark_values={"orders": "ignored"},
     )
-    signals = await gather_input_signals(engine, ["orders"])
+    signals = await gather_input_signals(engine, [src_table("orders")])
     assert [s.kind for s in signals] == ["iceberg_snapshot"]
 
 
 async def test_plain_source_contributes_nothing_and_falls_back_to_epoch():
     engine = _FakeEngine()  # no iceberg, no watermark
-    signals = await gather_input_signals(engine, ["legacy_rows"])
+    signals = await gather_input_signals(engine, [src_table("legacy_rows")])
     assert signals == []
     assert resolve_input_version(signals, "epoch-123").kind == "refresh_epoch"
     assert resolve_input_version(signals, "epoch-123").value == "epoch-123"
@@ -87,7 +91,9 @@ async def test_mixed_sources_gather_independently():
         watermark_registry={"events": "ts"},
         watermark_values={"events": "99"},
     )
-    signals = await gather_input_signals(engine, ["orders", "events", "plain"])
+    signals = await gather_input_signals(
+        engine, [src_table("orders"), src_table("events"), src_table("plain")]
+    )
     kinds = sorted(s.kind for s in signals)
     assert kinds == ["iceberg_snapshot", "watermark"]
 
@@ -101,13 +107,13 @@ async def test_registry_lookup_failure_is_non_fatal():
 
     engine = _BrokenRegistryEngine(iceberg={"orders": 3})
     # Iceberg still gathered even though the watermark registry lookup blew up.
-    signals = await gather_input_signals(engine, ["orders", "events"])
+    signals = await gather_input_signals(engine, [src_table("orders"), src_table("events")])
     assert [s.kind for s in signals] == ["iceberg_snapshot"]
 
 
 async def test_null_snapshot_value_is_skipped():
     # $snapshots exists but yields a NULL id (fresh/empty table) → no signal, epoch used.
     engine = _FakeEngine(iceberg={"orders": None})
-    signals = await gather_input_signals(engine, ["orders"])
+    signals = await gather_input_signals(engine, [src_table("orders")])
     assert signals == []
     assert resolve_input_version(signals, "epoch-9").kind == "refresh_epoch"

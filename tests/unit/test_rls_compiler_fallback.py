@@ -116,3 +116,16 @@ def test_domain_rule_does_not_apply_when_table_in_other_domain():
     )
     result = inject_rls(_compiled(), _ctx(_meta(domain_id="marketing")), rls)
     assert "\"region\" = 'us'" not in result.sql
+
+
+def test_an_aliased_root_keeps_its_field_through_rls():
+    """The statement for ``a: orders`` is still the ``orders`` field once its rule is applied —
+    what its cache entry is held under and its tables are found by (REQ-544)."""
+    rls = build_rls_context(
+        [{"table_id": 1, "domain_id": None, "role_id": "a", "filter_expr": "\"owner\" = 'me'"}], "a"
+    )
+    compiled = _compiled()
+    compiled.root_field, compiled.canonical_field = "a", "orders"
+    result = inject_rls(compiled, _ctx(_meta()), rls)
+    assert "\"owner\" = 'me'" in result.sql
+    assert (result.root_field, result.canonical_field) == ("a", "orders")
