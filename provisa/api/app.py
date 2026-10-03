@@ -1182,6 +1182,8 @@ async def _load_and_build(
 
     _mark("source-pools+ingest+remote")
 
+    await _require_org_serves_here(state.org_id)  # REQ-1922
+
     await _rebuild_schemas(raw_config)
 
     # A config view that reads an input the engine cannot read whole fails the load, naming the
@@ -1389,6 +1391,18 @@ async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:
         )
 
     return await state.org_registry.get_or_build(runtime_key(org_id, env), _builder)
+
+
+async def _require_org_serves_here(org_id: str) -> None:
+    """REQ-1922: a node serves its region of every org that selects it; an org whose model does
+    not select this node's region is refused here, by name, before its schemas are built."""
+    from provisa.core import process_region
+    from provisa.core.repositories.region import require_serves_here
+
+    # Both callers run after the org's control plane is up and its model loaded into it.
+    assert state.tenant_db is not None
+    async with state.tenant_db.acquire() as conn:
+        await require_serves_here(conn, org_id, process_region.region())
 
 
 async def build_org_runtime(
@@ -1625,6 +1639,8 @@ async def build_org_runtime(
                 )
             await _build_source_pools_and_enums(config)
             await _resolve_pk_from_sources()
+
+        await _require_org_serves_here(org_id)  # REQ-1922
 
         # REQ-1266: the org's own domain mode, applied AFTER load_config — which configures the
         # scope from the DEPLOYMENT's naming block — and BEFORE _rebuild_schemas, which reads the

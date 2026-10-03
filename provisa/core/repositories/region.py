@@ -45,6 +45,17 @@ class RegionNotSelected(ValueError):
         super().__init__(f"{what} names region {region!r}, {why}")
 
 
+class OrgNotInRegion(LookupError):
+    """A node is asked to serve an org in a region the org does not select."""
+
+    def __init__(self, org_id: str, region: str, selected: list[str]) -> None:
+        self.org_id, self.region, self.selected = org_id, region, selected
+        super().__init__(
+            f"org {org_id!r} does not select region {region!r}, which this node serves "
+            f"(it selects {', '.join(selected) if selected else 'none'})"
+        )
+
+
 async def upsert_store(conn: "Connection", store: StoreConfig, *, origin: str) -> None:
     """Create a store, or replace its URL."""
     model_change.name("upsert", "store", store.id)  # REQ-1524
@@ -104,3 +115,16 @@ async def require_selected(conn: "Connection", what: str, region: str | None) ->
     selected = [r.id for r in await list_regions(conn)]
     if region not in selected:
         raise RegionNotSelected(what, region, selected)
+
+
+async def require_serves_here(conn: "Connection", org_id: str, node_region: str) -> None:
+    """Refuse serving ``org_id`` on a node in ``node_region`` when the org does not select that
+    region (REQ-1922: a node serves its region of every org that selects it). The one implicit
+    region (no platform regions) serves every org."""
+    from provisa.core.regions import DEFAULT_REGION
+
+    if node_region == DEFAULT_REGION:
+        return
+    selected = [r.id for r in await list_regions(conn)]
+    if node_region not in selected:
+        raise OrgNotInRegion(org_id, node_region, selected)
