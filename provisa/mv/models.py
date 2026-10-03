@@ -97,6 +97,10 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
 
     # Mode 2: Custom SQL (optionally exposed in SDL)
     sql: str | None = None
+    # The registered tables (bare names) a SQL-defined view reads, from its SEMANTIC SQL — taken
+    # before ``sql`` is lowered to physical. A write to any of them marks the view stale
+    # (registry.mark_stale); ``source_tables`` stays what the event graph is built from.
+    read_tables: frozenset[str] = frozenset()
     expose_in_sdl: bool = False
     sdl_config: SDLConfig | None = None
 

@@ -588,6 +588,15 @@ class AppState:
         self._active_runtime().contexts = value
 
     @property
+    def view_context(self) -> CompilationContext | None:
+        """The model-wide context view SQL is lowered against (OrgRuntime.view_context)."""
+        return self._active_runtime().view_context
+
+    @view_context.setter
+    def view_context(self, value: CompilationContext | None) -> None:
+        self._active_runtime().view_context = value
+
+    @property
     def rls_contexts(self) -> dict[str, RLSContext]:
         return self._active_runtime().rls_contexts
 

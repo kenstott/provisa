@@ -180,6 +180,7 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                 state.view_sql_map[_vr["table_name"]] = _semantic_sql
             if _vr.get("materialize"):
                 from provisa.mv.models import MVDefinition, MVStatus
+                from provisa.mv.readable_inputs import read_table_names
                 from provisa.core.change_signal import resolve, to_freshness_mode  # REQ-932
 
                 _mv_id = f"view-{_vr['table_name']}"
@@ -210,6 +211,7 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                             refresh_interval=int(_vr.get("mv_refresh_interval") or _mv_default_ttl),
                             enabled=True,
                             sql=_semantic_sql,
+                            read_tables=read_table_names(_semantic_sql),
                             expose_in_sdl=False,
                             status=MVStatus.STALE,
                             freshness_mode=_fresh,
@@ -228,7 +230,18 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                         )
                     )
                 else:
-                    _existing.sql = _semantic_sql
+                    # A refresh may run while this rebuild is under way, so the view's SQL is never
+                    # left in its semantic form: it is lowered here against the model the previous
+                    # build left (this build's model-wide context is made later, by
+                    # _build_and_register_schemas), and lowered again against this build's at
+                    # _finalize_rebuild_state.
+                    if state.view_context is None:
+                        raise RuntimeError(
+                            f"view {_mv_id} is registered but no model-wide view context exists to "
+                            "lower its SQL against"
+                        )
+                    _existing.sql = compile_view_sql_to_physical(_semantic_sql, state.view_context)
+                    _existing.read_tables = read_table_names(_semantic_sql)
                     _existing.preprocess = _vr.get("mv_preprocess")  # REQ-957
                     _existing.bitemporal = _bt_spec  # REQ-1162
                     _existing.persist = _vr.get("mv_persist") or "replace"  # REQ-965
@@ -254,9 +267,15 @@ async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:
             async with state.tenant_db.acquire() as _lc:
                 await _reconcile_live_engine(_lc)
 
-    # Compile inline view SQLs now that a context is available
+    # Lower every view's SQL (inline and materialized) against the model-wide context the build
+    # made for exactly this (api/app_loaders.py) — never a role's.
     if state.contexts:
-        ctx = next(iter(state.contexts.values()))
+        ctx = state.view_context
+        if ctx is None:
+            raise RuntimeError(
+                "the schema build compiled role contexts but no model-wide view context: view SQL "
+                "cannot be lowered"
+            )
         if state.view_sql_map:
             # REQ-1163: a bitemporal view's entry is already a PHYSICAL reconstruction over its append
             # log (view_read_sql over the mv target) — do NOT re-qualify it, or the semantic→physical

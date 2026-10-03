@@ -153,6 +153,51 @@ def read_config_with_includes(
             inc_path = file_path.parent / inc_path
         fragment = read_config_with_includes(inc_path, _seen | {file_path})
         _merge_fragment(raw, fragment, inc_path)
+    if not _seen:
+        views_as_tables(raw)
+    return raw
+
+
+#: A ``views:`` entry's keys that carry over to the table entry it becomes, by table-entry name.
+_VIEW_KEYS = {
+    "domain_id": "domain_id",
+    "sql": "view_sql",
+    "materialize": "materialize",
+    "refresh_interval": "mv_refresh_interval",
+    "description": "description",
+    "alias": "alias",
+    "columns": "columns",
+    "preprocess": "mv_preprocess",
+}
+
+
+def views_as_tables(raw: dict) -> dict:
+    """Turn the config's ``views:`` block into the table entries it declares (REQ-133).
+
+    A view is a table of the derived source whose rows its SQL defines — the spelling a ``tables:``
+    entry with ``view_sql`` already has, which the load stores and the schema build registers
+    (inline, and also materialized when it says so). Declared under ``views:``, a view used to be
+    registered for refresh but never stored as a table, so nothing could read it. One spelling,
+    one path: each entry becomes a table entry here, where the raw config is read."""
+    from provisa.core.models import DERIVED_SOURCE_ID
+
+    views = raw.pop("views", None) or []
+    if not isinstance(views, list):
+        raise ValueError("config views: must be a list")
+    if not views:
+        return raw  # nothing declared: the config is left exactly as written
+    tables = raw.setdefault("tables", [])
+    for view in views:
+        unknown = set(view) - set(_VIEW_KEYS) - {"id"}
+        if unknown:
+            raise ValueError(f"view {view.get('id')!r}: unknown keys {sorted(unknown)}")
+        entry = {
+            "source_id": DERIVED_SOURCE_ID,
+            "schema": "views",
+            "table": f"view_{view['id'].replace('-', '_')}",
+        }
+        entry.update({_VIEW_KEYS[k]: v for k, v in view.items() if k in _VIEW_KEYS})
+        tables.append(entry)
     return raw
 
 
@@ -188,7 +233,7 @@ def parse_config_dict(data: dict) -> ProvisaConfig:  # REQ-250
     """
     from provisa.core.secrets import resolve_secrets_in_dict
 
-    return ProvisaConfig.model_validate(resolve_secrets_in_dict(data))
+    return ProvisaConfig.model_validate(views_as_tables(resolve_secrets_in_dict(data)))
 
 
 async def _replace_mode_cleanup(conn: "Connection") -> None:  # REQ-013, REQ-014, REQ-1919

@@ -82,10 +82,9 @@ def server():
                     "sql": "SELECT region, COUNT(*) AS n FROM sales.orders GROUP BY region",
                     "materialize": True,
                     "domain_id": "sales",
-                    "source_id": "sales-pg",
                     "columns": [
-                        {"name": "region", "visible_to": ["org_admin"]},
-                        {"name": "n", "visible_to": ["org_admin"]},
+                        {"name": "region", "data_type": "varchar", "visible_to": ["org_admin"]},
+                        {"name": "n", "data_type": "bigint", "visible_to": ["org_admin"]},
                     ],
                 }
             ],
@@ -484,8 +483,15 @@ def test_a_copy_out_over_pgwire_is_a_governed_read(server):
 
 # --- after a write --------------------------------------------------------------------------------
 
-_VIEW = "view-orders-by-region"
-_CACHED_READ = {"query": "query @cached { s__orders { id region } }"}
+_VIEW = "view-view_orders_by_region"  # a view's MV is named for its table
+
+
+# Each case reads its own statement (its own limit), so its cache entry is its own: the source
+# fixture resets the table behind Provisa's back, which no cache entry hears about.
+def _cached_query(case: str) -> dict:
+    return {
+        "query": f"query @cached {{ s__orders(limit: {1000 + _ALL.index(case)}) {{ id region }} }}"
+    }
 
 
 def _admin_gql(boot, query: str) -> dict:
@@ -499,10 +505,10 @@ def _view_status(boot) -> str:
     return next(v for v in listed if v["id"] == _VIEW)["status"]
 
 
-def _cached_read(boot) -> tuple[str, list[tuple[int, str]]]:
+def _cached_read(boot, case: str) -> tuple[str, list[tuple[int, str]]]:
     req = urllib.request.Request(
         f"http://127.0.0.1:{boot.ports['http']}/data/graphql",
-        data=json.dumps(_CACHED_READ).encode(),
+        data=json.dumps(_cached_query(case)).encode(),
         headers={"Content-Type": "application/json", "x-provisa-role": "org_admin"},
         method="POST",
     )
@@ -522,8 +528,8 @@ def test_a_write_on_any_surface_is_followed_by_the_same_steps(server, source, su
     )
     assert refreshed["data"]["refreshMv"]["success"], refreshed
     assert _view_status(server) == "fresh"
-    _cached_read(server)
-    served, rows = _cached_read(server)
+    _cached_read(server, surface)
+    served, rows = _cached_read(server, surface)
     assert served == "HIT", served  # the read is being served from the cache
     assert rows == _SEED
 
@@ -532,6 +538,6 @@ def test_a_write_on_any_surface_is_followed_by_the_same_steps(server, source, su
     assert (60, "north") in source()
 
     assert _view_status(server) == "stale"
-    served, rows = _cached_read(server)
+    served, rows = _cached_read(server, surface)
     assert served != "HIT", served
     assert rows == [*_SEED, (60, "north")]
