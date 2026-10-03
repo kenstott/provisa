@@ -93,9 +93,11 @@ def _build_mongodb_config(state, source_id: str) -> dict:
     return {"database": source_pool}
 
 
-def _build_kafka_config(state, table: str) -> dict:
-    ks = state.kafka_table_configs.get(table)
-    bootstrap = getattr(ks, "bootstrap_servers", "localhost:9092") if ks else "localhost:9092"
+def _build_kafka_config(state, source_id: str) -> dict:
+    """The brokers of the Kafka source the table belongs to, as its configuration names them."""
+    bootstrap = (state.kafka_bootstrap or {}).get(source_id)
+    if not bootstrap:
+        raise ValueError(f"Kafka source {source_id!r} has no brokers configured for a subscription")
     return {"bootstrap_servers": bootstrap}
 
 
@@ -250,7 +252,7 @@ def _build_provider_config(  # REQ-258
     if source_type == "mongodb":
         return _build_mongodb_config(state, source_id)
     if source_type == "kafka":
-        return _build_kafka_config(state, table)
+        return _build_kafka_config(state, source_id)
     if source_type == "ingest":
         return _build_ingest_config(state, source_id)
     if source_type == "rss":

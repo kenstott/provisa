@@ -176,20 +176,24 @@ def bind_named_args(name: str, given: dict, state, role_id: str | None) -> dict:
     command = _admitted(name, state, role_id)
     declared = [a for a in command.get("arguments") or [] if a.get("name")]
     names = [a["name"] for a in declared]
+    signature = _signature(name, declared)
     unknown = [k for k in given if k not in names]
-    missing = [n for n in names if n not in given]
-    if unknown or missing:
-        problem = (
-            f"argument {unknown[0]!r} is not one it declares"
-            if unknown
-            else f"argument {missing[0]!r} was not given"
-        )
+    if unknown:
         raise ApiError(
             400,
-            "functions.argument_mismatch",
-            f"{_signature(name, declared)}: {problem}",
-            name=name,
-            signature=_signature(name, declared),
+            "functions.argument_not_declared",
+            f"{signature}: argument {unknown[0]!r} is not one it declares",
+            signature=signature,
+            argument=unknown[0],
+        )
+    missing = [n for n in names if n not in given]
+    if missing:
+        raise ApiError(
+            400,
+            "functions.argument_missing",
+            f"{signature}: argument {missing[0]!r} was not given",
+            signature=signature,
+            argument=missing[0],
         )
     return {n: given[n] for n in names}
 
@@ -206,8 +210,8 @@ def bind_command_args(name: str, values: list, state, role_id: str | None) -> di
             400,
             "functions.argument_count",
             f"{_signature(name, declared)} takes {len(declared)} argument(s); {len(values)} given",
-            name=name,
             signature=_signature(name, declared),
+            count=len(declared),
             given=len(values),
         )
     return {a["name"]: v for a, v in zip(declared, values, strict=True)}

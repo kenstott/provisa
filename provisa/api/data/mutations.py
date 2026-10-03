@@ -136,7 +136,9 @@ _WHERE_OPS = {
 
 
 def _filter_refused(field: str, message: str) -> ApiError:
-    return ApiError(400, "data.command_filter_refused", f"{field}: {message}", field=field)
+    return ApiError(
+        400, "data.command_filter_refused", f"{field}: {message}", field=field, reason=message
+    )
 
 
 def _require_column(rows: list[dict], column: str, field: str) -> None:

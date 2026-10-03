@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json non è JSON valido: {{error}}",
       "args_json_not_object": "args_json deve essere un oggetto JSON",
       "column_not_writable": "Il ruolo '{{role}}' non ha accesso in scrittura alla colonna '{{column}}'",
+      "command_filter_refused": "{{field}}: {{reason}}",
       "definition_not_available": "{{statement}} non è disponibile qui: le definizioni si creano nel modello o nella sorgente dati, e le righe si rimuovono con DELETE.",
       "engine_not_connected": "il motore non è connesso",
       "grpc_source_not_registered": "Origine remota gRPC '{{source_id}}' non registrata",
@@ -118,6 +119,9 @@
     "functions": {
       "approval_denied": "Approvazione negata per '{{name}}': {{reason}}",
       "approval_unavailable": "il comando '{{name}}' richiede approvazione e non è configurato alcun hook di approvazione",
+      "argument_count": "{{signature}} accetta {{count}} argomento/i; forniti {{given}}",
+      "argument_missing": "{{signature}}: l'argomento '{{argument}}' non è stato fornito",
+      "argument_not_declared": "{{signature}}: l'argomento '{{argument}}' non è dichiarato",
       "binding_missing_key": "al binding di funzione per il kind '{{kind}}' manca la chiave obbligatoria '{{key}}'",
       "egress_denied": "uscita verso '{{endpoint}}' negata: host non presente nell'elenco consentiti di uscita UDF (REQ-885 rifiuto predefinito). Aggiungerlo a udf_egress_allowlist per consentirlo.",
       "grpc_call_failed": "chiamata grpc {{target}}{{path}} non riuscita: {{status}}: {{details}}",
@@ -133,6 +137,7 @@
       "script_failed": "script terminato con codice {{returncode}}: {{stderr}}",
       "source_not_connected": "Origine '{{source_id}}' non connessa",
       "unknown_arg_kind": "arg_kind '{{arg_kind}}' sconosciuto per '{{name}}'",
+      "unknown_command": "Comando sconosciuto: '{{name}}'",
       "unknown_impl_kind": "impl_kind della funzione sconosciuto: '{{impl_kind}}'",
       "written_table_missing": "il comando '{{name}}' scrive '{{table}}', che non è registrata"
     },
@@ -333,6 +338,8 @@
       "task_not_found": "Attività '{{task}}' non trovata",
       "trigger_exists": "Trigger '{{trigger}}' già esistente",
       "trigger_fields_required": "id, name e cron sono obbligatori",
+      "trigger_role_required": "Trigger '{{trigger}}': un trigger SQL viene eseguito come un ruolo di questa organizzazione",
+      "trigger_sql_refused": "{{reason}}",
       "unknown_request_type": "Tipo di richiesta '{{type}}' sconosciuto",
       "unknown_trigger_kind": "Tipo di trigger '{{kind}}' sconosciuto",
       "url_sql_exclusive": "url e sql si escludono a vicenda",
@@ -396,6 +403,9 @@
       "no_fields_to_update": "Nessun campo da aggiornare",
       "self_role_change": "Un utente non può modificare il proprio ruolo. Chiedere a un altro amministratore (REQ-1308).",
       "user_not_found": "Utente non trovato"
+    },
+    "cypher": {
+      "command_call_refused": "{{reason}}"
     }
   }
 }

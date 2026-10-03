@@ -44,6 +44,9 @@
     "firstPage": "Eerste pagina",
     "prevPage": "Vorige pagina",
     "nextPage": "Volgende pagina",
-    "lastPage": "Laatste pagina"
+    "lastPage": "Laatste pagina",
+    "roleLabel": "Draait als rol",
+    "validationRoleRequired": "Een SQL-taak draait als een rol: kies er een.",
+    "runsAs": "draait als {{role}}"
   }
 }

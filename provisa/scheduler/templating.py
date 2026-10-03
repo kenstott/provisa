@@ -17,6 +17,12 @@ Supported tokens:
     {{iso8601}}     -> run_at.isoformat()            (e.g. 2026-07-13T14:30:00+00:00)
     {{timestamp}}   -> integer Unix epoch seconds    (e.g. 1784056200)
 
+A token supplies a VALUE, never part of a name: inside a single-quoted string literal it is
+written into the literal; standing alone it becomes a literal of its own (a number for
+``yyyymmdd``/``timestamp``, a quoted string otherwise). A token inside a quoted identifier, or
+joined to the characters of a name (``orders_{{yyyymmdd}}``), is refused — a date that chose
+which table a statement touches would let the schedule reach tables nobody reviewed.
+
 An unrecognized ``{{...}}`` token raises ValueError (fail loud — no silent
 pass-through of a possibly-mistyped token).
 """
@@ -28,6 +34,12 @@ import re
 from datetime import datetime
 
 _TOKEN_RE = re.compile(r"\{\{\s*([^}]*?)\s*\}\}")
+_NUMERIC_TOKENS = frozenset({"yyyymmdd", "timestamp"})
+_NAME_CHAR = re.compile(r"[A-Za-z0-9_$.\"]")
+
+
+class DateTokenNotAValue(ValueError):
+    """A date token placed where it would form part of a name rather than a value."""
 
 
 def _render_token(name: str, run_at: datetime) -> str:
@@ -42,8 +54,49 @@ def _render_token(name: str, run_at: datetime) -> str:
     raise ValueError(f"Unrecognized scheduled-SQL date token: {{{{{name}}}}}")
 
 
+def _quote_state(sql: str, end: int) -> str | None:
+    """The quote ``sql[:end]`` leaves open: ``"'"`` (a string literal), ``'"'`` (a quoted
+    identifier), or None."""
+    quote: str | None = None
+    i = 0
+    while i < end:
+        ch = sql[i]
+        if quote:
+            if ch == quote:
+                if i + 1 < end and sql[i + 1] == quote:  # a doubled quote stays inside
+                    i += 2
+                    continue
+                quote = None
+        elif ch in "'\"":
+            quote = ch
+        i += 1
+    return quote
+
+
 def substitute_date_tokens(sql: str, run_at: datetime) -> str:
-    """Replace ``{{token}}`` date placeholders in ``sql`` with values derived
-    from ``run_at``. Pure and deterministic. Raises ValueError on an unknown
-    token (REQ-1004)."""
-    return _TOKEN_RE.sub(lambda m: _render_token(m.group(1), run_at), sql)
+    """Replace each ``{{token}}`` in ``sql`` with its VALUE for ``run_at`` (see the module note).
+    Pure and deterministic. Raises ValueError on an unknown token, and
+    :class:`DateTokenNotAValue` on one placed in or against a name (REQ-1004)."""
+    out: list[str] = []
+    last = 0
+    for m in _TOKEN_RE.finditer(sql):
+        name = m.group(1)
+        value = _render_token(name, run_at)
+        quote = _quote_state(sql, m.start())
+        if quote == '"':
+            raise DateTokenNotAValue(
+                f"date token {{{{{name}}}}} is inside a quoted name; a token supplies a value"
+            )
+        if quote is None:
+            before = sql[m.start() - 1] if m.start() > 0 else " "
+            after = sql[m.end()] if m.end() < len(sql) else " "
+            if _NAME_CHAR.match(before) or _NAME_CHAR.match(after):
+                raise DateTokenNotAValue(
+                    f"date token {{{{{name}}}}} is joined to a name; a token supplies a value"
+                )
+            value = value if name in _NUMERIC_TOKENS else f"'{value}'"
+        out.append(sql[last : m.start()])
+        out.append(value)
+        last = m.end()
+    out.append(sql[last:])
+    return "".join(out)

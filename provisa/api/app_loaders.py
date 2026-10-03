@@ -208,6 +208,10 @@ def _process_kafka_sources(
 
     for ks in raw_config.get("kafka_sources", []):
         source_id = ks["id"]
+        # A Kafka source names its brokers; a subscription to its topics reads them from here.
+        if not ks.get("bootstrap_servers"):
+            raise ValueError(f"Kafka source {source_id!r} names no bootstrap_servers")
+        state.kafka_bootstrap[source_id] = resolve_secrets(ks["bootstrap_servers"])
         # Ensure the kafka source exists in raw_config["sources"] so the FK is satisfied
         # when registered_tables references it.
         existing_ids = {s["id"] for s in raw_config.get("sources", [])}

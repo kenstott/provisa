@@ -30,6 +30,7 @@ import {
   useCreateScheduledTask,
   useDeleteScheduledTask,
 } from "../../hooks/useAdminOpsQueries";
+import { useRoles } from "../../hooks/useAdminQueries";
 import { fetchActions, type TrackedWebhook } from "../../api/actions";
 
 const PAGE_SIZE = 50;
@@ -60,6 +61,9 @@ export function ScheduledTasks() {
   const [newCron, setNewCron] = useState("");
   const [newWebhookName, setNewWebhookName] = useState("");
   const [newSql, setNewSql] = useState("");
+  // The role a SQL task's statement runs as, through the write admission; required.
+  const [newRole, setNewRole] = useState<string | null>(null);
+  const { roles } = useRoles();
   const [argValues, setArgValues] = useState<Record<string, string>>({});
   const [formMsg, setFormMsg] = useState("");
   const [creating, setCreating] = useState(false);
@@ -72,6 +76,7 @@ export function ScheduledTasks() {
     setNewCron("");
     setNewWebhookName("");
     setNewSql("");
+    setNewRole(null);
     setArgValues({});
   };
 
@@ -100,6 +105,10 @@ export function ScheduledTasks() {
       setFormMsg(t("scheduledTasks.validationSqlRequired"));
       return;
     }
+    if (newKind === "sql" && !newRole) {
+      setFormMsg(t("scheduledTasks.validationRoleRequired"));
+      return;
+    }
     setCreating(true);
     setFormMsg("");
     const result = await createScheduledTask(
@@ -118,6 +127,7 @@ export function ScheduledTasks() {
             cron: newCron.trim(),
             kind: "sql",
             sql: newSql.trim(),
+            role: newRole ?? undefined,
           },
     );
     setCreating(false);
@@ -232,6 +242,14 @@ export function ScheduledTasks() {
                 <Text c="dimmed" fz="xs">
                   {t("scheduledTasks.sqlTokensHint")}
                 </Text>
+                <Select
+                  label={t("scheduledTasks.roleLabel")}
+                  aria-label={t("scheduledTasks.roleLabel")}
+                  data={roles.map((r) => r.id)}
+                  value={newRole}
+                  onChange={setNewRole}
+                  data-testid="scheduled-task-role"
+                />
               </Stack>
             )}
 
@@ -295,9 +313,14 @@ export function ScheduledTasks() {
                     </Table.Td>
                     <Table.Td maw={300}>
                       {task.kind === "sql" ? (
-                        <Text ff="monospace" fz="sm">
-                          {task.sql}
-                        </Text>
+                        <Stack gap={2}>
+                          <Text ff="monospace" fz="sm">
+                            {task.sql}
+                          </Text>
+                          <Text c="dimmed" fz="xs">
+                            {t("scheduledTasks.runsAs", { role: task.role })}
+                          </Text>
+                        </Stack>
                       ) : (
                         task.webhookUrl || t("scheduledTasks.noTarget")
                       )}

@@ -30,9 +30,16 @@ def _read(path):
 
 
 def _info(monkeypatch):
+    import provisa.api.app as app_mod
     from tests.unit.gate_identity import grant
 
-    return grant(monkeypatch, "org_settings")[0]
+    info = grant(monkeypatch, "org_settings")[0]
+    # The role a SQL trigger runs as is one of this org's roles.
+    app_mod.state.roles["ops"] = {"id": "ops"}
+    return info
+
+
+_WRITE = "INSERT INTO audit.d SELECT '{{YYYY-MM-DD}}'"
 
 
 async def test_create_sql_trigger_persists(cfg_path, monkeypatch):
@@ -43,7 +50,8 @@ async def test_create_sql_trigger_persists(cfg_path, monkeypatch):
         name="Nightly Rollup",
         cron="0 2 * * *",
         kind="sql",
-        sql="INSERT INTO audit.d SELECT '{{YYYY-MM-DD}}'",
+        sql=_WRITE,
+        role="ops",
     )
     assert res.success is True
 
@@ -52,7 +60,8 @@ async def test_create_sql_trigger_persists(cfg_path, monkeypatch):
     t = triggers[0]
     assert t["id"] == "nightly"
     assert t["cron"] == "0 2 * * *"
-    assert t["sql"] == "INSERT INTO audit.d SELECT '{{YYYY-MM-DD}}'"
+    assert t["sql"] == _WRITE
+    assert t["role"] == "ops"
     assert "url" not in t
 
     # The persisted trigger feeds build_scheduler as a SQL job.
@@ -84,10 +93,22 @@ async def test_create_unknown_kind_fails(cfg_path, monkeypatch):
 async def test_create_duplicate_id_fails(cfg_path, monkeypatch):
     m = Mutation()
     await m.create_scheduled_task(
-        _info(monkeypatch), id="dup", name="Dup", cron="0 2 * * *", kind="sql", sql="SELECT 1"
+        _info(monkeypatch),
+        id="dup",
+        name="Dup",
+        cron="0 2 * * *",
+        kind="sql",
+        sql=_WRITE,
+        role="ops",
     )
     res = await m.create_scheduled_task(
-        _info(monkeypatch), id="dup", name="Dup2", cron="0 3 * * *", kind="sql", sql="SELECT 2"
+        _info(monkeypatch),
+        id="dup",
+        name="Dup2",
+        cron="0 3 * * *",
+        kind="sql",
+        sql=_WRITE,
+        role="ops",
     )
     assert res.success is False
     assert "already exists" in res.message
@@ -97,7 +118,13 @@ async def test_create_duplicate_id_fails(cfg_path, monkeypatch):
 async def test_delete_scheduled_task(cfg_path, monkeypatch):
     m = Mutation()
     await m.create_scheduled_task(
-        _info(monkeypatch), id="gone", name="Gone", cron="0 2 * * *", kind="sql", sql="SELECT 1"
+        _info(monkeypatch),
+        id="gone",
+        name="Gone",
+        cron="0 2 * * *",
+        kind="sql",
+        sql=_WRITE,
+        role="ops",
     )
     # delete_scheduled_task imports app state; force the no-scheduler branch.
     import provisa.api.app as app_mod
@@ -111,3 +138,35 @@ async def test_delete_scheduled_task(cfg_path, monkeypatch):
     res2 = await m.delete_scheduled_task(_info(monkeypatch), task_id="missing")
     assert res2.success is False
     assert "not found" in res2.message
+
+
+async def test_a_sql_trigger_without_a_role_of_this_org_is_refused(cfg_path, monkeypatch):
+    m = Mutation()
+    for role in (None, "nobody"):
+        res = await m.create_scheduled_task(
+            _info(monkeypatch),
+            id="r",
+            name="R",
+            cron="0 2 * * *",
+            kind="sql",
+            sql=_WRITE,
+            role=role,
+        )
+        assert res.success is False and res.code == "schema.trigger_role_required"
+    assert _read(cfg_path)["scheduled_triggers"] == []
+
+
+async def test_a_create_is_refused_when_saved_naming_the_trigger(cfg_path, monkeypatch):
+    m = Mutation()
+    res = await m.create_scheduled_task(
+        _info(monkeypatch),
+        id="snap",
+        name="Snap",
+        cron="0 2 * * *",
+        kind="sql",
+        sql="CREATE TABLE s.x AS SELECT * FROM s.orders",
+        role="ops",
+    )
+    assert res.success is False and res.code == "schema.trigger_sql_refused"
+    assert "trigger 'snap': creates an object" in res.message
+    assert _read(cfg_path)["scheduled_triggers"] == []

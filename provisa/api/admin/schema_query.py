@@ -1339,6 +1339,7 @@ class Query:  # REQ-021, REQ-042
                     webhook_url=t.get("url"),
                     kind="sql" if sql else "webhook",  # REQ-1003
                     sql=sql,
+                    role=t.get("role"),
                     enabled=t.get("enabled", True),
                     last_run_at=None,
                     next_run_at=next_run,

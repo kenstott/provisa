@@ -44,6 +44,9 @@
     "firstPage": "Primeira página",
     "prevPage": "Página anterior",
     "nextPage": "Próxima página",
-    "lastPage": "Última página"
+    "lastPage": "Última página",
+    "roleLabel": "Executa como função",
+    "validationRoleRequired": "Uma tarefa SQL é executada como uma função: escolha uma.",
+    "runsAs": "executa como {{role}}"
   }
 }

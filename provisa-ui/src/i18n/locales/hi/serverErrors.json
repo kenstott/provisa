@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json मान्य JSON नहीं है: {{error}}",
       "args_json_not_object": "args_json एक JSON ऑब्जेक्ट होना चाहिए",
       "column_not_writable": "भूमिका '{{role}}' के पास कॉलम '{{column}}' पर लेखन (write) पहुँच नहीं है",
+      "command_filter_refused": "{{field}}: {{reason}}",
       "definition_not_available": "{{statement}} यहाँ उपलब्ध नहीं है: परिभाषाएँ मॉडल में या डेटा स्रोत में बनाई जाती हैं, और पंक्तियाँ DELETE से हटाई जाती हैं।",
       "engine_not_connected": "इंजन कनेक्ट नहीं है",
       "grpc_source_not_registered": "gRPC रिमोट स्रोत '{{source_id}}' पंजीकृत नहीं है",
@@ -118,6 +119,9 @@
     "functions": {
       "approval_denied": "'{{name}}' के लिए अनुमोदन अस्वीकृत: {{reason}}",
       "approval_unavailable": "कमांड '{{name}}' को अनुमोदन चाहिए और कोई अनुमोदन हुक कॉन्फ़िगर नहीं है",
+      "argument_count": "{{signature}} {{count}} आर्ग्युमेंट लेता है; {{given}} दिए गए",
+      "argument_missing": "{{signature}}: आर्ग्युमेंट '{{argument}}' नहीं दिया गया",
+      "argument_not_declared": "{{signature}}: आर्ग्युमेंट '{{argument}}' घोषित नहीं है",
       "binding_missing_key": "kind '{{kind}}' की फ़ंक्शन बाइंडिंग में आवश्यक कुंजी '{{key}}' गायब है",
       "egress_denied": "'{{endpoint}}' पर ईग्रेस अस्वीकृत है: होस्ट UDF ईग्रेस अनुमति-सूची में नहीं है (REQ-885 डिफ़ॉल्ट-अस्वीकृति)। अनुमति देने के लिए इसे udf_egress_allowlist में जोड़ें।",
       "grpc_call_failed": "grpc कॉल {{target}}{{path}} विफल हुई: {{status}}: {{details}}",
@@ -133,6 +137,7 @@
       "script_failed": "स्क्रिप्ट {{returncode}} के साथ समाप्त हुई: {{stderr}}",
       "source_not_connected": "स्रोत '{{source_id}}' कनेक्ट नहीं है",
       "unknown_arg_kind": "'{{name}}' के लिए अज्ञात arg_kind '{{arg_kind}}'",
+      "unknown_command": "अज्ञात कमांड: '{{name}}'",
       "unknown_impl_kind": "अज्ञात फ़ंक्शन impl_kind: '{{impl_kind}}'",
       "written_table_missing": "कमांड '{{name}}' '{{table}}' में लिखता है, जो पंजीकृत नहीं है"
     },
@@ -333,6 +338,8 @@
       "task_not_found": "टास्क '{{task}}' नहीं मिला",
       "trigger_exists": "ट्रिगर '{{trigger}}' पहले से मौजूद है",
       "trigger_fields_required": "id, name और cron आवश्यक हैं",
+      "trigger_role_required": "ट्रिगर '{{trigger}}': SQL ट्रिगर इस संगठन की एक भूमिका के रूप में चलता है",
+      "trigger_sql_refused": "{{reason}}",
       "unknown_request_type": "अज्ञात अनुरोध प्रकार '{{type}}'",
       "unknown_trigger_kind": "अज्ञात ट्रिगर प्रकार '{{kind}}'",
       "url_sql_exclusive": "url और sql परस्पर अनन्य हैं",
@@ -396,6 +403,9 @@
       "no_fields_to_update": "अपडेट करने के लिए कोई फ़ील्ड नहीं",
       "self_role_change": "उपयोगकर्ता अपनी स्वयं की भूमिका नहीं बदल सकता। किसी अन्य प्रशासक से कहें (REQ-1308)।",
       "user_not_found": "उपयोगकर्ता नहीं मिला"
+    },
+    "cypher": {
+      "command_call_refused": "{{reason}}"
     }
   }
 }

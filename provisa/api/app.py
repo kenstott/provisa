@@ -193,6 +193,7 @@ class AppState:
     _flight_relay: Any | None = None  # FlightRelay: the advertised Flight port (REQ-1900)
     _http_listener: Any | None = None  # WorkerHttpListener: this worker's own HTTP socket
     kafka_windows: dict[str, str] = {}  # source_id → default_window (e.g. "1h")
+    kafka_bootstrap: dict[str, str] = {}  # source_id → its brokers, secrets resolved (REQ-812)
     kafka_table_configs: dict[str, KafkaTableConfig] = {}  # table_name → KafkaTableConfig
     view_sql_map: dict[str, str] = {}  # view_table_name → SQL (for inline expansion)
     # REQ-1163: bitemporal materialized views → (physical mv target ref, spec), so a request-level

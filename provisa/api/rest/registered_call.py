@@ -92,7 +92,7 @@ async def intercept_precompile(body, state, role_id, label_map) -> JSONResponse 
     try:
         call = parse_command_call(body.query, body.params or {})
     except CommandCallRefused as exc:
-        raise ApiError(400, "cypher.command_call_refused", str(exc)) from exc
+        raise ApiError(400, "cypher.command_call_refused", str(exc), reason=str(exc)) from exc
     if call is None:
         return None
     from provisa.api.data.action_exec import bind_command_args, invoke_tracked_function
@@ -102,5 +102,5 @@ async def intercept_precompile(body, state, role_id, label_map) -> JSONResponse 
     try:
         cols, shaped = project(call, rows)
     except CommandCallRefused as exc:
-        raise ApiError(400, "cypher.command_call_refused", str(exc)) from exc
+        raise ApiError(400, "cypher.command_call_refused", str(exc), reason=str(exc)) from exc
     return JSONResponse(content={"columns": cols, "rows": shaped})

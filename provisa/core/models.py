@@ -1489,7 +1489,23 @@ class ScheduledTrigger(BaseModel):
     # Mutually exclusive with url/function. REQ-1004: the text may contain {{date-token}}
     # placeholders substituted with the run's execution date/time before execution.
     sql: str | None = None
+    # The role a SQL trigger's statement runs as, through the one write admission. Required for a
+    # SQL trigger: a schedule acts as a role someone chose, never as a built-in one.
+    role: str | None = None
     enabled: bool = True
+
+    @model_validator(mode="after")
+    def _sql_trigger_writes_rows_as_a_role(self) -> "ScheduledTrigger":
+        if self.sql is None:
+            return self
+        if not self.role:
+            raise ValueError(f"trigger {self.id!r}: a SQL trigger names the role it runs as")
+        from datetime import datetime, timezone
+
+        from provisa.scheduler.trigger_sql import checked_trigger_sql
+
+        checked_trigger_sql(self.sql, self.id, datetime.now(timezone.utc))
+        return self
 
 
 class LoginThrottleConfig(BaseModel):  # REQ-1393
