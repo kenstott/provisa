@@ -783,8 +783,10 @@ def make_clickhouse_keyed_arrow_loader() -> AdapterKeyedLoader:
         try:
             cols = ", ".join(f'"{n}"' for n in names)
             parts = [
-                await driver.execute_arrow(f'SELECT {cols} FROM "{table.table_name}" WHERE {where}')
-                for where in _pk_in_clauses_within(
+                await driver.execute_arrow(
+                    f'SELECT {cols} FROM "{table.table_name}" WHERE {where}', bound
+                )
+                for where, bound in _pk_in_clauses_within(
                     pk_columns, keys, _CLICKHOUSE_MAX_IN_CLAUSE_CHARS
                 )
             ]
@@ -822,16 +824,44 @@ def _clickhouse_arrow_temporals(data: Any, columns: list[Any]) -> Any:
 _CLICKHOUSE_MAX_IN_CLAUSE_CHARS = 200_000
 
 
+def _bound_in_clause(
+    pk_columns: list[str], keys: list[tuple[Any, ...]]
+) -> tuple[str, dict[str, Any]]:
+    """``_pk_in_clause`` with each key value a ``%(kN)s`` placeholder, and the values by name: the
+    driver binds them, escaping each for the source, so no value is written into the text."""
+    bound: dict[str, Any] = {}
+
+    def _slot(value: Any) -> str:
+        name = f"k{len(bound) + 1}"
+        bound[name] = value
+        return f"%({name})s"
+
+    if len(pk_columns) == 1:
+        values = ", ".join(_slot(k[0]) for k in keys)
+        return f'"{pk_columns[0]}" IN ({values})', bound
+    cols = ", ".join(f'"{c}"' for c in pk_columns)
+    tuples = ", ".join("(" + ", ".join(_slot(v) for v in key) + ")" for key in keys)
+    return f"({cols}) IN ({tuples})", bound
+
+
+def _bound_chars(value: Any) -> int:
+    """At most how many characters ``value`` takes once the driver has bound it: a number as
+    written; any other value quoted, with every character possibly escaped."""
+    if isinstance(value, (bool, int, float)) or value is None:
+        return len(str(value)) + 2
+    return 2 * len(str(value)) + 2
+
+
 def _pk_in_clauses_within(
     pk_columns: list[str], keys: list[tuple[Any, ...]], max_chars: int
-) -> list[str]:
+) -> list[tuple[str, dict[str, Any]]]:
     """Predicates that together name exactly ``keys``, each key once, each rendering to at most
     ``max_chars``. A run of three or more consecutive integers of a single-column key is one
     ``BETWEEN`` -- over integers it names exactly the run's members -- and the rest are
-    ``_pk_in_clause`` batches. Confirmed live: large_federated_join's 1..1M order_id keys as IN
+    ``_bound_in_clause`` batches. Confirmed live: large_federated_join's 1..1M order_id keys as IN
     batches were 35 statements of ~200 KB whose parameter-comment scan alone took ~20s; as a
     run they are one statement."""
-    clauses: list[str] = []
+    clauses: list[tuple[str, dict[str, Any]]] = []
     if len(pk_columns) == 1 and keys and all(type(k[0]) is int for k in keys):
         runs, singles = _integer_runs(sorted({k[0] for k in keys}))
         col = pk_columns[0]
@@ -840,24 +870,24 @@ def _pk_in_clauses_within(
         size = 0
         for b in between:
             if part and size + len(b) + 4 > max_chars:
-                clauses.append("(" + " OR ".join(part) + ")")
+                clauses.append(("(" + " OR ".join(part) + ")", {}))
                 part, size = [], 0
             part.append(b)
             size += len(b) + 4
         if part:
-            clauses.append("(" + " OR ".join(part) + ")")
+            clauses.append(("(" + " OR ".join(part) + ")", {}))
         keys = [(v,) for v in singles]
     batch: list[tuple[Any, ...]] = []
     size = 0
     for key in keys:
-        key_chars = sum(len(_sql_literal(v)) + 2 for v in key) + 4
+        key_chars = sum(_bound_chars(v) + 2 for v in key) + 4
         if batch and size + key_chars > max_chars:
-            clauses.append(_pk_in_clause(pk_columns, batch))
+            clauses.append(_bound_in_clause(pk_columns, batch))
             batch, size = [], 0
         batch.append(key)
         size += key_chars
     if batch:
-        clauses.append(_pk_in_clause(pk_columns, batch))
+        clauses.append(_bound_in_clause(pk_columns, batch))
     return clauses
 
 

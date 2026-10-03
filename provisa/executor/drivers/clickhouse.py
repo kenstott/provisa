@@ -138,15 +138,18 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
         )
 
     # Async only for the awaitable call-site contract; executes synchronously in-thread.
-    async def execute_arrow(self, sql: str) -> Any:
-        """Run fully formed ``sql`` (no bind parameters) and return the result as a
-        ``pyarrow.Table`` in ClickHouse's native Arrow format -- no per-row Python objects
-        (REQ-1865: a keyed row-materialize fetch lands millions of rows columnar). ClickHouse
-        ``String`` arrives as Arrow ``string``, not ``binary``."""
+    async def execute_arrow(self, sql: str, params: dict[str, Any] | None = None) -> Any:
+        """Run ``sql`` and return the result as a ``pyarrow.Table`` in ClickHouse's native Arrow
+        format -- no per-row Python objects (REQ-1865: a keyed row-materialize fetch lands
+        millions of rows columnar). ClickHouse ``String`` arrives as Arrow ``string``, not
+        ``binary``. ``params`` fill the statement's ``%(name)s`` placeholders through the
+        driver's own binding, which escapes each value for ClickHouse."""
         query_id = uuid.uuid4().hex
         with self._require_pool().connection(is_broken=_is_broken) as client:
             with request_deadline.cancel_on_deadline(lambda: self._kill_query(query_id)):
-                return client.query_arrow(sql, use_strings=True, settings={"query_id": query_id})
+                return client.query_arrow(
+                    sql, parameters=params, use_strings=True, settings={"query_id": query_id}
+                )
 
     # Async only for the DirectDriver awaitable contract; closes synchronously in-thread.
     async def close(self) -> None:
