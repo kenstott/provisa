@@ -444,7 +444,10 @@ async def test_a_read_whose_deadline_passes_while_the_build_runs_says_so(wiring,
     wiring.hold = True
     pets = _table("pets-db", "pets")
     state = _state([_source("pets-db")], [pets], _Backend(), plane)
-    with request_deadline.within(0.05):
+    # The build is held, so the deadline passes while the read waits on it, whatever the budget;
+    # the budget must only outlast making the request (a control-plane write), which under a
+    # loaded machine takes more than a few tens of milliseconds.
+    with request_deadline.within(1.0):
         with pytest.raises(ReplicaBuilding, match="pets-db.pet_store.pets is still being built"):
             await _ensure(state, {"pets-db"})
     # the request stands: the build goes on without the reader
