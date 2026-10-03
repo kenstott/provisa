@@ -1452,6 +1452,54 @@ def _drop_data_surface(state, role_id: str) -> None:
         surface.pop(role_id, None)
 
 
+def schema_input_for(
+    state: Any, role: dict, tables: list[dict], metrics: list[dict]
+) -> SchemaInput:
+    """The schema input for ``role`` from this generation's build inputs (state.role_build_inputs)."""
+    inputs = state.role_build_inputs
+    return SchemaInput(
+        tables=tables,
+        relationships=inputs["relationships"],
+        column_types=inputs["column_types"],
+        naming_rules=inputs["naming_rules"],
+        role=role,
+        domains=inputs["domains"],
+        source_types=state.source_types,
+        source_catalogs=state.source_catalogs,
+        domain_prefix=inputs["domain_prefix"],
+        physical_table_map=inputs["physical_table_map"],
+        functions=inputs["functions"],
+        webhooks=inputs["webhooks"],
+        enum_types=state.pg_enum_types,
+        gql_object_columns=inputs["gql_object_columns"],
+        governed_gql_types=inputs["governed_gql_types"],
+        gql_governed_object_cols=inputs["gql_governed_object_cols"],
+        metrics=metrics,  # REQ-1319
+    )
+
+
+def register_role_surface(state: Any, role: dict, rls: Any) -> None:
+    """Build and register one role's data surface: its GraphQL schema, REST path map, compiled
+    context, RLS context and proto, from this generation's build inputs."""
+    from provisa.compiler.schema_gen import build_table_path_map
+    from provisa.grpc.proto_gen import generate_proto
+
+    inputs = state.role_build_inputs
+    si = schema_input_for(state, role, inputs["tables"], inputs["metrics"])
+    # No swallow: a role missing from state.schemas here is served with a permanently cached
+    # "no schema available" for every request to this org runtime (the build is cache-only-on-
+    # success). Let generate_schema raise so a bad role definition fails the build loudly and
+    # gets fixed at the source, matching generate_proto below.
+    state.schemas[role["id"]] = generate_schema(si)
+    state.table_path_maps[role["id"]] = build_table_path_map(si)
+    state.contexts[role["id"]] = build_context(si)
+    state.rls_contexts[role["id"]] = rls
+    # No swallow: an unmapped column type is a real gap in the proto type map, not a reason to
+    # silently disable gRPC for the role. Let generate_proto raise so it surfaces at startup and
+    # gets fixed at the source (the type map) — never patched around here.
+    state.proto_files[role["id"]] = generate_proto(si, field_numbers=inputs["field_numbers"])
+
+
 def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221, REQ-262, REQ-263
     roles: list[dict],
     tables: list[dict],
@@ -1493,30 +1541,32 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
 
     from provisa.grpc.proto_gen import generate_proto
 
+    # What any role's surface is built from, kept so a role made later in this generation — a
+    # meta-role (security/meta_role.py) — is built exactly as the stored roles are here.
+    state.role_build_inputs = {
+        "relationships": relationships,
+        "column_types": col_types_converted,
+        "naming_rules": naming_rules,
+        "domains": domains,
+        "domain_prefix": domain_prefix,
+        "physical_table_map": {
+            **_META_TABLE_ALIAS,
+            **_OPS_LOG_TABLE_ALIAS,
+            **(kafka_physical or {}),
+        },
+        "functions": tracked_functions,
+        "webhooks": tracked_webhooks,
+        "gql_object_columns": gql_object_cols,
+        "governed_gql_types": _governed_gql_types,
+        "gql_governed_object_cols": _gov_obj_cols,
+        "tables": tables,
+        "metrics": metrics,
+        "rls_rules": rls_rules,
+        "field_numbers": field_numbers,
+    }
+
     def _schema_input(role: dict, tbls: list[dict], mtrcs: list[dict]) -> SchemaInput:
-        return SchemaInput(
-            tables=tbls,
-            relationships=relationships,
-            column_types=col_types_converted,
-            naming_rules=naming_rules,
-            role=role,
-            domains=domains,
-            source_types=state.source_types,
-            source_catalogs=state.source_catalogs,
-            domain_prefix=domain_prefix,
-            physical_table_map={
-                **_META_TABLE_ALIAS,
-                **_OPS_LOG_TABLE_ALIAS,
-                **(kafka_physical or {}),
-            },
-            functions=tracked_functions,
-            webhooks=tracked_webhooks,
-            enum_types=state.pg_enum_types,
-            gql_object_columns=gql_object_cols,
-            governed_gql_types=_governed_gql_types,
-            gql_governed_object_cols=_gov_obj_cols,
-            metrics=mtrcs,  # REQ-1319
-        )
+        return schema_input_for(state, role, tbls, mtrcs)
 
     # ``roles`` is every role the control plane holds now. The registry and the per-role maps
     # are built up across rebuilds of a live runtime, so a role deleted since the last build is
@@ -1552,25 +1602,7 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         if not role["domain_access"] and not reaches_all_domains(role["domain_access"]):
             _drop_data_surface(state, role["id"])
             continue
-        si = _schema_input(role, tables, metrics)
-        from provisa.compiler.schema_gen import build_table_path_map
-
-        # No swallow: a role missing from state.schemas here is served with a permanently cached
-        # "no schema available" for every request to this org runtime (the build is cache-only-on-
-        # success). Let generate_schema raise so a bad role definition fails the build loudly and
-        # gets fixed at the source, matching generate_proto below.
-        state.schemas[role["id"]] = generate_schema(si)
-        state.table_path_maps[role["id"]] = build_table_path_map(si)
-        state.contexts[role["id"]] = build_context(si)
-        state.rls_contexts[role["id"]] = build_rls_context(
-            rls_rules,
-            role["id"],
-        )
-
-        # No swallow: an unmapped column type is a real gap in the proto type map, not a reason to
-        # silently disable gRPC for the role. Let generate_proto raise so it surfaces at startup and
-        # gets fixed at the source (the type map) — never patched around here.
-        state.proto_files[role["id"]] = generate_proto(si, field_numbers=field_numbers)
+        register_role_surface(state, role, build_rls_context(rls_rules, role["id"]))
 
     # REQ-045/REQ-143: the SERVED gRPC wire descriptor. A grpc.aio server registers exactly one
     # generated service and stock reflection serves exactly one descriptor pool, so the wire

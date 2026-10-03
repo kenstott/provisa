@@ -617,6 +617,20 @@ class AppState:
         self._active_runtime().contexts = value
 
     @property
+    def role_build_inputs(self) -> dict:
+        """What any role's surface is built from (OrgRuntime.role_build_inputs)."""
+        return self._active_runtime().role_build_inputs
+
+    @role_build_inputs.setter
+    def role_build_inputs(self, value: dict) -> None:
+        self._active_runtime().role_build_inputs = value
+
+    @property
+    def meta_roles(self) -> dict:
+        """meta-role id → the held roles it acts as (OrgRuntime.meta_roles)."""
+        return self._active_runtime().meta_roles
+
+    @property
     def view_context(self) -> CompilationContext | None:
         """The model-wide context view SQL is lowered against (OrgRuntime.view_context)."""
         return self._active_runtime().view_context

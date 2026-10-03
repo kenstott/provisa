@@ -132,7 +132,10 @@ def test_anything_that_changes_the_sql_derives_it_again(sqlglot_calls, change, m
         ctx = _ctx()  # a rebuild publishes a new compilation context for the role
         state.contexts["analyst"] = ctx
     elif change == "role_set":
-        monkeypatch.setattr(governed_plan, "acting_role_set", lambda: ("analyst", "steward"))
+        # A set of held roles acts as its meta-role (security/meta_role.py): another role.
+        state.contexts["meta:analyst+steward"] = ctx
+        state.roles["meta:analyst+steward"] = {"id": "meta:analyst+steward"}
+        kwargs["role"] = "meta:analyst+steward"
     _direct_sql(state, ctx, **kwargs)
     assert sqlglot_calls["parse"] > before["parse"]
 

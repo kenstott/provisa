@@ -60,10 +60,8 @@ def _resolve_role_id(request: Request, state: AppState) -> str:  # noqa: ARG001
 def _build_label_map(ctx: CompilationContext, role_id: str, state: AppState) -> CypherLabelMap:
     """Build CypherLabelMap with cross-domain traversal nodes for the given role.
 
-    REQ-1620: domain_access is resolved through ``effective_domain_access_role``, which widens
-    it to the union of every role the caller is acting as ("Role: All") — read off the
-    ``current_role_claims`` context bound by AuthMiddleware, the same context the shared
-    governed pipeline reads (``pgwire._pipeline``), so a graph traversal's visibility and its
+    REQ-1620: domain_access is the acting role's own — for a set of held roles, their meta-role's,
+    the union of theirs (security/meta_role.py) — so a graph traversal's visibility and its
     SQL-level V001 check agree.
 
     REQ-1877: the map is a pure function of the registry, so it is built once per schema

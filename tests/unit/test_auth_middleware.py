@@ -578,9 +578,17 @@ class MultiRoleProvider(AuthProvider):
         raise ValueError("Invalid token")
 
 
-def test_a_role_set_header_acts_as_its_first_role_with_the_whole_set_as_claims():
+def test_a_role_set_header_acts_as_the_sets_meta_role(monkeypatch):
     # Before this, the comma-separated set was looked up as ONE role id and refused (403), so
-    # "Role: All" failed for every user with more than one role under an auth provider.
+    # "Role: All" failed for every user with more than one role under an auth provider. A set of
+    # held roles now acts as its meta-role (security/meta_role.py), built for exactly that set.
+    built: list[list[str]] = []
+
+    def _ensure(_state, members):
+        built.append(sorted(members))
+        return "meta:" + "+".join(sorted(members))
+
+    monkeypatch.setattr("provisa.security.meta_role.ensure_meta_role", _ensure)
     app = _make_app(provider=MultiRoleProvider())
     client = TestClient(app)
     resp = client.get(
@@ -589,8 +597,9 @@ def test_a_role_set_header_acts_as_its_first_role_with_the_whole_set_as_claims()
     )
     assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert data["role"] == "analyst"
-    assert data["roles"] == ["analyst", "editor"]
+    assert data["role"] == "meta:analyst+editor"
+    assert data["roles"] is None
+    assert built == [["analyst", "editor"]]
 
 
 def test_a_role_set_header_naming_an_unassigned_role_is_refused():

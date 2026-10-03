@@ -134,7 +134,7 @@ async def schema_input(tenant_db, trino_conn, _load_config) -> dict:
         rels = await rel_repo.list_all(conn)
         roles = await role_repo.list_all(conn)
         domains = await domain_repo.list_all(conn)
-        await source_repo.list_all(conn)
+        sources = await source_repo.list_all(conn)
         naming_rules = [
             dict(r) for r in await conn.fetch("SELECT pattern, replacement FROM naming_rules")
         ]
@@ -146,6 +146,14 @@ async def schema_input(tenant_db, trino_conn, _load_config) -> dict:
             trino_conn, catalog, table["schema_name"], table["table_name"]
         )
         column_types[table["id"]] = cols
+
+    # What each table's source can take, as the model load stamps it (executor/write_capability.py).
+    from provisa.executor.write_capability import table_write_ops
+
+    source_types = {s["id"]: s["type"] for s in sources}
+    for table in tables:
+        stype = None if table.get("view_sql") else source_types[table["source_id"]]
+        table["write_ops"] = sorted(table_write_ops(table, stype, None))
 
     return {
         "tables": tables,

@@ -372,6 +372,7 @@ _PGW_TABLES = [
             {"column_name": "amount", "visible_to": []},
             {"column_name": "region", "visible_to": []},
         ],
+        "write_ops": ["delete", "insert", "update"],
     }
 ]
 

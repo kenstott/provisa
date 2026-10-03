@@ -543,26 +543,24 @@ async def test_a_statement_governed_for_one_person_is_the_same_plan_for_another(
 async def test_a_plan_governed_for_a_wider_acting_role_set_is_not_served_to_a_narrower_one(
     pipeline,
 ):
-    """REQ-1620: domain access follows the union of the roles a caller is acting as. That set is
-    an input of governance, so it is part of the plan's identity: a statement admitted for
-    (analyst + sales_reader) must be governed again — and refused — for analyst alone."""
-    from provisa.core.request_context import reset_role_claims, set_role_claims
-
+    """REQ-1620: a set of held roles acts as its meta-role, whose domain access is the union. A
+    statement admitted for (analyst + sales_reader) is that role's plan; analyst alone is governed
+    again — and refused."""
     state = pipeline.state
     state.roles["analyst"]["domain_access"] = ["hr"]  # not the statement's domain (sales)
-    state.roles["sales_reader"] = {"id": "sales_reader", "capabilities": [], "domain_access": ["*"]}
-    token = set_role_claims(["analyst", "sales_reader"])
-    try:
-        wide = await pipeline.mod._govern_and_route(_SQL, "analyst")
-        assert wide.sql
-    finally:
-        reset_role_claims(token)
+    meta = "meta:analyst+sales_reader"
+    state.roles[meta] = {**state.roles["analyst"], "id": meta, "domain_access": ["*"]}
+    state.contexts[meta] = state.contexts["analyst"]
+    # A child of both: every grant to a member reaches it (security/inheritance.py).
+    from provisa.security.inheritance import expand_column_grants
+
+    expand_column_grants(state.tables, {meta: [meta, "analyst", "sales_reader"]})
+    if "analyst" in state.rls_contexts:
+        state.rls_contexts[meta] = state.rls_contexts["analyst"]
+    wide = await pipeline.mod._govern_and_route(_SQL, meta)
+    assert wide.sql
     with pytest.raises(PermissionError):
         await pipeline.mod._govern_and_route(_SQL, "analyst")
-    token = set_role_claims(["sales_reader", "analyst"])  # the same set, another order: same plan
-    try:
-        before = dict(pipeline.calls)
-        await pipeline.mod._govern_and_route(_SQL, "analyst")
-        assert pipeline.calls == before
-    finally:
-        reset_role_claims(token)
+    before = dict(pipeline.calls)
+    await pipeline.mod._govern_and_route(_SQL, meta)  # the same set: the same plan
+    assert pipeline.calls == before

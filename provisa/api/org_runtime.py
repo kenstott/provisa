@@ -222,6 +222,10 @@ class OrgRuntime:
     # builder reads. Per-org because domains ARE per-org: a process-global cache is overwritten by
     # whichever org rebuilt last, so /data/domains hands one org's domain list to another.
     schema_build_cache: dict = field(default_factory=dict)
+    # What any role's surface is built from in this generation (app_loaders.register_role_surface).
+    role_build_inputs: dict = field(default_factory=dict)
+    # meta-role id → the held roles it acts as (security/meta_role.py), this generation.
+    meta_roles: dict = field(default_factory=dict)
 
     # REQ-1349: this org's rows from its ``org_settings`` table, read once at build time and
     # refreshed by the settings router when the org writes one. Cached here rather than read per

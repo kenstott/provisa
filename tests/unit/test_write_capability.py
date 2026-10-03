@@ -91,3 +91,17 @@ def test_a_bulk_load_is_an_insert():
     with pytest.raises(WriteNotSupported, match="does not take INSERT"):
         admit_rows(_gov({"update", "delete"}), 1, "orders", ["id"])
     admit_rows(_gov({"insert"}), 1, "orders", ["id"])
+
+
+def test_a_landed_replica_is_no_write_route_to_its_source():
+    # The engine's land connector for a replicated type declares write support for its own store;
+    # writing the replica would not write the source, so it is no route (executor/writable.py).
+    from provisa.federation.engine import build_duckdb_engine
+
+    engine = build_duckdb_engine().complete_reach()
+    assert table_write_ops({"table_name": "t"}, "neo4j", engine) == frozenset()
+    assert table_write_ops({"table_name": "t"}, "postgresql", engine) == {
+        "insert",
+        "update",
+        "delete",
+    }
