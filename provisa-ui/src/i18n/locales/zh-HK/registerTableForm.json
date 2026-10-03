@@ -93,6 +93,12 @@
     "nlSearchNone": "此結構描述中沒有與該描述相符的表。",
     "nlSearchConfidence": "{{percent}}%",
     "nlSearchRegistered": "已註冊",
-    "nlSearchUse": "使用"
+    "nlSearchUse": "使用",
+    "fileGlobLabel": "檔案萬用字元（多個檔案合為一張表）",
+    "fileGlobHint": "可選 — 單一檔案請留空",
+    "fileGlobPlaceholder": "例如 orders/*.csv",
+    "sourceFileColumnLabel": "來源檔案欄",
+    "sourceFileColumnHint": "可選 — 儲存每列檔案路徑的欄",
+    "sourceFileColumnPlaceholder": "例如 _source_file"
   }
 }

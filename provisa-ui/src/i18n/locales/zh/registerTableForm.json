@@ -93,6 +93,12 @@
     "nlSearchNone": "此架构中没有与该描述匹配的表。",
     "nlSearchConfidence": "{{percent}}%",
     "nlSearchRegistered": "已注册",
-    "nlSearchUse": "使用"
+    "nlSearchUse": "使用",
+    "fileGlobLabel": "文件通配符（多个文件合为一张表）",
+    "fileGlobHint": "可选 — 单个文件请留空",
+    "fileGlobPlaceholder": "例如 orders/*.csv",
+    "sourceFileColumnLabel": "源文件列",
+    "sourceFileColumnHint": "可选 — 保存每行文件路径的列",
+    "sourceFileColumnPlaceholder": "例如 _source_file"
   }
 }

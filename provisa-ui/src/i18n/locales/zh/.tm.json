@@ -4804,5 +4804,11 @@
   "zh/replicaBuild.json::replicaBuild.feedDown": "Change feed down since {{since}}; the replica is not refreshed until it reconnects: {{error}}",
   "zh/serverErrors.json::serverErrors.schema.change_streams_unavailable": "Source '{{source}}' is a standalone MongoDB server, which serves no change streams: the native change signal needs a replica set or a sharded cluster. Run it as a replica set, or use the poll change signal.",
   "zh/settings.json::settings.redirect.snowflake_storage_integration.label": "Snowflake storage integration for results",
-  "zh/settings.json::settings.redirect.snowflake_storage_integration.help": "The Snowflake storage integration a Snowflake engine writes large results to the object store through. Empty: a Snowflake engine does not write results itself."
+  "zh/settings.json::settings.redirect.snowflake_storage_integration.help": "The Snowflake storage integration a Snowflake engine writes large results to the object store through. Empty: a Snowflake engine does not write results itself.",
+  "zh/registerTableForm.json::registerTableForm.fileGlobLabel": "File glob (one table over many files)",
+  "zh/registerTableForm.json::registerTableForm.fileGlobHint": "optional — leave blank for a single file",
+  "zh/registerTableForm.json::registerTableForm.fileGlobPlaceholder": "e.g. orders/*.csv",
+  "zh/registerTableForm.json::registerTableForm.sourceFileColumnLabel": "Source-file column",
+  "zh/registerTableForm.json::registerTableForm.sourceFileColumnHint": "optional — a column holding each row's file path",
+  "zh/registerTableForm.json::registerTableForm.sourceFileColumnPlaceholder": "e.g. _source_file"
 }

@@ -4805,5 +4805,11 @@
   "zh-HK/replicaBuild.json::replicaBuild.feedDown": "Change feed down since {{since}}; the replica is not refreshed until it reconnects: {{error}}",
   "zh-HK/serverErrors.json::serverErrors.schema.change_streams_unavailable": "Source '{{source}}' is a standalone MongoDB server, which serves no change streams: the native change signal needs a replica set or a sharded cluster. Run it as a replica set, or use the poll change signal.",
   "zh-HK/settings.json::settings.redirect.snowflake_storage_integration.label": "Snowflake storage integration for results",
-  "zh-HK/settings.json::settings.redirect.snowflake_storage_integration.help": "The Snowflake storage integration a Snowflake engine writes large results to the object store through. Empty: a Snowflake engine does not write results itself."
+  "zh-HK/settings.json::settings.redirect.snowflake_storage_integration.help": "The Snowflake storage integration a Snowflake engine writes large results to the object store through. Empty: a Snowflake engine does not write results itself.",
+  "zh-HK/registerTableForm.json::registerTableForm.fileGlobLabel": "File glob (one table over many files)",
+  "zh-HK/registerTableForm.json::registerTableForm.fileGlobHint": "optional — leave blank for a single file",
+  "zh-HK/registerTableForm.json::registerTableForm.fileGlobPlaceholder": "e.g. orders/*.csv",
+  "zh-HK/registerTableForm.json::registerTableForm.sourceFileColumnLabel": "Source-file column",
+  "zh-HK/registerTableForm.json::registerTableForm.sourceFileColumnHint": "optional — a column holding each row's file path",
+  "zh-HK/registerTableForm.json::registerTableForm.sourceFileColumnPlaceholder": "e.g. _source_file"
 }

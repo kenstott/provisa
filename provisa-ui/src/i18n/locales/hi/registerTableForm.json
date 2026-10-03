@@ -93,6 +93,12 @@
     "nlSearchNone": "इस स्कीमा में कोई तालिका उस विवरण से मेल नहीं खाती।",
     "nlSearchConfidence": "{{percent}}%",
     "nlSearchRegistered": "पंजीकृत",
-    "nlSearchUse": "उपयोग करें"
+    "nlSearchUse": "उपयोग करें",
+    "fileGlobLabel": "फ़ाइल ग्लोब (कई फ़ाइलों पर एक तालिका)",
+    "fileGlobHint": "वैकल्पिक — एकल फ़ाइल के लिए खाली छोड़ें",
+    "fileGlobPlaceholder": "उदा. orders/*.csv",
+    "sourceFileColumnLabel": "स्रोत-फ़ाइल कॉलम",
+    "sourceFileColumnHint": "वैकल्पिक — प्रत्येक पंक्ति का फ़ाइल पथ रखने वाला कॉलम",
+    "sourceFileColumnPlaceholder": "उदा. _source_file"
   }
 }
