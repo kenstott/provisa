@@ -185,6 +185,18 @@ query TablesQuery {
       role
       ttl
     }
+    pagingKind
+    pagination {
+      type
+      cursorField
+      cursorParam
+      pageParam
+      pageSizeParam
+      pageSize
+      maxPages
+      maxRows
+    }
+    pagingCeilingRows
     replicate
     loadProtected
     offPeakWindow
@@ -917,6 +929,12 @@ mutation UpdateTableCache($tableId: Int!, $cacheTtl: Int) {
 
 mutation UpdateTableRoleTtl($tableId: Int!, $roleTtl: [RoleTtlInput!]!) {
   updateTableRoleTtl(tableId: $tableId, roleTtl: $roleTtl) {
+    ...MutationResult
+  }
+}
+
+mutation UpdateTablePaging($tableId: Int!, $paging: PagingInput) {
+  updateTablePaging(tableId: $tableId, paging: $paging) {
     ...MutationResult
   }
 }

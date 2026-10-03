@@ -26,7 +26,8 @@ import pytest
 import respx
 
 from provisa.api_source.caller import answer_rows, call_api
-from provisa.api_source.models import ApiColumn, ApiColumnType, ApiEndpoint, PaginationConfig
+from provisa.api_source.models import ApiColumn, ApiColumnType, ApiEndpoint
+from provisa.core.paging import PaginationConfig
 from provisa.core.statement_warnings import (
     NoWarningChannel,
     ServerWarning,

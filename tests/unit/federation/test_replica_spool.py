@@ -151,7 +151,7 @@ def _graphql():
             ],
         }
     }
-    reader = sl.make_graphql_remote_loader(registrations).replica_source(
+    reader = sl.make_graphql_remote_loader(registrations, max_rows=500).replica_source(
         SimpleNamespace(id="g"),
         _table("orders", ("id", "name")),
         [("id", "bigint"), ("name", "text")],

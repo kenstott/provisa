@@ -22,7 +22,8 @@ import respx
 
 from provisa.api_source import fill_cache
 from provisa.api_source.caller import ApiCallError
-from provisa.api_source.models import ApiColumn, ApiColumnType, ApiEndpoint, PaginationConfig
+from provisa.api_source.models import ApiColumn, ApiColumnType, ApiEndpoint
+from provisa.core.paging import PaginationConfig
 from provisa.executor.session import EngineSession
 
 duckdb = pytest.importorskip("duckdb")

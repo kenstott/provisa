@@ -52,6 +52,7 @@ from provisa.core.schema_org import (
     tracked_functions,
     tracked_webhooks,
 )
+from provisa.core.paging import paging_row
 from provisa.core.secrets import resolve_secrets
 from provisa.openapi.mapper import OpenAPIQuery
 from provisa.security.rights import SYSTEM_ROLE_IDS
@@ -399,9 +400,19 @@ async def _register_api_endpoint(
             "ttl": src.cache_ttl or 300,
             "default_params": default_params if default_params else None,
             "promotions": getattr(tbl, "promotions", []) or [],
+            # REQ-318: a copy of the table's own paging, the one place it is authored.
+            "pagination": paging_row(tbl.pagination),
         },
         index_elements=["table_name"],
-        update_columns=["source_id", "path", "columns", "ttl", "default_params", "promotions"],
+        update_columns=[
+            "source_id",
+            "path",
+            "columns",
+            "ttl",
+            "default_params",
+            "promotions",
+            "pagination",
+        ],
     )
     for col_data in api_columns:
         if col_data.get("object_fields"):
@@ -1299,6 +1310,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     _validate_neo4j_sources(config)
     _validate_row_materialize(config)
     _validate_role_ttl(config)
+    _validate_paging(config)
     _validate_replicate(config)
     _validate_landing_ttl(config)
     await _upsert_tables(
@@ -1544,6 +1556,34 @@ def _validate_role_ttl(config) -> None:  # REQ-1907
             raise ValueError(
                 f"table {table.table_name!r}: role_ttl names unknown role(s) {unknown} (REQ-1907)"
             )
+
+
+def _validate_paging(config) -> None:  # REQ-318
+    """A table's paging must suit what reads the table, and a connection table's max_rows may only
+    lower the operator's graphql_remote.max_rows -- refused at load as it is at save."""
+    from provisa.core.paging import CONNECTION, ENDPOINT, check_paging, paging_kind
+
+    kinds = {s.id: s.type.value for s in config.sources}
+    for table in config.tables:
+        if table.pagination is None:
+            continue
+        if table.source_id not in kinds:
+            # A table of a source registered in the control plane only (createSource): what reads
+            # it is known from that row, where the table is registered (_upsert_tables). The
+            # operator's ceiling holds for it here all the same.
+            check_paging(
+                table.pagination,
+                table=table.table_name,
+                kind=CONNECTION if table.pagination.max_rows is not None else ENDPOINT,
+                ceiling_rows=config.graphql_remote.max_rows,
+            )
+            continue
+        check_paging(
+            table.pagination,
+            table=table.table_name,
+            kind=paging_kind(kinds[table.source_id]),
+            ceiling_rows=config.graphql_remote.max_rows,
+        )
 
 
 def _validate_replicate(config) -> None:  # REQ-826

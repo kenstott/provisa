@@ -232,6 +232,32 @@
     "loadManagementInfoLabel": "Sobre gestão de carga e atualidade",
     "loadManagementInfo": "Equilibra quão atuais são os dados de cada leitor com a carga sobre a plataforma e as fontes de origem. Idealmente a fonte gerencia a própria carga; o operador protege a plataforma, e a fonte quando ela não consegue se proteger. Estas configurações são o piso do operador — nenhuma consulta ou dica de requisição pode obter dados mais recentes ou colocar mais carga numa fonte do que elas permitem. Os leitores só podem optar por aceitar dados mais antigos em troca de velocidade. Uma tabela que o motor lê ao vivo ignora as configurações de TTL; elas se aplicam quando a tabela é servida a partir da sua réplica (\"Replicar\" ou \"Protegido contra carga\").",
     "cacheTtlRequiredForSignal": "O sinal de alteração {{signal}} avalia a atualidade pelo TTL do cache, então defina um TTL do cache aqui ou na fonte.",
-    "loadManagementFixErrors": "Corrija as configurações de Gestão de carga e atualidade antes de salvar."
+    "loadManagementFixErrors": "Corrija as configurações de Gestão de carga e atualidade antes de salvar.",
+    "pagingLabel": "Paginação",
+    "pagingEndpointHelp": "Como este endpoint é lido página a página. Uma leitura para após Máximo de páginas; uma resposta da qual a API tinha mais é informada como cortada e nunca é armazenada em cache como completa.",
+    "pagingConnectionHelp": "O máximo de linhas que uma leitura desta tabela de conexão toma. Deixe vazio para usar Linhas por leitura do GraphQL remoto; uma tabela pode reduzi-lo, nunca aumentá-lo.",
+    "pagingMaxRows": "Máximo de linhas por leitura",
+    "pagingMaxRowsDefault": "Padrão: {{ceiling}}",
+    "pagingType": "Tipo de paginação",
+    "pagingNone": "Sem paginação",
+    "pagingTypes": {
+      "offset": "Deslocamento e limite",
+      "page_number": "Número de página",
+      "cursor": "Cursor",
+      "link_header": "Cabeçalho Link"
+    },
+    "pagingFields": {
+      "pageParam": "Parâmetro de página",
+      "pageSizeParam": "Parâmetro de tamanho de página",
+      "pageSize": "Tamanho de página",
+      "cursorParam": "Parâmetro de cursor",
+      "cursorField": "Campo do próximo cursor",
+      "maxPages": "Máximo de páginas"
+    },
+    "pagingCutNote": "Uma leitura que atinge Máximo de páginas enquanto a API tem mais é informada como cortada.",
+    "pagingTypeRequired": "Escolha um tipo de paginação ou limpe os campos de paginação.",
+    "pagingPositive": "Use um número inteiro igual ou maior que 1.",
+    "pagingAboveCeiling": "No máximo {{ceiling}}: uma tabela pode reduzir o limite do operador, nunca aumentá-lo.",
+    "pagingFixErrors": "Corrija os erros de paginação antes de salvar."
   }
 }

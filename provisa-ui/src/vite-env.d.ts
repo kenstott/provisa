@@ -89,6 +89,7 @@ declare module "*.graphql" {
   export const UpdateSourceCache: DocumentNode;
   export const UpdateTableCache: DocumentNode;
   export const UpdateTableRoleTtl: DocumentNode;
+  export const UpdateTablePaging: DocumentNode;
   export const ForceRegen: DocumentNode;
   export const UpdateSourceReplicate: DocumentNode;
   export const UpdateTableReplicate: DocumentNode;
@@ -191,6 +192,7 @@ declare module "*.gql" {
   export const UpdateSourceCache: DocumentNode;
   export const UpdateTableCache: DocumentNode;
   export const UpdateTableRoleTtl: DocumentNode;
+  export const UpdateTablePaging: DocumentNode;
   export const ForceRegen: DocumentNode;
   export const UpdateSourceReplicate: DocumentNode;
   export const UpdateTableReplicate: DocumentNode;

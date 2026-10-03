@@ -232,6 +232,32 @@
     "loadManagementInfoLabel": "关于负载管理与时效性",
     "loadManagementInfo": "在每位读者数据的时效性与平台及上游数据源的负载之间取得平衡。理想情况下由上游自行管理负载；运维人员保护平台，并在上游无法自我保护时保护上游。这些设置是运维人员设定的下限——任何查询或请求提示都无法获得比其允许的更新的数据，也无法给数据源带来更多负载。读者只能选择为速度接受更旧的数据。引擎实时读取的表会忽略 TTL 设置；当该表由其副本提供时（“复制”或“负载保护”），这些设置才生效。",
     "cacheTtlRequiredForSignal": "变更信号 {{signal}} 根据缓存 TTL 判断数据是否过期，因此请在此处或数据源上设置缓存 TTL。",
-    "loadManagementFixErrors": "保存前请修正“负载管理与时效性”设置。"
+    "loadManagementFixErrors": "保存前请修正“负载管理与时效性”设置。",
+    "pagingLabel": "分页",
+    "pagingEndpointHelp": "此端点如何逐页读取。读取在达到最大页数后停止；API 还有更多数据的响应会被报告为已截断，且绝不会作为完整结果缓存。",
+    "pagingConnectionHelp": "此连接表一次读取的最大行数。留空则使用远程 GraphQL 每次读取的行数；表可以降低该值，但不能提高。",
+    "pagingMaxRows": "每次读取的最大行数",
+    "pagingMaxRowsDefault": "默认：{{ceiling}}",
+    "pagingType": "分页类型",
+    "pagingNone": "不分页",
+    "pagingTypes": {
+      "offset": "偏移量和限制",
+      "page_number": "页码",
+      "cursor": "游标",
+      "link_header": "Link 标头"
+    },
+    "pagingFields": {
+      "pageParam": "页参数",
+      "pageSizeParam": "页大小参数",
+      "pageSize": "页大小",
+      "cursorParam": "游标参数",
+      "cursorField": "下一个游标字段",
+      "maxPages": "最大页数"
+    },
+    "pagingCutNote": "在 API 还有更多数据时达到最大页数的读取会被报告为已截断。",
+    "pagingTypeRequired": "请选择分页类型，或清空分页字段。",
+    "pagingPositive": "请使用不小于 1 的整数。",
+    "pagingAboveCeiling": "最多 {{ceiling}}：表可以降低操作员的上限，但不能提高。",
+    "pagingFixErrors": "保存前请修正分页错误。"
   }
 }
