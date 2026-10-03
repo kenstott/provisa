@@ -26,6 +26,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from provisa.compiler.sql_literals import sql_literal
 from provisa.cypher.label_map import CypherLabelMap, NodeMapping
 
 
@@ -278,42 +279,28 @@ def parse_cypher_write(query: str) -> WriteAST:
 # ---------------------------------------------------------------------------
 
 
-def _sql_literal(val: Any, col_type: str | None = None) -> str:
-    """Render a Python value as a SQL literal, applying type coercion."""
+_NUMERIC_TYPES = frozenset(
+    {"integer", "int", "bigint", "smallint", "numeric", "decimal", "double", "float", "real"}
+)
+
+
+def _write_value(val: Any, col_type: str | None = None) -> str:
+    """A property value as a literal of the statement, which is PostgreSQL SQL (transpiled to the
+    source's dialect afterwards): written with that dialect's one literal rule
+    (``sql_literal``), so a value never ends its literal. A numeric string bound for a numeric
+    column is written as the number."""
     if isinstance(val, CypherParam):
         return f"${val.name}"  # bound by bind_write_params, never as text
-    if val is None:
-        return "NULL"
-    if isinstance(val, bool):
-        return "TRUE" if val else "FALSE"
-    if isinstance(val, int):
-        return str(val)
-    if isinstance(val, float):
-        return repr(val)
-    # String — check if the target column type is numeric.
-    if isinstance(val, str):
-        if col_type and col_type.lower() in (
-            "integer",
-            "int",
-            "bigint",
-            "smallint",
-            "numeric",
-            "decimal",
-            "double",
-            "float",
-            "real",
-        ):
-            try:
-                n = int(val)
-                return str(n)
-            except ValueError:
-                pass
-            try:
-                return repr(float(val))
-            except ValueError:
-                pass
-        return f"'{val}'"
-    return f"'{val}'"
+    if isinstance(val, str) and col_type and col_type.lower() in _NUMERIC_TYPES:
+        try:
+            return str(int(val))
+        except ValueError:
+            pass
+        try:
+            return repr(float(val))
+        except ValueError:
+            pass
+    return sql_literal(val, "postgres")
 
 
 def _q(name: str) -> str:
@@ -427,7 +414,7 @@ class WriteTranslator:
         for prop, val in ast.props.items():
             col = mapping.properties.get(prop, prop)
             cols.append(_q(col))
-            vals.append(_sql_literal(val))
+            vals.append(_write_value(val))
         if not cols:
             raise CypherWriteParseError("CREATE statement has no properties")
         cols_sql = ", ".join(cols)
@@ -446,7 +433,7 @@ class WriteTranslator:
         set_parts: list[str] = []
         for prop, val in ast.set_assignments:
             col = mapping.properties.get(prop, prop)
-            set_parts.append(f"{_q(col)} = {_sql_literal(val)}")
+            set_parts.append(f"{_q(col)} = {_write_value(val)}")
         if not set_parts:
             raise CypherWriteParseError("UPDATE statement has no SET assignments")
         set_sql = ", ".join(set_parts)
