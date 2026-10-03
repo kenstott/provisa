@@ -32,6 +32,8 @@
     "firebaseSignInFailed": "Aanmelden bij Firebase mislukt",
     "operatorSignIn": "Aanmelden als operator",
     "operatorSignInTitle": "Aanmelden als operator",
-    "backToSignIn": "Terug naar aanmelden"
+    "backToSignIn": "Terug naar aanmelden",
+    "signInWithSso": "Aanmelden met eenmalige aanmelding (SSO)",
+    "samlSignInFailed": "Eenmalige aanmelding (SSO) is niet voltooid. Probeer het opnieuw of neem contact op met uw beheerder."
   }
 }

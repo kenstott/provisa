@@ -98,6 +98,24 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
     else redirectToControlPlaneLogin();
   }, [navigate]);
 
+  // REQ-1265: the SAML service provider sends the browser back here with the session token, or
+  // the reason it refused, in the URL fragment (never sent to a server). Taken once, then removed
+  // from the address bar so the token is not left in history.
+  const [samlFragment] = useState(() => new URLSearchParams(window.location.hash.slice(1)));
+  const samlRefused = provider === "saml" && samlFragment.get("saml_error") !== null;
+  useEffect(() => {
+    if (provider !== "saml") return;
+    const token = samlFragment.get("saml_token");
+    if (!token && samlFragment.get("saml_error") === null) return;
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    if (!token) return;
+    startSession(token);
+    onLoginSuccess(token);
+    const next = nextParam();
+    if (next) window.location.replace(next);
+    else navigate("/", { replace: true });
+  }, [provider, samlFragment, navigate, onLoginSuccess]);
+
   useEffect(() => {
     fetchProviderType()
       .then(setProvider)
@@ -447,6 +465,40 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
       </Alert>
     )
   ) : null;
+
+  // REQ-1265: SAML signs in at the identity provider; this page only starts the round trip.
+  if (provider === "saml") {
+    return (
+      <div className="page">
+        <OrgBrandingHeader branding={branding} />
+        <Title order={2}>{t("loginPage.signInTitle")}</Title>
+        {samlRefused && (
+          <Alert color="red" mb="md" data-testid="login-error">
+            {t("loginPage.samlSignInFailed")}
+          </Alert>
+        )}
+        <Stack gap="sm" style={{ maxWidth: 320 }}>
+          <Button
+            component="a"
+            href={`${API_BASE}/auth/saml/login`}
+            data-testid="saml-signin-button"
+          >
+            {t("loginPage.signInWithSso")}
+          </Button>
+          <Button
+            variant="subtle"
+            data-testid="operator-signin-toggle"
+            onClick={() => {
+              setError(null);
+              setOperatorMode(true);
+            }}
+          >
+            {t("loginPage.operatorSignIn")}
+          </Button>
+        </Stack>
+      </div>
+    );
+  }
 
   if (provider === "firebase") {
     return (

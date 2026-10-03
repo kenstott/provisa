@@ -32,6 +32,8 @@
     "firebaseSignInFailed": "Firebaseサインインに失敗しました",
     "operatorSignIn": "オペレーターサインイン",
     "operatorSignInTitle": "オペレーターサインイン",
-    "backToSignIn": "サインインに戻る"
+    "backToSignIn": "サインインに戻る",
+    "signInWithSso": "シングルサインオンでサインイン",
+    "samlSignInFailed": "シングルサインオンが完了しませんでした。もう一度試すか、管理者にお問い合わせください。"
   }
 }

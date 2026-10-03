@@ -608,6 +608,15 @@ async def register(body: RegisterRequest):
             "auth.registration_basic_only",
             "Registration only available with basic auth provider",
         )
+    # REQ-1265: a deployment whose only sign-in is the break-glass account (the chart's
+    # auth.provider: local) creates no other accounts.
+    allow_registration = (
+        auth_cfg.get("allow_registration", True)
+        if isinstance(auth_cfg, dict)
+        else getattr(auth_cfg, "allow_registration", True)
+    )
+    if not allow_registration:
+        raise ApiError(403, "auth.registration_disabled", "Account registration is turned off")
 
     import bcrypt
     import uuid

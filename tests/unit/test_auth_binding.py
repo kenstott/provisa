@@ -127,3 +127,28 @@ class TestLoginRoute:
         import provisa.api.app as app_module
 
         assert "app.include_router(login_router)" in inspect.getsource(app_module.create_app)
+
+
+class TestRegistration:
+    """REQ-1265: under the chart's auth.provider: local the break-glass account is the only
+    sign-in, so /auth/register creates nothing."""
+
+    async def test_registration_turned_off_is_refused_before_any_account_is_written(
+        self, monkeypatch
+    ):
+        from types import SimpleNamespace
+
+        from provisa.api.app import state
+        from provisa.api.auth_router import RegisterRequest, register
+        from provisa.api.errors import ApiError
+
+        monkeypatch.setattr(
+            state,
+            "config",
+            SimpleNamespace(auth={"provider": "basic", "allow_registration": False}),
+        )
+        monkeypatch.setattr(state, "admin_db", None)  # a write would fail on this, loudly
+        with pytest.raises(ApiError) as refused:
+            await register(RegisterRequest(username="mallory", password="pw"))
+        assert refused.value.status_code == 403
+        assert refused.value.code == "auth.registration_disabled"

@@ -1507,15 +1507,20 @@ class LoginThrottleConfig(BaseModel):  # REQ-1393
 class AuthConfig(
     BaseModel
 ):  # REQ-120, REQ-121, REQ-122, REQ-123, REQ-124, REQ-125, REQ-203, REQ-247, REQ-1393
-    provider: str = "none"  # none, firebase, keycloak, oauth, oidc, simple
+    provider: str = "none"  # none, firebase, keycloak, oauth, oidc, ldap, saml, simple
     firebase: dict | None = None
     keycloak: dict | None = None
     oauth: dict | None = None
     oidc: dict | None = (
         None  # REQ-890: generic OIDC (discovery_url, client_id, audience, role_claim)
     )
+    ldap: dict | None = None  # REQ-1265: provisa/auth/providers/ldap.py LdapSettings
+    saml: dict | None = None  # REQ-1265: provisa/auth/providers/saml.py SamlSettings
     simple: dict | None = None
     allow_simple_auth: bool = False  # REQ-124: production guard — simple auth refused unless true
+    # REQ-1265: whether /auth/register creates local accounts (basic provider). The chart's
+    # auth.provider: local turns it off: the break-glass account is the only sign-in.
+    allow_registration: bool = True
     # REQ-1394: pgwire advertises SASL/SCRAM-SHA-256 instead of cleartext. Only the basic provider
     # holds the verifiers SCRAM needs, so the flag has no effect under any other provider.
     scram: bool = False

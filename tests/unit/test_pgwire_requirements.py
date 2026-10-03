@@ -204,7 +204,7 @@ class TestReq529AuthType3:
         handler._send_pg_error = MagicMock()
 
         fake_state = MagicMock()
-        fake_state.auth_config = {"provider": "ldap"}
+        fake_state.auth_config = {"provider": "kerberos"}
         fake_state.auth_middleware_active = True
 
         with patch("provisa.pgwire.server.state", fake_state):
@@ -443,7 +443,20 @@ class TestPgwireBasicAndPat:
     def test_a_provider_that_cannot_be_built_refuses_on_the_wire(self, pgwire_loop):
         """An unknown provider name authenticates nobody, and the client is told so."""
         handler, ctx = self._handler(), self._ctx()
-        with patch("provisa.pgwire.server.state", self._state({"provider": "ldap"})):
+        with patch("provisa.pgwire.server.state", self._state({"provider": "kerberos"})):
+            handler.handle_md5_password(ctx, b"whatever\x00")
+
+        handler.send_authentication_ok.assert_not_called()
+        assert handler._send_pg_error.call_args[0][0] == "FATAL"
+
+    @pytest.mark.parametrize("provider", ["ldap", "saml"])
+    def test_a_provider_selected_without_its_settings_refuses_on_the_wire(
+        self, pgwire_loop, provider
+    ):
+        """REQ-1265: a known provider with no config block cannot be built either."""
+        handler, ctx = self._handler(), self._ctx()
+        config = {"provider": provider, "jwt_secret": "s" * 48}
+        with patch("provisa.pgwire.server.state", self._state(config)):
             handler.handle_md5_password(ctx, b"whatever\x00")
 
         handler.send_authentication_ok.assert_not_called()

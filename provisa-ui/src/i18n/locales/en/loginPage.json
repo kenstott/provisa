@@ -32,6 +32,8 @@
     "firebaseSignInFailed": "Firebase sign-in failed",
     "operatorSignIn": "Operator sign-in",
     "operatorSignInTitle": "Operator sign-in",
-    "backToSignIn": "Back to sign-in"
+    "backToSignIn": "Back to sign-in",
+    "signInWithSso": "Sign in with single sign-on",
+    "samlSignInFailed": "Single sign-on did not complete. Try again, or ask your administrator."
   }
 }

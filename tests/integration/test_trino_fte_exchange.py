@@ -73,7 +73,13 @@ class TestDockerFTEConfig:
 
 # The chart renders only when it is told where the deployment's master key lives
 # (tests/integration/test_helm_master_key.py); these tests are about the exchange store.
-_MASTER_KEY = ("--set", "encryption.existingSecret=provisa-master-key")
+_MASTER_KEY = (
+    "--set",
+    "encryption.existingSecret=provisa-master-key",
+    # REQ-1265: the chart also renders only once an auth provider is chosen.
+    "--set",
+    "auth.provider=none",
+)
 
 needs_helm = pytest.mark.skipif(shutil.which("helm") is None, reason="helm CLI not installed")
 

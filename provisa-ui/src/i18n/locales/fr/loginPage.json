@@ -32,6 +32,8 @@
     "firebaseSignInFailed": "Échec de la connexion Firebase",
     "operatorSignIn": "Connexion opérateur",
     "operatorSignInTitle": "Connexion opérateur",
-    "backToSignIn": "Retour à la connexion"
+    "backToSignIn": "Retour à la connexion",
+    "signInWithSso": "Se connecter avec l'authentification unique",
+    "samlSignInFailed": "L'authentification unique n'a pas abouti. Réessayez ou contactez votre administrateur."
   }
 }
