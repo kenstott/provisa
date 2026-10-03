@@ -183,6 +183,16 @@ class TestNothingChangedIsNotAnEvent:
 
         monkeypatch.setattr("provisa.core.env_store.set_drifted", _set_drifted)
         monkeypatch.setattr("provisa.core.env_store.set_position", _set_position)
+
+        async def _stamp(_conn, _schema):
+            return 1  # the model stamp, unchanged while the tree is read
+
+        monkeypatch.setattr("provisa.core.env_project.model_stamp", _stamp)
+
+        async def _get_env(_admin_db, _org_id, _env):
+            return None  # no registry row: an unchanged tree confirms no position
+
+        monkeypatch.setattr("provisa.core.env_store.get_env", _get_env)
         monkeypatch.setattr(env_repo, "project", _model)
         monkeypatch.setattr(env_repo, "dump", lambda _model: MODEL)
         first = await env_repo.write_through(None, None, ORG, "prod", "org_acme", "one", None)

@@ -1500,9 +1500,7 @@ def make_grpc_remote_loader(grpc_sources: dict[str, Any]) -> AdapterLoader:  # R
     return _load
 
 
-def make_graphql_remote_loader(
-    gql_sources: dict[str, Any], max_rows: int | None = None
-) -> AdapterLoader:
+def make_graphql_remote_loader(gql_sources: dict[str, Any], max_rows: int) -> AdapterLoader:
     """Build the graphql_remote adapter row-fetch (REQ-941/846): resolve the table's registration in
     ``state.graphql_remote_sources`` (by ``sql_name``), forward a minimal GraphQL query to the remote
     endpoint via :func:`execute_remote`, and return the rows. Refreshes from the remote source — the
@@ -1555,6 +1553,8 @@ def make_graphql_remote_loader(
         more to read fails by name (``replication.row_limit_reached``)."""
         from provisa.graphql_remote.executor import whole_connection
 
+        from provisa.core.paging import connection_max_rows
+
         request = _request(source, table)
         return whole_connection(
             request["url"],
@@ -1563,7 +1563,8 @@ def make_graphql_remote_loader(
             request["columns"],
             request["rows_path"],
             table=f"{source.id}.{table.table_name}",
-            max_rows=max_rows,
+            # REQ-318: the table's own bound where it set one (registry row), else the operator's.
+            max_rows=connection_max_rows(table.pagination, max_rows),
             error_policy=request["error_policy"],
         )
 

@@ -166,7 +166,11 @@ async def create_environment(
 
         started = start_branch(ensure_repo(org_id), name, from_env)
         if started is not None:
-            await set_position(admin_db, org_id, name, deployed_sha=started, redo_sha=None)
+            # No stamp: the copied model is projected just below, and that write-through records
+            # the stamp when the tree it reads equals this one.
+            await set_position(
+                admin_db, org_id, name, deployed_sha=started, deployed_stamp=None, redo_sha=None
+            )
             # And that sha is the FLOOR of this environment's history: the commits at and below it
             # are the source's, trees this environment never held. Without it a branch created and
             # then changed once offered two undos -- the change, and then a step onto the source's

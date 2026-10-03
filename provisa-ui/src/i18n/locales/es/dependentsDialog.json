@@ -4,6 +4,9 @@
     "intro": "Estos objetos todavía lo referencian. Elimine o cambie cada uno y vuelva a eliminar.",
     "open": "Abrir la página",
     "close": "Cerrar",
+    "removeTableGrants": "Quitar este rol de las concesiones de esta tabla",
+    "removeGrant": "Quitar la concesión de este rol",
+    "removeAssignment": "Quitar asignación",
     "kind": {
       "table": "Tablas y vistas",
       "column": "Permisos de columna",

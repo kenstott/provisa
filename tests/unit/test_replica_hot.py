@@ -317,6 +317,7 @@ def test_candidates_are_read_from_rows_as_the_registry_view_builds_them():
             "columns": [],
             "cache_ttl": None,
             "role_ttl": {},
+            "pagination": None,  # REQ-318: the table sets no paging
             "replicate": None,
             "load_protected": None,
             "row_materialize": False,

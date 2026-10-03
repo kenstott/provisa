@@ -21,10 +21,10 @@ from provisa.api_source.models import (
     ApiEndpoint,
     ApiSource,
     ApiSourceType,
-    PaginationConfig,
     ParamType,
     PromotionConfig,
 )
+from provisa.core.paging import PaginationConfig
 from provisa.api_source.schema_integration import register_api_columns
 from provisa.compiler.introspect import ColumnMetadata
 

@@ -116,42 +116,55 @@ class TestMaterializedViewIsQueryable:
     expand it live. Registering it ONLY as an MV left its raw source catalog (e.g. __derived__) in the
     compiled query → "Binder Error: Catalog __derived__ does not exist" until a refresh landed."""
 
-    async def test_config_materialized_view_populates_both_and_resolves_target(self):
-        from provisa.api.app_loaders import _load_mv_and_views_config
-
-        fake_state = MagicMock()
-        fake_state.org_id = "acme"
-        fake_state.view_sql_map = {}
-        fake_state.mv_registry = MVRegistry()
-        fake_state.federation_engine.materialize_store_target.return_value = ("mat_store", "mat")
-
-        raw = {
-            "views": [{"id": "v1", "sql": "SELECT 1 AS x", "materialize": True, "domain_id": "d"}]
-        }
-        with patch("provisa.api.app.state", fake_state):
-            _load_mv_and_views_config(raw)
-
-        assert "view_v1" in fake_state.view_sql_map  # queryable live path
-        mv = fake_state.mv_registry.get("view-v1")
-        assert mv is not None  # MV registered for acceleration
-        assert mv.target_catalog == "mat_store"  # engine-resolved, not hardcoded postgresql
-
-    async def test_config_plain_view_only_in_view_sql_map(self):
-        from provisa.api.app_loaders import _load_mv_and_views_config
-
-        fake_state = MagicMock()
-        fake_state.org_id = "acme"
-        fake_state.view_sql_map = {}
-        fake_state.mv_registry = MVRegistry()
+    async def test_a_views_entry_becomes_a_table_of_the_derived_source(self):
+        """A ``views:`` entry is stored as the table it declares (core/config_loader.py
+        views_as_tables), so the schema build registers it for inline expansion AND, when
+        materialized, as an MV — the same path as a ``tables:`` entry with ``view_sql``. Before,
+        it was registered for refresh only and never stored, so nothing could read it."""
+        from provisa.core.config_loader import views_as_tables
+        from provisa.core.models import DERIVED_SOURCE_ID, ProvisaConfig
 
         raw = {
-            "views": [{"id": "v2", "sql": "SELECT 2 AS x", "materialize": False, "domain_id": "d"}]
+            "views": [
+                {
+                    "id": "v-1",
+                    "sql": "SELECT 1 AS x",
+                    "materialize": True,
+                    "refresh_interval": 60,
+                    "domain_id": "d",
+                    "columns": [{"name": "x", "visible_to": ["analyst"]}],
+                }
+            ]
         }
-        with patch("provisa.api.app.state", fake_state):
-            _load_mv_and_views_config(raw)
+        views_as_tables(raw)
+        assert "views" not in raw
+        (entry,) = raw["tables"]
+        assert entry == {
+            "source_id": DERIVED_SOURCE_ID,
+            "schema": "views",
+            "table": "view_v_1",
+            "view_sql": "SELECT 1 AS x",
+            "materialize": True,
+            "mv_refresh_interval": 60,
+            "domain_id": "d",
+            "columns": [{"name": "x", "visible_to": ["analyst"]}],
+        }
+        (table,) = ProvisaConfig.model_validate(
+            {**raw, "sources": [], "domains": [], "roles": []}
+        ).tables
+        assert (table.view_sql, table.materialize, table.mv_refresh_interval) == (
+            "SELECT 1 AS x",
+            True,
+            60,
+        )
 
-        assert "view_v2" in fake_state.view_sql_map
-        assert fake_state.mv_registry.get("view-v2") is None
+    async def test_a_views_entry_with_a_key_it_does_not_take_is_refused(self):
+        from provisa.core.config_loader import views_as_tables
+
+        with pytest.raises(ValueError, match=r"unknown keys \['source_id'\]"):
+            views_as_tables(
+                {"views": [{"id": "v2", "sql": "SELECT 2", "domain_id": "d", "source_id": "pg"}]}
+            )
 
 
 class TestEngineRuntimeMVTarget:
@@ -245,3 +258,34 @@ class TestToggleMVMutation:
         registry = MVRegistry()
         result = registry.get("nonexistent")
         assert result is None
+
+
+class TestAWriteMarksTheViewsThatReadItStale:
+    """A SQL-defined view's MV names no ``source_tables`` (the event graph's inputs); the tables
+    its SQL reads are recorded on it from the semantic SQL, and a write to one marks it stale."""
+
+    def test_a_view_over_the_written_table_goes_stale_and_others_do_not(self):
+        from provisa.mv.models import MVDefinition, MVStatus
+        from provisa.mv.readable_inputs import read_table_names
+
+        registry = MVRegistry()
+        sql = "SELECT region, COUNT(*) AS n FROM sales.orders o JOIN sales.customers c ON 1=1 GROUP BY 1"
+        for mv_id, view_sql in (("view-a", sql), ("view-b", "SELECT 1 AS x FROM hr.people")):
+            registry.register(
+                MVDefinition(
+                    id=mv_id,
+                    source_tables=[],
+                    target_catalog="mat_store",
+                    target_schema="mat",
+                    target_table=f"mv_{mv_id}",
+                    refresh_interval=300,
+                    enabled=True,
+                    sql=view_sql,
+                    read_tables=read_table_names(view_sql),
+                    status=MVStatus.FRESH,
+                )
+            )
+        assert read_table_names(sql) == frozenset({"orders", "customers"})
+        assert registry.mark_stale("orders") == ["view-a"]
+        assert registry.get("view-a").status == MVStatus.STALE
+        assert registry.get("view-b").status == MVStatus.FRESH

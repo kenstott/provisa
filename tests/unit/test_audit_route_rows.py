@@ -52,6 +52,9 @@ def rows(monkeypatch):
     return _rows
 
 
+_ENTRY = SimpleNamespace(age_seconds=3)  # the response-cache entry a hit was served from
+
+
 def _state():
     return SimpleNamespace(
         tenant_db=object(),
@@ -59,6 +62,7 @@ def _state():
         admin_db=None,
         hot_counts=None,  # REQ-826: no Hot-count store; counting has its own tests
         federation_engine=SimpleNamespace(dialect="duckdb"),
+        model_stamp=1,
     )
 
 
@@ -68,7 +72,7 @@ def _plan(route: Route = Route.DIRECT, **over) -> _Plan:
         sql="SELECT 1",
         source_id="s",
         dialect="postgres",
-        audit=PendingAudit("alice", "pgwire", "analyst", "SELECT 1", [7], 0.0),
+        audit=PendingAudit("alice", "pgwire", "analyst", "SELECT 1", [7], 0.0, 1, {}),
         **over,
     )
 
@@ -101,7 +105,7 @@ def test_a_finalized_plan_records_its_route_and_the_rows_its_terminal_reported(
 def test_a_statement_served_from_the_response_cache_records_the_cache_route(rows):
     plan = _plan(Route.ENGINE)
     plan.row_count = 1
-    asyncio.run(finalize_audit(plan, 200, _state(), cache_hit=True))
+    asyncio.run(finalize_audit(plan, 200, _state(), cache_hit=True, cache_entry=_ENTRY))
     assert [_facts(r) for r in rows()] == [("cache", 1, 200)]
 
 
@@ -157,7 +161,7 @@ def test_a_plan_already_recorded_is_not_recorded_again_by_its_drain(rows):
     hands back must not write a second."""
     plan = _plan(Route.ENGINE)
     plan.row_count = 5
-    asyncio.run(finalize_audit(plan, 200, _state(), cache_hit=True))
+    asyncio.run(finalize_audit(plan, 200, _state(), cache_hit=True, cache_entry=_ENTRY))
     asyncio.run(finalize_audit(plan, 200, _state(), defer_to_drain=True))  # idempotent: no-op
     assert list(audit_on_drain(plan, iter([[(1,)]]))) == [[(1,)]]
     assert [_facts(r) for r in rows()] == [("cache", 5, 200)]

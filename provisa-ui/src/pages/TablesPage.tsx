@@ -50,7 +50,11 @@ import {
   useAllRelationships,
   useDataProducts, // REQ-1634
 } from "../hooks/useAdminQueries";
-import { usePurgeCacheByTable, useUpdateTableRoleTtl } from "../hooks/useAdminOpsQueries";
+import {
+  usePurgeCacheByTable,
+  useUpdateTablePaging,
+  useUpdateTableRoleTtl,
+} from "../hooks/useAdminOpsQueries";
 import type { RegisteredTable, ColumnDependentsResult } from "../types/admin";
 import { DERIVED_SOURCE_ID } from "../types/admin";
 import { FilterInput } from "../components/admin/FilterInput";
@@ -71,6 +75,8 @@ import { TagControl } from "../components/TagControl";
 import { TableEditForm } from "./tables/TableEditForm";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { roleTtlValid, tableTtlSignalError } from "./tables/roleTtl";
+import { declaredPaging, pagingChanged, pagingProblem } from "./tables/paging";
+import { serverMessage } from "../i18n/serverMessage";
 import {
   replicateContradictsLoadProtection,
   resolvedReplicate,
@@ -105,6 +111,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { deleteTable } = useDeleteTable();
   const { updateTableCache } = useUpdateTableCache();
   const { updateTableRoleTtl } = useUpdateTableRoleTtl();
+  const { updateTablePaging } = useUpdateTablePaging();
   const { updateTableReplicate } = useUpdateTableReplicate();
   const { updateTableLoadProtection } = useUpdateTableLoadProtection();
   const { updateTableNaming } = useUpdateTableNaming();
@@ -466,6 +473,18 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       setError(translate("tableEditForm.roleTtlFixErrors"));
       return;
     }
+    // REQ-318: paging the table cannot take blocks the save too (the server refuses it by name).
+    if (
+      editingTable.pagingKind !== null &&
+      pagingProblem(
+        editingTable.pagingKind,
+        editingTable.pagination,
+        editingTable.pagingCeilingRows,
+      ) !== null
+    ) {
+      setError(translate("tableEditForm.pagingFixErrors"));
+      return;
+    }
     const source = sources.find((s) => s.id === editingTable.sourceId);
     const effectiveLoadProtected = editingTable.loadProtected ?? source?.loadProtected ?? false;
     // REQ-930: a ttl/ttl_probe signal needs a landing Cache TTL (table, else source) as its clock.
@@ -517,6 +536,18 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         const roleTtlResult = await updateTableRoleTtl(editingTable.id, editingTable.roleTtl);
         if (!roleTtlResult.success) {
           setError(roleTtlResult.message);
+          return;
+        }
+      }
+      // REQ-318: persist the table's paging only when it changed; nothing declared clears it.
+      const savedPaging = tables.find((tbl) => tbl.id === editingTable.id)?.pagination ?? null;
+      if (pagingChanged(savedPaging, editingTable.pagination)) {
+        const pagingResult = await updateTablePaging(
+          editingTable.id,
+          declaredPaging(editingTable.pagination),
+        );
+        if (!pagingResult.success) {
+          setError(serverMessage(pagingResult, pagingResult.message));
           return;
         }
       }

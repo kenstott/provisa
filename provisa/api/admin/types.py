@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import enum
+
 import strawberry
 
 if TYPE_CHECKING:
@@ -271,6 +273,21 @@ class RoleTtlType:  # REQ-1907
 
 
 @strawberry.type
+class PagingType:  # REQ-318
+    """A table's paging as declared (provisa.core.paging): a paged REST endpoint's type and
+    parameters, or a connection table's row bound. Unset fields are null."""
+
+    type: str | None = None
+    cursor_field: str | None = None
+    cursor_param: str | None = None
+    page_param: str | None = None
+    page_size_param: str | None = None
+    page_size: int | None = None
+    max_pages: int | None = None
+    max_rows: int | None = None
+
+
+@strawberry.type
 class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     id: int
     source_id: str
@@ -298,6 +315,12 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     api_endpoint: str | None = None
     # REQ-1907: operator-set role -> TTL seconds (effective = max(cache_ttl, ttl)); empty = none.
     role_ttl: list[RoleTtlType] = strawberry.field(default_factory=list)
+    # REQ-318: what reads the table page by page ("endpoint" | "connection"), null when nothing
+    # does; its declared paging; and the operator's graphql_remote.max_rows a connection table's
+    # own bound may only lower.
+    paging_kind: str | None = None
+    pagination: PagingType | None = None
+    paging_ceiling_rows: int | None = None
     view_sql: str | None = None
     view_metrics: ViewMetricsType | None = None  # REQ-1318: metric-composed view spec
     # REQ-1443: the data-quality contract this table's rows are the scan results of, verbatim.
@@ -609,6 +632,18 @@ class RLSRuleType:  # REQ-041, REQ-402, REQ-1679
 
 
 # --- Input types for mutations ---
+
+
+@strawberry.input
+class PagingInput:  # REQ-318
+    type: str | None = None
+    cursor_field: str | None = None
+    cursor_param: str | None = None
+    page_param: str | None = None
+    page_size_param: str | None = None
+    page_size: int | None = None
+    max_pages: int | None = None
+    max_rows: int | None = None
 
 
 @strawberry.input
@@ -1280,6 +1315,15 @@ class MutationWarning:  # REQ-1919
     code: str
     message: str
     params: JsonScalar | None = None
+
+
+@strawberry.enum
+class GrantKind(enum.Enum):  # REQ-1918
+    """An object whose grant list names roles: a role is taken off it one object at a time."""
+
+    METRIC = "metric"
+    COMMAND = "command"
+    WEBHOOK = "webhook"
 
 
 @strawberry.type

@@ -20,6 +20,7 @@ from contextvars import ContextVar
 
 from sqlalchemy import delete as _delete, select, update
 
+from provisa.core.paging import paging_row
 from provisa.core import domain_policy
 from provisa.core.models import Table
 from provisa.core.repositories import data_product as data_product_repo
@@ -273,6 +274,7 @@ async def _upsert(conn: "Connection", table: Table, origin: str) -> int | None:
         "row_materialize": getattr(table, "row_materialize", False),
         "cache_ttl": getattr(table, "cache_ttl", None),
         "role_ttl": dict(table.role_ttl),  # REQ-1907
+        "pagination": paging_row(table.pagination),  # REQ-318
     }
     _update_columns = [
         "domain_id",
@@ -319,6 +321,7 @@ async def _upsert(conn: "Connection", table: Table, origin: str) -> int | None:
         "row_materialize",  # REQ-1865
         "cache_ttl",  # REQ-1865
         "role_ttl",  # REQ-1907
+        "pagination",  # REQ-318
     ]
     table_id = await conn.upsert_returning(
         registered_tables,

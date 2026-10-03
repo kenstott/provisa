@@ -166,6 +166,8 @@ def _build_registered_tables(registered: list[dict], cfg_by: dict) -> list[Any]:
     """The SimpleNamespace-shaping loop `registered_tables` runs over `fetch_tables`' rows,
     factored out so both the cached (pool-acquire) and uncached (caller-supplied ``conn``) paths
     build identically-shaped rows."""
+    from provisa.core.paging import stored_paging
+
     out: list[Any] = []
     for rt in registered:
         cfg = cfg_by.get((rt["source_id"], rt["table_name"]))
@@ -210,6 +212,8 @@ def _build_registered_tables(registered: list[dict], cfg_by: dict) -> list[Any]:
                 # REQ-1907: the operator's per-role TTLs live on the registry row (config upsert
                 # and the admin mutation both write it there).
                 role_ttl=dict(rt["role_ttl"]),
+                # REQ-318: how the table is read page by page (provisa.core.paging).
+                pagination=stored_paging(rt["pagination"]),
                 # REQ-826/REQ-1141 per-table settings (None = inherit the source's): a table they
                 # put on its replica is read there even on an attach-capable engine.
                 replicate=rt["replicate"],
@@ -235,3 +239,17 @@ def _build_registered_tables(registered: list[dict], cfg_by: dict) -> list[Any]:
             )
         )
     return out
+
+
+async def connection_rows(state: Any, source_id: str, table_name: str) -> int:  # REQ-318
+    """The most rows one read of ``source_id``'s connection table ``table_name`` takes: the
+    table's own ``pagination.max_rows`` where it set one, else ``graphql_remote.max_rows``, the
+    operator's default and ceiling (provisa.core.paging). A table the registry does not hold has
+    no setting of its own, so the operator's bound applies."""
+    from provisa.core.paging import connection_max_rows
+
+    ceiling = state.config.graphql_remote.max_rows
+    for table in await registered_tables(state):
+        if table.source_id == source_id and table.table_name == table_name:
+            return connection_max_rows(table.pagination, ceiling)
+    return ceiling

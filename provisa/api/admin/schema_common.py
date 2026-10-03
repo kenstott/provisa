@@ -576,6 +576,7 @@ async def _sync_view_mv(
     from provisa.api.app import state
     from provisa.mv.bitemporal import BitemporalSpec  # REQ-1162
     from provisa.mv.models import MVDefinition, MVStatus
+    from provisa.mv.readable_inputs import read_table_names
     from provisa.core.change_signal import resolve, to_freshness_mode  # REQ-932
     from provisa.mv.determinism import check_view_determinism  # REQ-964
     from provisa.mv.preprocess import validate_preprocess  # REQ-957
@@ -633,6 +634,7 @@ async def _sync_view_mv(
         refresh_interval=refresh_interval,
         enabled=True,
         sql=view_sql,
+        read_tables=read_table_names(view_sql),
         expose_in_sdl=False,
         status=existing.status if existing is not None else MVStatus.STALE,
         freshness_mode=freshness,

@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json が有効な JSON ではありません：{{error}}",
       "args_json_not_object": "args_json は JSON オブジェクトである必要があります",
       "column_not_writable": "ロール「{{role}}」には列「{{column}}」への書き込みアクセス権がありません",
+      "definition_not_available": "{{statement}} はここでは使用できません。定義はモデルまたはデータソースで作成し、行の削除には DELETE を使用します。",
       "engine_not_connected": "エンジンが接続されていません",
       "grpc_source_not_registered": "gRPC リモートソース「{{source_id}}」が登録されていません",
       "invalid_as_of": "X-Provisa-As-Of が無効です：{{error}}",
@@ -82,6 +83,7 @@
       "no_source_pool": "ソース「{{source}}」の接続プールがありません",
       "query_required": "query は必須です",
       "query_timeout": "クエリが{{timeout_s}}秒でタイムアウトしました",
+      "query_too_complex": "クエリの複雑度（{{score}}）が上限 {{limit}}（{{limit_of}}）を超えています。",
       "redirect_upload_failed": "リダイレクトアップロードに失敗しました：{{error}}",
       "request_interrupted": "{{error}}",
       "row_level_key_required": "テーブル '{{table}}' は行単位で複製されており、キー ({{key}}) でのみ読み取れます。キーを等価条件または IN リストで絞り込むか、単一の列でテーブルを結合してください。",
@@ -90,7 +92,7 @@
       "table_not_found": "テーブル「{{table}}」が見つかりません",
       "unknown_action_field": "不明なアクションフィールド：「{{field}}」",
       "unknown_command": "不明なコマンド「{{name}}」です",
-      "query_too_complex": "クエリの複雑度（{{score}}）が上限 {{limit}}（{{limit_of}}）を超えています。"
+      "write_not_admitted": "ロール '{{role}}' はこの書き込みを実行できません。書き込みには、書き込み権限、書き込む各列への書き込みアクセス、およびロールの行フィルターが許可する行が必要です。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」のアダプターは discover_schema を実装していません",
@@ -178,8 +180,8 @@
       "already_exists": "組織は既に存在します",
       "auth_required_create": "組織を作成するには認証が必要です",
       "auth_required_leave": "組織を離れるには認証が必要です",
-      "auto_join_public_domain": "auto_join には、自分が管理するドメインに限定したメール規則が必要です。この規則は {{domain}} に一致します。",
       "auto_join_breadth_unacknowledged": "この自動参加ルールは慎重に確認してください。組織外の人が参加できる可能性があります。{{domains}} のほか、{{admits}} などのアドレスも受け入れます。管理していないドメインの誰でも、組織に自動的に参加できてしまいます。保存するには、このリスクを了承することを確認してください。",
+      "auto_join_public_domain": "auto_join には、自分が管理するドメインに限定したメール規則が必要です。この規則は {{domain}} に一致します。",
       "auto_join_requires_role": "auto_join には auto_join_role が必要です",
       "auto_join_rule_taken": "このルールに一致する全員を、別の組織がすでに自動参加の対象としています。2 つの組織が同じアドレスを要求することはできません。その組織に招待を依頼するか、自分の組織だけが使うドメインにルールを絞り込んでください。",
       "auto_join_rule_unbounded": "この自動参加ルールには境界がありません。管理していないドメインのアドレスも受け入れてしまいます。「@acme\\\\.com$」のように、所有するドメインに固定してください。",
@@ -203,9 +205,9 @@
       "config_object_edited": "{{name}} は設定で宣言されています。変更は保存されましたが、次回の設定読み込みでファイルの内容が再適用されます。"
     },
     "platform": {
+      "control_plane_role_required": "プラットフォーム管理者が必要です。",
       "right_required": "{{right}} 機能が必要です",
-      "settings_capability_required": "platform_settings 機能が必要です",
-      "control_plane_role_required": "プラットフォーム管理者が必要です。"
+      "settings_capability_required": "platform_settings 機能が必要です"
     },
     "profile": {
       "database_unavailable": "データベースが利用できません",
@@ -214,14 +216,14 @@
       "table_not_found": "テーブル {{table_id}} が見つかりません"
     },
     "replication": {
-      "spool_full": "{{table}} のレプリカのビルドは拒否されました: ソースの応答をスプールするには、このノードのスプールディレクトリに {{needed}} バイトが必要で、上限の {{limit}} を超えます (replication.spool_max_bytes)。",
       "answer_not_json": "{{table}} のレプリカ用に読み取った応答は有効な JSON ではありません: {{cause}}（応答のバイト {{before_byte}} より前の {{kib}} KiB 内）。",
       "no_whole_copy": "ソース {{source}} のテーブル {{schema}}.{{table}} にはビルドする全体コピーがありません: 行単位でレプリケートされているか、パラメータ列があります。",
-      "table_gone": "ソース {{source}} のテーブル {{schema}}.{{table}} は登録されなくなったため、レプリカはビルドされません。",
       "page_limit_reached": "{{table}} のレプリカはビルドされませんでした: エンドポイントのページングは max_pages={{max_pages}} で止まり、ページ {{max_pages}} の後にもデータがありました（{{rows}} 行を読み取り）。レプリカはテーブル全体であるため、上限で切り詰められることはありません。エンドポイントの max_pages またはページサイズを増やしてください。",
+      "row_limit_reached": "{{table}} のレプリカはビルドされませんでした: 読み取りは max_rows={{max_rows}}（graphql_remote.max_rows）で止まり、{{rows}} 行の後にもリモートにデータがありました。レプリカはテーブル全体であるため、上限で切り詰められることはありません。graphql_remote.max_rows を増やしてください。",
+      "spool_full": "{{table}} のレプリカのビルドは拒否されました: ソースの応答をスプールするには、このノードのスプールディレクトリに {{needed}} バイトが必要で、上限の {{limit}} を超えます (replication.spool_max_bytes)。",
+      "table_gone": "ソース {{source}} のテーブル {{schema}}.{{table}} は登録されなくなったため、レプリカはビルドされません。",
       "waiting_engine_jobs": "エンジンがバックグラウンドジョブの上限に達しています (replication.engine_jobs)",
-      "waiting_source_cap": "ソースがライブ読み取りの上限に達しています (max_live_concurrency)",
-      "row_limit_reached": "{{table}} のレプリカはビルドされませんでした: 読み取りは max_rows={{max_rows}}（graphql_remote.max_rows）で止まり、{{rows}} 行の後にもリモートにデータがありました。レプリカはテーブル全体であるため、上限で切り詰められることはありません。graphql_remote.max_rows を増やしてください。"
+      "waiting_source_cap": "ソースがライブ読み取りの上限に達しています (max_live_concurrency)"
     },
     "roles": {
       "cannot_delete_system": "システムロールは削除できません",
@@ -251,6 +253,7 @@
       "domain_deleted": "ドメイン「{{domain}}」を削除しました",
       "domain_not_found": "ドメイン「{{domain}}」が見つかりません",
       "fact_registered": "ファクト「{{fact}}」を{{links}}件のディメンションリンクと{{metrics}}件のメトリクスとともに登録しました",
+      "grant_object_not_found": "'{{name}}' という名前の {{kind}} はありません",
       "invalid_askamerica_key": "無効な AskAmerica API キーです：{{error}}",
       "invalid_calendar": "無効なカレンダーです：{{error}}",
       "invalid_cardinality": "無効なカーディナリティです：「{{cardinality}}」",
@@ -270,12 +273,19 @@
       "no_tables_for_source": "ソース「{{source}}」に登録されたテーブルがありません",
       "no_view_sql": "テーブルに view_sql がありません",
       "not_virtual_view": "テーブルは仮想 Provisa ビューではありません（source_id != '__derived__'）",
+      "paging_above_ceiling": "テーブル {{table}}: max_rows={{max_rows}} は graphql_remote.max_rows={{ceiling}} を超えています。テーブルはオペレーターの上限を下げられますが、上げることはできません。",
+      "paging_connection_rows_only": "テーブル {{table}} はコネクションテーブルです。スキーマの引数でページングし、設定できるのは最大行数だけです。",
+      "paging_endpoint_needs_type": "テーブル {{table}} は REST エンドポイントです。ページングにはページングの種類を指定します。",
+      "paging_invalid": "テーブル {{table}}: {{reason}}",
+      "paging_not_paged": "テーブル {{table}} はページ単位で読み取られないため、ページングを設定できません。",
       "query_engine_unavailable": "クエリエンジンが利用できません",
       "rejection_reason_required": "却下理由が必要です",
       "relationship_deleted": "リレーションシップ「{{relationship}}」を削除しました",
       "relationship_not_found": "リレーションシップ「{{relationship}}」が見つかりません",
       "relationship_saved": "リレーションシップ「{{relationship}}」を保存しました",
       "remigrated": "{{source}}.{{table}} を再マイグレーションしました",
+      "replicate_contradicts_load_protected": "負荷保護はレプリケート =「しない」と併用できません。負荷保護されたテーブルはライブで読まれることがありません",
+      "replicate_invalid": "レプリケートは「デフォルト」「しない」「常に」または 0 より大きいしきい値である必要があります（指定値: {{value}}）",
       "request_executed": "作成リクエスト #{{id}} を実行しました",
       "request_not_pending": "リクエストが見つからないか、既に解決済みです",
       "request_rejected": "作成リクエスト #{{id}} を却下しました",
@@ -286,6 +296,8 @@
       "role_created": "ロール「{{role}}」を作成しました",
       "role_deleted": "ロール「{{role}}」を削除しました",
       "role_not_found": "ロール「{{role}}」が見つかりません",
+      "role_revoked_from_object": "ロール '{{role}}' を {{kind}} '{{name}}' から削除しました",
+      "role_revoked_from_table": "ロール '{{role}}' をテーブル {{id}} の権限から削除しました",
       "scheduled_task_created": "スケジュールタスク「{{task}}」を作成しました",
       "schemas_rebuilt": "スキーマを再構築しました",
       "source_cache_updated": "ソース「{{source}}」のキャッシュ設定を更新しました",
@@ -297,18 +309,23 @@
       "source_naming_updated": "ソース「{{source}}」の命名規則を更新しました",
       "source_no_connection": "ソース「{{source}}」にアクティブな接続がありません",
       "source_not_found": "ソース「{{source}}」が見つかりません",
-      "source_replicate_set": "ソース「{{source}}」にレプリケートを設定しました",
       "source_renamed": "ソース名を「{{old}}」から「{{new}}」に変更しました",
+      "source_replicate_set": "ソース「{{source}}」にレプリケートを設定しました",
       "source_type_not_sqlite": "ソースタイプ「{{type}}」は sqlite ではありません",
       "source_updated": "ソース「{{source}}」を更新しました",
       "sql_required": "SQL トリガーには sql が必要です",
       "table_cache_updated": "テーブル {{table}} のキャッシュ TTL を更新しました",
       "table_deleted": "テーブル {{table}} を削除しました",
+      "table_id_not_found": "テーブル {{id}} が見つかりません",
       "table_load_protection_set": "テーブル {{table}} に負荷保護を設定しました",
       "table_naming_updated": "テーブル {{table}} の命名規則を更新しました",
       "table_not_found": "テーブル {{table}} が見つかりません",
-      "table_replicate_set": "テーブル {{table}} にレプリケートを設定しました",
+      "table_not_readable": "このソースの資格情報では {{table}} を読み取れません: {{reason}}",
+      "table_paging_updated": "テーブル {{table}} のページングを更新しました。",
       "table_registered": "テーブル「{{table}}」を登録しました（id={{id}}）",
+      "table_registered_fields_omitted": "テーブル「{{table}}」を登録しました（id={{id}}）。ソースの資格情報では読み取れないため除外しました: {{fields}}",
+      "table_replicate_set": "テーブル {{table}} にレプリケートを設定しました",
+      "table_too_complex": "テーブル「{{table}}」は選択した列では登録されませんでした: {{reason}}。列を減らしてください。",
       "table_updated": "テーブル「{{table}}」を更新しました（id={{id}}）",
       "task_deleted": "タスク「{{task}}」を削除しました",
       "task_disabled": "タスク「{{task}}」を無効にしました",
@@ -323,12 +340,7 @@
       "view_spans_sources": "ビューが複数のソースにまたがっています：{{sources}}",
       "webhook_approved": "Webhook「{{webhook}}」を承認しました",
       "webhook_name_required": "Webhook トリガーには webhook_name が必要です",
-      "webhook_not_found": "Webhook「{{webhook}}」が見つかりません",
-      "replicate_invalid": "レプリケートは「デフォルト」「しない」「常に」または 0 より大きいしきい値である必要があります（指定値: {{value}}）",
-      "replicate_contradicts_load_protected": "負荷保護はレプリケート =「しない」と併用できません。負荷保護されたテーブルはライブで読まれることがありません",
-      "table_registered_fields_omitted": "テーブル「{{table}}」を登録しました（id={{id}}）。ソースの資格情報では読み取れないため除外しました: {{fields}}",
-      "table_not_readable": "このソースの資格情報では {{table}} を読み取れません: {{reason}}",
-      "table_too_complex": "テーブル「{{table}}」は選択した列では登録されませんでした: {{reason}}。列を減らしてください。"
+      "webhook_not_found": "Webhook「{{webhook}}」が見つかりません"
     },
     "secrets": {
       "still_referenced": "{{secret}} は、この組織に保存されている {{count}} 件の値からまだ参照されています。それぞれを変更または削除してから、もう一度削除してください。"

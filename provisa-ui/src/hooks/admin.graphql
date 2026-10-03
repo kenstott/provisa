@@ -185,6 +185,18 @@ query TablesQuery {
       role
       ttl
     }
+    pagingKind
+    pagination {
+      type
+      cursorField
+      cursorParam
+      pageParam
+      pageSizeParam
+      pageSize
+      maxPages
+      maxRows
+    }
+    pagingCeilingRows
     replicate
     loadProtected
     offPeakWindow
@@ -921,6 +933,12 @@ mutation UpdateTableRoleTtl($tableId: Int!, $roleTtl: [RoleTtlInput!]!) {
   }
 }
 
+mutation UpdateTablePaging($tableId: Int!, $paging: PagingInput) {
+  updateTablePaging(tableId: $tableId, paging: $paging) {
+    ...MutationResult
+  }
+}
+
 mutation ForceRegen($tableId: Int!, $reason: String!) {
   forceRegen(tableId: $tableId, reason: $reason) {
     ...MutationResult
@@ -1015,6 +1033,18 @@ mutation CreateRole($input: RoleInput!) {
 
 mutation DeleteRole($id: String!) {
   deleteRole(id: $id) {
+    ...MutationResult
+  }
+}
+
+mutation RevokeRoleFromTable($roleId: String!, $tableId: Int!) {
+  revokeRoleFromTable(roleId: $roleId, tableId: $tableId) {
+    ...MutationResult
+  }
+}
+
+mutation RevokeRoleFromObject($roleId: String!, $kind: GrantKind!, $name: String!) {
+  revokeRoleFromObject(roleId: $roleId, kind: $kind, name: $name) {
     ...MutationResult
   }
 }

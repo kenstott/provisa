@@ -26,7 +26,7 @@ import { FitScreenIcon } from "../graph/GraphIcons";
 import cytoscape from "cytoscape";
 import elkRaw from "cytoscape-elk";
 import cytoscapeSvgRaw from "cytoscape-svg";
-import { buildErdElements } from "./erd-model";
+import { buildErdElements, erdJson } from "./erd-model";
 import type { ColumnDetail, ErdNodeDomain, ErdNodeTable } from "./erd-model";
 import { downloadBlob } from "../graph/graph-export";
 import type { CyInstance, CyEvent, CyLayoutOptions } from "../graph/cytoscape-types";
@@ -820,6 +820,21 @@ export function ErdPanel({
     );
   }, [EXPORT_BG, addRasterPadding]);
 
+  // REQ-524: the diagram as data — built by the same function the ERD renders from, with the
+  // panel's current collapse/hide/detail state, so it describes exactly what is drawn.
+  const exportJson = useCallback(() => {
+    const elements = buildErdElements(
+      tables,
+      relationships,
+      domains,
+      collapsedDomains,
+      hiddenDomains,
+      columnDetail,
+    );
+    const body = JSON.stringify(erdJson(elements), null, 2);
+    downloadBlob(new Blob([body], { type: "application/json" }), "erd.json");
+  }, [tables, relationships, domains, collapsedDomains, hiddenDomains, columnDetail]);
+
   // ── collapse all / expand all (visible domains only) ─────────────────────
   const visibleDomainIds = allDomainIds.filter((id) => !hiddenDomains.has(id));
   const allCollapsed =
@@ -969,6 +984,17 @@ export function ErdPanel({
             data-testid="erd-export-jpeg"
           >
             JPEG
+          </Button>
+          <Button
+            size="xs"
+            h={30}
+            variant="default"
+            leftSection={<Download size={11} />}
+            onClick={exportJson}
+            title={t("erdModal.downloadJson")}
+            data-testid="erd-export-json"
+          >
+            JSON
           </Button>
 
           {onClose && (

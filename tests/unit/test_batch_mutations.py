@@ -18,10 +18,8 @@ operation.
 from graphql import parse, validate
 
 from provisa.compiler.introspect import ColumnMetadata
-from provisa.compiler.mutation_gen import (
-    compile_mutation,
-    inject_rls_into_mutation,
-)
+from provisa.compiler.mutation_gen import compile_mutation
+from tests.write_governance import admitted, write_governance
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.context import build_context
 
@@ -224,8 +222,15 @@ class TestInsertAndDelete:
         assert "WHERE" in delete_r.sql
 
 
+_BOTH = {
+    "public.orders": (1, ["id", "status", "region"]),
+    "public.customers": (2, ["id", "name", "active"]),
+}
+
+
 class TestRLSAppliedPerMutation:
-    """RLS is injected independently into each mutation in a batch."""
+    """Each mutation in a batch is admitted on its own, by the one write admission, with the
+    role's filter for the table that mutation writes."""
 
     def test_rls_applied_to_each_update(self):
         schema, ctx = _build()
@@ -237,21 +242,19 @@ class TestRLSAppliedPerMutation:
         """)
         assert not validate(schema, doc)
         results = compile_mutation(doc, ctx, {"sales-pg": "postgresql"})
-
-        orders_rls = {1: "region = 'us'"}
-        customers_rls = {2: "active = true"}
+        # One role, a filter on each table.
+        gov = write_governance(_BOTH, rls={1: "region = 'us'", 2: "active = true"})
 
         orders_r = next(r for r in results if r.table_name == "orders")
         customers_r = next(r for r in results if r.table_name == "customers")
+        orders_sql = admitted(orders_r.sql, gov, orders_r.params)
+        customers_sql = admitted(customers_r.sql, gov, customers_r.params)
 
-        orders_r_with_rls = inject_rls_into_mutation(orders_r, 1, orders_rls)
-        customers_r_with_rls = inject_rls_into_mutation(customers_r, 2, customers_rls)
-
-        assert "region = 'us'" in orders_r_with_rls.sql
-        assert "active = true" in customers_r_with_rls.sql
-        # RLS must not bleed between mutations
-        assert "region = 'us'" not in customers_r_with_rls.sql
-        assert "active = true" not in orders_r_with_rls.sql
+        assert "\"region\" = 'us'" in orders_sql
+        assert '"active" = TRUE' in customers_sql.replace("true", "TRUE")
+        # A table's filter does not reach another table's statement
+        assert "region" not in customers_sql
+        assert "active" not in orders_sql
 
     def test_rls_not_applied_when_no_rules(self):
         schema, ctx = _build()
@@ -263,9 +266,7 @@ class TestRLSAppliedPerMutation:
         assert not validate(schema, doc)
         results = compile_mutation(doc, ctx, {"sales-pg": "postgresql"})
         r = results[0]
-        # Empty RLS dict — no injection
-        r_after = inject_rls_into_mutation(r, 1, {})
-        assert r_after.sql == r.sql
+        assert admitted(r.sql, write_governance(_BOTH), r.params) == r.sql
 
 
 class TestSameTableBatch:

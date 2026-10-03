@@ -237,11 +237,15 @@ async def govern_action_rows(
     out = [
         {name: _convert_value(v) for name, v in zip(result.column_names, r)} for r in result.rows
     ]
-    await _audit(sql, role_id, state, started, len(out))
+    from provisa.audit.provenance import enforced_summary
+
+    await _audit(sql, role_id, state, started, len(out), enforced_summary(gov, None))
     return out, enforcement
 
 
-async def _audit(sql: str, role_id: str, state: Any, started: float, rows: int) -> None:
+async def _audit(
+    sql: str, role_id: str, state: Any, started: float, rows: int, enforced: dict[str, Any]
+) -> None:
     """The governed statement lands in the query audit log like a table read. No registered table
     is involved, so the usage list is empty; the statement text carries the relation name. It ran
     on the federation engine. This row is also the record of the request that invoked the action
@@ -259,6 +263,9 @@ async def _audit(sql: str, role_id: str, state: Any, started: float, rows: int) 
         query_text=sql,
         table_ids=[],
         started=started,
+        model_stamp=state.model_stamp,
+        # What the action's governance enforced on its rows (provisa/audit/provenance.py).
+        enforced=enforced,
     )
     await write_audit(pending, 200, state, route="engine", row_count=rows)
     note_statement_audited()

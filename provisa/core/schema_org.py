@@ -203,6 +203,8 @@ registered_tables = Table(
     Column("load_protected", Boolean),  # REQ-1141: NULL = inherit source
     Column("off_peak_window", Text),  # REQ-1141
     Column("off_peak_tz", Text),  # REQ-1141
+    # REQ-318: how the table is read page by page (provisa.core.paging); NULL = not paged here.
+    Column("pagination", JSON),
     Column("gql_naming_convention", Text),
     Column("watermark_column", Text),
     Column("change_signal", Text),  # REQ-929: override source change signal; NULL = inherit
@@ -1115,6 +1117,18 @@ query_audit_log = Table(
     # REQ-886: correlation id of the UDF invocation this row was written under, joining the
     # audit row back to the engine-side UDF trace. Null for non-UDF queries.
     Column("trace_id", Text),
+    # Provenance (provisa/audit/provenance.py): the model stamp the statement was governed under
+    # (REQ-1914); what was enforced on it (row filters with the names of the session variables
+    # they read, masks by kind, row caps, a write's table and columns); why it took its route and
+    # the sources it read; how old the rows it was answered with were (null: read live).
+    Column("model_stamp", BigInteger),
+    # The environment repository's commit (REQ-1524) the model at model_stamp equals — only when
+    # that is proven; NULL otherwise, and then ``enforced`` lists the visible columns too.
+    Column("model_commit", Text),
+    Column("enforced", JSON(none_as_null=True)),
+    Column("route_reason", Text),
+    Column("sources", JSON(none_as_null=True)),
+    Column("data_age", JSON(none_as_null=True)),
     Column("logged_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 

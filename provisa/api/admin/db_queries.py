@@ -149,7 +149,8 @@ async def fetch_tables(conn: "Connection") -> list[dict]:  # REQ-155, REQ-393, R
         "enable_aggregates, enable_group_by, view_sql, dq_contract, "  # REQ-1443
         "live, push_debounce_quiet, push_debounce_max_delay, cache_ttl, "  # REQ-1733, REQ-1730
         "row_materialize, role_ttl, replicate, load_protected, region, "  # REQ-1865/1907/826/1141/1921
-        "change_signal "  # REQ-929: the table's own; NULL = its source's
+        "change_signal, "  # REQ-929: the table's own; NULL = its source's
+        "pagination "  # REQ-318
         "FROM registered_tables ORDER BY id"
     )
     tables = []
@@ -166,6 +167,9 @@ async def fetch_tables(conn: "Connection") -> list[dict]:  # REQ-155, REQ-393, R
         table["unique_constraints"] = _as_list(row.get("unique_constraints"))  # REQ-1093
         table["live"] = _as_dict(row.get("live"))  # REQ-1733
         table["role_ttl"] = _as_dict(row["role_ttl"])  # REQ-1907
+        table["pagination"] = (  # REQ-318: NULL = not paged here
+            None if row["pagination"] is None else _as_dict(row["pagination"])
+        )
         table["columns"] = [
             {
                 "column_name": r["column_name"],

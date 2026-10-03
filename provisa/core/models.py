@@ -28,6 +28,7 @@ from pydantic import (
     model_validator,
 )
 
+from provisa.core.paging import PaginationConfig
 from provisa.core.source_registry import (
     _MYSQL_WIRE_TYPES,
     _PG_WIRE_TYPES,
@@ -988,6 +989,10 @@ class Table(
     gql_naming_convention: str | None = None  # overrides source; None = inherit
     hot: bool | None = None  # None = auto-detect, True = force hot, False = opt out
     relay_pagination: bool | None = None  # None = inherit from source/global NamingConfig
+    # REQ-318: how this table is read page by page -- a paged REST endpoint's paging, or a
+    # connection table's row bound (provisa.core.paging). Authored here only; the api_endpoints
+    # row a REST table is served from carries a copy written from it.
+    pagination: PaginationConfig | None = None
     live: LiveDeliveryConfig | None = None  # live query delivery config (Phase AM)
     # REQ-924/926/927: the single watermark column (an existing column). Set → append landing +
     # incremental refresh (WHERE wm > cursor) + poll-path subscription (insert/update grain, no
