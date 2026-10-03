@@ -852,23 +852,35 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         # REQ-273: a client may request a specific role via X-Provisa-Role, but the server
         # honors it only when the authenticated user is actually assigned that role — a bare
         # client-supplied role is never trusted. With a single assignment the default stands.
-        requested_role = request.headers.get("x-provisa-role")
-        if requested_role:
+        # REQ-1620: the header may name a SET of roles, comma-separated (the UI's "Role: All" sends
+        # every active role so the union of their domain_access is queryable). Each named role is
+        # checked on its own; the first honoured one is the acting role and the whole honoured set
+        # becomes the role claims, exactly as the unsecured path above publishes them.
+        requested_roles = [
+            r.strip() for r in (request.headers.get("x-provisa-role") or "").split(",") if r.strip()
+        ]
+        acting_set: list[str] = []
+        if requested_roles:
             assigned_role_ids = {a.role_id for a in assignments}
-            if _is_control_plane_role(requested_role, _all_roles):
-                # REQ-1327 again, at the one place a client can name a role: the header selects the
-                # acting role for the DATA surfaces, and platform_admin is not one. It resolves to
-                # the caller's data-plane role instead of being honored; with no data-plane role the
-                # resolved control-plane role above stands, and the data surfaces refuse it.
-                if _data_plane_roles:
-                    role = _data_plane_roles[0]
-            elif requested_role in assigned_role_ids:
-                role = requested_role
-            else:
-                return JSONResponse(
-                    status_code=403,
-                    content={"detail": f"Role {requested_role!r} is not assigned to this user"},
-                )
+            for requested_role in requested_roles:
+                if _is_control_plane_role(requested_role, _all_roles):
+                    # REQ-1327 again, at the one place a client can name a role: the header selects
+                    # the acting role for the DATA surfaces, and platform_admin is not one. It
+                    # resolves to the caller's data-plane role instead of being honored; with no
+                    # data-plane role the resolved control-plane role above stands, and the data
+                    # surfaces refuse it.
+                    if _data_plane_roles and _data_plane_roles[0] not in acting_set:
+                        acting_set.append(_data_plane_roles[0])
+                elif requested_role in assigned_role_ids:
+                    if requested_role not in acting_set:
+                        acting_set.append(requested_role)
+                else:
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": f"Role {requested_role!r} is not assigned to this user"},
+                    )
+            if acting_set:
+                role = acting_set[0]
 
         # Record last-seen identity in user_profiles (platform control plane) before the request is
         # handled. REQ-1882: awaited on the request thread, not detached — a detached upsert runs in
@@ -887,6 +899,10 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
 
         request.state.identity = identity
         request.state.role = role
+        # REQ-1620: more than one honoured role is the acting SET, read by the role-claims binding
+        # in __call__; a single role leaves it unset, as before.
+        if len(acting_set) > 1:
+            request.state.roles = acting_set
         request.state.assignments = assignments
         request.state.active_org_id = active_org_id
         return None
