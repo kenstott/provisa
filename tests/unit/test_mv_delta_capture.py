@@ -247,3 +247,18 @@ async def test_refresh_mv_opt_out_writes_no_ledger(store):
     reg.register(mv)
     await refresh_mv(_FakeEngine(V1), mv, reg, ledger=store)
     assert await _ledger_rows(store) == []
+
+
+async def test_a_view_recreated_under_the_same_id_starts_an_empty_ledger(store):
+    """REQ-1922: the ledger is the view's by id AND definition version, so a view re-created (or
+    redefined) under the same id never reads the old one's rows — in any region, pruned or not."""
+    old = _mv()
+    await capture_row_deltas(store, old, [], V1)
+    await capture_row_deltas(store, old, V1, V2)
+    import dataclasses
+
+    new = dataclasses.replace(old, sql="SELECT id, v FROM orders WHERE v > 0")
+    assert await capture_row_deltas(store, new, [], V1) == 1  # its own first version
+    with pytest.raises(ValueError, match="no such version"):
+        await reconstruct_forward(store, new, 2)  # the old view's version 2 is not the new one's
+    assert await reconstruct_forward(store, new, 1) == V1

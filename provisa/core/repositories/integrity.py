@@ -42,7 +42,8 @@ with the publish gate's own matcher (``provisa.mv.relationship_gate``).
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any
@@ -55,7 +56,7 @@ from sqlglot.errors import SqlglotError
 from provisa.core.schema_org import metadata
 
 if TYPE_CHECKING:
-    from provisa.core.database import Connection
+    from provisa.core.database import Connection, Database
 
 
 class Standing(Enum):
@@ -535,15 +536,34 @@ def _part_statements(ref: ObjectRef, attributes: Mapping[str, Any]):
             yield reference, and_(refers, *own)
 
 
+@asynccontextmanager
+async def _reaching(conn: "Connection", table_name: str) -> AsyncIterator["Connection"]:
+    """A connection to the store that keeps ``table_name`` (REQ-1922): ``conn`` itself when it is
+    that store's (or an unguarded one), else the active org's handle for that store. An object
+    of the model can have parts kept in the region's state store (a table's file mtimes, an MV's
+    refresh log and delta ledger): those are read and removed there, never through the model's
+    connection."""
+    from provisa.core.request_context import org_store
+    from provisa.core.store_sides import side_of
+
+    side = side_of(table_name)
+    if conn.holds is None or conn.holds == side:
+        yield conn
+        return
+    async with org_store(side).acquire() as other:
+        yield other
+
+
 async def parts(conn: "Connection", ref: ObjectRef) -> dict[str, int]:
     """How many rows go with ``ref``, by ``table.column`` — only the columns that have any."""
     attributes = await _attributes(conn, ref)
     counts: dict[str, int] = {}
     for reference, where in _part_statements(ref, attributes):
         table = metadata.tables[reference.table]
-        found = (
-            await conn.execute_core(select(func.count()).select_from(table).where(where))
-        ).scalar_one()
+        async with _reaching(conn, reference.table) as there:
+            found = (
+                await there.execute_core(select(func.count()).select_from(table).where(where))
+            ).scalar_one()
         if found:
             counts[f"{reference.table}.{reference.column}"] = found
     return counts
@@ -595,7 +615,10 @@ async def remove_parts(conn: "Connection", ref: ObjectRef) -> None:
             ).fetchall()
             for (key,) in keys:
                 await remove_parts(conn, ObjectRef(reference.of, key))
-        await conn.execute_core(table.delete().where(where))
+        # REQ-1922: a part kept in this region's state store is removed there, in the same call;
+        # the org's other regions remove theirs when they next reload the model (prune_state_parts).
+        async with _reaching(conn, reference.table) as there:
+            await there.execute_core(table.delete().where(where))
 
 
 def _names_column(sql: str, table_name: str, column: str) -> bool:
@@ -751,3 +774,41 @@ async def circle_of(conn: "Connection", ref: ObjectRef) -> list[ObjectRef]:
                 reaches_ref.add(node)
                 grew = True
     return sorted(reaches_ref - {ref}, key=lambda o: (o.kind, str(o.id)))
+
+
+async def prune_state_parts(model_db: "Database", state_db: "Database") -> dict[str, int]:
+    """Remove the rows of this region's state store whose model owner no longer exists, by
+    ``table.column`` (REQ-1922). Returns what was removed.
+
+    An object of the model can have parts kept in each region's state store (a table's file
+    mtimes, an MV's refresh log and delta ledger). Removing the object removes the parts in the
+    region that removed it (``remove_parts``); every other region of the org removes its own here,
+    at boot and on every model reload. This is the ongoing cross-region consistency sweep a
+    model shared by separate state stores needs while the deployment runs — not a conversion of
+    an earlier install."""
+    from provisa.core.store_sides import MODEL_SIDE, STATE_SIDE, side_of
+
+    removed: dict[str, int] = {}
+    for reference in REFERENCES:
+        if reference.standing is not Standing.PART or side_of(reference.table) != STATE_SIDE:
+            continue
+        kind = KINDS[reference.to]
+        if side_of(kind.table) != MODEL_SIDE:
+            continue
+        owner_column = {"key": kind.key, "name": kind.name}[reference.by]
+        assert owner_column is not None  # a part held by name names a kind that has one
+        owners = metadata.tables[kind.table]
+        part = metadata.tables[reference.table]
+        async with model_db.acquire() as conn:
+            live = {r[0] for r in (await conn.execute_core(select(owners.c[owner_column])))}
+        async with state_db.acquire() as conn:
+            held = {
+                r[0] for r in await conn.execute_core(select(part.c[reference.column]).distinct())
+            }
+            orphaned = sorted(held - live, key=str)
+            if orphaned:
+                result = await conn.execute_core(
+                    part.delete().where(part.c[reference.column].in_(orphaned))
+                )
+                removed[f"{reference.table}.{reference.column}"] = result.rowcount
+    return removed

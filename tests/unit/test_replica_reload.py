@@ -215,9 +215,16 @@ async def test_a_model_change_to_a_boot_org_not_named_default_is_reloaded_by_ano
     monkeypatch.setattr("provisa.api.app.state", state)
     monkeypatch.setattr("provisa.api.app._rebuild_schemas", _rebuild_schemas)
     monkeypatch.setattr(config_stamp, "read", _read)
+    pruned: list[str] = []
+
+    async def _prune(rt):  # REQ-1922: the reload also prunes this region's orphaned state
+        pruned.append(rt.org_id)
+
+    monkeypatch.setattr(model_reload, "prune_region_state", _prune)
     model = [t for t in model_reload.targets() if t.kind == config_stamp.MODEL]
     assert [t.name for t in model] == ["org acme: model"]
     assert await config_watch.check(model) == ["org acme: model"]
     assert rebuilt_for == ["acme"]
+    assert pruned == ["acme"]
     # reloaded once: the stamp it recorded is the stored one, so the next tick is quiet
     assert await config_watch.check(model) == []

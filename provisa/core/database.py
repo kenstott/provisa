@@ -685,6 +685,11 @@ class Connection:
         self._holds = database.holds if database is not None else None
         self._handle = database.name if database is not None else ""
 
+    @property
+    def holds(self) -> str | None:
+        """The store side this connection's handle holds (REQ-1922), or None for an unguarded one."""
+        return self._holds
+
     def _record_write(self, target: tuple[str, str, str | None] | None, rowcount: int) -> None:
         """REQ-1524: a write that changed a row of the model is recorded for its commit
         (``provisa.core.model_change``). A rowcount the driver does not report (-1) counts as a

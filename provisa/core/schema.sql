@@ -746,7 +746,7 @@ CREATE TABLE IF NOT EXISTS calendars (
 
 CREATE TABLE IF NOT EXISTS mv_refresh_log (
     id          SERIAL PRIMARY KEY,
-    mv_id       TEXT NOT NULL REFERENCES materialized_views(id) ON DELETE CASCADE,
+    mv_id       TEXT NOT NULL,  -- REQ-1922: state store; no foreign key into the model
     status      TEXT NOT NULL CHECK (status IN ('success', 'failure')),
     row_count   INTEGER,
     duration_ms INTEGER,
@@ -764,7 +764,7 @@ CREATE TABLE IF NOT EXISTS mv_refresh_log (
 -- REQ-878 full-content point-in-time reconstruction). Delete carries old_values; insert new_values.
 CREATE TABLE IF NOT EXISTS mv_delta_ledger (
     id                 SERIAL PRIMARY KEY,
-    mv_id              TEXT NOT NULL REFERENCES materialized_views(id) ON DELETE CASCADE,
+    mv_id              TEXT NOT NULL,  -- REQ-1922: state store; no foreign key into the model
     refresh_version    INTEGER NOT NULL,
     definition_version TEXT,
     trace_id           TEXT,
@@ -1016,7 +1016,7 @@ CREATE TABLE IF NOT EXISTS table_meta_links (
 
 -- File source staleness tracking — mtime per registered SQLite/CSV/Parquet table
 CREATE TABLE IF NOT EXISTS file_source_mtimes (
-    table_id     INTEGER PRIMARY KEY REFERENCES registered_tables(id) ON DELETE CASCADE,
+    table_id     INTEGER PRIMARY KEY,  -- REQ-1922: state store; no foreign key into the model
     source_mtime DOUBLE PRECISION NOT NULL,
     synced_at    DOUBLE PRECISION NOT NULL
 );

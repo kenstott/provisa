@@ -35,7 +35,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, distinct, func, insert, select
 
@@ -103,10 +103,30 @@ def compute_deltas(
     return events
 
 
-async def _next_version(store: Database, mv_id: str) -> int:
+def definition_version_of(mv: MVDefinition) -> str:  # REQ-862
+    """The view's definition version: what it computes, not what it is called."""
+    from provisa.lineage import mv_definition_version
+
+    return mv_definition_version(
+        sql=mv.sql,
+        join_pattern=mv.join_pattern,
+        source_tables=mv.source_tables,
+        serves_aggregates=mv.serves_aggregates,
+        aggregate_columns=mv.aggregate_columns,
+    )
+
+
+def _ledger_of(mv: MVDefinition) -> Any:
+    """The ledger rows that are this view's: its id AND its definition version (REQ-1922). A view
+    re-created under the same id — or redefined — starts an empty ledger in every region, even in
+    one that has not yet pruned the old view's rows."""
+    return and_(_ledger.c.mv_id == mv.id, _ledger.c.definition_version == definition_version_of(mv))
+
+
+async def _next_version(store: Database, mv: MVDefinition) -> int:
     async with store.acquire() as conn:
         result = await conn.execute_core(
-            select(func.max(_ledger.c.refresh_version)).where(_ledger.c.mv_id == mv_id)
+            select(func.max(_ledger.c.refresh_version)).where(_ledger_of(mv))
         )
         row = result.fetchone()
     current = row[0] if row is not None and row[0] is not None else 0
@@ -119,7 +139,6 @@ async def capture_row_deltas(
     prev_rows: list[dict],
     curr_rows: list[dict],
     *,
-    definition_version: str | None = None,
     trace_id: str | None = None,
 ) -> int | None:
     """Diff ``prev_rows`` → ``curr_rows`` and APPEND the change events to the ledger under the next
@@ -132,14 +151,14 @@ async def capture_row_deltas(
         raise ValueError(f"MV {mv.id}: capture_row_deltas requires a non-empty delta_key")
     exclude = frozenset(mv.delta_exclude_columns)
     events = compute_deltas(prev_rows, curr_rows, mv.delta_key, exclude)
-    version = await _next_version(store, mv.id)
+    version = await _next_version(store, mv)
     if not events:
         return version
     payload = [
         {
             "mv_id": mv.id,
             "refresh_version": version,
-            "definition_version": definition_version,
+            "definition_version": definition_version_of(mv),
             "trace_id": trace_id,
             "change_type": e.change_type,
             "row_key": e.row_key,
@@ -155,24 +174,24 @@ async def capture_row_deltas(
     return version
 
 
-async def _known_versions(store: Database, mv_id: str) -> set[int]:
+async def _known_versions(store: Database, mv: MVDefinition) -> set[int]:
     async with store.acquire() as conn:
         result = await conn.execute_core(
-            select(distinct(_ledger.c.refresh_version)).where(_ledger.c.mv_id == mv_id)
+            select(distinct(_ledger.c.refresh_version)).where(_ledger_of(mv))
         )
         rows = result.fetchall()
     return {r[0] for r in rows}
 
 
-async def _assert_known(store: Database, mv_id: str, version: int) -> None:
-    if version not in await _known_versions(store, mv_id):
+async def _assert_known(store: Database, mv: MVDefinition, version: int) -> None:
+    if version not in await _known_versions(store, mv):
         raise ValueError(
-            f"MV {mv_id}: cannot reconstruct as-of refresh version {version} — "
+            f"MV {mv.id}: cannot reconstruct as-of refresh version {version} — "
             f"no such version in the delta ledger"
         )
 
 
-async def _forward_state(store: Database, mv_id: str, version: int) -> dict[str, dict]:
+async def _forward_state(store: Database, mv: MVDefinition, version: int) -> dict[str, dict]:
     """As-of-N state per key: the greatest event with ``refresh_version <= N`` per key, executed in
     the store as a windowed greatest-per-key query; keys whose last such event is a delete are absent.
     Returns ``{row_key: new_values}``."""
@@ -188,7 +207,7 @@ async def _forward_state(store: Database, mv_id: str, version: int) -> dict[str,
             )
             .label("rn"),
         )
-        .where(and_(_ledger.c.mv_id == mv_id, _ledger.c.refresh_version <= version))
+        .where(and_(_ledger_of(mv), _ledger.c.refresh_version <= version))
         .subquery()
     )
     stmt = select(ranked.c.row_key, ranked.c.change_type, ranked.c.new_values).where(
@@ -204,11 +223,11 @@ async def _forward_state(store: Database, mv_id: str, version: int) -> dict[str,
     }
 
 
-async def _keys_touched_after(store: Database, mv_id: str, version: int) -> set[str]:
+async def _keys_touched_after(store: Database, mv: MVDefinition, version: int) -> set[str]:
     async with store.acquire() as conn:
         result = await conn.execute_core(
             select(distinct(_ledger.c.row_key)).where(
-                and_(_ledger.c.mv_id == mv_id, _ledger.c.refresh_version > version)
+                and_(_ledger_of(mv), _ledger.c.refresh_version > version)
             )
         )
         rows = result.fetchall()
@@ -218,8 +237,8 @@ async def _keys_touched_after(store: Database, mv_id: str, version: int) -> set[
 async def reconstruct_forward(store: Database, mv: MVDefinition, version: int) -> list[dict]:
     """FORWARD-FOLD reconstruction (REQ-878): the view as-of refresh ``version``, folded from the
     ledger base. Fails loud on an unknown version."""
-    await _assert_known(store, mv.id, version)
-    state = await _forward_state(store, mv.id, version)
+    await _assert_known(store, mv, version)
+    state = await _forward_state(store, mv, version)
     return list(state.values())
 
 
@@ -229,9 +248,9 @@ async def reconstruct_reverse(
     """REVERSE reconstruction (REQ-878): the view as-of refresh ``version``, derived from the LIVE
     row set by correcting only the keys touched after ``version`` back to their as-of-N state. Yields
     the identical set as ``reconstruct_forward``. Fails loud on an unknown version."""
-    await _assert_known(store, mv.id, version)
-    touched = await _keys_touched_after(store, mv.id, version)
-    asof = await _forward_state(store, mv.id, version)
+    await _assert_known(store, mv, version)
+    touched = await _keys_touched_after(store, mv, version)
+    asof = await _forward_state(store, mv, version)
     live_keys = {_key_str(r, mv.delta_key) for r in live_rows}
     out: list[dict] = []
     for row in live_rows:

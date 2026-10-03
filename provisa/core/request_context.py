@@ -33,6 +33,7 @@ registered, which is the documented "no org has claimed an engine of its own" an
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Any
 from contextvars import ContextVar, Token
 
 from provisa.core.environments import PROD
@@ -153,6 +154,24 @@ def reset_role_claims(token: Token[tuple[str, ...] | None]) -> None:
 
 _active_engine_url_provider: Callable[[], str | None] | None = None
 _platform_config_provider: Callable[[], dict] | None = None
+_org_store_provider: Callable[[str], Any] | None = None
+
+
+def register_org_store_provider(fn: Callable[[str], Any]) -> None:
+    global _org_store_provider
+    _org_store_provider = fn
+
+
+def org_store(side: str) -> Any:
+    """REQ-1922: the active org's handle for one store side ("model", "state", "record"), for a
+    lower layer that holds a connection to one store and must reach a row kept in another (the
+    integrity module removing an object's parts). Raises when no application registered the
+    provider: a process with no app holds no org's stores to reach."""
+    if _org_store_provider is None:
+        raise RuntimeError(
+            f"no application registered the org's stores, so its {side} store cannot be reached"
+        )
+    return _org_store_provider(side)
 
 
 def register_active_engine_url_provider(fn: Callable[[], str | None]) -> None:

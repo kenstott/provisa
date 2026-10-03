@@ -288,15 +288,9 @@ def _emit_column_lineage_span(
 
 
 def _mv_definition_version(mv: MVDefinition) -> str:  # REQ-862
-    from provisa.lineage import mv_definition_version
+    from provisa.mv.delta import definition_version_of
 
-    return mv_definition_version(
-        sql=mv.sql,
-        join_pattern=mv.join_pattern,
-        source_tables=mv.source_tables,
-        serves_aggregates=mv.serves_aggregates,
-        aggregate_columns=mv.aggregate_columns,
-    )
+    return definition_version_of(mv)
 
 
 async def _build_refresh_sql(
@@ -450,9 +444,7 @@ async def _post_refresh_delta_capture(  # REQ-877
 
     try:
         curr_rows = await _read_target_rows(engine, target, authorization=authorization)
-        await capture_row_deltas(
-            ledger, mv, prev_rows, curr_rows, definition_version=_mv_definition_version(mv)
-        )
+        await capture_row_deltas(ledger, mv, prev_rows, curr_rows)
     except Exception:  # noqa: BLE001 — REQ-877: best-effort delta capture never fails refresh
         log.exception("MV %s: row-level delta capture failed (refresh unaffected)", mv.id)
 

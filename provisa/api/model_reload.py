@@ -175,8 +175,21 @@ async def reload_model(rt: "OrgRuntime") -> None:
     async def _rebuild() -> None:
         # The worker that made the change announced it (REQ-1072); a reload is not another change.
         await _rebuild_schemas(announce=False)
+        # REQ-1922: this region's state rows whose model owner the change removed.
+        await prune_region_state(rt)
 
     await _bound(rt, _rebuild)
+
+
+async def prune_region_state(rt: "OrgRuntime") -> None:
+    """Remove this region's state rows whose model owner no longer exists (REQ-1922;
+    ``integrity.prune_state_parts``)."""
+    from provisa.core.repositories.integrity import prune_state_parts
+
+    assert rt.model_db is not None and rt.tenant_db is not None  # bound with the runtime
+    removed = await prune_state_parts(rt.model_db, rt.tenant_db)
+    if removed:
+        log.info("org %s: removed state rows whose model owner is gone: %s", rt.org_id, removed)
 
 
 async def publish_replica_routes(rt: "OrgRuntime") -> None:

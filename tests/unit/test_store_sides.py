@@ -131,3 +131,19 @@ async def test_the_record_is_kept_apart_from_the_state(tmp_path):
     async with tenant_db.acquire() as conn:
         with pytest.raises(StoreSideViolation, match="query_audit_log is a record table"):
             await conn.execute_core(select(query_audit_log.c.id))
+
+
+def test_no_foreign_key_crosses_from_one_store_to_another():
+    """REQ-1922: in a region deployment the stores are separate databases, where a foreign key
+    between them cannot hold."""
+    from provisa.core.store_sides import BOTH, side_of
+
+    crossing = [
+        f"{t.name}.{fk.parent.name} -> {fk.column.table.name}"
+        for t in metadata.sorted_tables
+        for fk in t.foreign_keys
+        if t.name not in BOTH
+        and fk.column.table.name not in BOTH
+        and side_of(t.name) != side_of(fk.column.table.name)
+    ]
+    assert crossing == []

@@ -789,6 +789,7 @@ state = AppState()
 # platform config through core.request_context, never by importing this module.
 from provisa.core.request_context import (  # noqa: E402
     register_active_engine_url_provider,
+    register_org_store_provider,
     register_platform_config_provider,
 )
 
@@ -815,6 +816,16 @@ def _read_platform_config() -> dict:
 
 
 register_active_engine_url_provider(lambda: state.active_engine_url)
+
+
+def _org_store_of(side: str) -> Database:
+    """REQ-1922: the active org's handle for one store side (core.request_context.org_store)."""
+    db = {"model": state.model_db, "state": state.tenant_db, "record": state.record_db}[side]
+    assert db is not None, f"the active org's {side} store is not bound"
+    return db
+
+
+register_org_store_provider(_org_store_of)
 register_platform_config_provider(_read_platform_config)
 
 # REQ-1266: the domain mode is a tenant setting, so `provisa.core.domain_policy` keys its policy by
@@ -1238,6 +1249,10 @@ async def _load_and_build(
     await _require_org_serves_here(state.org_id)  # REQ-1922
     await _refuse_boot_lane_conflict()
     await _bind_region_stores(state.org_id, PROD, initialise=apply)
+    if apply:
+        from provisa.api.model_reload import prune_region_state
+
+        await prune_region_state(state._active_runtime())  # REQ-1922
 
     await _rebuild_schemas(raw_config)
 
@@ -1849,6 +1864,9 @@ async def build_org_runtime(
 
         await _require_org_serves_here(org_id)  # REQ-1922
         await _bind_region_stores(org_id, env, initialise=True)
+        from provisa.api.model_reload import prune_region_state
+
+        await prune_region_state(rt)  # REQ-1922
 
         # REQ-1266: the org's own domain mode, applied AFTER load_config — which configures the
         # scope from the DEPLOYMENT's naming block — and BEFORE _rebuild_schemas, which reads the
