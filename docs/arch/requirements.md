@@ -7138,7 +7138,7 @@ Impute-relationships endpoint accepts visible node set with stable integer ids a
 
 ### REQ-788 · File & Lake Sources {#REQ-788}
 
-**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** behavioral
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
 File connector sources accept a directory glob pattern to enumerate CSV files. Discovered files are introspected to extract schema (column names and types). Multiple CSV files matching the glob are consolidated into a single logical table when registered.
 
@@ -10124,7 +10124,7 @@ On ephemeral sandbox session start, clone a pre-seeded golden template schema (o
 
 ### REQ-1035 · Demo Tiers & Onboarding {#REQ-1035}
 
-**Status:** ✗ rejected · **Priority:** MUST · **Type:** behavioral
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
 Ephemeral sandbox sessions are scoped by Firebase anonymous auth ([REQ-121](#REQ-121)) without email collection. Prospects get a uid-based session identity with zero friction.
 
@@ -12560,7 +12560,7 @@ During account creation, a Firebase user without an org invite may CREATE A NEW 
 
 ### REQ-1250 · Org Membership {#REQ-1250}
 
-**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** structural
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
 
 Org membership is pull-based via org_join_requests, the inverse of org_invites. New registry table org_join_requests(user_id, org_id, status, requested_at, decided_by, decided_at) is added to REGISTRY_TABLES in provisa/core/schema_admin.py. Per-org visibility flag orgs.open_to_requests: if False (invite_only, the default), admission requests are silently rejected (no signal that the request was received, to avoid org-name enumeration). If True (open_to_requests), requests are logged pending admin approval. Requesters must be Firebase-authenticated. Anti-abuse: at most one open request per (user, org); rate-limited per requester; stale requests auto-expire (same TTL as org_invites).
 
@@ -12572,7 +12572,7 @@ Org membership is pull-based via org_join_requests, the inverse of org_invites. 
 
 ### REQ-1251 · Org Membership {#REQ-1251}
 
-**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** behavioral
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
 Admin approval/denial of org_join_requests. When an admin approves a request, the approval path reuses the membership-insert logic (provisa/api/auth_router.py and related) minus the token check, granting the lowest-privilege member role (never admin). Deny path closes the request (status='denied'). Both actions record decided_by (admin user_id) and decided_at.
 
@@ -12586,7 +12586,7 @@ Admin approval/denial of org_join_requests. When an admin approves a request, th
 
 ### REQ-1252 · Org Administration {#REQ-1252}
 
-**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** ui
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
 
 Admin UI surface (extend OrgsTab.tsx / add admin router endpoint) to list pending org_join_requests for the org, approve requests, and deny requests. Display requester email, request date, and admin action buttons.
 
@@ -15534,7 +15534,7 @@ Write authority is granted into an environment and never carried between environ
 
 ### REQ-1493 · Environments {#REQ-1493}
 
-**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** behavioral
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
 Every environment owns a writable store, because a non-prod environment needs data that is neither a read of production nor absent. A regulated organization cannot let developers read production rows at all, so a read-only binding to production is not a weaker version of the answer but the wrong one; and an environment evolving a data structure needs a shape production does not yet have, which no binding to production can hold. The environment store is where both live: a structure the environment's model declares and no source carries is created there, and a dataset is populated by landing an extract through the governed read path, so column masking and row-level security are applied by the reading environment before any row is written to the receiving environment's store. The store is the boundary an auditor can inspect: the dev store holds only what governance permitted out of prod, and holds it whether or not the binding is later changed.
 
@@ -15562,7 +15562,7 @@ Masking has a consistent form. A column masked this way shows a surrogate in pla
 
 ### REQ-1495 · Environments {#REQ-1495}
 
-**Status:** ✗ rejected · **Priority:** MAY · **Type:** behavioral
+**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
 
 An environment populates a table from its own model when no source holds one. A structure being designed exists in the environment's model before it exists anywhere else, so there is nothing to extract and nothing to mask; the model itself -- column types, nullability, unique constraints, relationships and the tags that classify a column -- is enough to generate rows that satisfy it. Generated data honours declared keys and referential relationships so a generated set is joinable, and is marked as generated in the environment's store so it can never be mistaken for an extract of anything real.
 
@@ -15610,7 +15610,7 @@ Every environment operation is available from the provisa command line, because 
 
 ### REQ-1499 · Environments {#REQ-1499}
 
-**Status:** ✗ rejected · **Priority:** MAY · **Type:** behavioral
+**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
 
 An organization may replicate an environment whole -- bindings, secrets, users and role assignments included -- when what it wants is the control plane as it stands rather than the governed model alone. The replicate is the deliberate opposite of [REQ-1489](#REQ-1489) and is fenced accordingly. Its target must be a non-prod environment and never prod, which takes merges only; it is an org_admin act carrying an explicit acknowledgement that the target will hold production credentials, recorded in the org's admin audit log with who, when and from where; and the target environment is thereafter marked as replicated, which means it is governed as production -- every grant in it reaches production data, so it is neither a safe place for developers nor a substitute for the masked extract of [REQ-1493](#REQ-1493). Only replicate into an environment whose members already hold the production access it confers. (Amended 2026-08-21:) A replicate targets an environment that ALREADY EXISTS and never creates one, because [REQ-1491](#REQ-1491) makes a newly created environment unbound without exception. The order is the fence: the environment is created unbound, its members are established, and only then does an org_admin acknowledge that it will hold production credentials and replicate into it. Creating and crediting an environment in one act is what this forbids.
 
@@ -15622,7 +15622,7 @@ An organization may replicate an environment whole -- bindings, secrets, users a
 
 ### REQ-1500 · Environments {#REQ-1500}
 
-**Status:** ✗ rejected · **Priority:** MAY · **Type:** behavioral
+**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
 
 A non-prod environment can be exported as a configuration a desktop Provisa loads, so a developer works against the environment's model on their own machine. The export carries the governed model and the environment's own bindings and secret references; whether the desktop can resolve those references is the developer's environment to answer, and an unresolved one fails loudly on first use rather than defaulting to something local. What the export does not carry is the environment's store: landed extracts, generated sets and materialized views are data, and an environment holding large ones is not reasonable to move through a file. The export states what it left behind and how large it was, so the developer knows the difference between an environment that exported whole and one whose queries will find nothing materialized. Exporting prod is refused -- the desktop is a separate instance with no org governance around it, and a production export is a production credential in a file.
 
@@ -17414,7 +17414,7 @@ Auto-generate Horizon Catalog listing descriptions from Provisa's Data Product P
 
 ### REQ-1646 · Snowflake Horizon Catalog Export {#REQ-1646}
 
-**Status:** ✗ rejected · **Priority:** MAY · **Type:** behavioral
+**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
 
 Snowflake Horizon Catalog export can optionally create a `_provisa` database containing user-facing exposure views organized as `{domain-name-slug-as-schema}.{table-name}` (e.g., schema `pet_store`, view `pets`), providing a clean, domain-organized read surface separate from the internal `_landing` database.
 
@@ -20868,7 +20868,7 @@ Views feature (domain SQL views) must validate that all foreign tables reference
 
 ### REQ-446 · Graph Analytics Pipeline {#REQ-446}
 
-**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** behavioral
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
 The Cypher compiler must support a high-value subset of `CALL gds.*` procedure syntax, implemented via igraph rather than a Neo4j GDS dependency. Target procedures: `gds.pageRank.stream`, `gds.louvain.stream` (community detection), `gds.betweenness.stream`, `gds.closeness.stream`, `gds.wcc.stream` (weakly connected components), `gds.nodeSimilarity.stream`. The governed subgraph (nodes and edges, filtered by RLS and domain permissions) is materialized by Provisa before being passed to igraph — no data outside the caller's access is visible to the algorithm. Results are returned as tabular output consistent with all other Cypher query responses.
 
@@ -21098,7 +21098,7 @@ Dataset name normalization must be centralized. Dataset names may be normalized 
 
 ### REQ-466 · Naming Convention {#REQ-466}
 
-**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** behavioral
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
 Dataset identity resolution requires centralized service. Every registered dataset has two identity forms — physical (native source name, e.g. `findPetsByStatus`) and semantic (domainId + tableName alias). Code comparing two dataset references must resolve both through a centralized identity service. Backend: `provisa.core.dataset_identity` exposes `resolve(ref) -> DatasetIdentity` and `same_dataset(ref_a, ref_b) -> bool`. Frontend: shared utility, no per-component name-matching logic. Cross-form comparison resolves both sides to `(sourceId, normalizedName)` tuple first. Documented in docs/arch/dataset-handling-standards.md under "Dataset Identity".
 
@@ -21108,7 +21108,7 @@ Dataset identity resolution requires centralized service. Every registered datas
 
 ### REQ-467 · Naming Convention {#REQ-467}
 
-**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** behavioral
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
 Query-language dataset name resolution via centralized identity service (extends [REQ-466](#REQ-466)). Any dataset name in SQL, Cypher, or GraphQL queries must resolve to a physical dataset through the identity service, accounting for each language's canonical form (SQL=snake_case schema.table, Cypher=PascalCase label, GraphQL=camelCase field). The active naming convention (registered_tables → domains → sources → global default) may override canonical defaults. `provisa.core.dataset_identity.resolve(ref, lang)` accepts query-language names and denormalizes them before lookup; `to_query_name(identity, lang)` produces the correct form for a given language. All inline normalization (e.g., `_normalize_op_id` in config_loader.py:104) must be replaced by this service. Documented in docs/arch/dataset-handling-standards.md under "Query-language representations".
 
@@ -21722,7 +21722,7 @@ When an admin mints an org invite, a templated email is sent via EmailProvider c
 
 ### REQ-1022 · Email Delivery {#REQ-1022}
 
-**Status:** ✗ rejected · **Priority:** MUST · **Type:** behavioral
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
 When a creation or approval request is raised, admin approvers for the org are notified by email with approve/deny links, [SUPERSEDED by [REQ-1330](#REQ-1330), 2026-10-03 -- Mail is sent through the EmailSender port; no EmailProvider or [REQ-942](#REQ-942) outbox path exists for it. Kept here for history; do not implement against it.] delivered via the same EmailProvider + outbox path [END SUPERSEDED BLOCK].
 

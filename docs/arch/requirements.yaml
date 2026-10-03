@@ -22041,7 +22041,7 @@
   bdd: true
   bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
 - id: REQ-788
-  status: rejected
+  status: proposed
   group: 4. Source Connectors
   category: File & Lake Sources
   priority: SHOULD
@@ -22079,9 +22079,8 @@
   - app-developer
   notes: 'Audit 2026-10-03: was marked complete; partly built. Missing: Consolidation of multiple glob-matched
     CSV files into a single logical table is not built: each file becomes its own table (provisa/federation/trino_connectors.py:536-539
-    ''one table per glob-matched file''; provisa/file_source/crawler.py:281-291 builds one entry per file).'
-  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found the consolidation of matched files
-    into one table not built; each matched file is its own table.
+    ''one table per glob-matched file''; provisa/file_source/crawler.py:281-291 builds one entry per file).
+    Maintainer 2026-10-03: unbuilt; prioritised by score.'
 - id: REQ-789
   status: complete
   group: 4. Source Connectors
@@ -31169,7 +31168,7 @@
   - REQ-121
   superseded_by: REQ-1595
 - id: REQ-1035
-  status: rejected
+  status: proposed
   group: 2. Authentication & Identity
   category: Demo Tiers & Onboarding
   priority: MUST
@@ -31191,7 +31190,8 @@
   relates_to:
   - REQ-121
   - REQ-1033
-  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
+  notes: 'Maintainer 2026-10-03: unbuilt; prioritised by score. The maintainer said of this one that they
+    do not see a lot of value in it.'
 - id: REQ-1036
   status: superseded
   group: 11. Platform, Infrastructure & Delivery
@@ -31814,11 +31814,11 @@
   - REQ-1019
   - REQ-1034
   - REQ-1054
-  notes: 'Maintainer 2026-10-03: stays proposed, after V1; not part of the feature-complete line. Use
-    case: public query endpoints (an org publishes chosen tables for unauthenticated reads). Audit 2026-10-03:
-    not built (no public role is seeded, provisa/core/db.py:140-195; a request without a token is answered
-    401, provisa/auth/middleware.py:540). The text predates the current terms: the org is named by its
-    provisa.dev subdomain and there is no tenant_id claim (REQ-1276).'
+  notes: 'Maintainer 2026-10-03: unbuilt; prioritised by score. Use case: public query endpoints (an org
+    publishes chosen tables for unauthenticated reads). Audit 2026-10-03: not built (no public role is
+    seeded, provisa/core/db.py:140-195; a request without a token is answered 401, provisa/auth/middleware.py:540).
+    The text predates the current terms: the org is named by its provisa.dev subdomain and there is no
+    tenant_id claim (REQ-1276).'
 - id: REQ-1059
   status: proposed
   group: 1. Access Governance & Security
@@ -31845,11 +31845,11 @@
   - REQ-040
   - REQ-1019
   - REQ-1058
-  notes: 'Maintainer 2026-10-03: stays proposed, after V1; not part of the feature-complete line. Use
-    case: public query endpoints (an org publishes chosen tables for unauthenticated reads). Audit 2026-10-03:
-    not built (no public role is seeded, provisa/core/db.py:140-195; a request without a token is answered
-    401, provisa/auth/middleware.py:540). The text predates the current terms: the org is named by its
-    provisa.dev subdomain and there is no tenant_id claim (REQ-1276).'
+  notes: 'Maintainer 2026-10-03: unbuilt; prioritised by score. Use case: public query endpoints (an org
+    publishes chosen tables for unauthenticated reads). Audit 2026-10-03: not built (no public role is
+    seeded, provisa/core/db.py:140-195; a request without a token is answered 401, provisa/auth/middleware.py:540).
+    The text predates the current terms: the org is named by its provisa.dev subdomain and there is no
+    tenant_id claim (REQ-1276).'
 - id: REQ-1060
   status: proposed
   group: 1. Access Governance & Security
@@ -31867,11 +31867,11 @@
   - REQ-1044
   - REQ-1045
   - REQ-1058
-  notes: 'Maintainer 2026-10-03: stays proposed, after V1; not part of the feature-complete line. Use
-    case: public query endpoints (an org publishes chosen tables for unauthenticated reads). Audit 2026-10-03:
-    not built (no public role is seeded, provisa/core/db.py:140-195; a request without a token is answered
-    401, provisa/auth/middleware.py:540). The text predates the current terms: the org is named by its
-    provisa.dev subdomain and there is no tenant_id claim (REQ-1276).'
+  notes: 'Maintainer 2026-10-03: unbuilt; prioritised by score. Use case: public query endpoints (an org
+    publishes chosen tables for unauthenticated reads). Audit 2026-10-03: not built (no public role is
+    seeded, provisa/core/db.py:140-195; a request without a token is answered 401, provisa/auth/middleware.py:540).
+    The text predates the current terms: the org is named by its provisa.dev subdomain and there is no
+    tenant_id claim (REQ-1276).'
 - id: REQ-1061
   status: superseded
   group: 11. Platform, Infrastructure & Delivery
@@ -38003,7 +38003,7 @@
     '
   since: 2026-07
 - id: REQ-1250
-  status: rejected
+  status: proposed
   group: 13. Multi-Tenancy & Organizations
   category: Org Membership
   priority: SHOULD
@@ -38038,9 +38038,9 @@
     Then the request is silently rejected (no error to the user)
 
     '
-  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
+  notes: 'Maintainer 2026-10-03: unbuilt; prioritised by score.'
 - id: REQ-1251
-  status: rejected
+  status: proposed
   group: 13. Multi-Tenancy & Organizations
   category: Org Membership
   priority: SHOULD
@@ -38072,9 +38072,9 @@
     And jane does not gain membership
 
     '
-  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
+  notes: 'Maintainer 2026-10-03: unbuilt; prioritised by score.'
 - id: REQ-1252
-  status: rejected
+  status: proposed
   group: 10. UI & Admin Surfaces
   category: Org Administration
   priority: SHOULD
@@ -38103,7 +38103,7 @@
     Then the deny flow is triggered (REQ-1251)
 
     '
-  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
+  notes: 'Maintainer 2026-10-03: unbuilt; prioritised by score.'
 - id: REQ-1253
   status: superseded
   group: 11. Platform, Infrastructure & Delivery
@@ -48561,7 +48561,7 @@
   - REQ-869
   - REQ-1529
 - id: REQ-1493
-  status: rejected
+  status: proposed
   group: 13. Multi-Tenancy & Organizations
   category: Environments
   priority: SHOULD
@@ -48600,7 +48600,7 @@
   - REQ-1491
   - REQ-1494
   - REQ-1495
-  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
+  notes: 'Maintainer 2026-10-03: unbuilt; prioritised by score.'
 - id: REQ-1494
   status: accepted
   group: 1. Access Governance & Security
@@ -48691,7 +48691,7 @@
     has no data access (REQ-1327); (b) that two orgs holding the same real value see the same surrogate,
     which follows from one platform-wide mapping.'
 - id: REQ-1495
-  status: rejected
+  status: proposed
   group: 13. Multi-Tenancy & Organizations
   category: Environments
   priority: MAY
@@ -48724,7 +48724,7 @@
   related_reqs:
   - REQ-1493
   - REQ-1320
-  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
+  notes: 'Maintainer 2026-10-03: unbuilt; prioritised by score.'
 - id: REQ-1496
   status: proposed
   target: 2026-Q4
@@ -48966,7 +48966,7 @@
   - REQ-1496
   notes: Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built.
 - id: REQ-1499
-  status: rejected
+  status: proposed
   group: 13. Multi-Tenancy & Organizations
   category: Environments
   priority: MAY
@@ -49013,9 +49013,9 @@
   - REQ-1491
   - REQ-1492
   - REQ-1493
-  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
+  notes: 'Maintainer 2026-10-03: unbuilt; prioritised by score.'
 - id: REQ-1500
-  status: rejected
+  status: proposed
   group: 13. Multi-Tenancy & Organizations
   category: Environments
   priority: MAY
@@ -49056,7 +49056,7 @@
   - REQ-1498
   - REQ-1493
   - REQ-1487
-  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
+  notes: 'Maintainer 2026-10-03: unbuilt; prioritised by score.'
 - id: REQ-1501
   status: proposed
   target: 2026-Q4
@@ -56739,7 +56739,7 @@
   - provisa/api/metadata_export/snowflake_horizon.py
   target: 2026-Q4
 - id: REQ-1646
-  status: rejected
+  status: proposed
   group: 7. Result Delivery
   category: Snowflake Horizon Catalog Export
   priority: MAY
@@ -56753,7 +56753,7 @@
     surface to Snowflake Horizon consumers, improving discoverability and perception of data products.
   code:
   - provisa/api/metadata_export/snowflake_horizon.py
-  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
+  notes: 'Maintainer 2026-10-03: unbuilt; prioritised by score.'
 - id: REQ-1647
   status: complete
   group: 7. Result Delivery
@@ -72484,7 +72484,7 @@
     cross-domain entry via views (REQ-367/REQ-610). grep found no implementation.'
   superseded_by: REQ-366
 - id: REQ-446
-  status: rejected
+  status: proposed
   group: 5. Query Languages, Compilation & Operations
   category: Graph Analytics Pipeline
   priority: SHOULD
@@ -72500,8 +72500,8 @@
     written on 2026-04-29 under the heading ''Security''; it was dropped when requirements.md became generated
     from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: No CALL gds.* support
     and no igraph usage in provisa/ (grep); CALL only does correlated subqueries (cypher/correlated_call.py).
-    Graph analytics is the NetworkX endpoint REQ-642. Category/group moved from Security.'
-  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
+    Graph analytics is the NetworkX endpoint REQ-642. Category/group moved from Security. Maintainer 2026-10-03:
+    unbuilt; prioritised by score.'
 - id: REQ-447
   status: superseded
   group: 8. Client Access & Protocols
@@ -72951,7 +72951,7 @@
 
     '
 - id: REQ-466
-  status: rejected
+  status: proposed
   group: 3. Source Registration & Data Modeling
   category: Naming Convention
   priority: SHOULD
@@ -72966,10 +72966,10 @@
   notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
     written on 2026-06-06 under the heading ''Data & Storage''; it was dropped when requirements.md became
     generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: provisa/core/dataset_identity
-    does not exist; grep for same_dataset/dataset_identity finds no implementation.'
-  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
+    does not exist; grep for same_dataset/dataset_identity finds no implementation. Maintainer 2026-10-03:
+    unbuilt; prioritised by score.'
 - id: REQ-467
-  status: rejected
+  status: proposed
   group: 3. Source Registration & Data Modeling
   category: Naming Convention
   priority: SHOULD
@@ -72986,8 +72986,8 @@
   notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
     written on 2026-06-07 under the heading ''Data & Storage''; it was dropped when requirements.md became
     generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: No dataset_identity
-    service; _normalize_op_id still at provisa/core/config_loader.py:81.'
-  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
+    service; _normalize_op_id still at provisa/core/config_loader.py:81. Maintainer 2026-10-03: unbuilt;
+    prioritised by score.'
 - id: REQ-468
   status: superseded
   group: 3. Source Registration & Data Modeling
@@ -74464,7 +74464,7 @@
     has no outbox enqueue and no provisa/email/ package exists.'
   superseded_by: REQ-1330
 - id: REQ-1022
-  status: rejected
+  status: proposed
   group: 11. Platform, Infrastructure & Delivery
   category: Email Delivery
   priority: MUST
@@ -74484,8 +74484,8 @@
   notes: 'Restored 2026-10-03 verbatim from requirements.yaml as of commit 323866ef (2026-07-15), where
     it was added; it later vanished from the file without a recorded decision. Audited 2026-10-03 against
     the code: creation_requests_router.py has no email notification; mail.py/mail_router.py send only
-    invites. Still wanted as a future transactional mail under REQ-1330.'
-  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
+    invites. Still wanted as a future transactional mail under REQ-1330. Maintainer 2026-10-03: unbuilt;
+    prioritised by score.'
 - id: REQ-087
   status: complete
   group: 1. Access Governance & Security
