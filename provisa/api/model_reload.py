@@ -99,6 +99,7 @@ async def reconcile_sources(rows: dict[str, dict]) -> None:
 
 
 async def _reconcile_sources(rows: dict[str, dict]) -> None:
+    from provisa.api.admin.schema_common import _drop_source_on_engine
     from provisa.api.app import state
     from provisa.api.app_loaders import _build_source_pools_and_enums
     from provisa.core.models import BUILT_IN_SOURCE_IDS
@@ -118,6 +119,10 @@ async def _reconcile_sources(rows: dict[str, dict]) -> None:
     for sid in (*changed, *removed):
         await state.source_pools.remove(sid)
     for sid in removed:
+        # The deleting worker detached the source from ITS engine; this worker's engine (an
+        # in-process attach, a pgwire replica endpoint) is its own and is detached here, by the
+        # same call, under the catalog name it was attached under — read before it is forgotten.
+        _drop_source_on_engine(state, sid)
         for name in _SOURCE_MAPS:
             getattr(rt, name).pop(sid, None)
         state.graphql_remote_sources.pop(sid, None)

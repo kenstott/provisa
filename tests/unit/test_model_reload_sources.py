@@ -125,6 +125,27 @@ def test_a_source_another_worker_deleted_loses_its_pool_and_entries(worker):
     assert set(worker.runtime.source_rows) == {"a"}
 
 
+def test_a_source_another_worker_deleted_is_detached_from_this_workers_engine(worker, monkeypatch):
+    """The deleting worker detaches the source from its engine (``_drop_source_on_engine``).
+    Every other worker learns of the deletion only from its model reload, and must detach it
+    from ITS engine too — an in-process engine (DuckDB's attach, a pgwire replica endpoint) is
+    per worker, so a catalog left attached here outlives the source on this worker."""
+    dropped: list[tuple[str, str | None]] = []
+    stopped: list[str] = []
+    worker.state.federation_engine = SimpleNamespace(
+        drop_source=lambda sid, catalog_name=None: dropped.append((sid, catalog_name))
+    )
+    worker.state.source_catalogs = worker.runtime.source_catalogs
+    monkeypatch.setattr("provisa.federation.pgwire_replica.stop_endpoint", stopped.append)
+    _reconcile([_row("a"), _row("b")])
+    worker.runtime.source_catalogs.update(a="a_cat", b="b_cat")
+    _reconcile([_row("a")])
+    # detached under the catalog name it was attached under, before that name is forgotten
+    assert dropped == [("b", "b_cat")]
+    assert stopped == ["b"]
+    assert worker.runtime.source_catalogs == {"a": "a_cat"}
+
+
 def test_a_built_in_source_is_never_reconciled(worker):
     _reconcile([_row("a")])
     _reconcile([_row("a"), _row("provisa-admin")])
