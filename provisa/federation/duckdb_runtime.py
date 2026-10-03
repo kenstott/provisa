@@ -44,7 +44,12 @@ from provisa.federation import store_writer
 from provisa.federation.engine import build_duckdb_engine
 from provisa.core import request_deadline
 from provisa.federation.land_guard import LandGuard
-from provisa.federation.runtime_support import columns_from_describe, stream_from_dbapi
+from provisa.federation.runtime_support import (
+    close_cursor,
+    columns_from_describe,
+    open_cursor,
+    stream_from_dbapi,
+)
 from provisa.transpiler.transpile import transpile
 
 log = logging.getLogger(__name__)
@@ -339,7 +344,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             with request_deadline.cancel_on_deadline(cur.interrupt):
                 rows = cur.execute(f"SELECT name, type FROM read_parquet('{url}')").fetchall()
         finally:
-            cur.close()
+            close_cursor(cur)
         if not rows:
             raise ValueError(
                 f"ClickHouse table {source.schema_name}.{source.table_name} (source "
@@ -389,10 +394,14 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         max_execution_time, so three retries carried a 2s-budget read to 13s (integration test); a
         failed read raises instead. Both settings are session-scoped, so they stay on this cursor
         (verified: a sibling cursor still reads the defaults)."""
-        cur = self._con.cursor()
+        cur = open_cursor(self._con)
         if live_http:
-            cur.execute("SET force_download = true")
-            cur.execute("SET http_retries = 0")
+            try:
+                cur.execute("SET force_download = true")
+                cur.execute("SET http_retries = 0")
+            except BaseException:
+                close_cursor(cur)
+                raise
         return cur
 
     def _attach_raw(self, source: Any, details: dict) -> str:
@@ -460,7 +469,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         alias = self._attached_alias(source)
         if alias is None:
             return []
-        cur = self._con.cursor()
+        cur = open_cursor(self._con)
         try:
             fast = cur.execute(
                 "SELECT schema_name FROM duckdb_schemas() WHERE database_name = ? "
@@ -476,7 +485,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             )
             return [r[0] for r in res.fetchall()]
         finally:
-            cur.close()
+            close_cursor(cur)
 
     def _require_discovery_ready(self, source: Any) -> None:
         """REQ-1824: for a files/sharepoint/splunk source, `_attached_alias` below would otherwise
@@ -504,7 +513,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         alias = self._attached_alias(source)
         if alias is None:
             return []
-        cur = self._con.cursor()
+        cur = open_cursor(self._con)
         try:
             fast = cur.execute(
                 "SELECT table_name FROM duckdb_tables() WHERE database_name = ? "
@@ -520,7 +529,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             )
             return [r[0] for r in res.fetchall()]
         finally:
-            cur.close()
+            close_cursor(cur)
 
     def attach_control_plane(self, db_path: str, schema_name: str, dialect: str = "sqlite") -> None:
         """Attach the tenant control-plane DB as the ``provisa_admin`` catalog.
@@ -945,7 +954,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # for that same context lock -- a deadlock, caught live on the perf bench (a request stuck
         # 10+ min in this CREATE's commit while a peer's self._con.execute waited in LockContext).
         # A cursor's own context is locked by no other thread.
-        cur = self._con.cursor()
+        cur = open_cursor(self._con)
         try:
             cur.register(reg_name, arrow_tbl)
             try:
@@ -953,7 +962,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             finally:
                 cur.unregister(reg_name)
         finally:
-            cur.close()
+            close_cursor(cur)
         self._store_copy_canary[target] = canary
 
     # -- metadata --------------------------------------------------------------
@@ -979,7 +988,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             # DESCRIBE rows: (column_name, column_type, null, key, default, extra)
             return columns_from_describe(res.fetchall())
         finally:
-            cur.close()
+            close_cursor(cur)
 
     # -- execution -------------------------------------------------------------
 
@@ -1018,7 +1027,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                         rows = res.fetchall()
                     return QueryResult(rows=rows, column_names=cols, column_types=types)
                 finally:
-                    cur.close()
+                    close_cursor(cur)
 
         return await loop.run_in_executor(None, _run)
 
@@ -1039,14 +1048,19 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 duck_sql, params, deadline_s=request_deadline.remaining()
             )
             cur = self._open_cursor(live_http=live_http)
-            with request_deadline.cancel_on_deadline(cur.interrupt):
-                cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
+            try:
+                with request_deadline.cancel_on_deadline(cur.interrupt):
+                    cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
+            except BaseException:
+                # No stream will own the cursor: it is closed here (REQ-1905).
+                close_cursor(cur)
+                raise
         except BaseException:
             self._catalog_gate.release_read()
             raise
 
         def _close(*_: Any) -> None:
-            cur.close()
+            close_cursor(cur)
             self._catalog_gate.release_read()
 
         # DuckDB's description carries each column's declared DuckDBPyType ("BIGINT",
@@ -1075,7 +1089,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                     )
                     described = res.fetchall()
             finally:
-                cur.close()
+                close_cursor(cur)
         return QueryResult(
             rows=[],
             column_names=[r[0] for r in described],
@@ -1101,7 +1115,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                     res = cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
                     return res.to_arrow_table()
             finally:
-                cur.close()
+                close_cursor(cur)
 
     def run_arrow_stream(self, duck_sql: str, params: list | None = None):
         """Execute dialect-DuckDB SQL and return ``(schema, batch_generator)`` for lazy record-batch
@@ -1122,10 +1136,15 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 duck_sql, params, deadline_s=request_deadline.remaining()
             )
             cur = self._open_cursor(live_http=live_http)
-            with request_deadline.cancel_on_deadline(cur.interrupt):
-                cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
-                reader = cur.to_arrow_reader(_ARROW_STREAM_BATCH_ROWS)
-            schema = reader.schema
+            try:
+                with request_deadline.cancel_on_deadline(cur.interrupt):
+                    cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
+                    reader = cur.to_arrow_reader(_ARROW_STREAM_BATCH_ROWS)
+                schema = reader.schema
+            except BaseException:
+                # No stream will own the cursor: it is closed here (REQ-1905).
+                close_cursor(cur)
+                raise
         except BaseException:
             self._catalog_gate.release_read()
             raise
@@ -1135,7 +1154,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 for batch in reader:
                     yield batch
             finally:
-                cur.close()
+                close_cursor(cur)
                 self._catalog_gate.release_read()
 
         return schema, _batches()

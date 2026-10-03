@@ -36,7 +36,12 @@ from provisa.core import request_deadline
 from provisa.federation.land_guard import LandGuard
 from provisa.core.ir_types import to_ir
 from provisa.executor.result import QueryResult, ResultStream
-from provisa.federation.runtime_support import run_async_materialized, stream_rows_from_arrow
+from provisa.federation.runtime_support import (
+    close_cursor,
+    open_cursor,
+    run_async_materialized,
+    stream_rows_from_arrow,
+)
 
 _SQL_COPT_SS_ACCESS_TOKEN = 1256
 
@@ -214,7 +219,7 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
         refuse_live_in_write_surface(schema, table)  # REQ-1912
         fq = f"[{schema}].[{table}]"
         bulk_path = self._resolve_bulk_path(source, location)
-        cur = self._conn.cursor()
+        cur = open_cursor(self._conn)
         try:
             self._ensure_schema(cur, schema)
             cur.execute(
@@ -224,7 +229,7 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
             cur.execute(f"SELECT TOP 1 * FROM {fq}")  # validate the external attach
             cur.fetchall()
         finally:
-            cur.close()
+            close_cursor(cur)
         return None
 
     def _resolve_bulk_path(self, source: Any, location: str) -> str:
@@ -269,12 +274,12 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
         if self._engine_for().resolve(source).mechanism not in LIVE_IN_PLACE:
             return
         _database, schema, table = self._phys_parts(source)
-        cur = self._conn.cursor()
+        cur = open_cursor(self._conn)
         try:
             cur.execute(f"DROP VIEW IF EXISTS [{schema}].[{table}]")
             self._conn.commit()
         finally:
-            cur.close()
+            close_cursor(cur)
 
     def _store_parts(self, schema: str, table: str) -> tuple[str, str]:
         """(schema, table) of a store table as T-SQL addresses it: the schema name through the
@@ -303,7 +308,7 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
         schema, table = self._store_parts(schema, table)
         fq = f"[{schema}].[{table}]"
         want = [name for name, _ in columns]
-        cur = self._conn.cursor()
+        cur = open_cursor(self._conn)
         try:
             self._ensure_schema(cur, schema)
             have = self._existing_columns(cur, schema, table)
@@ -321,7 +326,7 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
             self._conn.commit()
             return outcome
         finally:
-            cur.close()
+            close_cursor(cur)
 
     async def land_table(
         self,
@@ -358,7 +363,7 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
         schema, table = self._store_parts(schema, table)
         fq = f"[{schema}].[{table}]"
         cols_ddl = ", ".join(f"[{n}] {_tsql_type(t)}" for n, t in columns)
-        cur = self._conn.cursor()
+        cur = open_cursor(self._conn)
         try:
             self._ensure_schema(cur, schema)
             cur.execute(
@@ -378,7 +383,7 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
                 )
             self._conn.commit()
         finally:
-            cur.close()
+            close_cursor(cur)
 
     # -- execution -------------------------------------------------------------
 
@@ -412,22 +417,30 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
         import pyarrow as pa
 
         del params  # SQL arrives fully substituted from the governed pipeline
-        cur = self._conn.cursor()
-        with request_deadline.cancel_on_deadline(cur.cancel):
-            cur.execute(sql)
-        names = [c[0] for c in cur.description] if cur.description else []
+        cur = open_cursor(self._conn)
+        try:
+            with request_deadline.cancel_on_deadline(cur.cancel):
+                cur.execute(sql)
+            names = [c[0] for c in cur.description] if cur.description else []
+            first_rows: list = []  # a statement with no result columns has no rows to fetch
+            if names:
+                with request_deadline.cancel_on_deadline(cur.cancel):
+                    first_rows = cur.fetchmany(_ARROW_CHUNK_ROWS)
+        except BaseException:
+            # A statement the deadline cut short, or one that failed: no stream will own the
+            # cursor, so it is closed here (REQ-1905).
+            close_cursor(cur)
+            raise
         if not names:
-            cur.close()
+            close_cursor(cur)
             return pa.table({}).schema, iter(())
 
         def _chunk_to_table(rows: list, schema: Any) -> Any:
             cols = {name: [row[i] for row in rows] for i, name in enumerate(names)}
             return pa.table(cols, schema=schema) if schema is not None else pa.table(cols)
 
-        with request_deadline.cancel_on_deadline(cur.cancel):
-            first_rows = cur.fetchmany(_ARROW_CHUNK_ROWS)
         if not first_rows:
-            cur.close()
+            close_cursor(cur)
             return pa.table({name: [] for name in names}).schema, iter(())
         first_tbl = _chunk_to_table(first_rows, None)
         schema = first_tbl.schema
@@ -442,7 +455,7 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
                         break
                     yield from _chunk_to_table(rows, schema).to_batches()
             finally:
-                cur.close()
+                close_cursor(cur)
 
         return schema, _batches()
 

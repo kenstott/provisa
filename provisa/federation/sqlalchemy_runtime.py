@@ -26,7 +26,13 @@ from typing import Any
 
 from provisa.core import request_deadline
 from provisa.executor.result import QueryResult, ResultStream, StreamingQueryResult
-from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
+from provisa.federation.runtime_support import (
+    _STREAM_BATCH_ROWS,
+    close_cursor,
+    open_cursor,
+    release_shielded,
+    take_shielded,
+)
 
 # Leading keywords of a row-returning statement — the only kind a server-side (streaming) cursor is
 # valid for. Everything else (DDL/DML) is executed buffered; psycopg2 rejects DECLARE CURSOR FOR it
@@ -59,7 +65,7 @@ def _mysql_kill(dbapi_conn: Any, open_side_conn: Callable[[], Any]) -> Callable[
         try:
             cur = side.cursor()
             cur.execute(f"KILL QUERY {int(thread_id)}")
-            cur.close()
+            close_cursor(cur)
         finally:
             side.close()
 
@@ -155,22 +161,31 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
         streaming connection closes when the stream drains (``on_close``). Consumers that call ``.rows``
         still get the full list — the buffering is then explicit at their call site (REQ-1217,
         REQ-1222)."""
+        # The pooled connection is taken and given back under the shield, and given back however
+        # the statement ends: a timed-out read never keeps a pool slot (REQ-1905).
         if not _is_row_returning(sql):  # DDL / DML — no server-side cursor; execute + commit now
-            with self._sa.begin() as c:
-                c.exec_driver_sql(sql, tuple(params) if params else ())
+            c = take_shielded(self._sa.connect)
+            try:
+                with c.begin():
+                    c.exec_driver_sql(sql, tuple(params) if params else ())
+            finally:
+                release_shielded(c.close)
             return QueryResult(rows=[], column_names=[])
 
-        conn = self._sa.connect().execution_options(
-            stream_results=True, yield_per=_STREAM_BATCH_ROWS
-        )
-        dbapi_conn = conn.connection.dbapi_connection
-        if _driver(dbapi_conn) == "pyodbc":
-            return self._run_sync_pyodbc(conn, dbapi_conn, sql, params)
-        with _deadline_bounded(_dbapi_cancel(dbapi_conn, None, self._open_side_conn)):
-            result = conn.exec_driver_sql(sql, tuple(params) if params else ())
+        conn = take_shielded(self._sa.connect)
+        try:
+            conn = conn.execution_options(stream_results=True, yield_per=_STREAM_BATCH_ROWS)
+            dbapi_conn = conn.connection.dbapi_connection
+            if _driver(dbapi_conn) == "pyodbc":
+                return self._run_sync_pyodbc(conn, dbapi_conn, sql, params)
+            with _deadline_bounded(_dbapi_cancel(dbapi_conn, None, self._open_side_conn)):
+                result = conn.exec_driver_sql(sql, tuple(params) if params else ())
+        except BaseException:
+            release_shielded(conn.close)
+            raise
 
         def _close(*_: Any) -> None:
-            conn.close()
+            release_shielded(conn.close)
 
         cols = list(result.keys())
 
@@ -189,19 +204,18 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
         """pyodbc cancels through the cursor, which SQLAlchemy only creates inside execute — so the
         cursor is created here first and its ``cancel`` registered before execute. pyodbc cursors
         fetch incrementally from the server, so ``fetchmany`` bounds memory (REQ-1217)."""
-        cur = dbapi_conn.cursor()
+        cur = open_cursor(dbapi_conn)
         try:
             with _deadline_bounded(_dbapi_cancel(dbapi_conn, cur, self._open_side_conn)):
                 # Omit the params argument when there are none — see run()'s pyodbc note.
                 cur.execute(sql, params) if params else cur.execute(sql)
         except BaseException:
-            cur.close()
-            conn.close()
-            raise
+            close_cursor(cur)
+            raise  # the caller gives the connection back
 
         def _close(*_: Any) -> None:
-            cur.close()
-            conn.close()
+            close_cursor(cur)
+            release_shielded(conn.close)
 
         cols = [d[0] for d in cur.description] if cur.description else []
 
@@ -227,7 +241,13 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
         loop = asyncio.get_event_loop()
 
         def _run() -> QueryResult:
-            cur = self._con.cursor()
+            cur = open_cursor(self._con)
+            try:
+                return _read(cur)
+            finally:
+                close_cursor(cur)
+
+        def _read(cur: Any) -> QueryResult:
             # pyodbc's cursor.execute (unlike SQLAlchemy Core's own statement execution, used
             # elsewhere in this file) treats an explicitly-passed `None` second argument as ONE
             # parameter whose value is NULL, not "no parameters" — verified live (REQ-1730
@@ -244,7 +264,6 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
                 cols = [d[0] for d in cur.description] if cur.description else []
                 rows = list(cur.fetchall()) if cur.description else []
             self._con.commit()
-            cur.close()
             return QueryResult(rows=rows, column_names=cols)
 
         return await loop.run_in_executor(None, _run)
