@@ -591,6 +591,33 @@ async def test_a_glossary_term_the_file_drops_goes_while_abstract_and_stays_once
     terms = await _origins(db, "glossary_terms", "name")
     assert "bookings" not in terms
     assert terms.get("id") in (None, "seed")
+    # The domains the file declared for a term go with the declaration.
+    assert await _rows(db, "glossary_term_domains", "domain_id") == []
+
+
+async def test_a_same_named_table_the_file_drops_does_not_make_its_new_one_ambiguous(db):
+    """A deployment's file is replaced by one with another source holding a table of the same
+    name. While the new file loads, its relationship and row filter name ``orders``: they mean
+    the file's own ``orders``, not the one the load is about to remove."""
+    old = _file(sources=("old",), tables=[_table("orders", source_id="old")])
+    await _load(db, old)
+
+    new = _file(
+        tables=[_table("orders"), _table("customers")],
+        relationships=[_ORDERS_TO_CUSTOMERS],
+        rls_rules=[{"table_id": "orders", "role_id": "seller", "filter": "id > 0"}],
+    )
+    await _load(db, new)
+
+    assert await _rows(db, "registered_tables", "source_id", "table_name") == [
+        ("cfg", "customers"),
+        ("cfg", "orders"),
+    ]
+    assert "old" not in await _origins(db, "sources")
+    ((source_table_id,),) = await _rows(db, "relationships", "source_table_id")
+    ((filtered_table_id,),) = await _rows(db, "rls_rules", "table_id")
+    orders_id = dict(await _rows(db, "registered_tables", "table_name", "id"))["orders"]
+    assert source_table_id == filtered_table_id == orders_id
 
 
 async def test_the_loader_removes_nothing_during_the_load():

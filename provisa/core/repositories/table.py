@@ -14,6 +14,9 @@
 
 from typing import TYPE_CHECKING
 
+from contextlib import contextmanager
+from contextvars import ContextVar
+
 from sqlalchemy import delete as _delete, select, update
 
 from provisa.core import domain_policy
@@ -452,23 +455,42 @@ async def get_by_name(
     return result_dict
 
 
+#: REQ-1919: the tables the config load in progress (in this context) will remove at its end,
+#: because its file no longer declares them. A lookup by name during that load does not see them:
+#: the model the file produces does not have them, so a relationship, row filter or tag the file
+#: declares by a table's name means the table the file declares. Empty outside a config load.
+_LEAVING: ContextVar[frozenset[int]] = ContextVar(
+    "tables_leaving_with_this_load", default=frozenset()
+)
+
+
+@contextmanager
+def leaving(table_ids: "frozenset[int]"):
+    """For the length of the block, lookups by name do not see ``table_ids`` (see ``_LEAVING``)."""
+    token = _LEAVING.set(table_ids)
+    try:
+        yield
+    finally:
+        _LEAVING.reset(token)
+
+
 async def find_by_table_name(
     conn: "Connection", table_name: str
 ) -> dict | None:  # REQ-014, REQ-155
     """Find a registered table by its virtual name.
 
     The virtual name is alias when set, otherwise table_name.
-    Raises ValueError if multiple tables match.
+    Raises ValueError if multiple tables match. During a config load, a table the load will
+    remove is not seen (``leaving``).
     """
-    result = await conn.execute_core(
-        select(registered_tables).where(
-            (registered_tables.c.alias == table_name)
-            | (
-                (registered_tables.c.alias.is_(None))
-                & (registered_tables.c.table_name == table_name)
-            )
-        )
+    statement = select(registered_tables).where(
+        (registered_tables.c.alias == table_name)
+        | ((registered_tables.c.alias.is_(None)) & (registered_tables.c.table_name == table_name))
     )
+    gone = _LEAVING.get()
+    if gone:
+        statement = statement.where(registered_tables.c.id.not_in(sorted(gone)))
+    result = await conn.execute_core(statement)
     rows = result.fetchall()
     if not rows:
         return None
