@@ -2990,33 +2990,37 @@ WITH clause CTEs are named _w0, _w1, ... using a positional index assigned withi
 
 **Tests:** `tests/integration/test_compiler_integration.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`
 
-### REQ-642 · Graph Analytics Pipeline {#REQ-642}
+## 10. UI & Admin Surfaces
 
-**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** behavioral
+### REQ-642 · Graph Analytics {#REQ-642}
 
-A POST /data/graph-analytics endpoint accepts a Cypher query and algorithm name, executes the query via the existing cypher_router pipeline, builds an in-memory NetworkX DiGraph from the resulting nodes and edges, runs the named algorithm, merges a `_analytics` dict into each node/edge, and returns the augmented nodes and edges as JSON with an `elapsed_ms` field.
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
 
-**Use case:** Server-side graph analytics endpoint lets the browser request algorithm output on any Cypher-defined subgraph without building the graph client-side.
+The Graph Explorer computes statistics for the graph on the canvas, in the browser and with no request to the server: node and edge counts, density, average and maximum degree, isolated nodes, connected components and the size of the largest, diameter, average path length, the top hubs by degree, and counts by node label and by edge type. Diameter and average path length are computed in the background so the panel stays responsive while they run.
 
-**Code:** `provisa/api/rest/graph_analytics_router.py`
+**Use case:** A user sees the shape of a query result at a glance, without choosing or running an algorithm.
 
-**Tests:** `tests/e2e/test_query_pipeline.py`, `tests/integration/test_compiler_integration.py`, `tests/unit/test_cypher_graph_fns.py`, `tests/unit/test_graph_analytics_requirements.py`, `provisa-ui/e2e/cypher-api.spec.ts`
+**Code:** `provisa-ui/src/components/graph/GraphStatsModal.tsx`, `provisa-ui/src/components/graph/GraphFrame.tsx`
 
-### REQ-643 · Graph Analytics Pipeline {#REQ-643}
+**Tests:** —
 
-**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** structural
+### REQ-643 · Graph Analytics {#REQ-643}
 
-The graph analytics response merges a `_analytics` dict into every node and edge in the result. The keys present in `_analytics` vary by algorithm: centrality algorithms produce `score`; community detection produces `cluster`; k-core produces `core_number`; degree centrality also produces `in_degree` and `out_degree`.
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
 
-**Use case:** Uniform _analytics key convention lets the UI apply visual encodings without algorithm-specific branching.
+Every node on the graph canvas carries its in-degree, out-degree, total degree and degree centrality, computed in the browser from the graph displayed. They are shown in the inspector with the node's other properties and can drive node size ([REQ-649](#REQ-649)).
 
-**Code:** `provisa/api/rest/graph_analytics_router.py`
+**Use case:** A user finds the most connected nodes of a result by reading or sizing on a value the explorer supplies on its own.
 
-**Tests:** `tests/e2e/test_query_pipeline.py`, `tests/integration/test_compiler_integration.py`, `tests/unit/test_graph_analytics_requirements.py`
+**Code:** `provisa-ui/src/components/graph/frame/use-frame-derived-data.ts`, `provisa-ui/src/components/graph/GraphCanvas.tsx`, `provisa-ui/src/components/graph/Inspector.tsx`, `provisa-ui/src/components/graph/GraphSidebar.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/ui_requirements.test.ts`
+
+## 5. Query Languages, Compilation & Operations
 
 ### REQ-650 · Graph Analytics Pipeline {#REQ-650}
 
-**Status:** ✗ rejected · **Priority:** MUST · **Type:** constraint
+**Status:** ↪ superseded by [REQ-642](#REQ-642) · **Priority:** MUST · **Type:** constraint
 
 The graph analytics endpoint enforces a configurable maximum graph size. When the input graph exceeds the configured limit (default: 10,000 nodes or 50,000 edges), the endpoint returns HTTP 413 before running any algorithm.
 
@@ -3028,7 +3032,7 @@ The graph analytics endpoint enforces a configurable maximum graph size. When th
 
 ### REQ-651 · Graph Analytics Pipeline {#REQ-651}
 
-**Status:** ✗ rejected · **Priority:** MUST · **Type:** constraint
+**Status:** ↪ superseded by [REQ-642](#REQ-642) · **Priority:** MUST · **Type:** constraint
 
 The Girvan-Newman community detection algorithm is restricted to graphs with fewer than 500 nodes. Requests for Girvan-Newman on larger graphs are rejected unless the caller supplies `force=true` in the params, making the computational risk explicit.
 

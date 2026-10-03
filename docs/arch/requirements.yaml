@@ -9484,42 +9484,20 @@
     status: neutral
     rationale: ''
 - id: REQ-642
-  status: rejected
-  group: 5. Query Languages, Compilation & Operations
-  category: Graph Analytics Pipeline
+  status: complete
+  group: 10. UI & Admin Surfaces
+  category: Graph Analytics
   priority: SHOULD
-  type: behavioral
-  description: A POST /data/graph-analytics endpoint accepts a Cypher query and algorithm name, executes
-    the query via the existing cypher_router pipeline, builds an in-memory NetworkX DiGraph from the resulting
-    nodes and edges, runs the named algorithm, merges a `_analytics` dict into each node/edge, and returns
-    the augmented nodes and edges as JSON with an `elapsed_ms` field.
-  use_case: Server-side graph analytics endpoint lets the browser request algorithm output on any Cypher-defined
-    subgraph without building the graph client-side.
+  type: ui
+  description: 'The Graph Explorer computes statistics for the graph on the canvas, in the browser and
+    with no request to the server: node and edge counts, density, average and maximum degree, isolated
+    nodes, connected components and the size of the largest, diameter, average path length, the top hubs
+    by degree, and counts by node label and by edge type. Diameter and average path length are computed
+    in the background so the panel stays responsive while they run.'
+  use_case: A user sees the shape of a query result at a glance, without choosing or running an algorithm.
   code:
-  - provisa/api/rest/graph_analytics_router.py
-  tests:
-  - tests/e2e/test_query_pipeline.py
-  - tests/integration/test_compiler_integration.py
-  - tests/unit/test_cypher_graph_fns.py
-  - tests/unit/test_graph_analytics_requirements.py
-  - provisa-ui/e2e/cypher-api.spec.ts
-  scenario: 'Given a POST /data/graph-analytics request with a Cypher query and algorithm name
-
-    When the endpoint processes it
-
-    Then it builds a NetworkX DiGraph, runs the algorithm, and returns augmented nodes and edges
-
-    with elapsed_ms
-
-    '
-  integration_test: required
-  integration_test_reason: Graph analytics endpoint requires Cypher execution, NetworkX algorithm execution,
-    and result merging.
-  e2e: true
-  e2e_reason: POST /data/graph-analytics is a REST endpoint that combines Cypher execution, NetworkX algorithm
-    execution, and JSON response merging — only verifiable through a full live-stack HTTP round-trip.
-  bdd: true
-  bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
+  - provisa-ui/src/components/graph/GraphStatsModal.tsx
+  - provisa-ui/src/components/graph/GraphFrame.tsx
   stakeholders:
   - app-developer
   - data-engineer
@@ -9529,51 +9507,41 @@
       from federated relational data) is not available in Trino, Hasura, Denodo, or Dremio; competitors
       that offer graph analytics (Neo4j, TigerGraph) operate on native graph stores, not federated relational
       data.
-  notes: 'Audit 2026-10-03: was marked complete but is NOT built. Its only code path, provisa/api/rest/graph_analytics_router.py,
-    has never existed in git; no /data/graph-analytics route exists; tests/unit/test_graph_analytics_requirements.py
-    says it mirrors the contract ''without importing the not-yet-existing router module''. Status set
-    to proposed.'
-  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
+  notes: 'Rescoped 2026-10-03 at the maintainer''s direction to the analytics the browser computes automatically.
+    The earlier text described a server endpoint (POST /data/graph-analytics running NetworkX algorithms
+    over a query result), which was never built and is out of scope. Implementation: provisa-ui/src/components/graph/GraphStatsModal.tsx
+    (statistics at :55-92, components and path lengths at :124-181). No test names the panel.'
+  since: 2026-09
 - id: REQ-643
-  status: rejected
-  group: 5. Query Languages, Compilation & Operations
-  category: Graph Analytics Pipeline
+  status: complete
+  group: 10. UI & Admin Surfaces
+  category: Graph Analytics
   priority: SHOULD
-  type: structural
-  description: 'The graph analytics response merges a `_analytics` dict into every node and edge in the
-    result. The keys present in `_analytics` vary by algorithm: centrality algorithms produce `score`;
-    community detection produces `cluster`; k-core produces `core_number`; degree centrality also produces
-    `in_degree` and `out_degree`.'
-  use_case: Uniform _analytics key convention lets the UI apply visual encodings without algorithm-specific
-    branching.
+  type: ui
+  description: Every node on the graph canvas carries its in-degree, out-degree, total degree and degree
+    centrality, computed in the browser from the graph displayed. They are shown in the inspector with
+    the node's other properties and can drive node size (REQ-649).
+  use_case: A user finds the most connected nodes of a result by reading or sizing on a value the explorer
+    supplies on its own.
   code:
-  - provisa/api/rest/graph_analytics_router.py
+  - provisa-ui/src/components/graph/frame/use-frame-derived-data.ts
+  - provisa-ui/src/components/graph/GraphCanvas.tsx
+  - provisa-ui/src/components/graph/Inspector.tsx
+  - provisa-ui/src/components/graph/GraphSidebar.tsx
   tests:
-  - tests/e2e/test_query_pipeline.py
-  - tests/integration/test_compiler_integration.py
-  - tests/unit/test_graph_analytics_requirements.py
-  scenario: 'Given a graph analytics response from a centrality algorithm
-
-    When the UI reads _analytics
-
-    Then it contains a score key; community detection contains cluster; k-core contains core_number
-
-    '
-  integration_test: not_required
-  integration_test_reason: _analytics dict merging by algorithm is pure JSON response formatting logic.
+  - provisa-ui/src/__tests__/ui_requirements.test.ts
   stakeholders:
   - app-developer
   competitive_position:
     status: ahead
     rationale: In-query graph analytics (centrality, community detection) merged into node/edge results
       as _analytics fields is not available in Hasura, Trino, Dremio, or Snowflake without external tooling.
-  notes: 'Audit 2026-10-03: was marked complete but is NOT built. Its only code path, provisa/api/rest/graph_analytics_router.py,
-    has never existed in git; no /data/graph-analytics route exists; tests/unit/test_graph_analytics_requirements.py
-    says it mirrors the contract ''without importing the not-yet-existing router module''. Status set
-    to proposed.'
-  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
+  notes: 'Rescoped 2026-10-03 at the maintainer''s direction to the analytics the browser computes automatically.
+    The earlier text described a server endpoint (POST /data/graph-analytics running NetworkX algorithms
+    over a query result), which was never built and is out of scope. Implementation: provisa-ui/src/components/graph/frame/use-frame-derived-data.ts:75-78.'
+  since: 2026-09
 - id: REQ-650
-  status: rejected
+  status: superseded
   group: 5. Query Languages, Compilation & Operations
   category: Graph Analytics Pipeline
   priority: MUST
@@ -9604,13 +9572,13 @@
   competitive_position:
     status: neutral
     rationale: ''
-  notes: 'Audit 2026-10-03: was marked complete but is NOT built. Its only code path, provisa/api/rest/graph_analytics_router.py,
-    has never existed in git; no /data/graph-analytics route exists; tests/unit/test_graph_analytics_requirements.py
-    says it mirrors the contract ''without importing the not-yet-existing router module''. Status set
-    to proposed.'
-  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
+  notes: Rescoped 2026-10-03 at the maintainer's direction to the analytics the browser computes automatically.
+    The earlier text described a server endpoint (POST /data/graph-analytics running NetworkX algorithms
+    over a query result), which was never built and is out of scope. This limit applied to that endpoint
+    only; the rescoped REQ-642 replaces it.
+  superseded_by: REQ-642
 - id: REQ-651
-  status: rejected
+  status: superseded
   group: 5. Query Languages, Compilation & Operations
   category: Graph Analytics Pipeline
   priority: MUST
@@ -9642,11 +9610,11 @@
   competitive_position:
     status: neutral
     rationale: ''
-  notes: 'Audit 2026-10-03: was marked complete but is NOT built. Its only code path, provisa/api/rest/graph_analytics_router.py,
-    has never existed in git; no /data/graph-analytics route exists; tests/unit/test_graph_analytics_requirements.py
-    says it mirrors the contract ''without importing the not-yet-existing router module''. Status set
-    to proposed.'
-  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
+  notes: Rescoped 2026-10-03 at the maintainer's direction to the analytics the browser computes automatically.
+    The earlier text described a server endpoint (POST /data/graph-analytics running NetworkX algorithms
+    over a query result), which was never built and is out of scope. This limit applied to that endpoint
+    only; the rescoped REQ-642 replaces it.
+  superseded_by: REQ-642
 - id: REQ-653
   status: complete
   group: 5. Query Languages, Compilation & Operations
