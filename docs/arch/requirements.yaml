@@ -48489,11 +48489,14 @@
     kind of fake value to show (a person''s name, an email address, a phone number, a street address,
     an identifier and so on), and the surrogate is a realistic generated value of that kind, so masked
     data keeps the look of the real data. The surrogates are kept in a table of the state store (REQ-1920)
-    that holds, for each real value met, the surrogate generated for it: when a value is met again its
+    that holds, for each real value met, a hash of the value and the surrogate generated for it, and never
+    the real value itself, so no personal data is kept in the state store: when a value is met again its
     surrogate is reused, and a value met for the first time is given a new one. Columns joined by a relationship
     share one set of surrogates, so a join between two masked columns still matches.'
-  use_case: An analyst joins a masked customer table to a masked orders table and gets the row counts
-    the real data would give, without either table showing a real identifier.
+  use_case: A data scientist, or an LLM acting under its own identity, works on masked data that behaves
+    like the real data (joins match, counts are right, values look real) without any personal data reaching
+    them. An analyst joins a masked customer table to a masked orders table and gets the row counts the
+    real data would give.
   code:
   - provisa/security/masking.py
   - provisa/compiler/mask_inject.py
@@ -48537,10 +48540,11 @@
     it had been rejected with REQ-1493. Audit 2026-10-03: not built; MaskType is regex, constant and truncate
     only (provisa/security/masking.py:29-32). Two points for the design: (1) REQ-1920 says state can be
     discarded and rebuilt from the model and the estate; this table cannot be, since losing it would give
-    every value a new random surrogate, so it needs to be kept durably. (2) The table pairs real values
-    with their surrogates, so it is as sensitive as the columns it serves. The maintainer''s model for
-    the generated values is a typed fake-data generator such as the faker library: a stable fake value
-    of a named fake type.'
+    every value a new random surrogate, so it needs to be kept durably. (2) The table is keyed by a hash
+    of the real value (maintainer), so it holds no personal data; for values with few possibilities (a
+    phone number, a national id) an unkeyed hash can be reversed by trying every value, so the hash should
+    be keyed with a secret. The maintainer''s model for the generated values is a typed fake-data generator
+    such as the faker library: a stable fake value of a named fake type.'
 - id: REQ-1495
   status: rejected
   group: 13. Multi-Tenancy & Organizations
