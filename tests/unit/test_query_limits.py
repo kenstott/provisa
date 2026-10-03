@@ -14,6 +14,8 @@ statement so it holds on every surface, against the role's limit under the org's
 
 from types import SimpleNamespace
 
+import re
+
 import pytest
 import sqlglot
 
@@ -239,8 +241,10 @@ def test_both_governing_stages_of_the_pipeline_call_the_guard():
         source = inspect.getsource(stage)
         assert "_guard_complexity(" in source, stage.__name__
         # Before the statement is governed.
-        governs = source.index("_off_loop(apply_governance")
-        assert source.index("_guard_complexity(") < governs, stage.__name__
+        # The call may be wrapped across lines: ``_off_loop(\n    apply_governance, ...)``.
+        governs = re.search(r"_off_loop\(\s*apply_governance\b", source)
+        assert governs is not None, stage.__name__
+        assert source.index("_guard_complexity(") < governs.start(), stage.__name__
 
 
 def test_the_graphql_endpoint_makes_the_same_check_before_it_governs():
