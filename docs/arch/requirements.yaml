@@ -74269,3 +74269,584 @@
     includeNodes accepts a field projection (JSON array or comma list of dot paths) in addition to true/false.
     REQ-1408: a separate include selects related columns inside nodes. REQ-1929: surfaces derive from
     GraphQL; this parameter only toggles a selection GraphQL already exposes, so it is consistent.'
+- id: REQ-022
+  status: superseded
+  superseded_by: REQ-001
+  group: 1. Access Governance & Security
+  category: Query Governance
+  priority: MUST
+  type: behavioral
+  description: 'Submission: full query text, compiled SQL, target tables, parameter schema, permitted
+    output types, developer identity (REQ-022). [Persisted query registry, Phase H.]'
+  tests:
+  - tests/unit/test_registry_removed.py
+  notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (deleted in 903defcc);
+    the id was never entered in requirements.yaml though code or tests cite it. Text verbatim. Citing
+    files: provisa/compiler/schema_gen.py. Audited 2026-10-03 against the code: Registry package no longer
+    exists (provisa/registry absent); REQ-001 states ''There is no query registry and no pre-approval
+    concept''. Only a stale docstring cites it at provisa/compiler/schema_gen.py:344.'
+- id: REQ-026
+  status: superseded
+  superseded_by: REQ-001
+  group: 1. Access Governance & Security
+  category: Query Governance
+  priority: MUST
+  type: behavioral
+  description: Deprecation with replacement pointer (REQ-026) - deprecated queries return clear error
+    directing to replacement. [Persisted query registry, Phase H.]
+  tests:
+  - tests/unit/test_registry_removed.py
+  notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (deleted in 903defcc);
+    the id was never entered in requirements.yaml though code or tests cite it. Text verbatim. Citing
+    files: provisa/compiler/schema_gen.py. Audited 2026-10-03 against the code: Same as REQ-022: registry
+    removed, REQ-001 (no registry) is live. Stale docstring only, provisa/compiler/schema_gen.py:344.'
+- id: REQ-077
+  status: complete
+  group: 6. Execution, Routing, Caching & Performance
+  category: Query Result Cache
+  priority: MUST
+  type: behavioral
+  since: 2026-04
+  description: 'Query results are cached in a Redis-backed application-layer cache behind a CacheStore
+    interface: get, set with TTL, invalidate by key pattern, invalidate by table id. Cache check runs
+    before execution and store after, transparently; a miss executes normally. Redis is optional at startup:
+    with no Redis URL a no-op store is used and caching is disabled. (Cache control per source/table is
+    Phase Z; per-request opt-in is amended into REQ-544.)'
+  code:
+  - provisa/cache/store.py
+  - provisa/cache/middleware.py
+  tests:
+  - tests/unit/test_cache_store.py
+  - tests/integration/test_cache_store.py
+  scenario: 'Given a Redis-backed cache store
+
+    When a result is stored with a TTL and read back, then invalidated by table id
+
+    Then the first read hits, and after invalidation the read misses
+
+    '
+  notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (deleted in 903defcc);
+    the id was never entered in requirements.yaml though code or tests cite it. Text assembled, not verbatim.
+    Citing files: provisa/cache/middleware.py, provisa/cache/store.py, tests/integration/test_cache_store.py.
+    Audited 2026-10-03 against the code: provisa/cache/store.py:49 CacheStore ABC, :97 NoopCacheStore,
+    :125 RedisCacheStore; provisa/cache/middleware.py:28 check_cache, :35 store_result.'
+- id: REQ-079
+  status: rejected
+  group: 6. Execution, Routing, Caching & Performance
+  category: Query Result Cache
+  priority: MUST
+  type: behavioral
+  description: Registration model changes (REQ-025) trigger invalidation of affected cache entries by
+    query ID.
+  code:
+  - provisa/cache/tenancy.py
+  tests:
+  - tests/unit/test_cache_scope_follows_model.py
+  notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (deleted in 903defcc);
+    the id was never entered in requirements.yaml though code or tests cite it. Text assembled, not verbatim.
+    Citing files: provisa/cache/policy.py. Audited 2026-10-03 against the code: Query ids and the registry
+    are gone; an entry''s scope now carries the model stamp so a model change moves workers onto new entries
+    (tests/unit/test_cache_scope_follows_model.py:10-20, REQ-1914). provisa/cache/policy.py:11 cites it
+    for TTL policy, which is REQ-544.'
+  rejection_reason: 'Overtaken: the query registry and its query ids are gone (REQ-001), and cache entries
+    are scoped by the model stamp (REQ-1914, still proposed, so it cannot be named as the superseding
+    requirement).'
+- id: REQ-080
+  status: complete
+  group: 6. Execution, Routing, Caching & Performance
+  category: Query Result Cache
+  priority: MUST
+  type: behavioral
+  since: 2026-04
+  description: Provisa mutations (INSERT/UPDATE/DELETE) invalidate cache entries that reference the mutated
+    table.
+  code:
+  - provisa/api/data/table_written.py
+  - provisa/cache/tenancy.py
+  - provisa/cache/store.py
+  tests:
+  - tests/unit/test_cache_tenant_invalidation.py
+  scenario: 'Given cached responses referencing a table
+
+    When a write to that table completes
+
+    Then the acting org''s entries for that table are dropped
+
+    '
+  notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (deleted in 903defcc);
+    the id was never entered in requirements.yaml though code or tests cite it. Text assembled, not verbatim.
+    Citing files: provisa/cache/policy.py, provisa/api/data/table_written.py. Audited 2026-10-03 against
+    the code: provisa/api/data/table_written.py:35-43 after_table_written calls invalidate_tables (REQ-080);
+    provisa/cache/store.py:256 invalidate_by_table.'
+- id: REQ-081
+  status: complete
+  group: 6. Execution, Routing, Caching & Performance
+  category: Materialized View Optimization
+  priority: MUST
+  type: behavioral
+  since: 2026-04
+  description: 'Materialized views are invisible in the GraphQL SDL by default: users query the same schema
+    and the optimization is transparent. An MV registry stores definitions, last refresh time, target
+    table, row count and status (fresh, stale, refreshing, disabled), and the steward controls MV lifecycle
+    (create, refresh schedule, enable/disable, drop).'
+  code:
+  - provisa/mv/models.py
+  - provisa/mv/registry.py
+  - provisa/mv/refresh.py
+  - provisa/mv/rewriter.py
+  tests:
+  - tests/unit/test_mv_registry.py
+  - tests/unit/test_mv_lifecycle.py
+  - tests/unit/test_mv_tenant_isolation.py
+  - tests/e2e/test_mv_optimization.py
+  scenario: 'Given a registered materialized view with expose_in_sdl unset
+
+    When a query matches its join pattern and the view is fresh
+
+    Then the SQL is rewritten to read the view and the SDL shows no new type
+
+    '
+  notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (deleted in 903defcc);
+    the id was never entered in requirements.yaml though code or tests cite it. Text assembled, not verbatim.
+    Citing files: provisa/mv/models.py, provisa/mv/registry.py, provisa/mv/refresh.py, tests/unit/test_mv_tenant_isolation.py.
+    Audited 2026-10-03 against the code: provisa/mv/registry.py:11 registry tracks status; provisa/mv/models.py
+    has expose_in_sdl default False (line 100).'
+- id: REQ-084
+  status: complete
+  group: 6. Execution, Routing, Caching & Performance
+  category: Materialized View Optimization
+  priority: MUST
+  type: behavioral
+  since: 2026-04
+  description: Mutations on source tables mark affected materialized views as stale; a stale view is not
+    used for rewrite and the original SQL executes.
+  code:
+  - provisa/mv/registry.py
+  - provisa/api/data/table_written.py
+  tests:
+  - tests/e2e/test_mv_optimization.py
+  - tests/unit/test_refresh_mv_mutation.py
+  - tests/unit/test_mv_registry.py
+  scenario: 'Given a fresh materialized view over table orders
+
+    When orders is mutated
+
+    Then the view is marked stale and the next query executes the original SQL
+
+    '
+  notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (deleted in 903defcc);
+    the id was never entered in requirements.yaml though code or tests cite it. Text assembled, not verbatim.
+    Citing files: provisa/api/data/table_written.py, provisa/mv/refresh.py, tests/e2e/test_mv_optimization.py.
+    Audited 2026-10-03 against the code: provisa/mv/registry.py:90 mark_stale; provisa/api/data/table_written.py:44
+    state.mv_registry.mark_stale. Related, narrower: REQ-543 (cross-source relationship MVs).'
+- id: REQ-085
+  status: complete
+  group: 1. Access Governance & Security
+  category: Materialized View Optimization
+  priority: MUST
+  type: behavioral
+  since: 2026-04
+  description: 'RLS is applied after the MV rewrite: the rewritten query keeps the WHERE clauses and parameters
+    injected for row-level security, because RLS is enforced at the SQL level regardless of the underlying
+    table.'
+  code:
+  - provisa/mv/rewriter.py
+  tests:
+  - tests/e2e/test_mv_optimization.py
+  scenario: 'Given a compiled join query carrying an RLS WHERE predicate and a matching fresh MV
+
+    When the query is rewritten to the MV
+
+    Then the WHERE clause and its params are preserved
+
+    '
+  notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (deleted in 903defcc);
+    the id was never entered in requirements.yaml though code or tests cite it. Text assembled, not verbatim.
+    Citing files: tests/e2e/test_mv_optimization.py. Audited 2026-10-03 against the code: tests/e2e/test_mv_optimization.py:137-160
+    TestRLSOnMVQueries asserts WHERE and params survive rewrite_if_mv_match.'
+- id: REQ-086
+  status: complete
+  group: 3. Source Registration & Data Modeling
+  category: Materialized View Optimization
+  priority: SHOULD
+  type: behavioral
+  since: 2026-04
+  description: 'A steward may set expose_in_sdl: true on an MV definition. The MV target table is then
+    registered as a table with its own columns, domain and visibility rules and appears as a queryable
+    type in the schema, under the same governance (RLS, column visibility) as any registered table.'
+  code:
+  - provisa/api/app_loaders.py
+  - provisa/mv/models.py
+  tests:
+  - tests/e2e/test_mv_optimization.py
+  scenario: 'Given an MV with expose_in_sdl true and an sdl_config
+
+    When the config loads
+
+    Then the MV target table is registered as a queryable table
+
+    '
+  notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (deleted in 903defcc);
+    the id was never entered in requirements.yaml though code or tests cite it. Text assembled, not verbatim.
+    Citing files: provisa/api/app.py, provisa/api/app_loaders.py, provisa/mv/models.py, tests/e2e/test_mv_optimization.py.
+    Audited 2026-10-03 against the code: provisa/api/app_loaders.py:638-648 appends the exposed MV to
+    raw_config tables; tests/e2e/test_mv_optimization.py:245 checks sdl_config.'
+- id: REQ-114
+  status: complete
+  group: 4. Source Connectors
+  category: Kafka Sources & Sink
+  priority: SHOULD
+  type: behavioral
+  since: 2026-04
+  description: 'Kafka topic registration as data source: register a Kafka cluster (bootstrap servers,
+    auth); each topic + schema becomes a registered table, schema from Schema Registry, manual JSON schema,
+    or sample message inference; the engine Kafka connector handles reads; primitives become native columns,
+    complex nested values become JSONB; complex objects are not filterable and carry no relationships.'
+  code:
+  - provisa/kafka/source.py
+  tests:
+  - tests/unit/test_kafka_schema.py
+  - tests/integration/test_kafka_source.py
+  scenario: 'Given a Kafka source with topics and a schema
+
+    When table definitions are generated
+
+    Then each topic becomes a registered table with mapped columns
+
+    '
+  notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (deleted in 903defcc);
+    the id was never entered in requirements.yaml though code or tests cite it. Text verbatim. Citing
+    files: provisa/kafka/source.py. Audited 2026-10-03 against the code: provisa/kafka/source.py:11 module
+    docstring; KafkaSourceConfig, generate_kafka_table_definitions, map_avro_to_ir. Sibling REQ-116 already
+    restored from the same plan phase.'
+- id: REQ-115
+  status: superseded
+  superseded_by: REQ-176
+  group: 9. Live Data & Events
+  category: Kafka Sources & Sink
+  priority: SHOULD
+  type: behavioral
+  description: 'publish query results to Kafka topics: new output format (Accept: application/x-kafka
+    or approved query config output: kafka); after query execution serialize result rows as JSON messages
+    and produce to the configured topic; topic + key config per approved query: { topic, key_column };
+    async production - fire-and-forget with delivery callback.'
+  code:
+  - provisa/kafka/sink.py
+  tests:
+  - tests/unit/test_kafka_sink.py
+  notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (deleted in 903defcc);
+    the id was never entered in requirements.yaml though code or tests cite it. Text verbatim. Citing
+    files: provisa/kafka/sink.py. Audited 2026-10-03 against the code: Per-approved-query sink is gone
+    with the registry; REQ-176 (Kafka sinks on registered tables and views) is live. provisa/kafka/sink.py:11
+    still cites REQ-115.'
+- id: REQ-388
+  status: complete
+  group: 3. Source Registration & Data Modeling
+  category: Relationship Alias
+  priority: SHOULD
+  type: structural
+  since: 2026-04
+  description: The Relationship model accepts an optional alias field, a relationship type name (for example
+    WORKS_FOR) that defaults to None. The alias is persisted with the relationship row and exposed to
+    the Cypher label map.
+  code:
+  - provisa/core/models.py
+  - provisa/core/repositories/relationship.py
+  - provisa/cypher/label_map.py
+  tests:
+  - tests/unit/test_relationship_alias.py
+  scenario: 'Given a Relationship built with alias WORKS_FOR
+
+    When the model is read
+
+    Then alias is WORKS_FOR, and None when omitted
+
+    '
+  notes: 'Restored 2026-10-03 from the code that cites it (reverse-engineered); the id was never entered
+    in requirements.yaml though code or tests cite it. Text assembled, not verbatim. Citing files: tests/unit/test_relationship_alias.py.
+    Audited 2026-10-03 against the code: provisa/core/models.py:1209 Relationship.alias; provisa/core/repositories/relationship.py:74
+    stores alias. Related REQ-392 lists test_relationship_alias.py.'
+- id: REQ-389
+  status: complete
+  group: 3. Source Registration & Data Modeling
+  category: Relationship Alias
+  priority: SHOULD
+  type: behavioral
+  since: 2026-04
+  description: A relationship alias is unique per source table. Saving a second relationship with the
+    same alias on the same source table fails with a ValueError naming the alias and the source table.
+  code:
+  - provisa/core/repositories/relationship.py
+  - provisa/core/schema_org.py
+  tests:
+  - tests/unit/test_relationship_alias.py
+  scenario: 'Given a relationship with alias WORKS_FOR on table employees
+
+    When another relationship with that alias is saved on employees
+
+    Then a ValueError reports the alias already exists for the source table
+
+    '
+  notes: 'Restored 2026-10-03 from the code that cites it (reverse-engineered); the id was never entered
+    in requirements.yaml though code or tests cite it. Text assembled, not verbatim. Citing files: tests/unit/test_relationship_alias.py.
+    Audited 2026-10-03 against the code: provisa/core/schema_org.py:319 UniqueConstraint relationships_source_alias_unique;
+    provisa/core/repositories/relationship.py:122-125 raises ValueError. The test only checks message
+    format (tests/unit/test_relationship_alias.py:55-60).'
+- id: REQ-390
+  status: complete
+  group: 5. Query Languages, Compilation & Operations
+  category: Relationship Alias
+  priority: SHOULD
+  type: behavioral
+  since: 2026-04
+  description: CypherLabelMap indexes relationships by alias so a Cypher relationship type written as
+    the alias resolves to the mapped source and target tables. RelationshipMapping carries the alias,
+    defaulting to None, and a wrong arrow direction or unknown type yields an empty result.
+  code:
+  - provisa/cypher/label_map.py
+  - provisa/cypher/translator_rel.py
+  tests:
+  - tests/unit/test_relationship_alias.py
+  - tests/unit/test_cypher_translator.py
+  scenario: 'Given a label map with a relationship aliased WORKS_FOR
+
+    When a Cypher query uses -[:WORKS_FOR]->
+
+    Then the SQL joins the aliased source and target tables
+
+    '
+  notes: 'Restored 2026-10-03 from the code that cites it (reverse-engineered); the id was never entered
+    in requirements.yaml though code or tests cite it. Text assembled, not verbatim. Citing files: tests/unit/test_relationship_alias.py,
+    tests/unit/test_cypher_translator.py. Audited 2026-10-03 against the code: provisa/cypher/label_map.py:117
+    RelationshipMapping.alias, :155 self.aliases; tests/unit/test_cypher_translator.py:1255.'
+- id: REQ-391
+  status: complete
+  group: 5. Query Languages, Compilation & Operations
+  category: Relationship Alias
+  priority: SHOULD
+  type: behavioral
+  since: 2026-04
+  description: When several source/target pairs share one relationship alias, the aliases index stores
+    every mapping under that alias and the Cypher translator emits a UNION ALL across them.
+  code:
+  - provisa/cypher/label_map.py
+  - provisa/cypher/translator_rel.py
+  tests:
+  - tests/unit/test_relationship_alias.py
+  - tests/unit/test_cypher_translator.py
+  scenario: 'Given two relationships sharing the alias MANAGES across different table pairs
+
+    When a Cypher query traverses that alias
+
+    Then the SQL is a UNION ALL of both paths
+
+    '
+  notes: 'Restored 2026-10-03 from the code that cites it (reverse-engineered); the id was never entered
+    in requirements.yaml though code or tests cite it. Text assembled, not verbatim. Citing files: tests/unit/test_relationship_alias.py,
+    tests/unit/test_cypher_translator.py. Audited 2026-10-03 against the code: tests/unit/test_cypher_translator.py:1280
+    asserts UNION ALL for a shared alias; provisa/cypher/label_map.py:155 aliases dict of lists.'
+- id: REQ-735
+  status: complete
+  group: 4. Source Connectors
+  category: Cassandra Connector
+  priority: SHOULD
+  type: behavioral
+  since: 2026-06
+  description: Cassandra source adapter maps CQL data types to engine types (text to VARCHAR, bigint to
+    BIGINT, timestamp to TIMESTAMP, uuid to UUID, ...). Schema discovery from keyspace metadata annotates
+    partition and clustering key columns; collection types are mapped by their base type, and unmapped
+    types or missing metadata raise an error. (Full original text is truncated in the feature comment.)
+  code:
+  - provisa/cassandra/source.py
+  tests:
+  - tests/steps/steps_cassandra_connector.py
+  - tests/unit/test_cassandra_fetch.py
+  scenario: 'Given a Cassandra table with partition and clustering keys
+
+    When the adapter discovers the schema
+
+    Then CQL column types are mapped to engine types and key columns are annotated
+
+    '
+  notes: 'Restored 2026-10-03 from tests/features/REQ-735.feature, whose text is truncated there, completed
+    from the scenario and the code; the id was never entered in requirements.yaml though code or tests
+    cite it. Text assembled, not verbatim. Citing files: tests/features/REQ-735.feature, tests/steps/steps_cassandra_connector.py.
+    Audited 2026-10-03 against the code: provisa/cassandra/source.py:27 CQL_TYPE_TO_IR, :106 discover_schema;
+    tests/features/REQ-735.feature scenario.'
+- id: REQ-736
+  status: complete
+  group: 4. Source Connectors
+  category: File & Lake Sources
+  priority: SHOULD
+  type: behavioral
+  since: 2026-06
+  description: File source adapter supports SQLite, CSV and Parquet formats. SQLite uses native type mapping
+    (INTEGER to BIGINT, REAL to DOUBLE, ...); discovery returns column definitions and queries return
+    results as row dicts. (Full original text is truncated in the feature comment.)
+  code:
+  - provisa/file_source/source.py
+  tests:
+  - tests/steps/steps_file_lake_sources.py
+  scenario: 'Given a SQLite database with multiple tables
+
+    When the adapter discovers schema and executes queries
+
+    Then column types are mapped correctly and results are returned as row dicts
+
+    '
+  notes: 'Restored 2026-10-03 from tests/features/REQ-736.feature, whose text is truncated there, completed
+    from the scenario and the code; the id was never entered in requirements.yaml though code or tests
+    cite it. Text assembled, not verbatim. Citing files: tests/features/REQ-736.feature, tests/steps/steps_file_lake_sources.py.
+    Audited 2026-10-03 against the code: provisa/file_source/source.py:94 discover_schema, :136 _discover_sqlite,
+    :155 _sqlite_type_to_sql, :235 execute_query.'
+- id: REQ-738
+  status: complete
+  group: 4. Source Connectors
+  category: NoSQL Adapters
+  priority: SHOULD
+  type: behavioral
+  since: 2026-06
+  description: MongoDB and Elasticsearch source adapters support live connections to running services.
+    The MongoDB adapter queries a collection with filter criteria and returns matching documents; the
+    Elasticsearch adapter reads index mappings and documents. (Full original text is truncated in the
+    feature comment.)
+  code:
+  - provisa/mongodb/fetch.py
+  - provisa/elasticsearch/fetch.py
+  - provisa/elasticsearch/source.py
+  tests:
+  - tests/steps/steps_nosql_adapters.py
+  - tests/unit/test_elasticsearch_fetch.py
+  - tests/unit/test_mongodb_discovery.py
+  scenario: 'Given a running MongoDB service with seeded test documents
+
+    When the adapter queries the collection with filter criteria
+
+    Then documents matching the filter are returned
+
+    '
+  notes: 'Restored 2026-10-03 from tests/features/REQ-738.feature, whose text is truncated there, completed
+    from the scenario and the code; the id was never entered in requirements.yaml though code or tests
+    cite it. Text assembled, not verbatim. Citing files: tests/features/REQ-738.feature, tests/steps/steps_nosql_adapters.py.
+    Audited 2026-10-03 against the code: provisa/mongodb/fetch.py:87 fetch_rows; provisa/elasticsearch/fetch.py:92
+    fetch_rows; steps_nosql_adapters.py:39 provisions a real MongoDB container.'
+- id: REQ-739
+  status: superseded
+  superseded_by: REQ-1924
+  group: 4. Source Connectors
+  category: API & Integration
+  priority: SHOULD
+  type: behavioral
+  description: API source discovery endpoint introspects OpenAPI specs and stores discovered endpoint
+    candidates (operation_id, path, method, ...), queryable via the admin API; stewards accept or reject
+    each candidate. (Full original text is truncated in the feature comment.)
+  code:
+  - provisa/api_source/introspect.py
+  - provisa/api_source/candidates.py
+  - provisa/api/admin/api_discovery.py
+  tests:
+  - tests/steps/steps_openapi_auto_registration_connector.py
+  notes: 'Restored 2026-10-03 from tests/features/REQ-739.feature, whose text is truncated there, completed
+    from the scenario and the code; the id was never entered in requirements.yaml though code or tests
+    cite it. Text assembled, not verbatim. Citing files: tests/features/REQ-739.feature, tests/steps/steps_openapi_auto_registration_connector.py.
+    Audited 2026-10-03 against the code: The candidate/accept path is being removed: registration is curation,
+    one operation at a time (REQ-1924). Step file comment at tests/steps/steps_openapi_auto_registration_connector.py:1282
+    calls it an orphaned REQ.'
+- id: REQ-1155
+  status: complete
+  group: 8. Client Access & Protocols
+  category: Protocol Support
+  priority: SHOULD
+  type: behavioral
+  since: 2026-07
+  description: Registered commands (tracked functions and webhooks) appear as POST paths /{domain}/commands/{name}
+    in the REST OpenAPI spec, filtered by domain and by the role's visible_to, with argument types mapped
+    to OpenAPI schemas and one path per command despite prefixed aliases. The POST endpoint invokes the
+    command through the shared governed executor and returns 404 for an unknown command or domain.
+  code:
+  - provisa/api/rest/openapi_spec.py
+  - provisa/api/rest/generator.py
+  tests:
+  - tests/unit/test_openapi_spec.py
+  scenario: 'Given a role and registered commands visible to it
+
+    When the REST OpenAPI spec is generated
+
+    Then each visible command appears once as a POST path under its domain
+
+    '
+  notes: 'Restored 2026-10-03 from the code that cites it (reverse-engineered); the id was never entered
+    in requirements.yaml though code or tests cite it. Text assembled, not verbatim. Citing files: provisa/api/rest/openapi_spec.py,
+    provisa/api/rest/generator.py, tests/unit/test_openapi_spec.py. Audited 2026-10-03 against the code:
+    provisa/api/rest/openapi_spec.py:390-420 builds command paths; provisa/api/rest/generator.py:766 rest_command_endpoint;
+    tests/unit/test_openapi_spec.py:136 TestCommandPaths. Sibling REQ-1156 covers all protocol surfaces.'
+- id: REQ-1400
+  status: complete
+  group: 5. Query Languages, Compilation & Operations
+  category: Natural Language Queries
+  priority: SHOULD
+  type: behavioral
+  since: 2026-08
+  description: 'Natural-language jobs and /nl-to-sql take a strict flag. Strict mode runs one NL to GraphQL
+    to SQL to Cypher chain, schema-validated, shared by the graphql, sql and cypher branches, so join
+    reachability and aggregate shape come from the schema''s relationships. Non-strict generates SQL and
+    GraphQL directly and independently from the LLM and derives Cypher from the SQL result. grpc, jsonapi
+    and openapi are unaffected. Defaults: /nl-to-sql True, NL job and nl_router False.'
+  code:
+  - provisa/nl/runner.py
+  - provisa/nl/job.py
+  - provisa/api/rest/nl_router.py
+  - provisa/api/data/endpoint_dev.py
+  tests:
+  - tests/unit/test_nl_runner.py
+  scenario: 'Given an NL job run with strict true
+
+    When the graphql, sql and cypher branches run
+
+    Then all three come from one shared NL to GraphQL to SQL to Cypher chain
+
+    '
+  notes: 'Restored 2026-10-03 from the code that cites it (reverse-engineered); the id was never entered
+    in requirements.yaml though code or tests cite it. Text assembled, not verbatim. Citing files: provisa/nl/job.py,
+    provisa/nl/runner.py, provisa/api/data/endpoint_dev.py, provisa/api/rest/nl_router.py, tests/unit/test_nl_runner.py.
+    Audited 2026-10-03 against the code: provisa/nl/runner.py:750,847 strict chain; tests/unit/test_nl_runner.py:182
+    asserts a shared chain. The strict default differs between endpoint_dev.py:831 (True) and nl_router.py:48
+    (False).'
+- id: REQ-023
+  status: superseded
+  superseded_by: REQ-001
+  group: 1. Access Governance & Security
+  category: Query Governance
+  priority: SHOULD
+  type: behavioral
+  description: 'Persisted query storage: stable identifier on approval. Production mode: query text never
+    transmitted in production — only stable ID.'
+  notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (Phase H: Persisted
+    Query Registry), the only place this requirement''s text was written; the id was never entered in
+    requirements.yaml. Text verbatim from the plan''s bullets. The persisted query registry was removed
+    (REQ-001, REQ-003), so it is superseded.'
+- id: REQ-024
+  status: superseded
+  superseded_by: REQ-001
+  group: 1. Access Governance & Security
+  category: Query Governance
+  priority: SHOULD
+  type: behavioral
+  description: 'Persisted query storage: record of who defined, who approved, when, output types, routing
+    hint, registration model version.'
+  notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (Phase H: Persisted
+    Query Registry), the only place this requirement''s text was written; the id was never entered in
+    requirements.yaml. Text verbatim from the plan''s bullets. The persisted query registry was removed
+    (REQ-001, REQ-003), so it is superseded.'
+- id: REQ-025
+  status: superseded
+  superseded_by: REQ-001
+  group: 1. Access Governance & Security
+  category: Query Governance
+  priority: SHOULD
+  type: behavioral
+  description: 'Approval workflow: registration changes flag affected entries for re-review.'
+  notes: 'Restored 2026-10-03 from docs/arch/implementation-plan.md as of 903defcc^ (Phase H: Persisted
+    Query Registry), the only place this requirement''s text was written; the id was never entered in
+    requirements.yaml. Text verbatim from the plan''s bullets. The persisted query registry was removed
+    (REQ-001, REQ-003), so it is superseded.'

@@ -21857,3 +21857,267 @@ A grouped or aggregate result may carry the underlying rows of each group. On RE
 **Code:** `provisa/grpc/query_ir.py`, `provisa/nl/executor.py`, `provisa/api/jsonapi/generator.py`, `provisa/api/rest/generator.py`, `provisa/api/rest/openapi_spec.py`, `provisa/api/data/endpoint_grpc_proxy.py`, `provisa/compiler/schema_gen.py`
 
 **Tests:** `tests/unit/test_rest_aggregates.py`, `tests/unit/test_grpc_aggregates.py`, `tests/unit/test_nl_aggregation_routing.py`, `tests/unit/test_openapi_spec.py`, `tests/unit/test_group_by.py`, `tests/integration/test_grpc_proxy.py`
+
+## 1. Access Governance & Security
+
+### REQ-022 · Query Governance {#REQ-022}
+
+**Status:** ↪ superseded by [REQ-001](#REQ-001) · **Priority:** MUST · **Type:** behavioral
+
+Submission: full query text, compiled SQL, target tables, parameter schema, permitted output types, developer identity (REQ-022). [Persisted query registry, Phase H.]
+
+**Code:** —
+
+**Tests:** `tests/unit/test_registry_removed.py`
+
+### REQ-026 · Query Governance {#REQ-026}
+
+**Status:** ↪ superseded by [REQ-001](#REQ-001) · **Priority:** MUST · **Type:** behavioral
+
+Deprecation with replacement pointer (REQ-026) - deprecated queries return clear error directing to replacement. [Persisted query registry, Phase H.]
+
+**Code:** —
+
+**Tests:** `tests/unit/test_registry_removed.py`
+
+## 6. Execution, Routing, Caching & Performance
+
+### REQ-077 · Query Result Cache {#REQ-077}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Query results are cached in a Redis-backed application-layer cache behind a CacheStore interface: get, set with TTL, invalidate by key pattern, invalidate by table id. Cache check runs before execution and store after, transparently; a miss executes normally. Redis is optional at startup: with no Redis URL a no-op store is used and caching is disabled. (Cache control per source/table is Phase Z; per-request opt-in is amended into [REQ-544](#REQ-544).)
+
+**Code:** `provisa/cache/store.py`, `provisa/cache/middleware.py`
+
+**Tests:** `tests/unit/test_cache_store.py`, `tests/integration/test_cache_store.py`
+
+### REQ-079 · Query Result Cache {#REQ-079}
+
+**Status:** ✗ rejected · **Priority:** MUST · **Type:** behavioral
+
+Registration model changes ([REQ-025](#REQ-025)) trigger invalidation of affected cache entries by query ID.
+
+**Code:** `provisa/cache/tenancy.py`
+
+**Tests:** `tests/unit/test_cache_scope_follows_model.py`
+
+### REQ-080 · Query Result Cache {#REQ-080}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Provisa mutations (INSERT/UPDATE/DELETE) invalidate cache entries that reference the mutated table.
+
+**Code:** `provisa/api/data/table_written.py`, `provisa/cache/tenancy.py`, `provisa/cache/store.py`
+
+**Tests:** `tests/unit/test_cache_tenant_invalidation.py`
+
+### REQ-081 · Materialized View Optimization {#REQ-081}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Materialized views are invisible in the GraphQL SDL by default: users query the same schema and the optimization is transparent. An MV registry stores definitions, last refresh time, target table, row count and status (fresh, stale, refreshing, disabled), and the steward controls MV lifecycle (create, refresh schedule, enable/disable, drop).
+
+**Code:** `provisa/mv/models.py`, `provisa/mv/registry.py`, `provisa/mv/refresh.py`, `provisa/mv/rewriter.py`
+
+**Tests:** `tests/unit/test_mv_registry.py`, `tests/unit/test_mv_lifecycle.py`, `tests/unit/test_mv_tenant_isolation.py`, `tests/e2e/test_mv_optimization.py`
+
+### REQ-084 · Materialized View Optimization {#REQ-084}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Mutations on source tables mark affected materialized views as stale; a stale view is not used for rewrite and the original SQL executes.
+
+**Code:** `provisa/mv/registry.py`, `provisa/api/data/table_written.py`
+
+**Tests:** `tests/e2e/test_mv_optimization.py`, `tests/unit/test_refresh_mv_mutation.py`, `tests/unit/test_mv_registry.py`
+
+## 1. Access Governance & Security
+
+### REQ-085 · Materialized View Optimization {#REQ-085}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+RLS is applied after the MV rewrite: the rewritten query keeps the WHERE clauses and parameters injected for row-level security, because RLS is enforced at the SQL level regardless of the underlying table.
+
+**Code:** `provisa/mv/rewriter.py`
+
+**Tests:** `tests/e2e/test_mv_optimization.py`
+
+## 3. Source Registration & Data Modeling
+
+### REQ-086 · Materialized View Optimization {#REQ-086}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A steward may set expose_in_sdl: true on an MV definition. The MV target table is then registered as a table with its own columns, domain and visibility rules and appears as a queryable type in the schema, under the same governance (RLS, column visibility) as any registered table.
+
+**Code:** `provisa/api/app_loaders.py`, `provisa/mv/models.py`
+
+**Tests:** `tests/e2e/test_mv_optimization.py`
+
+## 4. Source Connectors
+
+### REQ-114 · Kafka Sources & Sink {#REQ-114}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Kafka topic registration as data source: register a Kafka cluster (bootstrap servers, auth); each topic + schema becomes a registered table, schema from Schema Registry, manual JSON schema, or sample message inference; the engine Kafka connector handles reads; primitives become native columns, complex nested values become JSONB; complex objects are not filterable and carry no relationships.
+
+**Code:** `provisa/kafka/source.py`
+
+**Tests:** `tests/unit/test_kafka_schema.py`, `tests/integration/test_kafka_source.py`
+
+## 9. Live Data & Events
+
+### REQ-115 · Kafka Sources & Sink {#REQ-115}
+
+**Status:** ↪ superseded by [REQ-176](#REQ-176) · **Priority:** SHOULD · **Type:** behavioral
+
+publish query results to Kafka topics: new output format (Accept: application/x-kafka or approved query config output: kafka); after query execution serialize result rows as JSON messages and produce to the configured topic; topic + key config per approved query: { topic, key_column }; async production - fire-and-forget with delivery callback.
+
+**Code:** `provisa/kafka/sink.py`
+
+**Tests:** `tests/unit/test_kafka_sink.py`
+
+## 3. Source Registration & Data Modeling
+
+### REQ-388 · Relationship Alias {#REQ-388}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+
+The Relationship model accepts an optional alias field, a relationship type name (for example WORKS_FOR) that defaults to None. The alias is persisted with the relationship row and exposed to the Cypher label map.
+
+**Code:** `provisa/core/models.py`, `provisa/core/repositories/relationship.py`, `provisa/cypher/label_map.py`
+
+**Tests:** `tests/unit/test_relationship_alias.py`
+
+### REQ-389 · Relationship Alias {#REQ-389}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A relationship alias is unique per source table. Saving a second relationship with the same alias on the same source table fails with a ValueError naming the alias and the source table.
+
+**Code:** `provisa/core/repositories/relationship.py`, `provisa/core/schema_org.py`
+
+**Tests:** `tests/unit/test_relationship_alias.py`
+
+## 5. Query Languages, Compilation & Operations
+
+### REQ-390 · Relationship Alias {#REQ-390}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+CypherLabelMap indexes relationships by alias so a Cypher relationship type written as the alias resolves to the mapped source and target tables. RelationshipMapping carries the alias, defaulting to None, and a wrong arrow direction or unknown type yields an empty result.
+
+**Code:** `provisa/cypher/label_map.py`, `provisa/cypher/translator_rel.py`
+
+**Tests:** `tests/unit/test_relationship_alias.py`, `tests/unit/test_cypher_translator.py`
+
+### REQ-391 · Relationship Alias {#REQ-391}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+When several source/target pairs share one relationship alias, the aliases index stores every mapping under that alias and the Cypher translator emits a UNION ALL across them.
+
+**Code:** `provisa/cypher/label_map.py`, `provisa/cypher/translator_rel.py`
+
+**Tests:** `tests/unit/test_relationship_alias.py`, `tests/unit/test_cypher_translator.py`
+
+## 4. Source Connectors
+
+### REQ-735 · Cassandra Connector {#REQ-735}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Cassandra source adapter maps CQL data types to engine types (text to VARCHAR, bigint to BIGINT, timestamp to TIMESTAMP, uuid to UUID, ...). Schema discovery from keyspace metadata annotates partition and clustering key columns; collection types are mapped by their base type, and unmapped types or missing metadata raise an error. (Full original text is truncated in the feature comment.)
+
+**Code:** `provisa/cassandra/source.py`
+
+**Tests:** `tests/steps/steps_cassandra_connector.py`, `tests/unit/test_cassandra_fetch.py`
+
+### REQ-736 · File & Lake Sources {#REQ-736}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+File source adapter supports SQLite, CSV and Parquet formats. SQLite uses native type mapping (INTEGER to BIGINT, REAL to DOUBLE, ...); discovery returns column definitions and queries return results as row dicts. (Full original text is truncated in the feature comment.)
+
+**Code:** `provisa/file_source/source.py`
+
+**Tests:** `tests/steps/steps_file_lake_sources.py`
+
+### REQ-738 · NoSQL Adapters {#REQ-738}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+MongoDB and Elasticsearch source adapters support live connections to running services. The MongoDB adapter queries a collection with filter criteria and returns matching documents; the Elasticsearch adapter reads index mappings and documents. (Full original text is truncated in the feature comment.)
+
+**Code:** `provisa/mongodb/fetch.py`, `provisa/elasticsearch/fetch.py`, `provisa/elasticsearch/source.py`
+
+**Tests:** `tests/steps/steps_nosql_adapters.py`, `tests/unit/test_elasticsearch_fetch.py`, `tests/unit/test_mongodb_discovery.py`
+
+### REQ-739 · API & Integration {#REQ-739}
+
+**Status:** ↪ superseded by [REQ-1924](#REQ-1924) · **Priority:** SHOULD · **Type:** behavioral
+
+API source discovery endpoint introspects OpenAPI specs and stores discovered endpoint candidates (operation_id, path, method, ...), queryable via the admin API; stewards accept or reject each candidate. (Full original text is truncated in the feature comment.)
+
+**Code:** `provisa/api_source/introspect.py`, `provisa/api_source/candidates.py`, `provisa/api/admin/api_discovery.py`
+
+**Tests:** `tests/steps/steps_openapi_auto_registration_connector.py`
+
+## 8. Client Access & Protocols
+
+### REQ-1155 · Protocol Support {#REQ-1155}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Registered commands (tracked functions and webhooks) appear as POST paths /{domain}/commands/{name} in the REST OpenAPI spec, filtered by domain and by the role's visible_to, with argument types mapped to OpenAPI schemas and one path per command despite prefixed aliases. The POST endpoint invokes the command through the shared governed executor and returns 404 for an unknown command or domain.
+
+**Code:** `provisa/api/rest/openapi_spec.py`, `provisa/api/rest/generator.py`
+
+**Tests:** `tests/unit/test_openapi_spec.py`
+
+## 5. Query Languages, Compilation & Operations
+
+### REQ-1400 · Natural Language Queries {#REQ-1400}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Natural-language jobs and /nl-to-sql take a strict flag. Strict mode runs one NL to GraphQL to SQL to Cypher chain, schema-validated, shared by the graphql, sql and cypher branches, so join reachability and aggregate shape come from the schema's relationships. Non-strict generates SQL and GraphQL directly and independently from the LLM and derives Cypher from the SQL result. grpc, jsonapi and openapi are unaffected. Defaults: /nl-to-sql True, NL job and nl_router False.
+
+**Code:** `provisa/nl/runner.py`, `provisa/nl/job.py`, `provisa/api/rest/nl_router.py`, `provisa/api/data/endpoint_dev.py`
+
+**Tests:** `tests/unit/test_nl_runner.py`
+
+## 1. Access Governance & Security
+
+### REQ-023 · Query Governance {#REQ-023}
+
+**Status:** ↪ superseded by [REQ-001](#REQ-001) · **Priority:** SHOULD · **Type:** behavioral
+
+Persisted query storage: stable identifier on approval. Production mode: query text never transmitted in production — only stable ID.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-024 · Query Governance {#REQ-024}
+
+**Status:** ↪ superseded by [REQ-001](#REQ-001) · **Priority:** SHOULD · **Type:** behavioral
+
+Persisted query storage: record of who defined, who approved, when, output types, routing hint, registration model version.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-025 · Query Governance {#REQ-025}
+
+**Status:** ↪ superseded by [REQ-001](#REQ-001) · **Priority:** SHOULD · **Type:** behavioral
+
+Approval workflow: registration changes flag affected entries for re-review.
+
+**Code:** —
+
+**Tests:** —
