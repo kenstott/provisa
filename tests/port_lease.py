@@ -114,7 +114,8 @@ class PortLease:
         self._pinned: set[int] = set()
         self._cursor = 0
 
-    def _lease_block(self) -> None:
+    def _lease_block(self) -> bool:
+        """Lease one more block; False when every block is held by a live process."""
         os.makedirs(self._lock_dir, exist_ok=True)
         for start in range(self._first, self._last - self._block_size + 2, self._block_size):
             if start in self._ports:
@@ -132,11 +133,8 @@ class PortLease:
             self._fds.append(fd)
             self._cursor = len(self._ports)
             self._ports.extend(range(start, start + self._block_size))
-            return
-        raise RuntimeError(
-            f"every test port block in {self._first}-{self._last} is leased by a live process "
-            f"(see {self._lock_dir})"
-        )
+            return True
+        return False
 
     def _next(self) -> int:
         if os.getpid() != self._pid:
@@ -146,13 +144,29 @@ class PortLease:
             for fd in self._fds:
                 os.close(fd)
             self._reset()
+        # Each port is issued once before any is issued again: a caller often leases several
+        # transient ports before it binds the first (a server's HTTP, Flight and Airport ports),
+        # and a port issued but not yet bound passes the bind probe — so a cursor that wrapped
+        # within the block handed the same number out twice (the Airport fixture got 21100 for
+        # both its HTTP and its Airport port, and its server exited at the second bind). The
+        # process leases a further block rather than wrap; it starts over at its first port only
+        # when no further block can be leased.
+        restarted = False
         while True:
-            for _ in range(len(self._ports)):
-                port = self._ports[self._cursor % len(self._ports)]
+            while self._cursor < len(self._ports):
+                port = self._ports[self._cursor]
                 self._cursor += 1
                 if port not in self._pinned and _bindable(port):
                     return port
-            self._lease_block()
+            if self._lease_block():
+                continue
+            if restarted or not self._ports:
+                raise RuntimeError(
+                    f"every test port block in {self._first}-{self._last} is leased by a live "
+                    f"process and none of this process's ports is free (see {self._lock_dir})"
+                )
+            restarted = True
+            self._cursor = 0
 
     def pinned(self, n: int) -> list[int]:
         """``n`` distinct ports that are never issued again by this process.

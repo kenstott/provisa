@@ -121,10 +121,34 @@ def airport_server_port():
         with open(logf.name) as fh:
             return "".join(fh.readlines()[-40:])
 
+    def _server_state() -> str:
+        # Said by every client failure: whether this module's server is still running, how it
+        # ended if not (a negative code is the signal), what it last wrote, and who holds the
+        # port it was given.
+        code = proc.poll()
+        held = subprocess.run(
+            ["lsof", "-nP", f"-iTCP:{airport_port}", "-sTCP:LISTEN"],
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout
+        return (
+            f"server pid {proc.pid}: {'running' if code is None else f'exited, code {code}'}; "
+            f"listeners on {airport_port}:\n{held or '(none)'}\nlast output:\n{_log_tail()}"
+        )
+
+    _STATE["server_state"] = _server_state
+
     try:
         deadline = time.monotonic() + 90
         while time.monotonic() < deadline:
-            if _tcp_reachable("localhost", airport_port):
+            # Ready when the app answers on its HTTP port too: the Airport listener binds before
+            # uvicorn binds HTTP, and a server whose HTTP bind then fails exits a moment later.
+            if (
+                _tcp_reachable("localhost", airport_port)
+                and _tcp_reachable("localhost", http_port)
+                and proc.poll() is None
+            ):
                 break
             if proc.poll() is not None:
                 raise RuntimeError(
@@ -189,7 +213,7 @@ def _run_airport_client(port: int, role: str, schema: str, table: str) -> dict:
     )
     assert result.returncode == 0, (
         f"airport client subprocess failed (role={role}):\n"
-        f"stdout={result.stdout}\nstderr={result.stderr}"
+        f"stdout={result.stdout}\nstderr={result.stderr}\n{_STATE['server_state']()}"
     )
     return json.loads(result.stdout.strip().splitlines()[-1])
 
@@ -243,7 +267,7 @@ def _run_sql(port: int, role: str, stmts: list[str], *, fetch: bool = True) -> d
     )
     assert result.returncode == 0, (
         f"airport SQL client failed (role={role}, stmts={stmts}):\n"
-        f"stdout={result.stdout}\nstderr={result.stderr}"
+        f"stdout={result.stdout}\nstderr={result.stderr}\n{_STATE['server_state']()}"
     )
     return json.loads(result.stdout.strip().splitlines()[-1])
 
