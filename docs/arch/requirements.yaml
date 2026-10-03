@@ -31749,6 +31749,11 @@
   - REQ-1019
   - REQ-1034
   - REQ-1054
+  notes: 'Maintainer 2026-10-03: stays proposed, after V1; not part of the feature-complete line. Use
+    case: public query endpoints (an org publishes chosen tables for unauthenticated reads). Audit 2026-10-03:
+    not built (no public role is seeded, provisa/core/db.py:140-195; a request without a token is answered
+    401, provisa/auth/middleware.py:540). The text predates the current terms: the org is named by its
+    provisa.dev subdomain and there is no tenant_id claim (REQ-1276).'
 - id: REQ-1059
   status: proposed
   group: 1. Access Governance & Security
@@ -31775,6 +31780,11 @@
   - REQ-040
   - REQ-1019
   - REQ-1058
+  notes: 'Maintainer 2026-10-03: stays proposed, after V1; not part of the feature-complete line. Use
+    case: public query endpoints (an org publishes chosen tables for unauthenticated reads). Audit 2026-10-03:
+    not built (no public role is seeded, provisa/core/db.py:140-195; a request without a token is answered
+    401, provisa/auth/middleware.py:540). The text predates the current terms: the org is named by its
+    provisa.dev subdomain and there is no tenant_id claim (REQ-1276).'
 - id: REQ-1060
   status: proposed
   group: 1. Access Governance & Security
@@ -31792,6 +31802,11 @@
   - REQ-1044
   - REQ-1045
   - REQ-1058
+  notes: 'Maintainer 2026-10-03: stays proposed, after V1; not part of the feature-complete line. Use
+    case: public query endpoints (an org publishes chosen tables for unauthenticated reads). Audit 2026-10-03:
+    not built (no public role is seeded, provisa/core/db.py:140-195; a request without a token is answered
+    401, provisa/auth/middleware.py:540). The text predates the current terms: the org is named by its
+    provisa.dev subdomain and there is no tenant_id claim (REQ-1276).'
 - id: REQ-1061
   status: superseded
   group: 11. Platform, Infrastructure & Delivery
