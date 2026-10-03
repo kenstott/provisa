@@ -542,6 +542,16 @@ glossary_term_edges = Table(
 # REQ-1591: a term's DECLARED domains — written only for an abstract term (which holds no refs
 # to derive from) and as the stamp left when a rooted term's last ref departs. A term's domains
 # are its refs' domains while it has refs, and these otherwise. See schema.sql for the full rule.
+# REQ-1919: the seeded roles and domains a config file has redefined. A seeded object is the
+# deployment's own and is never removed, but a load of a file that no longer declares it puts the
+# seed's own definition back; this row is how the load knows the file had changed it.
+seed_redefinitions = Table(
+    "seed_redefinitions",
+    metadata,
+    Column("kind", Text, primary_key=True),
+    Column("object_id", Text, primary_key=True),
+)
+
 glossary_term_domains = Table(
     "glossary_term_domains",
     metadata,

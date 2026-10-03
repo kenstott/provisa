@@ -574,6 +574,13 @@ END $$;
 -- creates/links terms as columns register and removes refs as they depart; a term losing its
 -- last ref is REMOVED unless an abstract term is connected to the rooted graph through it,
 -- in which case it is deprecated (kept) so no abstract term is left dangling.
+-- REQ-1919: the seeded roles and domains a config file has redefined (see schema_org.py).
+CREATE TABLE IF NOT EXISTS seed_redefinitions (
+    kind      TEXT NOT NULL,
+    object_id TEXT NOT NULL,
+    PRIMARY KEY (kind, object_id)
+);
+
 CREATE TABLE IF NOT EXISTS glossary_terms (
     id              SERIAL PRIMARY KEY,
     -- REQ-1919: where the row came from: 'config', 'admin' or 'seed' (see sources.origin).

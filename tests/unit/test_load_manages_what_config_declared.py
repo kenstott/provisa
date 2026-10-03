@@ -620,6 +620,99 @@ async def test_a_same_named_table_the_file_drops_does_not_make_its_new_one_ambig
     assert source_table_id == filtered_table_id == orders_id
 
 
+# --- a seeded object a file redefined (REQ-1919, maintainer's ruling) ------------------------
+
+
+def _seeded_analyst_file(**more):
+    """A file that redefines the seeded role ``analyst`` to reach only ``analytics``."""
+    raw = {
+        "sources": [
+            {"id": "cfg", "type": "postgresql", "host": "h", "port": 5432, "database": "d"}
+        ],
+        "domains": [{"id": "sales"}, {"id": "analytics"}],
+        "roles": [
+            {"id": "seller", "capabilities": [], "domain_access": ["sales"]},
+            {"id": "analyst", "capabilities": ["usage", "write"], "domain_access": ["analytics"]},
+        ],
+        "tables": [_table("orders")],
+        **more,
+    }
+    return parse_config_dict(raw)
+
+
+async def _role(db: Database, role_id: str) -> dict:
+    async with db.acquire() as conn:
+        row = (
+            await conn.execute_core(
+                select(metadata.tables["roles"]).where(metadata.tables["roles"].c.id == role_id)
+            )
+        ).one()
+    return dict(row._mapping)
+
+
+async def test_a_seeded_role_the_file_stops_declaring_goes_back_to_the_seed(db, caplog):
+    """It is still the deployment's own, so it is not removed: its definition is the seed's again,
+    and the domain the file had given it no longer holds a dropped domain. The revert narrows
+    its rights, so the load says so at WARNING."""
+    await _load(db, _seeded_analyst_file())
+    analyst = await _role(db, "analyst")
+    assert (analyst["origin"], analyst["domain_access"]) == ("seed", ["analytics"])
+
+    with caplog.at_level("WARNING", logger="provisa.core.config_loader"):
+        await _load(db, _file())  # declares neither analyst nor analytics
+
+    analyst = await _role(db, "analyst")
+    from provisa.core.db import _SEED_ROLES
+
+    assert analyst["origin"] == "seed"
+    assert analyst["capabilities"] == dict(_SEED_ROLES)["analyst"]
+    assert analyst["domain_access"] == ["*"]
+    assert "analytics" not in await _origins(db, "domains")
+    assert await _rows(db, "seed_redefinitions", "kind", "object_id") == []
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert warnings == [
+        "config load puts seeded role 'analyst' back to the seed's definition: the config no "
+        "longer declares it, so it no longer has rights write"
+    ]
+
+
+async def test_a_seeded_role_the_file_still_declares_keeps_the_files_definition(db):
+    await _load(db, _seeded_analyst_file())
+    await _load(db, _seeded_analyst_file())
+    assert (await _role(db, "analyst"))["domain_access"] == ["analytics"]
+    assert await _rows(db, "seed_redefinitions", "kind", "object_id") == [("role", "analyst")]
+
+
+async def test_a_revert_that_would_strand_an_assignment_is_refused_naming_it(db):
+    """The seeded platform_admin reaches no data domain. Were it redefined to reach one (the
+    loader itself keeps it at its seed definition, so the state is written directly here), and an
+    assignment held in that domain, the revert would strand it: the load is refused with it."""
+    await _load(db, _file())
+    roles_t = metadata.tables["roles"]
+    async with db.acquire() as conn:
+        await conn.execute_core(
+            roles_t.update().where(roles_t.c.id == "platform_admin").values(domain_access=["sales"])
+        )
+        await conn.execute_core(
+            insert(metadata.tables["seed_redefinitions"]).values(
+                kind="role", object_id="platform_admin"
+            )
+        )
+        await conn.execute_core(
+            insert(metadata.tables["user_role_assignments"]).values(
+                user_id="pat", role_id="platform_admin", domain_id="sales"
+            )
+        )
+
+    with pytest.raises(ConfigDropRefused) as err:
+        await _load(db, _file())
+
+    report = err.value.report()
+    assert [(r["kind"], r["id"]) for r in report] == [("role", "platform_admin")]
+    assert [d["name"] for d in report[0]["dependents"]] == ["pat holds platform_admin in sales"]
+    assert (await _role(db, "platform_admin"))["domain_access"] == ["sales"]
+
+
 async def test_the_loader_removes_nothing_during_the_load():
     """Relationships, metrics, commands and webhooks are no longer deleted as a set while the
     load runs: everything a file dropped is judged at its end."""

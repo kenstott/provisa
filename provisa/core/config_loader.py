@@ -829,6 +829,46 @@ async def _announce_row_filter_removal(  # REQ-1919
 CONFIG_LOAD_ACTOR = "config-load"
 
 
+async def _revert_seeded(  # REQ-1919
+    conn: "Connection", config: ProvisaConfig
+) -> list[tuple[ObjectRef, str, list[Dependent]]]:
+    """Put back the seed's definition of each seeded role or domain the file had redefined and no
+    longer declares. One that would strand something — an assignment in a domain the seed's role
+    does not reach — is not reverted and is returned as a refusal; a revert that narrows what a
+    role reaches is said at WARNING, as a dropped row filter is."""
+    from provisa.core.repositories import seed_definitions
+
+    declared = {
+        "role": {role.id for role in config.roles},
+        "domain": {domain.id for domain in config.domains},
+    }
+    refusals: list[tuple[ObjectRef, str, list[Dependent]]] = []
+    for ref in await seed_definitions.redefined(conn):
+        if ref.id in declared[ref.kind]:
+            continue
+        revert, stranded = await seed_definitions.plan_revert(conn, ref)
+        if stranded:
+            refusals.append((ref, str(ref.id), stranded))
+            continue
+        await seed_definitions.apply(conn, revert)
+        if revert.narrows:
+            log.warning(
+                "config load puts seeded %s %r back to the seed's definition: the config no "
+                "longer declares it, so it no longer has %s",
+                ref.kind,
+                ref.id,
+                "; ".join(revert.narrows),
+            )
+        else:
+            log.info(
+                "config load puts seeded %s %r back to the seed's definition: the config no "
+                "longer declares it",
+                ref.kind,
+                ref.id,
+            )
+    return refusals
+
+
 async def _remove_what_the_config_dropped(  # REQ-1918, REQ-1919
     conn: "Connection", config: ProvisaConfig
 ) -> None:
@@ -843,11 +883,13 @@ async def _remove_what_the_config_dropped(  # REQ-1918, REQ-1919
     by this same load, or is a part of one that is. Every refusal is collected into one error (:class:`ConfigDropRefused`),
     and nothing is removed unless everything may go.
     """
+    # A seeded role or domain the file had redefined and no longer declares goes back to the
+    # seed's own definition first (REQ-1919): the model the file produces is judged with it.
+    refusals: list[tuple[ObjectRef, str, list[Dependent]]] = await _revert_seeded(conn, config)
     dropped = await _dropped_by_the_config(conn, config)
-    if not dropped:
+    if not dropped and not refusals:
         return
     going = {ref for ref, _name in dropped}
-    refusals: list[tuple[ObjectRef, str, list[Dependent]]] = []
     for ref, name in dropped:
         # What depends on it and is not itself going — as one of the dropped objects, or as a
         # part of one (a column that names a dropped role goes with its own dropped table).
