@@ -15,6 +15,13 @@ data:
     retry-policy=TASK
     task.low-memory-killer.policy=total-reservation-on-blocked-nodes
     fault-tolerant-execution-task-memory={{ .Values.trino.fte.taskMemory }}
+  # REQ-056: Trino's resource groups, read by the coordinator alone. A copy of
+  # trino/etc/resource-groups.* (the chart cannot read outside itself); a test keeps them equal.
+  # Each engine statement names its org in its source, and lands in global.tenant-<org>.
+  resource-groups.properties: |
+{{ .Files.Get "files/resource-groups.properties" | indent 4 }}
+  resource-groups.json: |
+{{ .Files.Get "files/resource-groups.json" | indent 4 }}
   worker-config.properties: |
     coordinator=false
     http-server.http.port={{ .Values.trino.port }}

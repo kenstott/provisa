@@ -16107,7 +16107,14 @@
     (excluding apiGroup/fsGroup) returns nothing; trino-configmap.yaml ships no resource-groups.properties/json.
     Resource groups exist only for Docker Compose (docker-compose.core.yml:97-98 mounting trino/etc/resource-groups.json
     and .properties). Worker scaling and HPA are present. Maintainer 2026-10-03: finish it; accepted for
-    build.'
+    build. 2026-10-04: the chart ships Trino resource groups (helm/provisa/files/resource-groups.*, a copy
+    of trino/etc/resource-groups.*, kept equal by tests/unit/test_helm_trino_resource_groups.py), mounted
+    on the coordinator, which rolls when the Trino config changes. Every engine statement carries its
+    org in the Trino source ("provisa/<org>") and runs in global.tenant-<org>; an engine statement
+    with no org is rejected; other Trino users run in global.adhoc. Gap, by decision: the Arrow Flight
+    proxy (Zaychik) opens its own Trino connection with the JDBC default source and cannot name the
+    org, so all Flight-path statements share one group, global.flight. Per-tier limits (REQ-1040) are
+    not part of this: every org gets the same tenant limits.'
 - id: REQ-057
   status: complete
   group: 11. Platform, Infrastructure & Delivery
