@@ -4,6 +4,9 @@
     "intro": "These still refer to it. Remove or change each one, then delete again.",
     "open": "Open the page",
     "close": "Close",
+    "removeTableGrants": "Remove this role from this table's grants",
+    "removeGrant": "Remove this role's grant",
+    "removeAssignment": "Remove assignment",
     "kind": {
       "table": "Tables and views",
       "column": "Column grants",

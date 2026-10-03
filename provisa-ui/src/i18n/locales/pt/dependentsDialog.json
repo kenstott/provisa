@@ -4,6 +4,9 @@
     "intro": "Estes objetos ainda lhe fazem referência. Remova ou altere cada um e elimine novamente.",
     "open": "Abrir a página",
     "close": "Fechar",
+    "removeTableGrants": "Remover esta função das permissões desta tabela",
+    "removeGrant": "Remover a permissão desta função",
+    "removeAssignment": "Remover atribuição",
     "kind": {
       "table": "Tabelas e vistas",
       "column": "Permissões de coluna",

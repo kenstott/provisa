@@ -232,6 +232,32 @@
     "loadManagementInfoLabel": "Over belastingbeheer en actualiteit",
     "loadManagementInfo": "Weegt af hoe actueel de gegevens van elke lezer zijn tegen de belasting van het platform en de upstreambronnen. Idealiter beheert de upstreambron haar eigen belasting; de operator beschermt het platform, en de bron wanneer die zichzelf niet kan beschermen. Deze instellingen zijn de ondergrens van de operator: geen query of verzoekhint kan actuelere gegevens krijgen of een bron zwaarder belasten dan zij toestaan. Lezers kunnen alleen kiezen om voor snelheid oudere gegevens te accepteren. Een tabel die de engine live leest, negeert de TTL-instellingen; ze gelden zodra de tabel vanuit haar replica wordt bediend ('Repliceren' of 'Belastingbeveiligd').",
     "cacheTtlRequiredForSignal": "Het wijzigingssignaal {{signal}} beoordeelt de actualiteit op basis van de Cache-TTL; stel dus hier of op de bron een Cache-TTL in.",
-    "loadManagementFixErrors": "Corrigeer de instellingen voor Belastingbeheer en actualiteit voordat u opslaat."
+    "loadManagementFixErrors": "Corrigeer de instellingen voor Belastingbeheer en actualiteit voordat u opslaat.",
+    "pagingLabel": "Paginering",
+    "pagingEndpointHelp": "Hoe dit endpoint pagina voor pagina wordt gelezen. Een leesbewerking stopt na Max. pagina's; een antwoord waarvan de API meer had, wordt als afgekapt gemeld en nooit als volledig in de cache opgeslagen.",
+    "pagingConnectionHelp": "Het maximale aantal rijen dat één leesbewerking van deze connection-tabel neemt. Laat leeg om Rijen per leesbewerking van externe GraphQL te gebruiken; een tabel mag dit verlagen, nooit verhogen.",
+    "pagingMaxRows": "Max. rijen per leesbewerking",
+    "pagingMaxRowsDefault": "Standaard: {{ceiling}}",
+    "pagingType": "Pagineringstype",
+    "pagingNone": "Niet gepagineerd",
+    "pagingTypes": {
+      "offset": "Offset en limiet",
+      "page_number": "Paginanummer",
+      "cursor": "Cursor",
+      "link_header": "Link-header"
+    },
+    "pagingFields": {
+      "pageParam": "Paginaparameter",
+      "pageSizeParam": "Parameter voor paginagrootte",
+      "pageSize": "Paginagrootte",
+      "cursorParam": "Cursorparameter",
+      "cursorField": "Veld voor volgende cursor",
+      "maxPages": "Max. pagina's"
+    },
+    "pagingCutNote": "Een leesbewerking die Max. pagina's bereikt terwijl de API meer heeft, wordt als afgekapt gemeld.",
+    "pagingTypeRequired": "Kies een pagineringstype, of maak de pagineringsvelden leeg.",
+    "pagingPositive": "Gebruik een geheel getal van 1 of meer.",
+    "pagingAboveCeiling": "Hoogstens {{ceiling}}: een tabel mag de grens van de beheerder verlagen, nooit verhogen.",
+    "pagingFixErrors": "Herstel de pagineringsfouten voordat u opslaat."
   }
 }

@@ -15,9 +15,10 @@
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from provisa.core.auth_models import ApiAuth
+from provisa.core.paging import PaginationConfig
 
 
 class ApiSourceType(str, Enum):  # REQ-295, REQ-297, REQ-298
@@ -26,13 +27,6 @@ class ApiSourceType(str, Enum):  # REQ-295, REQ-297, REQ-298
     grpc_api = "grpc_api"
     neo4j = "neo4j"  # REQ-1668: Cypher over the Neo4j HTTP Query API
     sparql = "sparql"  # REQ-1683: SPARQL over the SPARQL 1.1 protocol
-
-
-class PaginationType(str, Enum):  # REQ-318
-    link_header = "link_header"
-    cursor = "cursor"
-    offset = "offset"
-    page_number = "page_number"
 
 
 class ParamType(str, Enum):  # REQ-299, REQ-599
@@ -73,16 +67,6 @@ class ApiColumn(BaseModel):  # REQ-299, REQ-599
     description: str | None = None
 
 
-class PaginationConfig(BaseModel):  # REQ-318
-    type: PaginationType
-    cursor_field: str | None = None
-    cursor_param: str | None = None
-    page_param: str | None = None
-    page_size_param: str | None = None
-    page_size: int = 100
-    max_pages: int = 10
-
-
 class PromotionConfig(BaseModel):  # REQ-119
     jsonb_column: str
     field: str  # dot-path e.g. "address.city"
@@ -113,6 +97,16 @@ class ApiEndpoint(BaseModel):  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, RE
     body_encoding: Literal["json", "form", "neo4j_tx"] | None = None
     query_template: str | None = None  # Cypher or SPARQL query
     response_normalizer: str | None = None  # e.g. "neo4j_tabular" or "sparql_bindings"
+
+    @model_validator(mode="after")
+    def _endpoint_paging(self) -> "ApiEndpoint":
+        # The row's pagination is copied from its table's (provisa.core.paging); an endpoint is
+        # paged by a declared type, never by a connection table's row bound.
+        if self.pagination is not None and not self.pagination.is_endpoint:
+            raise ValueError(
+                f"api endpoint {self.table_name!r}: its pagination declares no paging type"
+            )
+        return self
 
 
 class ApiEndpointCandidate(BaseModel):

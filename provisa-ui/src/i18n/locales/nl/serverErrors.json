@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json is geen geldige JSON: {{error}}",
       "args_json_not_object": "args_json moet een JSON-object zijn",
       "column_not_writable": "Rol '{{role}}' heeft geen schrijftoegang tot kolom '{{column}}'",
+      "definition_not_available": "{{statement}} is hier niet beschikbaar: definities worden gemaakt in het model of in de gegevensbron, en rijen worden verwijderd met DELETE.",
       "engine_not_connected": "de engine is niet verbonden",
       "grpc_source_not_registered": "Externe gRPC-bron '{{source_id}}' niet geregistreerd",
       "invalid_as_of": "ongeldige X-Provisa-As-Of: {{error}}",
@@ -82,6 +83,7 @@
       "no_source_pool": "Geen verbindingspool voor bron '{{source}}'",
       "query_required": "query is vereist",
       "query_timeout": "Query verlopen na {{timeout_s}}s",
+      "query_too_complex": "De complexiteit van de query ({{score}}) overschrijdt de limiet van {{limit}} ({{limit_of}}).",
       "redirect_upload_failed": "Redirect-upload mislukt: {{error}}",
       "request_interrupted": "{{error}}",
       "row_level_key_required": "Tabel '{{table}}' wordt rij voor rij gerepliceerd en kan alleen via de sleutel ({{key}}) worden gelezen. Filter op de sleutel met een gelijkheid of een IN-lijst, of koppel de tabel op één kolom.",
@@ -90,7 +92,7 @@
       "table_not_found": "Tabel '{{table}}' niet gevonden",
       "unknown_action_field": "Onbekend actieveld: '{{field}}'",
       "unknown_command": "Onbekende opdracht '{{name}}'",
-      "query_too_complex": "De complexiteit van de query ({{score}}) overschrijdt de limiet van {{limit}} ({{limit_of}})."
+      "write_not_admitted": "De rol '{{role}}' mag deze schrijfbewerking niet uitvoeren: een schrijfbewerking vereist het schrijfrecht, schrijftoegang tot elke kolom die wordt geschreven en rijen die het rijfilter van de rol toelaat."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter voor '{{source_type}}' implementeert discover_schema niet",
@@ -178,8 +180,8 @@
       "already_exists": "Organisatie bestaat al",
       "auth_required_create": "Verificatie vereist om een organisatie te maken",
       "auth_required_leave": "Verificatie vereist om een organisatie te verlaten",
-      "auto_join_public_domain": "auto_join vereist een e-mailregel die beperkt is tot een domein dat u beheert — deze komt overeen met {{domain}}.",
       "auto_join_breadth_unacknowledged": "Bekijk deze regel voor automatische deelname zorgvuldig, anders laat je mogelijk mensen van buiten je organisatie toe: naast {{domains}} accepteert hij ook adressen zoals {{admits}}. Iedereen op een domein dat je niet beheert, zou dan automatisch lid van je organisatie kunnen worden. Bevestig dat je dat risico accepteert om op te slaan.",
+      "auto_join_public_domain": "auto_join vereist een e-mailregel die beperkt is tot een domein dat u beheert — deze komt overeen met {{domain}}.",
       "auto_join_requires_role": "auto_join vereist auto_join_role",
       "auto_join_rule_taken": "Een andere organisatie laat al iedereen automatisch deelnemen die aan deze regel voldoet. Twee organisaties kunnen niet dezelfde adressen claimen — vraag hen om een uitnodiging, of beperk je regel tot een domein dat alleen je organisatie gebruikt.",
       "auto_join_rule_unbounded": "Deze regel voor automatische deelname heeft geen grens: hij zou adressen toelaten op domeinen die je niet beheert. Verankker hem aan een domein dat je bezit, bijv. \"@acme\\\\.com$\".",
@@ -203,9 +205,9 @@
       "config_object_edited": "{{name}} is gedeclareerd in de configuratie. De wijziging is opgeslagen; bij de volgende keer laden van de configuratie wordt de inhoud van het bestand opnieuw toegepast."
     },
     "platform": {
+      "control_plane_role_required": "Een platformbeheerder is vereist.",
       "right_required": "Capability {{right}} vereist",
-      "settings_capability_required": "Capability platform_settings vereist",
-      "control_plane_role_required": "Een platformbeheerder is vereist."
+      "settings_capability_required": "Capability platform_settings vereist"
     },
     "profile": {
       "database_unavailable": "Database niet beschikbaar",
@@ -214,14 +216,14 @@
       "table_not_found": "Tabel {{table_id}} niet gevonden"
     },
     "replication": {
-      "spool_full": "De replica-build van {{table}} is geweigerd: het spoolen van het antwoord van de bron vereist {{needed}} bytes in de spoolmap van dit knooppunt, boven de limiet van {{limit}} (replication.spool_max_bytes).",
       "answer_not_json": "Het antwoord dat voor de replica van {{table}} is gelezen, is geen geldige JSON: {{cause}} (in de {{kib}} KiB vóór byte {{before_byte}} van het antwoord).",
       "no_whole_copy": "Tabel {{schema}}.{{table}} van bron {{source}} heeft geen volledige kopie om te bouwen: ze wordt rij voor rij gerepliceerd of heeft een parameterkolom.",
-      "table_gone": "Tabel {{schema}}.{{table}} van bron {{source}} is niet meer geregistreerd, dus de replica ervan wordt niet gebouwd.",
       "page_limit_reached": "De replica van {{table}} is niet gebouwd: de paginering van het endpoint stopt bij max_pages={{max_pages}}, en het endpoint had meer gegevens na pagina {{max_pages}} ({{rows}} rijen gelezen). Een replica is de hele tabel en wordt dus niet afgekapt bij de limiet. Verhoog max_pages of de paginagrootte van het endpoint.",
+      "row_limit_reached": "De replica van {{table}} is niet gebouwd: een leesactie stopt bij max_rows={{max_rows}} (graphql_remote.max_rows), en de remote had meer gegevens na {{rows}} rijen. Een replica is de hele tabel en wordt dus niet afgekapt bij de limiet. Verhoog graphql_remote.max_rows.",
+      "spool_full": "De replica-build van {{table}} is geweigerd: het spoolen van het antwoord van de bron vereist {{needed}} bytes in de spoolmap van dit knooppunt, boven de limiet van {{limit}} (replication.spool_max_bytes).",
+      "table_gone": "Tabel {{schema}}.{{table}} van bron {{source}} is niet meer geregistreerd, dus de replica ervan wordt niet gebouwd.",
       "waiting_engine_jobs": "de engine zit aan zijn limiet voor achtergrondtaken (replication.engine_jobs)",
-      "waiting_source_cap": "de bron zit aan zijn limiet voor live-leesbewerkingen (max_live_concurrency)",
-      "row_limit_reached": "De replica van {{table}} is niet gebouwd: een leesactie stopt bij max_rows={{max_rows}} (graphql_remote.max_rows), en de remote had meer gegevens na {{rows}} rijen. Een replica is de hele tabel en wordt dus niet afgekapt bij de limiet. Verhoog graphql_remote.max_rows."
+      "waiting_source_cap": "de bron zit aan zijn limiet voor live-leesbewerkingen (max_live_concurrency)"
     },
     "roles": {
       "cannot_delete_system": "Systeemrollen kunnen niet worden verwijderd",
@@ -251,6 +253,7 @@
       "domain_deleted": "Domein '{{domain}}' verwijderd",
       "domain_not_found": "Domein '{{domain}}' niet gevonden",
       "fact_registered": "Feit '{{fact}}' geregistreerd met {{links}} dimensiekoppeling(en) en {{metrics}} metric(s)",
+      "grant_object_not_found": "Geen {{kind}} met de naam '{{name}}'",
       "invalid_askamerica_key": "Ongeldige AskAmerica API-sleutel: {{error}}",
       "invalid_calendar": "ongeldige kalender: {{error}}",
       "invalid_cardinality": "Ongeldige kardinaliteit: '{{cardinality}}'",
@@ -270,12 +273,19 @@
       "no_tables_for_source": "Geen tabellen geregistreerd voor bron '{{source}}'",
       "no_view_sql": "Tabel heeft geen view_sql",
       "not_virtual_view": "Tabel is geen virtuele Provisa-view (source_id != '__derived__')",
+      "paging_above_ceiling": "Tabel {{table}}: max_rows={{max_rows}} ligt boven graphql_remote.max_rows={{ceiling}}; een tabel mag de grens van de beheerder verlagen, nooit verhogen.",
+      "paging_connection_rows_only": "Tabel {{table}} is een connection-tabel: die pagineert via de argumenten van het schema en stelt alleen max. rijen in.",
+      "paging_endpoint_needs_type": "Tabel {{table}} is een REST-endpoint: de paginering noemt het pagineringstype.",
+      "paging_invalid": "Tabel {{table}}: {{reason}}",
+      "paging_not_paged": "Tabel {{table}} wordt niet pagina voor pagina gelezen en neemt daarom geen paginering.",
       "query_engine_unavailable": "Query-engine niet beschikbaar",
       "rejection_reason_required": "Een afwijzingsreden is vereist",
       "relationship_deleted": "Relatie '{{relationship}}' verwijderd",
       "relationship_not_found": "Relatie '{{relationship}}' niet gevonden",
       "relationship_saved": "Relatie '{{relationship}}' opgeslagen",
       "remigrated": "{{source}}.{{table}} opnieuw gemigreerd",
+      "replicate_contradicts_load_protected": "Belastingsbescherming kan niet worden gecombineerd met Repliceren = 'Nooit': een tabel met belastingsbescherming wordt nooit live gelezen",
+      "replicate_invalid": "Repliceren moet 'Standaard', 'Nooit', 'Altijd' of een drempel boven 0 zijn; ontvangen: {{value}}",
       "request_executed": "Aanmaakverzoek #{{id}} uitgevoerd",
       "request_not_pending": "Verzoek niet gevonden of al afgehandeld",
       "request_rejected": "Aanmaakverzoek #{{id}} afgewezen",
@@ -286,6 +296,8 @@
       "role_created": "Rol '{{role}}' gemaakt",
       "role_deleted": "Rol '{{role}}' verwijderd",
       "role_not_found": "Rol '{{role}}' niet gevonden",
+      "role_revoked_from_object": "Rol '{{role}}' verwijderd uit {{kind}} '{{name}}'",
+      "role_revoked_from_table": "Rol '{{role}}' verwijderd uit de rechten van tabel {{id}}",
       "scheduled_task_created": "Geplande taak '{{task}}' gemaakt",
       "schemas_rebuilt": "Schema's opnieuw opgebouwd",
       "source_cache_updated": "Cache-instellingen bijgewerkt voor bron '{{source}}'",
@@ -297,18 +309,23 @@
       "source_naming_updated": "Naamgevingsconventie bijgewerkt voor bron '{{source}}'",
       "source_no_connection": "bron '{{source}}' heeft geen actieve verbinding",
       "source_not_found": "Bron '{{source}}' niet gevonden",
-      "source_replicate_set": "Repliceren ingesteld voor bron '{{source}}'",
       "source_renamed": "Bron hernoemd '{{old}}' → '{{new}}'",
+      "source_replicate_set": "Repliceren ingesteld voor bron '{{source}}'",
       "source_type_not_sqlite": "Brontype '{{type}}' is geen sqlite",
       "source_updated": "Bron '{{source}}' bijgewerkt",
       "sql_required": "sql is vereist voor een SQL-trigger",
       "table_cache_updated": "Cache-TTL bijgewerkt voor tabel {{table}}",
       "table_deleted": "Tabel {{table}} verwijderd",
+      "table_id_not_found": "Tabel {{id}} niet gevonden",
       "table_load_protection_set": "belastingsbescherming ingesteld voor tabel {{table}}",
       "table_naming_updated": "Naamgevingsconventie bijgewerkt voor tabel {{table}}",
       "table_not_found": "Tabel {{table}} niet gevonden",
-      "table_replicate_set": "Repliceren ingesteld voor tabel {{table}}",
+      "table_not_readable": "De inloggegevens van deze bron mogen {{table}} niet lezen: {{reason}}",
+      "table_paging_updated": "Paginering bijgewerkt voor tabel {{table}}.",
       "table_registered": "Tabel '{{table}}' geregistreerd (id={{id}})",
+      "table_registered_fields_omitted": "Tabel '{{table}}' geregistreerd (id={{id}}). Weggelaten, omdat de inloggegevens van de bron ze niet mogen lezen: {{fields}}",
+      "table_replicate_set": "Repliceren ingesteld voor tabel {{table}}",
+      "table_too_complex": "Tabel '{{table}}' is niet geregistreerd met de geselecteerde kolommen: {{reason}}. Kies minder kolommen.",
       "table_updated": "Tabel '{{table}}' bijgewerkt (id={{id}})",
       "task_deleted": "Taak '{{task}}' verwijderd",
       "task_disabled": "Taak '{{task}}' uitgeschakeld",
@@ -323,12 +340,7 @@
       "view_spans_sources": "view omvat meerdere bronnen: {{sources}}",
       "webhook_approved": "Webhook '{{webhook}}' goedgekeurd",
       "webhook_name_required": "webhook_name is vereist voor een webhooktrigger",
-      "webhook_not_found": "Webhook '{{webhook}}' niet gevonden",
-      "replicate_invalid": "Repliceren moet 'Standaard', 'Nooit', 'Altijd' of een drempel boven 0 zijn; ontvangen: {{value}}",
-      "replicate_contradicts_load_protected": "Belastingsbescherming kan niet worden gecombineerd met Repliceren = 'Nooit': een tabel met belastingsbescherming wordt nooit live gelezen",
-      "table_registered_fields_omitted": "Tabel '{{table}}' geregistreerd (id={{id}}). Weggelaten, omdat de inloggegevens van de bron ze niet mogen lezen: {{fields}}",
-      "table_not_readable": "De inloggegevens van deze bron mogen {{table}} niet lezen: {{reason}}",
-      "table_too_complex": "Tabel '{{table}}' is niet geregistreerd met de geselecteerde kolommen: {{reason}}. Kies minder kolommen."
+      "webhook_not_found": "Webhook '{{webhook}}' niet gevonden"
     },
     "secrets": {
       "still_referenced": "{{secret}} wordt nog genoemd door {{count}} opgeslagen waarde(n) in deze organisatie. Wijzig of verwijder elk daarvan en verwijder het daarna opnieuw."

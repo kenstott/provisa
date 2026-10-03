@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import { Anchor, Button, Group, List, Modal, Stack, Text } from "@mantine/core";
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { Dependent } from "../lib/dependents";
@@ -40,12 +41,14 @@ interface DialogProps {
   subject: string;
   dependents: Dependent[];
   onClose: () => void;
+  /** What can be done about one dependent right here (a role's grant removed), if anything. */
+  itemAction?: (dependent: Dependent) => ReactNode;
 }
 
 /** "Cannot delete X yet": every object that still refers to it, grouped by kind, each linked to
  *  the page where it is removed or changed. There is nothing to confirm — the delete did not
  *  happen — so the only action is to close. */
-export function DependentsDialog({ subject, dependents, onClose }: DialogProps) {
+export function DependentsDialog({ subject, dependents, onClose, itemAction }: DialogProps) {
   const { t } = useTranslation();
   const kinds = Array.from(new Set(dependents.map((d) => d.kind)));
   return (
@@ -73,7 +76,12 @@ export function DependentsDialog({ subject, dependents, onClose }: DialogProps) 
               </Group>
               <List size="sm">
                 {ofKind.map((d) => (
-                  <List.Item key={`${d.kind}:${d.id}`}>{d.name || String(d.id)}</List.Item>
+                  <List.Item key={`${d.kind}:${d.id}`}>
+                    <Group gap="xs" wrap="nowrap">
+                      <span>{d.name || String(d.id)}</span>
+                      {itemAction?.(d)}
+                    </Group>
+                  </List.Item>
                 ))}
               </List>
             </div>

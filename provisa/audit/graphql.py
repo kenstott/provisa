@@ -140,6 +140,11 @@ def audit_graphql_request(
         return
     ok = status_code == 200  # noqa: PLR2004 - HTTP OK
     key = (str(state.schema_boot_id), int(state.schema_version), role_id, query)
+    from provisa.audit.provenance import enforced_for_request
+
+    # The request's fields were governed one by one; what the role's governance enforces on the
+    # tables the request read is built on the writer's thread from inputs captured now.
+    summary = enforced_for_request(state, role_id, ctx)
     enqueue_audit(
         PendingAudit(
             user_id=identity.user_id,
@@ -148,6 +153,8 @@ def audit_graphql_request(
             query_text=query,
             table_ids=lambda: _kept_table_ids(key, ctx),
             started=started,
+            model_stamp=state.model_stamp,
+            enforced=lambda: summary(_kept_table_ids(key, ctx)),
         ),
         status_code,
         state,

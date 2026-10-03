@@ -312,6 +312,7 @@ async def _execute_with_gql_remote(
     import asyncio
     from dataclasses import dataclass
     from provisa.graphql_remote.executor import execute_remote
+    from provisa.federation.registry_view import connection_rows
     from provisa.api_source.engine_cache import (
         org_cache_schema,
         cache_table_name,
@@ -429,7 +430,7 @@ async def _execute_with_gql_remote(
                 variables=gql_vars or None,
                 required_args=required_args or None,
                 rows_path=info["rows_path"],
-                max_rows=state.config.graphql_remote.max_rows,
+                max_rows=await connection_rows(state, info["source_id"], tn),  # REQ-318
                 error_policy=info["error_policy"],
             )
             if answer.cut:

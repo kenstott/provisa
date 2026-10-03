@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json ist kein gültiges JSON: {{error}}",
       "args_json_not_object": "args_json muss ein JSON-Objekt sein",
       "column_not_writable": "Rolle '{{role}}' hat keinen Schreibzugriff auf Spalte '{{column}}'",
+      "definition_not_available": "{{statement}} ist hier nicht verfügbar: Definitionen werden im Modell oder in der Datenquelle angelegt, und Zeilen werden mit DELETE entfernt.",
       "engine_not_connected": "Engine nicht verbunden",
       "grpc_source_not_registered": "gRPC-Remotequelle '{{source_id}}' nicht registriert",
       "invalid_as_of": "ungültiges X-Provisa-As-Of: {{error}}",
@@ -82,6 +83,7 @@
       "no_source_pool": "Kein Verbindungspool für Quelle '{{source}}'",
       "query_required": "query ist erforderlich",
       "query_timeout": "Zeitüberschreitung der Abfrage nach {{timeout_s}}s",
+      "query_too_complex": "Die Komplexität der Abfrage ({{score}}) überschreitet die Grenze {{limit}} ({{limit_of}}).",
       "redirect_upload_failed": "Redirect-Upload fehlgeschlagen: {{error}}",
       "request_interrupted": "{{error}}",
       "row_level_key_required": "Die Tabelle '{{table}}' wird zeilenweise repliziert und kann nur über ihren Schlüssel ({{key}}) gelesen werden. Filtern Sie den Schlüssel mit einer Gleichheit oder einer IN-Liste, oder verknüpfen Sie die Tabelle über eine einzelne Spalte.",
@@ -90,7 +92,7 @@
       "table_not_found": "Tabelle '{{table}}' nicht gefunden",
       "unknown_action_field": "Unbekanntes Aktionsfeld: '{{field}}'",
       "unknown_command": "Unbekannter Befehl '{{name}}'",
-      "query_too_complex": "Die Komplexität der Abfrage ({{score}}) überschreitet die Grenze {{limit}} ({{limit_of}})."
+      "write_not_admitted": "Die Rolle '{{role}}' darf diesen Schreibvorgang nicht ausführen: Ein Schreibvorgang erfordert das Schreibrecht, Schreibzugriff auf jede geschriebene Spalte und Zeilen, die der Zeilenfilter der Rolle zulässt."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter für '{{source_type}}' implementiert discover_schema nicht",
@@ -178,8 +180,8 @@
       "already_exists": "Organisation existiert bereits",
       "auth_required_create": "Zum Erstellen einer Organisation ist eine Authentifizierung erforderlich",
       "auth_required_leave": "Zum Verlassen einer Organisation ist eine Authentifizierung erforderlich",
-      "auto_join_public_domain": "auto_join benötigt eine E-Mail-Regel, die auf eine von Ihnen kontrollierte Domain beschränkt ist — diese trifft auf {{domain}} zu.",
       "auto_join_breadth_unacknowledged": "Prüfen Sie diese Regel für den automatischen Beitritt sorgfältig, sonst lassen Sie möglicherweise Personen von außerhalb Ihrer Organisation zu: Neben {{domains}} akzeptiert sie auch Adressen wie {{admits}}. Jede Person bei einer Domäne, die Sie nicht kontrollieren, könnte Ihrer Organisation dann automatisch beitreten. Bestätigen Sie, dass Sie dieses Risiko akzeptieren, um sie zu speichern.",
+      "auto_join_public_domain": "auto_join benötigt eine E-Mail-Regel, die auf eine von Ihnen kontrollierte Domain beschränkt ist — diese trifft auf {{domain}} zu.",
       "auto_join_requires_role": "auto_join erfordert auto_join_role",
       "auto_join_rule_taken": "Eine andere Organisation nimmt bereits automatisch alle auf, die dieser Regel entsprechen. Zwei Organisationen können nicht dieselben Adressen beanspruchen – bitten Sie sie um eine Einladung oder grenzen Sie Ihre Regel auf eine Domäne ein, die nur Ihre Organisation nutzt.",
       "auto_join_rule_unbounded": "Diese Regel für den automatischen Beitritt hat keine Begrenzung: Sie würde Adressen bei Domänen zulassen, die Sie nicht kontrollieren. Verankern Sie sie an einer Domäne, die Ihnen gehört, z. B. \"@acme\\\\.com$\".",
@@ -203,9 +205,9 @@
       "config_object_edited": "{{name}} ist in der Konfiguration deklariert. Die Änderung ist gespeichert; beim nächsten Laden der Konfiguration wird der Inhalt der Datei wieder angewendet."
     },
     "platform": {
+      "control_plane_role_required": "Ein Plattformadministrator ist erforderlich.",
       "right_required": "Fähigkeit {{right}} erforderlich",
-      "settings_capability_required": "Fähigkeit platform_settings erforderlich",
-      "control_plane_role_required": "Ein Plattformadministrator ist erforderlich."
+      "settings_capability_required": "Fähigkeit platform_settings erforderlich"
     },
     "profile": {
       "database_unavailable": "Datenbank nicht verfügbar",
@@ -214,14 +216,14 @@
       "table_not_found": "Tabelle {{table_id}} nicht gefunden"
     },
     "replication": {
-      "spool_full": "Der Replikat-Build von {{table}} wurde abgelehnt: Das Zwischenspeichern der Antwort der Quelle benötigt {{needed}} Bytes im Spool-Verzeichnis dieses Knotens und überschreitet das Limit von {{limit}} (replication.spool_max_bytes).",
       "answer_not_json": "Die für das Replikat von {{table}} gelesene Antwort ist kein gültiges JSON: {{cause}} (in den {{kib}} KiB vor Byte {{before_byte}} der Antwort).",
       "no_whole_copy": "Für die Tabelle {{schema}}.{{table}} der Quelle {{source}} gibt es keine vollständige Kopie zu bauen: Sie wird zeilenweise repliziert oder hat eine Parameterspalte.",
-      "table_gone": "Die Tabelle {{schema}}.{{table}} der Quelle {{source}} ist nicht mehr registriert, daher wird ihr Replikat nicht gebaut.",
       "page_limit_reached": "Das Replikat von {{table}} wurde nicht gebaut: Die Paginierung des Endpunkts endet bei max_pages={{max_pages}}, und der Endpunkt hatte nach Seite {{max_pages}} noch weitere Daten ({{rows}} Zeilen gelesen). Ein Replikat ist die ganze Tabelle und wird daher nicht an der Obergrenze abgeschnitten. Erhöhen Sie max_pages oder die Seitengröße des Endpunkts.",
+      "row_limit_reached": "Das Replikat von {{table}} wurde nicht gebaut: Ein Lesevorgang endet bei max_rows={{max_rows}} (graphql_remote.max_rows), und die Gegenstelle hatte nach {{rows}} Zeilen noch weitere Daten. Ein Replikat ist die ganze Tabelle und wird daher nicht an der Obergrenze abgeschnitten. Erhöhen Sie graphql_remote.max_rows.",
+      "spool_full": "Der Replikat-Build von {{table}} wurde abgelehnt: Das Zwischenspeichern der Antwort der Quelle benötigt {{needed}} Bytes im Spool-Verzeichnis dieses Knotens und überschreitet das Limit von {{limit}} (replication.spool_max_bytes).",
+      "table_gone": "Die Tabelle {{schema}}.{{table}} der Quelle {{source}} ist nicht mehr registriert, daher wird ihr Replikat nicht gebaut.",
       "waiting_engine_jobs": "die Engine hat ihre Obergrenze für Hintergrundjobs erreicht (replication.engine_jobs)",
-      "waiting_source_cap": "die Quelle hat ihre Obergrenze für Live-Lesezugriffe erreicht (max_live_concurrency)",
-      "row_limit_reached": "Das Replikat von {{table}} wurde nicht gebaut: Ein Lesevorgang endet bei max_rows={{max_rows}} (graphql_remote.max_rows), und die Gegenstelle hatte nach {{rows}} Zeilen noch weitere Daten. Ein Replikat ist die ganze Tabelle und wird daher nicht an der Obergrenze abgeschnitten. Erhöhen Sie graphql_remote.max_rows."
+      "waiting_source_cap": "die Quelle hat ihre Obergrenze für Live-Lesezugriffe erreicht (max_live_concurrency)"
     },
     "roles": {
       "cannot_delete_system": "Systemrollen können nicht gelöscht werden",
@@ -251,6 +253,7 @@
       "domain_deleted": "Domäne '{{domain}}' gelöscht",
       "domain_not_found": "Domäne '{{domain}}' nicht gefunden",
       "fact_registered": "Fakt '{{fact}}' mit {{links}} Dimensionsverknüpfung(en) und {{metrics}} Metrik(en) registriert",
+      "grant_object_not_found": "Kein {{kind}} mit dem Namen '{{name}}'",
       "invalid_askamerica_key": "Ungültiger AskAmerica-API-Schlüssel: {{error}}",
       "invalid_calendar": "ungültiger Kalender: {{error}}",
       "invalid_cardinality": "Ungültige Kardinalität: '{{cardinality}}'",
@@ -270,12 +273,19 @@
       "no_tables_for_source": "Keine Tabellen für Quelle '{{source}}' registriert",
       "no_view_sql": "Tabelle hat kein view_sql",
       "not_virtual_view": "Tabelle ist keine virtuelle Provisa-Sicht (source_id != '__derived__')",
+      "paging_above_ceiling": "Tabelle {{table}}: max_rows={{max_rows}} liegt über graphql_remote.max_rows={{ceiling}}; eine Tabelle darf die Grenze des Betreibers senken, nie erhöhen.",
+      "paging_connection_rows_only": "Die Tabelle {{table}} ist eine Connection-Tabelle: Sie paginiert über die Argumente ihres Schemas und legt nur max. Zeilen fest.",
+      "paging_endpoint_needs_type": "Die Tabelle {{table}} ist ein REST-Endpunkt: Ihre Paginierung nennt den Paginierungstyp.",
+      "paging_invalid": "Tabelle {{table}}: {{reason}}",
+      "paging_not_paged": "Die Tabelle {{table}} wird nicht seitenweise gelesen und nimmt daher keine Paginierung an.",
       "query_engine_unavailable": "Abfrage-Engine nicht verfügbar",
       "rejection_reason_required": "Ein Ablehnungsgrund ist erforderlich",
       "relationship_deleted": "Beziehung '{{relationship}}' gelöscht",
       "relationship_not_found": "Beziehung '{{relationship}}' nicht gefunden",
       "relationship_saved": "Beziehung '{{relationship}}' gespeichert",
       "remigrated": "{{source}}.{{table}} erneut migriert",
+      "replicate_contradicts_load_protected": "Lastschutz lässt sich nicht mit Replizieren = „Nie“ kombinieren: Eine lastgeschützte Tabelle wird nie live gelesen",
+      "replicate_invalid": "Replizieren muss „Standard“, „Nie“, „Immer“ oder ein Schwellenwert über 0 sein; erhalten: {{value}}",
       "request_executed": "Erstellungsanfrage #{{id}} ausgeführt",
       "request_not_pending": "Anfrage nicht gefunden oder bereits erledigt",
       "request_rejected": "Erstellungsanfrage #{{id}} abgelehnt",
@@ -286,6 +296,8 @@
       "role_created": "Rolle '{{role}}' erstellt",
       "role_deleted": "Rolle '{{role}}' gelöscht",
       "role_not_found": "Rolle '{{role}}' nicht gefunden",
+      "role_revoked_from_object": "Rolle '{{role}}' aus {{kind}} '{{name}}' entfernt",
+      "role_revoked_from_table": "Rolle '{{role}}' aus den Berechtigungen der Tabelle {{id}} entfernt",
       "scheduled_task_created": "Geplante Aufgabe '{{task}}' erstellt",
       "schemas_rebuilt": "Schemata neu aufgebaut",
       "source_cache_updated": "Cache-Einstellungen für Quelle '{{source}}' aktualisiert",
@@ -297,18 +309,23 @@
       "source_naming_updated": "Namenskonvention für Quelle '{{source}}' aktualisiert",
       "source_no_connection": "Quelle '{{source}}' hat keine aktive Verbindung",
       "source_not_found": "Quelle '{{source}}' nicht gefunden",
-      "source_replicate_set": "Replizieren für Quelle '{{source}}' gesetzt",
       "source_renamed": "Quelle umbenannt: '{{old}}' → '{{new}}'",
+      "source_replicate_set": "Replizieren für Quelle '{{source}}' gesetzt",
       "source_type_not_sqlite": "Quellentyp '{{type}}' ist nicht sqlite",
       "source_updated": "Quelle '{{source}}' aktualisiert",
       "sql_required": "sql ist für einen SQL-Trigger erforderlich",
       "table_cache_updated": "Cache-TTL für Tabelle {{table}} aktualisiert",
       "table_deleted": "Tabelle {{table}} gelöscht",
+      "table_id_not_found": "Tabelle {{id}} nicht gefunden",
       "table_load_protection_set": "Lastschutz für Tabelle {{table}} gesetzt",
       "table_naming_updated": "Namenskonvention für Tabelle {{table}} aktualisiert",
       "table_not_found": "Tabelle {{table}} nicht gefunden",
-      "table_replicate_set": "Replizieren für Tabelle {{table}} gesetzt",
+      "table_not_readable": "Die Zugangsdaten dieser Quelle dürfen {{table}} nicht lesen: {{reason}}",
+      "table_paging_updated": "Paginierung für Tabelle {{table}} aktualisiert.",
       "table_registered": "Tabelle '{{table}}' registriert (id={{id}})",
+      "table_registered_fields_omitted": "Tabelle '{{table}}' registriert (id={{id}}). Ausgelassen, weil die Zugangsdaten der Quelle sie nicht lesen dürfen: {{fields}}",
+      "table_replicate_set": "Replizieren für Tabelle {{table}} gesetzt",
+      "table_too_complex": "Die Tabelle '{{table}}' wurde mit den ausgewählten Spalten nicht registriert: {{reason}}. Wählen Sie weniger Spalten.",
       "table_updated": "Tabelle '{{table}}' aktualisiert (id={{id}})",
       "task_deleted": "Aufgabe '{{task}}' gelöscht",
       "task_disabled": "Aufgabe '{{task}}' deaktiviert",
@@ -323,12 +340,7 @@
       "view_spans_sources": "Sicht erstreckt sich über mehrere Quellen: {{sources}}",
       "webhook_approved": "Webhook '{{webhook}}' genehmigt",
       "webhook_name_required": "webhook_name ist für einen Webhook-Trigger erforderlich",
-      "webhook_not_found": "Webhook '{{webhook}}' nicht gefunden",
-      "replicate_invalid": "Replizieren muss „Standard“, „Nie“, „Immer“ oder ein Schwellenwert über 0 sein; erhalten: {{value}}",
-      "replicate_contradicts_load_protected": "Lastschutz lässt sich nicht mit Replizieren = „Nie“ kombinieren: Eine lastgeschützte Tabelle wird nie live gelesen",
-      "table_registered_fields_omitted": "Tabelle '{{table}}' registriert (id={{id}}). Ausgelassen, weil die Zugangsdaten der Quelle sie nicht lesen dürfen: {{fields}}",
-      "table_not_readable": "Die Zugangsdaten dieser Quelle dürfen {{table}} nicht lesen: {{reason}}",
-      "table_too_complex": "Die Tabelle '{{table}}' wurde mit den ausgewählten Spalten nicht registriert: {{reason}}. Wählen Sie weniger Spalten."
+      "webhook_not_found": "Webhook '{{webhook}}' nicht gefunden"
     },
     "secrets": {
       "still_referenced": "{{secret}} wird noch von {{count}} gespeicherten Wert(en) in dieser Organisation genannt. Ändern oder entfernen Sie jeden davon und löschen Sie es dann erneut."

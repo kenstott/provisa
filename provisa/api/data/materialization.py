@@ -374,7 +374,9 @@ async def _mat_gql_remote_table(
         0
     ]
     _max_items = state.config.graphql_remote.max_list_items
-    _max_rows = state.config.graphql_remote.max_rows
+    from provisa.federation.registry_view import connection_rows
+
+    _max_rows = await connection_rows(state, gql_reg["source_id"], tn)  # REQ-318
     if _store_scheme == "sqlite":
         gql_rows, _cut = await _fetch_gql_remote_rows(
             gql_reg, gql_tbl, col_selections, variables, _gql_to_sql, _max_items, _max_rows

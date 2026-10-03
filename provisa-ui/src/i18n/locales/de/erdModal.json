@@ -23,6 +23,7 @@
     "downloadSvg": "SVG herunterladen",
     "downloadPng": "PNG herunterladen",
     "downloadJpeg": "JPEG herunterladen",
+    "downloadJson": "Diagramm als JSON herunterladen (Tabellen, Spalten, Beziehungen)",
     "close": "Schließen",
     "hint": "Klicken Sie auf eine Domänengruppe zum Ein-/Ausklappen · gestrichelte Linien verbinden eingeklappte Domänen",
     "resizeHandle": "Domänenrahmen skalieren ({{corner}})"

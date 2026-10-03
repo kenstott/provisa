@@ -23,6 +23,7 @@
     "downloadSvg": "Descargar SVG",
     "downloadPng": "Descargar PNG",
     "downloadJpeg": "Descargar JPEG",
+    "downloadJson": "Descargar el diagrama como JSON (tablas, columnas, relaciones)",
     "close": "Cerrar",
     "hint": "Haga clic en un grupo de dominio para contraer / expandir · las líneas discontinuas conectan dominios contraídos",
     "resizeHandle": "Redimensionar el cuadro del dominio ({{corner}})"

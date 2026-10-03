@@ -86,6 +86,13 @@
     "errorNeo4jPreviewFirst": "Bekijk eerst een voorbeeld van de Cypher zodat de kolommen en hun typen bekend zijn.",
     "sparqlQueryLabel": "SPARQL-query",
     "sparqlQueryHint": "een SELECT waarvan de variabelen de kolommen worden (elke binding is tekst)",
-    "sparqlQueryPlaceholder": "SELECT ?name ?city WHERE { ?a <urn:name> ?name ; <urn:city> ?city }"
+    "sparqlQueryPlaceholder": "SELECT ?name ?city WHERE { ?a <urn:name> ?name ; <urn:city> ?city }",
+    "nlSearchLabel": "Tabellen zoeken op beschrijving",
+    "nlSearchPlaceholder": "bijv. tabellen voor klantfacturering en betalingen",
+    "nlSearchButton": "Zoeken",
+    "nlSearchNone": "Geen tabel in dit schema past bij die beschrijving.",
+    "nlSearchConfidence": "{{percent}}%",
+    "nlSearchRegistered": "Geregistreerd",
+    "nlSearchUse": "Gebruiken"
   }
 }

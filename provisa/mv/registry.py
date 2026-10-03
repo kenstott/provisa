@@ -91,7 +91,8 @@ class MVRegistry:  # REQ-133, REQ-135, REQ-158, REQ-159, REQ-160
         """Mark all MVs referencing a table as stale. Returns list of affected MV IDs."""
         affected = []
         for mv in self._mvs.values():
-            if table_name in mv.source_tables and mv.status != MVStatus.DISABLED:
+            reads = table_name in mv.source_tables or table_name in mv.read_tables
+            if reads and mv.status != MVStatus.DISABLED:
                 mv.status = MVStatus.STALE
                 affected.append(mv.id)
         return affected

@@ -153,6 +153,10 @@ class OrgRuntime:
     roles: dict[str, dict] = field(default_factory=dict)
     schemas: dict[str, "graphql.GraphQLSchema"] = field(default_factory=dict)
     contexts: dict[str, "CompilationContext"] = field(default_factory=dict)
+    # The whole model — every registered table and column, no role's grants applied — used ONLY
+    # to lower view SQL to physical (api/app_rebuild.py). It belongs to no role and never answers
+    # a request: who may read a view's rows is decided when the view is read.
+    view_context: "CompilationContext | None" = None
     rls_contexts: dict[str, "RLSContext"] = field(default_factory=dict)
     # REQ-1677: role id → [role, parent, grandparent, …], the chain folded into the build.
     role_chains: dict[str, list[str]] = field(default_factory=dict)

@@ -20,11 +20,8 @@ from typing import Any
 
 import httpx
 
-from provisa.api_source.models import (
-    ApiEndpoint,
-    PaginationConfig,
-    PaginationType,
-)
+from provisa.api_source.models import ApiEndpoint
+from provisa.core.paging import PaginationConfig, PaginationType
 
 # Requirements: REQ-295, REQ-297, REQ-298, REQ-316, REQ-320, REQ-322, REQ-325
 

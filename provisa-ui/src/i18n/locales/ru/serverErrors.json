@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json не является допустимым JSON: {{error}}",
       "args_json_not_object": "args_json должен быть объектом JSON",
       "column_not_writable": "Роль '{{role}}' не имеет доступа на запись к столбцу '{{column}}'",
+      "definition_not_available": "{{statement}} здесь недоступен: определения создаются в модели или в источнике данных, а строки удаляются с помощью DELETE.",
       "engine_not_connected": "движок не подключен",
       "grpc_source_not_registered": "Удаленный источник gRPC '{{source_id}}' не зарегистрирован",
       "invalid_as_of": "недействительный X-Provisa-As-Of: {{error}}",
@@ -82,6 +83,7 @@
       "no_source_pool": "Нет пула подключений для источника '{{source}}'",
       "query_required": "требуется query",
       "query_timeout": "Время ожидания запроса истекло через {{timeout_s}} с",
+      "query_too_complex": "Сложность запроса ({{score}}) превышает предел {{limit}} ({{limit_of}}).",
       "redirect_upload_failed": "Сбой загрузки с перенаправлением: {{error}}",
       "request_interrupted": "{{error}}",
       "row_level_key_required": "Таблица '{{table}}' реплицируется построчно и может быть прочитана только по её ключу ({{key}}). Отфильтруйте по ключу с помощью равенства или списка IN либо соедините таблицу по одному столбцу.",
@@ -90,7 +92,7 @@
       "table_not_found": "Таблица '{{table}}' не найдена",
       "unknown_action_field": "Неизвестное поле действия: '{{field}}'",
       "unknown_command": "Неизвестная команда '{{name}}'",
-      "query_too_complex": "Сложность запроса ({{score}}) превышает предел {{limit}} ({{limit_of}})."
+      "write_not_admitted": "Роль '{{role}}' не может выполнить эту запись: для записи нужны право записи, доступ на запись к каждому записываемому столбцу и строки, которые допускает фильтр строк роли."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Адаптер для '{{source_type}}' не реализует discover_schema",
@@ -178,8 +180,8 @@
       "already_exists": "Организация уже существует",
       "auth_required_create": "Для создания организации требуется аутентификация",
       "auth_required_leave": "Для выхода из организации требуется аутентификация",
-      "auto_join_public_domain": "Для auto_join нужно правило электронной почты, ограниченное доменом, которым вы владеете, — это правило соответствует {{domain}}.",
       "auto_join_breadth_unacknowledged": "Внимательно проверьте это правило автоприсоединения, иначе вы можете допустить людей извне вашей организации: помимо {{domains}}, оно также принимает адреса вроде {{admits}}. Любой человек из домена, которым вы не управляете, мог бы автоматически присоединиться к вашей организации. Подтвердите, что принимаете этот риск, чтобы сохранить правило.",
+      "auto_join_public_domain": "Для auto_join нужно правило электронной почты, ограниченное доменом, которым вы владеете, — это правило соответствует {{domain}}.",
       "auto_join_requires_role": "auto_join требует auto_join_role",
       "auto_join_rule_taken": "Другая организация уже автоматически принимает всех, кто подходит под это правило. Две организации не могут претендовать на одни и те же адреса — попросите у них приглашение или сузьте своё правило до домена, которым пользуется только ваша организация.",
       "auto_join_rule_unbounded": "У этого правила автоприсоединения нет границ: оно допустило бы адреса из доменов, которыми вы не управляете. Привяжите его к вашему домену, например \"@acme\\\\.com$\".",
@@ -203,9 +205,9 @@
       "config_object_edited": "{{name}} объявлен в конфигурации. Изменение сохранено; при следующей загрузке конфигурации содержимое файла будет применено заново."
     },
     "platform": {
+      "control_plane_role_required": "Требуется администратор платформы.",
       "right_required": "требуется право {{right}}",
-      "settings_capability_required": "требуется право platform_settings",
-      "control_plane_role_required": "Требуется администратор платформы."
+      "settings_capability_required": "требуется право platform_settings"
     },
     "profile": {
       "database_unavailable": "База данных недоступна",
@@ -214,14 +216,14 @@
       "table_not_found": "Таблица {{table_id}} не найдена"
     },
     "replication": {
-      "spool_full": "Сборка реплики {{table}} отклонена: для буферизации ответа источника требуется {{needed}} байт в каталоге spool этого узла, что превышает лимит {{limit}} (replication.spool_max_bytes).",
       "answer_not_json": "Ответ, прочитанный для реплики {{table}}, не является корректным JSON: {{cause}} (в {{kib}} КиБ перед байтом {{before_byte}} ответа).",
       "no_whole_copy": "У таблицы {{schema}}.{{table}} источника {{source}} нет полной копии для сборки: она реплицируется построчно или имеет столбец-параметр.",
-      "table_gone": "Таблица {{schema}}.{{table}} источника {{source}} больше не зарегистрирована, поэтому её реплика не собирается.",
       "page_limit_reached": "Реплика {{table}} не собрана: постраничное чтение конечной точки останавливается на max_pages={{max_pages}}, а после страницы {{max_pages}} у конечной точки оставались данные (прочитано строк: {{rows}}). Реплика — это вся таблица, поэтому она не обрезается по лимиту. Увеличьте max_pages или размер страницы конечной точки.",
+      "row_limit_reached": "Реплика {{table}} не собрана: чтение останавливается на max_rows={{max_rows}} (graphql_remote.max_rows), а после {{rows}} строк у удалённого источника оставались данные. Реплика — это вся таблица, поэтому она не обрезается по лимиту. Увеличьте graphql_remote.max_rows.",
+      "spool_full": "Сборка реплики {{table}} отклонена: для буферизации ответа источника требуется {{needed}} байт в каталоге spool этого узла, что превышает лимит {{limit}} (replication.spool_max_bytes).",
+      "table_gone": "Таблица {{schema}}.{{table}} источника {{source}} больше не зарегистрирована, поэтому её реплика не собирается.",
       "waiting_engine_jobs": "движок достиг лимита фоновых заданий (replication.engine_jobs)",
-      "waiting_source_cap": "источник достиг лимита прямых чтений (max_live_concurrency)",
-      "row_limit_reached": "Реплика {{table}} не собрана: чтение останавливается на max_rows={{max_rows}} (graphql_remote.max_rows), а после {{rows}} строк у удалённого источника оставались данные. Реплика — это вся таблица, поэтому она не обрезается по лимиту. Увеличьте graphql_remote.max_rows."
+      "waiting_source_cap": "источник достиг лимита прямых чтений (max_live_concurrency)"
     },
     "roles": {
       "cannot_delete_system": "Нельзя удалять системные роли",
@@ -251,6 +253,7 @@
       "domain_deleted": "Домен '{{domain}}' удален",
       "domain_not_found": "Домен '{{domain}}' не найден",
       "fact_registered": "Факт '{{fact}}' зарегистрирован: связей с измерениями — {{links}}, метрик — {{metrics}}",
+      "grant_object_not_found": "Нет {{kind}} с именем '{{name}}'",
       "invalid_askamerica_key": "Недействительный API-ключ AskAmerica: {{error}}",
       "invalid_calendar": "недействительный календарь: {{error}}",
       "invalid_cardinality": "Недопустимая кардинальность: '{{cardinality}}'",
@@ -270,12 +273,19 @@
       "no_tables_for_source": "Для источника '{{source}}' не зарегистрировано таблиц",
       "no_view_sql": "У таблицы нет view_sql",
       "not_virtual_view": "Таблица не является виртуальным представлением Provisa (source_id != '__derived__')",
+      "paging_above_ceiling": "Таблица {{table}}: max_rows={{max_rows}} больше graphql_remote.max_rows={{ceiling}}; таблица может уменьшить предел оператора, но не увеличить.",
+      "paging_connection_rows_only": "Таблица {{table}} — таблица-соединение: она читается постранично по аргументам своей схемы и задаёт только максимум строк.",
+      "paging_endpoint_needs_type": "Таблица {{table}} — конечная точка REST: в её постраничном чтении указывается тип.",
+      "paging_invalid": "Таблица {{table}}: {{reason}}",
+      "paging_not_paged": "Таблица {{table}} не читается постранично, поэтому постраничное чтение к ней не применяется.",
       "query_engine_unavailable": "Движок запросов недоступен",
       "rejection_reason_required": "Требуется указать причину отклонения",
       "relationship_deleted": "Связь '{{relationship}}' удалена",
       "relationship_not_found": "Связь '{{relationship}}' не найдена",
       "relationship_saved": "Связь '{{relationship}}' сохранена",
       "remigrated": "Повторно мигрировано {{source}}.{{table}}",
+      "replicate_contradicts_load_protected": "Защиту от нагрузки нельзя сочетать с репликацией = «Никогда»: таблица с защитой от нагрузки никогда не читается напрямую",
+      "replicate_invalid": "Репликация должна быть «По умолчанию», «Никогда», «Всегда» или порогом больше 0; получено {{value}}",
       "request_executed": "Выполнен запрос на создание #{{id}}",
       "request_not_pending": "Запрос не найден или уже обработан",
       "request_rejected": "Отклонен запрос на создание #{{id}}",
@@ -286,6 +296,8 @@
       "role_created": "Роль '{{role}}' создана",
       "role_deleted": "Роль '{{role}}' удалена",
       "role_not_found": "Роль '{{role}}' не найдена",
+      "role_revoked_from_object": "Роль '{{role}}' удалена из {{kind}} '{{name}}'",
+      "role_revoked_from_table": "Роль '{{role}}' удалена из разрешений таблицы {{id}}",
       "scheduled_task_created": "Запланированная задача '{{task}}' создана",
       "schemas_rebuilt": "Схемы перестроены",
       "source_cache_updated": "Настройки кеша обновлены для источника '{{source}}'",
@@ -297,18 +309,23 @@
       "source_naming_updated": "Соглашение об именовании обновлено для источника '{{source}}'",
       "source_no_connection": "источник '{{source}}' не имеет активного подключения",
       "source_not_found": "Источник '{{source}}' не найден",
-      "source_replicate_set": "Репликация задана для источника '{{source}}'",
       "source_renamed": "Источник переименован '{{old}}' → '{{new}}'",
+      "source_replicate_set": "Репликация задана для источника '{{source}}'",
       "source_type_not_sqlite": "Тип источника '{{type}}' не является sqlite",
       "source_updated": "Источник '{{source}}' обновлен",
       "sql_required": "для триггера SQL требуется sql",
       "table_cache_updated": "TTL кеша обновлен для таблицы {{table}}",
       "table_deleted": "Таблица {{table}} удалена",
+      "table_id_not_found": "Таблица {{id}} не найдена",
       "table_load_protection_set": "защита от нагрузки задана для таблицы {{table}}",
       "table_naming_updated": "Соглашение об именовании обновлено для таблицы {{table}}",
       "table_not_found": "Таблица {{table}} не найдена",
-      "table_replicate_set": "Репликация задана для таблицы {{table}}",
+      "table_not_readable": "Учётные данные этого источника не позволяют читать {{table}}: {{reason}}",
+      "table_paging_updated": "Постраничное чтение таблицы {{table}} обновлено.",
       "table_registered": "Таблица '{{table}}' зарегистрирована (id={{id}})",
+      "table_registered_fields_omitted": "Таблица '{{table}}' зарегистрирована (id={{id}}). Пропущены, так как учётные данные источника не позволяют их читать: {{fields}}",
+      "table_replicate_set": "Репликация задана для таблицы {{table}}",
+      "table_too_complex": "Таблица '{{table}}' не зарегистрирована с выбранными столбцами: {{reason}}. Выберите меньше столбцов.",
       "table_updated": "Таблица '{{table}}' обновлена (id={{id}})",
       "task_deleted": "Задача '{{task}}' удалена",
       "task_disabled": "Задача '{{task}}' отключена",
@@ -323,12 +340,7 @@
       "view_spans_sources": "представление охватывает несколько источников: {{sources}}",
       "webhook_approved": "Вебхук '{{webhook}}' одобрен",
       "webhook_name_required": "для триггера-вебхука требуется webhook_name",
-      "webhook_not_found": "Вебхук '{{webhook}}' не найден",
-      "replicate_invalid": "Репликация должна быть «По умолчанию», «Никогда», «Всегда» или порогом больше 0; получено {{value}}",
-      "replicate_contradicts_load_protected": "Защиту от нагрузки нельзя сочетать с репликацией = «Никогда»: таблица с защитой от нагрузки никогда не читается напрямую",
-      "table_registered_fields_omitted": "Таблица '{{table}}' зарегистрирована (id={{id}}). Пропущены, так как учётные данные источника не позволяют их читать: {{fields}}",
-      "table_not_readable": "Учётные данные этого источника не позволяют читать {{table}}: {{reason}}",
-      "table_too_complex": "Таблица '{{table}}' не зарегистрирована с выбранными столбцами: {{reason}}. Выберите меньше столбцов."
+      "webhook_not_found": "Вебхук '{{webhook}}' не найден"
     },
     "secrets": {
       "still_referenced": "{{secret}} всё ещё называют сохранённые значения в этой организации: {{count}}. Измените или удалите каждое и повторите удаление."

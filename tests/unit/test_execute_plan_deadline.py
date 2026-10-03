@@ -76,6 +76,8 @@ def _plan(*, surface: str | None = "http"):
             query_text="SELECT 1",
             table_ids=[],
             started=time.time(),
+            model_stamp=1,
+            enforced={},
         )
     )
     return _pipeline._Plan(

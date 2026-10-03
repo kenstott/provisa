@@ -4,6 +4,9 @@
     "intro": "Deze objecten verwijzen er nog naar. Verwijder of wijzig elk ervan en verwijder daarna opnieuw.",
     "open": "Pagina openen",
     "close": "Sluiten",
+    "removeTableGrants": "Deze rol uit de rechten van deze tabel verwijderen",
+    "removeGrant": "Het recht van deze rol verwijderen",
+    "removeAssignment": "Toewijzing verwijderen",
     "kind": {
       "table": "Tabellen en weergaven",
       "column": "Kolomrechten",

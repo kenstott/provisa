@@ -113,6 +113,13 @@ def view_inputs(mv: MVDefinition) -> list[str]:
     return sorted(mv.source_tables)
 
 
+def read_table_names(sql: str) -> frozenset[str]:
+    """The bare names of the tables a view's semantic SQL reads (``domain.table`` → ``table``)."""
+    from provisa.events.lineage import extract_inputs  # noqa: PLC0415
+
+    return frozenset(name.rsplit(".", 1)[-1] for name in extract_inputs(sql, "postgres"))
+
+
 async def unreadable_inputs(inputs: list[str], state: Any) -> list[UnreadableInput]:
     """Those of ``inputs`` a materialized view may not read, each with its kind and reason.
     Empty when every input is readable."""

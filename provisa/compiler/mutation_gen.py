@@ -373,37 +373,3 @@ def compile_mutation(  # REQ-031, REQ-032, REQ-033, REQ-036, REQ-037
     ]
 
     return results
-
-
-def inject_rls_into_mutation(  # REQ-035, REQ-040
-    mutation: MutationResult,
-    table_id: int,
-    rls_rules: dict[int, str],
-) -> MutationResult:
-    """Inject RLS WHERE clause into UPDATE/DELETE mutations."""
-    if mutation.mutation_type == "insert":
-        return mutation  # INSERT doesn't have WHERE
-
-    if table_id not in rls_rules:
-        return mutation
-
-    rls_filter = rls_rules[table_id]
-    # AND the RLS filter into the existing WHERE
-    sql = mutation.sql
-    import re
-
-    where_match = re.search(r"\bWHERE\b", sql, re.IGNORECASE)
-    if where_match:
-        pos = where_match.end()
-        sql = f"{sql[:pos]} ({rls_filter}) AND{sql[pos:]}"
-    else:
-        sql = f"{sql} WHERE ({rls_filter})"
-
-    return MutationResult(
-        sql=sql,
-        params=mutation.params,
-        mutation_type=mutation.mutation_type,
-        table_name=mutation.table_name,
-        source_id=mutation.source_id,
-        returning_columns=mutation.returning_columns,
-    )

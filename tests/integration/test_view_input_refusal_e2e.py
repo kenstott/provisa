@@ -166,10 +166,9 @@ def test_a_config_declaring_such_a_view_fails_the_load_naming_it(tmp_path_factor
                 "sql": _VIEW_SQL,
                 "materialize": True,
                 "domain_id": "rowlevel",
-                "source_id": "rl-neo4j",
                 "columns": [
-                    {"name": "region", "visible_to": [_ROLE]},
-                    {"name": "n", "visible_to": [_ROLE]},
+                    {"name": "region", "data_type": "varchar", "visible_to": [_ROLE]},
+                    {"name": "n", "data_type": "bigint", "visible_to": [_ROLE]},
                 ],
             }
         ],
@@ -180,7 +179,7 @@ def test_a_config_declaring_such_a_view_fails_the_load_naming_it(tmp_path_factor
         log = srv.dump_stderr_debug()
     finally:
         srv.stop_process()
-    assert "materialized view 'view-clicks-by-region' cannot be built" in log, log[-3000:]
+    assert "materialized view 'view-view_clicks_by_region' cannot be built" in log, log[-3000:]
     # The load reads the view's SQL with its tables resolved to where they live.
     assert f".{_TABLE}' is a row-level replicated table" in log, log[-3000:]
     assert "only the rows requests have fetched" in log, log[-3000:]

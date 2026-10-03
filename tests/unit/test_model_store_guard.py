@@ -592,4 +592,6 @@ async def test_each_dependent_carries_the_name_an_operator_knows_it_by(plane):
         "id": column,
         "name": "orders.amount",
         "via": ["table_columns.visible_to"],
+        # The table a column grant is changed through (revokeRoleFromTable).
+        "table_id": orders.id,
     }

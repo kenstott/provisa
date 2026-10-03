@@ -392,6 +392,87 @@ def then_affected_rows_count_inserted(shared_data):
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# The one write path, driven for real: the admission in the governance stage and the steps
+# after a write at the pipeline's terminal (pgwire._pipeline._after_write).
+# ---------------------------------------------------------------------------
+
+_PERSON_COLUMNS = ["id", "name", "age"]
+
+
+def _admit(sql: str, table_id: int, rls: dict[int, str] | None = None) -> str:
+    from tests.write_governance import admitted, target_ref, write_governance
+
+    return admitted(sql, write_governance({target_ref(sql): (table_id, _PERSON_COLUMNS)}, rls=rls))
+
+
+def _run_after_write(table_id: int, table_name: str, source_id: str) -> dict[str, list]:
+    """Finalize a successful write plan through the pipeline's terminal and record what the
+    steps after a write did."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from provisa.kafka import change_events as _change_mod
+    from provisa.kafka import sink_executor as _sink_mod
+    from provisa.pgwire._pipeline import _Plan, finalize_audit
+    from provisa.transpiler.router import Route
+
+    calls: dict[str, list] = {"invalidated": [], "stale": [], "events": [], "sinks": []}
+
+    class _Store:
+        async def invalidate_by_table(self, tid, tenant_id=None):
+            calls["invalidated"].append(tid)
+            return 1
+
+    async def _sinks(name, _state):
+        calls["sinks"].append(name)
+        return 0
+
+    state = SimpleNamespace(
+        response_cache_store=_Store(),
+        tenant_db="fake",
+        org_id="org-a",
+        model_stamp=1,
+        contexts={
+            "writer": SimpleNamespace(
+                tables={
+                    table_name: SimpleNamespace(
+                        table_id=table_id, table_name=table_name, source_id=source_id
+                    )
+                }
+            )
+        },
+        mv_registry=SimpleNamespace(mark_stale=calls["stale"].append),
+        hot_manager=None,
+    )
+    plan = _Plan(
+        route=Route.DIRECT,
+        sql="INSERT",
+        source_id=source_id,
+        dialect="postgres",
+        role_id="writer",
+        table_ids=(table_id,),
+        writes_tables=True,
+        written_table_id=table_id,
+    )
+
+    async def _no_replica(_state, _table_id, _source_id):
+        return None  # no replica store here: the build request has its own tests
+
+    with (
+        patch.object(_change_mod, "emit_change_event", lambda *a: calls["events"].append(a)),
+        patch.object(_sink_mod, "trigger_sinks_for_table", _sinks),
+        patch("provisa.api.data.table_written._request_replica_build", _no_replica),
+    ):
+
+        async def _finalize():
+            await finalize_audit(plan, 200, state)
+            await asyncio.sleep(0)  # the sink run is spawned in the background
+
+        asyncio.run(_finalize())
+    return calls
+
+
 def _make_req798_label_map() -> CypherLabelMap:
     """Minimal label map for REQ-798 pipeline tests."""
     person_meta = NodeMapping(
@@ -471,35 +552,20 @@ def when_transpiled_through_write_translator_and_wrapped(shared_data):
 
 @then("RLS is injected via inject_rls_into_mutation")
 def then_rls_injected(shared_data):
-    """Verify that inject_rls_into_mutation is called on the translated SQL.
-
-    inject_rls_into_mutation receives the raw SQL write statement and the
-    current role context, then returns an SQL string with row-level-security
-    predicates woven in.  We patch the function to capture the call and
-    confirm that the output SQL (which carries the RLS predicate) is stored
-    for the next pipeline stage.
-    """
-    from provisa.compiler import mutation_gen as _mut_mod
+    """The role's row filter is applied to the translated write by the one write admission in
+    the governance stage (compiler/write_admission.py) — the same predicate reads carry. A
+    CREATE has no rows to narrow, so its new row is checked against the filter: inside it the
+    statement goes on as translated, outside it the write is refused."""
+    from provisa.compiler.write_admission import WriteNotAdmitted
 
     sql_before = shared_data["sql"]
-    role_context = {"role_id": "analyst", "tenant_id": "tenant-42"}
+    adults = {10: "age >= 18"}
+    admitted_sql = _admit(sql_before, 10, adults)
+    assert admitted_sql == sql_before, admitted_sql  # Eve, 25: inside the filter
+    with pytest.raises(WriteNotAdmitted, match="outside role"):
+        _admit(sql_before.replace("25", "12"), 10, adults)
 
-    rls_sql = sql_before + " /* RLS:tenant-42 */"
-
-    with patch.object(
-        _mut_mod,
-        "inject_rls_into_mutation",
-        return_value=rls_sql,
-    ) as mock_inject:
-        result_sql = _mut_mod.inject_rls_into_mutation(sql_before, role_context)
-
-    mock_inject.assert_called_once_with(sql_before, role_context)
-    assert result_sql == rls_sql, (
-        f"inject_rls_into_mutation must return the RLS-enriched SQL; got: {result_sql!r}"
-    )
-    assert "RLS" in result_sql, "RLS predicate marker must be present in the post-injection SQL"
-
-    shared_data["rls_sql"] = result_sql
+    shared_data["rls_sql"] = admitted_sql
 
 
 @then("the mutation is transpiled to the target dialect")
@@ -581,70 +647,23 @@ def then_executed_via_execute_direct(shared_data):
 def then_post_mutation_hooks_fire(shared_data):
     """Verify every post-mutation hook is invoked after a successful write.
 
-    These are the real hooks the write pipeline fires in
-    provisa/api/rest/cypher_router.py after a successful Cypher mutation:
-      1. ResponseCacheStore.invalidate_by_table — clears cached responses
-      2. MVRegistry.mark_stale                  — flags dependent MVs as stale
-      3. emit_change_event                       — publishes a Kafka CDC event
-      4. trigger_sinks_for_table                 — fires Kafka sink connectors
-
-    Each is patched so the test runs without live infrastructure, then driven
-    with the same call signatures the router uses.
+    The steps after a write run once, at the pipeline's terminal, for a write on any surface
+    (pgwire._pipeline._after_write, from finalize_audit): the response cache is invalidated for
+    the written tables, views over the table are marked stale, its change event is emitted and
+    its change-event sinks run. Driven here through the real terminal; only the Kafka publish
+    and the sink run are recorded instead of performed.
     """
-    from provisa.cache.store import NoopCacheStore
-    from provisa.mv.registry import MVRegistry
-    from provisa.kafka import change_events as _change_mod
-    from provisa.kafka import sink_executor as _sink_mod
-
     mutation_result = shared_data["mutation_result"]
     execute_result = shared_data["execute_result"]
     assert execute_result["affected_rows"] == 1, "hooks only fire after a successful write"
-    table_name = mutation_result.table_name
-    source_id = mutation_result.source_id
-    table_id = 10  # router derives this from table_meta.table_id
-    state = object()  # opaque AppState; trigger_sinks_for_table is patched
 
-    mock_invalidate = AsyncMock(return_value=1)
-    mock_mark_mv = MagicMock(return_value=[])
-    mock_emit_change = MagicMock(return_value=None)
-    mock_trigger_sink = AsyncMock(return_value=0)
+    calls = _run_after_write(10, mutation_result.table_name, mutation_result.source_id)
 
-    with (
-        patch.object(NoopCacheStore, "invalidate_by_table", mock_invalidate),
-        patch.object(MVRegistry, "mark_stale", mock_mark_mv),
-        patch.object(_change_mod, "emit_change_event", mock_emit_change),
-        patch.object(_sink_mod, "trigger_sinks_for_table", mock_trigger_sink),
-    ):
-        import asyncio
-
-        cache_store = NoopCacheStore()
-        mv_registry = MVRegistry.__new__(MVRegistry)
-
-        async def _run_hooks():
-            # Same call order/signatures as cypher_router.py post-mutation block.
-            await cache_store.invalidate_by_table(table_id)
-            mv_registry.mark_stale(table_name)
-            _change_mod.emit_change_event(table_name, source_id)
-            await _sink_mod.trigger_sinks_for_table(table_name, state)
-
-        asyncio.run(_run_hooks())
-
-    # Assert each real hook was called exactly once with the router's arguments.
-    mock_invalidate.assert_called_once_with(table_id)
-    mock_mark_mv.assert_called_once_with(table_name)
-    mock_emit_change.assert_called_once_with(table_name, source_id)
-    mock_trigger_sink.assert_called_once_with(table_name, state)
-
-    shared_data["hooks_fired"] = {
-        "invalidate_by_table": mock_invalidate.call_count == 1,
-        "mark_stale": mock_mark_mv.call_count == 1,
-        "emit_change_event": mock_emit_change.call_count == 1,
-        "trigger_sinks_for_table": mock_trigger_sink.call_count == 1,
-    }
-
-    assert all(shared_data["hooks_fired"].values()), (
-        f"Not all post-mutation hooks fired: {shared_data['hooks_fired']}"
-    )
+    assert calls["invalidated"] == [10]
+    assert calls["stale"] == [mutation_result.table_name]
+    assert calls["events"] == [(mutation_result.table_name, mutation_result.source_id)]
+    assert calls["sinks"] == [mutation_result.table_name]
+    shared_data["hooks_fired"] = calls
 
 
 scenarios("../features/REQ-818.feature")
@@ -676,124 +695,54 @@ def given_valid_create_statement(shared_data):
 
 @when("executed via the /data/cypher endpoint")
 def when_executed_via_cypher_endpoint(shared_data):
-    """Simulate the full /data/cypher write pipeline: translate, wrap, inject RLS, execute."""
+    """The endpoint's write path: translate, admit through the one write admission (the role
+    holds the write right and is named on the columns), then the pipeline's terminal runs the
+    steps after a write. The source execution is the only stage stood in for."""
+    import asyncio
+
     from provisa.cypher.write_translator import WriteTranslator
-    from provisa.compiler.mutation_gen import MutationResult
-    from provisa.compiler import mutation_gen as _mut_mod
     from provisa.executor import direct as _direct_mod
-    from provisa.cache.store import NoopCacheStore
-    from provisa.mv.registry import MVRegistry
-    from provisa.kafka import change_events as _change_mod
-    from provisa.kafka import sink_executor as _sink_mod
 
-    label_map = shared_data["label_map"]
-    ast = shared_data["ast"]
-
-    # Stage 1: WriteTranslator → SQL
-    translator = WriteTranslator(label_map)
-    raw_result = translator.translate(ast)
-    sql_text, params = _coerce_to_sql(raw_result)
-    assert sql_text, "WriteTranslator must produce non-empty SQL"
-
-    # Stage 2: Wrap in MutationResult
-    mutation_result = MutationResult(
-        sql=sql_text,
-        source_id="pg-main",
-        params=params or {},
-        mutation_type="insert",
-        table_name="person",
-        returning_columns=[],
+    sql_text, _params = _coerce_to_sql(
+        WriteTranslator(shared_data["label_map"]).translate(shared_data["ast"])
     )
+    assert sql_text, "WriteTranslator must produce non-empty SQL"
+    governed = _admit(sql_text, 1, {1: "age >= 18"})  # Frank, 35: inside the filter
 
-    # Stage 3: RLS injection (mocked)
-    rls_sql = sql_text + " /* RLS:tenant-test */"
-    mock_inject = MagicMock(return_value=rls_sql)
+    with patch.object(
+        _direct_mod, "execute_direct", AsyncMock(return_value={"affected_rows": 1})
+    ) as mock_execute:
+        exec_result = asyncio.run(
+            _direct_mod.execute_direct(sql=governed, source_id="pg-main", pool=MagicMock())
+        )
+    mock_execute.assert_called_once()
 
-    # Stage 4: execute_direct (mocked to return affected_rows=1)
-    execute_response = {"affected_rows": 1, "rows": [], "columns": []}
-    mock_execute = AsyncMock(return_value=execute_response)
-
-    # Stage 5: post-mutation hooks (all mocked)
-    mock_invalidate = AsyncMock(return_value=1)
-    mock_mark_mv = MagicMock(return_value=[])
-    mock_emit_change = MagicMock(return_value=None)
-    mock_trigger_sink = AsyncMock(return_value=0)
-
-    with (
-        patch.object(_mut_mod, "inject_rls_into_mutation", mock_inject),
-        patch.object(_direct_mod, "execute_direct", mock_execute),
-        patch.object(NoopCacheStore, "invalidate_by_table", mock_invalidate),
-        patch.object(MVRegistry, "mark_stale", mock_mark_mv),
-        patch.object(_change_mod, "emit_change_event", mock_emit_change),
-        patch.object(_sink_mod, "trigger_sinks_for_table", mock_trigger_sink),
-    ):
-        import asyncio
-
-        cache_store = NoopCacheStore()
-        mv_registry = MVRegistry.__new__(MVRegistry)
-        state = object()
-
-        async def _run_pipeline():
-            injected = _mut_mod.inject_rls_into_mutation(sql_text, {"role_id": "analyst"})
-            result = await _direct_mod.execute_direct(
-                sql=injected,
-                source_id=mutation_result.source_id,
-                pool=MagicMock(),
-            )
-            await cache_store.invalidate_by_table(10)
-            mv_registry.mark_stale(mutation_result.table_name)
-            _change_mod.emit_change_event(mutation_result.table_name, mutation_result.source_id)
-            await _sink_mod.trigger_sinks_for_table(mutation_result.table_name, state)
-            return result
-
-        exec_result = asyncio.run(_run_pipeline())
-
-    shared_data["sql"] = sql_text
-    shared_data["rls_sql"] = rls_sql
-    shared_data["mutation_result"] = mutation_result
+    shared_data["sql"] = governed
     shared_data["execute_result"] = exec_result
-    shared_data["mocks"] = {
-        "inject": mock_inject,
-        "execute": mock_execute,
-        "invalidate": mock_invalidate,
-        "mark_stale": mock_mark_mv,
-        "emit_change": mock_emit_change,
-        "trigger_sink": mock_trigger_sink,
-    }
+    shared_data["after_write"] = _run_after_write(1, "persons", "pg-main")
 
 
 @then(
     "it executes as a direct table write, returns affected_rows, and applies RLS + post-mutation hooks"
 )
 def then_direct_table_write_with_rls_and_hooks(shared_data):
-    # Verify direct table write
+    from provisa.compiler.write_admission import WriteNotAdmitted
+
     sql = shared_data["sql"]
     upper = sql.upper()
     assert "INSERT INTO" in upper, f"expected INSERT INTO for CREATE, got: {sql}"
     assert "PERSONS" in upper, f"target table 'persons' missing: {sql}"
+    assert shared_data["execute_result"]["affected_rows"] >= 1
 
-    # Verify affected_rows returned
-    exec_result = shared_data["execute_result"]
-    assert "affected_rows" in exec_result, "response must include affected_rows"
-    assert exec_result["affected_rows"] >= 1, (
-        f"expected at least 1 affected row, got: {exec_result['affected_rows']}"
-    )
+    # The role's filter decides the new row: a row outside it is refused before execution.
+    with pytest.raises(WriteNotAdmitted, match="outside role"):
+        _admit(sql.replace("35", "15"), 1, {1: "age >= 18"})
 
-    mocks = shared_data["mocks"]
-
-    # Verify RLS was injected
-    mocks["inject"].assert_called_once()
-    rls_sql = shared_data["rls_sql"]
-    assert "RLS" in rls_sql, "RLS marker must appear in the injected SQL"
-
-    # Verify execute_direct was called
-    mocks["execute"].assert_called_once()
-
-    # Verify all post-mutation hooks fired
-    mocks["invalidate"].assert_called_once()
-    mocks["mark_stale"].assert_called_once()
-    mocks["emit_change"].assert_called_once()
-    mocks["trigger_sink"].assert_called_once()
+    calls = shared_data["after_write"]
+    assert calls["invalidated"] == [1]
+    assert calls["stale"] == ["persons"]
+    assert calls["events"] == [("persons", "pg-main")]
+    assert calls["sinks"] == ["persons"]
 
 
 # ---------------------------------------------------------------------------

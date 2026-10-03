@@ -11,8 +11,10 @@
 """Unit tests for REQ-798: Cypher mutation transpilation + RLS injection.
 
 Pure logic only — no I/O, no network, no DB, no docker.
-Tests WriteTranslator (CREATE/DELETE/UPDATE), inject_rls_into_mutation,
-MutationResult wrapping, and dialect-agnostic SQL output.
+Tests WriteTranslator (CREATE/DELETE/UPDATE), the one write admission the translated statement
+passes (tests/write_governance.py: its columns' writable_by and the role's row filter, applied
+by the governance stage every surface's write goes through), MutationResult wrapping, and
+dialect-agnostic SQL output.
 """
 
 from __future__ import annotations
@@ -25,7 +27,10 @@ from provisa.cypher.write_translator import (
     WriteTranslator,
     parse_cypher_write,
 )
-from provisa.compiler.mutation_gen import MutationResult, inject_rls_into_mutation
+from provisa.compiler.mutation_gen import MutationResult
+from provisa.compiler.write_admission import WriteNotAdmitted
+from provisa.security.mutation_authz import ColumnNotWritable
+from tests.write_governance import admitted, write_governance
 
 
 # ---------------------------------------------------------------------------
@@ -255,38 +260,43 @@ def test_parse_arrow_in_string_not_treated_as_relationship(query):
 # ---------------------------------------------------------------------------
 
 
-class _FakeTableMeta:
-    def __init__(self, columns):
-        self.columns = columns
+_PERSON_COLUMNS = ["id", "name", "age", "email", "tenant_id", "region"]
+
+
+def _person_gov(*, rls: dict[int, str] | None = None, writable: list[str] | None = None):
+    """Governance over the persons table, both as the translator addresses it and as the
+    compiled helpers below do."""
+    return write_governance(
+        {
+            "public.persons": (TABLE_ID_PERSON, _PERSON_COLUMNS),
+            "mycat.public.persons": (TABLE_ID_PERSON, _PERSON_COLUMNS),
+        },
+        rls=rls,
+        writable=None if writable is None else {TABLE_ID_PERSON: writable},
+    )
+
+
+def _translated(cypher: str) -> str:
+    return WriteTranslator(_person_map()).translate(parse_cypher_write(cypher))
 
 
 def test_writable_by_denies_role_without_write_access():
-    from provisa.cypher.write_translator import write_acl_error
-
-    mapping = _person_map().nodes["Person"]
-    ast = parse_cypher_write("CREATE (n:Person {name: 'Alice'})")
-    table_meta = _FakeTableMeta([{"column_name": "name", "writable_by": ["admin"]}])
-    err = write_acl_error(table_meta, ast, mapping, "analyst")
-    assert err is not None and err[0] == 403
+    with pytest.raises(ColumnNotWritable, match="column 'name'"):
+        admitted(_translated("CREATE (n:Person {name: 'Alice'})"), _person_gov(writable=["id"]))
 
 
 def test_writable_by_allows_permitted_role():
-    from provisa.cypher.write_translator import write_acl_error
-
-    mapping = _person_map().nodes["Person"]
-    ast = parse_cypher_write("MATCH (n:Person) WHERE n.id = 1 SET n.name = 'Bob'")
-    table_meta = _FakeTableMeta([{"column_name": "name", "writable_by": ["admin", "analyst"]}])
-    assert write_acl_error(table_meta, ast, mapping, "analyst") is None
+    sql = _translated("MATCH (n:Person) WHERE n.id = 1 SET n.name = 'Bob'")
+    assert admitted(sql, _person_gov(writable=["name"])) == sql
 
 
-def test_writable_by_delete_is_not_gated():
-    from provisa.cypher.write_translator import write_acl_error
-
-    mapping = _person_map().nodes["Person"]
-    ast = parse_cypher_write("MATCH (n:Person) WHERE n.id = 1 DELETE n")
-    table_meta = _FakeTableMeta([{"column_name": "name", "writable_by": ["admin"]}])
-    # DELETE carries no column writes — consistent with the GraphQL path (REQ-663).
-    assert write_acl_error(table_meta, ast, mapping, "analyst") is None
+def test_a_delete_removes_whole_rows_and_needs_every_column():
+    """A DELETE removes every column of the rows it matches, so the role must be named on every
+    column (REQ-663, as ruled 2026-10-02) — on Cypher as on every surface."""
+    sql = _translated("MATCH (n:Person) WHERE n.id = 1 DELETE n")
+    with pytest.raises(ColumnNotWritable):
+        admitted(sql, _person_gov(writable=["name"]))
+    assert admitted(sql, _person_gov()) == sql
 
 
 # ---------------------------------------------------------------------------
@@ -485,158 +495,145 @@ def test_mutation_result_update_returning_columns():
 
 
 # ---------------------------------------------------------------------------
-# inject_rls_into_mutation — RLS predicate injection
+# The role's row filter, applied by the admission
 # ---------------------------------------------------------------------------
 
+_ACME = {TABLE_ID_PERSON: "tenant_id = 'acme'"}
 
-def test_inject_rls_delete_prepends_filter():
+
+def test_a_filtered_delete_carries_the_filter():
     original = _make_delete_mutation()
-    rls = {TABLE_ID_PERSON: "tenant_id = 'acme'"}
-    result = inject_rls_into_mutation(original, TABLE_ID_PERSON, rls)
-    assert "tenant_id = 'acme'" in result.sql
+    governed = admitted(original.sql, _person_gov(rls=_ACME), original.params)
+    assert '"persons"."tenant_id" = \'acme\'' in governed
 
 
-def test_inject_rls_delete_ands_to_existing_where():
+def test_the_filter_is_anded_to_the_existing_where():
     original = _make_delete_mutation('"id" = $1')
-    rls = {TABLE_ID_PERSON: "tenant_id = 'acme'"}
-    result = inject_rls_into_mutation(original, TABLE_ID_PERSON, rls)
-    # Both the original predicate and the RLS filter must be present
-    assert '"id" = $1' in result.sql
-    assert "tenant_id = 'acme'" in result.sql
-    # Must be joined with AND
-    upper = result.sql.upper()
-    assert "AND" in upper
+    governed = admitted(original.sql, _person_gov(rls=_ACME), original.params)
+    assert '"id" = $1' in governed
+    assert "tenant_id\" = 'acme'" in governed
+    assert " AND " in governed.upper()
 
 
-def test_inject_rls_update_prepends_filter():
+def test_a_filtered_update_carries_the_filter():
     original = _make_update_mutation()
-    rls = {TABLE_ID_PERSON: "region = 'EU'"}
-    result = inject_rls_into_mutation(original, TABLE_ID_PERSON, rls)
-    assert "region = 'EU'" in result.sql
-
-
-def test_inject_rls_update_sql_changes():
-    original = _make_update_mutation()
-    rls = {TABLE_ID_PERSON: "region = 'EU'"}
-    result = inject_rls_into_mutation(original, TABLE_ID_PERSON, rls)
-    assert result.sql != original.sql
-
-
-def test_inject_rls_insert_is_noop():
-    """INSERT mutations must not be modified — they have no WHERE clause."""
-    original = _make_insert_mutation()
-    rls = {TABLE_ID_PERSON: "tenant_id = 'acme'"}
-    result = inject_rls_into_mutation(original, TABLE_ID_PERSON, rls)
-    assert result.sql == original.sql
-
-
-def test_inject_rls_no_matching_table_is_noop():
-    original = _make_delete_mutation()
-    rls = {TABLE_ID_ORDER: "tenant_id = 'acme'"}  # different table_id
-    result = inject_rls_into_mutation(original, TABLE_ID_PERSON, rls)
-    assert result.sql == original.sql
-
-
-def test_inject_rls_preserves_params():
-    original = _make_delete_mutation()
-    rls = {TABLE_ID_PERSON: "tenant_id = 'acme'"}
-    result = inject_rls_into_mutation(original, TABLE_ID_PERSON, rls)
-    assert result.params == original.params
-
-
-def test_inject_rls_preserves_metadata():
-    original = _make_delete_mutation()
-    rls = {TABLE_ID_PERSON: "tenant_id = 'acme'"}
-    result = inject_rls_into_mutation(original, TABLE_ID_PERSON, rls)
-    assert result.mutation_type == original.mutation_type
-    assert result.table_name == original.table_name
-    assert result.source_id == original.source_id
-    assert result.returning_columns == original.returning_columns
-
-
-def test_inject_rls_filter_wrapped_in_parens():
-    original = _make_delete_mutation()
-    rls = {TABLE_ID_PERSON: "tenant_id = 'acme' OR tenant_id = 'beta'"}
-    result = inject_rls_into_mutation(original, TABLE_ID_PERSON, rls)
-    # The RLS filter must be parenthesised so OR doesn't escape
-    assert "(tenant_id = 'acme' OR tenant_id = 'beta')" in result.sql
-
-
-# ---------------------------------------------------------------------------
-# End-to-end: parse → translate → inject RLS
-# ---------------------------------------------------------------------------
-
-
-def test_e2e_create_no_rls_injection():
-    """Full pipeline: CREATE Cypher → SQL INSERT; RLS injection is a no-op for INSERT."""
-    label_map = _person_map()
-    translator = WriteTranslator(label_map)
-    ast = parse_cypher_write("CREATE (n:Person {name: 'Carol', age: 28})")
-    sql = translator.translate(ast)
-
-    mutation = MutationResult(
-        sql=sql,
-        params=[],
-        mutation_type="insert",
-        table_name="persons",
-        source_id="test-pg",
-        returning_columns=["name", "age"],
+    governed = admitted(
+        original.sql, _person_gov(rls={TABLE_ID_PERSON: "region = 'EU'"}), original.params
     )
-    rls = {TABLE_ID_PERSON: "tenant_id = 'x'"}
-    result = inject_rls_into_mutation(mutation, TABLE_ID_PERSON, rls)
+    assert "\"region\" = 'EU'" in governed
+    assert governed != original.sql
 
-    assert result.sql == sql  # INSERT unchanged
+
+def test_an_insert_carries_no_where_and_is_checked_against_the_filter():
+    """An INSERT has no rows to narrow: its new row is checked against the filter instead —
+    inside it is written as given, outside it is refused, undecidable it is refused."""
+    original = _make_insert_mutation()
+    with pytest.raises(WriteNotAdmitted, match="cannot be decided before writing"):
+        # the filter reads tenant_id, which this INSERT does not supply
+        admitted(original.sql, _person_gov(rls=_ACME), original.params)
+    sql = 'INSERT INTO "public"."persons" ("name", "tenant_id") VALUES ($1, $2)'
+    assert admitted(sql, _person_gov(rls=_ACME), ["Bob", "acme"]) == sql
+    with pytest.raises(WriteNotAdmitted, match="outside role"):
+        admitted(sql, _person_gov(rls=_ACME), ["Bob", "beta"])
+
+
+def test_a_rule_on_another_table_leaves_the_statement_as_given():
+    original = _make_delete_mutation()
+    gov = _person_gov(rls={TABLE_ID_ORDER: "tenant_id = 'acme'"})
+    assert admitted(original.sql, gov, original.params) == original.sql
+
+
+def test_the_filter_is_parenthesised_so_an_or_does_not_escape():
+    original = _make_delete_mutation()
+    gov = _person_gov(rls={TABLE_ID_PERSON: "tenant_id = 'acme' OR tenant_id = 'beta'"})
+    governed = admitted(original.sql, gov, original.params)
+    assert (
+        'AND ("persons"."tenant_id" = \'acme\' OR "persons"."tenant_id" = \'beta\')' in governed
+    ), governed
+
+
+# ---------------------------------------------------------------------------
+# End-to-end: parse → translate → admit
+# ---------------------------------------------------------------------------
+
+
+def test_e2e_create_inside_the_filter_is_written_as_translated():
+    sql = _translated("CREATE (n:Person {name: 'Carol', age: 28, tenant_id: 'x'})")
+    assert admitted(sql, _person_gov(rls={TABLE_ID_PERSON: "tenant_id = 'x'"})) == sql
     assert "INSERT INTO" in sql.upper()
     assert "'Carol'" in sql
     assert "28" in sql
 
 
-def test_e2e_delete_with_rls():
-    """Full pipeline: MATCH-DELETE Cypher → SQL DELETE → RLS injected."""
-    label_map = _person_map()
-    translator = WriteTranslator(label_map)
-    ast = parse_cypher_write("MATCH (n:Person) WHERE n.age > 60 DELETE n")
-    sql = translator.translate(ast)
+def test_e2e_delete_with_the_filter():
+    sql = _translated("MATCH (n:Person) WHERE n.age > 60 DELETE n")
+    governed = admitted(sql, _person_gov(rls=_ACME))
+    assert "DELETE FROM" in governed.upper()
+    assert '"age"' in governed
+    assert "60" in governed
+    assert "tenant_id\" = 'acme'" in governed
+    assert "AND" in governed.upper()
 
-    mutation = MutationResult(
-        sql=sql,
-        params=[],
-        mutation_type="delete",
-        table_name="persons",
-        source_id="test-pg",
-        returning_columns=[],
+
+def test_e2e_update_with_the_filter():
+    sql = _translated("MATCH (n:Person) WHERE n.email = 'old@x.com' SET n.name = 'New'")
+    governed = admitted(sql, _person_gov(rls={TABLE_ID_PERSON: "region = 'EU'"}))
+    assert "UPDATE" in governed.upper()
+    assert '"name"' in governed
+    assert "'New'" in governed
+    assert '"email"' in governed
+    assert "region\" = 'EU'" in governed
+    assert "AND" in governed.upper()
+
+
+# ---------------------------------------------------------------------------
+# Parameters: an unquoted $name is a value the request supplies, never text
+# ---------------------------------------------------------------------------
+
+
+def test_a_parameter_in_a_create_is_bound_not_written_as_its_name():
+    from provisa.cypher.write_translator import bind_write_params
+
+    sql = _translated("CREATE (n:Person {name: $name, age: $age, email: 'pay $x'})")
+    bound, values = bind_write_params(sql, {"name": "Ann", "age": 3})
+    assert bound == (
+        'INSERT INTO "mycat"."public"."persons" ("name", "age", "email") '
+        "VALUES ($1, $2, 'pay $x')"  # a quoted '$x' is text and stays so
     )
-    rls = {TABLE_ID_PERSON: "tenant_id = 'acme'"}
-    result = inject_rls_into_mutation(mutation, TABLE_ID_PERSON, rls)
-
-    assert "DELETE FROM" in result.sql.upper()
-    assert '"age"' in result.sql
-    assert "60" in result.sql
-    assert "tenant_id = 'acme'" in result.sql
-    assert "AND" in result.sql.upper()
+    assert values == ["Ann", 3]
 
 
-def test_e2e_update_with_rls():
-    """Full pipeline: MATCH-SET Cypher → SQL UPDATE → RLS injected."""
-    label_map = _person_map()
-    translator = WriteTranslator(label_map)
-    ast = parse_cypher_write("MATCH (n:Person) WHERE n.email = 'old@x.com' SET n.name = 'New'")
-    sql = translator.translate(ast)
+def test_parameters_in_set_and_where_are_bound_in_order_and_a_repeat_is_one_value():
+    from provisa.cypher.write_translator import bind_write_params
 
-    mutation = MutationResult(
-        sql=sql,
-        params=[],
-        mutation_type="update",
-        table_name="persons",
-        source_id="test-pg",
-        returning_columns=["name"],
+    sql = _translated("MATCH (n:Person) WHERE n.id = $id AND n.name <> $name SET n.name = $name")
+    bound, values = bind_write_params(sql, {"id": 1, "name": "B", "unused": 9})
+    assert bound == (
+        'UPDATE "mycat"."public"."persons" SET "name" = $1 WHERE "id" = $2 AND "name" <> $1'
     )
-    rls = {TABLE_ID_PERSON: "region = 'EU'"}
-    result = inject_rls_into_mutation(mutation, TABLE_ID_PERSON, rls)
+    assert values == ["B", 1]
 
-    assert "UPDATE" in result.sql.upper()
-    assert '"name"' in result.sql
-    assert "'New'" in result.sql
-    assert '"email"' in result.sql
-    assert "region = 'EU'" in result.sql
-    assert "AND" in result.sql.upper()
+
+def test_a_parameter_the_request_does_not_supply_is_refused_by_name():
+    from provisa.cypher.params import CypherParamError
+    from provisa.cypher.write_translator import bind_write_params
+
+    sql = _translated("MATCH (n:Person) WHERE n.id = $id DELETE n")
+    with pytest.raises(CypherParamError, match=r"\['id'\]"):
+        bind_write_params(sql, {})
+
+
+def test_a_bound_value_is_checked_against_the_row_filter_like_a_literal():
+    from provisa.cypher.write_translator import bind_write_params
+
+    sql, values = bind_write_params(
+        _translated("CREATE (n:Person {name: $name, tenant_id: $tenant})"),
+        {"name": "Bob", "tenant": "beta"},
+    )
+    with pytest.raises(WriteNotAdmitted, match="outside role"):
+        admitted(sql, _person_gov(rls=_ACME), values)
+    sql, values = bind_write_params(
+        _translated("CREATE (n:Person {name: $name, tenant_id: $tenant})"),
+        {"name": "Bob", "tenant": "acme"},
+    )
+    assert admitted(sql, _person_gov(rls=_ACME), values) == sql

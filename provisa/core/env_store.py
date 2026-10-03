@@ -218,7 +218,13 @@ async def set_drifted(db: "Database", org_id: str, name: str, drifted: bool) -> 
 
 
 async def set_position(
-    db: "Database", org_id: str, name: str, *, deployed_sha: str | None, redo_sha: str | None
+    db: "Database",
+    org_id: str,
+    name: str,
+    *,
+    deployed_sha: str | None,
+    deployed_stamp: int | None,
+    redo_sha: str | None,
 ) -> None:
     """Where the environment now is in its own history, and what a redo can step back toward.
 
@@ -227,7 +233,20 @@ async def set_position(
     and passes ``redo_sha=None``, which is not a missing value but the statement that the future
     the undo left is no longer the one the environment is heading for.
     """
-    await _set(db, org_id, name, deployed_sha=deployed_sha, redo_sha=redo_sha)
+    await _set(
+        db,
+        org_id,
+        name,
+        deployed_sha=deployed_sha,
+        deployed_stamp=deployed_stamp,
+        redo_sha=redo_sha,
+    )
+
+
+async def set_deployed_stamp(db: "Database", org_id: str, name: str, stamp: int) -> None:
+    """The model stamp at which the environment's model was found to equal ``deployed_sha`` again
+    (an unchanged projection of the model at ``stamp``). The position itself does not move."""
+    await _set(db, org_id, name, deployed_stamp=stamp)
 
 
 async def set_origin(db: "Database", org_id: str, name: str, origin_sha: str) -> None:

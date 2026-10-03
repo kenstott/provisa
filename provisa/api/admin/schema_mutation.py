@@ -50,12 +50,14 @@ from provisa.api.admin.types import (
     EnforcementType,
     EntityInput,
     FactInput,
+    GrantKind,
     KaggleStageResultType,
     MetricInput,
     MutationResult,
     RelationshipInput,
     RLSRuleInput,
     RoleInput,
+    PagingInput,
     RoleTtlInput,
     SourceInput,
     TableInput,
@@ -2531,6 +2533,95 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
+    async def revoke_role_from_table(
+        self, info: StrawberryInfo, role_id: str, table_id: int
+    ) -> MutationResult:  # REQ-1918
+        """Take a role off every column grant of one table (read, write, unmasked), so the role
+        can be deleted. A role the table does not grant is a success that changed nothing."""
+        from provisa.api.admin.capabilities import require_capability
+        from provisa.api.admin.domain_guard import require_table_domain
+        from provisa.core.repositories import grants
+
+        require_capability(info, "table_registration")
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            c = cast("Connection", conn)
+            _was = await origin_repo.of(c, "table", table_id)
+            if _was is None:
+                return MutationResult(
+                    success=False,
+                    message=f"Table {table_id} not found",
+                    code="schema.table_id_not_found",
+                    params={"id": table_id},
+                )
+            await require_table_domain(info, c, table_id)
+            changed = await grants.revoke_from_table(c, table_id, role_id)
+        if changed:
+            await _rebuild_schemas()
+        return MutationResult(
+            success=True,
+            message=f"Role {role_id!r} removed from the grants of table {table_id}",
+            code="schema.role_revoked_from_table",
+            params={"role": role_id, "id": table_id},
+            warnings=_config_warnings("table", table_id, _was, "edited") if changed else [],
+        )
+
+    @strawberry.mutation
+    async def revoke_role_from_object(
+        self, info: StrawberryInfo, role_id: str, kind: GrantKind, name: str
+    ) -> MutationResult:  # REQ-1918
+        """Take a role off a metric's, command's or webhook's assigned roles, so the role can be
+        deleted. A role the object does not grant is a success that changed nothing."""
+        from provisa.api.admin.capabilities import require_capability
+        from provisa.api.admin.domain_guard import metric_domains, require_domains
+        from provisa.core.repositories import grants
+        from provisa.core.schema_org import metrics, tracked_functions, tracked_webhooks
+
+        require_capability(info, "table_registration")
+        table = {
+            GrantKind.METRIC: metrics,
+            GrantKind.COMMAND: tracked_functions,
+            GrantKind.WEBHOOK: tracked_webhooks,
+        }[kind]
+        object_kind = kind.value
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            c = cast("Connection", conn)
+            row = (
+                await c.execute_core(
+                    select(
+                        *[
+                            table.c.origin,
+                            *([table.c.domain_id] if kind != GrantKind.METRIC else []),
+                        ]
+                    ).where(table.c.name == name)
+                )
+            ).fetchone()
+            if row is None:
+                return MutationResult(
+                    success=False,
+                    message=f"No {object_kind} named {name!r}",
+                    code="schema.grant_object_not_found",
+                    params={"kind": object_kind, "name": name},
+                )
+            if kind == GrantKind.METRIC:
+                domains = await metric_domains(c, name)
+                if domains is not None:
+                    require_domains(info, domains)
+            else:
+                require_domains(info, [row.domain_id])
+            changed = await grants.revoke_from_object(c, object_kind, name, role_id)
+        if changed:
+            await _rebuild_schemas()
+        return MutationResult(
+            success=True,
+            message=f"Role {role_id!r} removed from {object_kind} {name!r}",
+            code="schema.role_revoked_from_object",
+            params={"role": role_id, "kind": object_kind, "name": name},
+            warnings=_config_warnings(object_kind, name, row.origin, "edited") if changed else [],
+        )
+
+    @strawberry.mutation
     async def upsert_rls_rule(
         self, info: StrawberryInfo, input: RLSRuleInput
     ) -> MutationResult:  # REQ-041, REQ-402, REQ-1531, REQ-1676
@@ -2983,6 +3074,20 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             code="schema.table_role_ttl_updated",
             params={"table": table_id},
         )
+
+    @strawberry.mutation
+    async def update_table_paging(
+        self, info: StrawberryInfo, table_id: int, paging: PagingInput | None = None
+    ) -> MutationResult:  # REQ-318
+        """Replace a table's paging (null clears it): a paged REST endpoint's type and parameters,
+        or a connection table's max_rows, which may only lower graphql_remote.max_rows."""
+        from provisa.api.admin._table_paging import save_table_paging
+        from provisa.api.app import state
+
+        require_capability(info, "table_registration")
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            return await save_table_paging(state, conn, table_id, paging)
 
     @strawberry.mutation
     async def update_source_replicate(

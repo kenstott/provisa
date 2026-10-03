@@ -45,7 +45,8 @@ from provisa.api_source.caller import (
     prepare_call,
 )
 from provisa.api_source.flattener import flatten_item, flatten_response
-from provisa.api_source.models import ApiEndpoint, PaginationType
+from provisa.api_source.models import ApiEndpoint
+from provisa.core.paging import PaginationType
 from provisa.federation.replica_errors import BuildFailure
 
 #: Seconds each connect, read or write of the spooled call may take.

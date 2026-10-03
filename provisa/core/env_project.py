@@ -87,6 +87,19 @@ async def _rows(conn: "Connection", table: "SaTable", schema: str) -> list[dict[
     return [{str(k): v for k, v in r._mapping.items()} for r in result.fetchall()]
 
 
+async def model_stamp(conn: "Connection", schema: str) -> int:
+    """The environment's model stamp (REQ-1914) as stored in ``schema``."""
+    from provisa.core.config_stamp import MODEL
+
+    stamp_t = _scoped(org.config_stamp, schema)
+    row = (
+        await conn.execute_core(select(stamp_t.c.stamp).where(stamp_t.c.kind == MODEL))
+    ).fetchone()
+    if row is None:
+        raise RuntimeError(f"{schema} holds no model stamp: its config_stamp row was never seeded")
+    return int(row[0])
+
+
 def _business_name(table_row: dict[str, Any]) -> str:
     """REQ-1385's business identity: the alias when the table has one, else its physical name."""
     return table_row["alias"] or table_row["table_name"]

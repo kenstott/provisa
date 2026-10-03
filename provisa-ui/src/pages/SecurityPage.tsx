@@ -37,7 +37,10 @@ import {
   useDeleteRole,
   useUpsertRlsRule,
   useDeleteRlsRule,
+  useRevokeRoleGrants,
 } from "../hooks/useSecurityQueries";
+import { RoleGrantAction } from "../components/RoleGrantAction";
+import { removeUserAssignment } from "../api/admin";
 import type { Role, Capability } from "../types/auth";
 import type { RLSRule } from "../types/admin";
 import { fetchActions } from "../api/actions";
@@ -141,8 +144,20 @@ function CapabilityGrid({
 }
 
 export function SecurityRolesPage() {
-  // REQ-1918: a delete is refused while anything depends on the object; this lists them.
-  const refusal = useDependentsDialog();
+  // REQ-1918: a delete is refused while anything depends on the object; this lists them, and
+  // offers to take the role off each grant and assignment that can be removed in place.
+  const { revokeFromTable, revokeFromObject } = useRevokeRoleGrants();
+  const refusal = useDependentsDialog((roleId, dependent, all, handled) => (
+    <RoleGrantAction
+      roleId={roleId}
+      dependent={dependent}
+      all={all}
+      handled={handled}
+      revokeFromTable={revokeFromTable}
+      revokeFromObject={revokeFromObject}
+      removeAssignment={removeUserAssignment}
+    />
+  ));
   const { t } = useTranslation();
   const { setDomains: setContextDomains, setSelectedDomain } = useDomainFilter();
   const { roles, loading: rolesLoading, refetch: refetchRoles } = useRoles();

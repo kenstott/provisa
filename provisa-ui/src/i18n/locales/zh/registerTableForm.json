@@ -86,6 +86,13 @@
     "errorNeo4jPreviewFirst": "请先预览 Cypher，以便确定列及其类型。",
     "sparqlQueryLabel": "SPARQL 查询",
     "sparqlQueryHint": "一条 SELECT 语句，其变量将成为列（每个绑定均为文本）",
-    "sparqlQueryPlaceholder": "SELECT ?name ?city WHERE { ?a <urn:name> ?name ; <urn:city> ?city }"
+    "sparqlQueryPlaceholder": "SELECT ?name ?city WHERE { ?a <urn:name> ?name ; <urn:city> ?city }",
+    "nlSearchLabel": "按描述查找表",
+    "nlSearchPlaceholder": "例如：客户开票和付款表",
+    "nlSearchButton": "搜索",
+    "nlSearchNone": "此架构中没有与该描述匹配的表。",
+    "nlSearchConfidence": "{{percent}}%",
+    "nlSearchRegistered": "已注册",
+    "nlSearchUse": "使用"
   }
 }

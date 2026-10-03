@@ -86,6 +86,13 @@
     "errorNeo4jPreviewFirst": "Obtenga primero la vista previa del Cypher para conocer las columnas y sus tipos.",
     "sparqlQueryLabel": "Consulta SPARQL",
     "sparqlQueryHint": "un SELECT cuyas variables pasan a ser las columnas (cada binding es texto)",
-    "sparqlQueryPlaceholder": "SELECT ?name ?city WHERE { ?a <urn:name> ?name ; <urn:city> ?city }"
+    "sparqlQueryPlaceholder": "SELECT ?name ?city WHERE { ?a <urn:name> ?name ; <urn:city> ?city }",
+    "nlSearchLabel": "Buscar tablas por descripción",
+    "nlSearchPlaceholder": "p. ej., tablas de facturación y pagos de clientes",
+    "nlSearchButton": "Buscar",
+    "nlSearchNone": "Ninguna tabla de este esquema coincide con esa descripción.",
+    "nlSearchConfidence": "{{percent}} %",
+    "nlSearchRegistered": "Registrada",
+    "nlSearchUse": "Usar"
   }
 }

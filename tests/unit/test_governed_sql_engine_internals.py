@@ -80,6 +80,7 @@ def _state(domain_access: list[str]) -> SimpleNamespace:
         routing_cache=CompiledQueryCache(),
         # as the schema build publishes it: no table is served from a replica (REQ-826)
         replica_routes=ReplicaRoutes(),
+        model_stamp=1,  # REQ-1914: the stamp the model was built at; the audit row records it
     )
 
 
