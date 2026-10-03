@@ -99,6 +99,8 @@ def _plan(route, **kwargs):
         writes_tables=False,  # REQ-1897: finalize_audit invalidates a write's tables
         live_caps=(),  # REQ-1909: the capped live sources the pipeline binds at mint (none here)
         live_caps_org=None,
+        tier_caps=None,
+        tier_plan=None,
         warnings=[],  # REQ-1350: what the statement's answer says about itself (nothing here)
         **kwargs,
     )

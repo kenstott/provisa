@@ -1964,8 +1964,9 @@ class _AuditedDrain:
         except StopIteration:
             self._complete(200)
             raise
-        except BaseException:
-            self._complete(500)
+        except BaseException as exc:
+            # REQ-1044: a stream ended at its tier ceiling is the tier's refusal, recorded as such.
+            self._complete(402 if getattr(exc, "status_code", None) == 402 else 500)
             raise
         self._rows += self._rows_in(batch)
         return batch

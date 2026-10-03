@@ -811,7 +811,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
                     for row in batch:
                         yield msg_cls(**_kwargs_for(col_fields, row))
             except Exception as exc:
-                await finalize_audit(plan, 500, state)
+                # REQ-1044: a stream ended at its tier ceiling is the tier's refusal (402).
+                await finalize_audit(
+                    plan, 402 if getattr(exc, "status_code", None) == 402 else 500, state
+                )
                 await context.abort(_status_for_exception(exc), str(exc))
                 return
             plan.row_count = _delivered

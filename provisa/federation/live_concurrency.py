@@ -174,12 +174,29 @@ class LivePermitStore:
 
 
 class LivePermits:
-    """The permits one query holds, one per capped live source; release them exactly once."""
+    """The permits one query holds, one per capped live source; release them exactly once.
+
+    Every terminal that runs a plan takes its permits here, so the plan's output-row ceiling
+    (REQ-1044) is applied here too, to whatever the terminal streams: ``guard`` and
+    ``wrap_stream`` hand the stream to the commercial plugin's ``enforce_output_cap``, which ends
+    it with the tier error at the row past the ceiling — a rejection, never a short result."""
 
     def __init__(self, store: LivePermitStore | None, held: list[tuple[str, str]]) -> None:
         self._store = store
         self._held = held
         self._released = False
+        self._output_cap: tuple[Any, str] | None = None
+
+    def bind_output_cap(self, caps: Any, tier: str) -> None:
+        """The plan's tier ceilings (REQ-1044), applied to what these permits wrap."""
+        self._output_cap = (caps, tier)
+
+    def _capped(self, stream: Any) -> Any:
+        if self._output_cap is None:
+            return stream
+        from provisa.core.commerce import enforce_output_cap
+
+        return enforce_output_cap(stream, *self._output_cap)
 
     @property
     def count(self) -> int:
@@ -210,6 +227,10 @@ class LivePermits:
         """``rows`` (e.g. Arrow record batches) yielded through; the permits release when the
         stream is drained, fails, or is closed early — and, for a stream abandoned before its first
         pull (whose ``finally`` never runs), when the generator is garbage-collected."""
+        if self._output_cap is not None:
+            from provisa.executor.result import StreamingQueryResult
+
+            rows = self._capped(StreamingQueryResult(rows, column_names=[])).batches()
         if not self._held:
             return iter(rows)
 
@@ -228,7 +249,7 @@ class LivePermits:
         Closing the wrapper still closes ``stream``'s own source (server-side cursor, pooled
         connection), exactly as the unwrapped stream would."""
         if not self._held:
-            return stream
+            return self._capped(stream)
         from provisa.executor.result import StreamingQueryResult
 
         source_close = getattr(stream, "close", None)
@@ -240,12 +261,15 @@ class LivePermits:
             finally:
                 self.release()
 
-        return StreamingQueryResult(
+        cap, self._output_cap = self._output_cap, None  # applied once, to the wrapper
+        wrapped = StreamingQueryResult(
             self.guard(stream.batches()),
             column_names=list(stream.column_names),
             column_types=stream.column_types,
             on_release=_release,
         )
+        self._output_cap = cap
+        return self._capped(wrapped)
 
 
 def acquire(
@@ -350,9 +374,16 @@ def acquire_plan_permits(state: Any, plan: Any) -> LivePermits:
     plan was minted — see ``_pipeline._attach_live_caps``), on the calling request thread, bounded
     by the request's deadline. No loop dispatch: a streaming terminal pays no extra hop (REQ-1887).
     Holds none — and touches no store — when the plan reads no capped source live (REQ-1909)."""
-    if not plan.live_caps:
-        return LivePermits(None, [])
-    return acquire(state.live_permit_store, plan.live_caps_org, list(plan.live_caps))
+    permits = (
+        acquire(state.live_permit_store, plan.live_caps_org, list(plan.live_caps))
+        if plan.live_caps
+        else LivePermits(None, [])
+    )
+    # REQ-1044: the plan's tier ceilings travel with it (_pipeline._attach_tier_caps); every
+    # terminal that streams it wraps the stream here.
+    if plan.tier_caps is not None and plan.tier_plan is not None:
+        permits.bind_output_cap(plan.tier_caps, plan.tier_plan)
+    return permits
 
 
 async def acquire_for_route(

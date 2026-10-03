@@ -219,14 +219,16 @@ def test_live_sources_cache_route_reads_nothing_live():
 
 
 def test_a_plan_with_no_capped_live_source_takes_no_permit_and_touches_no_store():
-    plan = SimpleNamespace(live_caps=(), live_caps_org=None)
+    plan = SimpleNamespace(live_caps=(), live_caps_org=None, tier_caps=None, tier_plan=None)
     permits = lc.acquire_plan_permits(SimpleNamespace(), plan)  # no live_permit_store needed
     assert permits.count == 0
     permits.release()
 
 
 def test_a_plan_acquires_the_caps_bound_when_it_was_minted(store, org):
-    plan = SimpleNamespace(live_caps=(("src", 1),), live_caps_org=org)
+    plan = SimpleNamespace(
+        live_caps=(("src", 1),), live_caps_org=org, tier_caps=None, tier_plan=None
+    )
     state = SimpleNamespace(live_permit_store=store)
     with lc.acquire_plan_permits(state, plan) as permits:
         assert permits.count == 1
