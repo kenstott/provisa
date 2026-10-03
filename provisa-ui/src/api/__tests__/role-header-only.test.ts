@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: 40bb7870-5b07-4ac3-abfa-a5c59ac0c017
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 // REQ-273, REQ-1620: the acting role travels only in X-Provisa-Role. Under "Role: All" that
 // header is the comma-separated set; a body `role` repeating it differs from the server's acting
 // role (one member of the set) and is refused as data.role_mismatch, so no request body carries it.
