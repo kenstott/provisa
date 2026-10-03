@@ -265,12 +265,12 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
         # a MATERIALIZED source this plan reads gets landed before the engine executes — mirrors
         # the identical ENGINE-route bypass fixes elsewhere (pgwire/server.py, api/flight/server.py,
         # api/airport/query.py).
-        run_on_connection_loop(
+        plan.replicas_read = run_on_connection_loop(
             ensure_resident(
                 state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids
             ),
             timeout=request_timeout_for("pgwire"),
-        )
+        ).replicas_read
         # Arrow Flight is an advertised, engine-specific transport (REQ-825): route through the
         # bound engine, which fails closed if the engine lacks ARROW or the proxy is unconfigured.
         table = state.federation_engine.execute_engine_arrow(plan.physical_sql, plan.exec_params)

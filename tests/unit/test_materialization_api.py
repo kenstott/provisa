@@ -30,13 +30,13 @@ from provisa.api.data.materialization import (
     _lookup_ep,
     _lookup_gql_remote_table,
     _mat_api_ep_table,
-    _mat_fetch_rows_from_pg,
+    _mat_fetch_rows_from_fills,
     _mat_fetch_rows_from_rest,
     _mat_gql_remote_table,
     _mat_store_rows,
     _materialize_api_to_engine_cache,
     _normalize_mat_value,
-    _promote_joined_from_pg,
+    _promote_joined_from_fills,
 )
 from provisa.api_source.engine_cache import CacheLocation
 from provisa.api_source.models import ApiColumn, ApiColumnType, ParamType
@@ -132,46 +132,74 @@ class _FakeAcquireCtx:
         return False
 
 
-class TestMatFetchRowsFromPg:
-    async def test_no_tenant_db_returns_empty(self):
-        state = SimpleNamespace(tenant_db=None)
-        ep = SimpleNamespace(table_name="pets")
-        assert await _mat_fetch_rows_from_pg(ep, ["id"], set(), state) == []
+def _store_state():
+    """A state whose engine connection is a real DuckDB store, as every engine hands one out."""
+    import duckdb
 
-    async def test_success(self):
-        conn = AsyncMock()
-        conn.fetch = AsyncMock(return_value=[{"id": 1, "name": "Fido", "_cached_at": "x"}])
-        tenant_db = SimpleNamespace(acquire=lambda: _FakeAcquireCtx(conn))
-        state = SimpleNamespace(tenant_db=tenant_db)
-        ep = SimpleNamespace(table_name="pets")
-        rows = await _mat_fetch_rows_from_pg(ep, ["id", "name"], {"_cached_at"}, state)
-        assert rows == [{"id": 1, "name": "Fido"}]
+    from provisa.api_source import engine_cache, fill_cache
+    from provisa.executor.session import EngineSession
 
-    async def test_an_absent_cache_table_is_a_miss_and_the_read_is_dialect_addressed(
-        self, tmp_path
-    ):
-        """The endpoint's cache table may not exist yet (its boot-time create failed, or it was
-        registered without one): that is a cache miss, not a failed read. On a schema-less
-        (SQLite) control plane the table is addressed bare, as pg_cache writes it."""
-        from provisa.core.database import Database, create_engine_from_url
+    fill_cache._mem_fresh.clear()
+    fill_cache._shapes.clear()
+    engine_cache._SCHEMA_EXISTS_CACHE.clear()
+    con = duckdb.connect()
 
-        db = Database(create_engine_from_url(f"sqlite:///{tmp_path / 'cp.db'}"), name="cp")
-        state = SimpleNamespace(tenant_db=db)
-        ep = SimpleNamespace(table_name="pets")
-        assert await _mat_fetch_rows_from_pg(ep, ["id"], set(), state) == []
-        async with db.acquire() as conn:
-            await conn.execute('CREATE TABLE "pets" ("id" TEXT, "_cached_at" TEXT)')
-            await conn.execute("INSERT INTO \"pets\" VALUES ('7', 'x')")
-        assert await _mat_fetch_rows_from_pg(ep, ["id"], {"_cached_at"}, state) == [{"id": "7"}]
+    @contextmanager
+    def isolated_sync():
+        yield EngineSession(con, dialect="duckdb", placeholder="?")
 
-    async def test_a_failed_pg_cache_read_raises(self):
+    engine = SimpleNamespace(cache_catalog=lambda: "memory", isolated_sync=isolated_sync)
+    return SimpleNamespace(
+        org_id="o1", federation_engine=engine, source_catalogs={}, api_sources={}
+    )
+
+
+class TestMatFetchRowsFromFills:
+    """The API step reads a table's fills from the store (``api_source.fill_cache``), never
+    from the control plane."""
+
+    def _ep(self):
+        from provisa.api_source.models import ApiEndpoint
+
+        return ApiEndpoint(
+            source_id="src",
+            path="/pets",
+            table_name="pets",
+            columns=[
+                ApiColumn(name="id", type=ApiColumnType.integer),
+                ApiColumn(name="name", type=ApiColumnType.string),
+            ],
+        )
+
+    async def test_no_fill_yet_is_a_miss(self):
+        assert await _mat_fetch_rows_from_fills(self._ep(), ["id"], set(), _store_state()) == []
+
+    async def test_rows_are_read_and_the_fills_own_columns_are_not_projected(self):
+        from provisa.api_source import fill_cache
+
+        state, ep = _store_state(), self._ep()
+        table = fill_cache.fill_table(state, ep, None)
+        with state.federation_engine.isolated_sync() as conn:
+            fill_cache.store(conn, table, {"h": [{"id": 1, "name": "Fido"}]}, ttl=60)
+        meta = {"_params_hash", "_cached_at"}
+        assert await _mat_fetch_rows_from_fills(ep, ["id", "name"], meta, state) == [
+            {"id": 1, "name": "Fido"}
+        ]
+        assert await _mat_fetch_rows_from_fills(ep, ["name"], meta, state) == [{"name": "Fido"}]
+
+    async def test_a_failed_read_raises(self):
         """REQ-1661 (amended 2026-09-30): a failed cache read raises -- never an empty result
         that sends the caller to a different source instead."""
-        tenant_db = SimpleNamespace(acquire=MagicMock(side_effect=RuntimeError("down")))
-        state = SimpleNamespace(tenant_db=tenant_db)
-        ep = SimpleNamespace(table_name="pets")
-        with pytest.raises(RuntimeError, match="down"):
-            await _mat_fetch_rows_from_pg(ep, ["id"], set(), state)
+
+        @contextmanager
+        def down():
+            raise RuntimeError("store down")
+            yield
+
+        state = _store_state()
+        state.federation_engine.isolated_sync = down
+        with pytest.raises(RuntimeError, match="store down"):
+            await _mat_fetch_rows_from_fills(self._ep(), ["id"], set(), state)
 
 
 # ---------------------------------------------------------------------------
@@ -373,50 +401,52 @@ class TestMatStoreRows:
 # ---------------------------------------------------------------------------
 
 
-class TestPromoteJoinedFromPg:
+_FILLS = "provisa.api.data.materialization._mat_fetch_rows_from_fills"
+
+
+class TestPromoteJoinedFromFills:
     async def test_promotes_within_threshold(self):
-        conn = AsyncMock()
-        conn.fetch = AsyncMock(return_value=[{"id": 1, "name": "Fido", "_cached_at": "x"}])
-        tenant_db = SimpleNamespace(acquire=lambda: _FakeAcquireCtx(conn))
-        state = SimpleNamespace(tenant_db=tenant_db)
         hot_mgr = _hot_manager()
         loc = CacheLocation("cat", "sch", "relational")
         ep = SimpleNamespace(table_name="pets")
-
-        await _promote_joined_from_pg(
-            state, ep, "pets", hot_mgr, ["id", "name"], {"_cached_at"}, loc, 500
-        )
-        assert "pets" in hot_mgr._hot_tables
+        with patch(_FILLS, new=AsyncMock(return_value=[{"id": 1, "name": "Fido"}])):
+            await _promote_joined_from_fills(
+                SimpleNamespace(), ep, "pets", hot_mgr, ["id", "name"], set(), loc, 500
+            )
         assert hot_mgr._hot_tables["pets"].rows == [{"id": 1, "name": "Fido"}]
 
     async def test_over_threshold_not_promoted(self):
-        rows = [{"id": i} for i in range(5)]
-        conn = AsyncMock()
-        conn.fetch = AsyncMock(return_value=rows)
-        tenant_db = SimpleNamespace(acquire=lambda: _FakeAcquireCtx(conn))
-        state = SimpleNamespace(tenant_db=tenant_db)
         hot_mgr = _hot_manager()
         loc = CacheLocation("cat", "sch", "relational")
-        ep = SimpleNamespace(table_name="pets")
-
-        await _promote_joined_from_pg(state, ep, "pets", hot_mgr, ["id"], set(), loc, 2)
+        with patch(_FILLS, new=AsyncMock(return_value=[{"id": i} for i in range(5)])):
+            await _promote_joined_from_fills(
+                SimpleNamespace(),
+                SimpleNamespace(table_name="pets"),
+                "pets",
+                hot_mgr,
+                ["id"],
+                set(),
+                loc,
+                2,
+            )
         assert hot_mgr._hot_tables == {}
 
     async def test_fetch_failure_swallowed(self):
-        tenant_db = SimpleNamespace(acquire=MagicMock(side_effect=RuntimeError("down")))
-        state = SimpleNamespace(tenant_db=tenant_db)
         hot_mgr = _hot_manager()
         loc = CacheLocation("cat", "sch", "relational")
-        ep = SimpleNamespace(table_name="pets")
-
-        # Must not raise — best-effort promotion.
-        await _promote_joined_from_pg(state, ep, "pets", hot_mgr, ["id"], set(), loc, 500)
+        with patch(_FILLS, new=AsyncMock(side_effect=RuntimeError("down"))):
+            # Must not raise — best-effort promotion for a later request.
+            await _promote_joined_from_fills(
+                SimpleNamespace(),
+                SimpleNamespace(table_name="pets"),
+                "pets",
+                hot_mgr,
+                ["id"],
+                set(),
+                loc,
+                500,
+            )
         assert hot_mgr._hot_tables == {}
-
-
-# ---------------------------------------------------------------------------
-# _mat_api_ep_table
-# ---------------------------------------------------------------------------
 
 
 def _ep(columns):
@@ -485,17 +515,13 @@ class TestMatApiEpTable:
             federation_engine=MagicMock(),
             source_cache={},
             response_cache_default_ttl=300,
-            tenant_db=SimpleNamespace(
-                acquire=lambda: _FakeAcquireCtx(
-                    AsyncMock(fetch=AsyncMock(return_value=[{"id": 1}]))
-                )
-            ),
         )
         ep = _ep([_col("id")])
         cache_rewrites: dict = {}
         values_cte_entries: dict = {}
         loc = CacheLocation("cat", "sch", "relational")
         with (
+            patch(_FILLS, new=AsyncMock(return_value=[{"id": 1}])),
             patch("provisa.api_source.engine_cache.cache_location", return_value=loc),
             patch("provisa.api_source.engine_cache.cache_table_name", return_value="r_x"),
             patch("provisa.api_source.engine_cache.table_known_live", return_value=False),
@@ -512,20 +538,20 @@ class TestMatApiEpTable:
 
     async def test_merged_param_and_response_column_is_still_projected(self):
         """A query param whose name collides with a response field is merged into one column
-        carrying both. It holds a response value, so it must be selected from the PG cache."""
-        conn = AsyncMock(fetch=AsyncMock(return_value=[{"id": 1, "status": "sold"}]))
+        carrying both. It holds a response value, so it must be read from the fills."""
+        fills = AsyncMock(return_value=[{"id": 1, "status": "sold"}])
         state = SimpleNamespace(
             api_sources={},
             org_id="default",
             federation_engine=MagicMock(),
             source_cache={},
             response_cache_default_ttl=300,
-            tenant_db=SimpleNamespace(acquire=lambda: _FakeAcquireCtx(conn)),
         )
         ep = _ep([_col("id"), _col("status", param_type="query")])
         values_cte_entries: dict = {}
         loc = CacheLocation("cat", "sch", "relational")
         with (
+            patch(_FILLS, new=fills),
             patch("provisa.api_source.engine_cache.cache_location", return_value=loc),
             patch("provisa.api_source.engine_cache.cache_table_name", return_value="r_x"),
             patch("provisa.api_source.engine_cache.table_known_live", return_value=False),
@@ -536,21 +562,18 @@ class TestMatApiEpTable:
         ):
             await _mat_api_ep_table("pets", ep, state, None, 500, set(), {}, values_cte_entries)
 
-        # The PG read is SELECT *; the projection is the col_set filter in _mat_fetch_rows_from_pg,
-        # which dropped `status` while the response set was keyed on param_type.
+        # The projection is the col_set the step asks the fills for, which dropped `status` while
+        # the response set was keyed on param_type.
+        assert fills.await_args.args[1] == ["id", "status"]
         assert values_cte_entries["pets"].rows == [{"id": 1, "status": "sold"}]
 
-    async def test_cache_hit_promotes_when_hot_mgr_and_tenant_db(self):
-        conn = AsyncMock()
-        conn.fetch = AsyncMock(return_value=[{"id": 1}])
-        tenant_db = SimpleNamespace(acquire=lambda: _FakeAcquireCtx(conn))
+    async def test_cache_hit_promotes_when_hot_mgr(self):
         state = SimpleNamespace(
             api_sources={},
             org_id="default",
             federation_engine=MagicMock(),
             source_cache={},
             response_cache_default_ttl=300,
-            tenant_db=tenant_db,
         )
         ep = _ep([_col("id")])
         cache_rewrites: dict = {}
@@ -558,6 +581,7 @@ class TestMatApiEpTable:
         loc = CacheLocation("cat", "sch", "relational")
         hot_mgr = _hot_manager()
         with (
+            patch(_FILLS, new=AsyncMock(return_value=[{"id": 1}])),
             patch("provisa.api_source.engine_cache.cache_location", return_value=loc),
             patch("provisa.api_source.engine_cache.cache_table_name", return_value="r_x"),
             patch("provisa.api_source.engine_cache.table_known_live", return_value=True),
@@ -565,11 +589,14 @@ class TestMatApiEpTable:
             await _mat_api_ep_table(
                 "pets", ep, state, hot_mgr, 500, set(), cache_rewrites, values_cte_entries
             )
+            # REQ-1882: promotion is detached onto a background worker thread — wait (bounded)
+            # for it, with the fills still standing in for the store.
+            deadline = asyncio.get_running_loop().time() + 5
+            while (
+                "pets" not in hot_mgr._hot_tables and asyncio.get_running_loop().time() < deadline
+            ):
+                await asyncio.sleep(0.01)
         assert cache_rewrites["pets"] == (loc, "r_x")
-        # REQ-1882: promotion is detached onto a background worker thread — wait (bounded) for it.
-        deadline = asyncio.get_running_loop().time() + 5
-        while "pets" not in hot_mgr._hot_tables and asyncio.get_running_loop().time() < deadline:
-            await asyncio.sleep(0.01)
         assert "pets" in hot_mgr._hot_tables
 
     async def test_secondary_table_exists_cache_hit(self):
@@ -729,8 +756,8 @@ class TestMatApiEpTable:
             )
         assert values_cte_entries["pets"].rows == [{"id": 7}]
 
-    async def test_a_failed_pg_cache_read_fails_the_query_without_a_rest_fetch(self):
-        """REQ-1661 (amended 2026-09-30): the PG cache read failing is an error, not a cue to
+    async def test_a_failed_fills_read_fails_the_query_without_a_rest_fetch(self):
+        """REQ-1661 (amended 2026-09-30): the fills read failing is an error, not a cue to
         fetch the rows from REST instead."""
         state = SimpleNamespace(
             api_sources={},
@@ -738,18 +765,18 @@ class TestMatApiEpTable:
             federation_engine=MagicMock(),
             source_cache={},
             response_cache_default_ttl=300,
-            tenant_db=SimpleNamespace(acquire=MagicMock(side_effect=RuntimeError("pg down"))),
         )
         rest = AsyncMock()
         loc = CacheLocation("cat", "sch", "relational")
         with (
+            patch(_FILLS, new=AsyncMock(side_effect=RuntimeError("store down"))),
             patch("provisa.api_source.engine_cache.cache_location", return_value=loc),
             patch("provisa.api_source.engine_cache.cache_table_name", return_value="r_x"),
             patch("provisa.api_source.engine_cache.table_known_live", return_value=False),
             patch("provisa.api_source.engine_cache.ensure_cache_schema"),
             patch("provisa.api_source.engine_cache.table_exists", return_value=False),
             patch("provisa.api.data.materialization._mat_fetch_rows_from_rest", new=rest),
-            pytest.raises(RuntimeError, match="pg down"),
+            pytest.raises(RuntimeError, match="store down"),
         ):
             await _mat_api_ep_table("pets", _ep([_col("id")]), state, None, 500, set(), {}, {})
         rest.assert_not_awaited()
@@ -963,7 +990,9 @@ class TestMaterializeApiToEngineCache:
         assert ctes["pets"] is entry
         assert dropped == {}
 
-    async def test_no_pg_pool_skips_api_endpoint_table(self):
+    async def test_an_api_endpoint_table_needs_no_control_plane(self):
+        """The fills are in the store: an API endpoint table is materialized whether or not a
+        tenant plane is open."""
         ep = _ep([_col("id")])
         state = SimpleNamespace(
             hot_manager=None,
@@ -971,12 +1000,18 @@ class TestMaterializeApiToEngineCache:
             graphql_remote_sources={},
             tenant_db=None,
         )
-        rewrites, ctes, dropped = await _materialize_api_to_engine_cache(
-            "SELECT * FROM pets", state
-        )
-        assert rewrites == {}
-        assert ctes == {}
-        assert dropped == {}
+        loc = CacheLocation("cat", "sch", "relational")
+
+        async def materialized(tn, ep, state, hot_mgr, threshold, meta, rewrites, ctes, **kw):
+            rewrites[tn] = (loc, "r_x")
+
+        step = AsyncMock(side_effect=materialized)
+        with patch("provisa.api.data.materialization._mat_api_ep_table", new=step):
+            rewrites, ctes, dropped = await _materialize_api_to_engine_cache(
+                "SELECT * FROM pets", state
+            )
+        assert step.await_args.args[:2] == ("pets", ep)
+        assert (rewrites, ctes, dropped) == ({"pets": (loc, "r_x")}, {}, {})
 
     async def test_gql_remote_missing_required_arg_drops_branch(self):
         reg = {

@@ -54,7 +54,6 @@ from provisa.api.app_loaders import (
     _setup_approval_hook,
 )
 from provisa.api.app_rebuild import (
-    _bg_hydrate_api_endpoints,
     _finalize_rebuild_state,
     _register_user_views_in_state,
 )
@@ -1994,7 +1993,8 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
             state.source_types,
         )
 
-        await _bg_hydrate_api_endpoints()
+        # REQ-1915: no boot fill of an API table's collection. Its replica is built by the
+        # runner when the model declares one; a request's own calls are fills in the store.
 
         # Load RLS rules — domain_id is required so domain-scoped rules (REQ-402)
         # are not silently dropped by build_rls_context. Read through the repo so the

@@ -8,13 +8,16 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""API-table hydration for the /data/graphql endpoint (REQ-140, REQ-848).
+"""API-table hydration for the /data/graphql endpoint (REQ-140, REQ-848, REQ-1915).
 
-Pre-engine hydration of API/dataloader/collection/path-param source tables into
-the local cache before engine execution. Extracted from endpoint.py; leaf module.
+Before the engine executes, the calls an API-backed table of the request needs (its
+collection with this request's arguments, a batch of parent keys, one call per parent key)
+are made and their answers kept as fills in the store's API cache schema
+(``api_source.fill_cache``) — never in the control plane. Extracted from endpoint.py; leaf
+module.
 """
 
-# complexity-gate: allow-ble=2 reason="hydration paths relocated verbatim from endpoint.py; the broad excepts make per-source pre-engine hydration best-effort (a hydration failure falls back to engine execution, never fails the request)"
+# complexity-gate: allow-ble=1 reason="a parent that is not an API table is read from the tenant plane, where it exists only when its table lives in that database; a failed read of it is logged and its dependents are not fetched for, as before the fills moved to the store. A fill's own failure (the remote, the store) is not caught: it fails the request (REQ-1661)"
 
 from __future__ import annotations
 
@@ -30,11 +33,61 @@ log = logging.getLogger(__name__)
 _source_hydration_expiry: dict[str, float] = {}
 
 
+def _ident(name: str) -> str:
+    """``name`` as a double-quoted SQL identifier for the control-plane connection."""
+    if "\x00" in name:
+        raise ValueError(f"identifier contains a NUL character: {name!r}")
+    return '"' + name.replace('"', '""') + '"'
+
+
+async def _parent_keys(state, parent_table_meta, parent_join_col: str, child: str) -> list | None:
+    """The distinct keys of the parent a dependent API table is fetched for, or None when
+    there is nothing to fetch from (logged).
+
+    An API parent's rows are its own fills, in the store. Any other parent is read where it
+    was read before this function moved the fills: from the tenant plane, under its registered
+    schema — a read, and one that only finds a parent whose table lives in that database."""
+    from provisa.api_source import fill_cache
+
+    p_table = parent_table_meta.table_name
+    parent_ep = state.api_endpoints.get(p_table)
+    if parent_ep is not None:
+        table = fill_cache.fill_table(
+            state, parent_ep, (state.api_sources or {}).get(parent_ep.source_id)
+        )
+        if parent_join_col not in table.data_columns:
+            log.warning(
+                "%s joins %s on %r, which is not a response column of it: nothing to fetch for",
+                child,
+                p_table,
+                parent_join_col,
+            )
+            return None
+        with state.federation_engine.isolated_sync() as conn:
+            return fill_cache.distinct_values(conn, table, parent_join_col)
+    if state.tenant_db is None:
+        log.warning("no tenant plane to read the keys of %s from, for %s", p_table, child)
+        return None
+    async with state.tenant_db.acquire() as pg_conn:
+        column = _ident(parent_join_col)
+        relation = (
+            f"{_ident(parent_table_meta.schema_name)}.{_ident(p_table)}"
+            if pg_conn.capabilities.schemas
+            else _ident(p_table)
+        )
+        try:
+            rows = await pg_conn.fetch(
+                f"SELECT DISTINCT {column} FROM {relation} WHERE {column} IS NOT NULL"
+            )
+        except Exception as exc:
+            log.warning("failed to fetch parent keys of %s for %s: %s", p_table, child, exc)
+            return None
+    return [r[0] for r in rows]
+
+
 async def _hydrate_dataloader(
     src,
     endpoint,
-    pg_table,
-    pg_schema,
     ttl,
     source_id,
     dataloader_col,
@@ -43,48 +96,22 @@ async def _hydrate_dataloader(
     state,
     hydration_rows: dict,
 ) -> None:
-    """DataLoader branch: batch-fetch via query param list from parent PKs."""
-    from provisa.openapi.pg_cache import _ident, _relation, fill_api_table
+    """DataLoader branch: one call for the batch of parent keys, as a query-parameter list."""
+    from provisa.api_source import fill_cache
 
-    async with state.tenant_db.acquire() as pg_conn:
-        p_table = dataloader_parent_table_meta.table_name
-        p_schema = (
-            "default"
-            if p_table in state.api_endpoints
-            else dataloader_parent_table_meta.schema_name
-        )
-        try:
-            rows = await pg_conn.fetch(
-                f"SELECT DISTINCT {_ident(dataloader_parent_join_col)}"
-                f" FROM {_relation(pg_conn, p_schema, p_table)}"
-                f" WHERE {_ident(dataloader_parent_join_col)} IS NOT NULL"
-            )
-            pk_values = [r[0] for r in rows]
-        except Exception as exc:
-            log.warning("DataLoader: failed to fetch parent PKs for %s: %s", pg_table, exc)
-            return
-        if pk_values:
-            param_name = dataloader_col.param_name or dataloader_col.name
-            n = await fill_api_table(
-                src.base_url,
-                endpoint.path,
-                {param_name: pk_values},
-                pg_conn,
-                pg_schema,
-                pg_table,
-                ttl,
-                endpoint.response_root,
-                endpoint.error_path,
-                endpoint.pk_column,
-            )
-            hydration_rows[source_id] = hydration_rows.get(source_id, 0) + n
+    keys = await _parent_keys(
+        state, dataloader_parent_table_meta, dataloader_parent_join_col, endpoint.table_name
+    )
+    if not keys:
+        return
+    param_name = dataloader_col.param_name or dataloader_col.name
+    n = await fill_cache.fill(state, endpoint, src, [{param_name: keys}], ttl)
+    hydration_rows[source_id] = hydration_rows.get(source_id, 0) + n
 
 
 async def _hydrate_collection(
     src,
     endpoint,
-    pg_table,
-    pg_schema,
     ttl,
     source_id,
     compiled,
@@ -92,38 +119,24 @@ async def _hydrate_collection(
     hydration_rows: dict,
     cache_hit_sources: set,
 ) -> None:
-    """Collection endpoint branch: skip if mem-fresh, else fill_api_table."""
-    from provisa.openapi.pg_cache import fill_api_table, is_mem_fresh
+    """Collection branch: the call for this request's arguments, unless its fill is fresh."""
+    from provisa.api_source import fill_cache
 
     param_name_map = {
         c.name: (c.param_name or c.name) for c in endpoint.columns if c.param_type is not None
     }
     raw_params = compiled.api_args or {}
     query_params = {param_name_map.get(k, k): v for k, v in raw_params.items()}
-    if is_mem_fresh("default", pg_table, query_params):
+    if fill_cache.is_mem_fresh(fill_cache.fill_table(state, endpoint, src), query_params):
         cache_hit_sources.add(source_id)
         return
-    async with state.tenant_db.acquire() as pg_conn:
-        n = await fill_api_table(
-            src.base_url,
-            endpoint.path,
-            query_params,
-            pg_conn,
-            pg_schema,
-            pg_table,
-            ttl,
-            endpoint.response_root,
-            endpoint.error_path,
-            endpoint.pk_column,
-        )
-        hydration_rows[source_id] = hydration_rows.get(source_id, 0) + n
+    n = await fill_cache.fill(state, endpoint, src, [query_params], ttl)
+    hydration_rows[source_id] = hydration_rows.get(source_id, 0) + n
 
 
 async def _hydrate_path_param(
     src,
     endpoint,
-    pg_table,
-    pg_schema,
     ttl,
     source_id,
     path_col,
@@ -131,12 +144,13 @@ async def _hydrate_path_param(
     state,
     hydration_rows: dict,
 ) -> bool:
-    """Path-param branch: fetch one row per parent PK.
+    """Path-parameter branch: one call per parent key.
 
     Returns False if parent join is missing (caller should skip this table).
     """
-    from provisa.openapi.pg_cache import _ident, _relation, fetch_pk_row
+    from provisa.api_source import fill_cache
 
+    pg_table = endpoint.table_name
     path_param_name = path_col.param_name or path_col.name
     parent_join_col = None
     parent_table_meta = None
@@ -153,46 +167,25 @@ async def _hydrate_path_param(
         log.warning("No parent join for path-param table %s — skipping hydration", pg_table)
         return False
 
-    async with state.tenant_db.acquire() as pg_conn:
-        p_table = parent_table_meta.table_name
-        p_schema = "default" if p_table in state.api_endpoints else parent_table_meta.schema_name
-        try:
-            rows = await pg_conn.fetch(
-                f"SELECT DISTINCT {_ident(parent_join_col)}"
-                f" FROM {_relation(pg_conn, p_schema, p_table)}"
-                f" WHERE {_ident(parent_join_col)} IS NOT NULL"
-            )
-            pk_values = [r[0] for r in rows]
-        except Exception as exc:
-            log.warning("Failed to fetch parent PKs for %s: %s", pg_table, exc)
-            return True
-
-        for pk in pk_values:
-            n = await fetch_pk_row(
-                src.base_url,
-                endpoint.path,
-                path_param_name,
-                pk,
-                pg_conn,
-                pg_schema,
-                pg_table,
-                ttl,
-                endpoint.response_root,
-                endpoint.error_path,
-            )
-            hydration_rows[source_id] = hydration_rows.get(source_id, 0) + n
+    keys = await _parent_keys(state, parent_table_meta, parent_join_col, pg_table)
+    if keys:
+        n = await fill_cache.fill(
+            state, endpoint, src, [{path_param_name: str(key)} for key in keys], ttl
+        )
+        hydration_rows[source_id] = hydration_rows.get(source_id, 0) + n
     return True
 
 
 async def _hydrate_api_tables_before_engine(
     compiled, ctx, state
 ) -> tuple[set, dict[str, float], dict[str, int], set]:
-    """Ensure API-backed PG cache tables are populated before the engine executes.
+    """Ensure the fills an API-backed table of this request needs are in the store before the
+    engine executes (``api_source.fill_cache``: TTL-aware, keyed by the hash of the arguments).
 
-    For each openapi source in compiled.sources:
-    - Non-path-param: call fill_api_table (TTL-aware, keyed by params hash).
-    - Path-param (returns single object per call): fetch one row per parent PK value
-      via fetch_pk_row (TTL-aware, hash IS the PK for single-object responses).
+    For each API source in compiled.sources:
+    - Non-path-param: the call for this request's arguments, or one call for the batch of
+      parent keys when a query parameter is the target of a join.
+    - Path-param (returns single object per call): one call per parent key.
 
     Returns (dataloader_sources, hydration_times_ms, hydration_rows, cache_hit_sources).
     """
@@ -204,9 +197,6 @@ async def _hydrate_api_tables_before_engine(
     cache_hit_sources: set = set()
     if not hasattr(state, "api_endpoints") or not state.api_endpoints:
         return dataloader_sources, hydration_times, hydration_rows, cache_hit_sources
-    if state.tenant_db is None:
-        return dataloader_sources, hydration_times, hydration_rows, cache_hit_sources
-
     # REQ-1865: a table replicated row by row (row_materialize) has no whole-table API cache table
     # to fill — its rows live in the row-level replica, filled by key (ensure_rows_resident). The
     # same rule _materialize_api_to_engine_cache applies on the raw-SQL/compiled path. Filling it
@@ -233,7 +223,6 @@ async def _hydrate_api_tables_before_engine(
                 continue
             if table_name in _row_level_tables:
                 continue
-            pg_schema = "default"
             pg_table = table_name
             ttl = endpoint.ttl
             _min_ttl = ttl if _min_ttl is None else min(_min_ttl, ttl)
@@ -268,8 +257,6 @@ async def _hydrate_api_tables_before_engine(
                 await _hydrate_dataloader(
                     src,
                     endpoint,
-                    pg_table,
-                    pg_schema,
                     ttl,
                     source_id,
                     dataloader_col,
@@ -282,8 +269,6 @@ async def _hydrate_api_tables_before_engine(
                 await _hydrate_collection(
                     src,
                     endpoint,
-                    pg_table,
-                    pg_schema,
                     ttl,
                     source_id,
                     compiled,
@@ -295,8 +280,6 @@ async def _hydrate_api_tables_before_engine(
                 await _hydrate_path_param(
                     src,
                     endpoint,
-                    pg_table,
-                    pg_schema,
                     ttl,
                     source_id,
                     path_cols[0],

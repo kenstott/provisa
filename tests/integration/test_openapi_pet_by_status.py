@@ -136,7 +136,9 @@ def _make_config(spec_path: str) -> dict:
 
 
 @pytest_asyncio.fixture(scope="module")
-async def pg_conn(tenant_db):
+async def pg_conn(tenant_db, platform_admin_db):
+    # platform_admin_db: load_config binds the org vault (REQ-1580/REQ-1730), read off
+    # state.admin_db — this module brings its own rather than inheriting another module's.
     # load_config runs against the control-plane Database shim (advisory_xact_lock,
     # execute_core), scoped to org_default — the same connection the app uses.
     # tenant_db itself leaves search_path unset (public), per tests/conftest.py's
@@ -227,34 +229,39 @@ async def test_default_params_from_spec_ignores_path_params():
     assert result == {"format": ["json", "xml"]}
 
 
-async def test_openapi_config_load_prepopulates_table_with_enum_defaults(pg_conn):
-    """config load pre-populates the PG cache table using enum values from spec."""
-    from provisa.core.config_loader import load_config
+async def test_openapi_config_load_registers_the_enum_defaults_and_fetches_nothing(pg_conn):
+    """REQ-1915: a config load registers the endpoint with the default parameters its spec
+    names (the enum values of a query parameter) — what a build of its replica calls with —
+    and calls nothing: rows fetched from a remote are never written into the control plane."""
+    from provisa.core.config_loader import load_config, parse_config_dict
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(MOCK_SPEC, f)
         spec_path = f.name
 
-    config_data = _make_config(spec_path)
-
-    from provisa.core.config_loader import parse_config_dict
-
-    config = parse_config_dict(config_data)
+    config = parse_config_dict(_make_config(spec_path))
 
     # integration: mock-justified — respx intercepts outbound HTTP to a 3rd-party
     # OpenAPI endpoint (MOCK_BASE_URL). This is not a docker-compose service; the
     # test exercises the real PG path (pg_conn fixture) and real config loader logic.
     with respx.mock(assert_all_called=False) as rx:
-        # Mock the API call with enum status values
-        rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(
+        route = rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(
             return_value=httpx.Response(200, json=MOCK_PETS)
         )
 
         await load_config(config, pg_conn, origin="config")
 
-    # The PG table should have rows pre-populated from the mock API response
-    row_count = await pg_conn.fetchval('SELECT COUNT(*) FROM "default"."find_pets_by_status"')
-    assert row_count > 0, "find_pets_by_status must be pre-populated at config load time"
+    assert route.call_count == 0, "a config load must not call the API"
+    default_params = await pg_conn.fetchval(
+        "SELECT default_params FROM api_endpoints WHERE table_name = $1", "find_pets_by_status"
+    )
+    if isinstance(default_params, str):
+        default_params = json.loads(default_params)
+    assert default_params == {"status": ["available", "pending", "sold"]}
+    in_control_plane = await pg_conn.fetchval(
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'find_pets_by_status'"
+    )
+    assert in_control_plane == 0, "no table of API rows may be made in the control plane"
 
 
 async def test_openapi_config_load_registers_api_endpoint(pg_conn):
@@ -308,27 +315,3 @@ async def test_openapi_config_load_registers_api_source(pg_conn):
     )
     assert src is not None, "api_sources must have a row for mock-petstore-api"
     assert src["base_url"] == MOCK_BASE_URL
-
-
-async def test_openapi_config_load_empty_table_when_api_returns_no_rows(pg_conn):
-    """When the API returns no rows, the table exists but is empty (no crash)."""
-    from provisa.core.config_loader import load_config, parse_config_dict
-
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-        json.dump(MOCK_SPEC, f)
-        spec_path = f.name
-
-    config = parse_config_dict(_make_config(spec_path))
-
-    # integration: mock-justified — respx intercepts outbound HTTP to a 3rd-party
-    # OpenAPI endpoint (MOCK_BASE_URL), not a docker-compose service.
-    with respx.mock(assert_all_called=False) as rx:
-        rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(return_value=httpx.Response(200, json=[]))
-        await load_config(config, pg_conn, origin="config")
-
-    # Table must exist (even if empty)
-    exists = await pg_conn.fetchval(
-        "SELECT EXISTS(SELECT 1 FROM information_schema.tables"
-        " WHERE table_schema = 'default' AND table_name = 'find_pets_by_status')"
-    )
-    assert exists, "find_pets_by_status table must exist even when API returns no rows"
