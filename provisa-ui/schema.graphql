@@ -543,7 +543,11 @@ type ReplicaBuildType {
   completedAt: String
   nextRefreshAt: String
   lastError: String
+  lastErrorCode: String
+  lastErrorParams: JSON
+  failedAttempts: Int!
   waitingOn: String
+  waitingOnCode: String
 }
 
 type ReplicaBuildsType {

@@ -144,6 +144,9 @@ class ReplicaRecord:
     model_stamp: int | None
     load_kind: str | None
     retired_at: datetime | None
+    last_error_code: str | None = None
+    last_error_params: dict | None = None
+    failed_attempts: int = 0
 
     @property
     def exists(self) -> bool:
@@ -180,6 +183,9 @@ _COLUMNS = (
     _t.model_stamp,
     _t.load_kind,
     _t.retired_at,
+    _t.last_error_code,
+    _t.last_error_params,
+    _t.failed_attempts,
 )
 
 
@@ -213,6 +219,9 @@ def _record(row: Any) -> ReplicaRecord:
         model_stamp=row[19],
         load_kind=row[20],
         retired_at=_aware(row[21]),
+        last_error_code=row[22],
+        last_error_params=row[23],
+        failed_attempts=row[24],
     )
 
 
@@ -429,18 +438,39 @@ async def record_completed(
             definition_hash=definition_hash,
             built_columns=built_columns,
             last_error=None,
+            last_error_code=None,
+            last_error_params=None,
             failed_at=None,
+            failed_attempts=0,
             waiting_on=None,
         )
     )
 
 
-async def record_failed(conn: "Connection", key: ReplicaKey, *, error: str, now: datetime) -> None:
-    """The build failed. The previous replica, if any, is untouched and stays readable."""
+async def record_failed(
+    conn: "Connection",
+    key: ReplicaKey,
+    *,
+    error: str,
+    now: datetime,
+    code: str | None = None,
+    params: dict | None = None,
+) -> None:
+    """The build failed. The previous replica, if any, is untouched and stays readable.
+    ``code`` and ``params`` name a cause Provisa knows (``replica_errors``). The count of
+    failures in a row goes up by one; a completed build puts it back to none."""
     await conn.execute_core(
         update(replica_state)
         .where(_is(key))
-        .values(build_state=FAILED, build_holder=None, last_error=error, failed_at=now)
+        .values(
+            build_state=FAILED,
+            build_holder=None,
+            last_error=error,
+            last_error_code=code,
+            last_error_params=params,
+            failed_at=now,
+            failed_attempts=_t.failed_attempts + 1,
+        )
     )
 
 

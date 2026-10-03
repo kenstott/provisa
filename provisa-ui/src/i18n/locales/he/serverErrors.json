@@ -203,6 +203,15 @@
       "role_header_required": "נדרשת כותרת X-Provisa-Role כדי לבצע פרופיל של תצוגה (View)",
       "table_not_found": "הטבלה {{table_id}} לא נמצאה"
     },
+    "replication": {
+      "spool_full": "בניית הרפליקה של {{table}} נדחתה: אחסון זמני של תשובת המקור דורש {{needed}} בתים בספריית ה-spool של צומת זה, מעבר למגבלה של {{limit}} (replication.spool_max_bytes).",
+      "answer_not_json": "התשובה שנקראה עבור הרפליקה של {{table}} אינה JSON תקין: {{cause}} (ב-{{kib}} KiB שלפני בית {{before_byte}} בתשובה).",
+      "no_whole_copy": "לטבלה {{schema}}.{{table}} של המקור {{source}} אין עותק שלם לבנות: היא משוכפלת שורה אחר שורה, או שיש לה עמודת פרמטר.",
+      "table_gone": "הטבלה {{schema}}.{{table}} של המקור {{source}} אינה רשומה עוד, ולכן הרפליקה שלה אינה נבנית.",
+      "page_limit_reached": "הרפליקה של {{table}} לא נבנתה: העימוד של נקודת הקצה נעצר ב-max_pages={{max_pages}}, ולנקודת הקצה היו נתונים נוספים אחרי עמוד {{max_pages}} ({{rows}} שורות נקראו). רפליקה היא הטבלה כולה, ולכן אינה נחתכת במגבלה. הגדילו את max_pages או את גודל העמוד של נקודת הקצה.",
+      "waiting_engine_jobs": "המנוע הגיע למגבלת משימות הרקע שלו (replication.engine_jobs)",
+      "waiting_source_cap": "המקור הגיע למגבלת הקריאות החיות שלו (max_live_concurrency)"
+    },
     "roles": {
       "cannot_delete_system": "לא ניתן למחוק תפקידי מערכת",
       "cannot_modify_administrative": "לא ניתן לשנות תפקידי ניהול",

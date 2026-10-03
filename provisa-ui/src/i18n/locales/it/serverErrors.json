@@ -203,6 +203,15 @@
       "role_header_required": "Intestazione X-Provisa-Role richiesta per profilare una vista",
       "table_not_found": "Tabella {{table_id}} non trovata"
     },
+    "replication": {
+      "spool_full": "La build della replica di {{table}} è stata rifiutata: lo spooling della risposta della sorgente richiede {{needed}} byte della directory di spool di questo nodo, oltre il limite di {{limit}} (replication.spool_max_bytes).",
+      "answer_not_json": "La risposta letta per la replica di {{table}} non è JSON valido: {{cause}} (nei {{kib}} KiB prima del byte {{before_byte}} della risposta).",
+      "no_whole_copy": "La tabella {{schema}}.{{table}} della sorgente {{source}} non ha una copia completa da creare: è replicata riga per riga oppure ha una colonna parametro.",
+      "table_gone": "La tabella {{schema}}.{{table}} della sorgente {{source}} non è più registrata, quindi la sua replica non viene creata.",
+      "page_limit_reached": "La replica di {{table}} non è stata creata: la paginazione del suo endpoint si ferma a max_pages={{max_pages}} e l'endpoint aveva altri dati dopo la pagina {{max_pages}} ({{rows}} righe lette). Una replica è l'intera tabella, quindi non viene troncata al limite. Aumenta max_pages o la dimensione di pagina dell'endpoint.",
+      "waiting_engine_jobs": "il motore ha raggiunto il limite di job in background (replication.engine_jobs)",
+      "waiting_source_cap": "la sorgente ha raggiunto il limite di letture live (max_live_concurrency)"
+    },
     "roles": {
       "cannot_delete_system": "Impossibile eliminare i ruoli di sistema",
       "cannot_modify_administrative": "Impossibile modificare i ruoli amministrativi",

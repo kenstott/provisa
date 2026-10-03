@@ -86,14 +86,14 @@ class TestSchemaRenameReload:
         # plain-password source with no ${secret:...} reference. tenant_db alone doesn't provide
         # it; test_domain_policy_integration.py's tests carry this same implicit dependency.
         async with tenant_db.acquire() as conn:
-            await load_config(parse_config_dict(_config("public")), conn)
+            await load_config(parse_config_dict(_config("public")), conn, origin="config")
             rows = await conn.fetch(
                 "SELECT schema_name FROM registered_tables WHERE table_name = 'order_events'"
             )
             assert [r["schema_name"] for r in rows] == ["public"]
 
             # Config's schema: field changes — a real reload, not a first-time registration.
-            await load_config(parse_config_dict(_config("default")), conn)
+            await load_config(parse_config_dict(_config("default")), conn, origin="config")
             rows = await conn.fetch(
                 "SELECT schema_name FROM registered_tables WHERE table_name = 'order_events'"
             )
@@ -105,8 +105,12 @@ class TestSchemaRenameReload:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_schema_change_survives_replace_mode_too(self, tenant_db, graphql_client):
         async with tenant_db.acquire() as conn:
-            await load_config(parse_config_dict(_config("public")), conn, replace=True)
-            await load_config(parse_config_dict(_config("default")), conn, replace=True)
+            await load_config(
+                parse_config_dict(_config("public")), conn, replace=True, origin="config"
+            )
+            await load_config(
+                parse_config_dict(_config("default")), conn, replace=True, origin="config"
+            )
             rows = await conn.fetch(
                 "SELECT schema_name FROM registered_tables WHERE table_name = 'order_events'"
             )

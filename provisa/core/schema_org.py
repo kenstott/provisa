@@ -1194,9 +1194,17 @@ replica_state = Table(
     # time to reload and every statement already addressed at it has ended. NULL: in use.
     Column("retired_at", DateTime(timezone=True)),
     Column("last_error", Text),
+    # REQ-1350: the failure's stable code and params, when its cause is one Provisa names
+    # (``replica_errors``); NULL for a driver's or a source's own error.
+    Column("last_error_code", Text),
+    Column("last_error_params", JSON),
     Column("failed_at", DateTime(timezone=True)),
-    # Why a requested build was not started on the last pass that tried it (the engine at its
-    # job cap, the source at its live-read cap); NULL once it starts.
+    # Builds that have failed in a row since the last one that completed: a replica that keeps
+    # failing is retried every ``replication.retry_interval``, and this says how often it has.
+    Column("failed_attempts", Integer, nullable=False, server_default="0"),
+    # Why a requested build was not started on the last pass that tried it, as a code
+    # (``replica_errors.WAITING``: the engine at its job cap, the source at its live-read
+    # cap); NULL once it starts.
     Column("waiting_on", Text),
     CheckConstraint(
         "build_state IN ('idle','requested','building','failed')",

@@ -33,6 +33,9 @@ def _record(**kw):
         completed_at=None,
         next_refresh_at=None,
         last_error=None,
+        last_error_code=None,
+        last_error_params=None,
+        failed_attempts=0,
         waiting_on=None,
         retired_at=None,
     )
@@ -87,10 +90,32 @@ def test_a_finished_build_has_no_running_rate_and_keeps_its_last_method():
 
 
 def test_a_failed_build_shows_its_error_and_a_waiting_one_says_why():
-    failed = build_view(_record(build_state="failed", last_error="source down"), NOW)
-    assert (failed["state"], failed["last_error"]) == ("failed", "source down")
-    waiting = build_view(_record(build_state="requested", waiting_on="engine_jobs"), NOW)
-    assert (waiting["state"], waiting["waiting_on"]) == ("requested", "engine_jobs")
+    failed = build_view(
+        _record(
+            build_state="failed",
+            last_error="the answer read for the replica of g.orders is not valid JSON: ...",
+            last_error_code="replication.answer_not_json",
+            last_error_params={"table": "g.orders", "cause": "x", "kib": 64, "before_byte": 9},
+            failed_attempts=3,
+        ),
+        NOW,
+    )
+    assert (failed["state"], failed["failed_attempts"]) == ("failed", 3)
+    assert failed["last_error"].startswith("the answer read for the replica of g.orders")
+    assert failed["last_error_code"] == "replication.answer_not_json"
+    assert failed["last_error_params"]["table"] == "g.orders"
+    # A driver's own error has no code: its text is all there is.
+    plain = build_view(_record(build_state="failed", last_error="source down"), NOW)
+    assert (plain["last_error"], plain["last_error_code"]) == ("source down", None)
+    # Why a requested build has not started: the code, and its English text.
+    waiting = build_view(
+        _record(build_state="requested", waiting_on="replication.waiting_engine_jobs"), NOW
+    )
+    assert waiting["waiting_on_code"] == "replication.waiting_engine_jobs"
+    assert waiting["waiting_on"] == (
+        "the engine is at its background job cap (replication.engine_jobs)"
+    )
+    assert build_view(_record(), NOW)["waiting_on"] is None
 
 
 def test_a_replica_the_model_no_longer_declares_is_shown_as_retired():

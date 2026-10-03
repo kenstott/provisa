@@ -18,6 +18,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from provisa.federation.replica_errors import WAITING
+
 RETIRED = "retired"
 
 
@@ -48,6 +50,12 @@ def build_view(record: Any, now: datetime) -> dict:
         "rows_per_second": rate,
         "completed_at": _iso(record.completed_at),
         "next_refresh_at": _iso(record.next_refresh_at),
+        # REQ-1350: the English text, and the code and params the UI renders in its own
+        # language when the cause is one Provisa names.
         "last_error": record.last_error,
-        "waiting_on": record.waiting_on,
+        "last_error_code": record.last_error_code,
+        "last_error_params": record.last_error_params,
+        "failed_attempts": record.failed_attempts,
+        "waiting_on": WAITING[record.waiting_on] if record.waiting_on is not None else None,
+        "waiting_on_code": record.waiting_on,
     }

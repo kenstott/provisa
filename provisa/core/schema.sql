@@ -1401,8 +1401,11 @@ CREATE TABLE IF NOT EXISTS replica_state (
     load_kind        TEXT,          -- bulk_stream | row_copy, of the running or last build
     retired_at       TIMESTAMPTZ,   -- set when the model stops declaring it; dropped after a grace
     last_error       TEXT,
+    last_error_code  TEXT,          -- REQ-1350: the failure's code, when its cause is a named one
+    last_error_params JSONB,        -- and its params
     failed_at        TIMESTAMPTZ,
-    waiting_on       TEXT,          -- why a requested build did not start on the last pass
+    failed_attempts  INTEGER NOT NULL DEFAULT 0,  -- builds failed in a row since the last completed
+    waiting_on       TEXT,          -- why a requested build did not start on the last pass (a code)
     PRIMARY KEY (source_id, schema_name, table_name)
 );
 

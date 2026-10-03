@@ -21,9 +21,8 @@ from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_org import metadata, replica_state
 from provisa.federation import replica_state as build_state
 from provisa.federation.replica_locks import BuildLocks
+from provisa.federation.replica_errors import WAITING_ENGINE, WAITING_SOURCE
 from provisa.federation.replica_runner import (
-    WAITING_ENGINE,
-    WAITING_SOURCE,
     BuildOutcome,
     ReplicaRunner,
     engine_job_key,
@@ -105,6 +104,7 @@ class _Node:
         engine_jobs=2,
         cap=None,
         engine="trino@engine:8080",
+        retry=60.0,
     ):
         self.tasks: list[asyncio.Task] = []
         self.locks = BuildLocks(url)
@@ -119,7 +119,7 @@ class _Node:
             permits=permits,
             next_refresh_at=_async(lambda _key, _now: None),
             store=lambda: "store-a",
-            retry_interval=lambda: 60.0,
+            retry_interval=lambda: retry,
             builds_per_node=lambda: per_node,
             engine_jobs=lambda: engine_jobs,
             spawn=lambda coro, name: self.tasks.append(asyncio.ensure_future(coro)),
@@ -313,6 +313,49 @@ async def test_a_failed_build_is_recorded_and_frees_what_it_held(plane, tmp_path
     assert not record.exists
     assert permits.held[permits.key(ORG, "src")] == set()
     assert node.locks.try_node_slot(1) is not None
+    # A driver's own error has no code: the UI shows its text.
+    assert (record.last_error_code, record.last_error_params, record.failed_attempts) == (
+        None,
+        None,
+        1,
+    )
+
+
+async def test_a_build_that_keeps_failing_is_retried_and_says_how_often_and_why(plane, tmp_path):
+    """REQ-1350: a failure whose cause Provisa names is recorded with its code and params.
+    The runner tries a failed build again once the retry interval has passed; each failure in
+    a row is counted, so a replica that never builds does not fail in silence, and a build
+    that completes puts the count back to none."""
+    from provisa.federation.replica_spool import ReplicaSpoolFull
+
+    url, connect = plane
+    db = connect()
+    await _request(db, _key(0))
+    outcomes: list = [ReplicaSpoolFull("src.t0", 3_000, 2_000), RuntimeError("boom"), None]
+
+    async def build(key, progress):
+        failure = outcomes.pop(0)
+        if failure is not None:
+            raise failure
+        return BuildOutcome(rows_copied=1, method="stream_batches")
+
+    node = _Node("a", url, db, tmp_path, build=build, permits=_Permits(), retry=0.0)
+    assert await node.runner.run_pass() == 1
+    await node.drain()  # each ended build looks for the next: the failed one is due at once
+    record = (await _records(db))[_key(0)]
+    assert outcomes == [] and record.build_state == build_state.IDLE and record.exists
+    assert (record.failed_attempts, record.last_error, record.last_error_code) == (0, None, None)
+
+    await _request(db, _key(1))
+    outcomes[:] = [ReplicaSpoolFull("src.t1", 3_000, 2_000)]
+    held = _Node("b", url, db, tmp_path, build=build, permits=_Permits())  # retry in 60 s
+    assert await held.runner.run_pass() == 1
+    await held.drain()
+    record = (await _records(db))[_key(1)]
+    assert (record.build_state, record.failed_attempts) == (build_state.FAILED, 1)
+    assert record.last_error_code == "replication.spool_full"
+    assert record.last_error_params == {"table": "src.t1", "needed": 3_000, "limit": 2_000}
+    assert "over the limit of 2,000" in record.last_error
 
 
 async def test_a_refresh_that_is_due_is_claimed_like_a_request(plane, tmp_path):

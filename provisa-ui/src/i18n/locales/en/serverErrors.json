@@ -203,6 +203,15 @@
       "role_header_required": "X-Provisa-Role header required to profile a view",
       "table_not_found": "Table {{table_id}} not found"
     },
+    "replication": {
+      "spool_full": "The replica build of {{table}} was refused: spooling its source's answer needs {{needed}} bytes of this node's spool directory, over the limit of {{limit}} (replication.spool_max_bytes).",
+      "answer_not_json": "The answer read for the replica of {{table}} is not valid JSON: {{cause}} (in the {{kib}} KiB before byte {{before_byte}} of the answer).",
+      "no_whole_copy": "Table {{schema}}.{{table}} of source {{source}} has no whole copy to build: it is replicated row by row, or it has a parameter column.",
+      "table_gone": "Table {{schema}}.{{table}} of source {{source}} is no longer registered, so its replica is not built.",
+      "page_limit_reached": "The replica of {{table}} was not built: its endpoint's paging stops at max_pages={{max_pages}}, and the endpoint had more after page {{max_pages}} ({{rows}} rows read). A replica is the whole table, so it is not cut at the cap. Raise the endpoint's max_pages or its page size.",
+      "waiting_engine_jobs": "the engine is at its background job cap (replication.engine_jobs)",
+      "waiting_source_cap": "the source is at its live-read cap (max_live_concurrency)"
+    },
     "roles": {
       "cannot_delete_system": "Cannot delete system roles",
       "cannot_modify_administrative": "Cannot modify administrative roles",

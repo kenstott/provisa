@@ -151,8 +151,9 @@ def iter_remote_rows_spooled(  # REQ-1915
     ``data.<field_name>`` one at a time.
 
     The document is parsed as the endpoint sent it: the repair :func:`_safe_json` makes to an
-    invalid ``\\u`` escape needs the whole text in memory and is not applied, so such an answer
-    fails the read with the parser's error."""
+    invalid ``\\u`` escape needs the whole text in memory and is not applied. Such an answer
+    fails the read by name (``replica_spool.AnswerNotJson``): the table, the parser's reason
+    and where in the answer it is."""
     from provisa.federation.replica_spool import json_items, json_starts
 
     selected = list(columns)

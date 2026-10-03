@@ -33,6 +33,7 @@ from provisa.federation.data_replicator import (
 )
 from provisa.federation.replica_spool import (
     SPOOL_SUFFIX,
+    AnswerNotJson,
     ReplicaSpoolFull,
     SpooledDocumentSource,
     sweep,
@@ -244,6 +245,36 @@ async def test_a_failed_read_removes_its_spool_file(kind, spool):
 
 
 @respx.mock
+async def test_an_answer_with_an_invalid_escape_fails_by_name_without_quoting_the_data(spool):
+    """A remote GraphQL endpoint that writes a backslash-u not followed by four hex digits:
+    the build's error names the table, the parser's reason and where in the answer, on one
+    line, and quotes none of the document."""
+    route, reader, _first = _graphql()
+    rows = [{"id": i, "name": f"n{i}"} for i in range(_N)]
+    body = json.dumps({"data": {"orders": rows}}).encode()
+    route.mock(return_value=_streamed(body.replace(b'"n4000"', b'"C:\\users\\uZZ"')))
+    with pytest.raises(AnswerNotJson) as failed:
+        [b async for b in reader.batches(1000)]
+    message = str(failed.value)
+    assert message.startswith(
+        "the answer read for the replica of g.orders is not valid JSON: lexical error: "
+        "invalid (non-hex) character occurs after '\\u' inside string (in the 64 KiB before byte "
+    )
+    assert "\n" not in message and "uZZ" not in message and "n3999" not in message
+    assert 0 < failed.value.before_byte <= len(body) + 16
+    assert _spool_files(spool) == []
+
+
+@respx.mock
+async def test_a_cut_off_answer_fails_the_same_way(spool):
+    route, reader, _first = _druid()
+    route.mock(return_value=_streamed(b'[{"id": 1, "name": "a"}, {"id": 2, "na'))
+    with pytest.raises(AnswerNotJson, match="replica of .* is not valid JSON: parse error: "):
+        [b async for b in reader.batches(1000)]
+    assert _spool_files(spool) == []
+
+
+@respx.mock
 async def test_an_answer_that_fails_in_its_own_terms_is_refused_and_removed(spool):
     route, reader, _first = _pinot()
     route.mock(return_value=_streamed(json.dumps({"exceptions": [{"message": "bad"}]}).encode()))
@@ -366,9 +397,10 @@ def test_the_parser_is_the_c_backend_by_name():
     assert _json_parser().__name__ == "ijson.backends.yajl2_c"
 
 
-def test_kinds_that_cannot_spool_stay_plain_single_documents():
-    for loader in (sl.make_dq_loader(SimpleNamespace()), sl.make_openapi_loader({}, {})):
-        assert not hasattr(loader, "replica_source")
+def test_a_kind_that_cannot_spool_stays_a_plain_single_document():
+    # A checker's rows are one scan's results, produced by a subprocess: there is no answer to
+    # spool. (An API table's own reader is covered in tests/unit/test_api_replica_read.py.)
+    assert not hasattr(sl.make_dq_loader(SimpleNamespace()), "replica_source")
 
 
 def test_the_spool_directory_is_under_the_nodes_data_directory_and_swept_at_start():

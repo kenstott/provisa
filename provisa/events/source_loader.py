@@ -311,10 +311,7 @@ def make_openapi_loader(
     A table with no registered endpoint, or a source with no api-source config, raises
     :class:`UnsupportedSourceFetch` (explicit — never a silent empty snapshot)."""
 
-    async def _load(source: Any, table: Any) -> list[dict]:
-        from provisa.api_source.caller import call_api
-        from provisa.api_source.flattener import flatten_response
-
+    def _registered(source: Any, table: Any) -> tuple[Any, Any]:
         endpoint = endpoints_by_table.get(table.table_name)
         api_source = sources_by_id.get(source.id)
         if endpoint is None or api_source is None:
@@ -322,6 +319,13 @@ def make_openapi_loader(
                 f"openapi source {source.id!r} table {table.table_name!r}: no registered endpoint "
                 f"or api-source config to fetch from"
             )
+        return endpoint, api_source
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        from provisa.api_source.caller import call_api
+        from provisa.api_source.flattener import flatten_response
+
+        endpoint, api_source = _registered(source, table)
         pages = await call_api(
             endpoint,
             dict(endpoint.default_params),
@@ -337,6 +341,21 @@ def make_openapi_loader(
             )
         return rows
 
+    def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+        # REQ-1915: a build reads the collection a page or a row at a time; only an answer
+        # that has to be understood whole is read as one document in memory.
+        from provisa.api_source.replica_read import replica_source
+        from provisa.federation.replica_source import DocumentSource
+
+        endpoint, api_source = _registered(source, table)
+        streamed = replica_source(
+            endpoint, api_source, columns, table=f"{source.id}.{table.table_name}"
+        )
+        if streamed is not None:
+            return streamed
+        return DocumentSource(lambda: _load(source, table), columns)
+
+    _load.replica_source = _replica_source  # type: ignore[attr-defined]
     return _load
 
 

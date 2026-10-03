@@ -6,7 +6,7 @@
     "building": "副本构建中：已复制 {{rows}} 行，{{rate}} 行/秒（{{how}}）。",
     "buildingNoRate": "副本构建中（{{how}}）。",
     "built": "副本已于 {{when}} 构建：{{rows}} 行（{{how}}）。",
-    "failed": "副本构建失败：{{error}}",
+    "failed": "副本构建失败（第 {{attempts}} 次尝试；将重试）：{{error}}",
     "retired": "此表不再复制；其副本正在移除。",
     "convergenceError": "副本未与模型保持一致：{{error}}",
     "method": {

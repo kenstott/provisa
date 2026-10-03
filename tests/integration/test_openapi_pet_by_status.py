@@ -246,7 +246,7 @@ async def test_openapi_config_load_prepopulates_table_with_enum_defaults(pg_conn
             return_value=httpx.Response(200, json=MOCK_PETS)
         )
 
-        await load_config(config, pg_conn, replace=False)
+        await load_config(config, pg_conn, replace=False, origin="config")
 
     # The PG table should have rows pre-populated from the mock API response
     row_count = await pg_conn.fetchval('SELECT COUNT(*) FROM "default"."find_pets_by_status"')
@@ -269,7 +269,7 @@ async def test_openapi_config_load_registers_api_endpoint(pg_conn):
         rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(
             return_value=httpx.Response(200, json=MOCK_PETS)
         )
-        await load_config(config, pg_conn, replace=False)
+        await load_config(config, pg_conn, replace=False, origin="config")
 
     ep = await pg_conn.fetchrow(
         "SELECT path, source_id FROM api_endpoints WHERE table_name = $1",
@@ -296,7 +296,7 @@ async def test_openapi_config_load_registers_api_source(pg_conn):
         rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(
             return_value=httpx.Response(200, json=MOCK_PETS)
         )
-        await load_config(config, pg_conn, replace=False)
+        await load_config(config, pg_conn, replace=False, origin="config")
 
     src = await pg_conn.fetchrow(
         "SELECT base_url FROM api_sources WHERE id = $1",
@@ -320,7 +320,7 @@ async def test_openapi_config_load_empty_table_when_api_returns_no_rows(pg_conn)
     # OpenAPI endpoint (MOCK_BASE_URL), not a docker-compose service.
     with respx.mock(assert_all_called=False) as rx:
         rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(return_value=httpx.Response(200, json=[]))
-        await load_config(config, pg_conn, replace=False)
+        await load_config(config, pg_conn, replace=False, origin="config")
 
     # Table must exist (even if empty)
     exists = await pg_conn.fetchval(

@@ -50,6 +50,7 @@ from provisa.openapi.mapper import OpenAPIQuery
 from provisa.security.rights import SYSTEM_ROLE_IDS
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, wholes_of
 from provisa.core.repositories.origin import CONFIG, SEED
+from provisa.core.repositories.origin import require as require_origin
 from provisa.core.repositories import (
     source as source_repo,
     domain as domain_repo,
@@ -209,6 +210,8 @@ async def _upsert_sources(  # REQ-012, REQ-250, REQ-1266, REQ-1730
     config: ProvisaConfig,
     catalog_names: dict[str, str] | None = None,
     extra_sources: list[Source] | None = None,
+    *,
+    origin: str,
 ) -> list[str]:
     """Upsert each source and (re)issue its engine catalog. Returns the ids whose catalog failed.
 
@@ -241,7 +244,7 @@ async def _upsert_sources(  # REQ-012, REQ-250, REQ-1266, REQ-1730
     # that loop rarely needs the binding — wrapping both here anyway costs nothing when unneeded.
     async with bound_to_request_org():
         for src in config.sources:
-            await source_repo.upsert(conn, src, origin=CONFIG)
+            await source_repo.upsert(conn, src, origin=origin)
             # Provision the source on the bound engine through the abstraction (the engine makes
             # a catalog; native engines attach lazily). No direct the engine reference here.
             # REQ-1266: catalog_names supplies the org-prefixed physical catalog name for a
@@ -562,6 +565,8 @@ async def _upsert_single_table(
     tbl: Table,
     src: Source | None,
     openapi_specs: dict[str, dict],
+    *,
+    origin: str,
 ) -> None:
     """Upsert one table and run source-type-specific post-upsert steps."""
     if src and src.type.value == "openapi" and src.base_url:
@@ -572,7 +577,7 @@ async def _upsert_single_table(
     # REQ-1426: data_type is design-time metadata — the config carries it and nothing infers it
     # here. A column that reaches this point untyped means the design was never completed; the
     # repository refuses it rather than persisting a hole the catalog renders as "unknown".
-    await table_repo.upsert(conn, tbl, origin=CONFIG)
+    await table_repo.upsert(conn, tbl, origin=origin)
 
     if src and src.type.value == "openapi" and src.base_url:
         spec = openapi_specs.get(src.id, {})
@@ -849,15 +854,19 @@ async def _upsert_tables(  # REQ-013, REQ-016, REQ-251
     config: ProvisaConfig,
     openapi_specs: dict[str, dict],
     catalog_names: dict[str, str] | None = None,
+    *,
+    origin: str,
 ) -> None:
     sources_by_id = {src.id: src for src in config.sources}
     _expand_view_metrics(config)
     _settle_table_names(engine, config)
-    await _rekey_moved_tables(conn, config)
+    if origin == CONFIG:
+        # Only the deployment's file re-keys: an import adds and updates, and moves nothing.
+        await _rekey_moved_tables(conn, config)
 
     for tbl in config.tables:
         src = sources_by_id.get(tbl.source_id)
-        await _upsert_single_table(conn, engine, tbl, src, openapi_specs)
+        await _upsert_single_table(conn, engine, tbl, src, openapi_specs, origin=origin)
 
     if engine is not None:
         await _analyze_sources(engine, config, catalog_names)
@@ -955,6 +964,8 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     replace: bool = False,
     catalog_names: dict[str, str] | None = None,
     extra_sources: list[Source] | None = None,
+    *,
+    origin: str,
 ) -> list[str]:
     """Upsert full config into PG within caller's transaction scope.
 
@@ -989,6 +1000,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
         config,
         catalog_names=catalog_names,
         extra_sources=extra_sources,
+        origin=origin,
     )
 
     # 2. Domains
@@ -996,7 +1008,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
         # Seed the implicit single-domain bucket so registered_tables FK resolves.
         await domain_repo.upsert(conn, Domain(id=config.naming.default_domain), origin=SEED)
     for dom in config.domains:
-        await domain_repo.upsert(conn, dom, origin=CONFIG)
+        await domain_repo.upsert(conn, dom, origin=origin)
 
     # 3. Naming rules
     await _upsert_naming_rules(conn, config)
@@ -1005,7 +1017,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     for role in config.roles:
         # A role the config declares is the deployment's own definition, as a seeded role is:
         # it carries no org, and the admin surfaces do not delete it.
-        await role_repo.upsert(conn, role, org_id=None, origin=CONFIG)
+        await role_repo.upsert(conn, role, org_id=None, origin=origin)
 
     # 4.5 Data products (before tables so product_id FK refs exist)  # REQ-1634
     for dp in config.data_products:
@@ -1033,7 +1045,9 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     _validate_role_ttl(config)
     _validate_replicate(config)
     _validate_landing_ttl(config)
-    await _upsert_tables(conn, engine, config, openapi_specs, catalog_names=catalog_names)
+    await _upsert_tables(
+        conn, engine, config, openapi_specs, catalog_names=catalog_names, origin=origin
+    )
 
     # 6. Relationships (tables must exist first)
     # Preserve relationships whose source or target table belongs to a dynamically-registered
@@ -1110,7 +1124,9 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     # REQ-1229: on the PRIMARY's load only. A secondary's load only upserts — its file may be
     # older than the primary's — so it removes nothing and refuses nothing; it sees the outcome
     # of the primary's removal through the model stamp and reloads (REQ-1914).
-    if is_primary_worker(os.environ):
+    # Only a load of the deployment's file removes: an import through the admin ("admin" origin)
+    # adds and updates, and what it does not mention is not its to remove.
+    if origin == CONFIG and is_primary_worker(os.environ):
         await _remove_what_the_config_dropped(conn, config)
 
     await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
@@ -1513,14 +1529,20 @@ async def load_config(  # REQ-012, REQ-016, REQ-250, REQ-1266, REQ-1730
     replace: bool = False,
     catalog_names: dict[str, str] | None = None,
     extra_sources: list[Source] | None = None,
+    *,
+    origin: str,
 ) -> list[str]:
     """Upsert full config into PG within a transaction. Idempotent.
 
-    REQ-1919: a load manages only what a config declared. What it creates is recorded as
-    config-origin; an admin-made object the file declares is taken over by the file; and at its
+    REQ-1919: ``origin`` says whose load this is, and is required. ``"config"`` is a load of the
+    deployment's own file (boot, reload, wake, an org's demo): what it creates is recorded as
+    config-origin, an admin-made object the file declares is taken over by the file, and at its
     end the load removes the config-origin sources, domains, roles and tables the file no longer
     declares — each through the dependency guard, and none of them when any is refused
-    (:class:`ConfigDropRefused`). An object made through the admin is never removed by a load.
+    (:class:`ConfigDropRefused`). ``"admin"`` is an import made through the admin API: what it
+    creates is the admin's, it takes nothing over, it changes no existing object's origin, and it
+    removes nothing — what an import does not mention is not its to remove. An object made
+    through the admin is never removed by any load.
 
     ``engine`` is the EngineRuntime: it provisions each source (the engine catalog / native
     attach) and supplies engine-native column types — the ONLY engine touchpoint, so no
@@ -1550,6 +1572,7 @@ async def load_config(  # REQ-012, REQ-016, REQ-250, REQ-1266, REQ-1730
             replace=replace,
             catalog_names=catalog_names,
             extra_sources=extra_sources,
+            origin=require_origin(origin),
         )
 
 
@@ -1570,5 +1593,5 @@ async def load_config_from_yaml(  # REQ-012, REQ-016, REQ-250
 ) -> ProvisaConfig:
     """Parse YAML, resolve secrets in source passwords, load into PG."""
     config = parse_config(path)
-    await load_config(config, pg_conn, engine, replace=replace)
+    await load_config(config, pg_conn, engine, replace=replace, origin=CONFIG)
     return config

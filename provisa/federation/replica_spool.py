@@ -49,6 +49,7 @@ import pyarrow as pa
 from provisa.core import request_deadline
 from provisa.core.ir_arrow import arrow_schema, rows_to_batch
 from provisa.federation.data_replicator import SourceCaps, SourceRead
+from provisa.federation.replica_errors import BuildFailure
 from provisa.federation.replica_source import _stepped
 
 log = logging.getLogger(__name__)
@@ -63,13 +64,16 @@ _RECOUNT_BYTES = 16 << 20
 Spooler = Callable[[Callable[[], AbstractContextManager[Any]]], AbstractContextManager[IO[bytes]]]
 
 
-class ReplicaSpoolFull(Exception):
+class ReplicaSpoolFull(BuildFailure, Exception):
     """Spooling a source's answer would take the node's spool directory over its limit."""
+
+    code = "replication.spool_full"
 
     def __init__(self, table: str, needed: int, limit: int) -> None:
         self.table = table
         self.needed = needed
         self.limit = limit
+        self.params = {"table": table, "needed": needed, "limit": limit}
         super().__init__(
             f"the replica build of {table} was refused: spooling its source's answer needs "
             f"{needed:,} bytes of this node's spool directory, over the limit of {limit:,} "
@@ -222,13 +226,56 @@ def _json_parser() -> Any:
     return ijson.get_backend("yajl2_c")
 
 
+#: How much of the document the parser reads at a time; a parse failure is located to within it.
+_PARSE_BYTES = 64 * 1024
+
+
+class AnswerNotJson(BuildFailure, ValueError):
+    """A spooled answer the JSON parser cannot read: what is wrong with it and where.
+
+    The message carries the parser's reason and the stretch of the answer it was in, and never
+    the text around it: that is the source's data, and this message is recorded on the replica
+    for an operator to read."""
+
+    code = "replication.answer_not_json"
+
+    def __init__(self, cause: str, before_byte: int, table: str | None = None) -> None:
+        self.cause = cause
+        self.before_byte = before_byte
+        self.params = {
+            "table": table or "",
+            "cause": cause,
+            "kib": _PARSE_BYTES // 1024,
+            "before_byte": before_byte,
+        }
+        of = f" read for the replica of {table}" if table else ""
+        super().__init__(
+            f"the answer{of} is not valid JSON: {cause} "
+            f"(in the {_PARSE_BYTES // 1024} KiB before byte {before_byte} of the answer)"
+        )
+
+
+def _parsed(body: IO[bytes], events: Iterator[Any]) -> Iterator[Any]:
+    """``events`` of the parser reading ``body``, a failure of the parse raised as
+    :class:`AnswerNotJson`."""
+    import ijson
+
+    try:
+        yield from events
+    except ijson.JSONError as exc:
+        # The parser's reason is its first line; the lines after it quote the document.
+        cause = str(exc).splitlines()[0].strip().rstrip(".")
+        raise AnswerNotJson(cause, body.tell()) from None
+
+
 def json_items(body: IO[bytes], prefix: str) -> Iterator[Any]:
     """The JSON values at ``prefix`` of the document in ``body``, read incrementally from its
-    start. Numbers with a fraction are floats, as ``json`` reads them."""
+    start. Numbers with a fraction are floats, as ``json`` reads them. A document the parser
+    cannot read raises :class:`AnswerNotJson` where the read reaches the fault."""
     parser = _json_parser()
 
     body.seek(0)
-    return parser.items(body, prefix, use_float=True)
+    return _parsed(body, parser.items(body, prefix, use_float=True, buf_size=_PARSE_BYTES))
 
 
 def json_starts(body: IO[bytes], prefix: str) -> str | None:
@@ -237,7 +284,8 @@ def json_starts(body: IO[bytes], prefix: str) -> str | None:
     parser = _json_parser()
 
     body.seek(0)
-    for at, event, _value in parser.parse(body, use_float=True):
+    events = _parsed(body, parser.parse(body, use_float=True, buf_size=_PARSE_BYTES))
+    for at, event, _value in events:
         if at == prefix:
             return event
     return None
@@ -278,11 +326,15 @@ class SpooledDocumentSource:
                 yield spool.reader()
 
         batch: list[dict] = []
-        for row in self._rows(spooled):
-            batch.append(row)
-            if len(batch) >= batch_rows:
-                yield batch
-                batch = []
+        try:
+            for row in self._rows(spooled):
+                batch.append(row)
+                if len(batch) >= batch_rows:
+                    yield batch
+                    batch = []
+        except AnswerNotJson as exc:
+            # Named for the table, so the build's recorded error says what and where.
+            raise AnswerNotJson(exc.cause, exc.before_byte, self._table) from None
         if batch:
             yield batch
 

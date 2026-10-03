@@ -122,7 +122,7 @@ class TestSingleDomainMode:
     async def test_empty_table_domain_coerced_to_default(self, tenant_db, graphql_client):
         cfg = parse_config_dict(_config({"use_domains": False, "default_domain": "global"}, [], ""))
         async with tenant_db.acquire() as conn:
-            await load_config(cfg, conn)
+            await load_config(cfg, conn, origin="config")
             assert await _stored_domain(conn) == "global"
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -131,7 +131,7 @@ class TestSingleDomainMode:
             _config({"use_domains": False, "default_domain": "global"}, [], "global")
         )
         async with tenant_db.acquire() as conn:
-            await load_config(cfg, conn)
+            await load_config(cfg, conn, origin="config")
             domains = {d["id"] for d in await domain_repo.list_all(conn)}
         assert "global" in domains
 
@@ -141,7 +141,7 @@ class TestSingleDomainMode:
             _config({"use_domains": False, "default_domain": "global"}, [], "global")
         )
         async with tenant_db.acquire() as conn:
-            await load_config(cfg, conn)
+            await load_config(cfg, conn, origin="config")
             # Policy is now single-domain "global"; a foreign domain is a hard error.
             bad = Table(
                 source_id="pg1",
@@ -160,7 +160,7 @@ class TestLegacyMode:
         # use_domains absent: declared domain_id stored verbatim, domains list allowed.
         cfg = parse_config_dict(_config({}, [{"id": "sales"}], "sales"))
         async with tenant_db.acquire() as conn:
-            await load_config(cfg, conn)
+            await load_config(cfg, conn, origin="config")
             assert await _stored_domain(conn) == "sales"
             assert domain_policy.use_domains() is None
 
@@ -170,7 +170,7 @@ class TestNamespacedMode:
     async def test_declared_domain_stored(self, tenant_db, graphql_client):
         cfg = parse_config_dict(_config({"use_domains": True}, [{"id": "sales"}], "sales"))
         async with tenant_db.acquire() as conn:
-            await load_config(cfg, conn)
+            await load_config(cfg, conn, origin="config")
             assert await _stored_domain(conn) == "sales"
 
 

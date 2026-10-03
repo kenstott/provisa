@@ -165,11 +165,12 @@ def _wire_apply(monkeypatch) -> dict:
     """Stand in for the org runtime, recording the settled apply sequence."""
     seen: dict = {"order": []}
 
-    async def _load_config(config, conn, engine, replace, catalog_names):  # noqa: ARG001
+    async def _load_config(config, conn, engine, replace, catalog_names, *, origin):  # noqa: ARG001
         seen["order"].append("load_config")
         seen["config"] = config
         seen["replace"] = replace
         seen["catalog_names"] = catalog_names
+        seen["origin"] = origin
 
     async def _pools(config):  # noqa: ARG001
         seen["order"].append("pools")
@@ -221,6 +222,9 @@ async def test_apply_runs_the_settled_sequence(monkeypatch):
     assert seen["order"] == ["catalogs", "load_config", "pools", "pk", "rebuild"]
     assert seen["catalog_names"] == {"pg1": "org_7_pg1"}
     assert seen["replace"] is False
+    # REQ-1919: an import through the admin is not a load of the deployment's file. What it
+    # creates is the admin's, and the load takes nothing over and removes nothing.
+    assert seen["origin"] == "admin"
     assert resp.summary.source_ids == ["pg1"]
 
 

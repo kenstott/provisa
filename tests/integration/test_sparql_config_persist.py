@@ -104,7 +104,7 @@ async def pg_conn(tenant_db, platform_admin_db):
 async def _load(pg_conn) -> None:
     from provisa.core.config_loader import load_config, parse_config_dict
 
-    await load_config(parse_config_dict(_config()), pg_conn, engine=None)
+    await load_config(parse_config_dict(_config()), pg_conn, engine=None, origin="config")
 
 
 async def test_config_load_persists_source_and_query_endpoint(pg_conn):

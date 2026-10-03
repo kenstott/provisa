@@ -203,6 +203,15 @@
       "role_header_required": "Header X-Provisa-Role erforderlich, um eine Sicht zu profilieren",
       "table_not_found": "Tabelle {{table_id}} nicht gefunden"
     },
+    "replication": {
+      "spool_full": "Der Replikat-Build von {{table}} wurde abgelehnt: Das Zwischenspeichern der Antwort der Quelle benötigt {{needed}} Bytes im Spool-Verzeichnis dieses Knotens und überschreitet das Limit von {{limit}} (replication.spool_max_bytes).",
+      "answer_not_json": "Die für das Replikat von {{table}} gelesene Antwort ist kein gültiges JSON: {{cause}} (in den {{kib}} KiB vor Byte {{before_byte}} der Antwort).",
+      "no_whole_copy": "Für die Tabelle {{schema}}.{{table}} der Quelle {{source}} gibt es keine vollständige Kopie zu bauen: Sie wird zeilenweise repliziert oder hat eine Parameterspalte.",
+      "table_gone": "Die Tabelle {{schema}}.{{table}} der Quelle {{source}} ist nicht mehr registriert, daher wird ihr Replikat nicht gebaut.",
+      "page_limit_reached": "Das Replikat von {{table}} wurde nicht gebaut: Die Paginierung des Endpunkts endet bei max_pages={{max_pages}}, und der Endpunkt hatte nach Seite {{max_pages}} noch weitere Daten ({{rows}} Zeilen gelesen). Ein Replikat ist die ganze Tabelle und wird daher nicht an der Obergrenze abgeschnitten. Erhöhen Sie max_pages oder die Seitengröße des Endpunkts.",
+      "waiting_engine_jobs": "die Engine hat ihre Obergrenze für Hintergrundjobs erreicht (replication.engine_jobs)",
+      "waiting_source_cap": "die Quelle hat ihre Obergrenze für Live-Lesezugriffe erreicht (max_live_concurrency)"
+    },
     "roles": {
       "cannot_delete_system": "Systemrollen können nicht gelöscht werden",
       "cannot_modify_administrative": "Administrative Rollen können nicht geändert werden",
