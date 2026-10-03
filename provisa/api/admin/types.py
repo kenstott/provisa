@@ -327,6 +327,10 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     dq_contract: str | None = None
     # REQ-1670: the Cypher a neo4j table runs (from its persisted api_endpoints row).
     query_template: str | None = None
+    # REQ-788: one logical table over a glob of files; source_file_column names an optional column
+    # carrying each row's file path. None = a single-file table.
+    file_glob: str | None = None
+    source_file_column: str | None = None
     change_signal: str | None = None  # REQ-929: override source change signal; None = inherit
     probe_query: str | None = None  # REQ-929: source-native freshness probe
     probe_type: str | None = None  # REQ-982: input-probe method; None = resolve per source class
@@ -857,6 +861,11 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     dq_contract: str | None = None
     # REQ-1670: the Cypher that produces a neo4j table's rows; required under a neo4j source.
     query_template: str | None = None
+    # REQ-788: a files source table read as ONE logical table over the files this glob matches
+    # under the source's path; source_file_column names an optional column carrying each row's
+    # file path. None = a single-file table.
+    file_glob: str | None = None
+    source_file_column: str | None = None
     # REQ-1318: declarative metric-composed view definition; mutually exclusive with view_sql.
     # The server generates (and regenerates on metric change) the view SELECT from this spec.
     view_metrics: ViewMetricsInput | None = None

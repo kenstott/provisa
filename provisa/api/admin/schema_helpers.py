@@ -428,6 +428,8 @@ async def _fetch_table_with_columns(
         view_sql=view_sql,
         dq_contract=row.get("dq_contract"),  # REQ-1443
         query_template=_query_template_for(row["table_name"]),  # REQ-1670
+        file_glob=row.get("file_glob"),  # REQ-788
+        source_file_column=row.get("source_file_column"),  # REQ-788
         view_metrics=_view_metrics_type_from_row(row.get("view_metrics")),  # REQ-1318
         change_signal=row.get("change_signal"),
         probe_query=row.get("probe_query"),
