@@ -91,6 +91,12 @@ def raised() -> list[ServerWarning]:
     return list(_collector.get() or [])
 
 
+def as_entries() -> list[dict[str, Any]]:
+    """What the open collector holds, as the ``{code, params, message}`` entries a JSON body
+    carries (empty when nothing was raised or no collector is open)."""
+    return [w.as_dict() for w in raised()]
+
+
 def header_value(warnings: list[ServerWarning]) -> str:
     """The warnings as one HTTP-safe header value: JSON with every non-ASCII character escaped
     (``ensure_ascii``), so a header channel that admits only latin-1 or ASCII carries it."""

@@ -349,6 +349,7 @@ class TestREQ617RoleSelectionViaMetadata:
         # correct terminal under test here.
         state.source_pools.supports_stream.return_value = False
         fake_plan = SimpleNamespace(
+            warnings=[],  # REQ-1350: nothing to say
             route=Route.DIRECT,
             source_id="test-pg",
             sql="SELECT id, amount FROM orders",

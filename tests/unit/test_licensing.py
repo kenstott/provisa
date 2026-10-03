@@ -301,7 +301,7 @@ def test_grpc_trailing_metadata_nag(monkeypatch):
             captured["md"] = md
 
     servicer = ProvisaServicer(state=object(), pb2_module=object(), pb2_grpc_module=object())
-    servicer._emit_license_nag(_Ctx())
+    servicer._emit_trailing_metadata(_Ctx())
     assert captured["md"][0][0] == "x-provisa-license-notice"
     assert MID in captured["md"][0][1]
     emit.set_state(None)
@@ -517,7 +517,7 @@ def test_the_grpc_notice_is_metadata_grpc_accepts(monkeypatch):
             peer=lambda: "ipv4:127.0.0.1:1", set_trailing_metadata=attached.append
         )
         servicer = object.__new__(grpc_server.ProvisaServicer)
-        servicer._emit_license_nag(context)
+        servicer._emit_trailing_metadata(context)
         ((key, value),) = attached[0]
         assert key == "x-provisa-license-notice"
         assert value.isascii() and "machine-1" in value

@@ -247,8 +247,10 @@ def test_graphql_puts_the_warnings_in_extensions_beside_the_serializers_own():
     json_out = _inject_warnings_into_response(JSONResponse({"data": {}}), [_cut_warning()])
     assert json.loads(bytes(json_out.body))["extensions"]["warnings"] == [_cut_warning().as_dict()]
 
-    other = _inject_warnings_into_response(Response(b"PAR1", media_type="x"), [_cut_warning()])
-    assert json.loads(other.headers["x-provisa-warnings"]) == [_cut_warning().as_dict()]
+    # A file format carries them in the header every HTTP response gets (the middleware).
+    other = Response(b"PAR1", media_type="x")
+    assert _inject_warnings_into_response(other, [_cut_warning()]) is other
+    assert "x-provisa-warnings" not in other.headers
 
 
 def test_pgwire_sends_each_warning_as_a_notice_ahead_of_the_rows_once():

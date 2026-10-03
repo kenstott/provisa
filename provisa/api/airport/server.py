@@ -576,7 +576,7 @@ class ProvisaAirportServer(
 
         if not columns and not where:
             # No pushdown — full-table governed scan, STREAMED (never materialized here; Defect 5).
-            _, batch_gen = governed_table_scan_stream(self._state, sql_ref, role_id)
+            scan = governed_table_scan_stream(self._state, sql_ref, role_id)
         else:
             # Pushdown: build the semantic SELECT with source-side projection + WHERE. Injecting the
             # predicate as a semantic WHERE means it flows through the IDENTICAL governance a user's
@@ -592,7 +592,7 @@ class ProvisaAirportServer(
             if where:
                 sql += f" WHERE {where}"
             _trace_pushdown(sql)
-            _, batch_gen = governed_table_scan_stream(self._state, sql, role_id)
+            scan = governed_table_scan_stream(self._state, sql, role_id)
 
         # Stream each governed batch reshaped to the FULL advertised schema (the airport contract:
         # DuckDB planned against the flight_info schema and projects client-side; a narrowed stream
@@ -601,8 +601,9 @@ class ProvisaAirportServer(
         # appended per batch when the table has a PK, so DuckDB can echo it back on UPDATE/DELETE.
         # REQ-1882: pyarrow pulls the batches after do_get returns (a DIRECT scan's cursor fetches
         # on this RPC's loop), so the stream holds the loop until it ends.
-        out_gen = hold_loop_for_stream(self._reshape_batches(batch_gen, base, pk))
-        return generator_stream(advertised, out_gen)  # pyright: ignore[reportPrivateImportUsage]
+        out_gen = hold_loop_for_stream(self._reshape_batches(scan.batches, base, pk))
+        # REQ-1350: what the scan's answer says about itself rides ahead of the rows.
+        return generator_stream(advertised, out_gen, scan.warnings)  # pyright: ignore[reportPrivateImportUsage]
 
     def _reshape_batches(self, batch_gen: Any, base: pa.Schema, pk: list[str]) -> Any:
         """Yield each streamed RecordBatch padded to ``base`` (+ per-batch rowid when PK) — the

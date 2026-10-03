@@ -49,7 +49,7 @@ _tracer = _get_tracer(__name__)
 class QueryResult:  # REQ-318
     rows: list[dict]
     from_cache: bool
-    cache_table: str | None = field(default=None)
+    cache_table: str  # the table this statement reads its answer from
     # The call stopped at the endpoint's max_pages with more to read: the rows are not the
     # whole answer, and its cache table is this statement's own, never found by another.
     cut: AnswerCut | None = field(default=None)

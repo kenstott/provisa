@@ -374,21 +374,26 @@ class ProvisaServicer:  # REQ-045, REQ-143
         report(current_org.get(), msg.ByteSize())
         return msg
 
-    def _emit_license_nag(self, context) -> None:
-        """Attach the REQ-1137 license nag to the RPC's trailing metadata, once per peer.
+    def _emit_trailing_metadata(self, context, warnings=()) -> None:
+        """Attach the RPC's out-of-band notices to its trailing metadata, in ONE call (a second
+        ``set_trailing_metadata`` replaces the first): the REQ-1137 license nag, once per peer, and
+        what the statement's answer says about itself (REQ-1350) as ``x-provisa-warnings``,
+        ASCII-escaped JSON (gRPC metadata values are ASCII). The response stream is untouched."""
+        from provisa.core.statement_warnings import header_value
 
-        Trailing metadata is an out-of-band channel — the response messages/stream are untouched.
-        Best-effort: a failure never affects the RPC."""
+        metadata: list[tuple[str, str]] = []
         try:
             from provisa.licensing import emit as _lic_emit
 
             text = _lic_emit.nag_for_connection(f"grpc:{context.peer()}")
             if text:
-                context.set_trailing_metadata(
-                    (("x-provisa-license-notice", text.replace("\n", " ")),)
-                )
+                metadata.append(("x-provisa-license-notice", text.replace("\n", " ")))
         except Exception:
             log.debug("gRPC license nag emission skipped", exc_info=True)
+        if warnings:
+            metadata.append(("x-provisa-warnings", header_value(list(warnings))))
+        if metadata:
+            context.set_trailing_metadata(tuple(metadata))
 
     def _resolve_command_rpc(self, cmd_pascal: str) -> str | None:
         """Reverse the Call{Cmd} RPC name to the registered command name (REQ-1156).
@@ -447,7 +452,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             except PermissionError as exc:
                 await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
                 return
-            self._emit_license_nag(context)  # REQ-1137
+            self._emit_trailing_metadata(context)  # REQ-1137
             if fn.get("kind") == "mutation":
                 return self._meter_msg(self._pb2.MutationResponse(affected_rows=len(rows)))
             return self._meter_msg(
@@ -691,7 +696,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             from provisa.pgwire._pipeline import cached_result
 
             hit = await cached_result(plan, state)
-            self._emit_license_nag(context)  # REQ-1137
+            self._emit_trailing_metadata(context, plan.warnings)  # REQ-1137
             _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
             out_cols = [_proto_by_norm.get(_norm(c), c) for c in hit.column_names]
             col_fields = _col_fields_for(out_cols)
@@ -753,7 +758,9 @@ class ProvisaServicer:  # REQ-045, REQ-143
             if tee is not None:
                 stream = tee.rows(stream)
             stream = permits.wrap_stream(stream)
-            self._emit_license_nag(context)  # REQ-1137: trailing-metadata nag before the row stream
+            self._emit_trailing_metadata(
+                context, plan.warnings
+            )  # REQ-1137: trailing-metadata nag before the row stream
             _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
             out_cols = [_proto_by_norm.get(_norm(c), c) for c in stream.column_names]
             col_fields = _col_fields_for(out_cols)
@@ -828,7 +835,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
                     ds = await state.source_pools.open_stream(
                         plan.source_id, plan.sql, plan.exec_params or []
                     )
-                    self._emit_license_nag(context)
+                    self._emit_trailing_metadata(context, plan.warnings)
                     _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
                     out_cols = [_proto_by_norm.get(_norm(c), c) for c in ds.column_names]
                     col_fields = _col_fields_for(out_cols)
@@ -872,9 +879,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 result = await state.federation_engine.execute_native(
                     state.source_pools, plan.source_id, plan.sql, plan.exec_params or []
                 )
-                self._emit_license_nag(
-                    context
-                )  # REQ-1137: trailing-metadata nag before the row stream
+                # REQ-1137/REQ-1350: trailing metadata (notice, warnings) before the row stream.
+                self._emit_trailing_metadata(context, plan.warnings)
                 _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
                 out_cols = [_proto_by_norm.get(_norm(c), c) for c in result.column_names]
                 col_fields = _col_fields_for(out_cols)
@@ -897,7 +903,9 @@ class ProvisaServicer:  # REQ-045, REQ-143
         # Bounded routes (CACHE / API) buffer via the materializing terminal — async-native, memory
         # bounded by the route's own contract.
         result = await _execute_plan(plan, state)
-        self._emit_license_nag(context)  # REQ-1137: trailing-metadata nag before the row stream
+        self._emit_trailing_metadata(
+            context, plan.warnings
+        )  # REQ-1137: trailing-metadata nag before the row stream
         # Stream rows as proto messages, mapping result column names to proto fields by the same key
         # (governance may re-case or alias a column).
         _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
@@ -1013,7 +1021,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
             return None
         result = await _execute_plan(plan, state)
-        self._emit_license_nag(context)  # REQ-1137
+        self._emit_trailing_metadata(context, plan.warnings)  # REQ-1137
         row = result.rows[0] if result.rows else ()
         top, nested = self._split_agg_columns(compiled.columns, row)
         return self._build_aggregate_result_message(type_name, top, nested)
@@ -1113,7 +1121,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
             return
         result = await _execute_plan(plan, state)
-        self._emit_license_nag(context)  # REQ-1137
+        self._emit_trailing_metadata(context, plan.warnings)  # REQ-1137
 
         from provisa.executor.serialize import _convert_value
         from provisa.grpc.query_ir import split_group_by_columns

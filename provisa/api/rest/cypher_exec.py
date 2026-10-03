@@ -258,9 +258,14 @@ async def _execute_with_api(
                 or getattr(state, "response_cache_default_ttl", None)
                 or endpoint.ttl
             )
-            schedule_drop(state.federation_engine, _cache_loc, cache_tbl, ttl, redirect_config)
+            # REQ-1350: a cut answer landed under a name of its own (handle_api_query): the
+            # statement reads that one, and its rows are never promoted as the table's.
+            cache_rewrites[table_name] = (_cache_loc, result.cache_table)
+            schedule_drop(
+                state.federation_engine, _cache_loc, result.cache_table, ttl, redirect_config
+            )
 
-            if hot_mgr is not None and result.rows:
+            if hot_mgr is not None and result.rows and result.cut is None:
                 spawn_background(hot_mgr.maybe_promote_dicts(table_name, result.rows))
         else:
             log.info("[API CACHE] hit — %s", cache_tbl)
