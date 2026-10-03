@@ -335,27 +335,6 @@ def _rewrite_where(where_expr: str, variable: str, mapping: NodeMapping) -> str:
 # ---------------------------------------------------------------------------
 
 
-def write_acl_error(table_meta, ast: WriteAST, mapping: NodeMapping, role_id: str):
-    """Return (status, detail) if role lacks writable_by access for a CREATE/SET write.
-
-    Enforces the writable_by column ACL uniformly with the GraphQL/SQL mutation
-    path (REQ-663) by delegating to the shared endpoint check on the mapped
-    physical columns. Returns None when access is allowed or the write is a
-    DELETE (which carries no column writes). REQ-663.
-    """
-    if table_meta is None or ast.kind not in ("create", "update"):
-        return None
-    from provisa.security.mutation_authz import ColumnNotWritable, check_writable_by  # noqa: PLC0415
-
-    props = list(ast.props) if ast.kind == "create" else [p for p, _ in ast.set_assignments]
-    cols = [mapping.properties.get(p, p) for p in props]
-    try:
-        check_writable_by(table_meta, cols, role_id)
-    except ColumnNotWritable as exc:
-        return 403, str(exc)
-    return None
-
-
 class WriteTranslator:
     """Translate a WriteAST to a SQL DML statement.
 

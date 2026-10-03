@@ -54,33 +54,6 @@ class ColumnNotWritable(PermissionError):
         self.column = column
 
 
-def check_writable_by(table_meta, columns: list[str], role_id: str) -> None:  # REQ-663, REQ-1678
-    """Raise ColumnNotWritable if any column restricts write access and the role is not allowed.
-
-    The one column-write ACL check, shared by the GraphQL/SQL mutation path and the Cypher write
-    translator; it lives here so neither the compiler nor Cypher imports the API layer.
-    """
-    table_cols = (
-        {c["column_name"]: c for c in table_meta.columns} if hasattr(table_meta, "columns") else {}
-    )
-    if not table_cols:
-        # dict-style access (from state.tables)
-        table_cols = {
-            c.get("column_name", c.get("name", "")): c for c in getattr(table_meta, "columns", [])
-        }
-    for col_name in columns:
-        col_meta = table_cols.get(col_name)
-        if not col_meta:
-            continue
-        writable_by = (
-            col_meta.get("writable_by", [])
-            if isinstance(col_meta, dict)
-            else getattr(col_meta, "writable_by", [])
-        )
-        if role_id not in writable_by:
-            raise ColumnNotWritable(role_id, col_name)
-
-
 class MutationKind(str, Enum):  # REQ-869
     READ = "read"
     WRITE = "write"

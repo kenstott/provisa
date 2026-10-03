@@ -18,6 +18,8 @@ execution so that row-level security is enforced on all write operations.
 
 from __future__ import annotations
 
+import dataclasses
+
 import re
 
 import pytest
@@ -26,7 +28,8 @@ from graphql import parse, validate
 from pytest_bdd import given, when, then, scenarios
 
 from provisa.compiler.introspect import ColumnMetadata
-from provisa.compiler.mutation_gen import compile_mutation, inject_rls_into_mutation
+from provisa.compiler.mutation_gen import compile_mutation
+from tests.write_governance import admitted, write_governance
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.context import build_context
 from provisa.executor.direct import _WRITE_RE
@@ -408,11 +411,18 @@ def when_update_or_delete_compiled(shared_data):
         f"expected mutation_type='delete', got {delete_compiled.mutation_type!r}"
     )
 
-    # Apply RLS injection to both compiled mutations
-    # table_id=1 matches the table registered in _build_rls_schema_and_ctx.
-    rls_rules = {1: rls_clauses[0]}
-    update_with_rls = inject_rls_into_mutation(update_compiled, 1, rls_rules)
-    delete_with_rls = inject_rls_into_mutation(delete_compiled, 1, rls_rules)
+    # Both compiled statements pass the one write admission (compiler/write_admission.py), which
+    # applies the role's row filter — table_id=1 is the table _build_rls_schema_and_ctx registers.
+    gov = write_governance(
+        {"public.orders": (1, ["id", "amount", "region", "user_id"])},
+        rls={1: rls_clauses[0]},
+    )
+    update_with_rls = dataclasses.replace(
+        update_compiled, sql=admitted(update_compiled.sql, gov, update_compiled.params)
+    )
+    delete_with_rls = dataclasses.replace(
+        delete_compiled, sql=admitted(delete_compiled.sql, gov, delete_compiled.params)
+    )
 
     shared_data["update_compiled"] = update_compiled
     shared_data["delete_compiled"] = delete_compiled
@@ -428,7 +438,8 @@ def then_rls_injected_into_sql(shared_data):
     update_compiled = shared_data["update_compiled"]
     delete_compiled = shared_data["delete_compiled"]
 
-    # The RLS clause must appear in the final UPDATE SQL
+    # The RLS clause must appear in the final UPDATE SQL — qualified by the table, as on a read
+    rls_clause = rls_clause.replace("user_id", '"orders"."user_id"')
     assert rls_clause in update_with_rls.sql, (
         f"RLS clause {rls_clause!r} not found in UPDATE SQL: {update_with_rls.sql!r}"
     )
@@ -457,10 +468,10 @@ def then_rls_injected_into_sql(shared_data):
     # The original (pre-injection) SQL must differ from the injected SQL,
     # confirming the injection actually modified the statement
     assert update_with_rls.sql != update_compiled.sql, (
-        "inject_rls_into_mutation did not modify UPDATE SQL"
+        "the admission did not apply the filter to the UPDATE"
     )
     assert delete_with_rls.sql != delete_compiled.sql, (
-        "inject_rls_into_mutation did not modify DELETE SQL"
+        "the admission did not apply the filter to the DELETE"
     )
 
     # Both injected mutations must still target the correct source
