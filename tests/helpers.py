@@ -32,7 +32,7 @@ def unscoped_role(role_id: str, *capabilities: str) -> dict:
 ALL_DATA_CAPABILITIES: list[str] = sorted(
     c.value
     for c in Capability
-    if c.value not in PLATFORM_RIGHTS and c not in (Capability.DDL, Capability.NO_AGGREGATIONS)
+    if c.value not in PLATFORM_RIGHTS and c is not Capability.NO_AGGREGATIONS
 )
 
 _ALIAS_RE = re.compile(r"\b(t|a|j|n|sub|cte)\d+\b", re.IGNORECASE)

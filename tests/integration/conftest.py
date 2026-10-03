@@ -449,7 +449,7 @@ def _pgw_build_state(pool):
         relationships=[],
         column_types=col_types,
         naming_rules=[],
-        role={"id": "admin", "domain_access": ["*"], "capabilities": ["ddl"]},
+        role={"id": "admin", "domain_access": ["*"], "capabilities": []},
         domains=[{"id": _PGW_SCHEMA, "graphql_alias": None}],
     )
     ctx = build_context(si)
@@ -458,7 +458,7 @@ def _pgw_build_state(pool):
     state.security_high = False  # REQ-693: MagicMock auto-creates attrs as truthy; explicit False
     state.contexts = {"admin": ctx}
     state.rls_contexts = {}
-    state.roles = {"admin": {"id": "admin", "capabilities": ["ddl"], "domain_access": ["*"]}}
+    state.roles = {"admin": {"id": "admin", "capabilities": [], "domain_access": ["*"]}}
     state.schema_build_cache = {"column_types": col_types, "tables": [], "domains": []}
     state.auth_config = {"provider": "none"}  # trust mode: username -> role_id
     state.auth_middleware_active = False

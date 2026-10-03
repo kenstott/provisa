@@ -110,12 +110,8 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     DATA_PRODUCT_RW = "data_product_rw"
     IGNORE_RELATIONSHIPS = "ignore_relationships"
     WRITE = "write"  # REQ-868: global mutation-execute capability (alias EXECUTE_MUTATION)
-    # The two rights the wire surfaces read off a role's list by name. Members here so that the
+    # The right the wire surfaces read off a role's list by name. A member here so that the
     # vocabulary a role may be given (unknown_capabilities) is the vocabulary the code consults.
-    # Checked by nothing: it gated CREATE TABLE AS and DDL over pgwire, and nothing is defined
-    # through a query protocol any more (provisa/compiler/definitions.py). Kept as a name roles
-    # may still carry until the rights files settle its removal.
-    DDL = "ddl"
     NO_AGGREGATIONS = "no_aggregations"  # REQ-197: withholds the _aggregate root fields
 
 
