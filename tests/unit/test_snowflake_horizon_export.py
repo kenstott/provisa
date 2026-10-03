@@ -433,7 +433,9 @@ def test_comment_statements_appends_governance_note_to_table_comment():
     stmts = comment_statements([table], kinds, tags, _ADDR)
     assert stmts == [
         'ALTER TABLE "landing"."org_acme_export"."petstore-api__public__pets" SET COMMENT = '
-        "'Pets for sale\n\n"
+        # A line break is written as Snowflake's \n escape: the comment Snowflake stores is the
+        # same text, and the statement stays on one line.
+        "'Pets for sale\\n\\n"
         "[provisa:governance rls_restricted rule=rule-42 restricted=analyst exempt=owner]';"
     ]
 
