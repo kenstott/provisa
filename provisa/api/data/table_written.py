@@ -28,8 +28,6 @@ async def after_table_written(
     *,
     table_id: int,
     table_name: str,
-    schema_name: str,
-    catalog_name: str,
     source_id: str,
 ) -> None:
     """Drop the table's cached responses (REQ-080), mark the materialized views over it stale
@@ -50,11 +48,5 @@ async def after_table_written(
 
     hot_mgr = state.hot_manager
     assert isinstance(hot_mgr, HotTableManager)
-    if not hot_mgr.is_hot(table_name):
-        return
-    await hot_mgr.invalidate(table_name)
-    if hot_mgr.get_entry(table_name) is None:
-        _pk = "id"  # default PK
-        await hot_mgr.load_table(
-            state.federation_engine, table_name, schema_name, catalog_name, _pk
-        )
+    # Reloaded with the key and address it was hot under (a table not hot is left alone).
+    await hot_mgr.refresh_after_write(state.federation_engine, table_id)

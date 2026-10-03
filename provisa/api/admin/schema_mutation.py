@@ -2457,8 +2457,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             from provisa.cache.tenancy import invalidate_tables
 
             await invalidate_tables(state, [id])
-            if state.hot_manager is not None and held is not None:
-                await state.hot_manager.invalidate(held["table_name"])
+            if state.hot_manager is not None:
+                await state.hot_manager.invalidate(id)
             await _rebuild_schemas()
             return MutationResult(
                 success=True,

@@ -18,6 +18,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
+from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from provisa.compiler.naming import source_to_catalog
@@ -53,8 +54,10 @@ _HTTP_NOT_FOUND = 404
 
 @dataclass
 class HotTableEntry:  # REQ-230, REQ-232
-    """Metadata for a single hot-cached table."""
+    """One hot table's rows, under its registered table's id. ``table_name`` is the name the
+    table's references in a statement's SQL carry — what substitution replaces."""
 
+    table_id: int
     table_name: str
     catalog: str
     schema: str
@@ -66,8 +69,9 @@ class HotTableEntry:  # REQ-230, REQ-232
 
 @dataclass
 class HotTableCandidate:  # REQ-236, REQ-237
-    """Metadata for a table that should be auto-promoted after its first small query."""
+    """A registered table that should be auto-promoted after its first small read."""
 
+    table_id: int
     table_name: str
     pk_column: str
     catalog: str
@@ -85,31 +89,26 @@ def _scope_parts() -> tuple[str, int | None]:
 @dataclass
 class _Place:
     """One org's one environment in the hot tier: its candidates, and the tables that are hot
-    under the model named by ``stamp``."""
+    under the model named by ``stamp``, each by its registered table's id."""
 
     stamp: int | None
-    tables: dict[str, HotTableEntry] = field(default_factory=dict)
-    candidates: dict[str, HotTableCandidate] = field(default_factory=dict)
-    # Names two relations of this model both claimed: the name cannot say whose rows to
-    # substitute, so it is never hot.
-    ambiguous: set[str] = field(default_factory=set)
+    tables: dict[int, HotTableEntry] = field(default_factory=dict)
+    candidates: dict[int, HotTableCandidate] = field(default_factory=dict)
 
 
 class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, REQ-241
     """Manages small lookup tables cached in Redis for JOIN optimization.
 
-    One manager serves the process, and its Redis serves every process, so nothing here is kept
-    by a table's bare name. The registry is per org and environment (:class:`_Place`), and holds
-    only what was loaded under the model that runtime currently has: when the model stamp moves,
-    the tables loaded under the previous one stop being hot — a table may now read another
-    relation — and are promoted again from their candidates by the next small read. A Redis
-    blob's key carries the org, the environment, the model stamp and the table's catalog, schema
-    and name.
+    One manager serves the process, and its Redis serves every process. The registry is per org
+    and environment (:class:`_Place`), keyed by the registered table's id, and holds only what was
+    loaded under the model that runtime currently has: when the model stamp moves, the tables
+    loaded under the previous one stop being hot — a table may now read another relation — and
+    are promoted again from their candidates by the next small read. A Redis blob's key carries
+    the org, the environment, the model stamp and the table id.
 
-    The remaining limit: callers (the compiler's VALUES-CTE lookup among them) address the tier
-    by a table's bare name, so within one model it cannot tell two relations of the same name
-    apart. A name two relations have claimed is therefore never hot. Every write to the registry
-    goes through :meth:`_store_rows` or :meth:`hold`, which apply that refusal.
+    A statement is given the hot rows of the tables it reads (:meth:`entries_for`, over the ids
+    the pipeline resolved for it), keyed by the name its SQL carries for each; two sources'
+    same-named tables are each hot, and each is served to the statements that read it.
     """
 
     def __init__(
@@ -145,26 +144,21 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
             place = self._places[where] = _Place(stamp)
         elif place.stamp != stamp:
             place.tables.clear()
-            place.ambiguous.clear()
             place.stamp = stamp
         return place
 
     @property
-    def _hot_tables(self) -> dict[str, HotTableEntry]:
+    def _hot_tables(self) -> dict[int, HotTableEntry]:
         return self._place().tables
 
-    @_hot_tables.setter
-    def _hot_tables(self, tables: dict[str, HotTableEntry]) -> None:
-        self._place().tables = tables
-
     @property
-    def _candidates(self) -> dict[str, HotTableCandidate]:
+    def _candidates(self) -> dict[int, HotTableCandidate]:
         return self._place().candidates
 
     @staticmethod
-    def _blob_key(table_name: str, catalog: str, schema: str) -> str:
+    def _blob_key(table_id: int) -> str:
         where, stamp = _scope_parts()
-        return f"{HOT_PREFIX}{where}:m{stamp}:{catalog}.{schema}.{table_name}:blob"
+        return f"{HOT_PREFIX}{where}:m{stamp}:t{table_id}:blob"
 
     async def _connect(self):
         if self._redis is None:
@@ -172,35 +166,14 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
 
             self._redis = make_redis(self._redis_url, decode_responses=True)
 
-    def _claim(
-        self, place: _Place, table_name: str, catalog: str, schema: str
-    ) -> tuple[bool, HotTableEntry | None]:
-        """Whether ``table_name`` may be hot for the relation ``catalog.schema``, and the entry
-        dropped when it may not. It may not once two relations of this model have claimed the
-        name: callers address the hot tier by name alone, so serving either's rows would hand
-        them to readers of the other. The name then stays cold."""
-        held = place.tables.get(table_name)
-        if table_name not in place.ambiguous and (
-            held is None or (held.catalog, held.schema) == (catalog, schema)
-        ):
-            return True, None
-        place.ambiguous.add(table_name)
-        place.tables.pop(table_name, None)
-        log.warning("Hot table name %s is claimed by two relations; not cached", table_name)
-        return False, held
-
-    def hold(self, entry: HotTableEntry) -> bool:
+    def hold(self, entry: HotTableEntry) -> None:
         """Make ``entry`` the hot rows of its table in this process — for rows a caller has just
-        fetched and wants substituted on the next request, without a Redis blob. Returns False,
-        holding nothing, when the name is claimed by two relations."""
-        place = self._place()
-        allowed, _ = self._claim(place, entry.table_name, entry.catalog, entry.schema)
-        if allowed:
-            place.tables[entry.table_name] = entry
-        return allowed
+        fetched and wants substituted on the next request, without a Redis blob."""
+        self._place().tables[entry.table_id] = entry
 
     async def _store_rows(
         self,
+        table_id: int,
         table_name: str,
         rows: list[dict],
         pk_column: str,
@@ -212,16 +185,8 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         assert self._redis is not None
 
         place = self._place()
-        allowed, dropped = self._claim(place, table_name, catalog, schema)
-        if not allowed:
-            if dropped is not None:
-                await self._redis.delete(
-                    self._blob_key(table_name, dropped.catalog, dropped.schema)
-                )
-            return len(rows)
-
         columns = list(rows[0].keys()) if rows else []
-        blob_key = self._blob_key(table_name, catalog, schema)
+        blob_key = self._blob_key(table_id)
 
         # REQ-230: measure the serialized blob and skip caching a table that exceeds the byte
         # ceiling, even when its row count is within max_rows (wide rows can still be large).
@@ -244,7 +209,8 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         pipe.set(blob_key, stored, ex=self._ttl)
         await pipe.execute()
 
-        place.tables[table_name] = HotTableEntry(
+        place.tables[table_id] = HotTableEntry(
+            table_id=table_id,
             table_name=table_name,
             catalog=catalog,
             schema=schema,
@@ -258,12 +224,13 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
     async def load_table(  # REQ-544
         self,
         engine,
+        table_id: int,
         table_name: str,
         schema: str,
         catalog: str,
         pk_column: str,
     ) -> int:
-        """Load an engine-backed table into Redis vithe engine terminal. Returns row count."""
+        """Load an engine-backed table into Redis through the engine terminal. Returns row count."""
         fqn = f'"{catalog}"."{schema}"."{table_name}"'
         # The registered catalog.schema.table name, in the bound engine's own table addressing
         # and dialect (REQ-1730: an engine with no catalog level folds it into the schema).
@@ -279,11 +246,12 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
             return row_count
 
         rows = [dict(zip(columns, row)) for row in rows_raw]
-        return await self._store_rows(table_name, rows, pk_column, catalog, schema)
+        return await self._store_rows(table_id, table_name, rows, pk_column, catalog, schema)
 
     async def load_table_from_sqlite(  # REQ-544
         self,
         source_cfg: dict,
+        table_id: int,
         table_name: str,
         pk_column: str,
     ) -> int:
@@ -303,11 +271,14 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
             )
             return len(rows)
 
-        return await self._store_rows(table_name, rows, pk_column, source_cfg["id"], "default")
+        return await self._store_rows(
+            table_id, table_name, rows, pk_column, source_cfg["id"], "default"
+        )
 
     async def load_table_from_openapi(  # REQ-544
         self,
         source_cfg: dict,
+        table_id: int,
         table_name: str,
         pk_column: str,
     ) -> int:
@@ -344,67 +315,86 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
             )
             return len(rows)
 
-        return await self._store_rows(table_name, rows, pk_column, source_cfg["id"], "default")
+        return await self._store_rows(
+            table_id, table_name, rows, pk_column, source_cfg["id"], "default"
+        )
 
-    async def get_rows(self, table_name: str) -> list[dict]:  # REQ-544
+    async def get_rows(self, table_id: int) -> list[dict]:  # REQ-544
         """Fetch all rows for a hot table from Redis."""
         await self._connect()
         assert self._redis is not None
 
-        # The blob is addressed by the relation the name stands for here: a name that is not
-        # hot in the acting org, environment and model has no blob to read.
-        entry = self._hot_tables.get(table_name)
+        # A table that is not hot in the acting org, environment and model has no blob to read.
+        entry = self._hot_tables.get(table_id)
         if entry is None:
             return []
-        data = await self._redis.get(self._blob_key(table_name, entry.catalog, entry.schema))
+        data = await self._redis.get(self._blob_key(table_id))
         if data is None:
-            # Check in-memory cache
-            if entry:
-                return entry.rows
-            # REQ-231: a cache miss returns no rows rather than raising — the caller falls
-            # back to the live source. (CTE injection is gated on is_hot()/get_entry(), so an
-            # evicted/expired hot table is simply queried live; this is the structural fallback.)
-            return []
+            # REQ-231: the blob expired or was never written (rows a caller held): the rows
+            # this process holds are the table's hot rows.
+            return entry.rows
         # REQ-688: decrypt the at-rest payload (base64-wrapped ciphertext → JSON).
         blob = self._encryption.decrypt(base64.b64decode(data)).decode("utf-8")
         return json.loads(blob)
 
-    async def invalidate(self, table_name: str) -> None:  # REQ-544
-        """Delete all Redis keys for a hot table."""
+    async def invalidate(self, table_id: int) -> None:  # REQ-544
+        """Delete a hot table's blob and its rows in the acting org and environment."""
         await self._connect()
         assert self._redis is not None
-        entry = self._hot_tables.pop(table_name, None)
-        if entry is not None:
-            await self._redis.delete(self._blob_key(table_name, entry.catalog, entry.schema))
-        log.info("Hot table %s invalidated", table_name)
+        entry = self._hot_tables.pop(table_id, None)
+        await self._redis.delete(self._blob_key(table_id))
+        log.info("Hot table %s invalidated", entry.table_name if entry else table_id)
 
-    def is_hot(self, table_name: str) -> bool:  # REQ-544
+    async def refresh_after_write(self, engine, table_id: int) -> None:  # REQ-544
+        """A write changed ``table_id``: its hot rows are dropped and, for a table the engine
+        reads, loaded again with the key and address it was hot under. A table not hot here is
+        left alone."""
+        entry = self._hot_tables.get(table_id)
+        if entry is None:
+            return
+        await self.invalidate(table_id)
+        if not entry.is_api:
+            await self.load_table(
+                engine, table_id, entry.table_name, entry.schema, entry.catalog, entry.pk_column
+            )
+
+    def is_hot(self, table_id: int) -> bool:  # REQ-544
         """Check if a table is currently hot-cached with at least one row."""
-        entry = self._hot_tables.get(table_name)
+        entry = self._hot_tables.get(table_id)
         return entry is not None and len(entry.rows) > 0
 
-    def managed_tables(self) -> set[str]:
-        """REQ-241: names of tables owned by the hot tier (loaded or candidate).
-
-        Used for hot-over-warm precedence — a table the hot tier manages must not also be
-        promoted to the warm tier.
-        """
-        return set(self._hot_tables) | set(self._candidates)
-
-    def get_entry(self, table_name: str) -> HotTableEntry | None:  # REQ-544
+    def get_entry(self, table_id: int) -> HotTableEntry | None:  # REQ-544
         """Get the hot table entry with metadata."""
-        return self._hot_tables.get(table_name)
+        return self._hot_tables.get(table_id)
+
+    def entries_for(self, table_ids: Iterable[int]) -> dict[str, HotTableEntry]:
+        """The hot rows a statement that reads ``table_ids`` (the ids the pipeline resolved for
+        it) substitutes, keyed by the name its SQL carries for each table. A name two of those
+        tables carry is left out: substitution goes by name in the statement, which cannot say
+        which reference is which."""
+        by_name: dict[str, list[HotTableEntry]] = {}
+        hot = self._hot_tables
+        for table_id in set(table_ids):
+            entry = hot.get(table_id)
+            if entry is not None and entry.rows:
+                by_name.setdefault(entry.table_name, []).append(entry)
+        return {name: found[0] for name, found in by_name.items() if len(found) == 1}
+
+    def managed_tables(self) -> set[int]:
+        """REQ-241: ids of tables owned by the hot tier (loaded or candidate)."""
+        return set(self._hot_tables) | set(self._candidates)
 
     def snapshot(self) -> list[dict]:
         """Admin view of the hot tier: loaded tables and not-yet-loaded candidates.
 
-        Each entry: table_name, catalog, schema, row_count, is_api, loaded.
+        Each entry: table_id, table_name, catalog, schema, row_count, is_api, loaded.
         """
         out: list[dict] = []
-        for name, e in self._hot_tables.items():
+        for table_id, e in self._hot_tables.items():
             out.append(
                 {
-                    "table_name": name,
+                    "table_id": table_id,
+                    "table_name": e.table_name,
                     "catalog": e.catalog,
                     "schema": e.schema,
                     "row_count": len(e.rows),
@@ -412,12 +402,13 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
                     "loaded": True,
                 }
             )
-        for name, c in self._candidates.items():
-            if name in self._hot_tables:
+        for table_id, c in self._candidates.items():
+            if table_id in self._hot_tables:
                 continue
             out.append(
                 {
-                    "table_name": name,
+                    "table_id": table_id,
+                    "table_name": c.table_name,
                     "catalog": c.catalog,
                     "schema": c.schema,
                     "row_count": 0,
@@ -429,53 +420,42 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
 
     def register_candidate(self, candidate: HotTableCandidate) -> None:  # REQ-236, REQ-237
         """Register a table as an auto-promotion candidate."""
-        self._candidates[candidate.table_name] = candidate
+        self._candidates[candidate.table_id] = candidate
 
     async def maybe_promote(
         self,
-        table_name: str,
+        table_id: int,
         rows: list[tuple],
         column_names: list[str],
     ) -> None:  # REQ-236
-        """Promote table to hot cache if it's a candidate and result is small enough."""
-        if self.is_hot(table_name):
-            return
-        candidate = self._candidates.get(table_name)
-        if candidate is None:
-            return
-        if len(rows) > self._auto_threshold:
-            log.debug(
-                "Hot table candidate %s: %d rows > threshold %d, skipping",
-                table_name,
-                len(rows),
-                self._auto_threshold,
-            )
-            return
-        row_dicts = [dict(zip(column_names, row)) for row in rows]
-        await self._store_rows(
-            table_name, row_dicts, candidate.pk_column, candidate.catalog, candidate.schema
-        )
-        log.info("Auto-promoted %s to hot cache after query (%d rows)", table_name, len(rows))
+        """Promote a table to the hot cache if it is a candidate and ``rows`` — all of its rows —
+        are few enough."""
+        await self.maybe_promote_dicts(table_id, [dict(zip(column_names, row)) for row in rows])
 
-    async def maybe_promote_dicts(self, table_name: str, rows: list[dict]) -> None:  # REQ-236
-        """Promote table to hot cache from already-fetched dict rows (API sources)."""
-        if self.is_hot(table_name):
+    async def maybe_promote_dicts(self, table_id: int, rows: list[dict]) -> None:  # REQ-236
+        """Promote a table to the hot cache from already-fetched dict rows — all of its rows."""
+        if self.is_hot(table_id):
             return
-        candidate = self._candidates.get(table_name)
+        candidate = self._candidates.get(table_id)
         if candidate is None:
             return
         if len(rows) > self._auto_threshold:
             log.debug(
                 "Hot table candidate %s: %d rows > threshold %d, skipping",
-                table_name,
+                candidate.table_name,
                 len(rows),
                 self._auto_threshold,
             )
             return
         await self._store_rows(
-            table_name, rows, candidate.pk_column, candidate.catalog, candidate.schema
+            table_id,
+            candidate.table_name,
+            rows,
+            candidate.pk_column,
+            candidate.catalog,
+            candidate.schema,
         )
-        log.info("Auto-promoted %s to hot cache after API query (%d rows)", table_name, len(rows))
+        log.info("Auto-promoted %s to hot cache (%d rows)", candidate.table_name, len(rows))
 
     @property
     def auto_threshold(self) -> int:
@@ -672,8 +652,11 @@ def max_rows() -> int:
 async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
     raw_config: dict,
     engine,
+    registered: list[dict],
 ) -> HotTableManager | None:
-    """Initialize hot table manager from raw config. Returns manager or None."""
+    """Initialize hot table manager from raw config. Returns manager or None. ``registered`` are
+    the registered tables (``state.tables``); each config table is found among them by its
+    identity (source, schema, table) and kept under its id."""
 
     # REQ-1913: the tier's settings are operator settings, resolved by the settings registry.
     from provisa.core import settings_registry
@@ -707,12 +690,6 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
         encryption=encryption,
     )
 
-    hot_overrides: dict[str, bool | None] = {}
-    for tbl_cfg in raw_config.get("tables", []):
-        tbl_name = tbl_cfg.get("table") or tbl_cfg.get("table_name")
-        if tbl_name and "hot" in tbl_cfg:
-            hot_overrides[tbl_name] = tbl_cfg["hot"]
-
     _ENGINE_BACKED = {
         "postgresql",
         "mysql",
@@ -723,100 +700,67 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
         "iceberg",
     }
     source_cfgs = {s["id"]: s for s in raw_config.get("sources", []) if "id" in s}
-    tables_list = raw_config.get("tables", [])
     rels_list = raw_config.get("relationships", [])
+    # Each config table is one registered table: the hot tier keys it by that table's id.
+    ids = {
+        (row["source_id"], row["schema_name"], row["table_name"]): int(row["id"])
+        for row in registered
+    }
 
-    def _tbl_meta(tbl_name: str):
-        tbl_cfg = next(
-            (t for t in tables_list if (t.get("table") or t.get("table_name")) == tbl_name),
-            None,
-        )
-        if tbl_cfg is None:
-            return None, None, None, None, None
-        source_id = tbl_cfg.get("source_id", "")
+    for tbl_cfg in raw_config.get("tables", []):
+        tbl_name = tbl_cfg.get("table") or tbl_cfg.get("table_name")
+        schema_name = tbl_cfg.get("schema") or tbl_cfg.get("schema_name")
+        source_id = tbl_cfg["source_id"]
+        identity = (source_id, schema_name, tbl_name)
+        if identity not in ids:
+            raise ValueError(
+                f"hot tables: config table {source_id}/{schema_name}.{tbl_name} is not registered"
+            )
+        table_id = ids[identity]
         source_cfg = source_cfgs.get(source_id, {})
         source_type = source_cfg.get("type", "")
         pk_col = (
             tbl_cfg.get("columns", [{}])[0].get("name", "id") if tbl_cfg.get("columns") else "id"
         )
-        schema_name = tbl_cfg.get("schema", "public")
-        return tbl_cfg, source_id, source_cfg, source_type, pk_col, schema_name
-
-    # Startup: only load tables explicitly marked hot: true
-    for tbl_name, override in hot_overrides.items():
-        if override is not True:
-            continue
-        result = _tbl_meta(tbl_name)
-        if result[0] is None:
-            continue
-        _, source_id, source_cfg, source_type, pk_col, schema_name = result
         catalog = source_to_catalog(source_id)
-        # Also a candidate: what is loaded here is hot only under the model loaded now, and a
-        # candidate is how the table becomes hot again after the model changes.
-        hot_mgr.register_candidate(
-            HotTableCandidate(
-                table_name=tbl_name, pk_column=pk_col, catalog=catalog, schema=schema_name
-            )
+        override = tbl_cfg.get("hot")
+        candidate = HotTableCandidate(
+            table_id=table_id,
+            table_name=tbl_name,
+            pk_column=pk_col,
+            catalog=catalog,
+            schema=schema_name,
         )
-        if source_type == "sqlite":
-            await hot_mgr.load_table_from_sqlite(source_cfg, tbl_name, pk_col)
-        elif source_type == "openapi":
-            await hot_mgr.load_table_from_openapi(source_cfg, tbl_name, pk_col)
-        elif source_type in _ENGINE_BACKED:
-            await hot_mgr.load_table(engine, tbl_name, schema_name, catalog, pk_col)
-        else:
-            log.debug(
-                "hot: true table %s: source type %r not supported for caching",
-                tbl_name,
-                source_type,
-            )
 
-    # Register auto-detected candidates for lazy promotion after first query
-    auto_candidates = detect_hot_tables(tables_list, rels_list, hot_overrides)
-    for tbl_name in auto_candidates:
-        if hot_overrides.get(tbl_name) is True:
-            continue  # already loaded above
-        result = _tbl_meta(tbl_name)
-        if result[0] is None:
+        if override is True:
+            # Loaded now, and also a candidate: what is loaded here is hot only under the model
+            # loaded now, and a candidate is how the table becomes hot again after it changes.
+            hot_mgr.register_candidate(candidate)
+            if source_type == "sqlite":
+                await hot_mgr.load_table_from_sqlite(source_cfg, table_id, tbl_name, pk_col)
+            elif source_type == "openapi":
+                await hot_mgr.load_table_from_openapi(source_cfg, table_id, tbl_name, pk_col)
+            elif source_type in _ENGINE_BACKED:
+                await hot_mgr.load_table(engine, table_id, tbl_name, schema_name, catalog, pk_col)
+            else:
+                log.debug(
+                    "hot: true table %s: source type %r not supported for caching",
+                    tbl_name,
+                    source_type,
+                )
             continue
-        _, source_id, source_cfg, source_type, pk_col, schema_name = result
-        catalog = source_to_catalog(source_id)
-        hot_mgr.register_candidate(
-            HotTableCandidate(
-                table_name=tbl_name,
-                pk_column=pk_col,
-                catalog=catalog,
-                schema=schema_name,
-            )
-        )
-        log.debug("Registered hot table candidate %s (lazy promotion on first query)", tbl_name)
-
-    # REQ-236 criterion (1): also size small the engine-backed tables by COUNT(*) and register
-    # those at/below auto_threshold as candidates. Skip ones already handled above.
-    already = set(auto_candidates) | {n for n, o in hot_overrides.items() if o is True}
-    count_candidates: list[tuple[str, str, str]] = []
-    count_meta: dict[str, tuple] = {}
-    for tbl_cfg in tables_list:
-        tbl_name = tbl_cfg.get("table") or tbl_cfg.get("table_name")
-        if not tbl_name or tbl_name in already:
+        if override is False:
             continue
-        result = _tbl_meta(tbl_name)
-        if result[0] is None or result[3] not in _ENGINE_BACKED:
+        # Auto-detected: a many-to-one target, promoted on its first small read.
+        if detect_hot_tables([tbl_cfg], rels_list, {tbl_name: override}):
+            hot_mgr.register_candidate(candidate)
+            log.debug("Registered hot table candidate %s (lazy promotion on first query)", tbl_name)
             continue
-        _source_cfg, source_id, _source_type, _, pk_col, schema_name = result  # pyright: ignore[reportUnusedVariable]
-        catalog = source_to_catalog(source_id)
-        count_candidates.append((tbl_name, schema_name, catalog))
-        count_meta[tbl_name] = (pk_col, catalog, schema_name)
-
-    for tbl_name in await detect_hot_tables_by_count(
-        engine, count_candidates, auto_threshold, hot_overrides
-    ):
-        pk_col, catalog, schema_name = count_meta[tbl_name]
-        hot_mgr.register_candidate(
-            HotTableCandidate(
-                table_name=tbl_name, pk_column=pk_col, catalog=catalog, schema=schema_name
-            )
-        )
-        log.debug("Registered hot table candidate %s by row-count (REQ-236)", tbl_name)
+        # REQ-236 criterion (1): an engine-backed table at/below auto_threshold rows.
+        if source_type in _ENGINE_BACKED and await detect_hot_tables_by_count(
+            engine, [(tbl_name, schema_name, catalog)], auto_threshold, {}
+        ):
+            hot_mgr.register_candidate(candidate)
+            log.debug("Registered hot table candidate %s by row-count (REQ-236)", tbl_name)
 
     return hot_mgr

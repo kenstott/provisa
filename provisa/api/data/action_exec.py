@@ -173,8 +173,6 @@ async def _table_was_written(fn: dict, state) -> None:
         state,
         table_id=table["id"],
         table_name=table["table_name"],
-        schema_name=table["schema_name"],
-        catalog_name=state.catalog_for(fn["source_id"]),
         source_id=fn["source_id"],
     )
 

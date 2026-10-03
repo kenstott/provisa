@@ -381,8 +381,6 @@ async def _handle_mutation(
                     state,
                     table_id=table_meta.table_id,
                     table_name=table_meta.table_name,
-                    schema_name=table_meta.schema_name,
-                    catalog_name=table_meta.catalog_name,
                     source_id=source_id,
                 )
         except Exception as e:

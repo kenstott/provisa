@@ -148,6 +148,7 @@ class TestExecuteApiSource:
         compiled = _compiled()
         ep = SimpleNamespace(columns=[_col("id")], source_id="api1", table_name="pets")
         hot_entry = HotTableEntry(
+            table_id=1,  # pets, as _make_ctx registers it
             table_name="pets",
             catalog="",
             schema="",
@@ -156,9 +157,10 @@ class TestExecuteApiSource:
             column_names=["id", "name"],
             is_api=True,
         )
+        hot = {1: hot_entry}
         hot_mgr = SimpleNamespace(
-            is_hot=lambda tn: True,
-            get_entry=lambda tn: hot_entry,
+            is_hot=lambda table_id: table_id in hot,
+            get_entry=hot.get,
         )
         engine = SimpleNamespace(
             transpile_physical=lambda s: s,
@@ -629,6 +631,7 @@ class TestExecuteEngineStandard:
 
             await asyncio.sleep(0)
         hot_mgr.maybe_promote.assert_called_once()
+        assert hot_mgr.maybe_promote.call_args.args[0] == 1  # the root table's id (pets)
 
 
 # ---------------------------------------------------------------------------

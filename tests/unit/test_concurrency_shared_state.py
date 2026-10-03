@@ -203,7 +203,9 @@ async def test_hot_table_entry_coherence_under_concurrent_promotion():
 
     mgr = HotTableManager(redis_url=None, auto_threshold=1000, max_rows=1000)  # embedded fakeredis
     mgr.register_candidate(
-        HotTableCandidate(table_name="orders", pk_column="id", catalog="pg", schema="public")
+        HotTableCandidate(
+            table_id=1, table_name="orders", pk_column="id", catalog="pg", schema="public"
+        )
     )
 
     stop = False
@@ -219,7 +221,7 @@ async def test_hot_table_entry_coherence_under_concurrent_promotion():
                     f"torn entry: column_names={entry.column_names} rows[0]={list(expected_cols)}"
                 )
         # is_hot() must agree with the entry's own row presence.
-        if bool(entry.rows) != mgr.is_hot("orders"):
+        if bool(entry.rows) != mgr.is_hot(1):
             violations.append("is_hot disagrees with entry.rows")
 
     async def promoter(seed: int):
@@ -227,12 +229,12 @@ async def test_hot_table_entry_coherence_under_concurrent_promotion():
         for i in range(50):
             cols = {f"c{j}": seed * 100 + i for j in range(1 + (seed % 3))}
             cols["id"] = seed * 1000 + i
-            await mgr.maybe_promote_dicts("orders", [dict(cols)])
+            await mgr.maybe_promote_dicts(1, [dict(cols)])
             await asyncio.sleep(0)  # yield to interleave with readers/other promoters
 
     async def reader():
         while not stop:
-            _check_entry(mgr.get_entry("orders"))
+            _check_entry(mgr.get_entry(1))
             await asyncio.sleep(0)
 
     readers = [asyncio.create_task(reader()) for _ in range(8)]

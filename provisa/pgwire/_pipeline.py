@@ -298,7 +298,7 @@ async def _optimize_and_route(
     from provisa.transpiler.router import Route, decide_route
 
     _rewrites, _values_ctes, _dropped = await _materialize_api_to_engine_cache(
-        exec_sql, state, nf_args=nf_args
+        exec_sql, state, nf_args=nf_args, table_ids=table_ids
     )
     _actually_dropped: set[str] = set()
     if _dropped:
@@ -511,7 +511,7 @@ async def _optimize_and_route_cached(
     """
     from provisa.api.data.materialization import would_materialize_optimize
 
-    if would_materialize_optimize(exec_sql, state):
+    if would_materialize_optimize(exec_sql, state, table_ids=table_ids):
         return await _optimize_and_route(
             exec_sql,
             governed_sql,

@@ -175,14 +175,15 @@ class TestHotTableManager:
         )
         count = await manager.load_table(
             engine,
+            1,
             "countries",
             "public",
             "pg",
             "id",
         )
         assert count == 2
-        assert manager.is_hot("countries")
-        entry = manager.get_entry("countries")
+        assert manager.is_hot(1)
+        entry = manager.get_entry(1)
         assert entry is not None
         assert len(entry.rows) == 2
         assert entry.column_names == ["id", "code", "name"]
@@ -201,18 +202,20 @@ class TestHotTableManager:
 
         count = await manager.load_table(
             engine,
+            2,
             "big_countries",
             "public",
             "pg",
             "id",
         )
         assert count == 10_001
-        assert not manager.is_hot("big_countries")
+        assert not manager.is_hot(2)
 
     @pytest.mark.asyncio
     async def test_invalidate_removes_table(self, manager):
         # Pre-populate
-        manager._hot_tables["countries"] = HotTableEntry(
+        manager._hot_tables[1] = HotTableEntry(
+            table_id=1,
             table_name="countries",
             catalog="pg",
             schema="public",
@@ -231,8 +234,8 @@ class TestHotTableManager:
         mock_redis.scan_iter = _empty_scan
         manager._redis = mock_redis
 
-        await manager.invalidate("countries")
-        assert not manager.is_hot("countries")
+        await manager.invalidate(1)
+        assert not manager.is_hot(1)
 
     @pytest.mark.asyncio
     async def test_get_rows_from_redis(self, manager):
@@ -247,11 +250,11 @@ class TestHotTableManager:
         mock_redis.get = AsyncMock(return_value=stored)
         manager._redis = mock_redis
         # The name is hot here (its rows are not held in this process), so its blob is read.
-        manager._hot_tables["countries"] = HotTableEntry(
-            table_name="countries", catalog="pg", schema="public", pk_column="id"
+        manager._hot_tables[1] = HotTableEntry(
+            table_id=1, table_name="countries", catalog="pg", schema="public", pk_column="id"
         )
 
-        result = await manager.get_rows("countries")
+        result = await manager.get_rows(1)
         assert len(result) == 2
         assert result[0]["name"] == "US"
 
@@ -261,7 +264,8 @@ class TestHotTableManager:
         mock_redis.get = AsyncMock(return_value=None)
         manager._redis = mock_redis
 
-        manager._hot_tables["countries"] = HotTableEntry(
+        manager._hot_tables[1] = HotTableEntry(
+            table_id=1,
             table_name="countries",
             catalog="pg",
             schema="public",
@@ -269,7 +273,7 @@ class TestHotTableManager:
             rows=[{"id": 1, "name": "US"}],
             column_names=["id", "name"],
         )
-        result = await manager.get_rows("countries")
+        result = await manager.get_rows(1)
         assert len(result) == 1
 
     @pytest.mark.asyncio
@@ -279,7 +283,7 @@ class TestHotTableManager:
         mock_redis.get = AsyncMock(return_value=None)
         manager._redis = mock_redis
 
-        assert await manager.get_rows("nonexistent") == []
+        assert await manager.get_rows(4) == []
 
     @pytest.mark.asyncio
     async def test_max_bytes_guard_skips_wide_table(self):
@@ -297,9 +301,9 @@ class TestHotTableManager:
         mgr._redis = mock_redis
 
         wide = [{"id": i, "blob": "x" * 100} for i in range(10)]
-        count = await mgr._store_rows("wide", wide, "id", "pg", "public")
+        count = await mgr._store_rows(3, "wide", wide, "id", "pg", "public")
         assert count == 10
-        assert not mgr.is_hot("wide")  # over byte ceiling → not stored
+        assert not mgr.is_hot(3)  # over byte ceiling → not stored
         mock_redis.pipeline.assert_not_called()
 
 
@@ -314,11 +318,13 @@ class TestRewriteHotJoins:
         mgr._auto_threshold = 1_000
         mgr._max_rows = 1_000
         mgr._redis = None
-        mgr._hot_tables = hot_entries
+        for entry in hot_entries.values():
+            mgr.hold(entry)
         return mgr
 
     def test_rewrites_hot_join_to_values_cte(self):
         entry = HotTableEntry(
+            table_id=1,
             table_name="countries",
             catalog="pg",
             schema="public",
@@ -345,6 +351,7 @@ class TestRewriteHotJoins:
                 ColumnRef(alias="t1", column="code", field_name="code", nested_in="countries"),
             ],
             sources={"pg"},
+            table_ids=frozenset({1, 9}),  # orders (9) and countries (1)
         )
 
         result = rewrite_hot_joins(compiled, mgr)
@@ -367,13 +374,41 @@ class TestRewriteHotJoins:
             root_field="orders",
             columns=[],
             sources={"pg"},
+            table_ids=frozenset({1, 9}),  # orders (9) and countries (1)
         )
 
         result = rewrite_hot_joins(compiled, mgr)
         assert result.sql == compiled.sql  # unchanged
 
+    def test_a_hot_table_the_query_does_not_read_is_not_substituted(self):
+        """``countries`` (id 1) is hot; the query reads another source's ``countries`` (id 7),
+        so its reference is left to that table."""
+        entry = HotTableEntry(
+            table_id=1,
+            table_name="countries",
+            catalog="pg",
+            schema="public",
+            pk_column="id",
+            rows=[{"id": 1, "code": "US"}],
+            column_names=["id", "code"],
+        )
+        mgr = self._make_manager({"countries": entry})
+        compiled = CompiledQuery(
+            sql=(
+                'SELECT "t0"."id" FROM "public"."orders" "t0" '
+                'LEFT JOIN "public"."countries" "t1" ON "t0"."country_id" = "t1"."id"'
+            ),
+            params=[],
+            root_field="orders",
+            columns=[],
+            sources={"wh"},
+            table_ids=frozenset({9, 7}),
+        )
+        assert rewrite_hot_joins(compiled, mgr).sql == compiled.sql
+
     def test_no_rewrite_when_no_joins(self):
         entry = HotTableEntry(
+            table_id=1,
             table_name="countries",
             catalog="pg",
             schema="public",
@@ -389,6 +424,7 @@ class TestRewriteHotJoins:
             root_field="orders",
             columns=[],
             sources={"pg"},
+            table_ids=frozenset({1, 9}),  # orders (9) and countries (1)
         )
 
         result = rewrite_hot_joins(compiled, mgr)
@@ -492,18 +528,19 @@ class TestMutationInvalidation:
         mgr._auto_threshold = 1_000
         mgr._max_rows = 1_000
         mgr._redis = AsyncMock()
-        mgr._hot_tables = {
-            "countries": HotTableEntry(
+        mgr.hold(
+            HotTableEntry(
+                table_id=1,
                 table_name="countries",
                 catalog="pg",
                 schema="public",
                 pk_column="id",
                 rows=[{"id": 1, "code": "US"}],
                 column_names=["id", "code"],
-            ),
-        }
+            )
+        )
 
-        assert mgr.is_hot("countries")
+        assert mgr.is_hot(1)
 
         # Simulate invalidation
         mgr._redis.delete = AsyncMock(return_value=1)
@@ -514,8 +551,8 @@ class TestMutationInvalidation:
 
         mgr._redis.scan_iter = _empty_scan
 
-        await mgr.invalidate("countries")
-        assert not mgr.is_hot("countries")
+        await mgr.invalidate(1)
+        assert not mgr.is_hot(1)
 
 
 # --- REQ-236: COUNT(*) auto-detection ---
@@ -617,11 +654,11 @@ class TestEngineAddressing:
         runtime, sent = _recording_runtime(engine_key)
         mgr = HotTableManager(None, auto_threshold=100, max_rows=100)
         mgr._store_rows = AsyncMock(return_value=1)  # type: ignore[method-assign]
-        assert await mgr.load_table(runtime, "regions", "public", "bench_postgresql", "id") == 1
+        assert await mgr.load_table(runtime, 5, "regions", "public", "bench_postgresql", "id") == 1
         assert sent == [f"SELECT * FROM {_HOT_ADDRESSING[engine_key]}"]
         # The cache entry is still filed under the registered catalog and schema.
         mgr._store_rows.assert_awaited_once_with(
-            "regions", [{"id": 1, "name": "a"}], "id", "bench_postgresql", "public"
+            5, "regions", [{"id": 1, "name": "a"}], "id", "bench_postgresql", "public"
         )
 
     @pytest.mark.parametrize("engine_key", sorted(_HOT_ADDRESSING))

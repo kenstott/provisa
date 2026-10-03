@@ -306,7 +306,7 @@ async def test_a_promoted_table_that_is_no_longer_registered_is_demoted(world):
 
 
 async def test_a_table_the_redis_hot_tier_manages_is_not_promoted(world):
-    world.state.hot_manager = SimpleNamespace(managed_tables=lambda: {"orders"})
+    world.state.hot_manager = SimpleNamespace(managed_tables=lambda: {1})  # orders
     world.seen(1, 1000)
     world.seen(2, 1000)
     outcome = await evaluate(world.state, workers=1)
@@ -316,7 +316,7 @@ async def test_a_table_the_redis_hot_tier_manages_is_not_promoted(world):
 
 async def test_a_promoted_table_the_hot_tier_takes_is_demoted(world):
     await _promote(world, built=True)
-    world.state.hot_manager = SimpleNamespace(managed_tables=lambda: {"orders"})
+    world.state.hot_manager = SimpleNamespace(managed_tables=lambda: {1})  # orders
     world.seen(1, 1000)
     assert (await evaluate(world.state, workers=1)).demoted == (ORDERS,)
 

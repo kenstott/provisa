@@ -20,10 +20,72 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Iterable
+from typing import Any
+
+from provisa.cache.values_cte import InlineRows
 from provisa.core.connection_loop import spawn_background
 
 
 log = logging.getLogger(__name__)
+
+
+class _StatementHot:
+    """The hot tier as one statement sees it (REQ-230, REQ-236): the hot rows of the tables it
+    reads — the ids the pipeline resolved for it — by the name its SQL carries for each, and
+    rows it fetched held under the reading table's id for the next statement. A name the
+    statement's tables do not carry exactly once is not held: the rows are substituted into this
+    statement only."""
+
+    def __init__(self, hot_mgr: Any, state: Any, table_ids: Iterable[int]) -> None:
+        from provisa.compiler.naming import apply_sql_name
+
+        self._mgr = hot_mgr
+        read = set(table_ids)
+        names: dict[str, set[int]] = {}
+        for row in getattr(state, "tables", None) or []:
+            if int(row["id"]) in read:
+                for name in {row["table_name"], apply_sql_name(row["table_name"])}:
+                    names.setdefault(name, set()).add(int(row["id"]))
+        self._ids = {name: next(iter(ids)) for name, ids in names.items() if len(ids) == 1}
+        self.entries = hot_mgr.entries_for(read) if hot_mgr is not None else {}
+
+    def table_id(self, tn: str) -> int | None:
+        """The id of the table the statement reads under the name ``tn``, when exactly one does."""
+        return self._ids.get(tn)
+
+    def holds(self, tn: str) -> bool:
+        """Whether rows fetched for ``tn`` are held for the next statement."""
+        return self._mgr is not None and tn in self._ids
+
+    def hold(
+        self,
+        tn: str,
+        *,
+        catalog: str,
+        schema: str,
+        pk_column: str,
+        rows: list[dict],
+        column_names: list[str],
+    ) -> Any:
+        """The rows to substitute for ``tn`` in this statement, held for the next one when
+        :meth:`holds`."""
+        if not self.holds(tn):
+            return InlineRows(rows, column_names)
+        from provisa.cache.hot_tables import HotTableEntry
+
+        entry = HotTableEntry(
+            table_id=self._ids[tn],
+            table_name=tn,
+            catalog=catalog,
+            schema=schema,
+            pk_column=pk_column,
+            rows=rows,
+            column_names=column_names,
+            is_api=True,
+        )
+        self._mgr.hold(entry)
+        return entry
 
 
 def _lookup_ep(state, table_name: str):
@@ -118,29 +180,24 @@ def _lookup_openapi_table(state, table_name: str):
 
 
 async def _promote_joined_from_fills(
-    state, ep, tn, hot_mgr, col_names, meta_cols, cache_loc, hot_threshold
+    state, ep, tn, hot, col_names, meta_cols, cache_loc, hot_threshold
 ) -> None:
-    """Read a joined API table's fills from the store and hold them in hot_mgr for the next
+    """Read a joined API table's fills from the store and hold them in the hot tier for the next
     request's Values CTE. Best effort: the hot copy is an optimization of a later request, and
     this request already has its answer."""
     try:
         rows = await _mat_fetch_rows_from_fills(ep, col_names, meta_cols, state)
         if 0 < len(rows) <= hot_threshold:
-            from provisa.cache.hot_tables import HotTableEntry
-
-            hot_mgr.hold(
-                HotTableEntry(
-                    table_name=tn,
-                    catalog=cache_loc.catalog,
-                    schema=cache_loc.schema,
-                    pk_column=col_names[0] if col_names else "id",
-                    rows=rows,
-                    column_names=col_names,
-                    is_api=True,
-                )
+            hot.hold(
+                tn,
+                catalog=cache_loc.catalog,
+                schema=cache_loc.schema,
+                pk_column=col_names[0] if col_names else "id",
+                rows=rows,
+                column_names=col_names,
             )
             log.warning(
-                "[MAT] promoted %s → hot_mgr (%d rows) for next-request Values CTE", tn, len(rows)
+                "[MAT] promoted %s → hot tier (%d rows) for next-request Values CTE", tn, len(rows)
             )
     except Exception as exc:
         log.warning("[MAT] _promote_joined_from_fills failed for %s: %s", tn, exc)
@@ -188,7 +245,7 @@ async def _mat_gql_remote_table(
     gql_reg: dict,
     gql_tbl: dict,
     state,
-    hot_mgr,
+    hot: _StatementHot,
     _hot_threshold: int,
     cache_rewrites: dict,
     values_cte_entries: dict,
@@ -206,7 +263,6 @@ async def _mat_gql_remote_table(
         schedule_drop,
         table_known_live,
     )
-    from provisa.cache.hot_tables import HotTableEntry
     from provisa.executor.redirect import RedirectConfig
     from dataclasses import dataclass as _dc
 
@@ -313,17 +369,9 @@ async def _mat_gql_remote_table(
         gql_rows = await _fetch_gql_remote_rows(
             gql_reg, gql_tbl, col_selections, variables, _gql_to_sql, _max_items, _max_rows
         )
-        # Inline THIS query only — never register in hot_mgr: a parameterized fetch is keyed by its
-        # arg, so caching it under the bare table name would serve one arg's rows for another.
-        values_cte_entries[tn] = HotTableEntry(
-            table_name=tn,
-            catalog=gql_cache_loc.catalog,
-            schema="main",
-            pk_column=col_names[0] if col_names else "id",
-            rows=gql_rows,
-            column_names=col_names,
-            is_api=True,
-        )
+        # Inline THIS query only — never held by the hot tier: a parameterized fetch is keyed by
+        # its arg, so holding it as the table's rows would serve one arg's rows for another.
+        values_cte_entries[tn] = InlineRows(gql_rows, col_names)
         return
 
     # Cache hit — only trust in-process table_known_live
@@ -352,17 +400,14 @@ async def _mat_gql_remote_table(
 
     # Inline as VALUES CTE if below threshold; else use cache rewrite
     if 0 < len(gql_rows) <= _hot_threshold:
-        entry = HotTableEntry(
-            table_name=tn,
+        entry = hot.hold(
+            tn,
             catalog=gql_cache_loc.catalog,
             schema=gql_cache_loc.schema,
             pk_column=col_names[0] if col_names else "id",
             rows=gql_rows,
             column_names=col_names,
-            is_api=True,
         )
-        if hot_mgr is not None:
-            hot_mgr.hold(entry)
         values_cte_entries[tn] = entry
         log.warning("[GQL REMOTE] VALUES CTE inline for %s (%d rows)", tn, len(gql_rows))
     else:
@@ -382,7 +427,7 @@ async def _mat_grpc_remote_table(
     reg: dict,
     grpc_query,
     state,
-    hot_mgr,
+    hot: _StatementHot,
     _hot_threshold: int,
     cache_rewrites: dict,
     values_cte_entries: dict,
@@ -410,7 +455,6 @@ async def _mat_grpc_remote_table(
         table_known_live,
     )
     from provisa.api.data.endpoint_helpers import _grpc_cache_type
-    from provisa.cache.hot_tables import HotTableEntry
     from provisa.cache.store import NoopCacheStore
     from provisa.executor.redirect import RedirectConfig
     from provisa.source_adapters import grpc_remote_adapter
@@ -469,17 +513,14 @@ async def _mat_grpc_remote_table(
             log.warning("[GRPC REMOTE] cache write failed for %s: %s", tn, cache_exc)
 
     if 0 < len(rows) <= _hot_threshold:
-        entry = HotTableEntry(
-            table_name=tn,
+        entry = hot.hold(
+            tn,
             catalog=cache_loc.catalog,
             schema=cache_loc.schema,
             pk_column=col_names[0] if col_names else "id",
             rows=rows,
             column_names=col_names,
-            is_api=True,
         )
-        if hot_mgr is not None:
-            hot_mgr.hold(entry)
         values_cte_entries[tn] = entry
         log.warning("[GRPC REMOTE] VALUES CTE inline for %s (%d rows)", tn, len(rows))
     else:
@@ -499,7 +540,7 @@ async def _mat_openapi_table(
     entry: dict,
     query,
     state,
-    hot_mgr,
+    hot: _StatementHot,
     _hot_threshold: int,
     cache_rewrites: dict,
     values_cte_entries: dict,
@@ -532,7 +573,6 @@ async def _mat_openapi_table(
         schedule_drop,
         table_known_live,
     )
-    from provisa.cache.hot_tables import HotTableEntry
     from provisa.cache.store import NoopCacheStore
     from provisa.core.secrets import resolve_secrets
     from provisa.executor.redirect import RedirectConfig
@@ -592,17 +632,14 @@ async def _mat_openapi_table(
             log.warning("[OPENAPI] cache write failed for %s: %s", tn, cache_exc)
 
     if 0 < len(rows) <= _hot_threshold:
-        hot_entry = HotTableEntry(
-            table_name=tn,
+        hot_entry = hot.hold(
+            tn,
             catalog=cache_loc.catalog,
             schema=cache_loc.schema,
             pk_column=col_names[0] if col_names else "id",
             rows=rows,
             column_names=col_names,
-            is_api=True,
         )
-        if hot_mgr is not None:
-            hot_mgr.hold(hot_entry)
         values_cte_entries[tn] = hot_entry
         log.warning("[OPENAPI] VALUES CTE inline for %s (%d rows)", tn, len(rows))
     else:
@@ -682,7 +719,7 @@ def _mat_store_rows(
     _cache_loc,
     cache_tbl: str,
     _hot_threshold: int,
-    hot_mgr,
+    hot: _StatementHot,
     response_cols: list,
     engine,
     ttl,
@@ -713,13 +750,11 @@ def _mat_store_rows(
     log.warning("[MAT] persisted %d rows → store %s", len(rows), cache_tbl)
 
     if 0 < len(rows) <= _hot_threshold:
-        from provisa.cache.hot_tables import HotTableEntry
-
         # Small + not hot → promote to the hot cache and inline for THIS query. Include all endpoint
         # columns (response + params) so generated SQL referencing a param column resolves to NULL.
         hot_col_names = all_ep_col_names if all_ep_col_names else col_names
-        entry = HotTableEntry(
-            table_name=tn,
+        entry = hot.hold(
+            tn,
             catalog=_cache_loc.catalog,
             schema=_cache_loc.schema,
             pk_column=col_names[0] if col_names else "id",
@@ -727,10 +762,7 @@ def _mat_store_rows(
             # names are snake_case. Raw camelCase keys would silently inline NULL.
             rows=_snake_rows,
             column_names=hot_col_names,
-            is_api=True,
         )
-        if hot_mgr is not None:
-            hot_mgr.hold(entry)
         values_cte_entries[tn] = entry
         log.warning("[MAT] + hot VALUES CTE inline for %s (%d rows)", tn, len(rows))
     else:
@@ -741,7 +773,7 @@ async def _mat_api_ep_table(
     tn: str,
     ep,
     state,
-    hot_mgr,
+    hot: _StatementHot,
     _hot_threshold: int,
     _META_COLS: set,
     cache_rewrites: dict,
@@ -793,10 +825,10 @@ async def _mat_api_ep_table(
             cache_tbl,
         )
         cache_rewrites[tn] = (_cache_loc, cache_tbl)
-        if hot_mgr is not None:
+        if hot.holds(tn):
             spawn_background(
                 _promote_joined_from_fills(
-                    state, ep, tn, hot_mgr, col_names, _META_COLS, _cache_loc, _hot_threshold
+                    state, ep, tn, hot, col_names, _META_COLS, _cache_loc, _hot_threshold
                 )
             )
         return
@@ -813,10 +845,10 @@ async def _mat_api_ep_table(
             cache_tbl,
         )
         cache_rewrites[tn] = (_cache_loc, cache_tbl)
-        if hot_mgr is not None:
+        if hot.holds(tn):
             spawn_background(
                 _promote_joined_from_fills(
-                    state, ep, tn, hot_mgr, col_names, _META_COLS, _cache_loc, _hot_threshold
+                    state, ep, tn, hot, col_names, _META_COLS, _cache_loc, _hot_threshold
                 )
             )
         return
@@ -867,7 +899,7 @@ async def _mat_api_ep_table(
         _cache_loc,
         cache_tbl,
         _hot_threshold,
-        hot_mgr,
+        hot,
         response_cols,
         state.federation_engine,
         ttl,
@@ -878,7 +910,7 @@ async def _mat_api_ep_table(
     )
 
 
-def would_materialize_optimize(exec_sql: str, state) -> bool:
+def would_materialize_optimize(exec_sql: str, state, *, table_ids: Iterable[int]) -> bool:
     """REQ-1877 routing addendum: cheap, no-I/O predictor of whether
     `_materialize_api_to_engine_cache(exec_sql, state, ...)` would do ANYTHING for this call —
     i.e. whether its LIVE/time-varying branches (hot-table inline, TTL-cached API-endpoint fetch,
@@ -903,7 +935,7 @@ def would_materialize_optimize(exec_sql: str, state) -> bool:
     table_names = find_api_table_names(exec_sql)
     if not table_names:
         return False
-    hot_mgr = getattr(state, "hot_manager", None)
+    hot = _StatementHot(getattr(state, "hot_manager", None), state, table_ids)
     row_materialize_table_names = {
         t.get("table_name")
         for t in (getattr(state, "tables", None) or [])
@@ -912,7 +944,7 @@ def would_materialize_optimize(exec_sql: str, state) -> bool:
     for tn in table_names:
         if tn in row_materialize_table_names:
             continue
-        if hot_mgr is not None and hot_mgr.is_hot(tn):
+        if tn in hot.entries:
             return True
         if _lookup_ep(state, tn) is not None:
             return True
@@ -933,6 +965,8 @@ async def _materialize_api_to_engine_cache(
     state,
     gql_remote_extra_selections: dict | None = None,
     nf_args: dict | None = None,
+    *,
+    table_ids: Iterable[int],
 ) -> tuple[dict, dict, dict[str, str]]:
     """Materialize API-backed tables into the engine cache (VARCHAR columns) before the engine SQL runs.
 
@@ -942,7 +976,10 @@ async def _materialize_api_to_engine_cache(
     Reads the fills _hydrate_api_tables_before_engine keeps in the store — no HTTP call.
     Returns (cache_rewrites, values_cte_entries, dropped_tables):
       cache_rewrites: {physical_table_name: (CacheLocation, cache_tbl)}
-      values_cte_entries: {physical_table_name: HotTableEntry} — inlined as VALUES CTEs
+      values_cte_entries: {physical_table_name: rows} — inlined as VALUES CTEs
+
+    ``table_ids`` are the registered tables the statement reads, as the pipeline resolved them:
+    the hot rows substituted are theirs, and rows fetched here are held under them.
       dropped_tables: {physical_table_name: reason} whose UNION branches should be dropped -- a
         table the query cannot address because it gives none of the table's required filter /
         path parameters. A table with no UNION to drop from survives the branch-drop, and
@@ -958,6 +995,7 @@ async def _materialize_api_to_engine_cache(
     table_names = find_api_table_names(exec_sql)
     if not table_names:
         return cache_rewrites, values_cte_entries, dropped_tables
+    hot = _StatementHot(hot_mgr, state, table_ids)
 
     _META_COLS = {"_params_hash", "_cached_at"}
     _hot_threshold = hot_mgr.auto_threshold if hot_mgr is not None else 500
@@ -980,12 +1018,11 @@ async def _materialize_api_to_engine_cache(
         if tn in _row_materialize_table_names:
             continue
         # Hot cache: inline rows as VALUES CTE — avoids cross-catalog JOIN entirely
-        if hot_mgr is not None and hot_mgr.is_hot(tn):
-            entry = hot_mgr.get_entry(tn)
-            if entry is not None:
-                values_cte_entries[tn] = entry
-                log.warning("[MAT] hot VALUES CTE for %s (%d rows inline)", tn, len(entry.rows))
-                continue
+        entry = hot.entries.get(tn)
+        if entry is not None:
+            values_cte_entries[tn] = entry
+            log.warning("[MAT] hot VALUES CTE for %s (%d rows inline)", tn, len(entry.rows))
+            continue
 
         ep = _lookup_ep(state, tn)
         if ep is None:
@@ -1036,7 +1073,7 @@ async def _materialize_api_to_engine_cache(
                         gql_reg,
                         gql_tbl,
                         state,
-                        hot_mgr,
+                        hot,
                         _hot_threshold,
                         cache_rewrites,
                         values_cte_entries,
@@ -1054,7 +1091,7 @@ async def _materialize_api_to_engine_cache(
                     grpc_reg,
                     grpc_query,
                     state,
-                    hot_mgr,
+                    hot,
                     _hot_threshold,
                     cache_rewrites,
                     values_cte_entries,
@@ -1073,7 +1110,7 @@ async def _materialize_api_to_engine_cache(
                     oa_entry,
                     oa_query,
                     state,
-                    hot_mgr,
+                    hot,
                     _hot_threshold,
                     cache_rewrites,
                     values_cte_entries,
@@ -1085,7 +1122,7 @@ async def _materialize_api_to_engine_cache(
             tn,
             ep,
             state,
-            hot_mgr,
+            hot,
             _hot_threshold,
             _META_COLS,
             cache_rewrites,

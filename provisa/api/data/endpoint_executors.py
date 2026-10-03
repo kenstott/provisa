@@ -117,11 +117,11 @@ async def _execute_api_source(
 
     # Hot table bypass: skip REST + the engine materialization entirely
     hot_mgr = getattr(state, "hot_manager", None)
-    if hot_mgr is not None and hot_mgr.is_hot(table_name):
+    if hot_mgr is not None and table_meta is not None and hot_mgr.is_hot(table_meta.table_id):
         from provisa.cache.values_cte import build_values_cte_sql
         from provisa.compiler.nf_extractor import extract_nf_args
 
-        entry = hot_mgr.get_entry(table_name)
+        entry = hot_mgr.get_entry(table_meta.table_id)
         _exec_sql, _exec_params, _ = extract_nf_args(compiled.sql, compiled.params)
         _exec_sql = rewrite_semantic_to_catalog_physical(_exec_sql, ctx)
         # rewrite_semantic_to_catalog_physical drops the alias off an unaliased semantic ref
@@ -218,8 +218,8 @@ async def _execute_api_source(
                 len(result.rows),
                 cache_tbl,
             )
-            if hot_mgr is not None and result.rows:
-                spawn_background(hot_mgr.maybe_promote_dicts(table_name, result.rows))
+            if hot_mgr is not None and table_meta is not None and result.rows:
+                spawn_background(hot_mgr.maybe_promote_dicts(table_meta.table_id, result.rows))
         phase1_ms = (_time.perf_counter() - _t_phase1) * 1000
 
     # --- Phase 2: apply WHERE/ORDER BY/LIMIT vithe engine ---
@@ -232,7 +232,7 @@ async def _execute_api_source(
     rewritten_sql = rewrite_from_cache(exec_sql, _cache_loc, cache_tbl, alias_name=_alias_name)
     # Rewrite any joined API table refs → VALUES CTE (hot) or the engine cache
     _join_rewrites, _join_values_ctes, _join_dropped = await _materialize_api_to_engine_cache(
-        rewritten_sql, state, compiled.gql_remote_extra_selections
+        rewritten_sql, state, compiled.gql_remote_extra_selections, table_ids=compiled.table_ids
     )
     if _join_dropped:
         from provisa.compiler.nf_extractor import apply_dropped_tables
@@ -293,7 +293,7 @@ async def _execute_grpc_remote_source(
     VALUES CTE, then applies WHERE/ORDER BY/LIMIT vithe engine (Phase 2 only).
     """
     from provisa.compiler.nf_extractor import extract_nf_args
-    from provisa.cache.hot_tables import HotTableEntry
+    from provisa.cache.values_cte import InlineRows
     from provisa.cache.values_cte import build_values_cte_sql
     from provisa.source_adapters import grpc_remote_adapter
 
@@ -416,16 +416,7 @@ async def _execute_grpc_remote_source(
         if materialized and len(rows) > _hot_threshold:
             final_sql = rewrite_from_cache(exec_sql, cache_loc, cache_tbl)
         if final_sql is None:  # small result, or rewrite failed → inline VALUES CTE
-            entry = HotTableEntry(
-                table_name=table_name,
-                catalog="",
-                schema="",
-                pk_column="",
-                rows=rows,
-                column_names=col_names,
-                is_api=True,
-            )
-            final_sql = build_values_cte_sql(exec_sql, table_name, entry)
+            final_sql = build_values_cte_sql(exec_sql, table_name, InlineRows(rows, col_names))
 
     physical_sql = state.federation_engine.transpile_physical(final_sql)
 
@@ -505,7 +496,11 @@ async def _execute_engine_standard(
 
     # Materialize API-backed tables into the engine cache to avoid INVALID_CAST_ARGUMENT
     _api_cache_rewrites, _api_values_ctes, _api_dropped = await _materialize_api_to_engine_cache(
-        exec_sql, state, compiled.gql_remote_extra_selections, nf_args=_nf_args
+        exec_sql,
+        state,
+        compiled.gql_remote_extra_selections,
+        nf_args=_nf_args,
+        table_ids=compiled.table_ids,
     )
     if _api_dropped:
         from provisa.compiler.nf_extractor import apply_dropped_tables
@@ -602,9 +597,10 @@ async def _execute_engine_standard(
     }
     # Lazy hot-table promotion
     _hot_mgr = getattr(state, "hot_manager", None)
-    if _hot_mgr is not None:
-        _tbl = compiled.canonical_field or root_field
-        spawn_background(_hot_mgr.maybe_promote(_tbl, result.rows, result.column_names))
+    if _hot_mgr is not None and _root_meta is not None:
+        spawn_background(
+            _hot_mgr.maybe_promote(_root_meta.table_id, result.rows, result.column_names)
+        )
 
     return (
         result,
@@ -652,7 +648,7 @@ async def _exec_nodes_query(compiled, ctx, state, decision):
         _nodes_values_ctes,
         _nodes_dropped,
     ) = await _materialize_api_to_engine_cache(
-        nodes_exec_sql, state, compiled.gql_remote_extra_selections
+        nodes_exec_sql, state, compiled.gql_remote_extra_selections, table_ids=compiled.table_ids
     )
     if _nodes_dropped:
         from provisa.compiler.nf_extractor import apply_dropped_tables
@@ -897,7 +893,7 @@ async def _exec_ctas_route(compiled, ctx, state, effective_redirect_format, redi
     _, _, _, _ = await _hydrate_api_tables_before_engine(compiled, ctx, state)
     _ctas_exec_sql = rewrite_semantic_to_catalog_physical(compiled.sql, ctx)
     _ctas_rewrites, _ctas_values_ctes, _ctas_dropped = await _materialize_api_to_engine_cache(
-        _ctas_exec_sql, state, compiled.gql_remote_extra_selections
+        _ctas_exec_sql, state, compiled.gql_remote_extra_selections, table_ids=compiled.table_ids
     )
     if _ctas_dropped:
         from provisa.compiler.nf_extractor import apply_dropped_tables
