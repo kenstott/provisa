@@ -708,7 +708,23 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 ("/auth/", "/setup", "/admin/orgs", "/billing")
             )
             requested_org = _requested_org_from_host(request)
-            if requested_org is not None:
+            credential_org = identity.active_org_id
+            if credential_org is not None:
+                # REQ-1235: a credential issued for one org (a personal access token) opens that
+                # org and no other. The request only NAMES an org; naming a different one is
+                # refused even when the owner belongs to it, and the owner must still belong to
+                # the credential's org. The credential names the org, so none need be requested.
+                if requested_org is not None and requested_org != credential_org:
+                    return _deny(
+                        request,
+                        403,
+                        f"This credential is issued for org {credential_org!r}, "
+                        f"not {requested_org!r}",
+                    )
+                if credential_org not in member_org_ids:
+                    return _deny(request, 403, f"Not a member of org {credential_org!r}")
+                active_org_id = credential_org
+            elif requested_org is not None:
                 # REQ-1327: membership is the ONLY way into an org — no platform-admin escape.
                 # A platform admin needing access uses the audited recovery grant (REQ-1303) to
                 # obtain membership + a role in that org, visible in the org's own audit trail.
@@ -716,8 +732,6 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                     active_org_id = requested_org
                 else:
                     return _deny(request, 403, f"Not a member of org {requested_org!r}")
-            elif len(member_org_ids) == 1:
-                active_org_id = member_org_ids[0]
             elif platform_plane:
                 active_org_id = None
             elif can_cross_org:
@@ -731,7 +745,15 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 # the org there is a fact about the user, not a plane the request needs bound.
                 active_org_id = self._default_org_id
             else:
-                return _deny(request, 401, "Org selection required")
+                # REQ-1235: an org nobody named is refused, never chosen — belonging to exactly
+                # one org does not name it. The refusal says what to send.
+                return _deny(
+                    request,
+                    401,
+                    "Org selection required: name the org with its subdomain "
+                    "(<org>.<domain>) or the X-Org-Provisa header, or present a personal "
+                    "access token issued for the org",
+                )
 
             # Tenant-plane assignments. A member's role assignment lives in their org's OWN schema,
             # so bind that org and read it there (the default-org read above sees no such row).

@@ -15,8 +15,8 @@ configured — you do not have permission to view this page." Signing out and ba
 Nothing in the suite caught that, because every existing onboarding test proves the creator's
 ``org_admin`` only by acting from the ORG subdomain (``acme.provisa.org``). Production
 (``cloud.provisa.dev``) has no subdomain at all: the browser stays on the control-plane host for
-the whole flow, so org selection there falls to the sole-membership rule rather than the Host
-header, and ``/auth/me`` — the single call the UI trusts for "what may I do" — is answered on
+the whole flow, so the org there is named by the X-Org-Provisa header rather than the Host
+header (REQ-1235: belonging to one org does not name it), and ``/auth/me`` — the single call the UI trusts for "what may I do" — is answered on
 that host too.
 
 So this pins the control-plane-host path specifically, with no re-authentication anywhere: the
@@ -77,6 +77,13 @@ def _basic(username: str) -> dict[str, str]:
 
 def _headers(username: str) -> dict[str, str]:
     return {**_basic(username), "host": _CONTROL_HOST}
+
+
+def _in_org(username: str) -> dict[str, str]:
+    """The same credentials on a request that names the org (REQ-1235). On the control-plane
+    host there is no org subdomain, so the UI names the org it selected with X-Org-Provisa; a
+    request that names none is refused there, sole membership or not."""
+    return {**_headers(username), "x-org-provisa": _ORG_ID}
 
 
 def _prepare_sync():
@@ -257,11 +264,12 @@ def created_org(planes):
 
 
 def test_creator_resolves_the_new_org_on_the_control_plane_host(created_org):
-    # Sole-membership org selection: with no subdomain to read, the one org the creator belongs to
-    # IS the active org. Without this the UI gets a 401 "Org selection required" and renders the
+    # REQ-1235: with no subdomain to read, the org is the one the request names. The UI selects
+    # the org it just created (OnboardOrgPage: selectOrg, then refresh) and names it on every
+    # request; without that the UI gets a 401 "Org selection required" and renders the
     # permission-denied page even though the org exists and is ready.
     client, _ = created_org
-    who = client.get("/whoami", headers=_headers("creator"))
+    who = client.get("/whoami", headers=_in_org("creator"))
     assert who.status_code == 200, who.text
     assert who.json()["active_org_id"] == _ORG_ID, who.json()
 
@@ -270,7 +278,7 @@ def test_creator_carries_org_admin_in_the_same_session(created_org):
     # No re-authentication between create and this call — the identity resolved for THIS request
     # must already carry the tenant-plane grant the provisioning task wrote.
     client, _ = created_org
-    who = client.get("/whoami", headers=_headers("creator"))
+    who = client.get("/whoami", headers=_in_org("creator"))
     assert who.status_code == 200, who.text
     assert "org_admin" in who.json()["roles"], who.json()
 
@@ -280,7 +288,7 @@ def test_auth_me_reports_the_new_org_and_role(created_org):
     # is literally an empty `assignments` here. Membership must list the new org too, or the org
     # switcher has nothing to select.
     client, _ = created_org
-    me = client.get("/auth/me", headers=_headers("creator"))
+    me = client.get("/auth/me", headers=_in_org("creator"))
     assert me.status_code == 200, me.text
     body = me.json()
     assert body["active_org_id"] == _ORG_ID, body
@@ -295,7 +303,15 @@ def test_creator_may_immediately_use_an_org_admin_endpoint(created_org):
     invite = client.post(
         "/admin/invites/",
         json={"org_id": _ORG_ID, "role_id": "analyst"},
-        headers=_headers("creator"),
+        headers=_in_org("creator"),
     )
     assert invite.status_code == 200, invite.text
     assert invite.json()["role_id"] == "analyst"
+
+
+def test_a_request_naming_no_org_is_refused_and_told_what_to_send(created_org):
+    # REQ-1235: the creator belongs to exactly one org, and that still does not name it.
+    client, _ = created_org
+    who = client.get("/whoami", headers=_headers("creator"))
+    assert who.status_code == 401, who.text
+    assert "X-Org-Provisa" in who.json()["detail"], who.json()

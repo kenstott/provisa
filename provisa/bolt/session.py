@@ -86,6 +86,9 @@ class BoltSession:
         # default-org runtime (single-org deployments).
         self.org_id: str | None = None
         self._org_resolved: bool = False
+        # REQ-1235: the org the presented credential was issued for (a personal access token's),
+        # or None for a credential that names no org. It is the only org such a credential opens.
+        self._credential_org: str | None = None
         # All role_ids the authenticated user holds; each surfaces as a "provisa_<role>" database.
         self.roles: list[str] = []
         # Active role for the current tx/run, chosen via the Bolt `db` field. Defaults to roles[0].
@@ -223,6 +226,7 @@ class BoltSession:
         roles = self._selectable_roles(app_state, identity)
         if not roles:
             return None
+        self._credential_org = identity.active_org_id
         return identity.user_id, roles
 
     @staticmethod
@@ -375,6 +379,7 @@ class BoltSession:
 
     def handle_logoff(self) -> None:
         self.user_id = None
+        self._credential_org = None
         self.roles = []
         self.role_id = None
         self.state = State.AUTHENTICATION
@@ -435,8 +440,8 @@ class BoltSession:
         Bolt's org request is the hostname the driver dialed, carried in TLS SNI (REQ-1234) — the
         same string an HTTP client puts in ``Host``. It names an org without granting one: an org
         the principal is not a member of is refused below, so the org is still derived from
-        membership (single membership auto-selects; platform admin → default runtime; ambiguity
-        raises — no silent cross-tenant default). Runs on the event loop, so a plain set/reset
+        membership (REQ-1235: an org nobody named is refused, a lone membership included; platform
+        admin → default runtime — no silent cross-tenant default). Runs on the event loop, so a plain set/reset
         around handle_run's execution binds it (no thread hop, unlike pgwire)."""
         if self._org_resolved:
             return
@@ -450,6 +455,8 @@ class BoltSession:
             user_id=self.user_id,
             can_act_any_org=can_act_cross_org(caps),
             requested_org=self._requested_org(),
+            credential_org=self._credential_org,
+            named_by="connect over TLS to the org's own hostname (<org>.<domain>), which names it",
         )
         if org_id is not None:
             await ensure_org_runtime(org_id)

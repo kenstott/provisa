@@ -87,7 +87,9 @@ async def _run_with_org(org_id: str | None, coro):  # REQ-1266
         reset_current_org(token)
 
 
-async def _resolve_and_build_org(state_, identity, requested_org: str | None) -> str | None:
+async def _resolve_and_build_org(
+    state_, identity, requested_org: str | None, database: str | None = None
+) -> str | None:
     """Resolve the org for an authenticated pgwire identity and materialize its runtime (REQ-1266).
 
     Runs on the connection's own loop (REQ-1882). Returns the org id to bind on the session, or
@@ -97,7 +99,14 @@ async def _resolve_and_build_org(state_, identity, requested_org: str | None) ->
     It is a request and nothing more — ``resolve_session_org`` refuses an org the principal is not
     a member of, so dialing acme.provisa.dev does not put anyone inside acme."""
     from provisa.api.app import ensure_org_runtime
-    from provisa.api.org_resolve import resolve_session_org
+    from provisa.api.org_resolve import org_named_by_host_or_database, resolve_session_org
+
+    if not getattr(state_, "multitenancy", False):
+        # A single-tenant deployment has no org to name; neither the hostname nor the database
+        # name is read (REQ-1235).
+        return None
+    # REQ-1235: the database name (psql -d acme, a BI tool's database field) names the org too.
+    requested_org = org_named_by_host_or_database(requested_org, database)
 
     # REQ-1337: resolve the claims to RIGHTS and test cross_org — never the role name.
     caps = capabilities_for_claims(
@@ -107,7 +116,12 @@ async def _resolve_and_build_org(state_, identity, requested_org: str | None) ->
         state_,
         user_id=getattr(identity, "user_id", None),
         can_act_any_org=can_act_cross_org(caps),
-        requested_org=requested_org or getattr(identity, "active_org_id", None),
+        requested_org=requested_org,
+        credential_org=getattr(identity, "active_org_id", None),  # REQ-1235
+        named_by=(
+            "connect with the org as the database name (psql -d <org>) or over TLS to the "
+            "org's own hostname (<org>.<domain>)"
+        ),
     )
     if org_id is not None:
         await ensure_org_runtime(org_id)
@@ -1798,7 +1812,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
 
             try:
                 ctx.session.org_id = run_on_connection_loop(  # type: ignore[attr-defined]
-                    _resolve_and_build_org(_state, identity, self._requested_org()), timeout=60
+                    _resolve_and_build_org(
+                        _state, identity, self._requested_org(), ctx.params.get("database")
+                    ),
+                    timeout=60,
                 )
             except OrgResolutionError as exc:
                 self._send_pg_error("FATAL", "28000", f"org selection failed: {exc}")

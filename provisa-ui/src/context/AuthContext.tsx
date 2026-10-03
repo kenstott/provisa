@@ -207,12 +207,17 @@ export function AuthProvider({
           localStorage.removeItem("provisa_org");
         }
         if (!storedOrg || !isMember) {
-          if (me.active_org_id) {
-            setSelectedOrg(me.active_org_id);
-          } else if (me.org_memberships.length === 1) {
-            setSelectedOrg(me.org_memberships[0].org_id);
-          } else {
-            setSelectedOrg(null);
+          const settled =
+            me.active_org_id ??
+            (me.org_memberships.length === 1 ? me.org_memberships[0].org_id : null);
+          setSelectedOrg(settled);
+          // REQ-1235: the server refuses a request that names no org and never picks one from a
+          // lone membership, so the org settled on here must reach the requests that follow. They
+          // take it from `provisa_org` (lib/authFetch.ts, apolloClient.ts), not from this state,
+          // and the roles query below is the first of them. Only a membership /auth/me just
+          // reported is stored, for the REQ-1326 reason above.
+          if (settled && me.org_memberships.some((m) => m.org_id === settled)) {
+            localStorage.setItem("provisa_org", settled);
           }
         }
       } catch (e) {
