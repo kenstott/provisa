@@ -651,11 +651,20 @@ class StoreSideViolation(RuntimeError):
     (``platform_state_db``) is no org's, so such a statement could not run there."""
 
     def __init__(self, handle: str, holds: str, tables: frozenset[str]) -> None:
-        from provisa.core.store_sides import HANDLE, PLATFORM_STATE_SIDE, side_of
+        from provisa.core.store_sides import (
+            HANDLE,
+            PLATFORM_ADMIN_SIDE,
+            PLATFORM_STATE_SIDE,
+            side_of,
+        )
 
         def _use(side: str) -> str:
             # The deployment has one platform-state handle; every other side is an org's.
-            whose = "the deployment's" if side == PLATFORM_STATE_SIDE else "the org's"
+            whose = (
+                "the deployment's"
+                if side in (PLATFORM_STATE_SIDE, PLATFORM_ADMIN_SIDE)
+                else "the org's"
+            )
             return f"{whose} {HANDLE[side]}"
 
         said = "; ".join(
@@ -684,6 +693,11 @@ class Connection:
         # REQ-1922: the store this connection's handle holds ("model" / "state"), or None.
         self._holds = database.holds if database is not None else None
         self._handle = database.name if database is not None else ""
+
+    @property
+    def holds(self) -> str | None:
+        """The store side this connection's handle holds (REQ-1922), or None for an unguarded one."""
+        return self._holds
 
     def _record_write(self, target: tuple[str, str, str | None] | None, rowcount: int) -> None:
         """REQ-1524: a write that changed a row of the model is recorded for its commit

@@ -687,7 +687,9 @@ mv_refresh_log = Table(
     "mv_refresh_log",
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("mv_id", Text, ForeignKey("materialized_views.id", ondelete="CASCADE"), nullable=False),
+    # REQ-1922: kept in the region's state store, apart from the model; no foreign key crosses
+    # the two (integrity.remove_parts and the region's prune remove these with their owner).
+    Column("mv_id", Text, nullable=False),
     Column("status", Text, nullable=False),
     Column("row_count", Integer),
     Column("duration_ms", Integer),
@@ -712,7 +714,9 @@ mv_delta_ledger = Table(
     "mv_delta_ledger",
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("mv_id", Text, ForeignKey("materialized_views.id", ondelete="CASCADE"), nullable=False),
+    # REQ-1922: kept in the region's state store, apart from the model; no foreign key crosses
+    # the two (integrity.remove_parts and the region's prune remove these with their owner).
+    Column("mv_id", Text, nullable=False),
     Column("refresh_version", Integer, nullable=False),
     Column("definition_version", Text),
     Column("trace_id", Text),
@@ -975,12 +979,9 @@ table_meta_links = Table(
 file_source_mtimes = Table(
     "file_source_mtimes",
     metadata,
-    Column(
-        "table_id",
-        Integer,
-        ForeignKey("registered_tables.id", ondelete="CASCADE"),
-        primary_key=True,
-    ),
+    # REQ-1922: kept in the region's state store, apart from the model; no foreign key crosses
+    # the two (integrity.remove_parts and the region's prune remove these with their owner).
+    Column("table_id", Integer, primary_key=True),
     Column("source_mtime", Float, nullable=False),
     Column("synced_at", Float, nullable=False),
 )

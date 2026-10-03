@@ -250,8 +250,18 @@ async def ensure_resident(
     engine = getattr(state, "federation_engine", None)  # the EngineRuntime (write face + engine)
     backend = getattr(getattr(engine, "engine", None), "backend", None)
     config = getattr(state, "config", None)
-    db = getattr(state, "model_db", None)
-    if not wanted or engine is None or backend is None or config is None or db is None:
+    # REQ-1922: the registry is read from the model store (registry_view); what is built and
+    # promoted is this region's state (replica_state), read and written through ``db``.
+    model_db = getattr(state, "model_db", None)
+    db = getattr(state, "tenant_db", None)
+    if (
+        not wanted
+        or engine is None
+        or backend is None
+        or config is None
+        or model_db is None
+        or db is None
+    ):
         return Residency()
     from provisa.federation.registry_view import registered_sources, registered_tables
 

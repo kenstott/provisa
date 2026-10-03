@@ -33,6 +33,9 @@ async def bring_up_platform(
     db = Database(
         create_engine_from_url(url, pool_size=pool_size, max_overflow=max(pool_size - pool_min, 0)),
         name="platform",
+        # REQ-1922: the platform registry's handle; it refuses org and platform-state tables
+        # (provisa/core/store_sides.py).
+        holds="platform_admin",
     )
     # Loaded BEFORE the registry pass: the commercial plugin attaches its billing columns and its
     # meter table to the registry metadata at import time, and init_registry_schema is what creates

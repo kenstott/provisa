@@ -153,8 +153,8 @@ async def test_preview_then_register_then_tables_reports_the_cypher(admin_client
     # Persisted, not process-lifetime: the endpoint row is what a restart hydrates from.
     from provisa.api.app import state
 
-    assert state.tenant_db is not None
-    async with state.tenant_db.acquire() as conn:
+    assert state.model_db is not None  # api_endpoints is the org's model (REQ-1919)
+    async with state.model_db.acquire() as conn:
         rows = await conn.fetch(
             "SELECT body_encoding, query_template, response_normalizer FROM api_endpoints "
             f"WHERE table_name = '{_TABLE}'"
