@@ -40981,19 +40981,21 @@
   - REQ-1310
   - REQ-1313
 - id: REQ-1315
-  status: proposed
+  status: complete
   group: 1. Access Governance & Security
   category: Authorization
   priority: SHOULD
   type: behavioral
   since: 2026-07
   description: An org whose provisioning failed is recoverable, not abandoned. Background provisioning
-    records provisioning_state=failed with the error, and there is currently no way forward - no retry
+    records provisioning_state=failed with the error, and [SUPERSEDED by REQ-1315 amendment, 2026-10-03
+    -- Before-state narrative; the retry endpoint exists and failed orgs are excluded from the cap count.
+    Kept here for history; do not implement against it.] there is currently no way forward - no retry
     endpoint exists, the registry row and whatever partial schema the failure left behind persist, and
-    the org counts against the creator's cap (REQ-1311). The creator or a platform_admin may retry provisioning,
-    which drops any partial schema and runs the build again from the beginning; a failed org may also
-    be deleted (REQ-1300) without the confirmation ceremony a provisioned org requires, since it holds
-    no data anyone could lose. A failed org does not count against the creation cap.
+    the org counts against the creator's cap (REQ-1311) [END SUPERSEDED BLOCK]. The creator or a platform_admin
+    may retry provisioning, which drops any partial schema and runs the build again from the beginning;
+    a failed org may also be deleted (REQ-1300) without the confirmation ceremony a provisioned org requires,
+    since it holds no data anyone could lose. A failed org does not count against the creation cap.
   use_case: Provisioning builds a schema, seeds roles and optionally loads demo assets, so it can fail
     on anything from a transient connection loss to a bad demo asset - and the state it leaves is a half-built
     schema the user cannot see and cannot address. Without a retry the only recovery is to create a second
@@ -43339,8 +43341,7 @@
   - tests/unit/test_metadata_export_model_tags.py
   - tests/unit/test_sdl_deprecation.py
 - id: REQ-1376
-  status: accepted
-  target: 2026-Q4
+  status: complete
   group: 1. Access Governance & Security
   category: Data Governance
   priority: MUST
@@ -43349,6 +43350,16 @@
     but suggestion requires explicit steward acceptance before recorded. No silent behavior.
   use_case: Keeps governance decisions explicit and auditable; prevents silent mis-tagging that could
     incorrectly exclude data or mis-classify sensitive information.
+  since: 2026-08
+  code:
+  - provisa/api/admin/schema_mutation.py
+  - provisa/core/repositories/tag.py
+  - provisa/core/config_loader.py
+  - provisa-ui/src/components/TagControl.tsx
+  tests:
+  - provisa-ui/src/__tests__/TagControl.test.tsx
+  - tests/unit/test_derived_tags.py
+  - tests/unit/test_config_loader_tag_assignment_ref.py
 - id: REQ-1377
   status: complete
   since: 2026-08
@@ -43418,21 +43429,32 @@
   relates_to:
   - REQ-1372
 - id: REQ-1381
-  status: accepted
-  target: 2026-Q4
+  status: complete
   group: 1. Access Governance & Security
   category: Data Governance
   priority: MUST
   type: structural
   description: 'User attributes for ABAC are a SEPARATE concept from the object-tag registry (REQ-1373):
     object tags are exported governance metadata on sources/tables/columns/relationships; user attributes
-    are authorization inputs feeding the `user.<attr>` namespace in RLS filter expressions. `user` is
-    NOT an appliesTo scope of the tag registry, and user attributes are never included in metadata export.'
+    are authorization inputs [SUPERSEDED by REQ-1682, 2026-10-03 -- The namespace RLS predicates read
+    is current_setting(''provisa.<var>'') bound from the identity''s claims; no user.<attr> syntax exists
+    in the compiler. Kept here for history; do not implement against it.] feeding the `user.<attr>` namespace
+    in RLS filter expressions [END SUPERSEDED BLOCK]. `user` is NOT an appliesTo scope of the tag registry,
+    and user attributes are never included in metadata export.'
   use_case: Keeps access-control-bearing data out of a registry whose contract is annotation-and-export;
     a steward's tag edit can never silently change row visibility, and user attributes never ship to external
     catalogs.
   relates_to:
   - REQ-1373
+  since: 2026-08
+  code:
+  - provisa/core/models.py
+  - provisa/auth/middleware.py
+  - provisa/core/request_context.py
+  - provisa/api/metadata_export/builder.py
+  tests:
+  - tests/unit/test_request_session_vars.py
+  - tests/unit/test_metadata_export_model_tags.py
 - id: REQ-1382
   status: accepted
   target: 2026-Q4
@@ -52297,27 +52319,29 @@
   priority: MUST
   type: structural
   description: 'A SECRETS SERVICE, WITH PROVISA''S OWN STORE AS THE ONE THAT IS ALWAYS THERE. ${provider:reference}
-    (REQ-557) already names a provider, and a registry already exists to hold more than one -- but only
-    ``env`` was ever registered, and ``register_provider`` has no callers, so in practice a secret can
-    only be an environment variable of the server process. THAT MAKES A SECRET SOMETHING ONLY THE OPERATOR
-    OF THE HOST CAN SET: a hosted org cannot put its own git token, warehouse password or API key anywhere,
-    because it does not own the process environment. The provider set therefore becomes a registry in
-    the shape the encryption providers already use (provisa/encryption/registry.py): a named spec with
-    a label, a description, the config fields it needs and an availability probe, so a deployment wired
-    to HashiCorp Vault, AWS Secrets Manager, GCP Secret Manager or Azure Key Vault reads its secrets from
-    there. WHEN NOTHING CENTRAL IS CONNECTED PROVISA IS ITS OWN SECRETS SERVICE: a built-in per-org store
-    in the control plane, each value encrypted through the configured encryption service (REQ-684, REQ-685)
-    so the plaintext never rests in a column, and never reachable across orgs. It is the default, not
-    the degraded case. AN UNKNOWN PROVIDER, AN UNSET NAME AND AN UNCONFIGURED BACKEND ALL RAISE -- a secret
-    that cannot be resolved is never an empty string and never falls through to another provider. WHAT
-    AUTHORIZES A READ. The built-in store needs no key of its own: the row IS envelope ciphertext, so
-    the authority to read it is the encryption master key (REQ-684) the process already holds, and a control-plane
-    database copied without that key yields nothing. An EXTERNAL provider does need a credential -- a
-    Vault token, an AWS role -- and that credential is PROCESS CONFIGURATION resolved through ${env:...}
-    alone, never an org secret: a store whose own credential lives inside the store cannot be opened,
-    so the chain of trust terminates in the host environment by design. Every read and write is scoped
-    to ONE org: a name is looked up only in the namespace of the org the request is bound to, so two orgs
-    holding GIT_TOKEN hold two unrelated secrets and neither can name the other''s.'
+    (REQ-557) already names a provider, and a registry already exists to hold more than one -- [SUPERSEDED
+    by REQ-1557 amendment, 2026-10-03 -- Before-state narrative; the secrets registry now registers five
+    backends and ${secret:...} resolves through the configured one. Kept here for history; do not implement
+    against it.] but only ``env`` was ever registered, and ``register_provider`` has no callers, so in
+    practice a secret can only be an environment variable of the server process [END SUPERSEDED BLOCK].
+    THAT MAKES A SECRET SOMETHING ONLY THE OPERATOR OF THE HOST CAN SET: a hosted org cannot put its own
+    git token, warehouse password or API key anywhere, because it does not own the process environment.
+    The provider set therefore becomes a registry in the shape the encryption providers already use (provisa/encryption/registry.py):
+    a named spec with a label, a description, the config fields it needs and an availability probe, so
+    a deployment wired to HashiCorp Vault, AWS Secrets Manager, GCP Secret Manager or Azure Key Vault
+    reads its secrets from there. WHEN NOTHING CENTRAL IS CONNECTED PROVISA IS ITS OWN SECRETS SERVICE:
+    a built-in per-org store in the control plane, each value encrypted through the configured encryption
+    service (REQ-684, REQ-685) so the plaintext never rests in a column, and never reachable across orgs.
+    It is the default, not the degraded case. AN UNKNOWN PROVIDER, AN UNSET NAME AND AN UNCONFIGURED BACKEND
+    ALL RAISE -- a secret that cannot be resolved is never an empty string and never falls through to
+    another provider. WHAT AUTHORIZES A READ. The built-in store needs no key of its own: the row IS envelope
+    ciphertext, so the authority to read it is the encryption master key (REQ-684) the process already
+    holds, and a control-plane database copied without that key yields nothing. An EXTERNAL provider does
+    need a credential -- a Vault token, an AWS role -- and that credential is PROCESS CONFIGURATION resolved
+    through ${env:...} alone, never an org secret: a store whose own credential lives inside the store
+    cannot be opened, so the chain of trust terminates in the host environment by design. Every read and
+    write is scoped to ONE org: a name is looked up only in the namespace of the org the request is bound
+    to, so two orgs holding GIT_TOKEN hold two unrelated secrets and neither can name the other''s.'
   use_case: An org running on hosted Provisa can store its own git token or warehouse password without
     owning the server's environment, and an enterprise with Vault or AWS Secrets Manager reads the same
     references out of the service it already runs.
@@ -52358,32 +52382,39 @@
     [END SUPERSEDED BLOCK]. Secrets are the ORG''S, managed by org_admin: a platform admin operates the
     control plane and has no read of any org''s secret values (REQ-1327). The page also names which secrets
     provider the deployment is using, so an org can tell Provisa''s own store from a central service it
-    is expected to file the secret in instead. WHERE IT LIVES: Admin / Security / Secrets, a sub-tab beside
-    posture, encryption, authentication and local users, reached at /admin/secrets. Sharing the section
-    does not mean sharing its right: the other four sub-tabs describe the DEPLOYMENT and answer to platform_settings,
-    Secrets is the ORG''S and answers to org_settings, and each person is shown only the sub-tabs their
-    capability carries -- a platform admin sees the four and no secrets, an org admin sees Secrets and
-    none of the four. A deep link to a sub-tab the person may not open lands on one they may. THE PAGE
-    ALSO LISTS EVERY SECRETS PROVIDER THE BUILD KNOWS AND LETS THE DEPLOYMENT CHANGE WHICH ONE IS IN USE.
-    Each registered backend is shown with its label and description, the one this deployment is wired
-    to is marked as selected, and a backend whose client library is not installed is shown GREYED OUT,
-    unselectable, and annotated "(requires <library> import)" rather than hidden. Hiding it would leave
-    an operator guessing whether Provisa supports their secrets manager at all; showing it unavailable
-    answers both questions at once -- it is supported, and the one thing missing is a pip install. Selecting
-    a backend writes secrets.provider and its config block to provisa.yaml and rebinds the running process,
-    and the backend''s own credential is typed as a ${env:...} reference, never a literal, because a credential
-    that opens the secrets store cannot come out of it (REQ-1557). Selection is fail-closed: an unavailable
-    or unregistered backend is refused with the reason, never silently replaced by another. The service
-    panel is COLLAPSIBLE and starts COLLAPSED -- choosing the backend is a once-a- deployment act while
-    reading the names is the daily one, so the daily thing is what the page opens on -- and its expanded/collapsed
-    state is remembered per browser and restored on the next visit. WHO MAY DO WHICH: the secrets SERVICE
-    is the deployment''s and answers to platform_settings; the secret NAMES are the org''s and answer
-    to org_settings. Both live on this one sub-tab and each person sees only their half -- a platform
-    admin chooses the provider and never sees an org''s names, an org admin sees the names and reads which
-    service holds them without being able to change it. SECRETS OWNS NO NAV ENTRY OF ITS OWN: it is reached
-    through Admin / Security, whose rail entry already stands for the section, and /admin/secrets stays
-    a working deep link. A second entry for one sub-tab of a section the rail already lists is a duplicate
-    that tells a reader the two are different places.'
+    is expected to file the secret in instead. [SUPERSEDED by REQ-1560, 2026-10-03 -- REQ-1560 moved secrets
+    out of Security into two surfaces of their own (/admin/secrets and /admin/my-secrets). Kept here for
+    history; do not implement against it.] WHERE IT LIVES: Admin / Security / Secrets, a sub-tab beside
+    posture, encryption, authentication and local users, reached at /admin/secrets. [END SUPERSEDED BLOCK]
+    Sharing the section does not mean sharing its right: the other four sub-tabs describe the DEPLOYMENT
+    and answer to platform_settings, Secrets is the ORG''S and answers to org_settings, and each person
+    is shown only the sub-tabs their capability carries -- [SUPERSEDED by REQ-1560, 2026-10-03 -- Secrets
+    is no longer a Security sub-tab; a platform admin reaches /admin/secrets for the service chooser,
+    labelled Platform Secrets. Kept here for history; do not implement against it.] a platform admin sees
+    the four and no secrets, an org admin sees Secrets and none of the four. A deep link to a sub-tab
+    the person may not open lands on one they may. [END SUPERSEDED BLOCK] THE PAGE ALSO LISTS EVERY SECRETS
+    PROVIDER THE BUILD KNOWS AND LETS THE DEPLOYMENT CHANGE WHICH ONE IS IN USE. Each registered backend
+    is shown with its label and description, the one this deployment is wired to is marked as selected,
+    and a backend whose client library is not installed is shown GREYED OUT, unselectable, and annotated
+    "(requires <library> import)" rather than hidden. Hiding it would leave an operator guessing whether
+    Provisa supports their secrets manager at all; showing it unavailable answers both questions at once
+    -- it is supported, and the one thing missing is a pip install. Selecting a backend writes secrets.provider
+    and its config block to provisa.yaml and rebinds the running process, and the backend''s own credential
+    is typed as a ${env:...} reference, never a literal, because a credential that opens the secrets store
+    cannot come out of it (REQ-1557). Selection is fail-closed: an unavailable or unregistered backend
+    is refused with the reason, never silently replaced by another. The service panel is COLLAPSIBLE and
+    starts COLLAPSED -- choosing the backend is a once-a- deployment act while reading the names is the
+    daily one, so the daily thing is what the page opens on -- and its expanded/collapsed state is remembered
+    per browser and restored on the next visit. WHO MAY DO WHICH: the secrets SERVICE is the deployment''s
+    and answers to platform_settings; the secret NAMES are the org''s and answer to org_settings. Both
+    live on this one sub-tab and each person sees only their half -- a platform admin chooses the provider
+    and never sees an org''s names, an org admin sees the names and reads which service holds them without
+    being able to change it. [SUPERSEDED by REQ-1560, 2026-10-03 -- REQ-1560 gives both vaults a nav entry
+    of their own (provisa-ui/src/components/navGroups.ts:178-185). Kept here for history; do not implement
+    against it.] SECRETS OWNS NO NAV ENTRY OF ITS OWN: it is reached through Admin / Security, whose rail
+    entry already stands for the section, and /admin/secrets stays a working deep link. [END SUPERSEDED
+    BLOCK] A second entry for one sub-tab of a section the rail already lists is a duplicate that tells
+    a reader the two are different places.'
   use_case: An org admin can add the git token an environment remote references, rotate it when it expires,
     and see at a glance which secrets exist without any screen or response ever carrying a secret value.
   scenario: 'Given an org admin has stored a secret named GIT_TOKEN
@@ -54869,10 +54900,16 @@
   priority: SHOULD
   type: behavioral
   description: The sandbox role grants read-only access to normally-restricted admin surfaces and ops
-    domain data to illustrate admin capabilities in ephemeral per-visitor environments. Most admin features
-    are exposed as READ-ONLY; mutation-dangerous features (team member management) are explicitly BLOCKED.
+    domain data to illustrate admin capabilities in ephemeral per-visitor environments. [SUPERSEDED by
+    REQ-1597, 2026-10-03 -- The sandbox role is org_admin's capability list minus a four-right denylist,
+    so it holds org_settings, observability and the rest for real and those surfaces are functional, not
+    read-only. Kept here for history; do not implement against it.] Most admin features are exposed as
+    READ-ONLY; [END SUPERSEDED BLOCK] mutation-dangerous features (team member management) are explicitly
+    BLOCKED. [SUPERSEDED by REQ-1602, 2026-10-03 -- Only surfaces of the role's DEMONSTRATED rights (environment_management,
+    environment_switch, org_glossary_rw) are rendered inert with a 'Production feature' banner; other
+    admin pages carry no banner because they work. Kept here for history; do not implement against it.]
     Every admin page shown to a sandbox-role user displays a modal or banner stating these features are
-    illustrative only and not functional in sandbox mode.
+    illustrative only and not functional in sandbox mode. [END SUPERSEDED BLOCK]
   use_case: 'Sandbox visitors need to see what administrative capabilities look like without granting
     actual mutation capability or long-lived access. This requires special treatment: sandbox role reads
     ops domain (normally locked down per REQ-1133), sees read-only views of admin pages, and understands
@@ -55804,17 +55841,19 @@
     composed via a view defined within the owning domain that sources from the other domain, and that
     view (not the foreign table) is given product_id. MetadataSnapshot (provisa/api/metadata_export/model.py)
     gains a data_products: list[DataProductAsset] section — one entry per DataProduct with name, owner,
-    and description as top-level fields, plus its member TableAssets'' refs — replacing the per-table
-    data_product: bool field REQ-1372 added to TableAsset. build_snapshot (builder.py) populates this
-    from the new DataProduct entity instead of the boolean filter. Each vendor adapter (openmetadata.py,
-    atlan.py, collibra.py, datahub.py, atlas.py, openlineage.py — REQ-1069) maps DataProductAsset to that
-    catalog''s native product/collection construct (e.g. OpenMetadata''s Data Product entity, Collibra''s
-    Data Product asset type) so owner and description register as first-class attributes there, not just
-    an inferred flag on each member table. The table-edit UI (TableEditForm.tsx, replacing the dataProduct
-    checkbox at TableEditForm.tsx:411-421) presents a product_id picker scoped to DataProducts whose domain_id
-    matches the table''s own domain_id — a table in domain "marketing" is never offered a DataProduct
-    owned by domain "sales" as a choice, enforcing the domain-alignment constraint at selection time,
-    not only as a save-time rejection.'
+    and description as top-level fields, plus its member TableAssets'' refs — [SUPERSEDED by REQ-1592,
+    2026-10-03 -- TableAsset keeps data_product: bool, derived from product_id, because the model workbook
+    reports it as a column (provisa/api/metadata_export/model.py:102-105). Kept here for history; do not
+    implement against it.] replacing the per-table data_product: bool field REQ-1372 added to TableAsset
+    [END SUPERSEDED BLOCK]. build_snapshot (builder.py) populates this from the new DataProduct entity
+    instead of the boolean filter. Each vendor adapter (openmetadata.py, atlan.py, collibra.py, datahub.py,
+    atlas.py, openlineage.py — REQ-1069) maps DataProductAsset to that catalog''s native product/collection
+    construct (e.g. OpenMetadata''s Data Product entity, Collibra''s Data Product asset type) so owner
+    and description register as first-class attributes there, not just an inferred flag on each member
+    table. The table-edit UI (TableEditForm.tsx, replacing the dataProduct checkbox at TableEditForm.tsx:411-421)
+    presents a product_id picker scoped to DataProducts whose domain_id matches the table''s own domain_id
+    — a table in domain "marketing" is never offered a DataProduct owned by domain "sales" as a choice,
+    enforcing the domain-alignment constraint at selection time, not only as a save-time rejection.'
   use_case: Lets a domain create named, owned data products bundling one or more datasets for publication
     (mirroring the collection-oriented "data product" concept in Snowflake Marketplace, Starburst Data
     Products, and data-mesh implementations like Nextdata), with per-product ownership distinct from domain-level
@@ -55833,12 +55872,11 @@
   tests:
   - tests/steps/steps_data_products.py
 - id: REQ-1635
-  status: accepted
+  status: complete
   group: 1. Access Governance & Security
   category: Data Catalog Integration
   priority: SHOULD
   type: behavioral
-  target: 2026-Q3
   description: 'New engine-native MetadataExport adapter(s), alongside the vendor-neutral ones (openmetadata.py,
     atlan.py, collibra.py, datahub.py, atlas.py, openlineage.py — REQ-1069), that populate a warehouse
     engine''s own native catalog/data-product construct from MetadataSnapshot''s data_products section
@@ -55855,12 +55893,15 @@
     inside the engine's own catalog/marketplace surface (Snowflake Horizon Catalog + Marketplace, BigQuery
     Dataplex + Analytics Hub) via the same metadata-export pipeline that already populates external metadata
     tools, instead of a separate native-terminal mechanism.
-  scenario: Given a DataProduct "customer_360" with member tables exists in Provisa, when metadata export
+  scenario: 'Given a DataProduct "customer_360" with member tables exists in Provisa, when metadata export
     runs with Snowflake as the configured engine and the Snowflake landing terminal exists for the member
     tables, then the DataProduct appears as a first-class listing in Snowflake Horizon Catalog and as
-    a Snowflake Data Product / Marketplace listing backed by a share over the product's member tables.
+    a Snowflake Data Product / Marketplace listing backed by a share over the product''s member tables.
+
+    '
   code:
   - provisa/api/metadata_export/snowflake_horizon.py
+  - provisa/api/metadata_export/publishing.py
   - provisa/api/metadata_export/builder.py
   - provisa/federation/snowflake_runtime.py
   relates_to:
@@ -55869,7 +55910,9 @@
   depends_on:
   - REQ-1634
   tests:
+  - tests/unit/test_snowflake_horizon_export.py
   - tests/steps/steps_data_products.py
+  since: 2026-09
 - id: REQ-1636
   status: accepted
   group: 1. Access Governance & Security
@@ -55944,7 +55987,7 @@
   relates_to:
   - REQ-1266
 - id: REQ-1638
-  status: accepted
+  status: complete
   since: 2026-09
   group: 1. Access Governance & Security
   category: Capability Model
@@ -55954,12 +55997,15 @@
     replacing the blanket org_settings gate previously used for the nav link, the /data-products route,
     both create/delete GraphQL mutations, and the data_products query field (which previously had no capability
     check at all). Mirrors the glossary_read/glossary_rw pair (REQ-1590): data_product_read opens the
-    read surface and is seeded to org_admin, analyst, developer, and modeler; data_product_rw gates create/delete
-    and is seeded to org_admin only, matching table_registration''s precedent rather than glossary_rw''s
-    broader (org_admin+modeler) scope, since no ownerless-content edge case analogous to glossary''s enterprise-scoped/
-    author-abandoned terms was identified. DataProductsPage.tsx additionally hides its New/Edit/ Delete
-    controls and disables the table-picker for a caller holding only data_product_read, following GlossaryTab.tsx''s
-    canEdit pattern.'
+    read surface and is seeded to org_admin, analyst, developer, and modeler; [SUPERSEDED by REQ-1597,
+    2026-10-03 -- The sandbox role is org_admin minus a denylist, so it is also seeded with data_product_rw
+    (provisa/core/schema.sql:1235, provisa/core/db.py:192). Kept here for history; do not implement against
+    it.] data_product_rw gates create/delete and is seeded to org_admin only [END SUPERSEDED BLOCK], matching
+    table_registration''s precedent rather than glossary_rw''s broader (org_admin+modeler) scope, since
+    no ownerless-content edge case analogous to glossary''s enterprise-scoped/ author-abandoned terms
+    was identified. DataProductsPage.tsx additionally hides its New/Edit/ Delete controls and disables
+    the table-picker for a caller holding only data_product_read, following GlossaryTab.tsx''s canEdit
+    pattern.'
   use_case: Lets an analyst/developer/modeler browse what data products a domain publishes without being
     granted org_settings (which also opens unrelated org-admin surfaces), while keeping product creation
     and deletion restricted to org_admin as catalog curation.
@@ -55985,13 +56031,20 @@
   - provisa/core/schema.sql
   - provisa/api/admin/schema_mutation.py
   - provisa/api/admin/schema_query.py
+  - provisa/api/mcp/tools.py
   - provisa-ui/src/types/auth.ts
   - provisa-ui/src/components/NavBar.tsx
   - provisa-ui/src/App.tsx
   - provisa-ui/src/pages/DataProductsPage.tsx
+  - provisa-ui/src/pages/data-products/DataProductDetailPanel.tsx
   relates_to:
   - REQ-1590
   - REQ-1634
+  tests:
+  - tests/integration/test_system_roles_seed.py
+  - tests/integration/test_tenancy_role_grants.py
+  - tests/unit/test_mcp_server.py
+  - tests/unit/test_admin_routes_gated.py
 - id: REQ-1639
   status: accepted
   since: 2026-09
@@ -56036,14 +56089,17 @@
   description: 'The Data Product detail panel shows a computed, read-only "Lineage" section rendering
     the same interactive LineageDag graph visualization used on the Lineage page ("model / lineage"),
     scoped to a subgraph of the whole federation-wide column lineage graph (GET /admin/lineage/federation,
-    no domains filter, so cross-domain ancestor chains are never severed): the product''s member tables
-    plus every node one relation-hop upstream or downstream of them, matched via each node''s relation
-    string (<sql_domain>.<table>, using the domainToSqlName TS mirror of domain_to_sql_name). The graph
-    opens dataset-collapsed by default (one node per relation), same as the Lineage page''s Complete Lineage
-    view (REQ-1627), with per-relation expand/collapse. Gated independently on the view_governance capability
-    — separate from data_product_read/data_product_rw — and hidden entirely (not merely disabled) for
-    a caller lacking it, since Data Product access does not imply lineage/governance visibility. Purely
-    informational, mirrors the Related Tables panel''s non-stored, computed-at-render pattern.'
+    no domains filter, so cross-domain ancestor chains are never severed): [SUPERSEDED by REQ-1667, 2026-10-03
+    -- REQ-1667 draws contributors in lanes -1, -2... by longest upstream path, so the subgraph is the
+    full upstream ancestry plus one hop downstream. Kept here for history; do not implement against it.]
+    the product''s member tables plus every node one relation-hop upstream or downstream of them [END
+    SUPERSEDED BLOCK], matched via each node''s relation string (<sql_domain>.<table>, using the domainToSqlName
+    TS mirror of domain_to_sql_name). The graph opens dataset-collapsed by default (one node per relation),
+    same as the Lineage page''s Complete Lineage view (REQ-1627), with per-relation expand/collapse. Gated
+    independently on the view_governance capability — separate from data_product_read/data_product_rw
+    — and hidden entirely (not merely disabled) for a caller lacking it, since Data Product access does
+    not imply lineage/governance visibility. Purely informational, mirrors the Related Tables panel''s
+    non-stored, computed-at-render pattern.'
   use_case: Lets a data product owner or consumer see, without leaving the product's detail view, which
     tables feed the product's data and which tables consume it, without requiring a separate trip to the
     Lineage page or knowledge of the underlying SQL views.
