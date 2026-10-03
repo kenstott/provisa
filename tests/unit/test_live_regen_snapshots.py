@@ -13,6 +13,10 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 import pytest
+
+from provisa.events.nodes import source_node, view_node
+from provisa.mv.models import MVDefinition
+from tests.helpers import derived_lineage
 from provisa.core.database import create_engine_from_url
 
 from provisa.core.database import Database
@@ -157,7 +161,16 @@ async def test_regen_by_source_relands_and_cascades_forward(tmp_path):
     )
     async with _db(tmp_path) as db:
         # lineage: the MV depends on the source
-        deps = supervisor.dependents_of({"mv.b": "SELECT id, status FROM src"})
+        view = MVDefinition(
+            id="b",
+            source_tables=[],
+            target_catalog="mem",
+            target_schema="mv",
+            target_table="b",
+            sql="SELECT id, status FROM src",
+        )
+        src_node, mv_node = source_node("pg", "public", "src"), view_node(view)
+        deps = supervisor.dependents_of(derived_lineage([view], [("pg", "public", "src")]))
 
         async def mv_run():
             return [{"id": 1, "status": "a"}]
@@ -172,7 +185,7 @@ async def test_regen_by_source_relands_and_cascades_forward(tmp_path):
             pk_columns=["id"],
         )
         src = _CapSource(
-            "src",
+            src_node,
             change_signal="ttl",
             watermark_column=None,
             dependents_of=deps,
@@ -181,7 +194,7 @@ async def test_regen_by_source_relands_and_cascades_forward(tmp_path):
             land=land,
         )
         mv = _CapMV(
-            "mv.b",
+            mv_node,
             change_signal="ttl",
             watermark_column=None,
             dependents_of=deps,
@@ -191,20 +204,22 @@ async def test_regen_by_source_relands_and_cascades_forward(tmp_path):
         )
         # seed once so both baselines are set (an organic drain)
         async with db.acquire() as conn:
-            e = await queue.post_event(conn, source_table="src", event_type="replace")
-            await queue.fan_out(conn, e, ["src"])
+            e = await queue.post_event(conn, source_table=src_node, event_type="replace")
+            await queue.fan_out(conn, e, [src_node])
         await supervisor.drain(db, [src, mv])
 
         # FORCED source regen: re-land the root (bypassing ITS output gate) and cascade forward.
         # The source content is constant, so the source's gate WOULD have suppressed a re-land — the
         # forced flag is what makes it re-land + re-post.
         async with db.acquire() as conn:
-            before = len(await _mv_events(conn, "src"))
-            await injector.force_regen(conn, scope="source", node="src", reason="bad load recovery")
+            before = len(await _mv_events(conn, src_node))
+            await injector.force_regen(
+                conn, scope="source", node=src_node, reason="bad load recovery"
+            )
         await supervisor.drain(db, [src, mv])
         assert src.last_ctx is not None and src.last_ctx.forced is True  # source re-landed forced
         async with db.acquire() as conn:
-            after = len(await _mv_events(conn, "src"))
+            after = len(await _mv_events(conn, src_node))
         assert after > before  # the source re-posted despite unchanged content (gate bypassed)
         assert [(r[0], r[1]) for r in await _rows(dsn, "mvb")] == [(1, "a")]
 

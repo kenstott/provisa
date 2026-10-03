@@ -38,7 +38,15 @@ def view(monkeypatch):
     )
     registry = MVRegistry()
     registry.register(mv)
-    state = SimpleNamespace(mv_registry=registry, federation_engine=object(), tenant_db=None)
+    state = SimpleNamespace(
+        mv_registry=registry,
+        federation_engine=object(),
+        tenant_db=None,
+        # The model the view's input resolves against (provisa/mv/view_inputs.py).
+        tables=[{"id": 1, "source_id": "pg", "schema_name": "sales", "table_name": "orders"}],
+        source_catalogs={},
+        contexts={},
+    )
     monkeypatch.setattr(app_mod, "state", state, raising=False)
     return mv, registry
 

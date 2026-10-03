@@ -10,6 +10,8 @@
 
 """force_regen admin mutation (REQ-968): scope derivation, refusal, and the posted event."""
 
+from types import SimpleNamespace
+
 import pytest
 
 import provisa.api.admin.schema_mutation as sm
@@ -123,17 +125,22 @@ async def test_a_landed_source_table_regens_at_source_scope(wire, posted, monkey
     wire(row=("sales", "orders", "wh"))
     res = await Mutation().force_regen(_info(monkeypatch), table_id=7, reason="bad overnight load")
     assert res.success is True
-    assert posted == [{"scope": "source", "node": "sales.orders", "reason": "bad overnight load"}]
+    # The node is the table's registered identity (events.nodes.source_node).
+    assert posted == [
+        {"scope": "source", "node": "wh/sales.orders", "reason": "bad overnight load"}
+    ]
     assert res.params["event"] == 4242
 
 
 async def test_a_derived_view_regens_at_node_scope(wire, posted, monkeypatch):
     """A view's rows come from its own SQL, so recomputing it must not re-land every input it reads."""
-    wire(row=("marts", "revenue", "wh"), views={"view-revenue": object()})
+    view = SimpleNamespace(target_schema="org_acme_mv_cache", target_table="revenue")
+    wire(row=("marts", "revenue", "wh"), views={"view-revenue": view})
     res = await Mutation().force_regen(_info(monkeypatch), table_id=9, reason="changed the SQL")
     assert res.success is True
     assert posted[0]["scope"] == "node"
-    assert posted[0]["node"] == "marts.revenue"
+    # The view's event-graph node: its target table (events.nodes.view_node).
+    assert posted[0]["node"] == "org_acme_mv_cache.revenue"
 
 
 async def test_a_live_federated_table_is_refused(wire, posted, monkeypatch):

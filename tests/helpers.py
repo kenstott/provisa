@@ -201,3 +201,42 @@ async def delete_source_and_its_tables(client, source_id: str) -> None:
         await gql(f'mutation {{ deleteSource(id: "{source_id}") {{ success code message }} }}')
     )["deleteSource"]
     assert outcome["success"] or outcome["code"] == "schema.source_not_found", outcome
+
+
+def hold_registered_tables(
+    monkeypatch, *names: str, source_id: str = "src", schema: str = "public"
+):
+    """Make the app state's model hold registered tables ``names`` (on ``source_id``/``schema``)
+    — what a view's inputs are resolved against before it is refreshed or wired
+    (provisa/mv/view_inputs.py)."""
+    from provisa.api.app import state
+
+    monkeypatch.setattr(
+        state,
+        "tables",
+        [
+            {"id": i, "source_id": source_id, "schema_name": schema, "table_name": name}
+            for i, name in enumerate(names, 1)
+        ],
+    )
+
+
+def derived_lineage(views: list, tables: list[tuple[str, str, str]]) -> dict[str, set[str]]:
+    """The event graph's edges for ``views`` derived from their SQL (REQ-939, REQ-964), resolved
+    against a model holding the registered ``tables`` — each ``(source_id, schema, table)`` — and
+    the views themselves (provisa.events.nodes.lineage_graph)."""
+    from types import SimpleNamespace
+
+    from provisa.events.nodes import lineage_graph
+
+    by_id = {v.id: v for v in views}
+    model = SimpleNamespace(
+        tables=[
+            {"id": i, "source_id": s, "schema_name": sch, "table_name": t}
+            for i, (s, sch, t) in enumerate(tables, 1)
+        ],
+        source_catalogs={},
+        contexts={},
+        mv_registry=SimpleNamespace(get_enabled=lambda: list(views), get=by_id.get),
+    )
+    return lineage_graph(views, model)

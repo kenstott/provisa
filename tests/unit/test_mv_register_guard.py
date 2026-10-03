@@ -33,6 +33,7 @@ def fake_state(monkeypatch):
         get=lambda _: None,
         register=lambda mv: registered.append(mv),
         unregister=lambda _: None,
+        get_enabled=lambda: [],
     )
     fed = types.SimpleNamespace(
         materialize_store_target=lambda _: ("postgresql", "mv_cache"),
@@ -45,6 +46,13 @@ def fake_state(monkeypatch):
         # What a saved view's inputs are checked against (provisa/mv/readable_inputs.py).
         api_endpoints={},
         graphql_remote_sources={},
+        # The model those inputs resolve against (provisa/mv/view_inputs.py).
+        tables=[
+            {"id": 1, "source_id": "s", "schema_name": "public", "table_name": "o"},
+            {"id": 2, "source_id": "s", "schema_name": "public", "table_name": "clicks"},
+        ],
+        source_catalogs={},
+        contexts={},
     )
     fake_app = types.ModuleType("provisa.api.app")
     fake_app.state = state  # type: ignore[attr-defined]

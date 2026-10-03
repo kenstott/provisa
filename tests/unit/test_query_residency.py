@@ -80,11 +80,12 @@ def test_is_stale_of_honours_never_landed_failure_and_ttl():
     # REQ-1907 (amended 2026-09-30): a ttl-signal source needs a cache_ttl -- none is an error.
     sources = [_source(sid, cache_ttl=60) for sid in ("fresh", "ttl", "bad", "never")]
     tables = {sid: [_table(sid, sid, cache_ttl=None)] for sid in ("fresh", "ttl", "bad", "never")}
+    # Keyed by each table's event-graph node: its registered identity (events.nodes.source_node).
     states = {
-        "pet_store.fresh": {"last_refresh_at": 1000.0, "last_refresh_ok": True},
-        "pet_store.ttl": {"last_refresh_at": 900.0, "last_refresh_ok": True},
-        "pet_store.bad": {"last_refresh_at": 1000.0, "last_refresh_ok": False},
-        "pet_store.never": None,
+        "fresh/pet_store.fresh": {"last_refresh_at": 1000.0, "last_refresh_ok": True},
+        "ttl/pet_store.ttl": {"last_refresh_at": 900.0, "last_refresh_ok": True},
+        "bad/pet_store.bad": {"last_refresh_at": 1000.0, "last_refresh_ok": False},
+        "never/pet_store.never": None,
     }
     is_stale = is_stale_of(sources, tables, states, 1000.0, reader_role=None)
     assert not is_stale("fresh")
