@@ -279,8 +279,20 @@ class _GraphQL:
         )
 
 
+def _pgwire_send(boot, role: str, sql: str) -> tuple[bool, str]:
+    import psycopg
+
+    try:
+        with _pgwire(boot, role) as conn:
+            conn.execute(sql)
+        return True, "ok"
+    except psycopg.Error as exc:
+        return False, str(exc)
+
+
 _SURFACES = {
     "sql_http": _Sql(_sql_http),
+    "pgwire": _Sql(_pgwire_send),
     "mcp": _Sql(_mcp),
     "cypher_http": _Cypher(_cypher_http),
     "bolt": _Cypher(_bolt),
@@ -423,49 +435,35 @@ def _pgwire(boot, role: str):
     )
 
 
-@pytest.mark.parametrize(
-    "statement,kind",
-    [
-        ("INSERT INTO sales.orders (id, region) VALUES (40, 'east')", "INSERT"),
-        ("UPDATE sales.orders SET region = 'x' WHERE id = 1", "UPDATE"),
-        ("DELETE FROM sales.orders WHERE id = 1", "DELETE"),
-        ("/* bulk */ delete from sales.orders", "DELETE"),
-    ],
-)
-def test_pgwire_takes_no_data_write_statement(server, source, statement, kind):
-    """REQ-615. Refused for the role that holds every right, before anything is governed or
-    sent to a source, with SQLSTATE 0A000 naming where a write is taken."""
+def _copy_in(boot, role: str, lines: list[str]) -> None:
+    with _pgwire(boot, role) as conn, conn.cursor() as cur:
+        with cur.copy("COPY sales.orders (id, region) FROM STDIN") as copy:
+            for line in lines:
+                copy.write(line + "\n")
+
+
+def test_a_bulk_load_over_pgwire_is_admitted_like_an_insert(server, source):
+    """``COPY … FROM STDIN`` into a registered table, admitted as an INSERT of its columns: the
+    write right and writable_by before any data is asked for, the row filter over every row
+    before any row is written; rows read at the source."""
     import psycopg
 
-    with _pgwire(server, "org_admin") as conn:
-        with pytest.raises(psycopg.Error) as raised:
-            conn.execute(statement)
-        assert raised.value.sqlstate == "0A000"
-        assert f"{kind} is not available over pgwire" in str(raised.value)
-        assert "POST /data/sql" in str(raised.value)
-        with pytest.raises(psycopg.Error) as prepared:
-            conn.execute(statement, prepare=True)
-        assert prepared.value.sqlstate == "0A000"
-        assert conn.execute("SELECT count(*) FROM sales.orders").fetchone()[0] == len(_SEED)
+    with pytest.raises(psycopg.Error, match="'write' right"):
+        _copy_in(server, "east_reader", ["50\teast"])
+    with pytest.raises(psycopg.Error, match="write access to column 'id'"):
+        _copy_in(server, "region_only", ["51\twest"])
+    # one row outside the filter refuses the whole load, before any row lands
+    with pytest.raises(psycopg.Error, match="outside role 'east_writer'"):
+        _copy_in(server, "east_writer", ["52\teast", "53\twest"])
     assert source() == _SEED
 
-
-@pytest.mark.parametrize("role", ["org_admin", "east_writer", "east_reader"])
-def test_pgwire_takes_no_bulk_load(server, source, role):
-    """REQ-615: ``COPY … FROM STDIN`` is a write. Refused for every role with the refusal an
-    INSERT gets, before the client is asked for any data."""
-    import psycopg
-
-    with _pgwire(server, role) as conn, conn.cursor() as cur:
-        with pytest.raises(psycopg.Error) as raised:
-            with cur.copy("COPY sales.orders (id, region) FROM STDIN") as copy:
-                copy.write("50\teast\n")
-        assert raised.value.sqlstate == "0A000"
-        assert "COPY ... FROM STDIN is not available over pgwire" in str(raised.value)
-    assert source() == _SEED
+    _copy_in(server, "east_writer", ["54\teast", "55\teast"])
+    assert source() == [*_SEED, (54, "east"), (55, "east")]
+    _copy_in(server, "org_admin", ["56\twest"])
+    assert (56, "west") in source()
 
 
-def test_a_copy_out_over_pgwire_is_a_governed_read(server):
+def test_a_copy_out_over_pgwire_is_a_governed_read(server, source):
     """``COPY … TO STDOUT`` is a read and keeps working: it is planned by the pipeline every
     pgwire read is, so the role's row filter is in what it returns."""
 
@@ -655,3 +653,18 @@ def test_a_cypher_read_binds_its_parameters(server, source, surface):
     )
     assert accepted, answer
     assert "west" in answer and "east" not in answer, answer
+
+
+def test_a_pgwire_write_answers_postgresqls_command_tag(server, source):
+    """A client reads a write's rowcount from the command tag (``INSERT 0 n`` / ``UPDATE n`` /
+    ``DELETE n``)."""
+    with _pgwire(server, "org_admin") as conn:
+        assert (
+            conn.execute("INSERT INTO sales.orders (id, region) VALUES (80, 'north')").rowcount == 1
+        )
+        assert (
+            conn.execute("UPDATE sales.orders SET region = 'east' WHERE region = 'east'").rowcount
+            == 2
+        )
+        assert conn.execute("DELETE FROM sales.orders WHERE id = 80").rowcount == 1
+    assert source() == _SEED
