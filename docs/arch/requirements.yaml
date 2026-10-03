@@ -47678,9 +47678,15 @@
     tier and the org''s address stay at the org: environments multiply the model, never the tenant. An
     environment is not a hostname label -- REQ-1276 gives the leftmost label to the org and REQ-1348 rejects
     a deeper one as hostile -- so the selected environment travels as an x-provisa-env request header,
-    mirroring x-org-provisa, with the selection persisted per user. A request naming an environment the
-    org does not have is refused; a request naming none is served by prod, which is the only environment
-    every org is guaranteed to have.'
+    mirroring x-org-provisa, [SUPERSEDED by REQ-1532, 2026-10-03 -- The selection is per-browser, kept
+    in localStorage under provisa_env (provisa-ui/src/lib/authFetch.ts:46-52); nothing stores it per user
+    on the server. Note REQ-1532 is itself status proposed. Kept here for history; do not implement against
+    it.] with the selection persisted per user [END SUPERSEDED BLOCK]. A request naming an environment
+    the org does not have is refused; [SUPERSEDED by REQ-1596, 2026-10-03 -- A membership pinned to an
+    environment that names none is served the pin, not prod (provisa/api/env_routing.py:113-120); REQ-1618
+    likewise has a sandbox visitor auto-selected into ephemeral_<hash> (env_routing.py:170-174). Kept
+    here for history; do not implement against it.] a request naming none is served by prod [END SUPERSEDED
+    BLOCK], which is the only environment every org is guaranteed to have.'
   use_case: A team develops a change against its dev environment and runs its suite against its test environment,
     both inside the one organization its people, invoices and address belong to.
   code:
@@ -47723,9 +47729,12 @@
     rather than adding a discriminator column to forty tables, so every existing repository query is correct
     in a environment without being rewritten and an environment''s state cannot leak into another environment''s
     reads by a forgotten predicate. The org''s default environment keeps the existing schema name so an
-    organization that never creates an environment is unchanged. Environment creation, deletion and renaming
-    are org_admin acts recorded in the org''s admin audit log; deleting an environment drops its schema
-    and its store, and prod is refused. (Amended 2026-08-21:) An environment is created BY loading a model
+    organization that never creates an environment is unchanged. [SUPERSEDED by REQ-1573, 2026-10-03 --
+    Creation is gated on the environment_management right, not org_admin (deletion stays org_admin); the
+    router creates an inheriting environment under _member(MANAGE_CAPABILITY). Kept here for history;
+    do not implement against it.] Environment creation, deletion and renaming are org_admin acts recorded
+    in the org''s admin audit log [END SUPERSEDED BLOCK]; deleting an environment drops its schema and
+    its store, and prod is refused. (Amended 2026-08-21:) An environment is created BY loading a model
     into a name, not by a ceremony of its own. There is no create-then-populate step and no state in which
     an environment exists and holds nothing: loading a build, a config, a set of files or a sha into a
     name that has none creates that environment, provisions its schema and its stores, and writes its
@@ -47784,25 +47793,27 @@
     roles, rls_rules, tags, tag_param_values, tag_assignments, glossary terms and their refs, edges and
     experts, materialized_views, calendars, kafka_topics, api_endpoints, tracked_functions, tracked_webhooks,
     table_meta_links. IDENTITY ONLY -- sources, api_sources, kafka_sources and kafka_sinks carry their
-    id, type and governance fields while their connection values stay behind (REQ-1491). NEVER -- org_secrets,
-    user_directory, user_role_assignments, and the org_settings keys that name an external target or a
-    per-environment runtime (metadata_export, redirect, cache). NEVER -- the runtime and evidence tables,
-    which belong to the environment that produced them: mv_refresh_log, mv_delta_ledger, relationship_candidates,
-    creation_requests, api_endpoint_candidates, live_query_state, file_source_mtimes, node_ids, rel_ids,
-    query_audit_log, query_sla_log, source_catalog_cache, events, event_status, node_freshness_state,
-    preserved_snapshots, admin_audit_log, and catalog_bindings, whose vendor_ref and physical_key address
-    another environment''s external catalog. A test enumerates every table declared in schema_org.py and
-    fails on any name carrying no classification, so the failure mode for a forgotten table is a red test
-    rather than a copied secret. (Amended 2026-08-21:) A source''s mapping is a per-connector JSON bag
-    rather than a column set, and it demonstrably holds both credentials and instance identity -- credentials_json,
-    certificate_path, certificate_password (REQ-729), storage_config, storage_type, disable_ssl_validation
-    -- so classifying sources by column alone would carry a service account into a dev environment. mapping
-    is therefore classified PER KEY, not per column, by the connector that owns it: each connector class
-    declares the mapping keys that are BINDINGS, and every other key is governance and travels. The declaration
-    is default-deny -- a key the connector does not name is a binding and stays behind -- so a connector
-    added later cannot leak by omission, and a connector that declares nothing carries no mapping at all.
-    The same classification test enumerates the connector registry and fails on a connector whose mapping
-    keys carry no declaration.'
+    id, type and governance fields while their connection values stay behind (REQ-1491). [SUPERSEDED by
+    REQ-1539, 2026-10-03 -- user_role_assignments is a CARRIED class (seeded at creation); only org_secrets
+    and user_directory stay NEVER_SENSITIVE. Kept here for history; do not implement against it.] NEVER
+    -- org_secrets, user_directory, user_role_assignments, and the org_settings keys that name an external
+    target or a per-environment runtime (metadata_export, redirect, cache). [END SUPERSEDED BLOCK] NEVER
+    -- the runtime and evidence tables, which belong to the environment that produced them: mv_refresh_log,
+    mv_delta_ledger, relationship_candidates, creation_requests, api_endpoint_candidates, live_query_state,
+    file_source_mtimes, node_ids, rel_ids, query_audit_log, query_sla_log, source_catalog_cache, events,
+    event_status, node_freshness_state, preserved_snapshots, admin_audit_log, and catalog_bindings, whose
+    vendor_ref and physical_key address another environment''s external catalog. A test enumerates every
+    table declared in schema_org.py and fails on any name carrying no classification, so the failure mode
+    for a forgotten table is a red test rather than a copied secret. (Amended 2026-08-21:) A source''s
+    mapping is a per-connector JSON bag rather than a column set, and it demonstrably holds both credentials
+    and instance identity -- credentials_json, certificate_path, certificate_password (REQ-729), storage_config,
+    storage_type, disable_ssl_validation -- so classifying sources by column alone would carry a service
+    account into a dev environment. mapping is therefore classified PER KEY, not per column, by the connector
+    that owns it: each connector class declares the mapping keys that are BINDINGS, and every other key
+    is governance and travels. The declaration is default-deny -- a key the connector does not name is
+    a binding and stays behind -- so a connector added later cannot leak by omission, and a connector
+    that declares nothing carries no mapping at all. The same classification test enumerates the connector
+    registry and fails on a connector whose mapping keys carry no declaration.'
   use_case: A platform team adds a table to the org schema and learns from a failing test that they must
     say whether it belongs to an environment copy, instead of discovering months later that it carried
     credentials into a dev environment.
@@ -47894,53 +47905,64 @@
     an inline credentials document, a TLS-verification override -- are per-environment facts and stay
     behind with host and port, while the governance keys in the same bag travel. A source whose connector
     declares bindings is unbound in the new environment until every declared binding key has been supplied
-    there, so partial binding is unbound, not half-connected. (Amended 2026-08-21, creation:) CREATING
-    an environment ALWAYS strips bindings, whatever it was created from. This is absolute and takes no
-    argument: a build of another environment, a config an operator uploads, a set of exported files (REQ-1502)
-    and a repository sha (REQ-1524) all produce an environment in which every source is unbound. A config
-    an operator brings carries connection values and carrying them is ordinarily its purpose, but at creation
-    they are dropped and the operator binds afterwards -- one extra act, in exchange for the guarantee
-    that NO SINGLE ACTION CAN CREATE A BOUND ENVIRONMENT, so no action can accidentally create one bound
-    to production. Making the behaviour depend on where the model came from would put the guarantee behind
-    a judgement about provenance, and the case that gets it wrong is the case that matters. Binding is
-    therefore always a second, deliberate act against an environment that already exists, and REQ-1499
-    is the only way credentials ever arrive by copy. (Amended 2026-08-21, checkout keeps bindings:) Loading
-    a different branch or sha into an environment that ALREADY EXISTS is a checkout, and it is not the
-    creation of REQ-1488: it replaces the carried classes wholesale -- not a merge by identity, since
-    a checkout is what the operator asked for -- and it KEEPS the environment''s bindings, secrets, members
-    and grants untouched. That follows from the tree never having held them: there is nothing in the incoming
-    tree to overwrite them with. It is also the point of the whole arrangement -- switch to a colleague''s
-    branch and keep pointing at your own database -- and it is why creation strips unconditionally while
-    checkout strips nothing: creation has no bindings to preserve, and a checkout''s bindings were established
-    by the deliberate act this requirement demands. A source that arrives in the incoming tree and has
-    no binding in this environment is unbound in the marked sense above, not broken. (Amended 2026-08-21:)
-    The second act this requirement demands does not have to be a form: REQ-1529''s binding profiles make
-    it a single click on a target an org_admin authored, which keeps the guarantee while removing the
-    reason to avoid branching. (Amended 2026-08-21, WHERE the model came from decides whether bindings
-    are stripped:) The unconditional strip above is narrowed to what it was actually protecting against
-    -- a model arriving from OUTSIDE this organization''s control plane. An uploaded config, an exported
-    file set (REQ-1502), a foreign repository sha and any other import produce an environment in which
-    every source is unbound, absolutely and with no argument, because the connection values in them were
-    authored elsewhere and nobody here vouched for what they point at. A branch taken from the organization''s
-    OWN environment inside the same control plane is not that case: the credentials never leave the org,
-    are never disclosed to the brancher, and were already reachable by whoever could read that environment.
-    Such a branch INHERITS its parent''s bindings, and the developer types nothing. TWO CONDITIONS MAKE
-    THAT SAFE, and both are structural. First, an inherited binding is a REFERENCE to the parent environment''s
-    binding and never a copy of it: no host, username or secret key is materialized in the branch, so
-    a branch discloses nothing, rotating the parent''s credential re-points the branch in the same act,
-    and revoking it revokes the branch''s reach. Second, an inherited binding is READ-ONLY -- a write
-    through one is refused whatever rights the writer holds, including the environment authority of REQ-1528.
-    That is precisely REQ-1492''s compound failure taken apart: the branch inherits where its parent points
-    but never the ability to write there, so a branch of prod can read prod-shaped data and cannot damage
-    prod. Writing needs a binding the environment established for itself -- a REQ-1529 profile an org_admin
-    authored, or a credential an org_admin issued (REQ-1503) -- which is the deliberate second act this
-    requirement has always demanded, now demanded only where a write is actually wanted. A branch therefore
-    reaches exactly what its creator could already reach, in exactly the mode they could already reach
-    it, and no single action still creates an environment that can WRITE to production. (Amended 2026-08-21,
-    the mode is the BASE''s:) whether an inherited binding is read-only is not fixed at read-only for
-    every branch -- it is the branch policy REQ-1529 puts on the base the branch came from, defaulting
-    to read-only. A branch of a base bound to a dev database may write to it if the org_admin marked that
-    base branch-writable; a branch of a base bound to production may not, because nobody marked it so.
+    there, so partial binding is unbound, not half-connected. (Amended 2026-08-21, creation:) [SUPERSEDED
+    by REQ-1602, 2026-10-03 -- The same requirement''s later amendment narrows it to models from outside
+    the org, and REQ-1602 (complete) creates sandbox visitor environments with strip_identities=False
+    (provisa/api/invite_env.py:148). Kept here for history; do not implement against it.] CREATING an
+    environment ALWAYS strips bindings, whatever it was created from. This is absolute and takes no argument:
+    [END SUPERSEDED BLOCK] a build of another environment, a config an operator uploads, a set of exported
+    files (REQ-1502) and a repository sha (REQ-1524) all produce an environment in which every source
+    is unbound. A config an operator brings carries connection values and carrying them is ordinarily
+    its purpose, but at creation they are dropped and the operator binds afterwards -- one extra act,
+    in exchange for the guarantee that NO SINGLE ACTION CAN CREATE A BOUND ENVIRONMENT, so no action can
+    accidentally create one bound to production. Making the behaviour depend on where the model came from
+    would put the guarantee behind a judgement about provenance, and the case that gets it wrong is the
+    case that matters. Binding is therefore always a second, deliberate act against an environment that
+    already exists, and REQ-1499 is the only way credentials ever arrive by copy. (Amended 2026-08-21,
+    checkout keeps bindings:) Loading a different branch or sha into an environment that ALREADY EXISTS
+    is a checkout, and it is not the creation of REQ-1488: it replaces the carried classes wholesale --
+    not a merge by identity, since a checkout is what the operator asked for -- and it KEEPS the environment''s
+    bindings, secrets, members and grants untouched. That follows from the tree never having held them:
+    there is nothing in the incoming tree to overwrite them with. It is also the point of the whole arrangement
+    -- switch to a colleague''s branch and keep pointing at your own database -- and it is why creation
+    strips unconditionally while checkout strips nothing: creation has no bindings to preserve, and a
+    checkout''s bindings were established by the deliberate act this requirement demands. A source that
+    arrives in the incoming tree and has no binding in this environment is unbound in the marked sense
+    above, not broken. (Amended 2026-08-21:) The second act this requirement demands does not have to
+    be a form: REQ-1529''s binding profiles make it a single click on a target an org_admin authored,
+    which keeps the guarantee while removing the reason to avoid branching. (Amended 2026-08-21, WHERE
+    the model came from decides whether bindings are stripped:) The unconditional strip above is narrowed
+    to what it was actually protecting against -- a model arriving from OUTSIDE this organization''s control
+    plane. An uploaded config, an exported file set (REQ-1502), a foreign repository sha and any other
+    import produce an environment in which every source is unbound, absolutely and with no argument, because
+    the connection values in them were authored elsewhere and nobody here vouched for what they point
+    at. A branch taken from the organization''s OWN environment inside the same control plane is not that
+    case: the credentials never leave the org, are never disclosed to the brancher, and were already reachable
+    by whoever could read that environment. Such a branch INHERITS its parent''s bindings, and the developer
+    types nothing. TWO CONDITIONS MAKE THAT SAFE, and both are structural. First, an inherited binding
+    is a REFERENCE to the parent environment''s binding and never a copy of it: no host, username or secret
+    key is materialized in the branch, so a branch discloses nothing, rotating the parent''s credential
+    re-points the branch in the same act, and revoking it revokes the branch''s reach. [SUPERSEDED by
+    REQ-1539, 2026-10-03 -- REQ-1539 (and this requirement''s own 2026-08-22 amendment) withdrew the read-only
+    mode; the block is not tagged SUPERSEDED. The scenario line ''it is refused whatever rights they hold,
+    because an inherited binding is read-only'' is stale for the same reason. Kept here for history; do
+    not implement against it.] Second, an inherited binding is READ-ONLY -- a write through one is refused
+    whatever rights the writer holds, including the environment authority of REQ-1528. [END SUPERSEDED
+    BLOCK] That is precisely REQ-1492''s compound failure taken apart: [SUPERSEDED by REQ-1539, 2026-10-03
+    -- Write permission is the roles'' answer; an inherited binding is writable (tests/unit/test_env_binding_writes.py:55-63).
+    Kept here for history; do not implement against it.] the branch inherits where its parent points but
+    never the ability to write there, so a branch of prod can read prod-shaped data and cannot damage
+    prod. [END SUPERSEDED BLOCK] Writing needs a binding the environment established for itself -- a REQ-1529
+    profile an org_admin authored, or a credential an org_admin issued (REQ-1503) -- which is the deliberate
+    second act this requirement has always demanded, now demanded only where a write is actually wanted.
+    A branch therefore reaches exactly what its creator could already reach, in exactly the mode they
+    could already reach it, and no single action still creates an environment that can WRITE to production.
+    (Amended 2026-08-21, the mode is the BASE''s:) [SUPERSEDED by REQ-1539, 2026-10-03 -- branch_writable
+    and the branch policy were removed; no such flag exists in code. Kept here for history; do not implement
+    against it.] whether an inherited binding is read-only is not fixed at read-only for every branch
+    -- it is the branch policy REQ-1529 puts on the base the branch came from, defaulting to read-only.
+    A branch of a base bound to a dev database may write to it if the org_admin marked that base branch-writable;
+    a branch of a base bound to production may not, because nobody marked it so. [END SUPERSEDED BLOCK]
     The guarantee is unchanged in the case it exists for: no member action produces an environment that
     can write where an org_admin did not say branches may write. (Amended 2026-08-22, THE BRANCH POLICY
     IS WITHDRAWN, REQ-1539:) the read-only-by-default mode and the branch-writable flag that widened it
@@ -48017,15 +48039,24 @@
     Provisa executes mutations against sources -- compiled INSERT, UPDATE and DELETE, OpenAPI POST/PUT/PATCH/DELETE,
     gRPC methods that declare side effects, Hasura mutations, ingest DDL -- so a copied environment is
     a writer, not a reader, and inheriting where it points together with permission to write there is
-    the compound failure. An environment copy therefore resets table_columns.writable_by to empty and
-    carries no user_role_assignments, which restores the default-deny of REQ-867 and REQ-868 in the new
-    environment. Role definitions do travel, because rls_rules and writable_by reference roles by id and
-    an environment whose RLS points at absent roles states a governance model it does not have. Restoring
-    write in an environment is an act recorded in that environment''s admin audit log, and promotion toward
-    prod can never confer it: rights in a target environment come only from grants made in that environment.
-    (Amended 2026-08-21:) REQ-1491 now takes this compound apart at the binding rather than at the copy:
-    a branch of the org''s own environment inherits where its parent points, by reference, and an inherited
-    binding refuses writes. Inherited reach without inherited write authority is not this failure.'
+    the compound failure. [SUPERSEDED by REQ-1539, 2026-10-03 -- REQ-1539 makes roles and user_role_assignments
+    CARRIED (seeded at creation), and REQ-1529''s 2026-08-21 amendment makes column grants a carried class;
+    the code carries both and resets nothing. Kept here for history; do not implement against it.] An
+    environment copy therefore resets table_columns.writable_by to empty and carries no user_role_assignments,
+    which restores the default-deny of REQ-867 and REQ-868 in the new environment. [END SUPERSEDED BLOCK]
+    Role definitions do travel, because rls_rules and writable_by reference roles by id and an environment
+    whose RLS points at absent roles states a governance model it does not have. Restoring write in an
+    environment is an act recorded in that environment''s admin audit log, and [SUPERSEDED by REQ-1529,
+    2026-10-03 -- Holds for roles and assignments (never merged), but REQ-1529''s ALL GOVERNANCE STATE
+    IS RETAINED amendment has a merge carry column grants, so table_columns.writable_by travels on a merge.
+    Kept here for history; do not implement against it.] promotion toward prod can never confer it: rights
+    in a target environment come only from grants made in that environment. [END SUPERSEDED BLOCK] (Amended
+    2026-08-21:) REQ-1491 now takes this compound apart at the binding rather than at the copy: a branch
+    of the org''s own environment inherits where its parent points, by reference, and [SUPERSEDED by REQ-1539,
+    2026-10-03 -- REQ-1539 removed branch_writable and the write-time check; the write path now refuses
+    only an unbound or unregistered target. Kept here for history; do not implement against it.] an inherited
+    binding refuses writes [END SUPERSEDED BLOCK]. Inherited reach without inherited write authority is
+    not this failure.'
   use_case: A developer with write rights in dev acquires none in prod when the model is promoted, and
     an environment cloned from prod cannot mutate anything until someone grants it.
   code:
@@ -48179,99 +48210,104 @@
     promotion and reversal the same operation with a different argument. Every change to an environment''s
     carried classes advances that environment''s build, identified and addressable; a build records what
     the model was, never the excluded classes, so a build is safe to hold and safe to show. Promoting
-    is merging a named build of one environment into another under REQ-1490, and reverting is merging
-    that environment''s previous build into itself, so an environment can be returned to a state it held
-    without anyone reconstructing it by hand. A build''s diff against another build is readable before
-    it is applied. This is metadata only: no data moves between environments when a build is applied.
-    (Amended 2026-08-21:) A build is physically a COMMIT in the environment''s repository (REQ-1524),
-    and the build identifier is that commit. Immutability, addressability, parentage and the readable
-    diff between two builds are then properties of the storage rather than machinery Provisa writes and
-    must itself prove correct. The previous build an environment reverts to is the commit''s parent, and
-    a build safe to hold and safe to show is one whose tree holds only the carried classes of REQ-1489.
-    What does NOT follow from the storage is the merge: REQ-1490''s merge is semantic and is computed
-    against the tenant control plane, then written through -- git''s textual three-way would resolve two
-    edits into a model that parses and does not hold, a relationship whose other side was dropped on the
-    branch it merged with. The repository stores the result of a merge; it never computes one. (Amended
-    2026-08-21, reverting:) A revert is a merge of the earlier build WITH REMOVALS, never without. REQ-1490
-    makes removal a separate confirmation because a merge must not silently empty an environment, and
-    that default is right for a promotion -- prod does not lose what dev never had -- but wrong for a
-    revert, where an object added after the build being returned to is exactly what the revert exists
-    to take away. A revert offered without removals is not a partial revert; it is one that keeps the
-    change being reverted. The removals a revert would perform are therefore named first in its report,
-    and a revert of a protected environment takes the approval of REQ-1504 like any other merge into one.
-    (Amended 2026-08-21, the load is the gate:) The earlier refusal here -- that git must never compute
-    a merge, because a textual three-way would produce a model that parses and does not hold -- is narrowed
-    rather than kept. Merging happens in the organization''s forge and CI (REQ-1524), so git does compute
-    three-way merges of the serialized model, and the protection moves to where it belongs: a TREE IS
-    NOT A MODEL UNTIL A LOAD ACCEPTS IT. Loading validates the whole tree -- every reference resolving,
-    every carried class coherent with the others -- and applies it whole or not at all, so a merge that
-    produced something that parses and does not hold fails at the load, before any schema holds it, and
-    fails naming what does not hold. That failure is an ordinary broken build belonging to whoever merged,
-    discovered where they are already looking, and it is a better place for the check than a prohibition
-    that would have required Provisa to own the merge. (Amended 2026-08-22:) LOADING A TREE IS AN AUTHORED
-    CHANGE, not a read. The repository is a projection and never an authority (REQ-1524), so nothing a
-    person hand-edits in a working copy reaches the control plane until a LOAD applies it -- but a load
-    applies it whole, and the tree carries ``roles``, so a load into a base is capable of rewriting who
-    may do what there. Two things bound that and both are the org''s own to set. On the git side, a base''s
-    branch is protected by the host''s own rules: prod requiring a pull request approved by named people
-    means no tree reaches prod''s branch unreviewed, and hand-editing a working copy produces a proposal
-    rather than a change. On the Provisa side, a load into a protected environment is decided the way
-    REQ-1504 decides a merge into one -- a request, a report of what it would change, and an approval
-    by someone other than the requester. Neither substitutes for the other: git protects the branch, Provisa
-    protects the schema, and a load is the one door between them. (Amended 2026-08-22, the load is performed
-    WHERE IT LANDS:) There is no push. A load is not something dev does to prod; it is something a person
-    does while signed in to the control plane that will hold the result. Whoever loads prod''s branch
-    is signed in to the production control plane, holding a production identity, and is answerable to
-    production''s own capability checks at the moment of the load -- the same checks any other authored
-    change there passes. This is why the branch being readable to everyone costs nothing: a branch is
-    a proposal until someone with the standing to accept it, in the place that would hold it, accepts
-    it. It also settles the cross-instance question by removing it, since no control plane ever writes
-    to another and a build travels between them only as a tree that a person on the far side chooses to
-    load. NOTHING LOADS ITSELF: Provisa runs no watcher, webhook, poller or CI step that applies a merged
-    branch to the environment it names. A merge into prod''s branch produces a tree and changes no schema,
-    and prod holds what it held until someone loads. An automatic load would hand the forge the authority
-    the projection rule denies it, and would make the reviewers of a pull request -- who reviewed text
-    -- the people who applied a model to production without ever seeing the report of what it would change.
-    (Amended 2026-08-22, the CLI:) The load is available as a command -- ``provisa env deploy`` -- so
-    that a deployment pipeline can perform it, and this does not reopen what the paragraph above closed.
-    The rule is not that a machine may never load; it is that a load is always an INVOCATION CARRYING
-    AN IDENTITY against a NAMED control plane, never something the control plane does to itself on noticing
-    a commit. The command is a thin client of the same endpoint the UI calls, with the same target, the
-    same capability check and the same report; CI holding a credential that passes that check is the organization
-    delegating its own standing, which is the org''s decision to make and is revocable as any other credential
-    is. What Provisa does not ship is the other thing: a listener inside the deployment that turns somebody
-    else''s merge into a change here. (Amended 2026-08-22, the private control plane:) The same rule is
-    what makes a DESKTOP control plane (REQ-1126, REQ-1128) a first-class place to work. A developer runs
-    their own Provisa, loads the branch they are working on into it, and has the whole model live in a
-    control plane that is theirs -- real schemas, real validation, real queries against sources they bound
-    themselves -- while nothing they do is visible to anyone else, because a control plane never writes
-    to another one. What leaves the desktop is a branch pushed to the org''s repository, which is a proposal;
-    what arrives is a branch fetched, which changes nothing until they load it. The blast radius of working
-    this way is exactly one machine, and the review path is the same one every other change takes. (Amended
-    2026-08-22, what an approver approves:) A load into a protected environment PINS THE COMMIT at the
-    moment it is requested. The caller names a ref, that ref is resolved once, and the sha it resolved
-    to is what the report describes, what the request stores and what applying later applies -- the ref
-    is kept beside it only because a person recognises a branch name. An approval that re-resolved the
-    branch would be an approval of a NAME: the branch moves, and the tree that gets applied is one nobody
-    read. Staleness is derived the other way round for a load than for a merge, because the tree cannot
-    move: what can have changed is the TARGET, so the pinned tree is re-planned against the environment
-    as it now stands, and a report that no longer describes what would happen makes the request stale
-    rather than approvable. A load and a merge are the same kind of proposal and are held in one table,
-    one listing and one decision path: a row names either a source environment or a source ref, never
-    both and never neither. Whether the load SEEDS -- REQ-1539''s creation-only classes -- is part of
-    what is proposed, because it changes what applying does. (Amended 2026-08-22, a proposal is not a
-    deployment:) When ``provisa env deploy`` produces a request rather than a change, it exits NON-ZERO.
-    A pipeline that read a pending approval as success would report a release that has not happened, and
-    the point of REQ-1504 is that the release has not happened. (Amended 2026-08-22, WHERE THE LOAD SITS
-    IN THE GIT PROCESS:) Stated plainly, because the rest of this requirement states it at length: the
-    git process is the ordinary one -- branch, commit, pull request, review, merge -- and the LOAD is
-    its final step. Merging is the end of the REVIEW; the load is the DEPLOY. Everything up to the merge
-    decides what the model should be and changes no schema; the load is the act that moves the merged
-    tree into a runtime. Whatever verb an org already uses for that step -- deploy, release, activate,
-    provision -- names this one, and there is exactly one of it. It is not an addition to git flow but
-    its last stage made explicit, and the only reason it is a separate act at all is that a merge writes
-    text and a runtime holds a schema. (Amended 2026-08-22, THE VERB IS DEPLOY:) that step is named DEPLOY
-    throughout -- the CLI is ``provisa env deploy``, the endpoint is ``POST /admin/orgs/{org}/environments/{env}/deploy``,
+    is merging a named build of one environment into another under REQ-1490, and [SUPERSEDED by REQ-1543,
+    2026-10-03 -- A revert is undo: the parent commit''s whole tree is deployed through deploy_tree (environments_router.py:960-979),
+    not a REQ-1490 merge. Note REQ-1543 is status proposed. Kept here for history; do not implement against
+    it.] reverting is merging that environment''s previous build into itself [END SUPERSEDED BLOCK], so
+    an environment can be returned to a state it held without anyone reconstructing it by hand. A build''s
+    diff against another build is readable before it is applied. This is metadata only: no data moves
+    between environments when a build is applied. (Amended 2026-08-21:) A build is physically a COMMIT
+    in the environment''s repository (REQ-1524), and the build identifier is that commit. Immutability,
+    addressability, parentage and the readable diff between two builds are then properties of the storage
+    rather than machinery Provisa writes and must itself prove correct. The previous build an environment
+    reverts to is the commit''s parent, and a build safe to hold and safe to show is one whose tree holds
+    only the carried classes of REQ-1489. What does NOT follow from the storage is the merge: REQ-1490''s
+    merge is semantic and is computed against the tenant control plane, then written through -- git''s
+    textual three-way would resolve two edits into a model that parses and does not hold, a relationship
+    whose other side was dropped on the branch it merged with. [SUPERSEDED by REQ-1524, 2026-10-03 --
+    REQ-1496''s own later amendment (2026-08-21, the load is the gate) narrows it: merging happens in
+    the org''s forge (REQ-1524), so git does compute three-way merges and the deploy is the gate. Kept
+    here for history; do not implement against it.] The repository stores the result of a merge; it never
+    computes one. [END SUPERSEDED BLOCK] (Amended 2026-08-21, reverting:) A revert is a merge of the earlier
+    build WITH REMOVALS, never without. REQ-1490 makes removal a separate confirmation because a merge
+    must not silently empty an environment, and that default is right for a promotion -- prod does not
+    lose what dev never had -- but wrong for a revert, where an object added after the build being returned
+    to is exactly what the revert exists to take away. A revert offered without removals is not a partial
+    revert; it is one that keeps the change being reverted. The removals a revert would perform are therefore
+    named first in its report, and a revert of a protected environment takes the approval of REQ-1504
+    like any other merge into one. (Amended 2026-08-21, the load is the gate:) The earlier refusal here
+    -- that git must never compute a merge, because a textual three-way would produce a model that parses
+    and does not hold -- is narrowed rather than kept. Merging happens in the organization''s forge and
+    CI (REQ-1524), so git does compute three-way merges of the serialized model, and the protection moves
+    to where it belongs: a TREE IS NOT A MODEL UNTIL A LOAD ACCEPTS IT. Loading validates the whole tree
+    -- every reference resolving, every carried class coherent with the others -- and applies it whole
+    or not at all, so a merge that produced something that parses and does not hold fails at the load,
+    before any schema holds it, and fails naming what does not hold. That failure is an ordinary broken
+    build belonging to whoever merged, discovered where they are already looking, and it is a better place
+    for the check than a prohibition that would have required Provisa to own the merge. (Amended 2026-08-22:)
+    LOADING A TREE IS AN AUTHORED CHANGE, not a read. The repository is a projection and never an authority
+    (REQ-1524), so nothing a person hand-edits in a working copy reaches the control plane until a LOAD
+    applies it -- but a load applies it whole, and the tree carries ``roles``, so a load into a base is
+    capable of rewriting who may do what there. Two things bound that and both are the org''s own to set.
+    On the git side, a base''s branch is protected by the host''s own rules: prod requiring a pull request
+    approved by named people means no tree reaches prod''s branch unreviewed, and hand-editing a working
+    copy produces a proposal rather than a change. On the Provisa side, a load into a protected environment
+    is decided the way REQ-1504 decides a merge into one -- a request, a report of what it would change,
+    and an approval by someone other than the requester. Neither substitutes for the other: git protects
+    the branch, Provisa protects the schema, and a load is the one door between them. (Amended 2026-08-22,
+    the load is performed WHERE IT LANDS:) There is no push. A load is not something dev does to prod;
+    it is something a person does while signed in to the control plane that will hold the result. Whoever
+    loads prod''s branch is signed in to the production control plane, holding a production identity,
+    and is answerable to production''s own capability checks at the moment of the load -- the same checks
+    any other authored change there passes. This is why the branch being readable to everyone costs nothing:
+    a branch is a proposal until someone with the standing to accept it, in the place that would hold
+    it, accepts it. It also settles the cross-instance question by removing it, since no control plane
+    ever writes to another and a build travels between them only as a tree that a person on the far side
+    chooses to load. NOTHING LOADS ITSELF: Provisa runs no watcher, webhook, poller or CI step that applies
+    a merged branch to the environment it names. A merge into prod''s branch produces a tree and changes
+    no schema, and prod holds what it held until someone loads. An automatic load would hand the forge
+    the authority the projection rule denies it, and would make the reviewers of a pull request -- who
+    reviewed text -- the people who applied a model to production without ever seeing the report of what
+    it would change. (Amended 2026-08-22, the CLI:) The load is available as a command -- ``provisa env
+    deploy`` -- so that a deployment pipeline can perform it, and this does not reopen what the paragraph
+    above closed. The rule is not that a machine may never load; it is that a load is always an INVOCATION
+    CARRYING AN IDENTITY against a NAMED control plane, never something the control plane does to itself
+    on noticing a commit. The command is a thin client of the same endpoint the UI calls, with the same
+    target, the same capability check and the same report; CI holding a credential that passes that check
+    is the organization delegating its own standing, which is the org''s decision to make and is revocable
+    as any other credential is. What Provisa does not ship is the other thing: a listener inside the deployment
+    that turns somebody else''s merge into a change here. (Amended 2026-08-22, the private control plane:)
+    The same rule is what makes a DESKTOP control plane (REQ-1126, REQ-1128) a first-class place to work.
+    A developer runs their own Provisa, loads the branch they are working on into it, and has the whole
+    model live in a control plane that is theirs -- real schemas, real validation, real queries against
+    sources they bound themselves -- while nothing they do is visible to anyone else, because a control
+    plane never writes to another one. What leaves the desktop is a branch pushed to the org''s repository,
+    which is a proposal; what arrives is a branch fetched, which changes nothing until they load it. The
+    blast radius of working this way is exactly one machine, and the review path is the same one every
+    other change takes. (Amended 2026-08-22, what an approver approves:) A load into a protected environment
+    PINS THE COMMIT at the moment it is requested. The caller names a ref, that ref is resolved once,
+    and the sha it resolved to is what the report describes, what the request stores and what applying
+    later applies -- the ref is kept beside it only because a person recognises a branch name. An approval
+    that re-resolved the branch would be an approval of a NAME: the branch moves, and the tree that gets
+    applied is one nobody read. Staleness is derived the other way round for a load than for a merge,
+    because the tree cannot move: what can have changed is the TARGET, so the pinned tree is re-planned
+    against the environment as it now stands, and a report that no longer describes what would happen
+    makes the request stale rather than approvable. A load and a merge are the same kind of proposal and
+    are held in one table, one listing and one decision path: a row names either a source environment
+    or a source ref, never both and never neither. Whether the load SEEDS -- REQ-1539''s creation-only
+    classes -- is part of what is proposed, because it changes what applying does. (Amended 2026-08-22,
+    a proposal is not a deployment:) When ``provisa env deploy`` produces a request rather than a change,
+    it exits NON-ZERO. A pipeline that read a pending approval as success would report a release that
+    has not happened, and the point of REQ-1504 is that the release has not happened. (Amended 2026-08-22,
+    WHERE THE LOAD SITS IN THE GIT PROCESS:) Stated plainly, because the rest of this requirement states
+    it at length: the git process is the ordinary one -- branch, commit, pull request, review, merge --
+    and the LOAD is its final step. Merging is the end of the REVIEW; the load is the DEPLOY. Everything
+    up to the merge decides what the model should be and changes no schema; the load is the act that moves
+    the merged tree into a runtime. Whatever verb an org already uses for that step -- deploy, release,
+    activate, provision -- names this one, and there is exactly one of it. It is not an addition to git
+    flow but its last stage made explicit, and the only reason it is a separate act at all is that a merge
+    writes text and a runtime holds a schema. (Amended 2026-08-22, THE VERB IS DEPLOY:) that step is named
+    DEPLOY throughout -- the CLI is ``provisa env deploy``, the endpoint is ``POST /admin/orgs/{org}/environments/{env}/deploy``,
     the audit actions are ``environment.deploy`` and ``environment.deploy_requested``, and the code that
     performs it is ``provisa/core/env_deploy.py``. ``load`` described the mechanism (a tree read into
     a schema) and left every reader to work out what the act MEANT; ``deploy`` is the word every engineering
@@ -48510,9 +48546,11 @@
     and which keys address it are environment-scoped facts that a promotion never carries, so promoting
     a change into production changes what production means and nothing about what production reaches.
     The two meet at one rule: an object arriving in an environment by merge arrives inert -- present in
-    the model, unbound, writable by no role and materializing nothing -- which is the analogue of a flag
-    that exists in every environment and is on in one. Absence and inertness are different states and
-    are reported differently.'
+    the model, unbound, [SUPERSEDED by REQ-1529, 2026-10-03 -- REQ-1529''s 2026-08-21 amendment makes
+    column grants a carried class that a merge carries with the model; the code copies table_columns.writable_by
+    verbatim. Kept here for history; do not implement against it.] writable by no role [END SUPERSEDED
+    BLOCK] and materializing nothing -- which is the analogue of a flag that exists in every environment
+    and is on in one. Absence and inertness are different states and are reported differently.'
   use_case: A team reasons about environments with two familiar mental models instead of one novel one,
     and can predict which facts travel with a promotion before they run it.
   code:
@@ -48546,20 +48584,23 @@
   description: 'An environment''s governed model can be exported to files, held in version control and
     applied back, which is what makes an environment reproducible rather than merely copyable. Export
     writes the carried classes of REQ-1489 as readable files whose ordering is stable, so two exports
-    of the same model are the same bytes and a review sees the change and not the serializer. Apply takes
-    those files and brings an environment to what they describe under the merge rules of REQ-1490, and
-    diff shows what an apply would do without doing it. An apply that would leave an object unusable --
-    a relationship whose other side is absent, an RLS rule naming a role that is not there, a metric over
-    a column no longer registered -- reports every such object and applies nothing; a model that is inconsistent
-    in a file is inconsistent in an environment, and finding out at query time is finding out too late.
-    (Amended 2026-08-21:) Export is not an operation an administrator remembers to run: the files exist
-    continuously, because REQ-1524 writes them through on every change. Exporting is therefore reading
-    the environment''s repository at a build, and holding the model in version control is what the environment
-    already does rather than something done to it afterwards. Stable ordering stops being a courtesy to
-    reviewers and becomes required -- an unstable serializer would make every commit a diff of itself
-    and bury the change nobody could then find. Apply keeps its meaning unchanged: files describe a model,
-    the merge rules of REQ-1490 bring an environment to it, and the consistency check refuses the whole
-    apply rather than landing part of one.'
+    of the same model are the same bytes and a review sees the change and not the serializer. [SUPERSEDED
+    by REQ-1526, 2026-10-03 -- REQ-1526 (Amended 2026-08-23) states a load applies the tree whole and
+    deletes what the tree lacks; removal is not a separate confirmation on an apply. Kept here for history;
+    do not implement against it.] Apply takes those files and brings an environment to what they describe
+    under the merge rules of REQ-1490 [END SUPERSEDED BLOCK], and diff shows what an apply would do without
+    doing it. An apply that would leave an object unusable -- a relationship whose other side is absent,
+    an RLS rule naming a role that is not there, a metric over a column no longer registered -- reports
+    every such object and applies nothing; a model that is inconsistent in a file is inconsistent in an
+    environment, and finding out at query time is finding out too late. (Amended 2026-08-21:) Export is
+    not an operation an administrator remembers to run: the files exist continuously, because REQ-1524
+    writes them through on every change. Exporting is therefore reading the environment''s repository
+    at a build, and holding the model in version control is what the environment already does rather than
+    something done to it afterwards. Stable ordering stops being a courtesy to reviewers and becomes required
+    -- an unstable serializer would make every commit a diff of itself and bury the change nobody could
+    then find. Apply keeps its meaning unchanged: files describe a model, the merge rules of REQ-1490
+    bring an environment to it, and the consistency check refuses the whole apply rather than landing
+    part of one.'
   use_case: A team reviews a model change as a diff in a pull request and applies the merged result to
     an environment from the same files.
   code:
@@ -48684,8 +48725,7 @@
   - REQ-1525
   - REQ-1528
 - id: REQ-1505
-  status: proposed
-  target: 2026-Q4
+  status: complete
   group: 13. Multi-Tenancy & Organizations
   category: Environments
   priority: SHOULD
@@ -48700,12 +48740,17 @@
   use_case: An administrator investigating a production behaviour sees the change that introduced it,
     which environment it came from and how prod's version of that object differs from dev's.
   code:
-  - provisa/core/env_history.py
-  - provisa/core/env_builds.py
-  - provisa-ui/src/components/EnvironmentHistory.tsx
-  - provisa-ui/src/components/EnvironmentCompare.tsx
+  - provisa/core/env_repo.py
+  - provisa/api/admin/model_commit.py
+  - provisa/api/admin/environments_router.py
+  - provisa-ui/src/components/admin/RepoBrowser.tsx
+  - provisa-ui/src/components/admin/ConfigDiffView.tsx
+  - provisa-ui/src/api/environments.ts
   tests:
-  - tests/unit/test_env_history.py
+  - tests/unit/test_env_repo.py
+  - tests/unit/test_env_repo_browse_endpoints.py
+  - tests/unit/test_env_merge_request_endpoints.py
+  - provisa-ui/src/__tests__/RepoBrowser.test.tsx
   scenario: 'Given a change made in dev and merged into prod
 
     When prod''s history is read
@@ -48720,6 +48765,7 @@
   related_reqs:
   - REQ-1496
   - REQ-1490
+  since: 2026-08
 - id: REQ-1506
   status: proposed
   target: 2026-Q4
@@ -49743,10 +49789,15 @@
     are refused rather than truncated, because the name reaches a schema identifier. The count of environments
     an org may hold is a limit on its plan, enforced where an environment is created rather than only
     where a plan is downgraded, in the manner REQ-1513 already uses for the source ceiling. An environment
-    may carry an expiry chosen at creation, after which it is deleted with its schema and its store; prod
-    can carry none. Expiry is opt-in and its absence means permanent -- an environment is never reaped
-    for being idle, because a quiet pre-prod is not an abandoned one. An org_admin is told which environments
-    expire and when, and may extend or clear an expiry at any time before it fires.'
+    may carry an expiry chosen at creation, [SUPERSEDED by REQ-1918, 2026-10-03 -- An expired environment
+    that a pinned membership, an invitation or a branch still refers to is kept, not deleted (provisa/core/env_reaper.py:116-121);
+    note REQ-1918 is itself still proposed. Kept here for history; do not implement against it.] after
+    which it is deleted with its schema and its store [END SUPERSEDED BLOCK]; prod can carry none. Expiry
+    is opt-in and its absence means permanent -- [SUPERSEDED by REQ-1600, 2026-10-03 -- REQ-1600 (complete)
+    adds environments.idle_ttl_seconds: an environment carrying one IS reaped after that long unused (provisa/core/env_store.py:175-197).
+    Kept here for history; do not implement against it.] an environment is never reaped for being idle,
+    because a quiet pre-prod is not an abandoned one. [END SUPERSEDED BLOCK] An org_admin is told which
+    environments expire and when, and may extend or clear an expiry at any time before it fires.'
   use_case: A developer creates dev-1482-refund-fix for a two-week change and gives it a two-week expiry,
     and the org is not left holding forty dev schemas a year later.
   code:
@@ -49794,111 +49845,122 @@
     after it: rebuilding re-serializes every carried class from the control plane and commits the result,
     which is correct however far behind the tree had fallen. The tree holds the carried classes and nothing
     else; no binding, secret, grant or runtime table is ever written to it, so the REQ-1489 exclusion
-    becomes something a person can see in a file listing rather than only something a test asserts. The
-    repository is EMBEDDED -- a bare repository per environment, held by the deployment beside the org''s
-    own storage -- because REQ-294 makes the distribution airgap-capable and an external forge cannot
-    be a dependency of editing a model; the git implementation is therefore pure Python with no native
-    library to build. The repository is a normal one on disk, so an organization that wants it on a forge
-    adds a remote and pushes with ordinary git; Provisa configures no remote, holds no push credential
-    and performs no push, which keeps a credential out of the control plane and keeps Provisa out of a
-    business -- remote state, conflicts, rejected pushes -- it has no reason to enter. (Amended 2026-08-21,
-    one repository per ORGANIZATION:) The bare repository is per organization and an environment is a
-    BRANCH within it, not a repository of its own. The boundary is not a packaging convenience -- a repository
-    is exactly the set of refs that can branch from one another and merge back into one another, and that
-    set is the org: an environment is always created from another environment of the same org or a sha
-    of one, and always merges back into one, while a branch or merge across orgs is never a legal operation.
-    Two environments in separate repositories share no object graph, so a pull request between them cannot
-    be expressed at all, which would leave REQ-1504''s review-as-a-pull-request unbuildable. A single
-    deployment-wide repository with refs namespaced per org is refused for the opposite reason: git objects
-    are content-addressed and shared across refs, so one object store holding every tenant would let an
-    org fetch another org''s model objects by hash. Per-org is therefore the same isolation boundary as
-    the org schema of REQ-1488, drawn where git already draws one, and it is provisioned with the schema,
-    the role and the stores at org creation. Creating an environment from a sha is branching that sha
-    and loading its tree into the new environment''s schema; the branch is named for the environment.
-    (Amended 2026-08-21, three verbs and automatic commits:) Provisa''s git surface is BRANCH, BROWSE
-    and LOAD, and nothing else. A branch can be created, the repository''s branches and history can be
-    browsed, and any branch or sha can be loaded into an environment. Committing is not a verb: the write-through
-    above commits every change as it happens, which is what makes UNDO free rather than a feature -- undoing
-    is loading an earlier sha, and it works for any change ever made rather than for the ones somebody
-    remembered to mark. The cost is a history of generated messages, and a person who wants a legible
-    one squashes it afterwards with ordinary git, which is a better trade than asking everyone to name
-    their work at the moment they are least inclined to. Everything else -- pushing, fetching, merging,
-    rebasing, promotion, CI -- is done with ordinary git against this repository by whoever wants to do
-    it, and Provisa neither performs those operations nor polices them. It is a normal repository, so
-    normal tools work on it; a product that reimplemented them would be reimplementing git badly, and
-    one that restricted them would be preventing the workflows the organization already has. The consequence
-    is accepted deliberately: a branch may move underneath an environment, and that is not an error state
-    Provisa tracks. What protects the model is not control over the repository but REQ-1496 -- a tree
-    is not a model until a load validates it and applies it whole or not at all. (Amended 2026-08-21,
-    BROWSE is a REF browser and the library is pure Python:) The load sources are a ref in the org''s
-    repository -- a branch or a sha -- and a set of files the operator brings; there is no third one,
-    and in particular there is no server filesystem for a tenant to pick a path out of. The config file
-    on disk is the DEPLOYMENT''s boot seed (REQ-164), not a tenant load source, so a browser that showed
-    directories would be offering the operator a machine they do not own. BROWSE therefore lists branches,
-    their history and the commits within it, and selecting a commit is selecting what LOAD will apply
-    -- the tree is shown as the files at that commit, which REQ-1526 makes readable, but it is browsed
-    by ref and never by path. The implementation is dulwich: it is pure Python, so it satisfies the no-native-library
-    rule above and needs no git binary on the host, which GitPython would (it shells out, so an image
-    without git silently loses history) and pygit2 would not satisfy at all (libgit2 is a native build,
-    and REQ-294''s airgap distribution cannot carry a compiler). (Amended 2026-08-21, the repository exists
-    from the first moment there is a model, and its location is the org''s to choose:) The repository
-    is not created lazily by the first change. A deployment launched with --demo has a model before anyone
-    edits anything, and that model is committed as the demo repository''s first commit, so the demo opens
-    on a history rather than on an empty one and every verb -- BRANCH, BROWSE, LOAD -- works on it before
-    a single edit. A deployment launched without the demo has no model, and the act that produces one
-    -- creating the org, whose prod environment REQ-1487 gives it at creation -- creates the bare repository
-    beside it, in the same act and with the same failure semantics as its schema. There is no state in
-    which an environment holds a model and has no repository to project it into. WHERE the repository
-    lives is configurable the way every other developer tool makes it configurable: the default is embedded,
-    a bare repository the deployment holds (REQ-294''s airgap rule makes that the only default that can
-    always work), and an organization may instead point the projection at a local path it already keeps
-    or at a remote it already uses. Pointing at a remote makes Provisa push, which is the part REQ-1524
-    originally refused, so it is admitted only on the terms REQ-1525 already sets for every other credential:
-    the authentication is a REFERENCE resolved at use time (${env:VAR} through provisa/core/secrets.py),
-    never a literal in the control plane, and an org that supplies none gets the embedded default rather
-    than a broken push. A push that fails is a projection that did not land -- it marks the environment
-    drifted and never fails the change it observes, which is the same rule the local commit already obeys.
-    (Amended 2026-08-21, the local store is mandatory and the environment IS the working copy:) A configured
-    remote is a PUSH MIRROR and never the store. The embedded bare repository is always written first
-    and is always what BROWSE and LOAD read; nothing serving a page ever fetches from a remote. That is
-    precisely what makes the remote optional -- an org that configures none, or whose remote is unreachable,
-    loses a mirror and never loses a verb. There is NO per-developer git storage, no server-side clone
-    and no working directory allocated to a user. A developer''s working copy is the ENVIRONMENT, which
-    REQ-1488 already makes a schema: creating a branch is creating an environment, and that developer''s
-    undo history is that environment''s branch in the org''s one repository, written by the write-through
-    above. The quota on this is the plan''s environment ceiling (REQ-1488), already counted and already
-    enforced, rather than a second per-user storage quota to allocate, meter and garbage-collect. The
-    consequence is that the SaaS deployment and the single-tenant deployment differ in NOTHING here --
-    there is no mechanism in one that is absent from the other, no per-seat storage tier and no hosted-only
+    becomes something a person can see in a file listing rather than only something a test asserts. [SUPERSEDED
+    by REQ-1524 amendment, 2026-10-03 -- Its own 2026-08-21 amendment makes the repository per organization
+    with an environment a branch in it. Kept here for history; do not implement against it.] The repository
+    is EMBEDDED -- a bare repository per environment, held by the deployment beside the org''s own storage
+    [END SUPERSEDED BLOCK] -- because REQ-294 makes the distribution airgap-capable and an external forge
+    cannot be a dependency of editing a model; the git implementation is therefore pure Python with no
+    native library to build. The repository is a normal one on disk, so an organization that wants it
+    on a forge adds a remote and pushes with ordinary git; [SUPERSEDED by REQ-1527, 2026-10-03 -- The
+    org''s remote is stored on the orgs row and Provisa pushes to it after every commit (and on request,
+    REQ-1546). Kept here for history; do not implement against it.] Provisa configures no remote, holds
+    no push credential and performs no push, which keeps a credential out of the control plane and keeps
+    Provisa out of a business -- remote state, conflicts, rejected pushes -- it has no reason to enter.
+    [END SUPERSEDED BLOCK] (Amended 2026-08-21, one repository per ORGANIZATION:) The bare repository
+    is per organization and an environment is a BRANCH within it, not a repository of its own. The boundary
+    is not a packaging convenience -- a repository is exactly the set of refs that can branch from one
+    another and merge back into one another, and that set is the org: an environment is always created
+    from another environment of the same org or a sha of one, and always merges back into one, while a
+    branch or merge across orgs is never a legal operation. Two environments in separate repositories
+    share no object graph, so a pull request between them cannot be expressed at all, which would leave
+    REQ-1504''s review-as-a-pull-request unbuildable. A single deployment-wide repository with refs namespaced
+    per org is refused for the opposite reason: git objects are content-addressed and shared across refs,
+    so one object store holding every tenant would let an org fetch another org''s model objects by hash.
+    Per-org is therefore the same isolation boundary as the org schema of REQ-1488, drawn where git already
+    draws one, and it is provisioned with the schema, the role and the stores at org creation. Creating
+    an environment from a sha is branching that sha and loading its tree into the new environment''s schema;
+    the branch is named for the environment. (Amended 2026-08-21, three verbs and automatic commits:)
+    Provisa''s git surface is BRANCH, BROWSE and LOAD, and nothing else. A branch can be created, the
+    repository''s branches and history can be browsed, and any branch or sha can be loaded into an environment.
+    Committing is not a verb: the write-through above commits every change as it happens, which is what
+    makes UNDO free rather than a feature -- undoing is loading an earlier sha, and it works for any change
+    ever made rather than for the ones somebody remembered to mark. The cost is a history of generated
+    messages, and a person who wants a legible one squashes it afterwards with ordinary git, which is
+    a better trade than asking everyone to name their work at the moment they are least inclined to. [SUPERSEDED
+    by REQ-1546, 2026-10-03 -- Provisa performs push (REQ-1546), fetch and pull (REQ-1541) and merge (REQ-1490)
+    itself; all four are router endpoints. Kept here for history; do not implement against it.] Everything
+    else -- pushing, fetching, merging, rebasing, promotion, CI -- is done with ordinary git against this
+    repository by whoever wants to do it, and Provisa neither performs those operations nor polices them.
+    [END SUPERSEDED BLOCK] It is a normal repository, so normal tools work on it; a product that reimplemented
+    them would be reimplementing git badly, and one that restricted them would be preventing the workflows
+    the organization already has. The consequence is accepted deliberately: a branch may move underneath
+    an environment, and that is not an error state Provisa tracks. What protects the model is not control
+    over the repository but REQ-1496 -- a tree is not a model until a load validates it and applies it
+    whole or not at all. (Amended 2026-08-21, BROWSE is a REF browser and the library is pure Python:)
+    The load sources are a ref in the org''s repository -- a branch or a sha -- and a set of files the
+    operator brings; there is no third one, and in particular there is no server filesystem for a tenant
+    to pick a path out of. The config file on disk is the DEPLOYMENT''s boot seed (REQ-164), not a tenant
+    load source, so a browser that showed directories would be offering the operator a machine they do
+    not own. BROWSE therefore lists branches, their history and the commits within it, and selecting a
+    commit is selecting what LOAD will apply -- the tree is shown as the files at that commit, which REQ-1526
+    makes readable, but it is browsed by ref and never by path. The implementation is dulwich: it is pure
+    Python, so it satisfies the no-native-library rule above and needs no git binary on the host, which
+    GitPython would (it shells out, so an image without git silently loses history) and pygit2 would not
+    satisfy at all (libgit2 is a native build, and REQ-294''s airgap distribution cannot carry a compiler).
+    (Amended 2026-08-21, the repository exists from the first moment there is a model, and its location
+    is the org''s to choose:) The repository is not created lazily by the first change. A deployment launched
+    with --demo has a model before anyone edits anything, and that model is committed as the demo repository''s
+    first commit, so the demo opens on a history rather than on an empty one and every verb -- BRANCH,
+    BROWSE, LOAD -- works on it before a single edit. A deployment launched without the demo has no model,
+    and the act that produces one -- creating the org, whose prod environment REQ-1487 gives it at creation
+    -- creates the bare repository beside it, in the same act and with the same failure semantics as its
+    schema. There is no state in which an environment holds a model and has no repository to project it
+    into. WHERE the repository lives is configurable the way every other developer tool makes it configurable:
+    the default is embedded, a bare repository the deployment holds (REQ-294''s airgap rule makes that
+    the only default that can always work), and an organization may instead point the projection at a
+    local path it already keeps or at a remote it already uses. Pointing at a remote makes Provisa push,
+    which is the part REQ-1524 originally refused, so it is admitted only on the terms REQ-1525 already
+    sets for every other credential: the authentication is a REFERENCE resolved at use time (${env:VAR}
+    through provisa/core/secrets.py), never a literal in the control plane, and an org that supplies none
+    gets the embedded default rather than a broken push. [SUPERSEDED by REQ-1546, 2026-10-03 -- A failed
+    mirror is recorded as the branch''s sync state (ahead of the remote) and repaired by an explicit push;
+    the code logs a failed push and does not set drifted (provisa/core/env_ci.py:228-229). Kept here for
+    history; do not implement against it.] A push that fails is a projection that did not land -- it marks
+    the environment drifted and never fails the change it observes, which is the same rule the local commit
+    already obeys. [END SUPERSEDED BLOCK] (Amended 2026-08-21, the local store is mandatory and the environment
+    IS the working copy:) A configured remote is a PUSH MIRROR and never the store. The embedded bare
+    repository is always written first and is always what BROWSE and LOAD read; nothing serving a page
+    ever fetches from a remote. That is precisely what makes the remote optional -- an org that configures
+    none, or whose remote is unreachable, loses a mirror and never loses a verb. There is NO per-developer
+    git storage, no server-side clone and no working directory allocated to a user. A developer''s working
+    copy is the ENVIRONMENT, which REQ-1488 already makes a schema: creating a branch is creating an environment,
+    and that developer''s undo history is that environment''s branch in the org''s one repository, written
+    by the write-through above. The quota on this is the plan''s environment ceiling (REQ-1488), already
+    counted and already enforced, rather than a second per-user storage quota to allocate, meter and garbage-collect.
+    The consequence is that the SaaS deployment and the single-tenant deployment differ in NOTHING here
+    -- there is no mechanism in one that is absent from the other, no per-seat storage tier and no hosted-only
     path -- which is the reason to prefer this shape over server-side clones even before the operational
     cost is counted. Provisa''s git UI is the three verbs and no more: browse a ref, diff two refs per
     file, merge with a report. Rebase, cherry-pick, force-push and textual conflict resolution are absent
     by construction rather than by omission, because REQ-1490''s merge matches by OBJECT IDENTITY and
     therefore has no textual conflict to resolve; a product that reimplemented those verbs would be reimplementing
     git badly on top of a merge that does not need them. (Amended 2026-08-22, WHERE THE COMMIT IS TRIGGERED
-    AND WHEN THE REPOSITORY IS CREATED:) The write-through has ONE trigger: a strawberry SchemaExtension
-    registered on the admin GraphQL schema, which after every mutation that completed without errors projects
-    the environment''s schema and commits the result. It is one place rather than fifty resolvers because
-    a rule that must be remembered at fifty call sites is a rule that will be missed at the fifty-first,
-    and a mutation added later is projected without anyone adding a line for it. It projects the WHOLE
-    model rather than the rows a mutation appears to touch: a resolver does not report what it wrote,
-    and a change set inferred from what it seems to write would be a second, weaker model of the model.
-    Projection is deterministic (REQ-1526), so an unchanged model produces a byte- identical tree and
-    NO commit is written -- the filter is the tree comparison, which cannot be wrong about what changed.
-    It runs AFTER the operation and never before, because a commit records what the model is and not what
-    somebody asked it to become; an operation whose result carries errors is skipped for the same reason.
-    The organization''s repository is created by the act that produces the organization, in the same provisioning
-    path that writes prod''s registry row, and with the same failure semantics as the schema: creating
-    it raises, so an org whose repository could not be created never reaches ready. Prod''s FIRST commit
-    is written there too, once the org already holds its seeded model (and its demo model when --demo
-    asked for one), which is what makes the first user edit read as a diff instead of the whole model
-    appearing at once. The environment whose branch receives a commit is the one the request is bound
-    to (REQ-1487): an unbound request is the default org''s prod, which is the routing rule read back
-    rather than a default invented at the commit point. (Amended 2026-10-03, EVERY MODEL CHANGE COMMITS:)
-    Every change to the model commits to the environment''s branch. The write-through sits in the model
-    store''s connection (REQ-1919) and makes one commit per request, load, import, reaper run or boot.
-    Environment create, merge, deploy, undo and redo keep their own commits. A projection that fails marks
-    the environment drifted.'
+    AND WHEN THE REPOSITORY IS CREATED:) [SUPERSEDED by REQ-1919, 2026-10-03 -- The 2026-10-03 amendment
+    moves the write-through into the model store''s connection, one commit per request, load, import,
+    reaper run or boot. Kept here for history; do not implement against it.] The write-through has ONE
+    trigger: a strawberry SchemaExtension registered on the admin GraphQL schema, which after every mutation
+    that completed without errors projects the environment''s schema and commits the result. [END SUPERSEDED
+    BLOCK] It is one place rather than fifty resolvers because a rule that must be remembered at fifty
+    call sites is a rule that will be missed at the fifty-first, and a mutation added later is projected
+    without anyone adding a line for it. It projects the WHOLE model rather than the rows a mutation appears
+    to touch: a resolver does not report what it wrote, and a change set inferred from what it seems to
+    write would be a second, weaker model of the model. Projection is deterministic (REQ-1526), so an
+    unchanged model produces a byte- identical tree and NO commit is written -- the filter is the tree
+    comparison, which cannot be wrong about what changed. It runs AFTER the operation and never before,
+    because a commit records what the model is and not what somebody asked it to become; an operation
+    whose result carries errors is skipped for the same reason. The organization''s repository is created
+    by the act that produces the organization, in the same provisioning path that writes prod''s registry
+    row, and with the same failure semantics as the schema: creating it raises, so an org whose repository
+    could not be created never reaches ready. Prod''s FIRST commit is written there too, once the org
+    already holds its seeded model (and its demo model when --demo asked for one), which is what makes
+    the first user edit read as a diff instead of the whole model appearing at once. The environment whose
+    branch receives a commit is the one the request is bound to (REQ-1487): an unbound request is the
+    default org''s prod, which is the routing rule read back rather than a default invented at the commit
+    point. (Amended 2026-10-03, EVERY MODEL CHANGE COMMITS:) Every change to the model commits to the
+    environment''s branch. The write-through sits in the model store''s connection (REQ-1919) and makes
+    one commit per request, load, import, reaper run or boot. Environment create, merge, deploy, undo
+    and redo keep their own commits. A projection that fails marks the environment drifted.'
   use_case: An org_admin asks what changed in prod last Tuesday and who changed it, and reads it from
     the environment's history; the same organization reviews a dev-to-prod promotion as a pull request
     in its own GitHub, because the builds are already there.
@@ -50132,8 +50194,7 @@
   - tests/unit/test_env_files.py
   - tests/integration/test_env_project.py
 - id: REQ-1527
-  status: in-progress
-  target: 2026-Q4
+  status: complete
   group: 13. Multi-Tenancy & Organizations
   category: Environments
   priority: SHOULD
@@ -50196,14 +50257,16 @@
     '
   code:
   - provisa/core/env_ci.py
-  - provisa/core/env_copy.py
   - provisa/core/env_repo.py
+  - provisa/core/env_copy.py
   - provisa/core/schema_admin.py
   - provisa/api/admin/environments_router.py
+  - provisa-ui/src/components/admin/RepoIntegrationPanel.tsx
   tests:
   - tests/unit/test_env_ci.py
-  - tests/unit/test_env_merge_request_endpoints.py
   - tests/integration/test_env_ci.py
+  - tests/unit/test_env_merge_request_endpoints.py
+  - provisa-ui/src/__tests__/RepoIntegrationPanel.test.tsx
   related_reqs:
   - REQ-1490
   - REQ-1504
@@ -50212,6 +50275,7 @@
   - REQ-294
   - REQ-125
   - REQ-1525
+  since: 2026-08
 - id: REQ-1528
   status: proposed
   target: 2026-Q4
@@ -50253,36 +50317,42 @@
     is no fourth way in, so there is nothing to reconcile against. It also means privilege escalation
     and change proposal are THE SAME ACT rather than two: the thing a developer does to get authority
     is the thing that scopes it, records it, and guarantees a review before it reaches anywhere protected.
-    (Amended 2026-08-21, why the escalation is worthless:) The reason creating an environment can be left
-    open to any member is not that the authority is small -- it is org_admin''s model-editing authority
-    in full -- but that the authority is USELESS to an attacker. An environment arrives with its bindings
-    stripped (REQ-1491) and its secrets not copied at all (REQ-1489 classes org_secrets NEVER_SENSITIVE),
-    so to make the model reach any data at all the creator must reconstruct the source URIs and supply
-    the credentials themselves. Someone who can already do that gained nothing by creating the environment;
-    someone who cannot has escalated into a model that queries nothing. The privilege that matters --
-    reaching the organization''s data -- is held by the credential and not by the rights, and the credential
-    is the one thing the act does not hand over. That is what makes this path safe to leave open rather
-    than merely audited. (Amended 2026-08-21, and this is what makes the rule usable rather than merely
-    safe:) an org_admin ordinarily does NOT grant model-editing rights on a base environment (REQ-1529)
-    -- not even on dev. Membership in a base buys a developer reading and querying it; it does not buy
-    them editing it. The rights to change a model are obtained the one way this requirement admits, by
-    branching the base, and they exist only inside the branch the developer owns. Nobody edits dev directly,
-    so dev is never in a state nobody proposed; every change to it arrives through a branch and a merge
-    request (REQ-1504), which is the same path production changes take and therefore the same audit trail.
-    The arrangement costs the developer one click -- the branch needs no credentials, because it inherits
-    the base''s -- and it costs the org nothing, because an org_admin who grants no editing rights anywhere
-    has not blocked any work; they have routed all of it through review. (Amended 2026-08-21, WHAT THE
-    GRANT ACTUALLY IS:) the authority branching confers is the seeded ``developer`` role, not org_admin''s
-    rights less a withheld list. That is a smaller grant reached by a shorter argument: developer already
-    exists, already means "may build the model and query it", and already excludes the surfaces an org_admin
-    keeps -- registering sources and tables, masking, column grants, view governance, access config and
-    org settings. The withheld-list construction had to name every right that must not travel, and would
-    have silently handed over any right added to org_admin afterwards; naming the role instead means a
-    right reaches a branch owner only because somebody decided a developer should hold it. It also answers,
-    with no new authorization axis, the worry that a branch owner can change anything: they can change
-    what a developer may change. And it bounds the escalation argument above under REQ-1529, where a branch
-    does reach its base''s data through the inherited binding -- what its owner may do to that data is
-    a developer''s write of the MODEL. (Amended 2026-08-22, THE GRANT CARRIES NO DATA RIGHT, REQ-1539:)
+    (Amended 2026-08-21, why the escalation is worthless:) [SUPERSEDED by REQ-1573, 2026-10-03 -- Creation
+    is not open to any member: it needs the environment_management capability (branch) or org_admin (base)
+    -- environments_router.py:446-450. The authority is also no longer org_admin''s in full (own later
+    amendments). Kept here for history; do not implement against it.] The reason creating an environment
+    can be left open to any member is not that the authority is small -- it is org_admin''s model-editing
+    authority in full -- but that the authority is USELESS to an attacker. [END SUPERSEDED BLOCK] An environment
+    arrives with its bindings stripped (REQ-1491) and its secrets not copied at all (REQ-1489 classes
+    org_secrets NEVER_SENSITIVE), so to make the model reach any data at all the creator must reconstruct
+    the source URIs and supply the credentials themselves. Someone who can already do that gained nothing
+    by creating the environment; someone who cannot has escalated into a model that queries nothing. The
+    privilege that matters -- reaching the organization''s data -- is held by the credential and not by
+    the rights, and the credential is the one thing the act does not hand over. That is what makes this
+    path safe to leave open rather than merely audited. (Amended 2026-08-21, and this is what makes the
+    rule usable rather than merely safe:) an org_admin ordinarily does NOT grant model-editing rights
+    on a base environment (REQ-1529) -- not even on dev. Membership in a base buys a developer reading
+    and querying it; it does not buy them editing it. The rights to change a model are obtained the one
+    way this requirement admits, by branching the base, and they exist only inside the branch the developer
+    owns. Nobody edits dev directly, so dev is never in a state nobody proposed; every change to it arrives
+    through a branch and a merge request (REQ-1504), which is the same path production changes take and
+    therefore the same audit trail. The arrangement costs the developer one click -- the branch needs
+    no credentials, because it inherits the base''s -- and it costs the org nothing, because an org_admin
+    who grants no editing rights anywhere has not blocked any work; they have routed all of it through
+    review. (Amended 2026-08-21, WHAT THE GRANT ACTUALLY IS:) the authority branching confers is the seeded
+    ``developer`` role, not org_admin''s rights less a withheld list. That is a smaller grant reached
+    by a shorter argument: developer already exists, already means "may build the model and query it",
+    and already excludes the surfaces an org_admin keeps -- registering sources and tables, masking, column
+    grants, view governance, access config and org settings. The withheld-list construction had to name
+    every right that must not travel, and would have silently handed over any right added to org_admin
+    afterwards; naming the role instead means a right reaches a branch owner only because somebody decided
+    a developer should hold it. It also answers, with no new authorization axis, the worry that a branch
+    owner can change anything: they can change what a developer may change. And it bounds the escalation
+    argument above under REQ-1529, where a branch does reach its base''s data through the inherited binding
+    -- [SUPERSEDED by REQ-1539, 2026-10-03 -- Sits in the amendment that defines the grant as the full
+    developer role; REQ-1539 removed write, full_results and usage from it (provisa/core/env_authority.py:74-77).
+    Kept here for history; do not implement against it.] what its owner may do to that data is a developer''s
+    write of the MODEL. [END SUPERSEDED BLOCK] (Amended 2026-08-22, THE GRANT CARRIES NO DATA RIGHT, REQ-1539:)
     the authority is the seeded developer role LESS write, full_results and usage. Creating an environment
     is a model-authoring act and confers model-authoring rights; it confers nothing over data, which is
     the roles'' answer and stays the roles'' answer. This is where the escalation REQ-1492 worried about
@@ -50391,17 +50461,26 @@
     definition, because the credentials were authored once, by the person who should author them, on the
     base the branch came from. It also removes the need for a separate profile object -- the base environment
     IS the profile, which is one concept instead of two and one that already has members, grants and an
-    audit trail. WHAT A BRANCH MAY DO THROUGH AN INHERITED BINDING is a property the org_admin sets on
-    the BASE, not on the branch, and it defaults to READ-ONLY. A base bound to a dev database is ordinarily
-    marked branch-writable, so branching dev gives a developer somewhere to write; a base bound to production
-    is ordinarily left read-only, so branching prod gives a developer prod-shaped reads and no way to
-    damage prod. The default is read-only because the case that gets it wrong is the case that matters:
-    an org_admin who does nothing has branches that cannot write anywhere. A branch never widens what
-    it inherited -- it cannot mark itself writable, rebind to another target, or branch a base it could
-    not read -- so a chain of branches converges on the reach of the base at its root and never exceeds
-    it. Branching a branch is branching that base. AND THE GRANTS TRAVEL THE SAME WAY: a member may branch
-    only a base they are a member of, and their branch carries no membership or grant of its own (REQ-1489
-    classes those NEVER_SENSITIVE) beyond the environment authority its creator holds by owning it (REQ-1528).
+    audit trail. [SUPERSEDED by REQ-1539, 2026-10-03 -- REQ-1539 removed branch_writable; the requirement''s
+    own 2026-08-22 amendment withdraws the branch policy. Kept here for history; do not implement against
+    it.] WHAT A BRANCH MAY DO THROUGH AN INHERITED BINDING is a property the org_admin sets on the BASE,
+    not on the branch, and it defaults to READ-ONLY. [END SUPERSEDED BLOCK] [SUPERSEDED by REQ-1539, 2026-10-03
+    -- There is no branch-writable marking; data rights are each environment''s own roles. Kept here for
+    history; do not implement against it.] A base bound to a dev database is ordinarily marked branch-writable,
+    so branching dev gives a developer somewhere to write; a base bound to production is ordinarily left
+    read-only, so branching prod gives a developer prod-shaped reads and no way to damage prod. [END SUPERSEDED
+    BLOCK] [SUPERSEDED by REQ-1539, 2026-10-03 -- No read-only default exists once the flag is removed.
+    Kept here for history; do not implement against it.] The default is read-only because the case that
+    gets it wrong is the case that matters: an org_admin who does nothing has branches that cannot write
+    anywhere. [END SUPERSEDED BLOCK] A branch never widens what it inherited -- [SUPERSEDED by REQ-1539,
+    2026-10-03 -- There is no writable marking for a branch to set. Kept here for history; do not implement
+    against it.] it cannot mark itself writable [END SUPERSEDED BLOCK], rebind to another target, or branch
+    a base it could not read -- so a chain of branches converges on the reach of the base at its root
+    and never exceeds it. Branching a branch is branching that base. AND THE GRANTS TRAVEL THE SAME WAY:
+    a member may branch only a base they are a member of, and [SUPERSEDED by REQ-1539, 2026-10-03 -- user_role_assignments
+    is CARRIED and seeded into a new environment at creation. Kept here for history; do not implement
+    against it.] their branch carries no membership or grant of its own (REQ-1489 classes those NEVER_SENSITIVE)
+    [END SUPERSEDED BLOCK] beyond the environment authority its creator holds by owning it (REQ-1528).
     A base is deletable only when no branch still inherits from it, because deleting it would leave those
     branches pointing at a binding that no longer exists. THE SECRETS BELONG TO THE BASE, TOO. An org_admin
     authoring a base environment authors the secrets that base''s bindings need -- the password behind
@@ -50425,8 +50504,10 @@
     is no second, unreviewed channel by which access rules change. And nothing has to be re-applied on
     the way back: a merge carries governance in the same act it carries the model, so a branch can never
     land a table that arrives ungoverned because somebody forgot to copy the policy that covered it. What
-    is deliberately NOT retained is the identity behind the governance -- user_directory and user_role_assignments
-    are NEVER_SENSITIVE -- so a branch holds the org''s rules without holding the org''s people. (Amended
+    is deliberately NOT retained is the identity behind the governance -- [SUPERSEDED by REQ-1539, 2026-10-03
+    -- Only user_directory and org_secrets remain NEVER_SENSITIVE; user_role_assignments is carried. Kept
+    here for history; do not implement against it.] user_directory and user_role_assignments are NEVER_SENSITIVE
+    [END SUPERSEDED BLOCK] -- so a branch holds the org''s rules without holding the org''s people. (Amended
     2026-08-21, A LOGICAL VIEW IS PORTABLE AND ITS HISTORY IS PROVENANCE:) every view Provisa holds is
     a logical object -- a definition in the model rather than a CREATE VIEW executed against some source
     -- and two properties follow that a physical view cannot have. It is portable: a view travels between
@@ -50459,8 +50540,10 @@
     seam between the sources rows and the runtime that reads them, and each resolved source records WHICH
     environment supplied its binding; a source no environment in the chain bound is left exactly as its
     row has it, unbound, because an empty host is not an absent one. The write check then reads that record
-    on the ONE governed pipeline every raw-SQL surface funnels through, and refuses an INSERT, UPDATE,
-    DELETE or MERGE whose target is reached through a binding its supplier does not admit writes from
+    on the ONE governed pipeline every raw-SQL surface funnels through, and [SUPERSEDED by REQ-1539, 2026-10-03
+    -- The supplier-admits-writes check was removed; only the unbound and unregistered refusals remain.
+    Kept here for history; do not implement against it.] refuses an INSERT, UPDATE, DELETE or MERGE whose
+    target is reached through a binding its supplier does not admit writes from [END SUPERSEDED BLOCK]
     -- as it refuses one whose target is unbound, or whose target is not a registered table and so cannot
     be attributed to a binding at all.
 
@@ -50724,24 +50807,28 @@
     own, ``capabilities.require_domain(info, domain_id)``, because an act can be permitted by more than
     one right — registering a view is allowed to a holder of create_view OR query_development — while
     the question of which domains it may touch has a single answer regardless of which right carried the
-    caller in; ``require_capability``''s domain argument now calls it, so the three exemptions (dev/no-auth,
-    the platform bypass, single-domain mode) are written once. The scope it reads is ``rights.domain_access_for_claims``,
-    the companion of capabilities_for_claims, which resolves claims to ``roles.domain_access`` and never
-    to the claim''s ``:domain`` suffix — the previous implementation read the suffix, which contradicted
-    REQ-1530. ``*`` is interpreted in one place only, ``env_authority.domains_within``. THE CAPABILITY
-    EACH UNGATED MUTATION NOW NAMES: create_domain and delete_domain take org_settings (the org''s domain
-    vocabulary is the org_admin''s; a member scoped to sales must not answer their own scoping by minting
-    a domain, and there is no domain to be a member of yet, so membership does not apply); create_role
-    and delete_role take user_management (a role carries both capabilities and domain_access, so minting
-    one is how a member would widen their own scope); upsert_rls_rule and delete_rls_rule take masking_config
-    plus the domain the rule lands in — named directly for a domain-level rule, looked up from the table
-    for a table-level one; delete_table takes table_registration plus the domain that holds the table,
-    looked up from the id; update_source_allowed_domains takes source_registration and is NOT gated by
-    membership in the domains being listed, because widening the list is granting reach rather than exercising
-    it. A fact and a dim need no gate of their own: both lower to register_table, which is gated. THE
-    VIEW''S TWO HALVES are both applied at the free-hand path in register_table — the domain registered
-    into, and every table the SQL reads, resolved through ``domain_guard.view_read_domains``; CTE names
-    are excluded because a CTE is defined in the statement rather than read from the model, and unparseable
+    caller in; ``require_capability``''s domain argument now calls it, [SUPERSEDED by REQ-1327, 2026-10-03
+    -- platform_admin holds zero data capabilities, so there is no platform bypass: require_domain has
+    two exemptions (provisa/api/admin/capabilities.py:145-148) and tests/unit/test_domain_guard.py:94-98
+    asserts the platform administrator is scoped like anyone else. Kept here for history; do not implement
+    against it.] so the three exemptions (dev/no-auth, the platform bypass, single-domain mode) are written
+    once [END SUPERSEDED BLOCK]. The scope it reads is ``rights.domain_access_for_claims``, the companion
+    of capabilities_for_claims, which resolves claims to ``roles.domain_access`` and never to the claim''s
+    ``:domain`` suffix — the previous implementation read the suffix, which contradicted REQ-1530. ``*``
+    is interpreted in one place only, ``env_authority.domains_within``. THE CAPABILITY EACH UNGATED MUTATION
+    NOW NAMES: create_domain and delete_domain take org_settings (the org''s domain vocabulary is the
+    org_admin''s; a member scoped to sales must not answer their own scoping by minting a domain, and
+    there is no domain to be a member of yet, so membership does not apply); create_role and delete_role
+    take user_management (a role carries both capabilities and domain_access, so minting one is how a
+    member would widen their own scope); upsert_rls_rule and delete_rls_rule take masking_config plus
+    the domain the rule lands in — named directly for a domain-level rule, looked up from the table for
+    a table-level one; delete_table takes table_registration plus the domain that holds the table, looked
+    up from the id; update_source_allowed_domains takes source_registration and is NOT gated by membership
+    in the domains being listed, because widening the list is granting reach rather than exercising it.
+    A fact and a dim need no gate of their own: both lower to register_table, which is gated. THE VIEW''S
+    TWO HALVES are both applied at the free-hand path in register_table — the domain registered into,
+    and every table the SQL reads, resolved through ``domain_guard.view_read_domains``; CTE names are
+    excluded because a CTE is defined in the statement rather than read from the model, and unparseable
     SQL raises rather than returning an empty set. THE RELATIONSHIP asks about the SOURCE table''s domain,
     and when the target lives in another domain the row is written with ``needs_review`` re-asserted AFTER
     the upsert — rel_repo''s upsert clears that flag on conflict because REQ-020 treats a save as an explicit
@@ -50887,28 +50974,39 @@
   type: behavioral
   description: 'THE ORG''S ENVIRONMENTS MUST BE ADMINISTRABLE FROM THE ADMIN UI, AND ITS REPOSITORY MUST
     BE READABLE THERE. Everything REQ-1487..REQ-1531 built was API-only. This adds one admin page at ``/admin/environments``,
-    gated on org_settings like every other org-scoped section, with four panels. ENVIRONMENTS: the list
-    with its derived facts -- drifted, protected, branch_writable, what it was branched from -- plus create
-    (naming what to branch from, and whether it is a BASE per REQ-1529), delete, protect, and the branch-write
-    policy. Delete is withheld for prod rather than offered and refused. MERGE: a modal naming the source,
-    whether removals are carried, and a PREVIEW that is a separate act from the merge it describes --
-    the preview endpoint is a GET so a CI runner cannot apply by accident (REQ-1527). Against a protected
-    target the button says Propose, because REQ-1504 turns that merge into a request rather than refusing
-    it, and the message field appears with it. REQUESTS: the open proposals with the report each was filed
-    with -- that report is what an approver agrees to, so it is shown rather than recomputed -- and approve/reject
-    with a note, offered only on a request that is still open and only to somebody who may decide it.
-    A state of ``stale`` is the server''s derivation at read time, never a column. REPOSITORY (REQ-1524
-    BROWSE): branches, a branch''s commits, the paths at a ref and one file''s text, with an optional
-    read-only diff against a second ref. THE BRANCH LIST IS NOT THE ENVIRONMENT LIST -- a ref outlives
-    the environment that wrote it, which is the whole reason an earlier state is loadable -- and a commit
-    sha is a ref like any other. Paths and text are two calls because a single call carrying every definition
-    would download the org''s model to draw a sidebar, and the file list is held together with the ref
-    it was read at so that a ref change never asks for the previous ref''s path. The diff withholds the
-    editable side and the revert arrows: both sides are history, and an edit there would have nowhere
-    to go -- changing the model is the model surface, and undo is loading an earlier sha. INTEGRATION
-    (REQ-1527): the remote and the status webhook, in plain text inputs rather than password ones, because
-    what belongs in them is a secret REFERENCE resolved at push time and masking one would imply the opposite.
-    A cleared field is sent as null -- the org saying it no longer mirrors anywhere.
+    [SUPERSEDED by REQ-1573, 2026-10-03 -- The page and its nav entry are gated on environment_management
+    (provisa-ui/src/components/navGroups.ts:131-137, provisa-ui/src/App.tsx:548). Kept here for history;
+    do not implement against it.] gated on org_settings like every other org-scoped section [END SUPERSEDED
+    BLOCK], with four panels. ENVIRONMENTS: the list with its derived facts -- [SUPERSEDED by REQ-1539,
+    2026-10-03 -- branch_writable is removed: the column, the policy endpoint and the switch. Kept here
+    for history; do not implement against it.] drifted, protected, branch_writable, what it was branched
+    from [END SUPERSEDED BLOCK] -- plus create (naming what to branch from, [SUPERSEDED by REQ-1538, 2026-10-03
+    -- The choice is presented as ''Inherit connections'', off by default (wire field inherit_connections).
+    Kept here for history; do not implement against it.] and whether it is a BASE per REQ-1529 [END SUPERSEDED
+    BLOCK]), [SUPERSEDED by REQ-1539, 2026-10-03 -- There is no branch-write policy; data rights are the
+    roles''. Kept here for history; do not implement against it.] delete, protect, and the branch-write
+    policy [END SUPERSEDED BLOCK]. Delete is withheld for prod rather than offered and refused. MERGE:
+    a modal naming the source, whether removals are carried, and a PREVIEW that is a separate act from
+    the merge it describes -- the preview endpoint is a GET so a CI runner cannot apply by accident (REQ-1527).
+    Against a protected target the button says Propose, because REQ-1504 turns that merge into a request
+    rather than refusing it, [SUPERSEDED by REQ-1550, 2026-10-03 -- The comment is required on every merge,
+    so the field is always shown, not only for a protected target. Kept here for history; do not implement
+    against it.] and the message field appears with it [END SUPERSEDED BLOCK]. REQUESTS: the open proposals
+    with the report each was filed with -- that report is what an approver agrees to, so it is shown rather
+    than recomputed -- and approve/reject with a note, offered only on a request that is still open and
+    only to somebody who may decide it. A state of ``stale`` is the server''s derivation at read time,
+    never a column. REPOSITORY (REQ-1524 BROWSE): branches, a branch''s commits, the paths at a ref and
+    one file''s text, with an optional read-only diff against a second ref. THE BRANCH LIST IS NOT THE
+    ENVIRONMENT LIST -- a ref outlives the environment that wrote it, which is the whole reason an earlier
+    state is loadable -- and a commit sha is a ref like any other. Paths and text are two calls because
+    a single call carrying every definition would download the org''s model to draw a sidebar, and the
+    file list is held together with the ref it was read at so that a ref change never asks for the previous
+    ref''s path. The diff withholds the editable side and the revert arrows: both sides are history, and
+    an edit there would have nowhere to go -- changing the model is the model surface, and undo is loading
+    an earlier sha. INTEGRATION (REQ-1527): the remote and the status webhook, in plain text inputs rather
+    than password ones, because what belongs in them is a secret REFERENCE resolved at push time and masking
+    one would imply the opposite. A cleared field is sent as null -- the org saying it no longer mirrors
+    anywhere.
 
     '
   use_case: An org_admin opens Environments, branches `dev` from prod, merges it back with a preview first,
@@ -50974,8 +51072,7 @@
   category: Environments
   priority: MUST
   type: behavioral
-  status: proposed
-  target: 2026-Q4
+  status: complete
   description: 'AN ENVIRONMENT BEYOND prod MUST BE REFUSED ON A CONTROL PLANE THAT HAS NO SCHEMAS, AND
     NO SCHEMA DDL MAY BE EMITTED THERE. REQ-1488 makes an environment physically a schema, which is what
     keeps one environment''s rows out of another''s read. SQLite -- the store the desktop tier ran before
@@ -51012,18 +51109,21 @@
 
     And the original failure is what reaches the caller
 
-
     '
   code:
   - provisa/core/environments.py
   - provisa/core/org_provisioning.py
   - provisa/api/admin/environments_router.py
-  - tests/unit/test_org_isolation.py
+  - provisa/core/env_create.py
   related_reqs:
   - REQ-701
   - REQ-1487
   - REQ-1488
   - REQ-1523
+  since: 2026-08
+  tests:
+  - tests/unit/test_org_isolation.py
+  - tests/integration/test_control_plane_env_capability.py
 - id: REQ-1535
   group: 11. Platform, Infrastructure & Delivery
   category: Control Plane
@@ -51371,8 +51471,7 @@
   related_reqs:
   - REQ-1337
 - id: REQ-1541
-  status: proposed
-  target: 2026-Q4
+  status: complete
   group: 13. Multi-Tenancy & Organizations
   category: Environments
   priority: MUST
@@ -51406,7 +51505,9 @@
 
 
     Then ``origin/main`` names the commit the remote holds, the org''s own environment branches are unchanged,
-    and a deploy of ``origin/main`` applies that commit'
+    and a deploy of ``origin/main`` applies that commit
+
+    '
   code:
   - provisa/core/env_ci.py
   - provisa/core/env_repo.py
@@ -51414,11 +51515,13 @@
   - provisa/cli.py
   tests:
   - tests/unit/test_env_remote_tracking.py
+  - tests/unit/test_cli_env_deploy.py
   related_reqs:
   - REQ-1527
   - REQ-1496
   - REQ-125
   - REQ-1524
+  since: 2026-08
 - id: REQ-1542
   status: proposed
   target: 2026-Q4
@@ -51539,8 +51642,7 @@
   - REQ-1496
   - REQ-1544
 - id: REQ-1544
-  status: proposed
-  target: 2026-Q4
+  status: complete
   group: 13. Multi-Tenancy & Organizations
   category: Environments
   priority: SHOULD
@@ -51567,9 +51669,12 @@
     When a deploy applies a delta that touches no source
 
 
-    Then the environment serves the deployed model immediately and its source pools were not rebuilt'
+    Then the environment serves the deployed model immediately and its source pools were not rebuilt
+
+    '
   code:
   - provisa/core/env_deploy.py
+  - provisa/core/env_copy.py
   - provisa/api/admin/environments_router.py
   - provisa/api/org_runtime.py
   tests:
@@ -51578,9 +51683,9 @@
   - REQ-1543
   - REQ-1496
   - REQ-1488
+  since: 2026-08
 - id: REQ-1545
-  status: proposed
-  target: 2026-Q4
+  status: complete
   group: 13. Multi-Tenancy & Organizations
   category: Environments
   priority: SHOULD
@@ -51607,17 +51712,22 @@
 
 
     Then the target''s branch gains exactly one commit whose message names the source and its sha, and
-    the source''s branch is unchanged'
+    the source''s branch is unchanged
+
+    '
   code:
   - provisa/api/admin/environments_router.py
   - provisa/core/env_repo.py
+  - provisa/core/env_store.py
   tests:
-  - tests/unit/test_env_undo_redo.py
+  - tests/unit/test_env_merge_request_endpoints.py
+  - tests/integration/test_env_repo_write_through.py
   related_reqs:
   - REQ-1490
   - REQ-1524
   - REQ-1543
   - REQ-1504
+  since: 2026-08
 - id: REQ-1546
   status: proposed
   target: 2026-Q4
@@ -51732,8 +51842,7 @@
   - REQ-1543
   - REQ-1547
 - id: REQ-1549
-  status: proposed
-  target: 2026-Q4
+  status: complete
   group: 13. Multi-Tenancy & Organizations
   category: Environments
   priority: SHOULD
@@ -51761,21 +51870,28 @@
 
 
     Then staging gains one commit holding what the source was showing, and neither the local nor the remote
-    branch remains'
+    branch remains
+
+    '
   code:
   - provisa/api/admin/environments_router.py
   - provisa/core/env_approvals.py
+  - provisa/core/env_retire.py
+  - provisa/core/env_store.py
   - provisa/core/schema_admin.py
+  - provisa-ui/src/components/admin/EnvironmentsTab.tsx
   tests:
   - tests/unit/test_env_merge_request_endpoints.py
+  - tests/unit/test_env_review_request.py
+  - provisa-ui/src/__tests__/EnvironmentsTab.test.tsx
   related_reqs:
   - REQ-1542
   - REQ-1545
   - REQ-1546
   - REQ-1543
+  since: 2026-08
 - id: REQ-1550
-  status: proposed
-  target: 2026-Q4
+  status: complete
   group: 13. Multi-Tenancy & Organizations
   category: Environments
   priority: SHOULD
@@ -51800,15 +51916,23 @@
     When it is submitted
 
 
-    Then it is refused with environments.message_required, and no rows and no commit are written'
+    Then it is refused with environments.message_required, and no rows and no commit are written
+
+    '
   code:
   - provisa/api/admin/environments_router.py
+  - provisa/core/env_approvals.py
+  - provisa-ui/src/components/admin/EnvironmentsTab.tsx
+  - provisa-ui/src/api/environments.ts
   tests:
   - tests/unit/test_env_merge_request_endpoints.py
+  - tests/unit/test_env_review_request.py
+  - provisa-ui/src/__tests__/EnvironmentsTab.test.tsx
   related_reqs:
   - REQ-1545
   - REQ-1549
   - REQ-1504
+  since: 2026-08
 - id: REQ-1551
   status: proposed
   target: 2026-Q4
@@ -51848,8 +51972,7 @@
   - REQ-1549
   - REQ-1537
 - id: REQ-1552
-  status: proposed
-  target: 2026-Q4
+  status: complete
   group: 13. Multi-Tenancy & Organizations
   category: Environments
   priority: SHOULD
@@ -51871,29 +51994,40 @@
     and stays behind the org_admin read (REQ-1525).'
   use_case: A member changes the model in a branch environment and sees, without leaving the screen, that
     the change is theirs alone and has reached no remote.
-  scenario: 'Given a member editing the model in an environment whose org has no git remote
-
+  scenario: 'Given a member editing the model in an environment whose branch is ahead of the remote
 
     When the environment switcher is read
 
+    Then it says how far the branch stands from the remote and offers undo and redo for that environment
+    beside its name
 
-    Then it says the model is mirrored nowhere, and offers the undo for that environment beside its name'
+    And the sync read answers a member who is not an org_admin and carries no remote URL
+
+    Given an org that has no git remote
+
+    When the environments page is opened
+
+    Then it says once, above the tabs, that the model is mirrored nowhere, and the switcher does not
+
+    '
   code:
   - provisa/api/admin/environments_router.py
+  - provisa/core/env_repo.py
   - provisa-ui/src/components/EnvSwitcher.tsx
   - provisa-ui/src/components/admin/EnvironmentsTab.tsx
+  - provisa-ui/src/api/environments.ts
   tests:
+  - tests/unit/test_env_sync.py
   - provisa-ui/src/__tests__/EnvSwitcher.test.tsx
   - provisa-ui/src/__tests__/EnvironmentsTab.test.tsx
-  - tests/unit/test_env_sync.py
   related_reqs:
   - REQ-1543
   - REQ-1546
   - REQ-1525
   - REQ-1528
+  since: 2026-08
 - id: REQ-1553
-  status: proposed
-  target: 2026-Q4
+  status: complete
   group: 13. Multi-Tenancy & Organizations
   category: Environments
   priority: SHOULD
@@ -51914,10 +52048,14 @@
     When its environments are listed
 
 
-    Then the environment reports that it cannot step back, and the switcher withholds the undo'
+    Then the environment reports that it cannot step back, and the switcher withholds the undo
+
+    '
   code:
   - provisa/api/admin/environments_router.py
+  - provisa/core/env_repo.py
   - provisa-ui/src/components/EnvSwitcher.tsx
+  - provisa-ui/src/api/environments.ts
   tests:
   - tests/unit/test_env_undo_redo.py
   - provisa-ui/src/__tests__/EnvSwitcher.test.tsx
@@ -51925,6 +52063,7 @@
   - REQ-1543
   - REQ-1545
   - REQ-1552
+  since: 2026-08
 - id: REQ-1556
   status: proposed
   target: 2026-Q4
@@ -52022,8 +52161,7 @@
   - REQ-1526
   - REQ-1543
 - id: REQ-1554
-  status: proposed
-  target: 2026-Q4
+  status: complete
   group: 13. Multi-Tenancy & Organizations
   category: Environments
   priority: MUST
@@ -52061,16 +52199,21 @@
 
 
     Then the branch is reported as one the org holds and is not presented as an environment, and no environment
-    is invented for it'
+    is invented for it
+
+    '
   code:
   - provisa/core/env_repo.py
   - provisa/core/env_store.py
+  - provisa/core/env_create.py
   - provisa/api/admin/environments_router.py
   - provisa/cli.py
   - provisa-ui/src/components/EnvSwitcher.tsx
   tests:
   - tests/unit/test_env_sync.py
   - tests/unit/test_cli_env_deploy.py
+  - tests/unit/test_env_create_baseline.py
+  - provisa-ui/src/__tests__/EnvSwitcher.test.tsx
   related_reqs:
   - REQ-1487
   - REQ-1488
@@ -52078,6 +52221,7 @@
   - REQ-1496
   - REQ-1502
   - REQ-1548
+  since: 2026-08
 - id: REQ-1557
   status: proposed
   target: 2026-Q4
