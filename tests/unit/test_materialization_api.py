@@ -842,7 +842,9 @@ class TestMatGqlRemoteTable:
                 materialize_store_dsn=lambda: "sqlite:///x.db",
                 cache_catalog=lambda: "cat",
             ),
-            config=SimpleNamespace(graphql_remote=SimpleNamespace(max_list_items=100)),
+            config=SimpleNamespace(
+                graphql_remote=SimpleNamespace(max_list_items=100, max_rows=10000)
+            ),
         )
         cache_rewrites: dict = {}
         values_cte_entries: dict = {}
@@ -872,7 +874,9 @@ class TestMatGqlRemoteTable:
                 cache_catalog=lambda: "cat",
                 isolated_sync=_fake_isolated_sync,
             ),
-            config=SimpleNamespace(graphql_remote=SimpleNamespace(max_list_items=100)),
+            config=SimpleNamespace(
+                graphql_remote=SimpleNamespace(max_list_items=100, max_rows=10000)
+            ),
         )
         cache_rewrites: dict = {}
         values_cte_entries: dict = {}
@@ -902,7 +906,9 @@ class TestMatGqlRemoteTable:
                 cache_catalog=lambda: "cat",
                 isolated_sync=_fake_isolated_sync,
             ),
-            config=SimpleNamespace(graphql_remote=SimpleNamespace(max_list_items=100)),
+            config=SimpleNamespace(
+                graphql_remote=SimpleNamespace(max_list_items=100, max_rows=10000)
+            ),
         )
         cache_rewrites: dict = {}
         values_cte_entries: dict = {}
@@ -939,7 +945,9 @@ class TestMatGqlRemoteTable:
                 cache_catalog=lambda: "cat",
                 isolated_sync=_fake_isolated_sync,
             ),
-            config=SimpleNamespace(graphql_remote=SimpleNamespace(max_list_items=100)),
+            config=SimpleNamespace(
+                graphql_remote=SimpleNamespace(max_list_items=100, max_rows=10000)
+            ),
         )
         with (
             patch("provisa.api_source.engine_cache.ensure_cache_schema"),
@@ -1082,7 +1090,9 @@ class TestMaterializeApiToEngineCache:
                 cache_catalog=lambda: "cat",
                 isolated_sync=_fake_isolated_sync,
             ),
-            config=SimpleNamespace(graphql_remote=SimpleNamespace(max_list_items=100)),
+            config=SimpleNamespace(
+                graphql_remote=SimpleNamespace(max_list_items=100, max_rows=10000)
+            ),
         )
         with (
             patch("provisa.api_source.engine_cache.ensure_cache_schema"),
@@ -1117,7 +1127,9 @@ class TestMaterializeApiToEngineCache:
                 cache_catalog=lambda: "cat",
                 isolated_sync=_fake_isolated_sync,
             ),
-            config=SimpleNamespace(graphql_remote=SimpleNamespace(max_list_items=100)),
+            config=SimpleNamespace(
+                graphql_remote=SimpleNamespace(max_list_items=100, max_rows=10000)
+            ),
         )
         with (
             patch("provisa.api_source.engine_cache.ensure_cache_schema"),
@@ -1154,7 +1166,9 @@ class TestMaterializeApiToEngineCache:
                 cache_catalog=lambda: "cat",
                 isolated_sync=_fake_isolated_sync,
             ),
-            config=SimpleNamespace(graphql_remote=SimpleNamespace(max_list_items=100)),
+            config=SimpleNamespace(
+                graphql_remote=SimpleNamespace(max_list_items=100, max_rows=10000)
+            ),
         )
         with (
             patch("provisa.api_source.engine_cache.ensure_cache_schema"),

@@ -9,7 +9,8 @@
       "test_endpoint_disabled": "נקודת הקצה לבדיקות מושבתת (הגדירו את PROVISA_ENABLE_TEST_ENDPOINTS כדי להפעיל בסביבה שאינה ייצור).",
       "unknown_action_type": "actionType לא מוכר '{{action_type}}'",
       "unknown_role": "תפקיד לא מוכר '{{role}}'",
-      "webhook_not_found": "Webhook '{{name}}' לא נמצא"
+      "webhook_not_found": "Webhook '{{name}}' לא נמצא",
+      "written_table_not_registered": "'{{table}}' אינה טבלה רשומה של המקור '{{source_id}}'"
     },
     "ai_models": {
       "vector_model_fields_required": "כל רשומת vector_models דורשת id, provider ו-dimensions"
@@ -87,7 +88,8 @@
       "sql_generation_failed": "לא ניתן היה להפיק SQL תקין לאחר 3 ניסיונות: {{error}}",
       "table_not_found": "הטבלה '{{table}}' לא נמצאה",
       "unknown_action_field": "שדה פעולה לא מוכר: '{{field}}'",
-      "unknown_command": "פקודה לא מוכרת '{{name}}'"
+      "unknown_command": "פקודה לא מוכרת '{{name}}'",
+      "query_too_complex": "מורכבות השאילתה ({{score}}) חורגת מהמגבלה {{limit}} ({{limit_of}})."
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",
@@ -111,18 +113,25 @@
       "coordinator_waking": "הסביבה מופעלת. היא תהיה מוכנה בעוד כשתי דקות."
     },
     "functions": {
+      "approval_denied": "האישור נדחה עבור '{{name}}': {{reason}}",
+      "approval_unavailable": "הפקודה '{{name}}' דורשת אישור ולא מוגדר hook לאישור",
       "binding_missing_key": "לקישור הפונקציה עבור kind '{{kind}}' חסר מפתח חובה '{{key}}'",
       "egress_denied": "יציאה אל '{{endpoint}}' נדחתה: המארח אינו ברשימת ההיתרים ליציאת UDF (REQ-885 deny-by-default). הוסיפו אותו ל-udf_egress_allowlist כדי להתיר.",
       "grpc_call_failed": "קריאת grpc {{target}}{{path}} נכשלה: {{status}}: {{details}}",
       "grpc_method_invalid": "מתודת grpc '{{method}}' חייבת להיות 'Service/Method' או 'pkg.Service.Method'",
+      "json_argument_invalid": "הארגומנט '{{argument}}' של '{{name}}' אינו ליטרל JSON",
       "non_tabular_payload": "הפונקציה החזירה מטען לא טבלאי: {{payload_type}}",
+      "not_a_remote_source": "המקור '{{source_id}}' אינו מציע פעולות כתיבה",
+      "operation_not_offered": "המקור '{{source_id}}' אינו מציע את הפעולה '{{operation}}'",
       "python_callable_invalid": "python callable '{{spec}}' חייב להיות 'module:attr'",
+      "remote_refused": "{{source_id}} דחה את {{operation}}: {{answer}}",
       "result_set_ref_invalid": "הפניית result_set '{{ref}}' חייבת להיות source.schema.table",
       "rowwise_external": "הפונקציה '{{name}}' (kind={{impl_kind}}) היא חיצונית ברמת שורה: כל הארגומנטים הם column_value סקלרי. הצהירו על ארגומנט יחס table_ref/result_set כדי שהקריאות יהיו ברמת קבוצה ובאצוות (REQ-885).",
       "script_failed": "הסקריפט הסתיים בקוד {{returncode}}: {{stderr}}",
       "source_not_connected": "המקור '{{source_id}}' אינו מחובר",
       "unknown_arg_kind": "arg_kind לא מוכר '{{arg_kind}}' עבור '{{name}}'",
-      "unknown_impl_kind": "impl_kind לא מוכר של פונקציה: '{{impl_kind}}'"
+      "unknown_impl_kind": "impl_kind לא מוכר של פונקציה: '{{impl_kind}}'",
+      "written_table_missing": "הפקודה '{{name}}' כותבת אל '{{table}}', שאינה רשומה"
     },
     "graphql_remote": {
       "introspection_failed": "Introspection נכשל: {{error}}",
@@ -158,7 +167,6 @@
     },
     "openapi": {
       "database_not_connected": "מסד הנתונים אינו מחובר",
-      "domain_required": "מקור ה-OpenAPI ‏{{source}} מצהיר על {{commands}} פקודות ואינו מציין דומיין: פקודה שייכת לדומיין, ולכן הרישום דורש דומיין",
       "invalid_json": "JSON לא תקין: {{error}}",
       "refresh_failed": "הרענון נכשל: {{error}}",
       "registration_failed": "הרישום נכשל: {{error}}",
@@ -315,7 +323,10 @@
       "webhook_name_required": "webhook_name נדרש עבור טריגר webhook",
       "webhook_not_found": "ה-Webhook '{{webhook}}' לא נמצא",
       "replicate_invalid": "שכפול חייב להיות 'ברירת מחדל', 'אף פעם', 'תמיד' או סף גדול מ-0; התקבל {{value}}",
-      "replicate_contradicts_load_protected": "אי אפשר לשלב הגנת עומס עם שכפול = 'אף פעם': טבלה מוגנת עומס אף פעם אינה נקראת בזמן אמת"
+      "replicate_contradicts_load_protected": "אי אפשר לשלב הגנת עומס עם שכפול = 'אף פעם': טבלה מוגנת עומס אף פעם אינה נקראת בזמן אמת",
+      "table_registered_fields_omitted": "הטבלה '{{table}}' נרשמה (id={{id}}). הושמטו, מפני שאישורי הגישה של המקור אינם רשאים לקרוא אותם: {{fields}}",
+      "table_not_readable": "אישורי הגישה של מקור זה אינם רשאים לקרוא את {{table}}: {{reason}}",
+      "table_too_complex": "הטבלה '{{table}}' לא נרשמה עם העמודות שנבחרו: {{reason}}. בחרו פחות עמודות."
     },
     "secrets": {
       "still_referenced": "{{secret}} עדיין מצוין על ידי {{count}} ערכים שמורים בארגון זה. יש לשנות או להסיר כל אחד מהם ואז למחוק שוב."

@@ -31,6 +31,7 @@ _STATUS_LABEL = {
     "proposed": "Planned",
     "accepted": "Accepted",
     "rejected": "Not Planned",
+    "superseded": "Superseded",
 }
 
 
@@ -43,7 +44,7 @@ def main() -> int:
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-    rows = [r for r in rf.requirements if r.status != Status.rejected]
+    rows = [r for r in rf.requirements if r.status not in {Status.rejected, Status.superseded}]
 
     with OUT_PATH.open("w", newline="") as f:
         writer = csv.writer(f)

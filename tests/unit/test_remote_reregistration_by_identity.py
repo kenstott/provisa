@@ -8,23 +8,25 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Re-registering a remote source keeps its tables' identity (REQ-1918).
+"""Refreshing a remote source keeps its registered tables' identity (REQ-1918).
 
-A remote source's tables are generated from its schema. Re-registering the source used to
-delete every one of them and insert them again under new ids, so every relationship, row filter,
-tag and glossary reference to them was lost on each refresh (cascaded away on PostgreSQL, left
-dangling on SQLite). Each table is now upserted by its identity — source, schema, name — so what
-is still in the remote schema keeps its id and what refers to it. A table the remote no longer
-has is deleted through the model store; when something depends on it, it is kept and reported.
+A remote source's registered tables are brought up to date from its schema on each refresh.
+That used to delete every one of them and insert them again under new ids, so every
+relationship, row filter, tag and glossary reference to them was lost on each refresh (cascaded
+away on PostgreSQL, left dangling on SQLite). Each table is now upserted by its identity --
+source, schema, name -- so what is still in the remote schema keeps its id and what refers to
+it. A table the remote no longer has is deleted through the model store; when something depends
+on it, it is kept and reported.
 """
 
-# Requirements: REQ-1918, REQ-1919, REQ-314, REQ-308
+# Requirements: REQ-1918, REQ-1919, REQ-308, REQ-311
 
 from __future__ import annotations
 
 import pytest
 from sqlalchemy import insert, select
 
+from provisa.api.admin.graphql_remote_router import _upsert_tables_to_semantic_layer
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.db import _init_schema_portable
 from provisa.core.repositories import table as table_repo
@@ -35,39 +37,10 @@ from provisa.core.schema_org import (
     sources,
     tag_assignments,
 )
-from provisa.openapi.register import auto_register_openapi_source
 
 
-def _spec(*operations: str) -> dict:
-    """An OpenAPI document with one GET list operation per name."""
-    return {
-        "openapi": "3.0.0",
-        "info": {"title": "t", "version": "1"},
-        "paths": {
-            f"/{op}": {
-                "get": {
-                    "operationId": op,
-                    "responses": {
-                        "200": {
-                            "description": "ok",
-                            "content": {
-                                "application/json": {
-                                    "schema": {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "object",
-                                            "properties": {"id": {"type": "integer"}},
-                                        },
-                                    }
-                                }
-                            },
-                        }
-                    },
-                }
-            }
-            for op in operations
-        },
-    }
+def _gql_table(name: str) -> dict:
+    return {"name": name, "columns": [{"name": "id", "type": "integer"}]}
 
 
 @pytest.fixture
@@ -75,17 +48,18 @@ async def plane() -> Database:
     db = Database(create_engine_from_url("sqlite+pysqlite:///:memory:"), name="reregister-test")
     await _init_schema_portable(db)
     async with db.acquire() as conn:
-        await conn.execute_core(insert(sources).values(id="crm", type="openapi", origin="admin"))
+        await conn.execute_core(
+            insert(sources).values(id="crm", type="graphql_remote", origin="admin")
+        )
         await conn.execute_core(insert(domains).values(id="sales", origin="admin"))
     return db
 
 
-async def _register(db: Database, *operations: str) -> list[dict]:
-    async with db.acquire() as conn:
-        _, _, kept = await auto_register_openapi_source(
-            "crm", _spec(*operations), conn, "sales", base_url="http://crm.test"
-        )
-    return kept
+async def _register(db: Database, *tables: str) -> list[dict]:
+    """A refresh of the crm source whose schema now maps to ``tables``: what it keeps."""
+    return await _upsert_tables_to_semantic_layer(
+        "crm", "sales", [_gql_table(t) for t in tables], db
+    )
 
 
 async def _ids(db: Database) -> dict[str, int]:
@@ -132,13 +106,13 @@ async def _relationship_ends(db: Database) -> list[tuple[int, int]]:
 
 
 async def test_a_table_still_in_the_remote_schema_keeps_its_id_and_what_refers_to_it(plane):
-    assert await _register(plane, "listPets", "listOwners") == []
+    assert await _register(plane, "pets", "owners") == []
     first = await _ids(plane)
     assert len(first) == 2
     pets, owners = sorted(first)[1], sorted(first)[0]
     await _relate(plane, first, pets, owners)
 
-    assert await _register(plane, "listPets", "listOwners") == []
+    assert await _register(plane, "pets", "owners") == []
 
     assert await _ids(plane) == first
     assert await _relationship_ends(plane) == [(first[pets], first[owners])]
@@ -150,12 +124,12 @@ async def test_a_table_still_in_the_remote_schema_keeps_its_id_and_what_refers_t
 async def test_a_table_the_remote_no_longer_has_is_kept_and_reported_while_something_refers_to_it(
     plane,
 ):
-    await _register(plane, "listPets", "listOwners")
+    await _register(plane, "pets", "owners")
     first = await _ids(plane)
     pets, owners = sorted(first)[1], sorted(first)[0]
     await _relate(plane, first, pets, owners)
 
-    kept = await _register(plane, "listPets")
+    kept = await _register(plane, "pets")
 
     assert kept == [
         {
@@ -176,14 +150,14 @@ async def test_a_table_the_remote_no_longer_has_is_kept_and_reported_while_somet
 
 
 async def test_a_table_the_remote_no_longer_has_goes_once_nothing_refers_to_it(plane):
-    await _register(plane, "listPets", "listOwners")
+    await _register(plane, "pets", "owners")
     first = await _ids(plane)
     pets, owners = sorted(first)[1], sorted(first)[0]
     await _relate(plane, first, pets, owners)
     async with plane.acquire() as conn:
         await conn.execute_core(relationships.delete())
 
-    assert await _register(plane, "listPets") == []
+    assert await _register(plane, "pets") == []
 
     assert await _ids(plane) == {pets: first[pets]}
     async with plane.acquire() as conn:
@@ -192,7 +166,7 @@ async def test_a_table_the_remote_no_longer_has_goes_once_nothing_refers_to_it(p
 
 
 async def test_retiring_touches_only_that_sources_generated_schema(plane):
-    await _register(plane, "listPets")
+    await _register(plane, "pets")
     async with plane.acquire() as conn:
         await conn.execute_core(
             insert(registered_tables).values(
@@ -203,31 +177,27 @@ async def test_retiring_touches_only_that_sources_generated_schema(plane):
                 origin="admin",
             )
         )
-        await conn.execute_core(insert(sources).values(id="erp", type="openapi", origin="admin"))
+        await conn.execute_core(
+            insert(sources).values(id="erp", type="graphql_remote", origin="admin")
+        )
         await conn.execute_core(
             insert(registered_tables).values(
                 source_id="erp",
                 domain_id="sales",
-                schema_name="openapi",
+                schema_name="graphql",
                 table_name="invoices",
                 origin="admin",
             )
         )
-        assert await table_repo.retire_generated(conn, "crm", "openapi", set()) == []
+        assert await table_repo.retire_generated(conn, "crm", "graphql", set()) == []
         left = (await conn.execute_core(select(registered_tables.c.table_name))).fetchall()
     assert sorted(r[0] for r in left) == ["invoices", "notes"]
 
 
-# --- a GraphQL remote source ---------------------------------------------------------------------
-
-
-def _gql_table(name: str) -> dict:
-    return {"name": name, "columns": [{"name": "id", "type": "integer"}]}
+# --- a second source ------------------------------------------------------------------------------
 
 
 async def test_a_graphql_remote_reregistration_keeps_ids_and_reports_what_it_kept(plane):
-    from provisa.api.admin.graphql_remote_router import _upsert_tables_to_semantic_layer
-
     async with plane.acquire() as conn:
         await conn.execute_core(
             insert(sources).values(id="shop", type="graphql_remote", origin="admin")

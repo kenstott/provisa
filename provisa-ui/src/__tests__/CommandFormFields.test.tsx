@@ -159,3 +159,87 @@ describe("CommandFormFields — response governance (REQ-1679)", () => {
     expect(screen.getByTestId("inline-field-governance-0-visible-to")).toBeInTheDocument();
   });
 });
+
+// REQ-1924: a remote source's write operations are picked, one at a time, and passed through as
+// is; what the command takes and answers follows from the operation, not from the form.
+function RemoteHarness({ initial }: { initial: Partial<FormState> }) {
+  const [form, setForm] = useState<FormState>({ ...EMPTY_FORM, ...initial });
+  const sources = [
+    { id: "gh", type: "graphql_remote" },
+    { id: "pg", type: "postgresql" },
+  ] as unknown as Parameters<typeof CommandFormFields>[0]["sources"];
+  return (
+    <CommandFormFields
+      form={form}
+      setForm={setForm}
+      sources={sources}
+      tables={[]}
+      domainHints={[]}
+      availableFunctions={[{ name: "createIssue", comment: "Creates a new issue." }]}
+      loadingFunctions={false}
+      dataProducts={[]}
+    />
+  );
+}
+
+describe("CommandFormFields — a remote source's write operations (REQ-1924)", () => {
+  it("offers the source's operations to pick, under the source's schema", () => {
+    render(
+      <RemoteHarness
+        initial={{
+          actionType: "function",
+          implKind: "source_operation",
+          sourceId: "gh",
+          schemaName: "graphql",
+        }}
+      />,
+    );
+    expect(screen.getByTestId("command-function-select")).toBeInTheDocument();
+    expect(screen.queryByTestId("command-function-input")).not.toBeInTheDocument();
+    expect(screen.getByTestId("command-schema-input")).toHaveAttribute("readonly");
+  });
+
+  it("leaves the arguments, kind and answer to the operation", () => {
+    render(
+      <RemoteHarness
+        initial={{ actionType: "function", implKind: "source_operation", sourceId: "gh" }}
+      />,
+    );
+    expect(screen.queryByText("Arguments")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("command-return-type-select")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("command-materialize-switch")).not.toBeInTheDocument();
+  });
+
+  it("asks a database source for a function name, as before", () => {
+    render(
+      <RemoteHarness
+        initial={{ actionType: "function", implKind: "source_procedure", sourceId: "pg" }}
+      />,
+    );
+    expect(screen.getByText("Arguments")).toBeInTheDocument();
+    expect(screen.getByTestId("command-function-input")).toBeInTheDocument();
+    expect(screen.getByTestId("command-return-type-select")).toBeInTheDocument();
+  });
+});
+
+describe("CommandFormFields — a call that needs approval (REQ-1924)", () => {
+  it("lets the steward require approval of each call", async () => {
+    const { default: userEvent } = await import("@testing-library/user-event");
+    render(<Harness initial={{ actionType: "function", implKind: "source_procedure" }} />);
+    const toggle = screen.getByTestId("command-requires-approval-switch");
+    expect(toggle).not.toBeChecked();
+    await userEvent.click(toggle);
+    expect(toggle).toBeChecked();
+  });
+});
+
+describe("CommandFormFields — the table a command writes (REQ-1924, REQ-871)", () => {
+  it("offers the selected source's registered tables", () => {
+    render(
+      <RemoteHarness
+        initial={{ actionType: "function", implKind: "source_operation", sourceId: "gh" }}
+      />,
+    );
+    expect(screen.getByTestId("command-writes-table-select")).toBeInTheDocument();
+  });
+});

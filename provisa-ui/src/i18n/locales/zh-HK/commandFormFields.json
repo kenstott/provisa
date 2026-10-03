@@ -60,6 +60,10 @@
     "maskPattern": "模式",
     "maskReplace": "取代",
     "maskValue": "值",
-    "maskPrecision": "精度"
+    "maskPrecision": "精度",
+    "requiresApproval": "需要審批",
+    "requiresApprovalHint": "每次呼叫僅在審批鉤子批准後執行。未設定鉤子時，呼叫將被拒絕。",
+    "writesTable": "寫入表",
+    "writesTableHint": "此命令更改的已註冊表。每次呼叫後，該表的快取結果和實體化檢視都會重新整理。"
   }
 }

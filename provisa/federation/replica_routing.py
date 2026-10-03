@@ -347,7 +347,15 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
     # build has completed in this engine's store.
     tables = _served_from_replica(engine, registry, registry.serving)
     if tables:
-        read_catalog = backend.replica_read_catalog(state)
+        from provisa.federation.registry_view import registered_sources
+        from provisa.federation.source_vault import org_vault
+
+        # REQ-1695: on a native engine the store's catalog is read off the attached runtime, and
+        # a pending attach walk dials every registered source, resolving each ``${secret:...}``.
+        # A schema rebuild publishes the routes outside any statement, so the org's vault is
+        # bound here, as the engine's own statement path binds it.
+        async with org_vault(state, await registered_sources(state)):
+            read_catalog = backend.replica_read_catalog(state)
     for src, reg in tables:
         name = physical.get(reg["table_name"], reg["table_name"])
         keys = engine_table_keys(engine, state.source_catalogs[src.id], reg["schema_name"], name)

@@ -62,8 +62,7 @@ export type Capability =
 
 export interface RoleRateLimit {
   requestsPerSecond: number | null;
-  maxQueryDepth: number | null;
-  maxQueryNodes: number | null;
+  maxQueryComplexity: number | null;
   maxQueryTimeMs: number | null;
 }
 

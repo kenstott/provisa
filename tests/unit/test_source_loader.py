@@ -139,8 +139,17 @@ async def test_make_openapi_loader_missing_endpoint_raises():
 async def test_make_graphql_remote_loader_forwards_query(monkeypatch):
     captured: dict = {}
 
-    async def _fake_execute_remote(*, url, auth, field_name, columns):
-        captured.update(url=url, auth=auth, field_name=field_name, columns=columns)
+    async def _fake_execute_remote(
+        *, url, auth, field_name, columns, rows_path, max_rows, error_policy
+    ):
+        captured.update(
+            url=url,
+            auth=auth,
+            field_name=field_name,
+            columns=columns,
+            rows_path=rows_path,
+            max_rows=max_rows,
+        )
         return [{"id": 1}, {"id": 2}]
 
     monkeypatch.setattr("provisa.graphql_remote.executor.execute_remote", _fake_execute_remote)
@@ -162,9 +171,11 @@ async def test_make_graphql_remote_loader_forwards_query(monkeypatch):
             ],
         }
     }
-    load = make_graphql_remote_loader(gql_sources)
+    load = make_graphql_remote_loader(gql_sources, max_rows=500)
     rows = await load(_src("gql", "graphql_remote"), _tbl("default", "orders"))
     assert rows == [{"id": 1}, {"id": 2}]
+    assert captured["rows_path"] is None  # not a connection table
+    assert captured["max_rows"] == 500
     assert captured["url"] == "https://gql.test/graphql"
     assert captured["field_name"] == "allOrders"  # field_name overrides the table name
     assert captured["columns"] == ["id", "total { amount }"]  # gql_selection overrides the name

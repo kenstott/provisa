@@ -13,11 +13,12 @@
 
 ## סוגי מימוש
 
-חמישה ערכי `impl_kind` נתמכים [tool-verified: `_EXECUTORS` dict in function_dispatch.py:420-426]:
+שישה ערכי `impl_kind` נתמכים [tool-verified: `_EXECUTORS` dict in `provisa/executor/function_dispatch.py`]:
 
 | `impl_kind` | תעבורה |
 | --- | --- |
 | `source_procedure` | פרוצדורה מאוחסנת טבעית על מקור רשום |
+| `source_operation` | פעולת כתיבה של מקור OpenAPI, GraphQL מרוחק או gRPC, המועברת כפי שהיא (ראו [פעולת כתיבה של מקור מרוחק](#a-remote-sources-write-operation-req-1924)) |
 | `script` | תת-תהליך מקומי המוזן JSON ב-stdin, קורא JSON מ-stdout |
 | `http` | נקודת קצה HTTP/S; ‏גוף בקשה JSON, תגובה JSON |
 | `grpc` | ‏gRPC unary; גשר JSON נטול proto |
@@ -153,7 +154,7 @@ functions:
 ## הרכבה מוטבעת (REQ-1159)
 
 פקודות רשאיות להופיע **בתוך** משפט SQL גדול יותר — מצורפות ב-join, בתת-שאילתה או מוטלות. אינכם
-מוגבלים ל-`SELECT * FROM fn(args)`.
+מוגבלים ל-`SELECT * FROM fn(args)`. היוצא מן הכלל הוא פעולת כתיבה של מקור מרוחק, הנקראת לבדה (ראו [מדוע אי אפשר להרכיב אותה](#why-it-cannot-be-composed)).
 
 ```sql
 -- Enrich the orders relation and join the result back inline.
@@ -176,6 +177,125 @@ command_localize.py:178-222]
 משפט שעבר לוקליזציה מנותב כרגיל. שאילתות חד-מקוריות נשארות על המקור; רק שאילתות
 חוצות-מקורות באמת הולכות למנוע הפדרציה. [tool-verified: _pipeline.py:304 comment
 "REQ-1159: a localized statement carries an inline local relation..."]
+
+## פעולת כתיבה של מקור מרוחק (REQ-1924) {: #a-remote-sources-write-operation-req-1924 }
+
+מקור OpenAPI, GraphQL מרוחק או gRPC מציע פעולות כתיבה. רישום אחת מהן כפקודה הופך אותה לניתנת לקריאה, מנוהלת ומבוקרת מכל משטח. הוספת המקור אינה רושמת אף אחת מהן; אתם רושמים את הרצויות, אחת אחת, כפי שאתם רושמים טבלאות. הרישום הוא הקיורציה. [tool-verified: `provisa/executor/source_operation.py` module docstring; `provisa/api/admin/schema_common.py` `remote_source_counts`, `"mutations": 0`]
+
+מה מקור מציע [tool-verified: `provisa/executor/source_operation.py` `offered_operations`]:
+
+| סוג מקור | פעולות מוצעות | שם הפעולה |
+| --- | --- | --- |
+| `openapi` | כל פעולה שאינה GET במפרט | ה-`operationId` |
+| `graphql_remote` | כל שדה מסוג `Mutation` המרוחק | שם השדה |
+| `grpc_remote` | כל מתודה המסווגת כ-mutation | `Service.Method` |
+
+### רישום אחת {: #register-one }
+
+1. פתחו את **מודל → פקודות** והוסיפו פקודה.
+2. בחרו את המקור המרוחק. הטופס עובר לבורר פעולות המפרט מה שהמקור מציע.
+3. בחרו את הפעולה, תחום ואת התפקידים שרשאים לקרוא לה.
+4. אפשר להפעיל את **דורש אישור** ולמלא את השדה **כותב לטבלה**.
+
+[tool-verified: `provisa-ui/src/components/navGroups.ts` (`/commands` in the Model group); `provisa-ui/src/pages/commands/CommandFormFields.tsx` `isSourceOperation`, `command-requires-approval-switch`, `writesTable`; `provisa/api/admin/schema_query.py` `available_functions` ("Listing them registers none")]
+
+דרך ה-API של GraphQL לניהול, `availableFunctions(sourceId, schemaName)` מפרט את הפעולות. שם הסכמה הוא `openapi`, `graphql` או `grpc_remote`, לפי סוג המקור. [tool-verified: `OPERATION_SCHEMA` in `source_operation.py`; `available_functions` returns `[]` when the schema name does not match the source type]
+
+כל השאר נגזר מהפעולה, ולא ממה שהטופס שולח. `_as_source_operation` דורס את השדות האלה:
+
+```python
+body.implKind = "source_operation"
+body.kind = "mutation"
+body.schemaName = OPERATION_SCHEMA[source_type]
+body.returns = ""
+body.binding = {}
+body.materialize = False
+body.arguments = [{"name": a, "type": "json"} for a in operation.arguments]
+```
+
+[tool-verified: `provisa/api/admin/actions_router.py` `_as_source_operation`]
+
+כל ארגומנט מוגדר כ-`json`. הארגומנטים של הפעולה הם פרמטרי הנתיב שלה ב-OpenAPI (ועוד `body` כשהפעולה מקבלת גוף בקשה), ארגומנטי ה-mutation שלה ב-GraphQL או שדות הבקשה שלה ב-gRPC. [tool-verified: `_openapi_operations`, `_graphql_operations`, `_grpc_operations` in `source_operation.py`] פעולה שהמקור אינו מציע נדחית ב-422, `functions.operation_not_offered`. [tool-verified: `offered_operation`]
+
+### קריאה לפעולה {: #calling-it }
+
+Provisa אינו מעצב, מגדיר סוג או בודק את הקלט. כל ארגומנט עובר לשירות המרוחק ללא שינוי, עם האישור של המקור, והתשובה של השירות המרוחק חוזרת ללא שינוי. Provisa שולט במי רשאי לקרוא, באיזה תחום, האם נדרש אישור, ורושם את הקריאה. [tool-verified: `source_operation.py` module docstring]
+
+כך השירות המרוחק מקבל את הארגומנטים:
+
+- **OpenAPI.** פרמטרי נתיב ממלאים את תבנית הנתיב. `body` הוא גוף הבקשה ב-JSON. כל ארגומנט אחר עובר במחרוזת השאילתה. [tool-verified: `_call_openapi`]
+- **GraphQL.** ארגומנטים נשלחים כמשתנים מוגדרי סוג, כל אחד מוצהר עם הסוג שהסכמה המרוחקת נותנת לו. ה-mutation מבקש בחזרה את שדות הסקלר וה-enum של התשובה, ואת אלה של אובייקטים שבתוכה עד שתי רמות עומק. [tool-verified: `mutation_document`, `_selection`, `_ANSWER_DEPTH = 2`]
+- **gRPC.** הארגומנטים הופכים להודעת הבקשה של `Service.Method`. [tool-verified: `_call_grpc`]
+
+התשובה היא שורות הפקודה: אובייקט הוא שורה אחת, רשימת אובייקטים היא השורות שלה, וכל דבר אחר הוא שורה אחת `{"result": ...}`. [tool-verified: `_rows`]
+
+ב-GraphQL הפקודה היא שדה mutation והתשובה שלה היא הסקלר JSON. [tool-verified: `provisa/compiler/actions_schema.py` (`gql_return = JSONScalar` for `source_operation`; `kind` defaults to `"mutation"`)]
+
+```graphql
+mutation {
+  createIssue(input: {repositoryId: "R_kgDO...", title: "Crash on save"})
+}
+```
+
+[inferred: argument names are those of the remote operation; the example call was not run]
+
+במשטחי ה-SQL (pgwire ואחרים שמעבירים SQL) כתבו כל ארגומנט כליטרל JSON בתוך מחרוזת. `'{"title": "x"}'` הוא אובייקט, `'"text"'` מחרוזת, `'3'` מספר. ליטרל שאינו JSON תקין נכשל ב-422, `functions.json_argument_invalid`. [tool-verified: `_json_arguments_from_sql` in `function_dispatch.py`]
+
+```sql
+SELECT * FROM create_issue('{"repositoryId": "R_kgDO...", "title": "Crash on save"}');
+```
+
+[inferred: the first-argument shape follows `_json_arguments_from_sql`; the statement was not run, and the command's argument list is the operation's]
+
+ב-REST שלחו ב-POST אובייקט JSON של ארגומנטים אל `/data/rest/{domain}/commands/{command}`. ארגומנט `json` מתועד במפרט שנוצר כערך כלשהו. [tool-verified: `provisa/api/rest/openapi_spec.py` `cmd_path = f"/{cmd_domain}/commands/{cmd_name}"`, `_arg_type_to_openapi` (`"json"` returns `{}`)]
+
+```bash
+curl -X POST https://acme.provisa.org/data/rest/engineering/commands/create_issue \
+  -H "Content-Type: application/json" \
+  -d '{"input": {"repositoryId": "R_kgDO...", "title": "Crash on save"}}'
+```
+
+[inferred: host, domain and command name are placeholders; not run]
+
+### דחיות {: #refusals }
+
+הדחייה של השירות המרוחק חוזרת כפי שהשירות ניסח אותה. [tool-verified: `_refused` in `source_operation.py`]
+
+| השירות המרוחק | Provisa משיב |
+| --- | --- |
+| דוחה את הקריאה (HTTP 4xx, `errors` של GraphQL, קריאת gRPC שנדחתה) | 422, `functions.remote_refused`, עם `remote_status` ו-`answer` |
+| נכשל (HTTP 5xx) | 502, `functions.remote_refused` |
+
+האם האישור של המקור רשאי לבצע את הפעולה נתון להכרעת השירות המרוחק, כשקוראים לפעולה. Provisa אינו יכול לנסות כתיבה ברישום בלי לבצע אותה. [tool-verified: REQ-1924 CREDENTIAL AT CALL amendment in `docs/arch/requirements.yaml`; no credential check in `_as_source_operation`]
+
+### אישור {: #approval }
+
+הפעילו **דורש אישור** וכל קריאה מוצגת ל-hook האישור של הפריסה לפני שהיא רצה. היא רצה רק אם ה-hook מאשר. [tool-verified: `provisa/api/data/action_exec.py` `_require_approval`]
+
+- לא הוגדר hook: 403, `functions.approval_unavailable`.
+- ה-hook דוחה: 403, `functions.approval_denied`, עם הנימוק של ה-hook.
+
+ה-hook מקבל את הקורא, התפקיד, שם הפקודה והארגומנטים שלה. ראו [Hook אישור ABAC](security.md#hook-abac). הדגל נשמר כ-`Function.requires_approval`, והבדיקה חלה על כל פקודה שמגדירה אותו. [tool-verified: `action_exec.py` `if fn.get("requires_approval")`]
+
+### כותב לטבלה {: #writes-table }
+
+ציינו בשדה **כותב לטבלה** את הטבלה שהפעולה כותבת אליה, בצורת `schema.table`. היא חייבת להיות טבלה רשומה של המקור של הפקודה עצמה, אחרת השמירה נדחית ב-422, `actions.written_table_not_registered`. ההגדרה אופציונלית. [tool-verified: `_check_written_table` in `actions_router.py`; `written_table` in `source_operation.py`]
+
+אחרי כל קריאה שהשירות המרוחק מקבל, Provisa מתייחס אליה ככתיבה לטבלה זו. הוא משליך את התשובות השמורות במטמון של הטבלה, מסמן כמיושנות את התצוגות הממומשות שמעליה, פולט את אירוע השינוי, מריץ את ה-sinks של הטבלה וטוען מחדש את הטבלה כשהיא מוחזקת במצב hot. [tool-verified: `provisa/api/data/table_written.py` `after_table_written`]
+
+העתקים (replicas) אינם מתרעננים בעקבות הקריאה. זה ממתין לדרך לבקש רענון של העתק, שטרם נבנתה; עד אז העתק מתרענן לפי לוח הזמנים שלו. [tool-verified: REQ-1924 WRITTEN TABLE amendment; no replica call in `after_table_written`]
+
+### מדוע אי אפשר להרכיב אותה {: #why-it-cannot-be-composed }
+
+פעולת כתיבה היא פעולה, לא טרנספורמציה של נתונים. תצוגה או תצוגה ממומשת שהחזיקה אחת כזו הייתה מבצעת את הכתיבה בכל קריאה או רענון שלה. לכן הקריאה עומדת לבדה: `SELECT * FROM create_issue(...)` לבדה מריצה אותה, והקריאה עצמה בתוך הצהרה גדולה יותר נדחית, בכל מקום שבו היא נמצאת -- ב-join, בשאילתת משנה או בהקרנה. [tool-verified: `provisa/pgwire/_pipeline.py` `_refuse_composed_mutators`; `provisa/executor/source_operation.py` `writes_called_in`]
+
+תצוגה או תצוגה ממומשת שהגדרתה קוראת לאחת כזו נדחית בעת שמירתה. הגדרה שאינה ניתנת לניתוח נדחית אף היא כל עוד רשומה פעולת כתיבה כלשהי, כי אי אפשר להראות שאינה קוראת לאף אחת. [tool-verified: `refuse_writes_in_definition` in `source_operation.py`, called from `provisa/api/admin/_table_ops.py` `_build_columns_for_input` (views) and `provisa/api/admin/schema_common.py` (materialized views)]
+
+```text
+command 'create_issue' writes to its source and is called on its own: it cannot be composed in a query, a view or a materialized view (REQ-1924)
+```
+
+פעולת מקור אינה גם צומת lineage: ה-lineage נקרא מה-SQL של תצוגות ושאילתות, שבו פקודה מופיעה כצומת, ושום הגדרה שמורה אינה יכולה לקרוא לפעולת מקור. [tool-verified: `provisa/lineage/graph.py` (`kind="command"` for a call in the SQL); `refuse_writes_in_definition`]
 
 ## פקודות ו-Data Lineage
 

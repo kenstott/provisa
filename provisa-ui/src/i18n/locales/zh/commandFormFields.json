@@ -60,6 +60,10 @@
     "maskPattern": "模式",
     "maskReplace": "替换",
     "maskValue": "值",
-    "maskPrecision": "精度"
+    "maskPrecision": "精度",
+    "requiresApproval": "需要审批",
+    "requiresApprovalHint": "每次调用仅在审批钩子批准后执行。未配置钩子时，调用将被拒绝。",
+    "writesTable": "写入表",
+    "writesTableHint": "此命令更改的已注册表。每次调用后，该表的缓存结果和物化视图都会刷新。"
   }
 }

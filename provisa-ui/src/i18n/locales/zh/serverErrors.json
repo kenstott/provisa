@@ -9,7 +9,8 @@
       "test_endpoint_disabled": "测试终结点已禁用（在非生产环境中设置 PROVISA_ENABLE_TEST_ENDPOINTS 以启用）。",
       "unknown_action_type": "未知的 actionType '{{action_type}}'",
       "unknown_role": "未知角色 '{{role}}'",
-      "webhook_not_found": "未找到 Webhook '{{name}}'"
+      "webhook_not_found": "未找到 Webhook '{{name}}'",
+      "written_table_not_registered": "'{{table}}' 不是数据源 '{{source_id}}' 的已注册表"
     },
     "ai_models": {
       "vector_model_fields_required": "每个 vector_models 条目都需要 id、provider 和 dimensions"
@@ -87,7 +88,8 @@
       "sql_generation_failed": "尝试 3 次后仍无法生成有效的 SQL：{{error}}",
       "table_not_found": "未找到表 '{{table}}'",
       "unknown_action_field": "未知操作字段：'{{field}}'",
-      "unknown_command": "未知命令 '{{name}}'"
+      "unknown_command": "未知命令 '{{name}}'",
+      "query_too_complex": "查询的复杂度（{{score}}）超过上限 {{limit}}（{{limit_of}}）。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' 的适配器未实现 discover_schema",
@@ -111,18 +113,25 @@
       "coordinator_waking": "环境正在启动，大约两分钟后就绪。"
     },
     "functions": {
+      "approval_denied": "'{{name}}' 的审批被拒绝：{{reason}}",
+      "approval_unavailable": "命令 '{{name}}' 需要审批，但未配置审批钩子",
       "binding_missing_key": "类型为 '{{kind}}' 的函数绑定缺少必需的键 '{{key}}'",
       "egress_denied": "拒绝出站访问 '{{endpoint}}'：主机不在 UDF 出站允许列表中（REQ-885 默认拒绝）。将其添加到 udf_egress_allowlist 以允许。",
       "grpc_call_failed": "grpc 调用 {{target}}{{path}} 失败：{{status}}：{{details}}",
       "grpc_method_invalid": "grpc 方法 '{{method}}' 必须为 'Service/Method' 或 'pkg.Service.Method'",
+      "json_argument_invalid": "'{{name}}' 的参数 '{{argument}}' 不是 JSON 字面量",
       "non_tabular_payload": "函数返回了非表格负载：{{payload_type}}",
+      "not_a_remote_source": "数据源 '{{source_id}}' 不提供写入操作",
+      "operation_not_offered": "数据源 '{{source_id}}' 不提供操作 '{{operation}}'",
       "python_callable_invalid": "python 可调用对象 '{{spec}}' 必须为 'module:attr'",
+      "remote_refused": "{{source_id}} 拒绝了 {{operation}}：{{answer}}",
       "result_set_ref_invalid": "result_set 引用 '{{ref}}' 必须为 source.schema.table",
       "rowwise_external": "函数 '{{name}}'（kind={{impl_kind}}）是逐行外部调用：所有参数均为标量 column_value。请声明一个 table_ref/result_set 关系参数，使调用按集合批量执行（REQ-885）。",
       "script_failed": "脚本以 {{returncode}} 退出：{{stderr}}",
       "source_not_connected": "数据源 '{{source_id}}' 未连接",
       "unknown_arg_kind": "'{{name}}' 的 arg_kind '{{arg_kind}}' 未知",
-      "unknown_impl_kind": "未知的函数 impl_kind：'{{impl_kind}}'"
+      "unknown_impl_kind": "未知的函数 impl_kind：'{{impl_kind}}'",
+      "written_table_missing": "命令 '{{name}}' 写入 '{{table}}'，但该表未注册"
     },
     "graphql_remote": {
       "introspection_failed": "内省失败：{{error}}",
@@ -158,7 +167,6 @@
     },
     "openapi": {
       "database_not_connected": "数据库未连接",
-      "domain_required": "OpenAPI 数据源 {{source}} 声明了 {{commands}} 个命令但未指定域：命令必须属于某个域，因此注册时需要指定域",
       "invalid_json": "无效的 JSON：{{error}}",
       "refresh_failed": "刷新失败：{{error}}",
       "registration_failed": "注册失败：{{error}}",
@@ -315,7 +323,10 @@
       "webhook_name_required": "Webhook 触发器需要 webhook_name",
       "webhook_not_found": "未找到 Webhook '{{webhook}}'",
       "replicate_invalid": "复制必须是“默认”“从不”“始终”或大于 0 的阈值；收到 {{value}}",
-      "replicate_contradicts_load_protected": "负载保护不能与复制 =“从不”同时使用：受负载保护的表从不被实时读取"
+      "replicate_contradicts_load_protected": "负载保护不能与复制 =“从不”同时使用：受负载保护的表从不被实时读取",
+      "table_registered_fields_omitted": "表 '{{table}}' 已注册（id={{id}}）。因数据源的凭据无权读取而略过：{{fields}}",
+      "table_not_readable": "此数据源的凭据无权读取 {{table}}：{{reason}}",
+      "table_too_complex": "表 '{{table}}' 未能以所选列注册：{{reason}}。请选择更少的列。"
     },
     "secrets": {
       "still_referenced": "本组织中仍有 {{count}} 个已存储的值引用 {{secret}}。请更改或移除每一个，然后再次删除。"

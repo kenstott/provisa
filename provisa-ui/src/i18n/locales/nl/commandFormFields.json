@@ -60,6 +60,10 @@
     "maskPattern": "Patroon",
     "maskReplace": "Vervangen",
     "maskValue": "Waarde",
-    "maskPrecision": "Precisie"
+    "maskPrecision": "Precisie",
+    "requiresApproval": "Vereist goedkeuring",
+    "requiresApprovalHint": "Elke aanroep wordt pas uitgevoerd nadat de goedkeuringshook hem goedkeurt. Zonder geconfigureerde hook worden aanroepen geweigerd.",
+    "writesTable": "Schrijft tabel",
+    "writesTableHint": "De geregistreerde tabel die deze opdracht wijzigt. Na elke aanroep worden gecachte resultaten en gematerialiseerde views erover vernieuwd."
   }
 }

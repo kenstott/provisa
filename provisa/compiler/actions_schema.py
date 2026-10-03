@@ -51,6 +51,9 @@ _ACTION_SCALAR_MAP: dict[str, GraphQLScalarType] = {
     "BigInt": GraphQLString,
     "JSON": GraphQLString,
 }
+# REQ-1924: an argument typed with the IR type ``json`` takes any JSON value -- an object, a
+# list, a scalar -- as the caller wrote it; a source operation's arguments are all of this type.
+_IR_JSON = "json"
 
 
 def _mutation_name(op: str, field_name: str, convention: str = "apollo_graphql") -> str:
@@ -129,6 +132,8 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
     all_access = reaches_all_domains(si.role["domain_access"])
 
     def _gql_scalar(type_str: str):
+        if type_str == _IR_JSON:
+            return cast(GraphQLScalarType, JSONScalar)
         return _ACTION_SCALAR_MAP.get(type_str, GraphQLString)
 
     def _build_args(
@@ -201,7 +206,10 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
             gql_return = GraphQLList(GraphQLNonNull(ret_type)) if ret_type else GraphQLString
         else:
             return_schema = func.get("return_schema")
-            if return_schema:
+            if func.get("impl_kind") == "source_operation":
+                # REQ-1924: the remote's answer, passed back as it gave it.
+                gql_return = JSONScalar
+            elif return_schema:
                 type_name = "".join(p.capitalize() for p in func["name"].split("_")) + "ReturnType"
                 gql_return = _json_schema_to_gql_type(return_schema, type_name) or GraphQLString
             else:

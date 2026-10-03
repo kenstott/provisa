@@ -262,6 +262,9 @@ async def get_settings(request: Request):  # REQ-165, REQ-302, REQ-303, REQ-416,
             "max_list_items": gqr_cfg.get(
                 "max_list_items", GraphQLRemoteConfig.model_fields["max_list_items"].default
             ),
+            "max_rows": gqr_cfg.get(
+                "max_rows", GraphQLRemoteConfig.model_fields["max_rows"].default
+            ),
         },
     }
 
@@ -481,7 +484,7 @@ def _apply_graphql_remote(g: dict, updated: list) -> None:
     path = config_path()
     cfg = read_config()
     gqr = dict(cfg.get("graphql_remote", {}) or {})
-    for k in ("max_object_depth", "max_list_depth", "max_list_items"):
+    for k in ("max_object_depth", "max_list_depth", "max_list_items", "max_rows"):
         if k in g:
             gqr[k] = int(g[k])
             updated.append(f"graphql_remote.{k}")
