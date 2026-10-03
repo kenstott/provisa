@@ -10408,9 +10408,9 @@
   type: structural
   description: 'PgBouncer is the documented per-PostgreSQL-source opt-in via `use_pgbouncer` (default
     off); it is NOT forced on, because a default-on would require a running PgBouncer for every PG source.
-    [SUPERSEDED by REQ-053, 2026-09-30 -- the direct PostgreSQL pool is psycopg 3 (psycopg_pool), not
-    asyncpg; see the amendment below. Kept here for history; do not implement against it.] Default is
-    direct asyncpg pooling (REQ-052). [END SUPERSEDED BLOCK]
+    [SUPERSEDED by REQ-053 amendment, 2026-09-30 -- the direct PostgreSQL pool is psycopg 3 (psycopg_pool),
+    not asyncpg; see the amendment below. Kept here for history; do not implement against it.] Default
+    is direct asyncpg pooling (REQ-052). [END SUPERSEDED BLOCK]
 
     (Amended 2026-09-30, psycopg 3 driver:) Default is direct pooling through the shared psycopg 3 pool
     (REQ-052). A PgBouncer''d source never uses server-side prepared statements (`prepare_threshold=None`):
@@ -15181,7 +15181,7 @@
 - id: REQ-164
   status: complete
   group: 10. UI & Admin Surfaces
-  category: Admin & Configuration
+  category: Admin Configuration
   priority: SHOULD
   type: ui
   description: '`GET/PUT /admin/config` for config YAML download/upload with backup and reload.'
@@ -15216,7 +15216,7 @@
 - id: REQ-165
   status: complete
   group: 10. UI & Admin Surfaces
-  category: Admin & Configuration
+  category: Admin Configuration
   priority: SHOULD
   type: ui
   description: '`GET/PUT /admin/settings` for runtime platform settings (redirect, sampling, cache).'
@@ -15248,7 +15248,7 @@
 - id: REQ-166
   status: complete
   group: 10. UI & Admin Surfaces
-  category: Admin & Configuration
+  category: Admin Configuration
   priority: SHOULD
   type: ui
   description: Editable relationships page with materialize toggle, delete, and add form.
@@ -15284,7 +15284,7 @@
 - id: REQ-167
   status: complete
   group: 10. UI & Admin Surfaces
-  category: Admin & Configuration
+  category: Admin Configuration
   priority: MAY
   type: ui
   description: AI-suggested relationships via LLM discovery integration on relationships page.
@@ -15704,7 +15704,7 @@
 - id: REQ-533
   status: complete
   group: 10. UI & Admin Surfaces
-  category: Admin & Configuration
+  category: Admin Configuration
   priority: MUST
   type: structural
   description: The admin GraphQL API is a Strawberry-based endpoint mounted at POST /admin/graphql, served
@@ -15733,7 +15733,7 @@
   status: superseded
   superseded_by: REQ-533
   group: 10. UI & Admin Surfaces
-  category: Admin & Configuration
+  category: Admin Configuration
   priority: SHOULD
   type: structural
   description: The admin GraphQL API is mounted at `/admin/graphql` on the backend server (default port
@@ -15763,7 +15763,7 @@
 - id: REQ-622
   status: complete
   group: 10. UI & Admin Surfaces
-  category: Admin & Configuration
+  category: Admin Configuration
   priority: SHOULD
   type: ui
   description: The admin GraphQL API ships with Strawberry's built-in GraphiQL IDE accessible via GET
@@ -25986,7 +25986,7 @@
   category: Observability
   priority: MUST
   type: behavioral
-  description: All Provisa internal logs—starting with the query audit log (REQ-074) and extending to
+  description: All Provisa internal logs—starting with the query audit log (REQ-596) and extending to
     any other operational/observability logs—must be materialized and exposed as first-class registered
     tables within a dedicated "ops" domain in Provisa's federated catalog.
   use_case: Makes operational telemetry queryable through the governed pipeline (pgwire/SQL/GraphQL/Cypher)
@@ -30127,7 +30127,7 @@
   since: 2026-07
   target: 2026-Q3
   group: 6. Execution, Routing, Caching & Performance
-  category: Execution Routing
+  category: Execution & Routing
   priority: MUST
   type: behavioral
   description: 'Execution routing for CTAS: resolve the write path via existing resolve_write_path(target_source_type,
@@ -32501,7 +32501,7 @@
 - id: REQ-1096
   status: complete
   group: 10. UI & Admin Surfaces
-  category: Admin & Configuration
+  category: Admin Configuration
   priority: SHOULD
   type: behavioral
   since: 2026-07
@@ -44876,7 +44876,7 @@
     \ admin tenant_db emits provisa.query.postgres the same way\nAnd both appear in the ops queries report\
     \ alongside federated statements\n"
   related_reqs:
-  - REQ-074
+  - REQ-596
   - REQ-825
   - REQ-1386
 - id: REQ-1426
@@ -47048,7 +47048,7 @@
   category: Authentication
   priority: MUST
   type: behavioral
-  description: The break-glass superuser of REQ-125 can sign in from a browser under any auth provider.
+  description: The break-glass superuser of REQ-1264 can sign in from a browser under any auth provider.
     The credential is a username and password, but a deployment fronted by an external IdP -- Firebase
     requires an email address as the username, and issues no token for an account it does not hold --
     has no path by which that account reaches the UI, so the operator's only recourse when the IdP is
@@ -47274,7 +47274,7 @@
   category: Multi-Tenancy & Orgs
   priority: MUST
   type: behavioral
-  description: 'Auto-join (REQ-1269) treats a matching email address as proof that the person belongs
+  description: 'Auto-join (REQ-1285) treats a matching email address as proof that the person belongs
     to the org, which only holds for a domain the org controls. A consumer mailbox provider -- gmail.com,
     outlook.com, yahoo.com, icloud.com, proton.me and the rest of the set -- issues addresses to anyone
     who asks, so a rule matching one would hand membership of an org, with its data and its default role,
@@ -47319,7 +47319,7 @@
   priority: MUST
   type: behavioral
   description: 'A person can end up in an org without doing anything: an email-rule match auto-joins them
-    at sign-in (REQ-1269), or an administrator adds them. Either way an org they never asked for appears
+    at sign-in (REQ-1285), or an administrator adds them. Either way an org they never asked for appears
     in their switcher with no explanation of where it came from. Each membership therefore records how
     it came about -- joined_via is created, invite, auto_join or admin -- and whether the member has been
     told, in acknowledged_at. Both columns are nullable, so add_missing_columns reconciles existing registries;
@@ -49475,7 +49475,7 @@
 - id: REQ-1518
   status: complete
   group: 13. Multi-Tenancy & Organizations
-  category: Multi-tenancy
+  category: Multi-Tenancy
   priority: MUST
   type: behavioral
   description: The Arrow Flight transport must dial the shard the ACTIVE org queries, not the one this
@@ -52040,27 +52040,27 @@
   priority: MUST
   type: structural
   description: 'A SECRETS SERVICE, WITH PROVISA''S OWN STORE AS THE ONE THAT IS ALWAYS THERE. ${provider:reference}
-    (REQ-125, REQ-557) already names a provider, and a registry already exists to hold more than one --
-    but only ``env`` was ever registered, and ``register_provider`` has no callers, so in practice a secret
-    can only be an environment variable of the server process. THAT MAKES A SECRET SOMETHING ONLY THE
-    OPERATOR OF THE HOST CAN SET: a hosted org cannot put its own git token, warehouse password or API
-    key anywhere, because it does not own the process environment. The provider set therefore becomes
-    a registry in the shape the encryption providers already use (provisa/encryption/registry.py): a named
-    spec with a label, a description, the config fields it needs and an availability probe, so a deployment
-    wired to HashiCorp Vault, AWS Secrets Manager, GCP Secret Manager or Azure Key Vault reads its secrets
-    from there. WHEN NOTHING CENTRAL IS CONNECTED PROVISA IS ITS OWN SECRETS SERVICE: a built-in per-org
-    store in the control plane, each value encrypted through the configured encryption service (REQ-684,
-    REQ-685) so the plaintext never rests in a column, and never reachable across orgs. It is the default,
-    not the degraded case. AN UNKNOWN PROVIDER, AN UNSET NAME AND AN UNCONFIGURED BACKEND ALL RAISE --
-    a secret that cannot be resolved is never an empty string and never falls through to another provider.
-    WHAT AUTHORIZES A READ. The built-in store needs no key of its own: the row IS envelope ciphertext,
-    so the authority to read it is the encryption master key (REQ-684) the process already holds, and
-    a control-plane database copied without that key yields nothing. An EXTERNAL provider does need a
-    credential -- a Vault token, an AWS role -- and that credential is PROCESS CONFIGURATION resolved
-    through ${env:...} alone, never an org secret: a store whose own credential lives inside the store
-    cannot be opened, so the chain of trust terminates in the host environment by design. Every read and
-    write is scoped to ONE org: a name is looked up only in the namespace of the org the request is bound
-    to, so two orgs holding GIT_TOKEN hold two unrelated secrets and neither can name the other''s.'
+    (REQ-557) already names a provider, and a registry already exists to hold more than one -- but only
+    ``env`` was ever registered, and ``register_provider`` has no callers, so in practice a secret can
+    only be an environment variable of the server process. THAT MAKES A SECRET SOMETHING ONLY THE OPERATOR
+    OF THE HOST CAN SET: a hosted org cannot put its own git token, warehouse password or API key anywhere,
+    because it does not own the process environment. The provider set therefore becomes a registry in
+    the shape the encryption providers already use (provisa/encryption/registry.py): a named spec with
+    a label, a description, the config fields it needs and an availability probe, so a deployment wired
+    to HashiCorp Vault, AWS Secrets Manager, GCP Secret Manager or Azure Key Vault reads its secrets from
+    there. WHEN NOTHING CENTRAL IS CONNECTED PROVISA IS ITS OWN SECRETS SERVICE: a built-in per-org store
+    in the control plane, each value encrypted through the configured encryption service (REQ-684, REQ-685)
+    so the plaintext never rests in a column, and never reachable across orgs. It is the default, not
+    the degraded case. AN UNKNOWN PROVIDER, AN UNSET NAME AND AN UNCONFIGURED BACKEND ALL RAISE -- a secret
+    that cannot be resolved is never an empty string and never falls through to another provider. WHAT
+    AUTHORIZES A READ. The built-in store needs no key of its own: the row IS envelope ciphertext, so
+    the authority to read it is the encryption master key (REQ-684) the process already holds, and a control-plane
+    database copied without that key yields nothing. An EXTERNAL provider does need a credential -- a
+    Vault token, an AWS role -- and that credential is PROCESS CONFIGURATION resolved through ${env:...}
+    alone, never an org secret: a store whose own credential lives inside the store cannot be opened,
+    so the chain of trust terminates in the host environment by design. Every read and write is scoped
+    to ONE org: a name is looked up only in the namespace of the org the request is bound to, so two orgs
+    holding GIT_TOKEN hold two unrelated secrets and neither can name the other''s.'
   use_case: An org running on hosted Provisa can store its own git token or warehouse password without
     owning the server's environment, and an enterprise with Vault or AWS Secrets Manager reads the same
     references out of the service it already runs.
@@ -52099,7 +52099,7 @@
     one that a stored reference still names is allowed and reported -- the reference is text, its resolution
     is checked when it is used, and Provisa does not hold a secret hostage to a config that mentions it
     [END SUPERSEDED BLOCK]. Secrets are the ORG''S, managed by org_admin: a platform admin operates the
-    control plane and has no read of any org''s secret values (REQ-1361). The page also names which secrets
+    control plane and has no read of any org''s secret values (REQ-1327). The page also names which secrets
     provider the deployment is using, so an org can tell Provisa''s own store from a central service it
     is expected to file the secret in instead. WHERE IT LIVES: Admin / Security / Secrets, a sub-tab beside
     posture, encryption, authentication and local users, reached at /admin/secrets. Sharing the section
@@ -52213,7 +52213,7 @@
     creating, replacing and deleting one is org_settings, held by org_admin, and it is the org_admin''s
     act of storing it in the org scope that makes a credential shared. A platform admin holds neither
     over any org -- cross_org confers org LIFECYCLE, not a read of the names an org keeps, and the platform-bypass
-    wildcard does not satisfy either gate (REQ-1361, REQ-1558). TWO SURFACES, NAMED FOR WHOSE THEY ARE.
+    wildcard does not satisfy either gate (REQ-1327, REQ-1558). TWO SURFACES, NAMED FOR WHOSE THEY ARE.
     Admin carries "Org Secrets" (org_settings) and "Your Secrets" (any member), each listing only its
     own scope, each showing the reference to paste in the grammar of that scope, and each obeying names-go-in-values-never-come-back-out
     exactly as REQ-1558 requires. Separate surfaces rather than one filtered list, because whose a secret
@@ -52663,7 +52663,7 @@
   priority: MUST
   type: behavioral
   description: 'AN INVITATION IS ITSELF THE ADMISSION DECISION, AND THE ORG EMAIL RULE DOES NOT GATE REDEEMING
-    ONE. The email rule (REQ-1268) decides who may join an org on their own initiative -- it is the guard
+    ONE. The email rule (REQ-1284) decides who may join an org on their own initiative -- it is the guard
     on auto-join and on self-service. An invitation is different in kind: an org admin named a person,
     it is single-use, and it expires. Applying the rule to redemption refused exactly the people an admin
     deliberately reached outside their own domain -- a contractor, an auditor, someone whose IdP account
@@ -54479,7 +54479,7 @@
   description: 'AN INVITE LISTING IS SCOPED TO THE ACTIVE ORG, FOR EVERY CALLER. An invitation token is
     a live credential: it hands whoever holds it an account and a role in the org that issued it. Listing
     and revoking are therefore bounded by the org the request is bound to -- the org named by the Host
-    or the org header -- and not by how much authority the caller has. cross_org (REQ-1318) is the right
+    or the org header -- and not by how much authority the caller has. cross_org (REQ-1337) is the right
     to act in any org one at a time, never a right to read every org''s invitations at once; read that
     way it put one tenant''s live tokens on the page of the tenant the operator had selected. A caller
     bound to no org at all (the platform plane, before an org is chosen) is scoped to nothing rather than
@@ -54513,9 +54513,9 @@
   priority: MUST
   type: behavioral
   description: PLATFORM_ADMIN MAY ACT ACROSS ORGS BUT MAY NOT READ AN ORG'S DATA AT REST WITHOUT ITS OWN
-    MEMBERSHIP THERE. cross_org (REQ-1318/1337) is authority to act in any org for support and recovery
-    -- issue an invite, add or remove a member, reset a policy. It is not a grant to browse who is in
-    an org, its join policy, its branding, or its full config export; those are that org's data, and platform_admin
+    MEMBERSHIP THERE. cross_org (REQ-1337) is authority to act in any org for support and recovery --
+    issue an invite, add or remove a member, reset a policy. It is not a grant to browse who is in an
+    org, its join policy, its branding, or its full config export; those are that org's data, and platform_admin
     sees them only where it also holds a real org-scoped assignment in that org (seeded, the sandbox org,
     or a REQ-1303 recovery grant taken there) -- the same gate every other caller already passes. Reading
     them via the bare cross_org right, with no membership anywhere in the target org, is refused.
@@ -56499,7 +56499,7 @@
   status: complete
   since: 2026-09
   group: 4. Source Connectors
-  category: Live Data Events
+  category: Live Data & Events
   priority: MUST
   type: behavioral
   description: 'A source node whose produce raises for any reason (an adapter whose endpoint refuses the
@@ -63681,7 +63681,7 @@
   status: complete
   since: 2026-09
   group: 10. UI & Admin Surfaces
-  category: Federation Engines
+  category: Federation Engine
   priority: MUST
   type: behavioral
   description: 'A discovery/introspection request (the Register Table form''s "available tables" list,
