@@ -38,6 +38,14 @@ class SnowflakeBackend(NativeEngineBackend):
 
     result_formats = frozenset({"parquet"})
 
+    def writes_results_now(self) -> bool:
+        """Snowflake writes results only through the storage integration the deployment names
+        (``redirect.snowflake_storage_integration``); with none, a result is delivered another
+        way."""
+        from provisa.core import settings_registry
+
+        return bool(settings_registry.value("redirect.snowflake_storage_integration"))
+
     def ctas_redirect(
         self, state: Any, physical_sql: str, output_format: str, params: list | None
     ) -> dict:

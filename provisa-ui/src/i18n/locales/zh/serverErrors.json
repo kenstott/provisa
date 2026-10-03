@@ -349,7 +349,8 @@
       "view_spans_sources": "视图跨越多个数据源：{{sources}}",
       "webhook_approved": "已批准 Webhook '{{webhook}}'",
       "webhook_name_required": "Webhook 触发器需要 webhook_name",
-      "webhook_not_found": "未找到 Webhook '{{webhook}}'"
+      "webhook_not_found": "未找到 Webhook '{{webhook}}'",
+      "change_streams_unavailable": "源 '{{source}}' 是独立的 MongoDB 服务器，不提供 change streams：native 变更信号需要副本集或分片集群。请将其作为副本集运行，或使用 poll 变更信号。"
     },
     "secrets": {
       "still_referenced": "本组织中仍有 {{count}} 个已存储的值引用 {{secret}}。请更改或移除每一个，然后再次删除。"

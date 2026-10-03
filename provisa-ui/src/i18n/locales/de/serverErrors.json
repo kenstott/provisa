@@ -349,7 +349,8 @@
       "view_spans_sources": "Sicht erstreckt sich über mehrere Quellen: {{sources}}",
       "webhook_approved": "Webhook '{{webhook}}' genehmigt",
       "webhook_name_required": "webhook_name ist für einen Webhook-Trigger erforderlich",
-      "webhook_not_found": "Webhook '{{webhook}}' nicht gefunden"
+      "webhook_not_found": "Webhook '{{webhook}}' nicht gefunden",
+      "change_streams_unavailable": "Quelle '{{source}}' ist ein eigenständiger MongoDB-Server, der keine Change Streams bereitstellt: Das native Änderungssignal erfordert ein Replica Set oder einen Sharded Cluster. Betreiben Sie ihn als Replica Set oder verwenden Sie das Änderungssignal poll."
     },
     "secrets": {
       "still_referenced": "{{secret}} wird noch von {{count}} gespeicherten Wert(en) in dieser Organisation genannt. Ändern oder entfernen Sie jeden davon und löschen Sie es dann erneut."

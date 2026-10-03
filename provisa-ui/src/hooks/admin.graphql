@@ -217,6 +217,8 @@ query TablesQuery {
     viewSql
     dqContract
     queryTemplate
+    fileGlob
+    sourceFileColumn
     viewMetrics {
       metrics
       dimensions
@@ -696,6 +698,8 @@ query ReplicaBuilds {
       failedAttempts
       waitingOn
       waitingOnCode
+      feedDownSince
+      feedError
     }
     convergenceError
     convergenceErrorAt

@@ -59,24 +59,52 @@ def test_duckdbs_secret_is_scoped_to_the_results_prefix_and_addresses_a_private_
     assert "ENDPOINT" not in aws and "REGION 'eu-west-1'" in aws
 
 
-def test_clickhouse_inserts_into_its_s3_function():
-    sql = result_sink.clickhouse_insert("SELECT id FROM t", TARGET, MINIO)
+def test_clickhouse_inserts_into_its_s3_function_with_the_keys_as_parameters():
+    # The keys are server-side parameters: the statement text, which ClickHouse keeps in its
+    # query log and Provisa may log, holds no credential.
+    sql, params = result_sink.clickhouse_insert("SELECT id FROM t", TARGET, MINIO)
     assert sql == (
-        "INSERT INTO FUNCTION s3('http://127.0.0.1:9000/provisa-results/results/abc123/"
-        "data.parquet', 'key', 'it''s-secret', 'Parquet') SELECT id FROM t"
+        "INSERT INTO FUNCTION s3({provisa_results_url:String}, {provisa_results_key:String}, "
+        "{provisa_results_secret:String}, 'Parquet') SELECT id FROM t"
     )
-    assert "https://s3.eu-west-1.amazonaws.com/provisa-results/results/abc123/" in (
-        result_sink.clickhouse_insert("SELECT 1", TARGET, AWS)
+    assert params == {
+        "provisa_results_url": (
+            "http://127.0.0.1:9000/provisa-results/results/abc123/data.parquet"
+        ),
+        "provisa_results_key": "key",
+        "provisa_results_secret": "it's-secret",
+    }
+    _aws_sql, aws = result_sink.clickhouse_insert("SELECT 1", TARGET, AWS)
+    assert aws["provisa_results_url"].startswith(
+        "https://s3.eu-west-1.amazonaws.com/provisa-results/results/abc123/"
     )
+    count_sql, count_params = result_sink.clickhouse_count(TARGET, MINIO)
+    assert count_sql == (
+        "SELECT count() FROM s3({provisa_results_url:String}, {provisa_results_key:String}, "
+        "{provisa_results_secret:String}, 'Parquet')"
+    )
+    assert count_params == params
+    for statement in (sql, _aws_sql, count_sql):
+        assert "key'" not in statement and "secret" not in statement.replace(
+            "provisa_results_secret", ""
+        )
 
 
-def test_snowflake_unloads_the_query_as_parquet_with_its_column_names():
-    sql = result_sink.snowflake_copy("SELECT id FROM t WHERE id > ?", TARGET, AWS)
+def test_snowflake_unloads_through_its_storage_integration_never_with_credentials():
+    config = SimpleNamespace(**vars(AWS), snowflake_storage_integration="provisa_results")
+    sql = result_sink.snowflake_copy("SELECT id FROM t WHERE id > ?", TARGET, config)
     assert sql == (
         "COPY INTO 's3://provisa-results/results/abc123/' FROM (SELECT id FROM t WHERE id > ?) "
-        "FILE_FORMAT = (TYPE = PARQUET) HEADER = TRUE "
-        "CREDENTIALS = (AWS_KEY_ID = 'AK' AWS_SECRET_KEY = 'SK')"
+        'STORAGE_INTEGRATION = "provisa_results" '
+        "FILE_FORMAT = (TYPE = PARQUET) HEADER = TRUE"
     )
+    assert "SK" not in sql and "CREDENTIALS" not in sql
+
+
+def test_snowflake_with_no_storage_integration_does_not_write_results_itself():
+    config = SimpleNamespace(**vars(AWS), snowflake_storage_integration=None)
+    with pytest.raises(result_sink.ResultStoreNotGranted, match="storage integration"):
+        result_sink.snowflake_copy("SELECT 1", TARGET, config)
 
 
 def test_databricks_overwrites_the_results_directory_and_counts_what_it_wrote():
@@ -120,15 +148,32 @@ def test_each_engine_declares_the_formats_it_writes_itself(module, name, formats
 def test_the_tier_needs_an_engine_that_writes_the_format_and_is_connected():
     from provisa.federation.runtime import EngineRuntime
 
-    def _runtime(formats, connected):
+    def _runtime(formats, connected, granted=True):
         runtime = object.__new__(EngineRuntime)
         runtime._state = None
         runtime._backend = SimpleNamespace(
-            result_formats=frozenset(formats), is_connected=lambda state: connected
+            result_formats=frozenset(formats),
+            is_connected=lambda state: connected,
+            writes_results_now=lambda: granted,
         )
         return runtime
+
+    # An engine the deployment has not given its grant (Snowflake with no storage integration).
+    assert _runtime({"parquet"}, True, granted=False).writes_result("parquet") is False
 
     assert _runtime({"parquet"}, True).writes_result("Parquet") is True
     assert _runtime({"parquet"}, True).writes_result("orc") is False
     assert _runtime({"parquet"}, False).writes_result("parquet") is False  # asleep
     assert _runtime(set(), True).writes_result("parquet") is False
+
+
+def test_snowflake_writes_results_only_with_a_storage_integration_named(monkeypatch):
+    from provisa.core import settings_registry
+    from provisa.federation.snowflake_backend import SnowflakeBackend
+
+    backend = object.__new__(SnowflakeBackend)
+    named: dict[str, str | None] = {"redirect.snowflake_storage_integration": None}
+    monkeypatch.setattr(settings_registry, "value", lambda key: named[key])
+    assert backend.writes_results_now() is False
+    named["redirect.snowflake_storage_integration"] = "provisa_results"
+    assert backend.writes_results_now() is True

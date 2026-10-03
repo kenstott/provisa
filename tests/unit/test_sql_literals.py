@@ -87,6 +87,8 @@ def test_scalars_take_their_literal_forms():
     assert sql_literal(dt.datetime(2026, 10, 3, 8, 0), "trino") == (
         "CAST('2026-10-03T08:00:00' AS TIMESTAMP)"
     )
+    zoned = dt.datetime(2026, 10, 3, 8, 0, tzinfo=dt.UTC)
+    assert sql_literal(zoned, "postgres") == "CAST('2026-10-03T08:00:00+00:00' AS TIMESTAMPTZ)"
     assert sql_literal(uuid.UUID(int=1), "postgres") == "'00000000-0000-0000-0000-000000000001'"
     assert sql_literal(b"\x01\xff", "trino") == "X'01ff'"
     assert sql_literal(b"\x01\xff", "postgres") == "'\\x01ff'"

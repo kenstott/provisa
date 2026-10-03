@@ -16,6 +16,7 @@
     "loadKind": {
       "bulk_stream": "批量流",
       "row_copy": "逐行复制"
-    }
+    },
+    "feedDown": "变更流自 {{since}} 起中断；重新连接前副本不会刷新：{{error}}"
   }
 }

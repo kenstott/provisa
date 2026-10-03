@@ -45,6 +45,7 @@ Leaf module: sqlglot + the compiler's predicate classifier only; the runtime own
 # Requirements: REQ-899
 
 from __future__ import annotations
+from provisa.compiler.sql_literals import sql_literal
 
 import datetime
 import decimal
@@ -102,7 +103,7 @@ def secret_ddl(source_id: str, base_url: str, user: str, password: str) -> str:
     in ClickHouse's X-ClickHouse-User/X-ClickHouse-Key headers, never in a URL."""
 
     def lit(v: str) -> str:
-        return "'" + v.replace("'", "''") + "'"
+        return sql_literal(v, "duckdb")
 
     return (
         f'CREATE OR REPLACE SECRET "_ch_{source_id}" (TYPE http, EXTRA_HTTP_HEADERS MAP '

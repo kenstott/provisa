@@ -16,6 +16,7 @@
     "loadKind": {
       "bulk_stream": "flux en masse",
       "row_copy": "copie par lignes"
-    }
+    },
+    "feedDown": "Flux de modifications interrompu depuis {{since}} ; le réplica n'est pas actualisé avant la reconnexion : {{error}}"
   }
 }

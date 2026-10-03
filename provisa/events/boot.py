@@ -74,6 +74,8 @@ def _probe_factory(
     ref: str | None,
     watermark_column: str | None,
     sentinel_path: str | None = None,
+    source_path: str | None = None,
+    file_glob: str | None = None,
 ) -> Callable[[], Probe]:
     """Build a node's probe factory from its resolved ``probe_type`` (REQ-982). Each fire yields a
     fresh transport (``() -> str | None``) via :func:`probes.build_probe`; ``check_node`` compares the
@@ -89,6 +91,8 @@ def _probe_factory(
             ref=ref,
             watermark_column=watermark_column,
             sentinel_path=sentinel_path,
+            source_path=source_path,
+            file_glob=file_glob,
         )
 
     return factory
@@ -222,6 +226,7 @@ def build_source_node_spec(
     # source through the engine terminal (the SQL scalar runner + engine ref, injected); hash/none
     # degrade to the TTL cadence (a None token) where the REQ-981 output hash gates the ripple.
     from provisa.compiler.naming import source_to_catalog
+    from provisa.core.secrets import resolve_secrets
 
     ref = f'"{source_to_catalog(src.id)}"."{tbl.schema_name}"."{tbl.table_name}"'
     factory = (
@@ -231,6 +236,8 @@ def build_source_node_spec(
             ref=ref,
             watermark_column=args.watermark_column,
             sentinel_path=getattr(src, "sentinel_path", None),  # REQ-1148
+            source_path=resolve_secrets(getattr(src, "path", "") or "") or None,  # REQ-788
+            file_glob=getattr(tbl, "file_glob", None),  # REQ-788
         )
         if is_poll(args.change_signal)
         else None

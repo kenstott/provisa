@@ -32,6 +32,7 @@ storage has no host-reachable path at all today, a strictly larger gap) would le
 `hive_s3` drop this convention-based approach for a fully general one."""
 
 from __future__ import annotations
+from provisa.compiler.sql_literals import sql_literal
 
 from collections.abc import Iterator
 from typing import Any
@@ -156,7 +157,7 @@ def _duckdb_s3_conn(conn: HiveS3Connection):
     import duckdb
 
     def _q(s: str) -> str:
-        return s.replace("'", "''")
+        return sql_literal(s, "duckdb")[1:-1]
 
     c = duckdb.connect(":memory:")
     c.execute("INSTALL httpfs")

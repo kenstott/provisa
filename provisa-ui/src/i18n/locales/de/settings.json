@@ -354,6 +354,10 @@
       "secret_key": {
         "label": "Geheimer Schlüssel der Weiterleitung",
         "help": "Der geheime Schlüssel des Objektspeichers. Secret; bestätigungspflichtig."
+      },
+      "snowflake_storage_integration": {
+        "label": "Snowflake-Storage-Integration für Ergebnisse",
+        "help": "Die Snowflake-Storage-Integration, über die eine Snowflake-Engine große Ergebnisse in den Objektspeicher schreibt. Leer: Eine Snowflake-Engine schreibt Ergebnisse nicht selbst."
       }
     },
     "otel": {

@@ -17,25 +17,27 @@ from provisa.events.source_loader import (
     SourceRowLoader,
     UnsupportedSourceFetch,
     _pk_in_clause,
-    _sql_literal,
 )
 
 
-def test_sql_literal_quotes_strings_and_escapes():
-    assert _sql_literal(5) == "5"
-    assert _sql_literal(5.5) == "5.5"
-    assert _sql_literal(None) == "NULL"
-    assert _sql_literal(True) == "TRUE"
-    assert _sql_literal("o'brien") == "'o''brien'"
+def test_pk_in_clause_writes_each_value_by_the_engines_literal_rule():
+    keys = [(5,), (5.5,), (None,), (True,), ("o'brien",), ("x\\') OR 1=1 --",)]
+    assert _pk_in_clause(["id"], keys, "postgres") == (
+        "\"id\" IN (5, 5.5, NULL, TRUE, 'o''brien', 'x\\'') OR 1=1 --')"
+    )
+    # ClickHouse reads a backslash as an escape: it is escaped too.
+    assert _pk_in_clause(["id"], [("x\\') OR 1=1 --",)], "clickhouse") == (
+        "\"id\" IN ('x\\\\'') OR 1=1 --')"
+    )
 
 
 def test_pk_in_clause_single_column():
-    clause = _pk_in_clause(["id"], [(1,), (2,)])
+    clause = _pk_in_clause(["id"], [(1,), (2,)], "postgres")
     assert clause == '"id" IN (1, 2)'
 
 
 def test_pk_in_clause_composite():
-    clause = _pk_in_clause(["id", "region"], [(1, "us"), (2, "eu")])
+    clause = _pk_in_clause(["id", "region"], [(1, "us"), (2, "eu")], "postgres")
     assert clause == "(\"id\", \"region\") IN ((1, 'us'), (2, 'eu'))"
 
 
@@ -63,6 +65,8 @@ async def test_load_keys_runs_bounded_select_through_engine_terminal():
         rows = [(1, "new")]
 
     class _FakeEngine:
+        dialect = "postgres"  # the dialect the engine's statements are written in
+
         def address_replicas(self, sql):
             return sql  # this stand-in's tables are all read where the statement names them
 

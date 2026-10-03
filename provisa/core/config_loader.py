@@ -11,7 +11,7 @@
 """Config loader: YAML → validate → resolve secrets → upsert PG → create the engine catalogs."""
 
 # Requirements: REQ-012, REQ-013, REQ-016, REQ-250, REQ-251, REQ-275, REQ-282, REQ-283, REQ-285
-# complexity-gate: allow-ble=5 reason="per-source config registration is best-effort: source-driver register, OpenAPI spec load, SQLite migration post-step, OpenAPI cache, and CBO analyze each log their own failure and continue, so one bad source never fails the whole config load"
+# complexity-gate: allow-ble=6 reason="per-source config registration is best-effort: source-driver register, OpenAPI spec load, SQLite migration post-step, OpenAPI cache, a MongoDB change-stream check (an unreachable server), and CBO analyze each log their own failure and continue, so one bad source never fails the whole config load"
 
 import logging
 import os
@@ -1259,10 +1259,12 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     _validate_watermark_columns(config)
     _validate_neo4j_sources(config)
     _validate_row_materialize(config)
+    _validate_file_globs(config)
     _validate_role_ttl(config)
     _validate_paging(config)
     _validate_replicate(config)
     _validate_landing_ttl(config)
+    failed_catalogs += await _check_change_feeds(config)
     await _upsert_tables(
         conn, engine, config, openapi_specs, catalog_names=catalog_names, origin=origin
     )
@@ -1536,6 +1538,38 @@ def _validate_paging(config) -> None:  # REQ-318
         )
 
 
+async def _check_change_feeds(config) -> list[str]:  # REQ-1861
+    """A MongoDB table that follows its source's change feed needs a server that serves change
+    streams: a standalone one is refused by name and the load fails. A server that cannot be
+    reached is that source's ordinary unreachable failure, reported with the sources whose engine
+    registration failed (the ids returned), never a pass."""
+    from provisa.mongodb.change_feed import (
+        ChangeStreamsUnavailable,
+        follows_change_feed,
+        require_change_feed,
+    )
+
+    by_id = {s.id: s for s in config.sources}
+    following = {
+        t.source_id
+        for t in config.tables
+        if t.source_id in by_id
+        and follows_change_feed(
+            by_id[t.source_id].type.value, t.change_signal, by_id[t.source_id].change_signal
+        )
+    }
+    unreachable: list[str] = []
+    for source_id in sorted(following):
+        try:
+            await require_change_feed(by_id[source_id])
+        except ChangeStreamsUnavailable:
+            raise
+        except Exception:
+            log.exception("source %r: its change-stream support could not be checked", source_id)
+            unreachable.append(source_id)
+    return unreachable
+
+
 def _validate_replicate(config) -> None:  # REQ-826
     """A table's RESOLVED settings (its own, else its source's) may not pair load_protected with
     replicate -1 (never): a load-protected table is never read live. The models refuse the pair
@@ -1585,6 +1619,33 @@ def _validate_landing_ttl(config) -> None:  # REQ-1907
         )
         if err is not None:
             raise ValueError(f"table {table.table_name!r} (source {source.id!r}): {err}")
+
+
+def _validate_file_globs(config) -> None:  # REQ-788
+    """A files table that declares ``file_glob`` is one logical table over the files the glob
+    matches under its source's path: they must share a column set, else ``schema.file_columns_differ``
+    by name. A glob that matches nothing is a configuration error. The source must be a files
+    source (the only kind the glob read is defined for)."""
+    from provisa.file_source.files_glob import columns_of_file, matched_files, validate_glob_table
+
+    sources_by_id = {s.id: s for s in config.sources}
+    for table in config.tables:
+        glob = getattr(table, "file_glob", None)
+        if not glob:
+            continue
+        source = sources_by_id.get(table.source_id)
+        if source is None:
+            continue  # a table naming no declared source is caught by the FK/registration check
+        src_type = getattr(getattr(source, "type", None), "value", None)
+        if src_type not in ("files", "csv", "parquet"):
+            raise ValueError(
+                f"table {table.table_name!r}: file_glob is defined only for a files source, "
+                f"not {src_type!r} (REQ-788)"
+            )
+        from provisa.core.secrets import resolve_secrets
+
+        files = matched_files(resolve_secrets(source.path or ""), glob)
+        validate_glob_table(glob, files, columns_of_file)
 
 
 def _validate_row_materialize(config) -> None:  # REQ-1865

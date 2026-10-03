@@ -354,6 +354,10 @@
       "secret_key": {
         "label": "重新導向機密金鑰",
         "help": "物件儲存的機密金鑰。機密；儲存前會要求確認。"
+      },
+      "snowflake_storage_integration": {
+        "label": "用於結果的 Snowflake 儲存整合",
+        "help": "Snowflake 引擎將大型結果寫入物件儲存時所用的 Snowflake 儲存整合。留空：Snowflake 引擎不自行寫入結果。"
       }
     },
     "otel": {

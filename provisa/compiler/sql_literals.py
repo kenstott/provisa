@@ -113,7 +113,8 @@ def sql_literal(value: Any, dialect: str) -> str:  # noqa: PLR0911 -- one return
     if isinstance(value, str):
         return _string(value, dialect)
     if isinstance(value, _dt.datetime):  # before date: a datetime is a date
-        return _typed(value.isoformat(), "TIMESTAMP", dialect)
+        zoned = value.tzinfo is not None and value.utcoffset() is not None
+        return _typed(value.isoformat(), "TIMESTAMPTZ" if zoned else "TIMESTAMP", dialect)
     if isinstance(value, _dt.date):
         return _typed(value.isoformat(), "DATE", dialect)
     if isinstance(value, _dt.time):

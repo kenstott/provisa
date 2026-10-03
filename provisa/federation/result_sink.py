@@ -23,6 +23,7 @@ The address is the one the presigner reads (``executor.redirect.presign_ctas_res
 # Requirements: REQ-1194
 
 from __future__ import annotations
+from provisa.compiler.sql_literals import sql_literal
 
 import uuid
 from dataclasses import dataclass
@@ -79,8 +80,8 @@ def require_format(engine: str, output_format: str, written: frozenset[str]) -> 
 
 
 def _quoted(text: str) -> str:
-    """``text`` as a single-quoted SQL string literal."""
-    return "'" + text.replace("'", "''") + "'"
+    """``text`` as a single-quoted SQL string literal (standard strings: DuckDB, Snowflake)."""
+    return sql_literal(text, "duckdb")
 
 
 # -- DuckDB ------------------------------------------------------------------------------------------
@@ -118,47 +119,68 @@ def duckdb_copy(select_sql: str, target: ResultTarget) -> str:
 
 # -- ClickHouse --------------------------------------------------------------------------------------
 
+#: The ``s3`` table function's address and keys, sent as server-side parameters: ClickHouse keeps
+#: a statement's text in its query log, and the text holds none of them.
+_CH_S3 = (
+    "s3({provisa_results_url:String}, {provisa_results_key:String}, "
+    "{provisa_results_secret:String}, 'Parquet')"
+)
 
-def clickhouse_insert(select_sql: str, target: ResultTarget, config: Any) -> str:
-    """``INSERT INTO FUNCTION s3(...)``: ClickHouse runs the query and writes one Parquet
-    object at the URL its ``s3`` table function is given."""
+
+def _clickhouse_s3(target: ResultTarget, config: Any) -> dict[str, str]:
     if config.endpoint_url:
         base = config.endpoint_url.rstrip("/")
     else:
         base = f"https://s3.{config.region}.amazonaws.com"
-    url = f"{base}/{target.bucket}/{target.key_prefix}/data.parquet"
-    return (
-        f"INSERT INTO FUNCTION s3({_quoted(url)}, {_quoted(config.access_key)}, "
-        f"{_quoted(config.secret_key)}, 'Parquet') {select_sql}"
-    )
+    return {
+        "provisa_results_url": f"{base}/{target.bucket}/{target.key_prefix}/data.parquet",
+        "provisa_results_key": config.access_key,
+        "provisa_results_secret": config.secret_key,
+    }
 
 
-def clickhouse_count(target: ResultTarget, config: Any) -> str:
+def clickhouse_insert(
+    select_sql: str, target: ResultTarget, config: Any
+) -> tuple[str, dict[str, str]]:
+    """``INSERT INTO FUNCTION s3(...)``: ClickHouse runs the query and writes one Parquet object.
+    Returns the statement and the parameters that address the object and carry the keys."""
+    return f"INSERT INTO FUNCTION {_CH_S3} {select_sql}", _clickhouse_s3(target, config)
+
+
+def clickhouse_count(target: ResultTarget, config: Any) -> tuple[str, dict[str, str]]:
     """The rows the written object holds, read back from its own footer."""
-    if config.endpoint_url:
-        base = config.endpoint_url.rstrip("/")
-    else:
-        base = f"https://s3.{config.region}.amazonaws.com"
-    url = f"{base}/{target.bucket}/{target.key_prefix}/data.parquet"
-    return (
-        f"SELECT count() FROM s3({_quoted(url)}, {_quoted(config.access_key)}, "
-        f"{_quoted(config.secret_key)}, 'Parquet')"
-    )
+    return f"SELECT count() FROM {_CH_S3}", _clickhouse_s3(target, config)
 
 
 # -- Snowflake ---------------------------------------------------------------------------------------
 
 
+class ResultStoreNotGranted(ValueError):
+    """The engine reaches the results store only through a grant the deployment has not named."""
+
+
+def _identifier(name: str) -> str:
+    """``name`` as a double-quoted SQL identifier."""
+    return '"' + name.replace('"', '""') + '"'
+
+
 def snowflake_copy(select_sql: str, target: ResultTarget, config: Any) -> str:
     """``COPY INTO <location> FROM (query)``: Snowflake unloads the query's result as Parquet
     under the prefix, with the column names kept (``HEADER``). Its result row carries
-    ``rows_unloaded``. Snowflake writes to AWS S3 with the keys given; it cannot reach a private
-    S3-compatible endpoint."""
+    ``rows_unloaded``. Snowflake reaches the bucket through the storage integration the
+    deployment names (``redirect.snowflake_storage_integration``), so no credential is in the
+    statement, which Snowflake keeps in its query history. It writes to AWS S3; it cannot reach a
+    private S3-compatible endpoint."""
+    integration = config.snowflake_storage_integration
+    if not integration:
+        raise ResultStoreNotGranted(
+            "Snowflake writes results to the object store only through a storage integration; "
+            "none is named (redirect.snowflake_storage_integration)"
+        )
     return (
         f"COPY INTO {_quoted(target.directory_url)} FROM ({select_sql}) "
-        "FILE_FORMAT = (TYPE = PARQUET) HEADER = TRUE "
-        f"CREDENTIALS = (AWS_KEY_ID = {_quoted(config.access_key)} "
-        f"AWS_SECRET_KEY = {_quoted(config.secret_key)})"
+        f"STORAGE_INTEGRATION = {_identifier(integration)} "
+        "FILE_FORMAT = (TYPE = PARQUET) HEADER = TRUE"
     )
 
 

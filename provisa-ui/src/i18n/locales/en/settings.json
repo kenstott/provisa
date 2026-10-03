@@ -354,6 +354,10 @@
       "secret_key": {
         "label": "Redirect secret key",
         "help": "The object store's secret key. Secret; guarded."
+      },
+      "snowflake_storage_integration": {
+        "label": "Snowflake storage integration for results",
+        "help": "The Snowflake storage integration a Snowflake engine writes large results to the object store through. Empty: a Snowflake engine does not write results itself."
       }
     },
     "otel": {

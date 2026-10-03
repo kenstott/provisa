@@ -17,6 +17,8 @@ Leaf module: depends only on sql_types and sqlglot, never on sql_gen.
 
 from __future__ import annotations
 
+from provisa.compiler.sql_literals import sql_literal
+
 import re as _re
 from datetime import datetime, timezone
 
@@ -102,8 +104,8 @@ def _common_cast_type(type_a: str, type_b: str) -> str:
 
 
 def _sql_str_literal(val: str) -> str:
-    """Escape and quote a string as a SQL VARCHAR literal."""
-    return "VARCHAR '" + val.replace("'", "''") + "'"
+    """Escape and quote a string as a SQL VARCHAR literal (Trino)."""
+    return "VARCHAR " + sql_literal(val, "trino")
 
 
 def _join_column_expr_for(alias: str | None, column: str, my_type: str, other_type: str) -> str:

@@ -50,7 +50,6 @@ default for unauthenticated access); absent too → the call is refused.
 
 from __future__ import annotations
 
-import datetime as _dt
 import json
 import logging
 import os
@@ -763,8 +762,8 @@ class ProvisaAirportServer(
             return 0  # nothing to change beyond the identity itself
         total = 0
         for row, pk_vals in zip(rows, pk_tuples):
-            assignments = ", ".join(f'"{c}" = {_sql_literal(row[c])}' for c in set_cols)
-            where = " AND ".join(f'"{col}" = {_sql_literal(val)}' for col, val in zip(pk, pk_vals))
+            assignments = ", ".join(f'"{c}" = {_literal(row[c])}' for c in set_cols)
+            where = " AND ".join(f'"{col}" = {_literal(val)}' for col, val in zip(pk, pk_vals))
             sql = (
                 f'UPDATE "{schema}"."{table}" SET {assignments} WHERE {where} '
                 f"RETURNING {', '.join(chr(34) + c + chr(34) for c in pk)}"
@@ -778,12 +777,12 @@ class ProvisaAirportServer(
     ) -> str:
         pk_ret = ", ".join(f'"{c}"' for c in pk)
         if len(pk) == 1:
-            values = ", ".join(_sql_literal(t[0]) for t in pk_tuples)
+            values = ", ".join(_literal(t[0]) for t in pk_tuples)
             where = f'"{pk[0]}" IN ({values})'
         else:
             # Composite PK — OR of per-row equality tuples.
             clauses = [
-                "(" + " AND ".join(f'"{c}" = {_sql_literal(v)}' for c, v in zip(pk, t)) + ")"
+                "(" + " AND ".join(f'"{c}" = {_literal(v)}' for c, v in zip(pk, t)) + ")"
                 for t in pk_tuples
             ]
             where = " OR ".join(clauses)
@@ -796,7 +795,7 @@ class ProvisaAirportServer(
         rows = data.to_pylist()
         values = []
         for row in rows:
-            values.append("(" + ", ".join(_sql_literal(row[c]) for c in cols) + ")")
+            values.append("(" + ", ".join(_literal(row[c]) for c in cols) + ")")
         return f'INSERT INTO "{schema}"."{table}" ({col_sql}) VALUES ' + ", ".join(values)
 
 
@@ -882,20 +881,9 @@ def _trace_pushdown(sql: str) -> None:
         fh.write(sql + "\n")
 
 
-def _sql_literal(value: Any) -> str:
-    """Render a Python value (from an Arrow row) as a SQL literal for the governed INSERT.
+def _literal(value: Any) -> str:
+    """A value from an Arrow row as a literal of the governed statement, which is PostgreSQL SQL
+    re-parsed and re-governed by _compile_govern_execute: the dialect's one literal rule."""
+    from provisa.compiler.sql_literals import sql_literal
 
-    The literal is re-parsed and re-governed by _compile_govern_execute, so this only needs to
-    be a faithful, correctly-escaped rendering — not a trust boundary.
-    """
-    if value is None:
-        return "NULL"
-    if isinstance(value, bool):
-        return "TRUE" if value else "FALSE"
-    if isinstance(value, (int, float)):
-        return repr(value)
-    if isinstance(value, (bytes, bytearray)):
-        return "'\\x" + bytes(value).hex() + "'"
-    if isinstance(value, (_dt.datetime, _dt.date, _dt.time)):
-        return "'" + value.isoformat() + "'"
-    return "'" + str(value).replace("'", "''") + "'"
+    return sql_literal(value, "postgres")

@@ -353,6 +353,21 @@ async def _run_change_stream(
             state, table_id, source.id, replica_state.REASON_REFRESH
         )
 
+    async def _feed(error: str | None) -> None:
+        # The listener's state on the table's replica record, where its status is shown.
+        from datetime import UTC, datetime
+
+        from provisa.federation.registry_view import registered_tables
+
+        table = {t.id: t for t in await registered_tables(state)}[table_id]
+        async with state.tenant_db.acquire() as conn:
+            await replica_state.record_feed(
+                conn,
+                (source.id, table.schema_name, table.table_name),
+                error=error,
+                now=datetime.now(UTC),
+            )
+
     # The stream's wait bounds how long a burst's end and a shutdown go unnoticed.
     wait_ms = int(max(0.05, min(1.0, debounce_quiet or 1.0)) * 1000)
     while not disconnect.is_set():
@@ -369,6 +384,7 @@ async def _run_change_stream(
                 collection=collection,
                 wait_ms=wait_ms,
             ) as stream:
+                await _feed(None)
                 await _ask()  # watching from here on: what changed before is in this build
                 await follow_changes(
                     stream, _ask, disconnect, quiet=debounce_quiet, max_delay=debounce_max_delay
@@ -382,6 +398,11 @@ async def _run_change_stream(
                 failed,
                 _CHANGE_STREAM_RETRY_SECONDS,
             )
+            try:
+                # A driver error can carry no text (a timeout); its class then names the cause.
+                await _feed(str(failed) or type(failed).__name__)
+            except Exception:
+                log.exception("change stream %s: its down state could not be recorded", node)
         deadline = _CHANGE_STREAM_RETRY_SECONDS
         while deadline > 0 and not disconnect.is_set():
             await asyncio.sleep(0.2)

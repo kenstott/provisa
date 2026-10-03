@@ -484,6 +484,11 @@ class EngineBackend:
     #: engine has no such write, and a result is delivered another way.
     result_formats: frozenset[str] = frozenset()
 
+    def writes_results_now(self) -> bool:
+        """Whether the deployment has given the engine what it writes results with. True for an
+        engine that needs nothing beyond its connection and the results store's own keys."""
+        return True
+
     def ctas_redirect(
         self, state: Any, physical_sql: str, output_format: str, params: list | None
     ) -> dict:

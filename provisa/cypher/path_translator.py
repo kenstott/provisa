@@ -20,6 +20,7 @@ Rejects unbounded [*] (enforced at parse time, also checked here).
 """
 
 from __future__ import annotations
+from provisa.compiler.sql_literals import sql_literal
 
 from provisa.cypher.parser import CypherParseError, PathFunction
 from provisa.cypher.label_map import CypherLabelMap, RelationshipMapping
@@ -100,8 +101,7 @@ def path_to_recursive_sql(  # REQ-345, REQ-346, REQ-348, REQ-351
     tgt_pk = tgt_meta.id_column
 
     if rel_mapping.source_constant is not None:
-        escaped = str(rel_mapping.source_constant).replace("'", "''")
-        src_join_expr = f"'{escaped}'"
+        src_join_expr = sql_literal(str(rel_mapping.source_constant), "postgres")
     else:
         src_join_expr = f'src."{rel_mapping.join_source_column}"'
 

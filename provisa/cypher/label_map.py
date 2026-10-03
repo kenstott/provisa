@@ -14,6 +14,7 @@ No separate config. TableMeta.type_name → node label; JoinMeta → relationshi
 """
 
 from __future__ import annotations
+from provisa.compiler.sql_literals import sql_literal
 
 import re
 from dataclasses import dataclass, field
@@ -243,7 +244,7 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
                         # must express: target_expr(source) = source_constant, not
                         # join_target_column = join_source_column (which is synthetic).
                         if rel.source_constant is not None and rel.target_expr is not None:
-                            escaped = str(rel.source_constant).replace("'", "''")
+                            escaped_lit = sql_literal(str(rel.source_constant), "postgres")
                             rev = RelationshipMapping(
                                 rel_type=rel.rel_type,
                                 source_label=rel.target_label,
@@ -253,7 +254,7 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
                                 field_name=rel.field_name,
                                 alias=rel.alias,
                                 source_expr=rel.target_expr,
-                                target_expr=f"'{escaped}'",
+                                target_expr=escaped_lit,
                             )
                         else:
                             rev = RelationshipMapping(

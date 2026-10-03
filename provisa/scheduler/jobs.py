@@ -17,7 +17,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import math
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -28,6 +27,8 @@ from provisa.federation.execution_auth import system_auth
 
 import httpx
 import pyarrow as pa
+
+from provisa.compiler.sql_literals import sql_literal
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -656,26 +657,6 @@ def _resolve_batch_size(_signal: str) -> int:
     return max(_state.otel_compact_batch_size, 1)
 
 
-def _sql_literal(value) -> str:
-    """Render one INSERT value as a Trino SQL literal."""
-    if value is None:
-        return "NULL"
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, int):
-        return str(value)
-    if isinstance(value, float):
-        if math.isnan(value):
-            return "nan()"
-        if math.isinf(value):
-            return "infinity()" if value > 0 else "-infinity()"
-        return repr(value)
-    if isinstance(value, (bytes, bytearray)):
-        return f"X'{value.hex()}'"
-    # Trino string literals have no escape sequences — a doubled quote is the entire rule.
-    return "'" + str(value).replace("'", "''") + "'"
-
-
 def _execute_batch_inserts(
     engine,
     signal: str,
@@ -697,7 +678,9 @@ def _execute_batch_inserts(
     for row in rows:
         rendered = (
             "("
-            + ", ".join(ph.replace("?", _sql_literal(v)) for ph, v in zip(placeholders, row))
+            + ", ".join(
+                ph.replace("?", sql_literal(v, engine.dialect)) for ph, v in zip(placeholders, row)
+            )
             + ")"
         )
         over_chars = pending + len(rendered) > _MAX_INSERT_SQL_CHARS

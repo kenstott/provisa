@@ -42,6 +42,8 @@ Nothing is written first and checked afterwards."""
 
 from __future__ import annotations
 
+from provisa.compiler.sql_literals import sql_literal
+
 import re
 from typing import TYPE_CHECKING
 
@@ -129,7 +131,7 @@ def _with_session_values(predicate: str, session_vars: dict[str, str]) -> str:
 
     def _value(match: re.Match) -> str:
         value = session_vars.get(match.group(1))
-        return "NULL" if value is None else "'" + value.replace("'", "''") + "'"
+        return "NULL" if value is None else sql_literal(value, "postgres")
 
     return _SESSION_TERM.sub(_value, predicate)
 

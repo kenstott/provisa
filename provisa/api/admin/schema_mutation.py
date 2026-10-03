@@ -840,6 +840,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 params={"source": input.id, "error": str(_conn_err)},
             )
 
+        from provisa.api.admin._change_feed import source_change_feed_refusal
+
+        async with (await _get_pool()).acquire() as _feed_conn:
+            _feed_refusal = await source_change_feed_refusal(_feed_conn, input)  # REQ-1861
+        if _feed_refusal is not None:
+            return _feed_refusal
+
         # REQ-1695: the connection answered, so this credential is worth keeping. A literal goes
         # into the org vault and the row keeps the reference that names it; the row never holds a
         # credential. Done after the validation so a rejected source leaves no vault entry behind.
@@ -1162,6 +1169,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
             if _ttl_refusal is not None:
                 return _ttl_refusal
+            from provisa.api.admin._change_feed import source_change_feed_refusal
+
+            _feed_refusal = await source_change_feed_refusal(_conn, input)  # REQ-1861
+            if _feed_refusal is not None:
+                return _feed_refusal
             # REQ-1695: the literal a person retyped into the form replaces the vault entry under
             # the same name -- a rotation, not a second secret -- and the row keeps the reference.
             password_ref = await persist_source_password(info, input.id, input.password)
@@ -2327,6 +2339,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
             if _ttl_refusal is not None:
                 return _ttl_refusal
+            from provisa.api.admin._change_feed import table_change_feed_refusal
+
+            _feed_refusal = await table_change_feed_refusal(  # REQ-1861
+                _conn, model.source_id, model.change_signal
+            )
+            if _feed_refusal is not None:
+                return _feed_refusal
+            from provisa.api.admin._file_glob import table_file_glob_refusal
+
+            _glob_refusal = await table_file_glob_refusal(_conn, model)  # REQ-788
+            if _glob_refusal is not None:
+                return _glob_refusal
             _was = await origin_repo.of_registration(
                 _conn, model.source_id, model.schema_name, model.table_name
             )

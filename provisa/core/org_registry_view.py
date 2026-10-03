@@ -24,6 +24,7 @@ regenerations it still reads live rows — it is a view, not a snapshot.
 """
 
 from __future__ import annotations
+from provisa.compiler.sql_literals import sql_literal
 
 import logging
 from typing import TYPE_CHECKING
@@ -125,7 +126,7 @@ def build_view_sql(*, root_schema: str, admin_schema: str, org_schemas: dict[str
 
 
 def _quote_literal(value: str) -> str:
-    return "'" + value.replace("'", "''") + "'"
+    return sql_literal(value, "postgres")
 
 
 async def refresh_org_registry_view(*, model_db: "Database", admin_db: "Database") -> str:

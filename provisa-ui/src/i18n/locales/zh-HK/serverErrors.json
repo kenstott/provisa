@@ -349,7 +349,8 @@
       "view_spans_sources": "檢視橫跨多個數據來源：{{sources}}",
       "webhook_approved": "已批准 Webhook「{{webhook}}」",
       "webhook_name_required": "Webhook 觸發程序必須提供 webhook_name",
-      "webhook_not_found": "找不到 Webhook「{{webhook}}」"
+      "webhook_not_found": "找不到 Webhook「{{webhook}}」",
+      "change_streams_unavailable": "來源 '{{source}}' 是獨立的 MongoDB 伺服器，不提供 change streams：native 變更訊號需要副本集或分片叢集。請將其作為副本集執行，或使用 poll 變更訊號。"
     },
     "secrets": {
       "still_referenced": "本機構中仍有 {{count}} 個已儲存的值引用 {{secret}}。請更改或移除每一個，然後再次刪除。"

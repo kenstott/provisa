@@ -33,6 +33,8 @@ from provisa.federation.execution_auth import system_auth
 
 from typing import Any
 
+from provisa.compiler.sql_literals import sql_literal
+
 # Source types whose "current rows" are fetched by calling the adapter, not by an engine SQL scan.
 # Everything else (RDBMS, cloud DW, OLAP, data lake, file, and connector-backed NoSQL/streaming/graph)
 # is read through the engine terminal. Keep this the exclusion set — the scannable set is open-ended.
@@ -203,6 +205,11 @@ class SourceRowLoader:
         from provisa.federation.strategy import engine_attaches
 
         stype = _source_type(source)
+        # REQ-788: a files table that declares a glob is ONE logical table over the matched files.
+        # It is read by DuckDB read_csv/read_parquet over the file list in-process, on every
+        # engine (the replica is then served from the store) — no engine reads it in place.
+        if getattr(table, "file_glob", None):
+            return _glob_replica_source(source, table, columns)
         pools = getattr(state, "source_pools", None)
         if (
             floor_setting(source) is not None
@@ -262,7 +269,7 @@ class SourceRowLoader:
 
         catalog = source_to_catalog(source.id)
         ref = f'"{catalog}"."{table.schema_name}"."{table.table_name}"'
-        where = _pk_in_clause(pk_columns, keys)
+        where = _pk_in_clause(pk_columns, keys, self._engine.dialect)
         result = await self._engine.execute_engine(
             f"SELECT * FROM {ref} WHERE {where}", authorization=system_auth("source row load")
         )
@@ -282,29 +289,16 @@ class SourceRowLoader:
         return pa.Table.from_pylist(await self.load_keys(source, table, pk_columns, keys))
 
 
-def _sql_literal(value: Any) -> str:
-    """Inline-literal rendering for a PK value in a generated ``IN`` predicate — the same posture
-    ``load``'s own ``SELECT * FROM {ref}`` string-building already uses (no bind-param plumbing
-    through the engine terminal call). A declared PK is trusted (design constraint 6): no
-    additional escaping/validation beyond standard SQL-string quoting is performed here."""
-    if value is None:
-        return "NULL"
-    if isinstance(value, bool):
-        return "TRUE" if value else "FALSE"
-    if isinstance(value, (int, float)):
-        return str(value)
-    return "'" + str(value).replace("'", "''") + "'"
-
-
-def _pk_in_clause(pk_columns: list[str], keys: list[tuple[Any, ...]]) -> str:
+def _pk_in_clause(pk_columns: list[str], keys: list[tuple[Any, ...]], dialect: str) -> str:
     """A ``col IN (...)`` (single-column PK) or ``(col1, col2) IN ((...), (...))`` (composite PK)
-    predicate naming exactly ``keys`` -- never a range, never unbounded."""
+    predicate naming exactly ``keys`` -- never a range, never unbounded. Each key value is a
+    literal of ``dialect`` (the engine the statement runs on), by the dialect's one rule."""
     if len(pk_columns) == 1:
         col = pk_columns[0]
-        values = ", ".join(_sql_literal(k[0]) for k in keys)
+        values = ", ".join(sql_literal(k[0], dialect) for k in keys)
         return f'"{col}" IN ({values})'
     cols = ", ".join(f'"{c}"' for c in pk_columns)
-    tuples = ", ".join("(" + ", ".join(_sql_literal(v) for v in key) + ")" for key in keys)
+    tuples = ", ".join("(" + ", ".join(sql_literal(v, dialect) for v in key) + ")" for key in keys)
     return f"({cols}) IN ({tuples})"
 
 
@@ -1643,3 +1637,38 @@ def make_graphql_remote_loader(gql_sources: dict[str, Any], max_rows: int) -> Ad
     _load.replica_source = _replica_source  # type: ignore[attr-defined]
 
     return _load
+
+
+def _glob_replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+    """A files-glob table as an Arrow stream read by an in-process DuckDB over the matched files
+    (REQ-788). The column-set rule is re-checked here (the files may have changed since load),
+    refusing a differing file by name before any row is read."""
+    import duckdb
+
+    from provisa.core.secrets import resolve_secrets
+    from provisa.federation.replica_source import BATCH_ROWS as _BATCH_ROWS, ArrowStreamSource
+    from provisa.file_source.files_glob import (
+        columns_of_file,
+        duckdb_glob_relation,
+        matched_files,
+        validate_glob_table,
+    )
+
+    async def _open():
+        files = matched_files(resolve_secrets(getattr(source, "path", "") or ""), table.file_glob)
+        validate_glob_table(table.file_glob, files, columns_of_file)
+        sql, params = duckdb_glob_relation(
+            files, [name for name, _ in columns], getattr(table, "source_file_column", None)
+        )
+        con = duckdb.connect()
+        reader = con.execute(sql, params).fetch_record_batch(_BATCH_ROWS)
+
+        def _batches():
+            yield from reader
+
+        async def _close() -> None:
+            con.close()
+
+        return _batches, _close
+
+    return ArrowStreamSource(_open)

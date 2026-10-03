@@ -72,3 +72,22 @@ def test_a_create_value_is_one_value_of_its_one_column(value):
     assert isinstance(statement, exp.Insert)
     values = list(statement.find_all(exp.Literal))
     assert [v.this for v in values] == [value]
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf", "Infinity"])
+def test_a_non_finite_numeric_string_on_a_numeric_column_is_not_a_bare_identifier(value):
+    # A numeric column given "nan"/"inf" must not yield `= nan` (an identifier) — it is written
+    # as the dialect's non-finite literal (PostgreSQL 'NaN'::float8), still one value.
+    person = NodeMapping(
+        label="Person", type_name="Person", domain_label=None, table_label="Person", table_id=1,
+        source_id="test-pg", id_column="id", pk_columns=[], catalog_name="mycat",
+        schema_name="public", table_name="persons",
+        properties={"score": "score"}, physical_properties={},
+    )  # fmt: skip
+    tr = WriteTranslator(CypherLabelMap(nodes={"Person": person}, relationships={}))
+    sql = tr.translate(
+        parse_cypher_write(f'MATCH (n:Person) WHERE n.id = 1 SET n.score = "{value}"')
+    )
+    (statement,) = sqlglot.parse(sql, read="postgres")
+    (assignment,) = statement.args["expressions"]
+    assert not isinstance(assignment.expression, exp.Column), sql

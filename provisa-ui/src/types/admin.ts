@@ -301,6 +301,8 @@ export interface RegisteredTable {
   viewSql: string | null;
   dqContract: string | null; // REQ-1443: the checker contract this results table lands the scans of
   queryTemplate?: string | null; // REQ-1670: the Cypher a neo4j table runs (neo4j tables only)
+  fileGlob?: string | null; // REQ-788: one logical table over a glob of files (files sources only)
+  sourceFileColumn?: string | null; // REQ-788: optional column carrying each row's file path
   materialize: boolean;
   mvRefreshInterval: number;
   mvDebounceQuiet: number; // REQ-963: seconds of quiet before firing; 0 = real-time

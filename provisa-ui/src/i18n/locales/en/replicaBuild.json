@@ -16,6 +16,7 @@
     "loadKind": {
       "bulk_stream": "bulk stream",
       "row_copy": "row copy"
-    }
+    },
+    "feedDown": "Change feed down since {{since}}; the replica is not refreshed until it reconnects: {{error}}"
   }
 }

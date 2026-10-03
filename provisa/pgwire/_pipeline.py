@@ -3608,10 +3608,11 @@ async def govern_pgwire_plan(  # REQ-028, REQ-266
     # governed with its $N placeholders and the values bound (REQ-589).
     fn_sql = sql
     if params:
-        from provisa.compiler.params import _sql_literal, substitute_positional_placeholders
+        from provisa.compiler.params import substitute_positional_placeholders
+        from provisa.compiler.sql_literals import sql_literal
 
         fn_sql = substitute_positional_placeholders(
-            sql, params, lambda i: _sql_literal(params[i - 1])
+            sql, params, lambda i: sql_literal(params[i - 1], "postgres")
         )
     fn_result = await maybe_invoke_registered_function(fn_sql, role_id, _state)
     if fn_result is not None:

@@ -1045,6 +1045,14 @@ class Table(
     # row ALREADY in this table's row cache refreshes it in the background (never inserts a key
     # nothing has queried yet — see docs/arch/row_level_materializer_design.md).
     row_materialize: bool = False
+    # REQ-788: a files source table that is ONE logical table over every file matching this
+    # glob (relative to the source's path), not one table per file. The matched files must share
+    # a column set; a differing file is refused by name (files_glob.FileColumnsDiffer). None: the
+    # table is a single file, as before.
+    file_glob: str | None = None
+    # REQ-788: when set, the name of a column carrying each row's matched file path. Opt-in — a
+    # files-glob table has no such column unless it is declared.
+    source_file_column: str | None = None
     mv_refresh_interval: int = 300  # seconds between MV refreshes (only used when materialize=True)
     # REQ-963: live-MV debounce. deadline = min(last_change+quiet, first_change+max_delay). A burst
     # of upstream changes collapses into one recompute-to-current. quiet=0 disables debounce (pure

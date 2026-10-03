@@ -16,6 +16,7 @@
     "loadKind": {
       "bulk_stream": "flusso bulk",
       "row_copy": "copia per righe"
-    }
+    },
+    "feedDown": "Feed delle modifiche interrotto dal {{since}}; la replica non viene aggiornata finché non si riconnette: {{error}}"
   }
 }

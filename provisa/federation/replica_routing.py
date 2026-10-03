@@ -69,6 +69,12 @@ def table_floor(source: Any, table: Any, *, promoted: bool) -> str | None:
     from provisa.core.operator_floor import floor_setting
     from provisa.core.replicate import floor_of, resolved_load_protected, resolved_replicate
 
+    # REQ-788: a files-glob table is one logical table over many files; it has no single in-place
+    # relation an engine can read, so its reads are always served from its replica, from cold (a
+    # first read waits on the build). Not gated on ``promoted`` — there is no live read to fall
+    # back to.
+    if getattr(table, "file_glob", None):
+        return "file_glob"
     of_source = floor_setting(source)
     if of_source is not None:
         return of_source

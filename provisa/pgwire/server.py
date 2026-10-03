@@ -21,6 +21,7 @@ Builds on buenavista's socketserver-based handler, adding:
 # complexity-gate: allow-ble=5 reason="wire-protocol request-handler boundary: an arbitrary user query / DDL / COPY / CTAS / describe can raise any exception type from the pluggable engine (DuckDB/buenavista/extensions) — each is caught and converted to a PostgreSQL SQLSTATE error response (send_error / _send_pg_error) so one bad statement returns a protocol error instead of crashing the connection handler; catching a narrower set would let an unmapped type kill the session"
 
 from __future__ import annotations
+from provisa.compiler.sql_literals import sql_literal
 
 import json
 import datetime
@@ -189,8 +190,7 @@ def _pg_literal(v) -> str:
         return "E'\\\\x" + v.hex() + "'"
     if isinstance(v, (list, tuple)):
         return "'{" + ",".join(str(x) for x in v) + "}'"
-    s = str(v)
-    return "'" + s.replace("'", "''") + "'"
+    return sql_literal(str(v), "postgres")
 
 
 def _substitute_params(sql: str, params: list | None) -> str:

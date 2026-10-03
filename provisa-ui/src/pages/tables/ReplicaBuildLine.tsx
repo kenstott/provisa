@@ -16,7 +16,7 @@ import { useTranslation } from "react-i18next";
 import { Text } from "@mantine/core";
 import { useReplicaBuilds } from "../../hooks/useAdminOpsQueries";
 import { serverMessage } from "../../i18n/serverMessage";
-import { replicaBuildLine } from "./replicaBuild";
+import { replicaBuildLine, replicaFeedLine } from "./replicaBuild";
 
 export function ReplicaBuildLine({
   sourceId,
@@ -34,18 +34,19 @@ export function ReplicaBuildLine({
     (b) => b.sourceId === sourceId && b.schemaName === schemaName && b.tableName === tableName,
   );
   const numbers = new Intl.NumberFormat(i18n.language);
-  const line = replicaBuildLine(
-    build,
-    t,
-    (n) => numbers.format(n),
-    (iso) => new Date(iso).toLocaleString(i18n.language),
-    serverMessage,
-  );
+  const formatWhen = (iso: string) => new Date(iso).toLocaleString(i18n.language);
+  const line = replicaBuildLine(build, t, (n) => numbers.format(n), formatWhen, serverMessage);
+  const feedLine = replicaFeedLine(build, t, formatWhen);
   return (
     <>
       <Text size="xs" c={build?.state === "failed" ? "red" : "dimmed"} data-testid="replica-build-line">
         {line}
       </Text>
+      {feedLine && (
+        <Text size="xs" c="red" data-testid="replica-feed-down">
+          {feedLine}
+        </Text>
+      )}
       {replicaBuilds.convergenceError && (
         <Text size="xs" c="red" data-testid="replica-convergence-error">
           {t("replicaBuild.convergenceError", { error: replicaBuilds.convergenceError })}

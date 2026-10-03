@@ -354,6 +354,10 @@
       "secret_key": {
         "label": "Clé secrète de redirection",
         "help": "La clé secrète du magasin d'objets. Secret ; confirmation demandée."
+      },
+      "snowflake_storage_integration": {
+        "label": "Intégration de stockage Snowflake pour les résultats",
+        "help": "L'intégration de stockage Snowflake par laquelle un moteur Snowflake écrit les résultats volumineux dans le stockage objet. Vide : un moteur Snowflake n'écrit pas lui-même les résultats."
       }
     },
     "otel": {

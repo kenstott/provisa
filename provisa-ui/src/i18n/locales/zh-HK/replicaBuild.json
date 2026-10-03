@@ -16,6 +16,7 @@
     "loadKind": {
       "bulk_stream": "大量串流",
       "row_copy": "逐列複製"
-    }
+    },
+    "feedDown": "變更流自 {{since}} 起中斷；重新連線前副本不會重新整理：{{error}}"
   }
 }
