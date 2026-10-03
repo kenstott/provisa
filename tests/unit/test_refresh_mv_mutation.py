@@ -41,6 +41,7 @@ def view(monkeypatch):
     state = SimpleNamespace(
         mv_registry=registry,
         federation_engine=object(),
+        model_db=None,
         tenant_db=None,
         # The model the view's input resolves against (provisa/mv/view_inputs.py).
         tables=[{"id": 1, "source_id": "pg", "schema_name": "sales", "table_name": "orders"}],
@@ -60,7 +61,7 @@ def _info(monkeypatch):
 async def test_a_failed_refresh_is_reported_with_the_views_error(view, monkeypatch):
     mv, registry = view
 
-    async def _fails(_engine, target, reg, store=None):
+    async def _fails(_engine, target, reg, store=None, ledger=None):
         reg.mark_refresh_failed(target.id, "relation sales.orders does not exist")
 
     monkeypatch.setattr("provisa.mv.refresh.refresh_mv", _fails)
@@ -76,7 +77,7 @@ async def test_a_refresh_that_built_the_view_is_reported_as_refreshed(view, monk
     mv, registry = view
     mv.last_error = "an earlier failure"
 
-    async def _builds(_engine, target, reg, store=None):
+    async def _builds(_engine, target, reg, store=None, ledger=None):
         reg.mark_refreshed(target.id, row_count=4)
 
     monkeypatch.setattr("provisa.mv.refresh.refresh_mv", _builds)

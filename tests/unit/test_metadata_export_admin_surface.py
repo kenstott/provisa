@@ -125,7 +125,8 @@ def surface(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "provisa.api.app.state",
         types.SimpleNamespace(
-            tenant_db=_TenantDb(tmp_path),
+            model_db=(_one_db := _TenantDb(tmp_path)),
+            tenant_db=_one_db,
             # REQ-1659: the listing links back at the org's public origin, read off config.mail.
             config=types.SimpleNamespace(
                 mail=types.SimpleNamespace(base_url="https://provisa.test")

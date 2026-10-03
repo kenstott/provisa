@@ -410,6 +410,7 @@ async def test_a_direct_read_issues_no_control_plane_statement(buffered, monkeyp
 
     state = buffered.state
     state.tenant_db = _ControlPlane()
+    state.model_db = state.tenant_db
     state.config = SimpleNamespace(sources=[source], tables=[table])
     with buffered.use("DIRECT", lambda sql, params: [(7,)]):
         state.federation_engine.engine = SimpleNamespace(

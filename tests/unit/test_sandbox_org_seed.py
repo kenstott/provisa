@@ -209,12 +209,14 @@ async def tenant_dbs(monkeypatch):
     root, sandbox = made[0][1], made[1][1]
 
     monkeypatch.setattr(
-        "provisa.api.app.state", SimpleNamespace(tenant_db=root, admin_db=None), raising=False
+        "provisa.api.app.state",
+        SimpleNamespace(model_db=root, tenant_db=root, admin_db=None),
+        raising=False,
     )
 
     async def _ensure(org_id):
         assert org_id == SANDBOX_ORG_ID
-        return SimpleNamespace(tenant_db=sandbox)
+        return SimpleNamespace(model_db=sandbox, tenant_db=sandbox)
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _ensure, raising=False)
     try:

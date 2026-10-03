@@ -560,8 +560,8 @@ async def _start_servers(_log: logging.Logger) -> None:
         # Reconcile poll jobs from persisted per-table live config (Phase AY).
         # Data polls route through the engine; CDC-delivered tables are driven by
         # subscription providers, not the poll engine.
-        if state.tenant_db is not None:
-            async with state.tenant_db.acquire() as _lc:
+        if state.model_db is not None:
+            async with state.model_db.acquire() as _lc:
                 await _reconcile_live_engine(_lc)
     except Exception:
         _log.exception("Live Query Engine startup failed")
@@ -788,7 +788,7 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
             if not hasattr(state, "graphql_remote_sources"):
                 state.graphql_remote_sources = {}
             state.graphql_remote_sources["graphql-demo"] = reg.model_dump()
-            _demo_pool = state.tenant_db
+            _demo_pool = state.model_db
             if _demo_pool is not None:
                 async with _demo_pool.acquire() as _conn:
                     await _conn.upsert(

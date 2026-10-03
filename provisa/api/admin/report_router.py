@@ -143,9 +143,9 @@ async def _hydrate(org_id: str) -> tuple["MetadataSnapshot", "ProvisaConfig"]:
     token = set_current_org(org_id)
     try:
         model = await _model_for_export()
-        tenant_db = state.tenant_db
-        assert tenant_db is not None  # the admin surface is only mounted with a tenant plane
-        async with tenant_db.acquire() as conn:
+        model_db = state.model_db
+        assert model_db is not None  # the admin surface is only mounted with a tenant plane
+        async with model_db.acquire() as conn:
             glossary = await glossary_repo.export_graph(conn)
         dq_outcomes = await read_latest_outcomes(model)
         snapshot = build_snapshot(

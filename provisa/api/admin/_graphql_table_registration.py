@@ -123,7 +123,7 @@ async def registered_column_names(
     state: Any, source_id: str, schema_name: str, table_name: str
 ) -> set[str]:
     """The columns ``table_name`` is registered with; empty when it is not registered."""
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:
         rows = await conn.execute_core(
             select(table_columns.c.column_name)
             .select_from(
@@ -249,7 +249,7 @@ async def refreshed_registered_tables(state: Any, offer: SchemaOffer, reg: dict)
     the columns it is registered with (a column the schema has lost is gone; one it has gained
     is on offer and is not added), in the domain it was registered into. A registered table the
     schema no longer offers is not among them."""
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:
         rows = (
             await conn.execute_core(
                 select(
@@ -296,7 +296,7 @@ async def remember_table(state: Any, reg: dict, table_name: str, fitted: dict) -
     if reg.get("brand"):
         return
     spec = {k: fitted[k] for k in SPEC_FIELDS if k in fitted}
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:
         row = (
             await conn.execute_core(
                 select(sources.c.mapping).where(sources.c.id == reg["source_id"])

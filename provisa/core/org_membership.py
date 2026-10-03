@@ -210,11 +210,11 @@ async def acknowledge_membership(  # REQ-1478
 
 
 async def grant_org_role(
-    tenant_db: "Database", user_id: str, role_id: str, *, granter_capabilities: Iterable[str]
+    model_db: "Database", user_id: str, role_id: str, *, granter_capabilities: Iterable[str]
 ) -> None:
     """Record the tenant-plane role assignment inside the org's schema. Idempotent.
 
-    ``tenant_db`` MUST be scoped (search_path) to the target org's schema — the assignment lands
+    ``model_db`` MUST be scoped (search_path) to the target org's schema — the assignment lands
     in whatever ``org_<id>`` schema this Database points at. The role row it references must already
     exist in that schema (schema.sql seeds ``org_admin``), so for a freshly created org this runs
     only after the schema is provisioned.
@@ -227,7 +227,7 @@ async def grant_org_role(
     grant the deployment makes on its own behalf passes ``rights.DEPLOYMENT_GRANTER``; a grant
     nobody stands behind — an auto-join — passes an empty set.
     """
-    async with tenant_db.acquire() as conn:
+    async with model_db.acquire() as conn:
         result = await conn.execute_core(
             select(roles.c.id, roles.c.capabilities, roles.c.parent_role_id)
         )
@@ -247,14 +247,14 @@ async def grant_org_role(
 
 
 async def grant_org_admin(
-    admin_db: "Database", tenant_db: "Database", user_id: str, org_id: str, *, joined_via: str
+    admin_db: "Database", model_db: "Database", user_id: str, org_id: str, *, joined_via: str
 ) -> None:
     """Make ``user_id`` the org_admin of ``org_id``: membership (admin plane) + org_admin role
     assignment (tenant plane, scoped to the org's schema)."""
     await grant_membership(admin_db, user_id, org_id, joined_via=joined_via)
     # The deployment seats an org's administrator on its own behalf: in a single-tenant deployment
     # org_admin carries platform_settings, and the creator of the org is who that is for.
-    await grant_org_role(tenant_db, user_id, "org_admin", granter_capabilities=DEPLOYMENT_GRANTER)
+    await grant_org_role(model_db, user_id, "org_admin", granter_capabilities=DEPLOYMENT_GRANTER)
 
 
 async def resolve_auto_join_orgs(
@@ -324,13 +324,13 @@ async def clear_auto_join_suppression(  # REQ-1306
         )
 
 
-async def org_admin_user_ids(tenant_db: "Database") -> set[str]:  # REQ-1302
-    """Every user holding org_admin in the schema ``tenant_db`` is scoped to.
+async def org_admin_user_ids(model_db: "Database") -> set[str]:  # REQ-1302
+    """Every user holding org_admin in the schema ``model_db`` is scoped to.
 
     The tenant plane is the authority on who administers an org — a control-plane membership row
     says only that the person belongs to it.
     """
-    async with tenant_db.acquire() as conn:
+    async with model_db.acquire() as conn:
         result = await conn.execute_core(
             select(user_role_assignments.c.user_id).where(
                 user_role_assignments.c.role_id == ORG_ADMIN_ROLE
@@ -352,7 +352,7 @@ class LastOrgAdminError(Exception):  # REQ-1302
 
 
 async def assert_not_last_org_admin(  # REQ-1302
-    tenant_db: "Database", user_id: str, org_id: str
+    model_db: "Database", user_id: str, org_id: str
 ) -> None:
     """Raise LastOrgAdminError if removing ``user_id``'s org_admin authority would orphan the org.
 
@@ -360,18 +360,18 @@ async def assert_not_last_org_admin(  # REQ-1302
     administrative acts. Org deletion is not: it is a confirmed destruction (REQ-1300) and bypasses
     this check deliberately.
     """
-    admins = await org_admin_user_ids(tenant_db)
+    admins = await org_admin_user_ids(model_db)
     if user_id in admins and len(admins) == 1:
         raise LastOrgAdminError(org_id, user_id)
 
 
 async def record_admin_action(  # REQ-1303, REQ-1308
-    tenant_db: "Database", *, action: str, actor_id: str, subject_id: str, detail: dict
+    model_db: "Database", *, action: str, actor_id: str, subject_id: str, detail: dict
 ) -> None:
-    """Append an entry to the org's administrative trail. ``tenant_db`` must be scoped to that org's
+    """Append an entry to the org's administrative trail. ``model_db`` must be scoped to that org's
     schema — the entry belongs to the org the act was performed against, so a platform_admin's
     intervention is visible there afterward rather than only on the platform."""
-    async with tenant_db.acquire() as conn:
+    async with model_db.acquire() as conn:
         await conn.execute_core(
             insert(admin_audit_log).values(
                 action=action, actor_id=actor_id, subject_id=subject_id, detail=detail
@@ -380,12 +380,12 @@ async def record_admin_action(  # REQ-1303, REQ-1308
 
 
 async def remove_from_org(  # REQ-1305
-    admin_db: "Database", tenant_db: "Database", user_id: str, org_id: str
+    admin_db: "Database", model_db: "Database", user_id: str, org_id: str
 ) -> bool:
     """Remove ``user_id`` from ``org_id`` in BOTH planes. Returns whether a membership row existed.
 
     The tenant-plane assignments must go with the membership: leaving them behind means re-adding
-    the person silently restores every privilege they previously held. ``tenant_db`` must be scoped
+    the person silently restores every privilege they previously held. ``model_db`` must be scoped
     to ``org_<org_id>``.
 
     REQ-1263: the user's personal access tokens for this org are revoked with the membership. A PAT
@@ -397,7 +397,7 @@ async def remove_from_org(  # REQ-1305
     await PersonalAccessTokenStore(admin_db).revoke_all_for_user_in_org(
         user_id=user_id, org_id=org_id
     )
-    async with tenant_db.acquire() as conn:
+    async with model_db.acquire() as conn:
         await conn.execute_core(
             delete(user_role_assignments).where(user_role_assignments.c.user_id == user_id)
         )
@@ -428,7 +428,7 @@ class AccountRemovalRefused(Exception):  # REQ-1302, REQ-1307
 
 
 async def remove_account(  # REQ-1307, REQ-1312, REQ-1918
-    admin_db: "Database", platform_db: "Database", user_id: str, *, tenant_db_of
+    admin_db: "Database", platform_db: "Database", user_id: str, *, model_db_of, tenant_db_of
 ) -> dict:
     """Remove a person's account from the deployment: THE removal, for the person themselves
     and for an administrator who holds the cross-org right.
@@ -441,8 +441,9 @@ async def remove_account(  # REQ-1307, REQ-1312, REQ-1918
     carries a tombstone instead. Audit entries are never deleted. The orgs and everything
     registered in them stay: they are the org's, not the person's.
 
-    ``platform_db`` is the control plane that holds the platform_admin assignments;
-    ``tenant_db_of`` returns the control plane of one org.
+    ``platform_db`` is the model store that holds the platform_admin assignments;
+    ``model_db_of`` returns one org's model store (its role assignments) and ``tenant_db_of`` its
+    state store in this region (its audit entries) — REQ-1919/1922.
     """
     from provisa.auth.scram_store import delete_verifier
     from provisa.core.schema_admin import (
@@ -460,11 +461,11 @@ async def remove_account(  # REQ-1307, REQ-1312, REQ-1918
         )
         member_org_ids = sorted(r[0] for r in result.fetchall())
 
-    tenant_dbs = {}
+    model_dbs = {}
     blocking: list[str] = []
     for org_id in member_org_ids:
-        tenant_dbs[org_id] = await tenant_db_of(org_id)
-        admins = await org_admin_user_ids(tenant_dbs[org_id])
+        model_dbs[org_id] = await model_db_of(org_id)
+        admins = await org_admin_user_ids(model_dbs[org_id])
         if user_id in admins and len(admins) == 1:
             blocking.append(org_id)
     if blocking:
@@ -490,7 +491,7 @@ async def remove_account(  # REQ-1307, REQ-1312, REQ-1918
         raise AccountRemovalRefused(user_id, "last_platform_admin")
 
     for org_id in member_org_ids:
-        await remove_from_org(admin_db, tenant_dbs[org_id], user_id, org_id)
+        await remove_from_org(admin_db, model_dbs[org_id], user_id, org_id)
 
     tombstone = tombstone_id(user_id)
     async with admin_db.acquire() as conn:
@@ -515,12 +516,14 @@ async def remove_account(  # REQ-1307, REQ-1312, REQ-1918
     # Audit attributions carry the tombstone too. Audit entries are NEVER deleted (REQ-1312) — a
     # trail that erases on request is not a trail.
     for org_id in member_org_ids:
-        async with tenant_dbs[org_id].acquire() as conn:
+        # The record is this region's (tenant_db); the admin trail is the org's (model_db).
+        async with (await tenant_db_of(org_id)).acquire() as conn:
             await conn.execute_core(
                 update(query_audit_log)
                 .where(query_audit_log.c.user_id == user_id)
                 .values(user_id=tombstone)
             )
+        async with model_dbs[org_id].acquire() as conn:
             await conn.execute_core(
                 update(admin_audit_log)
                 .where(admin_audit_log.c.actor_id == user_id)

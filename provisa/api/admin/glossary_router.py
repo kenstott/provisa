@@ -37,8 +37,8 @@ router = APIRouter(prefix="/admin/glossary", tags=["admin", "glossary"])
 async def _pool() -> "Database":
     from provisa.api.app import state
 
-    assert state.tenant_db is not None
-    return state.tenant_db
+    assert state.model_db is not None
+    return state.model_db
 
 
 async def _notify(org_id: str, reason: str) -> None:

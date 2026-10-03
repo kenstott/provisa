@@ -77,6 +77,7 @@ def _state(db):
         contexts={"analyst": types.SimpleNamespace(tables={}, joins={})},
         roles={"analyst": {"domain_access": ["*"]}},
         config=types.SimpleNamespace(domains=[]),
+        model_db=db,
         tenant_db=db,
         engine_conn=None,
     )
@@ -107,5 +108,5 @@ async def test_list_tables_against_real_db_no_event_loop_error(tmp_path):
 async def test_catalog_returns_empty_list_when_no_tenant_db():
     from provisa.api.mcp import tools
 
-    state = types.SimpleNamespace(tenant_db=None)
+    state = types.SimpleNamespace(model_db=None, tenant_db=None)
     assert await tools._catalog(state) == []

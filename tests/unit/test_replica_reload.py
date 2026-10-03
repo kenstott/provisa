@@ -38,7 +38,7 @@ def worker(monkeypatch):
     """One runtime of one process; the control plane's stamp and what the registry read returns
     are the test's to move."""
     rt = OrgRuntime(org_id="default")
-    rt.tenant_db = object()
+    rt.model_db, rt.tenant_db = object(), object()
     plane = SimpleNamespace(stamp=7, routes=ReplicaRoutes(), reads=0, rebuilds=0)
 
     async def _read(_db):
@@ -116,7 +116,7 @@ async def test_a_runtime_that_is_no_longer_served_is_not_reloaded(worker, monkey
 
 def test_every_org_runtime_is_watched_for_its_replica_stamp(monkeypatch):
     rt = OrgRuntime(org_id="acme")
-    rt.tenant_db = object()
+    rt.model_db, rt.tenant_db = object(), object()
     rt.replica_stamp = 3
     state = SimpleNamespace(
         admin_db=None,
@@ -200,7 +200,7 @@ async def test_a_model_change_to_a_boot_org_not_named_default_is_reloaded_by_ano
     state = AppState()
     boot = state.org_registry.get(state.org_id)
     state.org_id = "acme"  # what _init_control_planes does with ORG_ID=acme
-    boot.tenant_db = object()
+    boot.model_db, boot.tenant_db = object(), object()
     boot.model_stamp = 4
     stored = {config_stamp.MODEL: 5, config_stamp.SETTINGS: 0, config_stamp.REPLICA: 0}
     rebuilt_for: list[str | None] = []

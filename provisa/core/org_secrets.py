@@ -85,14 +85,14 @@ async def _resolved(value: str) -> str:
         return resolve_secrets(value)
 
 
-async def read_org_secret(tenant_db: Database, key: str) -> str | None:
+async def read_org_secret(model_db: Database, key: str) -> str | None:
     """The org's decrypted secret value, or ``None`` if unset."""
     from sqlalchemy import select
 
     from provisa.core.schema_org import org_secrets
     from provisa.encryption.runtime import encryption_service
 
-    async with tenant_db.acquire() as conn:
+    async with model_db.acquire() as conn:
         result = await conn.execute_core(
             select(org_secrets.c.value_enc).where(org_secrets.c.key == key)
         )
@@ -102,14 +102,14 @@ async def read_org_secret(tenant_db: Database, key: str) -> str | None:
     return await _resolved(encryption_service().decrypt(bytes(row[0])).decode("utf-8"))
 
 
-async def read_org_api_keys(tenant_db: Database) -> dict[str, str]:
+async def read_org_api_keys(model_db: Database) -> dict[str, str]:
     """Every configured `{vendor}_api_key` for the org, keyed by vendor name."""
     from sqlalchemy import select
 
     from provisa.core.schema_org import org_secrets
     from provisa.encryption.runtime import encryption_service
 
-    async with tenant_db.acquire() as conn:
+    async with model_db.acquire() as conn:
         result = await conn.execute_core(
             select(org_secrets.c.key, org_secrets.c.value_enc).where(
                 org_secrets.c.key.in_(ORG_SECRET_KEYS)
@@ -126,7 +126,7 @@ async def read_org_api_keys(tenant_db: Database) -> dict[str, str]:
 
 
 async def write_org_secret(
-    tenant_db: Database, key: str, value: str | None, *, updated_by: str
+    model_db: Database, key: str, value: str | None, *, updated_by: str
 ) -> None:
     """Upsert the encrypted secret; a ``None`` value DELETES the row.
 
@@ -142,7 +142,7 @@ async def write_org_secret(
     from provisa.core.schema_org import org_secrets as _org_secrets_t
     from provisa.encryption.runtime import encryption_service
 
-    async with tenant_db.acquire() as conn:
+    async with model_db.acquire() as conn:
         if value is None:
             await conn.execute_core(_delete(_org_secrets_t).where(_org_secrets_t.c.key == key))
             return
@@ -160,7 +160,7 @@ async def write_org_secret(
         )
 
 
-async def resolve_jev_api_key(tenant_db: "Database | None") -> str | None:
+async def resolve_jev_api_key(model_db: "Database | None") -> str | None:
     """The Jev (TypeSafe AI) API key: the acting org's own key if it set one, else the
     deployment's ``TYPESAFEAI_API_KEY`` env var, else ``None`` (Jev unavailable).
 
@@ -169,8 +169,8 @@ async def resolve_jev_api_key(tenant_db: "Database | None") -> str | None:
     """
     import os
 
-    if tenant_db is not None:
-        org_key = await read_org_secret(tenant_db, JEV_SECRET_KEY)
+    if model_db is not None:
+        org_key = await read_org_secret(model_db, JEV_SECRET_KEY)
         if org_key:
             return org_key
     return os.environ.get("TYPESAFEAI_API_KEY") or None

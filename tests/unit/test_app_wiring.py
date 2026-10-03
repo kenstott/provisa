@@ -96,7 +96,7 @@ def _replica_address(*, source_id, schema_name, table_name):
 
 def _state(*, ready=True):
     if not ready:
-        return SimpleNamespace(tenant_db=None, federation_engine=None, config=None)
+        return SimpleNamespace(model_db=None, tenant_db=None, federation_engine=None, config=None)
     engine = SimpleNamespace(
         engine=build_duckdb_engine(),
         materialize_store_dsn=lambda: "sqlite://",

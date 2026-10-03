@@ -75,6 +75,7 @@ async def _server(tmp_path):
             )
         state = types.SimpleNamespace(
             contexts={"analyst": object()},
+            model_db=db,
             tenant_db=db,
             # REQ-1591: the search narrows to the domains the ROLE reaches; "*" is unlimited.
             roles={"analyst": {"domain_access": ["*"]}},

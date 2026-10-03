@@ -177,7 +177,9 @@ def planes(monkeypatch, smtp):
     }
     registry = OrgRegistry()
     for org_id, db in org_dbs.items():
-        registry.set(org_id, OrgRuntime(org_id=org_id, tenant_db=db, roles=dict(loaded_roles)))
+        registry.set(
+            org_id, OrgRuntime(org_id=org_id, model_db=db, tenant_db=db, roles=dict(loaded_roles))
+        )
     monkeypatch.setattr(app_state, "org_registry", registry, raising=False)
 
     # REQ-1488: ensure_org_runtime takes the environment as well — an environment is a schema of

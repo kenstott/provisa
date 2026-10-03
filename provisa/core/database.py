@@ -644,6 +644,23 @@ def _array_elem(value: Any) -> str:
     return f'"{body}"'
 
 
+class StoreSideViolation(RuntimeError):
+    """A statement on one store's handle touched the other store's tables (REQ-1922): the model
+    store (``model_db``) and an org region's state store (``tenant_db``) are separate databases in
+    a region deployment, so such a statement could not run there."""
+
+    def __init__(self, handle: str, holds: str, tables: frozenset[str]) -> None:
+        other = "state" if holds == "model" else "model"
+        use = "tenant_db" if other == "state" else "model_db"
+        named = ", ".join(sorted(tables))
+        kind = f"a {other} table" if len(tables) == 1 else f"{other} tables"
+        verb = "is" if len(tables) == 1 else "are"
+        super().__init__(
+            f"{named} {verb} {kind}, read through the {handle!r} handle, which holds the "
+            f"{holds} store; use the org's {use}"
+        )
+
+
 class Connection:
     """asyncpg-shaped wrapper over a synchronous SQLAlchemy :class:`sqlalchemy.Connection`.
 
@@ -659,6 +676,9 @@ class Connection:
         self._cancel: Callable[[], None] | None = None
         # REQ-1524: the Database this connection came from, when it holds an environment's model.
         self._model_db = database if database is not None and database.model is not None else None
+        # REQ-1922: the store this connection's handle holds ("model" / "state"), or None.
+        self._holds = database.holds if database is not None else None
+        self._handle = database.name if database is not None else ""
 
     def _record_write(self, target: tuple[str, str, str | None] | None, rowcount: int) -> None:
         """REQ-1524: a write that changed a row of the model is recorded for its commit
@@ -699,6 +719,12 @@ class Connection:
             raise
 
     def _exec(self, stmt: Any, params: Any = None) -> Any:
+        if self._holds is not None:
+            from provisa.core.store_sides import foreign_tables
+
+            foreign = foreign_tables(self._holds, stmt)
+            if foreign:
+                raise StoreSideViolation(self._handle, self._holds, foreign)
         with self._cancellable():
             result = _buffered(self._sc.execute(stmt, params))
         if self._model_db is not None:
@@ -1178,10 +1204,17 @@ class Database:
         name: str,
         search_path: str | None = None,
         model: "ModelPlane | None" = None,
+        holds: str | None = None,
     ) -> None:
         self._engine = engine
         self.name = name
         self.search_path = search_path
+        # REQ-1922: which store this handle holds — "model" (the org's model, shared across its
+        # regions) or "state" (an org region's operating state) — and so which tables it refuses
+        # (provisa/core/store_sides.py). None for a handle that is neither (the platform plane).
+        if holds is not None and holds not in ("model", "state"):
+            raise ValueError(f"a database handle holds 'model' or 'state', not {holds!r}")
+        self.holds = holds
         # REQ-1524: the environment whose model this handle holds; its writes are committed.
         self.model = model
         self.dialect = engine.dialect.name
@@ -1602,3 +1635,17 @@ class OrgRouter:
         for db in self._cache.values():
             await db.close()
         self._cache.clear()
+
+
+def org_store_handles(
+    engine: Engine, search_path: str, model: "ModelPlane"
+) -> tuple["Database", "Database"]:
+    """An org's two control-plane handles over ``engine`` (REQ-1919, REQ-1920, REQ-1922): the
+    MODEL store (its writes committed to the environment's model, REQ-1524) and the STATE store.
+    Each refuses the other's tables. Where a region keeps its state in its own database the state
+    handle is built over that database's engine instead."""
+    model_db = Database(
+        engine, name="org-model", search_path=search_path, model=model, holds="model"
+    )
+    tenant_db = Database(engine, name="org-state", search_path=search_path, holds="state")
+    return model_db, tenant_db

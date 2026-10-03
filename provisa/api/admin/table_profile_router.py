@@ -43,13 +43,13 @@ async def profile_table(
     x_provisa_role: str | None = Header(None),
 ) -> dict:  # REQ-452
     require_capability_request(request, "table_registration")
-    if state.tenant_db is None:
+    if state.model_db is None:
         raise ApiError(503, "profile.database_unavailable", "Database unavailable")
     if state.federation_engine is None:
         raise ApiError(503, "profile.query_engine_unavailable", "Query engine unavailable")
     engine = state.federation_engine
 
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:
         result = await conn.execute_core(
             select(
                 registered_tables.c.source_id,

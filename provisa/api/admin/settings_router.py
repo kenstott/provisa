@@ -294,9 +294,9 @@ async def _apply_org_blocks(request, body: dict, updated: list) -> None:
 
     if not set(body) & set(_ORG_BLOCKS):
         return  # nothing org-scoped in this body — do not demand the org right for a platform save
-    assert state.tenant_db is not None
+    assert state.model_db is not None
     require_org_settings(request)  # REQ-1349
-    overrides = await read_org_overrides(state.tenant_db)
+    overrides = await read_org_overrides(state.model_db)
     updates: dict = {}
 
     if "redirect" in body:
@@ -334,11 +334,11 @@ async def _apply_org_blocks(request, body: dict, updated: list) -> None:
         return
     identity = getattr(request.state, "identity", None)
     await write_org_overrides(
-        state.tenant_db, updates, updated_by=getattr(identity, "user_id", "anonymous")
+        state.model_db, updates, updated_by=getattr(identity, "user_id", "anonymous")
     )
     # The query path reads these off the bound runtime, so the cached copy is refreshed here —
     # otherwise the org's next query still redirects and caches on the pre-save values.
-    state.settings_overrides = await read_org_overrides(state.tenant_db)
+    state.settings_overrides = await read_org_overrides(state.model_db)
 
 
 # The `otel` block's fields, by the operator setting each one is (REQ-1913). A field left out of
@@ -691,8 +691,8 @@ async def set_domain_policy(request: Request):  # REQ-165, REQ-1266, REQ-1349
             "default_domain required when use_domains=false",
         )
 
-    tenant_db = state.tenant_db
-    if tenant_db is None:
+    model_db = state.model_db
+    if model_db is None:
         raise ApiError(
             409,
             "settings.no_active_org",
@@ -700,7 +700,7 @@ async def set_domain_policy(request: Request):  # REQ-165, REQ-1266, REQ-1349
         )
 
     # 1. Refused while the org has a catalog, before anything is written.
-    async with tenant_db.acquire() as conn:
+    async with model_db.acquire() as conn:
         existing, declared_in_config = await _catalog_counts(conn)
     if any(existing.values()):
         held = (
@@ -738,9 +738,9 @@ async def set_domain_policy(request: Request):  # REQ-165, REQ-1266, REQ-1349
             naming["default_domain"] = default_domain
     identity = getattr(request.state, "identity", None)
     await write_org_overrides(
-        tenant_db, {"naming": naming}, updated_by=getattr(identity, "user_id", "anonymous")
+        model_db, {"naming": naming}, updated_by=getattr(identity, "user_id", "anonymous")
     )
-    state.settings_overrides = await read_org_overrides(tenant_db)
+    state.settings_overrides = await read_org_overrides(model_db)
 
     # 3. Apply it to this org's policy scope. A cleared override (use_domains=None) resolves to
     #    the deployment's own naming block — the value the org inherits — so the scope never reads
@@ -754,7 +754,7 @@ async def set_domain_policy(request: Request):  # REQ-165, REQ-1266, REQ-1349
     # 4. A single-domain org's one domain is the deployment's own: seeded here so the first
     #    registration under the new policy has it to sit in.
     if domain_policy.single_domain():
-        async with tenant_db.acquire() as conn:
+        async with model_db.acquire() as conn:
             await domain_repo.upsert(conn, Domain(id=domain_policy.default_domain()), origin="seed")
     await _rebuild_schemas()
 
@@ -1499,9 +1499,9 @@ async def recompute_schema_clusters(request: Request):  # REQ-510
     from provisa.api.app import state
     from provisa.api.startup_seed import _compute_and_store_clusters
 
-    if not state.tenant_db:
+    if not state.model_db:
         raise ApiError(503, "settings.database_not_available", "Database not available")
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:
         count = await _compute_and_store_clusters(conn)  # type: ignore[arg-type]
     return {"success": True, "tables_clustered": count}
 

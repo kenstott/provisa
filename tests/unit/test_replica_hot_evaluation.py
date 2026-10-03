@@ -124,6 +124,7 @@ async def world(tmp_path, monkeypatch):
     )
     org = f"org-{uuid.uuid4().hex}"
     state = SimpleNamespace(
+        model_db=db,
         tenant_db=db,
         org_id=org,
         hot_counts=HotCounts(None, clock=lambda: 9_000_000.0),
@@ -407,7 +408,9 @@ async def _loop_for(seconds: float, world, *, should_run, monkeypatch, evaluate_
     )
     world.state.org_registry = SimpleNamespace(
         all_org_ids=lambda: ["default"],
-        get=lambda key: SimpleNamespace(org_id="default", env="prod", tenant_db=world.db),
+        get=lambda key: SimpleNamespace(
+            org_id="default", env="prod", model_db=world.db, tenant_db=world.db
+        ),
     )
     task = asyncio.ensure_future(evaluation_loop(world.state, should_run=should_run, workers=1))
     await asyncio.sleep(seconds)

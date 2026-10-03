@@ -447,7 +447,17 @@ class AppState:
 
     @property
     def tenant_db(self) -> Database | None:
+        """The acting org's STATE store (this region's operating state) — REQ-1920/1922."""
         return self._active_runtime().tenant_db
+
+    @property
+    def model_db(self) -> Database | None:
+        """The acting org's MODEL store (its model, shared across its regions) — REQ-1919."""
+        return self._active_runtime().model_db
+
+    @model_db.setter
+    def model_db(self, value: Database | None) -> None:
+        self._active_runtime().model_db = value
 
     @tenant_db.setter
     def tenant_db(self, value: Database | None) -> None:
@@ -984,10 +994,10 @@ async def _load_and_build(
     # PostgreSQL). The portable/SQLite bootstrap (_init_schema_portable) writes every org into one
     # flat file with no per-org scoping, so a multitenant deployment on a non-PG tenant DB would
     # silently mix orgs' data. Fail loudly at startup instead of letting that combination run.
-    if config.multitenancy and getattr(state.tenant_db, "dialect", "postgresql") != "postgresql":
+    if config.multitenancy and getattr(state.model_db, "dialect", "postgresql") != "postgresql":
         raise RuntimeError(
             "multitenancy=true requires a PostgreSQL TENANT_DATABASE_URL "
-            f"(got dialect={getattr(state.tenant_db, 'dialect', None)!r}); "
+            f"(got dialect={getattr(state.model_db, 'dialect', None)!r}); "
             "the portable/SQLite bootstrap has no per-org schema isolation"
         )
     # REQ-1337: org_admin holds the platform_settings right only in a single-tenant deployment.
@@ -995,19 +1005,19 @@ async def _load_and_build(
     # the config is parsed, which happens after the root org's schema is created.
     from provisa.core.db import apply_tenancy_role_grants as _apply_tenancy_role_grants
 
-    assert state.tenant_db is not None
+    assert state.model_db is not None
     if apply:
         await _apply_tenancy_role_grants(
-            state.tenant_db, state.org_id, multitenancy=config.multitenancy
+            state.model_db, state.org_id, multitenancy=config.multitenancy
         )
     if config.multitenancy:
         from provisa.core.tenant_context import TenantContextCache
 
         state.tenant_context_cache = TenantContextCache()
         if apply:
-            tenant_db = state.tenant_db
-            assert tenant_db is not None
-            async with tenant_db.acquire() as _rls_conn:
+            model_db = state.model_db
+            assert model_db is not None
+            async with model_db.acquire() as _rls_conn:
                 await _init_meta_rls(_rls_conn)
 
     # Apply the telemetry compaction settings to state (REQ-1913: operator settings).
@@ -1063,9 +1073,9 @@ async def _load_and_build(
         state.response_cache_store = RedisCacheStore(state.redis_url)
         state.response_cache_default_ttl = settings_registry.value("cache.default_ttl")
 
-    tenant_db = state.tenant_db
-    assert tenant_db is not None
-    async with tenant_db.acquire() as conn:
+    model_db = state.model_db
+    assert model_db is not None
+    async with model_db.acquire() as conn:
         # Single-writer cluster invariant: every node loads the byte-identical baked config, but only
         # the primary may DELETE rows. A secondary's upserts are idempotent no-ops (the advisory lock
         # in load_config serializes them), so it stays consistent with the primary; the load's
@@ -1135,7 +1145,7 @@ async def _load_and_build(
 
     for _prom_src in (*config.sources, *_extra_sources):
         if _prom_src.type.value == "prometheus":
-            await _cache_prom_cols(state.tenant_db, state, _prom_src)
+            await _cache_prom_cols(state.model_db, state, _prom_src)
 
     await _init_ingest_engines()
 
@@ -1170,10 +1180,10 @@ async def _load_and_build(
     await _load_grpc_remote_sources_from_db()
 
     # Retry config relationships deferred at load_config time (graphql_remote tables now available)
-    if apply and getattr(state, "config", None) is not None and state.tenant_db is not None:
+    if apply and getattr(state, "config", None) is not None and state.model_db is not None:
         from provisa.core.repositories import relationship as _rel_repo
 
-        async with state.tenant_db.acquire() as _retry_conn:
+        async with state.model_db.acquire() as _retry_conn:
             for _rel in state.config.relationships:
                 try:
                     await _rel_repo.upsert(_retry_conn, _rel, origin="config")
@@ -1238,7 +1248,7 @@ async def _ensure_environment_baselines() -> None:
     from provisa.core.environments import PROD, org_schema
 
     assert state.admin_db is not None
-    assert state.tenant_db is not None
+    assert state.model_db is not None
     await ensure_prod(state.admin_db, state.org_id)
     repo = ensure_repo(state.org_id)
     unstarted = [
@@ -1250,7 +1260,7 @@ async def _ensure_environment_baselines() -> None:
     # theirs can continue it rather than root beside it.
     unstarted.sort(key=lambda name: (name != PROD, name))
     for name in unstarted:
-        async with state.tenant_db.acquire() as conn:
+        async with state.model_db.acquire() as conn:
             await write_through(
                 conn,
                 state.admin_db,
@@ -1400,8 +1410,8 @@ async def _require_org_serves_here(org_id: str) -> None:
     from provisa.core.repositories.region import require_serves_here
 
     # Both callers run after the org's control plane is up and its model loaded into it.
-    assert state.tenant_db is not None
-    async with state.tenant_db.acquire() as conn:
+    assert state.model_db is not None
+    async with state.model_db.acquire() as conn:
         await require_serves_here(conn, org_id, process_region.region())
 
 
@@ -1435,7 +1445,7 @@ async def build_org_runtime(
     """
     from provisa.api.startup_seed import _seed_built_in_sources, _resolve_pk_from_sources
     from provisa.core.config_loader import load_control_plane
-    from provisa.core.database import Capabilities, create_engine_from_url
+    from provisa.core.database import Capabilities, create_engine_from_url, org_store_handles
     from provisa.core.db import apply_tenancy_role_grants, init_schema
     from provisa.audit.query_log import init_audit_schema
 
@@ -1573,11 +1583,8 @@ async def build_org_runtime(
         # the branch's copy of the model rather than prod's.
         from provisa.core.model_change import ModelPlane
 
-        state.tenant_db = Database(
-            tenant_engine,
-            name="org",
-            search_path=org_schema(org_id, env),
-            model=ModelPlane(org_id, env),  # REQ-1524: its model's changes are committed
+        state.model_db, state.tenant_db = org_store_handles(
+            tenant_engine, org_schema(org_id, env), ModelPlane(org_id, env)
         )
 
         schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
@@ -1589,7 +1596,7 @@ async def build_org_runtime(
         # REQ-1337: org_admin holds platform_settings only in a single-tenant deployment.
         # REQ-1623: asserted in the environment being built, whose roles table is its own.
         await apply_tenancy_role_grants(
-            state.tenant_db, org_id, multitenancy=state.multitenancy, env=env
+            state.model_db, org_id, multitenancy=state.multitenancy, env=env
         )
         await init_audit_schema(state.tenant_db, org_id=org_id, env=env)
 
@@ -1614,12 +1621,12 @@ async def build_org_runtime(
         # orgs never collide in the shared coordinator's catalog namespace.
         config = state.config if include_demo else None
         if config is not None:
-            assert state.tenant_db is not None
+            assert state.model_db is not None
             # Populate the org-prefixed catalog-name map FIRST so physical registration inside
             # load_config attaches each source under the org's own catalog name (not the bare,
             # default-org name) — the cross-org collision guard (REQ-1266).
             _populate_source_catalog_names(config)
-            async with state.tenant_db.acquire() as conn:
+            async with state.model_db.acquire() as conn:
                 failed_catalogs = await load_config(
                     config,
                     conn,
@@ -1737,8 +1744,8 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     # engine; a missing the engine connection only skips the engine-catalog ops seeding below.
     _rebuild_log = logging.getLogger(__name__)
     _rebuild_log.info("_rebuild_schemas called")
-    if state.tenant_db is None:
-        _rebuild_log.warning("_rebuild_schemas: tenant_db is None, returning")
+    if state.model_db is None:
+        _rebuild_log.warning("_rebuild_schemas: model_db is None, returning")
         return
 
     # REQ-1914: the ``model`` stamp this build is loaded at, read BEFORE the model. A change that
@@ -1747,7 +1754,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     from provisa.core import config_stamp as _config_stamp
 
     _stamped_runtime = state._active_runtime()
-    _model_stamp = (await _config_stamp.read(state.tenant_db))[_config_stamp.MODEL]
+    _model_stamp = (await _config_stamp.read(state.model_db))[_config_stamp.MODEL]
 
     kafka_physical = getattr(state, "kafka_table_physical", {})
     domain_prefix, raw_config = _resolve_naming_config(raw_config)
@@ -1771,7 +1778,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     await _load_graphql_remote_sources_from_db()
     await _load_grpc_remote_sources_from_db()
 
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:
         _pg = cast("Connection", conn)
         tables = await _fetch_tables(_pg)
         _assert_domain_table_unique(tables)

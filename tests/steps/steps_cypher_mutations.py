@@ -430,6 +430,7 @@ def _run_after_write(table_id: int, table_name: str, source_id: str) -> dict[str
 
     state = SimpleNamespace(
         response_cache_store=_Store(),
+        model_db="fake",
         tenant_db="fake",
         org_id="org-a",
         model_stamp=1,

@@ -188,8 +188,8 @@ async def resolve_invite_role(
 
     resolved = role_id if role_id is not None else DEFAULT_INVITE_ROLE
     rt = await ensure_org_runtime(org_id)
-    assert rt.tenant_db is not None
-    async with rt.tenant_db.acquire() as conn:
+    assert rt.model_db is not None
+    async with rt.model_db.acquire() as conn:
         result = await conn.execute_core(
             select(org_roles.c.id, org_roles.c.capabilities, org_roles.c.parent_role_id)
         )

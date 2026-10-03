@@ -92,12 +92,28 @@ async def _org_tenant_db(org_id: str) -> Database:  # REQ-1305
     return rt.tenant_db
 
 
+async def _org_model_db(org_id: str) -> Database:  # REQ-1305, REQ-1919
+    """The MODEL store of ``org_<org_id>`` (its roles and role assignments), building the org
+    runtime if needed — the model-side twin of :func:`_org_tenant_db`."""
+    from provisa.api.app import ensure_org_runtime
+
+    rt = await ensure_org_runtime(org_id)
+    if rt.model_db is None:
+        raise ApiError(
+            409,
+            "orgs.no_tenant_runtime",
+            f"Org {org_id!r} has no tenant runtime — it may still be provisioning.",
+            org=org_id,
+        )
+    return rt.model_db
+
+
 def _pool() -> Database:
     # Tenant control plane — used for org schema (de)provisioning.
     from provisa.api.app import state
 
-    assert state.tenant_db is not None
-    return state.tenant_db
+    assert state.model_db is not None
+    return state.model_db
 
 
 def _admin_pool() -> Database:
@@ -419,12 +435,12 @@ async def _provision_org_task(
         # The creator's org_admin role assignment lands in the org's own schema — possible only now
         # the schema + seeded org_admin row exist. Membership (admin plane) was granted synchronously.
         if created_by is not None:
-            assert rt.tenant_db is not None
+            assert rt.model_db is not None
             from provisa.security.rights import DEPLOYMENT_GRANTER
 
             # The deployment seats the org's creator; see grant_org_admin for why that is its act.
             await grant_org_role(
-                rt.tenant_db, created_by, "org_admin", granter_capabilities=DEPLOYMENT_GRANTER
+                rt.model_db, created_by, "org_admin", granter_capabilities=DEPLOYMENT_GRANTER
             )
         # REQ-1524: the repository is created by the act that produces an organization, not lazily
         # by its first change, and with the same failure semantics as the schema — ensure_repo
@@ -436,8 +452,8 @@ async def _provision_org_task(
         from provisa.core.environments import PROD, org_schema
 
         ensure_repo(org_id)
-        assert rt.tenant_db is not None
-        async with rt.tenant_db.acquire() as conn:
+        assert rt.model_db is not None
+        async with rt.model_db.acquire() as conn:
             await write_through(
                 conn,
                 _admin_pool(),
@@ -1089,15 +1105,15 @@ async def remove_member(org_id: str, user_id: str, request: Request):  # REQ-130
     )
 
     await _require_org_admin(request, org_id)
-    tenant_db = await _org_tenant_db(org_id)
+    model_db = await _org_model_db(org_id)
     try:
-        await assert_not_last_org_admin(tenant_db, user_id, org_id)
+        await assert_not_last_org_admin(model_db, user_id, org_id)
     except LastOrgAdminError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    if not await remove_from_org(_admin_pool(), tenant_db, user_id, org_id):
+    if not await remove_from_org(_admin_pool(), model_db, user_id, org_id):
         raise ApiError(404, "orgs.membership_not_found", "Membership not found")
     await record_admin_action(
-        tenant_db,
+        model_db,
         action="remove_member",
         actor_id=_caller_user_id(request) or "anonymous",
         subject_id=user_id,
@@ -1125,16 +1141,16 @@ async def leave_org(org_id: str, request: Request):  # REQ-1306
     user_id = _caller_user_id(request)
     if user_id is None:
         raise ApiError(401, "orgs.auth_required_leave", "Authentication required to leave an org")
-    tenant_db = await _org_tenant_db(org_id)
+    model_db = await _org_model_db(org_id)
     try:
-        await assert_not_last_org_admin(tenant_db, user_id, org_id)
+        await assert_not_last_org_admin(model_db, user_id, org_id)
     except LastOrgAdminError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    if not await remove_from_org(_admin_pool(), tenant_db, user_id, org_id):
+    if not await remove_from_org(_admin_pool(), model_db, user_id, org_id):
         raise ApiError(404, "orgs.membership_not_found", "Membership not found")
     await suppress_auto_join(_admin_pool(), user_id, org_id)
     await record_admin_action(
-        tenant_db,
+        model_db,
         action="leave_org",
         actor_id=user_id,
         subject_id=user_id,
@@ -1169,10 +1185,10 @@ async def grant_org_admin_role(org_id: str, user_id: str, request: Request):  # 
         exists = await conn.execute_core(select(orgs.c.id).where(orgs.c.id == org_id))
         if exists.fetchone() is None:
             raise ApiError(404, "orgs.not_found", "Org not found")
-    tenant_db = await _org_tenant_db(org_id)
-    await grant_org_admin(_admin_pool(), tenant_db, user_id, org_id, joined_via=JOINED_VIA_ADMIN)
+    model_db = await _org_model_db(org_id)
+    await grant_org_admin(_admin_pool(), model_db, user_id, org_id, joined_via=JOINED_VIA_ADMIN)
     await record_admin_action(
-        tenant_db,
+        model_db,
         action="grant_org_admin",
         actor_id=actor or "anonymous",
         subject_id=user_id,
@@ -1207,12 +1223,12 @@ async def revoke_org_admin_role(org_id: str, user_id: str, request: Request):  #
             "orgs.self_role_change",
             "A user cannot change their own role. Ask another administrator (REQ-1308).",
         )
-    tenant_db = await _org_tenant_db(org_id)
+    model_db = await _org_model_db(org_id)
     try:
-        await assert_not_last_org_admin(tenant_db, user_id, org_id)
+        await assert_not_last_org_admin(model_db, user_id, org_id)
     except LastOrgAdminError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    async with tenant_db.acquire() as conn:
+    async with model_db.acquire() as conn:
         result = await conn.execute_core(
             _sa_delete(user_role_assignments).where(
                 user_role_assignments.c.user_id == user_id,
@@ -1228,7 +1244,7 @@ async def revoke_org_admin_role(org_id: str, user_id: str, request: Request):  #
             org=org_id,
         )
     await record_admin_action(
-        tenant_db,
+        model_db,
         action="revoke_org_admin",
         actor_id=actor or "anonymous",
         subject_id=user_id,

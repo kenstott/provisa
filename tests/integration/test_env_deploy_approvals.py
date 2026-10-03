@@ -71,7 +71,9 @@ async def planes(docker_postgres, tmp_path, monkeypatch):
 
         scoped = domains.to_metadata(MetaData(), schema=org_schema(org_id, env))
         async with tenant_db.acquire() as conn:
-            await conn.execute_core(scoped.insert().values(id=domain_id, description=domain_id))
+            await conn.execute_core(
+                scoped.insert().values(id=domain_id, description=domain_id, origin="config")
+            )
 
     async def tree(env=DEV):
         async with tenant_db.acquire() as conn:

@@ -500,8 +500,8 @@ async def _load_openapi_specs() -> None:
     """Reload OpenAPI specs from DB into state (survives hot reloads and restarts)."""
     from provisa.api.app import state
 
-    assert state.tenant_db is not None
-    async with state.tenant_db.acquire() as conn:
+    assert state.model_db is not None
+    async with state.model_db.acquire() as conn:
         openapi_rows = [
             dict(_r._mapping)
             for _r in (
@@ -821,14 +821,14 @@ async def _init_ingest_engines() -> None:
     """Phase AS: Initialize ingest engines and DDL for ingest sources."""
     from provisa.api.app import state
 
-    assert state.tenant_db is not None
+    assert state.model_db is not None
     # Best-effort: ingest-source setup failing must not abort whole-server startup.
     with tolerate_startup_failure("ingest source init", exc_info=True):
         from provisa.ingest.engine import get_engine as _get_ingest_engine
         from provisa.ingest.ddl import generate_create_table as _gen_ddl
         from provisa.core.secrets import resolve_secrets as _resolve_secrets
 
-        async with state.tenant_db.acquire() as _pg_conn:
+        async with state.model_db.acquire() as _pg_conn:
             _ingest_sources = [
                 dict(_r._mapping)
                 for _r in (
@@ -853,17 +853,17 @@ async def _init_ingest_engines() -> None:
         # localhost), so a UI-registered ingest source silently wrote rows nowhere reachable. The
         # only sensible default for "no connection configured" is the SAME tenant database
         # Provisa itself is already connected to. On Postgres that means reading off
-        # state.tenant_db's own engine URL and opening a SEPARATE pool with it (ingest write
+        # state.model_db's own engine URL and opening a SEPARATE pool with it (ingest write
         # traffic gets its own pool, isolated from the admin-plane one). On SQLite -- the e2e
         # "core" lane and any local-dev ``--demo`` install both run PROVISA_DEMO's SQLite control
         # plane -- host/port/username don't exist to decompose, AND a second engine opened
-        # against the SAME sqlite FILE deadlocks against state.tenant_db's own WAL-mode
+        # against the SAME sqlite FILE deadlocks against state.model_db's own WAL-mode
         # connection (SQLAlchemy's default rollback-journal pool has no busy_timeout of its own
-        # and never gets the WAL pragma _on_sqlite_connect sets on state.tenant_db's engine — see
-        # provisa/core/database.py). So the SQLite/embedded case reuses state.tenant_db.engine
+        # and never gets the WAL pragma _on_sqlite_connect sets on state.model_db's engine — see
+        # provisa/core/database.py). So the SQLite/embedded case reuses state.model_db.engine
         # directly instead of opening a second engine at all -- "the SAME tenant database" taken
         # literally, not a look-alike connection to the same file.
-        _tenant_url = state.tenant_db.engine.url
+        _tenant_url = state.model_db.engine.url
         _tenant_is_pg = _tenant_url.get_backend_name() == "postgresql"
         for _isrc in _ingest_sources:
             _sid = _isrc["id"]
@@ -883,7 +883,7 @@ async def _init_ingest_engines() -> None:
                     use_pgbouncer=False,
                 )
             elif _tenant_is_pg:
-                # REQ-1730: state.tenant_db.acquire() scopes every control-plane connection to the
+                # REQ-1730: state.model_db.acquire() scopes every control-plane connection to the
                 # org's schema via a per-acquire `SET search_path` (core/database.py's
                 # Database.acquire) — this raw engine has no such wrapper, so without an explicit
                 # search_path its DDL/INSERT land wherever the role's own default resolves
@@ -909,13 +909,13 @@ async def _init_ingest_engines() -> None:
                     password=_pw or "",
                     search_path=_sp,
                     # Same database as the tenant control plane, so the same PgBouncer path.
-                    use_pgbouncer=_pg_uses_pgbouncer(state.tenant_db.engine),
+                    use_pgbouncer=_pg_uses_pgbouncer(state.model_db.engine),
                 )
             else:
-                _eng = state.tenant_db.engine
+                _eng = state.model_db.engine
             state.ingest_engines[_sid] = _eng
             _sqlite_backed = _eng.dialect.name == "sqlite"
-            async with state.tenant_db.acquire() as _pg_conn:
+            async with state.model_db.acquire() as _pg_conn:
                 _itables = [
                     dict(_r._mapping)
                     for _r in (
@@ -1070,13 +1070,13 @@ async def _load_graphql_remote_sources_from_db() -> None:
     from provisa.core.secrets import resolve_secrets
     from provisa.graphql_remote.brands import NAMESPACE_HINT, brand_of
 
-    if state.tenant_db is None:
-        log.warning("[GQL REMOTE] tenant_db is None — skipping DB load")
+    if state.model_db is None:
+        log.warning("[GQL REMOTE] model_db is None — skipping DB load")
         return
     # Best-effort: a DB/spec failure here must not abort startup — the server
     # comes up without the graphql_remote sources and logs why.
     with tolerate_startup_failure("graphql_remote sources from DB", exc_info=True):
-        async with state.tenant_db.acquire() as _conn:
+        async with state.model_db.acquire() as _conn:
             src_rows = [
                 dict(_r._mapping)
                 for _r in (
@@ -1204,11 +1204,11 @@ async def _load_grpc_remote_sources_from_db() -> None:  # REQ-1730
     best-effort, matching the reload's own framing elsewhere in this module."""
     from provisa.api.app import state
 
-    if state.tenant_db is None:
-        log.warning("[GRPC REMOTE] tenant_db is None — skipping DB load")
+    if state.model_db is None:
+        log.warning("[GRPC REMOTE] model_db is None — skipping DB load")
         return
     with tolerate_startup_failure("grpc_remote sources from DB", exc_info=True):
-        async with state.tenant_db.acquire() as _conn:
+        async with state.model_db.acquire() as _conn:
             src_rows = [
                 dict(_r._mapping)
                 for _r in (
@@ -1339,13 +1339,13 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
     """Load tracked functions and webhooks from DB; populate state.tracked_functions/webhooks."""
     from provisa.api.app import state
 
-    assert state.tenant_db is not None, (
-        "tenant_db must be initialized before loading tracked functions"
+    assert state.model_db is not None, (
+        "model_db must be initialized before loading tracked functions"
     )
 
     from provisa.discovery.catalog_cache import ensure_table as _ensure_catalog_cache
 
-    await _ensure_catalog_cache(state.tenant_db)
+    await _ensure_catalog_cache(state.model_db)
     fn_rows = [
         dict(_r._mapping)
         for _r in (

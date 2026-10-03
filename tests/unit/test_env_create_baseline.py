@@ -81,7 +81,7 @@ def created(monkeypatch):
         def acquire(self):
             return _Conn()
 
-    async def _org_tenant_db(org_id):
+    async def _org_model_db(org_id):
         return _Db()
 
     async def _write_through(conn, admin_db, org_id, env, schema, message, actor):
@@ -117,7 +117,7 @@ def created(monkeypatch):
     monkeypatch.setattr(er, "_admin_pool", lambda: "admin-db")
     monkeypatch.setattr(er, "_state", lambda: "state")
     monkeypatch.setattr("provisa.core.org_provisioning.provision_org", _provision_org)
-    monkeypatch.setattr("provisa.api.admin.orgs_router._org_tenant_db", _org_tenant_db)
+    monkeypatch.setattr("provisa.api.admin.orgs_router._org_model_db", _org_model_db)
     monkeypatch.setattr(env_repo, "write_through", _write_through)
     monkeypatch.setattr(env_repo, "start_branch", _start_branch)
     monkeypatch.setattr(env_repo, "ensure_repo", lambda org_id: "repo")

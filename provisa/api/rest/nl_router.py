@@ -167,6 +167,6 @@ async def _get_llm(state):
     from provisa.core.org_settings import resolve_org_config
     from provisa.llm.client import ProvisaLLMClient
 
-    cfg = await resolve_org_config(state.tenant_db)
-    api_keys = await read_org_api_keys(state.tenant_db)
+    cfg = await resolve_org_config(state.model_db)
+    api_keys = await read_org_api_keys(state.model_db)
     return ProvisaLLMClient("sql_generation", config=cfg, api_keys=api_keys)

@@ -36,7 +36,9 @@ def _state(config_sources, config_tables, rows, registered):
     db = SimpleNamespace(acquire=lambda: _Acquire(conn))
     return (
         SimpleNamespace(
-            config=SimpleNamespace(sources=config_sources, tables=config_tables), tenant_db=db
+            config=SimpleNamespace(sources=config_sources, tables=config_tables),
+            model_db=db,
+            tenant_db=db,
         ),
         rows,
         registered,

@@ -95,6 +95,7 @@ async def state() -> SimpleNamespace:
         "tables": [],
     }
     return SimpleNamespace(
+        model_db=db,
         tenant_db=db,
         graphql_remote_sources={"shop": reg},
         config=SimpleNamespace(graphql_remote=GraphQLRemoteConfig()),

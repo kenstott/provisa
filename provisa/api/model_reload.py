@@ -229,8 +229,8 @@ async def load_org_settings(rt: "OrgRuntime") -> None:
     """Read ``rt``'s org settings rows, recording the ``settings`` stamp they were read at."""
     from provisa.core.org_settings import read_org_overrides_stamped
 
-    assert rt.tenant_db is not None, "an org's settings live in its tenant plane"
-    rt.settings_stamp, rt.settings_overrides = await read_org_overrides_stamped(rt.tenant_db)
+    assert rt.model_db is not None, "an org's settings are its model (REQ-1919)"
+    rt.settings_stamp, rt.settings_overrides = await read_org_overrides_stamped(rt.model_db)
 
 
 async def reload_org_settings(rt: "OrgRuntime") -> None:
@@ -281,12 +281,14 @@ def targets() -> list[Target]:
         )
     for key in state.org_registry.all_org_ids():
         rt = state.org_registry.get(key)
-        if rt is None or rt.tenant_db is None:
+        if rt is None or rt.model_db is None or rt.tenant_db is None:
             continue  # dropped since listed, or registered and still being built
+        # REQ-1922: the model and settings stamps are the model store's (their triggers fire in
+        # its transactions); the replica stamp is this region's state store's.
         out.append(
             Target(
                 name=f"org {key}: model",
-                db=rt.tenant_db,
+                db=rt.model_db,
                 kind=config_stamp.MODEL,
                 loaded=lambda rt=rt: rt.model_stamp,
                 reload=lambda rt=rt: reload_model(rt),
@@ -295,7 +297,7 @@ def targets() -> list[Target]:
         out.append(
             Target(
                 name=f"org {key}: settings",
-                db=rt.tenant_db,
+                db=rt.model_db,
                 kind=config_stamp.SETTINGS,
                 loaded=lambda rt=rt: rt.settings_stamp,
                 reload=lambda rt=rt: reload_org_settings(rt),
@@ -321,14 +323,15 @@ async def health() -> dict[str, dict[str, int | None]]:
 
     rt = state._active_runtime()
     out: dict[str, dict[str, int | None]] = {}
-    if rt.tenant_db is not None:
-        stored = await config_stamp.read(rt.tenant_db)
+    if rt.model_db is not None and rt.tenant_db is not None:
+        stored = await config_stamp.read(rt.model_db)
         out["model"] = {"loaded": rt.model_stamp, "stored": stored[config_stamp.MODEL]}
         out["org_settings"] = {
             "loaded": rt.settings_stamp,
             "stored": stored[config_stamp.SETTINGS],
         }
-        out["replicas"] = {"loaded": rt.replica_stamp, "stored": stored[config_stamp.REPLICA]}
+        replicas = (await config_stamp.read(rt.tenant_db))[config_stamp.REPLICA]
+        out["replicas"] = {"loaded": rt.replica_stamp, "stored": replicas}
     if state.admin_db is not None:
         out["settings"] = {
             "loaded": deployment_settings.current_stamp(),

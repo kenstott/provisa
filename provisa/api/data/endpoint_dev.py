@@ -143,7 +143,7 @@ async def _execute_govdata(source_id: str, sql: str, state) -> "QueryResult":
     from provisa.executor.result import QueryResult
     from provisa.govdata.source import execute_query
 
-    pool = state.tenant_db
+    pool = state.model_db
     async with pool.acquire() as conn:
         result = await conn.execute_core(
             select(sources.c.username, sources.c.database).where(sources.c.id == source_id)
@@ -906,9 +906,9 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
     def _sql_domain(domain_id: str | None) -> str:
         return domain_to_sql_name(domain_id) if domain_id else "default"
 
-    assert state.tenant_db is not None
-    llm_config = await resolve_org_config(state.tenant_db)
-    llm_api_keys = await read_org_api_keys(state.tenant_db)
+    assert state.model_db is not None
+    llm_config = await resolve_org_config(state.model_db)
+    llm_api_keys = await read_org_api_keys(state.model_db)
 
     selected_types = await _run_table_selection(
         _user_nodes,

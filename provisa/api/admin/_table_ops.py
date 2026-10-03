@@ -26,10 +26,11 @@ if TYPE_CHECKING:
 
 
 async def _get_pool() -> "Database":
+    """The acting org's MODEL store (REQ-1919): what the admin edits is the model."""
     from provisa.api.app import state
 
-    assert state.tenant_db is not None
-    return state.tenant_db
+    assert state.model_db is not None
+    return state.model_db
 
 
 def _build_column_models(columns: list) -> list:

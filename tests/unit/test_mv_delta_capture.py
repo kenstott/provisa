@@ -236,7 +236,7 @@ async def test_refresh_mv_captures_deltas_when_opted_in(store):
     mv = _mv()
     reg = MVRegistry()
     reg.register(mv)
-    await refresh_mv(_FakeEngine(V1), mv, reg, store=store)
+    await refresh_mv(_FakeEngine(V1), mv, reg, ledger=store)
     rows = await _ledger_rows(store, 1)
     assert [r["change_type"] for r in rows] == ["insert", "insert", "insert"]
 
@@ -245,5 +245,5 @@ async def test_refresh_mv_opt_out_writes_no_ledger(store):
     mv = _mv(capture=False)
     reg = MVRegistry()
     reg.register(mv)
-    await refresh_mv(_FakeEngine(V1), mv, reg, store=store)
+    await refresh_mv(_FakeEngine(V1), mv, reg, ledger=store)
     assert await _ledger_rows(store) == []

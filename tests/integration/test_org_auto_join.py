@@ -94,7 +94,7 @@ def _planes(monkeypatch, *org_rows: dict):
     from types import SimpleNamespace
 
     async def _org_runtime(_org_id: str, _env: str | None = None):
-        return SimpleNamespace(tenant_db=tenant_db)
+        return SimpleNamespace(model_db=tenant_db, tenant_db=tenant_db)
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _org_runtime, raising=False)
     return admin_db, tenant_db, sync_engine

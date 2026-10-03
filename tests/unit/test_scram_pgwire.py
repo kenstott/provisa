@@ -139,6 +139,7 @@ def _state(auth_config: dict, pool: _Pool | None) -> SimpleNamespace:
         auth_middleware_active=True,
         multitenancy=False,
         admin_db=pool,
+        model_db=None,
         tenant_db=None,
     )
 
