@@ -305,6 +305,9 @@ class TestRestEndpointsHTTP:
                     "domain_id": "default",
                     "schema_name": "public",
                     "table_name": "orders",
+                    # The table's write operations: this suite reads, and the registry row carries
+                    # the column the schema build reads (no writes declared).
+                    "write_ops": [],
                     "columns": [
                         {"column_name": "id", "visible_to": ["org_admin"]},
                         {"column_name": "region", "visible_to": ["org_admin"]},
