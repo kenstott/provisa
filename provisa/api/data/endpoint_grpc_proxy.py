@@ -88,39 +88,16 @@ async def grpc_commands(role_id: str, request: Request):  # REQ-1156
     """
     from provisa.api.app import state
 
+    from provisa.api.data.action_exec import list_visible_commands
+    from provisa.security.rights import require_role
+
     role_id = held_role(request, role_id)
-    fns = getattr(state, "tracked_functions", {}) or {}
-    from provisa.security.rights import reaches_all_domains, require_role
-
-    role = require_role(state.roles, role_id)
-    accessible = set(role["domain_access"])
-    all_access = reaches_all_domains(role["domain_access"])
-
-    seen: set[str] = set()
-    out: list[dict] = []
-    for fn in fns.values():
-        name = fn.get("name")
-        if not name or name in seen:
-            continue
-        visible_to = fn.get("visible_to") or []
-        if visible_to and role_id not in visible_to:
-            continue
-        domain_id = fn.get("domain_id", "")
-        if not all_access and domain_id and domain_id not in accessible:
-            continue
-        seen.add(name)
-        out.append(
-            {
-                "name": name,
-                "description": fn.get("description"),
-                "arguments": [
-                    {"name": a.get("name"), "type": a.get("type")}
-                    for a in (fn.get("arguments") or [])
-                    if a.get("name")
-                ],
-            }
-        )
-    return out
+    require_role(state.roles, role_id)
+    # The one discovery list (functions and webhooks the role may call), as the picker shows it.
+    return [
+        {"name": c["name"], "description": c["description"], "arguments": c["arguments"]}
+        for c in list_visible_commands(state, role_id)
+    ]
 
 
 @router.post("/grpc-command/{role_id}")
@@ -128,21 +105,18 @@ async def grpc_command(role_id: str, request: Request):  # REQ-1156
     """Invoke a registered command via the shared executor — the HTTP mirror of CallCommand.
 
     Body: ``{name, args_json}`` (args_json is a JSON object string, matching the CommandRequest
-    proto). writable_by/governance is enforced inside invoke_tracked_function.
+    proto). The command admission and governance are inside invoke_tracked_function.
     """
     import json
 
     from provisa.api.app import state
-    from provisa.api.data.action_exec import invoke_tracked_function
+    from provisa.api.data.action_exec import bind_named_args, invoke_tracked_function
 
     role_id = held_role(request, role_id)  # the command runs AS this role: one the caller holds
     body = await request.json()
     name = body.get("name")
     if not name:
         raise ApiError(400, "data.missing_command_name", "Missing command name")
-    if name not in (getattr(state, "tracked_functions", {}) or {}):
-        raise ApiError(404, "data.unknown_command", f"Unknown command {name!r}", name=name)
-
     raw = body.get("args_json")
     parsed_args: Any
     if raw in (None, ""):
@@ -158,9 +132,8 @@ async def grpc_command(role_id: str, request: Request):  # REQ-1156
         parsed_args = raw
     if not isinstance(parsed_args, dict):
         raise ApiError(400, "data.args_json_not_object", "args_json must be a JSON object")
-    args = parsed_args
-
     try:
+        args = bind_named_args(name, parsed_args, state, role_id)
         rows = await invoke_tracked_function(name, args, state, role_id)
     except ComplexityLimitExceeded:
         raise  # REQ-1174: answered as 413 by the app's handler

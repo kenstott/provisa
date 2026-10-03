@@ -1374,7 +1374,6 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
             **dict(r),
             "arguments": _json_list(r["arguments"]),
             "visible_to": _json_list(r["visible_to"]),
-            "writable_by": _json_list(r["writable_by"]),
         }
         for r in fn_rows
     ]

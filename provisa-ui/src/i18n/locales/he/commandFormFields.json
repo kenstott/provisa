@@ -14,8 +14,6 @@
     "selectTable": "בחירת טבלה...",
     "visibleTo": "גלוי עבור (תפקידים, מופרדים בפסיקים)",
     "visibleToPlaceholder": "admin, analyst",
-    "writableBy": "ניתן לכתיבה על ידי (תפקידים, מופרדים בפסיקים)",
-    "writableByPlaceholder": "admin",
     "url": "URL",
     "urlPlaceholder": "https://api.example.com/action",
     "method": "מתודה",

@@ -14,8 +14,6 @@
     "selectTable": "Seleccionar tabla...",
     "visibleTo": "Visible para (roles, separados por comas)",
     "visibleToPlaceholder": "admin, analyst",
-    "writableBy": "Escritura por (roles, separados por comas)",
-    "writableByPlaceholder": "admin",
     "url": "URL",
     "urlPlaceholder": "https://api.example.com/action",
     "method": "Método",

@@ -18,22 +18,33 @@ Authorizes by contract (REQ-869) then hands off to the extensible-function dispa
 from __future__ import annotations
 
 import httpx
-from fastapi import HTTPException
 
 from provisa.api.errors import ApiError
 from provisa.executor.function_dispatch import dispatch_function
+from provisa.security.rights import require_role
 from provisa.security.mutation_authz import (
+    CommandNotFound,
     MutationNotPermitted,
-    require_mutation_write as _require_mutation_write,
+    admit_command as _admit_command,
+    command_reachable,
 )
 
 
-def require_mutation_write(action: dict, role, field_name: str) -> None:
-    """The security gate rendered as the API's 403 (REQ-869, REQ-1678)."""
-    from provisa.api.errors import ApiError
+def unknown_command(name: str) -> ApiError:
+    """The one answer for a command that is not there for the caller: unregistered, not assigned
+    to the role, or outside its domains. The same on every surface."""
+    return ApiError(404, "functions.unknown_command", f"Unknown command: {name!r}", name=name)
 
+
+def admit_command(command: dict, state, role_id: str | None, name: str) -> dict:
+    """The one command admission (security/mutation_authz.admit_command) rendered as the API's
+    answer: not found for a command the role may not use, 403 for a mutation without the write
+    right. Returns the acting role."""
+    role = state.roles.get(role_id) if role_id is not None else None
     try:
-        _require_mutation_write(action, role, field_name)
+        _admit_command(command, role, name)
+    except CommandNotFound as exc:
+        raise unknown_command(name) from exc
     except MutationNotPermitted as exc:
         raise ApiError(
             403,
@@ -42,6 +53,56 @@ def require_mutation_write(action: dict, role, field_name: str) -> None:
             field_name=exc.field_name,
             reason=exc.reason,
         ) from exc
+    assert role is not None  # admit_command refuses a call without one
+    return role
+
+
+def _record_call(name: str, args: dict, state, role_id: str) -> None:
+    """The record notes the call: the command, the role, and the NAMES of its arguments (never
+    their values)."""
+    import time
+
+    from provisa.audit.context import current_audit_identity
+    from provisa.audit.pipeline import PendingAudit, enqueue_audit
+
+    identity = current_audit_identity()
+    if identity is None:
+        return
+    enqueue_audit(
+        PendingAudit(
+            user_id=identity.user_id,
+            surface=identity.surface,
+            role_id=role_id,
+            query_text=f"CALL {name}({', '.join(args)})",
+            table_ids=[],
+            started=time.monotonic(),
+            model_stamp=state.model_stamp,
+            enforced={"command": {"name": name, "arguments": list(args)}},
+        ),
+        200,
+        state,
+        route="command",
+    )
+
+
+def usable_commands(state, role_id: str, *, webhooks: bool = True) -> dict[str, dict]:
+    """The commands ``role_id`` may call, by name: assigned to it and in a domain it reaches. A
+    surface that recognizes a command by its name in the statement (SQL) recognizes only these,
+    so a command the role may not use reads exactly like a name that was never registered."""
+    from provisa.security.mutation_authz import command_reachable
+
+    role = (getattr(state, "roles", None) or {}).get(role_id)
+    if role is None:
+        return {}
+    pools = [getattr(state, "tracked_functions", None) or {}]
+    if webhooks:
+        pools.append(getattr(state, "tracked_webhooks", None) or {})
+    return {
+        name: command
+        for pool in pools
+        for name, command in pool.items()
+        if command_reachable(command, role)
+    }
 
 
 def list_visible_commands(state, role_id: str | None) -> list[dict]:
@@ -71,8 +132,7 @@ def list_visible_commands(state, role_id: str | None) -> list[dict]:
         name = fn.get("name")
         if not name or name in seen:
             continue
-        visible_to = fn.get("visible_to") or []
-        if role_id is not None and visible_to and role_id not in visible_to:
+        if role_id is not None and not command_reachable(fn, require_role(state.roles, role_id)):
             continue
         seen.add(name)
         out.append(
@@ -94,21 +154,81 @@ def list_visible_commands(state, role_id: str | None) -> list[dict]:
     return sorted(out, key=lambda c: (c["domain"], c["name"]))
 
 
+def _admitted(name: str, state, role_id: str | None) -> dict:
+    command = (getattr(state, "tracked_functions", None) or {}).get(name) or (
+        getattr(state, "tracked_webhooks", None) or {}
+    ).get(name)
+    if command is None:
+        raise unknown_command(name)
+    admit_command(command, state, role_id, name)
+    return command
+
+
+def _signature(name: str, declared: list[dict]) -> str:
+    args = ", ".join(f"{a['name']} :: {str(a.get('type', 'String')).upper()}" for a in declared)
+    return f"{name}({args})"
+
+
+def bind_named_args(name: str, given: dict, state, role_id: str | None) -> dict:
+    """Named argument values (GraphQL, gRPC) in ``name``'s declared order — the order a
+    positional call binds them. Admitted first (nothing told of a command the caller may not
+    use); then an argument not given, or one the command does not declare, is refused by name."""
+    command = _admitted(name, state, role_id)
+    declared = [a for a in command.get("arguments") or [] if a.get("name")]
+    names = [a["name"] for a in declared]
+    unknown = [k for k in given if k not in names]
+    missing = [n for n in names if n not in given]
+    if unknown or missing:
+        problem = (
+            f"argument {unknown[0]!r} is not one it declares"
+            if unknown
+            else f"argument {missing[0]!r} was not given"
+        )
+        raise ApiError(
+            400,
+            "functions.argument_mismatch",
+            f"{_signature(name, declared)}: {problem}",
+            name=name,
+            signature=_signature(name, declared),
+        )
+    return {n: given[n] for n in names}
+
+
+def bind_command_args(name: str, values: list, state, role_id: str | None) -> dict:
+    """Positional argument ``values`` bound to ``name``'s declared arguments, for a surface that
+    passes them by position (Cypher CALL). The command is admitted first, so a caller learns
+    nothing of a command it may not use; then a count that does not match its signature is
+    refused, naming the command and the signature."""
+    command = _admitted(name, state, role_id)
+    declared = [a for a in command.get("arguments") or [] if a.get("name")]
+    if len(values) != len(declared):
+        raise ApiError(
+            400,
+            "functions.argument_count",
+            f"{_signature(name, declared)} takes {len(declared)} argument(s); {len(values)} given",
+            name=name,
+            signature=_signature(name, declared),
+            given=len(values),
+        )
+    return {a["name"]: v for a, v in zip(declared, values, strict=True)}
+
+
 async def invoke_tracked_function(name: str, args: dict, state, role_id: str | None) -> list[dict]:
     """The one path every surface routes through to invoke a registered function.
 
-    GraphQL today, plus pgwire / SQL / Cypher via REQ-872: enforces per-mutation
-    ``writable_by`` (REQ-869) by contract, then dispatches by implementation kind
-    (REQ-885) with a mandatory invocation trace (REQ-886). ``args`` is an ordered dict
-    of positional argument values. Raises HTTPException for an unknown function, an
-    unauthorized write, a missing binding, an unknown kind, or a disconnected source.
+    Every surface (GraphQL, SQL, pgwire, Cypher, Bolt, gRPC, MCP, REST): the one command
+    admission (:func:`admit_command`), approval where declared, the call recorded, then dispatch
+    by implementation kind (REQ-885) with a mandatory invocation trace (REQ-886); the after-write
+    step when it declares ``writes_table``; the returned rows as the role may see them. ``args``
+    is an ordered dict of argument values.
     """
-    role = state.roles.get(role_id) if role_id is not None else None
     fn = state.tracked_functions.get(name)
     if fn:
-        require_mutation_write(fn, role, name)
+        role = admit_command(fn, state, role_id, name)
+        assert role_id is not None
         if fn.get("requires_approval"):
             await _require_approval(fn, args, state, role_id, role)
+        _record_call(name, args, state, role_id)
         rows = await dispatch_function(fn, args, state, role_id)
         if fn.get("writes_table"):
             await _table_was_written(fn, state)
@@ -118,7 +238,7 @@ async def invoke_tracked_function(name: str, args: dict, state, role_id: str | N
     # POST — the function dispatcher rejects scalar-only external calls (they can't batch).
     if name in (getattr(state, "tracked_webhooks", None) or {}):
         return await invoke_tracked_webhook(name, args, state, role_id)
-    raise HTTPException(status_code=400, detail=f"Unknown function: {name!r}")
+    raise unknown_command(name)
 
 
 def _webhook_body(wh: dict, args: dict) -> dict:
@@ -137,15 +257,15 @@ def _webhook_body(wh: dict, args: dict) -> dict:
 async def invoke_tracked_webhook(name: str, args: dict, state, role_id: str | None) -> list[dict]:
     """Invoke a registered webhook (a governed HTTP-POST mutation) — the one shared webhook path.
 
-    Enforces per-mutation ``writable_by`` (REQ-869), then POSTs the argument body to the webhook's
-    URL and normalizes the response to a list of row dicts. Raises HTTPException for an unknown
-    webhook or an unauthorized write.
+    The same admission and record as a function, then POSTs the argument body to the webhook's
+    URL and normalizes the response to a list of row dicts; the rows as the role may see them.
     """
-    role = state.roles.get(role_id) if role_id is not None else None
     wh = (getattr(state, "tracked_webhooks", None) or {}).get(name)
     if not wh:
-        raise HTTPException(status_code=400, detail=f"Unknown webhook: {name!r}")
-    require_mutation_write(wh, role, name)
+        raise unknown_command(name)
+    admit_command(wh, state, role_id, name)
+    assert role_id is not None
+    _record_call(name, args, state, role_id)
     timeout = wh["timeout_ms"] / 1000
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.request(wh["method"].upper(), wh["url"], json=_webhook_body(wh, args))
@@ -214,12 +334,9 @@ async def _require_approval(fn: dict, args: dict, state, role_id: str | None, ro
         )
 
 
-async def _governed(rows: list[dict], action: dict, state, role_id: str | None) -> list[dict]:
-    """REQ-1679: the response as the acting role may see it. With no acting role (an unbound
-    internal call) there is no role to govern for, the same condition under which the write
-    gate above reads no role."""
-    if role_id is None:
-        return rows
+async def _governed(rows: list[dict], action: dict, state, role_id: str) -> list[dict]:
+    """REQ-1679, REQ-1758: the response as the acting role may see it. Every call has a role
+    (the admission refuses one without)."""
     from provisa.api.data.action_governance import govern_action_rows
 
     governed, _enforcement = await govern_action_rows(rows, action, role_id, state)

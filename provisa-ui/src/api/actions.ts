@@ -59,7 +59,6 @@ export interface TrackedFunction {
   returns: string;
   arguments: ActionArg[];
   visibleTo: string[];
-  writableBy: string[];
   domainId: string;
   description: string | null;
   kind: string;
@@ -112,7 +111,6 @@ export async function saveFunction(input: {
   returns: string;
   arguments: ActionArg[];
   visibleTo: string[];
-  writableBy: string[];
   domainId: string;
   description?: string | null;
   kind?: string;

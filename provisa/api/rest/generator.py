@@ -771,7 +771,7 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
         """Invoke a registered command over REST — the OpenAPI mirror of the shared executor.
 
         Body is a JSON object of the command's declared arguments. Routes through the one
-        governed executor (invoke_tracked_function), which enforces writable_by.
+        governed executor (invoke_tracked_function) and its command admission.
         """
         auth_role = getattr(request.state, "role", None)
         if not auth_role:
@@ -780,30 +780,30 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
 
         # Functions AND webhooks are governed commands (REQ-872) — both callable over REST, both
         # routed through the one invoke_tracked_function executor below.
+        from provisa.api.data.action_exec import (
+            bind_named_args,
+            invoke_tracked_function,
+            unknown_command,
+        )
+
         fns = getattr(state, "tracked_functions", {}) or {}
         whs = getattr(state, "tracked_webhooks", {}) or {}
         fn = fns.get(command_name) or whs.get(command_name)
         if fn is None or fn.get("domain_id") != domain_id:
-            raise HTTPException(
-                status_code=404, detail=f"Command {domain_id!r}/{command_name!r} not found"
-            )
-        visible_to = fn.get("visible_to") or []
-        if visible_to and role_id not in visible_to:
-            raise HTTPException(
-                status_code=404, detail=f"Command {domain_id!r}/{command_name!r} not found"
-            )
+            # The executor's own answer, the same as for a command the role may not use.
+            raise unknown_command(command_name)
 
+        raw = await request.body()
         try:
-            body = await request.json()
-        except Exception:
-            body = {}
+            body = json.loads(raw) if raw.strip() else {}  # no body: a call with no arguments
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail=f"request body is not JSON: {exc}")
         if not isinstance(body, dict):
             raise HTTPException(status_code=400, detail="request body must be a JSON object")
 
-        from provisa.api.data.action_exec import invoke_tracked_function
-
         try:
-            rows = await invoke_tracked_function(command_name, body, state, role_id)
+            args = bind_named_args(command_name, body, state, role_id)
+            rows = await invoke_tracked_function(command_name, args, state, role_id)
         except ComplexityLimitExceeded:
             raise  # REQ-1174: answered as 413 by the app's handler
         except PermissionError as exc:

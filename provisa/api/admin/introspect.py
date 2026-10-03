@@ -21,6 +21,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from provisa.security.rights import ORG_ADMIN_ROLE
+
 import json
 
 from sqlalchemy import select
@@ -1701,7 +1703,7 @@ async def register_discovered_routines(  # REQ-887
       * If no tracked function owns the exposed name → register it.
       * If a tracked function with the same name already points at this exact
         routine (same source_id + schema + function_name) → upsert (idempotent
-        re-introspection; REQ-870 preserves existing writable_by grants).
+        re-introspection keeps the roles the command was assigned).
       * If a tracked function with the same name points at a *different* routine
         (a hand-registered function, or a different proc) → skip; a discovered
         routine must not overwrite an explicit registration.
@@ -1727,8 +1729,14 @@ async def register_discovered_routines(  # REQ-887
             function_name=r.routine_name,
             returns="",
             arguments=[FunctionArgument(name=a.name, type=a.type) for a in r.arguments],
-            visible_to=[],
-            writable_by=[],
+            # A command found again keeps the roles it was assigned. A newly found one is
+            # assigned to the organization's administrator alone when it writes (no other role
+            # calls a mutation nobody assigned), and to every role when it reads.
+            visible_to=(
+                list(existing.get("visible_to") or [])
+                if existing is not None
+                else ([] if r.kind == "query" else [ORG_ADMIN_ROLE])
+            ),
             domain_id=domain_id or "",
             description=r.description,
             kind=r.kind,

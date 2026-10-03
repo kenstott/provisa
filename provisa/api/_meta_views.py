@@ -249,7 +249,6 @@ _META_TABLE_VIEWS: dict[str, str] = {
                arguments,
                return_schema,
                visible_to,
-               writable_by,
                domain_id, description, created_at, updated_at
         FROM tracked_functions
     """,

@@ -65,7 +65,6 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
         # JSON columns take Python objects directly.
         "arguments": [a.model_dump() for a in func.arguments],
         "visible_to": func.visible_to,
-        "writable_by": func.writable_by,
         "domain_id": domain_id,
         "description": func.description,
         "kind": func.kind,
@@ -82,10 +81,6 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
         "requires_approval": func.requires_approval,  # REQ-1924
         "writes_table": func.writes_table,  # REQ-1924, REQ-871
     }
-    # REQ-870: re-introspection registers discovered mutations with an empty writable_by; existing
-    # admin grants are preserved. An explicit, non-empty writable_by still applies. The preserve
-    # branch is on a Python value, so resolve it here — exclude writable_by from the update set when
-    # empty (leaving the stored grants untouched); otherwise update it.
     update_cols = [
         "source_id",
         "schema_name",
@@ -105,8 +100,6 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
         "requires_approval",
         "writes_table",
     ]
-    if func.writable_by:
-        update_cols.append("writable_by")
     function_id = await conn.upsert_returning(
         tracked_functions,
         {**vals, "origin": origin},  # REQ-1919: on INSERT only — not among the update columns
@@ -285,7 +278,6 @@ def function_from_dict(d: dict) -> Function:  # REQ-205, REQ-304
         returns=d["returns"],
         arguments=[FunctionArgument(**a) for a in d.get("arguments", [])],
         visible_to=d.get("visible_to", []),
-        writable_by=d.get("writable_by", []),
         domain_id=d.get("domain_id", ""),
         description=d.get("description"),
         kind=d.get("kind", "mutation"),
