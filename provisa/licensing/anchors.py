@@ -103,6 +103,28 @@ def write_anchor(path: Path, anchor: Anchor) -> None:
     os.replace(tmp.name, path)
 
 
+def _pinned_first_seen() -> str | None:
+    """A sandboxed test session's pinned first-use date (``PROVISA_LICENSING_FIRST_SEEN``), or None.
+
+    A test session runs servers on a developer's machine; were they to read that machine's trial
+    clock, every test would change behaviour on the day the machine's trial elapsed. The session
+    pins the date instead. Honoured only inside a licensing sandbox (the variable the test session
+    sets beside it), and then nothing is read from or written to the real anchors."""
+    import datetime
+
+    from provisa.licensing.home import sandbox_dir
+
+    pinned = os.environ.get("PROVISA_LICENSING_FIRST_SEEN")
+    if not pinned:
+        return None
+    if sandbox_dir() is None:
+        raise RuntimeError(
+            "PROVISA_LICENSING_FIRST_SEEN pins a sandboxed test session's trial clock; it is "
+            "refused without PROVISA_LICENSING_SANDBOX_DIR"
+        )
+    return datetime.date.fromisoformat(pinned).isoformat()
+
+
 def reconcile_first_seen(
     *, machine_id: str, today_iso: str, paths: list[Path] | None = None
 ) -> str:
@@ -111,6 +133,10 @@ def reconcile_first_seen(
     Reads every anchor; the EARLIEST valid ``first_seen`` wins (min), else ``today_iso`` on a truly
     first run. Then rewrites any location whose anchor is absent/tampered/not-earliest so all agree —
     a surviving anchor re-seeds deleted ones, so uninstalling does not reset the trial clock."""
+    if paths is None:
+        pinned = _pinned_first_seen()
+        if pinned is not None:
+            return pinned
     locations = paths if paths is not None else default_anchor_paths()
     healed = locations
     if paths is None:
