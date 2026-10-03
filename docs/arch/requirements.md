@@ -2992,7 +2992,7 @@ WITH clause CTEs are named _w0, _w1, ... using a positional index assigned withi
 
 ### REQ-642 · Graph Analytics Pipeline {#REQ-642}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** behavioral
 
 A POST /data/graph-analytics endpoint accepts a Cypher query and algorithm name, executes the query via the existing cypher_router pipeline, builds an in-memory NetworkX DiGraph from the resulting nodes and edges, runs the named algorithm, merges a `_analytics` dict into each node/edge, and returns the augmented nodes and edges as JSON with an `elapsed_ms` field.
 
@@ -3004,7 +3004,7 @@ A POST /data/graph-analytics endpoint accepts a Cypher query and algorithm name,
 
 ### REQ-643 · Graph Analytics Pipeline {#REQ-643}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
+**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** structural
 
 The graph analytics response merges a `_analytics` dict into every node and edge in the result. The keys present in `_analytics` vary by algorithm: centrality algorithms produce `score`; community detection produces `cluster`; k-core produces `core_number`; degree centrality also produces `in_degree` and `out_degree`.
 
@@ -3016,7 +3016,7 @@ The graph analytics response merges a `_analytics` dict into every node and edge
 
 ### REQ-650 · Graph Analytics Pipeline {#REQ-650}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
+**Status:** ✗ rejected · **Priority:** MUST · **Type:** constraint
 
 The graph analytics endpoint enforces a configurable maximum graph size. When the input graph exceeds the configured limit (default: 10,000 nodes or 50,000 edges), the endpoint returns HTTP 413 before running any algorithm.
 
@@ -3028,7 +3028,7 @@ The graph analytics endpoint enforces a configurable maximum graph size. When th
 
 ### REQ-651 · Graph Analytics Pipeline {#REQ-651}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
+**Status:** ✗ rejected · **Priority:** MUST · **Type:** constraint
 
 The Girvan-Newman community detection algorithm is restricted to graphs with fewer than 500 nodes. Requests for Girvan-Newman on larger graphs are rejected unless the caller supplies `force=true` in the params, making the computational risk explicit.
 
@@ -11868,7 +11868,7 @@ Age-based reaping of local redirect files. Locally-materialized files are reaped
 
 ### REQ-1194 · Large Result Redirect & CTAS {#REQ-1194}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** structural
 
 Extend engine-native ctas_redirect beyond Trino to all object-store-capable engines. Databricks uses INSERT OVERWRITE DIRECTORY / CTAS to external volume; Snowflake uses COPY INTO <stage> FROM (query); ClickHouse uses INSERT INTO FUNCTION s3(...) SELECT ...; DuckDB uses COPY (query) TO 's3://...' via httpfs. Each engine implements its native result-to-object-store write and returns only the resulting URI; Provisa stays out of the data path. (Amended 2026-10-01, bound values.) The sink statement is executed with the statement's bound values. run_materialize, EngineRuntime.ctas_redirect and the backend's ctas_redirect take them as a required argument and the Trino CTAS binds them as the row terminal does (placeholders in occurrence order). Before, the engine was handed the statement text alone with its placeholders unbound (issue 132).
 
@@ -12556,7 +12556,7 @@ During account creation, a Firebase user without an org invite may CREATE A NEW 
 
 ### REQ-1250 · Org Membership {#REQ-1250}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
+**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** structural
 
 Org membership is pull-based via org_join_requests, the inverse of org_invites. New registry table org_join_requests(user_id, org_id, status, requested_at, decided_by, decided_at) is added to REGISTRY_TABLES in provisa/core/schema_admin.py. Per-org visibility flag orgs.open_to_requests: if False (invite_only, the default), admission requests are silently rejected (no signal that the request was received, to avoid org-name enumeration). If True (open_to_requests), requests are logged pending admin approval. Requesters must be Firebase-authenticated. Anti-abuse: at most one open request per (user, org); rate-limited per requester; stale requests auto-expire (same TTL as org_invites).
 
@@ -12568,7 +12568,7 @@ Org membership is pull-based via org_join_requests, the inverse of org_invites. 
 
 ### REQ-1251 · Org Membership {#REQ-1251}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** behavioral
 
 Admin approval/denial of org_join_requests. When an admin approves a request, the approval path reuses the membership-insert logic (provisa/api/auth_router.py and related) minus the token check, granting the lowest-privilege member role (never admin). Deny path closes the request (status='denied'). Both actions record decided_by (admin user_id) and decided_at.
 
@@ -12582,7 +12582,7 @@ Admin approval/denial of org_join_requests. When an admin approves a request, th
 
 ### REQ-1252 · Org Administration {#REQ-1252}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
+**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** ui
 
 Admin UI surface (extend OrgsTab.tsx / add admin router endpoint) to list pending org_join_requests for the org, approve requests, and deny requests. Display requester email, request date, and admin action buttons.
 
@@ -14018,7 +14018,7 @@ Add hierarchical domain structure via parent_domain_id to Domain model, with fla
 
 ### REQ-1364 · Config Export {#REQ-1364}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** structural
 
 Config exports carry JSON Pointer refs for internal cross-references plus composed physical resourcePath URIs for data elements, enabling external validators and interchange converters (Ossie/DDN) to resolve semantic and physical locations without second passes.
 
@@ -17406,7 +17406,7 @@ Auto-generate Horizon Catalog listing descriptions from Provisa's Data Product P
 
 ### REQ-1646 · Snowflake Horizon Catalog Export {#REQ-1646}
 
-**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+**Status:** ✗ rejected · **Priority:** MAY · **Type:** behavioral
 
 Snowflake Horizon Catalog export can optionally create a `_provisa` database containing user-facing exposure views organized as `{domain-name-slug-as-schema}.{table-name}` (e.g., schema `pet_store`, view `pets`), providing a clean, domain-organized read surface separate from the internal `_landing` database.
 
@@ -19850,7 +19850,7 @@ The perf benchmark tooling should produce results in a format suitable for publi
 
 ### REQ-1861 · Source Connectors {#REQ-1861}
 
-**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+**Status:** ✓ accepted · **Priority:** MAY · **Type:** behavioral
 
 MongoDB sources can optionally use MongoDB's native change streams ($changeStream) to achieve near-real-time freshness for materialized and cached data, instead of relying solely on TTL-based polling refresh. (Amended 2026-09-24, DEPLOYMENT PATH CONFIRMED:) Change streams require Mongo to run as a replica set — a bare standalone instance cannot serve them. Confirmed workable as a single-node replica set (no extra containers): `command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]` plus a self-initiating healthcheck (`rs.status()`, falling back to `rs.initiate()` on first run) — see demo/named/perf/docker-compose.yml's mongodb service, now our standard approach for every Mongo service in a named demo, not just this one. One real gotcha: the replica-set member is registered under a hostname only resolvable on the same Docker network (the Compose service name), so any consumer connecting from outside it (a host-machine driver via the published port, or Provisa's own connector under --native) must set directConnection=true to skip topology discovery — see generate_mongo.py's MongoClient call for the pattern. Whether Provisa's own mongodb connector needs the same directConnection flag to reach a replica-set-backed source is unverified — flag if sources register but queries against them fail to connect (see fragment.yaml's bench-mongodb comment).
 
@@ -20002,7 +20002,7 @@ FederationEngine.discover() [SUPERSEDED by REQ-1872 amendment, 2026-10-03 -- Lin
 
 ### REQ-1873 · Feature {#REQ-1873}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** infrastructure
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** infrastructure
 
 An end-user-facing script (scripts/install-pg-ext.sh or similar) that stages provisa_pg_ext's bundled FDW/extension binaries into an OPERATOR-SUPPLIED, external Postgres instance — the same manual sequence performed live this session (pip install provisa-pg-ext; docker cp the platform-matched lib/*.so + share/extension/* files into the target's pg_config --pkglibdir/--sharedir; ALTER SYSTEM SET shared_preload_libraries for pg_duckdb; restart; CREATE EXTENSION). Today _stage_bundled_extensions() (provisa/core/control_plane_pg.py:47) only stages into Provisa's OWN embedded pgserver instance — there is no equivalent path for a customer's own Postgres (Docker, RDS-with-filesystem-access, bare-metal, etc.), which is the common real-world "point Provisa at your existing Postgres" deployment shape.
 
@@ -20520,7 +20520,7 @@ Replication is bounded, single and survivable. Replicating a table never holds t
 
 ### REQ-1916 · Process Roles {#REQ-1916}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** structural
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** structural
 
 Process roles. A deployment runs the same code in two roles, chosen when a process is started. A query node serves requests on every transport and does nothing else: it never runs a replication copy, a scheduled refresh or any other background job. A coordinator serves no data requests and does the central work: it holds the central replica record and decides and runs every replica build and refresh ([REQ-1915](#REQ-1915)), and it runs the scheduled and single-holder background work (materialized view refresh and cleanup, hot-table refresh, scheduled triggers, and the like) that query nodes used to elect one of themselves to run. Query nodes enqueue requests in the central record and read state from it; the coordinator is the only thing that acts on them. Both roles are the same image and the same entry point with a role argument, read the same control plane, and are told of changes by the same propagation ([REQ-1914](#REQ-1914)). [SUPERSEDED by the 2026-10-02 amendment below -- the default is now the every mode, one process doing both. Kept here for history; do not implement against it.] By default the launcher starts one coordinator on the same host next to the query nodes, so a small install needs no extra setup; [END SUPERSEDED BLOCK] a larger deployment runs the coordinator on its own server with its own memory and network budget, close to the store and the sources. [SUPERSEDED by the 2026-10-02 amendment below -- several coordinators work at once, each on different jobs. Kept here for history; do not implement against it.] More than one coordinator may run for availability, and a lock the control plane guarantees lets exactly one of them act at a time, with another taking over when it stops. [END SUPERSEDED BLOCK] The health endpoint and the admin pages show the coordinator, whether it is running, and what it is doing, because when no coordinator runs nothing is replicated or refreshed; a query node reports that state on reads that need a replica instead of doing the work itself. The role is a launch setting shown in the deployment settings ([REQ-1913](#REQ-1913)). (Amended 2026-10-02, THREE MODES:) A process starts in one of three modes -- every, query or coordinator. every is the default and needs no flag -- the process serves requests on every transport and also does the coordinator work, so a small install is one kind of process with nothing to choose. query and coordinator are chosen by a startup command-line flag. A query process serves requests and runs no replica build, view refresh or other background job. A coordinator process serves no data requests and does the background work. The mode is fixed for the life of the process and is shown read-only with the other launch settings. (Amended 2026-10-02, EVERY COORDINATOR BUILDS:) Background capacity grows by adding processes that do coordinator work (coordinator or every mode). Each such process claims requested replica builds, and later view refreshes, one job at a time per claim -- a lock the control plane guarantees per replica or view keeps each job to one builder, so several coordinators work at once on different jobs. Three operator limits bound the total -- builds per node, background jobs per engine across all nodes, and reads per source ([REQ-1915](#REQ-1915), [REQ-1909](#REQ-1909)). Work that must fire exactly once per deployment, such as deciding that a refresh is due or running a scheduled trigger, still goes to one holder at a time, taken over by another when it stops. (Amended 2026-10-02, SCALING AND MEMBERSHIP:) Capacity is added in either of two ways, and the operator chooses by workload. The simple way is to add more every-mode nodes -- each adds request capacity and background capacity together. The designed way is to run some number of query nodes and some number of coordinator nodes, sized separately for request load and for replication and refresh load. Both may be mixed in one cluster. A cluster is the set of processes started against one control plane. A node joins by starting against that control plane and leaves by stopping -- no other node is restarted or reconfigured, and nothing is registered by hand, so capacity is added and removed while the cluster serves. A joining node loads the current configuration ([REQ-1914](#REQ-1914)) and must hold the deployment encryption key ([REQ-684](#REQ-684)) before it serves. A leaving query node finishes or times out the requests it holds. A leaving coordinator releases the jobs it holds -- the control plane frees its locks when its session ends, and another node claims and restarts those jobs ([REQ-1915](#REQ-1915)). The admin pages and the health endpoint list the nodes now in the cluster with each one mode, so an operator sees what capacity is present and whether any node is doing coordinator work.
 
@@ -20860,7 +20860,7 @@ Views feature (domain SQL views) must validate that all foreign tables reference
 
 ### REQ-446 · Graph Analytics Pipeline {#REQ-446}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** behavioral
 
 The Cypher compiler must support a high-value subset of `CALL gds.*` procedure syntax, implemented via igraph rather than a Neo4j GDS dependency. Target procedures: `gds.pageRank.stream`, `gds.louvain.stream` (community detection), `gds.betweenness.stream`, `gds.closeness.stream`, `gds.wcc.stream` (weakly connected components), `gds.nodeSimilarity.stream`. The governed subgraph (nodes and edges, filtered by RLS and domain permissions) is materialized by Provisa before being passed to igraph — no data outside the caller's access is visible to the algorithm. Results are returned as tabular output consistent with all other Cypher query responses.
 
@@ -21090,7 +21090,7 @@ Dataset name normalization must be centralized. Dataset names may be normalized 
 
 ### REQ-466 · Naming Convention {#REQ-466}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** behavioral
 
 Dataset identity resolution requires centralized service. Every registered dataset has two identity forms — physical (native source name, e.g. `findPetsByStatus`) and semantic (domainId + tableName alias). Code comparing two dataset references must resolve both through a centralized identity service. Backend: `provisa.core.dataset_identity` exposes `resolve(ref) -> DatasetIdentity` and `same_dataset(ref_a, ref_b) -> bool`. Frontend: shared utility, no per-component name-matching logic. Cross-form comparison resolves both sides to `(sourceId, normalizedName)` tuple first. Documented in docs/arch/dataset-handling-standards.md under "Dataset Identity".
 
@@ -21100,7 +21100,7 @@ Dataset identity resolution requires centralized service. Every registered datas
 
 ### REQ-467 · Naming Convention {#REQ-467}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** behavioral
 
 Query-language dataset name resolution via centralized identity service (extends [REQ-466](#REQ-466)). Any dataset name in SQL, Cypher, or GraphQL queries must resolve to a physical dataset through the identity service, accounting for each language's canonical form (SQL=snake_case schema.table, Cypher=PascalCase label, GraphQL=camelCase field). The active naming convention (registered_tables → domains → sources → global default) may override canonical defaults. `provisa.core.dataset_identity.resolve(ref, lang)` accepts query-language names and denormalizes them before lookup; `to_query_name(identity, lang)` produces the correct form for a given language. All inline normalization (e.g., `_normalize_op_id` in config_loader.py:104) must be replaced by this service. Documented in docs/arch/dataset-handling-standards.md under "Query-language representations".
 
@@ -21352,7 +21352,7 @@ GovData source adapter (`provisa/govdata/`): registers US Government Open Data (
 
 ### REQ-493 · Source Connectors {#REQ-493}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
 
 Apache Accumulo source adapter (`provisa/accumulo/`): exposes Accumulo tables as relational via Trino's Accumulo connector. Column family/qualifier mapping DSL required (per [REQ-251](#REQ-251)). Read-only; no mutations (NoSQL, non-relational). `tests/unit/test_accumulo_source.py`
 
@@ -21484,7 +21484,7 @@ SQLite source adapter: ingested into the lazy-cache pipeline ([REQ-499](#REQ-499
 
 ### REQ-506 · Control Plane & Deployment {#REQ-506}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
 
 Control plane module (`provisa/control_plane/`): manages SLA monitoring, quota enforcement, and cluster health aggregation across multi-tenant deployments. Exposes health metrics via Prometheus endpoint. Integrates with OTel traces ([REQ-302](#REQ-302)) for latency SLA tracking. Configuration: `control_plane.enabled`, `control_plane.sla_p99_ms` thresholds per role. `tests/unit/test_control_plane.py`
 
@@ -21714,7 +21714,7 @@ When an admin mints an org invite, a templated email is sent via EmailProvider c
 
 ### REQ-1022 · Email Delivery {#REQ-1022}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✗ rejected · **Priority:** MUST · **Type:** behavioral
 
 When a creation or approval request is raised, admin approvers for the org are notified by email with approve/deny links, [SUPERSEDED by [REQ-1330](#REQ-1330), 2026-10-03 -- Mail is sent through the EmailSender port; no EmailProvider or [REQ-942](#REQ-942) outbox path exists for it. Kept here for history; do not implement against it.] delivered via the same EmailProvider + outbox path [END SUPERSEDED BLOCK].
 

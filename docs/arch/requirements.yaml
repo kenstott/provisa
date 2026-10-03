@@ -9484,7 +9484,7 @@
     status: neutral
     rationale: ''
 - id: REQ-642
-  status: proposed
+  status: rejected
   group: 5. Query Languages, Compilation & Operations
   category: Graph Analytics Pipeline
   priority: SHOULD
@@ -9533,8 +9533,9 @@
     has never existed in git; no /data/graph-analytics route exists; tests/unit/test_graph_analytics_requirements.py
     says it mirrors the contract ''without importing the not-yet-existing router module''. Status set
     to proposed.'
+  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
 - id: REQ-643
-  status: proposed
+  status: rejected
   group: 5. Query Languages, Compilation & Operations
   category: Graph Analytics Pipeline
   priority: SHOULD
@@ -9570,8 +9571,9 @@
     has never existed in git; no /data/graph-analytics route exists; tests/unit/test_graph_analytics_requirements.py
     says it mirrors the contract ''without importing the not-yet-existing router module''. Status set
     to proposed.'
+  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
 - id: REQ-650
-  status: proposed
+  status: rejected
   group: 5. Query Languages, Compilation & Operations
   category: Graph Analytics Pipeline
   priority: MUST
@@ -9606,8 +9608,9 @@
     has never existed in git; no /data/graph-analytics route exists; tests/unit/test_graph_analytics_requirements.py
     says it mirrors the contract ''without importing the not-yet-existing router module''. Status set
     to proposed.'
+  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
 - id: REQ-651
-  status: proposed
+  status: rejected
   group: 5. Query Languages, Compilation & Operations
   category: Graph Analytics Pipeline
   priority: MUST
@@ -9643,6 +9646,7 @@
     has never existed in git; no /data/graph-analytics route exists; tests/unit/test_graph_analytics_requirements.py
     says it mirrors the contract ''without importing the not-yet-existing router module''. Status set
     to proposed.'
+  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
 - id: REQ-653
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -35849,7 +35853,7 @@
 
     '
 - id: REQ-1194
-  status: proposed
+  status: accepted
   group: 7. Result Delivery
   category: Large Result Redirect & CTAS
   priority: SHOULD
@@ -35868,7 +35872,7 @@
     memory/bandwidth.
   code:
   - provisa/federation/backend.py
-  target: 2026-Q3
+  target: 2026-Q4
   scenario: 'Given a large result query against Snowflake, Databricks, ClickHouse, or DuckDB
 
     When ctas_redirect is available and object store is configured
@@ -35876,6 +35880,7 @@
     Then the engine writes results directly to the object store and returns only the URI
 
     '
+  notes: Accepted by the maintainer 2026-10-03 for the feature-complete line.
 - id: REQ-1195
   status: proposed
   group: 7. Result Delivery
@@ -37928,12 +37933,11 @@
     '
   since: 2026-07
 - id: REQ-1250
-  status: proposed
+  status: rejected
   group: 13. Multi-Tenancy & Organizations
   category: Org Membership
   priority: SHOULD
   type: structural
-  target: 2026-Q4
   description: 'Org membership is pull-based via org_join_requests, the inverse of org_invites. New registry
     table org_join_requests(user_id, org_id, status, requested_at, decided_by, decided_at) is added to
     REGISTRY_TABLES in provisa/core/schema_admin.py. Per-org visibility flag orgs.open_to_requests: if
@@ -37964,13 +37968,13 @@
     Then the request is silently rejected (no error to the user)
 
     '
+  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
 - id: REQ-1251
-  status: proposed
+  status: rejected
   group: 13. Multi-Tenancy & Organizations
   category: Org Membership
   priority: SHOULD
   type: behavioral
-  target: 2026-Q4
   description: Admin approval/denial of org_join_requests. When an admin approves a request, the approval
     path reuses the membership-insert logic (provisa/api/auth_router.py and related) minus the token check,
     granting the lowest-privilege member role (never admin). Deny path closes the request (status='denied').
@@ -37998,13 +38002,13 @@
     And jane does not gain membership
 
     '
+  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
 - id: REQ-1252
-  status: proposed
+  status: rejected
   group: 10. UI & Admin Surfaces
   category: Org Administration
   priority: SHOULD
   type: ui
-  target: 2026-Q4
   description: Admin UI surface (extend OrgsTab.tsx / add admin router endpoint) to list pending org_join_requests
     for the org, approve requests, and deny requests. Display requester email, request date, and admin
     action buttons.
@@ -38029,6 +38033,7 @@
     Then the deny flow is triggered (REQ-1251)
 
     '
+  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
 - id: REQ-1253
   status: superseded
   group: 11. Platform, Infrastructure & Delivery
@@ -43192,7 +43197,7 @@
     (no parent pointer on the Domain model, provisa/core/models.py:382-389). Accepted by the maintainer
     2026-10-03 for the feature-complete line; audit found it not built.'
 - id: REQ-1364
-  status: proposed
+  status: accepted
   target: 2026-Q4
   group: 7. Result Delivery
   category: Config Export
@@ -43214,6 +43219,7 @@
     RLS targets, function returns) are emitted as JSON Pointers instead of bare name strings. Each table
     and column additionally carries a composed physical resourcePath URI (from Source connection info
     + catalog.schema.table, e.g., postgresql://host:5432/db/schema/table#column).'
+  notes: Accepted by the maintainer 2026-10-03 for the feature-complete line.
 - id: REQ-1365
   status: accepted
   since: 2026-08
@@ -56581,7 +56587,7 @@
   - provisa/api/metadata_export/snowflake_horizon.py
   target: 2026-Q4
 - id: REQ-1646
-  status: proposed
+  status: rejected
   group: 7. Result Delivery
   category: Snowflake Horizon Catalog Export
   priority: MAY
@@ -56595,7 +56601,7 @@
     surface to Snowflake Horizon consumers, improving discoverability and perception of data products.
   code:
   - provisa/api/metadata_export/snowflake_horizon.py
-  target: 2026-Q4
+  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
 - id: REQ-1647
   status: complete
   group: 7. Result Delivery
@@ -65799,7 +65805,7 @@
   - demo/named/perf/
   target: 2027-Q2
 - id: REQ-1861
-  status: proposed
+  status: accepted
   group: 11. Platform, Infrastructure & Delivery
   category: Source Connectors
   priority: MAY
@@ -65825,6 +65831,14 @@
   - demo/named/perf/docker-compose.yml
   - demo/named/perf/generate_mongo.py
   target: 2026-Q4
+  scenario: 'Given a MongoDB source whose table has a replica
+
+    When a document in the collection changes
+
+    Then the replica is refreshed from the change stream, without waiting for its TTL
+
+    '
+  notes: Accepted by the maintainer 2026-10-03 for the feature-complete line.
 - id: REQ-1862
   status: complete
   since: 2026-09
@@ -66575,7 +66589,7 @@
   - provisa/federation/engine.py
   target: 2027-Q1
 - id: REQ-1873
-  status: proposed
+  status: accepted
   group: 11. Platform, Infrastructure & Delivery
   category: Feature
   priority: SHOULD
@@ -66596,7 +66610,8 @@
   code:
   - scripts/ci/build_pg_extensions.sh
   - provisa/core/control_plane_pg.py
-  target: 2027-Q1
+  target: 2026-Q4
+  notes: Accepted by the maintainer 2026-10-03 for the feature-complete line.
 - id: REQ-1874
   status: accepted
   group: 4. Source Connectors
@@ -71072,7 +71087,7 @@
 
     '
 - id: REQ-1916
-  status: proposed
+  status: accepted
   group: 11. Platform, Infrastructure & Delivery
   category: Process Roles
   priority: MUST
@@ -71087,43 +71102,44 @@
     elect one of themselves to run. Query nodes enqueue requests in the central record and read state
     from it; the coordinator is the only thing that acts on them. Both roles are the same image and the
     same entry point with a role argument, read the same control plane, and are told of changes by the
-    same propagation (REQ-1914). [SUPERSEDED by the 2026-10-02 amendment below -- the default is now the every mode, one process
-    doing both. Kept here for history; do not implement against it.] By default the launcher starts one coordinator on the same host next
-    to the query nodes, so a small install needs no extra setup; [END SUPERSEDED BLOCK] a larger deployment runs the coordinator
-    on its own server with its own memory and network budget, close to the store and the sources. [SUPERSEDED by the 2026-10-02 amendment below -- several coordinators work at once, each on different
-    jobs. Kept here for history; do not implement against it.] More
-    than one coordinator may run for availability, and a lock the control plane guarantees lets exactly
-    one of them act at a time, with another taking over when it stops. [END SUPERSEDED BLOCK] The health endpoint and the admin
-    pages show the coordinator, whether it is running, and what it is doing, because when no coordinator
-    runs nothing is replicated or refreshed; a query node reports that state on reads that need a replica
-    instead of doing the work itself. The role is a launch setting shown in the deployment settings (REQ-1913).
-    (Amended 2026-10-02, THREE MODES:) A process starts in one of three modes -- every, query or coordinator.
-    every is the default and needs no flag -- the process serves requests on every transport and also
-    does the coordinator work, so a small install is one kind of process with nothing to choose. query
-    and coordinator are chosen by a startup command-line flag. A query process serves requests and runs
-    no replica build, view refresh or other background job. A coordinator process serves no data requests
-    and does the background work. The mode is fixed for the life of the process and is shown read-only
-    with the other launch settings. (Amended 2026-10-02, EVERY COORDINATOR BUILDS:) Background capacity
-    grows by adding processes that do coordinator work (coordinator or every mode). Each such process
-    claims requested replica builds, and later view refreshes, one job at a time per claim -- a lock the
-    control plane guarantees per replica or view keeps each job to one builder, so several coordinators
-    work at once on different jobs. Three operator limits bound the total -- builds per node, background
-    jobs per engine across all nodes, and reads per source (REQ-1915, REQ-1909). Work that must fire
-    exactly once per deployment, such as deciding that a refresh is due or running a scheduled trigger,
-    still goes to one holder at a time, taken over by another when it stops.
-    (Amended 2026-10-02, SCALING AND MEMBERSHIP:) Capacity is added in either of two ways, and the operator
-    chooses by workload. The simple way is to add more every-mode nodes -- each adds request capacity and
-    background capacity together. The designed way is to run some number of query nodes and some number
-    of coordinator nodes, sized separately for request load and for replication and refresh load. Both
-    may be mixed in one cluster. A cluster is the set of processes started against one control plane.
-    A node joins by starting against that control plane and leaves by stopping -- no other node is restarted
-    or reconfigured, and nothing is registered by hand, so capacity is added and removed while the cluster
-    serves. A joining node loads the current configuration (REQ-1914) and must hold the deployment encryption
-    key (REQ-684) before it serves. A leaving query node finishes or times out the requests it holds.
-    A leaving coordinator releases the jobs it holds -- the control plane frees its locks when its session
-    ends, and another node claims and restarts those jobs (REQ-1915). The admin pages and the health
-    endpoint list the nodes now in the cluster with each one mode, so an operator sees what capacity
-    is present and whether any node is doing coordinator work.'
+    same propagation (REQ-1914). [SUPERSEDED by the 2026-10-02 amendment below -- the default is now the
+    every mode, one process doing both. Kept here for history; do not implement against it.] By default
+    the launcher starts one coordinator on the same host next to the query nodes, so a small install needs
+    no extra setup; [END SUPERSEDED BLOCK] a larger deployment runs the coordinator on its own server
+    with its own memory and network budget, close to the store and the sources. [SUPERSEDED by the 2026-10-02
+    amendment below -- several coordinators work at once, each on different jobs. Kept here for history;
+    do not implement against it.] More than one coordinator may run for availability, and a lock the control
+    plane guarantees lets exactly one of them act at a time, with another taking over when it stops. [END
+    SUPERSEDED BLOCK] The health endpoint and the admin pages show the coordinator, whether it is running,
+    and what it is doing, because when no coordinator runs nothing is replicated or refreshed; a query
+    node reports that state on reads that need a replica instead of doing the work itself. The role is
+    a launch setting shown in the deployment settings (REQ-1913). (Amended 2026-10-02, THREE MODES:) A
+    process starts in one of three modes -- every, query or coordinator. every is the default and needs
+    no flag -- the process serves requests on every transport and also does the coordinator work, so a
+    small install is one kind of process with nothing to choose. query and coordinator are chosen by a
+    startup command-line flag. A query process serves requests and runs no replica build, view refresh
+    or other background job. A coordinator process serves no data requests and does the background work.
+    The mode is fixed for the life of the process and is shown read-only with the other launch settings.
+    (Amended 2026-10-02, EVERY COORDINATOR BUILDS:) Background capacity grows by adding processes that
+    do coordinator work (coordinator or every mode). Each such process claims requested replica builds,
+    and later view refreshes, one job at a time per claim -- a lock the control plane guarantees per replica
+    or view keeps each job to one builder, so several coordinators work at once on different jobs. Three
+    operator limits bound the total -- builds per node, background jobs per engine across all nodes, and
+    reads per source (REQ-1915, REQ-1909). Work that must fire exactly once per deployment, such as deciding
+    that a refresh is due or running a scheduled trigger, still goes to one holder at a time, taken over
+    by another when it stops. (Amended 2026-10-02, SCALING AND MEMBERSHIP:) Capacity is added in either
+    of two ways, and the operator chooses by workload. The simple way is to add more every-mode nodes
+    -- each adds request capacity and background capacity together. The designed way is to run some number
+    of query nodes and some number of coordinator nodes, sized separately for request load and for replication
+    and refresh load. Both may be mixed in one cluster. A cluster is the set of processes started against
+    one control plane. A node joins by starting against that control plane and leaves by stopping -- no
+    other node is restarted or reconfigured, and nothing is registered by hand, so capacity is added and
+    removed while the cluster serves. A joining node loads the current configuration (REQ-1914) and must
+    hold the deployment encryption key (REQ-684) before it serves. A leaving query node finishes or times
+    out the requests it holds. A leaving coordinator releases the jobs it holds -- the control plane frees
+    its locks when its session ends, and another node claims and restarts those jobs (REQ-1915). The admin
+    pages and the health endpoint list the nodes now in the cluster with each one mode, so an operator
+    sees what capacity is present and whether any node is doing coordinator work.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
@@ -71133,6 +71149,7 @@
   - REQ-1900
   - REQ-1913
   since: 2026-10
+  notes: Accepted by the maintainer 2026-10-03 for the feature-complete line.
 - id: REQ-1917
   status: proposed
   group: 1. Access Governance & Security
@@ -72309,7 +72326,7 @@
     cross-domain entry via views (REQ-367/REQ-610). grep found no implementation.'
   superseded_by: REQ-366
 - id: REQ-446
-  status: proposed
+  status: rejected
   group: 5. Query Languages, Compilation & Operations
   category: Graph Analytics Pipeline
   priority: SHOULD
@@ -72326,6 +72343,7 @@
     from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: No CALL gds.* support
     and no igraph usage in provisa/ (grep); CALL only does correlated subqueries (cypher/correlated_call.py).
     Graph analytics is the NetworkX endpoint REQ-642. Category/group moved from Security.'
+  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
 - id: REQ-447
   status: superseded
   group: 8. Client Access & Protocols
@@ -72775,7 +72793,7 @@
 
     '
 - id: REQ-466
-  status: proposed
+  status: rejected
   group: 3. Source Registration & Data Modeling
   category: Naming Convention
   priority: SHOULD
@@ -72791,8 +72809,9 @@
     written on 2026-06-06 under the heading ''Data & Storage''; it was dropped when requirements.md became
     generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: provisa/core/dataset_identity
     does not exist; grep for same_dataset/dataset_identity finds no implementation.'
+  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
 - id: REQ-467
-  status: proposed
+  status: rejected
   group: 3. Source Registration & Data Modeling
   category: Naming Convention
   priority: SHOULD
@@ -72810,6 +72829,7 @@
     written on 2026-06-07 under the heading ''Data & Storage''; it was dropped when requirements.md became
     generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: No dataset_identity
     service; _normalize_op_id still at provisa/core/config_loader.py:81.'
+  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
 - id: REQ-468
   status: superseded
   group: 3. Source Registration & Data Modeling
@@ -73399,7 +73419,7 @@
     Current GovData contract is REQ-540/541.'
   superseded_by: REQ-540
 - id: REQ-493
-  status: proposed
+  status: accepted
   group: 4. Source Connectors
   category: Source Connectors
   priority: SHOULD
@@ -73411,7 +73431,15 @@
     written on 2026-06-20 under the heading ''Source Connectors''; it was dropped when requirements.md
     became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: provisa/accumulo/
     does not exist; grep of provisa/ for accumulo finds nothing; no accumulo in SourceType (provisa/core/models.py).
-    Not built, not contradicted.'
+    Not built, not contradicted. Accepted by the maintainer 2026-10-03 for the feature-complete line.'
+  target: 2026-Q4
+  scenario: 'Given an Accumulo source
+
+    When a steward registers one of its tables
+
+    Then the table is readable through the federation engine
+
+    '
 - id: REQ-494
   status: complete
   group: 4. Source Connectors
@@ -73730,7 +73758,7 @@
     migration and mtime stale loop; the lazy-cache pipeline (REQ-499) no longer exists.'
   superseded_by: REQ-1660
 - id: REQ-506
-  status: proposed
+  status: accepted
   group: 11. Platform, Infrastructure & Delivery
   category: Control Plane & Deployment
   priority: SHOULD
@@ -73744,7 +73772,17 @@
     became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: provisa/control_plane/
     holds only entitlements.py, models.py, router.py, store.py (org/data-plane registry, REQ-073); no
     SLA monitoring, quota enforcement, control_plane.sla_p99_ms or health aggregation (grep empty). tests/unit/test_control_plane.py
-    covers the org registry only.'
+    covers the org registry only. Accepted by the maintainer 2026-10-03 for the feature-complete line.'
+  target: 2026-Q4
+  scenario: 'Given queries served for an org
+
+    When their latency or availability breaches the configured service level
+
+    Then the breach is recorded and reported
+
+    And an org that exceeds its quota is refused with an error naming the quota
+
+    '
 - id: REQ-507
   status: in-progress
   group: 11. Platform, Infrastructure & Delivery
@@ -74249,12 +74287,11 @@
     has no outbox enqueue and no provisa/email/ package exists.'
   superseded_by: REQ-1330
 - id: REQ-1022
-  status: proposed
+  status: rejected
   group: 11. Platform, Infrastructure & Delivery
   category: Email Delivery
   priority: MUST
   type: behavioral
-  target: 2026-Q3
   description: When a creation or approval request is raised, admin approvers for the org are notified
     by email with approve/deny links, [SUPERSEDED by REQ-1330, 2026-10-03 -- Mail is sent through the
     EmailSender port; no EmailProvider or REQ-942 outbox path exists for it. Kept here for history; do
@@ -74271,6 +74308,7 @@
     it was added; it later vanished from the file without a recorded decision. Audited 2026-10-03 against
     the code: creation_requests_router.py has no email notification; mail.py/mail_router.py send only
     invites. Still wanted as a future transactional mail under REQ-1330.'
+  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
 - id: REQ-087
   status: complete
   group: 1. Access Governance & Security
