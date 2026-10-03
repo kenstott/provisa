@@ -29,6 +29,7 @@ STATUS_LABEL = {
     "proposed": "💡 proposed",
     "accepted": "✓ accepted",
     "rejected": "✗ rejected",
+    "superseded": "↪ superseded",
 }
 
 # Inline cross-references like "(REQ-266)" in prose. Each REQ renders as an
@@ -77,6 +78,8 @@ def generate(rf: RequirementsFile) -> str:
             lines += ["", f"## {req.group}"]
 
         status = STATUS_LABEL.get(req.status.value, req.status.value)
+        if req.superseded_by:
+            status += f" by [{req.superseded_by}](#{req.superseded_by})"
         desc = _linkify(req.description.replace("\n", " ").strip(), req.id, known)
         use_case = _linkify((req.use_case or "").replace("\n", " ").strip(), req.id, known)
 

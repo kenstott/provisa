@@ -20,7 +20,7 @@ Any authenticated identity can query using any supported language (GraphQL, SQL,
 
 ### REQ-002 · Query Governance {#REQ-002}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+**Status:** ↪ superseded by [REQ-266](#REQ-266) · **Priority:** MUST · **Type:** constraint
 
 Rights and Stage 2 governance enforcement is platform-level — applied to every query at compile time. No client path can bypass it without bypassing the server ([REQ-266](#REQ-266)).
 
@@ -32,7 +32,7 @@ Rights and Stage 2 governance enforcement is platform-level — applied to every
 
 ### REQ-003 · Query Governance {#REQ-003}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-001](#REQ-001) · **Priority:** MUST · **Type:** behavioral
 
 All queries and mutations are governed by user rights alone — table/view rights plus relationship rights. No registry membership or query approval is required for any operation.
 
@@ -128,7 +128,7 @@ RLS rules defined at table registration as PG-style SQL filter expressions mappe
 
 ### REQ-042 · Security {#REQ-042}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** structural
+**Status:** ↪ superseded by [REQ-746](#REQ-746) · **Priority:** MUST · **Type:** structural
 
 Source registration, table registration, relationship definition, security configuration, query development, query authorization, and ignore-relationships rights are distinct and independently configured.
 
@@ -416,7 +416,7 @@ V002 relationship governance: every JOIN ON condition in SQL and Cypher queries 
 
 ### REQ-613 · Query Governance {#REQ-613}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-596](#REQ-596) · **Priority:** MUST · **Type:** behavioral
 
 Every query that touches a domain asset is logged in an append-only audit log (query_audit_log). The log captures: user_id, role_id, query_hash, table_ids, source, status_code, duration_ms, and logged_at. The log is protected by PostgreSQL rules that prevent DELETE and UPDATE operations (SOC2 append-only requirement). Indexed by (tenant_id, logged_at) and (user_id, logged_at) for efficient compliance reporting.
 
@@ -490,7 +490,7 @@ Simple username/password auth for testing — users defined in config YAML with 
 
 ### REQ-125 · Authentication {#REQ-125}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1264](#REQ-1264) · **Priority:** MUST · **Type:** behavioral
 
 Superuser bootstrap access — superuser credentials in config (username + password from env secret). Always platform_admin role + all capabilities regardless of auth provider. For initial setup. Role name updated by [REQ-1327](#REQ-1327)'s platform_admin/org_admin split (the old undifferentiated "admin" role no longer exists).
 
@@ -502,7 +502,7 @@ Superuser bootstrap access — superuser credentials in config (username + passw
 
 ### REQ-535 · Authentication {#REQ-535}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1327](#REQ-1327) · **Priority:** SHOULD · **Type:** behavioral
 
 When no auth provider is configured (dev mode), any request is treated as the anonymous dev principal (user_id `anonymous`), with the role taken from the `x-provisa-role` header or defaulting to `org_admin` ([REQ-1327](#REQ-1327)'s data-plane administrator — the undifferentiated `admin` role no longer exists, and platform_admin is control-plane only so a demo deployment need not define it). This identity maps to all configured roles with wildcard domain access, enabling unrestricted local development without configuring an IdP.
 
@@ -2320,7 +2320,7 @@ Per-role aggregate gating via `allow_aggregations` (matching v2) or per-table `a
 
 ### REQ-198 · Aggregates {#REQ-198}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-882](#REQ-882) · **Priority:** SHOULD · **Type:** behavioral
 
 Aggregate MV routing — when a query requests aggregates over a pattern already materialized in an MV, the compiler rewrites the query to use the MV. Requires aggregate catalog + query rewriter.
 
@@ -2572,7 +2572,7 @@ Provisa exposes a `POST /query/cypher` endpoint that accepts a Cypher SELECT que
 
 ### REQ-346 · Cypher Query Frontend (Phase AU) {#REQ-346}
 
-**Status:** ✗ rejected · **Priority:** MUST · **Type:** constraint
+**Status:** ↪ superseded by [REQ-818](#REQ-818) · **Priority:** MUST · **Type:** constraint
 
 SUPERSEDED BY [REQ-818](#REQ-818). Originally: the Cypher compiler is strictly read-only, rejecting any write clause (CREATE/MERGE/SET/DELETE/DETACH/REMOVE) or APOC reference at parse time. Cypher now supports governed CREATE/DELETE/SET writes ([REQ-818](#REQ-818)); only MERGE/DETACH/REMOVE and APOC remain rejected. Use [REQ-818](#REQ-818) and [REQ-671](#REQ-671) instead.
 
@@ -2620,7 +2620,7 @@ When a `RETURN` clause references a whole node variable, relationship variable, 
 
 ### REQ-350 · Cypher Query Frontend (Phase AU) {#REQ-350}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+**Status:** ↪ superseded by [REQ-750](#REQ-750) · **Priority:** SHOULD · **Type:** structural
 
 Three graph output types are defined in the GraphQL schema and returned when Stage 3 wrapping is applied: `Node { id: ID!, label: String!, properties: JSON }`, `Edge { id: ID!, type: String!, startNode: Node!, endNode: Node!, properties: JSON }`, `Path { nodes: [Node!]!, edges: [Edge!]! }`. Scalar property projections return plain column types as normal.
 
@@ -3088,7 +3088,7 @@ Labels in Cypher write clauses (CREATE, SET, DELETE) must resolve to exactly one
 
 ### REQ-662 · Cypher Mutations {#REQ-662}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+**Status:** ↪ superseded by [REQ-661](#REQ-661) · **Priority:** MUST · **Type:** constraint
 
 Labels in write operations must already exist in the governed semantic label map. New labels cannot be created via Cypher write clauses — only pre-registered tables are writable.
 
@@ -3642,7 +3642,7 @@ Denormalized tabular: fully flattened single table, Parquet or CSV, single file 
 
 ### REQ-051 · Output & Delivery {#REQ-051}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-045](#REQ-045) · **Priority:** SHOULD · **Type:** behavioral
 
 Arrow buffer via gRPC Arrow Flight endpoint; Trino produces Arrow natively.
 
@@ -3788,7 +3788,7 @@ GraphQL endpoint is primary entry point for queries and mutations.
 
 ### REQ-044 · API & Integration {#REQ-044}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-029](#REQ-029) · **Priority:** SHOULD · **Type:** behavioral
 
 Presigned URL redirect for large result consumers with TTL-bounded access.
 
@@ -3860,7 +3860,7 @@ JDBC driver that exposes registered tables and views as virtual tables. Connecti
 
 ### REQ-130 · JDBC/ODBC Integration {#REQ-130}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+**Status:** ↪ superseded by [REQ-272](#REQ-272) · **Priority:** MUST · **Type:** constraint
 
 Full security pipeline (RLS, masking, sampling) applied at query time — not baked into views.
 
@@ -4100,7 +4100,7 @@ JDBC driver transport via Arrow Flight — connect to Provisa's existing Flight 
 
 ### REQ-398 · API & Integration {#REQ-398}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-392](#REQ-392) · **Priority:** SHOULD · **Type:** behavioral
 
 The `/data/graph-schema` REST endpoint must expose `pk_columns` (list of column names per node label) so the UI can determine exclusion eligibility.
 
@@ -4388,7 +4388,7 @@ ProvisaClient error contract: `query()` raises `httpx.HTTPStatusError` on HTTP-l
 
 ### REQ-608 · SQL & Multi-Protocol Client Access {#REQ-608}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+**Status:** ↪ superseded by [REQ-711](#REQ-711) · **Priority:** SHOULD · **Type:** structural
 
 The ADBC interface (`adbc_connect`) connects to the Arrow Flight server on port 8815. The Flight port is hardcoded in `adbc_connect` and is not configurable via any parameter — callers must run the Flight server on port 8815 or reconfigure the server.
 
@@ -4594,7 +4594,7 @@ A single Live Query Engine powers all poll-based live delivery. It is the common
 
 ### REQ-283 · Live Query Engine (Unified Subscription & Sink Delivery) {#REQ-283}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+**Status:** ↪ superseded by [REQ-260](#REQ-260) · **Priority:** MUST · **Type:** constraint
 
 `watermark_column` is a required config field for any poll-based live delivery. The column must be monotonically increasing (e.g. `updated_at`, `created_at`) and is declared on the table/view config ([REQ-260](#REQ-260)). Without `watermark_column`, poll delivery is unavailable and config validation fails at startup.
 
@@ -4606,7 +4606,7 @@ A single Live Query Engine powers all poll-based live delivery. It is the common
 
 ### REQ-285 · Live Query Engine (Unified Subscription & Sink Delivery) {#REQ-285}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-813](#REQ-813) · **Priority:** MUST · **Type:** behavioral
 
 Tables declare delivery mode in the subscription/sink config: `delivery: cdc` or `delivery: poll`. `cdc` is available for PostgreSQL (LISTEN/NOTIFY), Debezium-connected sources ([REQ-261](#REQ-261)), and MongoDB (Change Streams per [REQ-258](#REQ-258)). All other sources — Trino-federated, JDBC with restricted access, Kafka topics, API sources — must use `delivery: poll`. Config validation rejects `delivery: cdc` for sources that do not support it.
 
@@ -4956,7 +4956,7 @@ The admin GraphQL API is a Strawberry-based endpoint mounted at POST /admin/grap
 
 ### REQ-620 · Admin & Configuration {#REQ-620}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+**Status:** ↪ superseded by [REQ-533](#REQ-533) · **Priority:** SHOULD · **Type:** structural
 
 The admin GraphQL API is mounted at `/admin/graphql` on the backend server (default port 8001). It is distinct from the data GraphQL API at `/data/graphql` and is used for platform administration operations.
 
@@ -5162,7 +5162,7 @@ Core product is open source: Docker Compose, Helm chart, UI, compiler, SQLGlot l
 
 ### REQ-073 · Commercial Positioning {#REQ-073}
 
-**Status:** ✅ complete · **Priority:** MAY · **Type:** infrastructure
+**Status:** ↪ superseded by [REQ-1243](#REQ-1243) · **Priority:** MAY · **Type:** infrastructure
 
 SaaS tier: two isolation lanes. (a) Pooled shared-Trino cluster for free/small orgs ("trino-level isolation"). (b) BYO (bring-your-own) federation engine for enterprise — customer points Provisa at their own Databricks/Snowflake cluster. Both lanes route through the same _govern_and_route/_execute_plan pipeline ([REQ-1244](#REQ-1244)). Org-scoped sessions are pinned to one engine per deployment (subdomain → org → engine → credentials).
 
@@ -5354,7 +5354,7 @@ OTel integration via opentelemetry-sdk, opentelemetry-instrumentation-fastapi, o
 
 ### REQ-330 · Infrastructure & Observability {#REQ-330}
 
-**Status:** ✅ complete · **Priority:** MAY · **Type:** infrastructure
+**Status:** ↪ superseded by [REQ-815](#REQ-815) · **Priority:** MAY · **Type:** infrastructure
 
 Development observability stack available in docker-compose under `observability` profile (opt-in). OTel Collector receives OTLP on 4317/4318 and exports metrics to Prometheus and traces to Tempo. Grafana on port 3100 with Prometheus and Tempo datasources pre-provisioned and a Provisa dashboard included. Provisa app configured via `OTEL_EXPORTER_OTLP_ENDPOINT` env var (default: `http://localhost:4317`).
 
@@ -5450,7 +5450,7 @@ Provisa takes the OTLP transport from an explicit declaration — `OTEL_EXPORTER
 
 ### REQ-558 · Infrastructure {#REQ-558}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** infrastructure
+**Status:** ↪ superseded by [REQ-618](#REQ-618) · **Priority:** SHOULD · **Type:** infrastructure
 
 The development backend API (`uvicorn main:app`) listens on port 8001 when launched via `start-ui.sh` or manually. The AppImage and installer paths use port 8000 as the default.
 
@@ -5498,7 +5498,7 @@ In a multi-node AppImage deployment, secondary nodes run only the Provisa API an
 
 ### REQ-562 · Installer & Packaging {#REQ-562}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1229](#REQ-1229) · **Priority:** MUST · **Type:** behavioral
 
 In a multi-node deployment, secondary Provisa API instances are stateless and read all configuration (sources, tables, relationships, roles, RLS rules) from the primary node's PostgreSQL database at startup. No manual config sync between nodes is required.
 
@@ -5534,7 +5534,7 @@ The Terraform AWS deployment path provisions a full multi-node Provisa cluster i
 
 ### REQ-592 · Multi-Tenancy {#REQ-592}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+**Status:** ↪ superseded by [REQ-695](#REQ-695) · **Priority:** SHOULD · **Type:** structural
 
 Each tenant maps to an org. The `orgs` table stores org namespaces. The `root` org is seeded automatically for single-tenant deployments. In multi-tenant mode, one org is created per customer via the admin API. `user_org_memberships` tracks which users belong to which org. The current interim model adds org_id FK columns to domains and roles for row-level scoping; these columns are superseded by [REQ-695](#REQ-695) schema-per-org, after which org membership is implicit in schema placement and the org_id columns on domains/roles can be dropped.
 
@@ -5872,7 +5872,7 @@ Cursor-based pagination -- `first`, `after`, `last`, `before` args on root query
 
 ### REQ-219 · Hasura v2 Parity: Medium-Complexity Features {#REQ-219}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-258](#REQ-258) · **Priority:** SHOULD · **Type:** behavioral
 
 Subscriptions via Server-Sent Events (SSE) -- `GET /data/subscribe/<table>` endpoint using FastAPI StreamingResponse. PostgreSQL LISTEN/NOTIFY via asyncpg `.add_listener()` for change detection. No WebSocket complexity. Streams INSERT/UPDATE/DELETE events.
 
@@ -5908,7 +5908,7 @@ Enum table auto-detection -- introspect `pg_enum` at schema build time, generate
 
 ### REQ-222 · Hasura v2 Parity: Medium-Complexity Features {#REQ-222}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-256](#REQ-256) · **Priority:** SHOULD · **Type:** behavioral
 
 REST endpoint auto-generation -- for each root query field, generate `GET /data/rest/<table>` FastAPI endpoint. Map query args to URL query params (`?limit=10&where.id.eq=1`). Reuses GraphQL compilation pipeline internally.
 
@@ -6278,7 +6278,7 @@ adbc_connect() must accept an optional port parameter (default 8815) so callers 
 
 ### REQ-712 · Cache {#REQ-712}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+**Status:** ↪ superseded by [REQ-595](#REQ-595) · **Priority:** MUST · **Type:** constraint
 
 check_cache and store_result in provisa/cache/middleware.py pass tenant_id (org_id) through to RedisCacheStore.get/set, so the per-tenant cache key prefix implemented in the store is applied at the call site and multi-tenant cache key isolation is active for query result caching.
 
@@ -6610,7 +6610,7 @@ Masking constant expressions must emit syntactically valid SQL for their type �
 
 ### REQ-744 · Security {#REQ-744}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-740](#REQ-740) · **Priority:** MUST · **Type:** behavioral
 
 Masking preserves query structure — ORDER BY, LIMIT, GROUP BY, and other clauses remain unchanged; only SELECT projection is rewritten. Masking returns a new CompiledQuery object (immutable transformation), never mutating the input.
 
@@ -6732,7 +6732,7 @@ Path object RETURN (e.g., `RETURN p`) emits a JSON_OBJECT with `nodes` (array of
 
 ### REQ-754 · Cypher Query Frontend (Phase AU) {#REQ-754}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-573](#REQ-573) · **Priority:** SHOULD · **Type:** behavioral
 
 Correlated CALL subqueries (e.g., `CALL { WITH x MATCH (x)-[:REL]->(y) RETURN y }`) translate to CROSS JOIN LATERAL subqueries in Trino, preserving the outer variable binding.
 
@@ -6780,7 +6780,7 @@ Map projections — `n { .prop1, .prop2 }`, `n { .* }`, `n { key: expr }` — tr
 
 ### REQ-758 · Cypher Query Frontend (Phase AU) {#REQ-758}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-575](#REQ-575) · **Priority:** SHOULD · **Type:** behavioral
 
 Bidirectional edge traversal (e.g., `(a)-[]-(b)` without direction marker) expands to UNION ALL when multiple relationship directions exist in the schema. Each branch covers one direction; single-direction schemas skip the UNION.
 
@@ -6948,7 +6948,7 @@ Variable-length relationship edge columns (e.g., `[c*..5]` variable) are deseria
 
 ### REQ-772 · Cypher Query Frontend (Phase AU) {#REQ-772}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-349](#REQ-349) · **Priority:** SHOULD · **Type:** behavioral
 
 Graph rewriter applies JSON object wrapping to all graph variables in the SELECT clause. Scalar columns remain unwrapped. The wrapping ensures nodes/edges/paths are serializable to JSON.
 
@@ -7258,7 +7258,7 @@ E2E neo4j export validates exported graph integrity: node and relationship count
 
 ### REQ-798 · Cypher Mutations {#REQ-798}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-818](#REQ-818) · **Priority:** MUST · **Type:** behavioral
 
 Cypher mutations (CREATE/DELETE/UPDATE) must be transpiled through the full semantic SQL write pipeline, applying RLS injection, dialect transpilation, and all post-mutation hooks (response cache invalidation, MV stale marking, Kafka change events, Kafka sink triggers, hot-table reload).
 
@@ -8174,7 +8174,7 @@ Mutation↔table association suggestions at registration time via protocol-speci
 
 ### REQ-872 · Authorization {#REQ-872}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1156](#REQ-1156) · **Priority:** MUST · **Type:** behavioral
 
 Registered remote-schema mutations/functions (tracked_functions, tracked_webhooks) MUST be projected into each query surface's native function catalog and be invocable from each surface, routing through the shared executor and enforcing per-mutation writable_by authorization. Single source of truth: tracked_functions + tracked_webhooks registry. Per-surface fidelity: pgwire populates _pg_proc and supports SELECT fn(...), SQL/Explore projects information_schema.routines and supports table-valued-function invocation, Cypher/Bolt binds CALL <registeredFn>(args) YIELD ... with optional discovery. DONE (2026-07) — the SQL-surface DISCOVERY projection: the pgwire catalog builds pg_proc and information_schema.routines + information_schema.parameters from the tracked_functions registry (provisa/pgwire/catalog.py::_populate_functions, called from _build_catalog_db), so psql \\df, DBeaver and Explore now see registered functions. The registry is the single source of truth; projection is role-scoped by visible_to (unrestricted or the role is granted); table-valued functions (a return_schema) are set-returning (proretset/record); arguments become information_schema.parameters rows in ordinal order with SQL data types; the same function registered under multiple keys (bare + domain-prefixed alias) projects once. DONE (2026-07) — the SHARED EXECUTOR + Cypher INVOCATION: the tracked-function execution core is extracted from the GraphQL action path into invoke_tracked_function(name, args, state, role_id) (provisa/api/data/endpoint.py) — surface-agnostic, enforcing per-mutation writable_by by contract ([REQ-869](#REQ-869)) then running SELECT * FROM "schema"."fn"(args) through the function's source pool. The GraphQL path now routes through it, and the Cypher surface binds CALL <registeredFn>(args) YIELD col [AS alias] to it (provisa/api/rest/cypher_router.py::_detect_registered_call / _handle_registered_call): the call is intercepted before parse, args (literals / $params) are coerced positionally, writable_by is enforced in the executor (403 on deny), and YIELD projects the returned columns. DONE (2026-07) — the pgwire / SQL INVOCATION: execute_pgwire_sql intercepts a bare SELECT-of-a-registered-function before governance/routing and runs it through the same executor (provisa/pgwire/function_call.py). Both the table-valued form SELECT * FROM fn(args) and the scalar form SELECT fn(args) are recognized via sqlglot (an Anonymous func whose name is a registered tracked function), literal args are coerced positionally, and the executor's row dicts are adapted back to a pgwire QueryResult — so psql / DBeaver / Explore invoke registered functions exactly like native ones, with writable_by enforced. All surfaces (GraphQL, Cypher CALL, pgwire/ SQL SELECT) now discover AND invoke registered functions through the one shared executor.
 
@@ -8582,7 +8582,7 @@ pg_duckdb's transparent execution path cannot emit PostgreSQL 16 nested-JSON syn
 
 ### REQ-903 · PostgreSQL Deployment {#REQ-903}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-904](#REQ-904) · **Priority:** MUST · **Type:** behavioral
 
 Postgres federation engines validate connector availability and fail explicitly when sources require unavailable connectors. Sources whose connector is unavailable resolve to UnreachableSource (explicit error, never silent fallback). Superseded by [REQ-904](#REQ-904) (probe-based discovery with runtime functional validation).
 
@@ -8830,7 +8830,7 @@ The watermark column gates refresh mode and subscribability: watermark set → A
 
 ### REQ-927 · Change Subscriptions {#REQ-927}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+**Status:** ↪ superseded by [REQ-926](#REQ-926) · **Priority:** MUST · **Type:** constraint
 
 Subscriptions require a watermark column. No watermark = no subscriptions and no incremental refresh.
 
@@ -9398,7 +9398,7 @@ Column-level data masking MUST be expressed as semantic SQL projection expressio
 
 ### REQ-972 · Desktop Installation {#REQ-972}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+**Status:** ↪ superseded by [REQ-989](#REQ-989) · **Priority:** MUST · **Type:** infrastructure
 
 Desktop installers default to a self-contained native install: DuckDB federation engine + sqlite control plane + in-memory (fakeredis) cache, with no Docker, VM, Trino, Redis, or MinIO. A `native` preset in config/capabilities.yaml declares this base tier.
 
@@ -9950,7 +9950,7 @@ Migrate the provisa-ui test suite (27 Playwright e2e specs + 22 unit/component t
 
 ### REQ-1017 · Self-Service Provisioning {#REQ-1017}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1271](#REQ-1271) · **Priority:** MUST · **Type:** behavioral
 
 Any authenticated Firebase user with no existing org membership may create an org via a non-superadmin endpoint; the creator is inserted into user_org_memberships as role 'admin'.
 
@@ -10386,7 +10386,7 @@ Fixed per-protocol ports shared across all orgs: HTTP 443 (GraphQL/REST/UI), pgw
 
 ### REQ-1056 · Multi-Tenancy & Routing {#REQ-1056}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1234](#REQ-1234) · **Priority:** MUST · **Type:** behavioral
 
 Per-surface org resolution: HTTP surfaces resolve org from Host subdomain and/or JWT tenant_id claim ([REQ-594](#REQ-594)); pgwire and Bolt (which lack Host headers) resolve org from connection handshake parameters (database name, username, or auth principal).
 
@@ -12006,7 +12006,7 @@ Buffered transports (GraphQL, JSON:API, Bolt) surface materialize/CTAS handles v
 
 ### REQ-1205 · Multi-Protocol Exposure (GCP) {#REQ-1205}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+**Status:** ↪ superseded by [REQ-1331](#REQ-1331) · **Priority:** MUST · **Type:** infrastructure
 
 GCP VM cloud deployment exposes each Provisa wire protocol through its own GCP External TCP passthrough NetLB (static IP + regional TCP backend service + HTTP-or-TCP health check + forwarding rule + instance-group named_port), driven data-driven from a single local.protocols map in terraform/gcp. Adding a protocol requires one row in the map.
 
@@ -12168,7 +12168,7 @@ Per-engine Arrow streaming terminals (execute_engine_stream) and run_sync must b
 
 ### REQ-1218 · Protocol-Specific Result Handling {#REQ-1218}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+**Status:** ↪ superseded by [REQ-1231](#REQ-1231) · **Priority:** MUST · **Type:** constraint
 
 Airport Flight transport drains the single streaming terminal identically to Flight SQL ([REQ-1216](#REQ-1216)). Byte-stable schema advertisement comes from the plan's typed output columns (known pre-execution), not by scanning rows. The is_rowid pseudo-column derives from source key metadata, a streamed rowid column, or an off-heap CTAS side-table — never an in-Provisa full-table cache. Airport is a streaming transport, not a materializing catalog-scan transport. See docs/arch/streaming-uniformity-gap.md Defect 5.
 
@@ -12334,7 +12334,7 @@ Airport Flight do_get routes through the governed_table_scan_stream() terminal, 
 
 ### REQ-1232 · Authentication {#REQ-1232}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+**Status:** ↪ superseded by [REQ-1276](#REQ-1276) · **Priority:** MUST · **Type:** constraint
 
 Every credential (API key / token / session) is scoped to exactly one organization. Org identity is always determined by the credential's active_org_id in the authentication middleware, never by TLS SNI, HTTP header, or first-membership fallback.
 
@@ -12382,7 +12382,7 @@ The subdomain never authorizes — it only names the org. The authenticated cred
 
 ### REQ-1236 · Org Identity & Subdomain Addressing {#REQ-1236}
 
-**Status:** ✓ accepted · **Priority:** MUST · **Type:** constraint
+**Status:** ↪ superseded by [REQ-1235](#REQ-1235) · **Priority:** MUST · **Type:** constraint
 
 For wire protocols, the credential is org-scoped (per [REQ-1232](#REQ-1232)), so SNI is a cross-check: parse org from SNI, reject the connection if it ≠ the credential's active_org_id. Catches the error case of right-credential/wrong-subdomain.
 

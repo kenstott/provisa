@@ -25,7 +25,7 @@ YAML_PATH = Path("docs/arch/requirements.yaml")
 FEATURES_DIR = Path("tests/features")
 STEPS_DIR = Path("tests/steps")
 
-_SKIP_STATUSES = {Status.proposed, Status.rejected}
+_SKIP_STATUSES = {Status.proposed, Status.rejected, Status.superseded}
 
 # First line of every generated feature. Files WITHOUT it are hand-authored and this generator
 # never writes or prunes them.
