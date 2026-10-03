@@ -190,11 +190,15 @@ def _assignments_to_claims(assignments: list[RoleAssignment]) -> list[str]:
 _SESSION_HEADER_PREFIX = "x-provisa-session-"
 
 
-def request_session_vars(identity, role_id: str | None, headers) -> dict[str, str]:  # REQ-1682
+def request_session_vars(  # REQ-1682
+    identity, role_id: str | None, headers, *, honor_session_headers: bool
+) -> dict[str, str]:
     """The session variables a request binds: ``user_id`` and ``role`` from the acting identity,
     every scalar raw claim under its lower-cased name with a leading ``x-hasura-`` stripped (an
-    imported Hasura filter on ``X-Hasura-User-Id`` reads ``provisa.user_id``), and — because an
-    unsecured deployment has no claims — any ``x-provisa-session-<name>`` header as ``<name>``."""
+    imported Hasura filter on ``X-Hasura-User-Id`` reads ``provisa.user_id``), and — only on a
+    deployment with no auth provider, which has no claims — any ``x-provisa-session-<name>``
+    header as ``<name>``. With an auth provider the headers are ignored: a client-chosen value
+    must never stand where a row filter reads the verified identity."""
     out: dict[str, str] = {}
 
     def _name(key: str) -> str:
@@ -208,10 +212,11 @@ def request_session_vars(identity, role_id: str | None, headers) -> dict[str, st
             out[_name(str(key))] = "true" if val else "false"
         elif isinstance(val, (str, int, float)):
             out[_name(str(key))] = str(val)
-    for key, val in headers.items():
-        lk = key.lower()
-        if lk.startswith(_SESSION_HEADER_PREFIX):
-            out[lk[len(_SESSION_HEADER_PREFIX) :].replace("-", "_")] = val
+    if honor_session_headers:
+        for key, val in headers.items():
+            lk = key.lower()
+            if lk.startswith(_SESSION_HEADER_PREFIX):
+                out[lk[len(_SESSION_HEADER_PREFIX) :].replace("-", "_")] = val
     user_id = getattr(identity, "user_id", None)
     if user_id and user_id != "anonymous":
         out["user_id"] = str(user_id)
@@ -394,7 +399,12 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         )
 
         sv_token = set_session_vars(
-            request_session_vars(identity, getattr(request.state, "role", None), request.headers)
+            request_session_vars(
+                identity,
+                getattr(request.state, "role", None),
+                request.headers,
+                honor_session_headers=self._provider is None,
+            )
         )
         # REQ-1620: the full acting-role set ("Role: All"), if this request carries more than
         # one — read by effective_domain_access_role at the one governance injection point
