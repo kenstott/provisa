@@ -69,6 +69,10 @@ stores = Table(
     metadata,
     Column("id", Text, primary_key=True),
     Column("url", Text, nullable=False),
+    # REQ-1922: the engine kind (an engine-builder key) of a store a region names as its engine;
+    # a URL does not identify one (fabric and synapse are both mssql, trino and trino-byo one
+    # scheme). None on a store no region uses as its engine.
+    Column("kind", Text),
     # REQ-1491: whether this environment has supplied the store's URL (a copy carries the row,
     # never the binding).
     Column("bound", Boolean, nullable=False, server_default=true()),

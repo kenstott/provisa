@@ -1678,6 +1678,11 @@ def isolated_engine_endpoint(org_id: str) -> tuple[str, int]:  # REQ-1043/REQ-10
     return host, port
 
 
+def engine_kinds() -> frozenset[str]:
+    """Every engine kind :func:`build_engine` builds (its keys)."""
+    return frozenset(_ENGINE_BUILDERS)
+
+
 def build_engine(name: str | None = None) -> FederationEngine:  # REQ-840/893/904/916
     """Select the federation engine by name — the one place the runtime picks an engine. Precedence:
     explicit arg > ``$PROVISA_ENGINE`` env > persisted ``federation_engine`` config > ``duckdb``. The

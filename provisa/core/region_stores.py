@@ -25,13 +25,14 @@ tenant database: there is no region model to name another store.
 from __future__ import annotations
 
 import threading
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from provisa.core.database import OrgStores
     from provisa.core.model_change import ModelPlane
+    from provisa.core.regions import OrgRegion, StoreConfig
 
 
 class StoreNotDeclared(LookupError):
@@ -152,3 +153,98 @@ async def bind_region_stores(
             await init_schema(layout, schema_sql, org_id=org_id, env=env)
             await init_audit_schema(layout, org_id=org_id, env=env)
     return OrgStores(model_db, tenant_db, record_db)
+
+
+class RegionLane(NamedTuple):
+    """What an org's region names for its engine lane: the engine's kind, and either the
+    coordinator endpoint (a Trino kind) or the DSN it is addressed by (every other kind); and the
+    store its replicas and views are written into (one store, ``require_one_materialize_store``)."""
+
+    kind: str
+    endpoint: tuple[str, int] | None
+    url: str | None
+    materialize_url: str
+
+
+_ENDPOINT_KINDS = frozenset({"trino", "trino-byo"})
+
+
+class RegionLaneConflict(RuntimeError):
+    """An org in a region deployment whose admin-plane row also sets an engine or a store: the
+    region in its model decides those, so there are two answers and neither is taken."""
+
+    def __init__(self, org_id: str, region: str, fields: list[str]) -> None:
+        super().__init__(
+            f"org {org_id!r} keeps its engine and stores in region {region!r} of its model, and "
+            f"its organisation row also sets {', '.join(fields)}; clear those to serve it here"
+        )
+
+
+def region_lane(
+    org_id: str, regions: "list[OrgRegion]", stores: "list[StoreConfig]"
+) -> RegionLane | None:
+    """The engine and materialize store the org's model names for this node's region; None with
+    no platform regions.
+
+    ``regions`` and ``stores`` are the org's, from its model store or from the config file."""
+    from sqlalchemy import make_url
+
+    from provisa.core import process_region
+    from provisa.core.regions import (
+        DEFAULT_REGION,
+        require_engine_kind,
+        require_one_materialize_store,
+    )
+    from provisa.core.repositories.region import OrgNotInRegion
+    from provisa.core.secrets import resolve_secrets
+
+    region = process_region.region()
+    if region == DEFAULT_REGION:
+        return None
+    here = next((r for r in regions if r.id == region), None)
+    if here is None:
+        raise OrgNotInRegion(org_id, region, [r.id for r in regions])
+    declared = {s.id: s for s in stores}
+    for role, store_id in (("engine", here.engine), ("replicas", here.replicas)):
+        if store_id not in declared:
+            raise StoreNotDeclared(org_id, region, role, store_id)
+    require_one_materialize_store(here)
+    materialize_url = resolve_secrets(declared[here.replicas].url)
+    store = declared[here.engine]
+    require_engine_kind(region, store)
+    assert store.kind is not None  # require_engine_kind refuses a store without one
+    url = resolve_secrets(store.url)
+    if store.kind in _ENDPOINT_KINDS:
+        parsed = make_url(url)
+        if parsed.host is None or parsed.port is None:
+            raise ValueError(
+                f"region {region!r} engine store {store.id!r} is a {store.kind} coordinator and "
+                "needs a host and a port in its URL"
+            )
+        return RegionLane(store.kind, (parsed.host, parsed.port), None, materialize_url)
+    return RegionLane(store.kind, None, url, materialize_url)
+
+
+def refuse_lane_conflict(
+    org_id: str,
+    *,
+    engine_kind: str | None,
+    engine_url: str | None,
+    external_engine: tuple[str, int] | None,
+    storage_url: str | None,
+) -> None:
+    """Refuse an org whose admin-plane row sets an engine or a store when its region decides."""
+    from provisa.core import process_region
+
+    fields = [
+        name
+        for name, value in (
+            ("engine_kind", engine_kind),
+            ("engine_url", engine_url),
+            ("external_engine", external_engine),
+            ("storage_url", storage_url),
+        )
+        if value is not None
+    ]
+    if fields:
+        raise RegionLaneConflict(org_id, process_region.region(), fields)

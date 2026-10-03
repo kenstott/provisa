@@ -62,9 +62,9 @@ async def upsert_store(conn: "Connection", store: StoreConfig, *, origin: str) -
     require_origin(origin)
     await conn.upsert(
         stores,
-        {"id": store.id, "url": store.url, "origin": origin},
+        {"id": store.id, "url": store.url, "kind": store.kind, "origin": origin},
         index_elements=["id"],
-        update_columns=["url"],
+        update_columns=["url", "kind"],
     )
     await take_over(
         conn, stores, (stores.c.id == store.id,), kind="store", ident=store.id, origin=origin
@@ -75,6 +75,23 @@ async def upsert_region(conn: "Connection", region: OrgRegion, *, origin: str) -
     """Select a platform region for the org, or replace the stores it names there."""
     model_change.name("upsert", "region", region.id)  # REQ-1524
     require_origin(origin)
+    # The save refuses what the load refuses (provisa/core/regions.py): every store the region
+    # names is declared, and its engine store names an engine kind.
+    from provisa.core.regions import (
+        STORE_ROLES,
+        require_engine_kind,
+        require_one_materialize_store,
+    )
+
+    declared = {s.id: s for s in await list_stores(conn)}
+    for role in STORE_ROLES:
+        if getattr(region, role) not in declared:
+            raise ValueError(
+                f"region {region.id!r} {role} store {getattr(region, role)!r} is not declared "
+                "in stores"
+            )
+    require_engine_kind(region.id, declared[region.engine])
+    require_one_materialize_store(region)
     values = region.model_dump()
     await conn.upsert(
         org_regions,
@@ -103,8 +120,10 @@ async def list_regions(conn: "Connection") -> list[OrgRegion]:
 
 async def list_stores(conn: "Connection") -> list[StoreConfig]:
     """The stores the org's regions name, by id."""
-    rows = await conn.execute_core(select(stores.c.id, stores.c.url).order_by(stores.c.id))
-    return [StoreConfig(id=r.id, url=r.url) for r in rows.fetchall()]
+    rows = await conn.execute_core(
+        select(stores.c.id, stores.c.url, stores.c.kind).order_by(stores.c.id)
+    )
+    return [StoreConfig(id=r.id, url=r.url, kind=r.kind) for r in rows.fetchall()]
 
 
 async def require_selected(conn: "Connection", what: str, region: str | None) -> None:
