@@ -20,7 +20,7 @@ source's path that share a column set); registration is where the operator accep
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 
 
 class FileColumnsDiffer(ValueError):
@@ -72,3 +72,48 @@ def require_same_columns(glob: str, per_file: dict[str, Sequence[str]]) -> list[
                 extra=sorted(this - agreed_set),
             )
     return agreed
+
+
+def matched_files(source_path: str, file_glob: str) -> list[str]:
+    """The files a table's ``file_glob`` matches, sorted. ``file_glob`` is evaluated under the
+    source's directory: the directory of ``source_path`` when it names a file or is itself a
+    glob, else ``source_path`` itself when it is a directory. A local path uses :mod:`glob`; an
+    fsspec URI (``s3://`` …) uses fsspec's own globbing. The match is the caller's to act on —
+    an empty match is not raised here."""
+    import glob as _glob
+    import os
+
+    if "://" in source_path and not source_path.startswith("file://"):
+        import fsspec
+
+        base = source_path.rsplit("/", 1)[0] if not source_path.endswith("/") else source_path[:-1]
+        fs, _, _ = fsspec.get_fs_token_paths(base)
+        proto = source_path.split("://", 1)[0]
+        return sorted(f"{proto}://{m}" for m in fs.glob(f"{base}/{file_glob}"))
+    base = source_path if os.path.isdir(source_path) else os.path.dirname(source_path)
+    return sorted(_glob.glob(os.path.join(base, file_glob), recursive=True))
+
+
+def validate_glob_table(
+    glob: str, files: list[str], columns_of: "Callable[[str], Sequence[str]]"
+) -> list[str]:
+    """The agreed columns of a files-glob table, or raise. ``columns_of`` introspects one file's
+    column names. A glob that matches no file is a configuration error named here (REQ-788)."""
+    if not files:
+        raise ValueError(
+            f"glob {glob!r} matched no files; a files-glob table must match at least one"
+        )
+    return require_same_columns(glob, {path: list(columns_of(path)) for path in files})
+
+
+def columns_of_file(path: str) -> list[str]:
+    """One file's column names, as the file-source introspector reads them (REQ-788). The file's
+    own extension picks the reader (csv/parquet/sqlite), not the source's umbrella ``files`` type."""
+    from provisa.file_source.crawler import _source_type_for_path
+    from provisa.file_source.source import FileSourceConfig, discover_schema
+
+    file_type = _source_type_for_path(path)
+    if file_type is None:
+        raise ValueError(f"file {path!r} has no supported file-source type (REQ-788)")
+    cfg = FileSourceConfig(id="_glob", source_type=file_type, path=path)
+    return [col["name"] for col in discover_schema(cfg)]

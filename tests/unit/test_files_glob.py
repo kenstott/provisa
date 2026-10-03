@@ -73,3 +73,78 @@ def test_the_table_model_carries_the_glob_and_the_source_file_column():
     assert t.source_file_column == "_source_file"
     plain = Table(source_id="files", domain_id="d", schema_name="main", table_name="t", columns=[])
     assert plain.file_glob is None and plain.source_file_column is None
+
+
+def test_matched_files_globs_under_the_source_directory(tmp_path):
+    from provisa.file_source.files_glob import matched_files
+
+    d = tmp_path / "orders"
+    d.mkdir()
+    for n in ("a.csv", "b.csv", "skip.txt"):
+        (d / n).write_text("id,name\n1,x\n")
+    # source.path names a file in the directory; the glob is relative to that directory.
+    got = matched_files(str(d / "a.csv"), "*.csv")
+    assert [p.rsplit("/", 1)[-1] for p in got] == ["a.csv", "b.csv"]
+    # source.path is the directory itself.
+    assert matched_files(str(d), "*.csv") == got
+
+
+def test_validate_glob_table_reads_each_file_once_and_agrees(tmp_path):
+    from provisa.file_source.files_glob import validate_glob_table
+
+    seen: list[str] = []
+
+    def columns_of(path):  # noqa
+        seen.append(path)
+        return ["id", "name"]
+
+    agreed = validate_glob_table("*.csv", ["a.csv", "b.csv"], columns_of)
+    assert agreed == ["id", "name"]
+    assert seen == ["a.csv", "b.csv"]
+
+
+def test_validate_glob_table_refuses_no_match_by_name():
+    from provisa.file_source.files_glob import validate_glob_table
+
+    with pytest.raises(ValueError, match="matched no files"):
+        validate_glob_table("*.csv", [], lambda p: [])
+
+
+def test_the_config_load_refuses_a_glob_whose_files_differ(tmp_path):
+    import pytest as _pytest
+
+    from provisa.core.config_loader import _validate_file_globs
+    from provisa.core.models import Source, SourceType, Table
+    from provisa.file_source.files_glob import FileColumnsDiffer
+
+    d = tmp_path / "data"
+    d.mkdir()
+    (d / "a.csv").write_text("id,name\n1,x\n")
+    (d / "b.csv").write_text("id,name,extra\n1,x,y\n")
+    source = Source(id="files", type=SourceType("files"), path=str(d / "a.csv"))
+    table = Table(
+        source_id="files", domain_id="d", schema_name="main", table_name="orders",
+        columns=[], file_glob="*.csv",
+    )  # fmt: skip
+    config = type("C", (), {"sources": [source], "tables": [table]})()
+    with _pytest.raises(FileColumnsDiffer):
+        _validate_file_globs(config)
+    # Same columns across files: no error.
+    (d / "b.csv").write_text("id,name\n2,y\n")
+    _validate_file_globs(config)
+
+
+def test_the_config_load_refuses_file_glob_on_a_non_files_source(tmp_path):
+    import pytest as _pytest
+
+    from provisa.core.config_loader import _validate_file_globs
+    from provisa.core.models import Source, SourceType, Table
+
+    source = Source(id="pg", type=SourceType("postgresql"), host="h")
+    table = Table(
+        source_id="pg", domain_id="d", schema_name="main", table_name="t",
+        columns=[], file_glob="*.csv",
+    )  # fmt: skip
+    config = type("C", (), {"sources": [source], "tables": [table]})()
+    with _pytest.raises(ValueError, match="files source"):
+        _validate_file_globs(config)

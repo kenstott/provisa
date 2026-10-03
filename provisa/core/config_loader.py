@@ -1247,6 +1247,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     _validate_watermark_columns(config)
     _validate_neo4j_sources(config)
     _validate_row_materialize(config)
+    _validate_file_globs(config)
     _validate_role_ttl(config)
     _validate_paging(config)
     _validate_replicate(config)
@@ -1606,6 +1607,33 @@ def _validate_landing_ttl(config) -> None:  # REQ-1907
         )
         if err is not None:
             raise ValueError(f"table {table.table_name!r} (source {source.id!r}): {err}")
+
+
+def _validate_file_globs(config) -> None:  # REQ-788
+    """A files table that declares ``file_glob`` is one logical table over the files the glob
+    matches under its source's path: they must share a column set, else ``schema.file_columns_differ``
+    by name. A glob that matches nothing is a configuration error. The source must be a files
+    source (the only kind the glob read is defined for)."""
+    from provisa.file_source.files_glob import columns_of_file, matched_files, validate_glob_table
+
+    sources_by_id = {s.id: s for s in config.sources}
+    for table in config.tables:
+        glob = getattr(table, "file_glob", None)
+        if not glob:
+            continue
+        source = sources_by_id.get(table.source_id)
+        if source is None:
+            continue  # a table naming no declared source is caught by the FK/registration check
+        src_type = getattr(getattr(source, "type", None), "value", None)
+        if src_type not in ("files", "csv", "parquet"):
+            raise ValueError(
+                f"table {table.table_name!r}: file_glob is defined only for a files source, "
+                f"not {src_type!r} (REQ-788)"
+            )
+        from provisa.core.secrets import resolve_secrets
+
+        files = matched_files(resolve_secrets(source.path or ""), glob)
+        validate_glob_table(glob, files, columns_of_file)
 
 
 def _validate_row_materialize(config) -> None:  # REQ-1865
