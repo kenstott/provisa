@@ -50,6 +50,7 @@
       "args_json_invalid": "args_json 不是有效的 JSON：{{error}}",
       "args_json_not_object": "args_json 必须是 JSON 对象",
       "column_not_writable": "角色 '{{role}}' 没有列 '{{column}}' 的写入权限",
+      "definition_not_available": "{{statement}} 在此不可用：定义在模型或数据源中创建，删除行请使用 DELETE。",
       "engine_not_connected": "引擎未连接",
       "grpc_source_not_registered": "gRPC 远程数据源 '{{source_id}}' 未注册",
       "invalid_as_of": "无效的 X-Provisa-As-Of：{{error}}",
@@ -84,7 +85,8 @@
       "sql_generation_failed": "尝试 3 次后仍无法生成有效的 SQL：{{error}}",
       "table_not_found": "未找到表 '{{table}}'",
       "unknown_action_field": "未知操作字段：'{{field}}'",
-      "unknown_command": "未知命令 '{{name}}'"
+      "unknown_command": "未知命令 '{{name}}'",
+      "write_not_admitted": "角色 '{{role}}' 不能执行此写入：写入需要写入权限、对所写每一列的写入权限，以及该角色的行过滤器允许的行。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' 的适配器未实现 discover_schema",

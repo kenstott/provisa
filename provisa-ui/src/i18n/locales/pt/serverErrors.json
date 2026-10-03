@@ -50,6 +50,7 @@
       "args_json_invalid": "args_json não é JSON válido: {{error}}",
       "args_json_not_object": "args_json deve ser um objeto JSON",
       "column_not_writable": "A função '{{role}}' não tem acesso de gravação à coluna '{{column}}'",
+      "definition_not_available": "{{statement}} não está disponível aqui: as definições são criadas no modelo ou na fonte de dados, e as linhas são removidas com DELETE.",
       "engine_not_connected": "o mecanismo não está conectado",
       "grpc_source_not_registered": "Fonte remota gRPC '{{source_id}}' não registrada",
       "invalid_as_of": "X-Provisa-As-Of inválido: {{error}}",
@@ -84,7 +85,8 @@
       "sql_generation_failed": "Não foi possível gerar SQL válido após 3 tentativas: {{error}}",
       "table_not_found": "Tabela '{{table}}' não encontrada",
       "unknown_action_field": "Campo de ação desconhecido: '{{field}}'",
-      "unknown_command": "Comando desconhecido '{{name}}'"
+      "unknown_command": "Comando desconhecido '{{name}}'",
+      "write_not_admitted": "O papel '{{role}}' não pode fazer esta escrita: uma escrita exige o direito de escrita, acesso de escrita a cada coluna escrita e linhas que o filtro de linhas do papel admita."
     },
     "discovery": {
       "adapter_missing_discover_schema": "O adaptador para '{{source_type}}' não implementa discover_schema",

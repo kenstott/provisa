@@ -50,6 +50,7 @@
       "args_json_invalid": "args_json が有効な JSON ではありません：{{error}}",
       "args_json_not_object": "args_json は JSON オブジェクトである必要があります",
       "column_not_writable": "ロール「{{role}}」には列「{{column}}」への書き込みアクセス権がありません",
+      "definition_not_available": "{{statement}} はここでは使用できません。定義はモデルまたはデータソースで作成し、行の削除には DELETE を使用します。",
       "engine_not_connected": "エンジンが接続されていません",
       "grpc_source_not_registered": "gRPC リモートソース「{{source_id}}」が登録されていません",
       "invalid_as_of": "X-Provisa-As-Of が無効です：{{error}}",
@@ -84,7 +85,8 @@
       "sql_generation_failed": "3回試行しましたが有効な SQL を生成できませんでした：{{error}}",
       "table_not_found": "テーブル「{{table}}」が見つかりません",
       "unknown_action_field": "不明なアクションフィールド：「{{field}}」",
-      "unknown_command": "不明なコマンド「{{name}}」です"
+      "unknown_command": "不明なコマンド「{{name}}」です",
+      "write_not_admitted": "ロール '{{role}}' はこの書き込みを実行できません。書き込みには、書き込み権限、書き込む各列への書き込みアクセス、およびロールの行フィルターが許可する行が必要です。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」のアダプターは discover_schema を実装していません",

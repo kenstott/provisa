@@ -50,6 +50,7 @@
       "args_json_invalid": "args_json אינו JSON תקין: {{error}}",
       "args_json_not_object": "args_json חייב להיות אובייקט JSON",
       "column_not_writable": "לתפקיד '{{role}}' אין גישת כתיבה לעמודה '{{column}}'",
+      "definition_not_available": "{{statement}} אינו זמין כאן: הגדרות נוצרות במודל או במקור הנתונים, ושורות מוסרות באמצעות DELETE.",
       "engine_not_connected": "המנוע אינו מחובר",
       "grpc_source_not_registered": "מקור gRPC מרוחק '{{source_id}}' אינו רשום",
       "invalid_as_of": "X-Provisa-As-Of לא תקין: {{error}}",
@@ -84,7 +85,8 @@
       "sql_generation_failed": "לא ניתן היה להפיק SQL תקין לאחר 3 ניסיונות: {{error}}",
       "table_not_found": "הטבלה '{{table}}' לא נמצאה",
       "unknown_action_field": "שדה פעולה לא מוכר: '{{field}}'",
-      "unknown_command": "פקודה לא מוכרת '{{name}}'"
+      "unknown_command": "פקודה לא מוכרת '{{name}}'",
+      "write_not_admitted": "התפקיד '{{role}}' אינו רשאי לבצע כתיבה זו: כתיבה דורשת את הרשאת הכתיבה, גישת כתיבה לכל עמודה שנכתבת, ושורות שמסנן השורות של התפקיד מתיר."
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",
