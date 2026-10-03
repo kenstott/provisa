@@ -2658,7 +2658,7 @@ Cypher named parameters (`$param`) are translated to Trino positional parameters
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-WITHDRAWN (2026-06-19). Cross-source Cypher queries are allowed — Trino joins across catalogs natively, so a query whose labels resolve to tables on different sources translates and executes normally. No cross-source restriction is enforced. (Supersedes REQ-481.)
+WITHDRAWN (2026-06-19). Cross-source Cypher queries are allowed — Trino joins across catalogs natively, so a query whose labels resolve to tables on different sources translates and executes normally. No cross-source restriction is enforced. (Supersedes [REQ-481](#REQ-481).)
 
 **Use case:** Cross-source graph traversal is a core capability, not an error.
 
@@ -18662,7 +18662,7 @@ kafka was in none of the Sources form's three field-group sets (SIMPLE_RDBMS/HOS
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-provisa/kafka/schema_registry.py's SchemaRegistryClient (REQ-116/147/150) — a complete, functional Confluent Schema Registry HTTP client (fetch a subject's Avro/JSON/Protobuf schema, map it to KafkaColumn definitions) — had ZERO callers anywhere in the codebase; built, never wired to any mutation, loader, or UI entry point. Wired into the SAME discover/edit/register flow mongodb/elasticsearch/cassandra/prometheus already use (SourcesPage's "Discover" button -> SchemaDiscovery.tsx, DISCOVERABLE_TYPES) rather than inventing a new one: added "kafka" to DISCOVERABLE_TYPES and source_adapters/registry.py's _ADAPTER_MAP; discovery_schema.py's _call_discover (made async — the first adapter branch here whose real fetch is genuinely async) gets a kafka branch taking topic/value_format/schema_registry_url hints and calling discover_topic_columns(); provisa/kafka/source.py gets a discover_schema() adapter-contract function mapping KafkaColumn -> the generic discovery dict shape; SchemaDiscovery.tsx gets a kafka DiscoverHints branch (topic + optional registry URL, falling back to the source's own federation_hints.schema_registry_url); demo/sources/kafka/compose.yml gets a schema-registry service (confluentinc/cp-schema-registry, same shape as docker-compose.test.yml's own). While verifying this live, found and fixed a genuine, SEPARATE, cross-cutting bug affecting EVERY type that uses the Discover flow, not just kafka: SchemaDiscovery.tsx's handleRegister hardcoded visibleTo: ["*"] on every registered column. Two independent visibility-enforcement layers disagree on what "unrestricted" means and NEITHER treats "*" as a wildcard: schema_gen.py's compile-time _build_visible_tables treats a falsy (empty-list) visible_to as unrestricted, so a table registered with ["*"] was excluded from EVERY compiled GraphQL/SQL/ Cypher schema for every role at compile time (its own `if table_id not in si.column_types: skip` branch fired, since no role's column set ever included a column visible only to the literal non-existent role "*"). Setting visible_to to an empty list `[]` fixes THAT layer but not query-time authorization: stage2.py's V003 gate checks `visible_to is None` specifically (not falsy) to mean unrestricted, so `[]` still reads there as "granted to nobody" — live- traced as "[V003] Column 'id' is not visible to this role" at query time even once the table became compile-visible. The row always existed in the database; it was silently unqueryable and absent from every schema, for every role, permanently, for every Discover-flow registration ever made (mongodb/elasticsearch/cassandra/prometheus included) until this fix. Fixed by passing the real current role-id list (via the existing useRoles() hook) instead of either ambiguous sentinel — the same convention RegisterTableForm's own column-selection UI already uses successfully, satisfying both enforcement layers unambiguously rather than depending on either file's specific empty/null special-casing. Two related, smaller gaps intentionally NOT addressed here, left as follow-ups: (a) provisa.kafka.source.sample_topic_records (SchemaSource.SAMPLE — infer columns by consuming live messages instead of querying the registry) remains unwired, the same way the registry path was before this task; (b) SchemaDiscovery.tsx's column editor has no primary-key selection UI at all (unlike RegisterTableForm's register-table-col-pk-<name> checkboxes), so a table registered through Discover can never satisfy push_wiring.py's CDC-landing requirement for a declared PK — Discover-flow tables are real and queryable but never receive live CDC data regardless of source type; only column-shape discovery is covered here.
+provisa/kafka/schema_registry.py's SchemaRegistryClient ([REQ-116](#REQ-116)/147/150) — a complete, functional Confluent Schema Registry HTTP client (fetch a subject's Avro/JSON/Protobuf schema, map it to KafkaColumn definitions) — had ZERO callers anywhere in the codebase; built, never wired to any mutation, loader, or UI entry point. Wired into the SAME discover/edit/register flow mongodb/elasticsearch/cassandra/prometheus already use (SourcesPage's "Discover" button -> SchemaDiscovery.tsx, DISCOVERABLE_TYPES) rather than inventing a new one: added "kafka" to DISCOVERABLE_TYPES and source_adapters/registry.py's _ADAPTER_MAP; discovery_schema.py's _call_discover (made async — the first adapter branch here whose real fetch is genuinely async) gets a kafka branch taking topic/value_format/schema_registry_url hints and calling discover_topic_columns(); provisa/kafka/source.py gets a discover_schema() adapter-contract function mapping KafkaColumn -> the generic discovery dict shape; SchemaDiscovery.tsx gets a kafka DiscoverHints branch (topic + optional registry URL, falling back to the source's own federation_hints.schema_registry_url); demo/sources/kafka/compose.yml gets a schema-registry service (confluentinc/cp-schema-registry, same shape as docker-compose.test.yml's own). While verifying this live, found and fixed a genuine, SEPARATE, cross-cutting bug affecting EVERY type that uses the Discover flow, not just kafka: SchemaDiscovery.tsx's handleRegister hardcoded visibleTo: ["*"] on every registered column. Two independent visibility-enforcement layers disagree on what "unrestricted" means and NEITHER treats "*" as a wildcard: schema_gen.py's compile-time _build_visible_tables treats a falsy (empty-list) visible_to as unrestricted, so a table registered with ["*"] was excluded from EVERY compiled GraphQL/SQL/ Cypher schema for every role at compile time (its own `if table_id not in si.column_types: skip` branch fired, since no role's column set ever included a column visible only to the literal non-existent role "*"). Setting visible_to to an empty list `[]` fixes THAT layer but not query-time authorization: stage2.py's V003 gate checks `visible_to is None` specifically (not falsy) to mean unrestricted, so `[]` still reads there as "granted to nobody" — live- traced as "[V003] Column 'id' is not visible to this role" at query time even once the table became compile-visible. The row always existed in the database; it was silently unqueryable and absent from every schema, for every role, permanently, for every Discover-flow registration ever made (mongodb/elasticsearch/cassandra/prometheus included) until this fix. Fixed by passing the real current role-id list (via the existing useRoles() hook) instead of either ambiguous sentinel — the same convention RegisterTableForm's own column-selection UI already uses successfully, satisfying both enforcement layers unambiguously rather than depending on either file's specific empty/null special-casing. Two related, smaller gaps intentionally NOT addressed here, left as follow-ups: (a) provisa.kafka.source.sample_topic_records (SchemaSource.SAMPLE — infer columns by consuming live messages instead of querying the registry) remains unwired, the same way the registry path was before this task; (b) SchemaDiscovery.tsx's column editor has no primary-key selection UI at all (unlike RegisterTableForm's register-table-col-pk-<name> checkboxes), so a table registered through Discover can never satisfy push_wiring.py's CDC-landing requirement for a declared PK — Discover-flow tables are real and queryable but never receive live CDC data regardless of source type; only column-shape discovery is covered here.
 
 **Use case:** "wire in the kafka schema registry client and test it e2e" — closing the gap between a fully- built, zero-caller Confluent Schema Registry client and any actual product surface that uses it, discovered while extending kafka's e2e coverage ([REQ-1766](#REQ-1766)).
 
@@ -20713,5 +20713,1055 @@ GraphQL is the canonical API, and gRPC, JSON:API and OpenAPI are derived from it
 **Use case:** An operator who assigns a command to a role, hides a column, or moves an object to another domain changes what every API offers in one place, and no surface can offer what another surface hides.
 
 **Code:** —
+
+**Tests:** —
+
+## 9. Live Data & Events
+
+### REQ-569 · Subscriptions {#REQ-569}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Provisa GraphQL mutations automatically fire `NOTIFY` on the corresponding `provisa_{table}` channel by virtue of the installed database trigger. Any INSERT, UPDATE, or DELETE that goes through Provisa or direct SQL is picked up.
+
+**Use case:** Automatic NOTIFY on Provisa mutations means subscription clients receive events for all writes, including those from external tools that bypass the API.
+
+**Code:** `provisa/subscriptions/pg_triggers.py`
+
+**Tests:** `tests/unit/test_subscribe.py`, `tests/integration/test_sse_subscriptions.py`
+
+### REQ-570 · Subscriptions {#REQ-570}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Any GraphQL subscription sent to `POST /data/graphql` with an `X-Provisa-Sink: kafka://[broker:port]/topic` header is redirected to a Kafka topic instead of streaming back to the client. The server responds `202 Accepted` immediately and starts a background task publishing each re-executed query result as a JSON Kafka message. If `broker:port` is omitted, `KAFKA_BOOTSTRAP_SERVERS` env var is used (default: `localhost:9092`).
+
+**Use case:** Header-based Kafka sink redirect lets ad-hoc consumers redirect any subscription to a Kafka topic without pre-configuring a sink in provisa.yaml.
+
+**Code:** `provisa/api/data/subscription_sse.py`
+
+**Tests:** `tests/unit/test_subscribe.py`, `tests/integration/test_sse_subscriptions.py`
+
+## 1. Access Governance & Security
+
+### REQ-435 · Security {#REQ-435}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+RLS rule enforcement and column-level masking both become meaningfully scoped only after identity propagation is implemented (identities assigned domain-role pairs).
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-436 · Security {#REQ-436}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+An identity is granted a set of (role, domain) pairs. All access decisions — table access, column visibility, column masking — are derived solely from those pairs. No separate per-table grants exist.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-437 · Security {#REQ-437}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Table access: an identity can access a table if they hold a (role, domain) pair where domain matches the table's domain_id AND the role appears in visible_to on at least one column of that table.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-438 · Security {#REQ-438}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Column visibility is determined by visible_to on each column, checked against the identity's role for the matching domain.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-439 · Security {#REQ-439}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Column masking is determined by unmasked_to on each column, checked against the identity's role for the matching domain. Role proliferation is the accepted trade-off for keeping visible_to/unmasked_to as plain role ID lists (no domain-role pair syntax in column config).
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-440 · Security {#REQ-440}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Domain boundaries are permission gates. Within a domain a role can query any table freely. To access data in another domain, the query must traverse a registered relationship — there is no other path.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-441 · Security {#REQ-441}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+GraphQL enforces cross-domain access control by not exposing cross-domain tables as root types; they are only reachable as nested fields via registered relationships.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-442 · Security {#REQ-442}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Cypher enforces cross-domain access control at translator/parse time: starting node labels must map to a domain in the role's domain_access; cross-domain hops must follow a registered relationship. Direct MATCH on a node label outside the role's domain_access is rejected.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-443 · Security {#REQ-443}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+SQL enforces cross-domain access control at query-validation/parse time using the SQLGlot AST: any cross-domain table reference must be connected to an in-domain table via a JOIN whose column pair matches a registered relationship's source_column/target_column. Unapproved cross-domain references are rejected.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-444 · Security {#REQ-444}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+The registered relationships table is the single authority for what cross-domain connections are permitted across all three interfaces (GraphQL, Cypher, SQL). The enforcement logic is designed for reuse across interfaces.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-445 · Security {#REQ-445}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Views feature (domain SQL views) must validate that all foreign tables referenced are connected to the domain via registered relationships. At view save time: for every table outside the role's domain_access, an approved relationship must exist (matching source_column/target_column in the relationships registry) that links it—directly or transitively—back to an owned-domain table. Any foreign table reachable only through unregistered joins is rejected. Order and direction of the join condition are irrelevant; only graph reachability via registered edges matters. This validation applies to Views only, not to general query execution.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-446 · Security {#REQ-446}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+The Cypher compiler must support a high-value subset of `CALL gds.*` procedure syntax, implemented via igraph rather than a Neo4j GDS dependency. Target procedures: `gds.pageRank.stream`, `gds.louvain.stream` (community detection), `gds.betweenness.stream`, `gds.closeness.stream`, `gds.wcc.stream` (weakly connected components), `gds.nodeSimilarity.stream`. The governed subgraph (nodes and edges, filtered by RLS and domain permissions) is materialized by Provisa before being passed to igraph — no data outside the caller's access is visible to the algorithm. Results are returned as tabular output consistent with all other Cypher query responses.
+
+**Code:** —
+
+**Tests:** —
+
+## 8. Client Access & Protocols
+
+### REQ-447 · API & Integration {#REQ-447}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Originally defined an Arrow Flight approved-queries listing path with a `limit`. Removed — there are no approved queries to list; Flight exposes registered tables/views governed by rights.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-448 · API & Integration {#REQ-448}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+GraphQL synthetic ops traversal fields including `_queries` and `_traces` must accept a `limit` argument in SDL and apply it when compiling the traversal SQL.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-449 · API & Integration {#REQ-449}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+GraphQL DB-backed fields used as nested paths must expose root-query controls (`limit`, `offset`, `where`, `order_by`, `distinct_on`) and apply them during SQL compilation.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-450 · API & Integration {#REQ-450}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Every GraphQL one-to-many nested path must expose the same query arguments as the related target table's root query field.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-451 · API & Integration {#REQ-451}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+GraphQL object relationship paths (`many-to-one` and `one-to-one`) must not expose collection query arguments such as `limit`, `offset`, `where`, `order_by`, or `distinct_on`; this follows Hasura v2 object relationship behavior.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-452 · API & Integration {#REQ-452}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+A top-level Data Quality page (peer to Tables, Sources, etc.) OR a tab within registered tables—user preference TBD. Enables stewards to configure periodic data quality checks per table (configurable schedule, check types), stores and displays most recent check results. Builds on existing per-table Profile button (TABLESAMPLE-based column profiling). Aggregate DQ dashboard view by domain is a follow-on feature. Status: deferred.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-453 · API & Integration {#REQ-453}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+For all remote schema adapters (GraphQL, gRPC, OpenAPI), a root query/GET operation whose return type is a scalar (not an object or message) MUST be registered as a tracked function with `return_schema [{"name": "value", "type": <scalar_type>}]`, not as a virtual table. Object-returning operations are registered as virtual tables; scalar-returning operations are registered as tracked functions.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-454 · API & Integration {#REQ-454}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+All infrastructure and classification decisions around representing remote schemas (scalar vs. object detection, virtual-table vs. tracked-function registration, return_schema derivation) MUST be implemented identically across all remote schema adapter types (GraphQL, gRPC, OpenAPI). No adapter-specific divergence in classification logic is permitted.
+
+**Code:** —
+
+**Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-455 · Security {#REQ-455}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Originally defined an `ad_hoc_query` right gating free-query vs governed-query-by-ID execution. Reversed — governed-query-by-ID and the `ad_hoc_query` right are removed. All access is governed solely by table/view + relationship rights ([REQ-001](#REQ-001)).
+
+**Code:** —
+
+**Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-456 · Infrastructure {#REQ-456}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+SaaS multi-tenancy model: all ProvisaConfig entities (Source, Table, Relationship, Role, RLSRule, etc.) are stored in a shared admin database with a tenant_id foreign key on every entity. Config is loaded per-request from the database, not from a YAML file.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-457 · Infrastructure {#REQ-457}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Tenant model with fields: id (PK), stripe_customer_id, plan (trial/starter/pro enum), created_at timestamp, source_limit (integer). A tenant is created before or during payment signup.
+
+**Code:** —
+
+**Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-458 · Security {#REQ-458}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Provisa-managed KMS envelope encryption: one AWS KMS key per tenant. All tenant config data in the admin database is encrypted at rest. The encryption key is fetched from KMS at config load time; plaintext config is held only for the duration of the request.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-459 · Security {#REQ-459}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Trial mode enforcement: plan='trial' is enforced when a new source is registered. Trial plan has a source limit (exact limit TBD). Trial mode is zero cost.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-460 · Security {#REQ-460}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Stripe integration: Stripe Checkout and webhook events gate plan tier transitions. Webhook events update the tenant's plan field in the admin database. Tenant record is created before payment is processed (during trial signup).
+
+**Code:** —
+
+**Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-461 · Infrastructure {#REQ-461}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Trino catalog naming in multi-tenant mode must follow the pattern {tenant_id}_{source_id} to prevent cross-tenant catalog collisions.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-462 · Infrastructure {#REQ-462}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Config cache with TTL: decrypted tenant config is cached in memory with a short TTL (5 minutes) to avoid KMS latency on every request. The cache must support invalidation when config is changed.
+
+**Code:** —
+
+**Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-463 · Security {#REQ-463}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+The `ignore_relationships` capability allows a role to execute joins between tables that have no registered relationship. A role without this capability is restricted to joins that follow registered relationship edges (the relationship guard). The capability does not bypass any other governance control — RLS, column visibility, masking, and domain access rules all apply normally. Enforcement is in `provisa/pgwire/_pipeline.py`, `provisa/api/data/endpoint_dev.py`. The `relationship_guard: bool` role flag plus SQL comment opt-out remains as a backward-compatible alternative mechanism.
+
+**Code:** —
+
+**Tests:** —
+
+## 3. Source Registration & Data Modeling
+
+### REQ-1930 · Data & Storage {#REQ-1930}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Materialized and cached data isolation via per-tenant S3 prefixes: DuckDB, Parquet, and Arrow caches for each tenant are stored under s3://bucket/{tenant_id}/.... Cross-tenant prefix reads are prohibited.
+
+**Code:** —
+
+**Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-464 · Security {#REQ-464}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+NL-assisted table candidate discovery for registration. When a registered source has a large schema (hundreds or thousands of tables), stewards search across registered source schemas — table names, column names, descriptions — using natural language ("customer invoicing and payment tables"). A two-pass approach: fast fuzzy text filter narrows candidates, then LLM (haiku) provides semantic ranking with confidence scores. Steward judgment is required — feature surfaces candidates, does not claim them. Implementation in admin API and unclaimed tables UI.
+
+**Code:** —
+
+**Tests:** —
+
+## 3. Source Registration & Data Modeling
+
+### REQ-465 · Data & Storage {#REQ-465}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Dataset name normalization must be centralized. Dataset names may be normalized to a semantic standard (e.g., snake_case) and may carry aliases. Name comparison for registry membership, alias lookups, duplicate detection, and cross-source name matching must always use a canonical centralized normalization function — never inline equality checks or ad-hoc transforms. UI canonical comparator: `toSnakeCase` from TablesPage.tsx. Backend equivalent: use the same canonical function for all name comparisons. This applies to: isRegistered checks, alias lookups, duplicate detection, cross-source relationship name matching.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-466 · Data & Storage {#REQ-466}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Dataset identity resolution requires centralized service. Every registered dataset has two identity forms — physical (native source name, e.g. `findPetsByStatus`) and semantic (domainId + tableName alias). Code comparing two dataset references must resolve both through a centralized identity service. Backend: `provisa.core.dataset_identity` exposes `resolve(ref) -> DatasetIdentity` and `same_dataset(ref_a, ref_b) -> bool`. Frontend: shared utility, no per-component name-matching logic. Cross-form comparison resolves both sides to `(sourceId, normalizedName)` tuple first. Documented in docs/arch/dataset-handling-standards.md under "Dataset Identity".
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-467 · Data & Storage {#REQ-467}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Query-language dataset name resolution via centralized identity service (extends [REQ-466](#REQ-466)). Any dataset name in SQL, Cypher, or GraphQL queries must resolve to a physical dataset through the identity service, accounting for each language's canonical form (SQL=snake_case schema.table, Cypher=PascalCase label, GraphQL=camelCase field). The active naming convention (registered_tables → domains → sources → global default) may override canonical defaults. `provisa.core.dataset_identity.resolve(ref, lang)` accepts query-language names and denormalizes them before lookup; `to_query_name(identity, lang)` produces the correct form for a given language. All inline normalization (e.g., `_normalize_op_id` in config_loader.py:104) must be replaced by this service. Documented in docs/arch/dataset-handling-standards.md under "Query-language representations".
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-468 · Data & Storage {#REQ-468}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Transpilation is a compiler responsibility, never a transport responsibility. Regardless of transport (pgwire, Arrow Flight, REST, GraphQL), all incoming queries go through a single shared pipeline: name resolution (front-end SQL/GQL/CQL names → physical), governance enforcement, dialect transpilation, and routing. Transports receive the output of this pipeline — they do not implement any part of it. No transport performs its own name rewriting, dialect conversion, or governance logic.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-469 · Data & Storage {#REQ-469}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Catalog preparation is centralized per query language. SQL catalog (pg_catalog served via pgwire/DBeaver), GraphQL SDL (schema introspection), and Cypher catalog (Nodes/Relationships schema) are each the responsibility of a single dedicated module. No transport implements catalog logic directly — transports consume the output of the centralized catalog module for their language.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-470 · Data & Storage {#REQ-470}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Heuristic name matching is never permitted. All name conversions and lookups must be deterministic: the canonical form (e.g. `sql_name`) is computed once at registration time and stored. Lookup code uses exact equality on the pre-computed canonical form — no runtime normalization, no multi-predicate fallback chains, no `to_snake_case` inline at call sites. Any code path that computes a canonical form at lookup time rather than at registration time is a violation. Extends [REQ-465](#REQ-465), [REQ-466](#REQ-466), [REQ-467](#REQ-467).
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-472 · Data & Storage {#REQ-472}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+`naming.default_domain` configuration (str, default "default", must be non-empty valid identifier) sets the fallback domain for tables/functions/webhooks when use_domains=false. Falsy domain_id values ("" / None) coerce to default_domain at registration time.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-473 · Data & Storage {#REQ-473}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Registering any table/function/webhook with an explicit non-default, non-empty domain_id while use_domains=false is a hard error — no silent coercion or fallback. Error message names the offending registration and states the policy violation.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-474 · Data & Storage {#REQ-474}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+use_domains=false with a non-empty `domains:` config list is a hard error (mutually exclusive policy). Error surfaces at startup during config validation.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-475 · Data & Storage {#REQ-475}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+`naming.default_domain` must be non-empty. Empty default_domain is rejected at startup config validation with a hard error.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-476 · Data & Storage {#REQ-476}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+use_domains and default_domain are runtime-editable via settings_router and trigger a full rebuild (_load_and_build). On reload, existing registered_tables are validated: dynamically-registered tables whose domain_id violates the new policy raise a hard error naming the offenders. No silent rewrite; offenders must be re-registered. This is an accepted consequential decision.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-477 · Data & Storage {#REQ-477}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+When use_domains=false, domain_prefix is forced off (internally overridden to false) and domain-based access gating is bypassed entirely.
+
+**Code:** —
+
+**Tests:** —
+
+## 7. Result Delivery
+
+### REQ-479 · Output & Delivery {#REQ-479}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Per-role aggregate gating is enforced via the existing role `capabilities` array — a role carrying the "no_aggregations" capability has its `<table>_aggregate` root fields suppressed in provisa/compiler/schema_gen.py. Default is allow. Chosen over a new roles.allow_aggregations column to honor the V1 "never add migrations" rule (a new column breaks existing databases).
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-480 · Output & Delivery {#REQ-480}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Webhook mutations are exposed only after steward approval, tracked entirely through the existing creation_requests queue — a webhook is exposed when its most recent "webhook"-type creation_request has status 'executed'. Registering or editing a webhook (provisa/api/admin/actions_router.py) enqueues a fresh pending "webhook_registration" request, which resets approval. No `approved` column on tracked_webhooks (V1 no-migration).
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-481 · Output & Delivery {#REQ-481}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+**WITHDRAWN same day.** Cross-source Cypher rejection was removed at the user's direction — Trino joins across catalogs natively and cross-source graph traversal is a supported capability. The translator no longer raises CypherCrossSourceError; the error class remains declared but unused. See [REQ-353](#REQ-353).
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-482 · Output & Delivery {#REQ-482}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+register_table(discover=true) auto-infers columns from the live source via the adapter discover_schema dispatch; explicitly-provided columns take precedence (provisa/discovery/column_inference.py:merge_discovered_columns). Elasticsearch uses a live GET /<index>/_mapping bridge. Discovery raises on failure rather than registering an empty schema; Cassandra discovery raises (no live CQL session is maintained).
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-483 · Output & Delivery {#REQ-483}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Materialized-view freshness is TTL-aware — MVDefinition.is_fresh_at(now) and registry.get_fresh() exclude a FRESH MV whose last refresh is older than its refresh_interval, so queries fall back to the live source instead of serving stale data. materialized_views.default_ttl config sets the default refresh interval. Materialization is opt-in (per-table/relationship materialize flag); there is no cost-based auto-materialization.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-484 · Output & Delivery {#REQ-484}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Normalized result delivery ([REQ-049](#REQ-049)/050) is an IR-level decomposition, not a serializer transform, and is a per-request client choice via the X-Provisa-Normalized header (denormalized single-file output stays the default). provisa/compiler/normalize.py shreds a nested query into one relational table per projected entity type; each table is produced by its own scoped SELECT DISTINCT pushed to the engine so the denormalized join product never forms (the point at 1M×1M→1B scale). Real PK/FK keys are preserved — source_column lives on the parent table, target_column on the child — and auto-included when not projected, so a consumer can load the small tables into a BI tool and replay the same query to reconstruct the denormalized view locally. Each per-table query is governed identically to the normal path (_prepare_compiled) and written to S3 via execute_ctas_redirect (Trino CTAS); the endpoint returns a manifest of {table, path, url, rowCount}. A relationship whose join is computed (source_expr/source_constant/source_json_key) has no key column and cannot be normalized — such queries are rejected with HTTP 400.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-485 · Output & Delivery {#REQ-485}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+**[REQ-146](#REQ-146) WITHDRAWN.** The Arrow Flight Trino route hard-requires the Zaychik Flight SQL proxy; its absence or outage is a hard failure, not a Trino-REST fallback. There is no "Zaychik disabled" configuration (startup always dials ZAYCHIK_HOST defaulting to localhost:8480 and create_flight_connection raises on failure), so flight_client is None means a failed connection — a REST fallback would silently mask an outage, violating the no-silent-fallback rule.
+
+**Code:** —
+
+**Tests:** —
+
+## 8. Client Access & Protocols
+
+### REQ-486 · Client Access & Protocols {#REQ-486}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Role selection is server-validated, not client-trusted ([REQ-273](#REQ-273)). The protocol clients (DB-API, ADBC, SQLAlchemy) no longer carry a connection `mode` and no longer assume a role: there is no `admin` default and no username-as-role fallback on failed auth. A client may *request* a role via the `X-Provisa-Role` header (or Flight ticket `role`), and the auth middleware honors it only when that role is among the authenticated token's assignments — otherwise it returns 403. When no auth provider is configured (unsecured deployment), the middleware honors any supplied role by design (no identity to validate against). provisa/auth/middleware.py.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-487 · Client Access & Protocols {#REQ-487}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+A compile-only REST route `POST /data/compile` ([REQ-161](#REQ-161)) exposes the Stage-1 compiler without execution, wrapping provisa.api.admin.dev_queries.compile_query. The role is derived from auth (`request.state.role`) or the `X-Provisa-Role` header — never client-trusted; an unknown role returns 403 and a compile ValueError returns 400. provisa/api/data/endpoint.py.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-488 · Client Access & Protocols {#REQ-488}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+APQ (automatic persisted queries) TTL is bound to the `apq.ttl` config key with a `PROVISA_APQ_TTL` env override (default 86400s), and the APQ Redis cache reuses the shared `redis_url` rather than a separate `REDIS_URL` env var. provisa/api/app.py.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-489 · Client Access & Protocols {#REQ-489}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+**[REQ-129](#REQ-129) amended.** The JDBC driver's result transport is Arrow IPC over Flight, not Parquet. Parquet was never an implemented contract; the requirement is restated to Arrow IPC.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-490 · Client Access & Protocols {#REQ-490}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+**[REQ-132](#REQ-132) amended** to "self-contained shaded JAR." The fat JAR cannot drop Gson (no JDK-native JSON; used in four driver classes), so maven-shade `<relocations>` move com.google.{gson,protobuf,common} under io.provisa.shaded.* to prevent host-classpath collisions. Apache Arrow Flight (gRPC/Netty) is acknowledged as a deliberate transport dependency rather than a violation. jdbc-driver/pom.xml.
+
+**Code:** —
+
+**Tests:** —
+
+## 4. Source Connectors
+
+### REQ-491 · Source Connectors {#REQ-491}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Google Sheets source adapter (`provisa/google_sheets/`): registered via `POST /admin/sources/google_sheets`. Authenticates via service account JSON key or OAuth2. Columns inferred from sheet header row. Multiple sheets per spreadsheet each register as a separate table. Refresh interval configurable (default: 5 minutes). Read-only; no mutations. `tests/unit/test_google_sheets_source.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-492 · Source Connectors {#REQ-492}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+GovData source adapter (`provisa/govdata/`): registers US Government Open Data (data.gov) datasets via CKAN API. Discovers available datasets/resources, infers column schema from CKAN datastore field definitions. Paginated fetch via CKAN datastore_search. Read-only. `tests/unit/test_govdata_source.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-493 · Source Connectors {#REQ-493}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Apache Accumulo source adapter (`provisa/accumulo/`): exposes Accumulo tables as relational via Trino's Accumulo connector. Column family/qualifier mapping DSL required (per [REQ-251](#REQ-251)). Read-only; no mutations (NoSQL, non-relational). `tests/unit/test_accumulo_source.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-494 · Source Connectors {#REQ-494}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Apache Cassandra source adapter (`provisa/cassandra/`): exposes Cassandra keyspace/tables via Trino's Cassandra connector. CQL type mapping to SQL types. Partition key designated as primary key. Read-only; no mutations. Discovery raises (no live CQL session maintained; per [REQ-482](#REQ-482)). `tests/unit/test_cassandra.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-495 · Source Connectors {#REQ-495}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Elasticsearch source adapter (`provisa/elasticsearch/`): exposes ES indices as tables via Trino's Elasticsearch connector. Schema inference via `GET /<index>/_mapping` (per [REQ-482](#REQ-482)). Nested field paths flattened to columns per mapping DSL (per [REQ-251](#REQ-251)). Read-only; no mutations. `tests/unit/test_elasticsearch_source.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-496 · Source Connectors {#REQ-496}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+MongoDB source adapter (`provisa/mongodb/`): exposes MongoDB collections as tables via Trino's MongoDB connector. Document schema inferred from a configurable sample size (default: 1000 documents). Nested documents and arrays flattened per mapping DSL (per [REQ-251](#REQ-251)). Read-only; no mutations. `tests/unit/test_mongodb_source.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-497 · Source Connectors {#REQ-497}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Redis source adapter (`provisa/redis/`): exposes Redis keys as relational rows via Trino's Redis connector. Key pattern and hash field → column mapping DSL required (per [REQ-251](#REQ-251)). Read-only; no mutations. Distinct from Redis-as-cache-store ([REQ-230](#REQ-230)–237) and Redis-as-rate-limit-store ([REQ-371](#REQ-371)). `tests/unit/test_redis_source.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-498 · Source Connectors {#REQ-498}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Prometheus metrics source adapter (`provisa/prometheus/`): exposes Prometheus instant query results as relational rows. Metric name maps to table; label names map to columns; value and timestamp are fixed columns. Mapping DSL: `metric_name`, `label_columns`, `value_column`. Read-only; no mutations. Queries execute via Prometheus HTTP API (`/api/v1/query`). `tests/unit/test_prometheus_source.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-499 · Source Connectors {#REQ-499}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+File source pipeline (`provisa/file_source/`): shared lazy-cache pipeline for non-Trino-connectable file sources (CSV, Parquet, Excel). Implements the design from [REQ-423](#REQ-423) (lazy cache on first query). Provides a common `FileSourceAdapter` base that CSV, Parquet, and Excel adapters inherit. Integrates with the file change watcher ([REQ-424](#REQ-424)–426). `tests/unit/test_file_source.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-500 · Source Connectors {#REQ-500}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Vector embedding source adapter (`provisa/vector/`): registers a vector store (e.g., pgvector table, Chroma, Qdrant) as a Provisa table. Columns include the embedding vector, a configurable text/metadata column set, and an ID column. Supports vector similarity search as a special filter operator (`_vector_near`). Governed via standard RLS and visibility rules. `tests/unit/test_vector_source.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-501 · Source Connectors {#REQ-501}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+ClickHouse source adapter: connects via Trino ClickHouse connector. Supports ClickHouse-specific types (LowCardinality, Nullable, FixedString). Read-only; mutations not supported. `tests/unit/test_clickhouse_source.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-502 · Source Connectors {#REQ-502}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Snowflake source adapter: connects via Trino Snowflake connector. Warehouse, database, schema, and role configurable per source registration. Read-only by default; mutations supported if `allow_mutations: true`. `tests/unit/test_snowflake_source.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-503 · Source Connectors {#REQ-503}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+BigQuery source adapter: connects via Trino BigQuery connector. Project, dataset, and credentials (service account JSON) configurable per source registration. Read-only; no mutations (BigQuery is analytical). `tests/unit/test_bigquery_source.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-504 · Source Connectors {#REQ-504}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+DuckDB source adapter: connects via in-process DuckDB (direct, not Trino). Database file path or `:memory:` configurable. Read-only by default. Suitable for local development and analytical queries over Parquet/CSV files via DuckDB's native scan functions. `tests/unit/test_duckdb_source.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-505 · Source Connectors {#REQ-505}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+SQLite source adapter: ingested into the lazy-cache pipeline ([REQ-499](#REQ-499)) rather than a live Trino connector (no Trino SQLite connector exists). Database file registered by path; schema inferred at ingest time. Read-only. Change watcher ([REQ-424](#REQ-424)) monitors mtime. `tests/unit/test_sqlite_source.py`
+
+**Code:** —
+
+**Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-506 · Control Plane & Deployment {#REQ-506}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Control plane module (`provisa/control_plane/`): manages SLA monitoring, quota enforcement, and cluster health aggregation across multi-tenant deployments. Exposes health metrics via Prometheus endpoint. Integrates with OTel traces ([REQ-302](#REQ-302)) for latency SLA tracking. Configuration: `control_plane.enabled`, `control_plane.sla_p99_ms` thresholds per role. `tests/unit/test_control_plane.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-507 · Control Plane & Deployment {#REQ-507}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Helm chart (`helm/`): Kubernetes deployment via Helm chart. Values schema (`values.schema.json`) validates all configurable values at `helm install` time. Chart includes: provisa-api, trino, postgresql, redis, minio deployments; optional observability stack (otel-collector, grafana, tempo, prometheus) via `observability.enabled` flag. `tests/e2e/test_helm_deploy.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-508 · Control Plane & Deployment {#REQ-508}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Docker Compose service catalog: multiple compose file variants cover different deployment profiles. `docker-compose.core.yml`: provisa-api + trino + postgresql + redis + minio. `docker-compose.app.yml`: adds MinIO console and pgAdmin. `docker-compose.observability.yml`: adds OTel Collector, Grafana, Tempo, Prometheus (per [REQ-330](#REQ-330)). `docker-compose.airgap.yml`: all images bundled, no pull at startup (per [REQ-294](#REQ-294)). `docker-compose.dev.yml`: development mode with hot-reload.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-509 · Control Plane & Deployment {#REQ-509}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+WSL2 Windows deployment: `start-ui.sh` and install scripts detect WSL2 environment and adjust host network bindings accordingly. Docker socket path defaults to `/var/run/docker.sock` on Linux/WSL2; detected at startup via `uname -r | grep -i microsoft`. Documented in deployment guide. `tests/e2e/test_wsl2_install.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-510 · Control Plane & Deployment {#REQ-510}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Schema clustering (`provisa/schema_clusters.py`): uses networkx Louvain community detection to group registered tables into semantic clusters (l1/l2/l3 cluster labels). Cluster labels are stored in `registered_tables` and exposed via the graph-schema endpoint ([REQ-398](#REQ-398)) as `scl1`/`scl2`/`scl3` fields per node label. Clustering runs at schema build time and is re-run when tables are added/removed. Enables the graph UI to group and color nodes by cluster. `tests/unit/test_schema_clusters.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-511 · Control Plane & Deployment {#REQ-511}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+SharePoint source adapter (`provisa/sharepoint/`): registered via `POST /admin/sources/sharepoint`. Authenticates via Microsoft Entra ID (OAuth2 client credentials or delegated flow). Exposes SharePoint Lists as relational tables — list columns map directly to relational columns; choice/lookup/person fields mapped to their text representation. Supports SharePoint Online (Graph API: `GET /sites/{site}/lists/{list}/items`) and SharePoint Server (REST API). Paginates via `@odata.nextLink`. Read-only; no mutations. Refresh interval configurable (default: 15 minutes). `provisa/sharepoint/source.py`, `tests/unit/test_sharepoint_source.py`
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-512 · Control Plane & Deployment {#REQ-512}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Splunk source adapter (`provisa/splunk/`): registered via `POST /admin/sources/splunk`. Authenticates via Splunk token or username/password (Splunk REST API). Executes Splunk Search Processing Language (SPL) queries via `POST /services/search/jobs` (async job) or `GET /services/search/jobs/export` (streaming). Query result fields map to columns; `_time`, `_raw`, `host`, `source`, `sourcetype` are always included when present. Registered table stores the SPL query template; native filter columns (`_nf_` prefix) map to SPL search terms appended to the base query. Read-only; no mutations. `provisa/splunk/source.py`, `tests/unit/test_splunk_source.py`
+
+**Code:** —
+
+**Tests:** —
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-513 · Multi-Tenant Organization Isolation {#REQ-513}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+All backend data queries and mutations must be scoped to the user's active organization, enforced at the GraphQL API layer and every backend router. Every query and mutation compiles to SQL that includes `WHERE org_id = $org_id` via Stage 2 governance. Non-superadmin users can only access data belonging to their organization; superadmin users access the active organization context set via the org switcher. | Server-side org scoping prevents users from accessing data outside their assigned organization. | provisa/api/, provisa/compiler/stage2.py, provisa/security/ | tests/unit/test_org_scoping.py, tests/integration/test_org_isolation.py
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-514 · Multi-Tenant Organization Isolation {#REQ-514}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Superadmin org switcher component in NavBar, styled identically to the existing role selector. Displays current active organization and dropdown to select a different org from the user's membership list. Active org stored in X-Org-Id header on all subsequent API requests. Non-superadmin users see only their single org name (read-only, no dropdown). | Superadmin org switcher enables context switching for testing and administration across multiple organizations. | provisa-ui/src/components/NavBar.tsx, provisa-ui/src/hooks/useOrgSelection.ts | tests/e2e/test_org_switcher.py
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-515 · Multi-Tenant Organization Isolation {#REQ-515}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Every backend HTTP router and GraphQL mutation handler validates X-Org-Id header and enforces that the authenticated user is a member of that organization before processing the request. Requests with missing, invalid, or unauthorized X-Org-Id header are rejected with HTTP 403. | Header validation prevents unauthorized access attempts and ensures every request respects org boundaries. | provisa/api/middleware/, provisa/security/org_enforcement.py | tests/unit/test_org_header_validation.py, tests/integration/test_org_enforcement.py
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-516 · Multi-Tenant Organization Isolation {#REQ-516}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Invite links (existing infrastructure) automatically register new users into the specific organization associated with the invite. User is assigned a default role in that organization. First-time login via an invite link completes org membership enrollment. | Invite-based onboarding assigns new users directly to their organization without manual admin intervention. | provisa/auth/, provisa/core/repositories/org.py | tests/unit/test_invite_onboarding.py, tests/integration/test_invite_flow.py
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-517 · Multi-Tenant Organization Isolation {#REQ-517}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+The Admin/Orgs page is superadmin-only, enforced by an `isSuperAdmin` gate that checks the user's global superadmin status regardless of active org context. Non-superadmin users cannot access this page; navigation entry is hidden, direct URL access rejected with a 403 permission error. | Superadmin-only enforcement of the Orgs admin page prevents non-admins from viewing or managing organizations. | provisa-ui/src/pages/AdminOrgsPage.tsx, provisa/api/admin/orgs_router.py | tests/unit/test_orgs_page_access.py, tests/e2e/test_admin_orgs_guard.py
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-518 · Multi-Tenant Organization Isolation {#REQ-518}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+ERD modal: The Entity Relationship Diagram is presented as a modal dialog (not an inline panel or separate page), rendering a Cytoscape-based visualization of all registered tables and their relationships. Modal is self-contained, no new backend endpoints required; data sourced from existing `useTables`, `useRelationships`, and `useDomains` hooks. ERD modal is reachable via a toolbar button on both the Tables page (`provisa-ui/src/pages/TablesPage.tsx`) and the Relationships page (`provisa-ui/src/pages/RelationshipsPage.tsx`). | Toolbar-accessible ERD modal lets stewards explore table schemas and relationships without context-switching. | provisa-ui/src/components/graph/CytoscapeErd.tsx, provisa-ui/src/pages/TablesPage.tsx, provisa-ui/src/pages/RelationshipsPage.tsx | tests/e2e/test_erd_modal.py
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-519 · Multi-Tenant Organization Isolation {#REQ-519}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Tables in the ERD are grouped into compound nodes (domain clusters) by domain; each domain becomes a visually distinct parent node containing all its registered tables as child nodes. Domain grouping preserves the `RegisteredTable` and `Relationship` types from `provisa-ui/src/types/admin.ts`. | Domain clustering in the ERD organizes tables semantically without requiring new data types. | provisa-ui/src/components/graph/CytoscapeErd.tsx | tests/e2e/test_erd_modal.py
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-520 · Multi-Tenant Organization Isolation {#REQ-520}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Domain groups in the ERD support collapse/expand toggling to hide/show their child tables. Toggling a domain updates the Cytoscape graph layout without re-fetching data. State of collapsed domains is transient (not persisted). | Collapse/expand domain grouping prevents visual overload in large ERDs. | provisa-ui/src/components/graph/CytoscapeErd.tsx | tests/e2e/test_erd_modal.py
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-521 · Multi-Tenant Organization Isolation {#REQ-521}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+The ERD includes a column-detail toggle with three levels: show all columns, show only key columns (PK/FK marked via `is_primary_key` / `is_foreign_key`), or show no columns. Toggle updates the graph display without re-fetching data. | Multi-level column detail reduces visual noise while preserving access to column-level relationships. | provisa-ui/src/components/graph/CytoscapeErd.tsx | tests/e2e/test_erd_modal.py
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-522 · Multi-Tenant Organization Isolation {#REQ-522}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Hover tooltips on domain groups, table nodes, and column items display their descriptions. Descriptions are sourced from `domain.description`, `table.description`, and `column.description` fields from registered metadata. Missing descriptions fall back to empty. | Hover tooltips provide in-context documentation without cluttering the diagram. | provisa-ui/src/components/graph/CytoscapeErd.tsx | tests/e2e/test_erd_modal.py
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-523 · Multi-Tenant Organization Isolation {#REQ-523}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+The ERD respects the currently selected domain filter on the Tables/Relationships page (if any). If a domain filter is active, the ERD displays only tables and relationships within that domain. If no filter is active, all domains and tables are shown. Filter state is read from the page context and updates reactively. | Domain-filtered ERD view keeps visualization focused on the steward's current domain context. | provisa-ui/src/components/graph/CytoscapeErd.tsx, provisa-ui/src/pages/TablesPage.tsx, provisa-ui/src/pages/RelationshipsPage.tsx | tests/e2e/test_erd_modal.py
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-524 · Multi-Tenant Organization Isolation {#REQ-524}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+The ERD modal provides download buttons for exporting the current diagram as SVG, PNG, or JSON. The export functions reuse existing utilities from `provisa-ui/src/components/graph/graph-export.ts` (`downloadGraphSvg`, `compositeGraphDownload`, `downloadBlob`). | Export buttons let stewards save ERD visualizations for documentation, sharing, and offline reference. | provisa-ui/src/components/graph/CytoscapeErd.tsx, provisa-ui/src/components/graph/graph-export.ts | tests/e2e/test_erd_modal.py
+
+**Code:** —
+
+**Tests:** —
+
+## 2. Authentication & Identity
+
+### REQ-1019 · Role-Based Access Control {#REQ-1019}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** structural
+
+user_org_memberships carries an org-scoped role: admin (governance/grants), developer (modify queries), or analyst (read-only). Only admin may mint invites, approve creation requests, and grant or change other members' roles.
+
+**Use case:** Delegates org governance to admins without requiring platform-wide superadmin involvement. Establishes role hierarchy within a single org with clear permission boundaries.
+
+**Code:** `provisa/core/schema_admin.py`, `provisa/api/admin/invites_router.py`
+
+**Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1021 · Email Delivery {#REQ-1021}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+When an admin mints an org invite, a templated email is sent via EmailProvider containing the accept link and expiry; supports resend. Send is enqueued through the [REQ-942](#REQ-942) outbox (atomic with org_invites row insert) and retried on transient SMTP failure.
+
+**Use case:** Ensures invitees are notified and provides the accept mechanism. Transactional outbox pattern guarantees delivery retry without manual intervention or duplicate emails.
+
+**Code:** `provisa/api/admin/invites_router.py`, `provisa/email/`
+
+**Tests:** —
+
+### REQ-1022 · Email Delivery {#REQ-1022}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+When a creation or approval request is raised, admin approvers for the org are notified by email with approve/deny links, delivered via the same EmailProvider + outbox path.
+
+**Use case:** Alerts approvers to pending org-governance decisions. Provides direct approve/deny action links to avoid portal navigation.
+
+**Code:** `provisa/api/admin/`, `provisa/email/`
+
+**Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-087 · Column-Level Masking {#REQ-087}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Per-column, per-role data masking at the SQL level. Masked columns return transformed values — raw data never reaches the client. Masking is per-column, per-role. Same column can have different masks for different roles. Masking is applied at SQL level — the mask expression replaces the column in the SELECT projection. The DB engine performs the transformation. A column can be both visible AND masked — the user sees the column exists and can filter/sort on it, but the returned values are masked.
+
+**Code:** `provisa/security/masking.py`, `provisa/compiler/mask_inject.py`
+
+**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/unit/test_inherited_roles.py`, `tests/e2e/test_masking.py`
+
+### REQ-088 · Column-Level Masking {#REQ-088}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+`regex` masking (string columns): `REGEXP_REPLACE("col", 'pattern', 'replace')` — works in both PG and Trino.
+
+**Code:** `provisa/security/masking.py`
+
+**Tests:** `tests/e2e/test_masking.py`
+
+### REQ-089 · Column-Level Masking {#REQ-089}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+`constant` masking (any type): replace column with literal value. Options: `NULL` (if nullable), `0`, `-1`, custom value, `MAX`, `MIN` (resolved to type bounds at compile time, e.g., integer MAX → 2147483647).
+
+**Code:** `provisa/security/masking.py`
+
+**Tests:** `tests/e2e/test_masking.py`
+
+### REQ-090 · Column-Level Masking {#REQ-090}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+`truncate` masking (date/timestamp): `DATE_TRUNC('precision', "col")` — e.g., precision=year turns 2025-03-31 → 2025-01-01.
+
+**Code:** `provisa/security/masking.py`
+
+**Tests:** `tests/e2e/test_masking.py`
+
+### REQ-091 · Column-Level Masking {#REQ-091}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Type validation: regex masking only allowed on string types (varchar, char, text); numeric types reject regex rules at config load time. Attempting to configure regex on a numeric/boolean/date column raises a validation error at config load time. `NULL` replacement only allowed on nullable columns — if column is NOT NULL, config validation rejects `value: NULL`.
+
+**Code:** `provisa/security/masking.py`
+
+**Tests:** `tests/unit/test_masking_edge_cases.py`, `tests/e2e/test_masking.py`
+
+## 4. Source Connectors
+
+### REQ-116 · Kafka Sources & Sink {#REQ-116}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Schema Registry integration: fetch Avro/Protobuf/JSON Schema from Confluent Schema Registry. Auto-map schema fields to column definitions (same primitive/JSONB rules). Schema evolution: detect changes, flag affected registered tables for re-review.
+
+**Code:** `provisa/kafka/schema_registry.py`
 
 **Tests:** —
