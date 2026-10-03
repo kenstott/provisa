@@ -28,20 +28,39 @@ class SimpleAuthProvider(AuthProvider):  # REQ-120, REQ-124
 
     provider_name: str = "simple"
 
-    def __init__(self, users: list[dict], jwt_secret: str) -> None:
+    def __init__(self, users: list[dict], jwt_secret: str, user_ids) -> None:
         self._users = {u["username"]: u for u in users}
         self._jwt_secret = jwt_secret
+        # The stored GUID of each user (provisa/auth/simple_user_ids.py); never the username.
+        self._user_ids = user_ids
 
-    def login(self, username: str, password: str) -> str:  # REQ-124
-        """Verify credentials and return a signed JWT."""
+    def _check_password(self, username: str, password: str) -> dict:
         user = self._users.get(username)
-        if user is None:
+        if user is None or not bcrypt.checkpw(
+            password.encode("utf-8"), user["password_hash"].encode("utf-8")
+        ):
             raise ValueError("Invalid credentials")
-        if not bcrypt.checkpw(password.encode("utf-8"), user["password_hash"].encode("utf-8")):
-            raise ValueError("Invalid credentials")
+        return user
+
+    async def _identity(self, username: str, user: dict) -> AuthIdentity:
+        user_id = await self._user_ids.id_for(username)
+        roles = user.get("roles", [])
+        return AuthIdentity(
+            user_id=user_id,
+            email=None,
+            display_name=username,
+            roles=roles,
+            raw_claims={"sub": user_id, "username": username, "roles": roles},
+        )
+
+    async def login(self, username: str, password: str) -> str:  # REQ-124
+        """Verify credentials and return a signed JWT naming the user's stored id."""
+        user = self._check_password(username, password)
+        user_id = await self._user_ids.id_for(username)
         now = datetime.datetime.now(datetime.timezone.utc)
         payload = {
-            "sub": username,
+            "sub": user_id,
+            "username": username,
             "roles": user.get("roles", []),
             "iat": now,
             "exp": now + datetime.timedelta(minutes=30),
@@ -50,14 +69,16 @@ class SimpleAuthProvider(AuthProvider):  # REQ-120, REQ-124
 
     async def password_login(self, username: str, password: str) -> str:  # REQ-124
         """The ``POST /auth/login`` exchange (provisa/auth/login_router.py)."""
-        return self.login(username, password)
+        return await self.login(username, password)
 
     async def validate_token(self, token: str) -> AuthIdentity:  # REQ-120, REQ-124
-        decoded = jwt.decode(token, self._jwt_secret, algorithms=["HS256"])
+        decoded = jwt.decode(
+            token, self._jwt_secret, algorithms=["HS256"], options={"require": ["sub", "username"]}
+        )
         return AuthIdentity(
             user_id=decoded["sub"],
             email=None,
-            display_name=decoded["sub"],
+            display_name=decoded["username"],
             roles=decoded.get("roles", []),
             raw_claims=decoded,
         )
@@ -76,17 +97,6 @@ class SimpleAuthProvider(AuthProvider):  # REQ-120, REQ-124
         """Validate a ``Basic`` credential — b64(username:password)."""
         try:
             username, password = base64.b64decode(token).decode("utf-8").split(":", 1)
-        except Exception:
+        except (ValueError, UnicodeDecodeError):
             raise ValueError("Invalid credentials")
-        user = self._users.get(username)
-        if user is None or not bcrypt.checkpw(
-            password.encode("utf-8"), user["password_hash"].encode("utf-8")
-        ):
-            raise ValueError("Invalid credentials")
-        return AuthIdentity(
-            user_id=username,
-            email=None,
-            display_name=username,
-            roles=user.get("roles", []),
-            raw_claims={"sub": username, "roles": user.get("roles", [])},
-        )
+        return await self._identity(username, self._check_password(username, password))

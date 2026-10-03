@@ -24,6 +24,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from provisa.auth.wiring import bind_auth_config
+from tests.platform_plane import platform_db
 
 
 class _State:
@@ -86,7 +87,7 @@ def client(monkeypatch):
     from provisa.api.app import state
     from provisa.auth.login_router import router
 
-    monkeypatch.setattr(state, "admin_db", None)
+    monkeypatch.setattr(state, "admin_db", platform_db())
     app = FastAPI()
     app.include_router(router)
     return TestClient(app), state
