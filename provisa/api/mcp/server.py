@@ -186,22 +186,31 @@ def resolve_token_role(token: str, state: Any) -> str:
     return asyncio.run(_resolve_token_role_async(token, state))
 
 
-def named_role(named: str) -> str:  # REQ-273, REQ-1105
-    """A role NAMED IN A TOOL CALL — or PermissionError when the caller does not hold it.
+def named_role(named: str, state: Any) -> str:  # REQ-273, REQ-1105, REQ-1620
+    """The role a tool call acts as from the role, or comma-separated set of roles, it NAMES — or
+    PermissionError when the caller does not hold one. A set acts as its meta-role.
 
     Remote HTTP: naming a role in a tool call is the same act as naming one in the role header,
     and follows the same rule — the token's principal must hold it. The role the token itself
     maps to always qualifies. stdio has no principal: the operator pinned the process's role and a
     local client names roles at will.
     """
+    from provisa.security.meta_role import refuse_named_meta_role, resolve_requested_role
+
     identity = _request_identity.get()
     if identity is not None:
         from provisa.security.rights import role_ids_from_claims
 
         held = role_ids_from_claims(getattr(identity, "roles", None) or ())
-        if named != _request_role.get() and named not in held:
-            raise PermissionError(f"Role {named!r} is not assigned to this user")
-    return named
+        mapped = _request_role.get()
+        if mapped is None:
+            # The transport sets the identity and the role it maps to together.
+            raise RuntimeError("a remote MCP call carries an identity but no role")
+        held.add(mapped)
+    else:
+        held = {r.strip() for r in named.split(",") if r.strip()}
+        refuse_named_meta_role(sorted(held))
+    return resolve_requested_role(state, held, named)
 
 
 def _pinned_stdio_role() -> str:
@@ -292,14 +301,14 @@ def build_mcp_server(state: Any):
 
     def _role(role: str | None) -> str:
         if role and str(role).strip():
-            return named_role(str(role).strip())
+            return named_role(str(role).strip(), state)
         # Remote HTTP: the transport middleware resolved the bearer token to a role for this
         # request (REQ-1105); prefer it over any ambient stdio role.
         req_role = _request_role.get()
         if req_role and req_role.strip():
             return req_role.strip()
-        # stdio: fall back to the explicitly-pinned dev role (never admin).
-        return _pinned_stdio_role()
+        # stdio: fall back to the explicitly-pinned dev role (never admin), which may be a set.
+        return named_role(_pinned_stdio_role(), state)
 
     def _capability_request(resolved_role: str) -> Any:  # REQ-1857
         """A minimal request-shaped shim for the handful of tools that carry their own

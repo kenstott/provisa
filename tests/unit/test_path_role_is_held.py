@@ -167,10 +167,10 @@ def test_a_remote_mcp_caller_may_name_only_a_role_it_holds():
     r1 = server._request_role.set(A)  # the role the bearer token maps to
     r2 = server._request_identity.set(types.SimpleNamespace(user_id="u1", roles=[A, "role_c"]))
     try:
-        assert server.named_role(A) == A
-        assert server.named_role("role_c") == "role_c"  # another role the principal holds
-        with pytest.raises(PermissionError, match=f"Role '{B}' is not assigned to this user"):
-            server.named_role(B)
+        assert server.named_role(A, None) == A
+        assert server.named_role("role_c", None) == "role_c"  # another role the principal holds
+        with pytest.raises(PermissionError, match=f"'{B}' is not assigned"):
+            server.named_role(B, None)
     finally:
         server._request_role.reset(r1)
         server._request_identity.reset(r2)
@@ -183,9 +183,9 @@ def test_the_tokens_own_mapped_role_qualifies_even_when_no_claim_names_it():
     r1 = server._request_role.set(A)
     r2 = server._request_identity.set(types.SimpleNamespace(user_id="u1", roles=[]))
     try:
-        assert server.named_role(A) == A
+        assert server.named_role(A, None) == A
         with pytest.raises(PermissionError):
-            server.named_role(B)
+            server.named_role(B, None)
     finally:
         server._request_role.reset(r1)
         server._request_identity.reset(r2)
@@ -195,7 +195,7 @@ def test_a_local_stdio_mcp_client_names_roles_as_before():
     from provisa.api.mcp import server
 
     assert server._request_identity.get() is None
-    assert server.named_role(B) == B
+    assert server.named_role(B, None) == B
 
 
 # --- X-Role names no role: /data/sdl, /data/domains, /data/introspection -------------------------
@@ -322,3 +322,31 @@ async def test_a_compile_as_a_role_the_caller_does_not_hold_is_refused(compiled_
 async def test_the_holder_of_access_config_compiles_as_any_role(compiled_as):
     await _compile_as(B, INSPECTOR)
     assert compiled_as == [B]
+
+
+def test_a_remote_mcp_caller_names_a_set_of_held_roles(monkeypatch):
+    from provisa.api.mcp import server
+    import provisa.security.meta_role as meta_role
+
+    monkeypatch.setattr(meta_role, "ensure_meta_role", lambda st, m: meta_role.meta_role_id(m))
+    r1 = server._request_role.set(A)
+    r2 = server._request_identity.set(types.SimpleNamespace(user_id="u1", roles=["role_c"]))
+    try:
+        assert server.named_role(f"role_c,{A}", None) == meta_role.meta_role_id([A, "role_c"])
+        with pytest.raises(PermissionError, match=f"'{B}' is not assigned"):
+            server.named_role(f"{A},{B}", None)
+        with pytest.raises(PermissionError, match="is not a role"):
+            server.named_role(meta_role.meta_role_id([A, "role_c"]), None)
+    finally:
+        server._request_role.reset(r1)
+        server._request_identity.reset(r2)
+
+
+def test_a_local_stdio_mcp_client_names_a_set_at_will(monkeypatch):
+    from provisa.api.mcp import server
+    import provisa.security.meta_role as meta_role
+
+    monkeypatch.setattr(meta_role, "ensure_meta_role", lambda st, m: meta_role.meta_role_id(m))
+    assert server.named_role(f"{B},{A}", None) == meta_role.meta_role_id([A, B])
+    with pytest.raises(PermissionError, match="is not a role"):
+        server.named_role(meta_role.meta_role_id([A, B]), None)

@@ -242,7 +242,7 @@ def _pgwire(cred: Credential, secret: str) -> str:
     import io
 
     from provisa.core.egress import CountingWriter
-    from provisa.pgwire.server import ProvisaHandler
+    from provisa.pgwire.server import ProvisaHandler, ProvisaSession
 
     errors: list[tuple] = []
     handler = object.__new__(ProvisaHandler)
@@ -256,7 +256,7 @@ def _pgwire(cred: Credential, secret: str) -> str:
     handler.send_authentication_ok = lambda: None
     handler.handle_post_auth = lambda ctx: None  # noqa: ARG005 — signature match
 
-    session = SimpleNamespace()
+    session = ProvisaSession()
     ctx = cast(Any, SimpleNamespace(params={"user": cred.principal}, session=session))
     with patch("provisa.pgwire.server.state", _state()):
         handler.handle_md5_password(ctx, secret.encode("utf-8") + b"\x00")

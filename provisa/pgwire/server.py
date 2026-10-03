@@ -72,6 +72,33 @@ _tracer = _get_tracer(__name__)
 # No second thread, no hop to a shared loop: two connections govern and execute in parallel.
 
 
+def requested_role(params: dict) -> str | None:  # REQ-1620
+    """The role, or comma-separated set of held roles, a connection names: ``provisa.role`` as a
+    startup parameter, or set in ``options`` (``-c provisa.role=a,b``). Naming it both ways with
+    different values is refused."""
+    import shlex
+
+    named: set[str] = set()
+    if params.get("provisa.role"):
+        named.add(params["provisa.role"])
+    tokens = shlex.split(params.get("options") or "")
+    for i, tok in enumerate(tokens):
+        if tok == "-c" and i + 1 < len(tokens):
+            setting = tokens[i + 1]
+        elif tok.startswith("-c"):
+            setting = tok[2:]
+        elif tok.startswith("--"):
+            setting = tok[2:]
+        else:
+            continue
+        key, sep, value = setting.partition("=")
+        if sep and key.strip() == "provisa.role" and value.strip():
+            named.add(value.strip())
+    if len(named) > 1:
+        raise PermissionError(f"the connection names two roles to act as: {sorted(named)}")
+    return named.pop() if named else None
+
+
 async def _run_with_org(org_id: str | None, coro):  # REQ-1266
     """Await ``coro`` with ``current_org`` bound to ``org_id``.
 
@@ -758,6 +785,10 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
     def __init__(self) -> None:
         super().__init__()
         self.role_id: str | None = None
+        # REQ-1620: the held roles this session acts as when it named several; ``role_id`` is then
+        # their meta-role, made again in this session's org before each statement (a model rebuild
+        # drops it).
+        self.role_set: tuple[str, ...] | None = None
         # REQ-074/REQ-1386: the authenticated principal this session acts as — the audit log's
         # user_id. Set wherever role_id is set (trust mode: the startup packet's user; secured
         # modes: the validated identity), so an authenticated session always has both.
@@ -864,14 +895,34 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # governance/execute coroutines run on this thread's loop and are bound again explicitly via
         # _run_with_org. None → default runtime (no bind).
         if self.org_id is None:
+            self._ensure_acting_role()
             return fn()
         from provisa.core.request_context import reset_current_org, set_current_org
 
         token = set_current_org(self.org_id)
         try:
+            self._ensure_acting_role()
             return fn()
         finally:
             reset_current_org(token)
+
+    def act_as(self, role_id: str, members: tuple[str, ...]) -> None:
+        """Act as ``role_id``; ``members`` are the held roles it stands for (one: itself)."""
+        self.role_id = role_id
+        self.role_set = members if len(members) > 1 else None
+
+    def bind_role(self) -> None:
+        """Make this session's role current in its org before a statement that does not pass
+        through execute_sql/describe_sql (COPY)."""
+        self._with_org(lambda: None)
+
+    def _ensure_acting_role(self) -> None:
+        if self.role_set is None:
+            return
+        from provisa.api.app import state
+        from provisa.security.meta_role import ensure_meta_role
+
+        self.role_id = ensure_meta_role(state, list(self.role_set))
 
     def _execute_sql_bound(
         self, sql: str, params=None, result_fmt=None, *, prepared=None, shape=None
@@ -1540,7 +1591,23 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         if provider == "none" or not _state.auth_middleware_active:
             # Trust mode: username maps directly to role_id, password ignored. The startup
             # packet's user is the only principal there is — it is what the audit row records.
-            ctx.session.role_id = username  # type: ignore[attr-defined]
+            # REQ-1620: a comma-separated user names a set of roles, which acts as their
+            # meta-role — the trust-mode counterpart of naming them in x-provisa-role.
+            from provisa.security.meta_role import meta_role_id, refuse_named_meta_role
+
+            named = sorted({r.strip() for r in username.split(",") if r.strip()})
+            try:
+                if requested_role(ctx.params):
+                    raise PermissionError(
+                        "without authentication the connection's user names the roles to act "
+                        "as; name them there, not in provisa.role"
+                    )
+                refuse_named_meta_role(named)
+            except PermissionError as exc:
+                self._send_pg_error("FATAL", "28000", str(exc))
+                return
+            acting = named[0] if len(named) == 1 else meta_role_id(named)
+            ctx.session.act_as(acting, tuple(named))  # type: ignore[attr-defined]
             ctx.session.user_id = username  # type: ignore[attr-defined]
             self.send_authentication_ok()
             self.handle_post_auth(ctx)
@@ -1825,7 +1892,37 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 return
         # REQ-1452: attribute this connection's writes from here on.
         self._meter.bind_org(getattr(ctx.session, "org_id", None))
-        ctx.session.role_id = role  # type: ignore[attr-defined]
+        members: tuple[str, ...] = (role,)
+        try:
+            requested = requested_role(ctx.params)
+        except PermissionError as exc:
+            self._send_pg_error("FATAL", "28000", str(exc))
+            return
+        if requested:
+            # REQ-1620: the connection may name any role, or set of roles, its identity holds; a
+            # set acts as its meta-role, built in this session's org.
+            from provisa.auth.role_mapping import resolve_assignments
+            from provisa.security.meta_role import acting_roles, resolve_requested_role
+
+            permitted = {a.role_id for a in resolve_assignments(identity)} | {role}
+            org_token = None
+            org_id = getattr(ctx.session, "org_id", None)
+            if org_id is not None:
+                from provisa.core.request_context import set_current_org
+
+                org_token = set_current_org(org_id)
+            try:
+                role = resolve_requested_role(_state, permitted, requested)
+                members = acting_roles(_state, role)
+            except PermissionError as exc:
+                self._send_pg_error("FATAL", "28000", str(exc))
+                return
+            finally:
+                if org_token is not None:
+                    from provisa.core.request_context import reset_current_org
+
+                    reset_current_org(org_token)
+        ctx.session.act_as(role, members)  # type: ignore[attr-defined]
         ctx.session.user_id = identity.user_id  # type: ignore[attr-defined]  # REQ-074
         self.send_authentication_ok()
         self.handle_post_auth(ctx)
@@ -2059,6 +2156,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 from provisa.pgwire.copy_handler import CopyHandler
 
                 try:
+                    ctx.session.bind_role()  # type: ignore[attr-defined]
                     nrows = CopyHandler(self).handle(ctx, stmt)  # type: ignore[arg-type]
                     self.send_command_complete(f"COPY {nrows}\x00")
                 except PermissionError as exc:

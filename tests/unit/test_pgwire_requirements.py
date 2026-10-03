@@ -23,6 +23,13 @@ from tests.platform_plane import platform_db
 # ---------------------------------------------------------------------------
 
 
+def _session():
+    """A real session: authentication sets the role through it (act_as)."""
+    from provisa.pgwire.server import ProvisaSession
+
+    return ProvisaSession()
+
+
 def _make_role(caps: list[str]) -> dict:
     return {"capabilities": caps, "domain_access": ["domain1"]}
 
@@ -169,7 +176,7 @@ class TestReq529AuthType3:
 
         ctx = MagicMock()
         ctx.params = {"user": "analyst"}
-        ctx.session = MagicMock()
+        ctx.session = _session()
 
         handler = object.__new__(ProvisaHandler)
         handler.wfile = MagicMock()
@@ -199,7 +206,7 @@ class TestReq529AuthType3:
 
         ctx = MagicMock()
         ctx.params = {"user": "analyst"}
-        ctx.session = MagicMock()
+        ctx.session = _session()
 
         handler = object.__new__(ProvisaHandler)
         written = bytearray()
@@ -277,7 +284,7 @@ class TestReq890OidcAuth:
 
         ctx = MagicMock()
         ctx.params = {"user": "alice"}
-        ctx.session = MagicMock()
+        ctx.session = _session()
 
         class _FakeProvider:
             async def validate_token(self, token):
@@ -306,7 +313,7 @@ class TestReq890OidcAuth:
         # REQ-890: an invalid token yields a FATAL 28P01 and no authentication.
         ctx = MagicMock()
         ctx.params = {"user": "alice"}
-        ctx.session = MagicMock()
+        ctx.session = _session()
 
         class _FakeProvider:
             async def validate_token(self, token):
@@ -353,7 +360,7 @@ class TestPgwireBasicAndPat:
     def _ctx(self, user: str = "alice"):
         ctx = MagicMock()
         ctx.params = {"user": user}
-        ctx.session = MagicMock()
+        ctx.session = _session()
         return ctx
 
     def _state(self, auth_config):
@@ -1364,3 +1371,130 @@ class TestReq616DdlCapabilityRequired:
         assert "_COPY_RE.match(stmt)" in loop
         assert "ddl_handler" not in loop and "run_ctas" not in loop
         assert "_DDL_RE" not in loop and "_CTAS_RE" not in loop
+
+
+class TestRoleSetOnPgwire:
+    """REQ-1620: a connection names a role, or a set of held roles acting as their meta-role."""
+
+    @pytest.mark.parametrize(
+        "params",
+        [
+            {"provisa.role": "analyst,auditor"},
+            {"options": "-c provisa.role=analyst,auditor"},
+            {"options": "-cprovisa.role=analyst,auditor"},
+            {"options": "--provisa.role=analyst,auditor"},
+        ],
+    )
+    def test_the_role_is_named_by_parameter_or_options(self, params):
+        from provisa.pgwire.server import requested_role
+
+        assert requested_role(params) == "analyst,auditor"
+
+    def test_naming_two_different_roles_is_refused(self):
+        from provisa.pgwire.server import requested_role
+
+        with pytest.raises(PermissionError, match="two roles"):
+            requested_role({"provisa.role": "analyst", "options": "-c provisa.role=auditor"})
+
+    def test_trust_mode_user_names_a_set(self):
+        from provisa.pgwire.server import ProvisaHandler
+
+        ctx = MagicMock()
+        ctx.params = {"user": "auditor,analyst"}
+        ctx.session = _session()
+        handler = object.__new__(ProvisaHandler)
+        handler.wfile = MagicMock()
+        handler.send_authentication_ok = MagicMock()
+        handler.handle_post_auth = MagicMock()
+        fake_state = MagicMock()
+        fake_state.multitenancy = False
+        fake_state.auth_config = {"provider": "none"}
+        fake_state.auth_middleware_active = False
+        with patch("provisa.pgwire.server.state", fake_state):
+            handler.handle_md5_password(ctx, b"x\x00")
+        assert ctx.session.role_id == "meta:analyst+auditor"
+        assert ctx.session.role_set == ("analyst", "auditor")
+
+    def test_trust_mode_refuses_a_named_meta_role(self):
+        from provisa.pgwire.server import ProvisaHandler
+
+        ctx = MagicMock()
+        ctx.params = {"user": "meta:analyst+auditor"}
+        ctx.session = _session()
+        handler = object.__new__(ProvisaHandler)
+        handler.wfile = MagicMock()
+        handler.send_authentication_ok = MagicMock()
+        handler._send_pg_error = MagicMock()
+        fake_state = MagicMock()
+        fake_state.multitenancy = False
+        fake_state.auth_config = {"provider": "none"}
+        fake_state.auth_middleware_active = False
+        with patch("provisa.pgwire.server.state", fake_state):
+            handler.handle_md5_password(ctx, b"x\x00")
+        handler.send_authentication_ok.assert_not_called()
+        assert handler._send_pg_error.call_args[0][:2] == ("FATAL", "28000")
+
+    def _authenticate(self, params):
+        from provisa.auth.models import AuthIdentity
+
+        class _FakeProvider:
+            async def validate_token(self, token):
+                return AuthIdentity(
+                    user_id="alice",
+                    email=None,
+                    display_name="alice",
+                    roles=["analyst", "auditor"],
+                    raw_claims={"sub": "alice"},
+                )
+
+        ctx = MagicMock()
+        ctx.params = {"user": "alice", **params}
+        ctx.session = _session()
+        suite = TestReq890OidcAuth()
+        handler = suite._handler()
+        with (
+            patch("provisa.pgwire.server.state", suite._state()),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=_FakeProvider()),
+            patch(
+                "provisa.security.meta_role.ensure_meta_role",
+                side_effect=lambda st, members: "meta:" + "+".join(members),
+            ),
+            patch(
+                "provisa.security.meta_role.acting_roles",
+                side_effect=lambda st, r: (
+                    tuple(r[5:].split("+")) if r.startswith("meta:") else (r,)
+                ),
+            ),
+        ):
+            handler.handle_md5_password(ctx, b"valid-token\x00")
+        return ctx, handler
+
+    def test_a_held_set_acts_as_its_meta_role(self, pgwire_loop):
+        ctx, handler = self._authenticate({"options": "-c provisa.role=auditor,analyst"})
+        handler._send_pg_error.assert_not_called()
+        assert ctx.session.role_id == "meta:analyst+auditor"
+        assert ctx.session.role_set == ("analyst", "auditor")
+
+    def test_a_set_with_a_role_not_held_is_refused_by_name(self, pgwire_loop):
+        ctx, handler = self._authenticate({"provisa.role": "analyst,org_admin"})
+        handler.send_authentication_ok.assert_not_called()
+        assert handler._send_pg_error.call_args[0][:2] == ("FATAL", "28000")
+        assert "'org_admin'" in handler._send_pg_error.call_args[0][2]
+
+    def test_the_meta_role_is_made_again_in_the_sessions_org_before_each_statement(self):
+        from provisa.core.request_context import current_org
+
+        session = _session()
+        session.org_id = "acme"
+        session.act_as("meta:analyst+auditor", ("analyst", "auditor"))
+        seen = []
+
+        def _ensure(st, members):
+            seen.append((current_org.get(), members))
+            return "meta:" + "+".join(members)
+
+        with patch("provisa.security.meta_role.ensure_meta_role", side_effect=_ensure):
+            session.bind_role()
+            session.bind_role()
+        assert seen == [("acme", ["analyst", "auditor"])] * 2
+        assert session.role_id == "meta:analyst+auditor"

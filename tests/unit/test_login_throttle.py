@@ -292,7 +292,7 @@ def pgwire_loop():
 
 def _pgwire_attempt(auth_config: dict, password: str) -> list[tuple]:
     """One pgwire startup-packet attempt; returns the FATAL frames the handler wrote."""
-    from provisa.pgwire.server import ProvisaHandler
+    from provisa.pgwire.server import ProvisaHandler, ProvisaSession
 
     errors: list[tuple] = []
     handler = object.__new__(ProvisaHandler)
@@ -305,9 +305,7 @@ def _pgwire_attempt(auth_config: dict, password: str) -> list[tuple]:
     handler._meter = cast(Any, SimpleNamespace(bind_org=lambda _org_id: None))
     handler.wfile = handler._meter
     handler.handle_post_auth = lambda ctx: None  # noqa: ARG005 — signature match
-    ctx = cast(
-        Any, SimpleNamespace(params={"user": _USERNAME}, session=SimpleNamespace(org_id=None))
-    )
+    ctx = cast(Any, SimpleNamespace(params={"user": _USERNAME}, session=ProvisaSession()))
     with patch("provisa.pgwire.server.state", _state(auth_config)):
         handler.handle_md5_password(ctx, password.encode("utf-8") + b"\x00")
     return errors
