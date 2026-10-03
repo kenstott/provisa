@@ -35,6 +35,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from provisa.compiler.compiled_query_cache import CompiledQueryCache
+from tests.integration.conftest import no_replica_routes
 
 grpc = pytest.importorskip("grpc")
 grpc_aio = pytest.importorskip("grpc.aio")
@@ -159,7 +160,7 @@ class TestGrpcServerStarts:
         # MagicMock scaffolds the struct fields needed for server startup.
         pb2_path, pb2_grpc_path = compiled_proto_paths
 
-        state = MagicMock()
+        state = no_replica_routes(MagicMock())
         # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
         # server behind the multitenancy org gate. Name the deployment shape explicitly.
         state.multitenancy = False
@@ -208,7 +209,7 @@ class TestGrpcServerStarts:
         import socket
 
         pb2_path, pb2_grpc_path = compiled_proto_paths
-        state = MagicMock()
+        state = no_replica_routes(MagicMock())
         # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
         # server behind the multitenancy org gate. Name the deployment shape explicitly.
         state.multitenancy = False
@@ -363,7 +364,7 @@ class TestGrpcQueryExecution:
 
         # integration: mock-justified — AppState is not a docker-compose service.
         # MagicMock scaffolds the struct fields; the real data path (source_pool + PG) is live.
-        state = MagicMock()
+        state = no_replica_routes(MagicMock())
         # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
         # server behind the multitenancy org gate. Name the deployment shape explicitly.
         state.multitenancy = False
@@ -391,7 +392,9 @@ class TestGrpcQueryExecution:
         state.schemas = {"admin": schema}
         state.contexts = {"admin": ctx}
         state.rls_contexts = {"admin": RLSContext.empty()}
-        state.roles = {"admin": {"id": "admin", "capabilities": ["full_results"]}}
+        state.roles = {
+            "admin": {"id": "admin", "capabilities": ["full_results"], "domain_access": ["*"]}
+        }
         state.source_pools = source_pool
         state.source_types = {"test-pg": "postgresql"}
         state.source_dialects = {"test-pg": "postgres"}
@@ -521,7 +524,7 @@ class TestGrpcQueryExecution:
         pb2_mock.UnknownType.DESCRIPTOR.fields = []
         pb2_grpc_mock = MagicMock()
 
-        state = MagicMock()
+        state = no_replica_routes(MagicMock())
         # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
         # server behind the multitenancy org gate. Name the deployment shape explicitly.
         state.multitenancy = False
@@ -602,7 +605,7 @@ class TestSecuredGrpcRequiresACredential:
 
         # integration: mock-justified — AppState is not a docker-compose service. The auth path
         # under test (interceptor → role derivation → handler) is entirely live.
-        state = MagicMock()
+        state = no_replica_routes(MagicMock())
         state.multitenancy = False
         # REQ-1910: a bare MagicMock attribute is not None, which reads as a control plane to
         # resolve the debug-trace scope from. This stand-in has none: no window, no permitted hint.

@@ -38,6 +38,7 @@ pa = pytest.importorskip("pyarrow")
 flight = pytest.importorskip("pyarrow.flight")
 
 from provisa.api.flight.server import ProvisaFlightServer  # noqa: E402
+from tests.integration.conftest import no_replica_routes  # noqa: E402
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
@@ -68,7 +69,7 @@ def _make_minimal_state():
     """
     from unittest.mock import MagicMock
 
-    state = MagicMock()
+    state = no_replica_routes(MagicMock())
     # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
     # server behind the multitenancy org gate. Name the deployment shape explicitly.
     state.multitenancy = False
@@ -318,7 +319,7 @@ class TestFlightDoGetWithRealData:
         state_placeholder = MagicMock()
         server = ProvisaFlightServer(state_placeholder, location=location)
 
-        state = MagicMock()
+        state = no_replica_routes(MagicMock())
         # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
         # server behind the multitenancy org gate. Name the deployment shape explicitly.
         state.multitenancy = False

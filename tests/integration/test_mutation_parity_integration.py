@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import pytest
 from tests.helpers import ALL_DATA_CAPABILITIES
+from tests.integration.conftest import no_replica_routes
 
 pytestmark = [pytest.mark.integration]
 
@@ -702,7 +703,7 @@ class TestSSESubscriptionEndpoint:
         app = FastAPI()
 
         # Fake state object needed by the endpoint
-        fake_state = MagicMock()
+        fake_state = no_replica_routes(MagicMock())
         fake_state.schemas = {}
         fake_state.contexts = {}
         fake_state.live_engine = None
