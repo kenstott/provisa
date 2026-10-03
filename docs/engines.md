@@ -23,6 +23,31 @@ every input first.
 | `clickhouse` | ClickHouse (embedded chdb) | OLAP federator (REQ-909); the only engine with a Hudi path (REQ-1178) |
 | `clickhouse-server` | ClickHouse (server or cloud) | Same runtime as above, URL-driven |
 
+### Extensions in your own Postgres
+
+With the `pg` engine pointed at a Postgres you run, the extensions it federates through
+(`postgres_fdw`, `file_fdw`, `pg_duckdb`, `sqlite_fdw`, `mysql_fdw`) have to be installed in that
+server. `provisa pg-ext install` stages the bundled builds into it (REQ-1873):
+
+```bash
+pip install provisa-pg-ext
+provisa pg-ext install --docker my-postgres        # or --local, for the pg_config on PATH
+docker restart my-postgres                         # pg_duckdb loads only at server start
+provisa pg-ext install --docker my-postgres --create
+```
+
+The first run reads the server's PostgreSQL major and platform from the server itself, checks
+every file against the bundle's checksums, copies the files into `pg_config --pkglibdir` and
+`--sharedir`, and adds `pg_duckdb` to `shared_preload_libraries` without removing anything already
+there. It restarts nothing. The `--create` run creates each extension and reports each one; an
+extension whose system library is missing on the server (`sqlite_fdw` needs libsqlite3,
+`mysql_fdw` needs the MySQL client library) is reported by name with the reason.
+
+The bundles are built for **PostgreSQL 16 only**, on linux-x64 and darwin-arm64. Any other major
+or platform is refused before anything is written, and the message lists the bundles that exist.
+A managed service without filesystem access (Amazon RDS, Cloud SQL) cannot take them; use the
+extensions the service offers.
+
 ## Warehouse engines
 
 Partial federators: the warehouse executes, and sources it cannot reach natively land into it

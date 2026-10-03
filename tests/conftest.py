@@ -218,6 +218,8 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_ldap": ["openldap"],
     # REQ-1265: the identity provider the SAML auth provider signs in through.
     "requires_saml_idp": ["saml-idp"],
+    # REQ-1873: an operator's own Postgres, one with a major a bundle is built for and one without.
+    "requires_pg_ext_targets": ["pg-ext-target-16", "pg-ext-target-15"],
 }
 # zaychik is the Arrow Flight terminal the in-process app connects to for Flight/CTAS
 # redirects; without it Flight-dependent integration tests fail with connection-refused.
