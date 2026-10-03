@@ -66,7 +66,7 @@ class TestSessionVarsFor:
 
     def test_unbound_means_null_in_the_predicate(self):
         sql = _resolve_session_settings(
-            "region = current_setting('provisa.region')", session_vars_for(None)
+            "region = current_setting('provisa.region')", session_vars_for(None), "postgres"
         )
         assert sql == "region = NULL"
 
@@ -74,7 +74,7 @@ class TestSessionVarsFor:
         token = set_session_vars({"user_id": "o'neil"})
         try:
             sql = _resolve_session_settings(
-                "id = current_setting('provisa.user_id')", session_vars_for(None)
+                "id = current_setting('provisa.user_id')", session_vars_for(None), "postgres"
             )
         finally:
             reset_session_vars(token)

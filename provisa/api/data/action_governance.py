@@ -225,7 +225,9 @@ async def govern_action_rows(
     sql = build_values_cte_sql(governed, rel, _Rows(names, rows))
     from provisa.core.request_context import session_vars_for
 
-    sql = _resolve_session_settings(sql, session_vars_for(state.roles.get(role_id)))  # REQ-1682
+    sql = _resolve_session_settings(
+        sql, session_vars_for(state.roles.get(role_id)), "postgres"
+    )  # REQ-1682
 
     engine = state.federation_engine
     started = time.monotonic()
