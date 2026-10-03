@@ -53,7 +53,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, case, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from provisa.core import config_stamp
@@ -181,6 +181,9 @@ REASON_REFRESH = "refresh"
 REASON_OPERATOR = "operator"
 REASON_READ = "read"
 REASON_WRITE = "write"  # REQ-1924: the table was just written through Provisa
+#: The table's rows changed at its source. A build already running when one of these arrives
+#: may have read past the change, so the replica is built again once that build completes.
+CHANGE_REASONS = (REASON_REFRESH, REASON_WRITE)
 REASONS = (
     REASON_MODEL,
     REASON_DEFINITION,
@@ -378,6 +381,15 @@ async def request_build(
     )
     if (result.rowcount or 0) > 0:
         return True
+    if reason in CHANGE_REASONS:
+        # The rows changed while a build is running: the build may have read past the change.
+        # The request is kept on the row, and :func:`record_completed` leaves the replica
+        # requested (a request made after the build started) instead of idle.
+        await conn.execute_core(
+            update(replica_state)
+            .where(_is(key), _t.retired_at.is_(None), _t.build_state == BUILDING)
+            .values(requested_at=at, requested_reason=reason)
+        )
     if (await conn.execute_core(select(_t.build_state).where(_is(key)))).fetchone() is not None:
         return False  # requested, building, failed too recently to ask again, or retired
     try:
@@ -504,7 +516,20 @@ async def record_completed(
             update(replica_state)
             .where(_is(key))
             .values(
-                build_state=IDLE,
+                # A change reported after this build started (request_build) is not in it for
+                # certain: the replica is served as built and is requested again.
+                build_state=case(
+                    (
+                        and_(
+                            _t.requested_reason.in_(CHANGE_REASONS),
+                            _t.requested_at.is_not(None),
+                            _t.build_started_at.is_not(None),
+                            _t.requested_at > _t.build_started_at,
+                        ),
+                        REQUESTED,
+                    ),
+                    else_=IDLE,
+                ),
                 build_holder=None,
                 rows_copied=rows_copied,
                 build_method=method,
