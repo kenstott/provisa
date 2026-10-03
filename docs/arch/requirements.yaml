@@ -48488,12 +48488,21 @@
     value; it is not computed from the real value and cannot be turned back into it. The mask names the
     kind of fake value to show (a person''s name, an email address, a phone number, a street address,
     an identifier and so on), and the surrogate is a realistic generated value of that kind, so masked
-    data keeps the look of the real data. The surrogates are kept in a table of the state store (REQ-1920)
-    that holds, for each real value met, a one-way transform of the value (a hash, or any reasonable one-way
-    transform with few collisions) and the surrogate generated for it, and never the real value itself,
-    so no personal data is kept in the state store: when a value is met again its surrogate is reused,
-    and a value met for the first time is given a new one. Columns joined by a relationship share one
-    set of surrogates, so a join between two masked columns still matches.'
+    data keeps the look of the real data. [SUPERSEDED by REQ-1494 amendment, 2026-10-03 -- the mapping
+    is platform-wide, durable platform data in the platform''s shared store, not per-org state. Kept here
+    for history; do not implement against it.] The surrogates are kept in a table of the state store (REQ-1920)
+    [END SUPERSEDED BLOCK] that holds, for each real value met, a one-way transform of the value (a hash,
+    or any reasonable one-way transform with few collisions) and the surrogate generated for it, and never
+    the real value itself, so no personal data is kept in the state store: when a value is met again its
+    surrogate is reused, and a value met for the first time is given a new one. Columns joined by a relationship
+    share one set of surrogates, so a join between two masked columns still matches. (Amended 2026-10-03,
+    MASKED DATA IS A PLATFORM CONCERN: ONE MAPPING FOR THE WHOLE PLATFORM:) The mapping from a value to
+    its surrogate, and the key of its one-way transform, are platform-wide. The same real value shows
+    the same surrogate in every org and every region of the deployment. The mapping is therefore held
+    in the platform''s shared store, not in a per-org or per-region state store, and it is durable platform
+    data: it is not state that can be discarded and rebuilt (REQ-1920), since losing it would change every
+    surrogate. The transform is keyed, and the key is a platform key. Only transformed values and generated
+    surrogates cross regions, never real values (REQ-1921, REQ-1922).'
   use_case: A data scientist, or an LLM acting under its own identity, works on masked data that behaves
     like the real data (joins match, counts are right, values look real) without any personal data reaching
     them. An analyst joins a masked customer table to a masked orders table and gets the row counts the
@@ -48530,9 +48539,12 @@
     '
   related_reqs:
   - REQ-087
-  - REQ-971
   - REQ-531
+  - REQ-971
+  - REQ-1327
   - REQ-1920
+  - REQ-1921
+  - REQ-1922
   target: 2026-Q4
   notes: 'Reopened and rewritten 2026-10-03 by the maintainer, who called it very important and gave the
     design: a table of values and their masked values, kept in the state store, reused whenever a value
@@ -48545,7 +48557,10 @@
     of the real value (maintainer), so it holds no personal data; for values with few possibilities (a
     phone number, a national id) an unkeyed hash can be reversed by trying every value, so the hash should
     be keyed with a secret. The maintainer''s model for the generated values is a typed fake-data generator
-    such as the faker library: a stable fake value of a named fake type.'
+    such as the faker library: a stable fake value of a named fake type. OPEN DESIGN NOTES (2026-10-03,
+    being designed, not yet ruled): (a) custody of the platform key under the rule that platform_admin
+    has no data access (REQ-1327); (b) that two orgs holding the same real value see the same surrogate,
+    which follows from one platform-wide mapping.'
 - id: REQ-1495
   status: rejected
   group: 13. Multi-Tenancy & Organizations
