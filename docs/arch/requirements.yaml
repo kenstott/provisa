@@ -47813,7 +47813,10 @@
     is governance and travels. The declaration is default-deny -- a key the connector does not name is
     a binding and stays behind -- so a connector added later cannot leak by omission, and a connector
     that declares nothing carries no mapping at all. The same classification test enumerates the connector
-    registry and fails on a connector whose mapping keys carry no declaration.'
+    registry and fails on a connector whose mapping keys carry no declaration. (Amended 2026-10-03, API
+    ENDPOINT CANDIDATES ARE GONE:) The list of runtime and evidence tables above names `api_endpoint_candidates`.
+    That table no longer exists: the candidate and accept path for API endpoints is removed, since a remote
+    table or operation is registered one at a time by a steward (REQ-1924). The list is otherwise unchanged.'
   use_case: A platform team adds a table to the org schema and learns from a failing test that they must
     say whether it belongs to an environment copy, instead of discovering months later that it carried
     credentials into a dev environment.
