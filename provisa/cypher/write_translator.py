@@ -297,7 +297,9 @@ def _write_value(val: Any, col_type: str | None = None) -> str:
         except ValueError:
             pass
         try:
-            return repr(float(val))
+            # Through sql_literal so a non-finite spelling ("nan"/"inf") is written as the
+            # dialect's literal or refused by name — never as a bare, unquoted identifier.
+            return sql_literal(float(val), "postgres")
         except ValueError:
             pass
     return sql_literal(val, "postgres")
