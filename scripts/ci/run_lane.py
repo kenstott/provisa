@@ -16,6 +16,7 @@ runner and finishes in reasonable time. A shard is every Nth test file of the la
 sorted order, so the shards partition the lane: each file runs in exactly one shard.
 
 Usage: run_lane.py <lane> [--shard K/N] [extra pytest args...]
+       run_lane.py --matrix <all | lane,lane,...>   (the CI suite matrix, as JSON)
 """
 
 from __future__ import annotations
@@ -71,6 +72,44 @@ LANES: dict[str, Lane] = {
 }
 
 
+# The suite job's matrix: lane -> (file shards, timeout minutes). cluster and warehouse are their
+# own jobs, not matrix entries.
+SUITE: dict[str, tuple[int, int]] = {
+    "core": (6, 150),
+    "app": (3, 120),
+    "hive_s3": (1, 90),
+    "kafka": (1, 90),
+    "neo4j": (1, 90),
+    "datastores": (1, 90),
+    "isolated": (1, 90),
+    "e2e": (1, 120),
+}
+
+
+def matrix(selection: str) -> dict:
+    """The suite matrix for ``selection``: "all", or comma-separated lane names. A name that is
+    no lane is refused, so a typo cannot dispatch an empty run that reports green."""
+    names = [n.strip() for n in selection.split(",") if n.strip()]
+    if names == ["all"]:
+        names = list(SUITE)
+    unknown = [n for n in names if n not in LANES]
+    if unknown:
+        raise ValueError(f"no such lane: {', '.join(unknown)}; lanes: {', '.join(sorted(LANES))}")
+    include = []
+    for name in names:
+        if name not in SUITE:
+            continue
+        shards, timeout = SUITE[name]
+        if shards == 1:
+            include.append({"lane": name, "shard": "", "timeout": timeout})
+        else:
+            include += [
+                {"lane": name, "shard": f"{k}/{shards}", "timeout": timeout}
+                for k in range(1, shards + 1)
+            ]
+    return {"include": include}
+
+
 def test_files(paths: tuple[str, ...]) -> list[str]:
     """Every test module under ``paths``, sorted (pytest's own file patterns)."""
     found: set[str] = set()
@@ -106,6 +145,11 @@ def command(lane_name: str, shard_spec: str | None, extra: list[str]) -> list[st
 
 
 def main(argv: list[str]) -> int:
+    if argv[:1] == ["--matrix"]:
+        import json
+
+        print(json.dumps(matrix(argv[1] if len(argv) > 1 else "all")))
+        return 0
     parser = argparse.ArgumentParser()
     parser.add_argument("lane", choices=sorted(LANES))
     parser.add_argument("--shard", help="K/N: the Kth of N file shards of the lane")

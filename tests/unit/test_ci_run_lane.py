@@ -78,3 +78,27 @@ def test_a_shard_runs_only_its_files():
     files = run_lane.shard(run_lane.test_files(("tests/integration", "tests/steps")), 2, 6)
     assert cmd[3 : 3 + len(files)] == files
     assert "--durations=50" in cmd
+
+
+def test_all_is_every_suite_lane_with_its_shards():
+    include = _runner().matrix("all")["include"]
+    assert [m["shard"] for m in include if m["lane"] == "core"] == [f"{k}/6" for k in range(1, 7)]
+    assert [m["shard"] for m in include if m["lane"] == "app"] == ["1/3", "2/3", "3/3"]
+    assert {"lane": "kafka", "shard": "", "timeout": 90} in include
+    assert not [m for m in include if m["lane"] in ("cluster", "warehouse")]
+
+
+def test_a_selection_runs_only_those_lanes():
+    include = _runner().matrix("kafka, app")["include"]
+    assert sorted({m["lane"] for m in include}) == ["app", "kafka"]
+
+
+def test_an_unknown_lane_is_refused():
+    with pytest.raises(ValueError, match="no such lane: kafak"):
+        _runner().matrix("kafak")
+
+
+def test_the_workflow_takes_its_matrix_from_the_runner():
+    workflow = (REPO / ".github" / "workflows" / "integration-suite.yml").read_text()
+    assert "run_lane.py --matrix" in workflow
+    assert "fromJSON(needs.plan.outputs.matrix)" in workflow

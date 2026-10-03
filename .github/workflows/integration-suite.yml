@@ -29,6 +29,15 @@ on:
         description: "Branch or commit to test"
         required: false
         default: ""
+      lanes:
+        description: "Lanes: all, or comma-separated (core, app, hive_s3, kafka, neo4j, datastores, isolated, e2e, cluster)"
+        required: false
+        default: "all"
+      include_warehouse:
+        description: "Also run the warehouse lane (live cloud warehouses)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -42,30 +51,39 @@ env:
   PYTEST_DOCKER_KEEP: ""
 
 jobs:
+  # Which lanes this run tests: every one on a push, the dispatcher's choice on demand, none of the
+  # suite on the nightly (warehouse-only) schedule. The matrix comes from scripts/ci/run_lane.py,
+  # which refuses an unknown lane name rather than dispatching an empty run.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      suite: ${{ steps.plan.outputs.suite }}
+      cluster: ${{ steps.plan.outputs.cluster }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - id: plan
+        env:
+          LANES: ${{ github.event_name == 'workflow_dispatch' && inputs.lanes || 'all' }}
+        run: |
+          matrix=$(python3 scripts/ci/run_lane.py --matrix "$LANES")
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          suite=$(python3 -c "import json,sys; print('true' if json.loads(sys.argv[1])['include'] else 'false')" "$matrix")
+          echo "suite=$suite" >> "$GITHUB_OUTPUT"
+          case ",${LANES// /}," in *,all,*|*,cluster,*) c=true;; *) c=false;; esac
+          echo "cluster=$c" >> "$GITHUB_OUTPUT"
+
   suite:
     name: ${{ matrix.lane }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }}
-    if: github.event_name != 'schedule'
+    needs: plan
+    if: github.event_name != 'schedule' && needs.plan.outputs.suite == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - { lane: core, shard: "1/6", timeout: 150 }
-          - { lane: core, shard: "2/6", timeout: 150 }
-          - { lane: core, shard: "3/6", timeout: 150 }
-          - { lane: core, shard: "4/6", timeout: 150 }
-          - { lane: core, shard: "5/6", timeout: 150 }
-          - { lane: core, shard: "6/6", timeout: 150 }
-          - { lane: app, shard: "1/3", timeout: 120 }
-          - { lane: app, shard: "2/3", timeout: 120 }
-          - { lane: app, shard: "3/3", timeout: 120 }
-          - { lane: hive_s3, timeout: 90 }
-          - { lane: kafka, timeout: 90 }
-          - { lane: neo4j, timeout: 90 }
-          - { lane: datastores, timeout: 90 }
-          - { lane: isolated, timeout: 90 }
-          - { lane: e2e, timeout: 120 }
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -155,7 +173,8 @@ jobs:
 
   cluster:
     name: cluster (helm on minikube)
-    if: github.event_name != 'schedule'
+    needs: plan
+    if: github.event_name != 'schedule' && needs.plan.outputs.cluster == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -191,7 +210,7 @@ jobs:
 
   warehouse:
     name: warehouse (live cloud warehouses)
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.include_warehouse)
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -281,7 +300,7 @@ jobs:
 
   report:
     name: results by lane
-    needs: [suite, cluster, warehouse]
+    needs: [plan, suite, cluster, warehouse]
     if: always()
     runs-on: ubuntu-latest
     steps:
