@@ -248,7 +248,8 @@ def _make_app(admin_db: Database, tenant_db: Database) -> FastAPI:
 
 
 def _create(client, token: str, body: dict, env: str | None = None):
-    headers = {"Authorization": f"Bearer {token}"}
+    # REQ-1235: the request names its org; alice, the only caller here, belongs to acme.
+    headers = {"Authorization": f"Bearer {token}", "x-org-provisa": "acme"}
     if env is not None:
         headers["x-provisa-env"] = env
     return client.post("/admin/invites/", json=body, headers=headers)

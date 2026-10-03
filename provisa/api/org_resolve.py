@@ -41,6 +41,26 @@ class OrgResolutionError(Exception):
     """Org could not be resolved for an authenticated principal — must fail the session."""
 
 
+# The database name a pgwire client connects to when it names no org: the one the catalog shows.
+DEFAULT_DATABASE = "provisa"
+
+
+def org_named_by_host_or_database(
+    host_org: str | None, database: str | None
+) -> str | None:  # REQ-1235
+    """The org a wire connection names by its TLS hostname or its database name.
+
+    The database name names an org unless it is empty or the default ``provisa``. When both name
+    one and they differ, the connection is refused, by name: neither is taken over the other.
+    """
+    db_org = database if database and database != DEFAULT_DATABASE else None
+    if host_org is not None and db_org is not None and host_org != db_org:
+        raise OrgResolutionError(
+            f"the hostname names org {host_org!r} and the database name names org {db_org!r}"
+        )
+    return host_org if host_org is not None else db_org
+
+
 async def resolve_session_org(
     state: Any,
     *,

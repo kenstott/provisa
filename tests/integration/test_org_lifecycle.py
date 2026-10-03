@@ -303,6 +303,12 @@ def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _alice_in_acme() -> dict[str, str]:
+    """alice on a tenant-plane request, which names its org (REQ-1235). The /admin/orgs and /auth
+    routes are the platform plane and name none."""
+    return {**_auth("tok-alice"), "x-org-provisa": "acme"}
+
+
 def _rows(sync_engine, schema: str, stmt):
     with sync_engine.begin() as conn:
         conn.execute(text(f"SET search_path TO {schema}"))
@@ -313,7 +319,7 @@ def test_remove_member_clears_both_planes(planes):  # REQ-1305, REQ-1302
     """Offboarding must drop the tenant-plane assignments with the membership: leaving them behind
     means re-adding the person silently restores everything they previously held."""
     with TestClient(_make_app(planes)) as client:
-        resp = client.delete("/admin/orgs/acme/members/bob", headers=_auth("tok-alice"))
+        resp = client.delete("/admin/orgs/acme/members/bob", headers=_alice_in_acme())
     assert resp.status_code == 200, resp.text
 
     assert (
@@ -349,17 +355,16 @@ def test_member_list_names_who_holds_org_admin(planes):  # REQ-1305, REQ-1302, R
     it cannot know which person to show a demote control for, nor which removal REQ-1302 refuses.
     """
     with TestClient(_make_app(planes)) as client:
-        resp = client.get("/admin/orgs/acme/members", headers=_auth("tok-alice"))
+        resp = client.get("/admin/orgs/acme/members", headers=_alice_in_acme())
         assert resp.status_code == 200, resp.text
         by_user = {r["user_id"]: r for r in resp.json()}
         assert by_user["alice"]["is_org_admin"] is True
         assert by_user["bob"]["is_org_admin"] is False
 
         assert (
-            client.post("/admin/orgs/acme/admins/bob", headers=_auth("tok-alice")).status_code
-            == 200
+            client.post("/admin/orgs/acme/admins/bob", headers=_alice_in_acme()).status_code == 200
         )
-        after = client.get("/admin/orgs/acme/members", headers=_auth("tok-alice")).json()
+        after = client.get("/admin/orgs/acme/members", headers=_alice_in_acme()).json()
     assert {r["user_id"] for r in after if r["is_org_admin"]} == {"alice", "bob"}
 
 
@@ -367,7 +372,7 @@ def test_config_export_hands_back_what_deletion_would_destroy(planes):  # REQ-13
     """The download offered before deletion has to actually carry the org's configuration, and it
     is org_admin's own data — a member of another org cannot fetch it."""
     with TestClient(_make_app(planes)) as client:
-        mine = client.get("/admin/orgs/acme/config-export", headers=_auth("tok-alice"))
+        mine = client.get("/admin/orgs/acme/config-export", headers=_alice_in_acme())
         assert mine.status_code == 200, mine.text
         assert mine.headers["content-disposition"] == 'attachment; filename="acme-config.yaml"'
         # A domain that exists only in acme's tenant schema, proving the export was built from
@@ -382,7 +387,7 @@ def test_remove_last_org_admin_is_refused(planes):  # REQ-1302
     """An org with no administrator can never be administered again — the only remaining way to
     act on it is to delete it, which is a different, confirmed act."""
     with TestClient(_make_app(planes)) as client:
-        resp = client.delete("/admin/orgs/acme/members/alice", headers=_auth("tok-alice"))
+        resp = client.delete("/admin/orgs/acme/members/alice", headers=_alice_in_acme())
     assert resp.status_code == 409, resp.text
     assert "last org_admin" in resp.json()["detail"]
     assert _rows(
@@ -396,7 +401,7 @@ def test_remove_last_org_admin_is_refused(planes):  # REQ-1302
 
 def test_grant_then_revoke_org_admin_is_audited(planes):  # REQ-1303, REQ-1308
     with TestClient(_make_app(planes)) as client:
-        granted = client.post("/admin/orgs/acme/admins/bob", headers=_auth("tok-alice"))
+        granted = client.post("/admin/orgs/acme/admins/bob", headers=_alice_in_acme())
         assert granted.status_code == 200, granted.text
         assert _rows(
             planes.sync,
@@ -406,7 +411,7 @@ def test_grant_then_revoke_org_admin_is_audited(planes):  # REQ-1303, REQ-1308
                 user_role_assignments.c.role_id == "org_admin",
             ),
         )
-        revoked = client.delete("/admin/orgs/acme/admins/bob", headers=_auth("tok-alice"))
+        revoked = client.delete("/admin/orgs/acme/admins/bob", headers=_alice_in_acme())
         assert revoked.status_code == 200, revoked.text
 
     assert (
@@ -438,8 +443,8 @@ def test_self_role_change_is_refused(planes):  # REQ-1308
     """A user who can grant themselves a role has no role. The rule is server-side because the UI
     is not the only client."""
     with TestClient(_make_app(planes)) as client:
-        granted = client.post("/admin/orgs/acme/admins/alice", headers=_auth("tok-alice"))
-        revoked = client.delete("/admin/orgs/acme/admins/alice", headers=_auth("tok-alice"))
+        granted = client.post("/admin/orgs/acme/admins/alice", headers=_alice_in_acme())
+        revoked = client.delete("/admin/orgs/acme/admins/alice", headers=_alice_in_acme())
     assert granted.status_code == 403, granted.text
     assert revoked.status_code == 403, revoked.text
     assert "own role" in granted.json()["detail"]
@@ -475,7 +480,7 @@ def test_being_re_added_clears_the_opt_out(planes):  # REQ-1306
     with TestClient(_make_app(planes)) as client:
         assert client.post("/admin/orgs/acme/leave", headers=_auth("tok-bob")).status_code == 200
         added = client.post(
-            "/admin/orgs/acme/members", json={"user_id": "bob"}, headers=_auth("tok-alice")
+            "/admin/orgs/acme/members", json={"user_id": "bob"}, headers=_alice_in_acme()
         )
         assert added.status_code == 200, added.text
     assert (
@@ -490,15 +495,15 @@ def test_being_re_added_clears_the_opt_out(planes):  # REQ-1306
 
 def test_org_deletion_requires_the_typed_confirmation(planes):  # REQ-1300
     with TestClient(_make_app(planes)) as client:
-        bare = client.delete("/admin/orgs/acme", headers=_auth("tok-alice"))
+        bare = client.delete("/admin/orgs/acme", headers=_alice_in_acme())
         assert bare.status_code == 400, bare.text
         assert "permanently" in bare.json()["detail"]
         assert _rows(planes.sync, _ADMIN_SCHEMA, select(orgs.c.id).where(orgs.c.id == "acme"))
 
-        wrong = client.delete("/admin/orgs/acme?confirm=acmee", headers=_auth("tok-alice"))
+        wrong = client.delete("/admin/orgs/acme?confirm=acmee", headers=_alice_in_acme())
         assert wrong.status_code == 400, wrong.text
 
-        done = client.delete("/admin/orgs/acme?confirm=acme", headers=_auth("tok-alice"))
+        done = client.delete("/admin/orgs/acme?confirm=acme", headers=_alice_in_acme())
         assert done.status_code == 200, done.text
 
     assert _rows(planes.sync, _ADMIN_SCHEMA, select(orgs.c.id).where(orgs.c.id == "acme")) == []
@@ -525,7 +530,7 @@ def test_root_org_cannot_be_deleted(planes):  # REQ-1300, REQ-1296
 
 def test_only_a_failed_org_can_be_retried(planes):  # REQ-1315
     with TestClient(_make_app(planes)) as client:
-        ready = client.post("/admin/orgs/acme/retry", headers=_auth("tok-alice"))
+        ready = client.post("/admin/orgs/acme/retry", headers=_alice_in_acme())
         assert ready.status_code == 409, ready.text
         assert planes.provisioned == []
 
@@ -534,7 +539,7 @@ def test_only_a_failed_org_can_be_retried(planes):  # REQ-1315
             conn.execute(
                 orgs.update().where(orgs.c.id == "acme").values(provisioning_state="failed")
             )
-        retried = client.post("/admin/orgs/acme/retry", headers=_auth("tok-alice"))
+        retried = client.post("/admin/orgs/acme/retry", headers=_alice_in_acme())
         assert retried.status_code == 200, retried.text
         assert retried.json()["provisioning_state"] == "provisioning"
 
@@ -553,7 +558,7 @@ def test_a_failed_org_is_deletable_without_confirmation(planes):  # REQ-1300, RE
         conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
         conn.execute(orgs.update().where(orgs.c.id == "acme").values(provisioning_state="failed"))
     with TestClient(_make_app(planes)) as client:
-        resp = client.delete("/admin/orgs/acme", headers=_auth("tok-alice"))
+        resp = client.delete("/admin/orgs/acme", headers=_alice_in_acme())
     assert resp.status_code == 200, resp.text
 
 
@@ -776,7 +781,7 @@ def test_a_tenant_admins_delete_removes_the_user_from_that_org_only(planes):
     person's place in any other org, are not theirs to end."""
     _give_profile(planes, "dana")
     with TestClient(_make_app(planes)) as client:
-        resp = client.delete("/admin/users/dana", headers=_auth("tok-alice"))
+        resp = client.delete("/admin/users/dana", headers=_alice_in_acme())
     assert resp.status_code == 200, resp.text
     assert resp.json() == {"scope": "org", "removed": {"user_id": "dana", "org_id": "acme"}}
 
@@ -798,7 +803,7 @@ def test_a_tenant_admins_delete_removes_the_user_from_that_org_only(planes):
 
 def test_a_tenant_admin_cannot_remove_someone_who_is_not_in_their_org(planes):
     with TestClient(_make_app(planes)) as client:
-        resp = client.delete("/admin/users/viv", headers=_auth("tok-alice"))
+        resp = client.delete("/admin/users/viv", headers=_alice_in_acme())
     assert resp.status_code == 404, resp.text
     assert _memberships(planes, "viv") == ["sandbox"]
 
@@ -855,7 +860,7 @@ def test_a_tenant_admins_delete_of_the_last_org_admin_is_refused(planes):
     """The one org_admin of acme is alice herself; the rule that protects the org from losing
     its last administrator applies to this route as to the members route."""
     with TestClient(_make_app(planes)) as client:
-        resp = client.delete("/admin/users/alice", headers=_auth("tok-alice"))
+        resp = client.delete("/admin/users/alice", headers=_alice_in_acme())
     assert resp.status_code == 409, resp.text
     assert _memberships(planes, "alice") == ["acme"]
 

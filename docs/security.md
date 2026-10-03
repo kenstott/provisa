@@ -307,13 +307,27 @@ It is on by default — five failures in five minutes locks the subject out for 
 
 The key is the principal the protocol carries. A bearer-only surface carries no principal, so the key is a digest of the credential itself; what that stops is one bad token being replayed without limit. The store is per process, so a deployment running several API workers allows up to `max_attempts` per worker — the throttle is a brake on guessing, not a distributed quota.
 
-### Addressing an org on a wire protocol
+### Naming the org
 
-Under multitenancy an org is addressed by hostname: `acme.provisa.dev` is org `acme`. Over HTTP that name arrives in the `Host` header. A pgwire or Bolt client sends no such header, but it does send the hostname it dialed in the TLS ClientHello, and Provisa reads the org from there. (REQ-1234) Nothing about the client changes — connecting to `acme.provisa.dev` is all it takes.
+Under multitenancy every request names the org it is for. Belonging to exactly one org does not name it: a request that names none is refused, and the refusal says what to send. (REQ-1235) Each surface names an org this way:
 
-The hostname is a request, not a grant. It reaches the same resolver the `Host` header does, which refuses any org the authenticated principal is neither a member of nor holds the cross-org right for. Dialing a hostname you have no membership in reaches no data. A client that connected by IP address sends no hostname and resolves its org from the principal alone, which is every connection on a single-org deployment.
+| Surface | How a client names the org |
+| ------- | -------------------------- |
+| HTTP (UI, REST, GraphQL) | The org's own hostname, `acme.provisa.dev`, or the `X-Org-Provisa` header on the control-plane host |
+| pgwire | The database name (`psql -d acme`, a BI tool's database field), or the org's own hostname dialed over TLS |
+| Bolt | The org's own hostname dialed over TLS |
+| Arrow Flight | `"org"` in the ticket |
+| gRPC | The `x-provisa-org` metadata header |
+| MCP (HTTP transport) | The org's own hostname, or the `X-Org-Provisa` header |
+| Python client | `org=` on `ProvisaClient`, `connect()` and `adbc_connect()`; `?org=` in a SQLAlchemy URL |
 
-gRPC, Arrow Flight and MCP hand their certificates to libraries that expose no hostname callback; those transports name an org with the `x-provisa-org` metadata header instead.
+A pgwire client that dials a hostname over TLS sends it in the TLS ClientHello, and Provisa reads the org from there (REQ-1234). When the hostname and the database name both name an org and the two differ, the connection is refused; neither is preferred. The database name `provisa`, the default, names no org.
+
+A name is a request, not a grant. It reaches the same resolver everywhere, which refuses an org the authenticated principal is neither a member of nor holds the cross-org right for.
+
+A personal access token is issued for one org and names it itself. It opens that org only: a request naming a different org is refused, even when the token's owner belongs to both.
+
+A single-tenant deployment has no org to name. No surface reads a hostname, a database name or a header for one there.
 
 ## High-Security Mode
 

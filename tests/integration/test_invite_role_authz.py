@@ -182,8 +182,14 @@ def _q(sync_engine, schema, stmt):
         return conn.execute(stmt).fetchall()
 
 
+# REQ-1235: a request names the org it acts in. Each caller acts from the org they belong to;
+# the org an invitation is FOR is in the body, and the two differ in the cross-org cases.
+_HOME_ORG = {"tok-alice": "acme", "tok-bob": _ROOT_ORG, "tok-dana": _ROOT_ORG}
+
+
 def _create(client, token: str, body: dict):
-    return client.post("/admin/invites/", json=body, headers={"Authorization": f"Bearer {token}"})
+    headers = {"Authorization": f"Bearer {token}", "x-org-provisa": _HOME_ORG[token]}
+    return client.post("/admin/invites/", json=body, headers=headers)
 
 
 def _invite_rows(sync_engine):

@@ -220,7 +220,7 @@ class TestAnUnnamedOrgIsRefused:
     async def test_mcp(self):
         from provisa.api.mcp.server import _org_for_identity
 
-        with pytest.raises(OrgResolutionError, match="personal access token"):
+        with pytest.raises(OrgResolutionError, match="X-Org-Provisa"):
             await _org_for_identity(_person(), _OneOrgState())
 
     async def test_bolt(self, monkeypatch):
@@ -286,3 +286,79 @@ class TestSingleTenantNeverReferencesAnOrg:
         monkeypatch.setattr(session, "_requested_org", lambda: None)
         await session._ensure_org()
         assert session.org_id is None
+
+
+# --- MCP names an org the way HTTP does --------------------------------------------------------
+
+
+class TestMcpNamesAnOrg:
+    async def test_a_person_names_the_org_with_the_header(self):
+        from provisa.api.mcp.server import _org_for_identity
+
+        assert await _org_for_identity(_person(), _OneOrgState(), requested_org="acme") == "acme"
+
+    async def test_a_scoped_credential_naming_another_org_is_refused(self):
+        from provisa.api.mcp.server import _org_for_identity
+
+        with pytest.raises(OrgResolutionError, match="scoped to org 'acme'"):
+            await _org_for_identity(_identity(), _State(), requested_org="beta")
+
+    def test_the_header_names_the_org(self):
+        from provisa.api.mcp.server import requested_org_from_scope
+
+        scope = {"headers": [(b"host", b"localhost:8009"), (b"x-org-provisa", b"acme")]}
+        assert requested_org_from_scope(scope) == "acme"
+
+    def test_the_subdomain_names_the_org(self):
+        from provisa.api.mcp.server import requested_org_from_scope
+
+        assert requested_org_from_scope({"headers": [(b"host", b"acme.provisa.org")]}) == "acme"
+
+    def test_nothing_named_is_none(self):
+        from provisa.api.mcp.server import requested_org_from_scope
+
+        assert requested_org_from_scope({"headers": [(b"host", b"localhost:8009")]}) is None
+
+    def test_the_refusal_says_to_send_the_header(self):
+        from provisa.api.mcp.server import _MCP_NAMES_AN_ORG
+
+        assert "X-Org-Provisa" in _MCP_NAMES_AN_ORG
+
+
+# --- pgwire: the database name also names the org ----------------------------------------------
+
+
+class TestPgwireDatabaseNamesTheOrg:
+    async def test_the_database_name_names_the_org(self):
+        from provisa.pgwire.server import _resolve_and_build_org
+
+        assert await _resolve_and_build_org(_OneOrgState(), _person(), None, "acme") == "acme"
+
+    @pytest.mark.parametrize("database", [None, "", "provisa"])
+    async def test_the_default_database_names_no_org(self, database):
+        from provisa.pgwire.server import _resolve_and_build_org
+
+        with pytest.raises(OrgResolutionError, match="-d <org>"):
+            await _resolve_and_build_org(_OneOrgState(), _person(), None, database)
+
+    async def test_hostname_and_database_naming_different_orgs_is_refused_by_name(self):
+        from provisa.pgwire.server import _resolve_and_build_org
+
+        with pytest.raises(OrgResolutionError, match="'acme'.*'beta'|'beta'.*'acme'"):
+            await _resolve_and_build_org(_State(), _person(), "acme", "beta")
+
+    async def test_hostname_and_database_naming_the_same_org_is_that_org(self):
+        from provisa.pgwire.server import _resolve_and_build_org
+
+        assert await _resolve_and_build_org(_State(), _person(), "acme", "acme") == "acme"
+
+    async def test_a_scoped_credential_refuses_a_database_naming_another_org(self):
+        from provisa.pgwire.server import _resolve_and_build_org
+
+        with pytest.raises(OrgResolutionError, match="scoped to org 'acme'"):
+            await _resolve_and_build_org(_State(), _identity(), None, "beta")
+
+    async def test_single_tenant_ignores_the_database_name(self):
+        from provisa.pgwire.server import _resolve_and_build_org
+
+        assert await _resolve_and_build_org(_SingleTenantState(), _person(), "x", "y") is None
