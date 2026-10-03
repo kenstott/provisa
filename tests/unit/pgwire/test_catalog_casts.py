@@ -22,7 +22,12 @@ from __future__ import annotations
 import duckdb
 import pytest
 
-from provisa.pgwire.catalog_rewrite import _rewrite_for_duckdb
+from provisa.pgwire.catalog_rewrite import _rewrite_for_duckdb as _rewrite
+
+
+def _rewrite_for_duckdb(sql: str) -> str:
+    """The rewrite for a single-tenant session as role ``analyst``: casts are what these cover."""
+    return _rewrite(sql, "analyst", "provisa")
 
 
 @pytest.fixture(scope="module")

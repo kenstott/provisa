@@ -179,6 +179,10 @@ class TestReq529AuthType3:
         handler.handle_post_auth = MagicMock()
 
         fake_state = MagicMock()
+
+        # A single-tenant deployment: its catalog serves the one database, provisa.
+
+        fake_state.multitenancy = False
         fake_state.auth_config = {"provider": "none"}
         fake_state.auth_middleware_active = False
 
@@ -205,6 +209,10 @@ class TestReq529AuthType3:
         handler._send_pg_error = MagicMock()
 
         fake_state = MagicMock()
+
+        # A single-tenant deployment: its catalog serves the one database, provisa.
+
+        fake_state.multitenancy = False
         fake_state.auth_config = {"provider": "kerberos"}
         fake_state.auth_middleware_active = True
 
@@ -244,6 +252,8 @@ class TestReq890OidcAuth:
 
     def _state(self):
         fake_state = MagicMock()
+        # A single-tenant deployment: its catalog serves the one database, provisa.
+        fake_state.multitenancy = False
         fake_state.auth_config = {
             "provider": "oidc",
             "oidc": {
@@ -348,6 +358,8 @@ class TestPgwireBasicAndPat:
 
     def _state(self, auth_config):
         fake_state = MagicMock()
+        # A single-tenant deployment: its catalog serves the one database, provisa.
+        fake_state.multitenancy = False
         fake_state.auth_config = auth_config
         fake_state.auth_middleware_active = True
         fake_state.multitenancy = False
@@ -1061,6 +1073,10 @@ class TestReq588ScalarExpressionIntercepts:
         assert classify("SELECT current_database()") == "INTERCEPT"
 
         fake_state = MagicMock()
+
+        # A single-tenant deployment: its catalog serves the one database, provisa.
+
+        fake_state.multitenancy = False
         fake_state.contexts = {}
         fake_state.schema_build_cache = {"column_types": {}}
 
@@ -1077,6 +1093,10 @@ class TestReq588ScalarExpressionIntercepts:
         assert classify("SELECT pg_backend_pid()") == "INTERCEPT"
 
         fake_state = MagicMock()
+
+        # A single-tenant deployment: its catalog serves the one database, provisa.
+
+        fake_state.multitenancy = False
         fake_state.contexts = {}
         fake_state.schema_build_cache = {"column_types": {}}
 
