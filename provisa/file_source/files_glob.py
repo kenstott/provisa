@@ -194,3 +194,32 @@ def propose_glob_groups(discovered: list[dict], root: str) -> list[dict]:
         )
         group["files"].append(path)
     return [g for g in groups.values() if len(g["files"]) >= 2]
+
+
+def glob_freshness_token(stats: list[tuple[str, float, int]]) -> str:
+    """A change token for a files-glob table from its matched files' stats (REQ-788): the file
+    count, the latest mtime and the total size. A new, removed, grown or re-written file moves
+    the token, so the replica is rebuilt; it is the files-glob analogue of the REQ-855 probe."""
+    count = len(stats)
+    max_mtime = max((m for _, m, _ in stats), default=0.0)
+    total = sum(sz for _, _, sz in stats)
+    return f"{count}:{max_mtime:.6f}:{total}"
+
+
+def stat_matched_files(source_path: str, file_glob: str) -> list[tuple[str, float, int]]:
+    """``(path, mtime, size)`` for each file the glob matches, sorted — the input to
+    :func:`glob_freshness_token`. A local path is stat'd directly; an fsspec URI through its
+    filesystem's ``info``."""
+    import os
+
+    files = matched_files(source_path, file_glob)
+    if "://" in source_path and not source_path.startswith("file://"):
+        import fsspec
+
+        fs, _, _ = fsspec.get_fs_token_paths(source_path)
+        out = []
+        for f in files:
+            info = fs.info(f)
+            out.append((f, float(info.get("mtime", 0) or 0), int(info.get("size", 0) or 0)))
+        return out
+    return [(f, os.path.getmtime(f), os.path.getsize(f)) for f in files]

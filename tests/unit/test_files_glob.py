@@ -212,3 +212,36 @@ def test_propose_glob_groups_ignores_multi_table_and_columnless_files():
         _desc("/d/c.csv", []),
     ]
     assert propose_glob_groups(discovered, "/d") == []
+
+
+def test_glob_freshness_token_moves_when_files_change():
+    from provisa.file_source.files_glob import glob_freshness_token
+
+    base = [("a.csv", 100.0, 10), ("b.csv", 200.0, 20)]
+    t0 = glob_freshness_token(base)
+    assert t0 == glob_freshness_token(list(reversed(base)))  # order-free
+    assert glob_freshness_token(base + [("c.csv", 150.0, 5)]) != t0  # a new file
+    assert glob_freshness_token([("a.csv", 100.0, 10), ("b.csv", 300.0, 20)]) != t0  # newer mtime
+    assert glob_freshness_token([("a.csv", 100.0, 11), ("b.csv", 200.0, 20)]) != t0  # grew
+    assert glob_freshness_token([]) == "0:0.000000:0"
+
+
+def test_stat_matched_files_reads_the_glob(tmp_path):
+    from provisa.file_source.files_glob import glob_freshness_token, stat_matched_files
+
+    (tmp_path / "a.csv").write_text("id\n1\n")
+    (tmp_path / "b.csv").write_text("id\n2\n")
+    stats = stat_matched_files(str(tmp_path / "a.csv"), "*.csv")
+    assert [p.rsplit("/", 1)[-1] for p, _, _ in stats] == ["a.csv", "b.csv"]
+    assert glob_freshness_token(stats)  # a non-empty token
+
+
+def test_build_probe_glob_transport():
+    import asyncio
+
+    from provisa.events.probes import build_probe
+
+    transport = build_probe("none", source_path="/data/a.csv", file_glob="*.csv")
+    # a glob probe is returned even for probe_type 'none' (the glob is the signal); it stats the
+    # path and returns None cleanly when nothing matches rather than raising.
+    assert asyncio.run(transport()) is None or isinstance(asyncio.run(transport()), str)
