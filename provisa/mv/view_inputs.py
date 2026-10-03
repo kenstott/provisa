@@ -40,6 +40,11 @@ from typing import Any
 import sqlglot
 import sqlglot.expressions as exp
 
+from provisa.mv.models import TableIdentity
+
+
+Ref = tuple[str, ...] | TableIdentity  # a name as SQL spells it, or a bound table
+
 
 @dataclass(frozen=True)
 class Resolved:
@@ -100,10 +105,14 @@ class ModelIndex:
 
         self._names: dict[str, set[tuple[str, Any]]] = {}
         self._rows: dict[int, dict] = {}
+        self._ids: dict[TableIdentity, int] = {}
         catalogs = state.source_catalogs
         for row in state.tables:
             table_id = int(row["id"])
             self._rows[table_id] = row
+            self._ids[TableIdentity(row["source_id"], row["schema_name"], row["table_name"])] = (
+                table_id
+            )
             target = ("table", table_id)
             original = row["table_name"]
             for name in {original, apply_sql_name(original)}:
@@ -136,8 +145,14 @@ class ModelIndex:
         """The registered table ``table_id`` — every resolved id is one of the model's."""
         return self._rows[table_id]
 
-    def resolve(self, view: str, parts: tuple[str, ...]) -> Resolved:
-        """What ``parts`` names, or :class:`InputUnresolved` naming ``view`` and the reference."""
+    def resolve(self, view: str, parts: Ref) -> Resolved:
+        """What ``parts`` names — a name as SQL spells it, or a table bound by its identity — or
+        :class:`InputUnresolved` naming ``view`` and the reference."""
+        if isinstance(parts, TableIdentity):
+            table_id = self._ids.get(parts)
+            if table_id is None:
+                raise InputUnresolved(view, parts.label, [])
+            return Resolved(parts.label, table_id=table_id)
         ref = ".".join(parts)
         found = self._names.get(_keys(parts), set())
         if len(found) != 1:
@@ -146,10 +161,21 @@ class ModelIndex:
         return Resolved(ref, table_id=value) if kind == "table" else Resolved(ref, view=value)
 
 
+def view_refs(mv: Any) -> list[Ref]:
+    """The references a view makes: its SQL's, or — for a join-pattern view, which has no SQL of
+    its own — the tables it joins, as they were bound when it was declared."""
+    if mv.sql:
+        return list(table_refs(mv.sql))
+    if len(mv.inputs) != len(mv.source_tables):
+        raise RuntimeError(
+            f"materialized view {mv.id!r} joins {mv.source_tables} but has "
+            f"{len(mv.inputs)} bound input(s): a join-pattern view is bound when it is declared"
+        )
+    return list(mv.inputs)
+
+
 def resolve_view_inputs(mv: Any, state: Any, index: ModelIndex | None = None) -> list[Resolved]:
-    """Every input of ``mv`` resolved against the model: the references its SQL makes, or — for a
-    join-pattern view, which has no SQL of its own — the tables it joins. Raises
+    """Every input of ``mv`` resolved against the model (:func:`view_refs`). Raises
     :class:`InputUnresolved` for the first reference that names nothing or several things."""
     index = index if index is not None else ModelIndex(state)
-    refs = table_refs(mv.sql) if mv.sql else [(name,) for name in mv.source_tables]
-    return [index.resolve(mv.id, parts) for parts in refs]
+    return [index.resolve(mv.id, ref) for ref in view_refs(mv)]

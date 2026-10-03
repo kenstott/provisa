@@ -48,7 +48,7 @@ from typing import TYPE_CHECKING, Any, cast  # noqa: F401
 if TYPE_CHECKING:
     from provisa.api.app import AppState
     from provisa.core.database import Connection
-    from provisa.mv.models import MVDefinition
+    from provisa.mv.models import MVDefinition, TableIdentity
 
 log = logging.getLogger(__name__)
 
@@ -544,6 +544,45 @@ async def _load_openapi_specs() -> None:
             }
 
 
+def _config_identities(raw_config: dict) -> dict[str, list[TableIdentity]]:
+    """The config's tables by every name a join-pattern view may use for one (its name and SQL
+    name), each with its identity."""
+    from provisa.compiler.naming import apply_sql_name
+    from provisa.mv.models import TableIdentity
+
+    out: dict[str, list[TableIdentity]] = {}
+    for tbl in raw_config.get("tables", []):
+        name = tbl.get("table") or tbl.get("table_name")
+        if not name or tbl.get("view_sql"):
+            continue
+        identity = TableIdentity(tbl["source_id"], tbl.get("schema") or tbl["schema_name"], name)
+        for spelled in {name, apply_sql_name(name)}:
+            out.setdefault(spelled, []).append(identity)
+    return out
+
+
+def _bind_join_inputs(
+    view_id: str, names: list[str], identities: dict[str, list[TableIdentity]]
+) -> list[TableIdentity]:
+    """A join-pattern view's inputs, bound when it is declared (REQ-939): each table it joins is
+    the one config table of that name. A name no table, or more than one, answers to is refused,
+    naming the view — it would not say which table the view reads."""
+    bound = []
+    for name in names:
+        found = identities.get(name, [])
+        if len(found) != 1:
+            why = (
+                "no table has that name"
+                if not found
+                else "more than one table has that name ("
+                + ", ".join(sorted(i.label for i in found))
+                + ")"
+            )
+            raise ValueError(f"materialized view {view_id!r} joins {name!r}: {why}")
+        bound.append(found[0])
+    return bound
+
+
 def _load_mv_and_views_config(
     raw_config: dict,
 ) -> list[MVDefinition]:  # REQ-086, REQ-133, REQ-135, REQ-158, REQ-159, REQ-160
@@ -556,6 +595,7 @@ def _load_mv_and_views_config(
     from provisa.mv.models import MVDefinition, JoinPattern, SDLConfig
 
     loaded: list[MVDefinition] = []
+    identities = _config_identities(raw_config)
 
     # REQ-1443/description pull-forward: base-table column descriptions, keyed by table name, as
     # declared BEFORE this function appends any MV/view-derived table entries — a pass-through MV
@@ -621,6 +661,12 @@ def _load_mv_and_views_config(
         mv = MVDefinition(
             id=mvc["id"],
             source_tables=mvc.get("source_tables", []),
+            # A view with SQL names its inputs in it; a join-pattern view's are bound here.
+            inputs=(
+                []
+                if mvc.get("sql")
+                else _bind_join_inputs(mvc["id"], mvc.get("source_tables", []), identities)
+            ),
             target_catalog=mvc.get("target_catalog", _def_cat),
             target_schema=mvc.get("target_schema", _def_schema),
             target_table=mvc.get("target_table"),
@@ -773,6 +819,7 @@ def _load_mv_and_views_config(
             mv = MVDefinition(
                 id=mv_id,
                 source_tables=source_tables,
+                inputs=_bind_join_inputs(mv_id, source_tables, identities),
                 target_catalog=_rel_cat,
                 target_schema=_rel_schema,
                 refresh_interval=rel_cfg.get("refresh_interval", 300),

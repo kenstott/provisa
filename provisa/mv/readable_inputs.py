@@ -163,12 +163,11 @@ def unresolved_inputs(mv: MVDefinition, state: Any) -> list[UnreadableInput]:
     """Those of ``mv``'s inputs the model cannot resolve to exactly one registered table or
     materialized view (``provisa.mv.view_inputs`` — the same resolution the event graph's edges
     are built from). Empty when every input resolves."""
-    from provisa.mv.view_inputs import InputUnresolved, ModelIndex, table_refs  # noqa: PLC0415
+    from provisa.mv.view_inputs import InputUnresolved, ModelIndex, view_refs  # noqa: PLC0415
 
     index = ModelIndex(state)
-    refs = table_refs(mv.sql) if mv.sql else [(name,) for name in mv.source_tables]
     found: list[UnreadableInput] = []
-    for parts in refs:
+    for parts in view_refs(mv):
         try:
             index.resolve(mv.id, parts)
         except InputUnresolved as unresolved:
@@ -196,7 +195,10 @@ async def require_readable_inputs(mv: MVDefinition, state: Any) -> None:
     the model cannot resolve to exactly one table or view (REQ-939: a view's edges are resolved
     from the model, so a view whose input does not resolve is refused here, when it is declared,
     and never reaches the event graph)."""
-    found = unresolved_inputs(mv, state) + await unreadable_inputs(view_inputs(mv), state)
+    unreadable = await unreadable_inputs(view_inputs(mv), state)
+    named = {i.name for i in unreadable}
+    # An input already refused as unreadable is named once, for that.
+    found = [i for i in unresolved_inputs(mv, state) if i.name not in named] + unreadable
     if found:
         raise ViewInputNotReadable(mv.id, found)
 

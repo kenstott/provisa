@@ -48,11 +48,12 @@ def _row(table_id: int, source_id: str, table: str = "orders", **more) -> dict:
     return row
 
 
-def _view(view_id: str, sql: str | None, *, target: str, source_tables=(), **more):
+def _view(view_id: str, sql: str | None, *, target: str, source_tables=(), inputs=(), **more):
     return SimpleNamespace(
         id=view_id,
         sql=sql,
         source_tables=list(source_tables),
+        inputs=list(inputs),
         target_catalog="mat_store",
         target_schema="org_x_mv_cache",
         target_table=target,
@@ -177,7 +178,15 @@ def test_a_view_held_only_as_sql_is_read_through():
 
 
 def test_a_join_pattern_view_resolves_the_tables_it_joins():
-    view = _view("jp", None, target="jp", source_tables=["accounts"])
+    from provisa.mv.models import TableIdentity
+
+    view = _view(
+        "jp",
+        None,
+        target="jp",
+        source_tables=["accounts"],
+        inputs=[TableIdentity("crm", "public", "accounts")],
+    )
     assert lineage_graph([view], _model([view])) == {"org_x_mv_cache.jp": {"crm/public.accounts"}}
 
 
@@ -243,3 +252,59 @@ async def test_a_view_whose_inputs_resolve_is_accepted(monkeypatch):
     monkeypatch.setattr("provisa.mv.readable_inputs._request_cache_schemas", _none)
     view = _view("daily", "SELECT * FROM sales_cat.public.orders", target="daily")
     await require_readable_inputs(view, _model([view]))
+
+
+# -- a join-pattern view's inputs are bound when it is declared ------------------------------------
+
+
+def test_a_join_pattern_view_keeps_reading_its_table_when_another_source_registers_the_name():
+    """The view joins crm's ``accounts``. Sales registers an ``accounts`` of its own afterwards:
+    the view still reads crm's, and its edge is unchanged."""
+    from provisa.mv.models import TableIdentity
+
+    view = _view(
+        "jp",
+        None,
+        target="jp",
+        source_tables=["accounts"],
+        inputs=[TableIdentity("crm", "public", "accounts")],
+    )
+    model = _model([view])
+    assert lineage_graph([view], model) == {"org_x_mv_cache.jp": {"crm/public.accounts"}}
+    model.tables.append(_row(4, "sales", "accounts"))
+    assert lineage_graph([view], model) == {"org_x_mv_cache.jp": {"crm/public.accounts"}}
+
+
+def test_a_join_pattern_view_whose_table_is_gone_is_unresolved():
+    from provisa.mv.models import TableIdentity
+
+    view = _view(
+        "jp",
+        None,
+        target="jp",
+        source_tables=["ledger"],
+        inputs=[TableIdentity("crm", "public", "ledger")],
+    )
+    with pytest.raises(ValueError, match=r"'jp' reads 'crm/public.ledger'"):
+        lineage_graph([view], _model([view]))
+
+
+def test_a_config_join_pattern_view_is_bound_to_the_one_table_of_each_name():
+    from provisa.api.app_loaders import _bind_join_inputs, _config_identities
+    from provisa.mv.models import TableIdentity
+
+    raw = {
+        "tables": [
+            {"source_id": "crm", "schema": "public", "table": "accounts"},
+            {"source_id": "crm", "schema": "public", "table": "orders"},
+            {"source_id": "sales", "schema": "public", "table": "orders"},
+        ]
+    }
+    identities = _config_identities(raw)
+    assert _bind_join_inputs("jp", ["accounts"], identities) == [
+        TableIdentity("crm", "public", "accounts")
+    ]
+    with pytest.raises(ValueError, match=r"'jp' joins 'orders': more than one table"):
+        _bind_join_inputs("jp", ["orders"], identities)
+    with pytest.raises(ValueError, match=r"'jp' joins 'ghost': no table has that name"):
+        _bind_join_inputs("jp", ["ghost"], identities)

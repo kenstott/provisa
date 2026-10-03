@@ -24,7 +24,7 @@ import pytest
 
 from provisa.api_source.models import ApiColumn, ApiColumnType, ApiEndpoint, ParamType
 from provisa.mv import readable_inputs
-from provisa.mv.models import MVDefinition
+from provisa.mv.models import MVDefinition, TableIdentity
 from provisa.mv.readable_inputs import ViewInputNotReadable
 from provisa.mv.registry import MVRegistry
 
@@ -69,13 +69,30 @@ def state(monkeypatch):
             }
         },
         mv_registry=MVRegistry(),
+        # The model a view's inputs resolve against (provisa/mv/view_inputs.py).
+        tables=[
+            {"id": 1, "source_id": "sales", "schema_name": "sales", "table_name": "orders"},
+            {"id": 2, "source_id": "sales", "schema_name": "sales", "table_name": "customers"},
+            {"id": 3, "source_id": "web", "schema_name": "web", "table_name": "clicks"},
+            {"id": 4, "source_id": "crm", "schema_name": "public", "table_name": "contact"},
+        ],
+        source_catalogs={},
+        contexts={},
     )
+
+
+# The registered tables a join-pattern view joins, by the name it gives each.
+_BOUND = {
+    "orders": TableIdentity("sales", "sales", "orders"),
+    "clicks": TableIdentity("web", "web", "clicks"),
+}
 
 
 def _view(view_id: str, sql: str | None, tables: list[str] | None = None) -> MVDefinition:
     return MVDefinition(
         id=view_id,
         source_tables=tables or [],
+        inputs=[] if sql else [_BOUND[t] for t in tables or []],
         target_catalog="store",
         target_schema="org_acme_mv_cache",
         sql=sql,
