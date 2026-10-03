@@ -54,6 +54,10 @@ os.environ["PROVISA_LICENSING_SANDBOX_DIR"] = os.path.join(
     os.environ["PROVISA_DATA_DIR"], "licensing"
 )
 os.makedirs(os.environ["PROVISA_LICENSING_SANDBOX_DIR"], exist_ok=True)
+# The trial clock too: pinned to the session's start, so no test changes behaviour on the date
+# the developer's machine was first seen (provisa/licensing/anchors.py _pinned_first_seen). A
+# test that needs the post-trial notice pins an earlier date for its own server.
+os.environ["PROVISA_LICENSING_FIRST_SEEN"] = __import__("datetime").date.today().isoformat()
 
 # Telemetry gets the same isolation. An application built in this process resolves its OTLP
 # endpoint from the environment and then from PROVISA_CONFIG, and the session's default config

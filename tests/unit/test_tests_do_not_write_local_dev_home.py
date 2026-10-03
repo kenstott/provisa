@@ -54,6 +54,9 @@ def a_users_home(tmp_path, monkeypatch):
     monkeypatch.delenv("XDG_DATA_HOME", raising=False)
     monkeypatch.delenv("PROVISA_LICENSING_SANDBOX_DIR", raising=False)
     monkeypatch.delenv("PROVISA_HOME", raising=False)
+    # These cases are about the sandbox reading a real trial clock: the session's pinned clock
+    # (tests/conftest.py) is lifted for them.
+    monkeypatch.delenv("PROVISA_LICENSING_FIRST_SEEN", raising=False)
     today = datetime.date.today()
     first_use = today - datetime.timedelta(days=400)
     evaluate(now_epoch=_epoch(first_use), today_iso=first_use.isoformat())
@@ -152,7 +155,10 @@ def test_evaluating_licensing_leaves_the_real_locations_untouched():
     assert {p: (p.stat().st_mtime_ns if p.exists() else None) for p in real} == before
     sandbox = Path(os.environ["PROVISA_LICENSING_SANDBOX_DIR"])
     assert monotonic.read_highwater(sandbox / "highwater.json") >= _epoch(today)
-    assert anchors.read_anchor(sandbox / "anchor.json", stable_machine_id()) is not None
+    # The session's trial clock is pinned (tests/conftest.py): its first-use date is the pin, read
+    # from no anchor and written to none.
+    assert os.environ.get("PROVISA_LICENSING_FIRST_SEEN") == today.isoformat()
+    assert anchors.read_anchor(sandbox / "anchor.json", stable_machine_id()) is None
 
 
 def test_a_spawned_test_server_inherits_the_sandbox():
