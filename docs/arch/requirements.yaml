@@ -71135,7 +71135,12 @@
     proto3 style for gRPC (PascalCase messages, services and RPCs; snake_case fields), JSON:API''s member-name
     conventions, and the REST surface''s path and parameter conventions for OpenAPI. Two GraphQL names
     that would collide after translation are refused at schema build, with an error naming both. gRPC
-    field numbers stay stable across regenerations (REQ-1903).'
+    field numbers stay stable across regenerations (REQ-1903). (Amended 2026-10-03, THE DERIVATION IS
+    THE CONTRACT, NOT NECESSARILY THE EXECUTION PATH:) gRPC, JSON:API and OpenAPI are derived from GraphQL
+    in what they offer, in their names and in their shapes. A surface may compile a request straight to
+    semantic SQL as an optimization, as gRPC table reads do, provided it produces the same semantic SQL
+    as the equivalent GraphQL request would, and so the same governed result. That equivalence is held
+    by a test for each optimized path, which compares the two lowerings.'
   use_case: An operator who assigns a command to a role, hides a column, or moves an object to another
     domain changes what every API offers in one place, and no surface can offer what another surface hides.
   scenario: 'Given a query-kind command find_pets in domain petstore, assigned to role analyst
