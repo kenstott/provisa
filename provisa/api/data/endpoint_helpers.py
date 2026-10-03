@@ -185,6 +185,34 @@ def _inject_stats_into_response(response, stats_dict: dict):
     return response
 
 
+def _inject_warnings_into_response(response, warnings: list):
+    """Add what the request's answers say about themselves (REQ-1350): a JSON body gets them in
+    ``extensions.warnings`` beside any warning the serializer already put there, each as
+    {code, params, message}; any other response (a file format, a stream) in the
+    ``X-Provisa-Warnings`` header, as ASCII-escaped JSON (``statement_warnings.header_value``)."""
+    entries = [w.as_dict() for w in warnings]
+    if isinstance(response, JSONResponse):
+        body = json.loads(bytes(response.body))
+        body.setdefault("extensions", {}).setdefault("warnings", []).extend(entries)
+        skip = {"content-length", "content-type"}
+        extra = {k: v for k, v in response.headers.items() if k.lower() not in skip}
+        return JSONResponse(content=body, headers=extra, status_code=response.status_code)
+    if isinstance(response, dict):
+        response.setdefault("extensions", {}).setdefault("warnings", []).extend(entries)
+        return response
+    from starlette.responses import Response
+
+    from provisa.core.statement_warnings import header_value
+
+    if isinstance(response, Response):
+        response.headers["X-Provisa-Warnings"] = header_value(warnings)
+        return response
+    raise TypeError(
+        f"a GraphQL response of type {type(response).__name__} has no channel to carry "
+        f"{len(entries)} warning(s)"
+    )
+
+
 def _count_rows_per_source(field_rows: list, ctx) -> dict[str, int]:
     """Count matched rows per source_id using join cardinality in the result.
 

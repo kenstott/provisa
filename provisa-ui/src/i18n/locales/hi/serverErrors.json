@@ -14,6 +14,9 @@
     "ai_models": {
       "vector_model_fields_required": "प्रत्येक vector_models प्रविष्टि के लिए id, provider और dimensions आवश्यक हैं"
     },
+    "api": {
+      "answer_cut": "{{table}} का उत्तर max_pages={{max_pages}} पर काट दिया गया ({{rows}} पंक्तियाँ): API में और डेटा है। सब पढ़ने के लिए एंडपॉइंट का max_pages या पृष्ठ आकार बढ़ाएँ।"
+    },
     "auth": {
       "authentication_required": "प्रमाणीकरण आवश्यक है",
       "auto_join_not_offered": "वह संगठन आपको प्रवेश देने की पेशकश नहीं कर रहा है",

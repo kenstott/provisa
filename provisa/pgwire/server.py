@@ -22,6 +22,7 @@ Builds on buenavista's socketserver-based handler, adding:
 
 from __future__ import annotations
 
+import json
 import datetime
 import decimal
 import logging
@@ -387,6 +388,9 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         # portal is dropped without ever being executed (Describe with no Execute), or when a
         # DECLARE CURSOR built on this result is closed, without draining the remaining rows.
         self._engine_result = engine_result
+        # REQ-1350: what the statement's answer must say about itself (sent as notices).
+        # A registered-function call has no plan, and nothing to say.
+        self.warnings: tuple[Any, ...] = tuple(plan.warnings) if plan is not None else ()
         self._cols = engine_result.column_names
         self._status = _tag_from_sql(original_sql)
         self._batch_iter: Iterator[list] = engine_result.batches()  # type: ignore[assignment]
@@ -1282,6 +1286,16 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         # (provisa.executor.result). Either ends the statement with the timeout, raised to the
         # message handler below.
         request_deadline.check()
+        # REQ-1350: what the answer says about itself goes ahead of its rows, as a NOTICE
+        # (SQLSTATE 01000) per warning: the English text, and the code and params as JSON in
+        # the Detail field.
+        if isinstance(query_result, ProvisaQueryResult):
+            for warning in query_result.warnings:
+                self._send_pg_notice(
+                    warning.message,
+                    json.dumps({"code": warning.code, "params": warning.params}, ensure_ascii=True),
+                )
+            query_result.warnings = ()  # a later Execute of the same portal says it once
         # REQ-1910: rows are pulled from the result and encoded onto the socket here.
         with _stage(_tracer, "pgwire.encode", name="encode"):
             sent = super().send_data_rows(query_result, limit)
@@ -1337,15 +1351,19 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         self.wfile.write(out)
         self.wfile.flush()
 
-    def _send_pg_notice(self, message: str) -> None:
-        """Send a NoticeResponse (a non-fatal, out-of-band message) — never touches result rows."""
+    def _send_pg_notice(self, message: str, detail: str | None = None) -> None:
+        """Send a NoticeResponse (a non-fatal, out-of-band message) — never touches result rows.
+        ``detail`` goes in the Detail field."""
         buf = BVBuffer()
-        for field, value in (
+        fields = [
             (b"S", "NOTICE"),
             (b"V", "NOTICE"),
             (b"C", "01000"),  # SQLSTATE warning class
             (b"M", message),
-        ):
+        ]
+        if detail is not None:
+            fields.append((b"D", detail))
+        for field, value in fields:
             buf.write_bytes(field)
             buf.write_string(value)
         buf.write_bytes(b"\x00")

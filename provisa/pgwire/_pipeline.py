@@ -133,6 +133,11 @@ class _Plan:
     # its read was answered from (``query_residency.Residency.replicas_read``) — the audit
     # record's data age. Empty: no replica was read (a live read, or residency never ran).
     replicas_read: dict[tuple[str, str, str], datetime] = field(default_factory=dict)
+    # REQ-1350: what this statement's answer must say about itself (an API answer cut at its
+    # max_pages), collected while it was governed (``core.statement_warnings``); every surface
+    # reports them in its own warning channel. A warned result is never stored in the response
+    # cache.
+    warnings: list[Any] = field(default_factory=list)
     # Guards against a second finalize for one statement: the streaming surfaces finalize at their
     # own terminal, and a plan that also passes through _execute_plan must still write one row.
     audit_written: bool = field(default=False)
@@ -912,19 +917,23 @@ async def _govern_and_route(
     ``serve_cached`` / ``wire_formats``: see :func:`route_governed`."""
     from provisa.api.app import state
 
+    from provisa.core.statement_warnings import collecting
+
     await _wake_before_governing(state)
-    plan = await _govern_and_route_planned(
-        sql,
-        role_id,
-        session_vars=session_vars,
-        as_of=as_of,
-        deliver=deliver,
-        buffered=buffered,
-        explain=explain,
-        params=params,
-        serve_cached=serve_cached,
-        wire_formats=wire_formats,
-    )
+    with collecting() as found:
+        plan = await _govern_and_route_planned(
+            sql,
+            role_id,
+            session_vars=session_vars,
+            as_of=as_of,
+            deliver=deliver,
+            buffered=buffered,
+            explain=explain,
+            params=params,
+            serve_cached=serve_cached,
+            wire_formats=wire_formats,
+        )
+    plan.warnings = list(found)
     return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
 
 
@@ -2495,6 +2504,8 @@ async def check_response_cache_datarows(  # REQ-1897
 
 
 def _cache_tee(plan: _Plan, state: Any, run: Any | None, wire_formats: list[int] | None) -> Any:
+    if plan.warnings:
+        return None  # a warned answer (one cut short) is never stored as the statement's answer
     ck = _response_cache_key(plan, wire_formats=wire_formats)
     store = state.response_cache_store  # always set (NoopCacheStore when caching is off)
     if ck is None or not store.stores_results:
@@ -2887,18 +2898,22 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
     :func:`route_governed`."""
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
+    from provisa.core.statement_warnings import collecting
+
     await _wake_before_governing(state)
-    plan = await _govern_and_route_compiled_planned(
-        sql,
-        role_id,
-        exec_params=exec_params,
-        state=state,
-        api_args=api_args,
-        deliver=deliver,
-        buffered=buffered,
-        cache_hint=cache_hint,
-        serve_cached=serve_cached,
-    )
+    with collecting() as found:
+        plan = await _govern_and_route_compiled_planned(
+            sql,
+            role_id,
+            exec_params=exec_params,
+            state=state,
+            api_args=api_args,
+            deliver=deliver,
+            buffered=buffered,
+            cache_hint=cache_hint,
+            serve_cached=serve_cached,
+        )
+    plan.warnings = list(found)
     return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
 
 

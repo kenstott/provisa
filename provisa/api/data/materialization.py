@@ -686,6 +686,7 @@ def _mat_store_rows(
     cache_rewrites: dict,
     values_cte_entries: dict,
     all_ep_col_names: list | None = None,
+    hold: bool = True,
 ) -> None:
     """ALWAYS persist rows to the materialization store (the durable source of truth), then inline a
     small table as a VALUES CTE for this query — the hot cache is a rebuildable projection of the
@@ -725,7 +726,7 @@ def _mat_store_rows(
             column_names=hot_col_names,
             is_api=True,
         )
-        if hot_mgr is not None:
+        if hot_mgr is not None and hold:
             hot_mgr.hold(entry)
         values_cte_entries[tn] = entry
         log.warning("[MAT] + hot VALUES CTE inline for %s (%d rows)", tn, len(rows))
@@ -856,6 +857,14 @@ async def _mat_api_ep_table(
         if rows is None:
             return  # already written to cache_rewrites by _mat_fetch_rows_from_rest
 
+    # A cut answer (the call stopped at max_pages with more to read, warned earlier in this
+    # statement) is never cached as complete: its rows go to a table of this statement's own,
+    # which no later request looks up, and never to the hot tier.
+    cut = _cut_in_statement(ep.table_name)
+    if cut:
+        import secrets
+
+        cache_tbl = cache_table_name(source_id, tn, {"__cut__": secrets.token_hex(8)})
     _mat_store_rows(
         tn,
         rows,
@@ -871,7 +880,15 @@ async def _mat_api_ep_table(
         cache_rewrites,
         values_cte_entries,
         all_ep_col_names=all_ep_col_names,
+        hold=not cut,
     )
+
+
+def _cut_in_statement(table_name: str) -> bool:
+    """Whether this statement already warned that ``table_name``'s answer was cut."""
+    from provisa.core.statement_warnings import raised
+
+    return any(w.code == "api.answer_cut" and w.params.get("table") == table_name for w in raised())
 
 
 def would_materialize_optimize(exec_sql: str, state) -> bool:

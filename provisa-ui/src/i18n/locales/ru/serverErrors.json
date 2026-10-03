@@ -14,6 +14,9 @@
     "ai_models": {
       "vector_model_fields_required": "каждая запись vector_models требует id, provider и dimensions"
     },
+    "api": {
+      "answer_cut": "Ответ для {{table}} обрезан на max_pages={{max_pages}} (строк: {{rows}}): у API есть ещё данные. Увеличьте max_pages или размер страницы конечной точки, чтобы прочитать всё."
+    },
     "auth": {
       "authentication_required": "Требуется аутентификация",
       "auto_join_not_offered": "Эта организация не предлагает принять вас",

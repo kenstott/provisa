@@ -39,6 +39,7 @@ from graphql import GraphQLSyntaxError, OperationType
 from pydantic import BaseModel
 
 from provisa.core import request_deadline
+from provisa.core.statement_warnings import collecting
 from provisa.api.errors import ApiError
 from provisa.cache.key import cache_key, is_cacheable
 from provisa.cache.middleware import build_cache_headers, check_cache, decode_cached_result
@@ -74,6 +75,7 @@ from provisa.api.data.endpoint_helpers import (
     _detect_introspection,
     _inject_probe_limit,
     _inject_stats_into_response,
+    _inject_warnings_into_response,
     _parse_accept,
     _record_per_source_stats,
 )
@@ -429,59 +431,62 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     # What the request's terminal notes for that record: the route(s), the rows, and whether a
     # statement of the request already wrote its own row (an action field).
     _audit_outcome = bind_request_audit()
-    try:
-        if (x_provisa_normalized or "").lower() == "true" and not is_mut:
-            response = await _handle_normalized(
-                document, ctx, rls, state, effective_variables, role_id, role
-            )
-        elif is_mut:
-            response = await _handle_mutation(
-                document,
-                ctx,
-                rls,
+    # REQ-1350: one collector for the request: whatever its statements find to say about their
+    # answers (an API answer cut at max_pages) goes into extensions.warnings below.
+    with collecting() as _request_warnings:
+        try:
+            if (x_provisa_normalized or "").lower() == "true" and not is_mut:
+                response = await _handle_normalized(
+                    document, ctx, rls, state, effective_variables, role_id, role
+                )
+            elif is_mut:
+                response = await _handle_mutation(
+                    document,
+                    ctx,
+                    rls,
+                    state,
+                    effective_variables,
+                    role_id,
+                    raw_request,
+                )
+            else:
+                response = await _handle_query(
+                    document,
+                    ctx,
+                    rls,
+                    state,
+                    effective_variables,
+                    role,
+                    output_format,
+                    role_id,
+                    force_redirect=force_redirect,
+                    redirect_threshold=effective_threshold,
+                    redirect_format=redirect_format,
+                    as_of=_as_of,  # REQ-1163
+                    steward_hint=steward_hint,
+                    query_session_props=directives.to_session_props(),
+                    cache_ttl=directives.cache_ttl,
+                    cache_opt_in=directives.cache_opt_in,  # REQ-544 (amended): per-request opt-in
+                    query_text=request.query,
+                    # REQ-595: the response-cache tenant every surface shares (cache.tenancy) — the
+                    # one write paths invalidate under.
+                    org_id=cache_tenant(state),
+                    plan=plan,
+                    plan_request=plan_request,
+                    directives=directives,
+                )
+        except Exception as exc:
+            # The refusal or failure is the fact the row records (policy_denials reads the 403s).
+            audit_graphql_request(
                 state,
-                effective_variables,
                 role_id,
-                raw_request,
-            )
-        else:
-            response = await _handle_query(
-                document,
+                request.query,
                 ctx,
-                rls,
-                state,
-                effective_variables,
-                role,
-                output_format,
-                role_id,
-                force_redirect=force_redirect,
-                redirect_threshold=effective_threshold,
-                redirect_format=redirect_format,
-                as_of=_as_of,  # REQ-1163
-                steward_hint=steward_hint,
-                query_session_props=directives.to_session_props(),
-                cache_ttl=directives.cache_ttl,
-                cache_opt_in=directives.cache_opt_in,  # REQ-544 (amended): per-request opt-in
-                query_text=request.query,
-                # REQ-595: the response-cache tenant every surface shares (cache.tenancy) — the
-                # one write paths invalidate under.
-                org_id=cache_tenant(state),
-                plan=plan,
-                plan_request=plan_request,
-                directives=directives,
+                getattr(exc, "status_code", 500),
+                _audit_started,
+                _audit_outcome,
             )
-    except Exception as exc:
-        # The refusal or failure is the fact the row records (policy_denials reads the 403s).
-        audit_graphql_request(
-            state,
-            role_id,
-            request.query,
-            ctx,
-            getattr(exc, "status_code", 500),
-            _audit_started,
-            _audit_outcome,
-        )
-        raise
+            raise
     audit_graphql_request(
         state,
         role_id,
@@ -492,6 +497,8 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
         _audit_started,
         _audit_outcome,
     )
+    if _request_warnings:
+        response = _inject_warnings_into_response(response, _request_warnings)
     if (x_provisa_normalized or "").lower() == "true" and not is_mut:
         return response
 

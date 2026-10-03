@@ -14,6 +14,9 @@
     "ai_models": {
       "vector_model_fields_required": "每個 vector_models 項目都需要 id、provider 及 dimensions"
     },
+    "api": {
+      "answer_cut": "{{table}} 的回應在 max_pages={{max_pages}} 處被截斷（{{rows}} 列）：API 還有更多資料。請提高端點的 max_pages 或頁面大小以讀取全部資料。"
+    },
     "auth": {
       "authentication_required": "需要驗證",
       "auto_join_not_offered": "該組織並未提出接納你",

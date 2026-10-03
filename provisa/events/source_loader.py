@@ -300,6 +300,17 @@ def _pk_in_clause(pk_columns: list[str], keys: list[tuple[Any, ...]]) -> str:
     return f"({cols}) IN ({tuples})"
 
 
+def _whole(source: Any, table: Any, rows: list[dict], cut: Any) -> list[dict]:
+    """``rows`` when they are the whole answer. What a land writes is a replica's rows, and a
+    replica is never cut: an answer that stopped at the endpoint's ``max_pages`` with more to
+    read fails the land by name (``replication.page_limit_reached``), as a build does."""
+    if cut is None:
+        return rows
+    from provisa.api_source.replica_read import PageLimitReached
+
+    raise PageLimitReached(f"{source.id}.{table.table_name}", cut.max_pages, cut.rows)
+
+
 def make_openapi_loader(
     endpoints_by_table: dict[str, Any], sources_by_id: dict[str, Any]
 ) -> AdapterLoader:
@@ -322,24 +333,16 @@ def make_openapi_loader(
         return endpoint, api_source
 
     async def _load(source: Any, table: Any) -> list[dict]:
-        from provisa.api_source.caller import call_api
-        from provisa.api_source.flattener import flatten_response
+        from provisa.api_source.caller import answer_rows, call_api
 
         endpoint, api_source = _registered(source, table)
-        pages = await call_api(
+        answer = await call_api(
             endpoint,
             dict(endpoint.default_params),
             base_url=api_source.base_url,
             auth=api_source.auth,
         )
-        rows: list[dict] = []
-        for page in pages:
-            rows.extend(
-                flatten_response(
-                    page, endpoint.response_root, endpoint.columns, endpoint.response_normalizer
-                )
-            )
-        return rows
+        return _whole(source, table, *answer_rows(endpoint, answer))
 
     def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
         # REQ-1915: a build reads the collection a page or a row at a time; only an answer
@@ -372,8 +375,7 @@ def make_neo4j_keyed_loader(
     async def _load(
         source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
     ) -> list[dict]:
-        from provisa.api_source.caller import call_api
-        from provisa.api_source.flattener import flatten_response
+        from provisa.api_source.caller import answer_rows, call_api
         from provisa.cypher.query_template_filter import inject_keys_filter
 
         endpoint = endpoints_by_table.get(table.table_name)
@@ -390,20 +392,13 @@ def make_neo4j_keyed_loader(
             )
         wrapped_template = inject_keys_filter(endpoint.query_template, pk_columns[0])
         wrapped_endpoint = endpoint.model_copy(update={"query_template": wrapped_template})
-        pages = await call_api(
+        answer = await call_api(
             wrapped_endpoint,
             {**endpoint.default_params, "keys": [k[0] for k in keys]},
             base_url=api_source.base_url,
             auth=api_source.auth,
         )
-        rows: list[dict] = []
-        for page in pages:
-            rows.extend(
-                flatten_response(
-                    page, endpoint.response_root, endpoint.columns, endpoint.response_normalizer
-                )
-            )
-        return rows
+        return _whole(source, table, *answer_rows(wrapped_endpoint, answer))
 
     return _load
 

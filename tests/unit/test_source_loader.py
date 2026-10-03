@@ -103,7 +103,9 @@ async def test_make_openapi_loader_calls_and_flattens(monkeypatch):
         calls["params"] = params
         calls["base_url"] = base_url
         calls["auth"] = auth
-        return [{"data": [{"id": 1}, {"id": 2}]}]
+        from provisa.api_source.caller import ApiAnswer
+
+        return ApiAnswer([{"data": [{"id": 1}, {"id": 2}]}])
 
     def _fake_flatten(page, root, columns, normalizer):
         return list(page[root])  # trivial: root points at the row list

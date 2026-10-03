@@ -14,6 +14,9 @@
     "ai_models": {
       "vector_model_fields_required": "各 vector_models エントリには id、provider、dimensions が必要です"
     },
+    "api": {
+      "answer_cut": "{{table}} の応答は max_pages={{max_pages}} で切り詰められました（{{rows}} 行）。API にはまだデータがあります。すべて読み取るには、エンドポイントの max_pages またはページサイズを増やしてください。"
+    },
     "auth": {
       "authentication_required": "認証が必要です",
       "auto_join_not_offered": "その組織はあなたの参加を受け入れていません",

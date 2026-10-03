@@ -14,6 +14,9 @@
     "ai_models": {
       "vector_model_fields_required": "כל רשומת vector_models דורשת id, provider ו-dimensions"
     },
+    "api": {
+      "answer_cut": "התשובה עבור {{table}} נחתכה ב-max_pages={{max_pages}} ({{rows}} שורות): ל-API יש עוד. הגדילו את max_pages או את גודל העמוד של נקודת הקצה כדי לקרוא הכול."
+    },
     "auth": {
       "authentication_required": "נדרש אימות",
       "auto_join_not_offered": "הארגון הזה אינו מציע לקבל אתכם",

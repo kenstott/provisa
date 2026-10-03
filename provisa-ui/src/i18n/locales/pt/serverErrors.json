@@ -14,6 +14,9 @@
     "ai_models": {
       "vector_model_fields_required": "cada entrada de vector_models requer id, provider e dimensions"
     },
+    "api": {
+      "answer_cut": "A resposta para {{table}} foi cortada em max_pages={{max_pages}} ({{rows}} linhas): a API tem mais. Aumente max_pages ou o tamanho de página do endpoint para ler tudo."
+    },
     "auth": {
       "authentication_required": "Autenticação necessária",
       "auto_join_not_offered": "Essa organização não está se oferecendo para admitir você",

@@ -14,6 +14,9 @@
     "ai_models": {
       "vector_model_fields_required": "每个 vector_models 条目都需要 id、provider 和 dimensions"
     },
+    "api": {
+      "answer_cut": "{{table}} 的响应在 max_pages={{max_pages}} 处被截断（{{rows}} 行）：API 还有更多数据。请提高端点的 max_pages 或页面大小以读取全部数据。"
+    },
     "auth": {
       "authentication_required": "需要身份验证",
       "auto_join_not_offered": "该组织不提供准入您的服务",

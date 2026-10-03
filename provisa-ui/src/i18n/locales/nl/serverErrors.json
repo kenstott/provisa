@@ -14,6 +14,9 @@
     "ai_models": {
       "vector_model_fields_required": "elk vector_models-item vereist id, provider en dimensions"
     },
+    "api": {
+      "answer_cut": "Het antwoord voor {{table}} is afgekapt bij max_pages={{max_pages}} ({{rows}} rijen): de API heeft meer. Verhoog max_pages of de paginagrootte van het endpoint om alles te lezen."
+    },
     "auth": {
       "authentication_required": "Verificatie vereist",
       "auto_join_not_offered": "Die organisatie biedt niet aan je toe te laten",
