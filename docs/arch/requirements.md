@@ -10120,7 +10120,7 @@ On ephemeral sandbox session start, clone a pre-seeded golden template schema (o
 
 ### REQ-1035 · Demo Tiers & Onboarding {#REQ-1035}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✗ rejected · **Priority:** MUST · **Type:** behavioral
 
 Ephemeral sandbox sessions are scoped by Firebase anonymous auth ([REQ-121](#REQ-121)) without email collection. Prospects get a uid-based session identity with zero friction.
 
@@ -12746,7 +12746,7 @@ Platform super-admin is a seeded local break-glass account (username + bcrypt pa
 
 ### REQ-1265 · Helm Auth Configuration {#REQ-1265}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** infrastructure
 
 Helm chart deployment MUST NOT require Firebase. Operator specifies auth provider at install time via values.yaml (OIDC issuer URL, SAML metadata, LDAP server, or local break-glass). Provisa configures AuthProvider accordingly, decoupled from cloud Firebase bootstrap path. Enterprise identity providers (corporate OIDC/SAML/LDAP) are the primary target, not Google-only sign-in.
 
@@ -14598,7 +14598,7 @@ Tag assignments are readable as a queryable relation, not only through the admin
 
 ### REQ-1415 · Tag Registry {#REQ-1415}
 
-**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+**Status:** ✓ accepted · **Priority:** MAY · **Type:** behavioral
 
 Tag IDs are emitted into the bracketed comment suffix alongside the modeling role, so a catalog surface shows `[dimension, entity, natural_language]` where it shows `[fact, scd2]` today (append_modeling_tag, provisa/core/modeling_tags.py, [REQ-1320](#REQ-1320)) — reaching pg_description, GraphQL introspection and the Flight/MCP catalog description through the one shared formatter. The comment channel is a HUMAN-FACING MIRROR and is explicitly not the machine contract: the [REQ-1414](#REQ-1414) view is authoritative, and nothing derives behavior by parsing the comment. To keep the mirror unambiguous the constraint is enforced upstream at tag creation rather than at render time — user tag IDs are restricted to a slug charset ([a-z0-9_-]), so a tag can never contain a comma or bracket and no surface needs escaping rules that would drift between the three.
 
@@ -17640,7 +17640,7 @@ Registering a table on a data-quality checker source (soda, great_expectations) 
 
 ### REQ-1664 · Data Quality Sources {#REQ-1664}
 
-**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+**Status:** ✓ accepted · **Priority:** MAY · **Type:** behavioral
 
 A Great Expectations check can be extended with a Python function registered through the Commands surface under a new implementation kind (gx_check), bound the way a python command is (module:attr callable, or inline source under the MV preprocess sandbox). The function takes the check's arguments and returns the SQL predicate selecting the UNEXPECTED rows; at scan time the worker resolves the contract's type to that function, calls it with the expectation's kwargs and emits GX's UnexpectedRowsExpectation, so results land in the shipped envelope unchanged. The check catalog derives the builder's CheckKind from the function's signature — a `column` parameter means column scope, the remaining parameters become params typed from their annotations and defaults — so the panel offers the new type and its args with no UI change. A gx_check is never exposed as a GraphQL mutation or query; function dispatch refuses it. Row-level checks only; aggregate checks (a scalar expression plus a comparator) are a later shape.
 
@@ -18904,7 +18904,7 @@ Provisa shall document and expose the HTML crawler capability from the underlyin
 
 ### REQ-1786 · Data Discovery {#REQ-1786}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** ui
 
 The create_source mutation (provisa/api/admin/schema_mutation.py) shall support an opt-in discover_tables_now flag that, when true, triggers an automatic background crawl_directory call immediately after source creation succeeds. The crawled table/file list is cached and presented to the admin on the source's Tables page as a pre-populated "discovered, not-yet-registered" state, eliminating blank-state friction of manually invoking crawl_directory per source. The flag defaults to false (disabled) to avoid unrequested remote fetch/schema-inference passes on every source creation, which could be slow or noisy for large HTTP-crawled directories ([REQ-1784](#REQ-1784)/1785). The source-creation form (SourceFormFields.tsx) shall conditionally render a "Discover tables now" checkbox for file-connector sources (csv/parquet/sqlite) that, when checked, passes discover_tables_now: true to the mutation.
 
@@ -20016,7 +20016,7 @@ An end-user-facing script (scripts/install-pg-ext.sh or similar) that stages pro
 
 ### REQ-1874 · Federation {#REQ-1874}
 
-**Status:** 💡 proposed · **Priority:** MAY · **Type:** structural
+**Status:** ✓ accepted · **Priority:** MAY · **Type:** structural
 
 (Amended 2026-09-28, scope widened to include mongodb — see [REQ-1871](#REQ-1871)'s policy decision) A captive-Postgres pattern for source types reached via Supabase `wrappers`: SaaS-API types (Stripe, HubSpot, Airtable, Notion, Auth0, etc.) AND mongodb specifically — run a small dedicated Postgres+wrappers container per such source, with `wrappers`' relevant FDW attaching the remote system live inside it, then register that captive instance with Provisa as an ordinary `postgresql` source type — reached through the EXISTING PostgresFdwConnector/native postgres driver, no new pg-engine connector code needed. Policy: this pattern is specifically for `wrappers` (a generalized multi-source Rust framework, no macOS build, one confirmed upstream-adjacent crash-bug class found this session via mongo_fdw) — pg_clickhouse ([REQ-1870](#REQ-1870)), an official single-purpose vendor-maintained C extension, correctly stays bundled directly in the engine and is NOT part of this pattern's scope. This is the SAME shape Provisa already uses for files/sharepoint/splunk ([REQ-954](#REQ-954)/955/956, provisa/federation/pgwire_replica.py) — a bundled server speaking the Postgres wire protocol that the engine reaches as a generic PostgreSQL endpoint — just substituting a real Postgres+wrappers container for the existing Calcite-JVM-bundle mechanism. ISOLATION IS REQUIRED, NOT OPTIONAL: one captive Postgres+wrappers instance PER WRAPPED SOURCE — never shared across two sources (e.g. Stripe and HubSpot each get their own container, not one container running both foreign servers). `wrappers` is a single shared `.so` per Postgres backend process; sharing one captive instance across sources would mean a crash or resource issue tied to ONE source's connection can take down every OTHER source sharing that same process too — defeating the entire point of isolating `wrappers` out of the engine in the first place. Migration note: `PgWrappersMongoDbConnector` (implemented this session, live-verified working, bundled directly in the engine) should be superseded by this pattern for mongodb once it exists — not removed until the captive path is available. (Amended 2026-09-28, simplified — follow the splunk/sharepoint model, full stop, no separate SaaS-vs-CE split:) reuse provisa/federation/pgwire_replica.py's EXACT existing mechanism ([REQ-954](#REQ-954)/955/956) uniformly across every tier — resolve+cache the bundle, configure it from the Source's own config, start it on a unique port, health-check it, land/attach, stop it on demand. No new GKE-specific provisioning path and no docker-compose-specific path as separate requirements; the SAME lifecycle code already running files/sharepoint/splunk in both SaaS and self-hosted deployments today handles this too. An operator MAY still run their own captive instance independently and register it as a plain `postgresql` source (Provisa then only PROBES it, per [REQ-1872](#REQ-1872)) — that is the existing BYO option every `postgresql`-type source already has, not a second mechanism to build. TWO REAL GAPS, not free with the SourceType stubs added for the full wrappers catalog (provisa/core/models.py, 2026-09-28 — airtable/auth0/aws_cognito/dynamodb/firebase/logflare/ s3/s3_vectors/stripe/calcom/calendly/clerk/cloudflare_d1/gravatar/hubspot/infura/notion/orb/ paddle/shopify/slack): (1) NO UI SURFACE YET — config/capabilities.yaml's `source.options` list (the desktop installer wizard's manifest, models.py:136: "every capabilities.yaml source option id maps 1:1 to a SourceType") and the admin "Add Source" form/dropdown both need an entry per type before any of these are selectable/registerable at all; the enum stubs alone are backend-only and invisible in every UI today. (2) DOCKER PRECONDITION ON MACOS/WINDOWS — the captive container is always Linux (`wrappers` has no macOS/Windows build), so on a macOS/Windows desktop install this capability needs Docker (Desktop or equivalent) declared as a `provisioning: platform_feature` prereq in capabilities.yaml, the same shape already used for pg_duckdb's Windows-needs-WSL2 badge (capabilities.yaml:50 area) — not assumed present. UX CONSTRAINT, applies to all copy/labels/errors for this whole pattern: the implementation mechanism (Supabase `wrappers`, the captive Postgres instance, FDW internals) is an implementation detail and MUST NEVER be surfaced to the end user anywhere — not in the source picker, not in prereq/badge text, not in error messages, not in docs written for end users. A user configuring a Stripe source sees "Stripe" as an ordinary source type, the same as configuring Postgres or MongoDB; they never see "wrappers," "FDW," or "captive instance." The Docker prereq badge (above) needs end-user-appropriate wording ("requires a local container runtime" or similar), not an internals-revealing one. Internal code/comments/requirements can and should keep naming the real mechanism (as this REQ does) — the constraint is user-facing surfaces only. (Amended 2026-10-02, SCOPE NARROWED) This pattern is no longer the default route for the `wrappers` catalog. A system whose vendor publishes a usable OpenAPI spec is reached as a branded preset over the OpenAPI source ([REQ-1923](#REQ-1923)), and a system better reached through its own SDK or protocol gets a direct loader. The captive instance is kept for a system with neither. Each system is investigated on its own and given one verdict; the use_case list below is superseded by those verdicts. The `s3` SourceType stub named above is removed -- S3 objects are already reached by csv and parquet (s3:// paths) and by files (mapping.storage_type "s3").
 

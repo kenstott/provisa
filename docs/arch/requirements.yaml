@@ -31104,12 +31104,11 @@
   - REQ-121
   superseded_by: REQ-1595
 - id: REQ-1035
-  status: proposed
+  status: rejected
   group: 2. Authentication & Identity
   category: Demo Tiers & Onboarding
   priority: MUST
   type: behavioral
-  target: 2026-Q3
   description: Ephemeral sandbox sessions are scoped by Firebase anonymous auth (REQ-121) without email
     collection. Prospects get a uid-based session identity with zero friction.
   use_case: Removes signup friction (email validation, password, ToS acceptance) for the "just looking"
@@ -31127,6 +31126,7 @@
   relates_to:
   - REQ-121
   - REQ-1033
+  rejection_reason: Maintainer 2026-10-03, out of V1 scope. Audit found it not built.
 - id: REQ-1036
   status: superseded
   group: 11. Platform, Infrastructure & Delivery
@@ -38477,7 +38477,7 @@
   - REQ-1261
   - REQ-1262
 - id: REQ-1265
-  status: proposed
+  status: accepted
   group: 2. Authentication & Identity
   category: Helm Auth Configuration
   priority: MUST
@@ -38523,6 +38523,7 @@
   - REQ-1262
   - REQ-1263
   - REQ-1264
+  notes: Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built.
 - id: REQ-1266
   status: proposed
   group: 2. Authentication & Identity
@@ -43150,7 +43151,8 @@
     plane.'
   target: 2026-Q4
   notes: 'Kept by the maintainer 2026-10-03 after review of its use cases. Audit 2026-10-03: not built
-    (no parent pointer on the Domain model, provisa/core/models.py:382-389).'
+    (no parent pointer on the Domain model, provisa/core/models.py:382-389). Accepted by the maintainer
+    2026-10-03 for the feature-complete line; audit found it not built.'
 - id: REQ-1364
   status: proposed
   target: 2026-Q4
@@ -43665,7 +43667,8 @@
     visible shadowed state keeps attribute provenance auditable.
   notes: 'Kept by the maintainer 2026-10-03. Audit 2026-10-03: not built (only identity-provider claims
     feed the session variables, provisa/auth/middleware.py:193-220; no local attribute store for IdP-authenticated
-    users and no provenance display).'
+    users and no provenance display). Accepted by the maintainer 2026-10-03 for the feature-complete line;
+    audit found it not built.'
 - id: REQ-1383
   status: accepted
   target: 2026-Q4
@@ -43680,7 +43683,8 @@
     unexpected row visibility from the provenance display.
   notes: 'Kept by the maintainer 2026-10-03. Audit 2026-10-03: not built (only identity-provider claims
     feed the session variables, provisa/auth/middleware.py:193-220; no local attribute store for IdP-authenticated
-    users and no provenance display).'
+    users and no provenance display). Accepted by the maintainer 2026-10-03 for the feature-complete line;
+    audit found it not built.'
 - id: REQ-1384
   status: accepted
   target: 2026-Q4
@@ -43702,6 +43706,7 @@
   - REQ-041
   - REQ-402
   - REQ-1373
+  notes: Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built.
 - id: REQ-1385
   status: in-progress
   target: 2026-Q4
@@ -44813,7 +44818,7 @@
   - REQ-1377
   - REQ-1413
 - id: REQ-1415
-  status: proposed
+  status: accepted
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Tag Registry
@@ -44849,6 +44854,7 @@
   - REQ-1320
   - REQ-1413
   - REQ-1414
+  notes: Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built.
 - id: REQ-1416
   status: complete
   since: 2026-08
@@ -56252,7 +56258,7 @@
   category: Data Catalog Integration
   priority: SHOULD
   type: behavioral
-  target: 2026-Q3
+  target: 2026-Q4
   description: 'New bigquery_dataplex.py MetadataExport adapter, the BigQuery counterpart to REQ-1635''s
     snowflake_horizon.py: populates BigQuery Dataplex catalog entries and registers each DataProduct (REQ-1634)
     as a BigQuery Analytics Hub listing, backed by a dataset containing the product''s member tables.
@@ -56281,6 +56287,7 @@
   - REQ-1634
   tests:
   - tests/steps/steps_data_products.py
+  notes: Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built.
 - id: REQ-1637
   status: complete
   since: 2026-09
@@ -57223,7 +57230,7 @@
   e2e_reason: The derived name and the checker badge on the registered row depend on the live dataset
     resolution against the compiled schema and on the register mutation's checker derivation.
 - id: REQ-1664
-  status: proposed
+  status: accepted
   target: 2026-Q4
   group: 4. Source Connectors
   category: Data Quality Sources
@@ -57254,6 +57261,14 @@
   - REQ-885
   - REQ-957
   - REQ-1663
+  scenario: 'Given a Python function registered as a command of kind gx_check
+
+    When a steward adds it as a check on a table
+
+    Then the check runs with the table''s rows and reports the rows the function returns as failing
+
+    '
+  notes: Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built.
 - id: REQ-1665
   status: complete
   since: 2026-09
@@ -62966,7 +62981,7 @@
 
     '
 - id: REQ-1786
-  status: proposed
+  status: accepted
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Data Discovery
@@ -62991,6 +63006,7 @@
   e2e: true
   e2e_reason: Form checkbox interaction and the resulting background crawl behavior are only verifiable
     end-to-end through a full UI → API round-trip showing the discovery workflow.
+  notes: Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built.
 - id: REQ-1787
   status: accepted
   target: 2026-Q4
@@ -66546,7 +66562,7 @@
   - provisa/core/control_plane_pg.py
   target: 2027-Q1
 - id: REQ-1874
-  status: proposed
+  status: accepted
   group: 4. Source Connectors
   category: Federation
   priority: MAY
@@ -66609,9 +66625,9 @@
     catalog. A system whose vendor publishes a usable OpenAPI spec is reached as a branded preset over
     the OpenAPI source (REQ-1923), and a system better reached through its own SDK or protocol gets a
     direct loader. The captive instance is kept for a system with neither. Each system is investigated
-    on its own and given one verdict; the use_case list below is superseded by those verdicts. The
-    `s3` SourceType stub named above is removed -- S3 objects are already reached by csv and parquet
-    (s3:// paths) and by files (mapping.storage_type "s3").'
+    on its own and given one verdict; the use_case list below is superseded by those verdicts. The `s3`
+    SourceType stub named above is removed -- S3 objects are already reached by csv and parquet (s3://
+    paths) and by files (mapping.storage_type "s3").'
   use_case: Gives access to wrappers' whole catalog (mongodb, Stripe, HubSpot, Airtable, Notion, Auth0,
     AWS Cognito, Cloudflare D1, Logflare, Calendly) without hand-rolling a bespoke Calcite adapter per
     source, and without needing the pg ENGINE itself to carry `wrappers`-specific connector code or link
@@ -66623,7 +66639,8 @@
   code:
   - provisa/federation/pgwire_replica.py
   - provisa/federation/connector_duckdb.py
-  target: 2027-Q3
+  target: 2026-Q4
+  notes: Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built.
 - id: REQ-1875
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -71386,6 +71403,7 @@
   - REQ-1915
   - REQ-1920
   since: 2026-10
+  notes: Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built.
 - id: REQ-1922
   status: accepted
   group: 11. Platform, Infrastructure & Delivery
@@ -71467,6 +71485,7 @@
   - REQ-1916
   - REQ-1914
   since: 2026-10
+  notes: Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built.
 - id: REQ-1923
   status: in-progress
   group: 4. Source Connectors
