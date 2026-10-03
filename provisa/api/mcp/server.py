@@ -147,7 +147,7 @@ async def _org_for_identity(identity: Any, state: Any) -> str | None:
         state,
         user_id=getattr(identity, "user_id", None),
         can_act_any_org=can_act_cross_org(caps),
-        requested_org=getattr(identity, "active_org_id", None),
+        credential_org=getattr(identity, "active_org_id", None),  # REQ-1235
     )
 
 

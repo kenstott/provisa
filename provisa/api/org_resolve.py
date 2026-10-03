@@ -46,12 +46,19 @@ async def resolve_session_org(
     user_id: str | None,
     can_act_any_org: bool = False,  # REQ-1337: the cross_org RIGHT, never a role name
     requested_org: str | None = None,
+    credential_org: str | None = None,
 ) -> str | None:
     """Resolve the org a protocol session should bind, or None to use the default runtime.
 
     Returns None for single-org deployments (caller leaves ``current_org`` unset → default
     runtime). Under multitenancy, returns the org id to bind; raises :class:`OrgResolutionError`
     when the principal is unresolvable to exactly one permitted org.
+
+    REQ-1235: ``requested_org`` is what the client NAMED (SNI host, ticket or metadata org) and
+    authorizes nothing. ``credential_org`` is the org a credential was issued for (a personal
+    access token's); it is the only org that credential opens. A request naming another org is
+    refused even when the owner belongs to it and even for a cross-org principal, and the owner
+    must still belong to the credential's org.
     """
     if not getattr(state, "multitenancy", False):
         return None
@@ -62,6 +69,14 @@ async def resolve_session_org(
             result = await conn.execute_core(bindable_memberships(user_id))
             member_org_ids = [dict(r._mapping)["org_id"] for r in result.fetchall()]
 
+    if credential_org is not None:
+        if requested_org is not None and requested_org != credential_org:
+            raise OrgResolutionError(
+                f"credential is scoped to org {credential_org!r}, not {requested_org!r}"
+            )
+        if can_act_any_org or credential_org in member_org_ids:
+            return credential_org
+        raise OrgResolutionError(f"principal not a member of org {credential_org!r}")
     if requested_org is not None:
         if can_act_any_org or requested_org in member_org_ids:
             return requested_org

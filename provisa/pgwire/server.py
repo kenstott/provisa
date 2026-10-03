@@ -107,7 +107,8 @@ async def _resolve_and_build_org(state_, identity, requested_org: str | None) ->
         state_,
         user_id=getattr(identity, "user_id", None),
         can_act_any_org=can_act_cross_org(caps),
-        requested_org=requested_org or getattr(identity, "active_org_id", None),
+        requested_org=requested_org,
+        credential_org=getattr(identity, "active_org_id", None),  # REQ-1235
     )
     if org_id is not None:
         await ensure_org_runtime(org_id)

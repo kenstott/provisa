@@ -126,3 +126,46 @@ async def test_no_membership_no_request_raises():
     state = _FakeState(multitenancy=True, org_ids=[])
     with pytest.raises(OrgResolutionError, match="belongs to 0 orgs"):
         await resolve_session_org(state, user_id="u1")
+
+
+# --- REQ-1235: an org-scoped credential authorizes its own org and no other ----------------------
+
+
+class TestOrgScopedCredential:
+    async def test_the_credentials_org_is_bound_when_nothing_is_requested(self):
+        state = _FakeState(multitenancy=True, org_ids=["acme", "beta"])
+        assert await resolve_session_org(state, user_id="u1", credential_org="acme") == "acme"
+
+    async def test_a_request_for_the_same_org_is_accepted(self):
+        state = _FakeState(multitenancy=True, org_ids=["acme", "beta"])
+        org = await resolve_session_org(
+            state, user_id="u1", credential_org="acme", requested_org="acme"
+        )
+        assert org == "acme"
+
+    async def test_a_request_for_another_org_the_owner_belongs_to_is_refused(self):
+        state = _FakeState(multitenancy=True, org_ids=["acme", "beta"])
+        with pytest.raises(OrgResolutionError, match="scoped to org 'acme'"):
+            await resolve_session_org(
+                state, user_id="u1", credential_org="acme", requested_org="beta"
+            )
+
+    async def test_the_cross_org_right_does_not_widen_a_scoped_credential(self):
+        state = _FakeState(multitenancy=True, org_ids=[])
+        with pytest.raises(OrgResolutionError, match="scoped to org 'acme'"):
+            await resolve_session_org(
+                state,
+                user_id="u1",
+                can_act_any_org=True,
+                credential_org="acme",
+                requested_org="beta",
+            )
+
+    async def test_a_credential_whose_owner_left_the_org_is_refused(self):
+        state = _FakeState(multitenancy=True, org_ids=["beta"])
+        with pytest.raises(OrgResolutionError, match="not a member of org 'acme'"):
+            await resolve_session_org(state, user_id="u1", credential_org="acme")
+
+    async def test_single_org_deployments_are_unaffected(self):
+        state = _FakeState(multitenancy=False)
+        assert await resolve_session_org(state, user_id="u1", credential_org="acme") is None
