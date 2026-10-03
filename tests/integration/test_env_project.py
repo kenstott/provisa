@@ -100,8 +100,10 @@ async def _seed(org, env=None, *, burn_serials: int = 0):
     ``burn_serials`` exists to make the two schemas disagree about every integer key: a projection
     that leaked one would then differ between them, which is the failure the requirement is about.
     """
-    await org.insert(sources, env, id="warehouse", type="postgres", host="db.internal")
-    await org.insert(domains, env, id="sales", description="revenue")
+    await org.insert(
+        sources, env, id="warehouse", type="postgres", host="db.internal", origin="config"
+    )
+    await org.insert(domains, env, id="sales", description="revenue", origin="config")
     for i in range(burn_serials):
         await org.insert(
             registered_tables,
@@ -110,6 +112,7 @@ async def _seed(org, env=None, *, burn_serials: int = 0):
             domain_id="sales",
             schema_name="scratch",
             table_name=f"burn{i}",
+            origin="config",
         )
     customer = await org.insert(
         registered_tables,
@@ -119,6 +122,7 @@ async def _seed(org, env=None, *, burn_serials: int = 0):
         schema_name="public",
         table_name="customers",
         alias="Customer",
+        origin="config",
     )
     order = await org.insert(
         registered_tables,
@@ -128,6 +132,7 @@ async def _seed(org, env=None, *, burn_serials: int = 0):
         schema_name="public",
         table_name="orders",
         alias="Order",
+        origin="config",
     )
     await org.insert(table_columns, env, table_id=order, column_name="total")
     await org.insert(table_columns, env, table_id=order, column_name="customer_id")
@@ -141,6 +146,7 @@ async def _seed(org, env=None, *, burn_serials: int = 0):
         target_column="id",
         cardinality="many-to-one",
         alias="customer",
+        origin="config",
     )
     return {"customer": customer, "order": order}
 
@@ -244,7 +250,9 @@ class TestATagFindsTheFileItsObjectIsIn:
 
     async def _command_tag(self, org, env=None):
         await _seed(org, env)
-        await org.insert(tracked_functions, env, name="refund_order", source_id="warehouse")
+        await org.insert(
+            tracked_functions, env, name="refund_order", source_id="warehouse", origin="config"
+        )
         await org.insert(
             tag_assignments,
             env,
@@ -254,6 +262,7 @@ class TestATagFindsTheFileItsObjectIsIn:
             command_name="refund_order",
             object_key="command:refund_order",
             reason="superseded by refund_line",
+            origin="config",
         )
 
     async def test_a_command_tag_reaches_the_command_file(self, org):
