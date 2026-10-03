@@ -557,11 +557,8 @@ export function RegisterTableForm({
             <DataQualityPanel
               checker={sourceType}
               sourceId={sourceId}
-              schemaName={domainId ? normalizeDomain(domainId) : schemaName}
-              tableName={tableName}
               contractText={dqContract}
               onChange={setDqContract}
-              registered={false}
               onDatasetChange={onDqDatasetChange}
             />
           </div>

@@ -413,8 +413,8 @@ mutation DryRunDqContract($sourceId: String!, $contractText: String!) {
 }
 
 # REQ-1443: run a checker table's poll job now instead of waiting for its cadence; lands rows.
-mutation RunDqCheckNow($schemaName: String!, $tableName: String!) {
-  runDqCheckNow(schemaName: $schemaName, tableName: $tableName) {
+mutation RunDqCheckNow($tableId: Int!) {
+  runDqCheckNow(tableId: $tableId) {
     ...MutationResult
   }
 }

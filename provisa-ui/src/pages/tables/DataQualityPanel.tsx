@@ -59,14 +59,13 @@ interface DataQualityPanelProps {
   checker: string;
   /** The source the dry run scans through; the checker's connection lives on it. */
   sourceId: string;
-  /** The registered table this contract belongs to — REQ-1443's "run now" fires its poll job. */
-  schemaName: string;
-  tableName: string;
+  /** The registered table this contract belongs to, by id — REQ-1443's "run now" fires its poll
+   *  job. Absent while the table is still being registered (REQ-1663): the dry run still scans
+   *  through the source, but "run now" fires a registered poll job that does not exist yet, so it
+   *  is hidden. */
+  tableId?: number;
   contractText: string;
   onChange: (contractText: string) => void;
-  /** False while the table is still being registered (REQ-1663): the dry run still scans through
-   *  the source, but "run now" fires a registered poll job that does not exist yet, so it is hidden. */
-  registered?: boolean;
   /** The dataset the contract names, whenever the parsed contract changes it (REQ-1663) — the
    *  registration form derives the results table's own name and description from it. */
   onDatasetChange?: (dataset: string | null) => void;
@@ -75,11 +74,9 @@ interface DataQualityPanelProps {
 export function DataQualityPanel({
   checker,
   sourceId,
-  schemaName,
-  tableName,
+  tableId,
   contractText,
   onChange,
-  registered = true,
   onDatasetChange,
 }: DataQualityPanelProps) {
   const { t } = useTranslation();
@@ -250,10 +247,10 @@ export function DataQualityPanel({
     }
   }, [contractText, dryRunContract, sourceId, t]);
 
-  const runNowClick = useCallback(async () => {
+  const runNowClick = useCallback(async (id: number) => {
     setRunningNow(true);
     try {
-      const result = await runCheckNow({ schemaName, tableName });
+      const result = await runCheckNow({ tableId: id });
       setRunNowResult(result);
     } catch (error) {
       setRunNowResult({
@@ -263,7 +260,7 @@ export function DataQualityPanel({
     } finally {
       setRunningNow(false);
     }
-  }, [runCheckNow, schemaName, tableName]);
+  }, [runCheckNow]);
 
   return (
     // REQ-1358: `tourId` marks the whole section, not just its header, so the tour step highlights
@@ -515,7 +512,7 @@ export function DataQualityPanel({
         </Group>
         {/* Unlike the dry run above, this fires the table's own registered poll job — the scan lands
             and persists in its history instead of being thrown away with the response. */}
-        {registered && (
+        {tableId !== undefined && (
           <Group>
             <Button
               variant="default"
@@ -523,7 +520,7 @@ export function DataQualityPanel({
               data-testid="dq-run-now"
               loading={runningNow}
               disabled={contractText.trim() === ""}
-              onClick={() => void runNowClick()}
+              onClick={() => void runNowClick(tableId)}
             >
               {t("dataQualityPanel.runNow")}
             </Button>

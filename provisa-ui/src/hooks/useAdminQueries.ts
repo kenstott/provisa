@@ -360,10 +360,9 @@ export function useDqContract() {
   const [dryRun] = useMutation<{ dryRunDqContract: DqDryRun }, DqDryRunVars>(
     DRY_RUN_DQ_CONTRACT_MUTATION,
   );
-  const [runNow] = useMutation<
-    { runDqCheckNow: MutationResult },
-    { schemaName: string; tableName: string }
-  >(RUN_DQ_CHECK_NOW_MUTATION);
+  const [runNow] = useMutation<{ runDqCheckNow: MutationResult }, { tableId: number }>(
+    RUN_DQ_CHECK_NOW_MUTATION,
+  );
   return {
     checkCatalog: useCallback(
       async (vars: DqCheckCatalogVars): Promise<DqCheckCatalog | null> =>
@@ -391,7 +390,7 @@ export function useDqContract() {
       [dryRun],
     ),
     runCheckNow: useCallback(
-      async (vars: { schemaName: string; tableName: string }): Promise<MutationResult> =>
+      async (vars: { tableId: number }): Promise<MutationResult> =>
         (await runNow({ variables: vars })).data?.runDqCheckNow ?? {
           success: false,
           message: "",

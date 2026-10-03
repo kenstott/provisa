@@ -300,7 +300,16 @@ class _Scheduler:
 
 
 def _contract_conn(dq_contract: str | None = "dataset: provisa/sales/orders\n"):
-    return _Conn(_Rows([{"source_id": "dq", "dq_contract": dq_contract}]))
+    return _Conn(_Rows([_checker_row("dq", dq_contract)]))
+
+
+def _checker_row(source_id: str, dq_contract: str | None = "dataset: provisa/sales/orders\n"):
+    return {
+        "source_id": source_id,
+        "schema_name": "sales",
+        "table_name": "orders",
+        "dq_contract": dq_contract,
+    }
 
 
 @pytest.mark.asyncio
@@ -362,8 +371,8 @@ async def test_run_now_refuses_a_name_two_sources_register():
     both = _Conn(
         _Rows(
             [
-                {"source_id": "dq", "dq_contract": "dataset: provisa/sales/orders\n"},
-                {"source_id": "dq2", "dq_contract": "dataset: provisa/sales/orders\n"},
+                _checker_row("dq"),
+                _checker_row("dq2"),
             ]
         )
     )
@@ -377,4 +386,41 @@ async def test_run_now_refuses_a_name_two_sources_register():
     assert result == {
         "success": False,
         "message": "more than one source registers sales.orders (dq, dq2)",
+    }
+
+
+@pytest.mark.asyncio
+async def test_run_now_by_table_id_fires_that_tables_job():
+    """The panel names the table by its registered id: whichever source holds it, its own poll
+    job runs."""
+    job = _Job()
+    result = await run_dq_check_now(
+        cast("Connection", _Conn(_Rows([_checker_row("dq2")]))),
+        scheduler=_Scheduler("poll:dq2/sales.orders", job),
+        org_id=None,
+        table_id=42,
+    )
+    assert result == {"success": True, "message": "ran dq2/sales.orders now"}
+    assert job.called is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "named",
+    [
+        {},
+        {"schema_name": "sales"},
+        {"table_id": 42, "table_name": "orders"},
+    ],
+)
+async def test_run_now_needs_the_id_or_both_names(named):
+    result = await run_dq_check_now(
+        cast("Connection", _contract_conn()),
+        scheduler=_Scheduler("poll:dq/sales.orders", _Job()),
+        org_id=None,
+        **named,
+    )
+    assert result == {
+        "success": False,
+        "message": "name the table by its id, or by its schema and table name",
     }

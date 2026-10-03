@@ -624,9 +624,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def run_dq_check_now(  # REQ-1443: "run now and retain" from the DQ check detail
-        self, info: StrawberryInfo, schema_name: str, table_name: str
+        self,
+        info: StrawberryInfo,
+        table_id: int | None = None,
+        schema_name: str | None = None,
+        table_name: str | None = None,
     ) -> MutationResult:
-        """Fire a checker table's poll job immediately instead of waiting for its cadence.
+        """Fire a checker table's poll job immediately instead of waiting for its cadence. The
+        table is named by its registered id, or by schema and table name (refused when more than
+        one source registers that name).
 
         Reuses the same registered poll job the event loop already runs on cadence (REQ-941) — this
         does not re-scan into the response like the dry run; it lands the scan's rows the normal way,
@@ -649,6 +655,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 cast("Connection", conn),
                 scheduler=state._scheduler,
                 org_id=org_id,
+                table_id=table_id,
                 schema_name=schema_name,
                 table_name=table_name,
             )

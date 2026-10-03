@@ -403,6 +403,23 @@ def _wire_replica_builds(scheduler: Any, state: Any, log: Any) -> None:
         )
 
 
+def _lineage(mvs: list[Any], state: Any, log: Any) -> dict[str, set[str]]:
+    """The views' edges, resolved against the model (``events.nodes.lineage_graph``). A view
+    whose input does not resolve was refused when it was declared, so meeting one here is a
+    defect: the view is marked failed with the reason (the admin's view list and refresh status
+    show it), the error is logged naming the view and the reference, and the wiring raises."""
+    from provisa.events.nodes import lineage_graph
+    from provisa.mv.view_inputs import InputUnresolved
+
+    try:
+        return lineage_graph(mvs, state)
+    except InputUnresolved as unresolved:
+        reason = f"not wired into the event loop: {unresolved}"
+        state.mv_registry.mark_refresh_failed(unresolved.view, reason)
+        log.error("event loop: %s", reason)
+        raise
+
+
 async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = True) -> int:
     """Build + register the event loop from live state. Returns the node count registered (0 if the
     prerequisites are not ready or the loop is skipped). Best-effort — never raises into boot.
@@ -435,9 +452,9 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         # by the spelling its SQL uses. A view whose input does not resolve was refused when it was
         # declared, so meeting one here is a defect: it raises, naming the view and the reference.
         # A cycle is rejected — the loop must be acyclic.
-        from provisa.events.nodes import expected_event_nodes, lineage_graph, source_node
+        from provisa.events.nodes import expected_event_nodes, source_node
 
-        graph = lineage_graph(mvs, state)
+        graph = _lineage(mvs, state, log)
         try:
             dependents_of = supervisor.dependents_of(graph)
         except ValueError:
@@ -692,7 +709,7 @@ async def wire_new_poll_jobs(*, state: Any, log: Any) -> int:
         registered_tables_ = await registered_tables(state)
         src_by_id = {s.id: s for s in all_sources}
 
-        from provisa.events.nodes import lineage_graph, source_node
+        from provisa.events.nodes import source_node
 
         candidates = [
             (
@@ -745,8 +762,9 @@ async def wire_new_poll_jobs(*, state: Any, log: Any) -> int:
 
         registry = getattr(state, "mv_registry", None)
         mvs = registry.get_enabled() if registry is not None else []
+        graph = _lineage(mvs, state, log)
         try:
-            dependents_of = supervisor.dependents_of(lineage_graph(mvs, state))
+            dependents_of = supervisor.dependents_of(graph)
         except ValueError:
             log.warning("poll-job wiring: MV lineage has a cycle — skipping")
             return 0

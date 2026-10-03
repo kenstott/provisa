@@ -217,10 +217,19 @@ async def dry_run_contract(conn: "Connection", *, source_id: str, contract_text:
 
 
 async def run_dq_check_now(
-    conn: "Connection", *, scheduler: Any, org_id: str | None, schema_name: str, table_name: str
+    conn: "Connection",
+    *,
+    scheduler: Any,
+    org_id: str | None,
+    table_id: int | None = None,
+    schema_name: str | None = None,
+    table_name: str | None = None,
 ) -> dict:
     """Fire a checker table's own poll job immediately instead of waiting for its cadence, landing
     results the same way the scheduler would (REQ-1443 "run now and retain").
+
+    The table is named by its registered id, or by ``schema_name`` and ``table_name`` — refused
+    when more than one source registers that name, since it does not say whose checker runs.
 
     Reuses the EXACT job APScheduler already registered for this node (``register_poll_job`` in
     :mod:`provisa.events.processor`) rather than a second pipeline — the closure it points at is
@@ -228,16 +237,33 @@ async def run_dq_check_now(
     cadence drives. A table with no such job (not a registered checker table, or the event loop has
     not booted it yet) is a real error, not a no-op.
     """
+    by_id = table_id is not None
+    if by_id == (schema_name is not None or table_name is not None) or (
+        not by_id and (schema_name is None or table_name is None)
+    ):
+        return {
+            "success": False,
+            "message": "name the table by its id, or by its schema and table name",
+        }
+    picked = (
+        registered_tables.c.id == table_id
+        if by_id
+        else (registered_tables.c.schema_name == schema_name)
+        & (registered_tables.c.table_name == table_name)
+    )
     rows = (
         await conn.execute_core(
-            select(registered_tables.c.source_id, registered_tables.c.dq_contract).where(
-                registered_tables.c.schema_name == schema_name,
-                registered_tables.c.table_name == table_name,
-            )
+            select(
+                registered_tables.c.source_id,
+                registered_tables.c.schema_name,
+                registered_tables.c.table_name,
+                registered_tables.c.dq_contract,
+            ).where(picked)
         )
     ).fetchall()
     if not rows:
-        return {"success": False, "message": f"no table {schema_name}.{table_name}"}
+        named = f"id {table_id}" if by_id else f"{schema_name}.{table_name}"
+        return {"success": False, "message": f"no table {named}"}
     if len(rows) > 1:
         # Two sources may both hold schema.table: the name alone does not say which checker runs.
         sources = ", ".join(sorted(r._mapping["source_id"] for r in rows))
@@ -246,16 +272,18 @@ async def run_dq_check_now(
             "message": f"more than one source registers {schema_name}.{table_name} ({sources})",
         }
     fetched = rows[0]
+    schema: str = fetched._mapping["schema_name"]
+    table: str = fetched._mapping["table_name"]
     if not fetched._mapping["dq_contract"]:
         return {
             "success": False,
-            "message": f"{schema_name}.{table_name} carries no dq_contract; nothing to run",
+            "message": f"{schema}.{table} carries no dq_contract; nothing to run",
         }
     if scheduler is None:
         return {"success": False, "message": "the event-loop scheduler is not running"}
     from provisa.events.nodes import source_node
 
-    node = source_node(fetched._mapping["source_id"], schema_name, table_name)
+    node = source_node(fetched._mapping["source_id"], schema, table)
     suffix = f":org_{org_id}" if org_id else ""
     job = scheduler.get_job(f"poll:{node}{suffix}")
     if job is None:
