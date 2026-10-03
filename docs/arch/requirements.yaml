@@ -43034,7 +43034,11 @@
   priority: MUST
   type: structural
   description: Add hierarchical domain structure via parent_domain_id to Domain model, with flattening
-    applied at execution time to governance, addressing, and access control layers.
+    applied at execution time to governance, addressing, and access control layers. (Amended 2026-10-03,
+    THE USE CASE IS A BUSINESS UNIT AND ITS ORGANIZATIONS:) A parent domain represents a business unit
+    and its child domains represent the organizations within that business unit. A role granted the business
+    unit's domain reaches every organization's domain under it, including one added later, without the
+    role being edited.
   use_case: Enable organizations to structure domains hierarchically for governance metadata and organization,
     while maintaining a single flat execution model and addressing scheme.
   code:
@@ -43061,6 +43065,9 @@
     RLS, row-scoping, all surfaces see flattened domain sets. Rejected alternative: recursive domains
     with per-domain scoped namespaces (from Simple is Hard appendix-B) as fragmenting the single control
     plane.'
+  target: 2026-Q4
+  notes: 'Kept by the maintainer 2026-10-03 after review of its use cases. Audit 2026-10-03: not built
+    (no parent pointer on the Domain model, provisa/core/models.py:382-389).'
 - id: REQ-1364
   status: proposed
   target: 2026-Q4

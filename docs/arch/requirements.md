@@ -14006,7 +14006,7 @@ In demo mode, all application page chunks must be preloaded and compiled before 
 
 **Status:** ✓ accepted · **Priority:** MUST · **Type:** structural
 
-Add hierarchical domain structure via parent_domain_id to Domain model, with flattening applied at execution time to governance, addressing, and access control layers.
+Add hierarchical domain structure via parent_domain_id to Domain model, with flattening applied at execution time to governance, addressing, and access control layers. (Amended 2026-10-03, THE USE CASE IS A BUSINESS UNIT AND ITS ORGANIZATIONS:) A parent domain represents a business unit and its child domains represent the organizations within that business unit. A role granted the business unit's domain reaches every organization's domain under it, including one added later, without the role being edited.
 
 **Use case:** Enable organizations to structure domains hierarchically for governance metadata and organization, while maintaining a single flat execution model and addressing scheme.
 
