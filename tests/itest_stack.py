@@ -37,6 +37,7 @@ runs sessions concurrently.
 
 from __future__ import annotations
 
+import atexit
 import fcntl
 import hashlib
 import json
@@ -262,6 +263,54 @@ def _docker_vm_memory() -> int:
 def concurrent_session_limit() -> int:
     """How many pytest sessions this host's Docker VM can hold stacks for at once."""
     return max(1, _docker_vm_memory() // _SESSION_MEMORY_BUDGET)
+
+
+_abnormal_teardown_installed = False
+
+
+def install_abnormal_exit_teardown(teardown):
+    """Run ``teardown`` once if this process is SIGTERMed or exits abnormally.
+
+    ``pytest_sessionfinish`` covers a clean exit and KeyboardInterrupt, but a SIGTERM (what
+    ``timeout`` and most supervisors send) ends the process without it, leaving the session's
+    PID-named Docker stack to sit until a later run reaps it. This registers ``teardown`` on
+    SIGTERM and atexit so a killed run tears its own stack down. Idempotent: it runs at most
+    once however it is triggered, and only the first call installs the handlers (the controller
+    that provisioned the stack). Returns the guarded runner, which ``pytest_sessionfinish`` can
+    call so the clean path shares the same once-only guard.
+
+    SIGKILL cannot be caught; the flock stack slot and :func:`reap_orphaned_projects` remain the
+    backstop for that.
+    """
+    global _abnormal_teardown_installed
+    ran = {"done": False}
+
+    def _run() -> None:
+        if ran["done"]:
+            return
+        ran["done"] = True
+        try:
+            teardown()
+        except Exception:
+            # Teardown is best-effort on an abnormal exit; never mask the original failure.
+            pass
+
+    if _abnormal_teardown_installed:
+        return _run
+    _abnormal_teardown_installed = True
+    atexit.register(_run)
+    previous = signal.getsignal(signal.SIGTERM)
+
+    def _handler(signum, frame):
+        _run()
+        if callable(previous):
+            previous(signum, frame)
+        else:
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            os.kill(os.getpid(), signum)
+
+    signal.signal(signal.SIGTERM, _handler)
+    return _run
 
 
 def acquire_stack_slot(timeout: float = 7200.0) -> None:
