@@ -232,6 +232,32 @@
     "loadManagementInfoLabel": "About load management and timeliness",
     "loadManagementInfo": "Balances how current each reader's data is against load on the platform and on upstream sources. Ideally the upstream manages its own load; the operator protects the platform, and the upstream when it can't protect itself. These settings are the operator's floor — no query or request hint can get fresher data or put more load on a source than they allow. Readers can only choose to accept older data for speed. A table the engine reads live ignores the TTL settings; they apply once it is served from its replica (Replicate, or Load Protected).",
     "cacheTtlRequiredForSignal": "The {{signal}} change signal judges staleness by the Cache TTL, so set a Cache TTL here or on the source.",
-    "loadManagementFixErrors": "Fix the Load Management and Timeliness settings before saving."
+    "loadManagementFixErrors": "Fix the Load Management and Timeliness settings before saving.",
+    "pagingLabel": "Paging",
+    "pagingEndpointHelp": "How this endpoint is read page by page. A read stops after Max pages; an answer the API had more of is reported as cut and never cached as complete.",
+    "pagingConnectionHelp": "The most rows one read of this connection table takes. Leave empty to use Remote GraphQL rows per read; a table may lower it, never raise it.",
+    "pagingMaxRows": "Max rows per read",
+    "pagingMaxRowsDefault": "Default: {{ceiling}}",
+    "pagingType": "Paging type",
+    "pagingNone": "Not paged",
+    "pagingTypes": {
+      "offset": "Offset and limit",
+      "page_number": "Page number",
+      "cursor": "Cursor",
+      "link_header": "Link header"
+    },
+    "pagingFields": {
+      "pageParam": "Page parameter",
+      "pageSizeParam": "Page size parameter",
+      "pageSize": "Page size",
+      "cursorParam": "Cursor parameter",
+      "cursorField": "Next-cursor field",
+      "maxPages": "Max pages"
+    },
+    "pagingCutNote": "A read that reaches Max pages while the API has more is reported as cut.",
+    "pagingTypeRequired": "Choose a paging type, or clear the paging fields.",
+    "pagingPositive": "Use a whole number of 1 or more.",
+    "pagingAboveCeiling": "At most {{ceiling}}: a table may lower the operator's bound, never raise it.",
+    "pagingFixErrors": "Fix the paging errors before saving."
   }
 }

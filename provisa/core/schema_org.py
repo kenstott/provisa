@@ -174,6 +174,8 @@ registered_tables = Table(
     Column("load_protected", Boolean),  # REQ-1141: NULL = inherit source
     Column("off_peak_window", Text),  # REQ-1141
     Column("off_peak_tz", Text),  # REQ-1141
+    # REQ-318: how the table is read page by page (provisa.core.paging); NULL = not paged here.
+    Column("pagination", JSON),
     Column("gql_naming_convention", Text),
     Column("watermark_column", Text),
     Column("change_signal", Text),  # REQ-929: override source change signal; NULL = inherit

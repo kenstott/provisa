@@ -232,6 +232,32 @@
     "loadManagementInfoLabel": "Informazioni su gestione del carico e tempestività",
     "loadManagementInfo": "Bilancia quanto sono aggiornati i dati di ogni lettore rispetto al carico sulla piattaforma e sulle sorgenti upstream. Idealmente la sorgente upstream gestisce il proprio carico; l'operatore protegge la piattaforma, e la sorgente quando non può proteggersi da sola. Queste impostazioni sono la soglia minima dell'operatore: nessuna query o indicazione nella richiesta può ottenere dati più recenti o caricare una sorgente più di quanto consentano. I lettori possono solo scegliere di accettare dati più vecchi in cambio di velocità. Una tabella che il motore legge in tempo reale ignora le impostazioni TTL; si applicano quando viene servita dalla sua replica («Replicare» o «Protezione dal carico»).",
     "cacheTtlRequiredForSignal": "Il segnale di modifica {{signal}} valuta l'aggiornamento in base al TTL della cache, quindi imposta un TTL della cache qui o sulla sorgente.",
-    "loadManagementFixErrors": "Correggi le impostazioni di Gestione del carico e tempestività prima di salvare."
+    "loadManagementFixErrors": "Correggi le impostazioni di Gestione del carico e tempestività prima di salvare.",
+    "pagingLabel": "Paginazione",
+    "pagingEndpointHelp": "Come questo endpoint viene letto pagina per pagina. Una lettura si ferma dopo Pagine massime; una risposta di cui l'API aveva altri dati viene segnalata come troncata e non viene mai memorizzata nella cache come completa.",
+    "pagingConnectionHelp": "Il numero massimo di righe che una lettura di questa tabella di connessione prende. Lascia vuoto per usare Righe per lettura GraphQL remoto; una tabella può abbassarlo, mai alzarlo.",
+    "pagingMaxRows": "Numero massimo di righe per lettura",
+    "pagingMaxRowsDefault": "Predefinito: {{ceiling}}",
+    "pagingType": "Tipo di paginazione",
+    "pagingNone": "Senza paginazione",
+    "pagingTypes": {
+      "offset": "Offset e limite",
+      "page_number": "Numero di pagina",
+      "cursor": "Cursore",
+      "link_header": "Intestazione Link"
+    },
+    "pagingFields": {
+      "pageParam": "Parametro di pagina",
+      "pageSizeParam": "Parametro dimensione pagina",
+      "pageSize": "Dimensione pagina",
+      "cursorParam": "Parametro cursore",
+      "cursorField": "Campo cursore successivo",
+      "maxPages": "Pagine massime"
+    },
+    "pagingCutNote": "Una lettura che raggiunge Pagine massime mentre l'API ha altri dati viene segnalata come troncata.",
+    "pagingTypeRequired": "Scegli un tipo di paginazione o svuota i campi di paginazione.",
+    "pagingPositive": "Usa un numero intero pari o superiore a 1.",
+    "pagingAboveCeiling": "Al massimo {{ceiling}}: una tabella può abbassare il limite dell'operatore, mai alzarlo.",
+    "pagingFixErrors": "Correggi gli errori di paginazione prima di salvare."
   }
 }

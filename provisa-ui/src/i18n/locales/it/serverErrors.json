@@ -328,7 +328,13 @@
       "replicate_contradicts_load_protected": "La protezione dal carico non può essere combinata con Replicare = «Mai»: una tabella protetta dal carico non viene mai letta in tempo reale",
       "table_registered_fields_omitted": "Tabella '{{table}}' registrata (id={{id}}). Omessi, perché la credenziale dell'origine non può leggerli: {{fields}}",
       "table_not_readable": "La credenziale di questa origine non può leggere {{table}}: {{reason}}",
-      "table_too_complex": "La tabella '{{table}}' non è stata registrata con le colonne selezionate: {{reason}}. Scegliere meno colonne."
+      "table_too_complex": "La tabella '{{table}}' non è stata registrata con le colonne selezionate: {{reason}}. Scegliere meno colonne.",
+      "paging_not_paged": "La tabella {{table}} non viene letta pagina per pagina, quindi non accetta paginazione.",
+      "paging_endpoint_needs_type": "La tabella {{table}} è un endpoint REST: la sua paginazione indica il tipo di paginazione.",
+      "paging_connection_rows_only": "La tabella {{table}} è una tabella di connessione: pagina tramite gli argomenti del suo schema e imposta solo il numero massimo di righe.",
+      "paging_above_ceiling": "Tabella {{table}}: max_rows={{max_rows}} supera graphql_remote.max_rows={{ceiling}}; una tabella può abbassare il limite dell'operatore, mai alzarlo.",
+      "paging_invalid": "Tabella {{table}}: {{reason}}",
+      "table_paging_updated": "Paginazione aggiornata per la tabella {{table}}."
     },
     "secrets": {
       "still_referenced": "{{secret}} è ancora nominato da {{count}} valore/i memorizzato/i in questa organizzazione. Modifica o rimuovi ciascuno, poi eliminalo di nuovo."

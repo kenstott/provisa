@@ -56,6 +56,7 @@ from provisa.api.admin.types import (
     RelationshipInput,
     RLSRuleInput,
     RoleInput,
+    PagingInput,
     RoleTtlInput,
     SourceInput,
     TableInput,
@@ -2976,6 +2977,20 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             code="schema.table_role_ttl_updated",
             params={"table": table_id},
         )
+
+    @strawberry.mutation
+    async def update_table_paging(
+        self, info: StrawberryInfo, table_id: int, paging: PagingInput | None = None
+    ) -> MutationResult:  # REQ-318
+        """Replace a table's paging (null clears it): a paged REST endpoint's type and parameters,
+        or a connection table's max_rows, which may only lower graphql_remote.max_rows."""
+        from provisa.api.admin._table_paging import save_table_paging
+        from provisa.api.app import state
+
+        require_capability(info, "table_registration")
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            return await save_table_paging(state, conn, table_id, paging)
 
     @strawberry.mutation
     async def update_source_replicate(

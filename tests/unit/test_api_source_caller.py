@@ -36,10 +36,9 @@ from provisa.api_source.models import (
     ApiColumn,
     ApiColumnType,
     ApiEndpoint,
-    PaginationConfig,
-    PaginationType,
     ParamType,
 )
+from provisa.core.paging import PaginationConfig, PaginationType
 from provisa.core.auth_models import (
     ApiAuthApiKey,
     ApiAuthBasic,

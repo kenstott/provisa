@@ -328,7 +328,13 @@
       "replicate_contradicts_load_protected": "Lastschutz lässt sich nicht mit Replizieren = „Nie“ kombinieren: Eine lastgeschützte Tabelle wird nie live gelesen",
       "table_registered_fields_omitted": "Tabelle '{{table}}' registriert (id={{id}}). Ausgelassen, weil die Zugangsdaten der Quelle sie nicht lesen dürfen: {{fields}}",
       "table_not_readable": "Die Zugangsdaten dieser Quelle dürfen {{table}} nicht lesen: {{reason}}",
-      "table_too_complex": "Die Tabelle '{{table}}' wurde mit den ausgewählten Spalten nicht registriert: {{reason}}. Wählen Sie weniger Spalten."
+      "table_too_complex": "Die Tabelle '{{table}}' wurde mit den ausgewählten Spalten nicht registriert: {{reason}}. Wählen Sie weniger Spalten.",
+      "paging_not_paged": "Die Tabelle {{table}} wird nicht seitenweise gelesen und nimmt daher keine Paginierung an.",
+      "paging_endpoint_needs_type": "Die Tabelle {{table}} ist ein REST-Endpunkt: Ihre Paginierung nennt den Paginierungstyp.",
+      "paging_connection_rows_only": "Die Tabelle {{table}} ist eine Connection-Tabelle: Sie paginiert über die Argumente ihres Schemas und legt nur max. Zeilen fest.",
+      "paging_above_ceiling": "Tabelle {{table}}: max_rows={{max_rows}} liegt über graphql_remote.max_rows={{ceiling}}; eine Tabelle darf die Grenze des Betreibers senken, nie erhöhen.",
+      "paging_invalid": "Tabelle {{table}}: {{reason}}",
+      "table_paging_updated": "Paginierung für Tabelle {{table}} aktualisiert."
     },
     "secrets": {
       "still_referenced": "{{secret}} wird noch von {{count}} gespeicherten Wert(en) in dieser Organisation genannt. Ändern oder entfernen Sie jeden davon und löschen Sie es dann erneut."

@@ -13,7 +13,8 @@
 // than the max-lines cap allows.
 
 import { useQuery, useMutation } from "@apollo/client/react";
-import type { MutationResult, RoleTtl } from "../types/admin";
+import type { MutationResult, Paging, RoleTtl } from "../types/admin";
+import { pagingInput } from "../pages/tables/paging";
 import type {
   MVInfo,
   CacheStats,
@@ -39,6 +40,7 @@ import {
   CreateScheduledTask,
   DeleteScheduledTask,
   PurgeCacheByTable,
+  UpdateTablePaging,
   UpdateTableRoleTtl,
 } from "./admin.graphql";
 
@@ -212,6 +214,22 @@ export function usePurgeCacheByTable() {
     purgeCacheByTable: async (tableId: number) => {
       const result = await purgeCacheByTable({ variables: { tableId } });
       return (result.data?.purgeCacheByTable ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+// REQ-318: replace a table's paging (null clears it).
+export function useUpdateTablePaging() {
+  const [updateTablePaging, { loading }] = useMutation<{ updateTablePaging: MutationResult }>(
+    UpdateTablePaging,
+  );
+  return {
+    updateTablePaging: async (tableId: number, paging: Paging | null) => {
+      const result = await updateTablePaging({
+        variables: { tableId, paging: paging === null ? null : pagingInput(paging) },
+      });
+      return (result.data?.updateTablePaging ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
   };

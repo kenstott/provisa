@@ -232,6 +232,32 @@
     "loadManagementInfoLabel": "À propos de la gestion de la charge et de la fraîcheur",
     "loadManagementInfo": "Met en balance la fraîcheur des données de chaque lecteur et la charge sur la plateforme et les sources en amont. Idéalement, la source en amont gère sa propre charge ; l'opérateur protège la plateforme, et la source lorsqu'elle ne peut pas se protéger. Ces réglages sont le plancher de l'opérateur : aucune requête ni indication de requête ne peut obtenir des données plus récentes ni charger une source davantage qu'ils ne le permettent. Les lecteurs peuvent seulement choisir d'accepter des données plus anciennes pour gagner en rapidité. Une table que le moteur lit en direct ignore les réglages TTL ; ils s'appliquent dès qu'elle est servie depuis sa réplique (« Répliquer » ou « Protection de charge »).",
     "cacheTtlRequiredForSignal": "Le signal de changement {{signal}} évalue la fraîcheur selon le TTL du cache ; définissez donc un TTL du cache ici ou sur la source.",
-    "loadManagementFixErrors": "Corrigez les réglages de Gestion de la charge et fraîcheur avant d'enregistrer."
+    "loadManagementFixErrors": "Corrigez les réglages de Gestion de la charge et fraîcheur avant d'enregistrer.",
+    "pagingLabel": "Pagination",
+    "pagingEndpointHelp": "Comment ce point de terminaison est lu page par page. Une lecture s'arrête après Pages max ; une réponse dont l'API avait davantage est signalée comme tronquée et n'est jamais mise en cache comme complète.",
+    "pagingConnectionHelp": "Le nombre maximal de lignes qu'une lecture de cette table de connexion prend. Laissez vide pour utiliser Lignes par lecture GraphQL distant ; une table peut l'abaisser, jamais le relever.",
+    "pagingMaxRows": "Lignes max par lecture",
+    "pagingMaxRowsDefault": "Par défaut : {{ceiling}}",
+    "pagingType": "Type de pagination",
+    "pagingNone": "Non paginé",
+    "pagingTypes": {
+      "offset": "Décalage et limite",
+      "page_number": "Numéro de page",
+      "cursor": "Curseur",
+      "link_header": "En-tête Link"
+    },
+    "pagingFields": {
+      "pageParam": "Paramètre de page",
+      "pageSizeParam": "Paramètre de taille de page",
+      "pageSize": "Taille de page",
+      "cursorParam": "Paramètre de curseur",
+      "cursorField": "Champ du curseur suivant",
+      "maxPages": "Pages max"
+    },
+    "pagingCutNote": "Une lecture qui atteint Pages max alors que l'API en a davantage est signalée comme tronquée.",
+    "pagingTypeRequired": "Choisissez un type de pagination, ou videz les champs de pagination.",
+    "pagingPositive": "Utilisez un nombre entier supérieur ou égal à 1.",
+    "pagingAboveCeiling": "Au plus {{ceiling}} : une table peut abaisser la limite de l'opérateur, jamais la relever.",
+    "pagingFixErrors": "Corrigez les erreurs de pagination avant d'enregistrer."
   }
 }

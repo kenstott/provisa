@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
-// Canary: 5d1a7c93-2b6e-4f08-8c4d-9e3b1f7a6c25
+// Canary: 3ca68f49-0fc5-4cb7-a0e3-8290147e6d4c
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -8,13 +8,16 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1907: saving the table edit form persists the Role TTL list through updateTableRoleTtl
-// (full replace), and an invalid row blocks the whole save before any mutation runs.
+// REQ-318: the Paging section of the table edit form. A REST endpoint table sets its paging type
+// and parameters; a connection table sets max rows, which may only lower the operator's bound.
+// Saving persists the paging through updateTablePaging only when it changed; paging the table
+// cannot take blocks the save before any mutation runs.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "../../test-utils/render";
+import { render, screen, waitFor, within } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
 import type { RegisteredTable, RoleTtl } from "../../types/admin";
+import { NO_PAGING } from "../tables/paging";
 
 vi.mock("../../context/DomainFilterContext", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../context/DomainFilterContext")>()),
@@ -123,12 +126,12 @@ function table(
 }
 
 const TABLES = [
-  table(7, "orders", [{ role: "analyst", ttl: 360 }]),
-  // REQ-930: a ttl signal with no Cache TTL on the table or its source (the source sets none).
-  table(9, "ticks", [], { cacheTtl: null, changeSignal: "ttl", replicate: 0 }),
-  // Read live: a ttl table with no Cache TTL saves; the server raises if it ever lands.
-  table(14, "live_ticks", [], { cacheTtl: null, changeSignal: "ttl" }),
-  table(15, "mv_ticks", [], { cacheTtl: null, changeSignal: "ttl_probe", materialize: true }),
+  table(7, "pets", [], {
+    pagingKind: "endpoint",
+    pagination: { ...NO_PAGING, type: "offset", maxPages: 3 },
+  }),
+  table(8, "issues", [], { pagingKind: "connection", pagingCeilingRows: 1000 }),
+  table(9, "orders", []),
 ];
 const SOURCES = [
   {
@@ -159,11 +162,13 @@ const updateTableCache = vi.fn();
 const updateTableReplicate = vi.fn();
 const updateTableLoadProtection = vi.fn();
 const updateTableRoleTtl = vi.fn();
+const updateTablePaging = vi.fn();
 
 vi.mock("../../hooks/useAdminOpsQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useAdminOpsQueries")>()),
   usePurgeCacheByTable: () => ({ purgeCacheByTable: vi.fn(), loading: false }),
   useUpdateTableRoleTtl: () => ({ updateTableRoleTtl, loading: false }),
+  useUpdateTablePaging: () => ({ updateTablePaging, loading: false }),
 }));
 
 vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
@@ -185,24 +190,15 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
 
 import { TablesPage } from "../TablesPage";
 
-async function openEditor(name = "orders") {
+async function openEditor(name: string) {
   render(<TablesPage />);
   const row = (await screen.findByText(name)).closest("tr") as HTMLElement;
   await userEvent.click(row.querySelector("td") as HTMLElement);
   await userEvent.click(await screen.findByTestId("table-read-view-edit"));
-  // The load settings live in the collapsed "Load Management and Timeliness" panel.
-  const toggle = await screen.findByTestId("load-management-panel-toggle");
-  expect(toggle).toHaveAttribute("aria-expanded", "false");
-  expect(toggle).toHaveTextContent("Load Management and Timeliness");
-  await userEvent.click(toggle);
-  expect(screen.getByTestId("load-management-help")).toHaveTextContent(
-    "How current the data must be for each reader, balanced against load on the platform and upstream sources.",
-  );
-  return screen.findByTestId("role-ttl-field");
+  await userEvent.click(await screen.findByTestId("load-management-panel-toggle"));
 }
 
-// The signal matrix lives in the tableTtlSignalError unit tests (roleTtl.test.ts), not here.
-describe("TablesPage — Role TTL save (REQ-1907)", () => {
+describe("TablesPage — Paging (REQ-318)", () => {
   beforeEach(() => {
     for (const fn of [
       updateTable,
@@ -211,90 +207,78 @@ describe("TablesPage — Role TTL save (REQ-1907)", () => {
       updateTableReplicate,
       updateTableLoadProtection,
       updateTableRoleTtl,
+      updateTablePaging,
     ]) {
       fn.mockReset();
       fn.mockResolvedValue(ok);
     }
   });
 
-  it("sends the full role list when a row is added", async () => {
-    await openEditor();
-    await userEvent.click(await screen.findByRole("button", { name: "Add role TTL" }));
+  it("shows no Paging section for a table nothing pages", async () => {
+    await openEditor("orders");
+    expect(screen.queryByTestId("paging-field")).not.toBeInTheDocument();
+  });
+
+  it("saves a REST endpoint's paging when it changed", async () => {
+    await openEditor("pets");
+    const field = await screen.findByTestId("paging-field");
+    const maxPages = await within(field).findByRole("textbox", { name: "Max pages" });
+    await userEvent.clear(maxPages);
+    await userEvent.type(maxPages, "5");
     await userEvent.click(screen.getByTestId("table-edit-save"));
     await waitFor(() =>
-      expect(updateTableRoleTtl).toHaveBeenCalledWith(7, [
-        { role: "analyst", ttl: 360 },
-        { role: "trader", ttl: 60 },
-      ]),
+      expect(updateTablePaging).toHaveBeenCalledWith(7, {
+        ...NO_PAGING,
+        type: "offset",
+        maxPages: 5,
+      }),
     );
   });
 
-  it("does not call updateTableRoleTtl when the list is unchanged", async () => {
-    await openEditor();
+  it("does not call updateTablePaging when the paging is unchanged", async () => {
+    await openEditor("pets");
     await userEvent.click(screen.getByTestId("table-edit-save"));
     await waitFor(() => expect(updateTable).toHaveBeenCalled());
-    expect(updateTableRoleTtl).not.toHaveBeenCalled();
+    expect(updateTablePaging).not.toHaveBeenCalled();
   });
 
-  it("blocks the whole save on an invalid row", async () => {
-    await openEditor();
-    await userEvent.clear(await screen.findByRole("textbox", { name: "TTL (seconds)" }));
+  it("lets a connection table lower the operator's bound", async () => {
+    await openEditor("issues");
+    const rows = await screen.findByRole("textbox", { name: "Max rows per read" });
+    expect(rows).toHaveAttribute("placeholder", "Default: 1000");
+    await userEvent.type(rows, "200");
     await userEvent.click(screen.getByTestId("table-edit-save"));
-    expect(await screen.findByText("Fix the Role TTL rows before saving.")).toBeInTheDocument();
-    expect(updateTable).not.toHaveBeenCalled();
-    expect(updateTableRoleTtl).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(updateTablePaging).toHaveBeenCalledWith(8, { ...NO_PAGING, maxRows: 200 }),
+    );
   });
 
-  it("reports a server refusal", async () => {
-    updateTableRoleTtl.mockResolvedValue({
-      success: false,
-      message: "Unknown role 'trader'",
-      code: "schema.role_ttl_unknown_role",
-      params: { role: "trader" },
-    });
-    await openEditor();
-    await userEvent.click(await screen.findByRole("button", { name: "Add role TTL" }));
-    await userEvent.click(screen.getByTestId("table-edit-save"));
-    expect(await screen.findByText("Unknown role 'trader'")).toBeInTheDocument();
-  });
-
-  it("refuses a ttl signal with no Cache TTL, and saves once one is entered", async () => {
-    await openEditor("ticks");
-    const msg =
-      "The ttl change signal judges staleness by the Cache TTL, so set a Cache TTL here or on the source.";
-    expect(await screen.findByText(msg)).toBeInTheDocument();
-    await userEvent.click(screen.getByTestId("table-edit-save"));
+  it("blocks the save when a connection table would raise the operator's bound", async () => {
+    await openEditor("issues");
+    await userEvent.type(await screen.findByRole("textbox", { name: "Max rows per read" }), "5000");
     expect(
-      await screen.findByText("Fix the Load Management and Timeliness settings before saving."),
+      await screen.findByText("At most 1000: a table may lower the operator's bound, never raise it."),
     ).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("table-edit-save"));
+    expect(await screen.findByText("Fix the paging errors before saving.")).toBeInTheDocument();
     expect(updateTable).not.toHaveBeenCalled();
-
-    await userEvent.type(screen.getByRole("textbox", { name: /^Cache TTL/ }), "30");
-    await waitFor(() => expect(screen.queryByText(msg)).toBeNull());
-    await userEvent.click(screen.getByTestId("table-edit-save"));
-    await waitFor(() => expect(updateTable).toHaveBeenCalled());
+    expect(updateTablePaging).not.toHaveBeenCalled();
   });
 
-  it.each(["live_ticks"])("saves the live-read ttl table %s with no Cache TTL", async (name) => {
-    await openEditor(name);
-    expect(screen.queryByText(/judges staleness by the Cache TTL/)).toBeNull();
+  it("reports a server refusal in the reader's language", async () => {
+    updateTablePaging.mockResolvedValue({
+      success: false,
+      message: "table 'issues': max_rows=900 is above graphql_remote.max_rows=800",
+      code: "schema.paging_above_ceiling",
+      params: { table: "issues", max_rows: 900, ceiling: 800 },
+    });
+    await openEditor("issues");
+    await userEvent.type(await screen.findByRole("textbox", { name: "Max rows per read" }), "900");
     await userEvent.click(screen.getByTestId("table-edit-save"));
-    await waitFor(() => expect(updateTable).toHaveBeenCalled());
     expect(
-      screen.queryByText("Fix the Load Management and Timeliness settings before saving."),
-    ).toBeNull();
+      await screen.findByText(
+        "Table issues: max_rows=900 is above graphql_remote.max_rows=800; a table may lower the operator's bound, never raise it.",
+      ),
+    ).toBeInTheDocument();
   });
-
-  it.each(["mv_ticks"])(
-    "refuses landed table %s with a ttl signal and no Cache TTL",
-    async (name) => {
-      await openEditor(name);
-      expect(await screen.findByText(/judges staleness by the Cache TTL/)).toBeInTheDocument();
-      await userEvent.click(screen.getByTestId("table-edit-save"));
-      expect(
-        await screen.findByText("Fix the Load Management and Timeliness settings before saving."),
-      ).toBeInTheDocument();
-      expect(updateTable).not.toHaveBeenCalled();
-    },
-  );
 });

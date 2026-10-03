@@ -328,7 +328,13 @@
       "replicate_contradicts_load_protected": "負載保護不能與複製 =「永不」同時使用：受負載保護的數據表永不被即時讀取",
       "table_registered_fields_omitted": "資料表「{{table}}」已註冊（id={{id}}）。因來源的憑證無權讀取而略過：{{fields}}",
       "table_not_readable": "此來源的憑證無權讀取 {{table}}：{{reason}}",
-      "table_too_complex": "資料表「{{table}}」未能以所選欄位註冊：{{reason}}。請選擇較少欄位。"
+      "table_too_complex": "資料表「{{table}}」未能以所選欄位註冊：{{reason}}。請選擇較少欄位。",
+      "paging_not_paged": "資料表 {{table}} 並非逐頁讀取，因此不接受分頁。",
+      "paging_endpoint_needs_type": "資料表 {{table}} 是 REST 端點：其分頁需要指明分頁類型。",
+      "paging_connection_rows_only": "資料表 {{table}} 是連接資料表：它按其結構描述的參數分頁，只能設定資料列上限。",
+      "paging_above_ceiling": "資料表 {{table}}：max_rows={{max_rows}} 高於 graphql_remote.max_rows={{ceiling}}；資料表可以降低營運者的上限，但不能提高。",
+      "paging_invalid": "資料表 {{table}}：{{reason}}",
+      "table_paging_updated": "已更新資料表 {{table}} 的分頁。"
     },
     "secrets": {
       "still_referenced": "本機構中仍有 {{count}} 個已儲存的值引用 {{secret}}。請更改或移除每一個，然後再次刪除。"

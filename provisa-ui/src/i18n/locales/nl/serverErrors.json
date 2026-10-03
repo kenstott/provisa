@@ -328,7 +328,13 @@
       "replicate_contradicts_load_protected": "Belastingsbescherming kan niet worden gecombineerd met Repliceren = 'Nooit': een tabel met belastingsbescherming wordt nooit live gelezen",
       "table_registered_fields_omitted": "Tabel '{{table}}' geregistreerd (id={{id}}). Weggelaten, omdat de inloggegevens van de bron ze niet mogen lezen: {{fields}}",
       "table_not_readable": "De inloggegevens van deze bron mogen {{table}} niet lezen: {{reason}}",
-      "table_too_complex": "Tabel '{{table}}' is niet geregistreerd met de geselecteerde kolommen: {{reason}}. Kies minder kolommen."
+      "table_too_complex": "Tabel '{{table}}' is niet geregistreerd met de geselecteerde kolommen: {{reason}}. Kies minder kolommen.",
+      "paging_not_paged": "Tabel {{table}} wordt niet pagina voor pagina gelezen en neemt daarom geen paginering.",
+      "paging_endpoint_needs_type": "Tabel {{table}} is een REST-endpoint: de paginering noemt het pagineringstype.",
+      "paging_connection_rows_only": "Tabel {{table}} is een connection-tabel: die pagineert via de argumenten van het schema en stelt alleen max. rijen in.",
+      "paging_above_ceiling": "Tabel {{table}}: max_rows={{max_rows}} ligt boven graphql_remote.max_rows={{ceiling}}; een tabel mag de grens van de beheerder verlagen, nooit verhogen.",
+      "paging_invalid": "Tabel {{table}}: {{reason}}",
+      "table_paging_updated": "Paginering bijgewerkt voor tabel {{table}}."
     },
     "secrets": {
       "still_referenced": "{{secret}} wordt nog genoemd door {{count}} opgeslagen waarde(n) in deze organisatie. Wijzig of verwijder elk daarvan en verwijder het daarna opnieuw."

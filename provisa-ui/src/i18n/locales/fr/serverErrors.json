@@ -328,7 +328,13 @@
       "replicate_contradicts_load_protected": "La protection de charge ne peut pas être combinée avec Répliquer = « Jamais » : une table protégée contre la charge n'est jamais lue en direct",
       "table_registered_fields_omitted": "Table « {{table}} » enregistrée (id={{id}}). Omis, car les identifiants de la source ne permettent pas de les lire : {{fields}}",
       "table_not_readable": "Les identifiants de cette source ne permettent pas de lire {{table}} : {{reason}}",
-      "table_too_complex": "La table « {{table}} » n'a pas été enregistrée avec les colonnes sélectionnées : {{reason}}. Choisissez moins de colonnes."
+      "table_too_complex": "La table « {{table}} » n'a pas été enregistrée avec les colonnes sélectionnées : {{reason}}. Choisissez moins de colonnes.",
+      "paging_not_paged": "La table {{table}} n'est pas lue page par page ; elle ne prend donc pas de pagination.",
+      "paging_endpoint_needs_type": "La table {{table}} est un point de terminaison REST : sa pagination nomme le type de pagination.",
+      "paging_connection_rows_only": "La table {{table}} est une table de connexion : elle pagine par les arguments de son schéma et ne définit que le nombre maximal de lignes.",
+      "paging_above_ceiling": "Table {{table}} : max_rows={{max_rows}} dépasse graphql_remote.max_rows={{ceiling}} ; une table peut abaisser la limite de l'opérateur, jamais la relever.",
+      "paging_invalid": "Table {{table}} : {{reason}}",
+      "table_paging_updated": "Pagination mise à jour pour la table {{table}}."
     },
     "secrets": {
       "still_referenced": "{{secret}} est encore nommé par {{count}} valeur(s) stockée(s) dans cette organisation. Modifiez ou retirez chacune, puis supprimez-le de nouveau."

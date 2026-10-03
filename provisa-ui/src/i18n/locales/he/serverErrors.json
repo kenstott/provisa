@@ -328,7 +328,13 @@
       "replicate_contradicts_load_protected": "אי אפשר לשלב הגנת עומס עם שכפול = 'אף פעם': טבלה מוגנת עומס אף פעם אינה נקראת בזמן אמת",
       "table_registered_fields_omitted": "הטבלה '{{table}}' נרשמה (id={{id}}). הושמטו, מפני שאישורי הגישה של המקור אינם רשאים לקרוא אותם: {{fields}}",
       "table_not_readable": "אישורי הגישה של מקור זה אינם רשאים לקרוא את {{table}}: {{reason}}",
-      "table_too_complex": "הטבלה '{{table}}' לא נרשמה עם העמודות שנבחרו: {{reason}}. בחרו פחות עמודות."
+      "table_too_complex": "הטבלה '{{table}}' לא נרשמה עם העמודות שנבחרו: {{reason}}. בחרו פחות עמודות.",
+      "paging_not_paged": "הטבלה {{table}} אינה נקראת עמוד אחר עמוד, ולכן אינה מקבלת עימוד.",
+      "paging_endpoint_needs_type": "הטבלה {{table}} היא נקודת קצה REST: העימוד שלה מציין את סוג העימוד.",
+      "paging_connection_rows_only": "הטבלה {{table}} היא טבלת חיבור: היא מעמדת לפי הארגומנטים של הסכמה שלה וקובעת רק מספר שורות מרבי.",
+      "paging_above_ceiling": "טבלה {{table}}: max_rows={{max_rows}} גבוה מ-graphql_remote.max_rows={{ceiling}}; טבלה רשאית להוריד את מגבלת המפעיל, לעולם לא להעלות אותה.",
+      "paging_invalid": "טבלה {{table}}: {{reason}}",
+      "table_paging_updated": "העימוד עודכן עבור הטבלה {{table}}."
     },
     "secrets": {
       "still_referenced": "{{secret}} עדיין מצוין על ידי {{count}} ערכים שמורים בארגון זה. יש לשנות או להסיר כל אחד מהם ואז למחוק שוב."

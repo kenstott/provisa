@@ -328,7 +328,13 @@
       "replicate_contradicts_load_protected": "負荷保護はレプリケート =「しない」と併用できません。負荷保護されたテーブルはライブで読まれることがありません",
       "table_registered_fields_omitted": "テーブル「{{table}}」を登録しました（id={{id}}）。ソースの資格情報では読み取れないため除外しました: {{fields}}",
       "table_not_readable": "このソースの資格情報では {{table}} を読み取れません: {{reason}}",
-      "table_too_complex": "テーブル「{{table}}」は選択した列では登録されませんでした: {{reason}}。列を減らしてください。"
+      "table_too_complex": "テーブル「{{table}}」は選択した列では登録されませんでした: {{reason}}。列を減らしてください。",
+      "paging_not_paged": "テーブル {{table}} はページ単位で読み取られないため、ページングを設定できません。",
+      "paging_endpoint_needs_type": "テーブル {{table}} は REST エンドポイントです。ページングにはページングの種類を指定します。",
+      "paging_connection_rows_only": "テーブル {{table}} はコネクションテーブルです。スキーマの引数でページングし、設定できるのは最大行数だけです。",
+      "paging_above_ceiling": "テーブル {{table}}: max_rows={{max_rows}} は graphql_remote.max_rows={{ceiling}} を超えています。テーブルはオペレーターの上限を下げられますが、上げることはできません。",
+      "paging_invalid": "テーブル {{table}}: {{reason}}",
+      "table_paging_updated": "テーブル {{table}} のページングを更新しました。"
     },
     "secrets": {
       "still_referenced": "{{secret}} は、この組織に保存されている {{count}} 件の値からまだ参照されています。それぞれを変更または削除してから、もう一度削除してください。"

@@ -20,7 +20,8 @@ import respx
 
 from provisa.api_source import replica_read
 from provisa.api_source.caller import ApiCallError, ApiNotFoundError
-from provisa.api_source.models import ApiColumn, ApiColumnType, ApiEndpoint, PaginationConfig
+from provisa.api_source.models import ApiColumn, ApiColumnType, ApiEndpoint
+from provisa.core.paging import PaginationConfig
 from provisa.events import source_loader as sl
 from provisa.federation.data_replicator import NOT_OPTIMAL_READS, SourceRead
 from provisa.federation.replica_source import CursorSource, DocumentSource

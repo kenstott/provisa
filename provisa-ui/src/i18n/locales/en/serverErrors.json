@@ -328,7 +328,13 @@
       "replicate_contradicts_load_protected": "Load protection cannot be combined with Replicate = Never: a load-protected table is never read live",
       "table_registered_fields_omitted": "Table '{{table}}' registered (id={{id}}). Left out, because the source's credential may not read them: {{fields}}",
       "table_not_readable": "This source's credential may not read {{table}}: {{reason}}",
-      "table_too_complex": "Table '{{table}}' was not registered with the columns selected: {{reason}}. Choose fewer columns."
+      "table_too_complex": "Table '{{table}}' was not registered with the columns selected: {{reason}}. Choose fewer columns.",
+      "paging_not_paged": "Table {{table}} is not read page by page, so it takes no paging.",
+      "paging_endpoint_needs_type": "Table {{table}} is a REST endpoint: its paging names the paging type.",
+      "paging_connection_rows_only": "Table {{table}} is a connection table: it pages by its schema's arguments and sets max rows only.",
+      "paging_above_ceiling": "Table {{table}}: max_rows={{max_rows}} is above graphql_remote.max_rows={{ceiling}}; a table may lower the operator's bound, never raise it.",
+      "paging_invalid": "Table {{table}}: {{reason}}",
+      "table_paging_updated": "Paging updated for table {{table}}."
     },
     "secrets": {
       "still_referenced": "{{secret}} is still named by {{count}} stored value(s) in this organization. Change or remove each one, then delete it again."
