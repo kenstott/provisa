@@ -31844,19 +31844,19 @@
   priority: SHOULD
   type: ui
   target: 2026-Q4
-  description: An org can remove every reference to Provisa from the surfaces meant for analysts and read-only
-    users, such as the glossary and Explore. On those surfaces the org's own branding (REQ-1486) stands
-    in place of the product's name and mark. The surfaces where the model is built and administered may
-    keep the Provisa name.
-  use_case: An org presents its governed data to its own analysts and readers under its own name, without
-    the product's name appearing to them.
-  scenario: 'Given an org that has set its branding and turned off the product name for readers
+  description: 'An org building a data portal can brand the surfaces it would expose to the portal''s
+    readers, such as the glossary and Explore, as its own: on those surfaces the org''s branding (REQ-1486)
+    stands in place of the product''s name and mark, and no reference to Provisa appears. The surfaces
+    where the model is built and administered may keep the Provisa name.'
+  use_case: An org builds a data portal for its analysts and read-only users on top of Provisa and presents
+    it under its own name; the elements a portal typically exposes carry the org's brand, not the product's.
+  scenario: 'Given an org that has set its branding and turned off the product name on its portal surfaces
 
-    When an analyst opens the glossary or Explore
+    When an analyst or a read-only user opens the glossary or Explore
 
-    Then no reference to Provisa appears on the page
+    Then the page carries the org''s branding and no reference to Provisa
 
-    And an administrator opening the modeling and admin pages may still see it
+    And an administrator opening the modeling and admin pages may still see the Provisa name
 
     '
   related_reqs:

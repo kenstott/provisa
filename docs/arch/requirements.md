@@ -10464,9 +10464,9 @@ Subdomain-as-dedicated-channel value proposition: [SUPERSEDED by [REQ-1233](#REQ
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
 
-An org can remove every reference to Provisa from the surfaces meant for analysts and read-only users, such as the glossary and Explore. On those surfaces the org's own branding ([REQ-1486](#REQ-1486)) stands in place of the product's name and mark. The surfaces where the model is built and administered may keep the Provisa name.
+An org building a data portal can brand the surfaces it would expose to the portal's readers, such as the glossary and Explore, as its own: on those surfaces the org's branding ([REQ-1486](#REQ-1486)) stands in place of the product's name and mark, and no reference to Provisa appears. The surfaces where the model is built and administered may keep the Provisa name.
 
-**Use case:** An org presents its governed data to its own analysts and readers under its own name, without the product's name appearing to them.
+**Use case:** An org builds a data portal for its analysts and read-only users on top of Provisa and presents it under its own name; the elements a portal typically exposes carry the org's brand, not the product's.
 
 **Code:** —
 
