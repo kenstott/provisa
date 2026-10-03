@@ -1,0 +1,82 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 14754c06-58fe-40a1-a095-d6e8eecb4bad
+
+"""A table's delta (incremental reload) declaration is validated at the model and the load (REQ-874)."""
+
+from __future__ import annotations
+
+import pytest
+
+from provisa.core.models import Column, DeltaConfig, Source, SourceType, Table
+
+pytestmark = pytest.mark.unit
+
+
+def _table(**kw):
+    cols = kw.pop(
+        "columns", [Column(name="id", data_type="integer", visible_to=["*"], is_primary_key=True)]
+    )
+    return Table(source_id="pg", domain_id="d", schema="public", table="orders", columns=cols, **kw)
+
+
+def test_a_valid_upsert_delta_is_accepted():
+    t = _table(watermark_column="updated_at", delta=DeltaConfig(apply="upsert"))
+    assert t.delta is not None and t.delta.apply == "upsert"
+
+
+def test_upsert_needs_a_primary_key():
+    with pytest.raises(ValueError, match="is_primary_key"):
+        _table(
+            watermark_column="updated_at",
+            columns=[Column(name="id", data_type="integer", visible_to=["*"])],
+            delta=DeltaConfig(apply="upsert"),
+        )
+
+
+def test_delta_needs_a_watermark_column():
+    with pytest.raises(ValueError, match="watermark_column"):
+        _table(delta=DeltaConfig(apply="append"))
+
+
+def test_tombstone_needs_a_column():
+    with pytest.raises(ValueError, match="tombstone_column"):
+        _table(watermark_column="u", delta=DeltaConfig(deletes="tombstone"))
+
+
+def test_an_authored_query_must_carry_both_placeholders():
+    with pytest.raises(ValueError, match="placeholders"):
+        _table(watermark_column="u", delta=DeltaConfig(query="SELECT * WHERE u > $wm"))
+    ok = _table(watermark_column="u", delta=DeltaConfig(query="SELECT {{fields}} WHERE u > $wm"))
+    assert ok.delta is not None
+
+
+def test_rebuild_every_must_be_positive():
+    with pytest.raises(ValueError, match="rebuild_every"):
+        _table(watermark_column="u", delta=DeltaConfig(apply="append", rebuild_every=0))
+
+
+def _config(table):
+    source = Source(id="pg", type=SourceType("postgresql"), host="h")
+    return type("C", (), {"sources": [source], "tables": [table]})()
+
+
+def test_the_load_refuses_delta_with_a_probe_signal():
+    from provisa.core.config_loader import _validate_delta
+
+    t = _table(watermark_column="u", change_signal="ttl_probe", delta=DeltaConfig(apply="append"))
+    with pytest.raises(ValueError, match="mutually"):
+        _validate_delta(_config(t))
+
+
+def test_the_load_refuses_delta_on_a_never_replicated_table():
+    from provisa.core.config_loader import _validate_delta
+
+    t = _table(watermark_column="u", replicate=-1, delta=DeltaConfig(apply="append"))
+    with pytest.raises(ValueError, match="replicated"):
+        _validate_delta(_config(t))
+
+
+def test_the_load_accepts_a_well_formed_delta():
+    from provisa.core.config_loader import _validate_delta
+
+    _validate_delta(_config(_table(watermark_column="u", delta=DeltaConfig(apply="append"))))

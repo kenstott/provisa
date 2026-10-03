@@ -1260,6 +1260,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     _validate_neo4j_sources(config)
     _validate_row_materialize(config)
     _validate_file_globs(config)
+    _validate_delta(config)
     _validate_role_ttl(config)
     _validate_paging(config)
     _validate_replicate(config)
@@ -1619,6 +1620,34 @@ def _validate_landing_ttl(config) -> None:  # REQ-1907
         )
         if err is not None:
             raise ValueError(f"table {table.table_name!r} (source {source.id!r}): {err}")
+
+
+def _validate_delta(config) -> None:  # REQ-874
+    """A table with a delta reload must be replicated and must not also carry a probe change
+    signal — the delta query IS the probe for a monotonic cursor, so the two are mutually
+    exclusive per entry (Table's own validator covers the delta's own shape; this is the
+    cross-table half that needs the source)."""
+    from provisa.core.change_signal import resolve as _resolve_signal
+    from provisa.core.replicate import resolved_replicate
+
+    by_id = {s.id: s for s in config.sources}
+    for table in config.tables:
+        if getattr(table, "delta", None) is None:
+            continue
+        source = by_id.get(table.source_id)
+        if source is None:
+            continue
+        if resolved_replicate(source, table) == -1:
+            raise ValueError(
+                f"table {table.table_name!r}: delta reload needs the table replicated "
+                "(replicate is -1/Never) (REQ-874)"
+            )
+        signal = _resolve_signal(table.change_signal, source.change_signal)
+        if signal in ("probe", "ttl_probe"):
+            raise ValueError(
+                f"table {table.table_name!r}: delta and a probe change_signal are mutually "
+                f"exclusive — the delta query is the probe (change_signal is {signal!r}) (REQ-874)"
+            )
 
 
 def _validate_file_globs(config) -> None:  # REQ-788
