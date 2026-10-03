@@ -51,6 +51,7 @@ def _build_schema_and_ctx(
                     {"column_name": "status", "visible_to": ["admin"]},
                     {"column_name": "created_at", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 2,
@@ -63,6 +64,7 @@ def _build_schema_and_ctx(
                     {"column_name": "name", "visible_to": ["admin"]},
                     {"column_name": "email", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
         ]
     if relationships is None:
@@ -243,6 +245,7 @@ class TestAggregate:
                     {"column_name": "amount", "visible_to": ["admin"]},
                     {"column_name": "status", "visible_to": ["admin", "limited"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
         ]
         col_types = {
@@ -296,6 +299,7 @@ class TestAggregate:
                     {"column_name": "name", "visible_to": ["admin"]},
                     {"column_name": "category", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
         ]
         col_types = {
@@ -378,6 +382,7 @@ class TestAggregate:
                     {"column_name": "customer_id", "visible_to": ["admin"]},
                     {"column_name": "amount", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 2,
@@ -389,6 +394,7 @@ class TestAggregate:
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "name", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
         ]
         rels = [
@@ -492,6 +498,7 @@ class TestAggregate:
                     {"column_name": "cost", "visible_to": ["admin"]},
                     {"column_name": "region", "visible_to": ["admin", "analyst"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
         ]
         col_types = {
@@ -714,6 +721,7 @@ _FACT_TABLES = [
             {"column_name": "refunds", "visible_to": ["admin", "analyst"]},
             {"column_name": "region", "visible_to": ["admin", "analyst"]},
         ],
+        "write_ops": ["delete", "insert", "update"],
     },
     {
         "id": 2,
@@ -728,6 +736,7 @@ _FACT_TABLES = [
             {"column_name": "id", "visible_to": ["admin"]},
             {"column_name": "name", "visible_to": ["admin"]},
         ],
+        "write_ops": ["delete", "insert", "update"],
     },
 ]
 

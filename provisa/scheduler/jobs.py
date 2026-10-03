@@ -17,15 +17,18 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import math
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from provisa.federation.execution_auth import system_auth
+
 import httpx
 import pyarrow as pa
+
+from provisa.compiler.sql_literals import sql_literal
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -72,24 +75,18 @@ async def _execute_webhook(
 # internal SQL (same default used by the Flight server, provisa/api/flight/server.py).
 # Scheduled triggers carry no per-run identity, so scheduled SQL runs under it.
 # REQ-1003: governed execution requires a role; this is the documented system role.
-_SCHEDULER_ROLE = "org_admin"
-
-
-async def _execute_sql(sql: str, trigger_id: str) -> None:  # REQ-1003, REQ-1004
-    """Execute a scheduled SQL statement against the federated engine.
-
-    Substitutes date/timestamp tokens with this run's execution time (REQ-1004),
-    routes the statement through the shared governance pipeline (REQ-1003), and
-    executes the resulting plan. Failures are logged and re-raised — never
-    silently swallowed.
+async def _execute_sql(sql: str, trigger_id: str, role: str) -> None:  # REQ-1003, REQ-1004
+    """Run a scheduled SQL trigger: one insert, update or delete of registered tables, its date
+    tokens rendered as values for this run (scheduler/trigger_sql.py), through the shared
+    pipeline and its write admission as the trigger's role. Failures are logged and re-raised —
+    never silently swallowed.
     """
     from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
-    from provisa.scheduler.templating import substitute_date_tokens
+    from provisa.scheduler.trigger_sql import checked_trigger_sql
 
-    run_at = datetime.now(timezone.utc)
-    rendered = substitute_date_tokens(sql, run_at)
+    rendered = checked_trigger_sql(sql, trigger_id, datetime.now(timezone.utc))
     try:
-        plan = await _govern_and_route(rendered, _SCHEDULER_ROLE)
+        plan = await _govern_and_route(rendered, role)
         result = await _execute_plan(plan)
     except Exception:
         logger.exception("Trigger %s: scheduled SQL failed: %s", trigger_id, rendered)
@@ -557,12 +554,13 @@ def _ensure_iceberg_table(
         f"({', '.join(col_defs)}) "
         f"WITH (partitioning = ARRAY[{', '.join(partition_cols)}], format = 'PARQUET')"
     )
-    engine.execute_engine_sync(create_ddl)
+    engine.execute_engine_sync(create_ddl, authorization=system_auth("scheduled job"))
     if signal == "traces":
         try:
             engine.execute_engine_sync(
                 f"ALTER TABLE otel.signals.{signal} "
-                f"SET PROPERTIES partitioning = ARRAY[{', '.join(partition_cols)}]"
+                f"SET PROPERTIES partitioning = ARRAY[{', '.join(partition_cols)}]",
+                authorization=system_auth("scheduled job"),
             )
         except Exception as exc:
             logger.warning("compact_otel: could not evolve partition spec for %s: %s", signal, exc)
@@ -659,26 +657,6 @@ def _resolve_batch_size(_signal: str) -> int:
     return max(_state.otel_compact_batch_size, 1)
 
 
-def _sql_literal(value) -> str:
-    """Render one INSERT value as a Trino SQL literal."""
-    if value is None:
-        return "NULL"
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, int):
-        return str(value)
-    if isinstance(value, float):
-        if math.isnan(value):
-            return "nan()"
-        if math.isinf(value):
-            return "infinity()" if value > 0 else "-infinity()"
-        return repr(value)
-    if isinstance(value, (bytes, bytearray)):
-        return f"X'{value.hex()}'"
-    # Trino string literals have no escape sequences — a doubled quote is the entire rule.
-    return "'" + str(value).replace("'", "''") + "'"
-
-
 def _execute_batch_inserts(
     engine,
     signal: str,
@@ -700,18 +678,24 @@ def _execute_batch_inserts(
     for row in rows:
         rendered = (
             "("
-            + ", ".join(ph.replace("?", _sql_literal(v)) for ph, v in zip(placeholders, row))
+            + ", ".join(
+                ph.replace("?", sql_literal(v, engine.dialect)) for ph, v in zip(placeholders, row)
+            )
             + ")"
         )
         over_chars = pending + len(rendered) > _MAX_INSERT_SQL_CHARS
         if values and (over_chars or len(values) >= batch_size):
-            engine.execute_engine_sync(prefix + ", ".join(values))
+            engine.execute_engine_sync(
+                prefix + ", ".join(values), authorization=system_auth("scheduled job")
+            )
             values = []
             pending = len(prefix)
         values.append(rendered)
         pending += len(rendered) + 2
     if values:
-        engine.execute_engine_sync(prefix + ", ".join(values))
+        engine.execute_engine_sync(
+            prefix + ", ".join(values), authorization=system_auth("scheduled job")
+        )
 
 
 async def reclaim_otel_storage() -> None:  # REQ-302, REQ-303
@@ -770,7 +754,9 @@ async def reclaim_otel_storage() -> None:  # REQ-302, REQ-303
 
 def _insert_otel_iceberg(engine, signal: str, table: pa.Table, dt: datetime) -> None:
     """Create Iceberg table from schema and INSERT the rows (runs in thread, sync engine)."""
-    engine.execute_engine_sync("CREATE SCHEMA IF NOT EXISTS otel.signals")
+    engine.execute_engine_sync(
+        "CREATE SCHEMA IF NOT EXISTS otel.signals", authorization=system_auth("scheduled job")
+    )
 
     col_defs = _build_iceberg_col_defs(signal, table)
     partition_cols = ["'_date'", "'table_name'"] if signal == "traces" else ["'_date'"]
@@ -780,7 +766,9 @@ def _insert_otel_iceberg(engine, signal: str, table: pa.Table, dt: datetime) -> 
     # ``otel.signals.*`` are Provisa's own telemetry tables in the engine's Iceberg catalog — the
     # store this job writes, read where it writes them. They are not tables of a registered
     # source and have no replica, so nothing here passes the address seam (REQ-1912).
-    _cols = engine.execute_engine_sync(f"SHOW COLUMNS FROM otel.signals.{signal}")
+    _cols = engine.execute_engine_sync(
+        f"SHOW COLUMNS FROM otel.signals.{signal}", authorization=system_auth("scheduled job")
+    )
     engine_cols = {row[0].lower(): row[1].lower() for row in _cols.rows}
     table = _cast_table_to_physical_schema(signal, table, engine_cols)
 
@@ -934,7 +922,7 @@ def build_scheduler(
             scheduler.add_job(
                 _execute_sql,
                 trigger=cron,
-                args=[trigger.sql, trigger.id],
+                args=[trigger.sql, trigger.id, trigger.role],
                 id=trigger.id,
                 name=f"trigger:{trigger.id}",
                 replace_existing=True,

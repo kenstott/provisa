@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json is geen geldige JSON: {{error}}",
       "args_json_not_object": "args_json moet een JSON-object zijn",
       "column_not_writable": "Rol '{{role}}' heeft geen schrijftoegang tot kolom '{{column}}'",
+      "command_filter_refused": "{{field}}: {{reason}}",
       "definition_not_available": "{{statement}} is hier niet beschikbaar: definities worden gemaakt in het model of in de gegevensbron, en rijen worden verwijderd met DELETE.",
       "engine_not_connected": "de engine is niet verbonden",
       "grpc_source_not_registered": "Externe gRPC-bron '{{source_id}}' niet geregistreerd",
@@ -84,6 +85,7 @@
       "query_required": "query is vereist",
       "query_timeout": "Query verlopen na {{timeout_s}}s",
       "query_too_complex": "De complexiteit van de query ({{score}}) overschrijdt de limiet van {{limit}} ({{limit_of}}).",
+      "redirect_failed": "Het resultaat kon niet naar de resultatenopslag worden geschreven: {{error}}",
       "redirect_upload_failed": "Redirect-upload mislukt: {{error}}",
       "request_interrupted": "{{error}}",
       "row_level_key_required": "Tabel '{{table}}' wordt rij voor rij gerepliceerd en kan alleen via de sleutel ({{key}}) worden gelezen. Filter op de sleutel met een gelijkheid of een IN-lijst, of koppel de tabel op één kolom.",
@@ -92,7 +94,8 @@
       "table_not_found": "Tabel '{{table}}' niet gevonden",
       "unknown_action_field": "Onbekend actieveld: '{{field}}'",
       "unknown_command": "Onbekende opdracht '{{name}}'",
-      "write_not_admitted": "De rol '{{role}}' mag deze schrijfbewerking niet uitvoeren: een schrijfbewerking vereist het schrijfrecht, schrijftoegang tot elke kolom die wordt geschreven en rijen die het rijfilter van de rol toelaat."
+      "write_not_admitted": "De rol '{{role}}' mag deze schrijfbewerking niet uitvoeren: een schrijfbewerking vereist het schrijfrecht, schrijftoegang tot elke kolom die wordt geschreven en rijen die het rijfilter van de rol toelaat.",
+      "write_not_supported": "'{{table}}' accepteert geen {{operation}}: de bron kan het niet uitvoeren"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter voor '{{source_type}}' implementeert discover_schema niet",
@@ -118,6 +121,9 @@
     "functions": {
       "approval_denied": "Goedkeuring geweigerd voor '{{name}}': {{reason}}",
       "approval_unavailable": "opdracht '{{name}}' vereist goedkeuring en er is geen goedkeuringshook geconfigureerd",
+      "argument_count": "{{signature}} neemt {{count}} argument(en); {{given}} gegeven",
+      "argument_missing": "{{signature}}: argument '{{argument}}' is niet gegeven",
+      "argument_not_declared": "{{signature}}: argument '{{argument}}' is niet gedeclareerd",
       "binding_missing_key": "functiebinding voor soort '{{kind}}' mist verplichte sleutel '{{key}}'",
       "egress_denied": "uitgaand verkeer naar '{{endpoint}}' is geweigerd: host staat niet op de UDF-egress-toelatingslijst (REQ-885 standaard weigeren). Voeg de host toe aan udf_egress_allowlist om dit toe te staan.",
       "grpc_call_failed": "grpc-aanroep {{target}}{{path}} mislukt: {{status}}: {{details}}",
@@ -133,6 +139,7 @@
       "script_failed": "script eindigde met code {{returncode}}: {{stderr}}",
       "source_not_connected": "Bron '{{source_id}}' niet verbonden",
       "unknown_arg_kind": "Onbekende arg_kind '{{arg_kind}}' voor '{{name}}'",
+      "unknown_command": "Onbekend commando: '{{name}}'",
       "unknown_impl_kind": "Onbekende functie-impl_kind: '{{impl_kind}}'",
       "written_table_missing": "opdracht '{{name}}' schrijft '{{table}}', die niet geregistreerd is"
     },
@@ -333,6 +340,8 @@
       "task_not_found": "Taak '{{task}}' niet gevonden",
       "trigger_exists": "Trigger '{{trigger}}' bestaat al",
       "trigger_fields_required": "id, name en cron zijn vereist",
+      "trigger_role_required": "Trigger '{{trigger}}': een SQL-trigger draait als een rol van deze organisatie",
+      "trigger_sql_refused": "{{reason}}",
       "unknown_request_type": "Onbekend verzoektype '{{type}}'",
       "unknown_trigger_kind": "Onbekend triggertype '{{kind}}'",
       "url_sql_exclusive": "url en sql sluiten elkaar uit",
@@ -340,7 +349,8 @@
       "view_spans_sources": "view omvat meerdere bronnen: {{sources}}",
       "webhook_approved": "Webhook '{{webhook}}' goedgekeurd",
       "webhook_name_required": "webhook_name is vereist voor een webhooktrigger",
-      "webhook_not_found": "Webhook '{{webhook}}' niet gevonden"
+      "webhook_not_found": "Webhook '{{webhook}}' niet gevonden",
+      "change_streams_unavailable": "Bron '{{source}}' is een zelfstandige MongoDB-server, die geen change streams levert: het native wijzigingssignaal vereist een replica set of een sharded cluster. Draai hem als replica set, of gebruik het wijzigingssignaal poll."
     },
     "secrets": {
       "still_referenced": "{{secret}} wordt nog genoemd door {{count}} opgeslagen waarde(n) in deze organisatie. Wijzig of verwijder elk daarvan en verwijder het daarna opnieuw."
@@ -396,6 +406,9 @@
       "no_fields_to_update": "Geen velden om bij te werken",
       "self_role_change": "Een gebruiker kan de eigen rol niet wijzigen. Vraag een andere beheerder (REQ-1308).",
       "user_not_found": "Gebruiker niet gevonden"
+    },
+    "cypher": {
+      "command_call_refused": "{{reason}}"
     }
   }
 }

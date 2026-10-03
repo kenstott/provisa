@@ -350,12 +350,6 @@ export function CommandFormFields({
             onChange={(e) => setForm({ ...form, requiresApproval: e.currentTarget.checked })}
             data-testid="command-requires-approval-switch"
           />
-          <TextInput
-            label={t("commandFormFields.writableBy")}
-            value={form.writablBy}
-            onChange={(e) => setForm({ ...form, writablBy: e.currentTarget.value })}
-            placeholder={t("commandFormFields.writableByPlaceholder")}
-          />
         </>
       )}
       {form.actionType === "webhook" && (

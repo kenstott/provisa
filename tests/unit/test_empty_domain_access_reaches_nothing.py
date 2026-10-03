@@ -81,6 +81,7 @@ def _tables() -> list[dict]:
                     "native_filter_type": None,
                 }
             ],
+            "write_ops": ["delete", "insert", "update"],
         }
         for tid in (SALES, FINANCE, META, OPS)
     ]
@@ -314,21 +315,21 @@ def test_a_label_map_is_never_built_without_the_acting_roles_list():
     ],
 )
 def test_role_all_is_the_union_and_an_all_empty_union_is_none(multi_domain, lists, union):
-    from provisa.core.request_context import current_role_claims
+    from provisa.security import meta_role
 
     roles = {f"r{i}": {"id": f"r{i}", "domain_access": lst} for i, lst in enumerate(lists)}
-    token = current_role_claims.set(tuple(roles))
-    try:
-        effective = effective_domain_access_role("r0", roles)
-    finally:
-        current_role_claims.reset(token)
+    # "Role: All" acts as the set's meta-role: its domain_access is the union.
+    effective = meta_role._role(list(roles.values()), meta_role.meta_role_id(list(roles)))
     assert effective["domain_access"] == union
     # ...and the union is read like any other list: empty reaches nothing.
     reached = {
         t["domain_id"]
         for t in visible_tables(
             [
-                {"domain_id": d, "columns": [{"column_name": "id", "visible_to": ["r0"]}]}
+                {
+                    "domain_id": d,
+                    "columns": [{"column_name": "id", "visible_to": [effective["id"]]}],
+                }
                 for d in ("sales", "finance")
             ],
             effective,

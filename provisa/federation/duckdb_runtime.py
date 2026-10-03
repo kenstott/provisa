@@ -1031,6 +1031,36 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
 
         return await loop.run_in_executor(None, _run)
 
+    def write_result(self, copy_sql: str, params: list | None, *, secret_sql: str) -> int:
+        """Run ``copy_sql`` (``result_sink.duckdb_copy``: the statement's query wrapped in
+        ``COPY ... TO`` the results object store) with the statement's bound values, and return
+        the rows written (REQ-1194). ``secret_sql`` is the S3 secret the results bucket is written
+        with (``result_sink.duckdb_secret``); it is (re)created first, so a changed results store
+        is the one written. Read as any statement is: under the catalog gate, on a private
+        cursor, cancelled at the request's deadline."""
+        self._catalog_gate.acquire_read()
+        try:
+            copy_sql = self._refresh_store_relations(copy_sql)
+            copy_sql, live_http = self._rewrite_clickhouse_relations(
+                copy_sql, params, deadline_s=request_deadline.remaining()
+            )
+            if not self._httpfs_loaded:
+                self._con.execute("INSTALL httpfs")
+                self._con.execute("LOAD httpfs")
+                self._httpfs_loaded = True
+            self._con.execute(secret_sql)
+            cur = self._open_cursor(live_http=live_http)
+            try:
+                with request_deadline.cancel_on_deadline(cur.interrupt):
+                    cur.execute(copy_sql, params) if params else cur.execute(copy_sql)
+                written = cur.fetchone()
+            finally:
+                close_cursor(cur)
+        finally:
+            self._catalog_gate.release_read()
+        assert written is not None  # COPY ... TO returns exactly one row: the count written
+        return int(written[0])
+
     def run_sync(self, duck_sql: str, params: list | None = None) -> ResultStream:
         """Synchronous variant of run() for callers already on a worker thread (Arrow Flight, etc.).
 

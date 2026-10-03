@@ -354,6 +354,10 @@
       "secret_key": {
         "label": "Chave secreta do redirecionamento",
         "help": "A chave secreta do armazenamento de objetos. Segredo; pede confirmação antes de salvar."
+      },
+      "snowflake_storage_integration": {
+        "label": "Integração de armazenamento do Snowflake para resultados",
+        "help": "A integração de armazenamento do Snowflake pela qual um mecanismo Snowflake grava resultados grandes no armazenamento de objetos. Vazio: um mecanismo Snowflake não grava os resultados por conta própria."
       }
     },
     "otel": {

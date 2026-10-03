@@ -42,7 +42,14 @@ async def after_table_written(
     state.mv_registry.mark_stale(table_name)
     emit_change_event(table_name, source_id)
     spawn_background(trigger_sinks_for_table(table_name, state))
-    await _request_replica_build(state, table_id, source_id)
+    # REQ-1915, REQ-1924: a table read from its whole-table replica is out of date once it is
+    # written, so a build of the replica is asked for. Readers keep the old replica until the new
+    # one swaps in.
+    from provisa.federation import replica_builds, replica_state
+
+    await replica_builds.request_if_replicated(
+        state, table_id, source_id, replica_state.REASON_WRITE
+    )
     if state.hot_manager is None:
         return
     from provisa.cache.hot_tables import HotTableManager
@@ -51,36 +58,3 @@ async def after_table_written(
     assert isinstance(hot_mgr, HotTableManager)
     # Reloaded with the key and address it was hot under (a table not hot is left alone).
     await hot_mgr.refresh_after_write(state.federation_engine, table_id)
-
-
-async def _request_replica_build(state: Any, table_id: int, source_id: str) -> None:
-    """REQ-1915, REQ-1924: a table read from its whole-table replica is out of date once it is
-    written, so a build of the replica is asked for. Readers keep the old replica until the new
-    one swaps in. The table is judged as a read judges it (``query_residency``): it is served
-    from a replica when the operator's settings put it there or the engine cannot read its
-    source in place, and only a whole copy is built -- a table replicated row by row, or one
-    with a parameter column, has no whole to rebuild."""
-    from provisa.core.request_context import current_org
-    from provisa.federation import replica_builds, replica_state
-    from provisa.federation.registry_view import registered_sources, registered_tables
-    from provisa.federation.replica_converge import whole_copy
-    from provisa.federation.strategy import engine_attaches
-
-    engine = state.federation_engine
-    source = {s.id: s for s in await registered_sources(state)}.get(source_id)
-    if source is None:
-        return  # a built-in source (registry_view.registered_sources): never landed, no replica
-    table = {t.id: t for t in await registered_tables(state)}[table_id]
-    served_from_replica = table.id in state.replica_routes.floored or not engine_attaches(
-        engine, source.type.value
-    )
-    if not (served_from_replica and whole_copy(source, table, engine)):
-        return
-    async with state.tenant_db.acquire() as conn:
-        requested = await replica_state.request_build(
-            conn,
-            (source.id, table.schema_name, table.table_name),
-            replica_state.REASON_WRITE,
-        )
-    if requested:
-        replica_builds.kick(current_org.get(None))

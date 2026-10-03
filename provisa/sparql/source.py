@@ -32,6 +32,10 @@ from provisa.api_source.models import (
 )
 from provisa.api_source.normalizers import sparql_bindings
 from provisa.core.auth_models import ApiAuth
+from provisa.core.secrets import resolve_secrets
+
+
+_REFERENCE = "${"  # a credential reference (provisa.core.secrets), resolved where it is used
 
 
 @dataclass
@@ -50,8 +54,14 @@ def build_api_source(cfg: SparqlSourceConfig) -> ApiSource:  # REQ-297
     # Strip the path so base_url is just scheme://host:port
     from urllib.parse import urlparse
 
-    parsed = urlparse(cfg.endpoint_url)
-    base_url = f"{parsed.scheme}://{parsed.netloc}"
+    if _REFERENCE in cfg.endpoint_url:
+        # The URL carries a credential reference and is stored as written, whole (its parts
+        # cannot be told apart until it is resolved): the endpoint's own path is then empty,
+        # and the caller resolves the address at each call.
+        base_url = cfg.endpoint_url
+    else:
+        parsed = urlparse(cfg.endpoint_url)
+        base_url = f"{parsed.scheme}://{parsed.netloc}"
     return ApiSource(
         id=cfg.source_id,
         type=ApiSourceType.sparql,
@@ -74,8 +84,7 @@ def build_endpoint(
     """
     from urllib.parse import urlparse
 
-    parsed = urlparse(cfg.endpoint_url)
-    path = parsed.path or "/"
+    path = "" if _REFERENCE in cfg.endpoint_url else (urlparse(cfg.endpoint_url).path or "/")
 
     return ApiEndpoint(
         source_id=cfg.source_id,
@@ -146,7 +155,7 @@ async def probe_endpoint(
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(
-            cfg.endpoint_url,
+            resolve_secrets(cfg.endpoint_url),  # stored as written; resolved at the call
             data=data,
             headers=headers,
             timeout=timeout,

@@ -44,6 +44,9 @@
     "firstPage": "Erste Seite",
     "prevPage": "Vorherige Seite",
     "nextPage": "Nächste Seite",
-    "lastPage": "Letzte Seite"
+    "lastPage": "Letzte Seite",
+    "roleLabel": "Läuft als Rolle",
+    "validationRoleRequired": "Eine SQL-Aufgabe läuft als Rolle: Wählen Sie eine aus.",
+    "runsAs": "läuft als {{role}}"
   }
 }

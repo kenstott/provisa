@@ -19,6 +19,7 @@ stores (Snowflake/BigQuery/Databricks) that hand a cursor a separate params tupl
 """
 
 from __future__ import annotations
+from provisa.compiler.sql_literals import sql_literal
 
 import datetime
 import decimal
@@ -172,10 +173,10 @@ def _lit(value: Any) -> str:
     if isinstance(value, (int, float, decimal.Decimal)):
         return str(value)
     if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
-        return f"'{value.isoformat()}'"
+        return sql_literal(value.isoformat(), "clickhouse")
     if isinstance(value, (dict, list)):
-        return f"'{json.dumps(value, default=str).replace(chr(39), chr(39) * 2)}'"
-    return "'{}'".format(str(value).replace("'", "''").replace("\\", "\\\\"))
+        return sql_literal(json.dumps(value, default=str), "clickhouse")
+    return sql_literal(str(value), "clickhouse")
 
 
 def land_clickhouse_native(

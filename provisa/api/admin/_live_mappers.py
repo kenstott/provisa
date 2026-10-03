@@ -61,6 +61,8 @@ def table_model_from_input(inp, columns, presets, alias):  # REQ-929, REQ-982
         view_sql=inp.view_sql or None,
         dq_contract=inp.dq_contract or None,  # REQ-1443
         query_template=getattr(inp, "query_template", None) or None,  # REQ-1670
+        file_glob=getattr(inp, "file_glob", None) or None,  # REQ-788
+        source_file_column=getattr(inp, "source_file_column", None) or None,  # REQ-788
         view_metrics=view_metrics,  # REQ-1318
         materialize=inp.materialize,
         mv_refresh_interval=inp.mv_refresh_interval,

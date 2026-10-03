@@ -28,6 +28,9 @@ class ProvisaClient:
         role: The role to act as, sent as ``X-Provisa-Role`` (REQ-273). The server honours it
             only when the authenticated identity is assigned it. ``None`` (the default) names
             none, and the request runs as the identity's own role.
+        org: The org the requests are for (REQ-1235). A multi-tenant deployment refuses a request
+            that names none; a single-tenant deployment has no org to name, so leave it ``None``.
+            Sent as ``X-Org-Provisa`` over HTTP and as ``org`` in an Arrow Flight ticket.
         flight_port: Port of the Arrow Flight server (default: 8815).
     """
 
@@ -37,11 +40,13 @@ class ProvisaClient:
         *,
         token: str | None = None,
         role: str | None = None,
+        org: str | None = None,
         flight_port: int = 8815,
     ) -> None:
         self._base = url.rstrip("/")
         self._token = token
         self._role = role
+        self._org = org
         self._flight_port = flight_port
 
     # ── HTTP / GraphQL ────────────────────────────────────────────────────
@@ -51,6 +56,9 @@ class ProvisaClient:
         # REQ-273: the role header the server validates; sent only when a role was chosen.
         if self._role:
             headers["X-Provisa-Role"] = self._role
+        # REQ-1235: the org this request is for; sent only when one was given.
+        if self._org:
+            headers["X-Org-Provisa"] = self._org
         if self._token:
             headers["Authorization"] = f"Bearer {self._token}"
         return headers
@@ -120,6 +128,8 @@ class ProvisaClient:
         data: dict[str, Any] = {"query": query}
         if self._role:
             data["role"] = self._role
+        if self._org:  # REQ-1235
+            data["org"] = self._org
         if variables:
             data["variables"] = variables
         # REQ-1263: Flight authenticates every ticket. Without the credential here the HTTP path

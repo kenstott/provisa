@@ -44,6 +44,9 @@
     "firstPage": "最初のページ",
     "prevPage": "前のページ",
     "nextPage": "次のページ",
-    "lastPage": "最後のページ"
+    "lastPage": "最後のページ",
+    "roleLabel": "実行ロール",
+    "validationRoleRequired": "SQL タスクはロールとして実行されます。ロールを選択してください。",
+    "runsAs": "{{role}} として実行"
   }
 }

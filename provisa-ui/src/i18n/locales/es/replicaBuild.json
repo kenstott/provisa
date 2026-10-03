@@ -16,6 +16,7 @@
     "loadKind": {
       "bulk_stream": "flujo masivo",
       "row_copy": "copia por filas"
-    }
+    },
+    "feedDown": "Flujo de cambios caído desde {{since}}; la réplica no se actualiza hasta que se reconecte: {{error}}"
   }
 }

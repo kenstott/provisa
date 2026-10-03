@@ -94,6 +94,9 @@ class RedirectConfig:  # REQ-029, REQ-137, REQ-142
     # result is written here and served by /data/redirect-file/<name> instead of a presigned S3 URL —
     # so redirect can be exercised locally without standing up MinIO/S3.
     local_dir: str = ""
+    # REQ-1194: the Snowflake storage integration a Snowflake engine unloads results through; None:
+    # a Snowflake engine does not write results to the object store itself.
+    snowflake_storage_integration: str | None = None
 
     @staticmethod
     def from_env() -> RedirectConfig:
@@ -126,6 +129,7 @@ class RedirectConfig:  # REQ-029, REQ-137, REQ-142
             default_format=_own("default_format"),
             encrypt=deployment("redirect.encrypt"),
             local_dir=deployment("redirect.local_dir"),
+            snowflake_storage_integration=deployment("redirect.snowflake_storage_integration"),
         )
 
 
@@ -709,12 +713,10 @@ async def run_materialize(
     fmt = delivery.output_format.lower()
     config = delivery.config
 
-    # Object-store tier requires only that the engine can CTAS-write the format natively (parquet/orc)
-    # and is connected; S3 creds/bucket come from config/env/IAM. An empty endpoint_url means real AWS
-    # S3, not "no store", so it does NOT disqualify this tier.
-    object_store_available = (
-        is_engine_native_format(fmt) and getattr(state, "engine_conn", None) is not None
-    )
+    # Object-store tier (REQ-1194): the bound engine writes this format to an object store itself
+    # (its backend's ``result_formats``). S3 creds/bucket come from config/env/IAM. An empty
+    # endpoint_url means real AWS S3, not "no store", so it does NOT disqualify this tier.
+    object_store_available = state.federation_engine.writes_result(fmt)
 
     if object_store_available:
         # Object-store tier: the engine CTAS-writes Parquet/ORC directly to S3-compatible storage.

@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { useLocation } from "react-router-dom";
+import { useNavPayload } from "../hooks/useNavPayload";
 import { useTranslation } from "react-i18next";
 import { Text } from "@mantine/core";
 import { useDomainFilter } from "../context/DomainFilterContext";
@@ -48,26 +48,32 @@ export function GraphPage() {
   // REQ-1620: under "Role: All" the acting set is every active role, sent as one
   // comma-separated X-Provisa-Role so the server unions their domain_access — sending only
   // role.id (the first of the set) silently narrowed every graph-page request to one role.
-  const roleHeaderValue = selectedRoles.length > 0 ? selectedRoles.map((r) => r.id).join(",") : role?.id;
+  const roleHeaderValue =
+    selectedRoles.length > 0 ? selectedRoles.map((r) => r.id).join(",") : role?.id;
   const { checkedDomains } = useDomainFilter();
-  const location = useLocation();
   // A query forwarded from NL "Open in Cypher" or the guided tour, captured ONCE at mount.
   // Consumed after auth resolves so it runs exactly once with the correct role (see below).
   // REQ-1472: the localStorage handoff is READ here but deleted only where it is actually run.
   // OnboardGate renders PageLoading instead of its children while /auth/me is in flight, so this
   // page can mount, unmount and remount before the run effect ever fires; deleting the key at
   // mount lost the query on that remount and the frame never appeared at all.
-  const [forwardedQuery] = useState<string | null>(() => {
-    const st = location.state as { query?: string; autoRun?: boolean } | null;
-    if (st?.query && st.autoRun) return st.query;
-    return localStorage.getItem("provisa.graph.pending_query");
+  // A query to run: the guided tour's localStorage hand-off at mount, then one per navigation
+  // hand-off (useNavPayload below), whether the page was just opened or already open. Each has its
+  // own sequence number, and the run effect runs each one once.
+  const [forwarded, setForwarded] = useState<{ query: string; seq: number } | null>(() => {
+    const pending = localStorage.getItem("provisa.graph.pending_query");
+    return pending ? { query: pending, seq: 0 } : null;
   });
-  const forwardedRunRef = useRef(false);
+  const ranSeqRef = useRef<number | null>(null);
   const [frames, setFrames] = useState<FrameData[]>(graphState.frames);
   const [history, setHistory] = useState<string[]>(graphState.history);
-  const [historyQuery, setHistoryQuery] = useState<string | null>(
-    () => (location.state as { query?: string } | null)?.query ?? null,
-  );
+  const [historyQuery, setHistoryQuery] = useState<string | null>(null);
+  useNavPayload<{ query?: string; autoRun?: boolean }>((payload) => {
+    if (!payload.query) return;
+    const query = payload.query;
+    if (payload.autoRun) setForwarded((prev) => ({ query, seq: (prev?.seq ?? 0) + 1 }));
+    else setHistoryQuery(query);
+  });
   const [schemaNodeLabels, setSchemaNodeLabels] = useState<SchemaNodeLabel[]>([]);
   const [schemaRels, setSchemaRels] = useState<SchemaRel[]>([]);
   const [schemaLoading, setSchemaLoading] = useState(true);
@@ -216,19 +222,12 @@ export function GraphPage() {
             seenRel.add(key);
             return true;
           })
-          .map(
-            (r: {
-              type: string;
-              source: string;
-              target: string;
-              properties?: string[];
-            }) => ({
-              type: r.type,
-              source: r.source ?? "",
-              target: r.target ?? "",
-              properties: r.properties ?? [],
-            }),
-          );
+          .map((r: { type: string; source: string; target: string; properties?: string[] }) => ({
+            type: r.type,
+            source: r.source ?? "",
+            target: r.target ?? "",
+            properties: r.properties ?? [],
+          }));
         const seen = new Set<string>();
         const uniqueNodeLabels = nodeLabels.filter((n) => {
           const key = n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel;
@@ -398,12 +397,12 @@ export function GraphPage() {
     // on `role`, which resolves asynchronously — running on mount would fire with no role
     // (wrong/empty result) and again when role loads (a duplicate frame). Wait until auth
     // has resolved, then run exactly once with the correct role.
-    if (authLoading || forwardedRunRef.current || !forwardedQuery) return;
-    forwardedRunRef.current = true;
+    if (authLoading || !forwarded || ranSeqRef.current === forwarded.seq) return;
+    ranSeqRef.current = forwarded.seq;
     localStorage.removeItem("provisa.graph.pending_query");
-    setHistoryQuery(forwardedQuery);
-    runQuery(forwardedQuery);
-  }, [runQuery, authLoading, forwardedQuery]);
+    setHistoryQuery(forwarded.query);
+    runQuery(forwarded.query);
+  }, [runQuery, authLoading, forwarded]);
 
   const closeFrame = useCallback((id: string) => {
     setFrames((f) => {

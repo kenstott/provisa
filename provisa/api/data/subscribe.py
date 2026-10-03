@@ -93,9 +93,11 @@ def _build_mongodb_config(state, source_id: str) -> dict:
     return {"database": source_pool}
 
 
-def _build_kafka_config(state, table: str) -> dict:
-    ks = state.kafka_table_configs.get(table)
-    bootstrap = getattr(ks, "bootstrap_servers", "localhost:9092") if ks else "localhost:9092"
+def _build_kafka_config(state, source_id: str) -> dict:
+    """The brokers of the Kafka source the table belongs to, as its configuration names them."""
+    bootstrap = (state.kafka_bootstrap or {}).get(source_id)
+    if not bootstrap:
+        raise ValueError(f"Kafka source {source_id!r} has no brokers configured for a subscription")
     return {"bootstrap_servers": bootstrap}
 
 
@@ -115,9 +117,9 @@ def _build_rss_feed_url(rss_src, hints: dict) -> str:
 
 
 def _build_rss_config(state, source_id: str) -> dict:  # REQ-342, REQ-344
-    rss_src = state.rss_sources.get(source_id) if state.rss_sources else None
+    rss_src = (state.rss_sources or {}).get(source_id)
     if not rss_src:
-        return {}
+        raise ValueError(f"RSS source {source_id!r} is not loaded; no feed to subscribe to")
     hints = getattr(rss_src, "federation_hints", {}) or {}
     config: dict = {"url": _build_rss_feed_url(rss_src, hints)}
     if hints.get("poll_interval"):
@@ -135,9 +137,9 @@ def _parse_ws_subscribe_payload(raw_payload: str) -> dict | None:
 
 
 def _build_websocket_config(state, source_id: str) -> dict:  # REQ-338, REQ-341
-    ws_src = state.websocket_sources.get(source_id) if state.websocket_sources else None
+    ws_src = (state.websocket_sources or {}).get(source_id)
     if not ws_src:
-        return {}
+        raise ValueError(f"WebSocket source {source_id!r} is not loaded; no stream to subscribe to")
     hints = getattr(ws_src, "federation_hints", {}) or {}
     use_ssl = hints.get("use_ssl", "false").lower() == "true"
     scheme = "wss" if use_ssl else "ws"
@@ -250,7 +252,7 @@ def _build_provider_config(  # REQ-258
     if source_type == "mongodb":
         return _build_mongodb_config(state, source_id)
     if source_type == "kafka":
-        return _build_kafka_config(state, table)
+        return _build_kafka_config(state, source_id)
     if source_type == "ingest":
         return _build_ingest_config(state, source_id)
     if source_type == "rss":

@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json ist kein gültiges JSON: {{error}}",
       "args_json_not_object": "args_json muss ein JSON-Objekt sein",
       "column_not_writable": "Rolle '{{role}}' hat keinen Schreibzugriff auf Spalte '{{column}}'",
+      "command_filter_refused": "{{field}}: {{reason}}",
       "definition_not_available": "{{statement}} ist hier nicht verfügbar: Definitionen werden im Modell oder in der Datenquelle angelegt, und Zeilen werden mit DELETE entfernt.",
       "engine_not_connected": "Engine nicht verbunden",
       "grpc_source_not_registered": "gRPC-Remotequelle '{{source_id}}' nicht registriert",
@@ -84,6 +85,7 @@
       "query_required": "query ist erforderlich",
       "query_timeout": "Zeitüberschreitung der Abfrage nach {{timeout_s}}s",
       "query_too_complex": "Die Komplexität der Abfrage ({{score}}) überschreitet die Grenze {{limit}} ({{limit_of}}).",
+      "redirect_failed": "Das Ergebnis konnte nicht in den Ergebnisspeicher geschrieben werden: {{error}}",
       "redirect_upload_failed": "Redirect-Upload fehlgeschlagen: {{error}}",
       "request_interrupted": "{{error}}",
       "row_level_key_required": "Die Tabelle '{{table}}' wird zeilenweise repliziert und kann nur über ihren Schlüssel ({{key}}) gelesen werden. Filtern Sie den Schlüssel mit einer Gleichheit oder einer IN-Liste, oder verknüpfen Sie die Tabelle über eine einzelne Spalte.",
@@ -92,7 +94,8 @@
       "table_not_found": "Tabelle '{{table}}' nicht gefunden",
       "unknown_action_field": "Unbekanntes Aktionsfeld: '{{field}}'",
       "unknown_command": "Unbekannter Befehl '{{name}}'",
-      "write_not_admitted": "Die Rolle '{{role}}' darf diesen Schreibvorgang nicht ausführen: Ein Schreibvorgang erfordert das Schreibrecht, Schreibzugriff auf jede geschriebene Spalte und Zeilen, die der Zeilenfilter der Rolle zulässt."
+      "write_not_admitted": "Die Rolle '{{role}}' darf diesen Schreibvorgang nicht ausführen: Ein Schreibvorgang erfordert das Schreibrecht, Schreibzugriff auf jede geschriebene Spalte und Zeilen, die der Zeilenfilter der Rolle zulässt.",
+      "write_not_supported": "'{{table}}' nimmt kein {{operation}} an: seine Quelle kann es nicht ausführen"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter für '{{source_type}}' implementiert discover_schema nicht",
@@ -118,6 +121,9 @@
     "functions": {
       "approval_denied": "Genehmigung für '{{name}}' verweigert: {{reason}}",
       "approval_unavailable": "Befehl '{{name}}' erfordert eine Genehmigung, und es ist kein Genehmigungs-Hook konfiguriert",
+      "argument_count": "{{signature}} nimmt {{count}} Argument(e); {{given}} angegeben",
+      "argument_missing": "{{signature}}: Argument '{{argument}}' wurde nicht angegeben",
+      "argument_not_declared": "{{signature}}: Argument '{{argument}}' ist nicht deklariert",
       "binding_missing_key": "Funktionsbindung für Art '{{kind}}' fehlt der erforderliche Schlüssel '{{key}}'",
       "egress_denied": "Ausgehender Zugriff auf '{{endpoint}}' verweigert: Host steht nicht auf der UDF-Egress-Zulassungsliste (REQ-885 deny-by-default). Fügen Sie ihn zu udf_egress_allowlist hinzu, um ihn zuzulassen.",
       "grpc_call_failed": "gRPC-Aufruf {{target}}{{path}} fehlgeschlagen: {{status}}: {{details}}",
@@ -133,6 +139,7 @@
       "script_failed": "Skript wurde mit {{returncode}} beendet: {{stderr}}",
       "source_not_connected": "Quelle '{{source_id}}' nicht verbunden",
       "unknown_arg_kind": "Unbekanntes arg_kind '{{arg_kind}}' für '{{name}}'",
+      "unknown_command": "Unbekannter Befehl: '{{name}}'",
       "unknown_impl_kind": "Unbekanntes Funktions-impl_kind: '{{impl_kind}}'",
       "written_table_missing": "Befehl '{{name}}' schreibt '{{table}}', die nicht registriert ist"
     },
@@ -333,6 +340,8 @@
       "task_not_found": "Aufgabe '{{task}}' nicht gefunden",
       "trigger_exists": "Trigger '{{trigger}}' existiert bereits",
       "trigger_fields_required": "id, name und cron sind erforderlich",
+      "trigger_role_required": "Trigger '{{trigger}}': Ein SQL-Trigger läuft als Rolle dieser Organisation",
+      "trigger_sql_refused": "{{reason}}",
       "unknown_request_type": "Unbekannter Anfragetyp '{{type}}'",
       "unknown_trigger_kind": "Unbekannte Trigger-Art '{{kind}}'",
       "url_sql_exclusive": "url und sql schließen sich gegenseitig aus",
@@ -340,7 +349,8 @@
       "view_spans_sources": "Sicht erstreckt sich über mehrere Quellen: {{sources}}",
       "webhook_approved": "Webhook '{{webhook}}' genehmigt",
       "webhook_name_required": "webhook_name ist für einen Webhook-Trigger erforderlich",
-      "webhook_not_found": "Webhook '{{webhook}}' nicht gefunden"
+      "webhook_not_found": "Webhook '{{webhook}}' nicht gefunden",
+      "change_streams_unavailable": "Quelle '{{source}}' ist ein eigenständiger MongoDB-Server, der keine Change Streams bereitstellt: Das native Änderungssignal erfordert ein Replica Set oder einen Sharded Cluster. Betreiben Sie ihn als Replica Set oder verwenden Sie das Änderungssignal poll."
     },
     "secrets": {
       "still_referenced": "{{secret}} wird noch von {{count}} gespeicherten Wert(en) in dieser Organisation genannt. Ändern oder entfernen Sie jeden davon und löschen Sie es dann erneut."
@@ -396,6 +406,9 @@
       "no_fields_to_update": "Keine Felder zu aktualisieren",
       "self_role_change": "Ein Benutzer kann seine eigene Rolle nicht ändern. Bitten Sie einen anderen Administrator (REQ-1308).",
       "user_not_found": "Benutzer nicht gefunden"
+    },
+    "cypher": {
+      "command_call_refused": "{{reason}}"
     }
   }
 }

@@ -27,6 +27,8 @@ import re
 from collections.abc import Callable, Iterable, Iterator
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
+from provisa.federation.execution_auth import plan_authorization
+
 import jwt
 import pyarrow as pa
 import pyarrow.flight as flight
@@ -154,7 +156,9 @@ async def _resolve_identity_org(state, identity, request: dict[str, object]) -> 
         state,
         user_id=identity.user_id,
         can_act_any_org=can_act_cross_org(caps),
-        requested_org=requested if isinstance(requested, str) else identity.active_org_id,
+        requested_org=requested if isinstance(requested, str) else None,
+        credential_org=identity.active_org_id,  # REQ-1235
+        named_by='set "org" in the ticket',
     )
 
 
@@ -393,11 +397,13 @@ class ProvisaFlightServer(
         if not requested:
             return mapped
         permitted = {a.role_id for a in resolve_assignments(identity)} | {mapped}
-        if str(requested) not in permitted:
-            raise flight.FlightUnauthenticatedError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-                f"role {str(requested)!r} is not assigned to this identity"
-            )
-        return str(requested)
+        from provisa.security.meta_role import resolve_requested_role
+
+        # One role, or a comma-separated set of held roles acting as their meta-role.
+        try:
+            return resolve_requested_role(self._state, permitted, str(requested))
+        except PermissionError as exc:
+            raise flight.FlightUnauthenticatedError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     # ------------------------------------------------------------------
     # Flight SQL handshake
@@ -1018,7 +1024,11 @@ class ProvisaFlightServer(
                 _permits = acquire_plan_permits(self._state, plan)
                 # REQ-1882: the sync engine terminal runs on this handler thread (not a raw cursor,
                 # and not a second thread).
-                res = engine.execute_engine_sync(physical_sql, resolved_params or [])
+                res = engine.execute_engine_sync(
+                    physical_sql,
+                    resolved_params or [],
+                    authorization=plan_authorization(plan),
+                )
                 # REQ-1897: write-through to the raw-SQL response cache (stored as the drain ends,
                 # on this RPC's loop, still bound inside do_get).
                 from provisa.pgwire._pipeline import response_cache_tee

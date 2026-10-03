@@ -231,6 +231,8 @@ def _build_registered_tables(registered: list[dict], cfg_by: dict) -> list[Any]:
                 # the registry view. Confirmed live: a row_materialize=True neo4j table's residency
                 # was still being decided entirely by the whole-source path.
                 row_materialize=bool(rt.get("row_materialize", False)),
+                file_glob=rt.get("file_glob"),  # REQ-788
+                source_file_column=rt.get("source_file_column"),  # REQ-788
                 # REQ-1865: row_materialized_tables_by_name keys on this (apply_sql_name(t.alias or
                 # t.table_name)) to match the SEMANTIC AST a query compiles to -- also never
                 # surfaced here before. Dead code until row_materialize (above) actually started

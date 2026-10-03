@@ -14,8 +14,6 @@
     "selectTable": "Выберите таблицу...",
     "visibleTo": "Видно для (роли, через запятую)",
     "visibleToPlaceholder": "admin, analyst",
-    "writableBy": "Запись для (роли, через запятую)",
-    "writableByPlaceholder": "admin",
     "url": "URL",
     "urlPlaceholder": "https://api.example.com/action",
     "method": "Метод",

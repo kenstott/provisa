@@ -58,6 +58,7 @@ def _make_si(enable_aggregates: bool = False, enable_group_by: bool = False):
                 {"column_name": "created_at", "visible_to": ["admin"]},
                 {"column_name": "status", "visible_to": ["admin"]},
             ],
+            "write_ops": ["delete", "insert", "update"],
         }
     ]
     column_types = {

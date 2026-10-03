@@ -87,6 +87,13 @@ def _basic(username: str) -> dict[str, str]:
     return {"Authorization": "Basic " + base64.b64encode(raw).decode()}
 
 
+def _in_org(username: str, org_id: str) -> dict[str, str]:
+    """The same credentials on a tenant-plane request, which names its org (REQ-1235). This
+    client's host names none, so the org rides in X-Org-Provisa, as it does from the UI on the
+    control-plane host. Platform-plane routes (/auth, /admin/orgs) name no org."""
+    return {**_basic(username), "X-Org-Provisa": org_id}
+
+
 def _pg_conn():
     """Connect to the SAME Postgres the app's control planes use.
 
@@ -266,7 +273,11 @@ class TestOrgEmailRuleOnRedemption:
     async def test_the_rule_reads_back_for_the_admin_who_set_it(self, client):
         """REQ-1569: a rule that decides who joins has to be readable by its owner, or nobody can
         audit or correct what the org is actually admitting."""
-        read = await client.get(f"/admin/orgs/{_ctx['org1']}/settings", headers=_basic("founder"))
+        # REQ-1235: an org's settings are its data; org_admin authority is the org the request
+        # names, so the reader names it.
+        read = await client.get(
+            f"/admin/orgs/{_ctx['org1']}/settings", headers=_in_org("founder", _ctx["org1"])
+        )
         assert read.status_code == 200, read.text
         assert read.json() == {
             "id": _ctx["org1"],
@@ -317,7 +328,7 @@ class TestOnlyAssignedRoleRidesHeader:
         resp = await client.post(
             "/data/graphql",
             json={"query": "{ sa__customers { id name } }"},
-            headers={**_basic("alice"), "X-Provisa-Role": "analyst"},
+            headers={**_in_org("alice", _ctx["org1"]), "X-Provisa-Role": "analyst"},
         )
         assert resp.status_code == 200, resp.text
         rows = resp.json()["data"]["sa__customers"]
@@ -328,7 +339,7 @@ class TestOnlyAssignedRoleRidesHeader:
         resp = await client.post(
             "/data/graphql",
             json={"query": "{ sa__customers { id name } }"},
-            headers={**_basic("alice"), "X-Provisa-Role": "org_admin"},
+            headers={**_in_org("alice", _ctx["org1"]), "X-Provisa-Role": "org_admin"},
         )
         assert resp.status_code == 403, resp.text
         assert "is not assigned to this user" in resp.json()["detail"]
@@ -336,7 +347,7 @@ class TestOnlyAssignedRoleRidesHeader:
     async def test_a_role_named_in_the_path_follows_the_same_rule(self, client):
         # REQ-273: a route that addresses a role by id in the URL is the same act as naming it in
         # the header. alice holds analyst and not org_admin.
-        own = await client.get("/data/proto/analyst", headers=_basic("alice"))
+        own = await client.get("/data/proto/analyst", headers=_in_org("alice", _ctx["org1"]))
         assert own.status_code == 200, own.text
         assert "proto3" in own.text
 
@@ -345,14 +356,14 @@ class TestOnlyAssignedRoleRidesHeader:
             "/data/proto/org_admin?domains=sales-analytics",
             "/data/grpc-commands/org_admin",
         ):
-            resp = await client.get(path, headers=_basic("alice"))
+            resp = await client.get(path, headers=_in_org("alice", _ctx["org1"]))
             assert resp.status_code == 403, f"{path}: {resp.status_code} {resp.text}"
             assert resp.json()["detail"] == "Role 'org_admin' is not assigned to this user"
 
         ran = await client.post(
             "/data/grpc-command/org_admin",
             json={"name": "anything", "args_json": "{}"},
-            headers=_basic("alice"),
+            headers=_in_org("alice", _ctx["org1"]),
         )
         assert ran.status_code == 403, ran.text
         assert ran.json()["detail"] == "Role 'org_admin' is not assigned to this user"
@@ -535,7 +546,7 @@ class TestSchemaIsolatedTenantPlane:
         resp = await client.post(
             "/admin/graphql",
             json={"query": "{ domains { id } }"},
-            headers=_basic("carol"),
+            headers=_in_org("carol", _ORG2),
         )
         assert resp.status_code == 200, resp.text
         payload = resp.json()
@@ -551,7 +562,7 @@ class TestSchemaIsolatedTenantPlane:
                 "query": 'mutation { createDomain(input: {id: "acmeprivate", '
                 'description: "Acme-only"}) { success message } }'
             },
-            headers=_basic("carol"),
+            headers=_in_org("carol", _ORG2),
         )
         assert created.status_code == 200, created.text
         result = created.json()["data"]["createDomain"]
@@ -560,7 +571,7 @@ class TestSchemaIsolatedTenantPlane:
         mine = await client.post(
             "/admin/graphql",
             json={"query": "{ domains { id } }"},
-            headers=_basic("carol"),
+            headers=_in_org("carol", _ORG2),
         )
         assert "acmeprivate" in {d["id"] for d in mine.json()["data"]["domains"]}
 
@@ -589,7 +600,7 @@ class TestSchemaIsolatedTenantPlane:
         added = await client.post(
             f"/admin/orgs/{org2}/members",
             json={"user_id": ids["dave"]},
-            headers=_basic("carol"),
+            headers=_in_org("carol", org2),
         )
         assert added.status_code == 200, added.text
 

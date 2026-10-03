@@ -206,11 +206,25 @@ async def test_platform_admin_alone_is_refused_the_admin_data_routes(monkeypatch
 
 
 def test_the_role_row_itself_authorizes_no_write():
-    from provisa.security.mutation_authz import authorize_mutation
+    import pytest
 
-    allowed, reason = authorize_mutation(ROLES["platform_admin"], ["platform_admin"])
-    assert allowed is False
-    assert "WRITE" in reason
+    from provisa.security.mutation_authz import CommandNotFound, MutationNotPermitted, admit_command
+
+    # Assigned a command in a domain it does not reach, the platform role finds no command; even
+    # where it is reached, being assigned grants no write.
+    with pytest.raises(CommandNotFound):
+        admit_command(
+            {"kind": "mutation", "visible_to": ["platform_admin"], "domain_id": "sales"},
+            ROLES["platform_admin"],
+            "refund",
+        )
+    reaching = {**ROLES["platform_admin"], "domain_access": ["*"]}
+    with pytest.raises(MutationNotPermitted, match="WRITE"):
+        admit_command(
+            {"kind": "mutation", "visible_to": ["platform_admin"], "domain_id": "sales"},
+            reaching,
+            "refund",
+        )
 
 
 def test_platform_admin_alone_keeps_the_platform_plane():
@@ -235,8 +249,8 @@ def test_platform_admin_adds_no_domain_scope_to_a_role_held_beside_it(monkeypatc
         require_domain,
         require_domain_request,
     )
-    from provisa.core.request_context import current_role_claims
-    from provisa.security.rights import domain_access_for_claims, effective_domain_access_role
+    from provisa.security import meta_role
+    from provisa.security.rights import domain_access_for_claims
 
     roles = {
         **ROLES,
@@ -262,12 +276,9 @@ def test_platform_admin_adds_no_domain_scope_to_a_role_held_beside_it(monkeypatc
         require_domain_request(_request(*held), "finance")
     assert (err.value.status_code, err.value.code) == (403, "auth.domain_denied")
 
-    # The governed query pipeline reads the acting role's scope through the same union.
-    token = current_role_claims.set(tuple(held))
-    try:
-        assert effective_domain_access_role("sales_dev", roles)["domain_access"] == ["sales"]
-    finally:
-        current_role_claims.reset(token)
+    # The governed query pipeline acts as the set's meta-role, whose scope is the same union.
+    acting = meta_role._role([roles[r] for r in held], meta_role.meta_role_id(held))
+    assert acting["domain_access"] == ["sales"]
 
 
 # --- the retired wildcard strings grant nothing --------------------------------------------------

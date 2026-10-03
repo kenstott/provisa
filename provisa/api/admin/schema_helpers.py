@@ -390,6 +390,13 @@ async def _fetch_table_with_columns(
     _paging_kind = table_paging_kind(_state, _source_type, row["source_id"], row["table_name"])
 
     view_sql = row.get("view_sql")
+    from provisa.executor.write_capability import table_write_ops
+
+    _write_ops = sorted(
+        table_write_ops(
+            dict(row), None if view_sql else _source_type, _state.federation_engine.engine
+        )
+    )
     can_deploy = False
     if (
         user_can_deploy
@@ -406,6 +413,7 @@ async def _fetch_table_with_columns(
         schema_name=row["schema_name"],
         table_name=row["table_name"],
         origin=row["origin"],  # REQ-1919
+        write_ops=_write_ops,
         alias=row.get("alias"),
         description=row.get("description"),
         cache_ttl=row.get("cache_ttl"),
@@ -428,6 +436,8 @@ async def _fetch_table_with_columns(
         view_sql=view_sql,
         dq_contract=row.get("dq_contract"),  # REQ-1443
         query_template=_query_template_for(row["table_name"]),  # REQ-1670
+        file_glob=row.get("file_glob"),  # REQ-788
+        source_file_column=row.get("source_file_column"),  # REQ-788
         view_metrics=_view_metrics_type_from_row(row.get("view_metrics")),  # REQ-1318
         change_signal=row.get("change_signal"),
         probe_query=row.get("probe_query"),

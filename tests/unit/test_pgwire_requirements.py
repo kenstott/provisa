@@ -15,6 +15,7 @@ from provisa.core.egress import CountingWriter
 
 import jwt
 import pytest
+from tests.platform_plane import platform_db
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +179,10 @@ class TestReq529AuthType3:
         handler.handle_post_auth = MagicMock()
 
         fake_state = MagicMock()
+
+        # A single-tenant deployment: its catalog serves the one database, provisa.
+
+        fake_state.multitenancy = False
         fake_state.auth_config = {"provider": "none"}
         fake_state.auth_middleware_active = False
 
@@ -204,7 +209,11 @@ class TestReq529AuthType3:
         handler._send_pg_error = MagicMock()
 
         fake_state = MagicMock()
-        fake_state.auth_config = {"provider": "ldap"}
+
+        # A single-tenant deployment: its catalog serves the one database, provisa.
+
+        fake_state.multitenancy = False
+        fake_state.auth_config = {"provider": "kerberos"}
         fake_state.auth_middleware_active = True
 
         with patch("provisa.pgwire.server.state", fake_state):
@@ -243,6 +252,8 @@ class TestReq890OidcAuth:
 
     def _state(self):
         fake_state = MagicMock()
+        # A single-tenant deployment: its catalog serves the one database, provisa.
+        fake_state.multitenancy = False
         fake_state.auth_config = {
             "provider": "oidc",
             "oidc": {
@@ -347,10 +358,13 @@ class TestPgwireBasicAndPat:
 
     def _state(self, auth_config):
         fake_state = MagicMock()
+        # A single-tenant deployment: its catalog serves the one database, provisa.
+        fake_state.multitenancy = False
         fake_state.auth_config = auth_config
         fake_state.auth_middleware_active = True
         fake_state.multitenancy = False
-        fake_state.admin_db = None
+        # The simple provider keeps its users' ids on the platform plane.
+        fake_state.admin_db = platform_db()
         return fake_state
 
     def _simple_config(self):
@@ -443,7 +457,20 @@ class TestPgwireBasicAndPat:
     def test_a_provider_that_cannot_be_built_refuses_on_the_wire(self, pgwire_loop):
         """An unknown provider name authenticates nobody, and the client is told so."""
         handler, ctx = self._handler(), self._ctx()
-        with patch("provisa.pgwire.server.state", self._state({"provider": "ldap"})):
+        with patch("provisa.pgwire.server.state", self._state({"provider": "kerberos"})):
+            handler.handle_md5_password(ctx, b"whatever\x00")
+
+        handler.send_authentication_ok.assert_not_called()
+        assert handler._send_pg_error.call_args[0][0] == "FATAL"
+
+    @pytest.mark.parametrize("provider", ["ldap", "saml"])
+    def test_a_provider_selected_without_its_settings_refuses_on_the_wire(
+        self, pgwire_loop, provider
+    ):
+        """REQ-1265: a known provider with no config block cannot be built either."""
+        handler, ctx = self._handler(), self._ctx()
+        config = {"provider": provider, "jwt_secret": "s" * 48}
+        with patch("provisa.pgwire.server.state", self._state(config)):
             handler.handle_md5_password(ctx, b"whatever\x00")
 
         handler.send_authentication_ok.assert_not_called()
@@ -924,47 +951,82 @@ class TestReq585CopySupport:
 
 
 # ---------------------------------------------------------------------------
-# REQ-586 / REQ-615 — COPY FROM is a write, and pgwire takes no writes
+# REQ-586 — COPY FROM is a bulk INSERT, admitted like one
 # ---------------------------------------------------------------------------
 
 
-class TestReq586CopyFromRefused:
-    """REQ-586 as ruled 2026-10-02: ``COPY … FROM STDIN`` is refused on every source type, with
-    the refusal an INSERT over pgwire gets (REQ-615), before the client is asked for any data."""
+class TestReq586CopyFromAdmitted:
+    """``COPY … FROM STDIN`` (maintainer correction 2026-10-03) is a bulk INSERT into an existing
+    registered table, admitted like one: the write right and the columns' writable_by before any
+    data is asked for, the role's row filter over every row before any row is written."""
 
-    @pytest.mark.parametrize(
-        "statement",
-        [
-            "COPY orders FROM STDIN",
-            "COPY sales.orders (id, region) FROM STDIN",
-            "copy sales.orders from stdin with (format csv)",
-        ],
-    )
-    def test_copy_from_is_refused_before_any_data_is_asked_for(self, statement):
-        from provisa.compiler.definitions import definition_refusal
-        from provisa.pgwire._pipeline import WriteNotAvailableOverPgwire
+    @staticmethod
+    def _state(capabilities: list[str], write_ops: list[str]):
+        from types import SimpleNamespace
+
+        from provisa.compiler.rls import RLSContext
+
+        return SimpleNamespace(
+            source_types={"pg": "postgresql"},
+            roles={"dev": {"id": "dev", "capabilities": capabilities, "domain_access": ["*"]}},
+            rls_contexts={"dev": RLSContext.empty()},
+            masking_rules={},
+            contexts={"dev": SimpleNamespace(tables={})},
+            tables=[
+                {
+                    "id": 1,
+                    "source_id": "pg",
+                    "domain_id": "sales",
+                    "schema_name": "public",
+                    "table_name": "orders",
+                    "write_ops": write_ops,
+                    "columns": [
+                        {"column_name": "id", "visible_to": ["dev"], "writable_by": ["dev"]}
+                    ],
+                }
+            ],
+            relationships=[],
+        )
+
+    def _refused(self, state, raised, match):
+        from types import SimpleNamespace
+
         from provisa.pgwire.copy_handler import CopyHandler
 
         handler = object.__new__(CopyHandler)
         handler._h = MagicMock()
         ctx = MagicMock()
-        ctx.session.role_id = "org_admin"
-
-        with pytest.raises(WriteNotAvailableOverPgwire) as raised:
-            handler.handle(ctx, statement)
-        assert "COPY ... FROM STDIN is not available over pgwire" in str(raised.value)
-        # the refusal pgwire answers with SQLSTATE 0A000
-        assert definition_refusal(raised.value) is raised.value
-        # no CopyInResponse was sent and nothing was read from the client
-        handler._h.wfile.write.assert_not_called()
+        ctx.session.role_id = "dev"
+        tm = SimpleNamespace(source_id="pg", table_id=1, domain_id="sales", table_name="orders")
+        with (
+            patch("provisa.pgwire.copy_handler._find_table_meta", return_value=(tm, ["id"])),
+            patch("provisa.pgwire.copy_handler.state", state),
+        ):
+            with pytest.raises(raised, match=match):
+                handler.handle(ctx, "COPY sales.orders (id) FROM STDIN")
+        handler._h.wfile.write.assert_not_called()  # no CopyInResponse: no data asked for
         handler._h.rfile.read.assert_not_called()
 
-    def test_no_bulk_load_write_path_remains(self):
-        import provisa.pgwire.copy_handler as copy_handler
+    def test_a_role_without_the_write_right_is_refused_before_any_data_is_asked_for(self):
+        from provisa.compiler.write_admission import WriteNotAdmitted
 
-        for name in ("_insert_rows", "_WRITABLE_SOURCE_TYPES", "_find_table_meta"):
-            assert not hasattr(copy_handler, name), name
-        assert not hasattr(copy_handler.CopyHandler, "_handle_copy_from")
+        state = self._state(["query_development"], ["delete", "insert", "update"])
+        self._refused(state, WriteNotAdmitted, "'write' right")
+
+    def test_copy_from_a_source_that_takes_no_writes_is_refused(self):
+        # executor/write_capability.py: a table whose source takes no inserts refuses a bulk load
+        # by name, whatever the role holds, before any data is asked for.
+        from provisa.compiler.write_admission import WriteNotSupported
+
+        state = self._state(["query_development", "write"], [])
+        self._refused(state, WriteNotSupported, "'orders' does not take INSERT")
+
+    def test_copy_from_column_list_inferred_when_not_provided(self):
+        from provisa.pgwire.copy_handler import _PARSE_FROM_RE
+
+        m = _PARSE_FROM_RE.match("COPY orders FROM STDIN")
+        assert m is not None
+        assert m.group("cols") is None
 
 
 # ---------------------------------------------------------------------------
@@ -1046,6 +1108,10 @@ class TestReq588ScalarExpressionIntercepts:
         assert classify("SELECT current_database()") == "INTERCEPT"
 
         fake_state = MagicMock()
+
+        # A single-tenant deployment: its catalog serves the one database, provisa.
+
+        fake_state.multitenancy = False
         fake_state.contexts = {}
         fake_state.schema_build_cache = {"column_types": {}}
 
@@ -1062,6 +1128,10 @@ class TestReq588ScalarExpressionIntercepts:
         assert classify("SELECT pg_backend_pid()") == "INTERCEPT"
 
         fake_state = MagicMock()
+
+        # A single-tenant deployment: its catalog serves the one database, provisa.
+
+        fake_state.multitenancy = False
         fake_state.contexts = {}
         fake_state.schema_build_cache = {"column_types": {}}
 

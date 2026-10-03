@@ -110,7 +110,7 @@ class _Engine:
         self.executed: list[str] = []
         self.described: list[str] = []
 
-    def execute_engine_sync(self, sql, params, *, session_hints=None):
+    def execute_engine_sync(self, sql, params, *, session_hints=None, authorization=None):
         self.executed.append(sql)
         return EngineResult(rows=list(self.rows), column_names=self.names, column_types=self.types)
 
@@ -373,7 +373,7 @@ async def test_an_asyncpg_bound_int_reaches_the_engine_as_an_int(pgwire_port, tr
     bound: list = []
     real = engine.execute_engine_sync
 
-    def _capture(sql, params, *, session_hints=None):
+    def _capture(sql, params, *, session_hints=None, authorization=None):
         bound.append(params)
         return real(sql, params, session_hints=session_hints)
 

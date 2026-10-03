@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { useRef, useCallback, useState, useMemo, useEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { useNavPayload } from "../hooks/useNavPayload";
 import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
@@ -520,23 +520,25 @@ function createProvisaFetch(
   };
 }
 
-/** Opens a new GraphiQL tab, populates it, and executes — triggered by navigation from NL page. */
-function AutoRunFromNav({ query }: { query: string }) {
+/** Opens a new GraphiQL tab holding a query handed to the page, and runs it when asked.
+ *  Mounted once per hand-off (keyed by the caller), whether the page was just opened or was
+ *  already open. */
+function OpenFromNav({ query, autoRun }: { query: string; autoRun: boolean }) {
   const { addTab, updateActiveTabValues, run } = useGraphiQLActions();
   const queryEditor = useGraphiQL((s) => s.queryEditor);
-  const didRun = useRef(false);
+  const done = useRef(false);
 
   // Wait for queryEditor to become available (it's set asynchronously by GraphiQL).
-  // Once it's ready, add a tab, populate, and execute exactly once.
   useEffect(() => {
-    if (!queryEditor || didRun.current) return;
-    didRun.current = true;
+    if (!queryEditor || done.current) return;
+    done.current = true;
     addTab();
     updateActiveTabValues({ query });
     queryEditor.setValue(query);
+    if (!autoRun) return;
     const t = setTimeout(() => run(), 100);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once when queryEditor becomes available (guarded by didRun); other deps must not re-trigger
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per mount, when queryEditor becomes available (guarded by done); the caller remounts it per hand-off
   }, [queryEditor]);
   return null;
 }
@@ -556,14 +558,17 @@ export function QueryPage() {
   const graphiqlTheme = colorScheme === "light" ? "light" : "dark";
   const { role } = useAuth();
   const { checkedDomains } = useDomainFilter();
-  const location = useLocation();
   const [domainSchema, setDomainSchema] = useState<GraphQLSchema | null>(null);
-  // Frozen initial values — never updated so GraphiQL owns these states after mount.
-  const locationState = location.state as { query?: string; autoRun?: boolean } | null;
-  const [initialQuery] = useState<string | undefined>(() => locationState?.query ?? undefined);
-  const [autoRunQuery] = useState<string | undefined>(() =>
-    locationState?.autoRun && locationState.query ? locationState.query : undefined,
+  // A query handed to the page (NL "Open in GraphQL", Polly), whether the page was just opened or
+  // already open. Each hand-off gets its own sequence number, which remounts OpenFromNav.
+  const [handed, setHanded] = useState<{ query: string; autoRun: boolean; seq: number } | null>(
+    null,
   );
+  useNavPayload<{ query?: string; autoRun?: boolean }>((payload) => {
+    if (!payload.query) return;
+    const query = payload.query;
+    setHanded((prev) => ({ query, autoRun: payload.autoRun === true, seq: (prev?.seq ?? 0) + 1 }));
+  });
   const [initialVisiblePlugin] = useState<string | undefined>(
     () => localStorage.getItem("query:visiblePlugin") ?? undefined,
   );
@@ -943,10 +948,9 @@ export function QueryPage() {
         visiblePlugin={initialVisiblePlugin}
         onTogglePluginVisibility={onPluginVisibilityChange}
         defaultEditorToolsVisibility={initialEditorTab}
-        defaultQuery={initialQuery}
         shouldPersistHeaders
       >
-        {autoRunQuery && <AutoRunFromNav query={autoRunQuery} />}
+        {handed && <OpenFromNav key={handed.seq} query={handed.query} autoRun={handed.autoRun} />}
         <GraphiQL.Footer>
           <ResponseTableOverlay />
           <HeadersQuickInsert />

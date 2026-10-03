@@ -40,6 +40,8 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from provisa.federation.execution_auth import system_auth
+
 if TYPE_CHECKING:
     from provisa.audit.writer import AuditRecord
     from provisa.federation.policy_summary import HotView
@@ -427,7 +429,9 @@ async def _row_count(state: Any, key: tuple[str, str, str]) -> int:
     from provisa.mv.models import TableIdentity
 
     ref = await state.federation_engine.read_ref(TableIdentity(*key))
-    result = await state.federation_engine.execute_engine(f"SELECT COUNT(*) FROM {ref}")
+    result = await state.federation_engine.execute_engine(
+        f"SELECT COUNT(*) FROM {ref}", authorization=system_auth("replica row count")
+    )
     return int(result.rows[0][0])
 
 

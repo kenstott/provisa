@@ -24,6 +24,7 @@ from tests.env_creds import load_provider_creds
 from tests.itest_stack import (
     COMPOSE_ARGS,
     acquire_stack_slot,
+    install_abnormal_exit_teardown,
     reap_orphaned_projects,
     reap_orphaned_server_processes,
     release_stack_slot,
@@ -214,6 +215,12 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_openmetadata": ["openmetadata-db", "elasticsearch", "openmetadata"],
     # Atlas embeds its own HBase and Solr, so the one service is the whole target.
     "requires_atlas": ["atlas"],
+    # REQ-1265: the directory the LDAP auth provider signs in against.
+    "requires_ldap": ["openldap"],
+    # REQ-1265: the identity provider the SAML auth provider signs in through.
+    "requires_saml_idp": ["saml-idp"],
+    # REQ-1873: an operator's own Postgres, one with a major a bundle is built for and one without.
+    "requires_pg_ext_targets": ["pg-ext-target-16", "pg-ext-target-15"],
 }
 # zaychik is the Arrow Flight terminal the in-process app connects to for Flight/CTAS
 # redirects; without it Flight-dependent integration tests fail with connection-refused.
@@ -305,6 +312,11 @@ _ITEST_PORT_ENV = [
     "MARQUEZ_PORT",
     "OPENMETADATA_PORT",
     "ATLAS_PORT",
+    "LDAP_PORT",
+    "SAML_IDP_PORT",
+    # Not a container's port: the test's own service-provider server binds it. It is leased
+    # here because the identity provider is told this address when its container starts.
+    "SAML_SP_PORT",
 ]
 
 
@@ -602,6 +614,28 @@ class _DockerServiceManager:
                 check=True,
             )
 
+        # A SIGTERM (``timeout``, a supervisor) ends the process without pytest_sessionfinish,
+        # leaving this session's stack up until a later run reaps it. Tear it down on SIGTERM and
+        # atexit too; the clean path below calls the same guarded runner, so teardown runs once.
+        self._teardown_once = install_abnormal_exit_teardown(self._teardown_stack)
+
+    def _teardown_stack(self) -> None:
+        """Tear the isolated stack down and release the memory slot. Shared by the clean
+        ``pytest_sessionfinish`` path and the SIGTERM/atexit path, through the once-only guard
+        ``install_abnormal_exit_teardown`` returns, so it runs exactly once."""
+        try:
+            subprocess.run(
+                ["docker", "compose", *_ITEST_COMPOSE_ARGS, "down", "--volumes"],
+                cwd=_REPO_ROOT,
+                env=_itest_compose_env(),
+                check=False,
+            )
+        finally:
+            # Only after the containers are gone is the VM memory actually free for the next
+            # session — releasing before teardown would let it start provisioning into memory
+            # this session has not given back yet.
+            release_stack_slot()
+
     def pytest_sessionfinish(self, session, exitstatus):  # pyright: ignore
         # Tests own the services they provision — including reaping them. Tear the
         # whole isolated stack down by default so a run never leaks containers (which
@@ -616,18 +650,10 @@ class _DockerServiceManager:
             # slot must stay held; PYTEST_NO_DOCKER never took one. Either way, nothing to
             # release here.
             return
-        try:
-            subprocess.run(
-                ["docker", "compose", *_ITEST_COMPOSE_ARGS, "down", "--volumes"],
-                cwd=_REPO_ROOT,
-                env=_itest_compose_env(),
-                check=False,
-            )
-        finally:
-            # Only after the containers are gone is the VM memory actually free for the next
-            # session — releasing before teardown would let it start provisioning into memory
-            # this session has not given back yet.
-            release_stack_slot()
+        # The same guarded runner the SIGTERM/atexit path uses, so teardown runs exactly once
+        # whichever path ends the session.
+        runner = getattr(self, "_teardown_once", None)
+        (runner or self._teardown_stack)()
 
 
 def pytest_configure(config):
@@ -781,6 +807,11 @@ def _heavy_db_service(request):  # pyright: ignore
             env=_itest_compose_env(),
             check=False,
         )
+
+
+# A skipped warehouse test is a failure naming what was missing (tests/skip_is_failure.py). Imported
+# into this conftest so every lane gets it, including those that clear addopts.
+from tests.skip_is_failure import pytest_runtest_makereport  # noqa: E402, F401
 
 
 def pytest_collection_modifyitems(config, items):  # pyright: ignore

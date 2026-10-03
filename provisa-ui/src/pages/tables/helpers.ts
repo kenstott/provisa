@@ -32,6 +32,8 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
     viewSql: t.viewSql || undefined,
     dqContract: t.dqContract || null, // REQ-1443
     queryTemplate: t.queryTemplate || null, // REQ-1670
+    fileGlob: t.fileGlob || null, // REQ-788
+    sourceFileColumn: t.sourceFileColumn || null, // REQ-788
     materialize: t.materialize,
     mvRefreshInterval: t.mvRefreshInterval,
     mvDebounceQuiet: t.mvDebounceQuiet,

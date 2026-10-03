@@ -30,11 +30,13 @@ from provisa.dq.contract import CHECKERS
 # complete. Built at import time; never hand-edit the literals.
 import json as _json
 
+from provisa.compiler.sql_literals import sql_literal
+
 
 def _system_tag_rows_sql() -> str:
     rows = []
     for tag in SYSTEM_TAGS + DERIVED_TAGS:
-        desc = tag.description.replace("'", "''")
+        desc = sql_literal(tag.description, "postgres")[1:-1]
         applies = _json.dumps(tag.applies_to).replace(" ", "")
         rows.append(
             f"SELECT '{tag.id}' AS id, '{desc}' AS description, "
@@ -249,7 +251,6 @@ _META_TABLE_VIEWS: dict[str, str] = {
                arguments,
                return_schema,
                visible_to,
-               writable_by,
                domain_id, description, created_at, updated_at
         FROM tracked_functions
     """,

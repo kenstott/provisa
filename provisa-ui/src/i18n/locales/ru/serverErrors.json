@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json не является допустимым JSON: {{error}}",
       "args_json_not_object": "args_json должен быть объектом JSON",
       "column_not_writable": "Роль '{{role}}' не имеет доступа на запись к столбцу '{{column}}'",
+      "command_filter_refused": "{{field}}: {{reason}}",
       "definition_not_available": "{{statement}} здесь недоступен: определения создаются в модели или в источнике данных, а строки удаляются с помощью DELETE.",
       "engine_not_connected": "движок не подключен",
       "grpc_source_not_registered": "Удаленный источник gRPC '{{source_id}}' не зарегистрирован",
@@ -84,6 +85,7 @@
       "query_required": "требуется query",
       "query_timeout": "Время ожидания запроса истекло через {{timeout_s}} с",
       "query_too_complex": "Сложность запроса ({{score}}) превышает предел {{limit}} ({{limit_of}}).",
+      "redirect_failed": "Не удалось записать результат в хранилище результатов: {{error}}",
       "redirect_upload_failed": "Сбой загрузки с перенаправлением: {{error}}",
       "request_interrupted": "{{error}}",
       "row_level_key_required": "Таблица '{{table}}' реплицируется построчно и может быть прочитана только по её ключу ({{key}}). Отфильтруйте по ключу с помощью равенства или списка IN либо соедините таблицу по одному столбцу.",
@@ -92,7 +94,8 @@
       "table_not_found": "Таблица '{{table}}' не найдена",
       "unknown_action_field": "Неизвестное поле действия: '{{field}}'",
       "unknown_command": "Неизвестная команда '{{name}}'",
-      "write_not_admitted": "Роль '{{role}}' не может выполнить эту запись: для записи нужны право записи, доступ на запись к каждому записываемому столбцу и строки, которые допускает фильтр строк роли."
+      "write_not_admitted": "Роль '{{role}}' не может выполнить эту запись: для записи нужны право записи, доступ на запись к каждому записываемому столбцу и строки, которые допускает фильтр строк роли.",
+      "write_not_supported": "'{{table}}' не принимает {{operation}}: её источник не может это выполнить"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Адаптер для '{{source_type}}' не реализует discover_schema",
@@ -118,6 +121,9 @@
     "functions": {
       "approval_denied": "В одобрении '{{name}}' отказано: {{reason}}",
       "approval_unavailable": "команда '{{name}}' требует одобрения, а хук одобрения не настроен",
+      "argument_count": "{{signature}} принимает аргументов: {{count}}; передано: {{given}}",
+      "argument_missing": "{{signature}}: аргумент '{{argument}}' не передан",
+      "argument_not_declared": "{{signature}}: аргумент '{{argument}}' не объявлен",
       "binding_missing_key": "в привязке функции для типа '{{kind}}' отсутствует обязательный ключ '{{key}}'",
       "egress_denied": "исходящее подключение к '{{endpoint}}' запрещено: хост не входит в список разрешенных для исходящего трафика UDF (REQ-885, запрет по умолчанию). Добавьте его в udf_egress_allowlist, чтобы разрешить.",
       "grpc_call_failed": "вызов grpc {{target}}{{path}} завершился ошибкой: {{status}}: {{details}}",
@@ -133,6 +139,7 @@
       "script_failed": "скрипт завершился с кодом {{returncode}}: {{stderr}}",
       "source_not_connected": "Источник '{{source_id}}' не подключен",
       "unknown_arg_kind": "Неизвестный arg_kind '{{arg_kind}}' для '{{name}}'",
+      "unknown_command": "Неизвестная команда: '{{name}}'",
       "unknown_impl_kind": "Неизвестный impl_kind функции: '{{impl_kind}}'",
       "written_table_missing": "команда '{{name}}' записывает в '{{table}}', которая не зарегистрирована"
     },
@@ -333,6 +340,8 @@
       "task_not_found": "Задача '{{task}}' не найдена",
       "trigger_exists": "Триггер '{{trigger}}' уже существует",
       "trigger_fields_required": "требуются id, name и cron",
+      "trigger_role_required": "Триггер '{{trigger}}': SQL-триггер выполняется от имени роли этой организации",
+      "trigger_sql_refused": "{{reason}}",
       "unknown_request_type": "Неизвестный тип запроса '{{type}}'",
       "unknown_trigger_kind": "Неизвестный тип триггера '{{kind}}'",
       "url_sql_exclusive": "url и sql взаимно исключают друг друга",
@@ -340,7 +349,8 @@
       "view_spans_sources": "представление охватывает несколько источников: {{sources}}",
       "webhook_approved": "Вебхук '{{webhook}}' одобрен",
       "webhook_name_required": "для триггера-вебхука требуется webhook_name",
-      "webhook_not_found": "Вебхук '{{webhook}}' не найден"
+      "webhook_not_found": "Вебхук '{{webhook}}' не найден",
+      "change_streams_unavailable": "Источник '{{source}}' — автономный сервер MongoDB, который не поддерживает change streams: сигнал изменений native требует набора реплик или шардированного кластера. Запустите его как набор реплик или используйте сигнал изменений poll."
     },
     "secrets": {
       "still_referenced": "{{secret}} всё ещё называют сохранённые значения в этой организации: {{count}}. Измените или удалите каждое и повторите удаление."
@@ -396,6 +406,9 @@
       "no_fields_to_update": "Нет полей для обновления",
       "self_role_change": "Пользователь не может изменить собственную роль. Обратитесь к другому администратору (REQ-1308).",
       "user_not_found": "Пользователь не найден"
+    },
+    "cypher": {
+      "command_call_refused": "{{reason}}"
     }
   }
 }

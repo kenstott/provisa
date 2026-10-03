@@ -174,8 +174,11 @@ def _q(sync_engine, schema, stmt):
 def test_auto_join_grants_membership_role_and_resolves_org(matching_planes):
     admin_db, tenant_db, sync_engine = matching_planes
     with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
-        # A plain first request — no invite, no explicit join call.
-        resp = client.get("/whoami", headers={"Authorization": "Bearer tok-alice"})
+        # A plain first request — no invite, no explicit join call. REQ-1235: it names its org,
+        # as every multi-tenant request does; being joined to one org does not name it.
+        resp = client.get(
+            "/whoami", headers={"Authorization": "Bearer tok-alice", "x-org-provisa": "acme"}
+        )
     assert resp.status_code == 200, resp.text
     # The SAME request already resolves the auto-joined org + mirrored role.
     assert resp.json() == {"roles": ["analyst"], "active_org_id": "acme"}
@@ -200,8 +203,12 @@ def test_auto_join_grants_membership_role_and_resolves_org(matching_planes):
 def test_auto_join_idempotent_across_requests(matching_planes):
     admin_db, tenant_db, sync_engine = matching_planes
     with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
-        first = client.get("/whoami", headers={"Authorization": "Bearer tok-alice"})
-        second = client.get("/whoami", headers={"Authorization": "Bearer tok-alice"})
+        first = client.get(
+            "/whoami", headers={"Authorization": "Bearer tok-alice", "x-org-provisa": "acme"}
+        )
+        second = client.get(
+            "/whoami", headers={"Authorization": "Bearer tok-alice", "x-org-provisa": "acme"}
+        )
     assert first.status_code == 200
     assert second.status_code == 200
     assert second.json() == {"roles": ["analyst"], "active_org_id": "acme"}

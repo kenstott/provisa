@@ -118,6 +118,12 @@ _SKIP_PATHS = {
     # for every provider, which is what gives the operator account a browser sign-in on a
     # deployment fronted by an IdP.
     "/auth/superuser-login",
+    # REQ-1265: the SAML sign-in round trip. Like /auth/login these PRODUCE the session token:
+    # the browser is sent to the IdP, the IdP posts back, and the SP's own metadata is fetched
+    # by the IdP's operator. None of them can carry a bearer.
+    "/auth/saml/login",
+    "/auth/saml/acs",
+    "/auth/saml/metadata",
     # REQ-1267: the login page fetches this BEFORE the user has a token, to decide which
     # sign-in UI to render (firebase Google button vs. basic form). It only reveals the
     # configured provider name — public info — so it must bypass the bearer gate.
@@ -190,11 +196,15 @@ def _assignments_to_claims(assignments: list[RoleAssignment]) -> list[str]:
 _SESSION_HEADER_PREFIX = "x-provisa-session-"
 
 
-def request_session_vars(identity, role_id: str | None, headers) -> dict[str, str]:  # REQ-1682
+def request_session_vars(  # REQ-1682
+    identity, role_id: str | None, headers, *, honor_session_headers: bool
+) -> dict[str, str]:
     """The session variables a request binds: ``user_id`` and ``role`` from the acting identity,
     every scalar raw claim under its lower-cased name with a leading ``x-hasura-`` stripped (an
-    imported Hasura filter on ``X-Hasura-User-Id`` reads ``provisa.user_id``), and — because an
-    unsecured deployment has no claims — any ``x-provisa-session-<name>`` header as ``<name>``."""
+    imported Hasura filter on ``X-Hasura-User-Id`` reads ``provisa.user_id``), and — only on a
+    deployment with no auth provider, which has no claims — any ``x-provisa-session-<name>``
+    header as ``<name>``. With an auth provider the headers are ignored: a client-chosen value
+    must never stand where a row filter reads the verified identity."""
     out: dict[str, str] = {}
 
     def _name(key: str) -> str:
@@ -208,10 +218,11 @@ def request_session_vars(identity, role_id: str | None, headers) -> dict[str, st
             out[_name(str(key))] = "true" if val else "false"
         elif isinstance(val, (str, int, float)):
             out[_name(str(key))] = str(val)
-    for key, val in headers.items():
-        lk = key.lower()
-        if lk.startswith(_SESSION_HEADER_PREFIX):
-            out[lk[len(_SESSION_HEADER_PREFIX) :].replace("-", "_")] = val
+    if honor_session_headers:
+        for key, val in headers.items():
+            lk = key.lower()
+            if lk.startswith(_SESSION_HEADER_PREFIX):
+                out[lk[len(_SESSION_HEADER_PREFIX) :].replace("-", "_")] = val
     user_id = getattr(identity, "user_id", None)
     if user_id and user_id != "anonymous":
         out["user_id"] = str(user_id)
@@ -367,6 +378,29 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             ]
         return []
 
+    @staticmethod
+    def _meta_role(acting_set: list[str], org_binding: tuple[str, str | None] | None) -> str:
+        """The meta-role acting as ``acting_set``, built in the request's org runtime."""
+        from provisa.api.app import state as _app_state
+        from provisa.core.request_context import (
+            reset_current_env,
+            reset_current_org,
+            set_current_env,
+            set_current_org,
+        )
+        from provisa.security.meta_role import ensure_meta_role
+
+        if org_binding is None:
+            return ensure_meta_role(_app_state, acting_set)
+        org_token = set_current_org(org_binding[0])
+        env_token = set_current_env(org_binding[1]) if org_binding[1] is not None else None
+        try:
+            return ensure_meta_role(_app_state, acting_set)
+        finally:
+            if env_token is not None:
+                reset_current_env(env_token)
+            reset_current_org(org_token)
+
     async def __call__(self, scope, receive, send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
@@ -387,27 +421,32 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             return
         # REQ-1682: the RLS session variables this request's predicates resolve against.
         from provisa.core.request_context import (
-            reset_role_claims,
             reset_session_vars,
-            set_role_claims,
             set_session_vars,
         )
 
         sv_token = set_session_vars(
-            request_session_vars(identity, getattr(request.state, "role", None), request.headers)
+            request_session_vars(
+                identity,
+                getattr(request.state, "role", None),
+                request.headers,
+                honor_session_headers=self._provider is None,
+            )
         )
-        # REQ-1620: the full acting-role set ("Role: All"), if this request carries more than
-        # one — read by effective_domain_access_role at the one governance injection point
-        # (pgwire._pipeline) so every surface unions domain_access the same way.
-        rc_token = set_role_claims(getattr(request.state, "roles", None))
+        from provisa.core.request_context import current_acting_role
+
+        ar_token = current_acting_role.set(getattr(request.state, "role", None))
         try:
             with audit_identity_scope(identity.user_id, "http"):
                 await self.app(scope, receive, send)
         finally:
             reset_session_vars(sv_token)
-            reset_role_claims(rc_token)
+            current_acting_role.reset(ar_token)
 
     async def _process(self, request: Request):  # REQ-486
+        # Where this request's org runtime is, when it is not the default one: a meta-role is
+        # built in it (_meta_role).
+        _org_binding: tuple[str, str | None] | None = None
         if request.url.path in _SKIP_PATHS or request.url.path.startswith("/public/invite-info/"):
             return None
 
@@ -431,7 +470,18 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 for r in (request.headers.get("x-provisa-role") or ORG_ADMIN_ROLE).split(",")
                 if r.strip()
             ] or [ORG_ADMIN_ROLE]
-            unsecured_role = unsecured_roles[0]
+            from provisa.security.meta_role import MetaRoleNamed, refuse_named_meta_role
+
+            try:
+                refuse_named_meta_role(unsecured_roles)
+            except MetaRoleNamed as exc:
+                return JSONResponse(status_code=403, content={"detail": str(exc)})
+            # Several roles: the request acts as their meta-role (security/meta_role.py).
+            unsecured_role = (
+                self._meta_role(unsecured_roles, None)
+                if len(set(unsecured_roles)) > 1
+                else unsecured_roles[0]
+            )
             request.state.identity = AuthIdentity(
                 user_id="anonymous",
                 email=None,
@@ -440,7 +490,6 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 raw_claims={},
             )
             request.state.role = unsecured_role
-            request.state.roles = unsecured_roles
             request.state.assignments = [
                 RoleAssignment(role_id=r, domain_id="*") for r in unsecured_roles
             ]
@@ -708,7 +757,23 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 ("/auth/", "/setup", "/admin/orgs", "/billing")
             )
             requested_org = _requested_org_from_host(request)
-            if requested_org is not None:
+            credential_org = identity.active_org_id
+            if credential_org is not None:
+                # REQ-1235: a credential issued for one org (a personal access token) opens that
+                # org and no other. The request only NAMES an org; naming a different one is
+                # refused even when the owner belongs to it, and the owner must still belong to
+                # the credential's org. The credential names the org, so none need be requested.
+                if requested_org is not None and requested_org != credential_org:
+                    return _deny(
+                        request,
+                        403,
+                        f"This credential is issued for org {credential_org!r}, "
+                        f"not {requested_org!r}",
+                    )
+                if credential_org not in member_org_ids:
+                    return _deny(request, 403, f"Not a member of org {credential_org!r}")
+                active_org_id = credential_org
+            elif requested_org is not None:
                 # REQ-1327: membership is the ONLY way into an org — no platform-admin escape.
                 # A platform admin needing access uses the audited recovery grant (REQ-1303) to
                 # obtain membership + a role in that org, visible in the org's own audit trail.
@@ -716,8 +781,6 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                     active_org_id = requested_org
                 else:
                     return _deny(request, 403, f"Not a member of org {requested_org!r}")
-            elif len(member_org_ids) == 1:
-                active_org_id = member_org_ids[0]
             elif platform_plane:
                 active_org_id = None
             elif can_cross_org:
@@ -731,7 +794,15 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 # the org there is a fact about the user, not a plane the request needs bound.
                 active_org_id = self._default_org_id
             else:
-                return _deny(request, 401, "Org selection required")
+                # REQ-1235: an org nobody named is refused, never chosen — belonging to exactly
+                # one org does not name it. The refusal says what to send.
+                return _deny(
+                    request,
+                    401,
+                    "Org selection required: name the org with its subdomain "
+                    "(<org>.<domain>) or the X-Org-Provisa header, or present a personal "
+                    "access token issued for the org",
+                )
 
             # Tenant-plane assignments. A member's role assignment lives in their org's OWN schema,
             # so bind that org and read it there (the default-org read above sees no such row).
@@ -781,6 +852,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                     active_env = None
 
                 await ensure_org_runtime(active_org_id, active_env)
+                _org_binding = (active_org_id, active_env)
                 org_token = set_current_org(active_org_id)
                 env_token = set_current_env(active_env) if active_env is not None else None
                 try:
@@ -852,23 +924,39 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         # REQ-273: a client may request a specific role via X-Provisa-Role, but the server
         # honors it only when the authenticated user is actually assigned that role — a bare
         # client-supplied role is never trusted. With a single assignment the default stands.
-        requested_role = request.headers.get("x-provisa-role")
-        if requested_role:
+        # REQ-1620: the header may name a SET of roles, comma-separated (the UI's "Role: All" sends
+        # every active role so the union of their domain_access is queryable). Each named role is
+        # checked on its own; the first honoured one is the acting role and the whole honoured set
+        # becomes the role claims, exactly as the unsecured path above publishes them.
+        requested_roles = [
+            r.strip() for r in (request.headers.get("x-provisa-role") or "").split(",") if r.strip()
+        ]
+        acting_set: list[str] = []
+        if requested_roles:
             assigned_role_ids = {a.role_id for a in assignments}
-            if _is_control_plane_role(requested_role, _all_roles):
-                # REQ-1327 again, at the one place a client can name a role: the header selects the
-                # acting role for the DATA surfaces, and platform_admin is not one. It resolves to
-                # the caller's data-plane role instead of being honored; with no data-plane role the
-                # resolved control-plane role above stands, and the data surfaces refuse it.
-                if _data_plane_roles:
-                    role = _data_plane_roles[0]
-            elif requested_role in assigned_role_ids:
-                role = requested_role
-            else:
-                return JSONResponse(
-                    status_code=403,
-                    content={"detail": f"Role {requested_role!r} is not assigned to this user"},
-                )
+            for requested_role in requested_roles:
+                if _is_control_plane_role(requested_role, _all_roles):
+                    # REQ-1327 again, at the one place a client can name a role: the header selects
+                    # the acting role for the DATA surfaces, and platform_admin is not one. It
+                    # resolves to the caller's data-plane role instead of being honored; with no
+                    # data-plane role the resolved control-plane role above stands, and the data
+                    # surfaces refuse it.
+                    if _data_plane_roles and _data_plane_roles[0] not in acting_set:
+                        acting_set.append(_data_plane_roles[0])
+                elif requested_role in assigned_role_ids:
+                    if requested_role not in acting_set:
+                        acting_set.append(requested_role)
+                else:
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": f"Role {requested_role!r} is not assigned to this user"},
+                    )
+            if len(acting_set) > 1:
+                # Several held roles: the request acts as their meta-role, an ephemeral child of
+                # all of them built on first use in this model generation (security/meta_role).
+                role = self._meta_role(acting_set, _org_binding)
+            elif acting_set:
+                role = acting_set[0]
 
         # Record last-seen identity in user_profiles (platform control plane) before the request is
         # handled. REQ-1882: awaited on the request thread, not detached — a detached upsert runs in

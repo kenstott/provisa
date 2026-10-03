@@ -47,6 +47,7 @@ def adbc_connect(
     user: str = "",
     password: str = "",
     role: str | None = None,
+    org: str | None = None,
     port: int = 8815,
     flight_tls: bool | None = None,
     kms_provider: str | None = None,
@@ -58,6 +59,9 @@ def adbc_connect(
 
     REQ-268/269/273: no connection ``mode``; ``role`` is an optional server-validated request,
     not a client-assumed identity.
+
+    REQ-1235: ``org`` names the org the tickets are for. A multi-tenant deployment refuses a
+    ticket that names none; a single-tenant deployment has no org to name, so leave it unset.
 
     REQ-711: ``port`` selects the Arrow Flight server port (default 8815) so callers can
     reach a Flight server bound to a non-default port.
@@ -88,6 +92,7 @@ def adbc_connect(
     return AdbcConnection(
         flight_client=flight_client,
         role=resolved_role,
+        org=org,
         token=token,
         base_url=base_url,
         encryption=build_client_encryption(
@@ -109,9 +114,11 @@ class AdbcConnection:
         token: str | None,
         base_url: str,
         encryption: ClientEncryptionService | None = None,
+        org: str | None = None,
     ) -> None:
         self._flight_client = flight_client
         self._role = role  # optional requested role; server-validated
+        self._org = org  # REQ-1235: the org the tickets are for, or None when none was given
         self._token = token
         self._base_url = base_url
         self._encryption = encryption  # REQ-691: client-side column decrypt (or None)
@@ -153,6 +160,8 @@ class AdbcCursor:
         data: dict = {"query": query}
         if self._conn._role:
             data["role"] = self._conn._role
+        if self._conn._org:  # REQ-1235
+            data["org"] = self._conn._org
         if self._conn._token:
             data["token"] = self._conn._token
         return fl.Ticket(json.dumps(data).encode())  # pyright: ignore[reportPrivateImportUsage]

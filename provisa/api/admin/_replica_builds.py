@@ -58,4 +58,6 @@ def build_view(record: Any, now: datetime) -> dict:
         "failed_attempts": record.failed_attempts,
         "waiting_on": WAITING[record.waiting_on] if record.waiting_on is not None else None,
         "waiting_on_code": record.waiting_on,
+        "feed_down_since": _iso(record.feed_down_since),
+        "feed_error": record.feed_error,
     }

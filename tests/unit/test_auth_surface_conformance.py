@@ -38,6 +38,7 @@ from fastapi.testclient import TestClient
 from provisa.auth.middleware import AuthMiddleware
 from provisa.auth.models import AuthIdentity
 from provisa.auth.wiring import build_auth_provider
+from tests.platform_plane import platform_db
 
 _JWT_SECRET = "conformance-signing-key-at-least-32-bytes"
 _PASSWORD = "s3cret"
@@ -47,7 +48,20 @@ _PAT_USER = "pat-user"
 
 # A stand-in for the platform control plane. Its only job is to be non-None so
 # ``build_auth_provider`` attaches a PAT store; the store itself is faked below.
-_ADMIN_POOL = object()
+# A real platform plane: the simple provider keeps each user's id there, and every surface's own
+# provider reads the same row, so one user is one id on every surface.
+_ADMIN_POOL = platform_db()
+
+
+def _stored_id(username: str) -> str:
+    import asyncio
+
+    from provisa.auth.simple_user_ids import SimpleUserIds
+
+    return asyncio.run(SimpleUserIds(_ADMIN_POOL).id_for(username))
+
+
+_USER_ID = _stored_id(_USERNAME)
 
 
 class _Rejected(Exception):
@@ -127,8 +141,10 @@ def pgwire_loop():
 
 
 def _provider_token() -> str:
+    import asyncio
+
     provider = build_auth_provider(_auth_config(), admin_pool=_ADMIN_POOL)
-    return provider.login(_USERNAME, _PASSWORD)  # type: ignore[attr-defined]
+    return asyncio.run(provider.login(_USERNAME, _PASSWORD))  # type: ignore[attr-defined]
 
 
 def _tampered_token() -> str:
@@ -161,7 +177,7 @@ _PASSWORD_CRED = Credential(
     principal=_USERNAME,
     good=lambda: _PASSWORD,
     bad=lambda: "wrong-password",
-    user_id=_USERNAME,
+    user_id=_USER_ID,
 )
 _TOKEN_CRED = Credential(
     kind="provider-token",
@@ -169,7 +185,7 @@ _TOKEN_CRED = Credential(
     principal=_USERNAME,
     good=_provider_token,
     bad=_tampered_token,
-    user_id=_USERNAME,
+    user_id=_USER_ID,
 )
 _PAT_CRED = Credential(
     kind="personal-access-token",

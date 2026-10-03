@@ -18,6 +18,8 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any, Optional, cast
 
+from provisa.api.admin.engine_auth import run_admin_catalog_sql
+
 import strawberry
 from sqlalchemy import func, or_, select
 from strawberry.types.info import Info as StrawberryInfo
@@ -703,9 +705,12 @@ class Query:  # REQ-021, REQ-042
         catalog = state.catalog_for(source_id)
         schemas: list[str] = []
         with discovery_fallback(f"engine schemata for {source_id!r}"):
-            res = await state.federation_engine.execute_engine(
+            res = await run_admin_catalog_sql(
+                state,
+                state.federation_engine,
                 f'SELECT schema_name FROM "{catalog}".information_schema.schemata '
-                f"ORDER BY schema_name"
+                f"ORDER BY schema_name",
+                "source catalog",
             )
             schemas = [
                 row[0].lower() for row in res.rows if not is_provisa_internal(row[0].lower())
@@ -766,11 +771,14 @@ class Query:  # REQ-021, REQ-042
         catalog = state.catalog_for(source_id)
         tables: list[AvailableTableType] = []
         with discovery_fallback(f"engine tables for {source_id!r}"):
-            res = await state.federation_engine.execute_engine(
+            res = await run_admin_catalog_sql(
+                state,
+                state.federation_engine,
                 f'SELECT table_name FROM "{catalog}".information_schema.tables '
                 f"WHERE lower(table_schema) = lower('{schema_name}') "
                 f"AND table_type = 'BASE TABLE' "
-                f"ORDER BY table_name"
+                f"ORDER BY table_name",
+                "source catalog",
             )
             tables = [
                 AvailableTableType(name=row[0], comment=None)
@@ -1362,6 +1370,7 @@ class Query:  # REQ-021, REQ-042
                     webhook_url=t.get("url"),
                     kind="sql" if sql else "webhook",  # REQ-1003
                     sql=sql,
+                    role=t.get("role"),
                     enabled=t.get("enabled", True),
                     last_run_at=None,
                     next_run_at=next_run,
@@ -2021,7 +2030,9 @@ async def resolve_available_columns_metadata(
     # the contract. They must not fail together.
     pk_cols: set[str] = set()
     with discovery_fallback(f"engine primary keys for {source_id!r}.{schema_name}.{table_name}"):
-        pk_res = await state.federation_engine.execute_engine(
+        pk_res = await run_admin_catalog_sql(
+            state,
+            state.federation_engine,
             f"SELECT kcu.column_name "
             f'FROM "{catalog}".information_schema.table_constraints tc '
             f'JOIN "{catalog}".information_schema.key_column_usage kcu '
@@ -2029,16 +2040,20 @@ async def resolve_available_columns_metadata(
             f"  AND tc.table_schema = kcu.table_schema "
             f"  AND tc.table_name = kcu.table_name "
             f"WHERE tc.table_schema = '{schema_name}' AND tc.table_name = '{table_name}' "
-            f"  AND tc.constraint_type = 'PRIMARY KEY'"
+            f"  AND tc.constraint_type = 'PRIMARY KEY'",
+            "source catalog",
         )
         pk_cols = {row[0] for row in pk_res.rows}
     with discovery_fallback(f"engine column metadata for {source_id!r}.{schema_name}.{table_name}"):
-        col_res = await state.federation_engine.execute_engine(
+        col_res = await run_admin_catalog_sql(
+            state,
+            state.federation_engine,
             f"SELECT column_name, data_type, comment "
             f'FROM "{catalog}".information_schema.columns '
             f"WHERE table_schema = '{schema_name}' "
             f"AND table_name = '{table_name}' "
-            f"ORDER BY ordinal_position"
+            f"ORDER BY ordinal_position",
+            "source catalog",
         )
         cols_meta = [
             AvailableColumnType(

@@ -42,11 +42,15 @@ Nothing is written first and checked afterwards."""
 
 from __future__ import annotations
 
+from provisa.compiler.sql_literals import sql_literal
+
 import re
 from typing import TYPE_CHECKING
 
 import sqlglot
 import sqlglot.expressions as exp
+
+from provisa.compiler.definitions import NotAvailableHere
 
 from provisa.compiler.rls import _qualified_predicate, cast_session_terms
 from provisa.security.mutation_authz import ColumnNotWritable
@@ -61,6 +65,30 @@ _SESSION_TERM = re.compile(r"current_setting\(\s*'provisa\.([A-Za-z0-9_]+)'\s*\)
 
 class WriteNotAdmitted(PermissionError):
     """A data write the role's rights, or its row filter, do not admit."""
+
+
+class WriteNotSupported(NotAvailableHere):
+    """A data write the table's source cannot take (executor/write_capability.py) — refused
+    whatever the role holds, naming the table and the operation."""
+
+    def __init__(self, table: str, operation: str) -> None:
+        self.table = table
+        self.operation = operation
+        super().__init__(f"{table!r} does not take {operation.upper()}: its source cannot carry it")
+
+
+WRITE_OPS: tuple[str, ...] = ("insert", "update", "delete")
+_OPERATIONS = {"INSERT": ("insert",), "UPDATE": ("update",), "DELETE": ("delete",)}
+
+
+def require_write_op(gov: "GovernanceContext", table_id: int, name: str, kind: str) -> None:
+    """Refuse ``kind`` (INSERT, UPDATE, DELETE, MERGE) on a table whose source cannot take it. A
+    MERGE needs every operation it may perform; a table whose capability is unknown takes none."""
+    offered = gov.write_ops.get(table_id, frozenset())
+    needed = _OPERATIONS.get(kind, WRITE_OPS)
+    for operation in needed:
+        if operation not in offered:
+            raise WriteNotSupported(name, operation)
 
 
 def is_write(tree: exp.Expression) -> bool:
@@ -103,7 +131,7 @@ def _with_session_values(predicate: str, session_vars: dict[str, str]) -> str:
 
     def _value(match: re.Match) -> str:
         value = session_vars.get(match.group(1))
-        return "NULL" if value is None else "'" + value.replace("'", "''") + "'"
+        return "NULL" if value is None else sql_literal(value, "postgres")
 
     return _SESSION_TERM.sub(_value, predicate)
 
@@ -223,6 +251,34 @@ def _admit_row(
         )
 
 
+def admit_rows(
+    gov: "GovernanceContext",
+    table_id: int,
+    name: str,
+    columns: list[str],
+    rows: list[list] | None = None,
+    session_vars: dict[str, str] | None = None,
+) -> None:
+    """Admit a bulk load — rows given as values, not as a statement (pgwire ``COPY … FROM
+    STDIN``) — by the rules an INSERT of the same columns is admitted by. Called once with
+    ``rows`` None before any data is read (the right and the columns), and again with the rows
+    before any of them is written (the row filter)."""
+    require_write_op(gov, table_id, name, "INSERT")
+    if not gov.can_write:
+        raise WriteNotAdmitted(
+            f"COPY into {name!r}: role {gov.role_id!r} does not hold the 'write' right"
+        )
+    _require_columns(gov, table_id, columns)
+    if rows is None or table_id not in gov.rls_rules:
+        return
+    for row in rows:
+        supplied: dict[str, exp.Expression] = {
+            column: exp.convert(value)  # pyright: ignore[reportAssignmentType]  # sqlglot stub types convert as Expr
+            for column, value in zip(columns, row, strict=False)
+        }
+        _admit_row(gov, table_id, name, supplied, session_vars or {})
+
+
 def _admit_new_values(
     tree: exp.Update,
     gov: "GovernanceContext",
@@ -304,6 +360,7 @@ def admit_write(
     kind = _kind(tree)
     table, listed = _target(tree)
     table_id = _resolve(table, gov)
+    require_write_op(gov, table_id, table.name, kind)
     if not gov.can_write:
         raise WriteNotAdmitted(
             f"{kind} on {table.name!r}: role {gov.role_id!r} does not hold the 'write' right"

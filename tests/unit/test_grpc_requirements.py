@@ -37,6 +37,7 @@ def _make_schema_input(
             "schema_name": "public",
             "table_name": "orders",
             "columns": [{"column_name": c, "visible_to": [role_id]} for c in table_columns],
+            "write_ops": ["delete", "insert", "update"],
         }
     ]
     col_types = col_types_override or {
@@ -94,6 +95,7 @@ class TestREQ525PerRoleProtoGeneration:
                     {"column_name": c, "visible_to": ["viewer"] if c in visible else ["admin"]}
                     for c in all_cols
                 ],
+                "write_ops": ["delete", "insert", "update"],
             }
         ]
         col_types = {1: [_col(c, "varchar(100)") for c in all_cols]}
@@ -129,6 +131,7 @@ class TestREQ525PerRoleProtoGeneration:
                 "schema_name": "public",
                 "table_name": "orders",
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
+                "write_ops": ["delete", "insert", "update"],
             }
         ]
         col_types = {1: [_col("id", "integer")]}
@@ -162,6 +165,7 @@ class TestREQ538ProtoTypeMappings:
                 "schema_name": "public",
                 "table_name": "orders",
                 "columns": [{"column_name": n, "visible_to": ["admin"]} for n in col_names],
+                "write_ops": ["delete", "insert", "update"],
             }
         ]
         col_types = {1: [_col(name, dtype) for name, dtype in col_defs]}
@@ -224,6 +228,7 @@ class TestREQ538ProtoTypeMappings:
                 "schema_name": "public",
                 "table_name": "orders",
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
+                "write_ops": ["delete", "insert", "update"],
             },
             {
                 "id": 2,
@@ -232,6 +237,7 @@ class TestREQ538ProtoTypeMappings:
                 "schema_name": "public",
                 "table_name": "customers",
                 "columns": [{"column_name": "cust_id", "visible_to": ["admin"]}],
+                "write_ops": ["delete", "insert", "update"],
             },
         ]
         col_types = {
@@ -366,6 +372,8 @@ class TestREQ617RoleSelectionViaMetadata:
             table_ids=(),
             live_caps=(),  # REQ-1909: the capped live sources the pipeline binds at mint (none here)
             live_caps_org=None,
+            tier_caps=None,
+            tier_plan=None,
         )
         fake_result = SimpleNamespace(
             column_names=["id", "amount"], rows=[[1, 10.0], [2, 20.0], [3, 30.0]]

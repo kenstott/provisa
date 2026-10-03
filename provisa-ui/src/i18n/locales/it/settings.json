@@ -354,6 +354,10 @@
       "secret_key": {
         "label": "Chiave segreta del reindirizzamento",
         "help": "La chiave segreta dell'archivio di oggetti. Segreta; protetta da conferma."
+      },
+      "snowflake_storage_integration": {
+        "label": "Integrazione di archiviazione Snowflake per i risultati",
+        "help": "L'integrazione di archiviazione Snowflake tramite cui un motore Snowflake scrive i risultati di grandi dimensioni nell'object store. Vuoto: un motore Snowflake non scrive i risultati da sé."
       }
     },
     "otel": {

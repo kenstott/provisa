@@ -133,7 +133,29 @@ async def _resolve_token_org_async(token: str, state: Any) -> str | None:
     return await _org_for_identity(await _validate_mcp_token(token, state), state)
 
 
-async def _org_for_identity(identity: Any, state: Any) -> str | None:
+# REQ-1235: how an MCP client names the org on the HTTP transport — the same two ways an HTTP
+# client does. Quoted in the refusal so a client is told what to send.
+_MCP_NAMES_AN_ORG = (
+    "send the X-Org-Provisa header (or connect to the org's own hostname, <org>.<domain>)"
+)
+
+
+def requested_org_from_scope(scope: dict) -> str | None:  # REQ-1235
+    """The org an MCP HTTP request names: the Host subdomain, else ``X-Org-Provisa``."""
+    from provisa.security.sni import org_from_host
+
+    headers = dict(scope.get("headers") or [])
+    host = headers.get(b"host", b"").decode("latin-1")
+    named = org_from_host(host)
+    if named is not None:
+        return named
+    raw = headers.get(b"x-org-provisa")
+    return raw.decode("latin-1") if raw else None
+
+
+async def _org_for_identity(
+    identity: Any, state: Any, requested_org: str | None = None
+) -> str | None:
     """The org a validated MCP identity binds, or None on a single-org deployment (REQ-1266)."""
     if not getattr(state, "multitenancy", False):
         return None
@@ -147,7 +169,9 @@ async def _org_for_identity(identity: Any, state: Any) -> str | None:
         state,
         user_id=getattr(identity, "user_id", None),
         can_act_any_org=can_act_cross_org(caps),
-        requested_org=getattr(identity, "active_org_id", None),
+        requested_org=requested_org,
+        credential_org=getattr(identity, "active_org_id", None),  # REQ-1235
+        named_by=_MCP_NAMES_AN_ORG,
     )
 
 
@@ -690,7 +714,7 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
         async def _resolve_principal() -> tuple[Any, str, str | None]:
             identity = await _validate_mcp_token(token, state)
             role = _role_for_identity(identity, state)
-            org_id = await _org_for_identity(identity, state)
+            org_id = await _org_for_identity(identity, state, requested_org_from_scope(scope))
             if org_id is not None:
                 from provisa.api.app import ensure_org_runtime
 
@@ -723,10 +747,14 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
         # request; the pipeline's terminals write the audit row.
         from provisa.audit.context import audit_identity_scope
 
+        from provisa.core.request_context import current_acting_role
+
+        acting_reset = current_acting_role.set(role)
         try:
             with audit_identity_scope(identity.user_id, "mcp"):
                 await app(scope, receive, send)
         finally:
+            current_acting_role.reset(acting_reset)
             _request_role.reset(reset)
             _request_identity.reset(identity_reset)
             _request_org_id.reset(org_id_reset)

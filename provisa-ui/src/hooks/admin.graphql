@@ -217,6 +217,8 @@ query TablesQuery {
     viewSql
     dqContract
     queryTemplate
+    fileGlob
+    sourceFileColumn
     viewMetrics {
       metrics
       dimensions
@@ -244,6 +246,7 @@ query TablesQuery {
     enableAggregates
     enableGroupBy
     canDeployToDb
+    writeOps
     modelingRole
     implicitMeasures {
       column
@@ -695,6 +698,8 @@ query ReplicaBuilds {
       failedAttempts
       waitingOn
       waitingOnCode
+      feedDownSince
+      feedError
     }
     convergenceError
     convergenceErrorAt
@@ -737,6 +742,7 @@ query ScheduledTasks {
     webhookUrl
     kind
     sql
+    role
     enabled
     lastRunAt
     nextRunAt
@@ -1093,6 +1099,7 @@ mutation CreateScheduledTask(
   $webhookName: String
   $argsJson: String
   $sql: String
+  $role: String
 ) {
   createScheduledTask(
     id: $id
@@ -1102,6 +1109,7 @@ mutation CreateScheduledTask(
     webhookName: $webhookName
     argsJson: $argsJson
     sql: $sql
+    role: $role
   ) {
     ...MutationResult
   }

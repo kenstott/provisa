@@ -20,6 +20,8 @@ Type validation ensures invalid combinations are rejected at config load time.
 
 from __future__ import annotations
 
+from provisa.compiler.sql_literals import sql_literal
+
 from dataclasses import dataclass
 from enum import Enum
 
@@ -131,9 +133,8 @@ def _resolve_constant(value: int | float | str | None, data_type: str) -> str:
         if upper == "MIN" and base in _INTEGER_BOUNDS:
             return str(_INTEGER_BOUNDS[base][0])
 
-        # String literal
-        escaped = value.replace("'", "''")
-        return f"'{escaped}'"
+        # String literal (governed semantic SQL; transpiled to the engine afterwards).
+        return sql_literal(value, "postgres")
 
     if isinstance(value, bool):
         return "TRUE" if value else "FALSE"
@@ -141,8 +142,7 @@ def _resolve_constant(value: int | float | str | None, data_type: str) -> str:
     if isinstance(value, (int, float)):
         return str(value)
 
-    escaped = str(value).replace("'", "''")
-    return f"'{escaped}'"
+    return sql_literal(value, "postgres")
 
 
 def build_mask_expression(  # REQ-040, REQ-263
@@ -163,9 +163,9 @@ def build_mask_expression(  # REQ-040, REQ-263
     if rule.mask_type == MaskType.regex:
         assert rule.pattern is not None
         assert rule.replace is not None
-        pattern = rule.pattern.replace("'", "''")
-        replace = rule.replace.replace("'", "''")
-        return f"REGEXP_REPLACE({column_ref}, '{pattern}', '{replace}')"
+        pattern = sql_literal(rule.pattern, "postgres")
+        replace = sql_literal(rule.replace, "postgres")
+        return f"REGEXP_REPLACE({column_ref}, {pattern}, {replace})"
 
     if rule.mask_type == MaskType.constant:
         return _resolve_constant(rule.value, data_type)

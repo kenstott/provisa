@@ -221,6 +221,10 @@ class TestProvisaSessionCatalog:
         from unittest.mock import MagicMock
 
         state = MagicMock()
+
+        # A single-tenant deployment: its catalog serves the one database, provisa.
+
+        state.multitenancy = False
         ctx = MagicMock()
         ctx.tables = {}
         state.contexts = {"testrole": ctx}
@@ -291,7 +295,7 @@ class TestProvisaSessionEngineStreaming:
 
         monkeypatch.setattr(_pipeline, "govern_pgwire_plan", _govern)
 
-        def _execute_engine_sync(physical_sql, params, *, session_hints=None):
+        def _execute_engine_sync(physical_sql, params, *, session_hints=None, authorization=None):
             captured["physical_sql"] = physical_sql
             captured["params"] = params
             captured["session_hints"] = session_hints
@@ -300,6 +304,10 @@ class TestProvisaSessionEngineStreaming:
             )
 
         state = MagicMock()
+
+        # A single-tenant deployment: its catalog serves the one database, provisa.
+
+        state.multitenancy = False
         state.federation_engine.execute_engine_sync.side_effect = _execute_engine_sync
         # REQ-1897: AppState always holds a response-cache store (NoopCacheStore when caching is
         # off); a bare MagicMock would auto-vivify one that "hits" — set the no-op store so this
@@ -347,6 +355,8 @@ class TestProvisaSessionEngineStreaming:
 
         monkeypatch.setattr(_pipeline, "govern_pgwire_plan", _govern)
         state = MagicMock()
+        # A single-tenant deployment: its catalog serves the one database, provisa.
+        state.multitenancy = False
         monkeypatch.setattr("provisa.api.app.state", state)
 
         from provisa.core.connection_loop import connection_loop
@@ -420,6 +430,10 @@ class TestPgwireDispatchHopCount:
         monkeypatch.setattr(_pipeline, "finalize_audit", AsyncMock(return_value=None))
 
         state = MagicMock()
+
+        # A single-tenant deployment: its catalog serves the one database, provisa.
+
+        state.multitenancy = False
         state.federation_engine.execute_engine_sync.return_value = MagicMock(
             rows=[(1,)], column_names=["n"]
         )

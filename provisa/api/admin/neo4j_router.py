@@ -26,13 +26,10 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from provisa.api.errors import ApiError
-from provisa.api_source.persist import persist_api_endpoint, persist_api_source
-from provisa.neo4j.preview import Neo4jNodeObjectError, preview_query, validate_shape
+from provisa.api_source.persist import persist_api_source
 from provisa.neo4j.source import (
     Neo4jSourceConfig,
     build_api_source,
-    build_endpoint,
-    infer_columns,
 )
 from provisa.api.admin.capabilities import require_capability_request
 
@@ -61,12 +58,6 @@ class Neo4jSourceRequest(BaseModel):
 
 class Neo4jPreviewRequest(BaseModel):
     cypher: str
-
-
-class Neo4jTableRequest(BaseModel):
-    table_name: str
-    cypher: str
-    ttl: int = 300
 
 
 @router.post("")
@@ -118,56 +109,4 @@ async def preview_neo4j_query(  # REQ-296, REQ-298, REQ-299
     return {
         "rows": result.rows,
         "columns": [{"name": c.name, "data_type": c.data_type} for c in result.columns],
-    }
-
-
-@router.post("/{source_id}/tables")
-async def register_neo4j_table(  # REQ-295, REQ-296, REQ-299
-    source_id: str,
-    body: Neo4jTableRequest,
-    request: Request,
-):
-    """Register a Neo4j table (runs preview+validate before persisting).
-
-    The table appears in the GraphQL schema via the api_source schema integration.
-    """
-    require_capability_request(request, "source_registration")
-    state = request.app.state
-    api_source = getattr(state, "api_sources", {}).get(source_id)
-    if api_source is None:
-        raise ApiError(
-            404,
-            "neo4j.source_not_found",
-            f"Neo4j source {source_id!r} not found",
-            source_id=source_id,
-        )
-
-    neo4j_cfg = getattr(state, "neo4j_configs", {}).get(source_id)
-    database = neo4j_cfg.database if neo4j_cfg else "neo4j"
-    # Preview + validate before persisting
-    try:
-        rows = await preview_query(
-            base_url=api_source.base_url,
-            database=database,
-            cypher=body.cypher,
-        )
-        validate_shape(rows)
-    except Neo4jNodeObjectError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    columns = infer_columns(rows)
-    source_cfg = neo4j_cfg or Neo4jSourceConfig(source_id=source_id, host="")
-    endpoint = build_endpoint(source_cfg, body.table_name, body.cypher, columns, body.ttl)
-
-    # REQ-1668: persist, then mirror into the same keyed-by-table map the startup loader fills.
-    async with _control_plane(state).acquire() as conn:
-        await persist_api_endpoint(conn, endpoint)
-    if not hasattr(state, "api_endpoints") or not isinstance(state.api_endpoints, dict):
-        state.api_endpoints = {}
-    state.api_endpoints[endpoint.table_name] = endpoint
-    log.info("Registered Neo4j table %s on source %s", body.table_name, source_id)
-
-    return {
-        "table_name": body.table_name,
-        "columns": [c.model_dump() for c in columns],
     }

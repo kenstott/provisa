@@ -49,6 +49,8 @@ REGISTRY_ONLY_TABLES = {
     "user_profiles",
     "user_org_memberships",
     "local_users",
+    # The simple provider's stored user ids (a GUID per configured username). Portable metadata only.
+    "simple_user_ids",
     "org_invites",
     # REQ-1306: the auto-join opt-out written when a user deliberately leaves an org.
     "org_auto_join_optouts",

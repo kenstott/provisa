@@ -79,9 +79,15 @@ def _construct_provider(auth_config: dict, admin_pool) -> AuthProvider:
         if jwt_secret.startswith("${env:"):
             env_key = jwt_secret[6:-1]
             jwt_secret = os.environ[env_key]
+        if admin_pool is None:
+            # The users' ids live on the platform plane; without it there is nowhere to keep them.
+            raise ValueError("auth.provider 'simple' needs the platform control plane")
+        from provisa.auth.simple_user_ids import SimpleUserIds
+
         return SimpleAuthProvider(
             users=simple_cfg.get("users", []),
             jwt_secret=jwt_secret,
+            user_ids=SimpleUserIds(admin_pool),
         )
     if provider_name == "firebase":
         from provisa.auth.providers.firebase import FirebaseAuthProvider
@@ -107,7 +113,71 @@ def _construct_provider(auth_config: dict, admin_pool) -> AuthProvider:
             audience=oa.get("audience"),
             role_claim=oa.get("role_claim", "roles"),
         )
+    if provider_name == "ldap":  # REQ-1265
+        from provisa.auth.providers.ldap import LdapAuthProvider, LdapSettings
+
+        ldap = _provider_block(auth_config, "ldap")
+        if "bind_password" in ldap:
+            ldap["bind_password"] = resolve_secrets(ldap["bind_password"])
+        return LdapAuthProvider(
+            _settings(LdapSettings, ldap, "ldap"), session_secret=_session_secret(auth_config)
+        )
+    if provider_name == "saml":  # REQ-1265
+        from provisa.auth.providers.saml import SamlAuthProvider, SamlSettings
+
+        secret = _session_secret(auth_config)
+        if not secret:
+            raise ValueError("auth.jwt_secret is required for provider 'saml'")
+        return SamlAuthProvider(
+            _settings(SamlSettings, _provider_block(auth_config, "saml"), "saml"),
+            session_secret=secret,
+        )
     raise ValueError(f"Unknown auth provider: {provider_name!r}")
+
+
+def _provider_block(auth_config: dict, name: str) -> dict:  # REQ-1265
+    """The provider's own config block. A provider selected without one cannot be built, which
+    is a ValueError: every surface turns that into a refusal rather than a server fault."""
+    block = auth_config.get(name)
+    if not block:
+        raise ValueError(f"auth.{name} is required for provider {name!r}")
+    return dict(block)
+
+
+def _settings(settings_type, block: dict, name: str):  # REQ-1265
+    """``block`` as the provider's settings; a missing or unknown key is named in a ValueError."""
+    try:
+        return settings_type(**block)
+    except TypeError as exc:
+        raise ValueError(f"auth.{name}: {exc}") from exc
+
+
+def _session_secret(auth_config: dict) -> str | None:  # REQ-1265
+    """The browser-session signing key, or None when ``auth.jwt_secret`` is unset.
+
+    Unset is not a defect here: API clients still present their own credential, and the
+    session exchange answers 503 instead of signing with a guessable key.
+    """
+    secret = auth_config.get("jwt_secret")
+    return resolve_secrets(secret) if secret else None
+
+
+def bind_auth_config(state, raw_auth: dict | None) -> None:  # REQ-120, REQ-1267
+    """Make ``raw_auth`` (the config's ``auth`` section) the deployment's auth.
+
+    Every surface reads the result: the HTTP middleware re-resolves its provider on the next
+    request (the generation advances), ``/auth/login`` reads ``auth_config`` per request, and
+    pgwire, Bolt, Flight and gRPC take their unsecured path only while
+    ``auth_middleware_active`` is False. A configured provider therefore sets it True here,
+    where the provider is configured, not at app construction, which runs before any config
+    is loaded.
+    """
+    unsecured = raw_auth is None or (
+        isinstance(raw_auth, dict) and raw_auth.get("provider") == "none"
+    )
+    state.auth_config = None if unsecured else raw_auth
+    state.auth_middleware_active = not unsecured
+    state.auth_reconfig_generation += 1
 
 
 def _resolve_default_org_id(cfg) -> str:  # REQ-1286
@@ -169,10 +239,6 @@ def _resolve_auth_settings() -> dict:  # REQ-120, REQ-125
 
     admin_pool = getattr(state, "admin_db", None)
     provider = build_auth_provider(auth_config, admin_pool=admin_pool)
-    if auth_config["provider"] == "simple":
-        from provisa.auth.providers import simple as simple_mod
-
-        simple_mod._provider_instance = provider
     return {
         **base,
         "provider": provider,
@@ -251,17 +317,7 @@ def wire_auth(
         bootstrap_superadmin=auth_config.get("bootstrap_superadmin", False),
     )
 
-    # Mount simple auth login route when provider=simple
-    if auth_config["provider"] == "simple":
-        from provisa.auth.providers import simple as simple_mod
+    from provisa.auth.login_router import router as login_router
 
-        simple_mod._provider_instance = provider
-        app.include_router(simple_mod.router)
-
-    # REQ-124: the browser signs in against the basic provider through the same /auth/login
-    # exchange; without this route the SPA's login POST 404s and no one can reach the UI.
-    if auth_config["provider"] == "basic":
-        from provisa.auth.providers import basic as basic_mod
-
-        basic_mod._provider_instance = provider
-        app.include_router(basic_mod.router)
+    _app_state.auth_config = auth_config
+    app.include_router(login_router)

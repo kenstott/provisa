@@ -55,6 +55,8 @@
     "colTopValues": "最常见值",
     "editDefinitionButton": "编辑定义",
     "editDefinitionTitle": "编辑视图定义（SQL 或指标/维度选择器）",
-    "queryTemplate": "Cypher："
+    "queryTemplate": "Cypher：",
+    "writes": "接受的写入：",
+    "writesNone": "无（只读）"
   }
 }

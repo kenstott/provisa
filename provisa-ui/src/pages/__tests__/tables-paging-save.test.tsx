@@ -118,6 +118,7 @@ function table(
     enableAggregates: false,
     enableGroupBy: false,
     canDeployToDb: false,
+    writeOps: ["delete", "insert", "update"],
     live: null,
     implicitMeasures: [],
     implicitDimensions: [],
@@ -132,6 +133,8 @@ const TABLES = [
   }),
   table(8, "issues", [], { pagingKind: "connection", pagingCeilingRows: 1000 }),
   table(9, "orders", []),
+  table(10, "events", [], { writeOps: ["insert"] }),
+  table(11, "graph", [], { writeOps: [] }),
 ];
 const SOURCES = [
   {
@@ -280,5 +283,29 @@ describe("TablesPage — Paging (REQ-318)", () => {
         "Table issues: max_rows=900 is above graphql_remote.max_rows=800; a table may lower the operator's bound, never raise it.",
       ),
     ).toBeInTheDocument();
+  });
+});
+
+
+describe("TablesPage — the writes a table takes", () => {
+  async function writesOf(name: string): Promise<string> {
+    render(<TablesPage />);
+    const row = (await screen.findByText(name)).closest("tr") as HTMLElement;
+    await userEvent.click(row.querySelector("td") as HTMLElement);
+    return (await screen.findByTestId("table-read-view-writes")).textContent ?? "";
+  }
+
+  it("names every write a writable source takes", async () => {
+    expect(await writesOf("orders")).toContain("DELETEINSERTUPDATE");
+  });
+
+  it("names only inserts for an append-only source", async () => {
+    const shown = await writesOf("events");
+    expect(shown).toContain("INSERT");
+    expect(shown).not.toContain("UPDATE");
+  });
+
+  it("says a table whose source takes no writes is read only", async () => {
+    expect(await writesOf("graph")).toContain("None (read only)");
   });
 });

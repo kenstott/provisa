@@ -32,6 +32,8 @@ never guessed.
 
 from __future__ import annotations
 
+from provisa.compiler.sql_literals import sql_literal
+
 import ast
 from dataclasses import dataclass
 from typing import Any
@@ -118,7 +120,7 @@ def _literal(value: Any) -> str:  # ast.Constant.value — union incl. bytes/com
     if isinstance(value, (int, float)):
         return repr(value)
     if isinstance(value, str):
-        return "'" + value.replace("'", "''") + "'"
+        return sql_literal(value, "postgres")
     raise _Untranslatable(f"unsupported literal {value!r}")
 
 

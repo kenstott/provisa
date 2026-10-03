@@ -32,6 +32,8 @@
     "firebaseSignInFailed": "Firebase 登入失敗",
     "operatorSignIn": "營運人員登入",
     "operatorSignInTitle": "營運人員登入",
-    "backToSignIn": "返回登入"
+    "backToSignIn": "返回登入",
+    "signInWithSso": "使用單一登入",
+    "samlSignInFailed": "單一登入未完成。請重試，或聯絡管理員。"
   }
 }

@@ -31,6 +31,8 @@ from __future__ import annotations
 
 import logging
 
+from provisa.federation.execution_auth import system_auth
+
 from typing import TYPE_CHECKING
 
 from provisa.lineage import InputVersion
@@ -56,7 +58,11 @@ async def _watermark_columns(engine) -> dict[tuple[str, str, str], str]:
     A read of the control plane's own registry through the engine's ``provisa_admin`` catalog,
     by design: it is not a source table, it has no replica, and it is not addressed (REQ-1912)."""
     try:
-        rows = (await engine.execute_engine(_WATERMARK_LOOKUP_SQL)).rows
+        rows = (
+            await engine.execute_engine(
+                _WATERMARK_LOOKUP_SQL, authorization=system_auth("view input signal")
+            )
+        ).rows
         return {(row[0], row[1], row[2]): row[3] for row in rows if row[2] and row[3]}
     except Exception as exc:  # noqa: BLE001 — best-effort; missing registry is not fatal
         log.debug("watermark-column lookup unavailable: %s", exc)
@@ -77,7 +83,8 @@ async def _iceberg_snapshot(engine, table: "TableIdentity") -> str | None:
         rows = (
             await engine.execute_engine(
                 f"SELECT snapshot_id FROM {quoted_name((catalog, schema, name + '$snapshots'))} "
-                "ORDER BY committed_at DESC LIMIT 1"
+                "ORDER BY committed_at DESC LIMIT 1",
+                authorization=system_auth("view input signal"),
             )
         ).rows
         row = rows[0] if rows else None
@@ -95,7 +102,8 @@ async def _table_watermark(engine, table: "TableIdentity", column: str) -> str |
     try:
         rows = (
             await engine.execute_engine(
-                f'SELECT MAX("{column}") FROM {await engine.read_ref(table)}'
+                f'SELECT MAX("{column}") FROM {await engine.read_ref(table)}',
+                authorization=system_auth("view input signal"),
             )
         ).rows
         row = rows[0] if rows else None

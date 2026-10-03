@@ -26,7 +26,7 @@ from provisa.compiler.sql_gen import (
     CompiledQuery,
     rewrite_hot_joins,
 )
-from provisa.cache.values_cte import _sql_literal
+from provisa.compiler.sql_literals import sql_literal
 from provisa.executor.result import QueryResult
 
 
@@ -431,7 +431,13 @@ class TestRewriteHotJoins:
         assert result.sql == compiled.sql  # no joins to rewrite
 
 
-# --- _sql_literal ---
+# --- the literal a hot row's value takes in the VALUES CTE ---
+
+
+def _sql_literal(value):
+    """A hot row's value as the VALUES CTE writes it: a PostgreSQL literal (the query is
+    transpiled to the engine's dialect afterwards)."""
+    return sql_literal(value, "postgres")
 
 
 class TestSqlLiteral:

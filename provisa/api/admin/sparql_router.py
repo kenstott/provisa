@@ -28,10 +28,6 @@ from provisa.api_source.persist import persist_api_source
 from provisa.sparql.source import (
     SparqlSourceConfig,
     build_api_source,
-    build_endpoint,
-    extract_variables,
-    infer_columns,
-    probe_endpoint,
 )
 from provisa.api.admin.capabilities import require_capability_request
 
@@ -53,13 +49,6 @@ class SparqlSourceRequest(BaseModel):
     source_id: str
     endpoint_url: str
     default_graph_uri: str | None = None
-
-
-class SparqlTableRequest(BaseModel):
-    table_name: str
-    sparql_query: str
-    ttl: int = 300
-    column_overrides: dict[str, str] | None = None  # var_name → type override
 
 
 @router.post("")
@@ -84,72 +73,3 @@ async def register_sparql_source(body: SparqlSourceRequest, request: Request):  
     state.sparql_endpoints[api_source.id] = body.endpoint_url
     log.info("Registered SPARQL source %s at %s", body.source_id, body.endpoint_url)
     return {"source_id": api_source.id, "base_url": api_source.base_url}
-
-
-@router.post("/{source_id}/tables")
-async def register_sparql_table(  # REQ-297, REQ-296, REQ-299
-    source_id: str,
-    body: SparqlTableRequest,
-    request: Request,
-):
-    """Register a SPARQL table.
-
-    Executes a LIMIT 5 probe to validate the endpoint and infer column names
-    from the SPARQL SELECT variables. The table appears in the GraphQL schema
-    via the api_source schema integration.
-    """
-    require_capability_request(request, "source_registration")
-    state = request.app.state
-    api_source = getattr(state, "api_sources", {}).get(source_id)
-    if api_source is None:
-        raise ApiError(
-            404,
-            "sparql.source_not_found",
-            f"SPARQL source {source_id!r} not found",
-            source_id=source_id,
-        )
-
-    # REQ-1683: probe the endpoint itself, not the bare base URL (which dropped the dataset path).
-    endpoint_url = getattr(state, "sparql_endpoints", {}).get(source_id) or str(api_source.base_url)
-    cfg = SparqlSourceConfig(source_id=source_id, endpoint_url=endpoint_url)
-
-    try:
-        rows = await probe_endpoint(cfg, body.sparql_query)
-    except Exception as exc:
-        raise ApiError(
-            422,
-            "sparql.probe_failed",
-            f"SPARQL endpoint probe failed: {exc}",
-            error=str(exc),
-        ) from exc
-
-    # Infer columns from probe results; fall back to SELECT variable names
-    columns = (
-        infer_columns(rows)
-        if rows
-        else [_make_string_col(v) for v in extract_variables(body.sparql_query)]
-    )
-    if not columns:
-        raise ApiError(
-            422,
-            "sparql.columns_not_inferred",
-            "Could not infer columns: probe returned no rows and no SELECT variables found.",
-        )
-
-    endpoint = build_endpoint(cfg, body.table_name, body.sparql_query, columns, body.ttl)
-
-    if not hasattr(state, "api_endpoints"):
-        state.api_endpoints = []
-    state.api_endpoints.append(endpoint)
-    log.info("Registered SPARQL table %s on source %s", body.table_name, source_id)
-
-    return {
-        "table_name": body.table_name,
-        "columns": [c.model_dump() for c in columns],
-    }
-
-
-def _make_string_col(name: str):
-    from provisa.api_source.models import ApiColumn, ApiColumnType
-
-    return ApiColumn(name=name, type=ApiColumnType.string)

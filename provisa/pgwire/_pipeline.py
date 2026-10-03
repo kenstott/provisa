@@ -33,8 +33,9 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
+from provisa.federation.execution_auth import plan_authorization
+
 from provisa.audit.pipeline import PendingAudit
-from provisa.compiler.definitions import NotAvailableHere
 from provisa.executor.result import QueryResult
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
@@ -55,16 +56,20 @@ _CURRENT_SETTING_RE = re.compile(
 )
 
 
-def _resolve_session_settings(sql: str, session_vars: dict[str, str]) -> str:
+def _resolve_session_settings(sql: str, session_vars: dict[str, str], dialect: str) -> str:
     """Resolve ``current_setting('provisa.<var>')`` to a SQL literal for engines
     that lack the function (the federation engine). A missing var becomes NULL —
     the RLS predicate then matches no rows, a safe deny-by-default. PostgreSQL
     keeps native ``current_setting`` (fed by ``SET LOCAL``) and is untouched.
     """
 
+    from provisa.compiler.sql_literals import sql_literal
+
     def _sub(m: re.Match) -> str:
+        # ``dialect`` is the dialect ``sql`` is written in: the engine's for transpiled SQL, where
+        # a backslash may be an escape, so each value takes that dialect's one literal rule.
         value = session_vars.get(m.group(1))
-        return "NULL" if value is None else "'" + value.replace("'", "''") + "'"
+        return "NULL" if value is None else sql_literal(value, dialect)
 
     return _CURRENT_SETTING_RE.sub(_sub, sql)
 
@@ -715,11 +720,13 @@ async def _localize_inline_commands(tree, role_id: str, state) -> bool:
     governance (DEFINER/INVOKER) and I/O dataset contract are enforced there, identically to a direct
     call — so the outer statement only ever sees ordinary local relations. Returns True on any hit
     (the caller then forces engine execution). No-op when no command is composed in the statement."""
-    commands = getattr(state, "tracked_functions", None)
+    from provisa.api.data.action_exec import invoke_tracked_function, usable_commands
+    from provisa.executor.command_localize import localize_commands
+
+    # Only the commands this role may call: one it may not reads as an unregistered relation.
+    commands = usable_commands(state, role_id, webhooks=False)
     if not commands:
         return False
-    from provisa.api.data.action_exec import invoke_tracked_function
-    from provisa.executor.command_localize import localize_commands
 
     _refuse_composed_mutators(tree, commands)
 
@@ -1106,7 +1113,7 @@ async def govern_statement(
     # statement's bound values — so a governed statement is kept in the org's compiled-query cache
     # (generation-keyed, TTL-evicted, bounded) and a repeat is not parsed, validated or governed
     # again. Every raw-SQL surface reaches the pipeline here, so they all share it.
-    from provisa.pgwire.governed_plan import PlanSlot, acting_role_set
+    from provisa.pgwire.governed_plan import PlanSlot
     from provisa.core.request_context import session_vars_for
 
     _session_vars = session_vars if session_vars is not None else session_vars_for(role)
@@ -1190,7 +1197,6 @@ async def govern_statement(
         state.schema_boot_id,
         state.schema_version,
         _bypass_guard,
-        acting_roles=acting_role_set(),
     )
     if state.compiled_query_cache.get(_cq_key) is None:
         violations = validate_sql(
@@ -1258,7 +1264,7 @@ async def govern_statement(
     # SETs the variable on a direct Postgres connection, so a native current_setting there raises
     # "unrecognized configuration parameter"; the literal is the one mechanism every route shares.
     # A missing var becomes NULL, the documented deny-by-default (_resolve_session_settings).
-    governed_semantic = _resolve_session_settings(governed_semantic, _session_vars)
+    governed_semantic = _resolve_session_settings(governed_semantic, _session_vars, "postgres")
 
     governed = _Governed(
         sql=sql,
@@ -1639,7 +1645,15 @@ async def route_governed(
                 from provisa.mv.bitemporal import as_of_view_map
 
                 _vmap = as_of_view_map(_view_map, state.bitemporal_view_reads, as_of)
-            _qualified = expand_view_refs(_qualified, _vmap)
+            # What each view reference becomes for THIS reader (mv/view_read.py): the view's SQL
+            # with the reader's rules on every table it reads, or — for a materialized view and a
+            # reader with no narrower rule on any of its inputs — its stored rows.
+            from provisa.mv.view_read import view_bodies
+
+            _qualified = expand_view_refs(
+                _qualified,
+                view_bodies(_qualified, _vmap, state, gov_ctx),
+            )
             # View bodies are stored in semantic form; after expansion, lower any
             # newly-introduced semantic refs to catalog-physical (same pass the outer SQL
             # went through at line 456 before routing).
@@ -1953,8 +1967,9 @@ class _AuditedDrain:
         except StopIteration:
             self._complete(200)
             raise
-        except BaseException:
-            self._complete(500)
+        except BaseException as exc:
+            # REQ-1044: a stream ended at its tier ceiling is the tier's refusal, recorded as such.
+            self._complete(402 if getattr(exc, "status_code", None) == 402 else 500)
             raise
         self._rows += self._rows_in(batch)
         return batch
@@ -2798,7 +2813,10 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
 
         def _drain() -> tuple[list[str], list[str] | None, list[tuple], bool]:
             stream = engine.execute_engine_sync(
-                physical_sql, params=plan.exec_params, session_hints=plan.session_hints
+                physical_sql,
+                params=plan.exec_params,
+                session_hints=plan.session_hints,
+                authorization=plan_authorization(plan),
             )
             it = stream.iter_rows()
             buffered_rows: list[tuple] = []
@@ -2828,6 +2846,7 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
             params=plan.exec_params,
             session_hints=plan.session_hints,
             span_attrs=plan.span_attrs,
+            authorization=plan_authorization(plan),
         )
     elif getattr(state, "source_types", {}).get(plan.source_id) == "govdata":
         # GovData sources execute via the GovData/Calcite bridge, not a native pool or the engine.
@@ -3216,7 +3235,7 @@ async def _govern_compiled(
     governed_sql = await _off_loop(apply_governance, sql, gov_ctx, session_vars, exec_params)
     # REQ-1682: session-variable predicates resolve to the request's literals on every route (see
     # the raw path above for why the direct Postgres route cannot keep native current_setting).
-    governed_sql = _resolve_session_settings(governed_sql, session_vars)
+    governed_sql = _resolve_session_settings(governed_sql, session_vars, "postgres")
     return _GovernedCompiled(sql, _compiled_tree, gov_ctx, _table_ids, governed_sql)
 
 
@@ -3278,8 +3297,10 @@ async def _route_compiled(
     _view_map = getattr(state, "view_sql_map", None)
     if _view_map:
         from provisa.compiler.view_expand import expand_view_refs
+        from provisa.mv.view_read import view_bodies
 
-        _exec_sql = expand_view_refs(_exec_sql, _view_map)
+        # As on the raw-SQL stage: each view reference becomes what THIS reader may read of it.
+        _exec_sql = expand_view_refs(_exec_sql, view_bodies(_exec_sql, _view_map, state, gov_ctx))
     from provisa.compiler.nf_extractor import extract_nf_args
 
     _exec_sql, _nf_clean_params, _extracted_nf = extract_nf_args(_exec_sql, exec_params or [])
@@ -3408,7 +3429,9 @@ async def _route_compiled(
         from provisa.core.request_context import session_vars_for
 
         _session_vars = session_vars_for(state.roles.get(role_id))  # REQ-1682
-        return _engine_sql, _resolve_session_settings(_physical, _session_vars)
+        return _engine_sql, _resolve_session_settings(
+            _physical, _session_vars, state.federation_engine.dialect
+        )
 
     # (Removed 2026-09-26, REQ-1864 reversal:) a single-source neo4j pattern previously
     # reverse-compiled governed_sql back to Cypher (best_effort_cypher_for_sql) and forced
@@ -3531,19 +3554,6 @@ async def _route_compiled(
         )
 
 
-class WriteNotAvailableOverPgwire(NotAvailableHere):
-    """REQ-615: a data write sent over pgwire."""
-
-    def __init__(self, kind: str) -> None:
-        self.kind = kind
-        super().__init__(
-            f"{kind} is not available over pgwire: this listener takes no INSERT, UPDATE, DELETE "
-            "or MERGE. Write through a GraphQL mutation, SQL over HTTP (POST /data/sql), Cypher "
-            "(Bolt or POST /data/cypher) or the MCP run_sql tool, where a write is admitted by "
-            "the role's rights."
-        )
-
-
 _OPENING_WRITE_RE = re.compile(
     r"(?:\s+|--[^\n]*\n?|/\*.*?\*/)*(?P<verb>INSERT|UPDATE|DELETE|MERGE)\b",
     re.IGNORECASE | re.DOTALL,
@@ -3554,13 +3564,6 @@ def opening_write_verb(sql: str) -> str | None:
     """The verb ``sql`` opens with when it opens as a data write, else None."""
     m = _OPENING_WRITE_RE.match(sql)
     return m.group("verb").upper() if m else None
-
-
-def refuse_pgwire_write(sql: str) -> None:
-    """Raise :class:`WriteNotAvailableOverPgwire` when ``sql`` opens as a data write."""
-    verb = opening_write_verb(sql)
-    if verb is not None:
-        raise WriteNotAvailableOverPgwire(verb)
 
 
 async def plan_pgwire_sql(sql: str, role_id: str) -> _Plan:  # REQ-267
@@ -3593,14 +3596,10 @@ async def govern_pgwire_plan(  # REQ-028, REQ-266
     # surface is opted in for this deployment.
     from provisa.pgwire.ext_surfaces import rewrite_surface_operators
 
-    # REQ-615: pgwire carries no data writes. Refused here, on the statement's own words, before
-    # it is rewritten, governed or sent anywhere.
-    refuse_pgwire_write(sql)
-
     sql = rewrite_surface_operators(sql)
 
     # REQ-872: a bare SELECT of a registered tracked function routes to the shared executor
-    # (writable_by enforced there) instead of federation, unifying invocation across surfaces.
+    # (its command admission there) instead of federation, unifying invocation across surfaces.
     from provisa.api.app import state as _state
     from provisa.pgwire.function_call import maybe_invoke_registered_function
 
@@ -3609,10 +3608,11 @@ async def govern_pgwire_plan(  # REQ-028, REQ-266
     # governed with its $N placeholders and the values bound (REQ-589).
     fn_sql = sql
     if params:
-        from provisa.compiler.params import _sql_literal, substitute_positional_placeholders
+        from provisa.compiler.params import substitute_positional_placeholders
+        from provisa.compiler.sql_literals import sql_literal
 
         fn_sql = substitute_positional_placeholders(
-            sql, params, lambda i: _sql_literal(params[i - 1])
+            sql, params, lambda i: sql_literal(params[i - 1], "postgres")
         )
     fn_result = await maybe_invoke_registered_function(fn_sql, role_id, _state)
     if fn_result is not None:
@@ -3621,9 +3621,6 @@ async def govern_pgwire_plan(  # REQ-028, REQ-266
     plan = await _govern_and_route(
         sql, role_id, params=params, serve_cached=True, wire_formats=wire_formats
     )
-    if plan.writes_tables:
-        # A write the opening words did not show (a WITH … INSERT): refused before it runs.
-        raise WriteNotAvailableOverPgwire("A data write")
     return plan
 
 
@@ -3667,9 +3664,8 @@ async def describe_pgwire_statement(sql: str, role_id: str) -> _Described:  # RE
     from provisa.pgwire.function_call import detect_sql_function_call
     from provisa.pgwire.result_shape import derive_result_shape
 
-    refuse_pgwire_write(sql)  # REQ-615: refused at Parse/Describe as at Execute
     sql = rewrite_surface_operators(sql)
-    call = detect_sql_function_call(sql, state)
+    call = detect_sql_function_call(sql, state, role_id)
     if call is not None:
         return _Described(_function_call_shape(call[0], state), None)
 

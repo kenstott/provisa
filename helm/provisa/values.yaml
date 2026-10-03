@@ -68,6 +68,90 @@ encryption:
     storageClass: ""
     mountPath: /var/lib/provisa
 
+# Who may sign in (REQ-1265). The provider is chosen here, at install time, and rendered into the
+# API's provisa.yaml. Every credential comes from a Kubernetes Secret you create; the chart holds
+# none and generates none.
+#
+#   none   No authentication: every request is trusted. Development only.
+#   oidc   A corporate OpenID Connect issuer. Clients present its tokens.
+#   ldap   An LDAP or Active Directory server. Users sign in with their directory password.
+#   saml   A SAML 2.0 identity provider.
+#   local  No identity provider: the break-glass account below is the only sign-in.
+#
+# REQUIRED: the chart does not render until one is chosen. There is no default, so a deployment
+# is never unsecured because nobody decided.
+auth:
+  provider: ""
+  # The role of a signed-in user no role-mapping rule matches. Empty keeps the product default.
+  defaultRole: ""
+  # Rules mapping a claim to a role, passed through as written, e.g.
+  #   - {type: contains, claim: groups, value: data-admins, role: org_admin}
+  roleMapping: []
+  # Signs browser sessions. Required for ldap, saml, local and whenever breakGlass is set.
+  #   kubectl create secret generic provisa-session \
+  #     --from-literal=session-secret="$(openssl rand -base64 48)"
+  sessionSecret:
+    existingSecret: ""
+    secretKey: session-secret
+  # The platform operator's own account, independent of the identity provider: it still signs in
+  # when the provider is down or misconfigured. Optional beside oidc, ldap and saml; required
+  # for local.
+  #   kubectl create secret generic provisa-break-glass \
+  #     --from-literal=password="$(openssl rand -base64 24)"
+  breakGlass:
+    username: ""
+    existingSecret: ""
+    secretKey: password
+  oidc:
+    # The issuer's base URL; its discovery document is read from
+    # <issuerUrl>/.well-known/openid-configuration.
+    issuerUrl: ""
+    clientId: ""
+    # The audience tokens must carry. Empty means the client id.
+    audience: ""
+    # The claim that lists the user's roles. Empty means `roles`.
+    roleClaim: ""
+  saml:
+    # The identity provider's metadata (entity id, sign-on URL, signing certificates).
+    idpMetadataUrl: ""
+    # The address browsers reach Provisa at. The service provider's entity id, its assertion
+    # consumer URL and the sign-in page are derived from it; register
+    # <publicUrl>/auth/saml/metadata at the identity provider.
+    publicUrl: ""
+    # Attributes read from the assertion. An empty user id attribute uses the NameID.
+    userIdAttribute: ""
+    emailAttribute: ""
+    displayNameAttribute: ""
+    # Its values become the user's roles.
+    groupsAttribute: ""
+  ldap:
+    # ldap://host:389 or ldaps://host:636
+    server: ""
+    # Upgrade an ldap:// connection with StartTLS before any bind.
+    startTls: false
+    # A CA bundle mounted in the API container, for a directory whose certificate the system
+    # trust store does not cover.
+    caCertFile: ""
+    # The service account that searches for users and groups.
+    bindDn: ""
+    bindPassword:
+      existingSecret: ""
+      secretKey: bind-password
+    # The subtree users are searched under.
+    baseDn: ""
+    # Finds one user; {username} is the login name. e.g. (uid={username}) or
+    # (sAMAccountName={username})
+    userFilter: ""
+    # The attribute holding the stable user id, e.g. uid or entryUUID.
+    userIdAttribute: ""
+    emailAttribute: ""
+    displayNameAttribute: ""
+    # Group membership becomes the user's roles. Set all three or none.
+    # groupFilter takes {user_dn} and {username}, e.g. (member={user_dn})
+    groupBaseDn: ""
+    groupFilter: ""
+    groupNameAttribute: ""
+
 provisa:
   replicaCount: 2
   image:

@@ -42,7 +42,7 @@ import ssl
 import tempfile
 import threading
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import asyncpg
 import pytest
@@ -997,28 +997,106 @@ class TestPgwireSQLOnlyRestrictions:
 
 
 class TestPgwireCopyFrom:
-    """REQ-615: COPY FROM STDIN is a write, and pgwire takes no writes."""
+    """REQ-585/REQ-586: COPY FROM STDIN is a bulk INSERT into a registered table, admitted like
+    one: refused without the write right before any data is asked for; with it, the rows go to
+    the table's source."""
 
-    async def test_copy_from_stdin_is_refused(self, pgwire_srv):
-        """COPY FROM STDIN is refused with 0A000 before the client is asked for data."""
-        port, _ = pgwire_srv
-        provider = _stub_auth_provider("admin", "secret")
+    @staticmethod
+    def _copy_state(capabilities: list[str]) -> MagicMock:
+        from provisa.compiler.sql_types import TableMeta
+
         state = _make_mock_state("admin", "simple")
+        state.roles["admin"]["capabilities"] = capabilities
+        state.contexts["admin"].tables = {
+            "orders": TableMeta(
+                table_id=1,
+                field_name="orders",
+                type_name="Orders",
+                source_id="pg",
+                catalog_name="pg",
+                schema_name="public",
+                table_name="orders",
+                domain_id="sales",
+            )
+        }
+        state.contexts["admin"].aggregate_columns = {1: [("id", "integer"), ("region", "varchar")]}
+        state.source_types = {"pg": "postgresql"}
+        state.tables = [
+            {
+                "id": 1,
+                "source_id": "pg",
+                "domain_id": "sales",
+                "schema_name": "public",
+                "table_name": "orders",
+                "write_ops": ["delete", "insert", "update"],
+                "columns": [
+                    {
+                        "column_name": name,
+                        "data_type": dtype,
+                        "visible_to": ["admin"],
+                        "writable_by": ["admin"],
+                    }
+                    for name, dtype in (("id", "integer"), ("region", "varchar"))
+                ],
+            }
+        ]
+        state.relationships = []
+        return state
+
+    @staticmethod
+    def _copy(port: int, lines: list[str]) -> None:
+        import psycopg
 
         with (
-            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
-            patch("provisa.api.app.state", state),
-        ):
-            conn = await asyncpg.connect(
+            psycopg.connect(
                 host="127.0.0.1",
                 port=port,
                 user="admin",
                 password="secret",
-                database="provisa",
-            )
-            with pytest.raises(asyncpg.FeatureNotSupportedError):
-                await conn.execute("COPY orders FROM STDIN")
-            await conn.close()
+                dbname="provisa",
+                autocommit=True,
+            ) as conn,
+            conn.cursor() as cur,
+            cur.copy("COPY sales.orders (id, region) FROM STDIN") as copy,
+        ):
+            for line in lines:
+                copy.write(line + "\n")
+
+    async def test_copy_from_stdin_without_the_write_right_is_refused(self, pgwire_srv):
+        import psycopg
+
+        port, _ = pgwire_srv
+        written = AsyncMock(return_value=1)
+        with (
+            patch(
+                "provisa.auth.wiring.build_auth_provider",
+                return_value=_stub_auth_provider("admin", "secret"),
+            ),
+            patch("provisa.api.app.state", self._copy_state(["query_development"])),
+            patch("provisa.pgwire.copy_handler._insert_rows", written),
+        ):
+            with pytest.raises(psycopg.Error, match="'write' right"):
+                await asyncio.to_thread(self._copy, port, ["5\teast"])
+        written.assert_not_awaited()
+
+    async def test_copy_from_stdin_with_the_write_right_writes_the_rows(self, pgwire_srv):
+        port, _ = pgwire_srv
+        written = AsyncMock(return_value=2)
+        with (
+            patch(
+                "provisa.auth.wiring.build_auth_provider",
+                return_value=_stub_auth_provider("admin", "secret"),
+            ),
+            patch("provisa.api.app.state", self._copy_state(["query_development", "write"])),
+            patch("provisa.pgwire.copy_handler._insert_rows", written),
+            patch("provisa.api.data.table_written.after_table_written", AsyncMock()),
+        ):
+            await asyncio.to_thread(self._copy, port, ["5\teast", "6\twest"])
+        written.assert_awaited_once()
+        assert written.await_args is not None
+        source_id, schema, table, columns, rows = written.await_args.args
+        assert (source_id, schema, table, columns) == ("pg", "public", "orders", ["id", "region"])
+        assert [list(r) for r in rows] == [["5", "east"], ["6", "west"]]
 
 
 # ---------------------------------------------------------------------------

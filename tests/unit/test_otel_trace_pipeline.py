@@ -136,11 +136,13 @@ class TestInsertOtelIceberg:
         from provisa.executor.result import QueryResult
 
         class _FakeEngine:
+            dialect = "trino"  # the OTel Iceberg tables are written through Trino
+
             def __init__(self, cols):
                 self._cols = cols
                 self.calls = []  # (sql, params)
 
-            def execute_engine_sync(self, sql, params=None):
+            def execute_engine_sync(self, sql, params=None, authorization=None):
                 self.calls.append((sql, params))
                 if "SHOW COLUMNS" in sql:
                     return QueryResult(
@@ -486,6 +488,8 @@ class TestSignalPartitionLayout:
 class _FakeEngine:
     """Records every statement the compactor sends, so commit count is observable."""
 
+    dialect = "trino"  # the OTel Iceberg tables are written through Trino
+
     def __init__(self):
         self.statements: list[str] = []
 
@@ -593,7 +597,9 @@ class TestPipelineSpanAttributes:
             def address_replicas(self, sql):
                 return sql  # this stand-in's tables are all read where the statement names them
 
-            async def execute_engine(self, sql, params=None, session_hints=None, span_attrs=None):
+            async def execute_engine(
+                self, sql, params=None, session_hints=None, span_attrs=None, authorization=None
+            ):
                 seen["span_attrs"] = span_attrs
                 return QueryResult(rows=[(1,)], column_names=["n"])
 
@@ -630,7 +636,9 @@ class TestOtelStorageReclamation:
         calls: list[tuple[str, dict]] = []
 
         class _Engine:
-            def execute_engine_sync(self, sql, params=None, *, session_hints=None):
+            def execute_engine_sync(
+                self, sql, params=None, *, session_hints=None, authorization=None
+            ):
                 calls.append((sql, session_hints))
 
         monkeypatch.setattr(app_module.state, "otel_snapshot_retention_hours", retention)

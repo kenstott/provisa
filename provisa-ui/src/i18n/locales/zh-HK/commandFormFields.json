@@ -14,8 +14,6 @@
     "selectTable": "選擇表格...",
     "visibleTo": "可見於（角色，以逗號分隔）",
     "visibleToPlaceholder": "admin, analyst",
-    "writableBy": "可寫入者（角色，以逗號分隔）",
-    "writableByPlaceholder": "admin",
     "url": "URL",
     "urlPlaceholder": "https://api.example.com/action",
     "method": "方法",

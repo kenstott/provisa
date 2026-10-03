@@ -17,6 +17,7 @@ import re
 import time
 
 from provisa.core.models import Source
+from provisa.compiler.sql_literals import sql_literal
 from provisa.federation.trino_types import (
     TrinoConnection,
     TrinoConnectionError,
@@ -77,8 +78,8 @@ def _validate_identifier(name: str) -> str:
 
 
 def _escape_sql_string(value: str) -> str:
-    """Escape single quotes for Trino SQL string literals."""
-    return value.replace("'", "''")
+    """A Trino SQL string literal body (quote-doubled; Trino has no backslash escape)."""
+    return sql_literal(value, "trino")[1:-1]
 
 
 def _to_catalog_name(source_id: str) -> str:

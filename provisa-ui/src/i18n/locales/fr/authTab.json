@@ -15,6 +15,7 @@
     "saved": "Enregistré.",
     "savedRestartRequired": "Enregistré. Redémarrez le service pour appliquer.",
     "secretOnFile": "Stocké ; laissez vide pour le conserver",
-    "secretNotSet": "Non défini"
+    "secretNotSet": "Non défini",
+    "allowRegistration": "Permettre aux utilisateurs de créer leur propre compte"
   }
 }

@@ -32,6 +32,8 @@
     "firebaseSignInFailed": "Не удалось войти через Firebase",
     "operatorSignIn": "Вход оператора",
     "operatorSignInTitle": "Вход оператора",
-    "backToSignIn": "Назад ко входу"
+    "backToSignIn": "Назад ко входу",
+    "signInWithSso": "Войти через единый вход (SSO)",
+    "samlSignInFailed": "Единый вход (SSO) не завершён. Повторите попытку или обратитесь к администратору."
   }
 }

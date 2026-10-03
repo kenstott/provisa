@@ -354,6 +354,10 @@
       "secret_key": {
         "label": "リダイレクトのシークレットキー",
         "help": "オブジェクトストアのシークレットキー。シークレット値です。保存前に確認が求められます。"
+      },
+      "snowflake_storage_integration": {
+        "label": "結果用の Snowflake ストレージ統合",
+        "help": "Snowflake エンジンが大きな結果をオブジェクトストアに書き込む際に使用する Snowflake ストレージ統合。空の場合、Snowflake エンジンは結果を自ら書き込みません。"
       }
     },
     "otel": {

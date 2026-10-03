@@ -42,6 +42,7 @@ def _build(extra_tables=None):
                 {"column_name": "region", "visible_to": ["admin"]},
                 {"column_name": "status", "visible_to": ["admin"]},
             ],
+            "write_ops": ["delete", "insert", "update"],
         },
         {
             "id": 2,
@@ -54,6 +55,7 @@ def _build(extra_tables=None):
                 {"column_name": "name", "visible_to": ["admin"]},
                 {"column_name": "email", "visible_to": ["admin"]},
             ],
+            "write_ops": ["delete", "insert", "update"],
         },
     ]
     if extra_tables:

@@ -231,9 +231,14 @@ def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _auth_in_acme(token: str) -> dict[str, str]:
+    """The same credential on a tenant-plane request, which names its org (REQ-1235)."""
+    return {**_auth(token), "x-org-provisa": "acme"}
+
+
 def _create_invite(client, **body) -> dict:
     resp = client.post(
-        "/admin/invites/", json={"org_id": "acme", **body}, headers=_auth("tok-alice")
+        "/admin/invites/", json={"org_id": "acme", **body}, headers=_auth_in_acme("tok-alice")
     )
     assert resp.status_code == 200, resp.text
     return resp.json()
@@ -367,7 +372,7 @@ def test_the_invite_list_says_who_each_one_was_sent_to(planes, smtp):
     with TestClient(_make_app(planes)) as client:
         _create_invite(client, email="carol@example.test", role_id="analyst")
         _create_invite(client, role_id="analyst")
-        listed = client.get("/admin/invites/", headers=_auth("tok-alice"))
+        listed = client.get("/admin/invites/", headers=_auth_in_acme("tok-alice"))
 
     assert listed.status_code == 200, listed.text
     addressed = {row["token"]: row["email"] for row in listed.json()}

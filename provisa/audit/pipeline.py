@@ -198,6 +198,21 @@ def complete_audit_record(record: Any, started: float, status_code: int, row_cou
     )
 
 
+def _with_acting_roles(pending: PendingAudit, state: Any) -> Any:
+    """``pending``'s enforced summary, naming every role a meta-role acted as (REQ-1620): the record
+    shows exactly which rights the statement was made with."""
+    from provisa.security.meta_role import is_meta_role_id
+
+    if not is_meta_role_id(pending.role_id):
+        return pending.enforced
+    members = list(state.meta_roles[pending.role_id])
+    enforced = pending.enforced
+    if callable(enforced):
+        resolve = enforced
+        return lambda: {**resolve(), "acting_roles": members}
+    return {**enforced, "acting_roles": members}
+
+
 def build_audit_record(
     pending: PendingAudit | None,
     status_code: int,
@@ -266,7 +281,7 @@ def build_audit_record(
         route=route,
         row_count=row_count,
         model_stamp=pending.model_stamp,
-        enforced=pending.enforced,
+        enforced=_with_acting_roles(pending, state),
         route_reason=route_reason,
         sources=tuple(sources),
         data_age=data_age,

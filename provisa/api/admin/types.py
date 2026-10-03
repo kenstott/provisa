@@ -298,6 +298,9 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     # (made through the admin) or "seed" (the deployment's own). A load of the config re-applies
     # what the file says about a "config" object, which the UI marks.
     origin: str
+    # The data writes the table's source can take — insert, update, delete — as the write
+    # admission and the write surfaces apply them (executor/write_capability.py).
+    write_ops: list[str]
     alias: str | None
     description: str | None
     cache_ttl: int | None
@@ -327,6 +330,10 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     dq_contract: str | None = None
     # REQ-1670: the Cypher a neo4j table runs (from its persisted api_endpoints row).
     query_template: str | None = None
+    # REQ-788: one logical table over a glob of files; source_file_column names an optional column
+    # carrying each row's file path. None = a single-file table.
+    file_glob: str | None = None
+    source_file_column: str | None = None
     change_signal: str | None = None  # REQ-929: override source change signal; None = inherit
     probe_query: str | None = None  # REQ-929: source-native freshness probe
     probe_type: str | None = None  # REQ-982: input-probe method; None = resolve per source class
@@ -857,6 +864,11 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     dq_contract: str | None = None
     # REQ-1670: the Cypher that produces a neo4j table's rows; required under a neo4j source.
     query_template: str | None = None
+    # REQ-788: a files source table read as ONE logical table over the files this glob matches
+    # under the source's path; source_file_column names an optional column carrying each row's
+    # file path. None = a single-file table.
+    file_glob: str | None = None
+    source_file_column: str | None = None
     # REQ-1318: declarative metric-composed view definition; mutually exclusive with view_sql.
     # The server generates (and regenerates on metric change) the view SELECT from this spec.
     view_metrics: ViewMetricsInput | None = None
@@ -1265,6 +1277,10 @@ class ReplicaBuildType:  # REQ-1915
     # Why a requested build has not started: English text and its code.
     waiting_on: str | None
     waiting_on_code: str | None
+    # REQ-1861: a table that follows its source's change feed, while the listener is down:
+    # since when (ISO 8601, UTC) and the server's own reason. None while it is watching.
+    feed_down_since: str | None
+    feed_error: str | None
 
 
 @strawberry.type
@@ -1325,6 +1341,7 @@ class ScheduledTaskType:  # REQ-533
     webhook_url: str | None
     kind: str  # REQ-1003: "webhook" | "sql"
     sql: str | None  # REQ-1003: SQL statement for a SQL trigger
+    role: str | None  # the role a SQL trigger runs as
     enabled: bool
     last_run_at: str | None
     next_run_at: str | None

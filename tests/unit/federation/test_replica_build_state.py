@@ -255,3 +255,41 @@ async def test_with_nothing_promoted_and_built_no_store_is_asked_for(conn):
     assert await promotion(conn, _no_store) == (frozenset({KEY}), frozenset())
     await _complete(conn, KEY)
     assert await promotion(conn, lambda: "store-a") == (frozenset({KEY}), frozenset({KEY}))
+
+
+async def _build_completes(conn, now):
+    await build_state.record_completed(
+        conn, KEY, rows_copied=1, method="stream_batches", content_hash="h", store="store-a",
+        next_refresh_at=None, now=now,
+    )  # fmt: skip
+
+
+@pytest.mark.parametrize("reason", [build_state.REASON_REFRESH, build_state.REASON_WRITE])
+async def test_a_change_reported_while_a_build_runs_is_built_again_when_it_completes(conn, reason):
+    """REQ-1915/REQ-1861/REQ-1924: the running build may already have read past the change, so
+    the request is kept and the replica is requested again the moment that build completes."""
+    start = datetime.now(UTC)
+    await build_state.request_build(conn, KEY, build_state.REASON_MODEL, now=start)
+    await build_state.claim(conn, KEY, holder="h:1", retry_interval=60, now=start)
+    changed = start + timedelta(seconds=5)
+    assert await build_state.request_build(conn, KEY, reason, now=changed) is False
+    assert (await build_state.read(conn, KEY)).build_state == "building"
+    await _build_completes(conn, start + timedelta(seconds=9))
+    record = await build_state.read(conn, KEY)
+    assert (record.build_state, record.requested_reason) == ("requested", reason)
+    assert record.exists  # the build that completed is served meanwhile
+
+    again = start + timedelta(seconds=10)
+    await build_state.claim(conn, KEY, holder="h:1", retry_interval=60, now=again)
+    await _build_completes(conn, again + timedelta(seconds=1))
+    assert (await build_state.read(conn, KEY)).build_state == "idle"  # nothing changed since
+
+
+async def test_a_reader_that_joins_a_running_build_asks_for_no_second_one(conn):
+    start = datetime.now(UTC)
+    await build_state.request_build(conn, KEY, build_state.REASON_MODEL, now=start)
+    await build_state.claim(conn, KEY, holder="h:1", retry_interval=60, now=start)
+    later = start + timedelta(seconds=5)
+    assert await build_state.request_build(conn, KEY, build_state.REASON_READ, now=later) is False
+    await _build_completes(conn, start + timedelta(seconds=9))
+    assert (await build_state.read(conn, KEY)).build_state == "idle"

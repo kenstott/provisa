@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from provisa.executor.result import QueryResult
     from provisa.cypher.label_map import CypherLabelMap
 
+from provisa.compiler.definitions import NotAvailableHere
 from provisa.api.admin._dev_shared import detect_target
 from provisa.api.errors import ApiError
 from provisa.core import domain_policy
@@ -358,6 +359,10 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
         result = await execute_sql_batch(request.sql, role_id, state, as_of=_as_of)
     except ComplexityLimitExceeded:
         raise  # REQ-1174: answered as 413 by the app's handler
+    except NotAvailableHere:
+        # A statement this surface or the table cannot take (a definition; a write the table's
+        # source cannot carry): answered by the app's handler with its code and parameters.
+        raise
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
     except TimeoutError as exc:

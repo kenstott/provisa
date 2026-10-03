@@ -32,6 +32,8 @@
     "firebaseSignInFailed": "Firebase साइन-इन विफल",
     "operatorSignIn": "ऑपरेटर साइन इन",
     "operatorSignInTitle": "ऑपरेटर साइन इन",
-    "backToSignIn": "साइन इन पर वापस"
+    "backToSignIn": "साइन इन पर वापस",
+    "signInWithSso": "सिंगल साइन-ऑन से साइन इन करें",
+    "samlSignInFailed": "सिंगल साइन-ऑन पूरा नहीं हुआ। फिर से प्रयास करें या अपने व्यवस्थापक से संपर्क करें।"
   }
 }

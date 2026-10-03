@@ -91,7 +91,7 @@ def query_topic(shared_data):
 
         host = os.getenv("TRINO_HOST", "localhost")
         port = int(os.getenv("TRINO_PORT", "8080"))
-        conn = trino.dbapi.connect(host=host, port=port, user="provisa")
+        conn = trino.dbapi.connect(host=host, port=port, user="itest")
         cursor = conn.cursor()
         cursor.execute('SELECT * FROM support_kafka."default"."orders" LIMIT 5')
         shared_data["rows"] = cursor.fetchall()

@@ -156,6 +156,20 @@ async def sql_count_token(query_scalar: QueryScalar, ref: str) -> str | None:
     return None if value is None else str(value)
 
 
+async def glob_token(source_path: str, file_glob: str) -> str | None:
+    """The files-glob change token (REQ-788): the matched files' count, latest mtime and total
+    size. None when the glob cannot be stat'd this call (→ TTL degrade)."""
+    import asyncio
+
+    from provisa.file_source.files_glob import glob_freshness_token, stat_matched_files
+
+    try:
+        stats = await asyncio.to_thread(stat_matched_files, source_path, file_glob)
+    except OSError:
+        return None
+    return glob_freshness_token(stats)
+
+
 Transport = Callable[[], Awaitable["str | None"]]
 
 
@@ -166,6 +180,8 @@ def build_probe(
     ref: str | None = None,
     watermark_column: str | None = None,
     sentinel_path: str | None = None,
+    source_path: str | None = None,
+    file_glob: str | None = None,
 ) -> Transport:
     """Build the ``freshness_token`` transport for a node from its ``probe_type`` (REQ-982).
 
@@ -180,6 +196,9 @@ def build_probe(
 
     async def _none() -> str | None:
         return None
+
+    if file_glob and source_path:  # REQ-788: a files-glob table probes its matched files
+        return lambda: glob_token(source_path, file_glob)
 
     if probe_type == WATERMARK:
         if query_scalar is None or ref is None or watermark_column is None:

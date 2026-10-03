@@ -24,6 +24,8 @@ import asyncio
 import logging
 import os
 
+from provisa.federation.execution_auth import system_auth
+
 
 from provisa.core.schema_org import (
     domains as _domains_t,
@@ -67,7 +69,9 @@ async def _warmup_readiness(_log: logging.Logger) -> None:
     try:
         if state.federation_engine.is_connected():
             state.federation_engine.cache_catalog()  # attach + boot-validate the store
-            await state.federation_engine.execute_engine("SELECT 1")  # warm the engine terminal
+            await state.federation_engine.execute_engine(
+                "SELECT 1", authorization=system_auth("startup warm-up")
+            )  # warm the engine terminal
     except Exception:
         _log.exception("readiness warmup probe failed; serving anyway")
 

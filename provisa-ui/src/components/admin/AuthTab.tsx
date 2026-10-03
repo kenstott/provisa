@@ -76,7 +76,9 @@ export function AuthTab() {
       const providerConfig: Record<string, unknown> = {};
       for (const f of current?.config_fields ?? []) {
         const v = (config[provider]?.[f.config_key] ?? "").trim();
-        if (v !== "") providerConfig[f.config_key] = v;
+        // REQ-1265: a true/false setting is always sent, as a boolean — unchecked is a value.
+        if (f.type === "boolean") providerConfig[f.config_key] = v === "true";
+        else if (v !== "") providerConfig[f.config_key] = v;
       }
       const res = await setAuthConfig({ provider, config: providerConfig, common });
       setMsg(res.restart_required ? t("authTab.savedRestartRequired") : t("authTab.saved"));
@@ -121,7 +123,14 @@ export function AuthTab() {
         )}
 
         {(current?.config_fields ?? []).map((f) =>
-          f.secret ? (
+          f.type === "boolean" ? (
+            <Checkbox
+              key={f.config_key}
+              label={f.label}
+              checked={config[provider]?.[f.config_key] === "true"}
+              onChange={(e) => setField(f.config_key, String(e.currentTarget.checked))}
+            />
+          ) : f.secret ? (
             <PasswordInput
               key={f.config_key}
               label={f.label}
@@ -149,6 +158,14 @@ export function AuthTab() {
           ),
         )}
 
+        {provider === "basic" && (
+          <Checkbox
+            label={t("authTab.allowRegistration")}
+            checked={common.allow_registration}
+            onChange={(e) => setCommon({ ...common, allow_registration: e.currentTarget.checked })}
+            data-testid="auth-allow-registration"
+          />
+        )}
         {provider === "simple" && (
           <Checkbox
             label={t("authTab.allowSimpleAuth")}

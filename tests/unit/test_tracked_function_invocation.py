@@ -18,11 +18,7 @@ import pytest
 from fastapi import HTTPException
 
 from provisa.api.data.action_exec import invoke_tracked_function
-from provisa.api.rest.registered_call import (
-    _parse_call_literal,
-    _split_call_args,
-    detect_registered_call,
-)
+from provisa.cypher.command_call import CommandCallRefused, parse_command_call
 from provisa.security.rights import Capability
 
 
@@ -53,19 +49,23 @@ def _fn(**over):
         "schema_name": "public",
         "function_name": "create_order",
         "kind": "mutation",
-        "writable_by": ["ops"],
+        "visible_to": ["ops"],
+        "domain_id": "sales",
         "returns": "",
     }
     base.update(over)
     return base
 
 
-def _state(*, role_caps=(), writable_by=("ops",), connected=True, pools=None):
-    role = {"id": "ops", "capabilities": list(role_caps)}
+def _state(*, role_caps=(), visible_to=("ops",), connected=True, pools=None):
+    role = {"id": "ops", "capabilities": list(role_caps), "domain_access": ["sales"]}
     pools = pools or _FakePools(connected=connected)
     return SimpleNamespace(
-        roles={"ops": role, "reader": {"id": "reader", "capabilities": []}},
-        tracked_functions={"createOrder": _fn(writable_by=list(writable_by))},
+        roles={
+            "ops": role,
+            "reader": {"id": "reader", "capabilities": [], "domain_access": ["sales"]},
+        },
+        tracked_functions={"createOrder": _fn(visible_to=list(visible_to))},
         source_pools=pools,
         ephemeral=False,
     )
@@ -75,8 +75,8 @@ def _state(*, role_caps=(), writable_by=("ops",), connected=True, pools=None):
 
 
 @pytest.mark.asyncio
-async def test_write_capability_and_acl_allows_and_builds_sql():
-    st = _state(role_caps=[Capability.WRITE.value], writable_by=["ops"])
+async def test_an_assigned_role_with_write_calls_and_builds_sql():
+    st = _state(role_caps=[Capability.WRITE.value], visible_to=["ops"])
     rows = await invoke_tracked_function("createOrder", {"a0": 7, "a1": "x"}, st, "ops")
     assert rows == [{"id": 1, "name": "ada"}]
     src, sql, params = st.source_pools.calls[0]
@@ -87,39 +87,63 @@ async def test_write_capability_and_acl_allows_and_builds_sql():
 
 @pytest.mark.asyncio
 async def test_unauthorized_write_is_403():
-    st = _state(role_caps=[], writable_by=["ops"])  # no WRITE cap
+    st = _state(role_caps=[], visible_to=["ops"])  # no WRITE cap
     with pytest.raises(HTTPException) as ei:
         await invoke_tracked_function("createOrder", {}, st, "ops")
     assert ei.value.status_code == 403
 
 
 @pytest.mark.asyncio
-async def test_role_not_in_writable_by_is_403():
-    st = _state(role_caps=[Capability.WRITE.value], writable_by=["someone_else"])
+async def test_a_role_not_assigned_finds_no_command():
+    # The same answer as a command never registered: no existence leak.
+    st = _state(role_caps=[Capability.WRITE.value], visible_to=["someone_else"])
     with pytest.raises(HTTPException) as ei:
         await invoke_tracked_function("createOrder", {}, st, "ops")
+    assert ei.value.status_code == 404
+    assert "Unknown command: 'createOrder'" in str(ei.value.detail)
+    assert st.source_pools.calls == []
+
+
+@pytest.mark.asyncio
+async def test_a_role_outside_the_command_domain_finds_no_command():
+    st = _state(role_caps=[Capability.WRITE.value])
+    st.roles["ops"]["domain_access"] = ["hr"]
+    with pytest.raises(HTTPException) as ei:
+        await invoke_tracked_function("createOrder", {}, st, "ops")
+    assert ei.value.status_code == 404
+    assert st.source_pools.calls == []
+
+
+@pytest.mark.asyncio
+async def test_a_call_without_a_role_is_refused():
+    # REQ-1758: no call runs, and no rows come back ungoverned, without an acting role.
+    st = _state(role_caps=[Capability.WRITE.value], visible_to=[])
+    st.tracked_functions["createOrder"]["kind"] = "query"
+    with pytest.raises(HTTPException) as ei:
+        await invoke_tracked_function("createOrder", {}, st, None)
     assert ei.value.status_code == 403
+    assert st.source_pools.calls == []
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "held", [["admin"], ["superadmin"], ["platform_settings", "cross_org"], ["write"]]
 )
-async def test_nothing_bypasses_an_empty_acl(held):
-    # REQ-1327: the ACL is the whole answer; no capability stands above it.
-    st = _state(role_caps=held, writable_by=[])
+async def test_nothing_reaches_a_command_assigned_to_someone_else(held):
+    # REQ-1327: the assignment is the whole answer; no capability stands above it.
+    st = _state(role_caps=held, visible_to=["someone_else"])
     with pytest.raises(HTTPException) as ei:
         await invoke_tracked_function("createOrder", {}, st, "ops")
-    assert ei.value.status_code == 403
+    assert ei.value.status_code == 404
     assert st.source_pools.calls == []
 
 
 @pytest.mark.asyncio
-async def test_unknown_function_is_400():
+async def test_unknown_function_is_not_found():
     st = _state(role_caps=[Capability.WRITE.value])
     with pytest.raises(HTTPException) as ei:
         await invoke_tracked_function("nope", {}, st, "ops")
-    assert ei.value.status_code == 400
+    assert ei.value.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -133,37 +157,42 @@ async def test_disconnected_source_is_503():
 # ---- Cypher CALL parsing (REQ-872) -----------------------------------------
 
 
-def test_split_call_args_respects_quotes():
-    assert _split_call_args("1, 'a, b', $x") == ["1", " 'a, b'", " $x"]
+def test_a_quoted_comma_does_not_split_an_argument():
+    call = parse_command_call("CALL createOrder(1, 'a, b')", {})
+    assert call is not None and call.values == [1, "a, b"]
 
 
-def test_parse_call_literal_types():
-    p = {"x": 42}
-    assert _parse_call_literal("$x", p) == 42
-    assert _parse_call_literal("'hi'", {}) == "hi"
-    assert _parse_call_literal("7", {}) == 7
-    assert _parse_call_literal("3.5", {}) == 3.5
-    assert _parse_call_literal("true", {}) is True
-    assert _parse_call_literal("null", {}) is None
+def test_argument_literal_types():
+    call = parse_command_call(
+        "CALL f($x, 'hi', 7, 3.5, true, null, [1, 'two'], 'it\\'s')", {"x": 42}
+    )
+    assert call is not None
+    assert call.values == [42, "hi", 7, 3.5, True, None, [1, "two"], "it's"]
+
+
+def test_an_argument_that_is_no_value_is_refused():
+    with pytest.raises(CommandCallRefused, match="argument 1"):
+        parse_command_call("CALL createOrder(id + 1)", {})
 
 
 def test_detect_registered_call_with_yield():
-    st = _state(role_caps=[Capability.WRITE.value])
-    got = detect_registered_call("CALL createOrder(7, 'x') YIELD id, name AS n", st, {})
-    assert got is not None
-    name, args, yields = got
-    assert name == "createOrder"
-    assert list(args.values()) == [7, "x"]
-    assert yields == [("id", "id"), ("name", "n")]
+    call = parse_command_call("CALL createOrder(7, 'x') YIELD id, name AS n", {})
+    assert call is not None
+    assert call.name == "createOrder"
+    assert call.values == [7, "x"]
+    assert call.yields == [("id", "id"), ("name", "n")]
 
 
 def test_detect_registered_call_binds_params():
-    st = _state(role_caps=[Capability.WRITE.value])
-    _n, args, _y = detect_registered_call("CALL createOrder($cid)", st, {"cid": 99})
-    assert list(args.values()) == [99]
+    call = parse_command_call("CALL createOrder($cid)", {"cid": 99})
+    assert call is not None and call.values == [99]
 
 
-def test_detect_ignores_unregistered_name():
-    st = _state(role_caps=[Capability.WRITE.value])
-    assert detect_registered_call("CALL db.labels()", st, {}) is None
-    assert detect_registered_call("CALL somethingElse(1)", st, {}) is None
+def test_a_missing_parameter_is_refused_by_name():
+    with pytest.raises(CommandCallRefused, match=r"\$cid"):
+        parse_command_call("CALL createOrder($cid)", {})
+
+
+def test_namespaced_procedures_are_not_command_calls():
+    assert parse_command_call("CALL db.labels()", {}) is None
+    assert parse_command_call("MATCH (n) RETURN n", {}) is None

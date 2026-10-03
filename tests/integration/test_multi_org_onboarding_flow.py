@@ -404,7 +404,8 @@ def test_second_user_cannot_claim_superadmin(planes):
         assert losing.json() == {"claimed": False, "claimed_by": "super1", "org_id": None}
         second = client.get("/whoami", headers={**_basic("user2"), "host": _CONTROL_HOST})
     assert second.status_code == 401, second.text
-    assert second.json()["detail"] == "Org selection required"
+    # REQ-1235: the refusal goes on to say how to name the org.
+    assert second.json()["detail"].startswith("Org selection required")
 
 
 def test_duplicate_org_rejected(planes):

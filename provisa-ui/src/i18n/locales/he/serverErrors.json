@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json אינו JSON תקין: {{error}}",
       "args_json_not_object": "args_json חייב להיות אובייקט JSON",
       "column_not_writable": "לתפקיד '{{role}}' אין גישת כתיבה לעמודה '{{column}}'",
+      "command_filter_refused": "{{field}}: {{reason}}",
       "definition_not_available": "{{statement}} אינו זמין כאן: הגדרות נוצרות במודל או במקור הנתונים, ושורות מוסרות באמצעות DELETE.",
       "engine_not_connected": "המנוע אינו מחובר",
       "grpc_source_not_registered": "מקור gRPC מרוחק '{{source_id}}' אינו רשום",
@@ -84,6 +85,7 @@
       "query_required": "query הוא שדה חובה",
       "query_timeout": "השאילתה חרגה מהזמן הקצוב לאחר {{timeout_s}} שניות",
       "query_too_complex": "מורכבות השאילתה ({{score}}) חורגת מהמגבלה {{limit}} ({{limit_of}}).",
+      "redirect_failed": "לא ניתן היה לכתוב את התוצאה למאגר התוצאות: {{error}}",
       "redirect_upload_failed": "העלאת redirect נכשלה: {{error}}",
       "request_interrupted": "{{error}}",
       "row_level_key_required": "הטבלה '{{table}}' משוכפלת שורה אחר שורה וניתן לקרוא אותה רק לפי המפתח שלה ({{key}}). סננו לפי המפתח באמצעות שוויון או רשימת IN, או צרפו את הטבלה לפי עמודה אחת.",
@@ -92,7 +94,8 @@
       "table_not_found": "הטבלה '{{table}}' לא נמצאה",
       "unknown_action_field": "שדה פעולה לא מוכר: '{{field}}'",
       "unknown_command": "פקודה לא מוכרת '{{name}}'",
-      "write_not_admitted": "התפקיד '{{role}}' אינו רשאי לבצע כתיבה זו: כתיבה דורשת את הרשאת הכתיבה, גישת כתיבה לכל עמודה שנכתבת, ושורות שמסנן השורות של התפקיד מתיר."
+      "write_not_admitted": "התפקיד '{{role}}' אינו רשאי לבצע כתיבה זו: כתיבה דורשת את הרשאת הכתיבה, גישת כתיבה לכל עמודה שנכתבת, ושורות שמסנן השורות של התפקיד מתיר.",
+      "write_not_supported": "'{{table}}' אינה מקבלת {{operation}}: המקור שלה אינו יכול לבצע זאת"
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",
@@ -118,6 +121,9 @@
     "functions": {
       "approval_denied": "האישור נדחה עבור '{{name}}': {{reason}}",
       "approval_unavailable": "הפקודה '{{name}}' דורשת אישור ולא מוגדר hook לאישור",
+      "argument_count": "{{signature}} מקבל {{count}} ארגומנטים; נמסרו {{given}}",
+      "argument_missing": "{{signature}}: הארגומנט '{{argument}}' לא נמסר",
+      "argument_not_declared": "{{signature}}: הארגומנט '{{argument}}' אינו מוצהר",
       "binding_missing_key": "לקישור הפונקציה עבור kind '{{kind}}' חסר מפתח חובה '{{key}}'",
       "egress_denied": "יציאה אל '{{endpoint}}' נדחתה: המארח אינו ברשימת ההיתרים ליציאת UDF (REQ-885 deny-by-default). הוסיפו אותו ל-udf_egress_allowlist כדי להתיר.",
       "grpc_call_failed": "קריאת grpc {{target}}{{path}} נכשלה: {{status}}: {{details}}",
@@ -133,6 +139,7 @@
       "script_failed": "הסקריפט הסתיים בקוד {{returncode}}: {{stderr}}",
       "source_not_connected": "המקור '{{source_id}}' אינו מחובר",
       "unknown_arg_kind": "arg_kind לא מוכר '{{arg_kind}}' עבור '{{name}}'",
+      "unknown_command": "פקודה לא ידועה: '{{name}}'",
       "unknown_impl_kind": "impl_kind לא מוכר של פונקציה: '{{impl_kind}}'",
       "written_table_missing": "הפקודה '{{name}}' כותבת אל '{{table}}', שאינה רשומה"
     },
@@ -333,6 +340,8 @@
       "task_not_found": "המשימה '{{task}}' לא נמצאה",
       "trigger_exists": "הטריגר '{{trigger}}' כבר קיים",
       "trigger_fields_required": "id, name ו-cron הם שדות חובה",
+      "trigger_role_required": "טריגר '{{trigger}}': טריגר SQL פועל כתפקיד של ארגון זה",
+      "trigger_sql_refused": "{{reason}}",
       "unknown_request_type": "סוג בקשה לא מוכר '{{type}}'",
       "unknown_trigger_kind": "סוג טריגר לא מוכר '{{kind}}'",
       "url_sql_exclusive": "url ו-sql מוציאים זה את זה",
@@ -340,7 +349,8 @@
       "view_spans_sources": "התצוגה (View) משתרעת על פני מספר מקורות: {{sources}}",
       "webhook_approved": "ה-Webhook '{{webhook}}' אושר",
       "webhook_name_required": "webhook_name נדרש עבור טריגר webhook",
-      "webhook_not_found": "ה-Webhook '{{webhook}}' לא נמצא"
+      "webhook_not_found": "ה-Webhook '{{webhook}}' לא נמצא",
+      "change_streams_unavailable": "המקור '{{source}}' הוא שרת MongoDB עצמאי, שאינו מספק change streams: אות השינוי native דורש replica set או אשכול מפוצל. הפעילו אותו כ-replica set, או השתמשו באות השינוי poll."
     },
     "secrets": {
       "still_referenced": "{{secret}} עדיין מצוין על ידי {{count}} ערכים שמורים בארגון זה. יש לשנות או להסיר כל אחד מהם ואז למחוק שוב."
@@ -396,6 +406,9 @@
       "no_fields_to_update": "אין שדות לעדכון",
       "self_role_change": "משתמש אינו יכול לשנות את התפקיד של עצמו. פנו למנהל אחר (REQ-1308).",
       "user_not_found": "המשתמש לא נמצא"
+    },
+    "cypher": {
+      "command_call_refused": "{{reason}}"
     }
   }
 }

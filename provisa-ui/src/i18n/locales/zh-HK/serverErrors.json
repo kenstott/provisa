@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json 不是有效的 JSON：{{error}}",
       "args_json_not_object": "args_json 必須是 JSON 物件",
       "column_not_writable": "角色「{{role}}」沒有欄位「{{column}}」的寫入權限",
+      "command_filter_refused": "{{field}}: {{reason}}",
       "definition_not_available": "{{statement}} 在此不可用：定義在模型或數據源中建立，刪除行請使用 DELETE。",
       "engine_not_connected": "引擎未連線",
       "grpc_source_not_registered": "gRPC 遠端數據來源「{{source_id}}」未註冊",
@@ -84,6 +85,7 @@
       "query_required": "必須提供 query",
       "query_timeout": "查詢在 {{timeout_s}} 秒後逾時",
       "query_too_complex": "查詢的複雜度（{{score}}）超過上限 {{limit}}（{{limit_of}}）。",
+      "redirect_failed": "無法將結果寫入結果儲存區：{{error}}",
       "redirect_upload_failed": "重新導向上載失敗：{{error}}",
       "request_interrupted": "{{error}}",
       "row_level_key_required": "資料表 '{{table}}' 按列複製，只能透過其鍵 ({{key}}) 讀取。請使用等值條件或 IN 清單按鍵篩選，或在單一欄位上聯結該資料表。",
@@ -92,7 +94,8 @@
       "table_not_found": "找不到資料表「{{table}}」",
       "unknown_action_field": "未知的動作欄位：「{{field}}」",
       "unknown_command": "未知命令「{{name}}」",
-      "write_not_admitted": "角色 '{{role}}' 不能執行此寫入：寫入需要寫入權限、對所寫每一欄的寫入權限，以及該角色的行過濾器允許的行。"
+      "write_not_admitted": "角色 '{{role}}' 不能執行此寫入：寫入需要寫入權限、對所寫每一欄的寫入權限，以及該角色的行過濾器允許的行。",
+      "write_not_supported": "'{{table}}' 不接受 {{operation}}：其資料來源無法執行"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」的配接器未實作 discover_schema",
@@ -118,6 +121,9 @@
     "functions": {
       "approval_denied": "'{{name}}' 的審批被拒絕：{{reason}}",
       "approval_unavailable": "命令 '{{name}}' 需要審批，但未設定審批鉤子",
+      "argument_count": "{{signature}} 接受 {{count}} 個參數；提供了 {{given}} 個",
+      "argument_missing": "{{signature}}：未提供參數 '{{argument}}'",
+      "argument_not_declared": "{{signature}}：參數 '{{argument}}' 未宣告",
       "binding_missing_key": "類型「{{kind}}」的函數繫結缺少必要索引鍵「{{key}}」",
       "egress_denied": "拒絕連出至「{{endpoint}}」：主機不在 UDF 連出允許清單上（REQ-885 預設拒絕）。請將其加入 udf_egress_allowlist 以允許。",
       "grpc_call_failed": "gRPC 呼叫 {{target}}{{path}} 失敗：{{status}}：{{details}}",
@@ -133,6 +139,7 @@
       "script_failed": "指令碼以 {{returncode}} 結束：{{stderr}}",
       "source_not_connected": "數據來源「{{source_id}}」未連線",
       "unknown_arg_kind": "「{{name}}」的 arg_kind「{{arg_kind}}」未知",
+      "unknown_command": "未知命令：'{{name}}'",
       "unknown_impl_kind": "未知的函數 impl_kind：「{{impl_kind}}」",
       "written_table_missing": "命令 '{{name}}' 寫入 '{{table}}'，但該表未註冊"
     },
@@ -333,6 +340,8 @@
       "task_not_found": "找不到任務「{{task}}」",
       "trigger_exists": "觸發程序「{{trigger}}」已存在",
       "trigger_fields_required": "必須提供 id、name 及 cron",
+      "trigger_role_required": "觸發器 '{{trigger}}'：SQL 觸發器以本組織的某個角色執行",
+      "trigger_sql_refused": "{{reason}}",
       "unknown_request_type": "未知的請求類型「{{type}}」",
       "unknown_trigger_kind": "未知的觸發程序類型「{{kind}}」",
       "url_sql_exclusive": "url 與 sql 不可同時使用",
@@ -340,7 +349,8 @@
       "view_spans_sources": "檢視橫跨多個數據來源：{{sources}}",
       "webhook_approved": "已批准 Webhook「{{webhook}}」",
       "webhook_name_required": "Webhook 觸發程序必須提供 webhook_name",
-      "webhook_not_found": "找不到 Webhook「{{webhook}}」"
+      "webhook_not_found": "找不到 Webhook「{{webhook}}」",
+      "change_streams_unavailable": "來源 '{{source}}' 是獨立的 MongoDB 伺服器，不提供 change streams：native 變更訊號需要副本集或分片叢集。請將其作為副本集執行，或使用 poll 變更訊號。"
     },
     "secrets": {
       "still_referenced": "本機構中仍有 {{count}} 個已儲存的值引用 {{secret}}。請更改或移除每一個，然後再次刪除。"
@@ -396,6 +406,9 @@
       "no_fields_to_update": "沒有可更新的欄位",
       "self_role_change": "使用者不可更改自己的角色。請要求另一位管理員處理（REQ-1308）。",
       "user_not_found": "找不到使用者"
+    },
+    "cypher": {
+      "command_call_refused": "{{reason}}"
     }
   }
 }

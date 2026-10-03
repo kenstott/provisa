@@ -222,7 +222,9 @@ def step_source_in_catalog_and_tables_enumerable(shared_data):
         conn = trino.dbapi.connect(
             host=trino_host,
             port=trino_port,
-            user="provisa",
+            # Not the engine's user: resource-groups.json admits that user only with an org in
+            # the statement's source (REQ-056).
+            user="itest",
             catalog="system",
             schema="runtime",
         )

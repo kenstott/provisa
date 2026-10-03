@@ -44,6 +44,7 @@ def _make_state(role_id: str = "admin") -> SimpleNamespace:
             "domain_id": "default",
             "table_description": "Sales orders",
             "domain_description": "Default domain",
+            "write_ops": ["delete", "insert", "update"],
         }
     }
     state = SimpleNamespace(
@@ -245,6 +246,7 @@ class TestAggregateGroupByParams:
                     {"column_name": "amount", "visible_to": ["admin"]},
                     {"column_name": "region", "visible_to": ["admin"]},
                 ],
+                "write_ops": ["delete", "insert", "update"],
             },
         ]
         column_types = {
@@ -266,7 +268,13 @@ class TestAggregateGroupByParams:
         )
         schema = generate_schema(si)
         ctx = build_context(si)
-        path_map = {"orders": {"domain_id": "sales", "table_name": "orders"}}
+        path_map = {
+            "orders": {
+                "domain_id": "sales",
+                "table_name": "orders",
+                "write_ops": ["delete", "insert", "update"],
+            }
+        }
         state = SimpleNamespace(
             schemas={"admin": schema}, contexts={"admin": ctx}, table_path_maps={"admin": path_map}
         )
@@ -348,6 +356,7 @@ class TestDomainFilter:
                 "domain_id": "sales",
                 "table_description": None,
                 "domain_description": None,
+                "write_ops": ["delete", "insert", "update"],
             },
             "products": {
                 "schema_name": "public",
@@ -355,6 +364,7 @@ class TestDomainFilter:
                 "domain_id": "catalog",
                 "table_description": None,
                 "domain_description": None,
+                "write_ops": ["delete", "insert", "update"],
             },
         }
         state = SimpleNamespace(schemas={"admin": schema}, table_path_maps={"admin": path_map})

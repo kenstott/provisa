@@ -66,7 +66,6 @@ def _row_to_function(row: dict) -> dict:
         "returns": row["returns"],
         "arguments": _args_to_ui(row["arguments"]),
         "visibleTo": list(row["visible_to"] or []),
-        "writableBy": list(row["writable_by"] or []),
         "domainId": row["domain_id"],
         "description": row.get("description"),
         "kind": row.get("kind", "mutation"),
@@ -142,7 +141,6 @@ class FunctionInput(BaseModel):  # REQ-205, REQ-206, REQ-304, REQ-305, REQ-306
     returns: str = ""
     arguments: list[dict] = []
     visibleTo: list[str] = []
-    writableBy: list[str] = []
     domainId: str = ""
     description: str | None = None
     kind: str = "mutation"
@@ -254,7 +252,6 @@ async def create_function(
         returns=body.returns,
         arguments=[FunctionArgument(**a) for a in _args_from_ui(body.arguments)],
         visible_to=body.visibleTo,
-        writable_by=body.writableBy,
         domain_id=body.domainId,
         description=body.description,
         kind=body.kind,
@@ -331,7 +328,6 @@ async def update_function(
                 returns=body.returns,
                 arguments=_args_from_ui(body.arguments),
                 visible_to=body.visibleTo,
-                writable_by=body.writableBy,
                 domain_id=body.domainId,
                 description=body.description,
                 kind=body.kind,

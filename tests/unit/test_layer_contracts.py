@@ -154,6 +154,7 @@ def _build_minimal_ctx():
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "amount", "visible_to": ["admin"]},
             ],
+            "write_ops": ["delete", "insert", "update"],
         }
     ]
     column_types = {1: [_col("id", "integer"), _col("amount", "decimal(10,2)")]}

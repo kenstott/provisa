@@ -34,6 +34,7 @@ def write_governance(
     writable: dict[int, list[str]] | None = None,
     can_write: bool = True,
     role_id: str = "writer",
+    write_ops: dict[int, set[str]] | None = None,
 ) -> GovernanceContext:
     """Governance for ``role_id`` over ``tables`` — ``{"schema.table": (table_id, columns)}`` —
     holding the write right (unless ``can_write`` is False), named on every column unless
@@ -46,6 +47,11 @@ def write_governance(
     named = writable if writable is not None else {tid: cols for tid, cols in tables.values()}
     gov.writable_columns = {tid: frozenset(cols) for tid, cols in named.items()}
     gov.rls_rules = dict(rls or {})
+    # Each table's source takes every write unless ``write_ops`` says which
+    # (executor/write_capability.py).
+    every = {"insert", "update", "delete"}
+    offered = write_ops if write_ops is not None else {tid: every for tid, _ in tables.values()}
+    gov.write_ops = {tid: frozenset(ops) for tid, ops in offered.items()}
     return gov
 
 

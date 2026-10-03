@@ -36,6 +36,35 @@ class SnowflakeBackend(NativeEngineBackend):
             raise RuntimeError("snowflake engine requires a URL ($PROVISA_ENGINE_URL)")
         return SnowflakeFederationRuntime(url=url)
 
+    result_formats = frozenset({"parquet"})
+
+    def writes_results_now(self) -> bool:
+        """Snowflake writes results only through the storage integration the deployment names
+        (``redirect.snowflake_storage_integration``); with none, a result is delivered another
+        way."""
+        from provisa.core import settings_registry
+
+        return bool(settings_registry.value("redirect.snowflake_storage_integration"))
+
+    def ctas_redirect(
+        self, state: Any, physical_sql: str, output_format: str, params: list | None
+    ) -> dict:
+        """REQ-1194: Snowflake runs the statement and unloads its result to the results bucket
+        itself (``COPY INTO 's3://...' FROM (query)``); its result row is the rows unloaded."""
+        from provisa.executor import redirect
+        from provisa.federation import result_sink
+
+        result_sink.require_format(self.engine.name, output_format, self.result_formats)
+        config = redirect.RedirectConfig.from_env()
+        redirect.ensure_results_bucket_sync(config)
+        target = result_sink.new_target(config)
+        unloaded = (
+            self._runtime_for(state)
+            .run_sync(result_sink.snowflake_copy(physical_sql, target, config), params)
+            .rows
+        )
+        return {"s3_prefix": target.s3_prefix, "row_count": int(unloaded[0][0])}
+
     def replica_target(self, state: Any, *, address: Any, args: Any, engine: Any) -> Any:
         """A replica in this engine's own Snowflake database: Arrow batches ingested into a
         build table, then the replica overwritten from it in one statement (REQ-1915)."""

@@ -47,6 +47,8 @@ class TrinoPollingProvider(NotificationProvider):  # REQ-260, REQ-282, REQ-283, 
         watermark_column: str,
         poll_interval: float = 5.0,
         user: str = "provisa",
+        *,
+        source: str,
     ) -> None:
         self._host = host
         self._port = port
@@ -56,6 +58,8 @@ class TrinoPollingProvider(NotificationProvider):  # REQ-260, REQ-282, REQ-283, 
         self._watermark_column = watermark_column
         self._poll_interval = poll_interval
         self._user = user
+        # REQ-056: names the org these statements run for; Trino's resource groups select on it.
+        self._source = source
         self._running = True
 
     def _connect(self) -> Connection:
@@ -65,6 +69,7 @@ class TrinoPollingProvider(NotificationProvider):  # REQ-260, REQ-282, REQ-283, 
             host=self._host,
             port=self._port,
             user=self._user,
+            source=self._source,
             catalog=self._catalog,
             schema=self._schema,
             http_scheme="http",

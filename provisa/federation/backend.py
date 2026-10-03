@@ -479,13 +479,25 @@ class EngineBackend:
         active_workers)``. A native in-process engine has no worker cluster."""
         return (self.is_connected(state), 0, 0)
 
+    #: The formats this engine writes to an object store itself (REQ-1194): a statement's
+    #: result goes from the engine to the store and no row passes through Provisa. Empty: the
+    #: engine has no such write, and a result is delivered another way.
+    result_formats: frozenset[str] = frozenset()
+
+    def writes_results_now(self) -> bool:
+        """Whether the deployment has given the engine what it writes results with. True for an
+        engine that needs nothing beyond its connection and the results store's own keys."""
+        return True
+
     def ctas_redirect(
         self, state: Any, physical_sql: str, output_format: str, params: list | None
     ) -> dict:
-        """Execute a query as CTAS-to-object-store and return the redirect manifest. A native
-        engine has no CTAS-to-S3 redirect path. ``params``: the statement's bound values."""
+        """Run the statement with its bound values (``params``) and have the engine write the
+        result to the results object store: ``{s3_prefix, row_count}`` (REQ-1194). An engine
+        declares the formats it writes in ``result_formats``; one that declares none has no
+        such write."""
         raise NotImplementedError(
-            f"engine {self.engine.name!r} does not implement CTAS-to-object-store redirect"
+            f"engine {self.engine.name!r} does not write results to an object store"
         )
 
     # -- source lifecycle ------------------------------------------------------
@@ -1036,6 +1048,8 @@ class TrinoBackend(EngineBackend):
             # Surface connection/config errors instead of masking them as an unhealthy cluster.
             raise RuntimeError(f"Trino cluster diagnostics probe failed: {exc}") from exc
         return (connected, worker_count, active_workers)
+
+    result_formats = frozenset({"parquet", "orc"})
 
     def ctas_redirect(
         self, state: Any, physical_sql: str, output_format: str, params: list | None

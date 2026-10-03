@@ -114,6 +114,7 @@ kubectl get namespace "$HELM_NAMESPACE" &>/dev/null || \
 HELM_ARGS=(
   --namespace "$HELM_NAMESPACE"
   --set provisa.replicaCount=1
+  --set auth.provider=none
   --set provisa.image.pullPolicy=Never
   --set trino.coordinator.resources.requests.cpu=250m
   --set trino.coordinator.resources.requests.memory=1Gi

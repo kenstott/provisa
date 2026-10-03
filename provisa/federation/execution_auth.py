@@ -40,7 +40,7 @@ import secrets
 import threading
 from collections import deque
 from dataclasses import dataclass
-from typing import Union
+from typing import Any, Union
 
 _ISSUED_SYSTEM_TOKENS: deque[str] = deque(maxlen=4096)
 _ISSUED_SYSTEM_SET: set[str] = set()
@@ -87,6 +87,25 @@ class SystemAuth:
 
 
 ExecutionAuthorization = Union[GovernedPlanAuth, SystemAuth]
+
+
+def system_auth(reason: str, expected_sql: str | None = None) -> SystemAuth:
+    """The system's own authorization for one engine call: a freshly minted token, with what the
+    call is for. Only internal work (startup warm-up, replication, discovery, signals, scheduled
+    jobs) and the admin handlers behind the proven admin gate use it."""
+    return SystemAuth(token=mint_system_token(), reason=reason, expected_sql=expected_sql)
+
+
+def plan_authorization(plan: Any) -> GovernedPlanAuth:
+    """The authorization a governed plan carries: its pipeline stamp. A plan without one was not
+    minted by the one pipeline and authorizes nothing."""
+    stamp = getattr(plan, "stamp", None)
+    if not stamp:
+        raise PermissionError(
+            "ungoverned plan rejected: no pipeline stamp — every executed plan is produced by the "
+            "one governed pipeline (_govern_and_route / _govern_and_route_compiled)"
+        )
+    return GovernedPlanAuth(stamp)
 
 
 def verify_execution_authorization(auth: ExecutionAuthorization, sql: str) -> None:

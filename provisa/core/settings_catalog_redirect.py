@@ -104,6 +104,17 @@ DECLARED: list[Setting] = [
         default="us-east-1",
     ),
     Setting(
+        # REQ-1194: a Snowflake engine reaches the results bucket through a storage integration
+        # (Snowflake's own grant), so no credential is in the statement Snowflake keeps.
+        key="redirect.snowflake_storage_integration",
+        card="redirect",
+        type="str",
+        effect="live",
+        req="REQ-1194",
+        env="PROVISA_REDIRECT_SNOWFLAKE_STORAGE_INTEGRATION",
+        nullable=True,
+    ),
+    Setting(
         key="redirect.encrypt",
         card="redirect",
         type="bool",

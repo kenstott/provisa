@@ -78,19 +78,31 @@ def writable_source_types() -> list[str]:
     return [t for t in SOURCE_TO_DIALECT if is_writable(t)]
 
 
+def _writes_upstream(connector: object) -> bool:
+    """Whether ``connector`` writes the SOURCE: a live read-write attach (Mechanism.ATTACH_RW) that
+    declares write support. A land connector's ``write`` is its own replica store, never the
+    source the replica was copied from."""
+    from provisa.federation.connector_base import Mechanism
+
+    return (
+        getattr(connector, "mechanism", None) == Mechanism.ATTACH_RW
+        and connector.capability().write  # type: ignore[attr-defined]
+    )
+
+
 def is_writable_via_engine(source_type: str, engine: FederationEngine) -> bool:
-    """Whether ``source_type`` can be written through the engine's connector (Capability.write).
+    """Whether ``source_type`` can be written through the engine's connector.
 
     The engine executes the mutation in its own dialect against the attached/foreign table, so no
-    per-source SQLGlot gate applies — the sole gate is the connector declaring upstream write support.
+    per-source SQLGlot gate applies — the sole gate is a live read-write attach of the source.
     """
     connector = engine.connectors.get(source_type)
-    return connector is not None and connector.capability().write
+    return connector is not None and _writes_upstream(connector)
 
 
 def engine_writable_source_types(engine: FederationEngine) -> set[str]:
     """The source types the engine can write upstream through a write-capable connector."""
-    return {t for t, c in engine.connectors.items() if c.capability().write}
+    return {t for t, c in engine.connectors.items() if _writes_upstream(c)}
 
 
 def resolve_write_path(

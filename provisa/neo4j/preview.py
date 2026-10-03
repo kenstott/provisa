@@ -62,7 +62,10 @@ async def preview_query(  # REQ-296
         httpx.HTTPError: on network or HTTP errors
     """
     preview_cypher = _ensure_limit(cypher, limit=5)
-    url = f"{base_url}/db/{database}/tx/commit"
+    from provisa.core.secrets import resolve_secrets
+
+    # The source's address is stored as written; a reference in it is resolved here.
+    url = f"{resolve_secrets(base_url)}/db/{database}/tx/commit"
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
     auth_arg = httpx.BasicAuth(*auth) if auth else httpx.USE_CLIENT_DEFAULT
 

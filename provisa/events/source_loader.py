@@ -29,7 +29,11 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import aclosing
 
+from provisa.federation.execution_auth import system_auth
+
 from typing import Any
+
+from provisa.compiler.sql_literals import sql_literal
 
 # Source types whose "current rows" are fetched by calling the adapter, not by an engine SQL scan.
 # Everything else (RDBMS, cloud DW, OLAP, data lake, file, and connector-backed NoSQL/streaming/graph)
@@ -92,7 +96,9 @@ async def engine_table_rows(engine: Any, source: Any, table: Any) -> list[dict]:
 
     catalog = source_to_catalog(source.id)
     ref = f'"{catalog}"."{table.schema_name}"."{table.table_name}"'
-    result = await engine.execute_engine(f"SELECT * FROM {ref}")
+    result = await engine.execute_engine(
+        f"SELECT * FROM {ref}", authorization=system_auth("source row load")
+    )
     return [dict(zip(result.column_names, row)) for row in result.rows]
 
 
@@ -199,6 +205,11 @@ class SourceRowLoader:
         from provisa.federation.strategy import engine_attaches
 
         stype = _source_type(source)
+        # REQ-788: a files table that declares a glob is ONE logical table over the matched files.
+        # It is read by DuckDB read_csv/read_parquet over the file list in-process, on every
+        # engine (the replica is then served from the store) — no engine reads it in place.
+        if getattr(table, "file_glob", None):
+            return _glob_replica_source(source, table, columns)
         pools = getattr(state, "source_pools", None)
         if (
             floor_setting(source) is not None
@@ -258,8 +269,10 @@ class SourceRowLoader:
 
         catalog = source_to_catalog(source.id)
         ref = f'"{catalog}"."{table.schema_name}"."{table.table_name}"'
-        where = _pk_in_clause(pk_columns, keys)
-        result = await self._engine.execute_engine(f"SELECT * FROM {ref} WHERE {where}")
+        where = _pk_in_clause(pk_columns, keys, self._engine.dialect)
+        result = await self._engine.execute_engine(
+            f"SELECT * FROM {ref} WHERE {where}", authorization=system_auth("source row load")
+        )
         return [dict(zip(result.column_names, row)) for row in result.rows]
 
     async def load_keys_arrow(
@@ -276,29 +289,16 @@ class SourceRowLoader:
         return pa.Table.from_pylist(await self.load_keys(source, table, pk_columns, keys))
 
 
-def _sql_literal(value: Any) -> str:
-    """Inline-literal rendering for a PK value in a generated ``IN`` predicate — the same posture
-    ``load``'s own ``SELECT * FROM {ref}`` string-building already uses (no bind-param plumbing
-    through the engine terminal call). A declared PK is trusted (design constraint 6): no
-    additional escaping/validation beyond standard SQL-string quoting is performed here."""
-    if value is None:
-        return "NULL"
-    if isinstance(value, bool):
-        return "TRUE" if value else "FALSE"
-    if isinstance(value, (int, float)):
-        return str(value)
-    return "'" + str(value).replace("'", "''") + "'"
-
-
-def _pk_in_clause(pk_columns: list[str], keys: list[tuple[Any, ...]]) -> str:
+def _pk_in_clause(pk_columns: list[str], keys: list[tuple[Any, ...]], dialect: str) -> str:
     """A ``col IN (...)`` (single-column PK) or ``(col1, col2) IN ((...), (...))`` (composite PK)
-    predicate naming exactly ``keys`` -- never a range, never unbounded."""
+    predicate naming exactly ``keys`` -- never a range, never unbounded. Each key value is a
+    literal of ``dialect`` (the engine the statement runs on), by the dialect's one rule."""
     if len(pk_columns) == 1:
         col = pk_columns[0]
-        values = ", ".join(_sql_literal(k[0]) for k in keys)
+        values = ", ".join(sql_literal(k[0], dialect) for k in keys)
         return f'"{col}" IN ({values})'
     cols = ", ".join(f'"{c}"' for c in pk_columns)
-    tuples = ", ".join("(" + ", ".join(_sql_literal(v) for v in key) + ")" for key in keys)
+    tuples = ", ".join("(" + ", ".join(sql_literal(v, dialect) for v in key) + ")" for key in keys)
     return f"({cols}) IN ({tuples})"
 
 
@@ -1003,8 +1003,10 @@ def make_clickhouse_keyed_arrow_loader() -> AdapterKeyedLoader:
         try:
             cols = ", ".join(f'"{n}"' for n in names)
             parts = [
-                await driver.execute_arrow(f'SELECT {cols} FROM "{table.table_name}" WHERE {where}')
-                for where in _pk_in_clauses_within(
+                await driver.execute_arrow(
+                    f'SELECT {cols} FROM "{table.table_name}" WHERE {where}', bound
+                )
+                for where, bound in _pk_in_clauses_within(
                     pk_columns, keys, _CLICKHOUSE_MAX_IN_CLAUSE_CHARS
                 )
             ]
@@ -1042,16 +1044,44 @@ def _clickhouse_arrow_temporals(data: Any, columns: list[Any]) -> Any:
 _CLICKHOUSE_MAX_IN_CLAUSE_CHARS = 200_000
 
 
+def _bound_in_clause(
+    pk_columns: list[str], keys: list[tuple[Any, ...]]
+) -> tuple[str, dict[str, Any]]:
+    """``_pk_in_clause`` with each key value a ``%(kN)s`` placeholder, and the values by name: the
+    driver binds them, escaping each for the source, so no value is written into the text."""
+    bound: dict[str, Any] = {}
+
+    def _slot(value: Any) -> str:
+        name = f"k{len(bound) + 1}"
+        bound[name] = value
+        return f"%({name})s"
+
+    if len(pk_columns) == 1:
+        values = ", ".join(_slot(k[0]) for k in keys)
+        return f'"{pk_columns[0]}" IN ({values})', bound
+    cols = ", ".join(f'"{c}"' for c in pk_columns)
+    tuples = ", ".join("(" + ", ".join(_slot(v) for v in key) + ")" for key in keys)
+    return f"({cols}) IN ({tuples})", bound
+
+
+def _bound_chars(value: Any) -> int:
+    """At most how many characters ``value`` takes once the driver has bound it: a number as
+    written; any other value quoted, with every character possibly escaped."""
+    if isinstance(value, (bool, int, float)) or value is None:
+        return len(str(value)) + 2
+    return 2 * len(str(value)) + 2
+
+
 def _pk_in_clauses_within(
     pk_columns: list[str], keys: list[tuple[Any, ...]], max_chars: int
-) -> list[str]:
+) -> list[tuple[str, dict[str, Any]]]:
     """Predicates that together name exactly ``keys``, each key once, each rendering to at most
     ``max_chars``. A run of three or more consecutive integers of a single-column key is one
     ``BETWEEN`` -- over integers it names exactly the run's members -- and the rest are
-    ``_pk_in_clause`` batches. Confirmed live: large_federated_join's 1..1M order_id keys as IN
+    ``_bound_in_clause`` batches. Confirmed live: large_federated_join's 1..1M order_id keys as IN
     batches were 35 statements of ~200 KB whose parameter-comment scan alone took ~20s; as a
     run they are one statement."""
-    clauses: list[str] = []
+    clauses: list[tuple[str, dict[str, Any]]] = []
     if len(pk_columns) == 1 and keys and all(type(k[0]) is int for k in keys):
         runs, singles = _integer_runs(sorted({k[0] for k in keys}))
         col = pk_columns[0]
@@ -1060,24 +1090,24 @@ def _pk_in_clauses_within(
         size = 0
         for b in between:
             if part and size + len(b) + 4 > max_chars:
-                clauses.append("(" + " OR ".join(part) + ")")
+                clauses.append(("(" + " OR ".join(part) + ")", {}))
                 part, size = [], 0
             part.append(b)
             size += len(b) + 4
         if part:
-            clauses.append("(" + " OR ".join(part) + ")")
+            clauses.append(("(" + " OR ".join(part) + ")", {}))
         keys = [(v,) for v in singles]
     batch: list[tuple[Any, ...]] = []
     size = 0
     for key in keys:
-        key_chars = sum(len(_sql_literal(v)) + 2 for v in key) + 4
+        key_chars = sum(_bound_chars(v) + 2 for v in key) + 4
         if batch and size + key_chars > max_chars:
-            clauses.append(_pk_in_clause(pk_columns, batch))
+            clauses.append(_bound_in_clause(pk_columns, batch))
             batch, size = [], 0
         batch.append(key)
         size += key_chars
     if batch:
-        clauses.append(_pk_in_clause(pk_columns, batch))
+        clauses.append(_bound_in_clause(pk_columns, batch))
     return clauses
 
 
@@ -1607,3 +1637,38 @@ def make_graphql_remote_loader(gql_sources: dict[str, Any], max_rows: int) -> Ad
     _load.replica_source = _replica_source  # type: ignore[attr-defined]
 
     return _load
+
+
+def _glob_replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
+    """A files-glob table as an Arrow stream read by an in-process DuckDB over the matched files
+    (REQ-788). The column-set rule is re-checked here (the files may have changed since load),
+    refusing a differing file by name before any row is read."""
+    import duckdb
+
+    from provisa.core.secrets import resolve_secrets
+    from provisa.federation.replica_source import BATCH_ROWS as _BATCH_ROWS, ArrowStreamSource
+    from provisa.file_source.files_glob import (
+        columns_of_file,
+        duckdb_glob_relation,
+        matched_files,
+        validate_glob_table,
+    )
+
+    async def _open():
+        files = matched_files(resolve_secrets(getattr(source, "path", "") or ""), table.file_glob)
+        validate_glob_table(table.file_glob, files, columns_of_file)
+        sql, params = duckdb_glob_relation(
+            files, [name for name, _ in columns], getattr(table, "source_file_column", None)
+        )
+        con = duckdb.connect()
+        reader = con.execute(sql, params).fetch_record_batch(_BATCH_ROWS)
+
+        def _batches():
+            yield from reader
+
+        async def _close() -> None:
+            con.close()
+
+        return _batches, _close
+
+    return ArrowStreamSource(_open)

@@ -55,6 +55,7 @@ def test_a_rebuild_forgets_a_role_that_was_deleted(monkeypatch):
                     "table_name": "orders",
                     "governance": "pre-approved",
                     "columns": [{"column_name": "id", "visible_to": ["*"]}],
+                    "write_ops": ["delete", "insert", "update"],
                 }
             ],
             relationships=[],

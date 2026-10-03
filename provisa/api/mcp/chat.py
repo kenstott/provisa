@@ -42,6 +42,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from provisa.api.mcp import tools as mcp_tools
+from provisa.api.mcp.sql_quoting import quote_identifiers
 
 # Tool schemas mirror the MCP tools, minus `role` — the role is pinned by the endpoint from the
 # caller's identity and injected at execution, so the model can never select or escalate it.
@@ -939,13 +940,19 @@ async def _execute_tool(
     if name == "search_catalog":
         return await mcp_tools.search_catalog(state, role, args["query"], k=int(args.get("k", 5)))
     if name == "run_sql":
-        return await mcp_tools.run_sql(
+        # Polly's SQL runs with every identifier quoted; SQL that does not parse runs as written,
+        # and the result says why it was not quoted.
+        sql, quote_error = quote_identifiers(args["sql"])
+        result = await mcp_tools.run_sql(
             state,
             role,
-            args["sql"],
+            sql,
             limit=args.get("limit"),
             offset=int(args.get("offset", 0)),
         )
+        if quote_error is not None:
+            result["sql_note"] = _unquoted_note(quote_error)
+        return result
     if name == "explain_sql":
         return await mcp_tools.explain_sql(state, role, args["sql"])
     if name == "propose_source":
@@ -1146,6 +1153,24 @@ def _openai_message_to_wire_blocks(message: Any) -> list[dict]:
     return blocks
 
 
+def _unquoted_note(error: str) -> str:
+    return f"The SQL could not be read to quote its names, so it is used as written: {error}"
+
+
+def _prepare_client_call(call: dict) -> tuple[dict, str | None]:
+    """A client tool call as the browser receives it, and a note for the user when there is one.
+
+    SQL handed to the SQL explorer has every identifier quoted (a reserved word as a column name
+    otherwise breaks it). SQL that does not parse is handed on unchanged, and the note says why.
+    """
+    state = call["input"].get("state") if call["name"] == "navigate" else None
+    if not isinstance(state, dict) or not isinstance(state.get("sql"), str):
+        return call, None
+    sql, error = quote_identifiers(state["sql"])
+    prepared = {**call, "input": {**call["input"], "state": {**state, "sql": sql}}}
+    return prepared, None if error is None else _unquoted_note(error)
+
+
 def _split_tool_calls(calls: list[dict]) -> tuple[list[dict], list[dict]]:
     """Normalized {id, name, input} tool calls -> (client_calls, server_calls)."""
     client_calls = [c for c in calls if c["name"] in _CLIENT_TOOL_NAMES]
@@ -1312,8 +1337,20 @@ async def _run_chat_anthropic(
             # REQ-1795: stop here — the browser must execute these, then resume by POSTing the
             # full history again with the assistant content below plus a tool_result for every
             # block.id in `pending` (including the server ones already computed above).
+            pending = []
             for block in client_blocks:
-                yield {"type": "tool_use", "name": block.name, "input": block.input, "client": True}
+                call, note = _prepare_client_call(
+                    {"id": block.id, "name": block.name, "input": block.input}
+                )
+                if note is not None:
+                    yield {"type": "text", "text": f"\n\n{note}"}
+                pending.append(call)
+                yield {
+                    "type": "tool_use",
+                    "name": block.name,
+                    "input": call["input"],
+                    "client": True,
+                }
             yield {
                 "type": "awaiting_client_tools",
                 # REQ-1838/1839 regression: resp now comes from stream.get_final_message()
@@ -1330,7 +1367,7 @@ async def _run_chat_anthropic(
                     b.model_dump(exclude=getattr(b, "__api_exclude__", None)) for b in resp.content
                 ],
                 "server_tool_results": tool_results,
-                "pending": [{"id": b.id, "name": b.name, "input": b.input} for b in client_blocks],
+                "pending": pending,
                 # REQ-1850: every server-only round already completed earlier in THIS turn, in
                 # wire order, so the frontend can splice them into its resumed `convo` ahead of
                 # this round's own assistant_content/server_tool_results.
@@ -1520,7 +1557,12 @@ async def _run_chat_aisuite(
             )
 
         if client_calls:
-            for call in client_calls:
+            prepared_calls = []
+            for raw_call in client_calls:
+                call, note = _prepare_client_call(raw_call)
+                if note is not None:
+                    yield {"type": "text", "text": f"\n\n{note}"}
+                prepared_calls.append(call)
                 yield {
                     "type": "tool_use",
                     "name": call["name"],
@@ -1531,7 +1573,7 @@ async def _run_chat_aisuite(
                 "type": "awaiting_client_tools",
                 "assistant_content": wire_blocks,
                 "server_tool_results": tool_results,
-                "pending": client_calls,
+                "pending": prepared_calls,
                 "prior_messages": prior_messages,
             }
             yield {"type": "done"}

@@ -17,14 +17,18 @@ mutation execute path (never the engine). Extracted from endpoint.py; leaf modul
 from __future__ import annotations
 
 import logging
+from typing import Any
 
-import httpx
 
 from fastapi import HTTPException
 
 from provisa.api.errors import ApiError
 from provisa.compiler.mutation_gen import compile_mutation
-from provisa.api.data.action_exec import invoke_tracked_function, require_mutation_write
+from provisa.api.data.action_exec import (
+    bind_named_args,
+    invoke_tracked_function,
+    invoke_tracked_webhook,
+)
 
 
 log = logging.getLogger(__name__)
@@ -117,58 +121,72 @@ async def _resolve_action_relationships(  # REQ-361, REQ-362
     return rows
 
 
-def _apply_action_filters(rows: list[dict], args: dict) -> list[dict]:  # REQ-360
-    """Apply where/order_by/limit/offset post-processing to action result rows."""
+_WHERE_OPS = {
+    "_eq": lambda v, c: v == c,
+    "_neq": lambda v, c: v != c,
+    "_gt": lambda v, c: v is not None and v > c,
+    "_gte": lambda v, c: v is not None and v >= c,
+    "_lt": lambda v, c: v is not None and v < c,
+    "_lte": lambda v, c: v is not None and v <= c,
+    "_in": lambda v, c: v in (c or []),
+    "_nin": lambda v, c: v not in (c or []),
+    "_like": lambda v, c: isinstance(v, str) and _like_match(v, c),
+    "_ilike": lambda v, c: isinstance(v, str) and _like_match(v.lower(), (c or "").lower()),
+}
+
+
+def _filter_refused(field: str, message: str) -> ApiError:
+    return ApiError(
+        400, "data.command_filter_refused", f"{field}: {message}", field=field, reason=message
+    )
+
+
+def _require_column(rows: list[dict], column: str, field: str) -> None:
+    if rows and column not in rows[0]:
+        raise _filter_refused(
+            field, f"{column!r} is not a column the command returns ({', '.join(rows[0])})"
+        )
+
+
+def _apply_action_filters(  # REQ-360
+    rows: list[dict], args: dict, field: str = "command"
+) -> list[dict]:
+    """Apply where/order_by/limit/offset to a command's rows. What cannot be applied as written —
+    an operator it does not know, a column the command does not return, an ordering it cannot
+    read — is refused by name, never skipped."""
     where = args.get("where")
-    if where and isinstance(where, dict):
-
-        def _matches(row: dict) -> bool:
-            for field, condition in where.items():
-                val = row.get(field)
-                if isinstance(condition, dict):
-                    for op, cmp in condition.items():
-                        if op == "_eq" and val != cmp:
-                            return False
-                        elif op == "_neq" and val == cmp:
-                            return False
-                        elif op == "_gt" and not (val is not None and val > cmp):
-                            return False
-                        elif op == "_gte" and not (val is not None and val >= cmp):
-                            return False
-                        elif op == "_lt" and not (val is not None and val < cmp):
-                            return False
-                        elif op == "_lte" and not (val is not None and val <= cmp):
-                            return False
-                        elif op == "_in" and val not in (cmp or []):
-                            return False
-                        elif op == "_nin" and val in (cmp or []):
-                            return False
-                        elif op == "_like" and not (isinstance(val, str) and _like_match(val, cmp)):
-                            return False
-                        elif op == "_ilike" and not (
-                            isinstance(val, str) and _like_match(val.lower(), (cmp or "").lower())
-                        ):
-                            return False
-                else:
-                    if val != condition:
-                        return False
-            return True
-
-        rows = [r for r in rows if _matches(r)]
+    if where is not None:
+        if not isinstance(where, dict):
+            raise _filter_refused(field, "where takes an object of column conditions")
+        tests: list[tuple[str, Any, Any]] = []
+        for column, condition in where.items():
+            _require_column(rows, column, field)
+            if not isinstance(condition, dict):
+                tests.append((column, _WHERE_OPS["_eq"], condition))
+                continue
+            for op, cmp in condition.items():
+                if op not in _WHERE_OPS:
+                    raise _filter_refused(
+                        field,
+                        f"where operator {op!r} on {column!r} is not one of "
+                        f"{', '.join(sorted(_WHERE_OPS))}",
+                    )
+                tests.append((column, _WHERE_OPS[op], cmp))
+        rows = [r for r in rows if all(test(r.get(col), cmp) for col, test, cmp in tests)]
 
     order_by = args.get("order_by")
-    if order_by and isinstance(order_by, list):
+    if order_by:
         import re
 
-        sort_keys = []
+        sort_keys: list[tuple[str, bool]] = []
         for spec in order_by:
-            if isinstance(spec, str):
-                m = re.match(r"^(\w+)\s*(asc|desc)?$", spec.strip(), re.IGNORECASE)
-                if m:
-                    sort_keys.append((m.group(1), (m.group(2) or "asc").lower() == "desc"))
-            elif isinstance(spec, dict):
-                for col, direction in spec.items():
-                    sort_keys.append((col, str(direction).lower() == "desc"))
+            m = re.match(r"^(\w+)\s*(asc|desc)?$", str(spec).strip(), re.IGNORECASE)
+            if m is None:
+                raise _filter_refused(
+                    field, f"order_by {spec!r} is not '<column>', '<column> asc' or '<column> desc'"
+                )
+            _require_column(rows, m.group(1), field)
+            sort_keys.append((m.group(1), (m.group(2) or "asc").lower() == "desc"))
         for col, reverse in reversed(sort_keys):
             rows = sorted(rows, key=lambda r, c=col: (r.get(c) is None, r.get(c)), reverse=reverse)
 
@@ -204,29 +222,25 @@ async def _execute_action_field(  # REQ-205, REQ-208, REQ-209, REQ-360, REQ-869
     filter_args = {k: raw_args.pop(k) for k in list(raw_args) if k in _ACTION_FILTER_ARGS}
     args = raw_args
 
-    _role = state.roles.get(role_id) if role_id is not None else None
     fn = state.tracked_functions.get(field_name)
     if fn:
-        rows = await invoke_tracked_function(field_name, args, state, role_id)
+        rows = await invoke_tracked_function(
+            field_name, bind_named_args(field_name, args, state, role_id), state, role_id
+        )
         rows = await _maybe_resolve_relationships(
             rows, field_node, fn.get("returns", ""), ctx, state
         )
-        return _apply_action_filters(rows, filter_args)
+        return _apply_action_filters(rows, filter_args, field_name)
 
     wh = state.tracked_webhooks.get(field_name)
     if wh:
-        require_mutation_write(wh, _role, field_name)
-        url = wh["url"]
-        method = wh["method"].upper()
-        timeout = wh["timeout_ms"] / 1000
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.request(method, url, json=args)
-        body = resp.json()
-        rows = body if isinstance(body, list) else [body]
+        rows = await invoke_tracked_webhook(
+            field_name, bind_named_args(field_name, args, state, role_id), state, role_id
+        )
         rows = await _maybe_resolve_relationships(
             rows, field_node, wh.get("returns", ""), ctx, state
         )
-        return _apply_action_filters(rows, filter_args)
+        return _apply_action_filters(rows, filter_args, field_name)
 
     raise ApiError(
         400, "data.unknown_action_field", f"Unknown action field: {field_name!r}", field=field_name

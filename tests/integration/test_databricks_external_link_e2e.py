@@ -21,6 +21,8 @@ import os
 
 import pytest
 
+from tests.env_creds import unset
+
 pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
 
 pytest.importorskip("databricks.sql", reason="databricks-sql-connector required")
@@ -34,7 +36,7 @@ _R2 = (
     "CLOUDFLARE_ACCOUNT_ID",
 )
 _HAVE = all(os.environ.get(v) for v in (*_DBX, *_R2))
-pytestmark.append(pytest.mark.skipif(not _HAVE, reason="Databricks + R2 creds not set"))
+pytestmark.append(pytest.mark.skipif(not _HAVE, reason=f"not set: {unset(*_DBX, *_R2)}"))
 
 from provisa.core.catalog import _to_catalog_name  # noqa: E402
 from provisa.federation.databricks_runtime import DatabricksFederationRuntime  # noqa: E402

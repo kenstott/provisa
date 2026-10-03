@@ -15,6 +15,8 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
+from provisa.api.admin.engine_auth import run_admin_catalog_sql
+
 from fastapi import APIRouter, HTTPException, Header, Request
 from sqlalchemy import select
 
@@ -97,7 +99,9 @@ async def profile_table(
 
     try:
         # REQ-1912: a table served from its replica is sampled at its replica's address.
-        res = await engine.execute_engine(engine.address_replicas(sql))
+        res = await run_admin_catalog_sql(
+            state, engine, engine.address_replicas(sql), "table profile"
+        )
         raw_rows = res.rows
         columns = res.column_names
     except Exception:
@@ -105,8 +109,11 @@ async def profile_table(
             # Retry without TABLESAMPLE
             try:
                 fqn = f'"{state.catalog_for(source_id)}"."{schema_name}"."{table_name}"'
-                res = await engine.execute_engine(
-                    engine.address_replicas(f"SELECT * FROM {fqn} LIMIT {_SAMPLE_LIMIT}")
+                res = await run_admin_catalog_sql(
+                    state,
+                    engine,
+                    engine.address_replicas(f"SELECT * FROM {fqn} LIMIT {_SAMPLE_LIMIT}"),
+                    "table profile",
                 )
                 raw_rows = res.rows
                 columns = res.column_names

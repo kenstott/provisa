@@ -332,10 +332,13 @@ def test_tracing_is_off_without_a_collector(configured, monkeypatch):
 
 def test_shared_lane_gets_the_deployments_own_queue_policy(configured):
     """The shared entry point reads trino/etc/resource-groups.json rather than restating it, so the
-    ``tenant-${USER}`` subgroup on the cluster and on a shard are the same policy."""
+    per-org subgroup on the cluster and on a shard are the same policy. REQ-056: the subgroup is
+    named for the org the statement's source carries (``tenant-${tenant}``), not for the Trino
+    user, which is the same for every org."""
     groups = json.loads(prov.shared_resource_groups())
     names = {g["name"] for g in groups["rootGroups"][0]["subGroups"]}
-    assert "tenant-${USER}" in names
+    assert "tenant-${tenant}" in names
+    assert "tenant-${USER}" not in names
 
 
 def test_otel_agent_is_configured_because_the_image_carries_it(configured):

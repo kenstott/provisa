@@ -330,6 +330,18 @@ async def register_table(
         )
         if _ttl_refusal is not None:
             return _ttl_refusal
+        from provisa.api.admin._change_feed import table_change_feed_refusal
+
+        _feed_refusal = await table_change_feed_refusal(  # REQ-1861
+            _conn, model.source_id, model.change_signal
+        )
+        if _feed_refusal is not None:
+            return _feed_refusal
+        from provisa.api.admin._file_glob import table_file_glob_refusal
+
+        _glob_refusal = await table_file_glob_refusal(_conn, model)  # REQ-788
+        if _glob_refusal is not None:
+            return _glob_refusal
         _conflict = await _domain_table_conflict(
             _conn, model.domain_id, model.table_name, model.source_id, model.schema_name, alias
         )
@@ -756,6 +768,7 @@ async def create_scheduled_task_op(  # REQ-1003, REQ-1004
     webhook_name: str | None,
     args_json: str | None,
     sql: str | None,
+    role: str | None = None,
 ) -> MutationResult:
     """Create a scheduled trigger (webhook or SQL) and register it live. Persists to config
     and (if a scheduler is running) adds the job so it fires without a restart. url/sql are
@@ -836,7 +849,29 @@ async def create_scheduled_task_op(  # REQ-1003, REQ-1004
                 message="sql is required for a SQL trigger",
                 code="schema.sql_required",
             )
+        from datetime import datetime, timezone
+
+        from provisa.api.app import state as _state
+        from provisa.scheduler.trigger_sql import TriggerSqlRefused, checked_trigger_sql
+
+        if not role or role not in (_state.roles or {}):
+            return MutationResult(
+                success=False,
+                message=f"Trigger {id.strip()!r}: a SQL trigger runs as a role of this org",
+                code="schema.trigger_role_required",
+                params={"trigger": id.strip()},
+            )
+        try:
+            checked_trigger_sql(sql.strip(), id.strip(), datetime.now(timezone.utc))
+        except TriggerSqlRefused as exc:
+            return MutationResult(
+                success=False,
+                message=str(exc),
+                code="schema.trigger_sql_refused",
+                params={"trigger": id.strip(), "reason": str(exc)},
+            )
         trigger["sql"] = sql.strip()
+        trigger["role"] = role
 
     cfg = read_config()
     triggers = cfg.setdefault("scheduled_triggers", [])

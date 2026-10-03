@@ -44,6 +44,9 @@
     "firstPage": "עמוד ראשון",
     "prevPage": "עמוד קודם",
     "nextPage": "עמוד הבא",
-    "lastPage": "עמוד אחרון"
+    "lastPage": "עמוד אחרון",
+    "roleLabel": "פועל כתפקיד",
+    "validationRoleRequired": "משימת SQL פועלת כתפקיד: בחרו אחד.",
+    "runsAs": "פועל כ-{{role}}"
   }
 }

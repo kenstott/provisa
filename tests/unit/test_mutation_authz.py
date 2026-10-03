@@ -19,15 +19,16 @@ from __future__ import annotations
 import pytest
 
 from provisa.security.mutation_authz import (
+    CommandNotFound,
     MutationKind,
-    authorize_mutation,
+    MutationNotPermitted,
+    admit_command,
     classify_graphql,
     classify_grpc,
     classify_hasura,
     classify_kind,
     classify_openapi,
     reclassify_kind,
-    require_mutation_write,
 )
 from provisa.security.rights import Capability, InsufficientRightsError
 
@@ -88,43 +89,70 @@ def test_classify_kind_unknown_defaults_to_write():
     assert classify_kind("something-else") is MutationKind.WRITE
 
 
-# --- authorize_mutation: WRITE cap + writable_by default-deny (REQ-867/868) -----
-
-
-def _role(role_id, *caps):
-    return {"id": role_id, "capabilities": list(caps)}
-
-
-def test_no_role_is_denied():
-    ok, reason = authorize_mutation(None, ["analyst"])
-    assert ok is False and "no role" in reason
-
-
-def test_missing_write_capability_denied():
-    ok, reason = authorize_mutation(_role("analyst"), ["analyst"])
-    assert ok is False and "WRITE" in reason
-
-
-def test_write_cap_but_not_in_writable_by_denied():
-    ok, reason = authorize_mutation(_role("analyst", Capability.WRITE.value), ["ops"])
-    assert ok is False and "writable_by" in reason
-
-
-def test_empty_writable_by_is_default_deny():
-    ok, _ = authorize_mutation(_role("analyst", Capability.WRITE.value), [])
-    assert ok is False
-
-
-def test_write_cap_and_listed_allowed():
-    ok, _ = authorize_mutation(_role("analyst", Capability.WRITE.value), ["analyst", "ops"])
-    assert ok is True
-
-
-# --- nothing stands above the ACL (REQ-1327, REQ-1621) -------------------------
+# --- admit_command: the one command admission (REQ-867/868/869, REQ-1758) ---------------------
 #
-# The ACL is the author's own statement of who may write through the mutation, and it is the
-# whole answer in every environment: no capability string means "every right", and the platform
-# rights are over the deployment, not over an org's writes.
+# A command carries ONE role list, ``visible_to`` (empty assigns it to every role). A role calls it
+# when it is assigned, reaches the command's domain, and -- for a mutation -- holds WRITE. A
+# command the role may not use is "not found", the same as one never registered.
+
+
+def _role(role_id, *caps, domains=("*",)):
+    return {"id": role_id, "capabilities": list(caps), "domain_access": list(domains)}
+
+
+def _command(kind="mutation", visible_to=(), domain="sales"):
+    return {"kind": kind, "visible_to": list(visible_to), "domain_id": domain}
+
+
+def test_no_role_is_refused():
+    # REQ-1758: there is no call without a role, for a read as for a write.
+    for kind in ("mutation", "query"):
+        with pytest.raises(MutationNotPermitted, match="no acting role"):
+            admit_command(_command(kind), None, "thing")
+
+
+def test_a_mutation_needs_the_write_capability():
+    with pytest.raises(MutationNotPermitted, match="WRITE") as excinfo:
+        admit_command(_command(visible_to=["analyst"]), _role("analyst"), "editThing")
+    assert excinfo.value.field_name == "editThing"
+
+
+def test_a_role_not_assigned_finds_no_command():
+    with pytest.raises(CommandNotFound):
+        admit_command(
+            _command(visible_to=["ops"]), _role("analyst", Capability.WRITE.value), "editThing"
+        )
+
+
+def test_an_empty_list_assigns_the_command_to_every_role():
+    admit_command(_command(), _role("analyst", Capability.WRITE.value), "editThing")
+    admit_command(_command("query"), _role("analyst"), "readThing")
+
+
+def test_an_assigned_role_holding_write_is_admitted():
+    admit_command(
+        _command(visible_to=["analyst", "ops"]), _role("analyst", Capability.WRITE.value), "x"
+    )
+
+
+def test_a_role_outside_the_command_domain_finds_no_command():
+    with pytest.raises(CommandNotFound):
+        admit_command(
+            _command(domain="hr"), _role("analyst", Capability.WRITE.value, domains=["sales"]), "x"
+        )
+    admit_command(
+        _command(domain="sales"), _role("analyst", Capability.WRITE.value, domains=["sales"]), "x"
+    )
+
+
+def test_a_read_needs_no_write_capability():
+    admit_command(_command("query", visible_to=["analyst"]), _role("analyst"), "readThing")
+
+
+# --- nothing stands above the assignment (REQ-1327, REQ-1621) ----------------------------------
+#
+# No capability string means "every right", and the platform rights are over the deployment, not
+# over an org's writes.
 
 _UNLISTED = [
     ["admin"],
@@ -136,60 +164,38 @@ _UNLISTED = [
 
 
 @pytest.mark.parametrize("held", _UNLISTED)
-def test_no_capability_bypasses_an_empty_writable_by(held):
-    ok, _ = authorize_mutation(_role("root", *held), [])
-    assert ok is False
-
-
-@pytest.mark.parametrize("held", _UNLISTED)
-def test_no_capability_bypasses_a_list_naming_someone_else(held):
-    ok, reason = authorize_mutation(_role("root", *held), ["someone-else"])
-    assert ok is False
-    assert ("writable_by" in reason) or ("WRITE" in reason)
+def test_no_capability_reaches_a_command_assigned_to_someone_else(held):
+    with pytest.raises(CommandNotFound):
+        admit_command(_command(visible_to=["someone-else"]), _role("root", *held), "editThing")
 
 
 @pytest.mark.parametrize("held", [["admin"], ["superadmin"], ["platform_settings", "cross_org"]])
-def test_a_listed_role_still_needs_the_write_capability(held):
-    # Being named in the list is half the answer; WRITE is the other, and nothing implies it.
-    ok, reason = authorize_mutation(_role("root", *held), ["root"])
-    assert ok is False and "WRITE" in reason
+def test_an_assigned_role_still_needs_the_write_capability(held):
+    # Being assigned is half the answer; WRITE is the other, and nothing implies it.
+    with pytest.raises(MutationNotPermitted, match="WRITE"):
+        admit_command(_command(visible_to=["root"]), _role("root", *held), "editThing")
 
 
-def test_a_listed_role_holding_write_is_allowed():
-    # The ACL is the whole answer -- it does not deny outright.
-    ok, _ = authorize_mutation(_role("root", Capability.WRITE.value), ["root"])
-    assert ok is True
+def test_api_renders_the_refusals():  # REQ-1678
+    from types import SimpleNamespace
 
-
-def test_require_mutation_write_refuses_an_unlisted_role():
-    # REQ-1678: the security gate raises its own error; the API layer renders it as the 403.
-    from provisa.security.mutation_authz import MutationNotPermitted
-
-    action = {"kind": "mutation", "writable_by": ["someone-else"]}
-    for held in _UNLISTED:
-        with pytest.raises(MutationNotPermitted) as excinfo:
-            require_mutation_write(action, _role("root", *held), "editThing")
-        assert excinfo.value.field_name == "editThing"
-    require_mutation_write(
-        {"kind": "mutation", "writable_by": ["root"]},
-        _role("root", Capability.WRITE.value),
-        "editThing",
-    )
-
-
-def test_api_renders_the_refusal_as_403():  # REQ-1678
-    from provisa.api.data.action_exec import require_mutation_write as api_gate
+    from provisa.api.data.action_exec import admit_command as api_gate
     from provisa.api.errors import ApiError
 
-    action = {"kind": "mutation", "writable_by": ["someone-else"]}
-    for held in _UNLISTED:
-        with pytest.raises(ApiError) as excinfo:
-            api_gate(action, _role("root", *held), "editThing")
-        assert excinfo.value.status_code == 403
-
-
-def test_require_mutation_write_leaves_reads_alone():
-    require_mutation_write({"kind": "query"}, None, "thing")
+    state = SimpleNamespace(
+        roles={
+            "root": _role("root", "admin", "superadmin"),
+            "writer": _role("writer", Capability.WRITE.value),
+        }
+    )
+    with pytest.raises(ApiError) as hidden:
+        api_gate(_command(visible_to=["someone-else"]), state, "root", "editThing")
+    assert hidden.value.status_code == 404
+    assert "Unknown command: 'editThing'" in str(hidden.value)
+    with pytest.raises(ApiError) as refused:
+        api_gate(_command(visible_to=["root"]), state, "root", "editThing")
+    assert refused.value.status_code == 403
+    assert api_gate(_command(), state, "writer", "editThing")["id"] == "writer"
 
 
 # --- admin-only reclassification (REQ-870) -------------------------------------

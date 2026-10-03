@@ -354,6 +354,10 @@
       "secret_key": {
         "label": "Geheime sleutel voor omleiding",
         "help": "De geheime sleutel van de objectopslag. Geheim; met bevestiging."
+      },
+      "snowflake_storage_integration": {
+        "label": "Snowflake-opslagintegratie voor resultaten",
+        "help": "De Snowflake-opslagintegratie waarmee een Snowflake-engine grote resultaten naar de objectopslag schrijft. Leeg: een Snowflake-engine schrijft resultaten niet zelf."
       }
     },
     "otel": {

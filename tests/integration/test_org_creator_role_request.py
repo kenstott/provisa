@@ -146,7 +146,8 @@ def _make_app(admin_db: Database, tenant_db: Database) -> FastAPI:
 
 
 def _get(client, role_header: str | None):
-    headers = {"Authorization": "Bearer tok-alice"}
+    # REQ-1235: the request names its org; belonging to one org does not name it.
+    headers = {"Authorization": "Bearer tok-alice", "x-org-provisa": _ORG}
     if role_header is not None:
         headers["X-Provisa-Role"] = role_header
     return client.get("/whoami", headers=headers)

@@ -243,7 +243,6 @@ REFERENCES: tuple[Reference, ...] = (
     _dep("table_columns", "unmasked_to", "role", "column", "id", match=Match.MEMBER),
     _dep("metrics", "visible_to", "role", "metric", "name", match=Match.MEMBER),
     _dep("tracked_functions", "visible_to", "role", "command", "name", match=Match.MEMBER),
-    _dep("tracked_functions", "writable_by", "role", "command", "name", match=Match.MEMBER),
     _dep("tracked_webhooks", "visible_to", "role", "webhook", "name", match=Match.MEMBER),
     _dep("data_products", "owner_role", "role", "data_product", "id"),
     _dep("data_products", "team_role", "role", "data_product", "id"),

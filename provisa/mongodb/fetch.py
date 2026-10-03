@@ -144,3 +144,41 @@ def fetch_rows_by_keys(
         for doc in client[database][collection].find(query, projection):
             rows.append({c: _coerce(doc.get(c)) for c in columns})
     return rows
+
+
+class ChangeStreamsUnavailable(ValueError):
+    """A MongoDB table's change feed was asked for (change signal ``native``) on a server that
+    serves no change streams: a standalone mongod. Change streams need a replica set (or a
+    sharded cluster through mongos); the alternative is a polled refresh (REQ-1861)."""
+
+    code = "schema.change_streams_unavailable"
+
+    def __init__(self, source_id: str) -> None:
+        self.params = {"source": source_id}
+        super().__init__(
+            f"source {source_id!r} is a standalone MongoDB server, which serves no change "
+            "streams: the native change signal needs a replica set or a sharded cluster. Run "
+            "it as a replica set, or use the poll change signal."
+        )
+
+
+def require_change_streams(conn: MongoConnection, source_id: str) -> None:  # REQ-1861
+    """Refuse a server that serves no change streams (:class:`ChangeStreamsUnavailable`). The
+    server's ``hello`` says what it is: a replica set member names its set, a mongos says it is
+    one. A server that cannot be reached raises the driver's own error -- never a pass."""
+    from pymongo import MongoClient
+
+    client: Any = MongoClient(
+        host=conn.host,
+        port=conn.port,
+        username=conn.username,
+        password=conn.password,
+        serverSelectionTimeoutMS=5000,
+        directConnection=True,
+    )
+    try:
+        hello = client.admin.command("hello")
+    finally:
+        client.close()
+    if not (hello.get("setName") or hello.get("msg") == "isdbgrid"):
+        raise ChangeStreamsUnavailable(source_id)

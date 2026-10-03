@@ -21,6 +21,7 @@ Builds on buenavista's socketserver-based handler, adding:
 # complexity-gate: allow-ble=5 reason="wire-protocol request-handler boundary: an arbitrary user query / DDL / COPY / CTAS / describe can raise any exception type from the pluggable engine (DuckDB/buenavista/extensions) — each is caught and converted to a PostgreSQL SQLSTATE error response (send_error / _send_pg_error) so one bad statement returns a protocol error instead of crashing the connection handler; catching a narrower set would let an unmapped type kill the session"
 
 from __future__ import annotations
+from provisa.compiler.sql_literals import sql_literal
 
 import json
 import datetime
@@ -36,6 +37,8 @@ import time
 from dataclasses import dataclass
 from dataclasses import field as _dc_field
 from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional, Tuple
+
+from provisa.federation.execution_auth import plan_authorization
 
 import jwt
 
@@ -87,7 +90,9 @@ async def _run_with_org(org_id: str | None, coro):  # REQ-1266
         reset_current_org(token)
 
 
-async def _resolve_and_build_org(state_, identity, requested_org: str | None) -> str | None:
+async def _resolve_and_build_org(
+    state_, identity, requested_org: str | None, database: str | None = None
+) -> str | None:
     """Resolve the org for an authenticated pgwire identity and materialize its runtime (REQ-1266).
 
     Runs on the connection's own loop (REQ-1882). Returns the org id to bind on the session, or
@@ -97,7 +102,14 @@ async def _resolve_and_build_org(state_, identity, requested_org: str | None) ->
     It is a request and nothing more — ``resolve_session_org`` refuses an org the principal is not
     a member of, so dialing acme.provisa.dev does not put anyone inside acme."""
     from provisa.api.app import ensure_org_runtime
-    from provisa.api.org_resolve import resolve_session_org
+    from provisa.api.org_resolve import org_named_by_host_or_database, resolve_session_org
+
+    if not getattr(state_, "multitenancy", False):
+        # A single-tenant deployment has no org to name; neither the hostname nor the database
+        # name is read (REQ-1235).
+        return None
+    # REQ-1235: the database name (psql -d acme, a BI tool's database field) names the org too.
+    requested_org = org_named_by_host_or_database(requested_org, database)
 
     # REQ-1337: resolve the claims to RIGHTS and test cross_org — never the role name.
     caps = capabilities_for_claims(
@@ -107,7 +119,12 @@ async def _resolve_and_build_org(state_, identity, requested_org: str | None) ->
         state_,
         user_id=getattr(identity, "user_id", None),
         can_act_any_org=can_act_cross_org(caps),
-        requested_org=requested_org or getattr(identity, "active_org_id", None),
+        requested_org=requested_org,
+        credential_org=getattr(identity, "active_org_id", None),  # REQ-1235
+        named_by=(
+            "connect with the org as the database name (psql -d <org>) or over TLS to the "
+            "org's own hostname (<org>.<domain>)"
+        ),
     )
     if org_id is not None:
         await ensure_org_runtime(org_id)
@@ -173,8 +190,7 @@ def _pg_literal(v) -> str:
         return "E'\\\\x" + v.hex() + "'"
     if isinstance(v, (list, tuple)):
         return "'{" + ",".join(str(x) for x in v) + "}'"
-    s = str(v)
-    return "'" + s.replace("'", "''") + "'"
+    return sql_literal(str(v), "postgres")
 
 
 def _substitute_params(sql: str, params: list | None) -> str:
@@ -185,6 +201,18 @@ def _substitute_params(sql: str, params: list | None) -> str:
     for i in range(len(params), 0, -1):
         result = result.replace(f"${i}", _pg_literal(params[i - 1]))
     return result
+
+
+def _write_tag(sql: str, result: Any) -> str:
+    """PostgreSQL's command tag for a data write: ``INSERT 0 n``, ``UPDATE n``, ``DELETE n``,
+    ``MERGE n`` — the count the client reads as its rowcount."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    verbs = {exp.Insert: "INSERT 0", exp.Update: "UPDATE", exp.Delete: "DELETE", exp.Merge: "MERGE"}
+    verb = verbs[type(sqlglot.parse_one(sql, read="postgres"))]
+    count = result.rowcount if result.rowcount is not None else len(result.rows)
+    return f"{verb} {count}"
 
 
 def _tag_from_sql(sql: str) -> str:
@@ -392,7 +420,11 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         # A registered-function call has no plan, and nothing to say.
         self.warnings: tuple[Any, ...] = tuple(plan.warnings) if plan is not None else ()
         self._cols = engine_result.column_names
-        self._status = _tag_from_sql(original_sql)
+        self._status = (
+            _write_tag(original_sql, engine_result)
+            if plan is not None and getattr(plan, "writes_tables", False)
+            else _tag_from_sql(original_sql)
+        )
         self._batch_iter: Iterator[list] = engine_result.batches()  # type: ignore[assignment]
         if plan is not None:
             # REQ-074: the statement's audit row is written when this drain ends (audit_on_drain).
@@ -950,7 +982,15 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
 
         with _stage(_tracer, "pgwire.execute", name="execute"):  # REQ-1910
             try:
-                if isinstance(governed, _Plan) and governed.route == Route.ENGINE:
+                if isinstance(governed, _Plan) and governed.writes_tables:
+                    # A data write executes once, through the one terminal every surface's write
+                    # passes (its after-write step and audit), and answers its count. It never
+                    # streams: a server-side cursor cannot be declared over a write.
+                    result = cl.run(
+                        _run_with_org(self.org_id, _execute_plan(governed)),
+                        timeout=request_timeout_for("pgwire"),
+                    )
+                elif isinstance(governed, _Plan) and governed.route == Route.ENGINE:
                     # REQ-1176: this streaming sink runs physical_sql on the engine directly (like
                     # Flight SQL), so it MUST verify the governed-provenance stamp before the engine
                     # executes — the single-chokepoint guarantee is not satisfied by _execute_plan alone.
@@ -1027,6 +1067,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                                 engine_plan.physical_sql,
                                 engine_plan.exec_params,
                                 session_hints=engine_plan.session_hints,
+                                authorization=plan_authorization(engine_plan),
                             ),
                         )
                 elif (
@@ -1774,7 +1815,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
 
             try:
                 ctx.session.org_id = run_on_connection_loop(  # type: ignore[attr-defined]
-                    _resolve_and_build_org(_state, identity, self._requested_org()), timeout=60
+                    _resolve_and_build_org(
+                        _state, identity, self._requested_org(), ctx.params.get("database")
+                    ),
+                    timeout=60,
                 )
             except OrgResolutionError as exc:
                 self._send_pg_error("FATAL", "28000", f"org selection failed: {exc}")

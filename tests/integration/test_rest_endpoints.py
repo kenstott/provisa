@@ -359,6 +359,15 @@ class TestRestEndpointsHTTP:
         app_state.schemas = {"org_admin": schema}
         app_state.contexts = {"org_admin": ctx}
         app_state.rls_contexts = {"org_admin": RLSContext.empty()}
+        # Governance takes the acting role's record (38b902192: a role reaches the domains it
+        # lists), so the role the request runs as must be loaded, as it is on a real server.
+        app_state.roles = {
+            "org_admin": {
+                "id": "org_admin",
+                "capabilities": ["full_results"],
+                "domain_access": ["*"],
+            }
+        }
         app_state.source_pools = source_pool
         app_state.source_types = {"test-pg": "postgresql"}
         app_state.source_dialects = {"test-pg": "postgres"}

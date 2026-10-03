@@ -44,6 +44,13 @@ from provisa.core.connection_loop import LongLived, spawn_long_lived
 log = logging.getLogger(__name__)
 
 _PUSH_SOURCE_TYPES = frozenset({"kafka", "websocket"})
+# REQ-1861: sources whose own change feed says THAT a table changed. The listener carries no
+# rows: each burst of changes asks for a build of the table's replica (one builder, one path).
+_CHANGE_STREAM_SOURCE_TYPES = frozenset({"mongodb"})
+# The change signal that opts a table into its source's change feed (REQ-929).
+_CHANGE_FEED_SIGNAL = "native"
+# Seconds a change-stream listener waits before it watches again after its stream fails.
+_CHANGE_STREAM_RETRY_SECONDS = 5.0
 
 
 def _build_provider(src: Any, tbl: dict, *, node: str) -> tuple[Any, str] | None:
@@ -156,6 +163,11 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
         if src is None:
             continue
         source_type = src.type.value if hasattr(src.type, "value") else str(src.type)
+        if source_type in _CHANGE_STREAM_SOURCE_TYPES:
+            task = _start_change_stream(state, src, tbl, log=log)
+            if task is not None:
+                started.append(task)
+            continue
         if source_type not in _PUSH_SOURCE_TYPES:
             continue
         node = source_node(tbl["source_id"], tbl["schema_name"], tbl["table_name"])
@@ -232,6 +244,169 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
         )
 
     return started
+
+
+def _start_change_stream(state: Any, src: Any, tbl: dict, *, log: Any) -> LongLived | None:
+    """Start the change-stream listener of one table of a change-feed source (REQ-1861), when the
+    table's effective change signal opts it in and no listener is running for it."""
+    from provisa.events.nodes import source_node
+
+    signal = tbl["change_signal"] if tbl["change_signal"] is not None else src.change_signal
+    if signal != _CHANGE_FEED_SIGNAL:
+        return None
+    node = source_node(tbl["source_id"], tbl["schema_name"], tbl["table_name"])
+    if node in state.push_listener_disconnects:
+        return None  # already running from a prior wire
+    disconnect = threading.Event()
+    state.push_listener_disconnects[node] = disconnect
+    quiet = float(tbl.get("push_debounce_quiet") or 0.0)
+    max_delay = float(tbl.get("push_debounce_max_delay") or 5.0)
+    task = spawn_long_lived(
+        _run_change_stream(
+            state=state,
+            source=src,
+            table_id=tbl["id"],
+            collection=tbl["table_name"],
+            database=src.database or tbl["schema_name"],
+            disconnect=disconnect,
+            debounce_quiet=quiet,
+            debounce_max_delay=max_delay,
+            node=node,
+            log=log,
+        ),
+        name=f"change-stream:{node}",
+    )
+    state.push_listener_tasks.append(task)
+    log.info(
+        "change stream listener started for %s (source=%r, debounce_quiet=%.1fs "
+        "debounce_max_delay=%.1fs)",
+        node,
+        src.id,
+        quiet,
+        max_delay,
+    )
+    return task
+
+
+async def follow_changes(
+    stream: Any,
+    on_change: Any,
+    disconnect: threading.Event,
+    *,
+    quiet: float,
+    max_delay: float,
+    clock: Any = None,
+) -> None:
+    """Call ``on_change`` once per burst of changes on ``stream`` until ``disconnect`` is set.
+
+    ``stream.try_next()`` returns the next change, or None when none arrived within the stream's
+    wait. A burst ends once no change has arrived for ``quiet`` seconds, or ``max_delay`` seconds
+    after its first change, whichever is sooner -- so a collection that never goes quiet still
+    asks. A stream that is no longer alive raises: the caller watches again."""
+    import time
+
+    now = clock or time.monotonic
+    first: float | None = None
+    last = 0.0
+    while not disconnect.is_set():
+        change = await stream.try_next()
+        at = now()
+        if change is not None:
+            last = at
+            if first is None:
+                first = at
+        elif not stream.alive:
+            raise ConnectionError("the change stream was closed by the server")
+        if first is not None and (at - last >= quiet or at - first >= max_delay):
+            await on_change()
+            first = None
+
+
+async def _run_change_stream(
+    *,
+    state: Any,
+    source: Any,
+    table_id: int,
+    collection: str,
+    database: str,
+    disconnect: threading.Event,
+    debounce_quiet: float,
+    debounce_max_delay: float,
+    node: str,
+    log: Any,
+) -> None:
+    """One change-feed table's whole lifetime (REQ-1861): watch the collection's change stream
+    and ask for a build of the table's replica once per burst of changes, through the one request
+    every change to a replicated table makes (``replica_builds.request_if_replicated``).
+
+    A build is asked for each time the stream opens, too: what changed while nothing was watching
+    is unknown. A stream that fails -- the server is down, or is a standalone mongod, which serves
+    no change streams -- is logged with the server's own reason and watched again after
+    ``_CHANGE_STREAM_RETRY_SECONDS``. Never lets an exception escape (it runs detached)."""
+    from provisa.core.secrets import resolve_secrets
+    from provisa.federation import replica_builds, replica_state
+    from provisa.federation.source_vault import org_vault
+    from provisa.subscriptions.mongo_provider import open_change_stream
+
+    async def _ask() -> None:
+        await replica_builds.request_if_replicated(
+            state, table_id, source.id, replica_state.REASON_REFRESH
+        )
+
+    async def _feed(error: str | None) -> None:
+        # The listener's state on the table's replica record, where its status is shown.
+        from datetime import UTC, datetime
+
+        from provisa.federation.registry_view import registered_tables
+
+        table = {t.id: t for t in await registered_tables(state)}[table_id]
+        async with state.tenant_db.acquire() as conn:
+            await replica_state.record_feed(
+                conn,
+                (source.id, table.schema_name, table.table_name),
+                error=error,
+                now=datetime.now(UTC),
+            )
+
+    # The stream's wait bounds how long a burst's end and a shutdown go unnoticed.
+    wait_ms = int(max(0.05, min(1.0, debounce_quiet or 1.0)) * 1000)
+    while not disconnect.is_set():
+        try:
+            async with org_vault(state, [source]):
+                host = resolve_secrets(source.host or "localhost")
+                password = resolve_secrets(source.password or "") or None
+            async with open_change_stream(
+                host=host,
+                port=int(source.port or 27017),
+                username=source.username or None,
+                password=password,
+                database=database,
+                collection=collection,
+                wait_ms=wait_ms,
+            ) as stream:
+                await _feed(None)
+                await _ask()  # watching from here on: what changed before is in this build
+                await follow_changes(
+                    stream, _ask, disconnect, quiet=debounce_quiet, max_delay=debounce_max_delay
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception as failed:
+            log.warning(
+                "change stream %s: %s; watching again in %.0fs",
+                node,
+                failed,
+                _CHANGE_STREAM_RETRY_SECONDS,
+            )
+            try:
+                # A driver error can carry no text (a timeout); its class then names the cause.
+                await _feed(str(failed) or type(failed).__name__)
+            except Exception:
+                log.exception("change stream %s: its down state could not be recorded", node)
+        deadline = _CHANGE_STREAM_RETRY_SECONDS
+        while deadline > 0 and not disconnect.is_set():
+            await asyncio.sleep(0.2)
+            deadline -= 0.2
 
 
 async def _run_listener(

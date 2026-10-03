@@ -203,7 +203,10 @@ def test_redeemed_identity_mirrors_org_admin_not_superadmin(planes):
             json={"token": _TOKEN},
             headers={"Authorization": "Bearer tok-alice"},
         )
-        resp = client.get("/whoami", headers={"Authorization": "Bearer tok-alice"})
+        # REQ-1235: the request names the org the invite was for.
+        resp = client.get(
+            "/whoami", headers={"Authorization": "Bearer tok-alice", "x-org-provisa": "acme"}
+        )
     assert resp.status_code == 200
     assert resp.json() == {"roles": ["org_admin"], "active_org_id": "acme"}
 

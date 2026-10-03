@@ -354,6 +354,10 @@
       "secret_key": {
         "label": "Clave secreta de redirección",
         "help": "La clave secreta del almacén de objetos. Secreto; requiere confirmación al guardar."
+      },
+      "snowflake_storage_integration": {
+        "label": "Integración de almacenamiento de Snowflake para resultados",
+        "help": "La integración de almacenamiento de Snowflake con la que un motor Snowflake escribe resultados grandes en el almacén de objetos. Vacío: un motor Snowflake no escribe los resultados por sí mismo."
       }
     },
     "otel": {

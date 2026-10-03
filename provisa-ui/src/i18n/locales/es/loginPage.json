@@ -32,6 +32,8 @@
     "firebaseSignInFailed": "Error al iniciar sesión con Firebase",
     "operatorSignIn": "Acceso de operador",
     "operatorSignInTitle": "Acceso de operador",
-    "backToSignIn": "Volver al inicio de sesión"
+    "backToSignIn": "Volver al inicio de sesión",
+    "signInWithSso": "Iniciar sesión con inicio de sesión único",
+    "samlSignInFailed": "El inicio de sesión único no se completó. Inténtelo de nuevo o consulte a su administrador."
   }
 }

@@ -16,6 +16,7 @@
     "loadKind": {
       "bulk_stream": "bulkstream",
       "row_copy": "rijkopie"
-    }
+    },
+    "feedDown": "Wijzigingsfeed onderbroken sinds {{since}}; de replica wordt pas vernieuwd na herverbinding: {{error}}"
   }
 }

@@ -184,6 +184,8 @@ def _catalog_state(metrics: list) -> MagicMock:
     ctx = MagicMock()
     ctx.tables = {"orders": tm}
     state = MagicMock()
+    # A single-tenant deployment: its catalog serves the one database, provisa.
+    state.multitenancy = False
     state.contexts = {"testrole": ctx}
     state.schema_build_cache = {
         "column_types": {

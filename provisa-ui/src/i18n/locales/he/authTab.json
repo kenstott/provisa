@@ -15,6 +15,7 @@
     "saved": "נשמר.",
     "savedRestartRequired": "נשמר. יש להפעיל מחדש את השירות כדי להחיל.",
     "secretOnFile": "נשמר — השאירו ריק כדי לשמור אותו",
-    "secretNotSet": "לא הוגדר"
+    "secretNotSet": "לא הוגדר",
+    "allowRegistration": "לאפשר לאנשים ליצור חשבונות בעצמם"
   }
 }

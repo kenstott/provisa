@@ -64,6 +64,9 @@ class ProvisaDialect(DefaultDialect):
         }
         if "role" in query:
             opts["role"] = query["role"]
+        # REQ-1235: ?org=<id> names the org the connection's requests are for.
+        if "org" in query:
+            opts["org"] = query["org"]
         # REQ-691: client-side decryption params passed through to the DB-API connect().
         if "kms_provider" in query:
             opts["kms_provider"] = query["kms_provider"]

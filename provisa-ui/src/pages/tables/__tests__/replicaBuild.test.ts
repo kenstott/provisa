@@ -13,7 +13,7 @@
 import { describe, it, expect } from "vitest";
 import type { ReplicaBuild } from "../../../api/admin";
 import type { ServerMessageShape } from "../../../i18n/serverMessage";
-import { replicaBuildLine } from "../replicaBuild";
+import { replicaBuildLine, replicaFeedLine } from "../replicaBuild";
 
 const t = (key: string, options?: Record<string, unknown>) =>
   options ? `${key} ${JSON.stringify(options)}` : key;
@@ -49,6 +49,8 @@ function build(over: Partial<ReplicaBuild>): ReplicaBuild {
     failedAttempts: 0,
     waitingOn: null,
     waitingOnCode: null,
+    feedDownSince: null,
+    feedError: null,
     ...over,
   };
 }
@@ -155,6 +157,24 @@ describe("replicaBuildLine", () => {
     );
     expect(line).toBe(
       'replicaBuild.built {"when":"@2026-10-02T12:00:00+00:00","rows":"#500","how":"replicaBuild.method.engine_statement, replicaBuild.loadKind.bulk_stream"}',
+    );
+  });
+});
+
+describe("replicaFeedLine", () => {
+  it("says nothing while the change feed is watching, or for a table with no record", () => {
+    expect(replicaFeedLine(undefined, t, when)).toBeNull();
+    expect(replicaFeedLine(build({}), t, when)).toBeNull();
+  });
+
+  it("says since when the change feed is down and the server's reason", () => {
+    const line = replicaFeedLine(
+      build({ feedDownSince: "2026-10-03T08:00:00+00:00", feedError: "connection refused" }),
+      t,
+      when,
+    );
+    expect(line).toBe(
+      'replicaBuild.feedDown {"since":"@2026-10-03T08:00:00+00:00","error":"connection refused"}',
     );
   });
 });

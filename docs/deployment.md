@@ -549,12 +549,27 @@ Note: the Provisa AppImage cannot run inside a Kubernetes pod — it requires FU
    ```bash
    helm install provisa helm/provisa/ \
      --set encryption.existingSecret=provisa-master-key \
+     --set auth.provider=oidc \
+     --set auth.oidc.issuerUrl=https://login.example.com/realms/main \
+     --set auth.oidc.clientId=provisa \
      --set config.pgPassword=<password> \
      --set config.adminToken=<token> \
      --set s3.endpoint=https://s3.amazonaws.com \
      --set s3.bucket=my-provisa-results \
      --namespace provisa --create-namespace
    ```
+
+   The chart does not render until `auth.provider` is chosen: `oidc` (a corporate OpenID Connect
+   issuer), `saml` (`auth.saml.idpMetadataUrl` and `auth.saml.publicUrl`), `ldap` (`auth.ldap.*`),
+   `local` (the break-glass account alone, `auth.breakGlass.*`), or `none` (no authentication,
+   development only). Every credential comes from a Kubernetes Secret; `ldap`, `saml` and `local`
+   also need `auth.sessionSecret.existingSecret`, the key that signs browser sessions. See `auth`
+   in `values.yaml`.
+
+   The Trino coordinator runs each org's statements in that org's own resource group,
+   `global.tenant-<org>`, from the resource-group file the chart ships. Statements through the
+   Arrow Flight proxy share one group, `global.flight`: the proxy opens its own Trino connection
+   and cannot carry the org.
 
    If using an internal registry, add image overrides:
 

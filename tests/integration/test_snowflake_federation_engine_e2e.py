@@ -20,6 +20,8 @@ from urllib.parse import quote
 
 import pytest
 
+from tests.env_creds import unset
+
 pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
 
 # Skips when the driver is absent (current dev/CI) — the reason is explicit, never a silent pass.
@@ -27,9 +29,7 @@ pytest.importorskip("snowflake.connector", reason="snowflake-connector-python no
 
 _ENV = ("SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PASSWORD")
 _HAVE_CREDS = all(os.environ.get(v) for v in _ENV)
-pytestmark.append(
-    pytest.mark.skipif(not _HAVE_CREDS, reason="Snowflake account creds not set (SNOWFLAKE_*)")
-)
+pytestmark.append(pytest.mark.skipif(not _HAVE_CREDS, reason=f"not set: {unset(*_ENV)}"))
 
 from provisa.compiler.context import build_context  # noqa: E402
 from provisa.compiler.introspect import ColumnMetadata  # noqa: E402

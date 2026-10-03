@@ -22,6 +22,7 @@ import pytest
 from pytest_bdd import given, scenarios, then, when
 
 from provisa.auth.models import AuthIdentity
+from tests.platform_plane import platform_db
 
 _SECRET = "test-signing-key-at-least-32-bytes-long"
 
@@ -90,7 +91,8 @@ def _authenticate(shared_data, *, user: str = "alice") -> None:
         auth_config=shared_data["auth_config"],
         auth_middleware_active=True,
         multitenancy=False,
-        admin_db=None,
+        # The simple provider keeps its users' ids on the platform plane.
+        admin_db=platform_db(),
     )
     handler, ctx = _handler(shared_data), cast(Any, _Ctx(user))
     shared_data["ctx"] = ctx

@@ -14,8 +14,6 @@
     "selectTable": "テーブルを選択...",
     "visibleTo": "閲覧可能（ロール、カンマ区切り）",
     "visibleToPlaceholder": "admin, analyst",
-    "writableBy": "書き込み可能（ロール、カンマ区切り）",
-    "writableByPlaceholder": "admin",
     "url": "URL",
     "urlPlaceholder": "https://api.example.com/action",
     "method": "メソッド",

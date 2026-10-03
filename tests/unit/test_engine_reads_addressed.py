@@ -248,8 +248,11 @@ async def test_refreshing_statistics_analyzes_a_replica_served_table_at_its_repl
     from provisa.api.admin.schema_mutation import Mutation
     from tests.unit.gate_identity import grant
 
+    from provisa.audit.context import audit_identity_scope
+    from provisa.core.request_context import current_acting_role
+
     rt = _Runtime()
-    state = SimpleNamespace(federation_engine=rt, catalog_for=lambda sid: sid)
+    state = SimpleNamespace(federation_engine=rt, catalog_for=lambda sid: sid, model_stamp=1)
     info, _ = grant(monkeypatch, "source_registration", state=state)
     monkeypatch.setattr("provisa.api.app.state", state)
 
@@ -257,13 +260,27 @@ async def test_refreshing_statistics_analyzes_a_replica_served_table_at_its_repl
         return SimpleNamespace(acquire=lambda: _Acquire())
 
     monkeypatch.setattr(schema_mutation, "_get_pool", _pool)
+    recorded: list = []
+    monkeypatch.setattr(
+        "provisa.audit.pipeline.enqueue_audit", lambda pending, *_a, **_k: recorded.append(pending)
+    )
 
-    result = await Mutation().refresh_source_statistics(info, source_id="src")
+    token = current_acting_role.set("org_admin")
+    try:
+        with audit_identity_scope("admin-user", "http"):
+            result = await Mutation().refresh_source_statistics(info, source_id="src")
+    finally:
+        current_acting_role.reset(token)
 
     assert result.success, result.message
     # The served table is analyzed where it lives, in the store; no statement names its source.
     assert rt.analyzed == [_REPLICA]
     assert rt.statements == ["ANALYZE src.public.customers"]
+    # REQ-1760: the catalog statement runs under the system's authorization, recorded with the
+    # admin who asked for it.
+    assert [(p.user_id, p.role_id, p.query_text) for p in recorded] == [
+        ("admin-user", "org_admin", "ANALYZE src.public.customers")
+    ]
 
 
 # -- a registered name resolved to its engine name --------------------------------------------------

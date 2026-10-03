@@ -259,6 +259,8 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES data_products(id) ON DELETE SET NULL;  -- REQ-1634
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS materialize BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS row_materialize BOOLEAN NOT NULL DEFAULT FALSE;  -- REQ-1865
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS file_glob TEXT;  -- REQ-788
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS source_file_column TEXT;  -- REQ-788
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_refresh_interval INTEGER NOT NULL DEFAULT 300;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_debounce_quiet DOUBLE PRECISION NOT NULL DEFAULT 0;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_debounce_max_delay DOUBLE PRECISION NOT NULL DEFAULT 5;
@@ -949,7 +951,6 @@ CREATE TABLE IF NOT EXISTS tracked_functions (
     returns       TEXT NOT NULL DEFAULT '',
     arguments     JSONB NOT NULL DEFAULT '[]',
     visible_to    JSONB NOT NULL DEFAULT '[]',
-    writable_by   JSONB NOT NULL DEFAULT '[]',
     domain_id     TEXT NOT NULL DEFAULT '',
     description   TEXT,
     output_columns JSONB,  -- REQ-1159: canonical IR-typed output dataset contract [{name,type}]
@@ -1445,6 +1446,8 @@ CREATE TABLE IF NOT EXISTS replica_state (
     failed_at        TIMESTAMPTZ,
     failed_attempts  INTEGER NOT NULL DEFAULT 0,  -- builds failed in a row since the last completed
     waiting_on       TEXT,          -- why a requested build did not start on the last pass (a code)
+    feed_down_since  TIMESTAMPTZ,    -- REQ-1861: since when the change-feed listener is down; NULL = watching
+    feed_error       TEXT,           -- REQ-1861: the server's reason while the listener is down
     PRIMARY KEY (source_id, schema_name, table_name)
 );
 

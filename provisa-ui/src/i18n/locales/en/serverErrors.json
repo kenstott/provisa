@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json not valid JSON: {{error}}",
       "args_json_not_object": "args_json must be a JSON object",
       "column_not_writable": "Role '{{role}}' does not have write access to column '{{column}}'",
+      "command_filter_refused": "{{field}}: {{reason}}",
       "definition_not_available": "{{statement}} is not available here: definitions are made in the model or in the data source, and rows are removed with DELETE.",
       "engine_not_connected": "the engine not connected",
       "grpc_source_not_registered": "gRPC remote source '{{source_id}}' not registered",
@@ -84,6 +85,7 @@
       "query_required": "query is required",
       "query_timeout": "Query timed out after {{timeout_s}}s",
       "query_too_complex": "The query's complexity ({{score}}) exceeds the {{limit_of}} limit of {{limit}}.",
+      "redirect_failed": "The result could not be written to the results store: {{error}}",
       "redirect_upload_failed": "Redirect upload failed: {{error}}",
       "request_interrupted": "{{error}}",
       "row_level_key_required": "Table '{{table}}' is replicated row by row and can only be read by its key ({{key}}). Filter on the key with an equality or an IN list, or join the table on a single column.",
@@ -92,7 +94,8 @@
       "table_not_found": "Table '{{table}}' not found",
       "unknown_action_field": "Unknown action field: '{{field}}'",
       "unknown_command": "Unknown command '{{name}}'",
-      "write_not_admitted": "Role '{{role}}' may not make this write: a write needs the write right, write access to every column it writes, and rows the role's row filter admits."
+      "write_not_admitted": "Role '{{role}}' may not make this write: a write needs the write right, write access to every column it writes, and rows the role's row filter admits.",
+      "write_not_supported": "'{{table}}' does not take {{operation}}: its source cannot carry it"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter for '{{source_type}}' does not implement discover_schema",
@@ -118,6 +121,9 @@
     "functions": {
       "approval_denied": "Approval denied for '{{name}}': {{reason}}",
       "approval_unavailable": "command '{{name}}' needs approval and no approval hook is configured",
+      "argument_count": "{{signature}} takes {{count}} argument(s); {{given}} given",
+      "argument_missing": "{{signature}}: argument '{{argument}}' was not given",
+      "argument_not_declared": "{{signature}}: argument '{{argument}}' is not one it declares",
       "binding_missing_key": "function binding for kind '{{kind}}' is missing required key '{{key}}'",
       "egress_denied": "egress to '{{endpoint}}' is denied: host not on the UDF egress allow-list (REQ-885 deny-by-default). Add it to udf_egress_allowlist to permit.",
       "grpc_call_failed": "grpc call {{target}}{{path}} failed: {{status}}: {{details}}",
@@ -133,6 +139,7 @@
       "script_failed": "script exited {{returncode}}: {{stderr}}",
       "source_not_connected": "Source '{{source_id}}' not connected",
       "unknown_arg_kind": "Unknown arg_kind '{{arg_kind}}' for '{{name}}'",
+      "unknown_command": "Unknown command: '{{name}}'",
       "unknown_impl_kind": "Unknown function impl_kind: '{{impl_kind}}'",
       "written_table_missing": "command '{{name}}' writes '{{table}}', which is not registered"
     },
@@ -333,6 +340,8 @@
       "task_not_found": "Task '{{task}}' not found",
       "trigger_exists": "Trigger '{{trigger}}' already exists",
       "trigger_fields_required": "id, name, and cron are required",
+      "trigger_role_required": "Trigger '{{trigger}}': a SQL trigger runs as a role of this org",
+      "trigger_sql_refused": "{{reason}}",
       "unknown_request_type": "Unknown request type '{{type}}'",
       "unknown_trigger_kind": "Unknown trigger kind '{{kind}}'",
       "url_sql_exclusive": "url and sql are mutually exclusive",
@@ -340,7 +349,8 @@
       "view_spans_sources": "view spans multiple sources: {{sources}}",
       "webhook_approved": "Approved webhook '{{webhook}}'",
       "webhook_name_required": "webhook_name is required for a webhook trigger",
-      "webhook_not_found": "Webhook '{{webhook}}' not found"
+      "webhook_not_found": "Webhook '{{webhook}}' not found",
+      "change_streams_unavailable": "Source '{{source}}' is a standalone MongoDB server, which serves no change streams: the native change signal needs a replica set or a sharded cluster. Run it as a replica set, or use the poll change signal."
     },
     "secrets": {
       "still_referenced": "{{secret}} is still named by {{count}} stored value(s) in this organization. Change or remove each one, then delete it again."
@@ -396,6 +406,9 @@
       "no_fields_to_update": "No fields to update",
       "self_role_change": "A user cannot change their own role. Ask another administrator (REQ-1308).",
       "user_not_found": "User not found"
+    },
+    "cypher": {
+      "command_call_refused": "{{reason}}"
     }
   }
 }

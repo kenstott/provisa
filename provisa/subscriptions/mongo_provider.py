@@ -16,7 +16,8 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, AsyncGenerator
+from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING, AsyncGenerator, AsyncIterator
 
 from provisa.subscriptions.base import ChangeEvent, NotificationProvider
 
@@ -82,3 +83,38 @@ class MongoNotificationProvider(NotificationProvider):  # REQ-258
         if self._cursor:
             await self._cursor.close()
             self._cursor = None
+
+
+@asynccontextmanager
+async def open_change_stream(
+    *,
+    host: str,
+    port: int,
+    username: str | None,
+    password: str | None,
+    database: str,
+    collection: str,
+    wait_ms: int,
+) -> AsyncIterator[AsyncIOMotorChangeStream]:
+    """An open change stream on ``database.collection`` (REQ-1861), closed with its client when
+    the block ends. Entering opens the stream at the server, so a change made after the block is
+    entered is not missed. ``wait_ms`` bounds each ``try_next``. The server must be a replica
+    set member: a standalone mongod serves no change streams and fails here with its own reason.
+
+    ``directConnection``: a single-node replica set reports a hostname only its own network
+    resolves (see ``provisa/mongodb/fetch.py``), so the address given is the one connected to."""
+    from motor.motor_asyncio import AsyncIOMotorClient
+
+    client: AsyncIOMotorClient = AsyncIOMotorClient(
+        host=host,
+        port=port,
+        username=username,
+        password=password,
+        serverSelectionTimeoutMS=30000,
+        directConnection=True,
+    )
+    try:
+        async with client[database][collection].watch(max_await_time_ms=wait_ms) as stream:
+            yield stream
+    finally:
+        client.close()

@@ -52,6 +52,27 @@ class DuckDBBackend(NativeEngineBackend):
             runtime._store_broker, schema=address.schema, table=address.table, columns=args.columns
         )
 
+    result_formats = frozenset({"parquet"})
+
+    def ctas_redirect(
+        self, state: Any, physical_sql: str, output_format: str, params: list | None
+    ) -> dict:
+        """REQ-1194: DuckDB runs the statement and writes its result to the results bucket
+        itself (``COPY (query) TO 's3://...'`` through httpfs)."""
+        from provisa.executor import redirect
+        from provisa.federation import result_sink
+
+        result_sink.require_format(self.engine.name, output_format, self.result_formats)
+        config = redirect.RedirectConfig.from_env()
+        redirect.ensure_results_bucket_sync(config)
+        target = result_sink.new_target(config)
+        rows = self._runtime_for(state).write_result(
+            result_sink.duckdb_copy(physical_sql, target),
+            params,
+            secret_sql=result_sink.duckdb_secret(config),
+        )
+        return {"s3_prefix": target.s3_prefix, "row_count": rows}
+
     def transpile_physical(self, pg_sql: str) -> str:
         """DuckDB physical SQL, then rewrite the JSON array aggregate the compiler emits for
         one-to-many relationships: SQLGlot writes Postgres json_agg as JSON_ARRAYAGG, which DuckDB

@@ -758,6 +758,18 @@ def _populate_pg_extension(db) -> None:
         db.executemany("INSERT INTO _pg_extension VALUES (?,?,?,?,?,?,?,?)", rows)
 
 
+def served_database_name(state) -> str:  # REQ-1235
+    """The database a pgwire client is connected to. Under multi-tenancy that is the bound org,
+    which the client named (database name or TLS hostname); a single-tenant deployment has one
+    database, ``provisa``."""
+    from provisa.api.org_resolve import DEFAULT_DATABASE
+    from provisa.core.request_context import require_current_org
+
+    if getattr(state, "multitenancy", False):
+        return require_current_org()
+    return DEFAULT_DATABASE
+
+
 def _populate_pg_roles_and_database(db, role_id: str, state=None) -> None:
     db.execute("""CREATE TABLE _pg_roles (
         oid INTEGER, rolname VARCHAR, rolsuper BOOLEAN, rolinherit BOOLEAN,
@@ -807,7 +819,9 @@ def _populate_pg_roles_and_database(db, role_id: str, state=None) -> None:
         datconnlimit INTEGER, datfrozenxid INTEGER, datminmxid INTEGER,
         dattablespace INTEGER, datcollate VARCHAR, datctype VARCHAR, datacl VARCHAR)""")
     db.execute(
-        "INSERT INTO _pg_database VALUES (16384,'provisa',10,6,'c',FALSE,TRUE,-1,726,1,1663,'en_US.UTF-8','en_US.UTF-8',NULL)"
+        "INSERT INTO _pg_database VALUES "
+        "(16384,?,10,6,'c',FALSE,TRUE,-1,726,1,1663,'en_US.UTF-8','en_US.UTF-8',NULL)",
+        [served_database_name(state)],
     )
 
 

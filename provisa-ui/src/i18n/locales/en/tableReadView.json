@@ -55,6 +55,8 @@
     "colTopValues": "Top values",
     "editDefinitionButton": "Edit Definition",
     "editDefinitionTitle": "Edit the view definition (SQL or metric/dimension picker)",
-    "queryTemplate": "Cypher:"
+    "queryTemplate": "Cypher:",
+    "writes": "Takes writes:",
+    "writesNone": "None (read only)"
   }
 }

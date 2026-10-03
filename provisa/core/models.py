@@ -23,6 +23,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    PrivateAttr,
     SecretStr,
     field_validator,
     model_validator,
@@ -1044,6 +1045,14 @@ class Table(
     # row ALREADY in this table's row cache refreshes it in the background (never inserts a key
     # nothing has queried yet — see docs/arch/row_level_materializer_design.md).
     row_materialize: bool = False
+    # REQ-788: a files source table that is ONE logical table over every file matching this
+    # glob (relative to the source's path), not one table per file. The matched files must share
+    # a column set; a differing file is refused by name (files_glob.FileColumnsDiffer). None: the
+    # table is a single file, as before.
+    file_glob: str | None = None
+    # REQ-788: when set, the name of a column carrying each row's matched file path. Opt-in — a
+    # files-glob table has no such column unless it is declared.
+    source_file_column: str | None = None
     mv_refresh_interval: int = 300  # seconds between MV refreshes (only used when materialize=True)
     # REQ-963: live-MV debounce. deadline = min(last_change+quiet, first_change+max_delay). A burst
     # of upstream changes collapses into one recompute-to-current. quiet=0 disables debounce (pure
@@ -1416,8 +1425,10 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     function_name: str
     returns: str  # registered table id (source_id.schema.table)
     arguments: list[FunctionArgument] = Field(default_factory=list)
+    # The one list of roles the command is assigned to; empty assigns it to every role. A role
+    # calls it when it is assigned, reaches its domain, and — for a mutation — holds the write
+    # right (security/mutation_authz.admit_command).
     visible_to: list[str] = Field(default_factory=list)
-    writable_by: list[str] = Field(default_factory=list)
     domain_id: str = ""
     description: str | None = None
     kind: str = "mutation"  # "mutation" or "query"
@@ -1455,6 +1466,18 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
 
     model_config = ConfigDict(populate_by_name=True)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _one_role_list(cls, data: Any) -> Any:
+        """A command carries one role list, ``visible_to``. A configuration still naming a second
+        one fails here, by name, rather than being read as something it no longer is."""
+        if isinstance(data, dict) and "writable_by" in data:
+            raise ValueError(
+                f"command {data.get('name')!r}: 'writable_by' is not a command key — a command "
+                "is assigned to roles by 'visible_to' alone"
+            )
+        return data
+
 
 class Webhook(BaseModel):  # REQ-209, REQ-210, REQ-211
     """External HTTP webhook exposed as a GraphQL query or mutation."""
@@ -1470,7 +1493,20 @@ class Webhook(BaseModel):  # REQ-209, REQ-210, REQ-211
     domain_id: str = ""
     description: str | None = None
     kind: str = "mutation"  # "mutation" or "query"
-    governance: str | None = None  # e.g. "requires_approval" (REQ-209)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_approval_yet(cls, data: Any) -> Any:
+        """A webhook does not yet run through an approval (REQ-209 is not built for webhooks). A
+        configuration asking for one is refused by name, never accepted and ignored."""
+        if isinstance(data, dict):
+            for key in ("governance", "requires_approval"):
+                if key in data:
+                    raise ValueError(
+                        f"webhook {data.get('name')!r}: {key!r} is not supported on a webhook "
+                        "yet — a webhook call is not put to an approval"
+                    )
+        return data
 
 
 class ScheduledTrigger(BaseModel):
@@ -1486,7 +1522,23 @@ class ScheduledTrigger(BaseModel):
     # Mutually exclusive with url/function. REQ-1004: the text may contain {{date-token}}
     # placeholders substituted with the run's execution date/time before execution.
     sql: str | None = None
+    # The role a SQL trigger's statement runs as, through the one write admission. Required for a
+    # SQL trigger: a schedule acts as a role someone chose, never as a built-in one.
+    role: str | None = None
     enabled: bool = True
+
+    @model_validator(mode="after")
+    def _sql_trigger_writes_rows_as_a_role(self) -> "ScheduledTrigger":
+        if self.sql is None:
+            return self
+        if not self.role:
+            raise ValueError(f"trigger {self.id!r}: a SQL trigger names the role it runs as")
+        from datetime import datetime, timezone
+
+        from provisa.scheduler.trigger_sql import checked_trigger_sql
+
+        checked_trigger_sql(self.sql, self.id, datetime.now(timezone.utc))
+        return self
 
 
 class LoginThrottleConfig(BaseModel):  # REQ-1393
@@ -1506,15 +1558,20 @@ class LoginThrottleConfig(BaseModel):  # REQ-1393
 class AuthConfig(
     BaseModel
 ):  # REQ-120, REQ-121, REQ-122, REQ-123, REQ-124, REQ-125, REQ-203, REQ-247, REQ-1393
-    provider: str = "none"  # none, firebase, keycloak, oauth, oidc, simple
+    provider: str = "none"  # none, firebase, keycloak, oauth, oidc, ldap, saml, simple
     firebase: dict | None = None
     keycloak: dict | None = None
     oauth: dict | None = None
     oidc: dict | None = (
         None  # REQ-890: generic OIDC (discovery_url, client_id, audience, role_claim)
     )
+    ldap: dict | None = None  # REQ-1265: provisa/auth/providers/ldap.py LdapSettings
+    saml: dict | None = None  # REQ-1265: provisa/auth/providers/saml.py SamlSettings
     simple: dict | None = None
     allow_simple_auth: bool = False  # REQ-124: production guard — simple auth refused unless true
+    # REQ-1265: whether /auth/register creates local accounts (basic provider). The chart's
+    # auth.provider: local turns it off: the break-glass account is the only sign-in.
+    allow_registration: bool = True
     # REQ-1394: pgwire advertises SASL/SCRAM-SHA-256 instead of cleartext. Only the basic provider
     # holds the verifiers SCRAM needs, so the flag has no effect under any other provider.
     scram: bool = False
@@ -2014,6 +2071,18 @@ class SecurityConfig(BaseModel):  # REQ-693
 
 
 class ProvisaConfig(BaseModel):
+    # The config as its file wrote it (config_loader.parse_config_dict): the same model with each
+    # text value that the file gave as a reference (``${env:...}``, ``${secret:...}``) still that
+    # reference. The fields below hold the RESOLVED values, for the running process; what is
+    # stored in the control plane is taken from ``written``, so a credential's value is never
+    # stored where its reference was written.
+    _written: "ProvisaConfig | None" = PrivateAttr(default=None)
+
+    @property
+    def written(self) -> "ProvisaConfig":
+        """The config as written. A config built in code is what it was built with."""
+        return self if self._written is None else self._written
+
     server: ServerConfig = Field(default_factory=ServerConfig)
     # REQ-1921/1922: the platform's physical regions (a deployment key: a node reads them before
     # it opens any store), and the regions this org selects with the stores it keeps in each.
