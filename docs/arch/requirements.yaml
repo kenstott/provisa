@@ -3184,14 +3184,15 @@
     of "NOT SUPPORTED" during migration path evaluation.
   code:
   - provisa/hasura_v2/mapper.py
-  - provisa/source_adapters/graphql_remote_adapter.py
+  - provisa/hasura_v2/remote_schema.py
+  - provisa/graphql_remote/executor.py
   - provisa/api/admin/graphql_remote_router.py
   tests:
-  - tests/integration/test_graphql_remote_source.py
-  - tests/unit/test_core_registration.py
   - tests/unit/test_hasura_remote_schema.py
   - tests/unit/test_hasura_v2_comprehensive.py
   - tests/unit/test_import_shared.py
+  - tests/unit/test_core_registration.py
+  - tests/integration/test_graphql_remote_source.py
   since: 2026-01
   scenario: 'Given a Hasura v2 metadata file containing Remote Schema entries
 
@@ -3298,11 +3299,14 @@
   use_case: Multi-domain with first-claim ownership prevents the same physical table from being registered
     multiple times while allowing flexible domain-to-source associations.
   code:
-  - provisa/core/
-  - provisa-ui/src/pages/TablesPage
+  - provisa/api/admin/schema_helpers.py
+  - provisa/api/admin/schema_mutation.py
+  - provisa/api/admin/schema_mutation_ops.py
+  - provisa/core/schema_org.py
+  - provisa-ui/src/pages/tables/RegisterTableForm.tsx
+  - provisa-ui/src/pages/TablesPage.tsx
   tests:
   - tests/unit/test_dataset_uniqueness.py
-  - provisa-ui/e2e/registration-admin.spec.ts
   since: 2026-01
   scenario: 'Given a datasource shared across multiple domains
 
@@ -4421,13 +4425,14 @@
   use_case: S3/Iceberg materialization of remote schema results eliminates repeated network hops and enables
     federated SQL (WHERE/ORDER BY/LIMIT) over cached data.
   code:
-  - provisa/graphql_remote/
-  - provisa/api_source/trino_cache.py
+  - provisa/graphql_remote/executor.py
+  - provisa/api_source/engine_cache.py
+  - provisa/api/data/materialization.py
   tests:
-  - tests/integration/test_graphql_execution.py
+  - tests/unit/test_api_cache.py
   - tests/integration/test_graphql_remote_integration.py
   - tests/integration/test_graphql_remote_source.py
-  - tests/unit/test_api_cache.py
+  - tests/integration/test_graphql_execution.py
   - tests/unit/test_graphql_remote_introspect.py
   - tests/unit/test_graphql_remote_mapper.py
   - tests/unit/test_remote_adapter_contract.py
@@ -4795,8 +4800,9 @@
   use_case: S3/Iceberg materialization of GET operation results prevents repeated upstream REST calls
     and enables Trino SQL filtering over cached rows.
   code:
-  - provisa/api_source/trino_cache.py
+  - provisa/api_source/engine_cache.py
   - provisa/api_source/router_integration.py
+  - provisa/api_source/fill_cache.py
   tests:
   - tests/unit/test_api_cache.py
   - tests/integration/test_openapi_source.py
@@ -5147,16 +5153,17 @@
   use_case: S3/Iceberg materialization of gRPC query results enables Trino SQL filtering over cached rows
     and eliminates repeated remote calls. Channel reuse reduces connection overhead.
   code:
-  - provisa/grpc_remote/
-  - provisa/api_source/trino_cache.py
+  - provisa/grpc_remote/executor.py
+  - provisa/api_source/engine_cache.py
+  - provisa/source_adapters/grpc_remote_adapter.py
   tests:
-  - tests/e2e/test_grpc_query.py
-  - tests/integration/test_cache_store.py
-  - tests/integration/test_grpc_execution.py
-  - tests/unit/test_api_cache.py
-  - tests/unit/test_cache_store.py
   - tests/unit/test_grpc_remote_cache.py
+  - tests/unit/test_api_cache.py
   - tests/unit/test_grpc_remote_loader.py
+  - tests/integration/test_grpc_execution.py
+  - tests/e2e/test_grpc_query.py
+  - tests/unit/test_cache_store.py
+  - tests/integration/test_cache_store.py
   - tests/unit/test_remote_adapter_contract.py
   - tests/unit/test_schema_service.py
   since: 2026-01
@@ -5881,7 +5888,7 @@
       are not present in Trino, Hasura, Denodo, or Dremio. Snowflake supports embedding columns only within
       Snowflake tables, not across federated sources.
 - id: REQ-422
-  status: complete
+  status: in-progress
   group: 4. Source Connectors
   category: Vector Search
   priority: SHOULD
@@ -5892,10 +5899,10 @@
   use_case: Early capability detection allows fallback materialization strategy to be planned at source
     registration.
   code:
-  - provisa/source_adapters/introspect.py
+  - provisa/vector/capability.py
+  - provisa/vector/support.py
   tests:
   - tests/unit/test_vector.py
-  since: 2026-01
   scenario: 'Given a PostgreSQL source being registered
 
     When Provisa checks for native vector support
@@ -5916,6 +5923,11 @@
     rationale: Automatic vector capability detection at source registration time (pgvector, MongoDB Atlas
       Vector Search, Snowflake Cortex) with planned fallback materialization strategy is not present in
       any competitor federation platform; vector search is only available within individual source silos.
+  notes: 'Audit 2026-10-03: was marked complete; partly built. Missing: Detection is never run at source
+    registration and nothing flags a source as requiring fallback. native_vector_capability / supports_native_vectors
+    / has_pgvector (provisa/vector/capability.py:26,31,35) and check_native_vector_support (provisa/vector/support.py:20)
+    have no caller outside provisa/vector/; no registration path (provisa/api/admin, provisa/core) references
+    them.'
 - id: REQ-423
   status: complete
   group: 4. Source Connectors
@@ -6166,7 +6178,7 @@
       silent semantic errors from mismatched embedding spaces — a correctness guarantee not present in
       any competitor federation platform.
 - id: REQ-430
-  status: complete
+  status: in-progress
   group: 4. Source Connectors
   category: Vector Search
   priority: SHOULD
@@ -6176,11 +6188,10 @@
     query vector before executing the search. Both text input and raw vector input must be supported interfaces.'
   use_case: Query-time vectorization enables natural text-based search without pre-vectorization ceremony.
   code:
-  - provisa/vector/query_vectorization.py
+  - provisa/vector/query.py
+  - provisa/vector/providers.py
   tests:
-  - tests/unit/test_schema_visibility_filters.py
   - tests/unit/test_vector.py
-  since: 2026-01
   scenario: 'Given a similarity search expressed with a text string
 
     When the query is executed
@@ -6201,6 +6212,11 @@
     rationale: Query-time vectorization (text string → embedding → similarity search inline) as a first-class
       operation in a federation platform is unique; Snowflake Cortex supports it only within Snowflake;
       no cross-source federation platform offers this capability.
+  notes: 'Audit 2026-10-03: was marked complete; partly built. Missing: The text-or-vector resolver exists
+    but no similarity-search query path calls it: resolve_query_vector (provisa/vector/query.py:82) and
+    cosine_similarity_sql (provisa/vector/query.py:36) have no caller outside provisa/vector/ and tests.
+    The only production use of vectorize_text is MCP catalog search (provisa/api/mcp/search.py:179), which
+    is not a similarity search over a declared embedding column.'
 - id: REQ-431
   status: complete
   group: 4. Source Connectors
@@ -9556,7 +9572,6 @@
   tests:
   - tests/e2e/test_query_pipeline.py
   - tests/integration/test_compiler_integration.py
-  - tests/unit/test_graph_analytics_requirements.py
   scenario: 'Given a graph exceeding 10,000 nodes or 50,000 edges
 
     When submitted to POST /data/graph-analytics
@@ -9593,7 +9608,6 @@
   tests:
   - tests/e2e/test_query_pipeline.py
   - tests/integration/test_compiler_integration.py
-  - tests/unit/test_graph_analytics_requirements.py
   scenario: 'Given a Girvan-Newman request on a graph with 500 or more nodes and force=false
 
     When submitted to the endpoint
@@ -13983,12 +13997,13 @@
   use_case: Hard-coded timeouts prevent long-running DDL or query operations from blocking pgwire handler
     threads indefinitely.
   code:
-  - provisa/pgwire/ddl_handler.py
   - provisa/pgwire/server.py
+  - provisa/pgwire/copy_handler.py
+  - provisa/core/limits.py
   tests:
-  - tests/integration/test_pgwire_integration.py
-  - tests/unit/pgwire/test_wire_protocol.py
   - tests/unit/test_pgwire_requirements.py
+  - tests/unit/pgwire/test_wire_protocol.py
+  - tests/integration/test_pgwire_integration.py
   since: 2026-01
   scenario: 'Given a DDL or query operation running in a pgwire handler thread
 
@@ -14201,13 +14216,14 @@
   use_case: Capability-gated DDL and COPY lets power users perform schema operations via psql or DBeaver
     while protecting other roles from accidental destructive statements.
   code:
-  - provisa/pgwire/server.py
-  - provisa/pgwire/ddl_handler.py
   - provisa/pgwire/copy_handler.py
+  - provisa/pgwire/_pipeline.py
+  - provisa/pgwire/server.py
+  - provisa/compiler/definitions.py
   tests:
-  - tests/integration/test_pgwire_integration.py
-  - tests/unit/pgwire/test_wire_protocol.py
   - tests/unit/test_pgwire_requirements.py
+  - tests/unit/pgwire/test_wire_protocol.py
+  - tests/integration/test_pgwire_integration.py
   since: 2026-01
   scenario: 'Given a role without the ddl capability submitting COPY or DDL over pgwire
 
@@ -14226,6 +14242,9 @@
     status: ahead
     rationale: DDL capability gating over pgwire (COPY/DDL require ddl role capability) applies Provisa's
       governance model to the SQL wire protocol — not available in Hasura or Dremio.
+  notes: 'Audit 2026-10-03: the 2026-10-03 amendment (COPY FROM STDIN admitted as a write) is not built
+    yet; the code refuses it with 0A000 (provisa/pgwire/copy_handler.py:190-196). It is built with REQ-1925.
+    The `ddl` right is still a member of the rights vocabulary, checked by nothing (provisa/security/rights.py:118).'
 - id: REQ-617
   status: complete
   group: 8. Client Access & Protocols
@@ -15534,8 +15553,10 @@
     in both add-form and edit-form views, and in the read-only view.
   use_case: UI-based PK designation lets stewards configure keys without editing YAML files.
   code:
-  - provisa-ui/src/pages/TablesPage
-  - provisa-ui/src/components/ColumnForm
+  - provisa-ui/src/pages/tables/RegisterTableForm.tsx
+  - provisa-ui/src/pages/tables/TableEditForm.tsx
+  - provisa-ui/src/pages/tables/TableReadView.tsx
+  - provisa-ui/src/pages/TablesPage.tsx
   tests:
   - provisa-ui/e2e/tables-register.spec.ts
   - provisa-ui/src/__tests__/ui_requirements.test.ts
@@ -15570,11 +15591,11 @@
     no primary key is configured for that node label.
   use_case: Disabling exclusion without a PK prevents incomplete or ambiguous row-level filtering.
   code:
-  - provisa-ui/src/components/GraphContextMenu
+  - provisa-ui/src/components/graph/NodeContextMenu.tsx
   tests:
-  - provisa-ui/e2e/graph-query-panel-height.spec.ts
-  - provisa-ui/e2e/graph-show-children.spec.ts
   - provisa-ui/src/__tests__/ui_requirements.test.ts
+  - provisa-ui/e2e/graph-show-children.spec.ts
+  - provisa-ui/e2e/graph-query-panel-height.spec.ts
   - tests/unit/test_column_governance_requirements.py
   since: 2026-01
   scenario: 'Given a graph node with no primary key configured
@@ -15608,8 +15629,8 @@
   use_case: FK/AK badges provide visual feedback on relationship column usage without allowing direct
     editing.
   code:
-  - provisa-ui/src/components/ColumnForm
-  - provisa-ui/src/pages/TablesPage
+  - provisa-ui/src/pages/tables/TableEditForm.tsx
+  - provisa-ui/src/pages/tables/TableReadView.tsx
   tests:
   - provisa-ui/e2e/tables-register.spec.ts
   - provisa-ui/src/__tests__/ui_requirements.test.ts
@@ -15644,10 +15665,10 @@
     Selection determines whether `table_id` or `domain_id` is populated; the other is NULL.'
   use_case: UI toggle lets stewards choose rule scope without understanding the underlying schema design.
   code:
-  - provisa-ui/src/pages/SecurityPage
+  - provisa-ui/src/pages/SecurityPage.tsx
   tests:
-  - provisa-ui/src/__tests__/ui_requirements.test.ts
   - tests/unit/test_column_governance_requirements.py
+  - provisa-ui/src/__tests__/ui_requirements.test.ts
   since: 2026-01
   scenario: 'Given a steward configuring an RLS rule
 
@@ -15680,11 +15701,12 @@
   use_case: Correct single-quote quoting prevents SQL identifier errors when filtering by string PK values
     in the graph view.
   code:
-  - provisa-ui/src/pages/GraphFrame.tsx
+  - provisa-ui/src/components/graph/graph-model.ts
+  - provisa-ui/src/components/graph/GraphFrame.tsx
   tests:
   - provisa-ui/src/__tests__/ui_requirements.test.ts
+  - provisa-ui/src/pages/__tests__/inject-exclusion.test.ts
   - tests/unit/test_column_governance_requirements.py
-  - tests/unit/test_cypher_graph_fns.py
   since: 2026-01
   scenario: 'Given a graph query filtering by a non-numeric PK value
 
@@ -16019,12 +16041,14 @@
   use_case: Single-command Docker Compose setup lets developers run the full Provisa stack without manual
     configuration.
   code:
-  - helm/
-  - docker-compose.yml
+  - docker-compose.core.yml
+  - docker-compose.app.yml
+  - start-ui.sh
+  - docker/trino-engine.Dockerfile
   tests:
-  - tests/e2e/test_health_checks.py
-  - tests/integration/test_infra.py
   - tests/unit/test_infra_requirements.py
+  - tests/integration/test_infra.py
+  - tests/e2e/test_health_checks.py
   since: 2026-01
   scenario: 'Given a developer wants to run the full Provisa stack locally
 
@@ -16045,7 +16069,7 @@
     status: parity
     rationale: Docker Compose for development is standard practice across all modern data platforms.
 - id: REQ-056
-  status: complete
+  status: in-progress
   group: 11. Platform, Infrastructure & Delivery
   category: Infrastructure
   priority: SHOULD
@@ -16055,14 +16079,14 @@
   use_case: Helm chart with HPA autoscaling lets production deployments scale Trino workers automatically
     under load.
   code:
-  - helm/
-  - docker-compose.yml
+  - helm/provisa/Chart.yaml
+  - helm/provisa/values.yaml
+  - helm/provisa/templates/trino-worker.yaml
+  - helm/provisa/templates/trino-coordinator.yaml
+  - helm/provisa/templates/hpa-provisa.yaml
   tests:
-  - tests/e2e/test_health_checks.py
-  - tests/e2e/test_helm_minikube.py
-  - tests/integration/test_infra.py
   - tests/unit/test_infra_requirements.py
-  since: 2026-01
+  - tests/e2e/test_helm_minikube.py
   scenario: 'Given a production Kubernetes deployment
 
     When load increases on Trino workers
@@ -16077,6 +16101,11 @@
   competitive_position:
     status: parity
     rationale: Helm chart for Kubernetes with HPA is standard for enterprise data platform deployment.
+  notes: 'Audit 2026-10-03: was marked complete; partly built. Missing: Trino resource groups are not
+    in the Helm chart. A case-insensitive search of helm/provisa for ''resource-groups''/''resourceGroups''/''group''
+    (excluding apiGroup/fsGroup) returns nothing; trino-configmap.yaml ships no resource-groups.properties/json.
+    Resource groups exist only for Docker Compose (docker-compose.core.yml:97-98 mounting trino/etc/resource-groups.json
+    and .properties). Worker scaling and HPA are present.'
 - id: REQ-057
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -16088,12 +16117,15 @@
   use_case: Stateless Provisa container enables horizontal scaling and rolling deployments without session
     affinity concerns.
   code:
-  - helm/
-  - docker-compose.yml
+  - docker-compose.app.yml
+  - docker-compose.core.yml
+  - helm/provisa/templates/provisa-deployment.yaml
+  - helm/provisa/values.yaml
+  - provisa/api/app.py
   tests:
-  - tests/e2e/test_health_checks.py
-  - tests/integration/test_infra.py
   - tests/unit/test_infra_requirements.py
+  - tests/integration/test_infra.py
+  - tests/e2e/test_health_checks.py
   since: 2026-01
   scenario: 'Given multiple Provisa container instances running behind a load balancer
 
@@ -16360,12 +16392,13 @@
   use_case: Trino 480 with Iceberg results catalog provides modern open-table-format storage for all redirected
     results.
   code:
-  - helm/
-  - docker-compose.yml
+  - docker-compose.core.yml
+  - trino/catalog/results.properties
+  - docker/trino-engine.Dockerfile
   tests:
-  - tests/e2e/test_health_checks.py
-  - tests/integration/test_infra.py
   - tests/unit/test_infra_requirements.py
+  - tests/integration/test_infra.py
+  - tests/e2e/test_health_checks.py
   since: 2026-01
   scenario: 'Given the Provisa stack is running
 
@@ -16394,11 +16427,8 @@
   description: '`start-ui.sh --reset-volumes` for Docker crash recovery.'
   use_case: reset-volumes flag gives developers a one-command recovery path after Docker volume corruption.
   code:
-  - helm/
-  - docker-compose.yml
+  - start-ui.sh
   tests:
-  - tests/e2e/test_health_checks.py
-  - tests/integration/test_infra.py
   - tests/unit/test_infra_requirements.py
   since: 2026-01
   scenario: 'Given Docker volumes have been corrupted after a crash
@@ -16442,14 +16472,12 @@
   use_case: MinIO bucket auto-creation at startup prevents first-run failures due to missing redirect
     storage.
   code:
-  - helm/
-  - docker-compose.yml
+  - provisa/executor/redirect.py
+  - provisa/federation/backend.py
+  - docker-compose.core.yml
   tests:
   - tests/unit/test_redirect_bucket_lazy.py
-  - tests/e2e/test_health_checks.py
-  - tests/integration/test_infra.py
   - tests/unit/test_infra_requirements.py
-  - provisa-ui/e2e/infrastructure.spec.ts
   since: 2026-01
   scenario: 'Given the Provisa stack starts for the first time
 
@@ -19522,11 +19550,14 @@
     rationale: Org-scoped Trino cache schemas (org_<org_id>_api_cache) ensure no cross-tenant cache bleed
       in the query federation layer — not present in standard Trino or Hasura multi-tenant setups.
   code:
-  - provisa/api_source/trino_cache.py
-  - provisa/api/data/endpoint.py
+  - provisa/api_source/engine_cache.py
+  - provisa/api_source/fill_cache.py
+  - provisa/api/data/endpoint_executors.py
+  - provisa/api/data/materialization.py
+  - provisa/api/rest/cypher_exec.py
   tests:
-  - tests/unit/test_catalog_cache.py
   - tests/unit/test_org_isolation.py
+  - tests/unit/test_catalog_cache.py
 - id: REQ-699
   status: complete
   since: 2026-07
@@ -19724,7 +19755,7 @@
   use_case: Operators who cannot run the Flight server on port 8815 (due to port conflicts or network
     policy) can connect via ADBC without falling back to DB-API or SQLAlchemy.
   code:
-  - provisa_client/adbc.py
+  - provisa-client/provisa_client/adbc.py
   stakeholders:
   - ops
   - app-developer
@@ -21768,7 +21799,9 @@
     labels, stored in browser localStorage.
   use_case: Users need quick access to frequently-used Cypher queries without re-typing them.
   code:
-  - provisa-ui/src/components/graph-explorer
+  - provisa-ui/src/pages/GraphPage.tsx
+  - provisa-ui/src/components/graph/GraphSidebar.tsx
+  - provisa-ui/src/components/graph/graph-persistence.ts
   tests:
   - provisa-ui/e2e/graph-favorites.spec.ts
   since: 2026-06
@@ -21798,7 +21831,8 @@
   use_case: Hover-reveal of action buttons keeps the favorites panel uncluttered while making operations
     discoverable.
   code:
-  - provisa-ui/src/components/graph-explorer
+  - provisa-ui/src/components/graph/GraphSidebar.tsx
+  - provisa-ui/src/pages/GraphPage.css
   tests:
   - provisa-ui/e2e/graph-favorites.spec.ts
   since: 2026-06
@@ -21825,7 +21859,8 @@
     editor for execution or modification.'
   use_case: Users can quickly load and run a saved query or modify it before execution.
   code:
-  - provisa-ui/src/components/graph-explorer
+  - provisa-ui/src/components/graph/GraphSidebar.tsx
+  - provisa-ui/src/pages/GraphPage.tsx
   tests:
   - provisa-ui/e2e/graph-favorites.spec.ts
   - tests/unit/test_graph_explorer_favorites.py
@@ -21855,7 +21890,8 @@
     Enter to commit and Escape to cancel; label persists in localStorage.'
   use_case: Users can update favorite labels to keep them organized and meaningful as their work evolves.
   code:
-  - provisa-ui/src/components/graph-explorer
+  - provisa-ui/src/components/graph/GraphSidebar.tsx
+  - provisa-ui/src/pages/GraphPage.tsx
   tests:
   - provisa-ui/e2e/graph-favorites.spec.ts
   - tests/unit/test_graph_explorer_favorites.py
@@ -21890,7 +21926,8 @@
     immediately.'
   use_case: Users can clean up outdated or unwanted saved queries.
   code:
-  - provisa-ui/src/components/graph-explorer
+  - provisa-ui/src/components/graph/GraphSidebar.tsx
+  - provisa-ui/src/pages/GraphPage.tsx
   tests:
   - provisa-ui/e2e/graph-favorites.spec.ts
   - tests/unit/test_graph_explorer_favorites.py
@@ -22002,7 +22039,7 @@
   bdd: true
   bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
 - id: REQ-788
-  status: complete
+  status: in-progress
   group: 4. Source Connectors
   category: File & Lake Sources
   priority: SHOULD
@@ -22013,11 +22050,14 @@
   use_case: File glob patterns enable users to query across multiple CSV files without manual discovery
     or registration of individual files.
   code:
-  - provisa/source_adapters/file_connector.py
+  - provisa/federation/trino_connectors.py
+  - provisa/federation/pgwire_replica.py
+  - provisa/file_source/crawler.py
+  - provisa/file_source/source.py
+  - provisa/api/admin/schema_query.py
   tests:
-  - provisa-ui/e2e/file-connector.spec.ts
   - tests/unit/test_file_lake_sources.py
-  since: 2026-06
+  - provisa-ui/e2e/file-connector.spec.ts
   scenario: 'Given a directory containing multiple CSV files matching a glob pattern
 
     When a file connector source is registered with the directory glob pattern
@@ -22035,6 +22075,9 @@
   stakeholders:
   - data-engineer
   - app-developer
+  notes: 'Audit 2026-10-03: was marked complete; partly built. Missing: Consolidation of multiple glob-matched
+    CSV files into a single logical table is not built: each file becomes its own table (provisa/federation/trino_connectors.py:536-539
+    ''one table per glob-matched file''; provisa/file_source/crawler.py:281-291 builds one entry per file).'
 - id: REQ-789
   status: complete
   group: 4. Source Connectors
@@ -22047,7 +22090,10 @@
   use_case: Automatic header normalization allows CSV files with mixed naming conventions to produce consistent,
     queryable schemas without manual column mapping.
   code:
-  - provisa/source_adapters/file_connector.py
+  - provisa/federation/pgwire_replica.py
+  - provisa/federation/trino_connectors.py
+  - provisa/file_source/source.py
+  - provisa/compiler/naming.py
   tests:
   - provisa-ui/e2e/file-connector.spec.ts
   - tests/unit/test_file_lake_sources.py
@@ -22082,8 +22128,9 @@
   use_case: UI-driven table enumeration allows users to discover and register file-based tables without
     knowledge of directory structure or manual schema definitions.
   code:
-  - provisa-ui/src/pages/tables
-  - provisa/api/rest/tables_router.py
+  - provisa-ui/src/pages/tables/RegisterTableForm.tsx
+  - provisa/api/admin/schema_query.py
+  - provisa-ui/src/hooks/useAdminQueries.ts
   tests:
   - provisa-ui/e2e/file-connector.spec.ts
   - tests/unit/test_file_lake_sources.py
@@ -23055,7 +23102,7 @@
   code:
   - docker-compose.core.yml
   - docker-compose.observability.yml
-  - provisa/telemetry/exporter.py
+  - provisa/api/otel_setup.py
   related_reqs:
   - REQ-813
   - REQ-814
@@ -23598,18 +23645,21 @@
   code:
   - provisa/federation/strategy.py
   - provisa/federation/engine.py
-  - provisa/executor/trino.py
-  - provisa/transpiler/router.py
-  - provisa/openapi/pg_cache.py
-  - provisa/mv/registry.py
-  - provisa/cache/warm_tables.py
-  - provisa/cache/hot_tables.py
-  - provisa/core/config_loader.py
   - provisa/core/operator_floor.py
+  - provisa/core/replicate.py
+  - provisa/federation/replica_hot.py
+  - provisa/federation/replica_routing.py
+  - provisa/federation/promote.py
+  - provisa/federation/materialization.py
+  - provisa/api_source/engine_cache.py
+  - provisa/core/models.py
+  - provisa-ui/src/components/admin/ReplicateSelect.tsx
   tests:
   - tests/unit/test_federation_strategy.py
   - tests/unit/test_operator_floor_routing.py
   - tests/integration/test_operator_floor_e2e.py
+  - tests/unit/test_replica_hot_evaluation.py
+  - tests/unit/test_floor_enforced_on_every_engine.py
   scenario: 'Given an engine that can only materialize an OpenAPI datasource
 
     When a query references that source
@@ -23768,7 +23818,8 @@
   - provisa/core/schema.sql
   - provisa/core/schema_org.py
   - provisa/api/app.py
-  - provisa/openapi/pg_cache.py
+  - provisa/api/app_loaders.py
+  - provisa/api_source/fill_cache.py
   tests:
   - tests/unit/test_admin_store.py
   - tests/unit/test_control_plane_shared_engine.py
@@ -23882,10 +23933,13 @@
   - provisa/api/app.py
   - provisa/core/db.py
   - provisa/core/repositories/source.py
-  - provisa/openapi/pg_cache.py
+  - provisa/api_source/fill_cache.py
   - provisa/cache/hot_tables.py
-  - provisa/cache/warm_tables.py
+  - provisa/federation/data_replicator.py
+  - provisa/federation/replica_state.py
+  - provisa/federation/engine.py
   - provisa/mv/registry.py
+  - provisa/core/meta_rls.py
   related_reqs:
   - REQ-825
   - REQ-826
@@ -24802,7 +24856,7 @@
   code:
   - provisa/freshness/adapters.py
   - provisa/mv/models.py
-  - provisa/openapi/pg_cache.py
+  - provisa/api_source/fill_cache.py
   tests:
   - tests/unit/test_freshness_adapters.py
   related_reqs:
@@ -25400,8 +25454,7 @@
   - REQ-260
   - REQ-282
 - id: REQ-874
-  status: complete
-  since: 2026-07
+  status: in-progress
   group: 4. Source Connectors
   category: Materialization Store
   priority: SHOULD
@@ -25464,9 +25517,6 @@
     in mutable stores absorb deltas; views cannot.'
   code:
   - provisa/federation/delta.py
-  - provisa/subscriptions/
-  - provisa/materialization/
-  - provisa/materialization_store/
   tests:
   - tests/unit/test_delta.py
   - tests/integration/test_materialization_store_lifecycle_e2e.py
@@ -25496,6 +25546,17 @@
   - REQ-260
   - REQ-282
   - REQ-845
+  notes: 'Audit 2026-10-03: was marked complete; partly built. Missing: Only the uniform helpers exist
+    (provisa/federation/delta.py:42-68: delta_applies, render_delta_fields, has_wm_placeholder, delta_is_fresh,
+    advance_cursor). No production module imports provisa.federation.delta (importers are tests only:
+    tests/unit/test_delta.py, tests/integration/test_materialization_store_lifecycle_e2e.py, tests/steps/steps_materialization_store.py).
+    There is no delta_query field on any model/config/schema/UI (grep ''delta_query'' over provisa/ and
+    provisa-ui/src returns nothing outside delta.py), no per-source-type native delta execution (GraphQL/OpenAPI/gRPC/SQL
+    callers), no keyed-upsert apply on the replica driven by a delta query, no validation gates wired
+    at registration, and no delta/opaque-probe mutual-exclusivity wiring with REQ-855. The requirement''s
+    own text lists these as REMAINING (kept in-progress). provisa/materialization/ and provisa/materialization_store/
+    do not exist. What exists instead is watermark_column incremental refresh through the engine (provisa/core/models.py:981-984),
+    which the requirement says delta is meant to replace for pushdown.'
 - id: REQ-875
   status: complete
   since: 2026-07
@@ -26055,11 +26116,12 @@
   - provisa/core/schema_org.py
   - provisa/api/admin/actions_router.py
   - provisa-ui/src/pages/commands/CommandFormFields.tsx
-  - provisa-ui/src/pages/commands/CommandsPage.tsx
   - provisa-ui/src/pages/commands/types.ts
-  - provisa-ui/src/pages/commands/api/actions.ts
+  - provisa-ui/src/pages/CommandsPage.tsx
+  - provisa-ui/src/api/actions.ts
   tests:
   - tests/unit/test_extensible_functions.py
+  - provisa-ui/src/__tests__/CommandFormFields.test.tsx
   scenario: 'Given a user registers a function with implementation kind=http and argument kinds=[table_ref,
     column_value]
 
@@ -26219,10 +26281,11 @@
     paths (pgwire, GraphQL, Arrow Flight, COPY handler, NL executor).
   code:
   - provisa/federation/runtime.py
-  - provisa/api/graphql/
-  - provisa/bolt/
-  - provisa/arrow_flight/
-  - provisa/query_helpers.py
+  - provisa/api/app.py
+  - provisa/api/data/endpoint_executors.py
+  - provisa/bolt/server.py
+  - provisa/api/flight/server.py
+  - provisa/api/_query_helpers.py
   tests:
   - tests/integration/test_engine_runtime_binding.py
   - tests/unit/test_engine_capabilities.py
@@ -27725,13 +27788,13 @@
     axes (detection method, append/replace mode, materialization).
   code:
   - provisa/core/change_signal.py
-  - api/app.py
-  - api/admin/schema.py
-  - api/data/subscribe.py
-  - live/reconcile.py
-  - core/config_loader.py
-  - core/models.py
-  - mv/refresh.py
+  - provisa/federation/store_writer.py
+  - provisa/federation/materialize_exec.py
+  - provisa/federation/store_connection.py
+  - provisa/api/data/subscribe.py
+  - provisa/live/reconcile.py
+  - provisa/core/config_loader.py
+  - provisa/core/models.py
   tests:
   - tests/unit/test_change_signal.py
   - tests/unit/test_materialize_landing.py
@@ -28173,10 +28236,13 @@
     lists and parallel registry maps.
   code:
   - provisa/federation/connector.py
+  - provisa/federation/connector_base.py
   - provisa/federation/engine.py
   - provisa/events/source_loader.py
   - provisa/executor/drivers/registry.py
-  - provisa/source_adapters/_ADAPTER_MAP
+  - provisa/source_adapters/registry.py
+  - provisa/core/source_registry.py
+  - provisa/federation/trino_connectors.py
 - id: REQ-948
   status: complete
   since: 2026-07
@@ -29877,11 +29943,15 @@
   code:
   - provisa/federation/engine.py
   - provisa/federation/backend.py
+  - provisa/federation/native_backend.py
+  - provisa/federation/snowflake_backend.py
+  - provisa/federation/snowflake_runtime.py
+  - provisa/federation/snowflake_connectors.py
+  - provisa/federation/snowflake_store.py
   - provisa/api/flight/server.py
   - provisa/executor/trino_flight.py
   - provisa/transpiler/transpile.py
-  - provisa/source_registry.py
-  - provisa/source_connectors/snowflake_connector.py
+  - provisa/core/source_registry.py
   integration_test: required
   competitive_position:
     status: ahead
@@ -29905,11 +29975,16 @@
   type: structural
   description: 'Zero-config default stack must be fully embedded and in-process with no external dependencies:
     default federation engine is duckdb (not trino), default materialize store is duckdb''s native embedded
-    store (not platform tenant DB via Postgres), and default control-plane store is sqlite (not embedded_pg).
-    Desktop installers default to this stack via the `native` preset declared in config/capabilities.yaml
-    (absorbs REQ-972). External engines and stores (Trino, Postgres, ClickHouse, Snowflake, Databricks)
-    remain selectable via PROVISA_ENGINE / PROVISA_ENGINE_URL / PROVISA_MATERIALIZE_URL / control_plane_store
-    overrides.'
+    store (not platform tenant DB via Postgres), [SUPERSEDED by REQ-1535, 2026-10-03 -- embedded PostgreSQL
+    is the default control-plane store for the demo and native tiers; sqlite stays selectable. Kept here
+    for history; do not implement against it.] and default control-plane store is sqlite (not embedded_pg)
+    [END SUPERSEDED BLOCK]. Desktop installers default to this stack via the `native` preset declared
+    in config/capabilities.yaml (absorbs REQ-972). External engines and stores (Trino, Postgres, ClickHouse,
+    Snowflake, Databricks) remain selectable via PROVISA_ENGINE / PROVISA_ENGINE_URL / PROVISA_MATERIALIZE_URL
+    / control_plane_store overrides. (Amended 2026-10-03, THE DEFAULT CONTROL PLANE IS EMBEDDED POSTGRESQL:)
+    The zero-config stack''s control-plane store is embedded PostgreSQL (REQ-1535), started in process
+    with no external dependency. The default engine (duckdb) and the default materialization store (duckdb''s
+    own) are unchanged.'
   use_case: Organizations and developers need instant local startup with zero Docker, no Trino cluster,
     no Postgres dependency — everything embedded for true out-of-the-box instant start. The zero-config
     path must serve as an approachable entry point while preserving full enterprise engine/store pluggability
@@ -29917,7 +29992,7 @@
   code:
   - provisa/federation/engine.py
   - provisa/core/desktop_profile.py
-  - provisa/core/capabilities.yaml
+  - config/capabilities.yaml
   e2e: true
   e2e_reason: Default engine and store behavior requires a full integration round-trip to confirm duckdb
     is selected, materialization occurs in-process, and control-plane persists to sqlite without external
@@ -30923,14 +30998,11 @@
     and run full warehouse integration tests. Caller-exported variables can still override .env values
     for CI/CD systems that inject credentials via environment.
   code:
-  - provisa/api/billing/router.py
-  - provisa/api/billing/lemonsqueezy_client.py
-  - provisa/api/billing/models.py
-  - provisa/api/billing/tenant_db.py
-  - provisa/core/schema_admin.py
+  - tests/env_creds.py
+  - tests/conftest.py
+  - scripts/test-all
   tests:
-  - tests/unit/test_billing_lemonsqueezy.py
-  - tests/unit/test_org_isolation.py
+  - tests/unit/test_env_creds_loaded.py
 - id: REQ-1026
   status: superseded
   group: 11. Platform, Infrastructure & Delivery
@@ -32386,7 +32458,8 @@
   use_case: Enterprises can use AWS-managed KMS keys without re-implementing envelope encryption logic.
     Private endpoint support enables airgapped deployments.
   code:
-  - provisa/encryption/providers/aws_kms.py
+  - provisa/encryption/providers.py
+  - provisa/encryption/registry.py
   relates_to:
   - REQ-684
 - id: REQ-1088
@@ -32403,7 +32476,8 @@
   use_case: Enterprises using Vault can leverage existing HSM or encryption backends without provisioning
     cloud KMS. Custom Vault endpoint supports private/airgapped deployments.
   code:
-  - provisa/encryption/providers/vault.py
+  - provisa/encryption/providers.py
+  - provisa/encryption/registry.py
   relates_to:
   - REQ-684
 - id: REQ-1089
@@ -32420,7 +32494,8 @@
   use_case: Azure-native deployments can leverage customer-managed keys in Azure Key Vault without running
     separate KMS infrastructure.
   code:
-  - provisa/encryption/providers/azure_keyvault.py
+  - provisa/encryption/providers.py
+  - provisa/encryption/registry.py
   relates_to:
   - REQ-684
 - id: REQ-1090
@@ -33603,7 +33678,7 @@
 
     '
   code:
-  - provisa/api/admin/mv_relationship_gate.py
+  - provisa/mv/relationship_gate.py
   - provisa/api/admin/schema_mutation_ops.py
   tests:
   - tests/unit/test_mv_relationship_gate.py
@@ -35496,7 +35571,7 @@
     be persisted to a file readable by the systemd unit. This decouples the first-launch process from
     the long-running server.
   code:
-  - provisa/cli/linux_installer.py
+  - packaging/linux/first-launch.sh
   - provisa/api/setup_router.py
   target: 2026-Q3
 - id: REQ-1184
@@ -35522,7 +35597,8 @@
     and start reduces the gap between terraform apply and service readiness, eliminating the need for
     post-deployment SSH commands.
   code:
-  - provisa/cli/linux_installer.py
+  - packaging/linux/first-launch.sh
+  - packaging/linux/AppRun
   target: 2026-Q3
 - id: REQ-1185
   status: in-progress
@@ -35584,13 +35660,15 @@
     consumption rate. SaaS deployments with resource-constrained pods require all user-facing query results
     to stream unbounded data.
   code:
-  - provisa/pgwire/session.py
-  - provisa/executor/
+  - provisa/pgwire/server.py
+  - provisa/pgwire/_pipeline.py
+  - provisa/pgwire/result_shape.py
+  - provisa/federation/runtime.py
   tests:
+  - tests/unit/test_pgwire_lazy_result.py
   - tests/integration/test_pgwire_integration.py
   - tests/integration/test_preflight_streaming.py
   - tests/e2e/test_preflight_streaming_e2e.py
-  - tests/unit/test_pgwire_lazy_result.py
   related_reqs:
   - REQ-028
   - REQ-1176
@@ -35657,8 +35735,9 @@
   tests:
   - tests/unit/test_trino_session_hints.py
   code:
-  - provisa/backends/
-  - provisa/executor/
+  - provisa/federation/runtime.py
+  - provisa/federation/backend.py
+  - provisa/federation/native_backend.py
   related_reqs:
   - REQ-1186
   scenario: 'Given a Trino backend query with retry_policy=NONE in session properties
@@ -35737,13 +35816,16 @@
     govdata, admin endpoints) benefit from materialization. Streaming the source's native cursor prevents
     OOM on large user-data scans.
   code:
-  - provisa/executor/
-  - provisa/graphql/
+  - provisa/executor/direct.py
+  - provisa/federation/runtime.py
+  - provisa/pgwire/server.py
+  - provisa/api/flight/server.py
+  - provisa/api/airport/query.py
+  - provisa/grpc/server.py
   tests:
-  - tests/integration/test_catalog_integration.py
+  - tests/unit/test_airport_streaming_terminal.py
   - tests/integration/test_governance_integration.py
   - provisa-ui/e2e/governance-core.spec.ts
-  - tests/unit/test_airport_streaming_terminal.py
   related_reqs:
   - REQ-1185
   - REQ-1186
@@ -36367,7 +36449,7 @@
     prevents per-transport SQL branches, and allows streaming transports to drain engine terminals directly
     while keeping buffered transports format-aware.
   code:
-  - provisa/executor/_pipeline.py
+  - provisa/pgwire/_pipeline.py
   tests:
   - tests/unit/test_governed_chokepoint.py
   - tests/integration/test_grpc_execution.py
@@ -36433,7 +36515,12 @@
     ARROW_STREAM when the terminal is genuinely lazy via the driver''s server-side chunk API.'
   code:
   - provisa/api/flight/server.py
-  - provisa/executor/_engine_executor.py
+  - provisa/federation/runtime.py
+  - provisa/federation/native_backend.py
+  - provisa/federation/databricks_runtime.py
+  - provisa/federation/bigquery_runtime.py
+  - provisa/federation/mssql_warehouse_runtime.py
+  - provisa/federation/snowflake_runtime.py
   tests:
   - tests/unit/test_flight_modes.py
   - tests/integration/test_arrow_flight_integration.py
@@ -36469,7 +36556,13 @@
     the consumer to stop early without forcing the engine to compute remaining batches. Only server-side
     chunk APIs honor this for warehouse engines; materializing then rebatching violates the design.
   code:
-  - provisa/executor/_engine_executor.py
+  - provisa/federation/runtime.py
+  - provisa/federation/runtime_support.py
+  - provisa/federation/duckdb_runtime.py
+  - provisa/federation/snowflake_runtime.py
+  - provisa/federation/databricks_runtime.py
+  - provisa/federation/bigquery_runtime.py
+  - provisa/federation/mssql_warehouse_runtime.py
   tests:
   - tests/unit/test_duckdb_stream_terminal.py
   - tests/integration/test_preflight_streaming.py
@@ -38043,11 +38136,13 @@
     composing with the single shared passthrough LB (REQ-1253) which forwards all ports to the backend
     node preserving destination port.
   code:
-  - first-launch.sh
+  - packaging/linux/first-launch.sh
+  - packaging/macos/first-launch.sh
+  - scripts/provisa
   - terraform/gcp/main.tf
   - terraform/aws/main.tf
   - terraform/azure/main.tf
-  - docker-compose.yml
+  - docker-compose.app.yml
   scenario: 'Given a cloud deployment of Provisa on GCP/AWS/Azure
 
     When cloud Terraform applies with UI_PORT=443 in the EnvironmentFile
@@ -38669,8 +38764,9 @@
   use_case: 'Enables request-scoped multi-org isolation: each request runs against its designated org''s
     isolated state, catalogs, and connection pools without global state mutation or cross-org leakage.'
   code:
-  - provisa/app_state.py
-  - provisa/multitenancy/org_runtime.py
+  - provisa/api/org_runtime.py
+  - provisa/api/app.py
+  - provisa/core/request_context.py
   tests:
   - tests/unit/test_org_runtime.py
   since: 2026-07
@@ -38686,10 +38782,9 @@
   use_case: Avoids catalog name collisions in shared orchestrator environments (e.g., pooled Trino) when
     multiple orgs instantiate identical demo sources.
   code:
-  - provisa/multitenancy/catalog_naming.py
+  - provisa/compiler/naming.py
   tests:
-  - tests/unit/test_org_isolation.py
-  - tests/integration/test_org_auto_join.py
+  - tests/unit/test_org_runtime.py
   since: 2026-07
 - id: REQ-1270
   status: complete
@@ -38703,9 +38798,13 @@
   use_case: Ensures every request executes within its designated org's isolated AppState, enforcing tenant
     isolation at the HTTP boundary.
   code:
-  - provisa/middleware/org_routing.py
+  - provisa/api/app.py
+  - provisa/api/org_resolve.py
+  - provisa/core/request_context.py
   tests:
-  - tests/unit/test_org_isolation.py
+  - tests/unit/test_tenancy_requirements.py
+  - tests/unit/test_http_trace_scope.py
+  - tests/integration/test_invite_env_capture.py
   scenario: 'Given multitenancy is enabled
 
     When an HTTP request arrives with org_id in the routing context
@@ -38771,10 +38870,11 @@
     enabling responsive UI feedback during multi-org onboarding.
   code:
   - provisa/api/admin/orgs_router.py
-  - provisa/multitenancy/org_provisioning.py
+  - provisa/core/org_provisioning.py
+  - provisa/core/schema_admin.py
   tests:
-  - tests/integration/test_create_org_onboarding.py
   - tests/unit/test_org_create_provisioning.py
+  - tests/integration/test_create_org_onboarding.py
   scenario: 'Given a user creates a new org
 
     When the POST /admin/orgs response is sent with provisioning_state: "provisioning"
@@ -38807,7 +38907,8 @@
   use_case: Provides a seam to inject notifications (email, dashboard alerts) once an org is ready for
     use, supporting future multi-channel notification infrastructure.
   code:
-  - provisa/multitenancy/org_provisioning.py
+  - provisa/core/org_membership.py
+  - provisa/api/admin/orgs_router.py
   scenario: 'Given an org has completed async provisioning successfully
 
     When provisioning_state updates to "ready"
@@ -38834,10 +38935,10 @@
   use_case: Prevents org admins from inviting users to orgs they do not own, enforcing multi-org isolation
     boundary at the authorization layer.
   code:
-  - provisa/api/admin/auth.py
   - provisa/api/admin/invites_router.py
   tests:
-  - tests/unit/test_tenant_isolation_contract.py
+  - tests/unit/test_require_org_admin.py
+  - tests/integration/test_invite_role_authz.py
   since: 2026-07
 - id: REQ-1275
   status: complete
@@ -42688,7 +42789,9 @@
   - provisa/core/schema.sql
   - provisa/core/schema_org.py
   - provisa/core/org_settings.py
-  - provisa/api/admin_router.py
+  - provisa/api/admin/_platform_guard.py
+  - provisa/api/admin/schema_mutation.py
+  - provisa/api/admin/email_router.py
   - provisa/api/mcp/tools.py
   - provisa/api/mcp/chat.py
   tests:
@@ -43362,7 +43465,8 @@
   code:
   - provisa/api/metadata_export/
   - provisa/api/admin/metadata_export_router.py
-  - provisa-ui/src/tabs/MetadataExportTab.tsx
+  - provisa/control_plane/entitlements.py
+  - provisa-ui/src/components/admin/MetadataExportTab.tsx
   - docs/metadata-export.md
   relates_to:
   - REQ-1066
@@ -43394,7 +43498,7 @@
   code:
   - provisa/core/demo.py
   - provisa/control_plane/entitlements.py
-  - provisa/cli/setup_router.py
+  - provisa/api/setup_router.py
 - id: REQ-1371
   status: complete
   since: 2026-08
@@ -46678,8 +46782,8 @@
   code:
   - provisa/core/commerce.py
   - provisa/core/control_plane.py
-  - provisa_commercial/__init__.py
-  - provisa_commercial/schema.py
+  - .claude/commercial/provisa_commercial/__init__.py
+  - .claude/commercial/provisa_commercial/schema.py
   scenario: 'Given a Provisa install with no commercial plugin
 
     When an org submits a governed statement
@@ -47322,7 +47426,7 @@
   - REQ-816
   - REQ-831
 - id: REQ-1469
-  status: complete
+  status: in-progress
   group: 11. Platform, Infrastructure & Delivery
   category: SaaS Billing
   priority: MUST
@@ -47357,14 +47461,14 @@
   - REQ-1075
   - REQ-1447
   - REQ-1288
-  since: 2026-08
   code:
+  - .claude/commercial/provisa_commercial/router.py
+  - .claude/commercial/provisa_commercial/access.py
+  - .claude/commercial/provisa_commercial/lemonsqueezy_client.py
+  - .claude/commercial/provisa_commercial/usage.py
   - provisa-ui/src/components/admin/BillingTab.tsx
   - provisa-ui/src/api/billing.ts
   - provisa-ui/src/components/NavBar.tsx
-  - provisa_commercial/router.py
-  - provisa_commercial/access.py
-  - provisa_commercial/lemonsqueezy_client.py
   - provisa/api/auth_router.py
   scenario: 'Given a Starter org with no subscription and no trial
 
@@ -47388,6 +47492,13 @@
   - provisa-ui/src/__tests__/BillingTab.test.tsx
   - provisa-ui/src/__tests__/adminNavCapabilities.test.ts
   - tests/unit/test_auth_me_billing_flag.py
+  notes: 'Audit 2026-10-03: was marked complete; partly built. Missing: The metered half of the current
+    bill and the next-charge AMOUNT are not built as money. GET /billing/summary returns active_hours
+    and egress_bytes as quantities from Provisa''s own meter (usage_summary), with no charge and not read
+    from the usage records posted to the merchant of record — the docstring at .claude/commercial/provisa_commercial/router.py:408-413
+    says so and test_metered_usage_is_quantities_only (test_billing_summary.py:261) pins it. The next
+    charge shows the renewal date plus ''at least $X'' / ''$X plus metered usage'' (BillingTab.tsx:510-517),
+    not an expected amount.'
 - id: REQ-1471
   status: complete
   group: 13. Multi-Tenancy & Organizations
@@ -47524,12 +47635,13 @@
   use_case: A customer whose trial ended deletes their org and signs up again; they get the Starter plan
     they were going to be billed for, not another free evaluation period.
   code:
-  - provisa_commercial/trial_eligibility.py
-  - provisa_commercial/trial.py
-  - provisa_commercial/router.py
-  - provisa_commercial/schema.py
+  - .claude/commercial/provisa_commercial/trial_eligibility.py
+  - .claude/commercial/provisa_commercial/trial.py
+  - .claude/commercial/provisa_commercial/router.py
+  - .claude/commercial/provisa_commercial/schema.py
   - provisa/core/commerce.py
   - provisa/api/auth_router.py
+  - provisa/api/auto_join.py
   - provisa/auth/middleware.py
   scenario: 'Given an account that has already been granted the trial on an org it has since deleted
 
@@ -47573,8 +47685,8 @@
     id at all is deliberately NOT filtered here, because that is a payload this deployment cannot interpret
     rather than one it can attribute elsewhere, and billing.webhook_missing_variant still refuses it.'
   code:
-  - provisa_commercial/router.py
-  - provisa_commercial/models.py
+  - .claude/commercial/provisa_commercial/router.py
+  - .claude/commercial/provisa_commercial/models.py
   scenario: 'Given a Lemon Squeezy store that sells both Provisa Starter and another product
 
     When a subscription event for the other product''s variant is delivered with a valid signature
@@ -47619,8 +47731,9 @@
   - provisa/api/admin/orgs_router.py
   - provisa/core/commerce.py
   - provisa/core/org_membership.py
-  - provisa_commercial/reservations.py
-  - provisa_commercial/router.py
+  - provisa/core/schema_admin.py
+  - .claude/commercial/provisa_commercial/reservations.py
+  - .claude/commercial/provisa_commercial/router.py
   - provisa-ui/src/pages/OnboardOrgPage.tsx
   scenario: 'Given a commercial deployment
 
@@ -48502,7 +48615,9 @@
     in the platform''s shared store, not in a per-org or per-region state store, and it is durable platform
     data: it is not state that can be discarded and rebuilt (REQ-1920), since losing it would change every
     surrogate. The transform is keyed, and the key is a platform key. Only transformed values and generated
-    surrogates cross regions, never real values (REQ-1921, REQ-1922).'
+    surrogates cross regions, never real values (REQ-1921, REQ-1922). (Amended 2026-10-03, THE MAPPING
+    LIVES IN THE PLATFORM STATE STORE:) The platform''s shared store that holds the mapping is the platform
+    state store (REQ-1932).'
   use_case: A data scientist, or an LLM acting under its own identity, works on masked data that behaves
     like the real data (joins match, counts are right, values look real) without any personal data reaching
     them. An analyst joins a masked customer table to a masked orders table and gets the row counts the
@@ -48545,6 +48660,7 @@
   - REQ-1920
   - REQ-1921
   - REQ-1922
+  - REQ-1932
   target: 2026-Q4
   notes: 'Reopened and rewritten 2026-10-03 by the maintainer, who called it very important and gave the
     design: a table of values and their masked values, kept in the state store, reused whenever a value
@@ -49356,11 +49472,12 @@
     has the larger engine within the same session, with no sales contact and no second card entry; one
     that over-bought moves back down and sees the credit on its next invoice.
   code:
-  - provisa_commercial/router.py
-  - provisa_commercial/usage.py
-  - provisa_commercial/lemonsqueezy_client.py
-  - provisa_commercial/models.py
-  - provisa_commercial/org_db.py
+  - .claude/commercial/provisa_commercial/router.py
+  - .claude/commercial/provisa_commercial/usage.py
+  - .claude/commercial/provisa_commercial/lemonsqueezy_client.py
+  - .claude/commercial/provisa_commercial/models.py
+  - .claude/commercial/provisa_commercial/org_db.py
+  - .claude/commercial/provisa_commercial/plan_lane.py
   - provisa-ui/src/components/admin/BillingTab.tsx
   tests:
   - .claude/commercial/tests/test_plan_change.py
@@ -49464,8 +49581,9 @@
   - provisa/federation/k8s_provisioner.py
   - provisa/federation/engine_wake.py
   - provisa/federation/engine.py
-  - provisa_commercial/entitlements.py
-  - provisa_commercial/org_engine_router.py
+  - .claude/commercial/provisa_commercial/plan_lane.py
+  - .claude/commercial/provisa_commercial/entitlements.py
+  - .claude/commercial/provisa_commercial/org_engine_router.py
   tests:
   - tests/unit/test_engine_wake.py
   - .claude/commercial/tests/test_plan_lane.py
@@ -49548,7 +49666,7 @@
   code:
   - provisa-ui/src/components/admin/BillingTab.tsx
   - provisa-ui/src/api/billing.ts
-  - provisa_commercial/router.py
+  - .claude/commercial/provisa_commercial/router.py
   tests:
   - provisa-ui/src/__tests__/BillingTab.test.tsx
   scenario: 'Given an organization on the Starter plan
@@ -49623,7 +49741,7 @@
   - provisa-ui/src/components/admin/OrgEngineTab.tsx
   - provisa-ui/src/components/admin/FederationEngineTab.tsx
   - provisa-ui/src/components/navGroups.ts
-  - provisa_commercial/org_engine_router.py
+  - .claude/commercial/provisa_commercial/org_engine_router.py
   tests:
   - provisa-ui/src/__tests__/OrgEngineTab.test.tsx
   - provisa-ui/src/__tests__/navEntryItem.test.ts
@@ -49690,11 +49808,12 @@
   - provisa/core/repositories/source.py
   - provisa/core/commerce.py
   - provisa/api/admin/schema_mutation.py
-  - provisa_commercial/entitlements.py
-  - provisa_commercial/router.py
+  - .claude/commercial/provisa_commercial/entitlements.py
+  - .claude/commercial/provisa_commercial/router.py
   - provisa-ui/src/i18n/locales/en/serverErrors.json
   tests:
   - tests/unit/test_source_limit.py
+  - .claude/commercial/tests/test_source_limit_entitlement.py
   - .claude/commercial/tests/test_plan_change.py
   scenario: 'Given a hosted organization on the Starter plan holding the ten sources it admits
 
@@ -57196,7 +57315,7 @@
   code:
   - provisa/federation/query_residency.py
   - provisa/federation/backend.py
-  - provisa/federation/node_freshness_view.py
+  - provisa/federation/replica_state_view.py
   - provisa/pgwire/_pipeline.py
   - provisa/events/land_lock.py
   - provisa/federation/snowflake_store.py
@@ -57204,6 +57323,8 @@
   - provisa/api/airport/query.py
   - provisa/api/data/endpoint_executors.py
   - provisa/api/data/materialization.py
+  - provisa/api/flight/server.py
+  - provisa/api/rest/cypher_router.py
   - provisa/subscriptions/rss_provider.py
   - provisa/compiler/nf_extractor.py
   tests:
@@ -57496,8 +57617,10 @@
   - provisa/api/admin/schema_mutation_ops.py
   - provisa/api/admin/schema_query.py
   - provisa/api/admin/types.py
+  - provisa/api/admin/neo4j_router.py
   - provisa-ui/src/pages/tables/RegisterTableForm.tsx
-  - provisa-ui/src/hooks/useNeo4jPreview.ts
+  - provisa-ui/src/hooks/useQueryPreview.ts
+  - provisa-ui/src/hooks/admin.graphql
   tests:
   - tests/unit/test_neo4j_registration.py
   - tests/integration/test_neo4j_register_table.py
@@ -71160,15 +71283,18 @@
     out the requests it holds. A leaving coordinator releases the jobs it holds -- the control plane frees
     its locks when its session ends, and another node claims and restarts those jobs (REQ-1915). The admin
     pages and the health endpoint list the nodes now in the cluster with each one mode, so an operator
-    sees what capacity is present and whether any node is doing coordinator work.'
+    sees what capacity is present and whether any node is doing coordinator work. (Amended 2026-10-03,
+    THE NODE LIST LIVES IN THE PLATFORM STATE STORE:) The node heartbeat and the cluster node list are
+    held in the platform state store (REQ-1932).'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
   related_reqs:
-  - REQ-1915
-  - REQ-1914
   - REQ-1900
   - REQ-1913
+  - REQ-1914
+  - REQ-1915
+  - REQ-1932
   since: 2026-10
   notes: Accepted by the maintainer 2026-10-03 for the feature-complete line.
 - id: REQ-1917
@@ -75403,3 +75529,31 @@
     REQ-1630 for it, which is a different requirement (provisa/api/auth_router.py:822 DELETE /auth/sandbox-account;
     provisa/auth/providers/firebase.py:78; provisa-ui/src/components/NavBar.tsx:103; provisa-ui/src/api/admin.ts:74;
     tests/integration/test_org_lifecycle.py:104, 865, 911, 932). First appeared in commit 1e9ab46ce.
+- id: REQ-1932
+  status: accepted
+  group: 11. Platform, Infrastructure & Delivery
+  category: State Store
+  priority: MUST
+  type: structural
+  target: 2026-Q4
+  description: 'The platform state store. The control plane has three stores. The model store (REQ-1919)
+    holds the model, per org, shared by all the org''s regions, and projected to git. The state store
+    (REQ-1920) holds operating state and the request record, per org and region. The platform state store
+    holds platform-level operating state: there is one per deployment, in the platform database. What
+    it holds is never part of a model, never projected to git, and never copied, exported or deployed
+    with an environment. Its first members are the node heartbeat and cluster node list (REQ-1916) and
+    the consistent-masking surrogate mapping (REQ-1494); the mapping is durable and cannot be rebuilt,
+    so a member of this store is not assumed to be discardable the way state in the state store is. platform_admin
+    has no data access here either (REQ-1327): the store''s contents are readable through an admin API
+    only as far as each member''s own requirement says.'
+  use_case: State that belongs to the deployment as a whole, not to one org or region, has one place to
+    live, with the same single-writer discipline as the other two stores.
+  related_reqs:
+  - REQ-1327
+  - REQ-1494
+  - REQ-1916
+  - REQ-1919
+  - REQ-1920
+  - REQ-1922
+  notes: Maintainer ruling 2026-10-03 ('we do need a place for platform state'). Not built as a named
+    store.

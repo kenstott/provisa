@@ -1014,9 +1014,9 @@ Hasura v2 migration tool (`provisa/hasura_v2/mapper.py`) maps Hasura Remote Sche
 
 **Use case:** Hasura Remote Schema migration removes GTM blocker — customers see supported sources instead of "NOT SUPPORTED" during migration path evaluation.
 
-**Code:** `provisa/hasura_v2/mapper.py`, `provisa/source_adapters/graphql_remote_adapter.py`, `provisa/api/admin/graphql_remote_router.py`
+**Code:** `provisa/hasura_v2/mapper.py`, `provisa/hasura_v2/remote_schema.py`, `provisa/graphql_remote/executor.py`, `provisa/api/admin/graphql_remote_router.py`
 
-**Tests:** `tests/integration/test_graphql_remote_source.py`, `tests/unit/test_core_registration.py`, `tests/unit/test_hasura_remote_schema.py`, `tests/unit/test_hasura_v2_comprehensive.py`, `tests/unit/test_import_shared.py`
+**Tests:** `tests/unit/test_hasura_remote_schema.py`, `tests/unit/test_hasura_v2_comprehensive.py`, `tests/unit/test_import_shared.py`, `tests/unit/test_core_registration.py`, `tests/integration/test_graphql_remote_source.py`
 
 ### REQ-418 · Domain Model {#REQ-418}
 
@@ -1050,9 +1050,9 @@ A datasource may be associated with multiple domains. Any domain owner may regis
 
 **Use case:** Multi-domain with first-claim ownership prevents the same physical table from being registered multiple times while allowing flexible domain-to-source associations.
 
-**Code:** `provisa/core/`, `provisa-ui/src/pages/TablesPage`
+**Code:** `provisa/api/admin/schema_helpers.py`, `provisa/api/admin/schema_mutation.py`, `provisa/api/admin/schema_mutation_ops.py`, `provisa/core/schema_org.py`, `provisa-ui/src/pages/tables/RegisterTableForm.tsx`, `provisa-ui/src/pages/TablesPage.tsx`
 
-**Tests:** `tests/unit/test_dataset_uniqueness.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/unit/test_dataset_uniqueness.py`
 
 ### REQ-434 · Registration & Governance {#REQ-434}
 
@@ -1400,9 +1400,9 @@ At query execution time, Provisa translates the incoming GraphQL request into a 
 
 **Use case:** S3/Iceberg materialization of remote schema results eliminates repeated network hops and enables federated SQL (WHERE/ORDER BY/LIMIT) over cached data.
 
-**Code:** `provisa/graphql_remote/`, `provisa/api_source/trino_cache.py`
+**Code:** `provisa/graphql_remote/executor.py`, `provisa/api_source/engine_cache.py`, `provisa/api/data/materialization.py`
 
-**Tests:** `tests/integration/test_graphql_execution.py`, `tests/integration/test_graphql_remote_integration.py`, `tests/integration/test_graphql_remote_source.py`, `tests/unit/test_api_cache.py`, `tests/unit/test_graphql_remote_introspect.py`, `tests/unit/test_graphql_remote_mapper.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`
+**Tests:** `tests/unit/test_api_cache.py`, `tests/integration/test_graphql_remote_integration.py`, `tests/integration/test_graphql_remote_source.py`, `tests/integration/test_graphql_execution.py`, `tests/unit/test_graphql_remote_introspect.py`, `tests/unit/test_graphql_remote_mapper.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`
 
 ### REQ-310 · GraphQL Remote Schema Connector (REQ-307–313) {#REQ-310}
 
@@ -1508,7 +1508,7 @@ OpenAPI write operations as commands. [SUPERSEDED by [REQ-1924](#REQ-1924), 2026
 
 **Use case:** S3/Iceberg materialization of GET operation results prevents repeated upstream REST calls and enables Trino SQL filtering over cached rows.
 
-**Code:** `provisa/api_source/trino_cache.py`, `provisa/api_source/router_integration.py`
+**Code:** `provisa/api_source/engine_cache.py`, `provisa/api_source/router_integration.py`, `provisa/api_source/fill_cache.py`
 
 **Tests:** `tests/unit/test_api_cache.py`, `tests/integration/test_openapi_source.py`
 
@@ -1616,9 +1616,9 @@ Each mutation-classified gRPC method is exposed as a tracked function (mutation)
 
 **Use case:** S3/Iceberg materialization of gRPC query results enables Trino SQL filtering over cached rows and eliminates repeated remote calls. Channel reuse reduces connection overhead.
 
-**Code:** `provisa/grpc_remote/`, `provisa/api_source/trino_cache.py`
+**Code:** `provisa/grpc_remote/executor.py`, `provisa/api_source/engine_cache.py`, `provisa/source_adapters/grpc_remote_adapter.py`
 
-**Tests:** `tests/e2e/test_grpc_query.py`, `tests/integration/test_cache_store.py`, `tests/integration/test_grpc_execution.py`, `tests/unit/test_api_cache.py`, `tests/unit/test_cache_store.py`, `tests/unit/test_grpc_remote_cache.py`, `tests/unit/test_grpc_remote_loader.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`
+**Tests:** `tests/unit/test_grpc_remote_cache.py`, `tests/unit/test_api_cache.py`, `tests/unit/test_grpc_remote_loader.py`, `tests/integration/test_grpc_execution.py`, `tests/e2e/test_grpc_query.py`, `tests/unit/test_cache_store.py`, `tests/integration/test_cache_store.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`
 
 ### REQ-328 · gRPC Remote Schema Connector (REQ-322–329) {#REQ-328}
 
@@ -1862,13 +1862,13 @@ A column may be declared as an embedding vector by setting `embedding: true` wit
 
 ### REQ-422 · Vector Search {#REQ-422}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 Source capability auto-detection at registration time must identify native vector support: pgvector extension for PostgreSQL, Atlas Vector Search for MongoDB, Cortex for Snowflake. Sources without detected capability are flagged as requiring fallback.
 
 **Use case:** Early capability detection allows fallback materialization strategy to be planned at source registration.
 
-**Code:** `provisa/source_adapters/introspect.py`
+**Code:** `provisa/vector/capability.py`, `provisa/vector/support.py`
 
 **Tests:** `tests/unit/test_vector.py`
 
@@ -1958,15 +1958,15 @@ Once an embedding column is generated with a declared model, that model is locke
 
 ### REQ-430 · Vector Search {#REQ-430}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 Query-time vectorization must be supported: when a similarity search is expressed with a text string rather than a raw vector, Provisa calls the declared embedding model to generate the query vector before executing the search. Both text input and raw vector input must be supported interfaces.
 
 **Use case:** Query-time vectorization enables natural text-based search without pre-vectorization ceremony.
 
-**Code:** `provisa/vector/query_vectorization.py`
+**Code:** `provisa/vector/query.py`, `provisa/vector/providers.py`
 
-**Tests:** `tests/unit/test_schema_visibility_filters.py`, `tests/unit/test_vector.py`
+**Tests:** `tests/unit/test_vector.py`
 
 ### REQ-431 · Vector Search {#REQ-431}
 
@@ -3028,7 +3028,7 @@ The graph analytics endpoint enforces a configurable maximum graph size. When th
 
 **Code:** `provisa/api/rest/graph_analytics_router.py`
 
-**Tests:** `tests/e2e/test_query_pipeline.py`, `tests/integration/test_compiler_integration.py`, `tests/unit/test_graph_analytics_requirements.py`
+**Tests:** `tests/e2e/test_query_pipeline.py`, `tests/integration/test_compiler_integration.py`
 
 ### REQ-651 · Graph Analytics Pipeline {#REQ-651}
 
@@ -3040,7 +3040,7 @@ The Girvan-Newman community detection algorithm is restricted to graphs with few
 
 **Code:** `provisa/api/rest/graph_analytics_router.py`
 
-**Tests:** `tests/e2e/test_query_pipeline.py`, `tests/integration/test_compiler_integration.py`, `tests/unit/test_graph_analytics_requirements.py`
+**Tests:** `tests/e2e/test_query_pipeline.py`, `tests/integration/test_compiler_integration.py`
 
 ### REQ-653 · Compiler & Schema {#REQ-653}
 
@@ -4362,9 +4362,9 @@ pgwire enforces hard-coded timeouts: [SUPERSEDED by [REQ-1926](#REQ-1926), 2026-
 
 **Use case:** Hard-coded timeouts prevent long-running DDL or query operations from blocking pgwire handler threads indefinitely.
 
-**Code:** `provisa/pgwire/ddl_handler.py`, `provisa/pgwire/server.py`
+**Code:** `provisa/pgwire/server.py`, `provisa/pgwire/copy_handler.py`, `provisa/core/limits.py`
 
-**Tests:** `tests/integration/test_pgwire_integration.py`, `tests/unit/pgwire/test_wire_protocol.py`, `tests/unit/test_pgwire_requirements.py`
+**Tests:** `tests/unit/test_pgwire_requirements.py`, `tests/unit/pgwire/test_wire_protocol.py`, `tests/integration/test_pgwire_integration.py`
 
 ### REQ-606 · SQL & Multi-Protocol Client Access {#REQ-606}
 
@@ -4434,9 +4434,9 @@ The pgwire listener accepts only SQL statements. GraphQL and Cypher query string
 
 **Use case:** Capability-gated DDL and COPY lets power users perform schema operations via psql or DBeaver while protecting other roles from accidental destructive statements.
 
-**Code:** `provisa/pgwire/server.py`, `provisa/pgwire/ddl_handler.py`, `provisa/pgwire/copy_handler.py`
+**Code:** `provisa/pgwire/copy_handler.py`, `provisa/pgwire/_pipeline.py`, `provisa/pgwire/server.py`, `provisa/compiler/definitions.py`
 
-**Tests:** `tests/integration/test_pgwire_integration.py`, `tests/unit/pgwire/test_wire_protocol.py`, `tests/unit/test_pgwire_requirements.py`
+**Tests:** `tests/unit/test_pgwire_requirements.py`, `tests/unit/pgwire/test_wire_protocol.py`, `tests/integration/test_pgwire_integration.py`
 
 ### REQ-617 · gRPC {#REQ-617}
 
@@ -4894,7 +4894,7 @@ The PK designation must be configurable in the TablesPage UI via checkbox per co
 
 **Use case:** UI-based PK designation lets stewards configure keys without editing YAML files.
 
-**Code:** `provisa-ui/src/pages/TablesPage`, `provisa-ui/src/components/ColumnForm`
+**Code:** `provisa-ui/src/pages/tables/RegisterTableForm.tsx`, `provisa-ui/src/pages/tables/TableEditForm.tsx`, `provisa-ui/src/pages/tables/TableReadView.tsx`, `provisa-ui/src/pages/TablesPage.tsx`
 
 **Tests:** `provisa-ui/e2e/tables-register.spec.ts`, `provisa-ui/src/__tests__/ui_requirements.test.ts`, `tests/unit/test_column_governance_requirements.py`
 
@@ -4906,9 +4906,9 @@ The graph node context menu "Exclude from query" option must be disabled (greyed
 
 **Use case:** Disabling exclusion without a PK prevents incomplete or ambiguous row-level filtering.
 
-**Code:** `provisa-ui/src/components/GraphContextMenu`
+**Code:** `provisa-ui/src/components/graph/NodeContextMenu.tsx`
 
-**Tests:** `provisa-ui/e2e/graph-query-panel-height.spec.ts`, `provisa-ui/e2e/graph-show-children.spec.ts`, `provisa-ui/src/__tests__/ui_requirements.test.ts`, `tests/unit/test_column_governance_requirements.py`
+**Tests:** `provisa-ui/src/__tests__/ui_requirements.test.ts`, `provisa-ui/e2e/graph-show-children.spec.ts`, `provisa-ui/e2e/graph-query-panel-height.spec.ts`, `tests/unit/test_column_governance_requirements.py`
 
 ### REQ-401 · UI & Frontend {#REQ-401}
 
@@ -4918,7 +4918,7 @@ Foreign key (FK) and alternate key (AK) badges surface as read-only indicators i
 
 **Use case:** FK/AK badges provide visual feedback on relationship column usage without allowing direct editing.
 
-**Code:** `provisa-ui/src/components/ColumnForm`, `provisa-ui/src/pages/TablesPage`
+**Code:** `provisa-ui/src/pages/tables/TableEditForm.tsx`, `provisa-ui/src/pages/tables/TableReadView.tsx`
 
 **Tests:** `provisa-ui/e2e/tables-register.spec.ts`, `provisa-ui/src/__tests__/ui_requirements.test.ts`, `tests/unit/test_column_governance_requirements.py`
 
@@ -4930,9 +4930,9 @@ Security page RLS form includes "Apply To" toggle: "Specific Table" or "Entire D
 
 **Use case:** UI toggle lets stewards choose rule scope without understanding the underlying schema design.
 
-**Code:** `provisa-ui/src/pages/SecurityPage`
+**Code:** `provisa-ui/src/pages/SecurityPage.tsx`
 
-**Tests:** `provisa-ui/src/__tests__/ui_requirements.test.ts`, `tests/unit/test_column_governance_requirements.py`
+**Tests:** `tests/unit/test_column_governance_requirements.py`, `provisa-ui/src/__tests__/ui_requirements.test.ts`
 
 ### REQ-410 · UI & Frontend {#REQ-410}
 
@@ -4942,9 +4942,9 @@ GraphFrame Cypher WHERE clause generation must use single-quoted string literals
 
 **Use case:** Correct single-quote quoting prevents SQL identifier errors when filtering by string PK values in the graph view.
 
-**Code:** `provisa-ui/src/pages/GraphFrame.tsx`
+**Code:** `provisa-ui/src/components/graph/graph-model.ts`, `provisa-ui/src/components/graph/GraphFrame.tsx`
 
-**Tests:** `provisa-ui/src/__tests__/ui_requirements.test.ts`, `tests/unit/test_column_governance_requirements.py`, `tests/unit/test_cypher_graph_fns.py`
+**Tests:** `provisa-ui/src/__tests__/ui_requirements.test.ts`, `provisa-ui/src/pages/__tests__/inject-exclusion.test.ts`, `tests/unit/test_column_governance_requirements.py`
 
 ### REQ-533 · Admin Configuration {#REQ-533}
 
@@ -5064,21 +5064,21 @@ Docker Compose for development/small-team: single command, Provisa + Trino coord
 
 **Use case:** Single-command Docker Compose setup lets developers run the full Provisa stack without manual configuration.
 
-**Code:** `helm/`, `docker-compose.yml`
+**Code:** `docker-compose.core.yml`, `docker-compose.app.yml`, `start-ui.sh`, `docker/trino-engine.Dockerfile`
 
-**Tests:** `tests/e2e/test_health_checks.py`, `tests/integration/test_infra.py`, `tests/unit/test_infra_requirements.py`
+**Tests:** `tests/unit/test_infra_requirements.py`, `tests/integration/test_infra.py`, `tests/e2e/test_health_checks.py`
 
 ### REQ-056 · Infrastructure {#REQ-056}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** infrastructure
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** infrastructure
 
 Helm chart for production Kubernetes: horizontal Trino worker scaling, resource groups, HPA autoscaling.
 
 **Use case:** Helm chart with HPA autoscaling lets production deployments scale Trino workers automatically under load.
 
-**Code:** `helm/`, `docker-compose.yml`
+**Code:** `helm/provisa/Chart.yaml`, `helm/provisa/values.yaml`, `helm/provisa/templates/trino-worker.yaml`, `helm/provisa/templates/trino-coordinator.yaml`, `helm/provisa/templates/hpa-provisa.yaml`
 
-**Tests:** `tests/e2e/test_health_checks.py`, `tests/e2e/test_helm_minikube.py`, `tests/integration/test_infra.py`, `tests/unit/test_infra_requirements.py`
+**Tests:** `tests/unit/test_infra_requirements.py`, `tests/e2e/test_helm_minikube.py`
 
 ### REQ-057 · Infrastructure {#REQ-057}
 
@@ -5088,9 +5088,9 @@ Provisa container is stateless; deployment topology behind Trino endpoint is con
 
 **Use case:** Stateless Provisa container enables horizontal scaling and rolling deployments without session affinity concerns.
 
-**Code:** `helm/`, `docker-compose.yml`
+**Code:** `docker-compose.app.yml`, `docker-compose.core.yml`, `helm/provisa/templates/provisa-deployment.yaml`, `helm/provisa/values.yaml`, `provisa/api/app.py`
 
-**Tests:** `tests/e2e/test_health_checks.py`, `tests/integration/test_infra.py`, `tests/unit/test_infra_requirements.py`
+**Tests:** `tests/unit/test_infra_requirements.py`, `tests/integration/test_infra.py`, `tests/e2e/test_health_checks.py`
 
 ### REQ-064 · Error Handling & Reliability {#REQ-064}
 
@@ -5196,9 +5196,9 @@ Trino 480 with Iceberg results catalog (JDBC on PG, native S3 filesystem).
 
 **Use case:** Trino 480 with Iceberg results catalog provides modern open-table-format storage for all redirected results.
 
-**Code:** `helm/`, `docker-compose.yml`
+**Code:** `docker-compose.core.yml`, `trino/catalog/results.properties`, `docker/trino-engine.Dockerfile`
 
-**Tests:** `tests/e2e/test_health_checks.py`, `tests/integration/test_infra.py`, `tests/unit/test_infra_requirements.py`
+**Tests:** `tests/unit/test_infra_requirements.py`, `tests/integration/test_infra.py`, `tests/e2e/test_health_checks.py`
 
 ### REQ-170 · Infrastructure {#REQ-170}
 
@@ -5208,9 +5208,9 @@ Trino 480 with Iceberg results catalog (JDBC on PG, native S3 filesystem).
 
 **Use case:** reset-volumes flag gives developers a one-command recovery path after Docker volume corruption.
 
-**Code:** `helm/`, `docker-compose.yml`
+**Code:** `start-ui.sh`
 
-**Tests:** `tests/e2e/test_health_checks.py`, `tests/integration/test_infra.py`, `tests/unit/test_infra_requirements.py`
+**Tests:** `tests/unit/test_infra_requirements.py`
 
 ### REQ-171 · Infrastructure {#REQ-171}
 
@@ -5220,9 +5220,9 @@ Trino 480 with Iceberg results catalog (JDBC on PG, native S3 filesystem).
 
 **Use case:** MinIO bucket auto-creation at startup prevents first-run failures due to missing redirect storage.
 
-**Code:** `helm/`, `docker-compose.yml`
+**Code:** `provisa/executor/redirect.py`, `provisa/federation/backend.py`, `docker-compose.core.yml`
 
-**Tests:** `tests/unit/test_redirect_bucket_lazy.py`, `tests/e2e/test_health_checks.py`, `tests/integration/test_infra.py`, `tests/unit/test_infra_requirements.py`, `provisa-ui/e2e/infrastructure.spec.ts`
+**Tests:** `tests/unit/test_redirect_bucket_lazy.py`, `tests/unit/test_infra_requirements.py`
 
 ### REQ-223 · Installer & Packaging {#REQ-223}
 
@@ -6198,9 +6198,9 @@ The Trino non-SQL cache schema is org-scoped. [SUPERSEDED by [REQ-845](#REQ-845)
 
 **Use case:** Non-SQL cached rows for different orgs land in separate PG schemas within the provisa_admin catalog. A Trino query for org A cannot reference org B cache tables without an explicit schema qualifier.
 
-**Code:** `provisa/api_source/trino_cache.py`, `provisa/api/data/endpoint.py`
+**Code:** `provisa/api_source/engine_cache.py`, `provisa/api_source/fill_cache.py`, `provisa/api/data/endpoint_executors.py`, `provisa/api/data/materialization.py`, `provisa/api/rest/cypher_exec.py`
 
-**Tests:** `tests/unit/test_catalog_cache.py`, `tests/unit/test_org_isolation.py`
+**Tests:** `tests/unit/test_org_isolation.py`, `tests/unit/test_catalog_cache.py`
 
 ### REQ-699 · Multi-Tenancy {#REQ-699}
 
@@ -6274,7 +6274,7 @@ adbc_connect() must accept an optional port parameter (default 8815) so callers 
 
 **Use case:** Operators who cannot run the Flight server on port 8815 (due to port conflicts or network policy) can connect via ADBC without falling back to DB-API or SQLAlchemy.
 
-**Code:** `provisa_client/adbc.py`
+**Code:** `provisa-client/provisa_client/adbc.py`
 
 **Tests:** `provisa-client/tests/test_adbc.py`
 
@@ -7044,7 +7044,7 @@ Graph Explorer Favorites panel persists and displays user-saved Cypher queries w
 
 **Use case:** Users need quick access to frequently-used Cypher queries without re-typing them.
 
-**Code:** `provisa-ui/src/components/graph-explorer`
+**Code:** `provisa-ui/src/pages/GraphPage.tsx`, `provisa-ui/src/components/graph/GraphSidebar.tsx`, `provisa-ui/src/components/graph/graph-persistence.ts`
 
 **Tests:** `provisa-ui/e2e/graph-favorites.spec.ts`
 
@@ -7056,7 +7056,7 @@ Graph Explorer Favorites: hovering over a favorite item reveals action buttons (
 
 **Use case:** Hover-reveal of action buttons keeps the favorites panel uncluttered while making operations discoverable.
 
-**Code:** `provisa-ui/src/components/graph-explorer`
+**Code:** `provisa-ui/src/components/graph/GraphSidebar.tsx`, `provisa-ui/src/pages/GraphPage.css`
 
 **Tests:** `provisa-ui/e2e/graph-favorites.spec.ts`
 
@@ -7068,7 +7068,7 @@ Graph Explorer Favorites: clicking a favorite's label loads the Cypher query int
 
 **Use case:** Users can quickly load and run a saved query or modify it before execution.
 
-**Code:** `provisa-ui/src/components/graph-explorer`
+**Code:** `provisa-ui/src/components/graph/GraphSidebar.tsx`, `provisa-ui/src/pages/GraphPage.tsx`
 
 **Tests:** `provisa-ui/e2e/graph-favorites.spec.ts`, `tests/unit/test_graph_explorer_favorites.py`
 
@@ -7080,7 +7080,7 @@ Graph Explorer Favorites: inline rename input allows editing a favorite's label 
 
 **Use case:** Users can update favorite labels to keep them organized and meaningful as their work evolves.
 
-**Code:** `provisa-ui/src/components/graph-explorer`
+**Code:** `provisa-ui/src/components/graph/GraphSidebar.tsx`, `provisa-ui/src/pages/GraphPage.tsx`
 
 **Tests:** `provisa-ui/e2e/graph-favorites.spec.ts`, `tests/unit/test_graph_explorer_favorites.py`
 
@@ -7092,7 +7092,7 @@ Graph Explorer Favorites: delete button removes a favorite from the panel and lo
 
 **Use case:** Users can clean up outdated or unwanted saved queries.
 
-**Code:** `provisa-ui/src/components/graph-explorer`
+**Code:** `provisa-ui/src/components/graph/GraphSidebar.tsx`, `provisa-ui/src/pages/GraphPage.tsx`
 
 **Tests:** `provisa-ui/e2e/graph-favorites.spec.ts`, `tests/unit/test_graph_explorer_favorites.py`
 
@@ -7138,15 +7138,15 @@ Impute-relationships endpoint accepts visible node set with stable integer ids a
 
 ### REQ-788 · File & Lake Sources {#REQ-788}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 File connector sources accept a directory glob pattern to enumerate CSV files. Discovered files are introspected to extract schema (column names and types). Multiple CSV files matching the glob are consolidated into a single logical table when registered.
 
 **Use case:** File glob patterns enable users to query across multiple CSV files without manual discovery or registration of individual files.
 
-**Code:** `provisa/source_adapters/file_connector.py`
+**Code:** `provisa/federation/trino_connectors.py`, `provisa/federation/pgwire_replica.py`, `provisa/file_source/crawler.py`, `provisa/file_source/source.py`, `provisa/api/admin/schema_query.py`
 
-**Tests:** `provisa-ui/e2e/file-connector.spec.ts`, `tests/unit/test_file_lake_sources.py`
+**Tests:** `tests/unit/test_file_lake_sources.py`, `provisa-ui/e2e/file-connector.spec.ts`
 
 ### REQ-789 · File & Lake Sources {#REQ-789}
 
@@ -7156,7 +7156,7 @@ CSV column headers are automatically mapped to GraphQL field names using LINQ4J 
 
 **Use case:** Automatic header normalization allows CSV files with mixed naming conventions to produce consistent, queryable schemas without manual column mapping.
 
-**Code:** `provisa/source_adapters/file_connector.py`
+**Code:** `provisa/federation/pgwire_replica.py`, `provisa/federation/trino_connectors.py`, `provisa/file_source/source.py`, `provisa/compiler/naming.py`
 
 **Tests:** `provisa-ui/e2e/file-connector.spec.ts`, `tests/unit/test_file_lake_sources.py`
 
@@ -7168,7 +7168,7 @@ File connector table enumeration (via directory glob discovery) is accessible th
 
 **Use case:** UI-driven table enumeration allows users to discover and register file-based tables without knowledge of directory structure or manual schema definitions.
 
-**Code:** `provisa-ui/src/pages/tables`, `provisa/api/rest/tables_router.py`
+**Code:** `provisa-ui/src/pages/tables/RegisterTableForm.tsx`, `provisa/api/admin/schema_query.py`, `provisa-ui/src/hooks/useAdminQueries.ts`
 
 **Tests:** `provisa-ui/e2e/file-connector.spec.ts`, `tests/unit/test_file_lake_sources.py`
 
@@ -7492,7 +7492,7 @@ Telemetry sink services (otel-collector, prometheus, tempo, grafana, otlp2parque
 
 **Use case:** Telemetry infrastructure is optional overhead for test and CI runs. Isolating telemetry sinks reduces startup time and resource consumption while ensuring app correctness does not depend on collector availability.
 
-**Code:** `docker-compose.core.yml`, `docker-compose.observability.yml`, `provisa/telemetry/exporter.py`
+**Code:** `docker-compose.core.yml`, `docker-compose.observability.yml`, `provisa/api/otel_setup.py`
 
 **Tests:** `tests/unit/test_infra_requirements.py`
 
@@ -7630,9 +7630,9 @@ Federation strategy and freshness management — the datasources → federation 
 
 **Use case:** Concentrates the real complexity of federation — strategy selection, residency, reload scheduling, and invalidation — in one stateful federate() operation, so any datasource (RDBMS, files, NoSQL, APIs) joins the engine's surface by the best available strategy with predictable freshness, independent of which engine is deployed.
 
-**Code:** `provisa/federation/strategy.py`, `provisa/federation/engine.py`, `provisa/executor/trino.py`, `provisa/transpiler/router.py`, `provisa/openapi/pg_cache.py`, `provisa/mv/registry.py`, `provisa/cache/warm_tables.py`, `provisa/cache/hot_tables.py`, `provisa/core/config_loader.py`, `provisa/core/operator_floor.py`
+**Code:** `provisa/federation/strategy.py`, `provisa/federation/engine.py`, `provisa/core/operator_floor.py`, `provisa/core/replicate.py`, `provisa/federation/replica_hot.py`, `provisa/federation/replica_routing.py`, `provisa/federation/promote.py`, `provisa/federation/materialization.py`, `provisa/api_source/engine_cache.py`, `provisa/core/models.py`, `provisa-ui/src/components/admin/ReplicateSelect.tsx`
 
-**Tests:** `tests/unit/test_federation_strategy.py`, `tests/unit/test_operator_floor_routing.py`, `tests/integration/test_operator_floor_e2e.py`
+**Tests:** `tests/unit/test_federation_strategy.py`, `tests/unit/test_operator_floor_routing.py`, `tests/integration/test_operator_floor_e2e.py`, `tests/unit/test_replica_hot_evaluation.py`, `tests/unit/test_floor_enforced_on_every_engine.py`
 
 ### REQ-827 · Execution & Routing {#REQ-827}
 
@@ -7654,7 +7654,7 @@ Pluggable admin/metadata store, decoupled from Postgres, selected via a SQLAlche
 
 **Use case:** Makes the full Provisa deployment — control plane and cache, not just the query engine — infra-free on a developer laptop, completing the develop-on-DuckDB / scale-out-in-prod model in [REQ-825](#REQ-825) without requiring Docker or an external Postgres.
 
-**Code:** `provisa/core/meta_rls.py`, `provisa/core/db.py`, `provisa/core/database.py`, `provisa/core/duckdb_store.py`, `provisa/core/repositories/source.py`, `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/api/app.py`, `provisa/openapi/pg_cache.py`
+**Code:** `provisa/core/meta_rls.py`, `provisa/core/db.py`, `provisa/core/database.py`, `provisa/core/duckdb_store.py`, `provisa/core/repositories/source.py`, `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/api/app.py`, `provisa/api/app_loaders.py`, `provisa/api_source/fill_cache.py`
 
 **Tests:** `tests/unit/test_admin_store.py`, `tests/unit/test_control_plane_shared_engine.py`
 
@@ -7678,7 +7678,7 @@ Stateful-component topology. The four data-flow primitives (datasources -> feder
 
 **Use case:** Names the stateful components multi-tenancy must isolate and deployment must place, separating them from the stateless execution pipeline, and makes each independently pluggable so the same platform collapses to zero-infra on a laptop and scales each tier independently in production with tenant isolation enforced uniformly in the app layer.
 
-**Code:** `provisa/api/app.py`, `provisa/core/db.py`, `provisa/core/repositories/source.py`, `provisa/openapi/pg_cache.py`, `provisa/cache/hot_tables.py`, `provisa/cache/warm_tables.py`, `provisa/mv/registry.py`
+**Code:** `provisa/api/app.py`, `provisa/core/db.py`, `provisa/core/repositories/source.py`, `provisa/api_source/fill_cache.py`, `provisa/cache/hot_tables.py`, `provisa/federation/data_replicator.py`, `provisa/federation/replica_state.py`, `provisa/federation/engine.py`, `provisa/mv/registry.py`, `provisa/core/meta_rls.py`
 
 **Tests:** `tests/unit/test_arch_invariants.py`
 
@@ -8022,7 +8022,7 @@ MV and the ad-hoc API/pg cache freshness checks (provisa/openapi/pg_cache.py) be
 
 **Use case:** Consistency: the same freshness semantics and strategies apply to every data path, and there is one place to change freshness policy instead of per-consumer copies.
 
-**Code:** `provisa/freshness/adapters.py`, `provisa/mv/models.py`, `provisa/openapi/pg_cache.py`
+**Code:** `provisa/freshness/adapters.py`, `provisa/mv/models.py`, `provisa/api_source/fill_cache.py`
 
 **Tests:** `tests/unit/test_freshness_adapters.py`
 
@@ -8204,13 +8204,13 @@ SUPERSEDED BY [REQ-874](#REQ-874). This requirement duplicated existing watermar
 
 ### REQ-874 · Materialization Store {#REQ-874}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 Delta fetch for materialization_store REPLICA incremental refresh: an INCREMENTAL RELOAD strategy for datasets whose federation strategy is MATERIALIZED ([REQ-826](#REQ-826)) — data is landed/cached, so full re-pull is the cost delta avoids. Remote schemas (graphql_remote/ openapi/grpc) are the PRIMARY DRIVER but not the sole case; also RDB cached-for-latency, NoSQL, live APIs landed via MATERIALIZED. VIRTUAL and SCAN strategies EXCLUDED (always-fresh / read-in-place; nothing to delta-refresh per [REQ-826](#REQ-826)). KEY SIMPLIFICATION: PROBE == DELTA for monotonic entries. For a monotonic-cursor entry the DELTA QUERY IS THE FRESHNESS EVALUATION. Run the delta query: non-empty result ⇒ changed ⇒ apply the rows; empty ⇒ fresh ⇒ no-op. No separate watermark/probe query. No scalar_path. DEFINITION: ONE authored query (delta_query) — authored, source-native, fully-formed filter with two PLACEHOLDERS that Provisa substitutes: (a) watermark placeholder ($wm bind variable) bound to the stored CURSOR VALUE, (b) fields placeholder ({{fields}}) injected from the table's registered selection set. Provisa substitutes only; never parses the filter. CURSOR FIELD IMPLICIT: the cursor field is the field $wm filters on (single query, single field); after applying delta rows, the stored cursor advances to max(cursor-field) over returned rows (delta_query ordered by cursor field). Same-field alignment therefore trivially guaranteed; no separate field declaration required. Cursor and monotonicity are the registrant's responsibility; Provisa does no dedup or boundary-inclusivity logic. SOURCE-TYPE-SPECIFIC AUTHORING AND EXECUTION: delta_query is AUTHORED IN THE SOURCE'S NATIVE QUERY LANGUAGE, syntax and filter/cursor binding PER-SOURCE-TYPE: GraphQL `where: {field: {_gt: $wm}}` + `{{fields}}`; OpenAPI query-param `?updated_since=$wm` + selection headers; gRPC request-message filter + `$wm` + selection; SQL `WHERE field > $wm` + projection. Only $wm/{{fields}} placeholder substitution and cursor-advance logic are uniform across types. DELTA EXECUTION ROUTES THROUGH THE ADAPTER'S NATIVE CALLER, NOT THE FEDERATION ENGINE: GraphQL delta POSTs the native query to the source (predicate pushed down AT source) and lands rows into materialization_store; does NOT execute as Trino `WHERE field > x` scan over the federated relation. Native-pushdown path is the efficiency win and reason delta exists rather than relying on Trino watermark_column poll (which re-scans with no pushdown). Per source type: (1) delta template = native query syntax + filter/cursor binding (author-supplied, source-specific); (2) delta execution = routes through source type's existing native caller (GraphQL/HTTP/gRPC/SQL), bypassing federation engine. Pattern mirrors per-adapter mutation classification/suggestion ([REQ-869](#REQ-869)/871): uniform contract with per-source-type native implementation. APPLY: upsert returned rows on the replica's ALREADY-REGISTERED PRIMARY KEY (entity identity from table registration) to replace prior row state; degrades to plain insert for append-only/immutable sources. REPLICA-ONLY: VIEW/mv role is delta-ineligible—[REQ-844](#REQ-844) Iceberg overwrite-snapshot semantics (one clean snapshot per refresh) for time-travel/provenance/ bitemporal ([REQ-372](#REQ-372)/862) would be violated by upsert. Mutable relational substrate only. RELATIONSHIP TO FRESHNESS: Freshness ([REQ-855](#REQ-855)/856) is pure stale/fresh DECISION with no refresh semantics ([REQ-856](#REQ-856)). Delta is REFRESH ACTION under [REQ-826](#REQ-826)'s MATERIALIZED reload — incremental sibling of full re-pull. But for monotonic entries delta query serves as freshness evaluation, so [REQ-855](#REQ-855)'s opaque probe is NOT also run: PROBE (opaque token) and DELTA (monotonic cursor) are MUTUALLY EXCLUSIVE PER ENTRY, selected by token type. Opaque-token entries ⇒ [REQ-855](#REQ-855) probe + full re-pull, no delta. Monotonic entries ⇒ delta-as-probe, no separate probe. Validation gates: (a) delta_query contains both $wm and {{fields}} placeholders; (b) parses; (c) $wm bind-var type is orderable/monotonic-compatible; (d) injected selection valid against row type. DONE (2026-07): the UNIFORM part is implemented — provisa/federation/delta.py: delta_applies gates delta to MATERIALIZED (VIRTUAL/SCAN excluded); render_delta_fields substitutes {{fields}} textually (Provisa never parses the source-native filter) leaving $wm for native binding; has_wm_placeholder is the $wm validation gate; delta_is_fresh is PROBE==DELTA (empty result ⇒ fresh/no-op, non-empty ⇒ changed/apply); advance_cursor advances the stored cursor to max(cursor-field) over the returned rows (empty keeps it). REMAINING (kept in-progress): the per-source-type delta authoring + native execution (GraphQL/HTTP/gRPC/SQL callers, predicate pushed down at source), keyed-upsert apply on the replica, and the delta/opaque-probe mutual-exclusivity wiring with [REQ-855](#REQ-855).
 
 **Use case:** For REPLICAS (any MATERIALIZED-strategy dataset whose federation strategy lands data), full re-pull on every refresh is expensive and unnecessary. Delta fetch via monotonic watermark keeps replicas fresh with zero lag ([REQ-855](#REQ-855) probe) without repeated full upstream fetches. Primary use: remote-schema sources (graphql_remote/openapi/gRPC) avoid full-relation re-fetch and re-materialize. Also benefits RDB sources presently using watermark_column only for subscriptions ([REQ-260](#REQ-260)) — they gain incremental replica refresh: keyed upsert instead of full re-pull, no full-CTAS + mutation-triggered staleness cycle. Strategy-agnostic scope avoids VIRTUAL (live) and SCAN (in-place read) per [REQ-826](#REQ-826). Replicas in mutable stores absorb deltas; views cannot.
 
-**Code:** `provisa/federation/delta.py`, `provisa/subscriptions/`, `provisa/materialization/`, `provisa/materialization_store/`
+**Code:** `provisa/federation/delta.py`
 
 **Tests:** `tests/unit/test_delta.py`, `tests/integration/test_materialization_store_lifecycle_e2e.py`
 
@@ -8354,9 +8354,9 @@ Generalize tracked functions ([REQ-205](#REQ-205)–208: source-resident stored 
 
 **Use case:** Enables diverse computation platforms (hosted scripts, external services, Python libraries) to act as governed data transformations, returning relations (not just scalar functions). Maintains config-as-truthful-model property with URI addressing and spec-driven discovery (OpenAPI/proto/ script-manifest). Preserves existing source-procedure tracked-function contract while extending to Provisa-hosted and external implementations.
 
-**Code:** `provisa/executor/function_dispatch.py`, `provisa/api/data/action_exec.py`, `provisa/api/app.py`, `provisa/core/models.py`, `provisa/core/repositories/function.py`, `provisa/core/schema_org.py`, `provisa/api/admin/actions_router.py`, `provisa-ui/src/pages/commands/CommandFormFields.tsx`, `provisa-ui/src/pages/commands/CommandsPage.tsx`, `provisa-ui/src/pages/commands/types.ts`, `provisa-ui/src/pages/commands/api/actions.ts`
+**Code:** `provisa/executor/function_dispatch.py`, `provisa/api/data/action_exec.py`, `provisa/api/app.py`, `provisa/core/models.py`, `provisa/core/repositories/function.py`, `provisa/core/schema_org.py`, `provisa/api/admin/actions_router.py`, `provisa-ui/src/pages/commands/CommandFormFields.tsx`, `provisa-ui/src/pages/commands/types.ts`, `provisa-ui/src/pages/CommandsPage.tsx`, `provisa-ui/src/api/actions.ts`
 
-**Tests:** `tests/unit/test_extensible_functions.py`
+**Tests:** `tests/unit/test_extensible_functions.py`, `provisa-ui/src/__tests__/CommandFormFields.test.tsx`
 
 ## 1. Access Governance & Security
 
@@ -8396,7 +8396,7 @@ Federation engine contract is wired into the live query path via EngineRuntime, 
 
 **Use case:** Mandatory EngineRuntime binding and capability-gating defines the defensible abstraction boundary for platform-specific escape hatches. Named, advertised capabilities prevent arbitrary injected connections and enforce consistent routing (DIRECT → native driver, ENGINE → federated execution) across all consumer paths (pgwire, GraphQL, Arrow Flight, COPY handler, NL executor).
 
-**Code:** `provisa/federation/runtime.py`, `provisa/api/graphql/`, `provisa/bolt/`, `provisa/arrow_flight/`, `provisa/query_helpers.py`
+**Code:** `provisa/federation/runtime.py`, `provisa/api/app.py`, `provisa/api/data/endpoint_executors.py`, `provisa/bolt/server.py`, `provisa/api/flight/server.py`, `provisa/api/_query_helpers.py`
 
 **Tests:** `tests/integration/test_engine_runtime_binding.py`, `tests/unit/test_engine_capabilities.py`
 
@@ -8904,7 +8904,7 @@ The change_signal→landing-shape mapping (push→CDC upsert/tombstone by PK, po
 
 **Use case:** Eliminates redundant encoding of change-detection intent across three independent fields (`change_signal`, `freshness_mode`, `live.strategy`). Centralizes the authoritative source and clarifies orthogonal axes (detection method, append/replace mode, materialization).
 
-**Code:** `provisa/core/change_signal.py`, `api/app.py`, `api/admin/schema.py`, `api/data/subscribe.py`, `live/reconcile.py`, `core/config_loader.py`, `core/models.py`, `mv/refresh.py`
+**Code:** `provisa/core/change_signal.py`, `provisa/federation/store_writer.py`, `provisa/federation/materialize_exec.py`, `provisa/federation/store_connection.py`, `provisa/api/data/subscribe.py`, `provisa/live/reconcile.py`, `provisa/core/config_loader.py`, `provisa/core/models.py`
 
 **Tests:** `tests/unit/test_change_signal.py`, `tests/unit/test_materialize_landing.py`, `tests/unit/test_subscribe_publish.py`
 
@@ -9092,7 +9092,7 @@ engine.connectors (the unified connector registry per federation engine) must in
 
 **Use case:** engine.connectors must be complete — federatable ∪ Provisa-direct ∪ adapter-materializable — so that the source-creation dropdown dynamically reflects exactly what each federation engine can reach, whether through its native connectors, direct drivers, or adapters. Eliminates hardcoded source-type lists and parallel registry maps.
 
-**Code:** `provisa/federation/connector.py`, `provisa/federation/engine.py`, `provisa/events/source_loader.py`, `provisa/executor/drivers/registry.py`, `provisa/source_adapters/_ADAPTER_MAP`
+**Code:** `provisa/federation/connector.py`, `provisa/federation/connector_base.py`, `provisa/federation/engine.py`, `provisa/events/source_loader.py`, `provisa/executor/drivers/registry.py`, `provisa/source_adapters/registry.py`, `provisa/core/source_registry.py`, `provisa/federation/trino_connectors.py`
 
 **Tests:** `tests/unit/test_source_registry_contract.py`, `tests/unit/test_engine_reach_faces.py`
 
@@ -9606,7 +9606,7 @@ Snowflake federation engine must be promoted from a source-only connector (feder
 
 **Use case:** Snowflake is an MPP warehouse with native Arrow support; exposing its columnar capabilities via Provisa's Arrow Flight server enables direct, efficient federated queries without row materialization and eliminates the current Trino-as-middleman routing. Matches architectural parity with Trino ([REQ-986](#REQ-986) ClickHouse parallel) and serves enterprises whose primary warehouse is Snowflake.
 
-**Code:** `provisa/federation/engine.py`, `provisa/federation/backend.py`, `provisa/api/flight/server.py`, `provisa/executor/trino_flight.py`, `provisa/transpiler/transpile.py`, `provisa/source_registry.py`, `provisa/source_connectors/snowflake_connector.py`
+**Code:** `provisa/federation/engine.py`, `provisa/federation/backend.py`, `provisa/federation/native_backend.py`, `provisa/federation/snowflake_backend.py`, `provisa/federation/snowflake_runtime.py`, `provisa/federation/snowflake_connectors.py`, `provisa/federation/snowflake_store.py`, `provisa/api/flight/server.py`, `provisa/executor/trino_flight.py`, `provisa/transpiler/transpile.py`, `provisa/core/source_registry.py`
 
 **Tests:** `tests/unit/test_engine_capabilities.py`, `tests/unit/test_transpiler.py`, `tests/integration/test_snowflake_federation_engine_e2e.py`
 
@@ -9616,11 +9616,11 @@ Snowflake federation engine must be promoted from a source-only connector (feder
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** structural
 
-Zero-config default stack must be fully embedded and in-process with no external dependencies: default federation engine is duckdb (not trino), default materialize store is duckdb's native embedded store (not platform tenant DB via Postgres), and default control-plane store is sqlite (not embedded_pg). Desktop installers default to this stack via the `native` preset declared in config/capabilities.yaml (absorbs [REQ-972](#REQ-972)). External engines and stores (Trino, Postgres, ClickHouse, Snowflake, Databricks) remain selectable via PROVISA_ENGINE / PROVISA_ENGINE_URL / PROVISA_MATERIALIZE_URL / control_plane_store overrides.
+Zero-config default stack must be fully embedded and in-process with no external dependencies: default federation engine is duckdb (not trino), default materialize store is duckdb's native embedded store (not platform tenant DB via Postgres), [SUPERSEDED by [REQ-1535](#REQ-1535), 2026-10-03 -- embedded PostgreSQL is the default control-plane store for the demo and native tiers; sqlite stays selectable. Kept here for history; do not implement against it.] and default control-plane store is sqlite (not embedded_pg) [END SUPERSEDED BLOCK]. Desktop installers default to this stack via the `native` preset declared in config/capabilities.yaml (absorbs [REQ-972](#REQ-972)). External engines and stores (Trino, Postgres, ClickHouse, Snowflake, Databricks) remain selectable via PROVISA_ENGINE / PROVISA_ENGINE_URL / PROVISA_MATERIALIZE_URL / control_plane_store overrides. (Amended 2026-10-03, THE DEFAULT CONTROL PLANE IS EMBEDDED POSTGRESQL:) The zero-config stack's control-plane store is embedded PostgreSQL ([REQ-1535](#REQ-1535)), started in process with no external dependency. The default engine (duckdb) and the default materialization store (duckdb's own) are unchanged.
 
 **Use case:** Organizations and developers need instant local startup with zero Docker, no Trino cluster, no Postgres dependency — everything embedded for true out-of-the-box instant start. The zero-config path must serve as an approachable entry point while preserving full enterprise engine/store pluggability via configuration.
 
-**Code:** `provisa/federation/engine.py`, `provisa/core/desktop_profile.py`, `provisa/core/capabilities.yaml`
+**Code:** `provisa/federation/engine.py`, `provisa/core/desktop_profile.py`, `config/capabilities.yaml`
 
 **Tests:** `tests/unit/test_duckdb_store_native.py`, `tests/unit/test_federation_engine.py`
 
@@ -10008,9 +10008,9 @@ The scripts/test-all runner auto-loads .env file before executing test lanes, wi
 
 **Use case:** Enables CI/CD pipelines to load external warehouse credentials from .env (not checked in) and run full warehouse integration tests. Caller-exported variables can still override .env values for CI/CD systems that inject credentials via environment.
 
-**Code:** `provisa/api/billing/router.py`, `provisa/api/billing/lemonsqueezy_client.py`, `provisa/api/billing/models.py`, `provisa/api/billing/tenant_db.py`, `provisa/core/schema_admin.py`
+**Code:** `tests/env_creds.py`, `tests/conftest.py`, `scripts/test-all`
 
-**Tests:** `tests/unit/test_billing_lemonsqueezy.py`, `tests/unit/test_org_isolation.py`
+**Tests:** `tests/unit/test_env_creds_loaded.py`
 
 ### REQ-1026 · First-Customer Deployment {#REQ-1026}
 
@@ -10744,7 +10744,7 @@ AWS KMS encryption provider (envelope wrapping via KMS Encrypt/Decrypt) with sup
 
 **Use case:** Enterprises can use AWS-managed KMS keys without re-implementing envelope encryption logic. Private endpoint support enables airgapped deployments.
 
-**Code:** `provisa/encryption/providers/aws_kms.py`
+**Code:** `provisa/encryption/providers.py`, `provisa/encryption/registry.py`
 
 **Tests:** `tests/unit/test_encryption_providers.py`
 
@@ -10756,7 +10756,7 @@ HashiCorp Vault (Transit engine) encryption provider with auto-availability when
 
 **Use case:** Enterprises using Vault can leverage existing HSM or encryption backends without provisioning cloud KMS. Custom Vault endpoint supports private/airgapped deployments.
 
-**Code:** `provisa/encryption/providers/vault.py`
+**Code:** `provisa/encryption/providers.py`, `provisa/encryption/registry.py`
 
 **Tests:** `tests/unit/test_encryption_providers.py`
 
@@ -10768,7 +10768,7 @@ Azure Key Vault encryption provider (RSA-OAEP-256 key wrap) with auto-availabili
 
 **Use case:** Azure-native deployments can leverage customer-managed keys in Azure Key Vault without running separate KMS infrastructure.
 
-**Code:** `provisa/encryption/providers/azure_keyvault.py`
+**Code:** `provisa/encryption/providers.py`, `provisa/encryption/registry.py`
 
 **Tests:** `tests/unit/test_encryption_providers.py`
 
@@ -11246,7 +11246,7 @@ A materialized view may only be published if all relationships it depends on are
 
 **Use case:** Ensures MVs cannot be published over unapproved relationships, preventing uncontrolled data lineage and access patterns. Distinguishes between users who can auto-provision (trusted data engineers) and those who must request approval (least-privilege roles).
 
-**Code:** `provisa/api/admin/mv_relationship_gate.py`, `provisa/api/admin/schema_mutation_ops.py`
+**Code:** `provisa/mv/relationship_gate.py`, `provisa/api/admin/schema_mutation_ops.py`
 
 **Tests:** `tests/unit/test_mv_relationship_gate.py`
 
@@ -11742,7 +11742,7 @@ The Linux first-launch installer persists all IdP-related environment variables 
 
 **Use case:** Cloud VMs running under systemd (not a user login shell) require environment variables to be persisted to a file readable by the systemd unit. This decouples the first-launch process from the long-running server.
 
-**Code:** `provisa/cli/linux_installer.py`, `provisa/api/setup_router.py`
+**Code:** `packaging/linux/first-launch.sh`, `provisa/api/setup_router.py`
 
 **Tests:** —
 
@@ -11754,7 +11754,7 @@ Non-interactive (cloud) Linux deployments automatically enable and start the Pro
 
 **Use case:** Cloud deployments are unattended and need the server running immediately. Automatic enable and start reduces the gap between terraform apply and service readiness, eliminating the need for post-deployment SSH commands.
 
-**Code:** `provisa/cli/linux_installer.py`
+**Code:** `packaging/linux/first-launch.sh`, `packaging/linux/AppRun`
 
 **Tests:** —
 
@@ -11780,9 +11780,9 @@ pgwire ENGINE route streams the engine's result set lazily instead of materializ
 
 **Use case:** Streaming prevents OOM on large result sets by deferring row materialization to the client's consumption rate. SaaS deployments with resource-constrained pods require all user-facing query results to stream unbounded data.
 
-**Code:** `provisa/pgwire/session.py`, `provisa/executor/`
+**Code:** `provisa/pgwire/server.py`, `provisa/pgwire/_pipeline.py`, `provisa/pgwire/result_shape.py`, `provisa/federation/runtime.py`
 
-**Tests:** `tests/integration/test_pgwire_integration.py`, `tests/integration/test_preflight_streaming.py`, `tests/e2e/test_preflight_streaming_e2e.py`, `tests/unit/test_pgwire_lazy_result.py`
+**Tests:** `tests/unit/test_pgwire_lazy_result.py`, `tests/integration/test_pgwire_integration.py`, `tests/integration/test_preflight_streaming.py`, `tests/e2e/test_preflight_streaming_e2e.py`
 
 ### REQ-1187 · Result Handling & Streaming {#REQ-1187}
 
@@ -11804,7 +11804,7 @@ execute_engine_sync and backend execute_sync implementations accept a session_hi
 
 **Use case:** Trino session properties control engine behavior per query (e.g., retry_policy for Kafka sources). Without session_hints on the sync path, properties set at plan-governance time are silently dropped, causing non-deterministic behavior between async and sync execution paths.
 
-**Code:** `provisa/backends/`, `provisa/executor/`
+**Code:** `provisa/federation/runtime.py`, `provisa/federation/backend.py`, `provisa/federation/native_backend.py`
 
 **Tests:** `tests/unit/test_trino_session_hints.py`
 
@@ -11828,9 +11828,9 @@ DIRECT routes must stream for user-data scans via the source's own server-side c
 
 **Use case:** A DIRECT single-reachable-source passthrough (e.g., SELECT * FROM one_source) can be unbounded and must not materialize in Provisa RAM. Only bounded metadata queries (catalog, schema metadata, govdata, admin endpoints) benefit from materialization. Streaming the source's native cursor prevents OOM on large user-data scans.
 
-**Code:** `provisa/executor/`, `provisa/graphql/`
+**Code:** `provisa/executor/direct.py`, `provisa/federation/runtime.py`, `provisa/pgwire/server.py`, `provisa/api/flight/server.py`, `provisa/api/airport/query.py`, `provisa/grpc/server.py`
 
-**Tests:** `tests/integration/test_catalog_integration.py`, `tests/integration/test_governance_integration.py`, `provisa-ui/e2e/governance-core.spec.ts`, `tests/unit/test_airport_streaming_terminal.py`
+**Tests:** `tests/unit/test_airport_streaming_terminal.py`, `tests/integration/test_governance_integration.py`, `provisa-ui/e2e/governance-core.spec.ts`
 
 ## 7. Result Delivery
 
@@ -12126,7 +12126,7 @@ Every transport (gRPC, Arrow Flight, airport, GraphQL, JSON:API, Bolt, pgwire) r
 
 **Use case:** Centralizing routing through one pipeline ensures uniform governance (RLS, masking, audit), prevents per-transport SQL branches, and allows streaming transports to drain engine terminals directly while keeping buffered transports format-aware.
 
-**Code:** `provisa/executor/_pipeline.py`
+**Code:** `provisa/pgwire/_pipeline.py`
 
 **Tests:** `tests/unit/test_governed_chokepoint.py`, `tests/integration/test_grpc_execution.py`
 
@@ -12152,7 +12152,7 @@ Arrow Flight SQL do_get ENGINE route streams via execute_engine_stream. All Flig
 
 **Use case:** Streaming via execute_engine_stream replaces full materialization with lazy per-batch pulls, enabling large result sets over Flight. Engine capability declarations must be honest: only declare ARROW_STREAM when the terminal is genuinely lazy via the driver's server-side chunk API.
 
-**Code:** `provisa/api/flight/server.py`, `provisa/executor/_engine_executor.py`
+**Code:** `provisa/api/flight/server.py`, `provisa/federation/runtime.py`, `provisa/federation/native_backend.py`, `provisa/federation/databricks_runtime.py`, `provisa/federation/bigquery_runtime.py`, `provisa/federation/mssql_warehouse_runtime.py`, `provisa/federation/snowflake_runtime.py`
 
 **Tests:** `tests/unit/test_flight_modes.py`, `tests/integration/test_arrow_flight_integration.py`
 
@@ -12166,7 +12166,7 @@ Per-engine Arrow streaming terminals (execute_engine_stream) and run_sync must b
 
 **Use case:** Genuinely lazy per-batch pulls prevent materializing full result sets in memory and allow the consumer to stop early without forcing the engine to compute remaining batches. Only server-side chunk APIs honor this for warehouse engines; materializing then rebatching violates the design.
 
-**Code:** `provisa/executor/_engine_executor.py`
+**Code:** `provisa/federation/runtime.py`, `provisa/federation/runtime_support.py`, `provisa/federation/duckdb_runtime.py`, `provisa/federation/snowflake_runtime.py`, `provisa/federation/databricks_runtime.py`, `provisa/federation/bigquery_runtime.py`, `provisa/federation/mssql_warehouse_runtime.py`
 
 **Tests:** `tests/unit/test_duckdb_stream_terminal.py`, `tests/integration/test_preflight_streaming.py`
 
@@ -12618,7 +12618,7 @@ Web UI must be published on host port 443 across all cloud Terraform deployments
 
 **Use case:** The .dev gTLD is HSTS-preloaded in browsers, forcing http to https:443. Publishing the UI on port 443 allows cloud.provisa.dev and {org}.provisa.dev URLs to resolve without a port suffix, composing with the single shared passthrough LB ([REQ-1253](#REQ-1253)) which forwards all ports to the backend node preserving destination port.
 
-**Code:** `first-launch.sh`, `terraform/gcp/main.tf`, `terraform/aws/main.tf`, `terraform/azure/main.tf`, `docker-compose.yml`
+**Code:** `packaging/linux/first-launch.sh`, `packaging/macos/first-launch.sh`, `scripts/provisa`, `terraform/gcp/main.tf`, `terraform/aws/main.tf`, `terraform/azure/main.tf`, `docker-compose.app.yml`
 
 **Tests:** —
 
@@ -12794,7 +12794,7 @@ OrgRuntime dataclass encapsulates a single org's slice of AppState; OrgRegistry 
 
 **Use case:** Enables request-scoped multi-org isolation: each request runs against its designated org's isolated state, catalogs, and connection pools without global state mutation or cross-org leakage.
 
-**Code:** `provisa/app_state.py`, `provisa/multitenancy/org_runtime.py`
+**Code:** `provisa/api/org_runtime.py`, `provisa/api/app.py`, `provisa/core/request_context.py`
 
 **Tests:** `tests/unit/test_org_runtime.py`
 
@@ -12806,9 +12806,9 @@ org_prefixed_catalog(org_id, base, *, default_org) returns bare base name for de
 
 **Use case:** Avoids catalog name collisions in shared orchestrator environments (e.g., pooled Trino) when multiple orgs instantiate identical demo sources.
 
-**Code:** `provisa/multitenancy/catalog_naming.py`
+**Code:** `provisa/compiler/naming.py`
 
-**Tests:** `tests/unit/test_org_isolation.py`, `tests/integration/test_org_auto_join.py`
+**Tests:** `tests/unit/test_org_runtime.py`
 
 ### REQ-1270 · HTTP Org-Routing Middleware {#REQ-1270}
 
@@ -12818,9 +12818,9 @@ OrgRoutingMiddleware routes each HTTP request to the active org's runtime, built
 
 **Use case:** Ensures every request executes within its designated org's isolated AppState, enforcing tenant isolation at the HTTP boundary.
 
-**Code:** `provisa/middleware/org_routing.py`
+**Code:** `provisa/api/app.py`, `provisa/api/org_resolve.py`, `provisa/core/request_context.py`
 
-**Tests:** `tests/unit/test_org_isolation.py`
+**Tests:** `tests/unit/test_tenancy_requirements.py`, `tests/unit/test_http_trace_scope.py`, `tests/integration/test_invite_env_capture.py`
 
 ### REQ-1271 · Self-Service Org Creation {#REQ-1271}
 
@@ -12842,9 +12842,9 @@ POST /admin/orgs returns immediately with provisioning_state="provisioning"; a b
 
 **Use case:** Decouples org creation from slow provisioning operations (schema build, connection pool initialization), enabling responsive UI feedback during multi-org onboarding.
 
-**Code:** `provisa/api/admin/orgs_router.py`, `provisa/multitenancy/org_provisioning.py`
+**Code:** `provisa/api/admin/orgs_router.py`, `provisa/core/org_provisioning.py`, `provisa/core/schema_admin.py`
 
-**Tests:** `tests/integration/test_create_org_onboarding.py`, `tests/unit/test_org_create_provisioning.py`
+**Tests:** `tests/unit/test_org_create_provisioning.py`, `tests/integration/test_create_org_onboarding.py`
 
 ### REQ-1273 · Org Readiness Notification Seam {#REQ-1273}
 
@@ -12854,7 +12854,7 @@ notify_org_ready(org_id, user_id) stub called when async provisioning completes;
 
 **Use case:** Provides a seam to inject notifications (email, dashboard alerts) once an org is ready for use, supporting future multi-channel notification infrastructure.
 
-**Code:** `provisa/multitenancy/org_provisioning.py`
+**Code:** `provisa/core/org_membership.py`, `provisa/api/admin/orgs_router.py`
 
 **Tests:** —
 
@@ -12866,9 +12866,9 @@ _require_org_admin authorization handler allows platform admins any org, confine
 
 **Use case:** Prevents org admins from inviting users to orgs they do not own, enforcing multi-org isolation boundary at the authorization layer.
 
-**Code:** `provisa/api/admin/auth.py`, `provisa/api/admin/invites_router.py`
+**Code:** `provisa/api/admin/invites_router.py`
 
-**Tests:** `tests/unit/test_tenant_isolation_contract.py`
+**Tests:** `tests/unit/test_require_org_admin.py`, `tests/integration/test_invite_role_authz.py`
 
 ### REQ-1275 · UI Onboarding Flow {#REQ-1275}
 
@@ -13826,7 +13826,7 @@ Org-scoped admin rights define two new capabilities: `org_settings` (surfaces wh
 
 **Use case:** Org admins need independent control over their org's configuration (AI models, NL providers, domains, tasks) and observability without access to platform-level or cross-org settings. Request-time resolution of org config (resolve_org_config) allows configuration changes to take effect immediately on the next query without restart.
 
-**Code:** `provisa/security/rights.py`, `provisa/core/db.py`, `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/core/org_settings.py`, `provisa/api/admin_router.py`, `provisa/api/mcp/tools.py`, `provisa/api/mcp/chat.py`
+**Code:** `provisa/security/rights.py`, `provisa/core/db.py`, `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/core/org_settings.py`, `provisa/api/admin/_platform_guard.py`, `provisa/api/admin/schema_mutation.py`, `provisa/api/admin/email_router.py`, `provisa/api/mcp/tools.py`, `provisa/api/mcp/chat.py`
 
 **Tests:** `tests/unit/test_org_scoped_admin_rights.py`, `tests/integration/test_tenancy_role_grants.py`, `tests/integration/test_org_settings_overrides.py`, `provisa-ui/src/__tests__/adminNavCapabilities.test.ts`, `tests/unit/test_mcp_org_scoped_config.py`
 
@@ -14084,7 +14084,7 @@ Standardize "metadata export" terminology: module path provisa/api/metadata_expo
 
 **Use case:** Consistent naming across code, config, API, and UI reduces cognitive load and improves discoverability for users and maintainers.
 
-**Code:** `provisa/api/metadata_export/`, `provisa/api/admin/metadata_export_router.py`, `provisa-ui/src/tabs/MetadataExportTab.tsx`, `docs/metadata-export.md`
+**Code:** `provisa/api/metadata_export/`, `provisa/api/admin/metadata_export_router.py`, `provisa/control_plane/entitlements.py`, `provisa-ui/src/components/admin/MetadataExportTab.tsx`, `docs/metadata-export.md`
 
 **Tests:** —
 
@@ -14096,7 +14096,7 @@ Demo mode exemption for tier entitlement gating: when PROVISA_DEMO=1 (set via `p
 
 **Use case:** Demo mode needs to showcase all features without enterprise license checks, enabling quick product evaluation and internal testing without mock entitlement infrastructure.
 
-**Code:** `provisa/core/demo.py`, `provisa/control_plane/entitlements.py`, `provisa/cli/setup_router.py`
+**Code:** `provisa/core/demo.py`, `provisa/control_plane/entitlements.py`, `provisa/api/setup_router.py`
 
 **Tests:** —
 
@@ -15124,7 +15124,7 @@ Plans, tier ceilings, the active-hour meter and the merchant-of-record integrati
 
 **Use case:** An open-source or demo install runs the whole product unmetered and unbilled, and the hosted deployment is the only build that carries how Provisa charges.
 
-**Code:** `provisa/core/commerce.py`, `provisa/core/control_plane.py`, `provisa_commercial/__init__.py`, `provisa_commercial/schema.py`
+**Code:** `provisa/core/commerce.py`, `provisa/core/control_plane.py`, `.claude/commercial/provisa_commercial/__init__.py`, `.claude/commercial/provisa_commercial/schema.py`
 
 **Tests:** —
 
@@ -15296,13 +15296,13 @@ A packaged demo deploy ships every upstream the demo config names, not only the 
 
 ### REQ-1469 · SaaS Billing {#REQ-1469}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
 
 A Starter org signs itself up with a credit card and can answer, without asking anyone, what it owes right now and when the card will be charged. Three surfaces, all of them org-scoped and all reading the same numbers the invoice will carry. (1) SIGN-UP: an org with no subscription is sent to the Lemon Squeezy hosted checkout of [REQ-1075](#REQ-1075) -- the card is entered at the merchant of record and never reaches Provisa, which is the whole reason the MoR is there -- and the subscription is linked to the org by the webhook, not by the browser's return trip, so a closed tab still lands the plan. (2) CURRENT BILL: the org sees its month-to-date charge broken into the plan's fixed monthly fee and whatever metered usage has accrued against it, dated so it is clear which period is being shown. A bill assembled from Provisa's own meter rather than from the MoR would disagree with the invoice the customer receives, so the fixed component comes from the subscription and the metered component from the usage records Provisa has already posted -- never from an estimate computed a third way. (3) NEXT CHARGE: the renewal date and the amount expected on it are stated explicitly, because the complaint a card charge generates is always that it was a surprise. Cancelled and past-due subscriptions say so on the same panel rather than showing a next charge that will not happen. Payment method changes, invoice history and cancellation are handed to the Lemon Squeezy customer portal instead of rebuilt. The entry point is the account (person) menu, not the Admin group: the Admin group holds the operational settings of the org, whereas the plan, the running bill and the next charge are the commercial relationship behind the account. The route stays /admin/billing and keeps org_settings; the menu item is shown only where the deployment mounts the billing routes (billing on /auth/me) and only to the right that owns the subscription. Each endpoint names its subject with an org_id the caller supplies, so each one checks it: the org_settings RIGHT in the org being acted in ([REQ-1337](#REQ-1337) -- never a role name), or cross_org for a control-plane caller. The checkout paths also admit the account that reserved the org, because an org awaiting checkout is not bindable ([REQ-1476](#REQ-1476)) and its creator would otherwise be locked out of the checkout that makes it real.
 
 **Use case:** A Starter customer signs up at $18/mo with a card, opens Billing a fortnight later, sees the month-to-date amount and the date the card renews, and needs no support ticket to learn either.
 
-**Code:** `provisa-ui/src/components/admin/BillingTab.tsx`, `provisa-ui/src/api/billing.ts`, `provisa-ui/src/components/NavBar.tsx`, `provisa_commercial/router.py`, `provisa_commercial/access.py`, `provisa_commercial/lemonsqueezy_client.py`, `provisa/api/auth_router.py`
+**Code:** `.claude/commercial/provisa_commercial/router.py`, `.claude/commercial/provisa_commercial/access.py`, `.claude/commercial/provisa_commercial/lemonsqueezy_client.py`, `.claude/commercial/provisa_commercial/usage.py`, `provisa-ui/src/components/admin/BillingTab.tsx`, `provisa-ui/src/api/billing.ts`, `provisa-ui/src/components/NavBar.tsx`, `provisa/api/auth_router.py`
 
 **Tests:** `.claude/commercial/tests/test_billing_summary.py`, `.claude/commercial/tests/test_billing_access.py`, `provisa-ui/src/__tests__/BillingTab.test.tsx`, `provisa-ui/src/__tests__/adminNavCapabilities.test.ts`, `tests/unit/test_auth_me_billing_flag.py`
 
@@ -15344,7 +15344,7 @@ The [REQ-1455](#REQ-1455) free evaluation period is offered once per PERSON, and
 
 **Use case:** A customer whose trial ended deletes their org and signs up again; they get the Starter plan they were going to be billed for, not another free evaluation period.
 
-**Code:** `provisa_commercial/trial_eligibility.py`, `provisa_commercial/trial.py`, `provisa_commercial/router.py`, `provisa_commercial/schema.py`, `provisa/core/commerce.py`, `provisa/api/auth_router.py`, `provisa/auth/middleware.py`
+**Code:** `.claude/commercial/provisa_commercial/trial_eligibility.py`, `.claude/commercial/provisa_commercial/trial.py`, `.claude/commercial/provisa_commercial/router.py`, `.claude/commercial/provisa_commercial/schema.py`, `provisa/core/commerce.py`, `provisa/api/auth_router.py`, `provisa/api/auto_join.py`, `provisa/auth/middleware.py`
 
 **Tests:** `.claude/commercial/tests/test_trial_eligibility.py`
 
@@ -15354,7 +15354,7 @@ The [REQ-1455](#REQ-1455) free evaluation period is offered once per PERSON, and
 
 A Lemon Squeezy store sells more than one product, and it delivers EVERY subscription event to EVERY webhook configured on it, each one signed with that webhook's own secret. A sibling product's subscription therefore reaches POST /billing/webhook with a signature that verifies, and the payload carries no marker saying which product it belongs to except the variant id. The variant is the test: plan_for_variant_id resolves only the variants this deployment sells, so an event naming a variant it does not recognise is not Provisa's and is answered 200 with {"received": true, "ignored": "foreign_variant"} before any org is resolved or any row written. The no-op is a SUCCESS rather than a rejection because Lemon Squeezy records a 4xx as a failed delivery, retries it, and disables a webhook whose failures persist -- so refusing the other product's traffic would eventually take Provisa's own events down with it. Answering 200 also keeps the remaining 400s meaning what they should: a Provisa subscription with a broken payload, not routine cross-product noise. An event carrying no variant id at all is deliberately NOT filtered here, because that is a payload this deployment cannot interpret rather than one it can attribute elsewhere, and billing.webhook_missing_variant still refuses it.
 
-**Code:** `provisa_commercial/router.py`, `provisa_commercial/models.py`
+**Code:** `.claude/commercial/provisa_commercial/router.py`, `.claude/commercial/provisa_commercial/models.py`
 
 **Tests:** `.claude/commercial/tests/test_billing_lemonsqueezy.py`
 
@@ -15364,7 +15364,7 @@ A Lemon Squeezy store sells more than one product, and it delivers EVERY subscri
 
 On a deployment that sells the org, an org is not built until a subscription pays for it. POST /admin/orgs registers the row in provisioning_state awaiting_checkout, grants the creator membership and spawns nothing: between create and checkout the row is a RESERVATION -- a claimed id and nothing else, with no schema, no engine and no data. The subscription_created webhook is the only path out of that state, flipping the row to provisioning and starting the build (begin_provisioning, which returns False on a redelivery so a repeated webhook builds nothing twice). Because the row is not an org anyone can work in, awaiting_checkout is excluded from bindable memberships, from the active-org resolution and from auto-join. A reservation holds its id for 30 minutes and is then deleted, releasing both the name and the slot it held against the per-user org cap; a creator returning inside that window gets their own reservation back rather than a 409, so the UI resumes the checkout they abandoned. If the webhook never lands, POST /billing/checkout/reconcile recovers on the return trip: Lemon Squeezy carries no custom data on the subscription, so the buyer email is the only key back, and a candidate must be a variant this deployment sells, created after the reservation, and bound to no org -- ambiguity is refused (409) rather than guessed. The reservation policy lives in the commercial plugin; a self-hosted deployment has nothing to charge for and provisions on create as before.
 
-**Code:** `provisa/api/admin/orgs_router.py`, `provisa/core/commerce.py`, `provisa/core/org_membership.py`, `provisa_commercial/reservations.py`, `provisa_commercial/router.py`, `provisa-ui/src/pages/OnboardOrgPage.tsx`
+**Code:** `provisa/api/admin/orgs_router.py`, `provisa/core/commerce.py`, `provisa/core/org_membership.py`, `provisa/core/schema_admin.py`, `.claude/commercial/provisa_commercial/reservations.py`, `.claude/commercial/provisa_commercial/router.py`, `provisa-ui/src/pages/OnboardOrgPage.tsx`
 
 **Tests:** `tests/unit/test_org_create_provisioning.py`, `.claude/commercial/tests/test_org_reservations.py`
 
@@ -15550,7 +15550,7 @@ Every environment owns a writable store, because a non-prod environment needs da
 
 **Status:** ✓ accepted · **Priority:** MUST · **Type:** behavioral
 
-Masking has a consistent form. A column masked this way shows a surrogate in place of each real value: the same real value always shows the same surrogate and different real values show different surrogates, so joins, grouping and distinct counts through the column give the results they would give on the real values, while the real value is never shown. A surrogate is a random anonymous value; it is not computed from the real value and cannot be turned back into it. The mask names the kind of fake value to show (a person's name, an email address, a phone number, a street address, an identifier and so on), and the surrogate is a realistic generated value of that kind, so masked data keeps the look of the real data. [SUPERSEDED by REQ-1494 amendment, 2026-10-03 -- the mapping is platform-wide, durable platform data in the platform's shared store, not per-org state. Kept here for history; do not implement against it.] The surrogates are kept in a table of the state store ([REQ-1920](#REQ-1920)) [END SUPERSEDED BLOCK] that holds, for each real value met, a one-way transform of the value (a hash, or any reasonable one-way transform with few collisions) and the surrogate generated for it, and never the real value itself, so no personal data is kept in the state store: when a value is met again its surrogate is reused, and a value met for the first time is given a new one. Columns joined by a relationship share one set of surrogates, so a join between two masked columns still matches. (Amended 2026-10-03, MASKED DATA IS A PLATFORM CONCERN: ONE MAPPING FOR THE WHOLE PLATFORM:) The mapping from a value to its surrogate, and the key of its one-way transform, are platform-wide. The same real value shows the same surrogate in every org and every region of the deployment. The mapping is therefore held in the platform's shared store, not in a per-org or per-region state store, and it is durable platform data: it is not state that can be discarded and rebuilt ([REQ-1920](#REQ-1920)), since losing it would change every surrogate. The transform is keyed, and the key is a platform key. Only transformed values and generated surrogates cross regions, never real values ([REQ-1921](#REQ-1921), [REQ-1922](#REQ-1922)).
+Masking has a consistent form. A column masked this way shows a surrogate in place of each real value: the same real value always shows the same surrogate and different real values show different surrogates, so joins, grouping and distinct counts through the column give the results they would give on the real values, while the real value is never shown. A surrogate is a random anonymous value; it is not computed from the real value and cannot be turned back into it. The mask names the kind of fake value to show (a person's name, an email address, a phone number, a street address, an identifier and so on), and the surrogate is a realistic generated value of that kind, so masked data keeps the look of the real data. [SUPERSEDED by REQ-1494 amendment, 2026-10-03 -- the mapping is platform-wide, durable platform data in the platform's shared store, not per-org state. Kept here for history; do not implement against it.] The surrogates are kept in a table of the state store ([REQ-1920](#REQ-1920)) [END SUPERSEDED BLOCK] that holds, for each real value met, a one-way transform of the value (a hash, or any reasonable one-way transform with few collisions) and the surrogate generated for it, and never the real value itself, so no personal data is kept in the state store: when a value is met again its surrogate is reused, and a value met for the first time is given a new one. Columns joined by a relationship share one set of surrogates, so a join between two masked columns still matches. (Amended 2026-10-03, MASKED DATA IS A PLATFORM CONCERN: ONE MAPPING FOR THE WHOLE PLATFORM:) The mapping from a value to its surrogate, and the key of its one-way transform, are platform-wide. The same real value shows the same surrogate in every org and every region of the deployment. The mapping is therefore held in the platform's shared store, not in a per-org or per-region state store, and it is durable platform data: it is not state that can be discarded and rebuilt ([REQ-1920](#REQ-1920)), since losing it would change every surrogate. The transform is keyed, and the key is a platform key. Only transformed values and generated surrogates cross regions, never real values ([REQ-1921](#REQ-1921), [REQ-1922](#REQ-1922)). (Amended 2026-10-03, THE MAPPING LIVES IN THE PLATFORM STATE STORE:) The platform's shared store that holds the mapping is the platform state store ([REQ-1932](#REQ-1932)).
 
 **Use case:** A data scientist, or an LLM acting under its own identity, works on masked data that behaves like the real data (joins match, counts are right, values look real) without any personal data reaching them. An analyst joins a masked customer table to a masked orders table and gets the row counts the real data would give.
 
@@ -15738,7 +15738,7 @@ An organization changes its own plan from the Billing page, in either direction,
 
 **Use case:** An organization that has outgrown Starter moves itself to Pro M from the Billing page and has the larger engine within the same session, with no sales contact and no second card entry; one that over-bought moves back down and sees the credit on its next invoice.
 
-**Code:** `provisa_commercial/router.py`, `provisa_commercial/usage.py`, `provisa_commercial/lemonsqueezy_client.py`, `provisa_commercial/models.py`, `provisa_commercial/org_db.py`, `provisa-ui/src/components/admin/BillingTab.tsx`
+**Code:** `.claude/commercial/provisa_commercial/router.py`, `.claude/commercial/provisa_commercial/usage.py`, `.claude/commercial/provisa_commercial/lemonsqueezy_client.py`, `.claude/commercial/provisa_commercial/models.py`, `.claude/commercial/provisa_commercial/org_db.py`, `.claude/commercial/provisa_commercial/plan_lane.py`, `provisa-ui/src/components/admin/BillingTab.tsx`
 
 **Tests:** `.claude/commercial/tests/test_plan_change.py`, `.claude/commercial/tests/test_plan_lane.py`, `provisa-ui/src/__tests__/BillingTab.test.tsx`
 
@@ -15750,7 +15750,7 @@ On a hosted deployment an organization's engine lane and its engine size are DER
 
 **Use case:** An organization that upgrades to Pro M is running on a dedicated engine of that size within the same session, and one that returns to Starter is back on the shared shard it started from with its dedicated engine released -- neither having chosen a lane, and neither able to end up paying for one thing while running on another.
 
-**Code:** `provisa/federation/k8s_provisioner.py`, `provisa/federation/engine_wake.py`, `provisa/federation/engine.py`, `provisa_commercial/entitlements.py`, `provisa_commercial/org_engine_router.py`
+**Code:** `provisa/federation/k8s_provisioner.py`, `provisa/federation/engine_wake.py`, `provisa/federation/engine.py`, `.claude/commercial/provisa_commercial/plan_lane.py`, `.claude/commercial/provisa_commercial/entitlements.py`, `.claude/commercial/provisa_commercial/org_engine_router.py`
 
 **Tests:** `tests/unit/test_engine_wake.py`, `.claude/commercial/tests/test_plan_lane.py`
 
@@ -15762,7 +15762,7 @@ The Billing page is where an organization changes its plan. It shows the four or
 
 **Use case:** An administrator comparing Pro sizes sees the machine and the price of each, changes to the one they want, is told what will be charged now, and watches their new engine come up -- without leaving the product, contacting sales, or entering a card a second time.
 
-**Code:** `provisa-ui/src/components/admin/BillingTab.tsx`, `provisa-ui/src/api/billing.ts`, `provisa_commercial/router.py`
+**Code:** `provisa-ui/src/components/admin/BillingTab.tsx`, `provisa-ui/src/api/billing.ts`, `.claude/commercial/provisa_commercial/router.py`
 
 **Tests:** `provisa-ui/src/__tests__/BillingTab.test.tsx`
 
@@ -15774,7 +15774,7 @@ On a hosted deployment the engine an organization runs on is reported, not chose
 
 **Use case:** A hosted organization's administrator opening the engine page learns which engine their queries run on and whether it is up, and is sent to Billing to change it -- never faced with a lane or an engine kind their plan does not sell, and never able to put their organization on a lane it is not paying for.
 
-**Code:** `provisa-ui/src/components/admin/OrgEngineTab.tsx`, `provisa-ui/src/components/admin/FederationEngineTab.tsx`, `provisa-ui/src/components/navGroups.ts`, `provisa_commercial/org_engine_router.py`
+**Code:** `provisa-ui/src/components/admin/OrgEngineTab.tsx`, `provisa-ui/src/components/admin/FederationEngineTab.tsx`, `provisa-ui/src/components/navGroups.ts`, `.claude/commercial/provisa_commercial/org_engine_router.py`
 
 **Tests:** `provisa-ui/src/__tests__/OrgEngineTab.test.tsx`, `provisa-ui/src/__tests__/navEntryItem.test.ts`, `.claude/commercial/tests/test_plan_lane.py`
 
@@ -15786,9 +15786,9 @@ The source ceiling a plan sells is enforced where sources are created, not only 
 
 **Use case:** An administrator of a hosted Starter organization registering an eleventh data source is told how many of the ten their plan admits are already in use and is sent to Billing, rather than finding the eleventh source registered and the plan card's promise meaningless.
 
-**Code:** `provisa/core/models.py`, `provisa/core/repositories/source.py`, `provisa/core/commerce.py`, `provisa/api/admin/schema_mutation.py`, `provisa_commercial/entitlements.py`, `provisa_commercial/router.py`, `provisa-ui/src/i18n/locales/en/serverErrors.json`
+**Code:** `provisa/core/models.py`, `provisa/core/repositories/source.py`, `provisa/core/commerce.py`, `provisa/api/admin/schema_mutation.py`, `.claude/commercial/provisa_commercial/entitlements.py`, `.claude/commercial/provisa_commercial/router.py`, `provisa-ui/src/i18n/locales/en/serverErrors.json`
 
-**Tests:** `tests/unit/test_source_limit.py`, `.claude/commercial/tests/test_plan_change.py`
+**Tests:** `tests/unit/test_source_limit.py`, `.claude/commercial/tests/test_source_limit_entitlement.py`, `.claude/commercial/tests/test_plan_change.py`
 
 ## 10. UI & Admin Surfaces
 
@@ -17614,7 +17614,7 @@ Before the execute terminal runs a plan, each MATERIALIZED source the plan reads
 
 **Use case:** API-backed and other unreachable sources materialize lazily: a query that arrives before the event loop has landed a table, or after it went stale, is served fresh rows rather than an empty or stale replica. materialize_pending existed on the native backends with no caller since 2026-07.
 
-**Code:** `provisa/federation/query_residency.py`, `provisa/federation/backend.py`, `provisa/federation/node_freshness_view.py`, `provisa/pgwire/_pipeline.py`, `provisa/events/land_lock.py`, `provisa/federation/snowflake_store.py`, `provisa/grpc/server.py`, `provisa/api/airport/query.py`, `provisa/api/data/endpoint_executors.py`, `provisa/api/data/materialization.py`, `provisa/subscriptions/rss_provider.py`, `provisa/compiler/nf_extractor.py`
+**Code:** `provisa/federation/query_residency.py`, `provisa/federation/backend.py`, `provisa/federation/replica_state_view.py`, `provisa/pgwire/_pipeline.py`, `provisa/events/land_lock.py`, `provisa/federation/snowflake_store.py`, `provisa/grpc/server.py`, `provisa/api/airport/query.py`, `provisa/api/data/endpoint_executors.py`, `provisa/api/data/materialization.py`, `provisa/api/flight/server.py`, `provisa/api/rest/cypher_router.py`, `provisa/subscriptions/rss_provider.py`, `provisa/compiler/nf_extractor.py`
 
 **Tests:** `tests/unit/test_query_residency.py`, `tests/unit/test_residency.py`, `tests/unit/test_source_loader.py`, `tests/unit/test_materialization_api.py`, `tests/integration/test_failed_land_fails_query_e2e.py`, `tests/integration/test_failed_remote_branch_fails_union_e2e.py`
 
@@ -17732,7 +17732,7 @@ Register Table on a neo4j source. A neo4j source has no tables to list, so the R
 
 **Use case:** Before this the UI could register a neo4j source but no table on it: introspection listed an empty schema and there was no Cypher input, so a steward had to hand-write config or call the REST router.
 
-**Code:** `provisa/api/admin/_neo4j_registration.py`, `provisa/api/admin/schema_mutation_ops.py`, `provisa/api/admin/schema_query.py`, `provisa/api/admin/types.py`, `provisa-ui/src/pages/tables/RegisterTableForm.tsx`, `provisa-ui/src/hooks/useNeo4jPreview.ts`
+**Code:** `provisa/api/admin/_neo4j_registration.py`, `provisa/api/admin/schema_mutation_ops.py`, `provisa/api/admin/schema_query.py`, `provisa/api/admin/types.py`, `provisa/api/admin/neo4j_router.py`, `provisa-ui/src/pages/tables/RegisterTableForm.tsx`, `provisa-ui/src/hooks/useQueryPreview.ts`, `provisa-ui/src/hooks/admin.graphql`
 
 **Tests:** `tests/unit/test_neo4j_registration.py`, `tests/integration/test_neo4j_register_table.py`, `provisa-ui/src/pages/tables/__tests__/RegisterTableForm.neo4j.test.tsx`
 
@@ -20530,7 +20530,7 @@ Replication is bounded, single and survivable. Replicating a table never holds t
 
 **Status:** ✓ accepted · **Priority:** MUST · **Type:** structural
 
-Process roles. A deployment runs the same code in two roles, chosen when a process is started. A query node serves requests on every transport and does nothing else: it never runs a replication copy, a scheduled refresh or any other background job. A coordinator serves no data requests and does the central work: it holds the central replica record and decides and runs every replica build and refresh ([REQ-1915](#REQ-1915)), and it runs the scheduled and single-holder background work (materialized view refresh and cleanup, hot-table refresh, scheduled triggers, and the like) that query nodes used to elect one of themselves to run. Query nodes enqueue requests in the central record and read state from it; the coordinator is the only thing that acts on them. Both roles are the same image and the same entry point with a role argument, read the same control plane, and are told of changes by the same propagation ([REQ-1914](#REQ-1914)). [SUPERSEDED by the 2026-10-02 amendment below -- the default is now the every mode, one process doing both. Kept here for history; do not implement against it.] By default the launcher starts one coordinator on the same host next to the query nodes, so a small install needs no extra setup; [END SUPERSEDED BLOCK] a larger deployment runs the coordinator on its own server with its own memory and network budget, close to the store and the sources. [SUPERSEDED by the 2026-10-02 amendment below -- several coordinators work at once, each on different jobs. Kept here for history; do not implement against it.] More than one coordinator may run for availability, and a lock the control plane guarantees lets exactly one of them act at a time, with another taking over when it stops. [END SUPERSEDED BLOCK] The health endpoint and the admin pages show the coordinator, whether it is running, and what it is doing, because when no coordinator runs nothing is replicated or refreshed; a query node reports that state on reads that need a replica instead of doing the work itself. The role is a launch setting shown in the deployment settings ([REQ-1913](#REQ-1913)). (Amended 2026-10-02, THREE MODES:) A process starts in one of three modes -- every, query or coordinator. every is the default and needs no flag -- the process serves requests on every transport and also does the coordinator work, so a small install is one kind of process with nothing to choose. query and coordinator are chosen by a startup command-line flag. A query process serves requests and runs no replica build, view refresh or other background job. A coordinator process serves no data requests and does the background work. The mode is fixed for the life of the process and is shown read-only with the other launch settings. (Amended 2026-10-02, EVERY COORDINATOR BUILDS:) Background capacity grows by adding processes that do coordinator work (coordinator or every mode). Each such process claims requested replica builds, and later view refreshes, one job at a time per claim -- a lock the control plane guarantees per replica or view keeps each job to one builder, so several coordinators work at once on different jobs. Three operator limits bound the total -- builds per node, background jobs per engine across all nodes, and reads per source ([REQ-1915](#REQ-1915), [REQ-1909](#REQ-1909)). Work that must fire exactly once per deployment, such as deciding that a refresh is due or running a scheduled trigger, still goes to one holder at a time, taken over by another when it stops. (Amended 2026-10-02, SCALING AND MEMBERSHIP:) Capacity is added in either of two ways, and the operator chooses by workload. The simple way is to add more every-mode nodes -- each adds request capacity and background capacity together. The designed way is to run some number of query nodes and some number of coordinator nodes, sized separately for request load and for replication and refresh load. Both may be mixed in one cluster. A cluster is the set of processes started against one control plane. A node joins by starting against that control plane and leaves by stopping -- no other node is restarted or reconfigured, and nothing is registered by hand, so capacity is added and removed while the cluster serves. A joining node loads the current configuration ([REQ-1914](#REQ-1914)) and must hold the deployment encryption key ([REQ-684](#REQ-684)) before it serves. A leaving query node finishes or times out the requests it holds. A leaving coordinator releases the jobs it holds -- the control plane frees its locks when its session ends, and another node claims and restarts those jobs ([REQ-1915](#REQ-1915)). The admin pages and the health endpoint list the nodes now in the cluster with each one mode, so an operator sees what capacity is present and whether any node is doing coordinator work.
+Process roles. A deployment runs the same code in two roles, chosen when a process is started. A query node serves requests on every transport and does nothing else: it never runs a replication copy, a scheduled refresh or any other background job. A coordinator serves no data requests and does the central work: it holds the central replica record and decides and runs every replica build and refresh ([REQ-1915](#REQ-1915)), and it runs the scheduled and single-holder background work (materialized view refresh and cleanup, hot-table refresh, scheduled triggers, and the like) that query nodes used to elect one of themselves to run. Query nodes enqueue requests in the central record and read state from it; the coordinator is the only thing that acts on them. Both roles are the same image and the same entry point with a role argument, read the same control plane, and are told of changes by the same propagation ([REQ-1914](#REQ-1914)). [SUPERSEDED by the 2026-10-02 amendment below -- the default is now the every mode, one process doing both. Kept here for history; do not implement against it.] By default the launcher starts one coordinator on the same host next to the query nodes, so a small install needs no extra setup; [END SUPERSEDED BLOCK] a larger deployment runs the coordinator on its own server with its own memory and network budget, close to the store and the sources. [SUPERSEDED by the 2026-10-02 amendment below -- several coordinators work at once, each on different jobs. Kept here for history; do not implement against it.] More than one coordinator may run for availability, and a lock the control plane guarantees lets exactly one of them act at a time, with another taking over when it stops. [END SUPERSEDED BLOCK] The health endpoint and the admin pages show the coordinator, whether it is running, and what it is doing, because when no coordinator runs nothing is replicated or refreshed; a query node reports that state on reads that need a replica instead of doing the work itself. The role is a launch setting shown in the deployment settings ([REQ-1913](#REQ-1913)). (Amended 2026-10-02, THREE MODES:) A process starts in one of three modes -- every, query or coordinator. every is the default and needs no flag -- the process serves requests on every transport and also does the coordinator work, so a small install is one kind of process with nothing to choose. query and coordinator are chosen by a startup command-line flag. A query process serves requests and runs no replica build, view refresh or other background job. A coordinator process serves no data requests and does the background work. The mode is fixed for the life of the process and is shown read-only with the other launch settings. (Amended 2026-10-02, EVERY COORDINATOR BUILDS:) Background capacity grows by adding processes that do coordinator work (coordinator or every mode). Each such process claims requested replica builds, and later view refreshes, one job at a time per claim -- a lock the control plane guarantees per replica or view keeps each job to one builder, so several coordinators work at once on different jobs. Three operator limits bound the total -- builds per node, background jobs per engine across all nodes, and reads per source ([REQ-1915](#REQ-1915), [REQ-1909](#REQ-1909)). Work that must fire exactly once per deployment, such as deciding that a refresh is due or running a scheduled trigger, still goes to one holder at a time, taken over by another when it stops. (Amended 2026-10-02, SCALING AND MEMBERSHIP:) Capacity is added in either of two ways, and the operator chooses by workload. The simple way is to add more every-mode nodes -- each adds request capacity and background capacity together. The designed way is to run some number of query nodes and some number of coordinator nodes, sized separately for request load and for replication and refresh load. Both may be mixed in one cluster. A cluster is the set of processes started against one control plane. A node joins by starting against that control plane and leaves by stopping -- no other node is restarted or reconfigured, and nothing is registered by hand, so capacity is added and removed while the cluster serves. A joining node loads the current configuration ([REQ-1914](#REQ-1914)) and must hold the deployment encryption key ([REQ-684](#REQ-684)) before it serves. A leaving query node finishes or times out the requests it holds. A leaving coordinator releases the jobs it holds -- the control plane frees its locks when its session ends, and another node claims and restarts those jobs ([REQ-1915](#REQ-1915)). The admin pages and the health endpoint list the nodes now in the cluster with each one mode, so an operator sees what capacity is present and whether any node is doing coordinator work. (Amended 2026-10-03, THE NODE LIST LIVES IN THE PLATFORM STATE STORE:) The node heartbeat and the cluster node list are held in the platform state store ([REQ-1932](#REQ-1932)).
 
 **Use case:** Copying data and serving queries compete for the same memory and CPU. Giving the copying to its own process, on its own server when the deployment is large, keeps a replication from slowing or crashing query serving and lets each be sized on its own.
 
@@ -22143,3 +22143,17 @@ A sandbox visitor's account is deleted when the visitor leaves the sandbox. Sign
 **Code:** `provisa/api/auth_router.py`, `provisa/auth/providers/firebase.py`, `provisa/core/org_membership.py`, `provisa-ui/src/components/NavBar.tsx`, `provisa-ui/src/api/admin.ts`
 
 **Tests:** `tests/integration/test_org_lifecycle.py`
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1932 · State Store {#REQ-1932}
+
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** structural
+
+The platform state store. The control plane has three stores. The model store ([REQ-1919](#REQ-1919)) holds the model, per org, shared by all the org's regions, and projected to git. The state store ([REQ-1920](#REQ-1920)) holds operating state and the request record, per org and region. The platform state store holds platform-level operating state: there is one per deployment, in the platform database. What it holds is never part of a model, never projected to git, and never copied, exported or deployed with an environment. Its first members are the node heartbeat and cluster node list ([REQ-1916](#REQ-1916)) and the consistent-masking surrogate mapping ([REQ-1494](#REQ-1494)); the mapping is durable and cannot be rebuilt, so a member of this store is not assumed to be discardable the way state in the state store is. platform_admin has no data access here either ([REQ-1327](#REQ-1327)): the store's contents are readable through an admin API only as far as each member's own requirement says.
+
+**Use case:** State that belongs to the deployment as a whole, not to one org or region, has one place to live, with the same single-writer discipline as the other two stores.
+
+**Code:** —
+
+**Tests:** —
