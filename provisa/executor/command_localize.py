@@ -34,6 +34,8 @@ from collections.abc import Awaitable, Callable
 from typing import cast
 
 import sqlglot
+
+from provisa.compiler.sql_literals import sql_literal
 from sqlglot import expressions as exp
 
 from provisa.core.ir_types import to_physical
@@ -103,20 +105,10 @@ _SA_DIALECT: dict[str, str] = {"postgres": "postgresql"}
 def _cast_sql(value, ir_type: str | None, dialect: str) -> str:
     """A single VALUES cell rendered as SQL, cast to its IR type's physical form when known so the
     inline relation's column types are pinned (not left to the engine's literal inference)."""
-    lit = _render_literal(value)
+    lit = sql_literal(value, dialect)
     if ir_type is None:
         return lit
     return f"CAST({lit} AS {to_physical(ir_type, _SA_DIALECT.get(dialect, dialect))})"
-
-
-def _render_literal(value) -> str:
-    if value is None:
-        return "NULL"
-    if isinstance(value, bool):
-        return "TRUE" if value else "FALSE"
-    if isinstance(value, (int, float)):
-        return str(value)
-    return "'" + str(value).replace("'", "''") + "'"
 
 
 def _values_source(

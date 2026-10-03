@@ -616,11 +616,12 @@ async def _prepare_compiled(
     from provisa.core.request_context import session_vars_for as _session_vars_for
     from provisa.pgwire._pipeline import _resolve_session_settings
 
-    compiled.sql = _resolve_session_settings(compiled.sql, _session_vars_for(role))
+    compiled.sql = _resolve_session_settings(compiled.sql, _session_vars_for(role), "postgres")
     if compiled.nodes_sql is not None:
         compiled.nodes_sql = _resolve_session_settings(
             apply_governance(make_semantic_sql(compiled.nodes_sql, ctx), gov_ctx),
             _session_vars_for(role),
+            "postgres",
         )
     if _views_stored:
         from provisa.compiler.view_expand import expand_view_refs

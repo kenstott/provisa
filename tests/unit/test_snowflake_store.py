@@ -311,7 +311,8 @@ def test_comment_statements_write_descriptions_to_replica_and_view_and_respect_e
 
 def test_comment_statements_escape_quotes():
     targets = {"x": store.KeyTarget(_PETS, None, (), "Owner's pets", {})}
-    assert store.comment_statements(targets, {})[0].endswith("SET COMMENT = 'Owner''s pets'")
+    # Snowflake reads a backslash as an escape, so its quote is written as \' (sql_literal).
+    assert store.comment_statements(targets, {})[0].endswith("SET COMMENT = 'Owner\\'s pets'")
 
 
 def test_model_tag_statements_set_reason_valued_tags_on_replica_and_view_and_withdraw_unassigned():

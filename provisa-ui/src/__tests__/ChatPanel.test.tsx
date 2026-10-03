@@ -122,7 +122,7 @@ describe("ChatPanel — suggested questions (REQ-1806)", () => {
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
     await waitFor(() => screen.getByTestId("chat-panel-suggestions"));
 
-    const textarea = screen.getByPlaceholderText(/Ask the assistant/);
+    const textarea = screen.getByPlaceholderText(/Ask me a question/);
     fireEvent.change(textarea, { target: { value: "1" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
@@ -141,7 +141,7 @@ describe("ChatPanel — suggested questions (REQ-1806)", () => {
 
     render(<ChatPanel />);
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
-    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    const textarea = await screen.findByPlaceholderText(/Ask me a question/);
 
     // First turn: a real message, so the suggestions are gone.
     fireEvent.change(textarea, { target: { value: "hello" } });
@@ -228,7 +228,7 @@ describe("ChatPanel — present_choice widget (REQ-1810)", () => {
 
     render(<ChatPanel />);
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
-    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    const textarea = await screen.findByPlaceholderText(/Ask me a question/);
     fireEvent.change(textarea, { target: { value: "do it" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
@@ -276,7 +276,7 @@ describe("ChatPanel — present_choice widget (REQ-1810)", () => {
 
     render(<ChatPanel />);
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
-    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    const textarea = await screen.findByPlaceholderText(/Ask me a question/);
     fireEvent.change(textarea, { target: { value: "find a source" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
@@ -304,7 +304,7 @@ describe("ChatPanel — copy button (REQ-1811)", () => {
 
     render(<ChatPanel />);
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
-    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    const textarea = await screen.findByPlaceholderText(/Ask me a question/);
     fireEvent.change(textarea, { target: { value: "why polly" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
@@ -327,7 +327,7 @@ describe("ChatPanel — role header carries every held role (REQ-1812)", () => {
 
     render(<ChatPanel />);
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
-    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    const textarea = await screen.findByPlaceholderText(/Ask me a question/);
     fireEvent.change(textarea, { target: { value: "hi" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
@@ -348,7 +348,7 @@ describe("ChatPanel — clear conversation (REQ-1813)", () => {
 
     render(<ChatPanel />);
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
-    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    const textarea = await screen.findByPlaceholderText(/Ask me a question/);
     expect(screen.getByTestId("chat-panel-clear")).toBeDisabled();
 
     fireEvent.change(textarea, { target: { value: "why polly" } });
@@ -375,7 +375,7 @@ describe("ChatPanel — clear conversation (REQ-1813)", () => {
 
     render(<ChatPanel />);
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
-    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    const textarea = await screen.findByPlaceholderText(/Ask me a question/);
     fireEvent.change(textarea, { target: { value: "find it" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
     await waitFor(() => screen.getByTestId("chat-panel-tool-badge"));
@@ -419,7 +419,7 @@ describe("ChatPanel — present_choice answer recorded in conversation (REQ-1813
 
     render(<ChatPanel />);
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
-    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    const textarea = await screen.findByPlaceholderText(/Ask me a question/);
     fireEvent.change(textarea, { target: { value: "find a source" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
@@ -451,7 +451,7 @@ describe("ChatPanel — present_choice modal positioning (REQ-1812)", () => {
 
     render(<ChatPanel />);
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
-    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    const textarea = await screen.findByPlaceholderText(/Ask me a question/);
     fireEvent.change(textarea, { target: { value: "do it" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
@@ -482,7 +482,7 @@ describe("ChatPanel — present_choice dialog is draggable (REQ-1843)", () => {
 
     render(<ChatPanel />);
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
-    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    const textarea = await screen.findByPlaceholderText(/Ask me a question/);
     fireEvent.change(textarea, { target: { value: "do it" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
@@ -532,7 +532,7 @@ describe("ChatPanel — present_choice 'Something else' free text (REQ-1816)", (
 
     render(<ChatPanel />);
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
-    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    const textarea = await screen.findByPlaceholderText(/Ask me a question/);
     fireEvent.change(textarea, { target: { value: "find a source" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
@@ -569,7 +569,7 @@ describe("ChatPanel — Stop/Go send control (REQ-1815)", () => {
 
     render(<ChatPanel />);
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
-    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    const textarea = await screen.findByPlaceholderText(/Ask me a question/);
     fireEvent.change(textarea, { target: { value: "do something slow" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
@@ -606,7 +606,7 @@ describe("ChatPanel — separate message per tool-loop round (REQ-1823)", () => 
 
     render(<ChatPanel />);
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
-    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    const textarea = await screen.findByPlaceholderText(/Ask me a question/);
     fireEvent.change(textarea, { target: { value: "register it" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
@@ -641,7 +641,7 @@ describe("ChatPanel — server tool result triggers a data refresh (REQ-1820)", 
 
     render(<ChatPanel />);
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
-    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    const textarea = await screen.findByPlaceholderText(/Ask me a question/);
     fireEvent.change(textarea, { target: { value: "create it" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
@@ -666,7 +666,7 @@ describe("ChatPanel — server tool result triggers a data refresh (REQ-1820)", 
 
     render(<ChatPanel />);
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
-    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    const textarea = await screen.findByPlaceholderText(/Ask me a question/);
     fireEvent.change(textarea, { target: { value: "find it" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
@@ -696,7 +696,7 @@ describe("ChatPanel — glossary tool result notifies the Glossary page (REQ-184
 
     render(<ChatPanel />);
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
-    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    const textarea = await screen.findByPlaceholderText(/Ask me a question/);
     fireEvent.change(textarea, { target: { value: "update it" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
@@ -720,7 +720,7 @@ describe("ChatPanel — glossary tool result notifies the Glossary page (REQ-184
 
     render(<ChatPanel />);
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
-    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    const textarea = await screen.findByPlaceholderText(/Ask me a question/);
     fireEvent.change(textarea, { target: { value: "find it" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
@@ -744,7 +744,7 @@ describe("ChatPanel — tool call log (REQ-1821)", () => {
 
     render(<ChatPanel />);
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
-    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    const textarea = await screen.findByPlaceholderText(/Ask me a question/);
     fireEvent.change(textarea, { target: { value: "find it" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
@@ -766,7 +766,7 @@ describe("ChatPanel — tool call log (REQ-1821)", () => {
 
     render(<ChatPanel />);
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
-    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    const textarea = await screen.findByPlaceholderText(/Ask me a question/);
     fireEvent.change(textarea, { target: { value: "find it" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
@@ -789,7 +789,7 @@ describe("ChatPanel — tool call log (REQ-1821)", () => {
 
     render(<ChatPanel />);
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
-    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    const textarea = await screen.findByPlaceholderText(/Ask me a question/);
     fireEvent.change(textarea, { target: { value: "run it" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
