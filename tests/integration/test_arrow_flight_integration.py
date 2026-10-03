@@ -348,7 +348,9 @@ class TestFlightDoGetWithRealData:
         state.schemas = {"admin": schema}
         state.contexts = {"admin": ctx}
         state.rls_contexts = {"admin": RLSContext.empty()}
-        state.roles = {"admin": {"id": "admin", "capabilities": ["full_results"]}}
+        state.roles = {
+            "admin": {"id": "admin", "capabilities": ["full_results"], "domain_access": ["*"]}
+        }
         state.source_pools = source_pool
         state.source_types = {"test-pg": "postgresql"}
         state.source_dialects = {"test-pg": "postgres"}
