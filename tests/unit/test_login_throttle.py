@@ -406,13 +406,12 @@ def test_the_login_route_counts_into_the_same_store():
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    import provisa.auth.providers.simple as simple_mod
-    from provisa.auth.wiring import build_auth_provider
+    from provisa.api.app import state
+    from provisa.auth.login_router import router as login_router
 
     auth_config = _auth_config()
-    provider = build_auth_provider(auth_config)
     app = FastAPI()
-    app.include_router(simple_mod.router)
+    app.include_router(login_router)
 
     from provisa.api.errors import ApiError
 
@@ -422,7 +421,7 @@ def test_the_login_route_counts_into_the_same_store():
 
         return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
 
-    with patch.object(simple_mod, "_provider_instance", provider):
+    with patch.object(state, "auth_config", auth_config), patch.object(state, "admin_db", None):
         client = TestClient(app)
         body = {"username": _USERNAME, "password": "wrong"}
         for _ in range(3):

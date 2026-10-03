@@ -872,10 +872,11 @@ async def _init_ingest_engines() -> None:
                 _eng = _get_ingest_engine(
                     source_id=_sid,
                     dialect=_isrc["dialect"] or "postgresql",
-                    host=_isrc["host"],
+                    # The row holds what was written: a reference is resolved here, at its use.
+                    host=_resolve_secrets(_isrc["host"]),
                     port=_isrc["port"] or 5432,
-                    database=_isrc["database"] or "",
-                    username=_isrc["username"] or "",
+                    database=_resolve_secrets(_isrc["database"] or ""),
+                    username=_resolve_secrets(_isrc["username"] or ""),
                     password=_pw or "",
                     # An ingest source row carries no PgBouncer setting (the sources table has no
                     # such column; SourceConfig.use_pgbouncer is config-only), so it is a direct
@@ -1226,8 +1227,9 @@ async def _load_grpc_remote_sources_from_db() -> None:  # REQ-1730
             source_id = src["id"]
             if source_id in getattr(state, "grpc_remote_sources", {}):
                 continue
-            proto_path = src["path"]
-            server_address = src["host"]
+            # The row holds what was written: a reference is resolved here, at its use.
+            proto_path = resolve_secrets(src["path"] or "")
+            server_address = resolve_secrets(src["host"] or "")
             if not proto_path or not server_address:
                 continue  # a row from before this reload path existed — nothing to rebuild from
             hints = src["federation_hints"] or {}

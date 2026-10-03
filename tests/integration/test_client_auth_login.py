@@ -40,33 +40,40 @@ def _free_port() -> int:
 
 
 @pytest.fixture()
-def login_server():
-    """A real uvicorn server serving the simple provider's /auth/login route."""
+def login_server(monkeypatch):
+    """A real uvicorn server serving /auth/login for a deployment configured with the simple
+    provider, read from the app state the way a started deployment holds it."""
     import uvicorn
 
-    from provisa.auth.providers import simple as simple_mod
+    from provisa.api.app import state
+    from provisa.auth.login_router import router as login_router
 
-    provider = simple_mod.SimpleAuthProvider(
-        users=[
-            {
-                "username": _USERNAME,
-                "password_hash": bcrypt.hashpw(_PASSWORD.encode("utf-8"), bcrypt.gensalt()).decode(
-                    "utf-8"
-                ),
-                "roles": ["analyst"],
-            }
-        ],
-        jwt_secret=_JWT_SECRET,
+    monkeypatch.setattr(
+        state,
+        "auth_config",
+        {
+            "provider": "simple",
+            "allow_simple_auth": True,
+            "jwt_secret": _JWT_SECRET,
+            "simple": {
+                "users": [
+                    {
+                        "username": _USERNAME,
+                        "password_hash": bcrypt.hashpw(
+                            _PASSWORD.encode("utf-8"), bcrypt.gensalt()
+                        ).decode("utf-8"),
+                        "roles": ["analyst"],
+                    }
+                ]
+            },
+        },
     )
     app = FastAPI()
-    app.include_router(simple_mod.router)
+    app.include_router(login_router)
 
     port = _free_port()
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
     thread = threading.Thread(target=server.run, daemon=True)
-
-    previous = simple_mod._provider_instance
-    simple_mod._provider_instance = provider
     thread.start()
     try:
         deadline = time.monotonic() + 120
@@ -78,7 +85,6 @@ def login_server():
             raise RuntimeError(f"login server did not start on {port} within 120s")
         yield f"http://127.0.0.1:{port}"
     finally:
-        simple_mod._provider_instance = previous
         server.should_exit = True
         thread.join(timeout=10)
 
