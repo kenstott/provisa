@@ -34,7 +34,13 @@ from provisa.core.repositories.integrity import (
 )
 from provisa.core.repositories.origin import require as require_origin
 from provisa.core.repositories.origin import take_over
-from provisa.core.schema_org import registered_tables, roles, table_columns, tag_assignments
+from provisa.core.schema_org import (
+    api_endpoints,
+    registered_tables,
+    roles,
+    table_columns,
+    tag_assignments,
+)
 from provisa.security.rights import Capability
 
 if TYPE_CHECKING:
@@ -565,6 +571,22 @@ async def discard(conn: "Connection", table_id: int) -> None:
     already established it may go — :func:`delete`, and the config loader once its own check of
     everything the file dropped has passed."""
     await remove_parts(conn, ObjectRef("table", table_id))
+    # The endpoint a remote table is served from is derived from its registration (REQ-316/
+    # REQ-318, REQ-1668) and goes with it; it is keyed by the table's name, not its id.
+    named = (
+        await conn.execute_core(
+            select(registered_tables.c.source_id, registered_tables.c.table_name).where(
+                registered_tables.c.id == table_id
+            )
+        )
+    ).fetchone()
+    if named is not None:
+        await conn.execute_core(
+            _delete(api_endpoints).where(
+                api_endpoints.c.source_id == named.source_id,
+                api_endpoints.c.table_name == named.table_name,
+            )
+        )
     await conn.execute_core(_delete(registered_tables).where(registered_tables.c.id == table_id))
 
 

@@ -62,62 +62,6 @@ def _lookup_grpc_remote_table(state, table_name: str):
     return None, None, None
 
 
-_OPENAPI_QUERIES_ATTR = "_req_1877_openapi_queries"
-
-
-def _openapi_queries(state, source_id: str, entry: dict) -> list | None:
-    """The query operations of one registered OpenAPI source, parsed once per spec entry.
-
-    Kept on ``state`` (per instance, never module-global) and answered only while the entry, its
-    spec and its operation overrides are the SAME objects the parse read — the identity rule a
-    kept plan follows (``pgwire.governed_plan``). Registration and reload replace the entry
-    (``state.openapi_specs[source_id] = {...}``); nothing edits one in place. None when the entry
-    has no spec or the spec does not parse — that is not kept, so it is tried again."""
-    from provisa.openapi.mapper import parse_spec
-
-    spec = entry.get("spec")
-    if not spec:
-        return None
-    overrides = entry.get("operation_overrides")
-    kept_by_source = getattr(state, _OPENAPI_QUERIES_ATTR, None)
-    if kept_by_source is None:
-        kept_by_source = {}
-        setattr(state, _OPENAPI_QUERIES_ATTR, kept_by_source)
-    kept = kept_by_source.get(source_id)
-    if kept is not None and kept[0] is entry and kept[1] is spec and kept[2] is overrides:
-        return kept[3]
-    try:
-        queries, _mutations = parse_spec(spec, operation_overrides=overrides)
-    except Exception:
-        return None
-    kept_by_source[source_id] = (entry, spec, overrides, queries)
-    return queries
-
-
-def _lookup_openapi_table(state, table_name: str):
-    """Find an openapi query registration by its operation_id (the SQL table name).
-
-    REQ-1730: unlike graphql_remote/grpc_remote (state.graphql_remote_sources/
-    grpc_remote_sources — a pre-parsed cache), openapi had no equivalent lookup here. The
-    operations come from ``state.openapi_specs[source_id]["spec"]`` (already boot-safe — populated
-    by _load_openapi_specs, which reads the sources table directly, control-plane-only sources
-    included), parsed once per spec entry (:func:`_openapi_queries`): this runs for every table of
-    every statement the pipeline routes.
-    """
-    from provisa.compiler.naming import apply_sql_name as _asn
-
-    normalised = _asn(table_name)
-    specs = getattr(state, "openapi_specs", {})
-    for source_id, entry in specs.items():
-        queries = _openapi_queries(state, source_id, entry)
-        if queries is None:
-            continue
-        for q in queries:
-            if q.operation_id == table_name or _asn(q.operation_id) == normalised:
-                return source_id, entry, q
-    return None, None, None
-
-
 async def _promote_joined_from_fills(
     state, ep, tn, hot_mgr, col_names, meta_cols, cache_loc, hot_threshold
 ) -> None:
@@ -506,129 +450,6 @@ async def _mat_grpc_remote_table(
         )
 
 
-async def _mat_openapi_table(
-    tn: str,
-    source_id: str,
-    entry: dict,
-    query,
-    state,
-    hot_mgr,
-    _hot_threshold: int,
-    cache_rewrites: dict,
-    values_cte_entries: dict,
-    nf_args: dict | None = None,
-) -> None:
-    """Materialize an openapi query's result into the engine cache or VALUES CTE.
-
-    Mirrors _mat_grpc_remote_table (see its own comment for why this exists at all): the raw-SQL
-    surface (/data/sql, pgwire) has no live-fetch handler of its own, so without this an openapi
-    table left decide_route at Route.API with no source_pools entry, and the no-native-pool
-    fallback ran the query against tenant_db (the control-plane database, not the materialize
-    store) instead — "relation ... does not exist". Invisible until REQ-1730's own reboot-harness
-    e2e (a genuine restart with no mutation replay) exercised a query against an openapi table
-    with no dynamic (native-filter) columns: Trino never hits this path at all — it has its own
-    TrinoOpenapiConnector reading the landed materialize-store table directly as a real engine
-    catalog — and graphql_remote/grpc_remote/govdata, the other REQ-1730 MATERIALIZE_ONLY types
-    that DO land eagerly, happen to have no query parameters either, so decide_route's blanket
-    Route.API classification (by TYPE, not by whether this specific table actually needs
-    per-query dynamic fetching) was never exercised for the one type missing this fallback.
-    """
-    from dataclasses import dataclass as _dc
-
-    from provisa.api_source.engine_cache import (
-        org_cache_schema,
-        cache_location,
-        cache_table_name,
-        ensure_cache_schema,
-        land_api_cache,
-        resolved_cache_catalog,
-        schedule_drop,
-        table_known_live,
-    )
-    from provisa.cache.hot_tables import HotTableEntry
-    from provisa.cache.store import NoopCacheStore
-    from provisa.core.secrets import resolve_secrets
-    from provisa.executor.redirect import RedirectConfig
-    from provisa.openapi import executor as openapi_executor
-    from provisa.openapi.register import _schema_to_columns
-
-    @_dc
-    class _OCol:
-        name: str
-        type: str
-
-    schema_cols = _schema_to_columns(query.response_schema)
-    col_names = [c["name"] for c in schema_cols]
-    cache_cols = [_OCol(name=c["name"], type=c["type"]) for c in schema_cols]
-
-    _cache_cat = resolved_cache_catalog(state.federation_engine)
-    cache_loc = cache_location(source_id, _cache_cat, org_cache_schema(state))
-    cache_tbl = cache_table_name(source_id, tn, nf_args or {})
-    redirect_config = RedirectConfig.from_env()
-
-    with state.federation_engine.isolated_sync() as _c:
-        ensure_cache_schema(_c, cache_loc)
-
-    if table_known_live(cache_loc, cache_tbl):
-        cache_rewrites[tn] = (cache_loc, cache_tbl)
-        return
-
-    auth_config = entry.get("auth_config")
-    if auth_config:
-        auth_config = {
-            k: (resolve_secrets(v) if isinstance(v, str) else v) for k, v in auth_config.items()
-        }
-    rows = await openapi_executor.fetch(
-        base_url=entry.get("base_url", ""),
-        query=query,
-        args=nf_args or {},
-        auth_config=auth_config,
-        response_cache_store=NoopCacheStore(),  # the PG cache table is the cache, not Redis
-        source_id=source_id,
-        ttl=entry.get("cache_ttl", 300),
-    )
-    if not col_names:
-        col_names = list(rows[0].keys()) if rows else []
-        cache_cols = [_OCol(name=n, type="string") for n in col_names]
-
-    if rows:
-        try:
-            await land_api_cache(state.federation_engine, cache_loc, cache_tbl, rows, cache_cols)
-            schedule_drop(
-                state.federation_engine,
-                cache_loc,
-                cache_tbl,
-                entry.get("cache_ttl", 300),
-                redirect_config,
-            )
-        except Exception as cache_exc:
-            log.warning("[OPENAPI] cache write failed for %s: %s", tn, cache_exc)
-
-    if 0 < len(rows) <= _hot_threshold:
-        hot_entry = HotTableEntry(
-            table_name=tn,
-            catalog=cache_loc.catalog,
-            schema=cache_loc.schema,
-            pk_column=col_names[0] if col_names else "id",
-            rows=rows,
-            column_names=col_names,
-            is_api=True,
-        )
-        if hot_mgr is not None:
-            hot_mgr.hold(hot_entry)
-        values_cte_entries[tn] = hot_entry
-        log.warning("[OPENAPI] VALUES CTE inline for %s (%d rows)", tn, len(rows))
-    else:
-        cache_rewrites[tn] = (cache_loc, cache_tbl)
-        log.warning(
-            "[OPENAPI] %d rows → the engine cache %s.%s.%s",
-            len(rows),
-            cache_loc.catalog,
-            cache_loc.schema,
-            cache_tbl,
-        )
-
-
 async def _mat_fetch_rows_from_fills(ep, col_names: list, _META_COLS: set, state) -> list[dict]:
     """The rows this API table's fills hold in the store (``api_source.fill_cache``) -- ``[]``
     when no fill has made its table yet (a miss the caller fills live). A failed read raises:
@@ -910,19 +731,19 @@ def would_materialize_optimize(exec_sql: str, state) -> bool:
     """REQ-1877 routing addendum: cheap, no-I/O predictor of whether
     `_materialize_api_to_engine_cache(exec_sql, state, ...)` would do ANYTHING for this call —
     i.e. whether its LIVE/time-varying branches (hot-table inline, TTL-cached API-endpoint fetch,
-    graphql_remote/grpc_remote/openapi remote fetch) are reachable at all.
+    graphql_remote/grpc_remote remote fetch) are reachable at all.
 
     Mirrors that function's own control flow table name-by-name, using the exact same lookups
-    (`find_api_table_names`, `_lookup_ep`, `_lookup_gql_remote_table`, `_lookup_grpc_remote_table`,
-    `_lookup_openapi_table`) — all in-memory dict lookups / CPU-only spec re-parses (see
-    `_lookup_openapi_table`'s own docstring), never I/O. Returns True the moment any table COULD
+    (`find_api_table_names`, `_lookup_ep`, `_lookup_gql_remote_table`,
+    `_lookup_grpc_remote_table`) — all in-memory dict lookups, never I/O. An OpenAPI table is an
+    API endpoint (`_lookup_ep`), like every other. Returns True the moment any table COULD
     reach a live branch; a caller must treat True as "cannot prove this call is a no-op" and take
     the full, uncached path.
 
     IMPORTANT: `find_api_table_names` returns every table name in the query's FROM/JOIN clauses,
     not only API-backed ones — an ordinary multi-table SQL query is NOT "no candidates" just
     because it has tables; it only returns False here once every one of those tables is checked
-    and none is hot or registered as an API/graphql_remote/grpc_remote/openapi table (a
+    and none is hot or registered as an API/graphql_remote/grpc_remote table (a
     row_materialize table is skipped). A table registered as a (non-hot) API endpoint is ALWAYS
     live here: its TTL cache can go stale between calls.
     """
@@ -949,9 +770,6 @@ def would_materialize_optimize(exec_sql: str, state) -> bool:
             return True
         _grpc_source_id, grpc_reg, _grpc_query = _lookup_grpc_remote_table(state, tn)
         if grpc_reg is not None:
-            return True
-        _oa_source_id, oa_entry, _oa_query = _lookup_openapi_table(state, tn)
-        if oa_entry is not None:
             return True
     return False
 
@@ -1090,23 +908,6 @@ async def _materialize_api_to_engine_cache(
                 )
                 continue
 
-            # REQ-1730: openapi (also API_SOURCES) had no fallback here at all — see
-            # _mat_openapi_table's own comment for the exact failure this closes.
-            oa_source_id, oa_entry, oa_query = _lookup_openapi_table(state, tn)
-            if oa_entry is not None and oa_query is not None:
-                assert oa_source_id is not None
-                await _mat_openapi_table(  # a failed fetch fails the query (REQ-1661)
-                    tn,
-                    oa_source_id,
-                    oa_entry,
-                    oa_query,
-                    state,
-                    hot_mgr,
-                    _hot_threshold,
-                    cache_rewrites,
-                    values_cte_entries,
-                    nf_args=nf_args,
-                )
             continue
 
         await _mat_api_ep_table(

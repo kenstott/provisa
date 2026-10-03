@@ -473,6 +473,11 @@ class TableColumnType:  # REQ-040, REQ-041, REQ-393, REQ-399
 class AvailableTableType:  # REQ-533
     name: str
     comment: str | None
+    # REQ-318: what would read the table page by page once registered ("endpoint" |
+    # "connection"), and the paging its source suggests, for the steward to accept or edit.
+    paging_kind: str | None = None
+    pagination: PagingType | None = None
+    paging_ceiling_rows: int | None = None  # graphql_remote.max_rows, for a connection table
 
 
 @strawberry.type
@@ -833,6 +838,9 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     schema_name: str
     table_name: str
     columns: list[ColumnInput]
+    # REQ-318: the table's paging at registration (the steward's, from what the source
+    # suggested). An edit of the table saves it through updateTablePaging instead.
+    pagination: PagingInput | None = None
     alias: str | None = None
     description: str | None = None
     watermark_column: str | None = None

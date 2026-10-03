@@ -169,13 +169,12 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
     )
 
     loaders: dict[str, Any] = {}
-    api_endpoints = getattr(state, "api_endpoints", None)
-    api_sources = getattr(state, "api_sources", None)
-    if api_endpoints and api_sources is not None:
-        loaders["openapi"] = make_openapi_loader(api_endpoints, api_sources)
-        # REQ-1668: a neo4j table is a persisted query-API endpoint — same fetch chain.
-        loaders["neo4j"] = make_openapi_loader(api_endpoints, api_sources)
-        loaders["sparql"] = make_openapi_loader(api_endpoints, api_sources)  # REQ-1683
+    # An API-backed table is read from its registered endpoint, looked up in state at each read:
+    # one registered after startup has a loader too, and a rebuild's new maps are the ones read.
+    loaders["openapi"] = make_openapi_loader(state)
+    # REQ-1668: a neo4j table is a persisted query-API endpoint — same fetch chain.
+    loaders["neo4j"] = make_openapi_loader(state)
+    loaders["sparql"] = make_openapi_loader(state)  # REQ-1683
     gql_sources = getattr(state, "graphql_remote_sources", None)
     if gql_sources:
         loaders["graphql_remote"] = make_graphql_remote_loader(
@@ -293,13 +292,11 @@ def build_keyed_adapter_loaders(state: Any, engine: Any = None) -> dict[str, Any
     )
 
     keyed_loaders: dict[str, Any] = {}
-    api_endpoints = getattr(state, "api_endpoints", None)
-    api_sources = getattr(state, "api_sources", None)
-    if api_endpoints and api_sources is not None:
-        keyed_loaders["neo4j"] = make_neo4j_keyed_loader(api_endpoints, api_sources)
-        # sparql has no parser/AST to safely resolve a projected property or splice a filter
-        # against (confirmed absent, no rdflib dependency either) -- stays on the loud
-        # UnsupportedSourceFetch path in SourceRowLoader.load_keys until one exists.
+    # The table's endpoint is looked up in state at each read (see the adapter loaders).
+    keyed_loaders["neo4j"] = make_neo4j_keyed_loader(state)
+    # sparql has no parser/AST to safely resolve a projected property or splice a filter
+    # against (confirmed absent, no rdflib dependency either) -- stays on the loud
+    # UnsupportedSourceFetch path in SourceRowLoader.load_keys until one exists.
     bare_engine = getattr(engine, "engine", engine)
     from provisa.federation.strategy import engine_attaches
 

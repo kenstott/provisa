@@ -28,13 +28,15 @@ import { useQueryPreview } from "../../hooks/useQueryPreview";
 import { UniquesPanel } from "../../components/admin/UniquesPanel";
 import { fetchIrTypes, fetchTableUniqueConstraints } from "../../api/admin";
 import { DQ_CHECKERS } from "../../types/admin";
-import type { RegisteredTable, Source, UniqueConstraint } from "../../types/admin";
+import type { Paging, RegisteredTable, Source, UniqueConstraint } from "../../types/admin";
 import type { Role } from "../../types/auth";
 import type { ColumnForm } from "./types";
 import { CDC_TYPES } from "./constants";
 import { IR_TYPES_FALLBACK, toIrType } from "../../irTypes";
 import { isWatermarkEligible, normalizeDomain } from "./helpers";
 import { DataQualityPanel } from "./DataQualityPanel";
+import { PagingField } from "./PagingField";
+import { declaredPaging, pagingInput, pagingProblem } from "./paging";
 
 // REQ-1663: a checker table's results land under this schema, the same one the shipped demo uses
 // (config/provisa-install.yaml `schema: quality`). It is the schema of record only when domains are
@@ -94,6 +96,9 @@ export function RegisterTableForm({
   const [tableName, setTableName] = useState("");
   const [tableAlias, setTableAlias] = useState("");
   const [tableDescription, setTableDescription] = useState("");
+  // REQ-318: the table's paging, starting from what its source suggests; the steward accepts
+  // or edits it here, and registration stores it on the table.
+  const [pagination, setPagination] = useState<Paging | null>(null);
   const [columns, setColumns] = useState<ColumnForm[]>([]);
   const [uniqueConstraints, setUniqueConstraints] = useState<UniqueConstraint[]>([]); // REQ-1093
   const [watermarkColumn, setWatermarkColumn] = useState<string>("");
@@ -189,7 +194,11 @@ export function RegisterTableForm({
     const meta = availableTables.find((t) => t.name === tableName);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- auto-populate description from physical database comment when table is selected
     if (meta?.comment) setTableDescription(meta.comment);
+    setPagination(meta?.pagination ?? null);
   }, [tableName, availableTables]);
+  const offered = availableTables.find((tbl) => tbl.name === tableName);
+  const pagingKind = offered?.pagingKind ?? null;
+  const pagingCeilingRows = offered?.pagingCeilingRows ?? null;
 
   // Auto-generate alias from table name using snake_case convention
   useEffect(() => {
@@ -396,6 +405,10 @@ export function RegisterTableForm({
       setError(t("registerTableForm.errorUntypedColumns", { columns: untyped.join(", ") }));
       return;
     }
+    if (pagingKind !== null && pagingProblem(pagingKind, pagination, pagingCeilingRows) !== null) {
+      setError(t("tableEditForm.pagingFixErrors"));
+      return;
+    }
     try {
       const result = await registerTable({
         sourceId,
@@ -412,6 +425,11 @@ export function RegisterTableForm({
         watermarkColumn: isQueryApi ? null : watermarkColumn || null,
         discover: isQueryApi ? false : discover, // REQ-252
         queryTemplate: isQueryApi ? cypher.trim() : undefined, // REQ-1670/REQ-1683
+        // REQ-318: only what is declared; nothing declared registers the table with no paging.
+        pagination:
+          pagingKind !== null && declaredPaging(pagination) !== null
+            ? pagingInput(pagination as Paging)
+            : undefined,
         columns: selectedCols,
         // REQ-1093: drop empty/incomplete rows — a constraint needs a name and >=1 column.
         uniqueConstraints: uniqueConstraints
@@ -746,6 +764,14 @@ export function RegisterTableForm({
         onChange={(e) => setTableDescription(e.currentTarget.value)}
         placeholder={t("registerTableForm.descriptionPlaceholder")}
       />
+      {pagingKind !== null && (
+        <PagingField
+          kind={pagingKind}
+          paging={pagination}
+          onChange={setPagination}
+          ceilingRows={pagingCeilingRows}
+        />
+      )}
       {!isChecker && !isQueryApi && (
         <Checkbox
           checked={discover}

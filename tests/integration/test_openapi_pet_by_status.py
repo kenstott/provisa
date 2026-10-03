@@ -174,16 +174,16 @@ async def _cleanup_mock_source(pg_conn):
 
 
 async def test_default_params_from_spec_extracts_enum_values():
-    """_default_params_from_spec returns enum list for status param."""
-    from provisa.core.config_loader import _default_params_from_spec
+    """default_params_from_spec returns enum list for status param."""
+    from provisa.api_source.openapi_endpoint import default_params_from_spec
 
-    result = _default_params_from_spec(MOCK_SPEC, "/pet/findByStatus")
+    result = default_params_from_spec(MOCK_SPEC, "/pet/findByStatus")
     assert result == {"status": ["available", "pending", "sold"]}
 
 
 async def test_default_params_from_spec_uses_default_when_no_enum():
-    """_default_params_from_spec falls back to schema.default when no enum."""
-    from provisa.core.config_loader import _default_params_from_spec
+    """default_params_from_spec falls back to schema.default when no enum."""
+    from provisa.api_source.openapi_endpoint import default_params_from_spec
 
     spec = {
         "paths": {
@@ -200,13 +200,13 @@ async def test_default_params_from_spec_uses_default_when_no_enum():
             }
         }
     }
-    result = _default_params_from_spec(spec, "/items")
+    result = default_params_from_spec(spec, "/items")
     assert result == {"limit": 100}
 
 
 async def test_default_params_from_spec_ignores_path_params():
-    """_default_params_from_spec skips path parameters."""
-    from provisa.core.config_loader import _default_params_from_spec
+    """default_params_from_spec skips path parameters."""
+    from provisa.api_source.openapi_endpoint import default_params_from_spec
 
     spec = {
         "paths": {
@@ -224,7 +224,7 @@ async def test_default_params_from_spec_ignores_path_params():
             }
         }
     }
-    result = _default_params_from_spec(spec, "/items/{id}")
+    result = default_params_from_spec(spec, "/items/{id}")
     assert "id" not in result
     assert result == {"format": ["json", "xml"]}
 

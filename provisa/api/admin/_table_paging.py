@@ -58,6 +58,35 @@ def _refused(code: str, params: dict, message: str) -> MutationResult:
     return MutationResult(success=False, message=message, code=code, params=params)
 
 
+def declared_paging(
+    state: Any, source_type: str, source_id: str, table_name: str, paging: PagingInput | None
+) -> PaginationConfig | MutationResult | None:
+    """The paging an admin input declares for a table, checked against what reads the table;
+    the refusal, by name, when the table cannot take it. Nothing declared is no paging."""
+    declared = {} if paging is None else {k: v for k, v in vars(paging).items() if v is not None}
+    if not declared:
+        return None
+    try:
+        pagination = PaginationConfig.model_validate(declared)
+    except ValidationError as exc:
+        reason = "; ".join(str(e["msg"]) for e in exc.errors())
+        return _refused(
+            "schema.paging_invalid",
+            {"table": table_name, "reason": reason},
+            f"table {table_name!r}: {reason}",
+        )
+    try:
+        check_paging(
+            pagination,
+            table=table_name,
+            kind=table_paging_kind(state, source_type, source_id, table_name),
+            ceiling_rows=state.config.graphql_remote.max_rows,
+        )
+    except PagingRefused as refused:
+        return _refused(refused.code, refused.params, str(refused))
+    return pagination
+
+
 async def save_table_paging(
     state: Any, conn: Any, table_id: int, paging: PagingInput | None
 ) -> MutationResult:
@@ -78,28 +107,9 @@ async def save_table_paging(
         return _refused(
             "schema.table_not_found", {"table": table_id}, f"Table {table_id} not found"
         )
-    pagination: PaginationConfig | None = None
-    if paging is not None:
-        declared = {k: v for k, v in vars(paging).items() if v is not None}
-        try:
-            pagination = PaginationConfig.model_validate(declared)
-        except ValidationError as exc:
-            reason = "; ".join(str(e["msg"]) for e in exc.errors())
-            return _refused(
-                "schema.paging_invalid",
-                {"table": row.table_name, "reason": reason},
-                f"table {row.table_name!r}: {reason}",
-            )
-        kind = table_paging_kind(state, row.type, row.source_id, row.table_name)
-        try:
-            check_paging(
-                pagination,
-                table=row.table_name,
-                kind=kind,
-                ceiling_rows=state.config.graphql_remote.max_rows,
-            )
-        except PagingRefused as refused:
-            return _refused(refused.code, refused.params, str(refused))
+    pagination = declared_paging(state, row.type, row.source_id, row.table_name, paging)
+    if isinstance(pagination, MutationResult):
+        return pagination
     stored = paging_row(pagination)
     await conn.execute_core(
         update(registered_tables)

@@ -2345,6 +2345,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 _neo_err = await persist_query_api_registration(_conn, model)
                 if _neo_err is not None:
                     return _neo_err
+            # REQ-316/REQ-318: an OpenAPI table's endpoint row follows its registration.
+            from provisa.api.admin._openapi_table_registration import persist_openapi_endpoint
+            from provisa.api.app import state as _app_state
+
+            _oa_err = await persist_openapi_endpoint(_app_state, _conn, model)
+            if _oa_err is not None:
+                return _oa_err
             if table_id is not None:
                 await _conn.execute_core(
                     update(registered_tables)

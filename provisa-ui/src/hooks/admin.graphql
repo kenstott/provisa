@@ -526,6 +526,18 @@ query AvailableTables($sourceId: String!, $schemaName: String!) {
   availableTables(sourceId: $sourceId, schemaName: $schemaName) {
     name
     comment
+    pagingKind
+    pagination {
+      type
+      cursorField
+      cursorParam
+      pageParam
+      pageSizeParam
+      pageSize
+      maxPages
+      maxRows
+    }
+    pagingCeilingRows
   }
 }
 

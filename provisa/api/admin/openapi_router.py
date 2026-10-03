@@ -72,8 +72,12 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
     spec_content: str = "",
     operation_overrides: dict[str, str] | None = None,
     relationships: list[dict] | None = None,
+    store_auth: bool = False,
 ) -> tuple[dict, int, int]:
     """Load spec, upsert source record, store in state. Returns (spec, n_queries, n_mutations).
+
+    ``store_auth``: this call is the registration that supplies the source's auth, which is
+    stored for the caller; a refresh re-reads the spec and leaves the stored auth as it is.
 
     Tables and functions are NOT auto-registered here. Users register them
     individually via the Register Table / Register Action UI.
@@ -122,6 +126,17 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
                 update={"type": SourceType.openapi, "path": _spec_source.path}
             )
         await source_repo.upsert(cast("Connection", _conn), _spec_source, origin="admin")
+        # REQ-316/REQ-318: what the source's tables are called through (api_source.caller):
+        # its base URL, and its auth when this call is the registration that supplies it.
+        from provisa.api_source.openapi_endpoint import (
+            api_auth,
+            register_openapi_source,
+            store_openapi_auth,
+        )
+
+        await register_openapi_source(cast("Connection", _conn), source_id, resolved_base_url)
+        if store_auth:
+            await store_openapi_auth(cast("Connection", _conn), source_id, api_auth(auth_config))
 
     queries, mutations = parse_spec(spec, operation_overrides=operation_overrides)
 
@@ -188,6 +203,7 @@ async def register_openapi_source(
             spec_content=body.spec_content,
             operation_overrides=body.operation_overrides or None,
             relationships=body.relationships or None,
+            store_auth=True,
         )
     except HTTPException:
         raise

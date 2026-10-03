@@ -115,7 +115,7 @@ def when_load_invoked(shared_data, monkeypatch):
             call_api_calls.append(
                 {"endpoint": endpoint, "params": params, "base_url": base_url, "auth": auth}
             )
-            return fake_pages
+            return caller_mod.ApiAnswer(fake_pages)  # what call_api returns
 
         def _fake_flatten(page, root, columns, normalizer):
             flatten_calls.append(
@@ -127,7 +127,10 @@ def when_load_invoked(shared_data, monkeypatch):
         monkeypatch.setattr(flattener_mod, "flatten_response", _fake_flatten)
 
         openapi_loader = make_openapi_loader(
-            shared_data["endpoints_by_table"], shared_data["sources_by_id"]
+            SimpleNamespace(
+                api_endpoints=shared_data["endpoints_by_table"],
+                api_sources=shared_data["sources_by_id"],
+            )
         )
         engine = _FakeEngine(QueryResult(rows=[], column_names=[], column_types=None))
         loader = SourceRowLoader(engine, adapter_loaders={"openapi": openapi_loader})
@@ -310,7 +313,9 @@ def given_openapi_source_with_no_endpoint(shared_data):
     shared_data["call_api_calls"] = []
     shared_data["flatten_calls"] = []
 
-    openapi_loader = make_openapi_loader(endpoints_by_table, sources_by_id)
+    openapi_loader = make_openapi_loader(
+        SimpleNamespace(api_endpoints=endpoints_by_table, api_sources=sources_by_id)
+    )
     engine = _FakeEngine(QueryResult(rows=[], column_names=[], column_types=None))
     loader = SourceRowLoader(engine, adapter_loaders={"openapi": openapi_loader})
     shared_data["engine"] = engine

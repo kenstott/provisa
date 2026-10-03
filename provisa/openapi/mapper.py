@@ -12,6 +12,8 @@
 
 from __future__ import annotations
 from dataclasses import dataclass, field
+
+from provisa.core.paging import PaginationConfig, PaginationType
 import re
 
 # Requirements: REQ-314, REQ-316, REQ-317, REQ-408
@@ -27,6 +29,9 @@ class OpenAPIQuery:  # REQ-316
     query_params: list[dict] = field(default_factory=list)  # [{name, type}]
     response_schema: dict | None = None  # JSON Schema of 200 response (item schema if is_list)
     is_list: bool = False  # True when the raw 200 response was an array type
+    # REQ-318: the paging the operation's parameters and responses suggest, offered to the steward
+    # who registers the table (accepted or edited there); None when nothing suggests one.
+    pagination: PaginationConfig | None = None
 
 
 @dataclass
@@ -178,6 +183,52 @@ def _extract_params(spec: dict, params: list) -> tuple[list[dict], list[dict]]:
     return path_params, query_params
 
 
+# Query parameter names that say how an operation pages (REQ-318). First match wins.
+_PAGE_NAMES = ("page", "page_number", "pageNumber", "page_no")
+_OFFSET_NAMES = ("offset", "skip", "start")
+_SIZE_NAMES = ("limit", "per_page", "perPage", "page_size", "pageSize", "size", "top", "count")
+
+
+def _declares_link_header(spec: dict, operation: dict) -> bool:
+    """Whether the operation's success response declares a ``Link`` header (RFC 8288 paging)."""
+    responses = operation.get("responses", {})
+    for code in ("200", "2xx", "default"):
+        resp = responses.get(code)
+        if resp is None:
+            continue
+        if "$ref" in resp:
+            resp = _resolve_ref(spec, resp["$ref"])
+        return any(name.lower() == "link" for name in (resp.get("headers") or {}))
+    return False
+
+
+def propose_paging(
+    spec: dict, operation: dict, query_params: list[dict], is_list: bool
+) -> PaginationConfig | None:
+    """The paging a GET operation suggests, from what it declares: a page-number parameter, an
+    offset with a size parameter, or a ``Link`` response header. Only a list response is paged
+    this way. A cursor carried in a wrapped response is not proposed: the rows of such a response
+    sit under a root no OpenAPI table declares."""
+    if not is_list:
+        return None
+    names = [p["name"] for p in query_params]
+    size = next((n for n in _SIZE_NAMES if n in names), None)
+    page = next((n for n in _PAGE_NAMES if n in names), None)
+    if page is not None:
+        declared = {"type": PaginationType.page_number, "page_param": page}
+        if size is not None:
+            declared["page_size_param"] = size
+        return PaginationConfig.model_validate(declared)
+    offset = next((n for n in _OFFSET_NAMES if n in names), None)
+    if offset is not None and size is not None:
+        return PaginationConfig.model_validate(
+            {"type": PaginationType.offset, "page_param": offset, "page_size_param": size}
+        )
+    if _declares_link_header(spec, operation):
+        return PaginationConfig.model_validate({"type": PaginationType.link_header})
+    return None
+
+
 def parse_spec(
     spec: dict,
     operation_overrides: dict[str, str] | None = None,
@@ -231,6 +282,7 @@ def parse_spec(
                         query_params=query_params,
                         response_schema=response_schema,
                         is_list=is_list,
+                        pagination=propose_paging(spec, operation, query_params, is_list),
                     )
                 )
             else:

@@ -1985,13 +1985,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         # Load API sources and endpoints (Phase U)
         from provisa.api_source.loader import load_api_sources
 
-        state.api_endpoints, state.api_sources = await load_api_sources(
-            _pg,
-            tables,
-            col_types_converted,
-            roles,
-            state.source_types,
-        )
+        state.api_endpoints, state.api_sources = await load_api_sources(_pg, state.source_types)
 
         # REQ-1915: no boot fill of an API table's collection. Its replica is built by the
         # runner when the model declares one; a request's own calls are fills in the store.
@@ -2928,9 +2922,6 @@ def create_app() -> FastAPI:
     from provisa.api.admin.discovery_schema import router as schema_discovery_router
 
     app.include_router(schema_discovery_router)
-    from provisa.api.admin.api_discovery import router as api_discovery_router
-
-    app.include_router(api_discovery_router)
     from provisa.api.admin.neo4j_router import router as neo4j_router
 
     app.include_router(neo4j_router)

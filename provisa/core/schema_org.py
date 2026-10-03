@@ -831,24 +831,6 @@ creation_requests = Table(
     ),
 )
 
-api_endpoint_candidates = Table(
-    "api_endpoint_candidates",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("source_id", Text, ForeignKey("api_sources.id", ondelete="CASCADE"), nullable=False),
-    Column("path", Text, nullable=False),
-    Column("method", Text, nullable=False, server_default="GET"),
-    Column("table_name", Text),
-    Column("columns", JSON, nullable=False),
-    Column("status", Text, nullable=False, server_default="discovered"),
-    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-    UniqueConstraint("source_id", "path", "method"),
-    CheckConstraint(
-        "status IN ('discovered', 'registered', 'rejected')",
-        name="api_endpoint_candidates_status_check",
-    ),
-)
-
 live_query_state = Table(
     "live_query_state",
     metadata,
