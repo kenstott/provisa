@@ -38,7 +38,9 @@ COLUMNS = [("id", "bigint"), ("name", "text")]
 
 
 def _source(sid="src", **kw):
-    base = dict(id=sid, type="postgresql", host="h", port=5432, database="d", path=None)
+    base = dict(
+        id=sid, type="postgresql", host="h", port=5432, database="d", path=None, region=None
+    )
     base.update(kw)
     return SimpleNamespace(**base)
 
@@ -99,6 +101,7 @@ class _Model:
         self.unresolved: set[tuple] = set()  # declared, a column's type not resolved yet
         self.row_level: set[tuple] = set()  # replicated row by row
         self.parameters: dict[tuple, tuple] = {}  # key -> its parameter columns
+        self.regions: dict[tuple, str] = {}  # key -> the region the table names (REQ-1921)
         self.attaches: set[str] = set()  # source types the engine reads in place
         self.kicks = 0
         model = self
@@ -125,6 +128,7 @@ class _Model:
                         "schema_name": key[1],
                         "table_name": key[2],
                         "row_materialize": key in model.row_level,
+                        "region": model.regions.get(key),
                         "columns": [{"name": name, "native_filter_type": None} for name, _ in cols]
                         + [
                             {"name": name, "native_filter_type": "query_param"}
@@ -415,3 +419,27 @@ def test_the_drop_waits_out_two_reloads_and_the_longest_request(monkeypatch):
     assert replica_converge.drop_grace_seconds() == 2 * 2.0 + 3600.0
     values["limits.request_timeouts"] = {"flight": None}
     assert replica_converge.drop_grace_seconds() == 2 * 2.0 + 60.0
+
+
+async def test_a_table_naming_a_region_is_built_only_there(model):
+    """REQ-1922: the region a table names builds it; the org's other regions read it from there."""
+    from provisa.core import process_region
+
+    platform = {
+        "regions": [
+            {"id": "eu", "address": "https://eu.example.com"},
+            {"id": "us", "address": "https://us.example.com"},
+        ]
+    }
+    was = process_region._region
+    try:
+        eu_table, everywhere = model.declare("orders"), model.declare("items")
+        model.regions[eu_table] = "eu"
+        process_region.bind_launch(platform, requested="us")
+        done = await converge_replicas(model.state)
+        assert done.requested == [everywhere]  # its own copy here; the eu table is eu's
+        process_region.bind_launch(platform, requested="eu")
+        done = await converge_replicas(model.state)
+        assert done.requested == [eu_table]
+    finally:
+        process_region._region = was

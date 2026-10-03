@@ -119,12 +119,27 @@ def whole_copy(source: Any, table: Any, engine: Any) -> bool:
     return not row_level
 
 
-def builds_here(state: Any, key: ReplicaKey) -> bool:
-    """Whether this node builds the replica ``key``: the one question both convergence and the
-    runner's claim ask. Every node that does background work builds every replica; a table
-    naming a region will be built only by that region's nodes (REQ-1921/1922)."""
-    del state, key
-    return True
+def builds_here(home_region: str | None) -> bool:
+    """Whether this node builds a replica of a table whose data lives in ``home_region`` (its own
+    region, else its source's — ``regions.table_region``): the one question convergence and Hot
+    promotion ask (REQ-1921/1922). A table naming no region is built in every region, each into
+    its own store; a table naming one is built only by that region's nodes, and read from there by
+    the org's other regions."""
+    from provisa.core import process_region
+
+    return home_region is None or home_region == process_region.region()
+
+
+def home_region(source: Any, registration: Any) -> str | None:
+    """The region a registered table's data lives in (``regions.table_region``)."""
+    from provisa.core.regions import table_region
+
+    table = (
+        registration.get("region")
+        if isinstance(registration, dict)
+        else getattr(registration, "region")
+    )
+    return table_region(source.region, table)
 
 
 @dataclass
@@ -161,6 +176,7 @@ async def converge_replicas(state: Any) -> Converged:
         for src, reg in await replica_tables(engine, state)
     ]
     declared = {key for key, _src, _reg in served}
+    homes = {key: home_region(src, reg) for key, src, reg in served}
     # Of those, the ones a build makes: a row-level or parameterized table is declared (its
     # table at the resolver's address is never retired) and never built.
     whole = {key for key, src, reg in served if whole_copy(src, reg, engine)}
@@ -182,7 +198,7 @@ async def converge_replicas(state: Any) -> Converged:
     async with state.tenant_db.acquire() as conn:
         records = {r.key: r for r in await replica_state.read_all(conn)}
         for key in sorted(declared):
-            if not builds_here(state, key):
+            if not builds_here(homes[key]):
                 continue
             record = records.get(key)
             if record is not None and record.retired_at is not None:

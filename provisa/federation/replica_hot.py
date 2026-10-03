@@ -237,7 +237,7 @@ def hot_candidates(
     so this is the one place it can be missing. A table the Redis hot tier manages
     (``hot_tier``: ``HotTableManager.managed_tables()``) is not judged either: a table lives in
     at most one tier, and the hot tier wins (REQ-241)."""
-    from provisa.federation.replica_converge import whole_copy
+    from provisa.federation.replica_converge import builds_here, home_region, whole_copy
     from provisa.federation.replica_routing import has_live_attach
     from provisa.federation.role_ttl import missing_landing_ttl
 
@@ -256,6 +256,8 @@ def hot_candidates(
         if not attach[source.id]:
             continue
         key = (reg.source_id, reg.schema_name, reg.table_name)
+        if not builds_here(home_region(source, reg)):
+            continue  # REQ-1922: promoted, built and counted only in the region it names
         if reg.id in hot_tier:
             skipped[key] = HOT_TIER
             continue
