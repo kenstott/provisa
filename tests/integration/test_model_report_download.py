@@ -148,6 +148,8 @@ def _config() -> dict:
                 "view_sql": "SELECT order_id FROM pets",
                 "materialize": True,
                 "mv_refresh_interval": 900,
+                # REQ-1907: a table that lands on a TTL signal names its refresh clock.
+                "cache_ttl": 900,
                 "columns": [{"name": "order_id", "data_type": "integer", "visible_to": ["*"]}],
             },
         ],
