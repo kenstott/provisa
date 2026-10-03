@@ -409,6 +409,8 @@ def _wire_audit_plane(state, rest_audit_plane) -> None:
     it, and there is no control plane behind this router.
     """
     state.tenant_db = rest_audit_plane
+    state.record_db = state.tenant_db
+    state.model_db = state.tenant_db
     state.org_id = _REST_AUDIT_ORG
     state.admin_db = None
 

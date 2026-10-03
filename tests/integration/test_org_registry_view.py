@@ -162,7 +162,7 @@ def _read_view(sync_engine) -> list[tuple]:
 async def test_view_names_each_org_and_its_admin(planes):
     """One row per org, carrying the org_admin's identity from the other plane."""
     admin_db, tenant_db, sync_engine = planes
-    await refresh_org_registry_view(tenant_db=tenant_db, admin_db=admin_db)
+    await refresh_org_registry_view(model_db=tenant_db, admin_db=admin_db)
 
     assert _read_view(sync_engine) == [
         (_ACME, "Acme", "ready", "uid-acme", "acme@example.test", "Acme Admin"),
@@ -173,7 +173,7 @@ async def test_view_names_each_org_and_its_admin(planes):
 async def test_view_reads_live_rows_without_a_rebuild(planes):
     """It is a view, not a snapshot: a role granted after the build shows up on the next read."""
     admin_db, tenant_db, sync_engine = planes
-    await refresh_org_registry_view(tenant_db=tenant_db, admin_db=admin_db)
+    await refresh_org_registry_view(model_db=tenant_db, admin_db=admin_db)
 
     with sync_engine.begin() as conn:
         conn.execute(
@@ -206,7 +206,7 @@ async def test_org_without_a_provisioned_schema_keeps_its_row(planes):
                 " VALUES ('r1301pending', 'Pending', 'provisioning')"
             )
         )
-    await refresh_org_registry_view(tenant_db=tenant_db, admin_db=admin_db)
+    await refresh_org_registry_view(model_db=tenant_db, admin_db=admin_db)
 
     rows = {r[0]: r for r in _read_view(sync_engine)}
     assert rows["r1301pending"] == (
@@ -222,7 +222,7 @@ async def test_org_without_a_provisioned_schema_keeps_its_row(planes):
 async def test_view_exists_only_in_the_root_org(planes):
     """No tenant may read another tenant's roster, so the registry is root's dataset alone."""
     admin_db, tenant_db, sync_engine = planes
-    await refresh_org_registry_view(tenant_db=tenant_db, admin_db=admin_db)
+    await refresh_org_registry_view(model_db=tenant_db, admin_db=admin_db)
 
     with sync_engine.begin() as conn:
         assert (
@@ -243,6 +243,8 @@ async def test_seed_registers_the_view_in_the_meta_domain(planes, monkeypatch):
 
     monkeypatch.setattr(app_state, "admin_db", admin_db, raising=False)
     monkeypatch.setattr(app_state, "tenant_db", tenant_db, raising=False)
+    monkeypatch.setattr(app_state, "record_db", app_state.tenant_db, raising=False)
+    monkeypatch.setattr(app_state, "model_db", app_state.tenant_db, raising=False)
 
     assert await seed_org_registry_view() is True
 
@@ -279,6 +281,8 @@ async def test_seed_is_idempotent(planes, monkeypatch):
 
     monkeypatch.setattr(app_state, "admin_db", admin_db, raising=False)
     monkeypatch.setattr(app_state, "tenant_db", tenant_db, raising=False)
+    monkeypatch.setattr(app_state, "record_db", app_state.tenant_db, raising=False)
+    monkeypatch.setattr(app_state, "model_db", app_state.tenant_db, raising=False)
 
     await seed_org_registry_view()
     await seed_org_registry_view()
@@ -299,7 +303,7 @@ async def test_non_postgresql_plane_is_refused_not_silently_skipped(planes, tmp_
         create_engine_from_url(f"sqlite+pysqlite:///{tmp_path}/platform.db"), name="admin"
     )
     with pytest.raises(RegistryViewUnavailable):
-        await refresh_org_registry_view(tenant_db=tenant_db, admin_db=sqlite_admin)
+        await refresh_org_registry_view(model_db=tenant_db, admin_db=sqlite_admin)
     await sqlite_admin.close()
 
 

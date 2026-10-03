@@ -99,6 +99,8 @@ def planes(monkeypatch):
 
     monkeypatch.setattr(app_state, "admin_db", admin_db, raising=False)
     monkeypatch.setattr(app_state, "tenant_db", tenant_db, raising=False)
+    monkeypatch.setattr(app_state, "record_db", app_state.tenant_db, raising=False)
+    monkeypatch.setattr(app_state, "model_db", app_state.tenant_db, raising=False)
     monkeypatch.setattr(app_state, "org_id", _ORG, raising=False)
     monkeypatch.setattr(app_state, "auth_config", {"bootstrap_superadmin": True}, raising=False)
     # The roles registry is what turns a role id into its rights; in a real process it comes from

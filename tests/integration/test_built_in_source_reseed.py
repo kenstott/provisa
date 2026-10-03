@@ -67,6 +67,8 @@ async def seeded_schema(docker_postgres, monkeypatch):
     await init_audit_schema(db, org_id=org_id)
 
     monkeypatch.setattr(state, "tenant_db", db, raising=False)
+    monkeypatch.setattr(state, "record_db", state.tenant_db, raising=False)
+    monkeypatch.setattr(state, "model_db", state.tenant_db, raising=False)
 
     async def seed(engine_name: str) -> None:
         # The otel Iceberg catalog is Trino's alone (EngineBackend.has_otel_catalog), and the ops

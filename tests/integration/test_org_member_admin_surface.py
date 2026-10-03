@@ -104,6 +104,8 @@ async def org_plane(monkeypatch):
         )
 
     monkeypatch.setattr(app_state, "tenant_db", tenant_db, raising=False)
+    monkeypatch.setattr(app_state, "record_db", app_state.tenant_db, raising=False)
+    monkeypatch.setattr(app_state, "model_db", app_state.tenant_db, raising=False)
     monkeypatch.setattr(
         app_state,
         "roles",

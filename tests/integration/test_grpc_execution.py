@@ -421,6 +421,8 @@ class TestGrpcQueryExecution:
         )
         await init_audit_schema(audit_plane, _GRPC_AUDIT_ORG)
         state.tenant_db = audit_plane
+        state.record_db = state.tenant_db
+        state.model_db = state.tenant_db
         state.org_id = _GRPC_AUDIT_ORG
         # Mandatory terminal-execution binding (REQ-825) on the MagicMock scaffold state.
         from provisa.federation.engine import build_trino_engine
