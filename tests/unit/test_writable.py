@@ -118,11 +118,15 @@ def test_resolve_write_path_prefers_native_then_sqlalchemy_then_engine():
     eng = _engine_with(WarehouseNativeConnector("test", "sqlite"))
     assert resolve_write_path("sqlite", eng) is WritePath.SQLALCHEMY
 
-    # a source with neither a native driver nor a fallback, only a write-capable connector → ENGINE.
-    eng = _engine_with(
-        WarehouseNativeConnector("test", "cassandra")
-    )  # write=True, no driver/dialect
+    # a source with neither a native driver nor a fallback, only a live read-write attach → ENGINE.
+    from provisa.federation.connector_base import Mechanism
+
+    eng = _engine_with(WarehouseNativeConnector("test", "cassandra", Mechanism.ATTACH_RW))
     assert resolve_write_path("cassandra", eng) is WritePath.ENGINE
+
+    # a land connector writes the engine's own replica, never the source: no route.
+    eng = _engine_with(WarehouseNativeConnector("test", "cassandra"))
+    assert resolve_write_path("cassandra", eng) is None
 
     # no path at all → None.
     assert resolve_write_path("cassandra", None) is None
@@ -131,7 +135,9 @@ def test_resolve_write_path_prefers_native_then_sqlalchemy_then_engine():
 def test_is_writable_on_true_when_any_path_exists():
     from provisa.federation.connector import WarehouseNativeConnector
 
-    eng = _engine_with(WarehouseNativeConnector("test", "cassandra"))
-    assert is_writable_on("cassandra", eng) is True  # engine-only
+    from provisa.federation.connector_base import Mechanism
+
+    eng = _engine_with(WarehouseNativeConnector("test", "cassandra", Mechanism.ATTACH_RW))
+    assert is_writable_on("cassandra", eng) is True  # engine-only, a live read-write attach
     assert is_writable_on("cassandra", None) is False  # no direct path, no engine
     assert is_writable_on("postgresql", None) is True  # native direct
