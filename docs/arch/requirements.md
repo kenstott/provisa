@@ -17198,9 +17198,9 @@ A shard is never left running by the departure of the process that would have sc
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** structural
 
-Every graph node representing a data-instance row from a registered table [SUPERSEDED by REQ-1630 amendment, 2026-10-03 -- the link is a synthetic HAS_TABLE relationship built with the schema, and a node carries label and tableLabel; there is no graph-sync layer and no _name/_domain property. Kept here for history; do not implement against it.] carries `_name` and `_domain` meta properties identifying its source table and domain. The graph-sync layer auto-generates relationship edges connecting each data-instance node to its corresponding `RegisteredTables` meta node. [END SUPERSEDED BLOCK] (Amended 2026-10-03, HOW A ROW NODE IS TIED TO ITS TABLE:) Every registered table outside the meta domain has a HAS_TABLE relationship to the node that represents it in the meta domain's registered tables. The relationship is built with the schema as a constant join on the table's domain and name; it is not stored and needs no column on the data. A row's node carries `label` and `tableLabel`, and its table and domain are read by following HAS_TABLE to the registered-table node. HAS_TABLE is left out of variable-length paths unless the query names it.
+Every row of a registered table is traceable in the graph to its table and domain. Each registered table outside the meta domain has a HAS_TABLE relationship to the node that represents it among the meta domain's registered tables, and a row's table and domain are read by following that relationship. HAS_TABLE is left out of variable-length paths unless the query names it.
 
-**Use case:** Data-instance nodes must be traceable to their source table and domain for proper data lineage, governance, and relationship enforcement in federated graph queries.
+**Use case:** A graph user can go from a data row to the metadata of the table it came from (domain, description, tags, steward) in one query.
 
 **Code:** `provisa/compiler/context.py`, `provisa/cypher/label_map.py`, `provisa/cypher/path_functions.py`, `provisa/cypher/graph_rewriter.py`, `provisa/api/admin/schema_query.py`
 
