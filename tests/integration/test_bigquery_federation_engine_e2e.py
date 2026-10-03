@@ -19,6 +19,8 @@ import os
 
 import pytest
 
+from tests.env_creds import unset
+
 pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
 
 pytest.importorskip("google.cloud.bigquery", reason="google-cloud-bigquery required")
@@ -27,7 +29,10 @@ _HAVE = bool(
     os.environ.get("GOOGLE_CLOUD_PROJECT") and os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
 )
 pytestmark.append(
-    pytest.mark.skipif(not _HAVE, reason="GCP creds not set (GOOGLE_CLOUD_PROJECT/…)")
+    pytest.mark.skipif(
+        not _HAVE,
+        reason=f"not set: {unset('GOOGLE_CLOUD_PROJECT', 'GOOGLE_APPLICATION_CREDENTIALS')}",
+    )
 )
 
 from provisa.compiler.context import build_context  # noqa: E402

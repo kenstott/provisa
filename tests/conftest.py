@@ -794,6 +794,11 @@ def _heavy_db_service(request):  # pyright: ignore
         )
 
 
+# A skipped warehouse test is a failure naming what was missing (tests/skip_is_failure.py). Imported
+# into this conftest so every lane gets it, including those that clear addopts.
+from tests.skip_is_failure import pytest_runtest_makereport  # noqa: E402, F401
+
+
 def pytest_collection_modifyitems(config, items):  # pyright: ignore
     for item in items:
         if item.get_closest_marker("requires_provisa_server"):

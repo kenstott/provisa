@@ -22,6 +22,8 @@ import os
 
 import pytest
 
+from tests.env_creds import unset
+
 pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
 
 pytest.importorskip("pyodbc", reason="pyodbc required")
@@ -29,7 +31,9 @@ pytest.importorskip("azure.identity", reason="azure-identity required")
 
 _HAVE = bool(os.environ.get("FABRIC_SQL_SERVER") and os.environ.get("FABRIC_DATABASE"))
 pytestmark.append(
-    pytest.mark.skipif(not _HAVE, reason="Fabric creds not set (FABRIC_SQL_SERVER/…)")
+    pytest.mark.skipif(
+        not _HAVE, reason=f"not set: {unset('FABRIC_SQL_SERVER', 'FABRIC_DATABASE')}"
+    )
 )
 
 from provisa.compiler.context import build_context  # noqa: E402
@@ -156,7 +160,7 @@ async def test_fabric_r2_external_link_autoprovisions_shortcut(runtime):
         "FABRIC_WORKSPACE_ID",
     )
     if not all(os.environ.get(v) for v in r2):
-        pytest.skip("R2 creds / FABRIC_WORKSPACE_ID not set")
+        pytest.skip(f"not set: {unset(*r2)}")
     boto3 = pytest.importorskip("boto3")
     import pyarrow as pa
     import pyarrow.parquet as pq

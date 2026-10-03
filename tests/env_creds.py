@@ -148,3 +148,9 @@ def load_provider_creds(path: Path | None = None) -> list[str]:
         loaded.append("PROVISA_GSHEETS_LIVE")
 
     return loaded
+
+
+def unset(*names: str) -> str:
+    """Which of ``names`` are not set, comma-separated: a warehouse test's skip reason names
+    exactly what is missing (a skipped warehouse test is reported as a failure)."""
+    return ", ".join(n for n in names if not os.environ.get(n))
