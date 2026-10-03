@@ -193,6 +193,10 @@ registered_tables = Table(
     Column("product_id", Text, ForeignKey("data_products.id", ondelete="SET NULL")),  # REQ-1634
     Column("materialize", Boolean, nullable=False, server_default=false()),
     Column("row_materialize", Boolean, nullable=False, server_default=false()),  # REQ-1865
+    Column(
+        "file_glob", Text
+    ),  # REQ-788: one logical table over a glob of files; NULL = single file
+    Column("source_file_column", Text),  # REQ-788: opt-in column carrying each row's file path
     Column("mv_refresh_interval", Integer, nullable=False, server_default="300"),
     # REQ-963 live-MV debounce (event-loop path). quiet=0 → real-time recompute.
     Column("mv_debounce_quiet", Float, nullable=False, server_default="0"),

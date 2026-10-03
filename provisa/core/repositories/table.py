@@ -270,6 +270,8 @@ async def _upsert(conn: "Connection", table: Table, origin: str) -> int | None:
         # DB directly showed row_materialize='f'/cache_ttl=NULL for 5 tables fragment.yaml
         # declared row_materialize: true, cache_ttl: 300 on.
         "row_materialize": getattr(table, "row_materialize", False),
+        "file_glob": getattr(table, "file_glob", None),  # REQ-788
+        "source_file_column": getattr(table, "source_file_column", None),  # REQ-788
         "cache_ttl": getattr(table, "cache_ttl", None),
         "role_ttl": dict(table.role_ttl),  # REQ-1907
         "pagination": paging_row(table.pagination),  # REQ-318
@@ -316,6 +318,8 @@ async def _upsert(conn: "Connection", table: Table, origin: str) -> int | None:
         "off_peak_window",  # REQ-1141
         "off_peak_tz",  # REQ-1141
         "row_materialize",  # REQ-1865
+        "file_glob",  # REQ-788
+        "source_file_column",  # REQ-788
         "cache_ttl",  # REQ-1865
         "role_ttl",  # REQ-1907
         "pagination",  # REQ-318
