@@ -323,7 +323,11 @@
       "replicate_contradicts_load_protected": "A proteção de carga não pode ser combinada com Replicar = 'Nunca': uma tabela protegida contra carga nunca é lida ao vivo",
       "table_registered_fields_omitted": "Tabela '{{table}}' registrada (id={{id}}). Omitidos, porque a credencial da fonte não pode lê-los: {{fields}}",
       "table_not_readable": "A credencial desta fonte não pode ler {{table}}: {{reason}}",
-      "table_too_complex": "A tabela '{{table}}' não foi registrada com as colunas selecionadas: {{reason}}. Escolha menos colunas."
+      "table_too_complex": "A tabela '{{table}}' não foi registrada com as colunas selecionadas: {{reason}}. Escolha menos colunas.",
+      "role_revoked_from_table": "Função '{{role}}' removida das permissões da tabela {{id}}",
+      "role_revoked_from_object": "Função '{{role}}' removida de {{kind}} '{{name}}'",
+      "grant_object_not_found": "Nenhum {{kind}} chamado '{{name}}'",
+      "table_id_not_found": "Tabela {{id}} não encontrada"
     },
     "secrets": {
       "still_referenced": "{{secret}} ainda é nomeado por {{count}} valor(es) armazenado(s) nesta organização. Altere ou remova cada um e exclua novamente."

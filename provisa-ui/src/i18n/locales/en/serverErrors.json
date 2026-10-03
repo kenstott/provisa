@@ -323,7 +323,11 @@
       "replicate_contradicts_load_protected": "Load protection cannot be combined with Replicate = Never: a load-protected table is never read live",
       "table_registered_fields_omitted": "Table '{{table}}' registered (id={{id}}). Left out, because the source's credential may not read them: {{fields}}",
       "table_not_readable": "This source's credential may not read {{table}}: {{reason}}",
-      "table_too_complex": "Table '{{table}}' was not registered with the columns selected: {{reason}}. Choose fewer columns."
+      "table_too_complex": "Table '{{table}}' was not registered with the columns selected: {{reason}}. Choose fewer columns.",
+      "role_revoked_from_table": "Role '{{role}}' removed from the grants of table {{id}}",
+      "role_revoked_from_object": "Role '{{role}}' removed from {{kind}} '{{name}}'",
+      "grant_object_not_found": "No {{kind}} named '{{name}}'",
+      "table_id_not_found": "Table {{id}} not found"
     },
     "secrets": {
       "still_referenced": "{{secret}} is still named by {{count}} stored value(s) in this organization. Change or remove each one, then delete it again."

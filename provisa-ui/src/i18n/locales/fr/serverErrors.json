@@ -323,7 +323,11 @@
       "replicate_contradicts_load_protected": "La protection de charge ne peut pas être combinée avec Répliquer = « Jamais » : une table protégée contre la charge n'est jamais lue en direct",
       "table_registered_fields_omitted": "Table « {{table}} » enregistrée (id={{id}}). Omis, car les identifiants de la source ne permettent pas de les lire : {{fields}}",
       "table_not_readable": "Les identifiants de cette source ne permettent pas de lire {{table}} : {{reason}}",
-      "table_too_complex": "La table « {{table}} » n'a pas été enregistrée avec les colonnes sélectionnées : {{reason}}. Choisissez moins de colonnes."
+      "table_too_complex": "La table « {{table}} » n'a pas été enregistrée avec les colonnes sélectionnées : {{reason}}. Choisissez moins de colonnes.",
+      "role_revoked_from_table": "Rôle '{{role}}' retiré des autorisations de la table {{id}}",
+      "role_revoked_from_object": "Rôle '{{role}}' retiré de {{kind}} '{{name}}'",
+      "grant_object_not_found": "Aucun {{kind}} nommé '{{name}}'",
+      "table_id_not_found": "Table {{id}} introuvable"
     },
     "secrets": {
       "still_referenced": "{{secret}} est encore nommé par {{count}} valeur(s) stockée(s) dans cette organisation. Modifiez ou retirez chacune, puis supprimez-le de nouveau."

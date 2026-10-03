@@ -323,7 +323,11 @@
       "replicate_contradicts_load_protected": "负载保护不能与复制 =“从不”同时使用：受负载保护的表从不被实时读取",
       "table_registered_fields_omitted": "表 '{{table}}' 已注册（id={{id}}）。因数据源的凭据无权读取而略过：{{fields}}",
       "table_not_readable": "此数据源的凭据无权读取 {{table}}：{{reason}}",
-      "table_too_complex": "表 '{{table}}' 未能以所选列注册：{{reason}}。请选择更少的列。"
+      "table_too_complex": "表 '{{table}}' 未能以所选列注册：{{reason}}。请选择更少的列。",
+      "role_revoked_from_table": "已从表 {{id}} 的授权中移除角色 '{{role}}'",
+      "role_revoked_from_object": "已从 {{kind}} '{{name}}' 中移除角色 '{{role}}'",
+      "grant_object_not_found": "没有名为 '{{name}}' 的 {{kind}}",
+      "table_id_not_found": "未找到表 {{id}}"
     },
     "secrets": {
       "still_referenced": "本组织中仍有 {{count}} 个已存储的值引用 {{secret}}。请更改或移除每一个，然后再次删除。"

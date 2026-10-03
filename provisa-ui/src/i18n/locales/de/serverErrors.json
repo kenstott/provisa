@@ -323,7 +323,11 @@
       "replicate_contradicts_load_protected": "Lastschutz lässt sich nicht mit Replizieren = „Nie“ kombinieren: Eine lastgeschützte Tabelle wird nie live gelesen",
       "table_registered_fields_omitted": "Tabelle '{{table}}' registriert (id={{id}}). Ausgelassen, weil die Zugangsdaten der Quelle sie nicht lesen dürfen: {{fields}}",
       "table_not_readable": "Die Zugangsdaten dieser Quelle dürfen {{table}} nicht lesen: {{reason}}",
-      "table_too_complex": "Die Tabelle '{{table}}' wurde mit den ausgewählten Spalten nicht registriert: {{reason}}. Wählen Sie weniger Spalten."
+      "table_too_complex": "Die Tabelle '{{table}}' wurde mit den ausgewählten Spalten nicht registriert: {{reason}}. Wählen Sie weniger Spalten.",
+      "role_revoked_from_table": "Rolle '{{role}}' aus den Berechtigungen der Tabelle {{id}} entfernt",
+      "role_revoked_from_object": "Rolle '{{role}}' aus {{kind}} '{{name}}' entfernt",
+      "grant_object_not_found": "Kein {{kind}} mit dem Namen '{{name}}'",
+      "table_id_not_found": "Tabelle {{id}} nicht gefunden"
     },
     "secrets": {
       "still_referenced": "{{secret}} wird noch von {{count}} gespeicherten Wert(en) in dieser Organisation genannt. Ändern oder entfernen Sie jeden davon und löschen Sie es dann erneut."

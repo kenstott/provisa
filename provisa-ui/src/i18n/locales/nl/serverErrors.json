@@ -323,7 +323,11 @@
       "replicate_contradicts_load_protected": "Belastingsbescherming kan niet worden gecombineerd met Repliceren = 'Nooit': een tabel met belastingsbescherming wordt nooit live gelezen",
       "table_registered_fields_omitted": "Tabel '{{table}}' geregistreerd (id={{id}}). Weggelaten, omdat de inloggegevens van de bron ze niet mogen lezen: {{fields}}",
       "table_not_readable": "De inloggegevens van deze bron mogen {{table}} niet lezen: {{reason}}",
-      "table_too_complex": "Tabel '{{table}}' is niet geregistreerd met de geselecteerde kolommen: {{reason}}. Kies minder kolommen."
+      "table_too_complex": "Tabel '{{table}}' is niet geregistreerd met de geselecteerde kolommen: {{reason}}. Kies minder kolommen.",
+      "role_revoked_from_table": "Rol '{{role}}' verwijderd uit de rechten van tabel {{id}}",
+      "role_revoked_from_object": "Rol '{{role}}' verwijderd uit {{kind}} '{{name}}'",
+      "grant_object_not_found": "Geen {{kind}} met de naam '{{name}}'",
+      "table_id_not_found": "Tabel {{id}} niet gevonden"
     },
     "secrets": {
       "still_referenced": "{{secret}} wordt nog genoemd door {{count}} opgeslagen waarde(n) in deze organisatie. Wijzig of verwijder elk daarvan en verwijder het daarna opnieuw."

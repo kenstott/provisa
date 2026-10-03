@@ -323,7 +323,11 @@
       "replicate_contradicts_load_protected": "負荷保護はレプリケート =「しない」と併用できません。負荷保護されたテーブルはライブで読まれることがありません",
       "table_registered_fields_omitted": "テーブル「{{table}}」を登録しました（id={{id}}）。ソースの資格情報では読み取れないため除外しました: {{fields}}",
       "table_not_readable": "このソースの資格情報では {{table}} を読み取れません: {{reason}}",
-      "table_too_complex": "テーブル「{{table}}」は選択した列では登録されませんでした: {{reason}}。列を減らしてください。"
+      "table_too_complex": "テーブル「{{table}}」は選択した列では登録されませんでした: {{reason}}。列を減らしてください。",
+      "role_revoked_from_table": "ロール '{{role}}' をテーブル {{id}} の権限から削除しました",
+      "role_revoked_from_object": "ロール '{{role}}' を {{kind}} '{{name}}' から削除しました",
+      "grant_object_not_found": "'{{name}}' という名前の {{kind}} はありません",
+      "table_id_not_found": "テーブル {{id}} が見つかりません"
     },
     "secrets": {
       "still_referenced": "{{secret}} は、この組織に保存されている {{count}} 件の値からまだ参照されています。それぞれを変更または削除してから、もう一度削除してください。"

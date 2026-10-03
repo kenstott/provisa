@@ -4,6 +4,9 @@
     "intro": "Diese Objekte verweisen noch darauf. Entfernen oder ändern Sie jedes davon und löschen Sie dann erneut.",
     "open": "Seite öffnen",
     "close": "Schließen",
+    "removeTableGrants": "Diese Rolle aus den Berechtigungen dieser Tabelle entfernen",
+    "removeGrant": "Berechtigung dieser Rolle entfernen",
+    "removeAssignment": "Zuweisung entfernen",
     "kind": {
       "table": "Tabellen und Sichten",
       "column": "Spaltenberechtigungen",

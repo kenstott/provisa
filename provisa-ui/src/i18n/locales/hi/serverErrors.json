@@ -323,7 +323,11 @@
       "replicate_contradicts_load_protected": "लोड सुरक्षा को रेप्लिकेट = 'कभी नहीं' के साथ नहीं जोड़ा जा सकता: लोड-सुरक्षित टेबल कभी लाइव नहीं पढ़ी जाती",
       "table_registered_fields_omitted": "टेबल '{{table}}' पंजीकृत हुई (id={{id}})। छोड़े गए, क्योंकि स्रोत का क्रेडेंशियल इन्हें नहीं पढ़ सकता: {{fields}}",
       "table_not_readable": "इस स्रोत का क्रेडेंशियल {{table}} को नहीं पढ़ सकता: {{reason}}",
-      "table_too_complex": "टेबल '{{table}}' चुने गए कॉलम के साथ पंजीकृत नहीं हुई: {{reason}}। कम कॉलम चुनें।"
+      "table_too_complex": "टेबल '{{table}}' चुने गए कॉलम के साथ पंजीकृत नहीं हुई: {{reason}}। कम कॉलम चुनें।",
+      "role_revoked_from_table": "भूमिका '{{role}}' को तालिका {{id}} की अनुमतियों से हटा दिया गया",
+      "role_revoked_from_object": "भूमिका '{{role}}' को {{kind}} '{{name}}' से हटा दिया गया",
+      "grant_object_not_found": "'{{name}}' नाम का कोई {{kind}} नहीं है",
+      "table_id_not_found": "तालिका {{id}} नहीं मिली"
     },
     "secrets": {
       "still_referenced": "{{secret}} का नाम इस संगठन में अब भी {{count}} संग्रहीत मान ले रहे हैं। हर एक को बदलें या हटाएँ, फिर दोबारा हटाएँ।"
