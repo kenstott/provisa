@@ -44,6 +44,7 @@ MODEL_SIDE = "model"
 STATE_SIDE = "state"
 RECORD_SIDE = "record"
 PLATFORM_STATE_SIDE = "platform_state"
+PLATFORM_ADMIN_SIDE = "platform_admin"
 
 #: The handle that holds each side: the org's three (``OrgRuntime``) and the deployment's one
 #: (``AppState.platform_state_db``).
@@ -52,6 +53,7 @@ HANDLE = {
     STATE_SIDE: "tenant_db",
     RECORD_SIDE: "record_db",
     PLATFORM_STATE_SIDE: "platform_state_db",
+    PLATFORM_ADMIN_SIDE: "admin_db",
 }
 
 #: Per (org, region): the request record (REQ-1922: the state store and the record are per org
@@ -87,11 +89,19 @@ _ORG_TABLES = CARRIED | IDENTITY_ONLY | NEVER_SENSITIVE | NEVER_RUNTIME | PARTIA
 #: Not an org table: no org handle reaches it, and its handle reaches no org table.
 from provisa.core.platform_state import TABLES as PLATFORM_STATE  # noqa: E402
 
+#: The platform's registry (orgs, users, invites, environments, billing, deployment settings), in
+#: the platform database (``state.admin_db``): no org handle reaches it, and its handle reaches no
+#: org table and none of the platform's operating state. ``config_stamp`` is in both planes too.
+from provisa.core.schema_admin import metadata as _platform_metadata  # noqa: E402
+
+PLATFORM_ADMIN: frozenset[str] = frozenset(_platform_metadata.tables) - PLATFORM_STATE - BOTH
+
 TABLES: dict[str, frozenset[str]] = {
     MODEL_SIDE: _ORG_TABLES - STATE - RECORD - BOTH,
     STATE_SIDE: STATE,
     RECORD_SIDE: RECORD,
     PLATFORM_STATE_SIDE: PLATFORM_STATE,
+    PLATFORM_ADMIN_SIDE: PLATFORM_ADMIN,
 }
 
 

@@ -651,11 +651,20 @@ class StoreSideViolation(RuntimeError):
     (``platform_state_db``) is no org's, so such a statement could not run there."""
 
     def __init__(self, handle: str, holds: str, tables: frozenset[str]) -> None:
-        from provisa.core.store_sides import HANDLE, PLATFORM_STATE_SIDE, side_of
+        from provisa.core.store_sides import (
+            HANDLE,
+            PLATFORM_ADMIN_SIDE,
+            PLATFORM_STATE_SIDE,
+            side_of,
+        )
 
         def _use(side: str) -> str:
             # The deployment has one platform-state handle; every other side is an org's.
-            whose = "the deployment's" if side == PLATFORM_STATE_SIDE else "the org's"
+            whose = (
+                "the deployment's"
+                if side in (PLATFORM_STATE_SIDE, PLATFORM_ADMIN_SIDE)
+                else "the org's"
+            )
             return f"{whose} {HANDLE[side]}"
 
         said = "; ".join(

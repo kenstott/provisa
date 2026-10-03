@@ -75,11 +75,18 @@ async def test_a_handle_that_holds_no_side_refuses_nothing(tmp_path):
 
 
 def test_every_org_table_is_kept_in_one_store_or_named_as_in_both():
-    from provisa.core.store_sides import BOTH, PLATFORM_STATE_SIDE, TABLES
+    from provisa.core.store_sides import (
+        BOTH,
+        PLATFORM_ADMIN_SIDE,
+        PLATFORM_STATE_SIDE,
+        TABLES,
+    )
 
     org = set(metadata.tables)
-    assert not TABLES[PLATFORM_STATE_SIDE] & org  # the deployment's, not an org's
-    sides = [tables for side, tables in TABLES.items() if side != PLATFORM_STATE_SIDE]
+    platform = (PLATFORM_STATE_SIDE, PLATFORM_ADMIN_SIDE)
+    for side in platform:
+        assert not TABLES[side] & org  # the deployment's, not an org's
+    sides = [tables for side, tables in TABLES.items() if side not in platform]
     for i, one in enumerate(sides):
         for other in sides[i + 1 :]:
             assert not one & other
@@ -147,3 +154,28 @@ def test_no_foreign_key_crosses_from_one_store_to_another():
         and side_of(t.name) != side_of(fk.column.table.name)
     ]
     assert crossing == []
+
+
+async def test_the_platform_registry_handle_and_the_org_handles_keep_apart(tmp_path):
+    """REQ-1922: the platform's registry (orgs, users, invites, settings) is reached through
+    ``admin_db`` alone, and ``admin_db`` reaches no org table and no platform state."""
+    from provisa.core.schema_admin import cluster_nodes, orgs
+    from provisa.core.schema_admin import metadata as platform_metadata
+
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'one.db'}")
+    with engine.begin() as raw:
+        platform_metadata.create_all(raw, tables=[orgs, cluster_nodes])
+        metadata.create_all(raw)
+    admin_db = Database(engine, "platform", holds="platform_admin")
+    async with admin_db.acquire() as conn:
+        await conn.execute_core(select(orgs.c.id))
+        with pytest.raises(StoreSideViolation, match="registered_tables is a model table"):
+            await conn.execute_core(select(registered_tables.c.id))
+        with pytest.raises(StoreSideViolation, match="cluster_nodes is a platform_state table"):
+            await conn.execute_core(select(cluster_nodes.c.node_id))
+    async with Database(engine, "model", holds="model").acquire() as conn:
+        with pytest.raises(
+            StoreSideViolation,
+            match="orgs is a platform_admin table, use the deployment's admin_db",
+        ):
+            await conn.execute_core(select(orgs.c.id))
