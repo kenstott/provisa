@@ -178,7 +178,10 @@ def _build_registered_tables(registered: list[dict], cfg_by: dict) -> list[Any]:
                     for c in rt["columns"]
                 ],
                 live=getattr(cfg, "live", None),
-                change_signal=getattr(cfg, "change_signal", None),
+                # REQ-929: the table's own change signal is on its row — saved there by the config
+                # load and by the admin alike — so a table registered at runtime (no config entry)
+                # is judged by its own signal, not its source's. NULL = it sets none.
+                change_signal=rt["change_signal"],
                 watermark_column=getattr(cfg, "watermark_column", None),
                 # REQ-1730: a table registered dynamically (through the UI, no YAML `tables:`
                 # entry) has no `cfg` at all, so `getattr(cfg, "cache_ttl", None)` alone was ALWAYS

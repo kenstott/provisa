@@ -321,6 +321,7 @@ def test_candidates_are_read_from_rows_as_the_registry_view_builds_them():
             "row_materialize": False,
             "dq_contract": None,
             "alias": None,
+            "change_signal": None,
         }
         row.update(settings)
         return row

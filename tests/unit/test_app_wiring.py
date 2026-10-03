@@ -132,6 +132,7 @@ def _state(*, ready=True):
             "role_ttl": {},  # REQ-1907
             "replicate": None,
             "load_protected": None,
+            "change_signal": None,  # REQ-929: the table sets none
         }
     ]
     registry = SimpleNamespace(get_enabled=lambda: [])
@@ -256,6 +257,7 @@ async def test_registered_checker_table_carries_its_contract_to_the_loop(monkeyp
                 "role_ttl": {},  # REQ-1907
                 "replicate": None,
                 "load_protected": None,
+                "change_signal": None,  # REQ-929: the table sets none
             }
         ]
     )

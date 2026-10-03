@@ -56,6 +56,7 @@ _ROW = {
     "role_ttl": {},  # REQ-1907
     "replicate": None,
     "load_protected": None,
+    "change_signal": None,  # REQ-929: the table sets none
     "columns": [],
 }
 
