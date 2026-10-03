@@ -10,6 +10,8 @@
 
 """Unit tests for ParamCollector — variable binding with positional placeholders."""
 
+import pytest
+
 from provisa.compiler.params import (
     ParamCollector,
     embed_params_comment,
@@ -89,6 +91,22 @@ class TestDirectiveExtractionIsParseAware:
         out, params = extract_params_comment(embedded)
         assert params == [42]
         assert out == "SELECT * FROM t WHERE id=$1"
+
+    @pytest.mark.parametrize(
+        "value", ["it's", "x' OR 1=1 --", "back\\slash", "", -3, 2.5, None, True]
+    )
+    def test_a_value_round_trips_through_the_params_comment(self, value):
+        embedded = embed_params_comment("SELECT * FROM t WHERE c=$1", [value])
+        out, params = extract_params_comment(embedded)
+        assert params == [value]
+        assert out == "SELECT * FROM t WHERE c=$1"
+
+    @pytest.mark.parametrize("value", ["a\nDROP TABLE t; --", "a\rb", float("nan"), [1, 2]])
+    def test_a_value_the_params_comment_cannot_carry_is_refused_by_name(self, value):
+        from provisa.compiler.sql_literals import UnencodableLiteral
+
+        with pytest.raises(UnencodableLiteral, match="params comment"):
+            embed_params_comment("SELECT * FROM t WHERE c=$1", [value])
 
     def test_params_comment_inside_wrapping_subquery_is_honored(self):
         sql = "SELECT * FROM (\n-- provisa-params: $1=7\nSELECT $1) _s"

@@ -25,6 +25,8 @@ from typing import Any
 
 import httpx
 
+from provisa.compiler.sql_literals import sql_literal
+
 _TIMEOUT = 30.0
 
 # Druid's SQL type names (INFORMATION_SCHEMA.COLUMNS.DATA_TYPE) are already close to a coarse
@@ -94,12 +96,6 @@ def iter_rows_spooled(
             yield from json_items(body, "item")
 
 
-def _sql_literal(value: Any) -> str:
-    if isinstance(value, (int, float)):
-        return str(value)
-    return "'" + str(value).replace("'", "''") + "'"
-
-
 def fetch_rows_by_keys(
     conn: DruidConnection,
     table: str,
@@ -119,5 +115,5 @@ def fetch_rows_by_keys(
     safe_table = table.replace('"', '""')
     select = ", ".join(f'"{c}"' for c in columns) if columns else "*"
     col = pk_columns[0]
-    values = ", ".join(_sql_literal(k[0]) for k in keys)
+    values = ", ".join(sql_literal(k[0], "druid") for k in keys)
     return _sql(conn, f'SELECT {select} FROM "druid"."{safe_table}" WHERE "{col}" IN ({values})')

@@ -12,6 +12,7 @@
 
 # Requirements: REQ-301, REQ-211
 
+import math
 import re as _re
 from collections.abc import Callable, Sequence
 
@@ -70,16 +71,24 @@ def bind_positionally(
     return _PLACEHOLDER_RE.sub(_sub, sql), ordered
 
 
-def _sql_literal(
-    val: object,  # object-ok: accepts any SQL-serializable scalar (None, bool, int, float, str)
-) -> str:
-    if val is None:
-        return "NULL"
-    if isinstance(val, bool):
-        return "TRUE" if val else "FALSE"
-    if isinstance(val, (int, float)):
-        return str(val)
-    return "'" + str(val).replace("'", "''") + "'"
+def _comment_value(val: object, index: int) -> str:  # object-ok: one bound parameter value
+    """One value of the provisa-params comment: a PostgreSQL literal (the comment's grammar,
+    which the UI reads back too). The comment is one line, so a value holding a line break, and
+    a value the grammar has no form for, is refused by name."""
+    from provisa.compiler.sql_literals import UnencodableLiteral, sql_literal
+
+    carried = (
+        val is None
+        or isinstance(val, (bool, int, str))
+        or (isinstance(val, float) and math.isfinite(val))
+    )
+    if not carried:
+        raise UnencodableLiteral(val, "postgres", f"${index} has no form in the params comment")
+    if isinstance(val, str) and ("\n" in val or "\r" in val):
+        raise UnencodableLiteral(
+            val, "postgres", f"${index} holds a line break, which the params comment cannot carry"
+        )
+    return sql_literal(val, "postgres")
 
 
 def _parse_sql_literal(s: str) -> object:
@@ -139,7 +148,7 @@ def embed_params_comment(sql: str, params: list) -> str:
     """Prepend a provisa-params comment so the SQL is self-contained and executable."""
     if not params:
         return sql
-    parts = ", ".join(f"${i + 1}={_sql_literal(v)}" for i, v in enumerate(params))
+    parts = ", ".join(f"${i + 1}={_comment_value(v, i + 1)}" for i, v in enumerate(params))
     return f"{_COMMENT_PREFIX} {parts}\n{sql}"
 
 

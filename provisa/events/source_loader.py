@@ -31,6 +31,8 @@ from contextlib import aclosing
 
 from typing import Any
 
+from provisa.compiler.sql_literals import sql_literal
+
 # Source types whose "current rows" are fetched by calling the adapter, not by an engine SQL scan.
 # Everything else (RDBMS, cloud DW, OLAP, data lake, file, and connector-backed NoSQL/streaming/graph)
 # is read through the engine terminal. Keep this the exclusion set — the scannable set is open-ended.
@@ -258,7 +260,7 @@ class SourceRowLoader:
 
         catalog = source_to_catalog(source.id)
         ref = f'"{catalog}"."{table.schema_name}"."{table.table_name}"'
-        where = _pk_in_clause(pk_columns, keys)
+        where = _pk_in_clause(pk_columns, keys, self._engine.dialect)
         result = await self._engine.execute_engine(f"SELECT * FROM {ref} WHERE {where}")
         return [dict(zip(result.column_names, row)) for row in result.rows]
 
@@ -276,29 +278,16 @@ class SourceRowLoader:
         return pa.Table.from_pylist(await self.load_keys(source, table, pk_columns, keys))
 
 
-def _sql_literal(value: Any) -> str:
-    """Inline-literal rendering for a PK value in a generated ``IN`` predicate — the same posture
-    ``load``'s own ``SELECT * FROM {ref}`` string-building already uses (no bind-param plumbing
-    through the engine terminal call). A declared PK is trusted (design constraint 6): no
-    additional escaping/validation beyond standard SQL-string quoting is performed here."""
-    if value is None:
-        return "NULL"
-    if isinstance(value, bool):
-        return "TRUE" if value else "FALSE"
-    if isinstance(value, (int, float)):
-        return str(value)
-    return "'" + str(value).replace("'", "''") + "'"
-
-
-def _pk_in_clause(pk_columns: list[str], keys: list[tuple[Any, ...]]) -> str:
+def _pk_in_clause(pk_columns: list[str], keys: list[tuple[Any, ...]], dialect: str) -> str:
     """A ``col IN (...)`` (single-column PK) or ``(col1, col2) IN ((...), (...))`` (composite PK)
-    predicate naming exactly ``keys`` -- never a range, never unbounded."""
+    predicate naming exactly ``keys`` -- never a range, never unbounded. Each key value is a
+    literal of ``dialect`` (the engine the statement runs on), by the dialect's one rule."""
     if len(pk_columns) == 1:
         col = pk_columns[0]
-        values = ", ".join(_sql_literal(k[0]) for k in keys)
+        values = ", ".join(sql_literal(k[0], dialect) for k in keys)
         return f'"{col}" IN ({values})'
     cols = ", ".join(f'"{c}"' for c in pk_columns)
-    tuples = ", ".join("(" + ", ".join(_sql_literal(v) for v in key) + ")" for key in keys)
+    tuples = ", ".join("(" + ", ".join(sql_literal(v, dialect) for v in key) + ")" for key in keys)
     return f"({cols}) IN ({tuples})"
 
 

@@ -136,6 +136,8 @@ class TestInsertOtelIceberg:
         from provisa.executor.result import QueryResult
 
         class _FakeEngine:
+            dialect = "trino"  # the OTel Iceberg tables are written through Trino
+
             def __init__(self, cols):
                 self._cols = cols
                 self.calls = []  # (sql, params)
@@ -485,6 +487,8 @@ class TestSignalPartitionLayout:
 
 class _FakeEngine:
     """Records every statement the compactor sends, so commit count is observable."""
+
+    dialect = "trino"  # the OTel Iceberg tables are written through Trino
 
     def __init__(self):
         self.statements: list[str] = []

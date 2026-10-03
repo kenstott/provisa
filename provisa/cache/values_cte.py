@@ -18,11 +18,10 @@ pure rewrite, and the manager module pulls the file-source and DuckDB connector 
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
-from datetime import date, datetime
-from decimal import Decimal
 from typing import Protocol
+
+from provisa.compiler.sql_literals import sql_literal
 
 
 class HotRows(Protocol):
@@ -43,25 +42,6 @@ class InlineRows:
 
     rows: list[dict]
     column_names: list[str]
-
-
-def _sql_literal(val) -> str:
-    """Render a Python value as a SQL literal (the engine-compatible)."""
-    if val is None:
-        return "NULL"
-    if isinstance(val, bool):
-        return "TRUE" if val else "FALSE"
-    if isinstance(val, (int, float, Decimal)):
-        return str(val)
-    if isinstance(val, datetime):
-        return f"TIMESTAMP '{val.isoformat()}'"
-    if isinstance(val, date):
-        return f"DATE '{val}'"
-    if isinstance(val, (dict, list)):
-        escaped = json.dumps(val).replace("'", "''")
-        return f"'{escaped}'"
-    escaped = str(val).replace("'", "''")
-    return f"'{escaped}'"
 
 
 def build_values_cte_sql(
@@ -103,7 +83,8 @@ def build_values_cte_sql(
         cte_body = f"({col_defs}) AS (SELECT {empty_nulls} WHERE 1=0)"
     else:
         value_rows = [
-            "(" + ", ".join(_sql_literal(row.get(c)) for c in entry.column_names) + ")"
+            # The query is PostgreSQL SQL here, transpiled to the engine's dialect afterwards.
+            "(" + ", ".join(sql_literal(row.get(c), "postgres") for c in entry.column_names) + ")"
             for row in entry.rows
         ]
         cte_body = f"({col_defs}) AS (VALUES {', '.join(value_rows)})"

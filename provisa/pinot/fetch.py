@@ -36,6 +36,8 @@ from typing import Any
 
 import httpx
 
+from provisa.compiler.sql_literals import sql_literal
+
 # Pinot's docs cite 8099 as the broker's default query port, but a plain `QuickStart` container's
 # own bundled config binds it to 8000 instead (confirmed live: `docker logs` shows "Started
 # listener bound to [0.0.0.0:8000]" for the broker specifically, and a direct query against 8099
@@ -167,12 +169,6 @@ def iter_rows_spooled(
                 yield dict(zip(names, row, strict=False))
 
 
-def _sql_literal(value: Any) -> str:
-    if isinstance(value, (int, float)):
-        return str(value)
-    return "'" + str(value).replace("'", "''") + "'"
-
-
 def fetch_rows_by_keys(
     conn: PinotConnection,
     table: str,
@@ -191,7 +187,7 @@ def fetch_rows_by_keys(
         return []
     select = ", ".join(f'"{c}"' for c in columns) if columns else "*"
     col = pk_columns[0]
-    values = ", ".join(_sql_literal(k[0]) for k in keys)
+    values = ", ".join(sql_literal(k[0], "pinot") for k in keys)
     body = _query(
         conn, f'SELECT {select} FROM "{table}" WHERE "{col}" IN ({values}) LIMIT {_MAX_ROWS}'
     )

@@ -225,23 +225,18 @@ def _encode_constant(expr: dict) -> str | None:
         if value.get("is_null"):
             return "NULL"
         value = value.get("value")
-    return _sql_literal(value)
+    return _constant_literal(value)
 
 
-def _sql_literal(value: Any) -> str | None:
-    if value is None:
-        return "NULL"
-    if isinstance(value, bool):
-        return "TRUE" if value else "FALSE"
-    if isinstance(value, (int, float)):
-        return repr(value)
-    if isinstance(value, str):
-        return _quote_literal(value)
+def _constant_literal(value: Any) -> str | None:
+    """A DuckDB constant as a literal of the pushed-down DuckDB statement (the dialect's one
+    literal rule); None for a constant kind this pushdown does not carry, which keeps the
+    predicate in DuckDB instead."""
+    from provisa.compiler.sql_literals import sql_literal
+
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return sql_literal(value, "duckdb")
     return None
-
-
-def _quote_literal(s: str) -> str:
-    return "'" + s.replace("'", "''") + "'"
 
 
 def _quote_ident(name: str) -> str:
