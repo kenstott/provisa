@@ -1019,6 +1019,18 @@ mutation DeleteRole($id: String!) {
   }
 }
 
+mutation RevokeRoleFromTable($roleId: String!, $tableId: Int!) {
+  revokeRoleFromTable(roleId: $roleId, tableId: $tableId) {
+    ...MutationResult
+  }
+}
+
+mutation RevokeRoleFromObject($roleId: String!, $kind: GrantKind!, $name: String!) {
+  revokeRoleFromObject(roleId: $roleId, kind: $kind, name: $name) {
+    ...MutationResult
+  }
+}
+
 mutation DeployViewToDb($tableId: Int!) {
   deployViewToDb(tableId: $tableId) {
     ...MutationResult

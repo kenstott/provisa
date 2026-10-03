@@ -328,7 +328,11 @@
       "replicate_contradicts_load_protected": "אי אפשר לשלב הגנת עומס עם שכפול = 'אף פעם': טבלה מוגנת עומס אף פעם אינה נקראת בזמן אמת",
       "table_registered_fields_omitted": "הטבלה '{{table}}' נרשמה (id={{id}}). הושמטו, מפני שאישורי הגישה של המקור אינם רשאים לקרוא אותם: {{fields}}",
       "table_not_readable": "אישורי הגישה של מקור זה אינם רשאים לקרוא את {{table}}: {{reason}}",
-      "table_too_complex": "הטבלה '{{table}}' לא נרשמה עם העמודות שנבחרו: {{reason}}. בחרו פחות עמודות."
+      "table_too_complex": "הטבלה '{{table}}' לא נרשמה עם העמודות שנבחרו: {{reason}}. בחרו פחות עמודות.",
+      "role_revoked_from_table": "התפקיד '{{role}}' הוסר מההרשאות של טבלה {{id}}",
+      "role_revoked_from_object": "התפקיד '{{role}}' הוסר מ-{{kind}} '{{name}}'",
+      "grant_object_not_found": "אין {{kind}} בשם '{{name}}'",
+      "table_id_not_found": "טבלה {{id}} לא נמצאה"
     },
     "secrets": {
       "still_referenced": "{{secret}} עדיין מצוין על ידי {{count}} ערכים שמורים בארגון זה. יש לשנות או להסיר כל אחד מהם ואז למחוק שוב."

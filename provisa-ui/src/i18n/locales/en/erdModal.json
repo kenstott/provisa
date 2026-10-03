@@ -23,6 +23,7 @@
     "downloadSvg": "Download SVG",
     "downloadPng": "Download PNG",
     "downloadJpeg": "Download JPEG",
+    "downloadJson": "Download the diagram as JSON (tables, columns, relationships)",
     "close": "Close",
     "hint": "Click a domain group to collapse / expand · dashed lines connect collapsed domains",
     "resizeHandle": "Resize domain box ({{corner}})"

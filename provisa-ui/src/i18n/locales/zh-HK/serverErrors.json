@@ -328,7 +328,11 @@
       "replicate_contradicts_load_protected": "負載保護不能與複製 =「永不」同時使用：受負載保護的數據表永不被即時讀取",
       "table_registered_fields_omitted": "資料表「{{table}}」已註冊（id={{id}}）。因來源的憑證無權讀取而略過：{{fields}}",
       "table_not_readable": "此來源的憑證無權讀取 {{table}}：{{reason}}",
-      "table_too_complex": "資料表「{{table}}」未能以所選欄位註冊：{{reason}}。請選擇較少欄位。"
+      "table_too_complex": "資料表「{{table}}」未能以所選欄位註冊：{{reason}}。請選擇較少欄位。",
+      "role_revoked_from_table": "已從表 {{id}} 的授權中移除角色 '{{role}}'",
+      "role_revoked_from_object": "已從 {{kind}} '{{name}}' 中移除角色 '{{role}}'",
+      "grant_object_not_found": "沒有名為 '{{name}}' 的 {{kind}}",
+      "table_id_not_found": "找不到表 {{id}}"
     },
     "secrets": {
       "still_referenced": "本機構中仍有 {{count}} 個已儲存的值引用 {{secret}}。請更改或移除每一個，然後再次刪除。"

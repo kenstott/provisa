@@ -328,7 +328,11 @@
       "replicate_contradicts_load_protected": "La protección de carga no puede combinarse con Replicar = «Nunca»: una tabla protegida contra carga nunca se lee en vivo",
       "table_registered_fields_omitted": "Tabla '{{table}}' registrada (id={{id}}). Se omitieron, porque la credencial del origen no puede leerlos: {{fields}}",
       "table_not_readable": "La credencial de este origen no puede leer {{table}}: {{reason}}",
-      "table_too_complex": "La tabla '{{table}}' no se registró con las columnas seleccionadas: {{reason}}. Elija menos columnas."
+      "table_too_complex": "La tabla '{{table}}' no se registró con las columnas seleccionadas: {{reason}}. Elija menos columnas.",
+      "role_revoked_from_table": "Rol '{{role}}' quitado de las concesiones de la tabla {{id}}",
+      "role_revoked_from_object": "Rol '{{role}}' quitado de {{kind}} '{{name}}'",
+      "grant_object_not_found": "No hay ningún {{kind}} llamado '{{name}}'",
+      "table_id_not_found": "Tabla {{id}} no encontrada"
     },
     "secrets": {
       "still_referenced": "{{secret}} sigue siendo nombrado por {{count}} valor(es) almacenado(s) en esta organización. Cambie o quite cada uno y vuelva a eliminarlo."

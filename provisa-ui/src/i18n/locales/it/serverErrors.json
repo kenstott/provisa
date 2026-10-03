@@ -328,7 +328,11 @@
       "replicate_contradicts_load_protected": "La protezione dal carico non può essere combinata con Replicare = «Mai»: una tabella protetta dal carico non viene mai letta in tempo reale",
       "table_registered_fields_omitted": "Tabella '{{table}}' registrata (id={{id}}). Omessi, perché la credenziale dell'origine non può leggerli: {{fields}}",
       "table_not_readable": "La credenziale di questa origine non può leggere {{table}}: {{reason}}",
-      "table_too_complex": "La tabella '{{table}}' non è stata registrata con le colonne selezionate: {{reason}}. Scegliere meno colonne."
+      "table_too_complex": "La tabella '{{table}}' non è stata registrata con le colonne selezionate: {{reason}}. Scegliere meno colonne.",
+      "role_revoked_from_table": "Ruolo '{{role}}' rimosso dalle autorizzazioni della tabella {{id}}",
+      "role_revoked_from_object": "Ruolo '{{role}}' rimosso da {{kind}} '{{name}}'",
+      "grant_object_not_found": "Nessun {{kind}} chiamato '{{name}}'",
+      "table_id_not_found": "Tabella {{id}} non trovata"
     },
     "secrets": {
       "still_referenced": "{{secret}} è ancora nominato da {{count}} valore/i memorizzato/i in questa organizzazione. Modifica o rimuovi ciascuno, poi eliminalo di nuovo."
