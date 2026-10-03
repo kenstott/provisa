@@ -178,6 +178,13 @@ async def upsert(
 
 async def _upsert(conn: "Connection", table: Table, origin: str) -> int | None:
     domain_id = domain_policy.resolve_domain_id(table.domain_id)
+    from provisa.core.repositories.region import require_selected
+
+    await require_selected(  # REQ-1921: a table names one of its org's regions, or none
+        conn,
+        f"table {table.source_id}/{table.schema_name}.{table.table_name}",
+        getattr(table, "region", None),
+    )
     if getattr(table, "row_materialize", False):
         # A table a materialized view reads may not become row-level: refused here, the last
         # write gate, naming the views (provisa/mv/readable_inputs.py).
@@ -253,6 +260,7 @@ async def _upsert(conn: "Connection", table: Table, origin: str) -> int | None:
         "probe_type": getattr(table, "probe_type", None),
         "load_protected": getattr(table, "load_protected", None),  # REQ-1141
         "replicate": getattr(table, "replicate", None),  # REQ-826
+        "region": getattr(table, "region", None),  # REQ-1921
         "off_peak_window": getattr(table, "off_peak_window", None),  # REQ-1141
         "off_peak_tz": getattr(table, "off_peak_tz", None),  # REQ-1141
         # REQ-1865: never written here despite fetch_tables() SELECTing both columns and
@@ -305,6 +313,7 @@ async def _upsert(conn: "Connection", table: Table, origin: str) -> int | None:
         "probe_type",
         "load_protected",  # REQ-1141
         "replicate",  # REQ-826
+        "region",  # REQ-1921
         "off_peak_window",  # REQ-1141
         "off_peak_tz",  # REQ-1141
         "row_materialize",  # REQ-1865

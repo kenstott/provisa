@@ -33,6 +33,12 @@ from provisa.core.source_registry import (
     _PG_WIRE_TYPES,
     SOURCE_TO_DIALECT,
 )
+from provisa.core.regions import (
+    OrgRegion,
+    PlatformConfig,
+    StoreConfig,
+    validate_regions,
+)
 
 
 # The sentinel source id for DERIVED relations — defined by their declaration (view_sql,
@@ -240,6 +246,9 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # never (live wherever a live path exists); N > 0 = once a table passes N governed statements
     # per interval; 0 = always (the only guarantee; the source then has no live attach at all).
     replicate: int | None = None
+    # REQ-1921: the org region this source's data lives in (one of the org's ``regions``);
+    # None = no region. A table may name its own.
+    region: str | None = None
     # REQ-1141: mark this source LOAD-PROTECTED. Like replicate 0 it removes the live route
     # AND selects the SCHEDULED freshness discipline: the query path NEVER pulls the source — reads
     # always serve the last materialized snapshot — and the source is refreshed ONLY by the
@@ -969,6 +978,8 @@ class Table(
     # REQ-826: when this table is served from its replica (provisa.core.replicate): -1 never,
     # N > 0 once it passes N governed statements per interval, 0 always. None = its source's value.
     replicate: int | None = None
+    # REQ-1921: the org region this table's data lives in; None = its source's region.
+    region: str | None = None
     # REQ-1141: per-table load-protection override; None = inherit the source's load_protected.
     load_protected: bool | None = None
     # REQ-1141: per-table off-peak window override ("HH:MM-HH:MM"); None = inherit source window.
@@ -1999,6 +2010,11 @@ class SecurityConfig(BaseModel):  # REQ-693
 
 class ProvisaConfig(BaseModel):
     server: ServerConfig = Field(default_factory=ServerConfig)
+    # REQ-1921/1922: the platform's physical regions (a deployment key: a node reads them before
+    # it opens any store), and the regions this org selects with the stores it keeps in each.
+    platform: PlatformConfig = Field(default_factory=PlatformConfig)
+    stores: list[StoreConfig] = Field(default_factory=list)
+    regions: list[OrgRegion] = Field(default_factory=list)
     control_plane: ControlPlaneConfig = Field(default_factory=ControlPlaneConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)  # REQ-693
     multitenancy: bool = False
@@ -2075,6 +2091,11 @@ class ProvisaConfig(BaseModel):
     nl: NlConfig = Field(default_factory=NlConfig)
     govdata_sources: list[GovDataSource] = Field(default_factory=list)
     govdata_subscriptions: list[GovDataSubscription] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_regions(self) -> "ProvisaConfig":
+        validate_regions(self)  # REQ-1922
+        return self
 
     @model_validator(mode="after")
     def _validate_metrics(self) -> "ProvisaConfig":

@@ -204,6 +204,7 @@ def _reg(table_id: int, name: str, source_id: str = "pg", **settings) -> SimpleN
         "replicate": None,
         "load_protected": None,
         "change_signal": None,
+        "region": None,  # REQ-1921: it names no region
         "cache_ttl": None,
         "columns": [SimpleNamespace(name="id", native_filter_type=None)],
         "row_materialize": False,
@@ -322,6 +323,7 @@ def test_candidates_are_read_from_rows_as_the_registry_view_builds_them():
             "dq_contract": None,
             "alias": None,
             "change_signal": None,
+            "region": None,  # REQ-1921: it names no region
         }
         row.update(settings)
         return row

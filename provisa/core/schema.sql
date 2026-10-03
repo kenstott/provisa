@@ -1,5 +1,26 @@
 -- Provisa config DB schema. V1: no migrations, this file is source of truth.
 
+-- REQ-1921/1922: the stores an org keeps its data in, per region (a store is a connection URL,
+-- a secret reference), and the platform regions the org selects with the store for each kind of
+-- data there.
+CREATE TABLE IF NOT EXISTS stores (
+    id      TEXT PRIMARY KEY,
+    url     TEXT NOT NULL,
+    bound   BOOLEAN NOT NULL DEFAULT TRUE,  -- REQ-1491
+    origin  TEXT NOT NULL                   -- REQ-1919
+);
+
+CREATE TABLE IF NOT EXISTS org_regions (
+    id        TEXT PRIMARY KEY,
+    engine    TEXT NOT NULL,
+    replicas  TEXT NOT NULL,
+    views     TEXT NOT NULL,
+    cache     TEXT NOT NULL,
+    state     TEXT NOT NULL,
+    record    TEXT NOT NULL,
+    origin    TEXT NOT NULL  -- REQ-1919
+);
+
 CREATE TABLE IF NOT EXISTS sources (
     id            TEXT PRIMARY KEY,
     type          TEXT NOT NULL,
@@ -11,6 +32,7 @@ CREATE TABLE IF NOT EXISTS sources (
     cache_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     cache_ttl     INTEGER,
     replicate   INTEGER,  -- REQ-826: when this source's tables are served from replicas; NULL = global threshold, -1 never, N hot, 0 always
+    region      TEXT,     -- REQ-1921: the org region its data lives in; NULL = no region
     load_protected BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-1141: scheduled-refresh-only; query path never pulls the source
     off_peak_window TEXT,  -- REQ-1141: "HH:MM-HH:MM" maintenance window for the scheduler; NULL = no window gate
     off_peak_tz   TEXT NOT NULL DEFAULT 'UTC',  -- REQ-1141: IANA zone the off_peak_window is evaluated in
@@ -129,6 +151,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     cache_ttl   INTEGER,
     role_ttl    JSONB NOT NULL DEFAULT '{}',  -- REQ-1907: role -> TTL seconds; effective = max(cache_ttl, role_ttl)
     replicate   INTEGER,  -- REQ-826: NULL = inherit source; -1 never, N > 0 once it passes N statements per interval, 0 always
+    region      TEXT,     -- REQ-1921: the org region its data lives in; NULL = its source's
     load_protected BOOLEAN,  -- REQ-1141: NULL = inherit source; overrides scheduled-refresh-only load protection
     off_peak_window TEXT,    -- REQ-1141: per-table "HH:MM-HH:MM" window override; NULL = inherit source
     off_peak_tz TEXT,        -- REQ-1141: per-table window zone override; NULL = inherit source

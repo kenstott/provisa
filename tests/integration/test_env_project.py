@@ -30,9 +30,11 @@ from provisa.core.env_project import project
 from provisa.core.environments import org_schema
 from provisa.core.schema_org import (
     domains,
+    org_regions,
     registered_tables,
     relationships,
     sources,
+    stores,
     table_columns,
     tag_assignments,
     tracked_functions,
@@ -189,6 +191,26 @@ class TestABindingNeverReachesTheTree:
         assert "host" not in body
         assert "port" not in body
         assert "username" not in body
+
+    async def test_a_store_and_a_region_get_their_own_files(self, org):
+        """REQ-1921/1922: each store and each region an org selects is one file; where a store
+        points (its URL) is the environment's own and stays off the tree."""
+        await org.insert(stores, id="eu-pg", url="postgresql://eu/db", origin="admin")
+        await org.insert(
+            org_regions,
+            id="eu",
+            engine="eu-pg",
+            replicas="eu-pg",
+            views="eu-pg",
+            cache="eu-pg",
+            state="eu-pg",
+            record="eu-pg",
+            origin="admin",
+        )
+        tree = await org.tree()
+        assert "url" not in tree["stores/eu-pg.yaml"]
+        assert tree["regions/eu.yaml"]["state"] == "eu-pg"
+        assert tree["regions/eu.yaml"]["replicas"] == "eu-pg"
 
 
 class TestDeterminism:

@@ -57,6 +57,7 @@ _ROW = {
     "replicate": None,
     "load_protected": None,
     "change_signal": None,  # REQ-929: the table sets none
+    "region": None,  # REQ-1921: it names no region
     "columns": [],
 }
 

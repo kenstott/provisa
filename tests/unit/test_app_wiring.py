@@ -133,6 +133,7 @@ def _state(*, ready=True):
             "replicate": None,
             "load_protected": None,
             "change_signal": None,  # REQ-929: the table sets none
+            "region": None,  # REQ-1921: it names no region
         }
     ]
     registry = SimpleNamespace(get_enabled=lambda: [])
@@ -277,6 +278,7 @@ async def test_registered_checker_table_carries_its_contract_to_the_loop(monkeyp
                 "replicate": None,
                 "load_protected": None,
                 "change_signal": None,  # REQ-929: the table sets none
+                "region": None,  # REQ-1921: it names no region
             }
         ]
     )

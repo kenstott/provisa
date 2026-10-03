@@ -142,6 +142,8 @@ KINDS: dict[str, Kind] = {
     "kafka_source": Kind("kafka_sources", "id"),
     "remote_registration": Kind("provisa_sources", "id"),
     "event": Kind("events", "id"),
+    "store": Kind("stores", "id"),  # REQ-1922
+    "region": Kind("org_regions", "id"),  # REQ-1921
 }
 
 _P, _D = Standing.PART, Standing.DEPENDENT
@@ -249,6 +251,13 @@ REFERENCES: tuple[Reference, ...] = (
     # --- to a materialized view ----------------------------------------------------------------
     _part("mv_refresh_log", "mv_id", "materialized_view"),
     _part("mv_delta_ledger", "mv_id", "materialized_view"),
+    # --- to a store or a region (REQ-1921/1922) ------------------------------------------------
+    *(
+        _dep("org_regions", role, "store", "region", "id")
+        for role in ("engine", "replicas", "views", "cache", "state", "record")
+    ),
+    _dep("sources", "region", "region", "source", "id"),
+    _dep("registered_tables", "region", "region", "table", "id"),
     # --- to a calendar -------------------------------------------------------------------------
     _dep("materialized_views", "calendar", "calendar", "materialized_view", "id"),
     _dep("registered_tables", "mv_calendar", "calendar", "table", "id"),
