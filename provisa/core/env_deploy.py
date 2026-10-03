@@ -554,6 +554,13 @@ def _tags(
     for entry in entries:
         body = {k: v for k, v in entry.items() if k not in ("on", "at")}
         fragment = entry.get("on")
+        if body.get("origin") is None:
+            # REQ-1919: every model row records where it came from, and the tree carries it; an
+            # assignment arriving without one is refused, not given one.
+            raise DeployError(
+                f"{path!r} carries the tag {body.get('tag_id')!r} with no origin; every tag "
+                "assignment names where it came from (config, admin or seed)"
+            )
         if command_name is not None and fragment is not None:
             raise DeployError(
                 f"{path!r} carries a tag on {fragment!r}, but a command has no parts a fragment "

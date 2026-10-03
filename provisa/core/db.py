@@ -394,7 +394,10 @@ async def init_schema(
             # schema_sql is a multi-statement script (DO $$ blocks). Raw asyncpg
             # runs it natively; the control-plane Database shim auto-detects the
             # multi-statement case and routes to the raw driver.
-            await conn.execute(schema_sql)
+            from provisa.core import model_change
+
+            async with model_change.layout():  # REQ-1524: the layout is not a model change
+                await conn.execute(schema_sql)
     # Whatever schema.sql's hand-written ADD COLUMN blocks missed, the metadata supplies: a
     # column added to schema_org reaches an org schema created before it (see add_missing_columns).
     engine = getattr(pool, "engine", None)

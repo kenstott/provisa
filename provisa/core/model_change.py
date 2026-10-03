@@ -195,6 +195,20 @@ async def committed_by_caller() -> AsyncGenerator[None]:
         _SCOPE.reset(token)
 
 
+@asynccontextmanager
+async def layout() -> AsyncGenerator[None]:
+    """Laying out an org's schema (``schema.sql``: its DDL and the backfills that keep its own
+    columns whole, such as ``tag_assignments.base_tag_id``) is not a change of the model: it is
+    the same for every org and environment and changes nothing anyone authored. What it writes is
+    not recorded — a backfill run by a whole script reports no row count, so recording it would
+    count every boot of every org as a change (REQ-1524)."""
+    token = _SCOPE.set(_Scope(label="", actor=_system, discard=True))
+    try:
+        yield
+    finally:
+        _SCOPE.reset(token)
+
+
 def _message(current: _Scope, writes: list[tuple[str, str]]) -> str:
     if len(current.names) == 1:
         return current.names[0]

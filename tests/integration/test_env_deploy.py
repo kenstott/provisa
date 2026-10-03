@@ -416,3 +416,14 @@ class TestATagOnACommandSurvivesTheTrip:
         prod = await org.tree()
         await deploy_tree(org.db, org.id, ENV, prod, ref="deadbeef")
         assert await org.tree(ENV) == prod
+
+    async def test_a_tag_arriving_without_its_origin_is_refused_by_name(self, org):
+        """REQ-1919: every model row records where it came from; the deploy writes the origin the
+        tree carries and refuses an assignment that carries none, rather than inventing one."""
+        await self._seed_tagged_command(org)
+        tree = await org.tree()
+        (tag,) = tree["commands/refund_order.yaml"]["tags"]
+        assert tag["origin"] == "config"
+        del tag["origin"]
+        with pytest.raises(DeployError, match="tag 'deprecated' with no origin"):
+            await deploy_tree(org.db, org.id, ENV, tree, ref="deadbeef")

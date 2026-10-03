@@ -764,7 +764,7 @@ def test_org_build_wakes_the_shard_before_anything_asks_for_its_address():
 
     from provisa.api import app as app_module
 
-    src = inspect.getsource(app_module.build_org_runtime)
+    src = inspect.getsource(app_module._build_org_runtime)
     wake = src.index("ensure_shard_awake(")
     assert wake < src.index("_engine_generation(effective_shard)"), (
         "the generation is sampled before the wake"
@@ -782,7 +782,7 @@ def test_org_build_restores_the_shared_terminal_before_issuing_its_catalogs():
 
     from provisa.api import app as app_module
 
-    src = inspect.getsource(app_module.build_org_runtime)
+    src = inspect.getsource(app_module._build_org_runtime)
     restore = src.index("restore_shared_terminal(state,")
     assert src.index("ensure_shard_awake(") < restore, "the terminal is restored before the wake"
     assert restore < src.index("_seed_built_in_sources("), "the seed runs before the restore"
