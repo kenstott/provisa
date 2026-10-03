@@ -30123,7 +30123,7 @@
       schema.
   superseded_by: REQ-1926
 - id: REQ-997
-  status: complete
+  status: superseded
   since: 2026-07
   target: 2026-Q3
   group: 6. Execution, Routing, Caching & Performance
@@ -30164,8 +30164,9 @@
     And the BigQuery engine is never on the write path
 
     '
+  superseded_by: REQ-1926
 - id: REQ-998
-  status: complete
+  status: superseded
   since: 2026-07
   target: 2026-Q3
   group: 6. Execution, Routing, Caching & Performance
@@ -30196,8 +30197,9 @@
     Then the table is created and the operation succeeds
 
     '
+  superseded_by: REQ-1926
 - id: REQ-999
-  status: complete
+  status: superseded
   since: 2026-07
   target: 2026-Q3
   group: 6. Execution, Routing, Caching & Performance
@@ -30239,8 +30241,9 @@
     And the table is created in source_snowflake
 
     '
+  superseded_by: REQ-1926
 - id: REQ-1000
-  status: complete
+  status: superseded
   since: 2026-07
   target: 2026-Q3
   group: 6. Execution, Routing, Caching & Performance
@@ -30277,8 +30280,9 @@
     Then the operation succeeds without requiring catalog (unambiguous placement)
 
     '
+  superseded_by: REQ-1926
 - id: REQ-1001
-  status: complete
+  status: superseded
   since: 2026-07
   target: 2026-Q3
   group: 6. Execution, Routing, Caching & Performance
@@ -30304,8 +30308,9 @@
     And the operation fails atomically with no partial table left behind
 
     '
+  superseded_by: REQ-1926
 - id: REQ-1002
-  status: complete
+  status: superseded
   since: 2026-07
   target: 2026-Q3
   group: 6. Execution, Routing, Caching & Performance
@@ -30338,6 +30343,7 @@
     Then type is coerced to target''s supported DECIMAL range
 
     '
+  superseded_by: REQ-1926
 - id: REQ-1003
   status: complete
   since: 2026-07
@@ -30353,8 +30359,13 @@
   type: behavioral
   description: Extend the APScheduler-backed ScheduledTrigger (provisa/core/models.py:640) to support
     execution of a user-supplied SQL statement on its cron schedule, not only webhook POST. When a trigger
-    fires, the SQL statement executes against the federated engine. This enables scheduled CTAS snapshot/archive
-    patterns (REQ-996).
+    fires, the SQL statement executes against the federated engine. [SUPERSEDED by REQ-1926, 2026-10-03
+    -- a scheduled statement may not create tables; a snapshot or archive is an INSERT ... SELECT into
+    a declared table. Kept here for history; do not implement against it.] This enables scheduled CTAS
+    snapshot/archive patterns (REQ-996). [END SUPERSEDED BLOCK] (Amended 2026-10-03, A SCHEDULED STATEMENT
+    WRITES TO EXISTING TABLES ONLY:) A scheduled statement may not create a table (REQ-1926). It may only
+    insert into, update or delete from existing registered tables, through the one write admission (REQ-1925),
+    acting as the trigger's role. A snapshot or an archive is an INSERT ... SELECT into a declared table.
   use_case: Scheduled CTAS (CREATE TABLE ... AS SELECT) is the primary derived pattern from one-time CTAS
     (REQ-996), enabling snapshot and archive tables that update on a regular schedule without requiring
     external ETL orchestrators or manual user intervention. Users express scheduled snapshots as declarative
@@ -30381,9 +30392,14 @@
   type: behavioral
   description: Scheduled SQL statements support run-time substitution of date/timestamp tokens (e.g.,
     {{yyyymmdd}}, {{YYYY-MM-DD}}, {{iso8601}}, {{timestamp}}) into the statement text before execution.
-    Each run substitutes tokens with that run's execution date/time, enabling scheduled CTAS to produce
-    distinct date-varied table names (e.g., archive.orders_{{yyyymmdd}}) without collision or overwrite,
-    preserving the global schema.table uniqueness invariant (REQ-998) automatically. Depends on REQ-1003.
+    Each run substitutes tokens with that run's execution date/time, [SUPERSEDED by REQ-1926, 2026-10-03
+    -- a scheduled statement may not create tables, so a token never names a new table. Kept here for
+    history; do not implement against it.] enabling scheduled CTAS to produce distinct date-varied table
+    names (e.g., archive.orders_{{yyyymmdd}}) without collision or overwrite, preserving the global schema.table
+    uniqueness invariant (REQ-998) automatically. [END SUPERSEDED BLOCK] Depends on REQ-1003. (Amended
+    2026-10-03, TOKENS SUPPLY VALUES, NOT TABLE NAMES:) A date or timestamp token supplies a value to
+    the scheduled statement, such as the snapshot date written by an INSERT ... SELECT into a declared
+    table (REQ-1003). It does not name a table to be created.
   use_case: The snapshot/archive pattern requires each run to produce a uniquely-named table. Date tokens
     allow users to express target table names declaratively (e.g., archive.orders_{{yyyymmdd}}) so scheduled
     CTAS automatically creates archive.orders_20260712, archive.orders_20260713, etc. without manual collision
@@ -70201,11 +70217,11 @@
     stamp on the retirement record. A failed build is retried after `replication.retry_interval`. (Amended
     2026-10-03, A REPLICA IS NEVER CUT SHORT:) A build that reaches an API endpoint''s `max_pages`, or
     a GraphQL connection''s `max_rows`, while the remote still has more, fails with an error naming the
-    limit (`replication.page_limit_reached` and its row counterpart). A replica never holds a truncated
-    copy. (Amended 2026-10-03, NO WHOLE COPY, NO WHOLE BUILD:) A table that has no whole copy (parameterized
-    or row-level) is never built whole, by convergence, by the runner or by the read backstop. Its parameter-set
-    fills live in the store''s API cache schema, not in the control plane, and call the remote through
-    `call_api`.'
+    limit (`replication.page_limit_reached`, `replication.row_limit_reached`). A replica never holds a
+    truncated copy. (Amended 2026-10-03, NO WHOLE COPY, NO WHOLE BUILD:) A table that has no whole copy
+    (parameterized or row-level) is never built whole, by convergence, by the runner or by the read backstop.
+    Its parameter-set fills live in the store''s API cache schema, not in the control plane, and call
+    the remote through `call_api`.'
   use_case: An operator can set a large table to be replicated without taking the server down, and a reader
     either gets a complete answer from the replica or a clear statement that it is not ready yet.
   related_reqs:
