@@ -24,15 +24,15 @@ import os
 
 import pytest
 
+from tests.env_creds import unset
+
 pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
 
 pytest.importorskip("databricks.sql", reason="databricks-sql-connector required")
 
 _ENV = ("DATABRICKS_SERVER_HOSTNAME", "DATABRICKS_HTTP_PATH", "DATABRICKS_TOKEN")
 _HAVE_CREDS = all(os.environ.get(v) for v in _ENV)
-pytestmark.append(
-    pytest.mark.skipif(not _HAVE_CREDS, reason="Databricks warehouse creds not set (DATABRICKS_*)")
-)
+pytestmark.append(pytest.mark.skipif(not _HAVE_CREDS, reason=f"not set: {unset(*_ENV)}"))
 
 from provisa.compiler.context import build_context  # noqa: E402
 from provisa.compiler.introspect import ColumnMetadata  # noqa: E402
@@ -175,7 +175,7 @@ _COPY_SCHEMA = f"{_SCHEMA}_copy"  # its own schema so the COPY-INTO test never c
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(not _HAVE_R2, reason="R2 staging creds not set (bulk COPY INTO path)")
+@pytest.mark.skipif(not _HAVE_R2, reason=f"not set (bulk COPY INTO path): {unset(*_R2)}")
 async def test_databricks_bulk_copy_into_lands_large_batch(runtime):
     """A batch >= COPY_INTO_ROW_THRESHOLD lands via the REAL bulk COPY-INTO path (staged Parquet on R2
     → COPY INTO the Delta table), then reads back the exact row count + a sample value on the live

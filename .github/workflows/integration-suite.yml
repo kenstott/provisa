@@ -1,0 +1,299 @@
+name: Integration suite (containers)
+
+# The container-backed suite: tests/integration, tests/steps and tests/e2e, which provision their
+# own Docker Compose stacks (tests/conftest.py, tests/itest_stack.py), plus the Helm chart on a
+# minikube of its own. tests/unit runs in unit-tests.yml and is not repeated here.
+#
+# Lanes are scripts/test-all's (scripts/ci/run_lane.py holds them): each groups the tests whose
+# session-provisioned services fit one Docker host together. The two largest lanes are cut into
+# file shards so each job fits a runner. One test session per runner, so the harness's stack slot
+# (acquire_stack_slot) always admits it; the first step of every job prints the slot count.
+#
+# The warehouse lane uses live cloud warehouses and their credentials (repo secrets). It runs
+# nightly against the integration branch and on demand, not on every push. A warehouse test that
+# cannot run because something is not set FAILS, naming what (tests/skip_is_failure.py).
+#
+# Secrets reach only the jobs that need them (warehouse, e2e), and only on pushes to this
+# repository's own branches and on schedule/dispatch; there is no pull_request trigger here.
+
+on:
+  push:
+    branches: [integration, main]
+  schedule:
+    # Nightly, for the warehouse lane only (06:00 UTC). Scheduled runs use the default branch's
+    # copy of this file; the warehouse job checks out `integration` explicitly.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch or commit to test"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integration-suite-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  # The harness tears its own stacks down at session end; nothing is kept between steps.
+  PYTEST_DOCKER_KEEP: ""
+
+jobs:
+  suite:
+    name: ${{ matrix.lane }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }}
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { lane: core, shard: "1/6", timeout: 150 }
+          - { lane: core, shard: "2/6", timeout: 150 }
+          - { lane: core, shard: "3/6", timeout: 150 }
+          - { lane: core, shard: "4/6", timeout: 150 }
+          - { lane: core, shard: "5/6", timeout: 150 }
+          - { lane: core, shard: "6/6", timeout: 150 }
+          - { lane: app, shard: "1/3", timeout: 120 }
+          - { lane: app, shard: "2/3", timeout: 120 }
+          - { lane: app, shard: "3/3", timeout: 120 }
+          - { lane: hive_s3, timeout: 90 }
+          - { lane: kafka, timeout: 90 }
+          - { lane: neo4j, timeout: 90 }
+          - { lane: datastores, timeout: 90 }
+          - { lane: isolated, timeout: 90 }
+          - { lane: e2e, timeout: 120 }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - &install-uv
+        name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - &install-deps
+        name: Install dependencies
+        run: |
+          uv sync --frozen --extra dev
+          uv pip install -e "provisa-client/[dev]" -q
+
+      - &lane-key
+        name: Lane cache key
+        id: key
+        run: |
+          name="${{ matrix.lane }}-${{ matrix.shard }}"
+          echo "lane=${name//\//of}" >> "$GITHUB_OUTPUT"
+          echo "compose=${{ hashFiles('docker-compose.core.yml', 'docker-compose.test.yml', 'docker-compose.e2e.yml') }}" >> "$GITHUB_OUTPUT"
+
+      # Images this lane pulled last time, so a run is not dominated by pulls. Keyed on the compose
+      # files: a changed image tag is a new key.
+      - &restore-images
+        name: Restore images
+        id: images
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/images.tar.zst
+          key: images-${{ steps.key.outputs.lane }}-${{ steps.key.outputs.compose }}
+
+      - &load-images
+        name: Load images
+        if: steps.images.outputs.cache-hit == 'true'
+        run: zstd -dc ~/images.tar.zst | docker load
+
+      - &stack-slots
+        name: Stack slots on this runner
+        run: |
+          uv run python -c "from tests.itest_stack import concurrent_session_limit as n; \
+            print('docker stack slots on this runner:', n()); assert n() >= 1"
+
+      - name: Run lane
+        run: |
+          uv run python scripts/ci/run_lane.py ${{ matrix.lane }} \
+            ${{ matrix.shard && format('--shard {0}', matrix.shard) || '' }} \
+            --junitxml "results/${{ steps.key.outputs.lane }}/junit.xml"
+        env:
+          # The e2e lane's LLM-evaluation tests reach the live model.
+          ANTHROPIC_API_KEY: ${{ matrix.lane == 'e2e' && secrets.ANTHROPIC_API_KEY || '' }}
+
+      - &why
+        name: Containers that were not healthy
+        if: failure()
+        run: |
+          docker ps -a --format '{{.Names}}\t{{.Status}}'
+          for c in $(docker ps -a --filter health=unhealthy --filter status=exited --format '{{.Names}}'); do
+            echo "=== $c"; docker logs --tail 200 "$c" 2>&1
+          done
+
+      - &save-images
+        name: Save images
+        if: always() && steps.images.outputs.cache-hit != 'true'
+        run: docker save $(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -v '<none>') | zstd -T0 -3 -o ~/images.tar.zst
+
+      - &cache-images
+        name: Cache images
+        if: always() && steps.images.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/images.tar.zst
+          key: images-${{ steps.key.outputs.lane }}-${{ steps.key.outputs.compose }}
+
+      - &upload
+        name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-${{ steps.key.outputs.lane }}
+          path: results/
+          if-no-files-found: error
+
+  cluster:
+    name: cluster (helm on minikube)
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - *install-uv
+      - *install-deps
+
+      - name: Install minikube and helm
+        run: |
+          curl -fsSLo minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+          sudo install minikube /usr/local/bin/minikube
+          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      - name: Build the zaychik image the chart deploys
+        run: docker compose -f docker-compose.core.yml build zaychik && docker tag zaychik:latest provisa-zaychik:latest
+
+      # tests/e2e/test_helm_minikube.py builds provisa:latest, starts a minikube profile of its own
+      # under a kubeconfig of its own, installs the chart with auth.provider=local, and deletes the
+      # profile however it ends.
+      - name: Run lane
+        run: |
+          uv run python scripts/ci/run_lane.py cluster --junitxml results/cluster/junit.xml
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-cluster
+          path: results/
+          if-no-files-found: error
+
+  warehouse:
+    name: warehouse (live cloud warehouses)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+      SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+      DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_SERVER_HOSTNAME }}
+      DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
+      BIGQUERY_LOCATION: ${{ secrets.BIGQUERY_LOCATION }}
+      BIGQUERY_CONNECTION: ${{ secrets.BIGQUERY_CONNECTION }}
+      BIGQUERY_TEST_GCS_BUCKET: ${{ secrets.BIGQUERY_TEST_GCS_BUCKET }}
+      GSHEETS_TEST_SHEET_ID: ${{ secrets.GSHEETS_TEST_SHEET_ID }}
+      FABRIC_SQL_SERVER: ${{ secrets.FABRIC_SQL_SERVER }}
+      FABRIC_DATABASE: ${{ secrets.FABRIC_DATABASE }}
+      FABRIC_WORKSPACE_ID: ${{ secrets.FABRIC_WORKSPACE_ID }}
+      FABRIC_CAPACITY_NAME: ${{ secrets.FABRIC_CAPACITY_NAME }}
+      FABRIC_RESOURCE_GROUP: ${{ secrets.FABRIC_RESOURCE_GROUP }}
+      REDSHIFT_AWS_ACCESS_KEY_ID: ${{ secrets.REDSHIFT_AWS_ACCESS_KEY_ID }}
+      REDSHIFT_AWS_SECRET_ACCESS_KEY: ${{ secrets.REDSHIFT_AWS_SECRET_ACCESS_KEY }}
+      REDSHIFT_AWS_REGION: ${{ secrets.REDSHIFT_AWS_REGION }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_ENDPOINT_OVERRIDE: ${{ secrets.AWS_ENDPOINT_OVERRIDE }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      SP_AUTH_TYPE: ${{ secrets.SP_AUTH_TYPE }}
+      SP_CLIENT_ID: ${{ secrets.SP_CLIENT_ID }}
+      SP_CLIENT_SECRET: ${{ secrets.SP_CLIENT_SECRET }}
+      SP_SITE_URL: ${{ secrets.SP_SITE_URL }}
+      SP_TENANT_ID: ${{ secrets.SP_TENANT_ID }}
+      # Synapse provisions through the Azure CLI, logged in as this service principal.
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Nightly: the integration branch. On demand: the ref asked for.
+          ref: ${{ github.event_name == 'schedule' && 'integration' || inputs.ref || github.sha }}
+      - *install-uv
+      - *install-deps
+
+      # Every credential the lane needs, checked before anything runs: a missing one fails the lane
+      # by name rather than surfacing as a skipped test.
+      - name: Credentials present
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+        run: |
+          missing=""
+          for v in SNOWFLAKE_ACCOUNT SNOWFLAKE_USER SNOWFLAKE_PASSWORD SNOWFLAKE_WAREHOUSE \
+                   SNOWFLAKE_DATABASE DATABRICKS_SERVER_HOSTNAME DATABRICKS_HTTP_PATH \
+                   DATABRICKS_TOKEN GOOGLE_CLOUD_PROJECT GOOGLE_APPLICATION_CREDENTIALS_JSON \
+                   BIGQUERY_LOCATION BIGQUERY_TEST_GCS_BUCKET GSHEETS_TEST_SHEET_ID \
+                   FABRIC_SQL_SERVER FABRIC_DATABASE FABRIC_WORKSPACE_ID \
+                   REDSHIFT_AWS_ACCESS_KEY_ID REDSHIFT_AWS_SECRET_ACCESS_KEY \
+                   AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_OVERRIDE \
+                   CLOUDFLARE_ACCOUNT_ID SP_CLIENT_ID SP_CLIENT_SECRET SP_SITE_URL SP_TENANT_ID \
+                   AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_TENANT_ID; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::warehouse lane cannot run; repo secrets not set:$missing"
+            exit 1
+          fi
+          printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > "$RUNNER_TEMP/gcp-key.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/gcp-key.json" >> "$GITHUB_ENV"
+
+      - name: Azure CLI login (Synapse provisioning)
+        run: az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID" --output none
+
+      - *stack-slots
+
+      - name: Run lane
+        run: uv run python scripts/ci/run_lane.py warehouse --junitxml results/warehouse/junit.xml
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-warehouse
+          path: results/
+          if-no-files-found: error
+
+  report:
+    name: results by lane
+    needs: [suite, cluster, warehouse]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: lane-*
+          path: artifacts
+          merge-multiple: true
+      - name: Table
+        run: |
+          set -o pipefail
+          python3 scripts/ci/lane_report.py artifacts \
+            "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
