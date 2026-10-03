@@ -37,6 +37,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from provisa.compiler.sql_literals import sql_literal
 from provisa.core.ir_types import to_ir
 
 from provisa.federation.landed_keys import KeyTarget, Parts
@@ -83,8 +84,10 @@ def identifier(raw: str) -> str:
     return name
 
 
-def _escape(value: str) -> str:
-    return value.replace("'", "''")
+def _literal(value: str) -> str:
+    """``value`` as a Snowflake string literal. Snowflake reads a backslash inside a string as an
+    escape, so the dialect's one literal rule (``sql_literal``) escapes it as well as the quote."""
+    return sql_literal(value, "snowflake")
 
 
 def ddl_type(ir_type: str) -> str:
@@ -124,7 +127,7 @@ def existing_columns(cur: Any, parts: Parts) -> list[str]:
     database, schema, table = parts
     cur.execute(
         f'SELECT column_name FROM "{database}".information_schema.columns '
-        f"WHERE table_schema = '{_escape(schema)}' AND table_name = '{_escape(table)}' "
+        f"WHERE table_schema = {_literal(schema)} AND table_name = {_literal(table)} "
         "ORDER BY ordinal_position"
     )
     return [str(r[0]) for r in cur.fetchall()]
@@ -158,8 +161,8 @@ def existing_tags(cur: Any, tags_database: str, parts: Parts) -> ObjectTags:
     """Every PROVISA_GOVERNANCE tag set on the object and its columns (one read per object)."""
     cur.execute(
         f'SELECT level, column_name, tag_name, tag_value FROM TABLE("{tags_database}"'
-        f".information_schema.tag_references_all_columns('{_escape(qualified(parts))}', 'table')) "
-        f"WHERE tag_database = '{_escape(tags_database)}' AND tag_schema = '{TAGS_SCHEMA}'"
+        f".information_schema.tag_references_all_columns({_literal(qualified(parts))}, 'table')) "
+        f"WHERE tag_database = {_literal(tags_database)} AND tag_schema = '{TAGS_SCHEMA}'"
     )
     out = ObjectTags(table={}, columns={})
     for level, column, tag, value in cur.fetchall():
@@ -289,7 +292,7 @@ def view_reads(cur: Any, view: Parts, replica: Parts) -> bool | None:
     database, schema, table = view
     cur.execute(
         f'SELECT view_definition FROM "{database}".information_schema.views '
-        f"WHERE table_schema = '{_escape(schema)}' AND table_name = '{_escape(table)}'"
+        f"WHERE table_schema = {_literal(schema)} AND table_name = {_literal(table)}"
     )
     rows = cur.fetchall()
     if not rows:
@@ -324,13 +327,13 @@ def existing_comments(cur: Any, parts: Parts) -> tuple[str, dict[str, str]]:
     database, schema, table = parts
     cur.execute(
         f'SELECT comment FROM "{database}".information_schema.tables '
-        f"WHERE table_schema = '{_escape(schema)}' AND table_name = '{_escape(table)}'"
+        f"WHERE table_schema = {_literal(schema)} AND table_name = {_literal(table)}"
     )
     rows = cur.fetchall()
     table_comment = str(rows[0][0] or "") if rows else ""
     cur.execute(
         f'SELECT column_name, comment FROM "{database}".information_schema.columns '
-        f"WHERE table_schema = '{_escape(schema)}' AND table_name = '{_escape(table)}'"
+        f"WHERE table_schema = {_literal(schema)} AND table_name = {_literal(table)}"
     )
     return table_comment, {str(c): str(comment or "") for c, comment in cur.fetchall()}
 
@@ -356,13 +359,11 @@ def comment_statements(
             current_table, current_columns = existing.get(parts, ("", {}))
             fq = f"ALTER {kind} {qualified(parts)}"
             if needs(current_table, target.description):
-                stmts.append(f"{fq} SET COMMENT = '{_escape(target.description)}'")
+                stmts.append(f"{fq} SET COMMENT = {_literal(target.description)}")
             column_verb = "ALTER COLUMN" if kind == "VIEW" else "MODIFY COLUMN"
             for column, description in sorted((target.column_descriptions or {}).items()):
                 if needs(current_columns.get(column, ""), description):
-                    stmts.append(
-                        f"{fq} {column_verb} \"{column}\" COMMENT '{_escape(description)}'"
-                    )
+                    stmts.append(f'{fq} {column_verb} "{column}" COMMENT {_literal(description)}')
     return stmts
 
 
@@ -432,7 +433,7 @@ def key_tag_statements(
     def col_tag(view: Parts, column: str, tag: str, value: str) -> str:
         return (
             f'ALTER VIEW {qualified(view)} MODIFY COLUMN "{column}" '
-            f"SET TAG {tag_fq(tag)} = '{_escape(value)}'"
+            f"SET TAG {tag_fq(tag)} = {_literal(value)}"
         )
 
     stmts: list[str] = []
@@ -507,7 +508,7 @@ def model_tag_statements(
             for tag, value in sorted(wanted_table.items()):
                 used.add(tag)
                 if current.table.get(tag) != value:
-                    stmts.append(f"{fq} SET TAG {tag_fq(tag)} = '{_escape(value)}'")
+                    stmts.append(f"{fq} SET TAG {tag_fq(tag)} = {_literal(value)}")
             for tag in sorted((set(current.table) & known) - set(wanted_table)):
                 stmts.append(f"{fq} UNSET TAG {tag_fq(tag)}")
             column_verb = "ALTER COLUMN" if kind == "VIEW" else "MODIFY COLUMN"
@@ -519,7 +520,7 @@ def model_tag_statements(
                     if have.get(tag) != value:
                         stmts.append(
                             f'{fq} {column_verb} "{column}" SET TAG {tag_fq(tag)} = '
-                            f"'{_escape(value)}'"
+                            f"{_literal(value)}"
                         )
                 for tag in sorted((set(have) & known) - set(wanted)):
                     stmts.append(f'{fq} {column_verb} "{column}" UNSET TAG {tag_fq(tag)}')

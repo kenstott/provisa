@@ -57,6 +57,7 @@ from urllib.parse import urlsplit
 
 import yaml
 
+from provisa.compiler.sql_literals import sql_literal
 from provisa.api.metadata_export.model import AssetKind
 from provisa.api.metadata_export.provider import (
     AssetError,
@@ -91,8 +92,10 @@ def _identifier(raw: str) -> str:
     return name
 
 
-def _escape(value: str) -> str:
-    return value.replace("'", "''")
+def _literal(value: str) -> str:
+    """``value`` as a Snowflake string literal. Snowflake reads a backslash inside a string as an
+    escape, so the dialect's one literal rule (``sql_literal``) escapes it as well as the quote."""
+    return sql_literal(value, "snowflake")
 
 
 def physical_parts(ref: "AssetRef") -> tuple[str, str, str]:
@@ -131,14 +134,14 @@ def _set_comment(kind: str, parts: tuple[str, str, str], column: str | None, tex
     fails with "Object found is of type 'VIEW', not specified type 'TABLE'" (confirmed live) —
     the caller must pass the object's real ``kind`` (from :func:`_object_kind`)."""
     database, schema, table = parts
-    escaped = _escape(text)
+    literal = _literal(text)
     verb = "ALTER VIEW" if kind == "VIEW" else "ALTER TABLE"
     fq = f'{verb} "{database}"."{schema}"."{table}"'
     if column is None:
-        return f"{fq} SET COMMENT = '{escaped}';"
+        return f"{fq} SET COMMENT = {literal};"
     if kind == "VIEW":
-        return f"{fq} ALTER COLUMN \"{column}\" COMMENT '{escaped}';"
-    return f"{fq} MODIFY COLUMN \"{column}\" COMMENT '{escaped}';"
+        return f'{fq} ALTER COLUMN "{column}" COMMENT {literal};'
+    return f'{fq} MODIFY COLUMN "{column}" COMMENT {literal};'
 
 
 def _governance_note(tags: list["GovernanceTag"]) -> str:
@@ -227,7 +230,7 @@ def share_statements(
     ``REFERENCE_USAGE`` grant, then the ``SELECT`` grants that need it."""
     stmts = [
         f'CREATE SHARE IF NOT EXISTS "{share_name}" '
-        f"SECURE_OBJECTS_ONLY = FALSE COMMENT = '{_escape(description)}';",
+        f"SECURE_OBJECTS_ONLY = FALSE COMMENT = {_literal(description)};",
         f'ALTER SHARE "{share_name}" SET SECURE_OBJECTS_ONLY = FALSE;',
     ]
     granted_databases: set[str] = set()
@@ -473,7 +476,7 @@ def _object_kind(runtime: SnowflakeFederationRuntime, parts: tuple[str, str, str
     database, schema, table = parts
     cur = runtime.connection.cursor()
     try:
-        cur.execute(f'SHOW OBJECTS LIKE \'{_escape(table)}\' IN SCHEMA "{database}"."{schema}"')
+        cur.execute(f'SHOW OBJECTS LIKE {_literal(table)} IN SCHEMA "{database}"."{schema}"')
         cols = [d[0] for d in cur.description]
         row = cur.fetchone()
         return str(dict(zip(cols, row))["kind"]).upper() if row is not None else None
