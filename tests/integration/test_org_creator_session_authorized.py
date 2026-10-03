@@ -169,7 +169,7 @@ def planes(monkeypatch):
     # of them, and naming a subset means every new build argument breaks the fixture instead of the
     # code under test.
     async def _fake_build(org_id, **_kwargs):  # noqa: ARG001
-        return types.SimpleNamespace(tenant_db=tenant_db)
+        return types.SimpleNamespace(model_db=tenant_db, tenant_db=tenant_db)
 
     async def _noop_provision(*_args, **_kwargs):
         return None

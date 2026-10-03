@@ -1333,9 +1333,12 @@ export async function runSql(
     };
     if (statsEnabled) headers["X-Provisa-Stats"] = "true";
     const resp = await fetch(`${API_BASE_RAW}/data/sql`, {
+      // The acting role travels ONLY in X-Provisa-Role. Under "Role: All" that header is the
+      // comma-separated set; a body `role` repeating it is refused as a mismatch (data.role_mismatch,
+      // api/acting_role.py), because the server's acting role is one member of the set.
       method: "POST",
       headers,
-      body: JSON.stringify({ sql: sqlText, role }),
+      body: JSON.stringify({ sql: sqlText }),
     });
     if (!resp.ok) {
       const text = await resp.text();
@@ -1392,7 +1395,7 @@ export async function explainSql(
       Accept: "application/json",
       "X-Provisa-Role": role,
     },
-    body: JSON.stringify({ sql: sqlText, role, analyze }),
+    body: JSON.stringify({ sql: sqlText, analyze }),
   });
   if (!resp.ok) throw new Error(await resp.text());
   return resp.json();
@@ -1407,7 +1410,7 @@ export async function nlToSql(
     const resp = await fetch(`${API_BASE_RAW}/data/nl-to-sql`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Provisa-Role": role },
-      body: JSON.stringify({ question, role, strict }),
+      body: JSON.stringify({ question, strict }),
     });
     if (!resp.ok) {
       const text = await resp.text();
@@ -1556,6 +1559,7 @@ export interface ScheduledTask {
   webhookUrl: string | null;
   kind: string;
   sql: string | null;
+  role: string | null;
   enabled: boolean;
   lastRunAt: string | null;
   nextRunAt: string | null;
@@ -1876,7 +1880,7 @@ export async function submitNlQuery(
   const res = await fetch(`${API_BASE}/query/nl`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Provisa-Role": role },
-    body: JSON.stringify({ q, role, strict }),
+    body: JSON.stringify({ q, strict }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: res.statusText }));

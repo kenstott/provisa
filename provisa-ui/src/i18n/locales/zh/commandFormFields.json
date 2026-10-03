@@ -14,8 +14,6 @@
     "selectTable": "选择表...",
     "visibleTo": "可见角色（逗号分隔）",
     "visibleToPlaceholder": "admin, analyst",
-    "writableBy": "可写角色（逗号分隔）",
-    "writableByPlaceholder": "admin",
     "url": "URL",
     "urlPlaceholder": "https://api.example.com/action",
     "method": "方法",

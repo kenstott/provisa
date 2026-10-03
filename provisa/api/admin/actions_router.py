@@ -66,7 +66,6 @@ def _row_to_function(row: dict) -> dict:
         "returns": row["returns"],
         "arguments": _args_to_ui(row["arguments"]),
         "visibleTo": list(row["visible_to"] or []),
-        "writableBy": list(row["writable_by"] or []),
         "domainId": row["domain_id"],
         "description": row.get("description"),
         "kind": row.get("kind", "mutation"),
@@ -104,12 +103,12 @@ async def list_actions(request: Request):  # REQ-205, REQ-209
     require_capability_request(request, "table_registration")
     from provisa.api.app import state
 
-    if state.tenant_db is None:
+    if state.model_db is None:
         raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
     from provisa.core.repositories import creation_request as cr_repo
 
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:
         fn_result = await conn.execute_core(
             select(tracked_functions).order_by(tracked_functions.c.name)
         )
@@ -142,7 +141,6 @@ class FunctionInput(BaseModel):  # REQ-205, REQ-206, REQ-304, REQ-305, REQ-306
     returns: str = ""
     arguments: list[dict] = []
     visibleTo: list[str] = []
-    writableBy: list[str] = []
     domainId: str = ""
     description: str | None = None
     kind: str = "mutation"
@@ -243,7 +241,7 @@ async def create_function(
     from provisa.core.models import DatasetColumn, Function, FunctionArgument
     from provisa.core.repositories import function as function_repo
 
-    if state.tenant_db is None:
+    if state.model_db is None:
         raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
     func = Function(
@@ -254,7 +252,6 @@ async def create_function(
         returns=body.returns,
         arguments=[FunctionArgument(**a) for a in _args_from_ui(body.arguments)],
         visible_to=body.visibleTo,
-        writable_by=body.writableBy,
         domain_id=body.domainId,
         description=body.description,
         kind=body.kind,
@@ -273,7 +270,7 @@ async def create_function(
         ),
     )
     # return_schema is a JSON column — pass the Python object directly (no double-encoding).
-    async with state.tenant_db.acquire() as _conn:
+    async with state.model_db.acquire() as _conn:
         await function_repo.upsert_function(
             _conn, func, return_schema=body.returnSchema, origin="admin"
         )
@@ -296,12 +293,12 @@ async def update_function(
     _check_written_table(body)
     from provisa.api.app import state
 
-    if state.tenant_db is None:
+    if state.model_db is None:
         raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
     from provisa.core.repositories import data_product as data_product_repo
 
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:
         # REQ-1531: moving it needs the domain it is moved out of as well.
         await _require_its_domain(request, conn, tracked_functions, name)
         if body.productId is not None:
@@ -331,7 +328,6 @@ async def update_function(
                 returns=body.returns,
                 arguments=_args_from_ui(body.arguments),
                 visible_to=body.visibleTo,
-                writable_by=body.writableBy,
                 domain_id=body.domainId,
                 description=body.description,
                 kind=body.kind,
@@ -379,10 +375,10 @@ async def delete_function(request: Request, name: str):  # REQ-205, REQ-253
     require_capability_request(request, "table_registration")
     from provisa.api.app import state
 
-    if state.tenant_db is None:
+    if state.model_db is None:
         raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:
         await _require_its_domain(request, conn, tracked_functions, name)
         from provisa.core.repositories import function as function_repo
 
@@ -407,12 +403,12 @@ async def create_webhook(
     body.domainId = _saved_domain(request, body.name, body.domainId)
     from provisa.api.app import state
 
-    if state.tenant_db is None:
+    if state.model_db is None:
         raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
     from provisa.core.repositories import creation_request as cr_repo
 
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:
         await conn.upsert(
             tracked_webhooks,
             {
@@ -480,10 +476,10 @@ async def update_webhook(request: Request, name: str, body: WebhookInput):  # RE
     body.domainId = _saved_domain(request, name, body.domainId)
     from provisa.api.app import state
 
-    if state.tenant_db is None:
+    if state.model_db is None:
         raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:
         # REQ-1531: moving it needs the domain it is moved out of as well.
         await _require_its_domain(request, conn, tracked_webhooks, name)
         result = await conn.execute_core(
@@ -520,10 +516,10 @@ async def delete_webhook(request: Request, name: str):  # REQ-209, REQ-253
     require_capability_request(request, "table_registration")
     from provisa.api.app import state
 
-    if state.tenant_db is None:
+    if state.model_db is None:
         raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:
         await _require_its_domain(request, conn, tracked_webhooks, name)
         from provisa.core.repositories import function as function_repo
 
@@ -638,7 +634,7 @@ async def test_action(request: Request, body: TestActionInput):  # REQ-004, REQ-
 
     from provisa.api.app import state
 
-    if state.tenant_db is None:
+    if state.model_db is None:
         raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
     if body.actionType == "function":
@@ -736,7 +732,7 @@ async def test_action(request: Request, body: TestActionInput):  # REQ-004, REQ-
         return {"rows": raw_rows}
 
     elif body.actionType == "webhook":
-        async with state.tenant_db.acquire() as conn:
+        async with state.model_db.acquire() as conn:
             result = await conn.execute_core(
                 select(tracked_webhooks).where(tracked_webhooks.c.name == body.name)
             )

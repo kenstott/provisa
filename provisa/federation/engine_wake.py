@@ -340,7 +340,7 @@ async def restore_shared_terminal(state: Any, shard: str) -> None:
         )
     config = getattr(state, "config", None)
     if config is not None:
-        async with state.tenant_db.acquire() as conn:
+        async with state.model_db.acquire() as conn:
             failed = await load_config(
                 config,
                 conn,

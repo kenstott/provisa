@@ -14,8 +14,6 @@
     "selectTable": "Sélectionner une table…",
     "visibleTo": "Visible par (rôles, séparés par des virgules)",
     "visibleToPlaceholder": "admin, analyst",
-    "writableBy": "Modifiable par (rôles, séparés par des virgules)",
-    "writableByPlaceholder": "admin",
     "url": "URL",
     "urlPlaceholder": "https://api.example.com/action",
     "method": "Méthode",

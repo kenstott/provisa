@@ -51,7 +51,7 @@ def org(monkeypatch):
     monkeypatch.setattr(org_settings_mod, "resolve_org_config", _resolve)
     monkeypatch.setattr(
         "provisa.api.app.state",
-        types.SimpleNamespace(tenant_db=object(), config=object()),
+        types.SimpleNamespace(model_db=(_one_db := object()), tenant_db=_one_db, config=object()),
         raising=False,
     )
 

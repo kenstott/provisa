@@ -57,8 +57,8 @@ log = logging.getLogger(__name__)
 async def _get_pool() -> "Database":
     from provisa.api.app import state
 
-    assert state.tenant_db is not None
-    return state.tenant_db
+    assert state.model_db is not None
+    return state.model_db
 
 
 async def _dynamic_openapi_columns(base_url: str, query) -> list[dict]:
@@ -468,7 +468,7 @@ async def _call_llm(prompt: str, operation: str, max_tokens: int = 256) -> str:
     from provisa.core.org_secrets import read_org_api_keys
     from provisa.llm.client import ProvisaLLMClient
 
-    api_keys = await read_org_api_keys(state.tenant_db) if state.tenant_db else None
+    api_keys = await read_org_api_keys(state.model_db) if state.model_db else None
     client = ProvisaLLMClient(operation, api_keys=api_keys)
     return await client.complete(
         prompt, system="You are a data catalog assistant.", max_tokens=max_tokens

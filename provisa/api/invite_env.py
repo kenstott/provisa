@@ -86,7 +86,7 @@ async def redeem_env(invite: dict, user_id: str) -> RedeemedEnv:
     if policy != ENV_POLICY_PER_VISITOR:
         raise ValueError(f"unknown invite env_policy {policy!r}")
 
-    from provisa.api.admin.orgs_router import _org_tenant_db
+    from provisa.api.admin.orgs_router import _org_model_db
     from provisa.api.app import state
     from provisa.core.env_create import create_environment
     from provisa.core.env_store import get_env, set_expiry
@@ -130,7 +130,7 @@ async def redeem_env(invite: dict, user_id: str) -> RedeemedEnv:
             state,
             state.admin_db,
             state.tenant_db,
-            await _org_tenant_db(org_id),
+            await _org_model_db(org_id),
             org_id,
             name,
             from_env=source_env,
@@ -161,10 +161,10 @@ async def redeem_env(invite: dict, user_id: str) -> RedeemedEnv:
     return RedeemedEnv(name, minted=True)
 
 
-async def seat_redeemed_roles(tenant_db, user_id: str, role_id: str) -> None:
+async def seat_redeemed_roles(model_db, user_id: str, role_id: str) -> None:
     """Write the role assignments a redemption confers, into the environment it was pinned to.
 
-    ``tenant_db`` is the redeemer's OWN environment's runtime, not prod's -- an env-bearing invite
+    ``model_db`` is the redeemer's OWN environment's runtime, not prod's -- an env-bearing invite
     (REQ-1595) resolves roles out of the schema it pinned the member to, so an assignment written to
     prod is one the redeemer never has.
 
@@ -189,10 +189,10 @@ async def seat_redeemed_roles(tenant_db, user_id: str, role_id: str) -> None:
     from provisa.core.org_membership import grant_org_role
     from provisa.security.rights import DEPLOYMENT_GRANTER
 
-    await grant_org_role(tenant_db, user_id, role_id, granter_capabilities=DEPLOYMENT_GRANTER)
+    await grant_org_role(model_db, user_id, role_id, granter_capabilities=DEPLOYMENT_GRANTER)
     if role_id == SANDBOX_ROLE:
         await grant_org_role(
-            tenant_db, user_id, "org_admin", granter_capabilities=DEPLOYMENT_GRANTER
+            model_db, user_id, "org_admin", granter_capabilities=DEPLOYMENT_GRANTER
         )
 
 

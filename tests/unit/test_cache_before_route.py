@@ -78,6 +78,7 @@ def pipe(monkeypatch):
     state.org_id = "org-a"
     state.model_stamp = 1
     state.tenant_db = None
+    state.model_db = state.tenant_db
     state.federation_engine = _Source(lambda sql, params: [(params[0],)])
     monkeypatch.setattr(app_mod, "state", state, raising=False)
 
@@ -128,6 +129,7 @@ async def test_a_raw_sql_hit_does_no_route_work(pipe):
     assert pipe.counts["route"] == 1 and len(pipe.state.federation_engine.statements) == 1
     before = dict(pipe.counts)
     pipe.state.tenant_db = _ControlPlane()  # any control-plane statement fails the request
+    pipe.state.model_db = pipe.state.tenant_db
 
     for _ in range(3):
         plan, again = await _raw(pipe, _CACHED, [7])
@@ -214,6 +216,7 @@ async def test_a_compiled_hit_does_no_route_work(pipe):
     assert plan.route == Route.DIRECT and first.rows == [(7,)]
     before = dict(pipe.counts)
     pipe.state.tenant_db = _ControlPlane()
+    pipe.state.model_db = pipe.state.tenant_db
     plan, again = await _compiled()
     assert plan.route == Route.CACHE and again.rows == [(7,)]
     assert pipe.counts == before
@@ -223,7 +226,7 @@ async def test_a_compiled_hit_does_no_route_work(pipe):
         _PLAIN,
         "analyst",
         exec_params=[7],
-        state=SimpleNamespace(**{**vars(pipe.state), "tenant_db": None}),
+        state=SimpleNamespace(**{**vars(pipe.state), "model_db": None, "tenant_db": None}),
         cache_hint=NO_CACHE_HINT,
         serve_cached=True,
     )

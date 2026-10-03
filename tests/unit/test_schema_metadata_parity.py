@@ -43,6 +43,8 @@ SCHEMA_SQL = Path(__file__).parents[2] / "provisa" / "core" / "schema.sql"
 # control plane, which may be any SQLAlchemy backend). It has no raw-SQL DDL to
 # mirror, so it is excluded from SQL<->metadata parity and asserted structurally.
 REGISTRY_ONLY_TABLES = {
+    # REQ-1916: the platform state store's cluster node list. Portable metadata only.
+    "cluster_nodes",
     "orgs",
     "user_profiles",
     "user_org_memberships",

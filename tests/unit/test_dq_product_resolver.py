@@ -88,7 +88,8 @@ def _state(monkeypatch):
             (1, "wh", "sales", "sales", "orders"), (2, "dq", "sales", "quality", "orders_scans")
         ),
         source_types={"dq": "soda", "wh": "postgresql"},
-        tenant_db=SimpleNamespace(acquire=lambda: conn),
+        model_db=(_one_db := SimpleNamespace(acquire=lambda: conn)),
+        tenant_db=_one_db,
     )
     monkeypatch.setattr("provisa.api.app.state", st, raising=False)
     return conn

@@ -51,6 +51,12 @@ def _recv_timeout() -> int:
 # REQ-1393: Neo4j's own code for a rejected-because-throttled login, so a driver reports the
 # lockout as a lockout rather than as one more wrong password.
 _RATE_LIMIT_CODE = "Neo.ClientError.Security.AuthenticationRateLimit"
+_ARGUMENT_ERROR = "Neo.ClientError.Statement.ArgumentError"
+# An HTTP status from the shared command executor, as the Neo4j error a Bolt client reads.
+_BOLT_CODE_FOR_STATUS = {
+    403: "Neo.ClientError.Security.Forbidden",
+    404: "Neo.ClientError.Procedure.ProcedureNotFound",
+}
 
 
 def _scheme_of(meta: dict) -> str:
@@ -596,6 +602,19 @@ class BoltSession:
             if isinstance(exc, PermissionError):
                 self.send_failure("Neo.ClientError.Security.Forbidden", str(exc))
                 return
+            from starlette.exceptions import HTTPException as _HTTPException
+
+            from provisa.cypher.command_call import CommandCallRefused
+
+            if isinstance(exc, _HTTPException):
+                # The shared executor's answer (a command call): said in Neo4j's terms.
+                self.send_failure(
+                    _BOLT_CODE_FOR_STATUS.get(exc.status_code, _ARGUMENT_ERROR), exc.detail
+                )
+                return
+            if isinstance(exc, CommandCallRefused):
+                self.send_failure(_ARGUMENT_ERROR, str(exc))
+                return
             import logging as _logging
             import traceback as _tb
 
@@ -1084,8 +1103,8 @@ async def _impute_relationships(
     """
     from provisa.compiler.naming import apply_cql_property as _cql_prop
 
-    tenant_db = getattr(app_state, "tenant_db", None)
-    if tenant_db is None:
+    model_db = getattr(app_state, "model_db", None)
+    if model_db is None:
         return ["r"], []
 
     raw_ids = list(parameters.get("existingNodeIds") or []) + list(
@@ -1105,7 +1124,7 @@ async def _impute_relationships(
 
     from provisa.core.schema_org import node_ids
 
-    async with tenant_db.acquire() as conn:
+    async with model_db.acquire() as conn:
         result = await conn.execute_core(
             select(node_ids.c.id, node_ids.c.label, node_ids.c.composite_id).where(
                 node_ids.c.id.in_(int_ids)
@@ -1161,12 +1180,6 @@ async def _impute_relationships(
     return ["r"], edges
 
 
-_CALL_CMD_RE = re.compile(
-    r"^\s*CALL\s+([A-Za-z_]\w*)\s*\((.*?)\)\s*(?:YIELD\b.*)?;?\s*$",
-    re.IGNORECASE | re.DOTALL,
-)
-
-
 def _parse_call_arg(tok: str) -> Any:
     """Coerce one CALL argument literal to a Python value (string/number/bool/null)."""
     tok = tok.strip()
@@ -1205,35 +1218,21 @@ def _command_signature(cmd: dict) -> str:
 
 
 async def _maybe_invoke_command_call(
-    cypher: str, role_id: str, app_state
+    cypher: str, parameters: dict, role_id: str, app_state
 ) -> tuple[list[str], list[list[Any]]] | None:
-    """If *cypher* is ``CALL <command>(args)`` for a registered command, invoke it (REQ-1156).
+    """If *cypher* is ``CALL <command>(args)``, invoke it (REQ-1156): read by the one Cypher
+    command-call reader (cypher/command_call.py, shared with Cypher over HTTP), admitted and bound
+    by the shared executor, shaped by its YIELD and RETURN. None falls through to Cypher."""
+    from provisa.api.data.action_exec import bind_command_args, invoke_tracked_function
+    from provisa.cypher.command_call import parse_command_call, project
 
-    Returns (columns, rows-of-values) or None to fall through to normal Cypher parsing. The one
-    governed executor (invoke_tracked_function) enforces writable_by/governance, and positional
-    args are mapped to the command's declared argument names.
-    """
-    fns = getattr(app_state, "tracked_functions", None)
-    if not isinstance(fns, dict):
+    call = parse_command_call(cypher, parameters or {})
+    if call is None:
         return None
-    # Webhooks are governed commands too (REQ-872): CALL a webhook like any other command.
-    callables = {**fns, **(getattr(app_state, "tracked_webhooks", None) or {})}
-    m = _CALL_CMD_RE.match(cypher.strip())
-    if not m:
-        return None
-    name = m.group(1)
-    fn = callables.get(name)
-    if fn is None:
-        return None
-    raw = m.group(2).strip()
-    values = [_parse_call_arg(t) for t in raw.split(",")] if raw else []
-    declared = [a.get("name") for a in (fn.get("arguments") or [])]
-    args = {declared[i]: v for i, v in enumerate(values) if i < len(declared) and declared[i]}
-    from provisa.api.data.action_exec import invoke_tracked_function
-
-    rows = await invoke_tracked_function(name, args, app_state, role_id)
-    cols = list(rows[0].keys()) if rows else []
-    return cols, [[r.get(c) for c in cols] for r in rows]
+    args = bind_command_args(call.name, call.values, app_state, role_id)
+    rows = await invoke_tracked_function(call.name, args, app_state, role_id)
+    cols, shaped = project(call, rows)
+    return cols, [[r.get(c) for c in cols] for r in shaped]
 
 
 _CALL_METRIC_RE = re.compile(
@@ -1373,7 +1372,7 @@ async def _execute_cypher(
     # REQ-1156: `CALL <command>(args)` naming a registered command invokes it through the single
     # governed executor and returns its rows — so Bolt/Cypher clients (Neo4j Browser/Bloom) can run
     # a command exactly like GraphQL/SQL. Placed after _system_query so `CALL dbms.*` still wins.
-    cmd = await _maybe_invoke_command_call(cypher, role_id, app_state)
+    cmd = await _maybe_invoke_command_call(cypher, parameters, role_id, app_state)
     if cmd is not None:
         return (*cmd, None)
 

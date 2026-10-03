@@ -78,19 +78,19 @@ def merge_org_overrides(base: dict[str, Any], overrides: dict[str, Any]) -> dict
     return merged
 
 
-async def read_org_overrides(tenant_db: Database) -> dict[str, Any]:
+async def read_org_overrides(model_db: Database) -> dict[str, Any]:
     """The org's raw override rows as ``{key: value}``. Empty when the org has overridden nothing."""
     from sqlalchemy import select
 
     from provisa.core.schema_org import org_settings
 
-    async with tenant_db.acquire() as conn:
+    async with model_db.acquire() as conn:
         result = await conn.execute_core(select(org_settings.c.key, org_settings.c.value))
         rows = result.fetchall()
     return {row[0]: row[1] for row in rows}
 
 
-async def read_org_overrides_stamped(tenant_db: Database) -> tuple[int, dict[str, Any]]:
+async def read_org_overrides_stamped(model_db: Database) -> tuple[int, dict[str, Any]]:
     """The org's override rows and the ``settings`` config stamp they were read at (REQ-1914).
 
     A setting an org changes through one worker process advances that stamp, and every other
@@ -99,19 +99,19 @@ async def read_org_overrides_stamped(tenant_db: Database) -> tuple[int, dict[str
     rather than missed."""
     from provisa.core import config_stamp
 
-    stamp = (await config_stamp.read(tenant_db))[config_stamp.SETTINGS]
-    return stamp, await read_org_overrides(tenant_db)
+    stamp = (await config_stamp.read(model_db))[config_stamp.SETTINGS]
+    return stamp, await read_org_overrides(model_db)
 
 
-async def resolve_org_config(tenant_db: Database) -> dict[str, Any]:
+async def resolve_org_config(model_db: Database) -> dict[str, Any]:
     """The deployment config with this org's overrides applied — the config a request should use."""
     from provisa.api.admin._config_io import read_config
 
-    return merge_org_overrides(read_config(), await read_org_overrides(tenant_db))
+    return merge_org_overrides(read_config(), await read_org_overrides(model_db))
 
 
 async def write_org_overrides(
-    tenant_db: Database, updates: dict[str, Any], *, updated_by: str
+    model_db: Database, updates: dict[str, Any], *, updated_by: str
 ) -> list[str]:
     """Upsert the given override keys; a ``None`` value DELETES the row (reverting to deployment).
 
@@ -136,7 +136,7 @@ async def write_org_overrides(
     from provisa.core.schema_org import org_settings as _org_settings_t
 
     written: list[str] = []
-    async with tenant_db.acquire() as conn:
+    async with model_db.acquire() as conn:
         for key, value in updates.items():
             if value is None:
                 await conn.execute_core(

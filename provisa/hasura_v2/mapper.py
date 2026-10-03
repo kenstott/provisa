@@ -494,7 +494,11 @@ def _map_action(
 ) -> Function | Webhook | None:  # REQ-205, REQ-209
     """Map a Hasura action to either a Function or Webhook."""
     handler = action.definition.handler
-    visible_to = [p.get("role", "") for p in action.permissions if p.get("role")]
+    # Hasura answers an action with no permissions to the admin alone; so does the command it
+    # becomes (a command's one role list, empty, would assign it to every role).
+    visible_to = [p.get("role", "") for p in action.permissions if p.get("role")] or [
+        ORG_ADMIN_ROLE
+    ]
 
     action_kind = (
         action.definition.action_type
@@ -638,6 +642,8 @@ def convert_metadata(
                     schema_name=hf.schema_name,
                     function_name=hf.name,
                     returns="void",
+                    # Carried over with no permissions: the admin's alone, as in Hasura.
+                    visible_to=[ORG_ADMIN_ROLE],
                     domain_id=domain_policy.import_default(),
                 )
             )

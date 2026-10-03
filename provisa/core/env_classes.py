@@ -64,6 +64,9 @@ CARRIED: frozenset[str] = frozenset(
         # REQ-1919: which seeded roles and domains a config file redefined. It travels with the
         # rows it speaks about, and like ``roles`` only when an environment is created.
         "seed_redefinitions",
+        # REQ-1921/1922: the regions an org selects travel with its model; the stores they name
+        # are bindings (IDENTITY_ONLY).
+        "org_regions",
     }
 )
 
@@ -82,7 +85,7 @@ SEEDED_AT_CREATION: frozenset[str] = frozenset(
 #: the row would cascade the model away — so they travel stripped, and the environment marks them
 #: unbound rather than leaving a blank host the connection builder would read as localhost:5432.
 IDENTITY_ONLY: frozenset[str] = frozenset(
-    {"sources", "api_sources", "kafka_sources", "kafka_sinks"}
+    {"sources", "api_sources", "kafka_sources", "kafka_sinks", "stores"}
 )
 
 #: Never copied: a credential or an identity. ``user_role_assignments`` used to be here, on
@@ -190,6 +193,7 @@ BINDING_COLUMNS: dict[str, frozenset[str]] = {
     "api_sources": frozenset({"base_url", "spec_url", "auth"}),
     "kafka_sources": frozenset({"bootstrap_servers", "schema_registry_url", "auth_type"}),
     "kafka_sinks": frozenset({"topic"}),
+    "stores": frozenset({"url"}),  # REQ-1922: where a region's data is kept is the environment's
 }
 
 

@@ -53,7 +53,6 @@
     "detailFunction": "函数",
     "detailReturns": "返回值",
     "detailVisibleTo": "可见对象",
-    "detailWritableBy": "可写对象",
     "detailDomain": "域",
     "detailDescription": "描述",
     "detailArguments": "参数",

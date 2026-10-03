@@ -388,10 +388,17 @@ def prepare_call(
     """The HTTP call ``endpoint`` makes with ``resolved_params``: its URL under ``base_url``,
     its auth applied, its body encoded as the endpoint declares. Not for a gRPC endpoint
     (``method == "RPC"``), which is not an HTTP call."""
+    from provisa.core.secrets import resolve_secrets
+
     url, query_params, headers, body = _build_request_parts(endpoint, resolved_params)
 
-    # Prepend base_url if path is relative
-    if not url.startswith("http"):
+    # A source's address is stored as it was written; a credential reference in it is resolved
+    # here, at the call, as the auth's are below.
+    base_url = resolve_secrets(base_url)
+    if not url:
+        url = base_url  # the endpoint IS the source's address (it declares no path of its own)
+    elif not url.startswith("http"):
+        # Prepend base_url if path is relative
         url = base_url.rstrip("/") + "/" + url.lstrip("/")
 
     _apply_auth(auth, headers, query_params)
@@ -504,7 +511,9 @@ async def call_api(  # REQ-295, REQ-297, REQ-298, REQ-316
     streams continuously without ever idling still fails explicitly instead of outrunning a
     caller's own external deadline (see module docstring on ``_DEFAULT_TOTAL_TIMEOUT``)."""
     if endpoint.method == "RPC":
-        return ApiAnswer(await _call_grpc(endpoint, resolved_params, base_url))
+        from provisa.core.secrets import resolve_secrets
+
+        return ApiAnswer(await _call_grpc(endpoint, resolved_params, resolve_secrets(base_url)))
     call = prepare_call(endpoint, resolved_params, base_url, auth)
 
     async def _run() -> ApiAnswer:

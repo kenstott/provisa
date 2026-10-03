@@ -136,18 +136,14 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
             return cast(GraphQLScalarType, JSONScalar)
         return _ACTION_SCALAR_MAP.get(type_str, GraphQLString)
 
-    def _build_args(
-        arguments: list[dict], response_fields: set[str] | None = None
-    ) -> dict[str, GraphQLArgument]:
-        result = {}
-        for a in arguments:
-            if not a.get("name"):
-                continue
-            name = a["name"]
-            if response_fields and name in response_fields:
-                name = f"_{name}"
-            result[name] = GraphQLArgument(_gql_scalar(a.get("type", "String")))
-        return result
+    def _build_args(arguments: list[dict]) -> dict[str, GraphQLArgument]:
+        """Each declared argument under its own name: a field's arguments and its return type's
+        fields are separate namespaces, so nothing needs renaming."""
+        return {
+            a["name"]: GraphQLArgument(_gql_scalar(a.get("type", "String")))
+            for a in arguments
+            if a.get("name")
+        }
 
     def _build_callable_fields(
         items: list[dict],
@@ -214,15 +210,7 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
                 gql_return = _json_schema_to_gql_type(return_schema, type_name) or GraphQLString
             else:
                 gql_return = GraphQLString
-            ret_type = None
-        # Detect collision between function arg names and return type field names
-        ret_fields: set[str] = (
-            set(ret_type.fields.keys()) if ret_type and hasattr(ret_type, "fields") else set()
-        )
-        args = _build_args(
-            func["arguments"] if isinstance(func["arguments"], list) else [],
-            response_fields=ret_fields,
-        )
+        args = _build_args(func["arguments"] if isinstance(func["arguments"], list) else [])
         return gql_return, args
 
     def _resolve_webhook(wh: dict):
@@ -248,17 +236,9 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
                 GraphQLObjectType, GraphQLObjectType(wh_type_name, lambda f=inline_fields: f)
             )
             gql_return = GraphQLList(GraphQLNonNull(wh_obj))
-            ret_type = None
         else:
-            ret_type = None
             gql_return = GraphQLString
-        wh_ret_fields: set[str] = (
-            set(ret_type.fields.keys()) if ret_type and hasattr(ret_type, "fields") else set()
-        )
-        args = _build_args(
-            wh["arguments"] if isinstance(wh["arguments"], list) else [],
-            response_fields=wh_ret_fields,
-        )
+        args = _build_args(wh["arguments"] if isinstance(wh["arguments"], list) else [])
         return gql_return, args
 
     _build_callable_fields(si.functions, extra_query, extra_mutation, _resolve_function)

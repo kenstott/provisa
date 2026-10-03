@@ -133,7 +133,7 @@ def planes(monkeypatch):
     ):
         import types as _types
 
-        return _types.SimpleNamespace(tenant_db=admin_db, org_id=org_id)
+        return _types.SimpleNamespace(model_db=admin_db, tenant_db=admin_db, org_id=org_id)
 
     async def _fake_grant_org_role(_tenant_db, user_id, role_id, *, granter_capabilities):
         grants.append((user_id, role_id))

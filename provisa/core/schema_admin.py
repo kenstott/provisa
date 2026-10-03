@@ -709,6 +709,21 @@ mail_events = Table(
     Column("requested_by", Text, nullable=True),
 )
 
+# REQ-1916: the PLATFORM STATE STORE's node list (provisa/core/platform_state/nodes.py): the nodes
+# now in the cluster, each beating while it runs. Per deployment; never an org's model.
+cluster_nodes = Table(
+    "cluster_nodes",
+    metadata,
+    Column("node_id", Text, primary_key=True),
+    Column("host", Text, nullable=False),
+    Column("pid", Integer, nullable=False),
+    Column("mode", Text, nullable=False),  # every | query | coordinator
+    Column("region", Text, nullable=True),  # REQ-1922: NULL when the platform declares none
+    Column("started_at", DateTime(timezone=True), nullable=False),
+    Column("last_seen", DateTime(timezone=True), nullable=False),
+)
+
+
 REGISTRY_TABLES = [
     orgs,
     org_encryption_keys,
@@ -732,6 +747,7 @@ REGISTRY_TABLES = [
     debug_trace_hint_roles,
     deployment_settings,
     config_stamp,
+    cluster_nodes,
 ]
 
 

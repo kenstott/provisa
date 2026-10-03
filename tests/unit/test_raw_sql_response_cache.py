@@ -81,6 +81,7 @@ def _plan(sql: str = "SELECT id, amount, ts FROM t", *, params=None, role="analy
 def _state(store, *, source_cache=None, table_cache=None, default_ttl=300):
     return SimpleNamespace(
         response_cache_store=store,
+        model_db="fake",
         tenant_db="fake",
         org_id="org-a",
         model_stamp=1,
@@ -383,10 +384,10 @@ async def test_successful_write_invalidates_its_tables_for_the_org(monkeypatch):
     monkeypatch.setattr(store, "invalidate_by_table", _inv)
     monkeypatch.setattr(change_events, "emit_change_event", lambda *a, **k: None)
 
-    async def _no_replica(_state, _table_id, _source_id):
-        return None  # no replica store here: the build request has its own tests
+    async def _no_replica(_state, _table_id, _source_id, _reason):
+        return False  # no replica store here: the build request has its own tests
 
-    monkeypatch.setattr("provisa.api.data.table_written._request_replica_build", _no_replica)
+    monkeypatch.setattr("provisa.federation.replica_builds.request_if_replicated", _no_replica)
     state = _state(store)
     state.contexts["analyst"].tables["a"].table_name = "t"
     stale: list[str] = []

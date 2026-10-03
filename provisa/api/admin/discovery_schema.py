@@ -73,9 +73,9 @@ async def get_unique_constraints(
     from provisa.api.app import state
     from provisa.discovery.fk_introspect import introspect_unique_constraints
 
-    if state.tenant_db is None:
+    if state.model_db is None:
         raise ApiError(503, "discovery.database_not_connected", "Database not connected")
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:
         conn = cast("Connection", conn)
         result = await conn.execute_core(select(sources.c.type).where(sources.c.id == source_id))
         fetched = result.fetchone()
@@ -163,11 +163,11 @@ async def discover_source_schema(
     require_capability_request(request, "source_registration")
     from provisa.api.app import state
 
-    if state.tenant_db is None:
+    if state.model_db is None:
         raise ApiError(503, "discovery.database_not_connected", "Database not connected")
 
     # Fetch source record from DB
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:
         conn = cast("Connection", conn)
         result = await conn.execute_core(select(sources).where(sources.c.id == source_id))
         fetched = result.fetchone()

@@ -65,6 +65,7 @@ async def plane(monkeypatch) -> Database:
         await role_repo.upsert(conn, _role("derived", parent="base"), org_id=ORG, origin="admin")
         await role_repo.upsert(conn, _role("loose"), org_id=ORG, origin="admin")
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
+    monkeypatch.setattr(appmod.state, "model_db", appmod.state.tenant_db, raising=False)
     return db
 
 

@@ -363,17 +363,18 @@ def _error_stream(payload: dict) -> StreamingResponse:
 
 
 def _parse_sink_uri(sink_header: str) -> tuple[str, str]:
-    """Parse ``kafka://[broker:port]/topic`` → (bootstrap_servers, topic).
+    """Parse ``kafka://broker:port/topic`` → (bootstrap_servers, topic).
 
-    If broker is omitted, falls back to ``KAFKA_BOOTSTRAP_SERVERS`` env var
-    or ``localhost:9092``.
+    The broker is always present: the caller has already resolved it to the operator's cluster
+    (``sink_broker_within_floor``, REQ-030/REQ-812). A URI without one is refused by name.
     """
     parsed = urlparse(sink_header)
     topic = parsed.path.lstrip("/")
     if not topic:
         raise ValueError(f"No topic in sink URI: {sink_header!r}")
-    broker = parsed.netloc or os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
-    return broker, topic
+    if not parsed.netloc:
+        raise ValueError(f"No broker in sink URI: {sink_header!r}")
+    return parsed.netloc, topic
 
 
 async def _launch_kafka_sink(  # REQ-176, REQ-177, REQ-286

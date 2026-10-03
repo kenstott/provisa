@@ -54,7 +54,10 @@ def _two_roles(monkeypatch):
         ("roles", {r: {"id": r, "capabilities": [], "domain_access": ["*"]} for r in (A, B)}),
         ("schemas", {}),
         ("contexts", {}),
-        ("tracked_functions", {"do_it": {"name": "do_it"}}),
+        (
+            "tracked_functions",
+            {"do_it": {"name": "do_it", "kind": "query", "domain_id": "sales"}},
+        ),
         ("schema_build_cache", {}),
     ):
         monkeypatch.setattr(appmod.state, name, value, raising=False)

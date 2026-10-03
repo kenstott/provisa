@@ -53,7 +53,6 @@
     "detailFunction": "函數",
     "detailReturns": "傳回值",
     "detailVisibleTo": "可見對象",
-    "detailWritableBy": "可寫入對象",
     "detailDomain": "領域",
     "detailDescription": "描述",
     "detailArguments": "引數",

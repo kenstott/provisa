@@ -41,7 +41,9 @@ async def tenant_db(tmp_path):
 
 
 def _state(tenant_db):
-    return types.SimpleNamespace(tenant_db=tenant_db, contexts={"analyst": object()})
+    return types.SimpleNamespace(
+        model_db=tenant_db, tenant_db=tenant_db, contexts={"analyst": object()}
+    )
 
 
 class TestEmbeddingModelHonorsOrgOverride:

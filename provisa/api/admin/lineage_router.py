@@ -137,9 +137,9 @@ async def _fetch_view_rows(state) -> list[dict]:
 
     from provisa.core.schema_org import registered_tables
 
-    if getattr(state, "tenant_db", None) is None:
+    if getattr(state, "model_db", None) is None:
         return []
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:
         res = await conn.execute_core(
             select(
                 registered_tables.c.domain_id,
@@ -163,9 +163,9 @@ async def _fetch_registry_columns(state) -> list[dict]:
 
     from provisa.core.schema_org import registered_tables, table_columns
 
-    if getattr(state, "tenant_db", None) is None:
+    if getattr(state, "model_db", None) is None:
         return []
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:
         res = await conn.execute_core(
             select(
                 registered_tables.c.domain_id,

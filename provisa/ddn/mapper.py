@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import TypedDict, cast
 
+from provisa.security.rights import ORG_ADMIN_ROLE
 from provisa.core.models import (
     Cardinality,
     Column,
@@ -470,6 +471,9 @@ def _map_commands(
                 function_name=cmd.source_name or cmd.name,
                 returns=cmd.return_type or "void",
                 arguments=args,
+                # A mutation carried over is the admin's alone until roles are assigned to it; a
+                # read is every role's (a command's one role list, empty, assigns it to all).
+                visible_to=[] if fn_kind == "query" else [ORG_ADMIN_ROLE],
                 domain_id=cmd.subgraph or "default",
                 description=desc,
                 kind=fn_kind,

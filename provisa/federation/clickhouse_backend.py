@@ -49,6 +49,28 @@ class ClickHouseBackend(NativeEngineBackend):
             pk_columns=list(args.pk_columns or ()),
         )
 
+    result_formats = frozenset({"parquet"})
+
+    def ctas_redirect(
+        self, state: Any, physical_sql: str, output_format: str, params: list | None
+    ) -> dict:
+        """REQ-1194: ClickHouse runs the statement and writes its result to the results bucket
+        itself (``INSERT INTO FUNCTION s3(...) SELECT``). The statement's values are bound as
+        ClickHouse's typed server-side parameters (``bind_parameters``), never as SQL text."""
+        from provisa.executor import redirect
+        from provisa.federation import result_sink
+        from provisa.federation.clickhouse_runtime import bind_parameters
+
+        result_sink.require_format(self.engine.name, output_format, self.result_formats)
+        config = redirect.RedirectConfig.from_env()
+        redirect.ensure_results_bucket_sync(config)
+        target = result_sink.new_target(config)
+        select_sql, named = bind_parameters(physical_sql, params)
+        clickhouse = self._runtime_for(state).connection
+        clickhouse.command(result_sink.clickhouse_insert(select_sql, target, config), named)
+        counted, _names = clickhouse.query(result_sink.clickhouse_count(target, config))
+        return {"s3_prefix": target.s3_prefix, "row_count": int(counted[0][0])}
+
     # -- engine-specific Arrow transports (REQ-986) ----------------------------
     # ClickHouse honors its declared ARROW / ARROW_STREAM capabilities: the runtime returns native
     # Arrow (query_arrow over HTTP, chdb ArrowStream) with no row materialization, mirroring
@@ -56,7 +78,7 @@ class ClickHouseBackend(NativeEngineBackend):
     # by the backend seam, like execute_sync). The native-TCP backend has no Arrow format and raises.
 
     def execute_arrow(self, state: Any, sql: str, params: list | None = None) -> Any:
-        return self._runtime_for(state).run_arrow(sql)
+        return self._runtime_for(state).run_arrow(sql, params)
 
     def execute_stream(self, state: Any, sql: str, params: list | None = None) -> Any:
-        return self._runtime_for(state).run_arrow_stream(sql)
+        return self._runtime_for(state).run_arrow_stream(sql, params)

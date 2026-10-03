@@ -44,6 +44,9 @@
     "firstPage": "Première page",
     "prevPage": "Page précédente",
     "nextPage": "Page suivante",
-    "lastPage": "Dernière page"
+    "lastPage": "Dernière page",
+    "roleLabel": "S'exécute en tant que rôle",
+    "validationRoleRequired": "Une tâche SQL s'exécute en tant que rôle : choisissez-en un.",
+    "runsAs": "s'exécute en tant que {{role}}"
   }
 }

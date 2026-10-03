@@ -107,7 +107,7 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
 
     queries, mutations = map_proto(proto_dict, namespace, source_id, domain_id, method_overrides)
 
-    if state.tenant_db is None:
+    if state.model_db is None:
         raise ApiError(503, "grpc_remote.database_not_connected", "Database not connected")
 
     # REQ-1742: self-register the `sources` row here, the same pattern
@@ -117,7 +117,7 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
     # valid SourceType; the backend registering itself sidesteps that mismatch entirely, matching
     # graphql_remote's own working design rather than requiring the frontend to reconcile two
     # different vocabularies.
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:
         await conn.upsert(
             sources,
             {
@@ -161,7 +161,7 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
     # REQ-322 (amended 2026-10-02): adding or refreshing the source registers no table. The
     # tables already registered are brought up to date with the proto; every other query method
     # is on offer to the Register Table picker.
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:
         n_tables = await _register_schema(
             source_id,
             queries,
@@ -234,7 +234,7 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
     if relationships:
         from provisa.api.admin.graphql_remote_router import _upsert_relationships_to_semantic_layer
 
-        await _upsert_relationships_to_semantic_layer(relationships, state.tenant_db, state)
+        await _upsert_relationships_to_semantic_layer(relationships, state.model_db, state)
 
     return proto_text, remote_source_counts(n_tables, len(queries), len(mutations))
 
@@ -552,10 +552,10 @@ async def put_grpc_proto(source_id: str, request: Request):  # REQ-329
             error=str(exc),
         ) from exc
 
-    if state.tenant_db is None:
+    if state.model_db is None:
         raise ApiError(503, "grpc_remote.database_not_connected", "Database not connected")
 
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:
         n_tables = await _register_schema(
             source_id,
             queries,

@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json não é JSON válido: {{error}}",
       "args_json_not_object": "args_json deve ser um objeto JSON",
       "column_not_writable": "A função '{{role}}' não tem acesso de gravação à coluna '{{column}}'",
+      "command_filter_refused": "{{field}}: {{reason}}",
       "definition_not_available": "{{statement}} não está disponível aqui: as definições são criadas no modelo ou na fonte de dados, e as linhas são removidas com DELETE.",
       "engine_not_connected": "o mecanismo não está conectado",
       "grpc_source_not_registered": "Fonte remota gRPC '{{source_id}}' não registrada",
@@ -92,7 +93,8 @@
       "table_not_found": "Tabela '{{table}}' não encontrada",
       "unknown_action_field": "Campo de ação desconhecido: '{{field}}'",
       "unknown_command": "Comando desconhecido '{{name}}'",
-      "write_not_admitted": "O papel '{{role}}' não pode fazer esta escrita: uma escrita exige o direito de escrita, acesso de escrita a cada coluna escrita e linhas que o filtro de linhas do papel admita."
+      "write_not_admitted": "O papel '{{role}}' não pode fazer esta escrita: uma escrita exige o direito de escrita, acesso de escrita a cada coluna escrita e linhas que o filtro de linhas do papel admita.",
+      "redirect_failed": "Não foi possível gravar o resultado no armazenamento de resultados: {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "O adaptador para '{{source_type}}' não implementa discover_schema",
@@ -118,6 +120,9 @@
     "functions": {
       "approval_denied": "Aprovação negada para '{{name}}': {{reason}}",
       "approval_unavailable": "o comando '{{name}}' requer aprovação e nenhum hook de aprovação está configurado",
+      "argument_count": "{{signature}} recebe {{count}} argumento(s); {{given}} informado(s)",
+      "argument_missing": "{{signature}}: o argumento '{{argument}}' não foi informado",
+      "argument_not_declared": "{{signature}}: o argumento '{{argument}}' não está declarado",
       "binding_missing_key": "a vinculação de função para o tipo '{{kind}}' está sem a chave obrigatória '{{key}}'",
       "egress_denied": "saída para '{{endpoint}}' negada: host não está na lista de permissões de saída de UDF (REQ-885 negar por padrão). Adicione-o a udf_egress_allowlist para permitir.",
       "grpc_call_failed": "chamada grpc {{target}}{{path}} falhou: {{status}}: {{details}}",
@@ -133,6 +138,7 @@
       "script_failed": "o script saiu com {{returncode}}: {{stderr}}",
       "source_not_connected": "Fonte '{{source_id}}' não conectada",
       "unknown_arg_kind": "arg_kind desconhecido '{{arg_kind}}' para '{{name}}'",
+      "unknown_command": "Comando desconhecido: '{{name}}'",
       "unknown_impl_kind": "impl_kind de função desconhecido: '{{impl_kind}}'",
       "written_table_missing": "o comando '{{name}}' escreve '{{table}}', que não está registrada"
     },
@@ -333,6 +339,8 @@
       "task_not_found": "Tarefa '{{task}}' não encontrada",
       "trigger_exists": "O gatilho '{{trigger}}' já existe",
       "trigger_fields_required": "id, name e cron são obrigatórios",
+      "trigger_role_required": "Gatilho '{{trigger}}': um gatilho SQL é executado como uma função desta organização",
+      "trigger_sql_refused": "{{reason}}",
       "unknown_request_type": "Tipo de solicitação desconhecido '{{type}}'",
       "unknown_trigger_kind": "Tipo de gatilho desconhecido '{{kind}}'",
       "url_sql_exclusive": "url e sql são mutuamente exclusivos",
@@ -396,6 +404,9 @@
       "no_fields_to_update": "Nenhum campo para atualizar",
       "self_role_change": "Um usuário não pode alterar a própria função. Peça a outro administrador (REQ-1308).",
       "user_not_found": "Usuário não encontrado"
+    },
+    "cypher": {
+      "command_call_refused": "{{reason}}"
     }
   }
 }

@@ -45,10 +45,20 @@ async def health_report(state: Any) -> dict[str, Any]:
         assert state.admin_db is not None
         ready = await ready_worker_count(state.admin_db, launch)
     from provisa.api.model_reload import health as config_health
+    from provisa.core.platform_state import nodes as cluster_nodes
 
+    assert state.admin_db is not None  # brought up with the control planes, at the top of boot
     return {
         "status": "ok",
         "dependencies": {"postgres": pg_status},
         "workers": {"ready": ready, "expected": expected_workers()},
         "config": await config_health() if pg_status == "ok" else None,
+        # REQ-1916: the nodes now in the cluster, each with its mode (and region, when the
+        # platform declares regions), so an operator sees whether any node does coordinator work.
+        "nodes": [_node_view(n) for n in await cluster_nodes.live(state.admin_db)],
     }
+
+
+def _node_view(node: dict[str, Any]) -> dict[str, Any]:
+    """A node as the health report shows it: timestamps as ISO text."""
+    return {k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in node.items()}

@@ -188,10 +188,10 @@ def test_from_url_selects_server_for_clickhouse_scheme(monkeypatch):
     import clickhouse_connect
 
     class _Stub:
-        def command(self, sql):
+        def command(self, sql, parameters=None):
             return None
 
-        def query(self, sql):
+        def query(self, sql, parameters=None, **kw):
             raise AssertionError("not called")
 
         def close(self):
@@ -214,7 +214,7 @@ def test_from_url_selects_native_for_clickhouse_native_scheme(monkeypatch):
         def __init__(self, **kw):
             self.kw = kw
 
-        def execute(self, sql, **kw):
+        def execute(self, sql, params=None, **kw):
             return None
 
         def disconnect(self):

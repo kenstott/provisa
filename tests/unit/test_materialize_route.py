@@ -119,10 +119,11 @@ class TestSinkTierSelection:
         assert handle["content_type"] == "application/vnd.apache.parquet"
 
     @pytest.mark.asyncio
-    async def test_no_engine_uses_local_tier(self):
-        # No connected engine → engine can't CTAS natively → local/HTTP tier (follow-on, REQ-1191).
+    async def test_an_engine_that_writes_no_result_itself_uses_the_local_tier(self):
+        # REQ-1194: the tier is chosen by what the bound engine declares it writes, not by which
+        # engine it is. One that writes nothing itself → local/HTTP tier (follow-on, REQ-1191).
         state = MagicMock()
-        state.engine_conn = None
+        state.federation_engine.writes_result.return_value = False
         with pytest.raises(NotImplementedError):
             await run_materialize(
                 state, "SELECT 1", Delivery(output_format="parquet", config=_cfg()), None
@@ -130,9 +131,9 @@ class TestSinkTierSelection:
 
     @pytest.mark.asyncio
     async def test_non_native_format_uses_local_tier(self):
-        # CSV is not engine-native → falls to the local tier regardless of a connected engine.
+        # CSV is a format no engine writes itself → the local tier, whatever the engine.
         state = MagicMock()
-        state.engine_conn = object()
+        state.federation_engine.writes_result.side_effect = lambda fmt: fmt == "parquet"
         with pytest.raises(NotImplementedError):
             await run_materialize(
                 state, "SELECT 1", Delivery(output_format="csv", config=_cfg()), None

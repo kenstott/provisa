@@ -71,11 +71,11 @@ def _strip_hash(row) -> dict:
 
 
 def _pool(_request: Request) -> Database:  # pyright: ignore[reportUnusedParameter]
-    # user_role_assignments lives in the tenant control plane.
+    # user_role_assignments is the org's model (REQ-1919): its model store.
     from provisa.api.app import state
 
-    assert state.tenant_db is not None
-    return state.tenant_db
+    assert state.model_db is not None
+    return state.model_db
 
 
 def _admin_pool(_request: Request) -> Database:  # pyright: ignore[reportUnusedParameter]
@@ -254,7 +254,7 @@ async def delete_user(user_id: str, request: Request):  # REQ-1302, REQ-1305, RE
     the person's place in any other org, are not theirs to end. Either way the last org_admin
     of an org is refused, and so is the deployment's last platform_admin.
     """
-    from provisa.api.admin.orgs_router import _caller_user_id, _org_tenant_db
+    from provisa.api.admin.orgs_router import _caller_user_id, _org_model_db, _org_tenant_db
     from provisa.core.org_membership import (
         AccountRemovalRefused,
         LastOrgAdminError,
@@ -273,7 +273,11 @@ async def delete_user(user_id: str, request: Request):  # REQ-1302, REQ-1305, RE
             raise ApiError(404, "users.user_not_found", "User not found")
         try:
             removed = await remove_account(
-                admin_db, _pool(request), user_id, tenant_db_of=_org_tenant_db
+                admin_db,
+                _pool(request),
+                user_id,
+                model_db_of=_org_model_db,
+                tenant_db_of=_org_tenant_db,
             )
         except AccountRemovalRefused as refused:
             if refused.reason == "last_org_admin":
@@ -298,9 +302,9 @@ async def delete_user(user_id: str, request: Request):  # REQ-1302, REQ-1305, RE
         raise ApiError(
             409, "users.no_active_org", "no org is bound to this request; sign in to an org first"
         )
-    tenant_db = await _org_tenant_db(org_id)
+    model_db = await _org_model_db(org_id)
     try:
-        await assert_not_last_org_admin(tenant_db, user_id, org_id)
+        await assert_not_last_org_admin(model_db, user_id, org_id)
     except LastOrgAdminError as exc:
         raise ApiError(
             409,
@@ -310,10 +314,10 @@ async def delete_user(user_id: str, request: Request):  # REQ-1302, REQ-1305, RE
             user=user_id,
             orgs=org_id,
         ) from exc
-    if not await remove_from_org(admin_db, tenant_db, user_id, org_id):
+    if not await remove_from_org(admin_db, model_db, user_id, org_id):
         raise ApiError(404, "users.user_not_found", "User not found")
     await record_admin_action(
-        tenant_db,
+        model_db,
         action="remove_member",
         actor_id=_caller_user_id(request) or "anonymous",
         subject_id=user_id,

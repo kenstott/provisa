@@ -378,8 +378,8 @@ async def generate_explore_queries(state: Any, role: str, question: str) -> dict
     job_id = new_job_id()
     await job_store.put(NlJob(job_id=job_id, nl_query=question, role=role, strict=False))
 
-    cfg = await resolve_org_config(state.tenant_db)
-    api_keys = await read_org_api_keys(state.tenant_db)
+    cfg = await resolve_org_config(state.model_db)
+    api_keys = await read_org_api_keys(state.model_db)
     # ProvisaLLMClient duck-types LLMClient's complete() (same pattern nl_router.py's own
     # untyped `llm` param relies on) rather than subclassing it.
     llm: Any = ProvisaLLMClient("sql_generation", config=cfg, api_keys=api_keys)
@@ -915,18 +915,18 @@ async def effective_config(state: Any) -> dict:
     (the static deployment object built once at startup) or the bare deployment file instead of
     this misses every org override entirely: an org that registers an embedding model or an MCP
     chat vendor through the UI would see none of it here. Falls back to `state.config` itself
-    (not a disk re-read) when no tenant_db is bound — there is no org to layer overrides from, and
+    (not a disk re-read) when no model_db is bound — there is no org to layer overrides from, and
     a fresh read would ignore a config a caller (e.g. a test) built in memory rather than on disk.
     """
-    tenant_db = getattr(state, "tenant_db", None)
-    if tenant_db is None:
+    model_db = getattr(state, "model_db", None)
+    if model_db is None:
         config = getattr(state, "config", None)
         if config is None:
             return {}
         return config.model_dump() if hasattr(config, "model_dump") else vars(config)
     from provisa.core.org_settings import resolve_org_config
 
-    return await resolve_org_config(tenant_db)
+    return await resolve_org_config(model_db)
 
 
 def _cfg_get(entry: Any, key: str, default: Any = None) -> Any:
@@ -1070,7 +1070,7 @@ async def search_terms(state: Any, role: str, query: str, *, limit: int = 25) ->
 async def _jev_api_key(state: Any) -> str:
     from provisa.core.org_secrets import resolve_jev_api_key
 
-    key = await resolve_jev_api_key(getattr(state, "tenant_db", None))
+    key = await resolve_jev_api_key(getattr(state, "model_db", None))
     if not key:
         raise ValueError(
             "Jev is not configured — set TYPESAFEAI_API_KEY or an org Jev key in Admin > AI Models"

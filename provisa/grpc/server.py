@@ -31,6 +31,7 @@ from datetime import date, datetime, timedelta
 
 import concurrent.futures
 
+from starlette.exceptions import HTTPException
 import grpc
 from google.protobuf.descriptor import FieldDescriptor
 
@@ -166,6 +167,20 @@ def _load_module(path: str, name: str):
         del sys.modules[name]
         raise
     return mod
+
+
+_COMMAND_STATUS = {
+    400: grpc.StatusCode.INVALID_ARGUMENT,
+    403: grpc.StatusCode.PERMISSION_DENIED,
+    404: grpc.StatusCode.NOT_FOUND,
+    503: grpc.StatusCode.UNAVAILABLE,
+}
+
+
+def _command_status(exc: HTTPException) -> grpc.StatusCode:
+    """The shared command executor's answer (an HTTP status) as the gRPC status a client reads.
+    A status with no gRPC counterpart is the server's own failure."""
+    return _COMMAND_STATUS.get(exc.status_code, grpc.StatusCode.INTERNAL)
 
 
 def _rpc_role(metadata: dict) -> str | None:
@@ -356,9 +371,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
         if name == "CallCommand":  # REQ-1156
             return _unary(lambda request, context: self._handle_call_command(request, context))
         if name.startswith("Call"):  # REQ-1156 — per-command typed RPC Call{Cmd}
-            cmd_name = self._resolve_command_rpc(name[len("Call") :])
+            rpc = name[len("Call") :]
+            cmd_name = self._resolve_command_rpc(rpc)
             return _unary(
-                lambda request, context: self._handle_typed_command(request, context, cmd_name)
+                lambda request, context: self._handle_typed_command(request, context, cmd_name, rpc)
             )
         raise AttributeError(f"{type(self).__name__!r} has no attribute {name!r}")
 
@@ -413,11 +429,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 return fn_name
         return None
 
-    async def _handle_typed_command(self, request, context, cmd_name: str | None):
+    async def _handle_typed_command(self, request, context, cmd_name: str | None, rpc: str):
         """Invoke a per-command RPC's command via the one governed executor (REQ-1156).
 
         Reads declared arguments off the typed request message, routes through
-        invoke_tracked_function (writable_by/governance enforced there), and returns the command's
+        invoke_tracked_function (the command admission and governance are there), and returns the command's
         rows as CommandResponse JSON (query) or an affected-row MutationResponse (mutation)."""
         import json
 
@@ -442,7 +458,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 else None
             )
             if fn is None or cmd_name is None:
-                await context.abort(grpc.StatusCode.NOT_FOUND, f"Unknown command {cmd_name!r}")
+                await context.abort(grpc.StatusCode.NOT_FOUND, f"Unknown command: {rpc!r}")
                 return
             args = {
                 a_name: getattr(request, a_name)
@@ -451,8 +467,13 @@ class ProvisaServicer:  # REQ-045, REQ-143
             }
             try:
                 rows = await invoke_tracked_function(cmd_name, args, state, role_id)
-            except PermissionError as exc:
-                await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
+            except HTTPException as exc:
+                if exc.status_code == 404:
+                    # Named as the RPC was, the same answer as an RPC no command stands behind:
+                    # nothing is told of a command the role may not use.
+                    await context.abort(grpc.StatusCode.NOT_FOUND, f"Unknown command: {rpc!r}")
+                    return
+                await context.abort(_command_status(exc), str(exc.detail))
                 return
             self._emit_trailing_metadata(context)  # REQ-1137
             if fn.get("kind") == "mutation":
@@ -469,11 +490,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
     async def _handle_call_command(self, request, context):
         """Invoke a registered command (tracked function) via the one governed executor (REQ-1156).
 
-        Request: {name, args_json}; response: {rows_json}. writable_by/governance is enforced inside
+        Request: {name, args_json}; response: {rows_json}. The command admission and governance are inside
         invoke_tracked_function, identical to the GraphQL/SQL/Cypher surfaces."""
         import json
 
-        from provisa.api.data.action_exec import invoke_tracked_function
+        from provisa.api.data.action_exec import bind_named_args, invoke_tracked_function
 
         metadata = dict(context.invocation_metadata())
         role_id = _rpc_role(metadata)
@@ -487,20 +508,25 @@ class ProvisaServicer:  # REQ-045, REQ-143
             return
         try:
             state = self._state
-            if request.name not in getattr(state, "tracked_functions", {}):
-                await context.abort(grpc.StatusCode.NOT_FOUND, f"Unknown command {request.name!r}")
-                return
             try:
-                args = json.loads(request.args_json) if request.args_json else {}
+                given = json.loads(request.args_json) if request.args_json else {}
             except json.JSONDecodeError as exc:
                 await context.abort(
                     grpc.StatusCode.INVALID_ARGUMENT, f"args_json not valid JSON: {exc}"
                 )
                 return
+            if not isinstance(given, dict):
+                await context.abort(
+                    grpc.StatusCode.INVALID_ARGUMENT, "args_json is an object of named arguments"
+                )
+                return
+            # Functions and webhooks alike, through the one executor: the command admitted, its
+            # arguments bound in declared order (the order the call binds them), not JSON order.
             try:
+                args = bind_named_args(request.name, given, state, role_id)
                 rows = await invoke_tracked_function(request.name, args, state, role_id)
-            except PermissionError as exc:
-                await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
+            except HTTPException as exc:
+                await context.abort(_command_status(exc), str(exc.detail))
                 return
             return self._meter_msg(
                 self._pb2.CommandResponse(rows_json=json.dumps(rows, default=str))

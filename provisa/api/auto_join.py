@@ -48,11 +48,11 @@ async def join_org_automatically(
     # spent for them too.
     await bind_member_to_org_trial(admin_pool, org_id, email)
     rt = await ensure_org_runtime(org_id)
-    if rt.tenant_db is not None:
+    if rt.model_db is not None:
         org_token = set_current_org(org_id)
         try:
             # REQ-1337: nobody stands behind an auto-join — an email rule matched — so it is
             # granted with no rights at all, and a role carrying a platform right is refused.
-            await grant_org_role(rt.tenant_db, user_id, role_id, granter_capabilities=())
+            await grant_org_role(rt.model_db, user_id, role_id, granter_capabilities=())
         finally:
             reset_current_org(org_token)

@@ -160,6 +160,7 @@ export interface CreateScheduledTaskInput {
   webhookName?: string;
   argsJson?: string;
   sql?: string;
+  role?: string;
 }
 
 export function useCreateScheduledTask() {
@@ -178,6 +179,7 @@ export function useCreateScheduledTask() {
           webhookName: input.webhookName ?? null,
           argsJson: input.argsJson ?? null,
           sql: input.sql ?? null,
+          role: input.role ?? null,
         },
       });
       return (result.data?.createScheduledTask ?? {

@@ -199,9 +199,9 @@ async def _register_branded_source(request: Request, body: "GraphQLRemoteSourceR
             error=str(exc),
         ) from exc
     namespace = body.namespace or brand.namespace
-    if state.tenant_db is None:
+    if state.model_db is None:
         raise ApiError(503, "graphql_remote.database_not_connected", "Database not connected")
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:
         # The row keeps the credential as entered: a literal goes to the vault, a reference
         # stays a reference.
         await _persist_source(
@@ -304,7 +304,7 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
     source_id: str,
     domain_id: str,
     tables: list[dict],
-    tenant_db,
+    model_db,
 ) -> list[dict]:
     """Write discovered GraphQL tables into registered_tables with descriptions.
 
@@ -317,7 +317,7 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
 
     from provisa.compiler.naming import apply_sql_name
 
-    async with tenant_db.acquire() as conn:
+    async with model_db.acquire() as conn:
         # Introspection is not the authority on governance grants — preserve any
         # visible_to already set (e.g. by config apply): the upsert below replaces a table's
         # columns wholesale.
@@ -477,9 +477,9 @@ async def register_graphql_remote_source(
             error=str(exc),
         ) from exc
 
-    if state.tenant_db is None:
+    if state.model_db is None:
         raise ApiError(503, "graphql_remote.database_not_connected", "Database not connected")
-    async with state.tenant_db.acquire() as _conn:
+    async with state.model_db.acquire() as _conn:
         await _persist_source(
             request,
             body.source_id,
@@ -554,7 +554,7 @@ async def refresh_graphql_remote_source(request: Request, source_id: str):  # RE
             f"Source {source_id!r} uses a schema that ships with Provisa",
             source_id=source_id,
         )
-    if state.tenant_db is None:
+    if state.model_db is None:
         raise ApiError(503, "graphql_remote.database_not_connected", "Database not connected")
     try:
         reg["schema"] = None  # read again, not answered from what is kept
@@ -572,7 +572,7 @@ async def refresh_graphql_remote_source(request: Request, source_id: str):  # RE
 
     # REQ-1918: tables the remote schema no longer has that something still refers to.
     kept_tables = await _upsert_tables_to_semantic_layer(
-        source_id, reg.get("domain_id", ""), tables, state.tenant_db
+        source_id, reg.get("domain_id", ""), tables, state.model_db
     )
     reg["tables"] = []
     for table in tables:

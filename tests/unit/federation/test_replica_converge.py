@@ -112,6 +112,7 @@ class _Model:
             federation_engine=SimpleNamespace(
                 engine=SimpleNamespace(backend=backend, name="e", connectors=_Connectors(self))
             ),
+            model_db=self.db,
             tenant_db=self.db,
             model_stamp=stamp,
         )

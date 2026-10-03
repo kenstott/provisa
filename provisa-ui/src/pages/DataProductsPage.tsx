@@ -685,7 +685,6 @@ export function DataProductsPage() {
         returns: fn.returns,
         arguments: fn.arguments,
         visibleTo: fn.visibleTo,
-        writableBy: fn.writableBy,
         domainId: fn.domainId,
         description: fn.description,
         kind: fn.kind,

@@ -374,7 +374,10 @@ async def test_a_deployment_with_no_store_and_nothing_replicated_reads_its_route
     monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _tables)
     monkeypatch.setattr("provisa.federation.registry_view.registered_sources", _sources)
     state = SimpleNamespace(
-        tenant_db=db, config=SimpleNamespace(), federation_engine=SimpleNamespace(engine=trino)
+        model_db=db,
+        tenant_db=db,
+        config=SimpleNamespace(),
+        federation_engine=SimpleNamespace(engine=trino),
     )
     try:
         assert await replica_routing.replica_tables(trino, state) == []

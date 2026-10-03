@@ -363,13 +363,13 @@ def _apply_rel_id_map(v: Any, rel_map: dict[str, int]) -> Any:
     return v
 
 
-async def register_rel_ids(serializable_rows: list[dict], tenant_db: Any) -> None:
+async def register_rel_ids(serializable_rows: list[dict], model_db: Any) -> None:
     """Upsert all graph relationships to rel_ids; replace composite edge identities with ints.
 
-    Mutates serializable_rows in place.  No-op if tenant_db is None or no edges found.
+    Mutates serializable_rows in place.  No-op if model_db is None or no edges found.
     Mirrors register_node_ids so relationships get durable IDs the same way nodes do.
     """
-    if tenant_db is None:
+    if model_db is None:
         return
 
     edges: dict[str, tuple[str, dict]] = {}
@@ -381,7 +381,7 @@ async def register_rel_ids(serializable_rows: list[dict], tenant_db: Any) -> Non
         return
 
     rel_map: dict[str, int] = {}
-    async with tenant_db.acquire() as conn:
+    async with model_db.acquire() as conn:
         for cid, (rel_type, props) in edges.items():
             new_props = {k: v for k, v in props.items() if v is not None}
             # Conflict SET merged existing || excluded; resolve the JSON merge in Python.
@@ -403,12 +403,12 @@ async def register_rel_ids(serializable_rows: list[dict], tenant_db: Any) -> Non
         serializable_rows[i] = {k: _apply_rel_id_map(v, rel_map) for k, v in row.items()}
 
 
-async def register_node_ids(serializable_rows: list[dict], tenant_db: Any) -> None:  # REQ-394
+async def register_node_ids(serializable_rows: list[dict], model_db: Any) -> None:  # REQ-394
     """Upsert all graph nodes to node_ids table; replace composite string IDs with integers.
 
-    Mutates serializable_rows in place.  No-op if tenant_db is None or no nodes found.
+    Mutates serializable_rows in place.  No-op if model_db is None or no nodes found.
     """
-    if tenant_db is None:
+    if model_db is None:
         return
 
     nodes: dict[str, tuple[str, dict]] = {}
@@ -420,7 +420,7 @@ async def register_node_ids(serializable_rows: list[dict], tenant_db: Any) -> No
         return
 
     id_map: dict[str, int] = {}
-    async with tenant_db.acquire() as conn:
+    async with model_db.acquire() as conn:
         for cid, (label, props) in nodes.items():
             new_props = {k: v for k, v in props.items() if v is not None}
             # Conflict SET merged existing || excluded; resolve the JSON merge in Python.

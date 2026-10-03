@@ -98,6 +98,7 @@ def _state(monkeypatch, runtime: _Runtime):
         config=SimpleNamespace(sources=[source], tables=[table]),
         runtime_sources={},
         tables=[],
+        model_db=None,
         tenant_db=None,
         source_catalogs={"pg": "pg"},
         federation_engine=SimpleNamespace(engine=engine),

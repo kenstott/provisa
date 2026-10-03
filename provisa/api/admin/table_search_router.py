@@ -144,8 +144,8 @@ async def search_source_tables(
     if not cache_warm:
         candidates = await _candidates_live(source_id, schema_name, state)
 
-    assert state.tenant_db is not None
-    api_keys = await read_org_api_keys(state.tenant_db)
+    assert state.model_db is not None
+    api_keys = await read_org_api_keys(state.model_db)
     ranked = await search_tables(q, candidates, api_keys=api_keys)
     return [
         {

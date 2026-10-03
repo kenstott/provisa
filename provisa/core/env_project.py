@@ -63,6 +63,8 @@ KIND_DIRS: dict[str, str] = {
     "glossary_terms": "terms",
     "materialized_views": "views",
     "calendars": "calendars",
+    "stores": "stores",  # REQ-1922
+    "org_regions": "regions",  # REQ-1921
 }
 
 #: The two command registries share one directory, because REQ-1385 gives them one address space:
@@ -357,6 +359,8 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
         (org.metrics, "name"),
         (org.roles, "id"),
         (org.materialized_views, "id"),
+        (org.stores, "id"),  # REQ-1922: one file per store (its URL stays behind, a binding)
+        (org.org_regions, "id"),  # REQ-1921: one file per region the org selects
     ):
         for row in await _rows(conn, table, schema):
             tree[kind_path(KIND_DIRS[table.name], row[key])] = entity(table.name, row)

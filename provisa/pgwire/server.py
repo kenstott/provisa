@@ -201,6 +201,18 @@ def _substitute_params(sql: str, params: list | None) -> str:
     return result
 
 
+def _write_tag(sql: str, result: Any) -> str:
+    """PostgreSQL's command tag for a data write: ``INSERT 0 n``, ``UPDATE n``, ``DELETE n``,
+    ``MERGE n`` — the count the client reads as its rowcount."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    verbs = {exp.Insert: "INSERT 0", exp.Update: "UPDATE", exp.Delete: "DELETE", exp.Merge: "MERGE"}
+    verb = verbs[type(sqlglot.parse_one(sql, read="postgres"))]
+    count = result.rowcount if result.rowcount is not None else len(result.rows)
+    return f"{verb} {count}"
+
+
 def _tag_from_sql(sql: str) -> str:
     m = _TXN_TAG_RE.match(sql)
     if m:
@@ -406,7 +418,11 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         # A registered-function call has no plan, and nothing to say.
         self.warnings: tuple[Any, ...] = tuple(plan.warnings) if plan is not None else ()
         self._cols = engine_result.column_names
-        self._status = _tag_from_sql(original_sql)
+        self._status = (
+            _write_tag(original_sql, engine_result)
+            if plan is not None and getattr(plan, "writes_tables", False)
+            else _tag_from_sql(original_sql)
+        )
         self._batch_iter: Iterator[list] = engine_result.batches()  # type: ignore[assignment]
         if plan is not None:
             # REQ-074: the statement's audit row is written when this drain ends (audit_on_drain).
@@ -964,7 +980,15 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
 
         with _stage(_tracer, "pgwire.execute", name="execute"):  # REQ-1910
             try:
-                if isinstance(governed, _Plan) and governed.route == Route.ENGINE:
+                if isinstance(governed, _Plan) and governed.writes_tables:
+                    # A data write executes once, through the one terminal every surface's write
+                    # passes (its after-write step and audit), and answers its count. It never
+                    # streams: a server-side cursor cannot be declared over a write.
+                    result = cl.run(
+                        _run_with_org(self.org_id, _execute_plan(governed)),
+                        timeout=request_timeout_for("pgwire"),
+                    )
+                elif isinstance(governed, _Plan) and governed.route == Route.ENGINE:
                     # REQ-1176: this streaming sink runs physical_sql on the engine directly (like
                     # Flight SQL), so it MUST verify the governed-provenance stamp before the engine
                     # executes — the single-chokepoint guarantee is not satisfied by _execute_plan alone.

@@ -89,7 +89,7 @@ def test_clickhouse_http_backend_kills_its_query_id() -> None:
     seen: dict[str, str] = {}
 
     class _Client:
-        def query(self, sql: str, settings: dict) -> Any:
+        def query(self, sql: str, parameters: Any, settings: dict) -> Any:
             seen["qid"] = settings["query_id"]
             b.block()
 
@@ -113,7 +113,7 @@ def test_clickhouse_native_backend_kills_its_query_id() -> None:
     seen: dict[str, str] = {}
 
     class _Client:
-        def execute(self, sql: str, with_column_types: bool, query_id: str) -> Any:
+        def execute(self, sql: str, params: Any, with_column_types: bool, query_id: str) -> Any:
             seen["qid"] = query_id
             b.block()
 

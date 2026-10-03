@@ -134,9 +134,17 @@ def planes(monkeypatch):
     }
     registry = OrgRegistry()
     registry.set(
-        _ROOT_ORG, OrgRuntime(org_id=_ROOT_ORG, tenant_db=tenant_db, roles=dict(loaded_roles))
+        _ROOT_ORG,
+        OrgRuntime(
+            org_id=_ROOT_ORG, model_db=tenant_db, tenant_db=tenant_db, roles=dict(loaded_roles)
+        ),
     )
-    registry.set("acme", OrgRuntime(org_id="acme", tenant_db=tenant_db, roles=dict(loaded_roles)))
+    registry.set(
+        "acme",
+        OrgRuntime(
+            org_id="acme", model_db=tenant_db, tenant_db=tenant_db, roles=dict(loaded_roles)
+        ),
+    )
     monkeypatch.setattr(app_state, "org_registry", registry, raising=False)
     monkeypatch.setattr(app_state, "admin_db", admin_db, raising=False)
     # resolve_invite_role compares the invitation's org against the deployment's root org.
@@ -145,7 +153,7 @@ def planes(monkeypatch):
     from types import SimpleNamespace
 
     async def _org_runtime(_org_id: str, _env=None):
-        return SimpleNamespace(tenant_db=tenant_db)
+        return SimpleNamespace(model_db=tenant_db, tenant_db=tenant_db)
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _org_runtime, raising=False)
 

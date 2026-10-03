@@ -744,6 +744,14 @@ class EngineRuntime:  # REQ-825, REQ-840
         """Engine health for the admin system-health view: ``(connected, workers, active_workers)``."""
         return self._backend.cluster_diagnostics(self._state)
 
+    def writes_result(self, output_format: str) -> bool:
+        """Whether this engine writes a result in ``output_format`` to an object store itself
+        (REQ-1194, the backend's ``result_formats``) and is connected to do it now -- a
+        coordinator that is asleep has no connection to run the write on."""
+        return output_format.lower() in self._backend.result_formats and (
+            self._backend.is_connected(self._state)
+        )
+
     def ctas_redirect(self, physical_sql: str, output_format: str, params: list | None) -> dict:
         """Execute a query as CTAS-to-object-store and return the redirect manifest
         (engine-specific). ``params``: the statement's bound values, None when it binds none."""

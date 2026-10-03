@@ -31,12 +31,22 @@ def _server(state) -> ProvisaFlightServer:
 def test_the_report_of_a_worker_with_no_control_plane_has_the_health_shape(monkeypatch):
     monkeypatch.delenv("PROVISA_LAUNCH_ID", raising=False)
     monkeypatch.delenv("PROVISA_WORKERS", raising=False)
-    report = asyncio.run(health_report_mod.health_report(SimpleNamespace(tenant_db=None)))
+
+    async def _no_nodes(_db):
+        return []
+
+    monkeypatch.setattr("provisa.core.platform_state.nodes.live", _no_nodes)
+    report = asyncio.run(
+        health_report_mod.health_report(
+            SimpleNamespace(model_db=None, tenant_db=None, admin_db=object())
+        )
+    )
     assert report == {
         "status": "ok",
         "dependencies": {"postgres": "unavailable"},
         "workers": {"ready": 1, "expected": 1},
         "config": None,
+        "nodes": [],  # REQ-1916: the cluster's node list
     }
 
 

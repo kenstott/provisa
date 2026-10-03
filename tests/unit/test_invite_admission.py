@@ -123,7 +123,7 @@ def plane(monkeypatch):
 
     async def _ensure_org_runtime(org_id):
         state.bound_org = org_id
-        return types.SimpleNamespace(tenant_db=object())
+        return types.SimpleNamespace(model_db=(_one_db := object()), tenant_db=_one_db)
 
     async def _grant_org_role(tenant_db, user_id, role_id, *, granter_capabilities):
         state.roles.append((user_id, role_id))

@@ -14,8 +14,6 @@
     "selectTable": "Tabel selecteren...",
     "visibleTo": "Zichtbaar voor (rollen, kommagescheiden)",
     "visibleToPlaceholder": "admin, analyst",
-    "writableBy": "Schrijfbaar door (rollen, kommagescheiden)",
-    "writableByPlaceholder": "admin",
     "url": "URL",
     "urlPlaceholder": "https://api.example.com/action",
     "method": "Methode",

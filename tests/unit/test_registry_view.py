@@ -36,7 +36,9 @@ def _state(config_sources, config_tables, rows, registered):
     db = SimpleNamespace(acquire=lambda: _Acquire(conn))
     return (
         SimpleNamespace(
-            config=SimpleNamespace(sources=config_sources, tables=config_tables), tenant_db=db
+            config=SimpleNamespace(sources=config_sources, tables=config_tables),
+            model_db=db,
+            tenant_db=db,
         ),
         rows,
         registered,
@@ -111,6 +113,7 @@ async def test_registered_tables_carry_config_settings_only_where_declared(monke
             "replicate": None,
             "load_protected": None,
             "change_signal": "ttl",  # REQ-929: saved on the row by the config load
+            "region": None,  # REQ-1921: it names no region
             "columns": [
                 {
                     "column_name": "id",
@@ -131,6 +134,7 @@ async def test_registered_tables_carry_config_settings_only_where_declared(monke
             "replicate": None,
             "load_protected": None,
             "change_signal": None,  # REQ-929: the table sets none
+            "region": None,  # REQ-1921: it names no region
             "columns": [
                 {
                     "column_name": "rating",

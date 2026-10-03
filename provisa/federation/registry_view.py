@@ -218,6 +218,7 @@ def _build_registered_tables(registered: list[dict], cfg_by: dict) -> list[Any]:
                 # put on its replica is read there even on an attach-capable engine.
                 replicate=rt["replicate"],
                 load_protected=rt["load_protected"],
+                region=rt["region"],  # REQ-1921
                 probe_type=getattr(cfg, "probe_type", None),  # REQ-982
                 # REQ-1443: a checker table's rows are the results of running its contract, so
                 # the registered contract rides with the table into make_dq_loader.

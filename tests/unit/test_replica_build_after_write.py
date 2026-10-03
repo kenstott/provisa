@@ -23,7 +23,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from provisa.api.data import table_written
+from provisa.federation import replica_builds
 from provisa.federation import replica_state
 
 
@@ -89,34 +89,42 @@ def _attach_rule(monkeypatch):
 
 async def test_a_table_read_from_its_replica_asks_for_a_build_on_a_write(written):
     asked, kicked = written
-    await table_written._request_replica_build(_state(attaches=False), 1, "shop")
+    await replica_builds.request_if_replicated(
+        _state(attaches=False), 1, "shop", replica_state.REASON_WRITE
+    )
     assert asked == [(("shop", "openapi", "orders_1"), replica_state.REASON_WRITE)]
     assert len(kicked) == 1
 
 
 async def test_a_table_the_operator_puts_on_its_replica_is_rebuilt_too(written):
     asked, _ = written
-    await table_written._request_replica_build(
-        _state(attaches=True, floored=frozenset({1})), 1, "shop"
+    await replica_builds.request_if_replicated(
+        _state(attaches=True, floored=frozenset({1})), 1, "shop", replica_state.REASON_WRITE
     )
     assert asked == [(("shop", "openapi", "orders_1"), replica_state.REASON_WRITE)]
 
 
 async def test_a_table_read_live_has_no_replica_to_rebuild(written):
     asked, kicked = written
-    await table_written._request_replica_build(_state(attaches=True), 1, "shop")
+    await replica_builds.request_if_replicated(
+        _state(attaches=True), 1, "shop", replica_state.REASON_WRITE
+    )
     assert asked == [] and kicked == []
 
 
 async def test_a_parameterized_table_has_no_whole_replica_to_rebuild(written):
     asked, _ = written
-    await table_written._request_replica_build(_state(attaches=False), 2, "shop")
+    await replica_builds.request_if_replicated(
+        _state(attaches=False), 2, "shop", replica_state.REASON_WRITE
+    )
     assert asked == []
 
 
 async def test_a_built_in_source_is_never_landed(written):
     asked, _ = written
-    await table_written._request_replica_build(_state(attaches=False), 1, "provisa-admin")
+    await replica_builds.request_if_replicated(
+        _state(attaches=False), 1, "provisa-admin", replica_state.REASON_WRITE
+    )
     assert asked == []
 
 
@@ -128,7 +136,9 @@ async def test_a_build_already_asked_for_is_joined_and_starts_no_pass(written, m
         return False
 
     monkeypatch.setattr(replica_state, "request_build", _joined)
-    await table_written._request_replica_build(_state(attaches=False), 1, "shop")
+    await replica_builds.request_if_replicated(
+        _state(attaches=False), 1, "shop", replica_state.REASON_WRITE
+    )
     assert len(asked) == 1 and kicked == []
 
 

@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json no es JSON válido: {{error}}",
       "args_json_not_object": "args_json debe ser un objeto JSON",
       "column_not_writable": "El rol '{{role}}' no tiene acceso de escritura a la columna '{{column}}'",
+      "command_filter_refused": "{{field}}: {{reason}}",
       "definition_not_available": "{{statement}} no está disponible aquí: las definiciones se crean en el modelo o en la fuente de datos, y las filas se eliminan con DELETE.",
       "engine_not_connected": "el motor no está conectado",
       "grpc_source_not_registered": "El origen remoto gRPC '{{source_id}}' no está registrado",
@@ -92,7 +93,8 @@
       "table_not_found": "No se encontró la tabla '{{table}}'",
       "unknown_action_field": "Campo de acción desconocido: '{{field}}'",
       "unknown_command": "Comando desconocido: '{{name}}'",
-      "write_not_admitted": "El rol '{{role}}' no puede realizar esta escritura: una escritura requiere el derecho de escritura, acceso de escritura a cada columna que escribe y filas que admita el filtro de filas del rol."
+      "write_not_admitted": "El rol '{{role}}' no puede realizar esta escritura: una escritura requiere el derecho de escritura, acceso de escritura a cada columna que escribe y filas que admita el filtro de filas del rol.",
+      "redirect_failed": "No se pudo escribir el resultado en el almacén de resultados: {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "El adaptador para '{{source_type}}' no implementa discover_schema",
@@ -118,6 +120,9 @@
     "functions": {
       "approval_denied": "Aprobación denegada para '{{name}}': {{reason}}",
       "approval_unavailable": "el comando '{{name}}' requiere aprobación y no hay ningún hook de aprobación configurado",
+      "argument_count": "{{signature}} admite {{count}} argumento(s); se dieron {{given}}",
+      "argument_missing": "{{signature}}: no se dio el argumento '{{argument}}'",
+      "argument_not_declared": "{{signature}}: el argumento '{{argument}}' no está declarado",
       "binding_missing_key": "al enlace de función para el kind '{{kind}}' le falta la clave obligatoria '{{key}}'",
       "egress_denied": "la salida hacia '{{endpoint}}' está denegada: el host no está en la lista de salida permitida de UDF (REQ-885, denegación por defecto). Agréguelo a udf_egress_allowlist para permitirlo.",
       "grpc_call_failed": "error en la llamada grpc {{target}}{{path}}: {{status}}: {{details}}",
@@ -133,6 +138,7 @@
       "script_failed": "el script terminó con código {{returncode}}: {{stderr}}",
       "source_not_connected": "El origen '{{source_id}}' no está conectado",
       "unknown_arg_kind": "arg_kind desconocido '{{arg_kind}}' para '{{name}}'",
+      "unknown_command": "Comando desconocido: '{{name}}'",
       "unknown_impl_kind": "impl_kind de función desconocido: '{{impl_kind}}'",
       "written_table_missing": "el comando '{{name}}' escribe '{{table}}', que no está registrada"
     },
@@ -333,6 +339,8 @@
       "task_not_found": "No se encontró la tarea '{{task}}'",
       "trigger_exists": "El desencadenador '{{trigger}}' ya existe",
       "trigger_fields_required": "id, name y cron son obligatorios",
+      "trigger_role_required": "Disparador '{{trigger}}': un disparador SQL se ejecuta como un rol de esta organización",
+      "trigger_sql_refused": "{{reason}}",
       "unknown_request_type": "Tipo de solicitud desconocido: '{{type}}'",
       "unknown_trigger_kind": "Tipo de desencadenador desconocido: '{{kind}}'",
       "url_sql_exclusive": "url y sql son mutuamente excluyentes",
@@ -396,6 +404,9 @@
       "no_fields_to_update": "No hay campos para actualizar",
       "self_role_change": "Un usuario no puede cambiar su propio rol. Solicite a otro administrador (REQ-1308).",
       "user_not_found": "No se encontró el usuario"
+    },
+    "cypher": {
+      "command_call_refused": "{{reason}}"
     }
   }
 }

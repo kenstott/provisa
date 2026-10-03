@@ -96,7 +96,7 @@ def _replica_address(*, source_id, schema_name, table_name):
 
 def _state(*, ready=True):
     if not ready:
-        return SimpleNamespace(tenant_db=None, federation_engine=None, config=None)
+        return SimpleNamespace(model_db=None, tenant_db=None, federation_engine=None, config=None)
     engine = SimpleNamespace(
         engine=build_duckdb_engine(),
         materialize_store_dsn=lambda: "sqlite://",
@@ -134,6 +134,7 @@ def _state(*, ready=True):
             "replicate": None,
             "load_protected": None,
             "change_signal": None,  # REQ-929: the table sets none
+            "region": None,  # REQ-1921: it names no region
         }
     ]
     registry = SimpleNamespace(get_enabled=lambda: [])
@@ -279,6 +280,7 @@ async def test_registered_checker_table_carries_its_contract_to_the_loop(monkeyp
                 "replicate": None,
                 "load_protected": None,
                 "change_signal": None,  # REQ-929: the table sets none
+                "region": None,  # REQ-1921: it names no region
             }
         ]
     )

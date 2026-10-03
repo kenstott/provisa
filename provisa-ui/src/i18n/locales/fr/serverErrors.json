@@ -55,6 +55,7 @@
       "args_json_invalid": "args_json n'est pas un JSON valide : {{error}}",
       "args_json_not_object": "args_json doit être un objet JSON",
       "column_not_writable": "Le rôle « {{role}} » n'a pas d'accès en écriture à la colonne « {{column}} »",
+      "command_filter_refused": "{{field}}: {{reason}}",
       "definition_not_available": "{{statement}} n'est pas disponible ici : les définitions se créent dans le modèle ou dans la source de données, et les lignes se suppriment avec DELETE.",
       "engine_not_connected": "le moteur n'est pas connecté",
       "grpc_source_not_registered": "Source distante gRPC « {{source_id}} » non enregistrée",
@@ -92,7 +93,8 @@
       "table_not_found": "Table « {{table}} » introuvable",
       "unknown_action_field": "Champ d'action inconnu : « {{field}} »",
       "unknown_command": "Commande « {{name}} » inconnue",
-      "write_not_admitted": "Le rôle '{{role}}' ne peut pas effectuer cette écriture : une écriture exige le droit d'écriture, l'accès en écriture à chaque colonne écrite et des lignes admises par le filtre de lignes du rôle."
+      "write_not_admitted": "Le rôle '{{role}}' ne peut pas effectuer cette écriture : une écriture exige le droit d'écriture, l'accès en écriture à chaque colonne écrite et des lignes admises par le filtre de lignes du rôle.",
+      "redirect_failed": "Le résultat n'a pas pu être écrit dans le magasin de résultats : {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adaptateur pour « {{source_type}} » n'implémente pas discover_schema",
@@ -118,6 +120,9 @@
     "functions": {
       "approval_denied": "Approbation refusée pour '{{name}}' : {{reason}}",
       "approval_unavailable": "la commande '{{name}}' nécessite une approbation et aucun hook d'approbation n'est configuré",
+      "argument_count": "{{signature}} prend {{count}} argument(s) ; {{given}} fourni(s)",
+      "argument_missing": "{{signature}} : l'argument '{{argument}}' n'a pas été fourni",
+      "argument_not_declared": "{{signature}} : l'argument '{{argument}}' n'est pas déclaré",
       "binding_missing_key": "la liaison de fonction pour le type « {{kind}} » n'a pas la clé requise « {{key}} »",
       "egress_denied": "sortie vers « {{endpoint}} » refusée : hôte absent de la liste d'autorisation de sortie UDF (REQ-885, refus par défaut). Ajoutez-le à udf_egress_allowlist pour l'autoriser.",
       "grpc_call_failed": "échec de l'appel grpc {{target}}{{path}} : {{status}} : {{details}}",
@@ -133,6 +138,7 @@
       "script_failed": "le script s'est terminé avec le code {{returncode}} : {{stderr}}",
       "source_not_connected": "Source « {{source_id}} » non connectée",
       "unknown_arg_kind": "arg_kind « {{arg_kind}} » inconnu pour « {{name}} »",
+      "unknown_command": "Commande inconnue : '{{name}}'",
       "unknown_impl_kind": "impl_kind de fonction inconnu : « {{impl_kind}} »",
       "written_table_missing": "la commande '{{name}}' écrit '{{table}}', qui n'est pas enregistrée"
     },
@@ -333,6 +339,8 @@
       "task_not_found": "Tâche « {{task}} » introuvable",
       "trigger_exists": "Le déclencheur « {{trigger}} » existe déjà",
       "trigger_fields_required": "id, name et cron sont requis",
+      "trigger_role_required": "Déclencheur '{{trigger}}' : un déclencheur SQL s'exécute en tant que rôle de cette organisation",
+      "trigger_sql_refused": "{{reason}}",
       "unknown_request_type": "Type de demande « {{type}} » inconnu",
       "unknown_trigger_kind": "Type de déclencheur « {{kind}} » inconnu",
       "url_sql_exclusive": "url et sql sont mutuellement exclusifs",
@@ -396,6 +404,9 @@
       "no_fields_to_update": "Aucun champ à mettre à jour",
       "self_role_change": "Un utilisateur ne peut pas changer son propre rôle. Demandez à un autre administrateur (REQ-1308).",
       "user_not_found": "Utilisateur introuvable"
+    },
+    "cypher": {
+      "command_call_refused": "{{reason}}"
     }
   }
 }

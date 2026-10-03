@@ -50,11 +50,19 @@ def _state(**over):
         "schema_name": "public",
         "function_name": "create_order",
         "kind": "mutation",
-        "writable_by": ["ops"],
+        "visible_to": ["ops"],
+        "domain_id": "sales",
+        "arguments": [{"name": "qty", "type": "Int"}],
     }
     return SimpleNamespace(
-        # Named in the function's writable_by and holding WRITE: the two things a write needs.
-        roles={"ops": {"id": "ops", "capabilities": [Capability.WRITE.value]}},
+        # Assigned the command, reaching its domain, holding WRITE: what a mutation call needs.
+        roles={
+            "ops": {
+                "id": "ops",
+                "capabilities": [Capability.WRITE.value],
+                "domain_access": ["sales"],
+            }
+        },
         tracked_functions={"createOrder": fn},
         source_pools=over.get("pools") or _FakePools(),
         # REQ-1621: every runtime states whether its environment expires. This stand-in is a
@@ -67,34 +75,34 @@ def _state(**over):
 
 
 def test_detect_table_valued_form():
-    name, args = detect_sql_function_call("SELECT * FROM createOrder(1, 'x')", _state())
+    name, args = detect_sql_function_call("SELECT * FROM createOrder(1, 'x')", _state(), "ops")
     assert name == "createOrder"
     assert args == [1, "x"]
 
 
 def test_detect_scalar_form():
-    name, args = detect_sql_function_call("SELECT createOrder(7, 3.5, true, null)", _state())
+    name, args = detect_sql_function_call("SELECT createOrder(7, 3.5, true, null)", _state(), "ops")
     assert name == "createOrder"
     assert args == [7, 3.5, True, None]
 
 
 def test_normal_query_is_not_a_function_call():
-    assert detect_sql_function_call("SELECT * FROM orders WHERE id = 1", _state()) is None
+    assert detect_sql_function_call("SELECT * FROM orders WHERE id = 1", _state(), "ops") is None
 
 
 def test_unregistered_function_ignored():
-    assert detect_sql_function_call("SELECT now()", _state()) is None
+    assert detect_sql_function_call("SELECT now()", _state(), "ops") is None
 
 
 def test_unparseable_sql_returns_none():
-    assert detect_sql_function_call("NOT valid ((( sql", _state()) is None
+    assert detect_sql_function_call("NOT valid ((( sql", _state(), "ops") is None
 
 
 def test_detect_inside_sample_wrapper():
     # The in-app SQL Explorer wraps the query as `SELECT * FROM (<sql>) AS _sample LIMIT N`.
     # Detection must still find the nested command call so it routes through the executor.
     name, args = detect_sql_function_call(
-        "SELECT * FROM (SELECT * FROM createOrder(9)) AS _sample LIMIT 100", _state()
+        "SELECT * FROM (SELECT * FROM createOrder(9)) AS _sample LIMIT 100", _state(), "ops"
     )
     assert name == "createOrder"
     assert args == [9]
@@ -105,19 +113,19 @@ def test_detect_inside_sample_wrapper():
 
 def test_composed_join_is_not_standalone():
     sql = "SELECT o.id, e.x FROM orders o JOIN createOrder('a') e ON o.id = e.id"
-    assert detect_sql_function_call(sql, _state()) is None
+    assert detect_sql_function_call(sql, _state(), "ops") is None
 
 
 def test_command_with_other_table_is_not_standalone():
     sql = "SELECT * FROM orders o, createOrder('a') e"
-    assert detect_sql_function_call(sql, _state()) is None
+    assert detect_sql_function_call(sql, _state(), "ops") is None
 
 
 def test_two_commands_is_not_standalone():
     st = _state()
     st.tracked_functions["labelRows"] = {"name": "labelRows", "kind": "query"}
     sql = "SELECT * FROM createOrder('a') e JOIN labelRows('b') l ON e.id = l.id"
-    assert detect_sql_function_call(sql, st) is None
+    assert detect_sql_function_call(sql, st, "ops") is None
 
 
 # ---- result adaptation ------------------------------------------------------

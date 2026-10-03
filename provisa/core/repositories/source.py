@@ -49,6 +49,7 @@ def _source_values(source: Source) -> dict:
         "cache_enabled": source.cache_enabled,
         "cache_ttl": source.cache_ttl,
         "replicate": source.replicate,  # REQ-826
+        "region": source.region,  # REQ-1921
         "max_live_concurrency": source.max_live_concurrency,  # REQ-1909
         "sentinel_path": source.sentinel_path,  # REQ-1148
         "freshness_gate": source.freshness_gate,  # REQ-860
@@ -80,6 +81,9 @@ async def upsert(  # REQ-012, REQ-250, REQ-1919
     that a config load takes over a source made through the admin."""
     model_change.name("upsert", "source", source.id)  # REQ-1524
     require_origin(origin)
+    from provisa.core.repositories.region import require_selected
+
+    await require_selected(conn, f"source {source.id}", source.region)  # REQ-1921
     values = _source_values(source)
     await conn.upsert(
         sources,

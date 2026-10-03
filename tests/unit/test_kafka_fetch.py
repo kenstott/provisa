@@ -105,7 +105,13 @@ def test_connection_build_joins_host_and_port():
     assert kf.KafkaConnection.build("broker1,broker2", 9092).bootstrap_servers == (
         "broker1,broker2:9092"
     )
-    assert kf.KafkaConnection.build("", None).bootstrap_servers == "localhost:9092"
+    assert kf.KafkaConnection.build("broker1", None).bootstrap_servers == "broker1"
+
+
+def test_a_source_naming_no_brokers_is_refused():
+    # REQ-812: brokers come from the source's configuration, never a default one.
+    with pytest.raises(ValueError, match="names none"):
+        kf.KafkaConnection.build("", None)
 
 
 @pytest.mark.asyncio

@@ -109,6 +109,7 @@ class World:
         org = f"org-{uuid.uuid4().hex}"
         self.scope = count_scope(org, "prod")
         self.state = SimpleNamespace(
+            model_db=self.db,
             tenant_db=self.db,
             org_id=org,
             hot_counts=HotCounts(None, clock=lambda: 9_000_000.0),

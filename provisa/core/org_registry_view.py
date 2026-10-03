@@ -128,26 +128,26 @@ def _quote_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
-async def refresh_org_registry_view(*, tenant_db: "Database", admin_db: "Database") -> str:
+async def refresh_org_registry_view(*, model_db: "Database", admin_db: "Database") -> str:
     """(Re)create the registry view in the root org's schema and return the SQL that made it.
 
     Raises :class:`RegistryViewUnavailable` when the topology cannot support it: a non-PostgreSQL
     plane, or planes in separate databases (the tenant connection cannot see the admin tables, and
     PostgreSQL has no cross-database view).
     """
-    if tenant_db.dialect != "postgresql" or admin_db.dialect != "postgresql":
+    if model_db.dialect != "postgresql" or admin_db.dialect != "postgresql":
         raise RegistryViewUnavailable(
-            f"the registry view is PostgreSQL DDL; planes are tenant={tenant_db.dialect} "
+            f"the registry view is PostgreSQL DDL; planes are tenant={model_db.dialect} "
             f"admin={admin_db.dialect}"
         )
     admin_schema = await _admin_schema_name(admin_db)
-    root_schema = root_schema_name(tenant_db)
+    root_schema = root_schema_name(model_db)
 
     async with admin_db.acquire() as conn:
         rows = await conn.fetch("SELECT id FROM orgs")
     org_ids = [r[0] for r in rows]
 
-    async with tenant_db.acquire() as conn:
+    async with model_db.acquire() as conn:
         visible = await conn.fetchval(f"SELECT to_regclass('{admin_schema}.orgs')")
         if visible is None:
             raise RegistryViewUnavailable(

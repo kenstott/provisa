@@ -172,6 +172,7 @@ def _state(db: Database, backend: _Backend) -> SimpleNamespace:
     return SimpleNamespace(
         federation_engine=engine,
         config=SimpleNamespace(sources=[source], tables=[table]),
+        model_db=db,
         tenant_db=db,
         # as the schema build publishes it: no operator setting puts the table on its replica
         # (it is replica-served because the engine cannot read an rss source in place)
