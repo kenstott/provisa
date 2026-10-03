@@ -18,6 +18,7 @@ results back as Arrow record batches.
 # Requirements: REQ-045, REQ-051, REQ-143, REQ-144, REQ-145, REQ-146, REQ-271
 
 from __future__ import annotations
+from provisa.compiler.sql_literals import sql_literal
 
 import logging
 
@@ -69,8 +70,7 @@ def _substitute_params(sql: str, params: list | None) -> str:
 
     for param in params:
         if isinstance(param, str):
-            safe = param.replace("'", "''")
-            exec_sql = exec_sql.replace("?", f"'{safe}'", 1)
+            exec_sql = exec_sql.replace("?", sql_literal(param, "trino"), 1)
         elif param is None:
             exec_sql = exec_sql.replace("?", "NULL", 1)
         else:

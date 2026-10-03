@@ -17,6 +17,7 @@ import time
 from dataclasses import dataclass
 
 from provisa.federation.trino_types import TrinoConnection, TrinoQueryError, TrinoUserError
+from provisa.compiler.sql_literals import sql_literal
 
 _SAFE_IDENT = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
@@ -43,7 +44,7 @@ def _validate_ident(value: str) -> str:
 
 
 def _escape_literal(value: str) -> str:
-    return value.replace("'", "''")
+    return sql_literal(value, "trino")[1:-1]
 
 
 @dataclass(frozen=True)

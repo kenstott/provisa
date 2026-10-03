@@ -19,6 +19,7 @@ Uses the engine CTAS for initial creation, DELETE+INSERT for refresh.
 # Requirements: REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ-235
 
 from __future__ import annotations
+from provisa.compiler.sql_literals import sql_literal
 
 import asyncio
 import logging
@@ -381,8 +382,8 @@ async def _build_refresh_sql(
             if jp.via_type_column:
                 # __post_init__ declares the discriminator column and its value together.
                 assert jp.via_type_value is not None
-                literal = jp.via_type_value.replace("'", "''")
-                sql += f' WHERE "{jp.via_table}"."{jp.via_type_column}" = \'{literal}\''
+                literal = sql_literal(jp.via_type_value, "postgres")
+                sql += f' WHERE "{jp.via_table}"."{jp.via_type_column}" = {literal}'
             return sql
 
         select_clause = f'"{jp.left_table}".*, {right_cols}'

@@ -20,6 +20,8 @@ Table aliases (t0, t1, ...) used when JOINs are present.
 
 from __future__ import annotations
 
+from provisa.compiler.sql_literals import sql_literal
+
 
 from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Protocol
@@ -511,7 +513,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
             elif isinstance(v, (int, float)):
                 lit = str(v)
             else:
-                lit = "'" + str(v).replace("'", "''") + "'"
+                lit = sql_literal(v, "postgres")
             nf_conditions.append(f"{quoted_col} = {lit}")
         nf_where = " AND ".join(nf_conditions)
         if " WHERE " in sql:

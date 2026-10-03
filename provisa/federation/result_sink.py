@@ -23,6 +23,7 @@ The address is the one the presigner reads (``executor.redirect.presign_ctas_res
 # Requirements: REQ-1194
 
 from __future__ import annotations
+from provisa.compiler.sql_literals import sql_literal
 
 import uuid
 from dataclasses import dataclass
@@ -79,8 +80,8 @@ def require_format(engine: str, output_format: str, written: frozenset[str]) -> 
 
 
 def _quoted(text: str) -> str:
-    """``text`` as a single-quoted SQL string literal."""
-    return "'" + text.replace("'", "''") + "'"
+    """``text`` as a single-quoted SQL string literal (standard strings: DuckDB, Snowflake)."""
+    return sql_literal(text, "duckdb")
 
 
 # -- DuckDB ------------------------------------------------------------------------------------------

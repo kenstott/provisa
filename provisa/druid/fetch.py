@@ -62,7 +62,7 @@ def list_tables(conn: DruidConnection) -> list[str]:
 
 def table_columns(conn: DruidConnection, table: str) -> list[dict]:
     """``[{"name", "type"}]`` for `table`, from Druid's own INFORMATION_SCHEMA.COLUMNS."""
-    safe_table = table.replace("'", "''")
+    safe_table = sql_literal(table, "druid")[1:-1]
     rows = _sql(
         conn,
         "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS "

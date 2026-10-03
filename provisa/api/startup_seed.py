@@ -20,6 +20,7 @@ from app.py are safe because this module is never loaded at app.py module-initia
 # Requirements: REQ-012, REQ-016, REQ-057, REQ-510, REQ-695, REQ-837
 
 from __future__ import annotations
+from provisa.compiler.sql_literals import sql_literal
 
 import logging
 import re
@@ -1034,8 +1035,14 @@ async def _resolve_pk_from_sources() -> None:
             ).fetchall()
         ]
         for _pk_t in _pk_rows:
-            _sch = _pk_t["schema_name"].replace("'", "''")
-            _tbl = _pk_t["table_name"].replace("'", "''")
+            _pk_dialect = {
+                "mysql": "mysql",
+                "mariadb": "mysql",
+                "singlestore": "mysql",
+                "sqlserver": "tsql",
+            }.get(_pk_t["source_type"], "postgres")
+            _sch = sql_literal(_pk_t["schema_name"], _pk_dialect)
+            _tbl = sql_literal(_pk_t["table_name"], _pk_dialect)
             _pk_sql = (
                 "SELECT kcu.column_name "
                 "FROM information_schema.table_constraints tc "
@@ -1043,7 +1050,7 @@ async def _resolve_pk_from_sources() -> None:
                 "  ON tc.constraint_name = kcu.constraint_name "
                 "  AND tc.table_schema = kcu.table_schema "
                 "WHERE tc.constraint_type = 'PRIMARY KEY' "
-                f"  AND tc.table_schema = '{_sch}' AND tc.table_name = '{_tbl}'"
+                f"  AND tc.table_schema = {_sch} AND tc.table_name = {_tbl}"
             )
             try:
                 if _pk_t["source_id"] == "provisa-admin":

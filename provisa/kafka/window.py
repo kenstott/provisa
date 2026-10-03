@@ -16,6 +16,7 @@ Auto-injects WHERE clauses for Kafka-backed tables:
 """
 
 from __future__ import annotations
+from provisa.compiler.sql_literals import sql_literal
 
 import re
 from dataclasses import dataclass
@@ -94,8 +95,8 @@ def inject_kafka_filters(  # REQ-148, REQ-149
 
     # Inject discriminator filter
     if config.discriminator_field and config.discriminator_value:
-        safe_value = config.discriminator_value.replace("'", "''")
-        discriminator_filter = f"\"{config.discriminator_field}\" = '{safe_value}'"
+        safe_value = sql_literal(config.discriminator_value, "postgres")
+        discriminator_filter = f'"{config.discriminator_field}" = {safe_value}'
         sql = _inject_filter(sql, discriminator_filter)
 
     # Inject time-window filter (skip if client already filters on _timestamp)

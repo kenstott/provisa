@@ -23,6 +23,7 @@ untyped for the administrator to finish.
 # Requirements: REQ-1426, REQ-1691
 
 from __future__ import annotations
+from provisa.compiler.sql_literals import sql_literal
 
 from typing import Any
 
@@ -40,12 +41,15 @@ _COLUMNS_SQL = (
 )
 
 
-def _quote(value: str) -> str:
-    return "'" + value.replace("'", "''") + "'"
+def _quote(value: str, dialect: str) -> str:
+    return sql_literal(value, dialect)
 
 
 async def _discover(pool: Any, source: Source, schema: str, table: str) -> dict[str, str]:
-    result = await pool.execute(source.id, _COLUMNS_SQL % (_quote(schema), _quote(table)), [])
+    dialect = source.dialect or "postgres"
+    result = await pool.execute(
+        source.id, _COLUMNS_SQL % (_quote(schema, dialect), _quote(table, dialect)), []
+    )
     return {str(name): to_ir(str(native), source.type.value) for name, native in result.rows}
 
 
