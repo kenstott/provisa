@@ -148,3 +148,20 @@ def test_the_config_load_refuses_file_glob_on_a_non_files_source(tmp_path):
     config = type("C", (), {"sources": [source], "tables": [table]})()
     with _pytest.raises(ValueError, match="files source"):
         _validate_file_globs(config)
+
+
+def test_a_files_glob_table_is_always_floored_to_its_replica():
+    from types import SimpleNamespace
+
+    from provisa.federation.replica_routing import table_floor
+
+    src = SimpleNamespace(
+        id="files", type=SimpleNamespace(value="files"), replicate=None, load_protected=None
+    )
+    glob = SimpleNamespace(
+        source_id="files", file_glob="*.csv", replicate=None, load_protected=None
+    )
+    plain = SimpleNamespace(source_id="files", file_glob=None, replicate=None, load_protected=None)
+    # A glob table floors from cold (promoted=False); a plain single-file table does not.
+    assert table_floor(src, glob, promoted=False) == "file_glob"
+    assert table_floor(src, plain, promoted=False) is None
