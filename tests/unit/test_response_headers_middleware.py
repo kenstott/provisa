@@ -148,3 +148,31 @@ def test_the_application_installs_it_as_a_class_not_a_base_http_middleware():
     source = inspect.getsource(app_mod.create_app)
     assert "app.add_middleware(ResponseHeadersMiddleware, state=state)" in source
     assert '@app.middleware("http")' not in source
+
+
+@pytest.mark.parametrize(
+    "path", ["/data/sql", "/data/graphql", "/data/rest/orders", "/admin/graphql"]
+)
+def test_a_request_with_the_post_trial_notice_active_answers_200_carrying_it(monkeypatch, path):
+    """REQ-1137: the notice is informational and never fails the request it rides on. It used to
+    be encoded latin-1 from text holding characters latin-1 has not, so from the day a trial
+    elapsed every HTTP request answered 500."""
+    from provisa.licensing import emit
+    from provisa.licensing.state import LicensingState
+
+    state = LicensingState(
+        machine_id="machine-1",
+        first_seen="2026-01-01",
+        elapsed_days=60.0,
+        trial_expired=True,
+        licensed=False,
+        license_reason="no license present",
+    )
+    monkeypatch.setattr("provisa.licensing.emit.should_nag", lambda: True)
+    monkeypatch.setattr(emit, "current_state", lambda: state)
+    sent, _ = _serve(path)
+    assert sent[0]["status"] == 200
+    notice = _headers(sent[0])[b"x-provisa-license-notice"].decode("ascii")
+    assert notice == state.nag_text.replace("\n", " ")
+    assert "machine-1" in notice
+    assert sent[1] == _BODY  # the body is untouched

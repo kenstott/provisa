@@ -44,6 +44,11 @@ def advance_default_highwater(now_epoch: float) -> float:
     sandbox = sandbox_dir()
     if sandbox is None:
         return update_highwater(default_highwater_path(), now_epoch)
+    from provisa.licensing.anchors import _pinned_first_seen
+
+    if _pinned_first_seen() is not None:
+        # A test session with a pinned trial clock reads nothing of the machine's.
+        return update_highwater(sandbox / "highwater.json", now_epoch)
     real = read_highwater(default_highwater_path())
     return update_highwater(sandbox / "highwater.json", max(real, now_epoch))
 

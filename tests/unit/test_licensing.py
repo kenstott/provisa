@@ -452,3 +452,74 @@ def test_pgwire_notice_frame_encoding():
     assert length == len(data) - 1
     assert b"trial expired" in data
     assert b"NOTICE" in data
+
+
+def test_the_notice_is_ascii_so_every_channel_that_carries_it_can():
+    """An HTTP header and gRPC metadata take ASCII only; the notice rides both (REQ-1137)."""
+    text = nag_message("abc-123")
+    assert text.isascii(), [c for c in text if not c.isascii()]
+    text.replace("\n", " ").encode("ascii")
+
+
+def _pinned_state(monkeypatch, tmp_path, first_seen: str) -> object:
+    monkeypatch.setenv("PROVISA_LICENSING_SANDBOX_DIR", str(tmp_path / "sandbox"))
+    monkeypatch.setenv("PROVISA_LICENSING_FIRST_SEEN", first_seen)
+    today = datetime.date(2026, 10, 3)
+    return evaluate(
+        now_epoch=today.toordinal() * 86400,
+        today_iso=today.isoformat(),
+        license_path=tmp_path / "sandbox" / "license.json",
+    )
+
+
+def test_a_test_session_pinned_before_expiry_shows_no_notice(monkeypatch, tmp_path):
+    state = _pinned_state(monkeypatch, tmp_path, "2026-10-01")
+    assert state.first_seen == "2026-10-01"
+    assert not state.should_nag
+
+
+def test_a_test_session_pinned_past_expiry_shows_the_notice(monkeypatch, tmp_path):
+    state = _pinned_state(monkeypatch, tmp_path, "2026-07-01")
+    assert state.trial_expired and state.should_nag
+
+
+def test_the_pin_is_refused_outside_a_licensing_sandbox(monkeypatch):
+    """The pin belongs to a sandboxed test session; it is not a way to restart an installation's
+    trial."""
+    monkeypatch.delenv("PROVISA_LICENSING_SANDBOX_DIR", raising=False)
+    monkeypatch.setenv("PROVISA_LICENSING_FIRST_SEEN", "2026-10-01")
+    with pytest.raises(RuntimeError, match="refused without PROVISA_LICENSING_SANDBOX_DIR"):
+        anchors.reconcile_first_seen(machine_id="m", today_iso="2026-10-03")
+
+
+def test_the_grpc_notice_is_metadata_grpc_accepts(monkeypatch):
+    """gRPC metadata values are ASCII. A non-ASCII value fails the whole RPC with INTERNAL
+    "Invalid metadata" when the response is sent — past any try/except around setting it — so
+    the notice must be ASCII before it is attached."""
+    from types import SimpleNamespace
+
+    from provisa.grpc import server as grpc_server
+    from provisa.licensing import emit
+    from provisa.licensing.state import LicensingState
+
+    state = LicensingState(
+        machine_id="machine-1",
+        first_seen="2026-01-01",
+        elapsed_days=60.0,
+        trial_expired=True,
+        licensed=False,
+        license_reason="no license present",
+    )
+    emit.set_state(state)
+    try:
+        attached: list = []
+        context = SimpleNamespace(
+            peer=lambda: "ipv4:127.0.0.1:1", set_trailing_metadata=attached.append
+        )
+        servicer = object.__new__(grpc_server.ProvisaServicer)
+        servicer._emit_license_nag(context)
+        ((key, value),) = attached[0]
+        assert key == "x-provisa-license-notice"
+        assert value.isascii() and "machine-1" in value
+    finally:
+        emit.set_state(None)
