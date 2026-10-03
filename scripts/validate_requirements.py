@@ -19,8 +19,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
+
+import yaml
 
 # Allow running from repo root without install
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -28,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from provisa.tools.req_schema import Priority, RequirementsFile, ReqType, Status  # type: ignore[import]
 
 REQUIREMENTS_YAML = Path("docs/arch/requirements.yaml")
+_REQ_REF = re.compile(r"REQ-(\d+)")
 
 
 def main() -> int:
@@ -55,6 +59,15 @@ def main() -> int:
         return 1
 
     errors: list[str] = []
+
+    # Every requirement a requirement cites must exist. The schema ignores free fields
+    # (notes, related_reqs, relates_to, depends_on), so the raw entries are read here.
+    known = {req.id for req in rf.requirements}
+    for entry in yaml.safe_load(REQUIREMENTS_YAML.read_text()):
+        text = yaml.safe_dump({k: v for k, v in entry.items() if k != "id"})
+        for num in sorted(set(_REQ_REF.findall(text)), key=int):
+            if f"REQ-{num}" not in known and f"REQ-{int(num):03d}" not in known:
+                errors.append(f"{entry['id']}: cites REQ-{num}, which does not exist")
 
     if args.coverage_check:
         for req in rf.requirements:

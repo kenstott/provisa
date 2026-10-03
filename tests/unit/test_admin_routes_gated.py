@@ -141,6 +141,9 @@ def _callees(fn) -> set[str]:
 
 def _reaches_gate(fn, depth: int = _DEPTH, seen: set | None = None) -> bool:
     seen = set() if seen is None else seen
+    # A decorated handler (``functools.wraps``) is read through to the function it wraps: its
+    # source is the wrapped function's, so the names it calls resolve in THAT module's globals.
+    fn = inspect.unwrap(fn)
     if fn in seen or depth < 0:
         return False
     seen.add(fn)
