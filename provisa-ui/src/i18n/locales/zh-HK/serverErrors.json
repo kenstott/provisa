@@ -92,7 +92,8 @@
       "table_not_found": "找不到資料表「{{table}}」",
       "unknown_action_field": "未知的動作欄位：「{{field}}」",
       "unknown_command": "未知命令「{{name}}」",
-      "write_not_admitted": "角色 '{{role}}' 不能執行此寫入：寫入需要寫入權限、對所寫每一欄的寫入權限，以及該角色的行過濾器允許的行。"
+      "write_not_admitted": "角色 '{{role}}' 不能執行此寫入：寫入需要寫入權限、對所寫每一欄的寫入權限，以及該角色的行過濾器允許的行。",
+      "redirect_failed": "無法將結果寫入結果儲存區：{{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」的配接器未實作 discover_schema",

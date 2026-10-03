@@ -92,7 +92,8 @@
       "table_not_found": "Tabella '{{table}}' non trovata",
       "unknown_action_field": "Campo azione sconosciuto: '{{field}}'",
       "unknown_command": "Comando '{{name}}' sconosciuto",
-      "write_not_admitted": "Il ruolo '{{role}}' non può eseguire questa scrittura: una scrittura richiede il diritto di scrittura, l'accesso in scrittura a ogni colonna scritta e righe ammesse dal filtro di riga del ruolo."
+      "write_not_admitted": "Il ruolo '{{role}}' non può eseguire questa scrittura: una scrittura richiede il diritto di scrittura, l'accesso in scrittura a ogni colonna scritta e righe ammesse dal filtro di riga del ruolo.",
+      "redirect_failed": "Impossibile scrivere il risultato nell'archivio dei risultati: {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adattatore per '{{source_type}}' non implementa discover_schema",
