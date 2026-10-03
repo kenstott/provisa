@@ -10124,7 +10124,7 @@ On ephemeral sandbox session start, clone a pre-seeded golden template schema (o
 
 ### REQ-1035 · Demo Tiers & Onboarding {#REQ-1035}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✗ rejected · **Priority:** MUST · **Type:** behavioral
 
 Ephemeral sandbox sessions are scoped by Firebase anonymous auth ([REQ-121](#REQ-121)) without email collection. Prospects get a uid-based session identity with zero friction.
 

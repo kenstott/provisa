@@ -31168,7 +31168,7 @@
   - REQ-121
   superseded_by: REQ-1595
 - id: REQ-1035
-  status: proposed
+  status: rejected
   group: 2. Authentication & Identity
   category: Demo Tiers & Onboarding
   priority: MUST
@@ -31190,8 +31190,8 @@
   relates_to:
   - REQ-121
   - REQ-1033
-  notes: 'Maintainer 2026-10-03: unbuilt; prioritised by score. The maintainer said of this one that they
-    do not see a lot of value in it.'
+  notes: 'Audit 2026-10-03: not built.'
+  rejection_reason: 'Maintainer 2026-10-03: rejected; not enough value.'
 - id: REQ-1036
   status: superseded
   group: 11. Platform, Infrastructure & Delivery
