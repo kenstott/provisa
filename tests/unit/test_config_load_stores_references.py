@@ -251,7 +251,7 @@ def test_a_reference_in_a_field_that_is_not_text_is_resolved_in_both_forms(monke
 @pytest.mark.parametrize(
     ("written", "sent_to"),
     [
-        ("https://pets.test/v1?token=${env:IT_API_TOKEN}", "https://pets.test/v1?token=api-tok-77e0d4/pets"),
+        ("https://pets.test/${env:IT_API_TOKEN}/v1", "https://pets.test/api-tok-77e0d4/v1/pets"),
         ("https://pets.test/v1", "https://pets.test/v1/pets"),
     ],
 )  # fmt: skip
