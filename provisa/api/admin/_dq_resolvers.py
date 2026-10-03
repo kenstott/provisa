@@ -228,16 +228,24 @@ async def run_dq_check_now(
     cadence drives. A table with no such job (not a registered checker table, or the event loop has
     not booted it yet) is a real error, not a no-op.
     """
-    fetched = (
+    rows = (
         await conn.execute_core(
-            select(registered_tables.c.dq_contract).where(
+            select(registered_tables.c.source_id, registered_tables.c.dq_contract).where(
                 registered_tables.c.schema_name == schema_name,
                 registered_tables.c.table_name == table_name,
             )
         )
-    ).fetchone()
-    if fetched is None:
+    ).fetchall()
+    if not rows:
         return {"success": False, "message": f"no table {schema_name}.{table_name}"}
+    if len(rows) > 1:
+        # Two sources may both hold schema.table: the name alone does not say which checker runs.
+        sources = ", ".join(sorted(r._mapping["source_id"] for r in rows))
+        return {
+            "success": False,
+            "message": f"more than one source registers {schema_name}.{table_name} ({sources})",
+        }
+    fetched = rows[0]
     if not fetched._mapping["dq_contract"]:
         return {
             "success": False,
@@ -245,7 +253,9 @@ async def run_dq_check_now(
         }
     if scheduler is None:
         return {"success": False, "message": "the event-loop scheduler is not running"}
-    node = f"{schema_name}.{table_name}"
+    from provisa.events.nodes import source_node
+
+    node = source_node(fetched._mapping["source_id"], schema_name, table_name)
     suffix = f":org_{org_id}" if org_id else ""
     job = scheduler.get_job(f"poll:{node}{suffix}")
     if job is None:

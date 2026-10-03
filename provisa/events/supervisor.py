@@ -14,7 +14,8 @@ Given the set of table processors (one per node), ``tick`` runs each processor's
 complete→re-post once; ``drain`` runs ticks until quiescent so a change propagates through the whole
 DAG within one catch-up; ``reap`` reclaims stale leases (dead processors). A scheduled job fires
 ``tick`` + ``reap`` periodically on the embedded scheduler; ``drain`` is for boot catch-up and tests.
-``dependents_of`` is built from the SQLGlot lineage so a processor's re-post fans to the right nodes.
+``dependents_of`` is built from the view lineage resolved against the model, so a processor's
+re-post fans to the right nodes.
 """
 
 from __future__ import annotations
@@ -26,14 +27,15 @@ from typing import Any
 from provisa.events import lineage, queue
 
 
-def dependents_of(mvs: dict[str, str], dialect: str = "postgres") -> Callable[[str], list[str]]:
-    """Build the ``dependents_of(node) -> [nodes that listen]`` callable from the MV lineage graph —
+def dependents_of(graph: dict[str, set[str]]) -> Callable[[str], list[str]]:
+    """Build the ``dependents_of(node) -> [nodes that listen]`` callable from the view lineage
+    ``graph`` (``{view node: the nodes it reads}``, ``provisa.events.nodes.lineage_graph``) —
     what a processor's re-post fans out to. Rejects a cyclic DAG (fan-out would never terminate)."""
-    cycle = lineage.find_cycle(mvs, dialect)
+    cycle = lineage.find_cycle(graph)
     if cycle is not None:
         raise ValueError(f"MV lineage has a cycle: {' -> '.join(cycle)}")
-    graph = lineage.dependents(mvs, dialect)
-    return lambda node: graph.get(node, [])
+    fan_out = lineage.dependents(graph)
+    return lambda node: fan_out.get(node, [])
 
 
 async def tick(db: Any, processors: list[Any]) -> list[str]:

@@ -128,7 +128,7 @@ def test_specs_from_config_binds_materialized_sources_and_mvs():
     )
     kinds = {s.node: s.kind for s in specs}
     assert kinds == {
-        "default.events": "source",
+        "api/default.events": "source",
         "analytics.daily": "mv",
     }  # virtual + untyped skipped
     src = next(s for s in specs if s.kind == "source")

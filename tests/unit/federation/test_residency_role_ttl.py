@@ -90,7 +90,7 @@ def _stale(tables, states, role, verdict=None, src=None):
 
 
 def test_an_analyst_serves_a_200s_old_replica_a_trader_does_not():
-    t, states = _tbl("orders"), {"sch.orders": _st(200)}
+    t, states = _tbl("orders"), {"s/sch.orders": _st(200)}
     assert not _stale([t], states, "analyst")
     assert _stale([t], states, "trader")
     assert _stale([t], states, None)
@@ -98,24 +98,24 @@ def test_an_analyst_serves_a_200s_old_replica_a_trader_does_not():
 
 def test_a_trader_with_role_ttl_0_is_held_to_the_cache_ttl_floor():
     t = _tbl("orders")
-    assert not _stale([t], {"sch.orders": _st(30)}, "trader")
-    assert _stale([t], {"sch.orders": _st(61)}, "trader")
+    assert not _stale([t], {"s/sch.orders": _st(30)}, "trader")
+    assert _stale([t], {"s/sch.orders": _st(61)}, "trader")
 
 
 def test_check_says_stale_but_ttl_not_passed_does_not_land():
-    assert not _stale([_tbl("orders")], {"sch.orders": _st(30)}, "trader", verdict=False)
+    assert not _stale([_tbl("orders")], {"s/sch.orders": _st(30)}, "trader", verdict=False)
 
 
 def test_ttl_passed_but_check_says_fresh_does_not_land():
-    assert not _stale([_tbl("orders")], {"sch.orders": _st(200)}, "trader", verdict=True)
+    assert not _stale([_tbl("orders")], {"s/sch.orders": _st(200)}, "trader", verdict=True)
 
 
 def test_ttl_passed_and_check_says_stale_lands():
-    assert _stale([_tbl("orders")], {"sch.orders": _st(200)}, "trader", verdict=False)
+    assert _stale([_tbl("orders")], {"s/sch.orders": _st(200)}, "trader", verdict=False)
 
 
 def test_no_check_lands_on_the_ttl_alone():
-    assert _stale([_tbl("orders")], {"sch.orders": _st(200)}, "trader", verdict=None)
+    assert _stale([_tbl("orders")], {"s/sch.orders": _st(200)}, "trader", verdict=None)
 
 
 def _real_stale(tables, states, role, src=None):
@@ -132,10 +132,10 @@ def test_a_change_fed_table_is_fresh_for_every_role_role_ttl_cannot_hold_back_th
     t = _tbl("feed", cache_ttl=None, role_ttl={"analyst": 360}, change_signal=signal)
     for role in ("analyst", "trader", None):
         for age in (1, 200, 361, 100_000):
-            assert not _real_stale([t], {"sch.feed": _st(age)}, role)
+            assert not _real_stale([t], {"s/sch.feed": _st(age)}, role)
     # never-landed / failed still lands, for every reader
-    assert _real_stale([t], {"sch.feed": None}, "analyst")
-    assert _real_stale([t], {"sch.feed": _st(1, ok=False)}, "analyst")
+    assert _real_stale([t], {"s/sch.feed": None}, "analyst")
+    assert _real_stale([t], {"s/sch.feed": _st(1, ok=False)}, "analyst")
 
 
 @pytest.mark.parametrize("signal", ["ttl", "ttl_probe"])
@@ -151,7 +151,7 @@ def test_a_ttl_signal_table_with_no_table_or_source_cache_ttl_fails_the_read(sig
         (on_table, _src(change_signal="kafka")),
         (on_source, _src(change_signal=signal)),
     ):
-        for states in ({"sch.orders": _st(200)}, {"sch.orders": None}):
+        for states in ({"s/sch.orders": _st(200)}, {"s/sch.orders": None}):
             with pytest.raises(ValueError, match=r"orders.*add a cache_ttl"):
                 _real_stale([t], states, "analyst", src=src)
         with pytest.raises(ValueError, match=r"orders.*add a cache_ttl"):
@@ -159,7 +159,7 @@ def test_a_ttl_signal_table_with_no_table_or_source_cache_ttl_fails_the_read(sig
     # a source-level cache_ttl satisfies it
     assert not _real_stale(
         [on_source],
-        {"sch.orders": _st(200)},
+        {"s/sch.orders": _st(200)},
         "analyst",
         src=_src(change_signal=signal, cache_ttl=3600),
     )
@@ -169,16 +169,16 @@ def test_staleness_is_judged_per_table_against_that_tables_own_ttl():
     src = _src(cache_ttl=3600)
     slow = _tbl("slow", cache_ttl=None, role_ttl={})  # inherits the source's 3600
     fast = _tbl("fast", cache_ttl=10, role_ttl={})
-    states = {"sch.slow": _st(100), "sch.fast": _st(5)}
+    states = {"s/sch.slow": _st(100), "s/sch.fast": _st(5)}
     assert not _stale([slow, fast], states, None, src=src)
-    states["sch.fast"] = _st(11)
+    states["s/sch.fast"] = _st(11)
     assert _stale([slow, fast], states, None, src=src)
 
 
 def test_never_landed_or_failed_is_stale_for_every_reader_whatever_the_check():
     t = _tbl("orders")
-    assert _stale([t], {"sch.orders": None}, "analyst", verdict=True)
-    assert _stale([t], {"sch.orders": _st(1, ok=False)}, "analyst", verdict=True)
+    assert _stale([t], {"s/sch.orders": None}, "analyst", verdict=True)
+    assert _stale([t], {"s/sch.orders": _st(1, ok=False)}, "analyst", verdict=True)
 
 
 def test_push_and_probe_tables_are_kept_fresh_by_their_change_path():
@@ -318,7 +318,9 @@ def wiring(monkeypatch):
     seen: dict = {}
 
     def _node(key) -> str:
-        return f"{key[1]}.{key[2]}"
+        from provisa.events.nodes import source_node
+
+        return source_node(*key)
 
     async def read(conn, key):
         seen["db"] = conn
@@ -375,7 +377,7 @@ def wiring(monkeypatch):
 @pytest.mark.asyncio
 async def test_an_analyst_read_of_a_200s_old_replica_does_not_land(wiring):
     backend = _Backend()
-    state = _state([_tbl("orders")], backend, {"sch.orders": _st(200)})
+    state = _state([_tbl("orders")], backend, {"s/sch.orders": _st(200)})
     assert (
         await ensure_resident(state, {"s"}, reader_role="analyst", table_ids=_read(state))
     ).built == []
@@ -385,7 +387,7 @@ async def test_an_analyst_read_of_a_200s_old_replica_does_not_land(wiring):
 @pytest.mark.asyncio
 async def test_a_trader_read_lands_only_past_the_cache_ttl_floor(wiring, monkeypatch):
     backend = _Backend()
-    state = _state([_tbl("orders")], backend, {"sch.orders": _st(30)})
+    state = _state([_tbl("orders")], backend, {"s/sch.orders": _st(30)})
     assert (
         await ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state))
     ).built == []
@@ -404,7 +406,7 @@ async def test_a_trader_read_lands_only_past_the_cache_ttl_floor(wiring, monkeyp
 @pytest.mark.asyncio
 async def test_two_concurrent_trader_reads_share_one_land(wiring):
     backend = _Backend()
-    state = _state([_tbl("orders")], backend, {"sch.orders": _st(200)})
+    state = _state([_tbl("orders")], backend, {"s/sch.orders": _st(200)})
     first, second = await asyncio.gather(
         ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state)),
         ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state)),
@@ -419,7 +421,7 @@ async def test_a_direct_attached_table_is_read_live_with_no_staleness_evaluation
     """REQ-1907 (direct attach is live): role_ttl and cache_ttl are set, the replica is stale for
     a trader -- but the engine attaches the source, so nothing is evaluated and nothing lands."""
     backend = _Backend()
-    state = _state([_tbl("orders")], backend, {"sch.orders": _st(10_000)}, attaches=True)
+    state = _state([_tbl("orders")], backend, {"s/sch.orders": _st(10_000)}, attaches=True)
     assert (
         await ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state))
     ).built == []
@@ -431,7 +433,7 @@ async def test_a_direct_attached_table_is_read_live_with_no_staleness_evaluation
 async def test_attach_capable_but_replicate_goes_through_the_replica_gate(wiring):
     backend = _Backend()
     t = _tbl("orders", replicate=0)
-    state = _state([t], backend, {"sch.orders": _st(200)}, attaches=True)
+    state = _state([t], backend, {"s/sch.orders": _st(200)}, attaches=True)
     assert (
         await ensure_resident(state, {"s"}, reader_role="analyst", table_ids=_read(state))
     ).built == []  # 200 < 360
@@ -447,11 +449,11 @@ async def test_a_read_of_a_ttl_table_with_no_cache_ttl_fails_before_any_land(wir
     rejected before the land plan runs, so no land is attempted and no node is stamped."""
     backend = _Backend()
     t = _tbl("orders", cache_ttl=None, role_ttl={"analyst": 360})
-    state = _state([t], backend, {"sch.orders": _st(200)})
+    state = _state([t], backend, {"s/sch.orders": _st(200)})
     with pytest.raises(ValueError, match=r"orders.*add a cache_ttl"):
         await ensure_resident(state, {"s"}, reader_role="analyst", table_ids=_read(state))
     assert backend.plans == 0 and backend.lands == 0
-    assert state.tenant_db.states == {"sch.orders": _st(200)}
+    assert state.tenant_db.states == {"s/sch.orders": _st(200)}
 
 
 @pytest.mark.asyncio
@@ -461,7 +463,7 @@ async def test_a_directly_attached_ttl_table_with_no_cache_ttl_reads_live(wiring
     no landing clock and the read succeeds with nothing evaluated."""
     backend = _Backend()
     t = _tbl("orders", cache_ttl=None, change_signal=signal)
-    state = _state([t], backend, {"sch.orders": _st(10_000)}, attaches=True)
+    state = _state([t], backend, {"s/sch.orders": _st(10_000)}, attaches=True)
     assert (
         await ensure_resident(state, {"s"}, reader_role="analyst", table_ids=_read(state))
     ).built == []
@@ -473,7 +475,7 @@ async def test_a_directly_attached_ttl_table_with_no_cache_ttl_reads_live(wiring
 async def test_a_landed_no_ttl_freshness_signal_table_reads_without_a_cache_ttl(wiring, signal):
     backend = _Backend()
     t = _tbl("orders", cache_ttl=None, change_signal=signal)
-    state = _state([t], backend, {"sch.orders": _st(10_000)})
+    state = _state([t], backend, {"s/sch.orders": _st(10_000)})
     assert (
         await ensure_resident(state, {"s"}, reader_role="analyst", table_ids=_read(state))
     ).built == []
@@ -488,8 +490,8 @@ def test_a_freshness_gated_probe_source_with_no_cache_ttl_is_judged_by_its_gate(
     t = _tbl("orders", cache_ttl=None, role_ttl={"analyst": 360})
     # no probe verdict has been recorded, so the gate reports the replica not fresh
     assert freshness_verdict(gated, t, NOW - 500, True, NOW) is False
-    assert not _real_stale([t], {"sch.orders": _st(1)}, "analyst", src=gated)
-    assert _real_stale([t], {"sch.orders": _st(400)}, "analyst", src=gated)
+    assert not _real_stale([t], {"s/sch.orders": _st(1)}, "analyst", src=gated)
+    assert _real_stale([t], {"s/sch.orders": _st(400)}, "analyst", src=gated)
 
 
 @pytest.mark.asyncio
@@ -498,7 +500,7 @@ async def test_a_load_protected_table_is_never_landed_by_a_read_even_for_ttl_0(w
     reader, a TTL-0 trader included, gets the scheduled snapshot."""
     backend = _Backend()
     t = _tbl("orders", load_protected=True, role_ttl={"trader": 0})
-    state = _state([t], backend, {"sch.orders": _st(10_000)}, attaches=True)
+    state = _state([t], backend, {"s/sch.orders": _st(10_000)}, attaches=True)
     assert (
         await ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state))
     ).built == []

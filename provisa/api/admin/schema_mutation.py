@@ -3443,8 +3443,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     params={"table": table_id},
                 )
             schema_name, table_name, source_id = row[0], row[1], row[2]
-            node = f"{schema_name}.{table_name}"
-            if state.mv_registry.get(f"view-{table_name}") is not None:
+            from provisa.events.nodes import source_node, view_node
+
+            view = state.mv_registry.get(f"view-{table_name}")
+            node = (
+                view_node(view)
+                if view is not None
+                else source_node(source_id, schema_name, table_name)
+            )
+            if view is not None:
                 scope = "node"  # a derived view: recompute its SQL without re-landing its inputs
             else:
                 scope = "source"

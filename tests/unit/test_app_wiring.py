@@ -141,6 +141,10 @@ def _state(*, ready=True):
         federation_engine=engine,
         config=config,
         mv_registry=registry,
+        # the model a view's inputs resolve against (events.nodes.lineage_graph); no views here
+        tables=[],
+        source_catalogs={},
+        contexts={},
     )
 
 
@@ -197,6 +201,8 @@ def _state_with_mv(*, column_types):
         replica_address=_replica_address,
     )
     mv = SimpleNamespace(
+        id="daily",
+        target_catalog="store",
         target_schema="analytics",
         target_table="daily",
         sql="SELECT day AS d, count(*) AS n FROM orders GROUP BY day",
@@ -209,7 +215,20 @@ def _state_with_mv(*, column_types):
         tenant_db=_fake_db([]),
         federation_engine=engine,
         config=SimpleNamespace(sources=[], tables=[]),
-        mv_registry=SimpleNamespace(get_enabled=lambda: [mv]),
+        mv_registry=SimpleNamespace(get_enabled=lambda: [mv], get=lambda _id: None),
+        # the model the view's input ``orders`` resolves against (events.nodes.lineage_graph)
+        tables=[
+            {
+                "id": 1,
+                "source_id": "pg",
+                "domain_id": "sales",
+                "schema_name": "public",
+                "table_name": "orders",
+                "alias": None,
+            }
+        ],
+        source_catalogs={"pg": "pg"},
+        contexts={},
     )
 
 
@@ -276,3 +295,16 @@ async def test_never_raises_into_boot():
         log=_LOG,
     )
     assert n == 0
+
+
+@pytest.mark.asyncio
+async def test_a_view_whose_input_does_not_resolve_fails_wiring_naming_it(caplog):
+    """A view that reads a name the model does not hold was refused when it was declared;
+    meeting one at wiring is a defect — the wiring raises, naming the view and the reference,
+    rather than wiring the view with a missing edge."""
+    st = _state_with_mv(column_types=["date", "bigint"])
+    st.tables = []
+    with caplog.at_level("ERROR"):
+        n = await wire_event_loop(_Sched(), state=st, log=_LOG)
+    assert n == 0
+    assert "materialized view 'daily' reads 'orders'" in caplog.text

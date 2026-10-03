@@ -33,6 +33,7 @@ from typing import Any
 
 from provisa.events import supervisor
 from provisa.events.boot import build_processors, register_runtime, specs_from_config
+from provisa.events.nodes import view_node
 
 
 async def _load_calendar_registry(db: Any) -> Any:
@@ -93,7 +94,7 @@ async def _reconcile_mv_store_schemas(
     from sqlalchemy.exc import SQLAlchemyError
 
     for mv in mvs:
-        key = f"{mv.target_schema}.{mv.target_table}"
+        key = view_node(mv)
         cols = mv_cols.get(key)
         if not cols:
             continue
@@ -120,10 +121,7 @@ def _build_subscribers_of(
     dependents that subscribe to it; a dependent MV subscribes to the shapes in its ``consumes`` set
     (default ``{replace}``). ``subscribers_of(node, shape)`` = the dependents of ``node`` whose
     consumes set includes ``shape``."""
-    consumes_by_node = {
-        f"{m.target_schema}.{m.target_table}": set(getattr(m, "consumes", ["replace"]) or [])
-        for m in mvs
-    }
+    consumes_by_node = {view_node(m): set(getattr(m, "consumes", ["replace"]) or []) for m in mvs}
 
     def subscribers_of(node: str, shape: str) -> list[str]:
         return [
@@ -433,13 +431,15 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         registry = getattr(state, "mv_registry", None)
         mvs = registry.get_enabled() if registry is not None else []
 
-        # dependents fan-out set from the SQLGlot lineage over each MV's SQL (join-pattern MVs w/o SQL
-        # contribute no edges here). A cycle is rejected — the loop must be acyclic.
-        mv_sql = {
-            f"{m.target_schema}.{m.target_table}": m.sql for m in mvs if getattr(m, "sql", None)
-        }
+        # The fan-out set: each view's inputs resolved against the model (REQ-939), never matched
+        # by the spelling its SQL uses. A view whose input does not resolve was refused when it was
+        # declared, so meeting one here is a defect: it raises, naming the view and the reference.
+        # A cycle is rejected — the loop must be acyclic.
+        from provisa.events.nodes import expected_event_nodes, lineage_graph, source_node
+
+        graph = lineage_graph(mvs, state)
         try:
-            dependents_of = supervisor.dependents_of(mv_sql)
+            dependents_of = supervisor.dependents_of(graph)
         except ValueError:
             log.warning("event loop: MV lineage has a cycle — skipping event-loop wiring")
             return 0
@@ -483,7 +483,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
             _sql = getattr(_m, "sql", None)
             if not _sql:
                 continue
-            _key = f"{_m.target_schema}.{_m.target_table}"
+            _key = view_node(_m)
             try:
                 _probe = await engine.execute_engine(
                     f"SELECT * FROM ({engine.address_replicas(_sql)}) AS _mv_probe LIMIT 0"
@@ -511,7 +511,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         subscribers_of = _build_subscribers_of(mvs, dependents_of)
 
         def mv_columns(mv: Any) -> list[tuple[str, str]] | None:
-            return _mv_cols.get(f"{mv.target_schema}.{mv.target_table}")
+            return _mv_cols.get(view_node(mv))
 
         def mv_run_query(mv: Any) -> Any:
             async def _run() -> list[dict]:
@@ -569,7 +569,9 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
                 continue
             try:
                 if federate(_src, engine.engine) is not Strategy.MATERIALIZED:
-                    always_current.add(f"{_tbl.schema_name}.{_tbl.table_name}")
+                    always_current.add(
+                        source_node(_tbl.source_id, _tbl.schema_name, _tbl.table_name)
+                    )
             except UnreachableSource:
                 pass  # unreachable → a frozen one-shot snapshot, not always-current
         freshness_of = make_db_freshness_of(db, always_current)
@@ -590,6 +592,9 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
             calendar_registry=calendar_registry,  # REQ-962 periodic boundary source
             freshness_of=freshness_of,  # REQ-961 per-input freshness contract reader
             mv_bitemporal_append=mv_bitemporal_append,  # REQ-1162/1166/1167 append entry
+            # REQ-961: a periodic view's contract checks the input nodes it names, resolved
+            # against the model like its edges.
+            expected_events_of=lambda mv: expected_event_nodes(mv, state, graph),
         )
         processors = build_processors(specs, db=db, dependents_of=dependents_of)
         # REQ-<NEW>: publish the live processors list AND which nodes already have a poll job so a
@@ -687,10 +692,17 @@ async def wire_new_poll_jobs(*, state: Any, log: Any) -> int:
         registered_tables_ = await registered_tables(state)
         src_by_id = {s.id: s for s in all_sources}
 
+        from provisa.events.nodes import lineage_graph, source_node
+
         candidates = [
-            (src_by_id[tbl.source_id], tbl, f"{tbl.schema_name}.{tbl.table_name}")
+            (
+                src_by_id[tbl.source_id],
+                tbl,
+                source_node(tbl.source_id, tbl.schema_name, tbl.table_name),
+            )
             for tbl in registered_tables_
-            if f"{tbl.schema_name}.{tbl.table_name}" not in state.poll_jobs_registered
+            if source_node(tbl.source_id, tbl.schema_name, tbl.table_name)
+            not in state.poll_jobs_registered
             and tbl.source_id in src_by_id
         ]
         if not candidates:
@@ -733,11 +745,8 @@ async def wire_new_poll_jobs(*, state: Any, log: Any) -> int:
 
         registry = getattr(state, "mv_registry", None)
         mvs = registry.get_enabled() if registry is not None else []
-        mv_sql = {
-            f"{m.target_schema}.{m.target_table}": m.sql for m in mvs if getattr(m, "sql", None)
-        }
         try:
-            dependents_of = supervisor.dependents_of(mv_sql)
+            dependents_of = supervisor.dependents_of(lineage_graph(mvs, state))
         except ValueError:
             log.warning("poll-job wiring: MV lineage has a cycle — skipping")
             return 0

@@ -612,7 +612,7 @@ class EngineRuntime:  # REQ-825, REQ-840
         same file.
 
         REQ-1865: when the target table is ``row_materialize`` (``row_materialize=True``, ``node``
-        its registered ``schema.table``), this does NOT call the ordinary upsert-every-event path —
+        its event-graph node, ``events.nodes.source_node``), this does NOT call the ordinary upsert-every-event path —
         see design doc section 5. Instead it filters ``events`` to PKs already present in the row
         cache and posts a background ``row_refresh`` work item for exactly those keys; a key not
         already cached is dropped before any fetch is even considered."""

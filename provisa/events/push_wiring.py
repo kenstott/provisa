@@ -148,6 +148,7 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
     started: list[LongLived] = []
 
     from provisa.events.app_wiring import replica_write_lock_factory
+    from provisa.events.nodes import source_node
 
     locks = replica_write_lock_factory(state)
     for tbl in tables:
@@ -157,7 +158,7 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
         source_type = src.type.value if hasattr(src.type, "value") else str(src.type)
         if source_type not in _PUSH_SOURCE_TYPES:
             continue
-        node = f"{tbl['schema_name']}.{tbl['table_name']}"
+        node = source_node(tbl["source_id"], tbl["schema_name"], tbl["table_name"])
         if node in state.push_listener_disconnects:
             continue  # already running from a prior wire
 

@@ -1052,8 +1052,8 @@ class Table(
     # REQ-961: allowed_lateness (seconds) extends the claim deadline past window.end.
     mv_allowed_lateness: float = 0.0
     # REQ-961: the freshness-contract inputs — the inputs that must be fresh-through window.end for
-    # the periodic output to be trusted. None = default to ALL SQL-lineage inputs (extract_inputs,
-    # REQ-939); [] = calendar-only (verify nothing).
+    # the periodic output to be trusted, each resolved against the model like the view's SQL. None =
+    # default to every input the view reads (REQ-939); [] = calendar-only (verify nothing).
     mv_expected_events: list[str] | None = None
     # REQ-879: cross-instance MV consistency tier. "shared" = one fleet-coordinated copy (CAS on
     # the shared materialized_views catalog; one instance refreshes at a time). "distributed" =
