@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
+from datetime import datetime
 import dataclasses
 import functools
 import logging
@@ -128,6 +129,10 @@ class _Plan:
     # audited by the one pipeline instead of each transport calling log_query itself. None when
     # nothing user-initiated is running (seeding, rebuilds); see provisa.audit.context.
     audit: PendingAudit | None = field(default=None)
+    # REQ-1915: every replica this statement read, with the completion time (UTC) of the build
+    # its read was answered from (``query_residency.Residency.replicas_read``) — the audit
+    # record's data age. Empty: no replica was read (a live read, or residency never ran).
+    replicas_read: dict[tuple[str, str, str], datetime] = field(default_factory=dict)
     # Guards against a second finalize for one statement: the streaming surfaces finalize at their
     # own terminal, and a plan that also passes through _execute_plan must still write one row.
     audit_written: bool = field(default=False)
@@ -2125,7 +2130,10 @@ async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-0
             plan.exec_params,
             reader_role=plan.role_id,
         )
-    await ensure_resident(state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids)
+    residency = await ensure_resident(
+        state, plan.sources, reader_role=plan.role_id, table_ids=plan.table_ids
+    )
+    plan.replicas_read = residency.replicas_read
     # REQ-1897: the result cache is GraphQL's Route.CACHE candidate route, extended here so every
     # other raw-SQL surface that reaches this one chokepoint (Bolt, pgwire's non-COPY path) gets
     # the same served-without-touching-the-engine hit -- with the same audit row and tier/egress
