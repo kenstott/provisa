@@ -343,6 +343,7 @@ class TestOAuthProvider:
                 return _Key()
 
         monkeypatch.setattr(provider, "_get_jwks_client", lambda: _JwksClient())
+        monkeypatch.setattr(provider, "_discovery", lambda: {"issuer": "https://idp.example"})
         monkeypatch.setattr(oa_mod.jwt, "decode", lambda *a, **k: decoded)
         return provider
 
@@ -369,6 +370,130 @@ class TestOAuthProvider:
         provider = self._provider(monkeypatch, {"sub": "u"})
         identity = await provider.validate_token("t")
         assert identity.roles == []
+
+
+def _rsa_key():
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    return rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+
+def _signed(key, claims: dict) -> str:
+    import datetime
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    payload = {"sub": "u1", "exp": now + datetime.timedelta(minutes=5), **claims}
+    payload = {k: v for k, v in payload.items() if v is not None}
+    return jwt.encode(payload, key, algorithm="RS256")
+
+
+class _JwksFor:
+    """Stands in for the JWKS fetch only: hands back the real public key the token was signed
+    with, so signature and claim verification run for real."""
+
+    def __init__(self, key) -> None:
+        self._public = key.public_key()
+
+    def get_signing_key_from_jwt(self, token):
+        class _Key:
+            key = self._public
+
+        return _Key()
+
+
+class TestOAuthProviderClaims:
+    """REQ-890: a token is verified against the configured issuer — signature, exp, aud, iss."""
+
+    ISSUER = "https://idp.example"
+
+    def _provider(self, monkeypatch, key):
+        from provisa.auth.providers import oauth as oa_mod
+        from provisa.auth.providers.oauth import OAuthProvider
+
+        class _Resp:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "issuer": TestOAuthProviderClaims.ISSUER,
+                    "jwks_uri": "https://idp.example/jwks",
+                }
+
+        monkeypatch.setattr(oa_mod.httpx, "get", lambda url, timeout: _Resp())
+        provider = OAuthProvider(
+            discovery_url="https://idp.example/.well-known/openid-configuration",
+            client_id="provisa",
+        )
+        monkeypatch.setattr(provider, "_get_jwks_client", lambda: _JwksFor(key))
+        return provider
+
+    async def test_token_from_the_configured_issuer_is_accepted(self, monkeypatch):
+        key = _rsa_key()
+        provider = self._provider(monkeypatch, key)
+        identity = await provider.validate_token(
+            _signed(key, {"iss": self.ISSUER, "aud": "provisa"})
+        )
+        assert identity.user_id == "u1"
+
+    async def test_token_from_another_issuer_is_rejected(self, monkeypatch):
+        key = _rsa_key()
+        provider = self._provider(monkeypatch, key)
+        with pytest.raises(jwt.InvalidIssuerError):
+            await provider.validate_token(
+                _signed(key, {"iss": "https://other.example", "aud": "provisa"})
+            )
+
+    async def test_token_without_an_issuer_is_rejected(self, monkeypatch):
+        key = _rsa_key()
+        provider = self._provider(monkeypatch, key)
+        with pytest.raises(jwt.MissingRequiredClaimError):
+            await provider.validate_token(_signed(key, {"aud": "provisa"}))
+
+    async def test_token_without_an_expiry_is_rejected(self, monkeypatch):
+        key = _rsa_key()
+        provider = self._provider(monkeypatch, key)
+        with pytest.raises(jwt.MissingRequiredClaimError):
+            await provider.validate_token(
+                _signed(key, {"iss": self.ISSUER, "aud": "provisa", "exp": None})
+            )
+
+
+class TestKeycloakProviderClaims:
+    """REQ-122: a Keycloak token is verified against the configured realm's issuer."""
+
+    ISSUER = "https://kc.example/realms/r"
+
+    def _provider(self, monkeypatch, key):
+        from provisa.auth.providers.keycloak import KeycloakAuthProvider
+
+        provider = KeycloakAuthProvider(
+            server_url="https://kc.example/", realm="r", client_id="provisa-api"
+        )
+        monkeypatch.setattr(provider, "_get_jwks_client", lambda: _JwksFor(key))
+        return provider
+
+    async def test_token_from_the_configured_realm_is_accepted(self, monkeypatch):
+        key = _rsa_key()
+        provider = self._provider(monkeypatch, key)
+        identity = await provider.validate_token(
+            _signed(key, {"iss": self.ISSUER, "aud": "provisa-api"})
+        )
+        assert identity.user_id == "u1"
+
+    async def test_token_from_another_realm_is_rejected(self, monkeypatch):
+        key = _rsa_key()
+        provider = self._provider(monkeypatch, key)
+        with pytest.raises(jwt.InvalidIssuerError):
+            await provider.validate_token(
+                _signed(key, {"iss": "https://kc.example/realms/other", "aud": "provisa-api"})
+            )
+
+    async def test_token_without_an_issuer_is_rejected(self, monkeypatch):
+        key = _rsa_key()
+        provider = self._provider(monkeypatch, key)
+        with pytest.raises(jwt.MissingRequiredClaimError):
+            await provider.validate_token(_signed(key, {"aud": "provisa-api"}))
 
 
 class TestBasicProvider:
