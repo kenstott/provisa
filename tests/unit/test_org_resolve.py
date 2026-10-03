@@ -77,9 +77,20 @@ async def test_single_org_returns_none_even_with_user():
 
 
 @pytest.mark.asyncio
-async def test_lone_membership_auto_selects():
+async def test_a_lone_membership_does_not_name_the_org():
+    # REQ-1235: belonging to one org is not naming it. The request must say which org it is for.
     state = _FakeState(multitenancy=True, org_ids=["acme"])
-    assert await resolve_session_org(state, user_id="u1") == "acme"
+    with pytest.raises(OrgResolutionError, match="org selection required"):
+        await resolve_session_org(state, user_id="u1")
+
+
+@pytest.mark.asyncio
+async def test_the_refusal_says_how_this_surface_names_an_org():
+    state = _FakeState(multitenancy=True, org_ids=["acme"])
+    with pytest.raises(OrgResolutionError, match="connect to the org's own hostname"):
+        await resolve_session_org(
+            state, user_id="u1", named_by="connect to the org's own hostname over TLS"
+        )
 
 
 @pytest.mark.asyncio

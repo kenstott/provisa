@@ -440,8 +440,8 @@ class BoltSession:
         Bolt's org request is the hostname the driver dialed, carried in TLS SNI (REQ-1234) — the
         same string an HTTP client puts in ``Host``. It names an org without granting one: an org
         the principal is not a member of is refused below, so the org is still derived from
-        membership (single membership auto-selects; platform admin → default runtime; ambiguity
-        raises — no silent cross-tenant default). Runs on the event loop, so a plain set/reset
+        membership (REQ-1235: an org nobody named is refused, a lone membership included; platform
+        admin → default runtime — no silent cross-tenant default). Runs on the event loop, so a plain set/reset
         around handle_run's execution binds it (no thread hop, unlike pgwire)."""
         if self._org_resolved:
             return
@@ -456,6 +456,7 @@ class BoltSession:
             can_act_any_org=can_act_cross_org(caps),
             requested_org=self._requested_org(),
             credential_org=self._credential_org,
+            named_by="connect over TLS to the org's own hostname (<org>.<domain>), which names it",
         )
         if org_id is not None:
             await ensure_org_runtime(org_id)

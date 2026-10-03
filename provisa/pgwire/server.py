@@ -109,6 +109,7 @@ async def _resolve_and_build_org(state_, identity, requested_org: str | None) ->
         can_act_any_org=can_act_cross_org(caps),
         requested_org=requested_org,
         credential_org=getattr(identity, "active_org_id", None),  # REQ-1235
+        named_by="connect over TLS to the org's own hostname (<org>.<domain>), which names it",
     )
     if org_id is not None:
         await ensure_org_runtime(org_id)

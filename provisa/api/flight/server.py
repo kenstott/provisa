@@ -156,6 +156,7 @@ async def _resolve_identity_org(state, identity, request: dict[str, object]) -> 
         can_act_any_org=can_act_cross_org(caps),
         requested_org=requested if isinstance(requested, str) else None,
         credential_org=identity.active_org_id,  # REQ-1235
+        named_by='set "org" in the ticket',
     )
 
 

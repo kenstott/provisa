@@ -148,6 +148,7 @@ async def _org_for_identity(identity: Any, state: Any) -> str | None:
         user_id=getattr(identity, "user_id", None),
         can_act_any_org=can_act_cross_org(caps),
         credential_org=getattr(identity, "active_org_id", None),  # REQ-1235
+        named_by="use a personal access token (an MCP client names an org no other way)",
     )
 
 

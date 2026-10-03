@@ -177,3 +177,112 @@ class TestBolt:
         )
         assert await session._resolve_user("bearer", "", "token") == ("u1", ["analyst"])
         assert session._credential_org == "acme"
+
+
+# --- a person's own token, no org named ----------------------------------------------------------
+
+
+def _person() -> AuthIdentity:
+    return AuthIdentity(user_id="u1", email=None, display_name=None, roles=[], raw_claims={})
+
+
+class _OneOrgAdminDb:
+    def acquire(self):
+        return _Conn(["acme"])
+
+
+class _OneOrgState(_State):
+    admin_db = _OneOrgAdminDb()
+
+
+class TestAnUnnamedOrgIsRefused:
+    """Multi-tenant: belonging to one org does not name it, and the refusal says what to send."""
+
+    async def test_pgwire(self):
+        from provisa.pgwire.server import _resolve_and_build_org
+
+        with pytest.raises(OrgResolutionError, match="org's own hostname"):
+            await _resolve_and_build_org(_OneOrgState(), _person(), None)
+
+    async def test_flight(self):
+        from provisa.api.flight.server import _resolve_identity_org
+
+        with pytest.raises(OrgResolutionError, match='set "org" in the ticket'):
+            await _resolve_identity_org(_OneOrgState(), _person(), {})
+
+    async def test_grpc(self, monkeypatch):
+        from provisa.grpc.server import ProvisaServicer
+
+        monkeypatch.setattr("provisa.grpc.auth.authenticated_identity", _person)
+        with pytest.raises(OrgResolutionError, match="x-provisa-org"):
+            await ProvisaServicer(_OneOrgState(), None, None)._resolve_org(None)
+
+    async def test_mcp(self):
+        from provisa.api.mcp.server import _org_for_identity
+
+        with pytest.raises(OrgResolutionError, match="personal access token"):
+            await _org_for_identity(_person(), _OneOrgState())
+
+    async def test_bolt(self, monkeypatch):
+        from provisa.bolt.session import BoltSession
+
+        monkeypatch.setattr("provisa.api.app.state", _OneOrgState(), raising=False)
+        session = BoltSession.__new__(BoltSession)
+        session._org_resolved = False
+        session.org_id = None
+        session.user_id = "u1"
+        session.roles = []
+        session._credential_org = None
+        monkeypatch.setattr(session, "_requested_org", lambda: None)
+        with pytest.raises(OrgResolutionError, match="org's own hostname"):
+            await session._ensure_org()
+
+
+class _SingleTenantState:
+    """A single-tenant deployment. It has no org to name: reading memberships here is a defect,
+    so the platform plane raises if any surface touches it."""
+
+    multitenancy = False
+    roles: dict = {}
+
+    @property
+    def admin_db(self):
+        raise AssertionError("a single-tenant deployment looked up org memberships")
+
+
+class TestSingleTenantNeverReferencesAnOrg:
+    async def test_pgwire(self):
+        from provisa.pgwire.server import _resolve_and_build_org
+
+        assert await _resolve_and_build_org(_SingleTenantState(), _person(), None) is None
+
+    async def test_flight(self):
+        from provisa.api.flight.server import _resolve_identity_org
+
+        assert await _resolve_identity_org(_SingleTenantState(), _person(), {}) is None
+
+    async def test_grpc(self, monkeypatch):
+        from provisa.grpc.server import ProvisaServicer
+
+        monkeypatch.setattr("provisa.grpc.auth.authenticated_identity", _person)
+        servicer = ProvisaServicer(_SingleTenantState(), None, None)
+        assert await servicer._bind_org({}) is None
+
+    async def test_mcp(self):
+        from provisa.api.mcp.server import _org_for_identity
+
+        assert await _org_for_identity(_person(), _SingleTenantState()) is None
+
+    async def test_bolt(self, monkeypatch):
+        from provisa.bolt.session import BoltSession
+
+        monkeypatch.setattr("provisa.api.app.state", _SingleTenantState(), raising=False)
+        session = BoltSession.__new__(BoltSession)
+        session._org_resolved = False
+        session.org_id = None
+        session.user_id = "u1"
+        session.roles = []
+        session._credential_org = None
+        monkeypatch.setattr(session, "_requested_org", lambda: None)
+        await session._ensure_org()
+        assert session.org_id is None

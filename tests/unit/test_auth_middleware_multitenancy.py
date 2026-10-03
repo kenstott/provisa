@@ -165,6 +165,12 @@ def _auth(uid: str) -> dict:
     return {"Authorization": f"Bearer tok:{uid}"}
 
 
+def _auth_in(uid: str, org: str) -> dict:
+    """The same credential on a request that names its org, as every multi-tenant request does
+    (REQ-1235): on the control-plane host the org is named by the X-Org-Provisa header."""
+    return {**_auth(uid), "x-org-provisa": org}
+
+
 # --- assignment → identity.roles mirroring (provisa mode) ----------------------
 
 
@@ -177,7 +183,7 @@ def test_provisa_db_assignments_mirror_into_identity_roles():
     admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
     app = _make_app(assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True)
     client = TestClient(app)
-    resp = client.get("/test", headers=_auth("u1"))
+    resp = client.get("/test", headers=_auth_in("u1", "acme"))
     assert resp.status_code == 200
     assert resp.json()["roles"] == ["org_admin"]
     assert resp.json()["active_org_id"] == "acme"
@@ -189,7 +195,7 @@ def test_domain_scoped_assignment_renders_colon_claim():
     )
     admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
     app = _make_app(assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True)
-    resp = TestClient(app).get("/test", headers=_auth("u1"))
+    resp = TestClient(app).get("/test", headers=_auth_in("u1", "acme"))
     assert resp.json()["roles"] == ["analyst:sales"]
 
 
@@ -203,7 +209,7 @@ def test_empty_db_rows_fall_back_to_default_assignments():
         multitenancy=True,
         default_assignments=[{"role_id": "viewer", "domain_id": "*"}],
     )
-    resp = TestClient(app).get("/test", headers=_auth("u1"))
+    resp = TestClient(app).get("/test", headers=_auth_in("u1", "acme"))
     assert resp.json()["roles"] == ["viewer"]
 
 
@@ -320,7 +326,7 @@ def test_an_ordinary_user_also_acts_as_an_assigned_role_not_the_default():
         multitenancy=True,
         default_role="analyst",
     )
-    resp = TestClient(app).get("/test", headers=_auth("u1"))
+    resp = TestClient(app).get("/test", headers=_auth_in("u1", "acme"))
     assert resp.status_code == 200
     assert resp.json()["role"] == "developer"
 
@@ -376,7 +382,7 @@ def test_a_non_claimant_is_not_handed_platform_admin():
         multitenancy=True,
         default_org_id="root",
     )
-    resp = TestClient(app).get("/test", headers=_auth("second"))
+    resp = TestClient(app).get("/test", headers=_auth_in("second", "root"))
     assert resp.status_code == 200
     assert resp.json()["roles"] == ["org_admin"]
 
@@ -395,7 +401,7 @@ def test_an_unclaimed_slot_is_not_taken_by_merely_authenticating():
         assignments_source="provisa",
         multitenancy=True,
     )
-    resp = TestClient(app).get("/test", headers=_auth("passer-by"))
+    resp = TestClient(app).get("/test", headers=_auth_in("passer-by", "acme"))
     assert resp.status_code == 200
     assert resp.json()["roles"] == ["analyst"], "authenticating must not confer admin"
 
@@ -421,7 +427,7 @@ def test_bootstrap_second_user_falls_through_when_multitenant():
         assignments_source="provisa",
         multitenancy=True,
     )
-    resp = TestClient(app).get("/test", headers=_auth("second"))
+    resp = TestClient(app).get("/test", headers=_auth_in("second", "acme"))
     assert resp.status_code == 200
     assert resp.json()["roles"] == ["org_admin"]
     assert resp.json()["active_org_id"] == "acme"
@@ -645,7 +651,7 @@ def test_tenant_org_assignment_naming_platform_admin_is_stripped():
         multitenancy=True,
         default_org_id="root",
     )
-    resp = TestClient(app).get("/test", headers=_auth("u1"))
+    resp = TestClient(app).get("/test", headers=_auth_in("u1", "acme"))
     assert resp.status_code == 200
     assert resp.json()["roles"] == ["analyst"]
     assert resp.json()["active_org_id"] == "acme"
@@ -667,7 +673,7 @@ def test_platform_admin_only_assignment_in_tenant_org_is_refused():
         default_role="platform_admin",
         default_org_id="root",
     )
-    resp = TestClient(app).get("/test", headers=_auth("u1"))
+    resp = TestClient(app).get("/test", headers=_auth_in("u1", "acme"))
     assert resp.status_code == 403
     assert "confers no rights" in resp.json()["detail"]
 
@@ -690,3 +696,123 @@ def test_platform_admin_survives_in_the_root_org():
     assert resp.status_code == 200
     assert resp.json()["roles"] == ["platform_admin"]
     assert resp.json()["active_org_id"] == "root"
+
+
+# --- REQ-1235: the credential authorizes the org; the request only names it ----------------------
+
+
+class _OrgScopedProvider(_Provider):
+    """Also accepts 'pat:<user_id>:<org_id>' → an identity whose credential is scoped to one org,
+    as a personal access token's is."""
+
+    async def validate_token(self, token: str) -> AuthIdentity:
+        if token.startswith("pat:"):
+            _, uid, org = token.split(":")
+            return AuthIdentity(
+                user_id=uid,
+                email=f"{uid}@x.io",
+                display_name=uid,
+                roles=[],
+                raw_claims={"pat": True},
+                active_org_id=org,
+            )
+        return await super().validate_token(token)
+
+
+def _org_scoped_app(memberships: list[str]):
+    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "analyst", "domain_id": "*"}]})
+    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": o} for o in memberships]})
+    app = _make_app(assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True)
+    # Swap the provider the helper installed for one that also issues org-scoped identities.
+    app.user_middleware[0].kwargs["provider"] = _OrgScopedProvider()
+    return app
+
+
+def _pat(uid: str, org: str) -> dict:
+    return {"Authorization": f"Bearer pat:{uid}:{org}"}
+
+
+def test_org_scoped_credential_is_accepted_for_its_own_org():
+    app = _org_scoped_app(["acme", "beta"])
+    resp = TestClient(app, base_url="http://acme.provisa.org").get(
+        "/test", headers=_pat("u1", "acme")
+    )
+    assert resp.status_code == 200
+    assert resp.json()["active_org_id"] == "acme"
+
+
+def test_org_scoped_credential_is_refused_for_another_org_the_user_belongs_to():
+    # The user IS a member of beta; the credential was issued for acme. Membership does not
+    # widen the credential.
+    app = _org_scoped_app(["acme", "beta"])
+    resp = TestClient(app, base_url="http://beta.provisa.org").get(
+        "/test", headers=_pat("u1", "acme")
+    )
+    assert resp.status_code == 403
+    assert "acme" in resp.json()["detail"]
+
+
+def test_org_scoped_credential_is_refused_for_another_org_named_by_header():
+    app = _org_scoped_app(["acme", "beta"])
+    resp = TestClient(app, base_url="http://cloud.provisa.org").get(
+        "/test", headers={**_pat("u1", "acme"), "x-org-provisa": "beta"}
+    )
+    assert resp.status_code == 403
+
+
+def test_org_scoped_credential_names_its_org_when_the_request_names_none():
+    # The credential itself names the org, so nothing is guessed.
+    app = _org_scoped_app(["acme", "beta"])
+    resp = TestClient(app).get("/test", headers=_pat("u1", "acme"))
+    assert resp.status_code == 200
+    assert resp.json()["active_org_id"] == "acme"
+
+
+def test_org_scoped_credential_is_refused_once_its_owner_left_the_org():
+    app = _org_scoped_app(["beta"])
+    resp = TestClient(app).get("/test", headers=_pat("u1", "acme"))
+    assert resp.status_code == 403
+
+
+def test_person_scoped_identity_naming_no_org_is_not_given_one_by_lone_membership():
+    # One membership is still not a named org: the request must say which org it is for.
+    app = _org_scoped_app(["acme"])
+    resp = TestClient(app).get("/test", headers=_auth("u1"))
+    assert resp.status_code == 401
+    assert "Org selection" in resp.json()["detail"]
+
+
+def test_single_tenant_request_names_no_org_and_none_is_looked_up():
+    """REQ-1235: a single-tenant deployment has no org to name. No request needs one, a named one
+    changes nothing, and memberships are never read."""
+
+    class _NoMembershipReads(_Pool):
+        def acquire(self):
+            pool = self
+
+            class _Guarded(_Conn):
+                async def execute_core(self, stmt):
+                    source = stmt.get_final_froms()[0]
+                    while isinstance(source, Join):
+                        source = source.left
+                    assert source.name != "user_org_memberships", (
+                        "a single-tenant deployment looked up org memberships"
+                    )
+                    return await super().execute_core(stmt)
+
+            return _Guarded(pool)
+
+    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "analyst", "domain_id": "*"}]})
+    app = _make_app(
+        assignments_source="provisa",
+        db_pool=db,
+        admin_pool=_NoMembershipReads(),
+        multitenancy=False,
+        default_org_id="root",
+    )
+    plain = TestClient(app).get("/test", headers=_auth("u1"))
+    named = TestClient(app, base_url="http://acme.provisa.org").get(
+        "/test", headers={**_auth("u1"), "x-org-provisa": "beta"}
+    )
+    assert plain.status_code == named.status_code == 200
+    assert plain.json()["active_org_id"] == named.json()["active_org_id"] == "root"

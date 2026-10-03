@@ -292,6 +292,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             can_act_any_org=can_act_cross_org(caps),
             requested_org=requested or None,
             credential_org=identity.active_org_id,  # REQ-1235
+            named_by="send the x-provisa-org metadata",
         )
 
     async def _bind_org(self, metadata: dict):

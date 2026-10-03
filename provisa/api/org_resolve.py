@@ -22,8 +22,9 @@ establishment — using the SAME membership rule as the HTTP middleware:
     the ContextVar is left unset and the AppState shims resolve the default runtime.
   - multitenant: the authenticated ``user_id`` is looked up in ``user_org_memberships``.
     A platform admin (``admin``/``superadmin``) or a client-supplied org they belong to is
-    honored; a lone membership auto-selects; ambiguity or a non-member request RAISES — no
-    silent default (a wrong default here is a cross-tenant data escape).
+    honored; an org-scoped credential binds its own org; an org nobody named, or a non-member
+    request, RAISES — no silent default and no selection by lone membership (REQ-1235: a wrong
+    default here is a cross-tenant data escape).
 
 The resolved org id is stored on the protocol's session object and bound around each query
 via ``current_org`` (``set_current_org``/``reset_current_org``).
@@ -47,6 +48,7 @@ async def resolve_session_org(
     can_act_any_org: bool = False,  # REQ-1337: the cross_org RIGHT, never a role name
     requested_org: str | None = None,
     credential_org: str | None = None,
+    named_by: str = "name the org in the request",
 ) -> str | None:
     """Resolve the org a protocol session should bind, or None to use the default runtime.
 
@@ -59,6 +61,10 @@ async def resolve_session_org(
     access token's); it is the only org that credential opens. A request naming another org is
     refused even when the owner belongs to it and even for a cross-org principal, and the owner
     must still belong to the credential's org.
+
+    An org nobody named is refused. Belonging to exactly one org does not name it: the request
+    says which org it is for, or the credential does. ``named_by`` is how a client of the
+    calling surface names one; it goes into the refusal so the client is told what to send.
     """
     if not getattr(state, "multitenancy", False):
         return None
@@ -81,13 +87,12 @@ async def resolve_session_org(
         if can_act_any_org or requested_org in member_org_ids:
             return requested_org
         raise OrgResolutionError(f"principal not a member of org {requested_org!r}")
-    if len(member_org_ids) == 1:
-        return member_org_ids[0]
     if can_act_any_org:
         # A cross_org principal with no single membership and no explicit request acts on the
         # default org's data plane (org CRUD is a separate platform-plane concern).
         return None
     raise OrgResolutionError(
         "org selection required: authenticated principal belongs to "
-        f"{len(member_org_ids)} orgs and none was requested"
+        f"{len(member_org_ids)} orgs and none was requested. To name one, {named_by}, "
+        "or present a personal access token issued for the org"
     )
