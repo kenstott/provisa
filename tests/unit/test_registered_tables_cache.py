@@ -41,6 +41,7 @@ def _state(schema_boot_id="boot-1", schema_version=1):
     db = SimpleNamespace(acquire=lambda: _Acquire(conn))
     return SimpleNamespace(
         config=SimpleNamespace(sources=[], tables=[]),
+        model_db=db,
         tenant_db=db,
         schema_boot_id=schema_boot_id,
         schema_version=schema_version,
@@ -58,6 +59,7 @@ _ROW = {
     "replicate": None,
     "load_protected": None,
     "change_signal": None,  # REQ-929: the table sets none
+    "region": None,  # REQ-1921: it names no region
     "columns": [],
 }
 

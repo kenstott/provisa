@@ -589,6 +589,49 @@ services:
       retries: 18
       start_period: 60s
 
+  # OpenLDAP directory the LDAP auth provider signs in against (REQ-1265). The people and
+  # groups come from tests/fixtures/ldap/directory.ldif; --copy-service lets the image load a
+  # read-only bind mount.
+  openldap:
+    restart: unless-stopped
+    image: osixia/openldap:1.5.0
+    command: ["--copy-service"]
+    ports:
+      - "${LDAP_PORT:-389}:389"
+    environment:
+      LDAP_ORGANISATION: Provisa Test
+      LDAP_DOMAIN: provisa.test
+      LDAP_ADMIN_PASSWORD: admin-password
+      LDAP_TLS: "false"
+    volumes:
+      - ./tests/fixtures/ldap/directory.ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom/50-directory.ldif:ro
+    healthcheck:
+      test: ["CMD-SHELL", "ldapsearch -x -H ldap://localhost:389 -D cn=admin,dc=provisa,dc=test -w admin-password -b uid=alice,ou=people,dc=provisa,dc=test -s base uid | grep -q '^uid: alice'"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 10s
+
+  # SAML 2.0 identity provider the SAML auth provider signs in against (REQ-1265): SimpleSAMLphp
+  # with the two users in tests/fixtures/saml/authsources.php (user1/password, user2/password). It is told the one service
+  # provider it serves: the test's own server, on the port the session leased for it.
+  saml-idp:
+    restart: unless-stopped
+    image: kenchan0130/simplesamlphp:1.19.8
+    ports:
+      - "${SAML_IDP_PORT:-8480}:8080"
+    environment:
+      SIMPLESAMLPHP_SP_ENTITY_ID: "http://localhost:${SAML_SP_PORT:-8481}/auth/saml/metadata"
+      SIMPLESAMLPHP_SP_ASSERTION_CONSUMER_SERVICE: "http://localhost:${SAML_SP_PORT:-8481}/auth/saml/acs"
+    volumes:
+      - ./tests/fixtures/saml/authsources.php:/var/www/simplesamlphp/config/authsources.php:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/simplesaml/saml2/idp/metadata.php | grep -q EntityDescriptor"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 10s
+
   # Debezium Connect (REQ-824 CDC). Lives here now (was in dev.yml) so it shares the
   # isolated project's network with kafka + postgres and reaches them by service name.
   debezium-connect:

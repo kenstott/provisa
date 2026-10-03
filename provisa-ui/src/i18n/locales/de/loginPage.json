@@ -32,6 +32,8 @@
     "firebaseSignInFailed": "Firebase-Anmeldung fehlgeschlagen",
     "operatorSignIn": "Betreiber-Anmeldung",
     "operatorSignInTitle": "Betreiber-Anmeldung",
-    "backToSignIn": "Zurück zur Anmeldung"
+    "backToSignIn": "Zurück zur Anmeldung",
+    "signInWithSso": "Mit Single Sign-On anmelden",
+    "samlSignInFailed": "Die Single-Sign-On-Anmeldung wurde nicht abgeschlossen. Versuchen Sie es erneut oder wenden Sie sich an Ihren Administrator."
   }
 }

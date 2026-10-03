@@ -174,7 +174,7 @@ async def test_platform_admin_alone_is_refused_the_admin_data_routes(monkeypatch
     def _reached(*_a, **_k):
         raise AssertionError("the route read its store: the gate let the caller through")
 
-    monkeypatch.setattr(audit_query_text_router, "_tenant_pool", _reached)
+    monkeypatch.setattr(audit_query_text_router, "_record_pool", _reached)
     monkeypatch.setattr(roles_router, "_pool", _reached)
     monkeypatch.setattr(local_users_router, "_pool", _reached)
     monkeypatch.setattr(local_users_router, "_admin_pool", _reached)
@@ -206,11 +206,25 @@ async def test_platform_admin_alone_is_refused_the_admin_data_routes(monkeypatch
 
 
 def test_the_role_row_itself_authorizes_no_write():
-    from provisa.security.mutation_authz import authorize_mutation
+    import pytest
 
-    allowed, reason = authorize_mutation(ROLES["platform_admin"], ["platform_admin"])
-    assert allowed is False
-    assert "WRITE" in reason
+    from provisa.security.mutation_authz import CommandNotFound, MutationNotPermitted, admit_command
+
+    # Assigned a command in a domain it does not reach, the platform role finds no command; even
+    # where it is reached, being assigned grants no write.
+    with pytest.raises(CommandNotFound):
+        admit_command(
+            {"kind": "mutation", "visible_to": ["platform_admin"], "domain_id": "sales"},
+            ROLES["platform_admin"],
+            "refund",
+        )
+    reaching = {**ROLES["platform_admin"], "domain_access": ["*"]}
+    with pytest.raises(MutationNotPermitted, match="WRITE"):
+        admit_command(
+            {"kind": "mutation", "visible_to": ["platform_admin"], "domain_id": "sales"},
+            reaching,
+            "refund",
+        )
 
 
 def test_platform_admin_alone_keeps_the_platform_plane():
@@ -343,7 +357,7 @@ async def test_the_bootstrap_administrator_keeps_both_planes(monkeypatch):
     def _past_the_gate():
         raise RuntimeError("past the gate")
 
-    monkeypatch.setattr(audit_query_text_router, "_tenant_pool", _past_the_gate)
+    monkeypatch.setattr(audit_query_text_router, "_record_pool", _past_the_gate)
     with pytest.raises(RuntimeError, match="past the gate"):
         await audit_query_text_router.read_statement_text(req, 1)
 
@@ -781,7 +795,7 @@ def org_runtime(monkeypatch):
         db = _Db(rows)
 
         async def _ensure(_org_id):
-            return types.SimpleNamespace(tenant_db=db)
+            return types.SimpleNamespace(model_db=db, tenant_db=db)
 
         monkeypatch.setattr(appmod, "ensure_org_runtime", _ensure)
         return db

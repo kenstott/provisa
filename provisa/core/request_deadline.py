@@ -583,8 +583,11 @@ def open_request(transport: str) -> Deadline:
     that is several protocol messages long, whose handler binds it around each message
     (:func:`bound`) and stops it when the request ends. A request that is one block uses
     :func:`request`."""
+    from provisa.core import process_mode
     from provisa.core.limits import request_timeout_for, request_timeout_setting
 
+    # REQ-1916: a coordinator serves no data requests; every transport's request starts here.
+    process_mode.refuse_data_request(transport)
     return Deadline(
         request_timeout_for(transport),
         transport=transport,

@@ -532,7 +532,8 @@ async def test_publish_snapshot_loads_persists_and_prunes_bindings(snapshot, tmp
     monkeypatch.setattr(
         "provisa.api.app.state",
         types.SimpleNamespace(
-            tenant_db=_TenantDb(),
+            model_db=(_one_db := _TenantDb()),
+            tenant_db=_one_db,
             contexts={},
             multitenancy=False,
             # REQ-1659: the listing links back at the org's public origin, read off config.mail.

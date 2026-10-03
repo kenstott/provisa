@@ -34,7 +34,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
 from provisa.audit.pipeline import PendingAudit
-from provisa.compiler.definitions import NotAvailableHere
 from provisa.executor.result import QueryResult
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
@@ -719,11 +718,13 @@ async def _localize_inline_commands(tree, role_id: str, state) -> bool:
     governance (DEFINER/INVOKER) and I/O dataset contract are enforced there, identically to a direct
     call — so the outer statement only ever sees ordinary local relations. Returns True on any hit
     (the caller then forces engine execution). No-op when no command is composed in the statement."""
-    commands = getattr(state, "tracked_functions", None)
+    from provisa.api.data.action_exec import invoke_tracked_function, usable_commands
+    from provisa.executor.command_localize import localize_commands
+
+    # Only the commands this role may call: one it may not reads as an unregistered relation.
+    commands = usable_commands(state, role_id, webhooks=False)
     if not commands:
         return False
-    from provisa.api.data.action_exec import invoke_tracked_function
-    from provisa.executor.command_localize import localize_commands
 
     _refuse_composed_mutators(tree, commands)
 
@@ -1643,7 +1644,15 @@ async def route_governed(
                 from provisa.mv.bitemporal import as_of_view_map
 
                 _vmap = as_of_view_map(_view_map, state.bitemporal_view_reads, as_of)
-            _qualified = expand_view_refs(_qualified, _vmap)
+            # What each view reference becomes for THIS reader (mv/view_read.py): the view's SQL
+            # with the reader's rules on every table it reads, or — for a materialized view and a
+            # reader with no narrower rule on any of its inputs — its stored rows.
+            from provisa.mv.view_read import view_bodies
+
+            _qualified = expand_view_refs(
+                _qualified,
+                view_bodies(_qualified, _vmap, state, gov_ctx),
+            )
             # View bodies are stored in semantic form; after expansion, lower any
             # newly-introduced semantic refs to catalog-physical (same pass the outer SQL
             # went through at line 456 before routing).
@@ -2839,10 +2848,10 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
 
         result = await _execute_govdata(plan.source_id, plan.sql, state)
     elif plan.source_id == "provisa-admin" or not state.source_pools.has(plan.source_id):
-        # Admin-owned tables (meta.*) live in the provisa tenant_db, not source_pools.
-        tenant_db = state.tenant_db
+        # Admin-owned tables (meta.*) are views over the org's model (REQ-1919): its model store.
+        tenant_db = state.model_db
         if tenant_db is None:
-            raise RuntimeError("Admin tenant_db not available")
+            raise RuntimeError("Admin model_db not available")
         # REQ-1425: the admin terminal is a query terminal like any other — it emits the same
         # provisa.query.* span so meta/ops statements reach the ops queries report.
         _span_name = "provisa.query.postgres" if plan.span_attrs else "admin.execute"
@@ -3282,8 +3291,10 @@ async def _route_compiled(
     _view_map = getattr(state, "view_sql_map", None)
     if _view_map:
         from provisa.compiler.view_expand import expand_view_refs
+        from provisa.mv.view_read import view_bodies
 
-        _exec_sql = expand_view_refs(_exec_sql, _view_map)
+        # As on the raw-SQL stage: each view reference becomes what THIS reader may read of it.
+        _exec_sql = expand_view_refs(_exec_sql, view_bodies(_exec_sql, _view_map, state, gov_ctx))
     from provisa.compiler.nf_extractor import extract_nf_args
 
     _exec_sql, _nf_clean_params, _extracted_nf = extract_nf_args(_exec_sql, exec_params or [])
@@ -3537,19 +3548,6 @@ async def _route_compiled(
         )
 
 
-class WriteNotAvailableOverPgwire(NotAvailableHere):
-    """REQ-615: a data write sent over pgwire."""
-
-    def __init__(self, kind: str) -> None:
-        self.kind = kind
-        super().__init__(
-            f"{kind} is not available over pgwire: this listener takes no INSERT, UPDATE, DELETE "
-            "or MERGE. Write through a GraphQL mutation, SQL over HTTP (POST /data/sql), Cypher "
-            "(Bolt or POST /data/cypher) or the MCP run_sql tool, where a write is admitted by "
-            "the role's rights."
-        )
-
-
 _OPENING_WRITE_RE = re.compile(
     r"(?:\s+|--[^\n]*\n?|/\*.*?\*/)*(?P<verb>INSERT|UPDATE|DELETE|MERGE)\b",
     re.IGNORECASE | re.DOTALL,
@@ -3560,13 +3558,6 @@ def opening_write_verb(sql: str) -> str | None:
     """The verb ``sql`` opens with when it opens as a data write, else None."""
     m = _OPENING_WRITE_RE.match(sql)
     return m.group("verb").upper() if m else None
-
-
-def refuse_pgwire_write(sql: str) -> None:
-    """Raise :class:`WriteNotAvailableOverPgwire` when ``sql`` opens as a data write."""
-    verb = opening_write_verb(sql)
-    if verb is not None:
-        raise WriteNotAvailableOverPgwire(verb)
 
 
 async def plan_pgwire_sql(sql: str, role_id: str) -> _Plan:  # REQ-267
@@ -3599,14 +3590,10 @@ async def govern_pgwire_plan(  # REQ-028, REQ-266
     # surface is opted in for this deployment.
     from provisa.pgwire.ext_surfaces import rewrite_surface_operators
 
-    # REQ-615: pgwire carries no data writes. Refused here, on the statement's own words, before
-    # it is rewritten, governed or sent anywhere.
-    refuse_pgwire_write(sql)
-
     sql = rewrite_surface_operators(sql)
 
     # REQ-872: a bare SELECT of a registered tracked function routes to the shared executor
-    # (writable_by enforced there) instead of federation, unifying invocation across surfaces.
+    # (its command admission there) instead of federation, unifying invocation across surfaces.
     from provisa.api.app import state as _state
     from provisa.pgwire.function_call import maybe_invoke_registered_function
 
@@ -3628,9 +3615,6 @@ async def govern_pgwire_plan(  # REQ-028, REQ-266
     plan = await _govern_and_route(
         sql, role_id, params=params, serve_cached=True, wire_formats=wire_formats
     )
-    if plan.writes_tables:
-        # A write the opening words did not show (a WITH … INSERT): refused before it runs.
-        raise WriteNotAvailableOverPgwire("A data write")
     return plan
 
 
@@ -3674,9 +3658,8 @@ async def describe_pgwire_statement(sql: str, role_id: str) -> _Described:  # RE
     from provisa.pgwire.function_call import detect_sql_function_call
     from provisa.pgwire.result_shape import derive_result_shape
 
-    refuse_pgwire_write(sql)  # REQ-615: refused at Parse/Describe as at Execute
     sql = rewrite_surface_operators(sql)
-    call = detect_sql_function_call(sql, state)
+    call = detect_sql_function_call(sql, state, role_id)
     if call is not None:
         return _Described(_function_call_shape(call[0], state), None)
 

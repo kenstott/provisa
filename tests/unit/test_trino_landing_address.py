@@ -82,7 +82,10 @@ def _state(cfg, registered, monkeypatch):
 
     monkeypatch.setattr("provisa.core.repositories.source.list_all", _no_ui_sources)
     return SimpleNamespace(
-        config=cfg, tenant_db=SimpleNamespace(acquire=lambda: _FakeConn()), org_id="acme"
+        config=cfg,
+        model_db=(_one_db := SimpleNamespace(acquire=lambda: _FakeConn())),
+        tenant_db=_one_db,
+        org_id="acme",
     )
 
 

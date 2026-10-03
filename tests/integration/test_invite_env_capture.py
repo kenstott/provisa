@@ -124,14 +124,24 @@ def planes(monkeypatch):
     }
     registry = OrgRegistry()
     registry.set(
-        _ROOT_ORG, OrgRuntime(org_id=_ROOT_ORG, tenant_db=tenant_db, roles=dict(loaded_roles))
+        _ROOT_ORG,
+        OrgRuntime(
+            org_id=_ROOT_ORG, model_db=tenant_db, tenant_db=tenant_db, roles=dict(loaded_roles)
+        ),
     )
-    registry.set("acme", OrgRuntime(org_id="acme", tenant_db=tenant_db, roles=dict(loaded_roles)))
+    registry.set(
+        "acme",
+        OrgRuntime(
+            org_id="acme", model_db=tenant_db, tenant_db=tenant_db, roles=dict(loaded_roles)
+        ),
+    )
     # REQ-1529: "qa" is a separate runtime slot, keyed by runtime_key -- _active_runtime() refuses
     # to serve a branch out of the base org's runtime, so the fixture must register this slot too.
     registry.set(
         runtime_key("acme", "qa"),
-        OrgRuntime(org_id="acme", tenant_db=tenant_db, roles=dict(loaded_roles)),
+        OrgRuntime(
+            org_id="acme", model_db=tenant_db, tenant_db=tenant_db, roles=dict(loaded_roles)
+        ),
     )
     monkeypatch.setattr(app_state, "org_registry", registry, raising=False)
     monkeypatch.setattr(app_state, "admin_db", admin_db, raising=False)
@@ -140,7 +150,7 @@ def planes(monkeypatch):
     from types import SimpleNamespace
 
     async def _org_runtime(_org_id: str, _env=None):
-        return SimpleNamespace(tenant_db=tenant_db)
+        return SimpleNamespace(model_db=tenant_db, tenant_db=tenant_db)
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _org_runtime, raising=False)
     monkeypatch.setattr(
@@ -248,7 +258,8 @@ def _make_app(admin_db: Database, tenant_db: Database) -> FastAPI:
 
 
 def _create(client, token: str, body: dict, env: str | None = None):
-    headers = {"Authorization": f"Bearer {token}"}
+    # REQ-1235: the request names its org; alice, the only caller here, belongs to acme.
+    headers = {"Authorization": f"Bearer {token}", "x-org-provisa": "acme"}
     if env is not None:
         headers["x-provisa-env"] = env
     return client.post("/admin/invites/", json=body, headers=headers)

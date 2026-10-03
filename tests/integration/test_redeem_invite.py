@@ -112,7 +112,7 @@ def planes(monkeypatch):
     from types import SimpleNamespace
 
     async def _org_runtime(_org_id: str, _env: str | None = None):
-        return SimpleNamespace(tenant_db=tenant_db)
+        return SimpleNamespace(model_db=tenant_db, tenant_db=tenant_db)
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _org_runtime, raising=False)
 
@@ -203,7 +203,10 @@ def test_redeemed_identity_mirrors_org_admin_not_superadmin(planes):
             json={"token": _TOKEN},
             headers={"Authorization": "Bearer tok-alice"},
         )
-        resp = client.get("/whoami", headers={"Authorization": "Bearer tok-alice"})
+        # REQ-1235: the request names the org the invite was for.
+        resp = client.get(
+            "/whoami", headers={"Authorization": "Bearer tok-alice", "x-org-provisa": "acme"}
+        )
     assert resp.status_code == 200
     assert resp.json() == {"roles": ["org_admin"], "active_org_id": "acme"}
 

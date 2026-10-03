@@ -1,0 +1,44 @@
+# The directory the LDAP provider's integration tests sign in against (REQ-1265).
+# Base dc=provisa,dc=test is created by the image; these are the people and groups under it.
+dn: ou=people,dc=provisa,dc=test
+objectClass: organizationalUnit
+ou: people
+
+dn: ou=groups,dc=provisa,dc=test
+objectClass: organizationalUnit
+ou: groups
+
+dn: uid=alice,ou=people,dc=provisa,dc=test
+objectClass: inetOrgPerson
+uid: alice
+cn: Alice Analyst
+sn: Analyst
+mail: alice@provisa.test
+userPassword: alice-password
+
+dn: uid=bob,ou=people,dc=provisa,dc=test
+objectClass: inetOrgPerson
+uid: bob
+cn: Bob Builder
+sn: Builder
+mail: bob@provisa.test
+userPassword: bob-password
+
+dn: uid=carol,ou=people,dc=provisa,dc=test
+objectClass: inetOrgPerson
+uid: carol
+cn: Carol NoGroups
+sn: NoGroups
+mail: carol@provisa.test
+userPassword: carol-password
+
+dn: cn=analysts,ou=groups,dc=provisa,dc=test
+objectClass: groupOfNames
+cn: analysts
+member: uid=alice,ou=people,dc=provisa,dc=test
+member: uid=bob,ou=people,dc=provisa,dc=test
+
+dn: cn=stewards,ou=groups,dc=provisa,dc=test
+objectClass: groupOfNames
+cn: stewards
+member: uid=bob,ou=people,dc=provisa,dc=test

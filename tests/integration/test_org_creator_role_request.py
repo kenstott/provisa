@@ -108,7 +108,7 @@ def planes(monkeypatch):
     # so the read lands in that org's schema. Here the tenant schema IS the org's schema; resolve the
     # runtime to a stub carrying it rather than building a full per-org runtime (covered elsewhere).
     async def _org_runtime(_org_id: str, _env: str | None = None):
-        return SimpleNamespace(tenant_db=tenant_db)
+        return SimpleNamespace(model_db=tenant_db, tenant_db=tenant_db)
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _org_runtime, raising=False)
 
@@ -146,7 +146,8 @@ def _make_app(admin_db: Database, tenant_db: Database) -> FastAPI:
 
 
 def _get(client, role_header: str | None):
-    headers = {"Authorization": "Bearer tok-alice"}
+    # REQ-1235: the request names its org; belonging to one org does not name it.
+    headers = {"Authorization": "Bearer tok-alice", "x-org-provisa": _ORG}
     if role_header is not None:
         headers["X-Provisa-Role"] = role_header
     return client.get("/whoami", headers=headers)

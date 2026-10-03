@@ -104,6 +104,7 @@ def _state() -> SimpleNamespace:
             {"source_id": "pg", "schema_name": "public", "table_name": "orders"},
             {"source_id": "api", "schema_name": "public", "table_name": "pets"},
         ],
+        model_db=None,
         tenant_db=None,
         org_id="default",
         active_isolated_org=None,
@@ -258,6 +259,7 @@ def test_a_sqlite_control_plane_snapshot_is_checked_on_every_query():
     state.tenant_db = SimpleNamespace(
         dialect="sqlite", engine=SimpleNamespace(url=SimpleNamespace(database="/tmp/cp.db"))
     )
+    state.model_db = state.tenant_db
     for _ in range(3):
         backend._runtime_for(state)
     assert backend.runtime.snapshots == [("/tmp/cp.db", "org_default", "sqlite")] * 3

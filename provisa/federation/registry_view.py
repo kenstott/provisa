@@ -56,7 +56,7 @@ async def registered_sources(state: Any, conn: Any | None = None) -> list[Source
 
     config = getattr(state, "config", None)
     by_id: dict[str, Source] = {s.id: s for s in (getattr(config, "sources", None) or [])}
-    db = getattr(state, "tenant_db", None)
+    db = getattr(state, "model_db", None)
     if db is None:
         return list(by_id.values())
     if conn is not None:
@@ -139,7 +139,7 @@ async def registered_tables(state: Any, conn: Any | None = None) -> list[Any]:  
         (t.source_id, apply_sql_name(t.table_name)): t
         for t in (getattr(config, "tables", None) or [])
     }
-    db = getattr(state, "tenant_db", None)
+    db = getattr(state, "model_db", None)
     if db is None:
         return []
     if conn is not None:
@@ -218,6 +218,7 @@ def _build_registered_tables(registered: list[dict], cfg_by: dict) -> list[Any]:
                 # put on its replica is read there even on an attach-capable engine.
                 replicate=rt["replicate"],
                 load_protected=rt["load_protected"],
+                region=rt["region"],  # REQ-1921
                 probe_type=getattr(cfg, "probe_type", None),  # REQ-982
                 # REQ-1443: a checker table's rows are the results of running its contract, so
                 # the registered contract rides with the table into make_dq_loader.

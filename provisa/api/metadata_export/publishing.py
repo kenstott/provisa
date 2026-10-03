@@ -138,13 +138,13 @@ async def _export_config(org_id: str) -> MetadataExportConfig:
         require_feature(control_plane_store(), org_id, Feature.METADATA_EXPORT)
     except (EntitlementError, KeyError, UnknownTierError) as exc:
         raise ExportNotAllowed(f"org {org_id!r} is not entitled to metadata export: {exc}") from exc
-    tenant_db = state.tenant_db
-    if tenant_db is None:
+    model_db = state.model_db
+    if model_db is None:
         # The org's settings live in its tenant database; without one there is no config to
         # publish from. Reaching here means the runtime was never built, which is a wiring
         # fault to surface rather than a state to publish an empty catalog from.
         raise ExportNotAllowed(f"org {org_id!r} has no tenant database bound")
-    resolved = await resolve_org_config(tenant_db)
+    resolved = await resolve_org_config(model_db)
     config = MetadataExportConfig(**dict(resolved.get("metadata_export") or {}))
     if not config.enabled:
         raise ExportNotAllowed(f"org {org_id!r} has metadata export disabled")
@@ -219,13 +219,13 @@ async def publish_snapshot(org_id: str) -> PublishResult:
     try:
         config = await _export_config(org_id)
         model = await _model_for_export()
-        tenant_db = state.tenant_db
-        assert tenant_db is not None  # _export_config refuses without one
+        model_db = state.model_db
+        assert model_db is not None  # _export_config refuses without one
         # REQ-1387: the term graph exports with the model; it lives only in the DB, so it
         # hydrates here the way sources do rather than through the config file vocabulary.
         from provisa.core.repositories import glossary as glossary_repo
 
-        async with tenant_db.acquire() as conn:
+        async with model_db.acquire() as conn:
             glossary = await glossary_repo.export_graph(conn)
         # REQ-1443: a check's last verdict lives in its results table, which is data rather than
         # config, so it is read here and handed to the builder exactly as the term graph is.
@@ -244,7 +244,7 @@ async def publish_snapshot(org_id: str) -> PublishResult:
             documentation_base_url=state.config.mail.base_url if state.config else None,
         )
         exporter = metadata_export(config)
-        async with tenant_db.acquire() as conn:
+        async with model_db.acquire() as conn:
             # REQ-1389: hand the provider the vendor ids captured by earlier publishes, so
             # a physically re-addressed asset rebinds the SAME catalog entity instead of
             # trusting the vendor's name-keyed upsert.
@@ -257,7 +257,7 @@ async def publish_snapshot(org_id: str) -> PublishResult:
             exporter.export_views = await export_view_addresses(state)
         result = await exporter.publish(snapshot)
         if result.bindings:
-            async with tenant_db.acquire() as conn:
+            async with model_db.acquire() as conn:
                 await catalog_binding.upsert_bindings(conn, config.provider, result.bindings)
                 await catalog_binding.remove_stale_bindings(
                     conn, config.provider, keep_uris=_snapshot_uris(snapshot)

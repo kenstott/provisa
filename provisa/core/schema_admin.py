@@ -227,6 +227,18 @@ local_users = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
+# The simple provider's users are named in config, not stored, so their id is assigned here: a
+# GUID at first sign-in, read back on every later one. The username never becomes the user id —
+# records keep the id after a soft delete, so it must say nothing about the person. The primary
+# key on username is what makes two nodes signing the same new user in at once agree on one id.
+simple_user_ids = Table(
+    "simple_user_ids",
+    metadata,
+    Column("username", Text, primary_key=True),
+    Column("user_id", Text, nullable=False, unique=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
 # REQ-1266: single-administrator bootstrap (limited Firebase/IdP mode). A fixed single-row
 # lock (id always 1) that atomically records which authenticated user_id claimed the sole
 # super-admin slot. The first login INSERTs id=1 (first writer wins the race — see
@@ -697,6 +709,21 @@ mail_events = Table(
     Column("requested_by", Text, nullable=True),
 )
 
+# REQ-1916: the PLATFORM STATE STORE's node list (provisa/core/platform_state/nodes.py): the nodes
+# now in the cluster, each beating while it runs. Per deployment; never an org's model.
+cluster_nodes = Table(
+    "cluster_nodes",
+    metadata,
+    Column("node_id", Text, primary_key=True),
+    Column("host", Text, nullable=False),
+    Column("pid", Integer, nullable=False),
+    Column("mode", Text, nullable=False),  # every | query | coordinator
+    Column("region", Text, nullable=True),  # REQ-1922: NULL when the platform declares none
+    Column("started_at", DateTime(timezone=True), nullable=False),
+    Column("last_seen", DateTime(timezone=True), nullable=False),
+)
+
+
 REGISTRY_TABLES = [
     orgs,
     org_encryption_keys,
@@ -704,6 +731,7 @@ REGISTRY_TABLES = [
     user_org_memberships,
     org_auto_join_optouts,
     local_users,
+    simple_user_ids,
     org_invites,
     superadmin_bootstrap,
     environments,
@@ -719,6 +747,7 @@ REGISTRY_TABLES = [
     debug_trace_hint_roles,
     deployment_settings,
     config_stamp,
+    cluster_nodes,
 ]
 
 

@@ -32,6 +32,8 @@
     "firebaseSignInFailed": "Firebase 登录失败",
     "operatorSignIn": "运维人员登录",
     "operatorSignInTitle": "运维人员登录",
-    "backToSignIn": "返回登录"
+    "backToSignIn": "返回登录",
+    "signInWithSso": "使用单点登录",
+    "samlSignInFailed": "单点登录未完成。请重试，或联系管理员。"
   }
 }

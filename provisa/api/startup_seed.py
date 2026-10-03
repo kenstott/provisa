@@ -44,7 +44,7 @@ from provisa.api._meta_views import (
     _ops_table_usage_ddl,
 )
 from provisa.core.control_plane import bring_up_platform
-from provisa.core.database import Connection, Database, create_engine_from_url
+from provisa.core.database import Connection, create_engine_from_url
 from provisa.api._catalog_descriptions import (
     COLUMN_DESCRIPTIONS as _COL_DESC,
     TABLE_DESCRIPTIONS as _TBL_DESC,
@@ -717,11 +717,10 @@ async def _init_control_planes(
     from provisa.core.environments import PROD, org_schema
     from provisa.core.model_change import ModelPlane
 
-    state.tenant_db = Database(
-        tenant_engine,
-        name="org",
-        search_path=org_schema(org_id, PROD),
-        model=ModelPlane(org_id, PROD),  # REQ-1524: its model's changes are committed
+    from provisa.core.region_stores import open_org_stores
+
+    state.model_db, state.tenant_db, state.record_db = open_org_stores(
+        org_schema(org_id, PROD), ModelPlane(org_id, PROD), model_engine=tenant_engine
     )
     state.admin_db = await bring_up_platform(
         cp.resolved_platform_url(),
@@ -729,6 +728,12 @@ async def _init_control_planes(
         pool_min=cp.pool_min,
         org_id=org_id,
         initialise=initialise,
+    )
+    # REQ-1916/1922: the platform state store, in the platform database, behind its own handle.
+    from provisa.core.database import Database
+
+    state.platform_state_db = Database(
+        state.admin_db.engine, name="platform-state", holds="platform_state"
     )
     # REQ-1900: settings changed through the admin API are rows in this control plane; every
     # reader in this process resolves them from it (provisa/core/deployment_settings.py).
@@ -752,11 +757,14 @@ async def _init_control_planes(
     if not schema_sql_path.exists():
         raise RuntimeError(f"control-plane schema.sql missing from the package: {schema_sql_path}")
     if initialise:
-        await init_schema(state.tenant_db, schema_sql_path.read_text(), org_id=org_id)
+        # The org's schema in the control plane's tenant database, which holds its model. With
+        # platform regions its state and record stores are laid out once the model names them
+        # (provisa/core/region_stores.py).
+        await init_schema(state.model_db, schema_sql_path.read_text(), org_id=org_id)
 
         from provisa.audit.query_log import init_audit_schema
 
-        await init_audit_schema(state.tenant_db, org_id=org_id)
+        await init_audit_schema(state.model_db, org_id=org_id)
 
     host, port, database, username, _pw = cp.tenant_parts()
     # Every backend identifies a database (a PG database name, a SQLite file path, …).
@@ -789,8 +797,8 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
     inventing an address: everything the seed exists for — the source rows, the meta domain, ops —
     is control-plane state and is written either way."""
     eff_org = org_id or state.org_id
-    assert state.tenant_db is not None
-    cp_dialect = state.tenant_db.dialect
+    assert state.model_db is not None
+    cp_dialect = state.model_db.dialect
     from provisa.federation.engine import configured_engine_endpoint
 
     engine_endpoint = configured_engine_endpoint() if engine_addressable else None
@@ -804,7 +812,7 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
     # user-editable, and the set_extra coalesce below restores the seed text only when it is blank.
     _DERIVED_FROM_DEPLOYMENT = ["type", "host", "port", "database", "username", "dialect"]
 
-    async with state.tenant_db.acquire() as _conn:
+    async with state.model_db.acquire() as _conn:
         _admin_desc = (
             "Provisa internal administration database — stores source registrations, table "
             "metadata, relationships, roles, and governance configuration"
@@ -951,20 +959,20 @@ async def seed_org_registry_view() -> bool:  # REQ-1301
     )
 
     assert state.admin_db is not None
-    tenant_db = state.tenant_db
-    assert tenant_db is not None
+    model_db = state.model_db
+    assert model_db is not None
     try:
-        await refresh_org_registry_view(tenant_db=tenant_db, admin_db=state.admin_db)
+        await refresh_org_registry_view(model_db=model_db, admin_db=state.admin_db)
         # The registration must name the schema the view was actually built in, which is the root
         # connection's own scope — not a name recomposed from the org id.
-        schema_name = root_schema_name(tenant_db)
+        schema_name = root_schema_name(model_db)
     except RegistryViewUnavailable as exc:
         logging.getLogger(__name__).info(
             "org registry view not available on this deployment: %s", exc
         )
         return False
 
-    async with tenant_db.acquire() as conn:
+    async with model_db.acquire() as conn:
         table_id = await conn.upsert_returning(
             _registered_tables_t,
             {
@@ -1008,11 +1016,11 @@ async def seed_org_registry_view() -> bool:  # REQ-1301
 
 async def _resolve_pk_from_sources() -> None:
     """Second pass — resolve PRIMARY KEYs from each native RDBMS source's information_schema."""
-    assert state.tenant_db is not None
+    assert state.model_db is not None
     _startup_log = logging.getLogger("uvicorn.error")
     _PK_RDBMS_TYPES = ("postgresql", "mysql", "mariadb", "singlestore", "sqlserver", "redshift")
     _PK_SOURCE_TYPES = _PK_RDBMS_TYPES + ("sqlite",)
-    async with state.tenant_db.acquire() as _pk_conn:
+    async with state.model_db.acquire() as _pk_conn:
         _pk_rows = [
             dict(_r._mapping)
             for _r in (

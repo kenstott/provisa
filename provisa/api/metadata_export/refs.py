@@ -55,6 +55,8 @@ RESERVED_KIND_KEYWORDS = (
     "naming",
     "domain",
     "data-products",
+    "stores",  # REQ-1922: an org's stores
+    "regions",  # REQ-1921: the platform regions an org selects
 )
 
 _URI_SCHEME = "provisa"

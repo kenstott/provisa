@@ -515,7 +515,8 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
                 rows["naming_rules"].append({**rule, "id": order})
 
         else:
-            # metrics, roles, materialized_views, kafka_sinks -- a flat kind keyed by its path.
+            # metrics, roles, materialized_views, kafka_sinks, stores, regions -- a flat kind
+            # keyed by its path.
             key = "name" if table == "metrics" else "id"
             entry = {**body, key: _name_of(path)[0]}
             if table == "kafka_sinks":

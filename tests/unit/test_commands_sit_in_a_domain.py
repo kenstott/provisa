@@ -58,6 +58,7 @@ async def plane(monkeypatch) -> Database:
                 insert(table).values(origin="admin", name="in_finance", domain_id="finance")
             )
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
+    monkeypatch.setattr(appmod.state, "model_db", appmod.state.tenant_db, raising=False)
     monkeypatch.setattr(appmod.state, "roles", ROLES, raising=False)
     monkeypatch.setattr(domain_policy, "single_domain", lambda: False)
 

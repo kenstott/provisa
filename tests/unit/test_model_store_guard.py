@@ -373,7 +373,7 @@ async def test_a_role_is_blocked_by_its_holders_its_heirs_and_every_grant_naming
         visible_to=["seller"],
         origin="admin",
     )
-    await plane.add("tracked_functions", name="refund", writable_by=["seller"], origin="admin")
+    await plane.add("tracked_functions", name="refund", visible_to=["seller"], origin="admin")
     await plane.add(
         "data_products",
         id="dp",
@@ -392,7 +392,7 @@ async def test_a_role_is_blocked_by_its_holders_its_heirs_and_every_grant_naming
         ObjectRef("role_assignment", assignment): ("user_role_assignments.role_id",),
         ObjectRef("column", column): ("table_columns.visible_to",),
         ObjectRef("metric", "revenue"): ("metrics.visible_to",),
-        ObjectRef("command", "refund"): ("tracked_functions.writable_by",),
+        ObjectRef("command", "refund"): ("tracked_functions.visible_to",),
         ObjectRef("data_product", "dp"): ("data_products.owner_role",),
         ObjectRef("domain", "finance"): ("domains.steward",),
     }

@@ -14,8 +14,6 @@
     "selectTable": "टेबल चुनें...",
     "visibleTo": "इन्हें दृश्य (भूमिकाएँ, अल्पविराम से अलग)",
     "visibleToPlaceholder": "admin, analyst",
-    "writableBy": "इनके द्वारा लेखन योग्य (भूमिकाएँ, अल्पविराम से अलग)",
-    "writableByPlaceholder": "admin",
     "url": "URL",
     "urlPlaceholder": "https://api.example.com/action",
     "method": "मेथड",

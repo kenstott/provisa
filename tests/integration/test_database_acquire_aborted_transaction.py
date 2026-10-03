@@ -111,6 +111,9 @@ async def test_ensure_mv_row_is_idempotent_on_postgresql(db):
         await init_schema(db, fh.read(), org_id="acquire_abort")
     mv = SimpleNamespace(
         id="view-dim_pet",
+        # A view bound by join pattern carries its inputs; a SQL-defined one carries none, and its
+        # record names source_tables (provisa.mv.coordination.ensure_mv_row).
+        inputs=(),
         source_tables=["pets"],
         target_catalog="_landing",
         target_schema="org_default_mv_cache",

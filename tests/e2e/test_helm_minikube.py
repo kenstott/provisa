@@ -208,6 +208,10 @@ def helm_install():
             f"--namespace={NAMESPACE}",
             "--set",
             "encryption.existingSecret=provisa-master-key",
+            # REQ-1265: the chart renders only once a provider is chosen; this cluster is
+            # exercised without one.
+            "--set",
+            "auth.provider=none",
             "--set",
             "provisa.replicaCount=1",
             "--set",

@@ -25,6 +25,11 @@ from provisa.api.admin._platform_guard import (
     require_org_settings,
 )
 from provisa.api.admin._config_io import config_path, read_config, write_config
+from provisa.api.admin.auth_settings import (  # REQ-919, REQ-1265
+    AUTH_PROVIDERS,
+    apply_auth_settings,
+    provider_config_view,
+)
 from provisa.api.admin.secret_redaction import (  # REQ-1575
     redact,
     redact_per_provider,
@@ -294,9 +299,9 @@ async def _apply_org_blocks(request, body: dict, updated: list) -> None:
 
     if not set(body) & set(_ORG_BLOCKS):
         return  # nothing org-scoped in this body — do not demand the org right for a platform save
-    assert state.tenant_db is not None
+    assert state.model_db is not None
     require_org_settings(request)  # REQ-1349
-    overrides = await read_org_overrides(state.tenant_db)
+    overrides = await read_org_overrides(state.model_db)
     updates: dict = {}
 
     if "redirect" in body:
@@ -334,11 +339,11 @@ async def _apply_org_blocks(request, body: dict, updated: list) -> None:
         return
     identity = getattr(request.state, "identity", None)
     await write_org_overrides(
-        state.tenant_db, updates, updated_by=getattr(identity, "user_id", "anonymous")
+        state.model_db, updates, updated_by=getattr(identity, "user_id", "anonymous")
     )
     # The query path reads these off the bound runtime, so the cached copy is refreshed here —
     # otherwise the org's next query still redirects and caches on the pre-save values.
-    state.settings_overrides = await read_org_overrides(state.tenant_db)
+    state.settings_overrides = await read_org_overrides(state.model_db)
 
 
 # The `otel` block's fields, by the operator setting each one is (REQ-1913). A field left out of
@@ -691,8 +696,8 @@ async def set_domain_policy(request: Request):  # REQ-165, REQ-1266, REQ-1349
             "default_domain required when use_domains=false",
         )
 
-    tenant_db = state.tenant_db
-    if tenant_db is None:
+    model_db = state.model_db
+    if model_db is None:
         raise ApiError(
             409,
             "settings.no_active_org",
@@ -700,7 +705,7 @@ async def set_domain_policy(request: Request):  # REQ-165, REQ-1266, REQ-1349
         )
 
     # 1. Refused while the org has a catalog, before anything is written.
-    async with tenant_db.acquire() as conn:
+    async with model_db.acquire() as conn:
         existing, declared_in_config = await _catalog_counts(conn)
     if any(existing.values()):
         held = (
@@ -738,9 +743,9 @@ async def set_domain_policy(request: Request):  # REQ-165, REQ-1266, REQ-1349
             naming["default_domain"] = default_domain
     identity = getattr(request.state, "identity", None)
     await write_org_overrides(
-        tenant_db, {"naming": naming}, updated_by=getattr(identity, "user_id", "anonymous")
+        model_db, {"naming": naming}, updated_by=getattr(identity, "user_id", "anonymous")
     )
-    state.settings_overrides = await read_org_overrides(tenant_db)
+    state.settings_overrides = await read_org_overrides(model_db)
 
     # 3. Apply it to this org's policy scope. A cleared override (use_domains=None) resolves to
     #    the deployment's own naming block — the value the org inherits — so the scope never reads
@@ -754,7 +759,7 @@ async def set_domain_policy(request: Request):  # REQ-165, REQ-1266, REQ-1349
     # 4. A single-domain org's one domain is the deployment's own: seeded here so the first
     #    registration under the new policy has it to sit in.
     if domain_policy.single_domain():
-        async with tenant_db.acquire() as conn:
+        async with model_db.acquire() as conn:
             await domain_repo.upsert(conn, Domain(id=domain_policy.default_domain()), origin="seed")
     await _rebuild_schemas()
 
@@ -1234,91 +1239,6 @@ async def generate_encryption_key(request: Request):  # REQ-918, REQ-1574, REQ-1
     return {"stored": True, "key_id": key_id or "master"}
 
 
-_AUTH_PROVIDERS = [
-    {
-        "key": "none",
-        "label": "None",
-        "description": "No authentication — open access. Development only.",
-        "config_fields": [],
-    },
-    {
-        "key": "firebase",
-        "label": "Firebase",
-        "description": "Google Firebase ID-token verification.",
-        "config_fields": [
-            {"config_key": "project_id", "label": "Project ID", "type": "string", "required": True},
-            {
-                "config_key": "service_account_key",
-                "label": "Service account key",
-                "type": "string",
-                "required": False,
-                "secret": True,
-            },
-        ],
-    },
-    {
-        "key": "keycloak",
-        "label": "Keycloak",
-        "description": "Keycloak OIDC (realm + client).",
-        "config_fields": [
-            {
-                "config_key": "server_url",
-                "label": "Server URL",
-                "type": "string",
-                "required": True,
-                "placeholder": "https://keycloak.example.com",
-            },
-            {"config_key": "realm", "label": "Realm", "type": "string", "required": True},
-            {"config_key": "client_id", "label": "Client ID", "type": "string", "required": True},
-            {
-                "config_key": "client_secret",
-                "label": "Client secret",
-                "type": "string",
-                "required": False,
-                "secret": True,
-            },
-        ],
-    },
-    {
-        "key": "oauth",
-        "label": "OAuth / OIDC",
-        "description": "Generic OIDC provider via a discovery URL.",
-        "config_fields": [
-            {
-                "config_key": "discovery_url",
-                "label": "Discovery URL",
-                "type": "string",
-                "required": True,
-                "placeholder": "https://issuer/.well-known/openid-configuration",
-            },
-            {"config_key": "client_id", "label": "Client ID", "type": "string", "required": True},
-            {"config_key": "audience", "label": "Audience", "type": "string", "required": False},
-            {
-                "config_key": "role_claim",
-                "label": "Role claim",
-                "type": "string",
-                "required": False,
-                "placeholder": "roles",
-            },
-        ],
-    },
-    {
-        "key": "simple",
-        "label": "Simple (username/password)",
-        "description": "Built-in username/password. NOT for production — requires the production guard.",
-        "config_fields": [
-            {
-                "config_key": "jwt_secret",
-                "label": "JWT signing secret",
-                "type": "string",
-                "required": True,
-                "secret": True,
-            },
-        ],
-    },
-]
-
-
 @router.get("/admin/auth")
 async def get_auth(request: Request):  # REQ-919
     """Auth provider selection + per-provider config + role settings for the admin UI."""
@@ -1329,21 +1249,12 @@ async def get_auth(request: Request):  # REQ-919
     auth = cfg.get("auth", {}) or {}
     provider = auth.get("provider", "none")
 
-    def _pcfg(pkey: str) -> dict:
-        # jwt_secret lives at the auth top level (not under `simple`); surface it there for the UI.
-        block = dict(auth.get(pkey, {}) or {})
-        if pkey == "simple":
-            block["jwt_secret"] = auth.get("jwt_secret", "")
-        return block
-
     # REQ-1575: client secrets and the JWT signing secret never leave the server.
-    _auth_safe, _auth_set = redact_per_provider(
-        {p["key"]: _pcfg(p["key"]) for p in _AUTH_PROVIDERS}, _AUTH_PROVIDERS
-    )
+    _auth_safe, _auth_set = redact_per_provider(provider_config_view(auth), AUTH_PROVIDERS)
     af = AuthConfig.model_fields
     return {
         "provider": provider,
-        "providers": _AUTH_PROVIDERS,
+        "providers": AUTH_PROVIDERS,
         "config": _auth_safe,
         "secret_set": _auth_set,
         "common": {
@@ -1352,6 +1263,9 @@ async def get_auth(request: Request):  # REQ-919
             "trust_upstream": bool(auth.get("trust_upstream", af["trust_upstream"].default)),
             "allow_simple_auth": bool(
                 auth.get("allow_simple_auth", af["allow_simple_auth"].default)
+            ),
+            "allow_registration": bool(
+                auth.get("allow_registration", af["allow_registration"].default)
             ),
         },
         "restart_required_note": "The auth provider binds at startup — changes take effect after a service restart.",
@@ -1363,41 +1277,9 @@ async def set_auth(request: Request):  # REQ-919
     """Persist the auth provider + its config + role settings. Applied on service restart."""
     require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
     body = await request.json()
-    provider = body.get("provider")
-    valid = {p["key"] for p in _AUTH_PROVIDERS}
-    if provider not in valid:
-        raise ApiError(
-            400,
-            "settings.unknown_auth_provider",
-            f"unknown auth provider {provider!r}; valid: {sorted(valid)}",
-            provider=str(provider),
-            valid=sorted(valid),
-        )
-
     path = config_path()
     cfg = read_config()
-    auth = dict(cfg.get("auth", {}) or {})
-    auth["provider"] = provider
-
-    allowed = {
-        f["config_key"] for p in _AUTH_PROVIDERS if p["key"] == provider for f in p["config_fields"]
-    }
-    pcfg = dict(auth.get(provider, {}) or {})
-    for k, v in (body.get("config") or {}).items():
-        if k not in allowed:
-            continue
-        if k == "jwt_secret":  # top-level, not under the provider block
-            auth["jwt_secret"] = v
-        else:
-            pcfg[k] = v
-    if provider != "simple" or pcfg:
-        auth[provider] = pcfg
-
-    for k in ("default_role", "assignments_source", "trust_upstream", "allow_simple_auth"):
-        if k in (body.get("common") or {}):
-            auth[k] = body["common"][k]
-
-    cfg["auth"] = auth
+    cfg["auth"] = apply_auth_settings(dict(cfg.get("auth", {}) or {}), body)
     write_config(path, cfg)
     return {"success": True, "restart_required": True}
 
@@ -1499,9 +1381,9 @@ async def recompute_schema_clusters(request: Request):  # REQ-510
     from provisa.api.app import state
     from provisa.api.startup_seed import _compute_and_store_clusters
 
-    if not state.tenant_db:
+    if not state.model_db:
         raise ApiError(503, "settings.database_not_available", "Database not available")
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:
         count = await _compute_and_store_clusters(conn)  # type: ignore[arg-type]
     return {"success": True, "tables_clustered": count}
 

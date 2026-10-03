@@ -200,12 +200,15 @@ async def _registry(state: Any) -> _Registry:
     from provisa.federation.replica_state import promotion
 
     config = getattr(state, "config", None)
+    mdb = getattr(state, "model_db", None)
     tdb = getattr(state, "tenant_db", None)
-    if config is None or tdb is None:
+    if config is None or mdb is None or tdb is None:
         return _Registry([], {}, frozenset(), frozenset())
-    async with tdb.acquire() as conn:
+    # REQ-1922: the registry is the model (model store); what is promoted is this region's state.
+    async with mdb.acquire() as conn:
         registered = await fetch_tables(conn)
         sources = {s.id: s for s in await registered_sources(state, conn)}
+    async with tdb.acquire() as conn:
         promoted, serving = await promotion(conn, lambda: store_identity(state))
     return _Registry(registered, sources, serving, promoted)
 

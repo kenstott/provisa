@@ -15,6 +15,7 @@
     "saved": "Gespeichert.",
     "savedRestartRequired": "Gespeichert. Starten Sie den Dienst neu, um die Änderungen zu übernehmen.",
     "secretOnFile": "Gespeichert – leer lassen, um es beizubehalten",
-    "secretNotSet": "Nicht gesetzt"
+    "secretNotSet": "Nicht gesetzt",
+    "allowRegistration": "Selbstregistrierung von Konten erlauben"
   }
 }

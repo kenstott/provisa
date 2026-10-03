@@ -125,6 +125,7 @@ def _state(conn: _Conn, monkeypatch) -> None:
     ctx.__aexit__ = AsyncMock(return_value=False)
     db.acquire = MagicMock(return_value=ctx)
     state = SimpleNamespace(
+        model_db=db,
         tenant_db=db,
         grpc_remote_sources={
             "g": {"namespace": "ns", "queries": [_query("ListOrders"), _query("GetOrder")]}

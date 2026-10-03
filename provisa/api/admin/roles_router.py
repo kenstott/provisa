@@ -62,8 +62,8 @@ def _active_org(request: Request) -> str:
 def _pool(_request: Request) -> "Database":  # pyright: ignore[reportUnusedParameter]
     from provisa.api.app import state
 
-    assert state.tenant_db is not None
-    return state.tenant_db
+    assert state.model_db is not None
+    return state.model_db
 
 
 class CreateRoleBody(BaseModel):

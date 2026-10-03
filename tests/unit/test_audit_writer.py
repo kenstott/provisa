@@ -52,7 +52,7 @@ def _record(
     status_code: int = 200,
 ) -> AuditRecord:
     return AuditRecord(
-        tenant_db=db,
+        record_db=db,
         tenant_id="default",
         user_id="alice",
         role_id="analyst",
@@ -480,7 +480,7 @@ def test_write_audit_lands_one_row_in_the_tenant_database(tmp_path, monkeypatch)
     org = f"audit-seam-{uuid.uuid4().hex}"
     counts = HotCounts(None)
     state = SimpleNamespace(
-        tenant_db=_tenant_db(path), org_id=org, admin_db=None, hot_counts=counts
+        record_db=_tenant_db(path), org_id=org, admin_db=None, hot_counts=counts
     )
     monkeypatch.setattr("provisa.encryption.runtime.encryption_service", NullEncryption)
     monkeypatch.setattr("provisa.core.settings_registry.value", lambda key: 60)
@@ -499,7 +499,7 @@ def _worker(path: str, worker: int, count: int) -> None:
     for n in range(count):
         writer.enqueue(
             AuditRecord(
-                tenant_db=db,
+                record_db=db,
                 tenant_id="default",
                 user_id=f"worker-{worker}",
                 role_id="analyst",

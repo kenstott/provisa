@@ -28,6 +28,7 @@ role mapping, X-Provisa-Role header enforcement — is covered without a real Id
 from __future__ import annotations
 
 import base64
+import asyncio
 import datetime
 
 import bcrypt
@@ -45,6 +46,7 @@ from provisa.auth.role_mapping import resolve_assignments, resolve_role
 from provisa.auth.superuser import check_superuser, resolve_superuser_config
 from provisa.auth.providers.simple import SimpleAuthProvider
 from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
+from tests.platform_plane import simple_user_ids
 
 pytestmark = [pytest.mark.integration]
 
@@ -73,7 +75,7 @@ def _make_simple_provider(users: list[dict] | None = None) -> SimpleAuthProvider
         {"username": "alice", "password_hash": _hash("s3cr3t"), "roles": [ROLE_ANALYST]},
         {"username": "bob", "password_hash": _hash("passw0rd"), "roles": [ROLE_ADMIN]},
     ]
-    return SimpleAuthProvider(users=users, jwt_secret=_JWT_SECRET)
+    return SimpleAuthProvider(users=users, jwt_secret=_JWT_SECRET, user_ids=simple_user_ids())
 
 
 def _echo_identity(request: Request) -> JSONResponse:
@@ -187,31 +189,34 @@ class TestSimpleAuthProvider:
     def test_login_valid_credentials_returns_jwt(self):
         # REQ-124: valid credentials must return a signed JWT.
         provider = _make_simple_provider()
-        token = provider.login("alice", "s3cr3t")
+        token = asyncio.run(provider.login("alice", "s3cr3t"))
         assert isinstance(token, str)
         decoded = jwt.decode(token, _JWT_SECRET, algorithms=["HS256"])
-        assert decoded["sub"] == "alice"
+        # sub is the user's stored id; the username rides beside it.
+        assert decoded["sub"] != "alice"
+        assert decoded["username"] == "alice"
 
     def test_login_invalid_password_raises(self):
         # REQ-124: wrong password must raise ValueError.
         provider = _make_simple_provider()
         with pytest.raises(ValueError, match="Invalid credentials"):
-            provider.login("alice", "wrong-password")
+            asyncio.run(provider.login("alice", "wrong-password"))
 
     def test_login_unknown_user_raises(self):
         # REQ-124: unknown username must raise ValueError.
         provider = _make_simple_provider()
         with pytest.raises(ValueError, match="Invalid credentials"):
-            provider.login("nobody", "any")
+            asyncio.run(provider.login("nobody", "any"))
 
     def test_validate_token_returns_identity(self):
         # REQ-124: validate_token must decode JWT and return AuthIdentity.
         import asyncio
 
         provider = _make_simple_provider()
-        token = provider.login("alice", "s3cr3t")
+        token = asyncio.run(provider.login("alice", "s3cr3t"))
         identity = asyncio.run(provider.validate_token(token))
-        assert identity.user_id == "alice"
+        assert identity.user_id != "alice"
+        assert identity.display_name == "alice"
         assert ROLE_ANALYST in identity.roles
 
     def test_validate_token_expired_raises(self):
@@ -222,6 +227,7 @@ class TestSimpleAuthProvider:
         now = datetime.datetime.now(datetime.timezone.utc)
         payload = {
             "sub": "alice",
+            "username": "alice",
             "roles": [ROLE_ANALYST],
             "iat": now - datetime.timedelta(hours=2),
             "exp": now - datetime.timedelta(hours=1),
@@ -233,14 +239,14 @@ class TestSimpleAuthProvider:
     def test_jwt_contains_role_claims(self):
         # REQ-124: JWT payload must contain roles claim.
         provider = _make_simple_provider()
-        token = provider.login("bob", "passw0rd")
+        token = asyncio.run(provider.login("bob", "passw0rd"))
         decoded = jwt.decode(token, _JWT_SECRET, algorithms=["HS256"])
         assert ROLE_ADMIN in decoded["roles"]
 
     def test_token_has_short_expiry(self):
         # REQ-124: JWT must have a short expiry (30 min or less for simple/test use).
         provider = _make_simple_provider()
-        token = provider.login("alice", "s3cr3t")
+        token = asyncio.run(provider.login("alice", "s3cr3t"))
         decoded = jwt.decode(token, _JWT_SECRET, algorithms=["HS256"])
         expiry = datetime.datetime.fromtimestamp(decoded["exp"], tz=datetime.timezone.utc)
         issued = datetime.datetime.fromtimestamp(decoded["iat"], tz=datetime.timezone.utc)

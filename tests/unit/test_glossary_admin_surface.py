@@ -187,6 +187,7 @@ async def test_retired_toggle_round_trips_and_hides_the_term_from_mcp_search(tmp
     async with _surface(tmp_path, monkeypatch) as (db, notified):
         state = types.SimpleNamespace(
             contexts={"analyst": object()},
+            model_db=db,
             tenant_db=db,
             # REQ-1591: the MCP surface narrows the vocabulary to the domains the ROLE reaches;
             # "*" is the seeded unlimited scope, so the search sees every term here.
@@ -348,6 +349,7 @@ async def test_mcp_search_terms_requires_role_and_returns_refs(tmp_path, monkeyp
     async with _surface(tmp_path, monkeypatch) as (db, _notified):
         state = types.SimpleNamespace(
             contexts={"analyst": object()},
+            model_db=db,
             tenant_db=db,
             # REQ-1591: the MCP surface narrows the vocabulary to the domains the ROLE reaches;
             # "*" is the seeded unlimited scope, so the search sees every term here.

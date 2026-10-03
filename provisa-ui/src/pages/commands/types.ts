@@ -34,7 +34,6 @@ export interface FormState {
   functionName: string;
   returns: string;
   visibleTo: string;
-  writablBy: string;
   domainId: string;
   description: string;
   arguments: ActionArg[];
@@ -110,7 +109,6 @@ export const EMPTY_FORM: FormState = {
   functionName: "",
   returns: "",
   visibleTo: "",
-  writablBy: "",
   domainId: "",
   description: "",
   arguments: [],

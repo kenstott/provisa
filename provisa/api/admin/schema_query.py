@@ -71,6 +71,7 @@ from provisa.api.admin.types import (
     DqContractType,
     QueryPreviewType,
     HotTableStatType,
+    ClusterNodeType,
     KaggleDatasetType,
     MaterializeStoreInfoType,
     ReplicaBuildsType,
@@ -377,7 +378,7 @@ class Query:  # REQ-021, REQ-042
     @strawberry.field
     async def domains(self, info: StrawberryInfo) -> list[DomainType]:  # REQ-021, REQ-042
         # REQ-1293: the tenant plane is isolated BY SCHEMA — _get_pool() is the org-routed
-        # state.tenant_db bound to org_<active_org_id>, so every row reachable here already
+        # state.model_db bound to org_<active_org_id>, so every row reachable here already
         # belongs to the active org. A second, row-level `domains.org_id = active_org_id`
         # predicate was not a narrower boundary but a broken one: schema.sql runs inside EVERY
         # org schema and stamps its seeded rows org_id='root', and create_domain never writes
@@ -1213,6 +1214,28 @@ class Query:  # REQ-021, REQ-042
         return [CacheTableStatType(table_id=tid, cached_entries=n) for tid, n in counts.items()]
 
     @strawberry.field
+    async def cluster_nodes(self, info: StrawberryInfo) -> list[ClusterNodeType]:  # REQ-1916
+        """The nodes now in the cluster, each with its mode and — when the platform declares
+        regions — its region: whether any node does coordinator work, and where."""
+        require_capability(info, "observability")
+        from provisa.api.app import state
+        from provisa.core.platform_state import nodes
+
+        assert state.platform_state_db is not None  # brought up with the control planes at boot
+        return [
+            ClusterNodeType(
+                node_id=n["node_id"],
+                host=n["host"],
+                pid=n["pid"],
+                mode=n["mode"],
+                region=n.get("region"),
+                started_at=n["started_at"].isoformat(),
+                last_seen=n["last_seen"].isoformat(),
+            )
+            for n in await nodes.live(state.platform_state_db)
+        ]
+
+    @strawberry.field
     async def hot_tables(self, info: StrawberryInfo) -> list[HotTableStatType]:
         """The tables Provisa keeps a copy of because of how they are used: hot (mirrored in
         Redis for JOIN inlining) and replicated because they are busy (REQ-826: past their Hot
@@ -1339,6 +1362,7 @@ class Query:  # REQ-021, REQ-042
                     webhook_url=t.get("url"),
                     kind="sql" if sql else "webhook",  # REQ-1003
                     sql=sql,
+                    role=t.get("role"),
                     enabled=t.get("enabled", True),
                     last_run_at=None,
                     next_run_at=next_run,

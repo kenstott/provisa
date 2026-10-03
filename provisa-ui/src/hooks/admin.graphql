@@ -739,6 +739,7 @@ query ScheduledTasks {
     webhookUrl
     kind
     sql
+    role
     enabled
     lastRunAt
     nextRunAt
@@ -1095,6 +1096,7 @@ mutation CreateScheduledTask(
   $webhookName: String
   $argsJson: String
   $sql: String
+  $role: String
 ) {
   createScheduledTask(
     id: $id
@@ -1104,6 +1106,7 @@ mutation CreateScheduledTask(
     webhookName: $webhookName
     argsJson: $argsJson
     sql: $sql
+    role: $role
   ) {
     ...MutationResult
   }

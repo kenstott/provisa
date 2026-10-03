@@ -10,10 +10,9 @@
 
 """Cypher ``CALL <registeredFn>(args) YIELD ...`` binding to the shared executor (REQ-872).
 
-Detects a registered tracked-function CALL, coerces its positional arguments, routes to
-the one shared ``invoke_tracked_function`` executor (which enforces per-mutation
-writable_by), and projects YIELD columns. Kept out of cypher_router so that surface stays
-within its size/complexity budget.
+A ``CALL <command>(…)`` is read by the one Cypher command-call reader (cypher/command_call.py,
+shared with Bolt), admitted and bound by the shared executor, and shaped by its YIELD and
+RETURN. Kept out of cypher_router so that surface stays within its size/complexity budget.
 """
 
 from __future__ import annotations
@@ -21,15 +20,6 @@ from __future__ import annotations
 import re as _re
 
 from fastapi.responses import JSONResponse
-
-_MIN_QUOTED_LEN = 2  # a quoted literal needs at least the two surrounding quote chars
-_YIELD_ALIAS_TOKENS = 3  # "col AS alias" splits into three tokens
-
-_REGISTERED_CALL_RE = _re.compile(
-    r"^\s*CALL\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\((.*?)\)"
-    r"\s*(?:YIELD\s+(.+?))?\s*(?:RETURN\s+.+)?\s*$",
-    _re.IGNORECASE | _re.DOTALL,
-)
 
 _PROC_RE = _re.compile(
     r"^\s*CALL\s+(db\.labels|db\.relationshipTypes|db\.propertyKeys)\s*\(\s*\)\s*$", _re.IGNORECASE
@@ -79,84 +69,6 @@ def _handle_procedure(proc: str, label_map) -> JSONResponse:
     return JSONResponse(content={"columns": ["propertyKey"], "rows": rows})
 
 
-def _split_call_args(args_str: str) -> list[str]:
-    """Split a CALL argument list on top-level commas, respecting quotes."""
-    out: list[str] = []
-    buf: list[str] = []
-    quote: str | None = None
-    for ch in args_str:
-        if quote:
-            buf.append(ch)
-            if ch == quote:
-                quote = None
-        elif ch in "'\"":
-            quote = ch
-            buf.append(ch)
-        elif ch == ",":
-            out.append("".join(buf))
-            buf = []
-        else:
-            buf.append(ch)
-    if "".join(buf).strip():
-        out.append("".join(buf))
-    return out
-
-
-def _parse_call_literal(raw: str, params: dict):
-    """Coerce one CALL argument token to a value ($param, string, number, bool, null)."""
-    raw = raw.strip()
-    if raw.startswith("$"):
-        return params.get(raw[1:])
-    if len(raw) >= _MIN_QUOTED_LEN and raw[0] in "'\"" and raw[-1] == raw[0]:
-        return raw[1:-1]
-    low = raw.lower()
-    if low in ("true", "false"):
-        return low == "true"
-    if low in ("null", "none"):
-        return None
-    try:
-        return int(raw)
-    except ValueError:
-        pass
-    try:
-        return float(raw)
-    except ValueError:
-        return raw
-
-
-def detect_registered_call(
-    query: str, state, params: dict
-) -> tuple[str, dict, list[tuple[str, str]]] | None:
-    """Detect ``CALL <registeredFn>(args) [YIELD cols]`` (REQ-872).
-
-    Returns (function name, ordered positional args dict, YIELD (source, alias) pairs) when the
-    name is a registered tracked function, else None. YIELD is optional; ``col AS alias`` supported.
-    """
-    fns = getattr(state, "tracked_functions", None)
-    if not isinstance(fns, dict):
-        return None
-    m = _REGISTERED_CALL_RE.match(query.strip())
-    if m is None:
-        return None
-    name = m.group(1)
-    if name not in fns:
-        return None
-    args: dict = {}
-    for i, tok in enumerate(_split_call_args(m.group(2) or "")):
-        if tok.strip():
-            args[f"a{i}"] = _parse_call_literal(tok, params)
-    yields: list[tuple[str, str]] = []
-    if m.group(3):
-        for part in m.group(3).split(","):
-            seg = part.strip().split()
-            if not seg:
-                continue
-            src = seg[0]
-            alias = seg[2] if len(seg) >= _YIELD_ALIAS_TOKENS and seg[1].lower() == "as" else src
-            yields.append((src, alias))
-    return name, args, yields
-
-
 async def intercept_precompile(body, state, role_id, label_map) -> JSONResponse | None:
     """Pre-parse dispatch: Neo4j schema procedures then REQ-872 registered-function CALLs.
 
@@ -174,20 +86,21 @@ async def intercept_precompile(body, state, role_id, label_map) -> JSONResponse 
     proc = _detect_procedure(body.query)
     if proc is not None:
         return _handle_procedure(proc, label_map)
-    reg = detect_registered_call(body.query, state, body.params)
-    if reg is not None:
-        return await handle_registered_call(reg[0], reg[1], reg[2], state, role_id)
-    return None
+    from provisa.api.errors import ApiError
+    from provisa.cypher.command_call import CommandCallRefused, parse_command_call, project
 
+    try:
+        call = parse_command_call(body.query, body.params or {})
+    except CommandCallRefused as exc:
+        raise ApiError(400, "cypher.command_call_refused", str(exc), reason=str(exc)) from exc
+    if call is None:
+        return None
+    from provisa.api.data.action_exec import bind_command_args, invoke_tracked_function
 
-async def handle_registered_call(name, args, yields, state, role_id) -> JSONResponse:  # REQ-872
-    """Invoke a registered function via the shared executor and project YIELD columns."""
-    from provisa.api.data.action_exec import invoke_tracked_function
-
-    rows = await invoke_tracked_function(name, args, state, role_id)
-    if yields:
-        cols = [alias for _src, alias in yields]
-        rows = [{alias: r.get(src) for src, alias in yields} for r in rows]
-    else:
-        cols = list(rows[0].keys()) if rows else []
-    return JSONResponse(content={"columns": cols, "rows": rows})
+    args = bind_command_args(call.name, call.values, state, role_id)
+    rows = await invoke_tracked_function(call.name, args, state, role_id)
+    try:
+        cols, shaped = project(call, rows)
+    except CommandCallRefused as exc:
+        raise ApiError(400, "cypher.command_call_refused", str(exc), reason=str(exc)) from exc
+    return JSONResponse(content={"columns": cols, "rows": shaped})

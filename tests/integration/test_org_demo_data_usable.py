@@ -51,7 +51,7 @@ pytestmark = [pytest.mark.integration]
 _ORG_ID = "demodata"
 _ACCOUNTS = {"founder": "pw-founder", "creator": "pw-creator"}
 # No org subdomain: production (cloud.provisa.dev) serves the whole flow from the control-plane
-# host, so org selection falls to the sole-membership rule rather than the Host header.
+# host, so the org is named by X-Org-Provisa rather than the Host header (REQ-1235).
 _CONTROL_HOST = "cloud.provisa.test"
 
 
@@ -61,6 +61,13 @@ def _headers(username: str) -> dict[str, str]:
         "Authorization": "Basic " + base64.b64encode(raw).decode(),
         "host": _CONTROL_HOST,
     }
+
+
+def _in_org(username: str) -> dict[str, str]:
+    """The same credentials on a request that names the org (REQ-1235). On the control-plane
+    host there is no org subdomain, so the UI names the org it selected with X-Org-Provisa; a
+    request that names none is refused there, sole membership or not."""
+    return {**_headers(username), "x-org-provisa": _ORG_ID}
 
 
 async def _drop_org_schemas(state) -> None:
@@ -196,7 +203,7 @@ async def _poll_ready(client: AsyncClient, org_id: str) -> dict:
 
 
 async def _admin_gql(client: AsyncClient, query: str) -> dict:
-    resp = await client.post("/admin/graphql", json={"query": query}, headers=_headers("creator"))
+    resp = await client.post("/admin/graphql", json={"query": query}, headers=_in_org("creator"))
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert not body.get("errors"), body["errors"]
@@ -227,7 +234,7 @@ async def test_creator_can_query_the_demo_data(demo_org_client):
     resp = await client.post(
         "/data/graphql",
         json={"query": "{ orders(limit: 5) { id amount } }"},
-        headers=_headers("creator"),
+        headers=_in_org("creator"),
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()

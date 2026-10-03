@@ -56,7 +56,10 @@ def _state():
             "reset_cache": mutation_scalar,
             "secret_cmd": hidden,
         },
-        roles={"admin": {"domain_access": ["*"]}},
+        roles={
+            "admin": {"id": "admin", "domain_access": ["*"]},
+            "guest": {"id": "guest", "domain_access": ["*"]},
+        },
     )
 
 

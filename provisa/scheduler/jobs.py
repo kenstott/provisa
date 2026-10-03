@@ -73,24 +73,18 @@ async def _execute_webhook(
 # internal SQL (same default used by the Flight server, provisa/api/flight/server.py).
 # Scheduled triggers carry no per-run identity, so scheduled SQL runs under it.
 # REQ-1003: governed execution requires a role; this is the documented system role.
-_SCHEDULER_ROLE = "org_admin"
-
-
-async def _execute_sql(sql: str, trigger_id: str) -> None:  # REQ-1003, REQ-1004
-    """Execute a scheduled SQL statement against the federated engine.
-
-    Substitutes date/timestamp tokens with this run's execution time (REQ-1004),
-    routes the statement through the shared governance pipeline (REQ-1003), and
-    executes the resulting plan. Failures are logged and re-raised — never
-    silently swallowed.
+async def _execute_sql(sql: str, trigger_id: str, role: str) -> None:  # REQ-1003, REQ-1004
+    """Run a scheduled SQL trigger: one insert, update or delete of registered tables, its date
+    tokens rendered as values for this run (scheduler/trigger_sql.py), through the shared
+    pipeline and its write admission as the trigger's role. Failures are logged and re-raised —
+    never silently swallowed.
     """
     from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
-    from provisa.scheduler.templating import substitute_date_tokens
+    from provisa.scheduler.trigger_sql import checked_trigger_sql
 
-    run_at = datetime.now(timezone.utc)
-    rendered = substitute_date_tokens(sql, run_at)
+    rendered = checked_trigger_sql(sql, trigger_id, datetime.now(timezone.utc))
     try:
-        plan = await _govern_and_route(rendered, _SCHEDULER_ROLE)
+        plan = await _govern_and_route(rendered, role)
         result = await _execute_plan(plan)
     except Exception:
         logger.exception("Trigger %s: scheduled SQL failed: %s", trigger_id, rendered)
@@ -827,9 +821,9 @@ async def reap_environments() -> None:  # REQ-1523
     from provisa.core.env_reaper import reap_expired
 
     assert state.admin_db is not None  # the job is registered only when the admin plane is bound
-    assert state.tenant_db is not None
+    assert state.model_db is not None
 
-    reaped = await reap_expired(state.tenant_db, state.admin_db, audit=_audit_reaped)
+    reaped = await reap_expired(state.model_db, state.admin_db, audit=_audit_reaped)
     if reaped:
         logger.info("reaped %d expired environment(s)", len(reaped))
 
@@ -841,11 +835,11 @@ async def _audit_reaped(org_id: str, name: str, outcome: dict) -> None:
     environment and a deleted one are the same act reached by two doors; the actor is the platform
     rather than a person, which is what the entry says.
     """
-    from provisa.api.admin.orgs_router import _org_tenant_db
+    from provisa.api.admin.orgs_router import _org_model_db
     from provisa.core.org_membership import record_admin_action
 
     await record_admin_action(
-        await _org_tenant_db(org_id),
+        await _org_model_db(org_id),
         action="environment.expired",
         actor_id="platform",
         subject_id=name,
@@ -917,7 +911,7 @@ def build_scheduler(
             scheduler.add_job(
                 _execute_sql,
                 trigger=cron,
-                args=[trigger.sql, trigger.id],
+                args=[trigger.sql, trigger.id, trigger.role],
                 id=trigger.id,
                 name=f"trigger:{trigger.id}",
                 replace_existing=True,

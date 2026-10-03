@@ -191,7 +191,8 @@ def _state(sources, tables, backend, plane):
     return SimpleNamespace(
         federation_engine=engine,
         config=SimpleNamespace(sources=sources, tables=tables),
-        tenant_db=_Db(plane),
+        model_db=(_one_db := _Db(plane)),
+        tenant_db=_one_db,
         replica_routes=ReplicaRoutes(floored=_floored(sources, tables)),
     )
 
@@ -456,7 +457,7 @@ async def test_a_read_whose_deadline_passes_while_the_build_runs_says_so(wiring,
 
 @pytest.mark.asyncio
 async def test_without_an_engine_or_store_nothing_happens():
-    state = SimpleNamespace(federation_engine=None, config=None, tenant_db=None)
+    state = SimpleNamespace(federation_engine=None, config=None, model_db=None, tenant_db=None)
     assert (
         await ensure_resident(state, {"pets-db"}, reader_role=None, table_ids=set())
     ).built == []

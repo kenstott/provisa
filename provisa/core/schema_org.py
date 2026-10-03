@@ -62,6 +62,33 @@ from sqlalchemy import (
 metadata = MetaData()
 
 
+# REQ-1921/1922: the stores an org keeps its data in, per region. A store is a connection URL (a
+# secret reference); an org region names, for each kind of data, the store it is kept in there.
+stores = Table(
+    "stores",
+    metadata,
+    Column("id", Text, primary_key=True),
+    Column("url", Text, nullable=False),
+    # REQ-1491: whether this environment has supplied the store's URL (a copy carries the row,
+    # never the binding).
+    Column("bound", Boolean, nullable=False, server_default=true()),
+    # REQ-1919: where the row came from ("config", "admin", "seed").
+    Column("origin", Text, nullable=False),
+)
+
+org_regions = Table(
+    "org_regions",
+    metadata,
+    Column("id", Text, primary_key=True),  # a platform region this org selects
+    Column("engine", Text, nullable=False),
+    Column("replicas", Text, nullable=False),
+    Column("views", Text, nullable=False),
+    Column("cache", Text, nullable=False),
+    Column("state", Text, nullable=False),
+    Column("record", Text, nullable=False),
+    Column("origin", Text, nullable=False),  # REQ-1919
+)
+
 sources = Table(
     "sources",
     metadata,
@@ -75,6 +102,7 @@ sources = Table(
     Column("cache_enabled", Boolean, nullable=False, server_default=true()),
     Column("cache_ttl", Integer),
     Column("replicate", Integer),  # REQ-826: NULL = global threshold; -1 never, N hot, 0 always
+    Column("region", Text),  # REQ-1921: the org region its data lives in; NULL = no region
     Column("load_protected", Boolean, nullable=False, server_default=false()),  # REQ-1141
     Column("off_peak_window", Text),  # REQ-1141
     Column("off_peak_tz", Text, nullable=False, server_default="UTC"),  # REQ-1141
@@ -171,6 +199,7 @@ registered_tables = Table(
     # REQ-1907: role -> TTL seconds; effective TTL = max(cache_ttl, role_ttl(role)).
     Column("role_ttl", JSON, nullable=False, default=dict, server_default="{}"),
     Column("replicate", Integer),  # REQ-826: NULL = inherit source
+    Column("region", Text),  # REQ-1921: the org region its data lives in; NULL = its source's
     Column("load_protected", Boolean),  # REQ-1141: NULL = inherit source
     Column("off_peak_window", Text),  # REQ-1141
     Column("off_peak_tz", Text),  # REQ-1141

@@ -87,11 +87,11 @@ def _admin_pool() -> Database:
 
 
 def _pool() -> Database:
-    """The tenant control plane, which holds every org schema and therefore every environment."""
+    """The model store, which holds every org schema and therefore every environment (REQ-1919)."""
     from provisa.api.app import state
 
-    assert state.tenant_db is not None
-    return state.tenant_db
+    assert state.model_db is not None
+    return state.model_db
 
 
 def _caller_user_id(request: Request) -> str | None:
@@ -256,11 +256,11 @@ async def _known(org_id: str, name: str) -> dict:
 
 async def _audit(org_id: str, actor: str | None, action: str, name: str, detail: dict) -> None:
     """Record the act in the ORG's own trail (REQ-1488), where the org can see it."""
-    from provisa.api.admin.orgs_router import _org_tenant_db
+    from provisa.api.admin.orgs_router import _org_model_db
     from provisa.core.org_membership import record_admin_action
 
     await record_admin_action(
-        await _org_tenant_db(org_id),
+        await _org_model_db(org_id),
         action=action,
         actor_id=actor or "anonymous",
         subject_id=name,
@@ -439,7 +439,7 @@ async def create_environment(request: Request, org_id: str, body: CreateEnvBody)
 
     await _confined(request, org_id, body.name)
 
-    from provisa.api.admin.orgs_router import _org_tenant_db
+    from provisa.api.admin.orgs_router import _org_model_db
     from provisa.core.env_create import create_environment as _create_env
 
     # REQ-1529: binding a base is an org_admin's act, so creating one is too. A branch is open to
@@ -468,7 +468,7 @@ async def create_environment(request: Request, org_id: str, body: CreateEnvBody)
             _state(),
             _admin_pool(),
             _pool(),
-            await _org_tenant_db(org_id),
+            await _org_model_db(org_id),
             org_id,
             body.name,
             from_env=body.from_env,
@@ -628,7 +628,7 @@ async def merge_into_environment(request: Request, org_id: str, name: str, body:
     anything else and no reason to be told to go elsewhere. A dry run stays a dry run either way:
     it writes nothing, so there is nothing for an approver to hold.
     """
-    from provisa.api.admin.orgs_router import _org_tenant_db
+    from provisa.api.admin.orgs_router import _org_model_db
 
     await _confined(request, org_id, name, body.from_env)
     actor = await _guard_within(request, org_id, body.from_env)
@@ -663,7 +663,7 @@ async def merge_into_environment(request: Request, org_id: str, name: str, body:
             org=org_id,
             env=body.from_env,
         )
-    db = await _org_tenant_db(org_id)
+    db = await _org_model_db(org_id)
     protected = await env_approvals.is_protected(
         _admin_pool(), org_id, name, await _member_count(org_id)
     )
@@ -728,7 +728,7 @@ async def _squash(
     scanning the target's log wants to know what the merge DID; the source and the sha it was at
     are how they find the range afterwards, and neither sentence can be written by the other.
     """
-    from provisa.api.admin.orgs_router import _org_tenant_db
+    from provisa.api.admin.orgs_router import _org_model_db
     from provisa.core.env_repo import write_through
     from provisa.core.environments import org_schema
 
@@ -736,7 +736,7 @@ async def _squash(
     at = source_row["deployed_sha"]
     provenance = f"merge {source} into {target}" if at is None else f"merge {source}@{at[:12]}"
     subject = f"{message.strip()} ({provenance})"
-    db = await _org_tenant_db(org_id)
+    db = await _org_model_db(org_id)
     async with db.acquire() as conn:
         return await write_through(
             conn, _admin_pool(), org_id, target, org_schema(org_id, target), subject, actor
@@ -844,7 +844,7 @@ async def deploy_into_environment(
     branch that moves between the plan and the apply would otherwise make the report describe a
     commit that was never applied.
     """
-    from provisa.api.admin.orgs_router import _org_tenant_db
+    from provisa.api.admin.orgs_router import _org_model_db
     from provisa.core.env_files import load as load_files
     from provisa.core.env_repo import files_at, resolve_sha
     from provisa.core.env_store import set_position
@@ -853,7 +853,7 @@ async def deploy_into_environment(
     await _known(org_id, name)
     sha = _readable(org_id, body.ref, lambda: resolve_sha(org_id, body.ref))
     tree = load_files(_readable(org_id, body.ref, lambda: files_at(org_id, sha)))
-    db = await _org_tenant_db(org_id)
+    db = await _org_model_db(org_id)
     protected = await env_approvals.is_protected(
         _admin_pool(), org_id, name, await _member_count(org_id)
     )
@@ -924,7 +924,7 @@ async def _move(request: Request, org_id: str, name: str, forward: bool) -> dict
     an undo stepped away from stays in the object store and stays deployable by sha even after the
     cursor that named it is cleared.
     """
-    from provisa.api.admin.orgs_router import _org_tenant_db
+    from provisa.api.admin.orgs_router import _org_model_db
     from provisa.core.env_files import load as load_files
     from provisa.core.env_repo import files_at, parent_of, step_toward
     from provisa.core.env_store import set_position
@@ -990,7 +990,7 @@ async def _move(request: Request, org_id: str, name: str, forward: bool) -> dict
         cursor = top or here
 
     tree = load_files(_readable(org_id, target, lambda: files_at(org_id, target)))
-    db = await _org_tenant_db(org_id)
+    db = await _org_model_db(org_id)
     try:
         report = await deploy_tree(db, org_id, name, tree, ref=target)
     except DeployError as exc:
@@ -1044,10 +1044,10 @@ async def list_merge_requests(request: Request, org_id: str, open_only: bool = F
     The path segment is ``-`` because an environment cannot be named that (REQ-1523's name rules),
     so this route can never be shadowed by a real environment.
     """
-    from provisa.api.admin.orgs_router import _org_tenant_db
+    from provisa.api.admin.orgs_router import _org_model_db
 
     await _member(request, org_id, MANAGE_CAPABILITY, SWITCH_CAPABILITY)
-    db = await _org_tenant_db(org_id)
+    db = await _org_model_db(org_id)
     rows = await env_approvals.list_requests(_admin_pool(), org_id, open_only=open_only)
     # REQ-1624: a confined membership sees only the proposals its own environment is party to --
     # the listing names other environments, and naming them is what the pin withholds.
@@ -1064,12 +1064,12 @@ async def list_merge_requests(request: Request, org_id: str, open_only: bool = F
 @router.get("/-/merge-requests/{request_id}")
 async def get_merge_request(request: Request, org_id: str, request_id: int) -> dict:
     """One request, with the report as it was produced — which is what the approver reviews."""
-    from provisa.api.admin.orgs_router import _org_tenant_db
+    from provisa.api.admin.orgs_router import _org_model_db
 
     await _member(request, org_id, MANAGE_CAPABILITY, SWITCH_CAPABILITY)
     row = await _request_or_404(org_id, request_id)
     await _confined(request, org_id, row["source_env"], row["target_env"])
-    state = await env_approvals.effective_state(await _org_tenant_db(org_id), org_id, row)
+    state = await env_approvals.effective_state(await _org_model_db(org_id), org_id, row)
     return {"request": _rendered(row, state)}
 
 
@@ -1083,7 +1083,7 @@ async def decide_merge_request(
     Deciding is an org_admin act and the requester is refused their own request — the two together
     are what makes the approval a second person's, which is the whole of what protection means.
     """
-    from provisa.api.admin.orgs_router import _org_tenant_db
+    from provisa.api.admin.orgs_router import _org_model_db
 
     actor = await _guard(request, org_id)
     decided_on = await _request_or_404(org_id, request_id)
@@ -1091,7 +1091,7 @@ async def decide_merge_request(
     try:
         decided = await env_approvals.decide(
             _admin_pool(),
-            await _org_tenant_db(org_id),
+            await _org_model_db(org_id),
             org_id,
             request_id,
             approve=body.approve,
@@ -1176,7 +1176,7 @@ async def preview_merge(
     answer is advisory to Provisa: REQ-1504's approval is what actually holds a merge, and a
     deployment whose git host is unreachable still requests, approves and applies exactly as it did.
     """
-    from provisa.api.admin.orgs_router import _org_tenant_db
+    from provisa.api.admin.orgs_router import _org_model_db
 
     await _confined(request, org_id, name, from_env)
     await _guard_within(request, org_id, from_env)
@@ -1190,7 +1190,7 @@ async def preview_merge(
             org=org_id,
             env=name,
         )
-    db = await _org_tenant_db(org_id)
+    db = await _org_model_db(org_id)
     report = await plan_copy(db, org_id, from_env, name, mode=MERGE, removals=removals)
     return {
         "report": report.as_dict(),
@@ -1546,7 +1546,7 @@ async def pull_environment(request: Request, org_id: str, name: str) -> dict:
     Refused when the two lines have DIVERGED. Both sides then hold commits the other does not, and
     choosing whose work survives is not a decision this endpoint gets to make quietly.
     """
-    from provisa.api.admin.orgs_router import _org_tenant_db
+    from provisa.api.admin.orgs_router import _org_model_db
     from provisa.core.env_files import load as load_files
     from provisa.core.env_repo import files_at, merge_base, sync_state
     from provisa.core.env_store import set_position
@@ -1590,7 +1590,7 @@ async def pull_environment(request: Request, org_id: str, name: str) -> dict:
         return {"applied": False, "sync": state}
     sha = state["remote"]
     tree = load_files(_readable(org_id, sha, lambda: files_at(org_id, sha)))
-    db = await _org_tenant_db(org_id)
+    db = await _org_model_db(org_id)
     try:
         report = await deploy_tree(db, org_id, name, tree, ref=sha, base_sha=base_sha)
     except DeployError as exc:
@@ -1673,7 +1673,7 @@ async def _collisions(org_id: str, name: str, base_sha: str | None, sha: str | N
     None when the two lines share no ancestor, and the empty list then says the question could not
     be asked rather than that nothing collided -- the response says which by carrying ``base``.
     """
-    from provisa.api.admin.orgs_router import _org_tenant_db
+    from provisa.api.admin.orgs_router import _org_model_db
     from provisa.core.env_conflicts import against_base
     from provisa.core.env_files import load as load_files
     from provisa.core.env_project import project
@@ -1683,7 +1683,7 @@ async def _collisions(org_id: str, name: str, base_sha: str | None, sha: str | N
     if base_sha is None or sha is None:
         return []
     incoming = load_files(_readable(org_id, sha, lambda: files_at(org_id, sha)))
-    db = await _org_tenant_db(org_id)
+    db = await _org_model_db(org_id)
     async with db.acquire() as conn:
         current = await project(conn, org_schema(org_id, name))
     return against_base(org_id, base_sha, incoming, current)

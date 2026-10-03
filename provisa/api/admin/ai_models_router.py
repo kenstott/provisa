@@ -53,8 +53,8 @@ async def _effective_config() -> dict:
     from provisa.api.app import state
     from provisa.core.org_settings import resolve_org_config
 
-    assert state.tenant_db is not None
-    return await resolve_org_config(state.tenant_db)
+    assert state.model_db is not None
+    return await resolve_org_config(state.model_db)
 
 
 @router.get("/admin/ai-models")
@@ -69,7 +69,7 @@ async def get_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370
         read_org_secret,
     )
 
-    assert state.tenant_db is not None
+    assert state.model_db is not None
     cfg = await _effective_config()
     ai = cfg.get("ai_models", {}) or {}
     nl = cfg.get("nl", {}) or {}
@@ -82,9 +82,9 @@ async def get_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370
     # REQ-1395, REQ-1398: keys themselves are never echoed back — only whether each vendor has
     # one set. "jev" is not an aisuite vendor (no model assignment), so it is checked separately
     # and merged into the same map the UI already renders vendor keys from.
-    configured = await read_org_api_keys(state.tenant_db)
+    configured = await read_org_api_keys(state.model_db)
     api_keys_set = {vendor: vendor in configured for vendor in sorted(LLM_VENDORS)}
-    api_keys_set["jev"] = (await read_org_secret(state.tenant_db, JEV_SECRET_KEY)) is not None
+    api_keys_set["jev"] = (await read_org_secret(state.model_db, JEV_SECRET_KEY)) is not None
 
     return {
         "ai_models": {k: _assignment(k) for k in _AI_MODEL_ROLES},
@@ -138,13 +138,13 @@ async def get_vendor_models(
         fetch_vendor_models,
     )
 
-    assert state.tenant_db is not None
+    assert state.model_db is not None
 
     if vendor in VENDOR_MODEL_APIS:
         # The org's key when it has set one; otherwise the deployment credential this vendor's
         # calls already run on — the same resolution order the LLM client uses, so the picker
         # lists exactly the models the org's queries would reach (REQ-1395, REQ-1398).
-        api_key = (await read_org_api_keys(state.tenant_db)).get(vendor)
+        api_key = (await read_org_api_keys(state.model_db)).get(vendor)
         if not api_key and vendor in VENDOR_API_KEY_ENV:
             api_key = os.environ.get(VENDOR_API_KEY_ENV[vendor])
         if not api_key:
@@ -196,9 +196,9 @@ async def set_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370
     from provisa.api.app import state
     from provisa.core.org_settings import read_org_overrides, write_org_overrides
 
-    assert state.tenant_db is not None
+    assert state.model_db is not None
     body = await request.json()
-    overrides = await read_org_overrides(state.tenant_db)
+    overrides = await read_org_overrides(state.model_db)
     updates: dict = {}
     updated: list[str] = []
 
@@ -273,7 +273,7 @@ async def set_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370
     identity = getattr(request.state, "identity", None)
     updated_by = getattr(identity, "user_id", "anonymous")
 
-    await write_org_overrides(state.tenant_db, updates, updated_by=updated_by)
+    await write_org_overrides(state.model_db, updates, updated_by=updated_by)
 
     # REQ-1395, REQ-1398: the org's own per-vendor API keys — secrets, not config overrides, so
     # they go through org_secrets (encrypted at rest) rather than write_org_overrides. A
@@ -287,7 +287,7 @@ async def set_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370
                 continue
             secret_key = JEV_SECRET_KEY if vendor == "jev" else f"{vendor}_api_key"
             await write_org_secret(
-                state.tenant_db,
+                state.model_db,
                 secret_key,
                 raw_key.strip() if isinstance(raw_key, str) and raw_key.strip() else None,
                 updated_by=updated_by,

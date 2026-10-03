@@ -15,6 +15,7 @@
     "saved": "Salvato.",
     "savedRestartRequired": "Salvato. Riavviare il servizio per applicare.",
     "secretOnFile": "Memorizzato — lascia vuoto per mantenerlo",
-    "secretNotSet": "Non impostato"
+    "secretNotSet": "Non impostato",
+    "allowRegistration": "Consenti agli utenti di creare il proprio account"
   }
 }

@@ -22,6 +22,7 @@ import pytest
 from provisa.auth.models import AuthIdentity
 from provisa.auth.providers.simple import SimpleAuthProvider
 from provisa.auth.role_mapping import resolve_role
+from tests.platform_plane import platform_db, simple_user_ids
 
 pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
@@ -46,59 +47,65 @@ def provider():
             "roles": ["admin", "analyst"],
         },
     ]
-    return SimpleAuthProvider(users=users, jwt_secret=JWT_SECRET)
+    return SimpleAuthProvider(users=users, jwt_secret=JWT_SECRET, user_ids=simple_user_ids())
 
 
 class TestSimpleAuthValidCredentials:
     async def test_login_returns_jwt(self, provider):
-        token = provider.login("alice", "alice-pass")
+        token = await provider.login("alice", "alice-pass")
         assert isinstance(token, str)
         decoded = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
-        assert decoded["sub"] == "alice"
+        # The token names the user's stored id; the username rides beside it for display.
+        assert decoded["sub"] != "alice"
+        assert decoded["username"] == "alice"
         assert decoded["roles"] == ["analyst"]
         assert "exp" in decoded
         assert "iat" in decoded
 
     async def test_login_bob_returns_jwt_with_multiple_roles(self, provider):
-        token = provider.login("bob", "bob-pass")
+        token = await provider.login("bob", "bob-pass")
         decoded = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
-        assert decoded["sub"] == "bob"
+        assert decoded["username"] == "bob"
         assert set(decoded["roles"]) == {"admin", "analyst"}
 
 
 class TestSimpleAuthInvalidCredentials:
     async def test_wrong_password_rejected(self, provider):
         with pytest.raises(ValueError, match="Invalid credentials"):
-            provider.login("alice", "wrong-password")
+            await provider.login("alice", "wrong-password")
 
     async def test_unknown_user_rejected(self, provider):
         with pytest.raises(ValueError, match="Invalid credentials"):
-            provider.login("nobody", "any-pass")
+            await provider.login("nobody", "any-pass")
 
     async def test_empty_password_rejected(self, provider):
         with pytest.raises(ValueError, match="Invalid credentials"):
-            provider.login("alice", "")
+            await provider.login("alice", "")
 
 
 class TestJWTValidationRoundTrip:
     async def test_create_and_verify_token(self, provider):
-        token = provider.login("alice", "alice-pass")
+        token = await provider.login("alice", "alice-pass")
         identity = await provider.validate_token(token)
         assert isinstance(identity, AuthIdentity)
-        assert identity.user_id == "alice"
+        assert identity.user_id != "alice"
         assert identity.display_name == "alice"
         assert identity.roles == ["analyst"]
 
     async def test_tampered_token_rejected(self, provider):
-        token = provider.login("alice", "alice-pass")
+        token = await provider.login("alice", "alice-pass")
         tampered = token + "x"
         with pytest.raises(Exception):
             await provider.validate_token(tampered)
 
     async def test_wrong_secret_rejected(self):
-        provider_b = SimpleAuthProvider(users=[], jwt_secret="secret-b-for-unit-tests-padded!x")
+        provider_b = SimpleAuthProvider(
+            users=[], jwt_secret="secret-b-for-unit-tests-padded!x", user_ids=simple_user_ids()
+        )
         token = jwt.encode(
-            {"sub": "x", "roles": []}, "secret-a-for-unit-tests-padded!x", algorithm="HS256"
+            {"sub": "x", "username": "x", "roles": []},
+            "secret-a-for-unit-tests-padded!x",
+            algorithm="HS256",
         )
         with pytest.raises(jwt.InvalidSignatureError):
             await provider_b.validate_token(token)
@@ -130,7 +137,9 @@ class TestAllowSimpleAuthGuard:
     async def test_simple_with_flag_true_builds(self):
         from provisa.auth.wiring import build_auth_provider
 
-        provider = build_auth_provider(self._simple_cfg(allow_simple_auth=True))
+        provider = build_auth_provider(
+            self._simple_cfg(allow_simple_auth=True), admin_pool=platform_db()
+        )
         assert isinstance(provider, SimpleAuthProvider)
 
     async def test_other_providers_unaffected_by_flag(self):
@@ -650,28 +659,29 @@ class TestBasicProviderSessionToken:
 
 class TestRoleMappingFromJWT:
     async def test_role_from_claims_contains_rule(self, provider):
-        token = provider.login("bob", "bob-pass")
+        token = await provider.login("bob", "bob-pass")
         identity = await provider.validate_token(token)
         rules = [{"type": "contains", "claim": "roles", "value": "admin", "role": "admin"}]
         role = resolve_role(identity, rules, default_role="viewer")
         assert role == "admin"
 
     async def test_role_from_claims_exact_rule(self, provider):
-        token = provider.login("alice", "alice-pass")
+        token = await provider.login("alice", "alice-pass")
         identity = await provider.validate_token(token)
-        rules = [{"type": "exact", "claim": "sub", "value": "alice", "role": "power-user"}]
+        # The username is its own claim; sub is the user's stored id.
+        rules = [{"type": "exact", "claim": "username", "value": "alice", "role": "power-user"}]
         role = resolve_role(identity, rules, default_role="viewer")
         assert role == "power-user"
 
     async def test_default_role_when_no_rule_matches(self, provider):
-        token = provider.login("alice", "alice-pass")
+        token = await provider.login("alice", "alice-pass")
         identity = await provider.validate_token(token)
         rules = [{"type": "exact", "claim": "sub", "value": "charlie", "role": "admin"}]
         role = resolve_role(identity, rules, default_role="viewer")
         assert role == "viewer"
 
     async def test_empty_rules_returns_default(self, provider):
-        token = provider.login("alice", "alice-pass")
+        token = await provider.login("alice", "alice-pass")
         identity = await provider.validate_token(token)
         role = resolve_role(identity, [], default_role="analyst")
         assert role == "analyst"

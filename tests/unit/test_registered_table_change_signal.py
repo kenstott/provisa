@@ -55,7 +55,7 @@ def _table(name: str, **settings) -> Table:
 
 
 async def _registered(db: Database, config_tables: list[Table]) -> dict[str, object]:
-    state = SimpleNamespace(tenant_db=db, config=SimpleNamespace(tables=config_tables))
+    state = SimpleNamespace(model_db=db, tenant_db=db, config=SimpleNamespace(tables=config_tables))
     async with db.acquire() as conn:
         rows = await registered_tables(state, conn)
     return {t.table_name: t for t in rows}

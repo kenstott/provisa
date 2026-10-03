@@ -578,7 +578,7 @@ export function ChatPanel() {
         <Textarea
           ref={textareaRef}
           className={flashPrompt ? "chat-panel-textarea-flash" : undefined}
-          placeholder="Ask the assistant, or tell it what to do…"
+          placeholder="Ask me a question, or tell me what to do."
           value={draft}
           onChange={(e) => setDraft(e.currentTarget.value)}
           onKeyDown={(e) => {

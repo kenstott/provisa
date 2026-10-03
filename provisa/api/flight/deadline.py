@@ -74,6 +74,9 @@ _budget: contextvars.ContextVar[_Budget | None] = contextvars.ContextVar(
 @contextmanager
 def request_budget(timeout: float) -> Generator[None]:
     """Bind one deadline of ``timeout`` seconds for the enclosed Flight request."""
+    from provisa.core import process_mode
+
+    process_mode.refuse_data_request("flight")  # REQ-1916: a coordinator serves no data
     outer = request_deadline.current()
     if outer is not None and outer.remaining() <= timeout:
         budget = _Budget(outer, owned=False)

@@ -45,8 +45,8 @@ class EmailAuditEntry(BaseModel):
 def _pool(_request: Request) -> Database:  # pyright: ignore[reportUnusedParameter]
     from provisa.api.app import state
 
-    assert state.tenant_db is not None
-    return state.tenant_db
+    assert state.model_db is not None
+    return state.model_db
 
 
 @router.get("/preferences", response_model=EmailPreference)

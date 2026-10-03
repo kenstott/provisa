@@ -184,7 +184,9 @@ def test_first_login_claims_and_holds_platform_admin(planes):
 
         assert client.get("/auth/bootstrap-status").json() == {"unclaimed": False}
 
-        me = client.get("/auth/me", headers=_hdr("tok-first"))
+        # REQ-1235: /auth/me reports the org the request names; a request naming none has no
+        # active org, whatever the caller's memberships.
+        me = client.get("/auth/me", headers={**_hdr("tok-first"), "x-org-provisa": _ORG})
         assert me.status_code == 200, me.text
         body = me.json()
 

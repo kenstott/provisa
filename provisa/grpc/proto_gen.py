@@ -243,9 +243,10 @@ def _emit_aggregate_messages(
 def _visible_commands(si: SchemaInput) -> list[dict]:
     """Commands (tracked functions) visible to this role, deduped by name (REQ-1156).
 
-    ``visible_to`` empty = every role, matching the REST/MCP/Flight surfaces. Role id comes from
-    ``si.role``; a command with a non-empty ``visible_to`` that omits the role is not emitted."""
-    role_id = si.role.get("id")
+    The commands the role may call (``mutation_authz.command_reachable``): assigned to it
+    (``visible_to`` empty = every role) and in a domain it reaches, as on every other surface."""
+    from provisa.security.mutation_authz import command_reachable
+
     out: list[dict] = []
     seen: set[str] = set()
     # Functions AND webhooks are governed commands (REQ-872): both get a Call{Cmd} RPC.
@@ -253,8 +254,7 @@ def _visible_commands(si: SchemaInput) -> list[dict]:
         name = fn.get("name")
         if not name or name in seen:
             continue
-        visible_to = fn.get("visible_to") or []
-        if visible_to and role_id not in visible_to:
+        if not command_reachable(fn, si.role):
             continue
         seen.add(name)
         out.append(fn)
@@ -472,7 +472,7 @@ def generate_proto(
     # A single generic RPC exposes every registered command (tracked function/webhook) over gRPC
     # without a per-command proto: the request carries the command name + JSON-encoded args and the
     # response carries the JSON-encoded governed rows. Invocation routes through the one shared
-    # invoke_tracked_function executor, so writable_by/governance is enforced identically to every
+    # invoke_tracked_function executor, so the command admission and governance apply identically to every
     # other surface.
     lines.append("message CommandRequest {")
     lines.append("  string name = 1;")

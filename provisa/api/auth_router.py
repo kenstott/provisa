@@ -58,9 +58,9 @@ async def me(request: Request):
 
     identity = getattr(request.state, "identity", None)
 
-    tenant_db = state.tenant_db
-    assert tenant_db is not None
-    async with tenant_db.acquire() as conn:
+    model_db = state.model_db
+    assert model_db is not None
+    async with model_db.acquire() as conn:
         result = await conn.execute_core(select(roles.c.id))
         role_rows = result.fetchall()
     all_role_ids = {r[0] for r in role_rows}
@@ -357,24 +357,22 @@ async def _seat_claimant_in_root(user_id: str) -> None:  # REQ-1296
     assert state.admin_db is not None
     # Claiming the bootstrap slot is the claimant's own act, so the membership needs no explaining.
     await grant_membership(state.admin_db, user_id, state.org_id, joined_via=JOINED_VIA_CREATED)
-    # current_org is unbound on this request, so the tenant_db shim resolves the default (bootstrap)
+    # current_org is unbound on this request, so the model_db shim resolves the default (bootstrap)
     # org's runtime — the same org the membership names.
-    tenant_db = state.tenant_db
-    assert tenant_db is not None, "the bootstrap org's tenant plane must be up before a claim"
+    model_db = state.model_db
+    assert model_db is not None, "the bootstrap org's tenant plane must be up before a claim"
     from provisa.security.rights import DEPLOYMENT_GRANTER
 
     # REQ-1337: the claim is the deployment seating its first administrator — there is no one else
     # yet to grant with.
     await grant_org_role(
-        tenant_db, user_id, PLATFORM_ADMIN_ROLE, granter_capabilities=DEPLOYMENT_GRANTER
+        model_db, user_id, PLATFORM_ADMIN_ROLE, granter_capabilities=DEPLOYMENT_GRANTER
     )
     # REQ-1297: platform_admin carries only the two platform rights — no column grants name it and it
     # holds no data capabilities. The claimant is also the bootstrap org's data-plane administrator, so
     # seat them as its org_admin too. Without this the claim lands on "No roles configured" again: the
     # welcome modal would hand them a deployment whose own org they cannot query.
-    await grant_org_role(
-        tenant_db, user_id, ORG_ADMIN_ROLE, granter_capabilities=DEPLOYMENT_GRANTER
-    )
+    await grant_org_role(model_db, user_id, ORG_ADMIN_ROLE, granter_capabilities=DEPLOYMENT_GRANTER)
     # REQ-1599: and in the sandbox org, which is a tenant org their platform_admin reaches no
     # further into than any other. A no-op while it is still building — that build seats them.
     from provisa.api.sandbox_org import seat_platform_admins
@@ -608,6 +606,15 @@ async def register(body: RegisterRequest):
             "auth.registration_basic_only",
             "Registration only available with basic auth provider",
         )
+    # REQ-1265: a deployment whose only sign-in is the break-glass account (the chart's
+    # auth.provider: local) creates no other accounts.
+    allow_registration = (
+        auth_cfg.get("allow_registration", True)
+        if isinstance(auth_cfg, dict)
+        else getattr(auth_cfg, "allow_registration", True)
+    )
+    if not allow_registration:
+        raise ApiError(403, "auth.registration_disabled", "Account registration is turned off")
 
     import bcrypt
     import uuid
@@ -699,8 +706,8 @@ async def register(body: RegisterRequest):
         role_rt = (
             rt if pinned_env is None else await ensure_org_runtime(invite["org_id"], pinned_env)
         )
-        assert role_rt.tenant_db is not None
-        await seat_redeemed_roles(role_rt.tenant_db, user_id, role_id)
+        assert role_rt.model_db is not None
+        await seat_redeemed_roles(role_rt.model_db, user_id, role_id)
         # REQ-1599: if platform_admin, seat in sandbox org
         from provisa.api.sandbox_org import reseat_after_conferral
 
@@ -802,8 +809,8 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
         role_rt = (
             rt if pinned_env is None else await ensure_org_runtime(invite["org_id"], pinned_env)
         )
-        assert role_rt.tenant_db is not None
-        await seat_redeemed_roles(role_rt.tenant_db, user_id, role_id)
+        assert role_rt.model_db is not None
+        await seat_redeemed_roles(role_rt.model_db, user_id, role_id)
         # REQ-1599: an invitation is the other way platform_admin is conferred, and a new administrator
         # is owed the sandbox org the same as the claimant is.
         from provisa.api.sandbox_org import reseat_after_conferral
@@ -828,7 +835,7 @@ async def delete_sandbox_account(request: Request):
     caller's ONLY org membership, so this can never reach a real account that also belongs to a
     paying org — a scoping bug here would be catastrophic, not cosmetic.
     """
-    from provisa.api.admin.orgs_router import _org_tenant_db
+    from provisa.api.admin.orgs_router import _org_model_db
     from provisa.api.app import state
     from provisa.api.sandbox_org import SANDBOX_ORG_ID
     from provisa.auth.providers.firebase import delete_user as delete_firebase_user
@@ -858,8 +865,8 @@ async def delete_sandbox_account(request: Request):
     # (see below), and running it last left orphaned-account reports where the DB rows were
     # already gone but the Firebase user survived a failed final call.
     delete_firebase_user(user_id)
-    tenant_db = await _org_tenant_db(SANDBOX_ORG_ID)
-    await remove_from_org(admin_db, tenant_db, user_id, SANDBOX_ORG_ID)
+    model_db = await _org_model_db(SANDBOX_ORG_ID)
+    await remove_from_org(admin_db, model_db, user_id, SANDBOX_ORG_ID)
     async with admin_db.acquire() as conn:
         await conn.execute_core(delete(user_profiles).where(user_profiles.c.user_id == user_id))
     return {"deleted": user_id}
@@ -936,7 +943,7 @@ async def delete_account(request: Request, confirm: str | None = None):
     The removal itself is ``org_membership.remove_account`` — the one an administrator with the
     cross-org right uses too. The person's tokens for each org are revoked with the membership.
     """
-    from provisa.api.admin.orgs_router import _admin_pool, _org_tenant_db
+    from provisa.api.admin.orgs_router import _admin_pool, _org_model_db, _org_record_db
     from provisa.api.app import state
     from provisa.core.org_membership import AccountRemovalRefused, remove_account
 
@@ -954,10 +961,14 @@ async def delete_account(request: Request, confirm: str | None = None):
                 "proceed."
             ),
         )
-    assert state.tenant_db is not None
+    assert state.model_db is not None
     try:
         return await remove_account(
-            _admin_pool(), state.tenant_db, user_id, tenant_db_of=_org_tenant_db
+            _admin_pool(),
+            state.model_db,
+            user_id,
+            model_db_of=_org_model_db,
+            record_db_of=_org_record_db,
         )
     except AccountRemovalRefused as refused:
         if refused.reason == "last_org_admin":

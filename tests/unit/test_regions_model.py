@@ -1,0 +1,251 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1209619c-1831-4ff7-ab52-d5e74d335dd9
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""Regions in the model (REQ-1921, REQ-1922): the platform declares physical regions, an org
+selects the ones it uses and declares its stores in each, and a source or table may name one of
+the org's regions. Everything is checked when the model is loaded."""
+
+# Requirements: REQ-1921, REQ-1922
+
+from __future__ import annotations
+
+import pytest
+from pydantic import ValidationError
+
+from provisa.core.models import ProvisaConfig
+
+_PLATFORM = {
+    "regions": [
+        {"id": "eu", "address": "https://eu.example.com"},
+        {"id": "us", "address": "https://us.example.com"},
+    ]
+}
+_STORES = [
+    {"id": "eu-pg", "url": "postgresql://eu/db"},
+    {"id": "eu-redis", "url": "redis://eu:6379/0"},
+    {"id": "eu-trino", "url": "trino://eu:8080"},
+    {"id": "us-pg", "url": "postgresql://us/db"},
+    {"id": "us-redis", "url": "redis://us:6379/0"},
+    {"id": "us-trino", "url": "trino://us:8080"},
+]
+
+
+def _region(rid: str, **over) -> dict:
+    stores = {
+        "engine": f"{rid}-trino",
+        "replicas": f"{rid}-pg",
+        "views": f"{rid}-pg",
+        "cache": f"{rid}-redis",
+        "state": f"{rid}-pg",
+        "record": f"{rid}-pg",
+    }
+    return {"id": rid, **stores, **over}
+
+
+def _config(**over) -> dict:
+    base = {
+        "sources": [
+            {
+                "id": "crm",
+                "type": "postgresql",
+                "host": "h",
+                "database": "d",
+                "username": "u",
+                "password": "p",
+            }
+        ],
+        "domains": [{"id": "sales"}],
+        "tables": [
+            {
+                "source_id": "crm",
+                "domain_id": "sales",
+                "schema": "public",
+                "table": "orders",
+                "columns": [{"name": "id", "visible_to": ["admin"]}],
+            }
+        ],
+        "roles": [{"id": "admin", "capabilities": [], "domain_access": ["*"]}],
+    }
+    base.update(over)
+    return base
+
+
+def _refused(cfg: dict) -> str:
+    with pytest.raises(ValidationError) as refused:
+        ProvisaConfig.model_validate(cfg)
+    return str(refused.value)
+
+
+# -- no platform regions: one implicit region, nothing about regions may be said ----------------
+
+
+def test_without_platform_regions_a_model_names_none():
+    cfg = ProvisaConfig.model_validate(_config())
+    assert cfg.platform.regions == [] and cfg.regions == [] and cfg.stores == []
+
+
+def test_without_platform_regions_a_region_anywhere_is_refused_naming_that():
+    said = _refused(_config(tables=[{**_config()["tables"][0], "region": "eu"}]))
+    assert "the platform declares no regions" in said
+    said = _refused(_config(regions=[_region("eu")], stores=_STORES))
+    assert "the platform declares no regions" in said
+
+
+# -- the platform declares regions; the org selects its own -------------------------------------
+
+
+def test_an_org_selects_platform_regions_and_names_them_on_sources_and_tables():
+    cfg = ProvisaConfig.model_validate(
+        _config(
+            platform=_PLATFORM,
+            stores=_STORES,
+            regions=[_region("eu"), _region("us")],
+            sources=[{**_config()["sources"][0], "region": "eu"}],
+            tables=[{**_config()["tables"][0], "region": "us"}],
+        )
+    )
+    assert [r.id for r in cfg.regions] == ["eu", "us"]
+    assert cfg.sources[0].region == "eu" and cfg.tables[0].region == "us"
+
+
+def test_an_org_that_selects_no_region_is_refused_naming_the_platforms():
+    said = _refused(_config(platform=_PLATFORM))
+    assert "selects none of the platform's regions" in said
+    assert "eu (https://eu.example.com)" in said and "us (https://us.example.com)" in said
+
+
+def test_a_region_the_platform_does_not_declare_is_refused():
+    said = _refused(_config(platform=_PLATFORM, stores=_STORES, regions=[_region("ap")]))
+    assert "region 'ap' is not one of the platform's (eu, us)" in said
+
+
+def test_a_store_no_store_declares_is_refused():
+    said = _refused(
+        _config(platform=_PLATFORM, stores=_STORES, regions=[_region("eu", state="eu-mysql")])
+    )
+    assert "region 'eu' state store 'eu-mysql' is not declared" in said
+
+
+def test_a_source_or_table_region_the_org_does_not_select_is_refused():
+    said = _refused(
+        _config(
+            platform=_PLATFORM,
+            stores=_STORES,
+            regions=[_region("eu")],
+            tables=[{**_config()["tables"][0], "region": "us"}],
+        )
+    )
+    assert "table crm/public.orders names region 'us', which the org does not select (eu)" in said
+
+
+def test_a_region_id_must_be_a_short_lowercase_name():
+    said = _refused(_config(platform={"regions": [{"id": "EU-west", "address": "https://x"}]}))
+    assert "EU-west" in said
+
+
+def test_a_region_others_read_needs_a_replica_store_they_can_attach():
+    """A table naming eu is read from eu's replica by the org's other regions: an embedded
+    DuckDB file is reachable by no other engine."""
+    stores = [*_STORES, {"id": "eu-duck", "url": "duckdb:///data/eu.duckdb"}]
+    said = _refused(
+        _config(
+            platform=_PLATFORM,
+            stores=stores,
+            regions=[_region("eu", replicas="eu-duck"), _region("us")],
+            tables=[{**_config()["tables"][0], "region": "eu"}],
+        )
+    )
+    assert "region 'eu' replicas store 'eu-duck' is an embedded DuckDB file" in said
+
+
+# -- saved through the model store ---------------------------------------------------------------
+
+
+@pytest.fixture
+async def model(tmp_path):
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.schema_org import metadata
+
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'model.db'}")
+    with engine.begin() as raw:
+        metadata.create_all(raw)  # the whole model: a guard reads every table that may refer
+    return Database(engine, "test")
+
+
+def _source(region: str | None):
+    from provisa.core.models import Source
+
+    return Source(
+        id="crm",
+        type="postgresql",
+        host="h",
+        database="d",
+        username="u",
+        password="",
+        region=region,
+    )
+
+
+async def test_a_source_saved_naming_a_region_the_org_does_not_select_is_refused(model):
+    from provisa.core.regions import OrgRegion, StoreConfig
+    from provisa.core.repositories import region as region_repo
+    from provisa.core.repositories import source as source_repo
+
+    async with model.acquire() as conn:
+        with pytest.raises(region_repo.RegionNotSelected, match="source crm names region 'eu'"):
+            await source_repo.upsert(conn, _source("eu"), origin="admin")
+        for s in _STORES[:3]:
+            await region_repo.upsert_store(conn, StoreConfig(**s), origin="admin")
+        await region_repo.upsert_region(conn, OrgRegion(**_region("eu")), origin="admin")
+        await source_repo.upsert(conn, _source("eu"), origin="admin")
+        assert [r.id for r in await region_repo.list_regions(conn)] == ["eu"]
+        with pytest.raises(
+            region_repo.RegionNotSelected, match=r"which the org does not select \(eu\)"
+        ):
+            await source_repo.upsert(conn, _source("us"), origin="admin")
+
+
+async def test_a_region_a_source_names_and_a_store_a_region_names_are_held(model):
+    from provisa.core.regions import OrgRegion, StoreConfig
+    from provisa.core.repositories import region as region_repo
+    from provisa.core.repositories import source as source_repo
+    from provisa.core.repositories.integrity import ObjectRef, guard
+
+    async with model.acquire() as conn:
+        for s in _STORES[:3]:
+            await region_repo.upsert_store(conn, StoreConfig(**s), origin="admin")
+        await region_repo.upsert_region(conn, OrgRegion(**_region("eu")), origin="admin")
+        await source_repo.upsert(conn, _source("eu"), origin="admin")
+        assert [d.ref for d in await guard(conn, ObjectRef("region", "eu"))] == [
+            ObjectRef("source", "crm")
+        ]
+        assert {d.ref for d in await guard(conn, ObjectRef("store", "eu-pg"))} == {
+            ObjectRef("region", "eu")
+        }
+
+
+async def test_a_node_serves_an_org_only_in_a_region_the_org_selects(model):
+    """A node runs in one platform region and serves that region of every org that selects it;
+    an org that does not select it is refused there by name."""
+    from provisa.core.regions import DEFAULT_REGION, OrgRegion, StoreConfig
+    from provisa.core.repositories import region as region_repo
+
+    async with model.acquire() as conn:
+        for s in _STORES[:3]:
+            await region_repo.upsert_store(conn, StoreConfig(**s), origin="admin")
+        await region_repo.upsert_region(conn, OrgRegion(**_region("eu")), origin="admin")
+        await region_repo.require_serves_here(conn, "acme", "eu")
+        with pytest.raises(region_repo.OrgNotInRegion) as refused:
+            await region_repo.require_serves_here(conn, "acme", "us")
+        assert str(refused.value) == (
+            "org 'acme' does not select region 'us', which this node serves (it selects eu)"
+        )
+        # The one implicit region: every org is served, none selects anything.
+        await region_repo.require_serves_here(conn, "acme", DEFAULT_REGION)

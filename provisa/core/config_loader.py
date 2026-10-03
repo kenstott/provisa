@@ -40,11 +40,13 @@ from provisa.core.schema_org import (
     glossary_terms,
     metrics as metrics_table,
     naming_rules,
+    org_regions,
     registered_tables,
     relationships,
     rls_rules,
     roles as roles_table,
     sources,
+    stores as stores_table,
     tag_assignments as tag_assignments_table,
     tags as tags_table,
     tracked_functions,
@@ -630,6 +632,8 @@ async def _dropped_by_the_config(
     )
     by_key = (
         ("source", sources, sources.c.id, {x.id for x in config.sources}, None),
+        ("region", org_regions, org_regions.c.id, {x.id for x in config.regions}, None),
+        ("store", stores_table, stores_table.c.id, {x.id for x in config.stores}, None),
         ("domain", domains_table, domains_table.c.id, {x.id for x in config.domains}, None),
         ("role", roles_table, roles_table.c.id, {x.id for x in config.roles}, None),
         (
@@ -1197,6 +1201,14 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     # snapshot step 11's sweep needs is taken here — before the removal at the end and the
     # rename purge in _upsert_tables remove the very rows it reads.
     domains_before = await glossary_repo.term_domains(conn)
+
+    # 0. Regions and their stores (REQ-1921/1922), before the sources and tables that name them.
+    from provisa.core.repositories import region as region_repo
+
+    for store in config.stores:
+        await region_repo.upsert_store(conn, store, origin=origin)
+    for selected in config.regions:
+        await region_repo.upsert_region(conn, selected, origin=origin)
 
     # 1. Sources
     failed_catalogs = await _upsert_sources(

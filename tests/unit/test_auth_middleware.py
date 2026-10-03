@@ -80,6 +80,7 @@ def _make_app(
             "user_id": request.state.identity.user_id,
             "role": request.state.role,
             "assignments": [a.role_id for a in (getattr(request.state, "assignments", None) or [])],
+            "roles": getattr(request.state, "roles", None),
             "active_org_id": getattr(request.state, "active_org_id", None),
         }
 
@@ -557,3 +558,58 @@ def test_superuser_single_org_deployment_ignores_the_host():
     assert resp.status_code == 200
     assert resp.json()["active_org_id"] == "root"
     assert pool.statements == []
+
+
+# --- REQ-1620: "Role: All" sends a SET of roles in X-Provisa-Role -------------
+
+
+class MultiRoleProvider(AuthProvider):
+    """A user holding two data-plane roles, as the UI's "Role: All" acts for."""
+
+    async def validate_token(self, token: str) -> AuthIdentity:
+        if token == "valid-token":
+            return AuthIdentity(
+                user_id="user2",
+                email="user2@example.com",
+                display_name="User Two",
+                roles=["analyst", "editor"],
+                raw_claims={},
+            )
+        raise ValueError("Invalid token")
+
+
+def test_a_role_set_header_acts_as_its_first_role_with_the_whole_set_as_claims():
+    # Before this, the comma-separated set was looked up as ONE role id and refused (403), so
+    # "Role: All" failed for every user with more than one role under an auth provider.
+    app = _make_app(provider=MultiRoleProvider())
+    client = TestClient(app)
+    resp = client.get(
+        "/test",
+        headers={"Authorization": "Bearer valid-token", "X-Provisa-Role": "analyst,editor"},
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["role"] == "analyst"
+    assert data["roles"] == ["analyst", "editor"]
+
+
+def test_a_role_set_header_naming_an_unassigned_role_is_refused():
+    app = _make_app(provider=MultiRoleProvider())
+    client = TestClient(app)
+    resp = client.get(
+        "/test",
+        headers={"Authorization": "Bearer valid-token", "X-Provisa-Role": "analyst,org_admin"},
+    )
+    assert resp.status_code == 403
+    assert "org_admin" in resp.json()["detail"]
+
+
+def test_a_single_role_header_sets_no_role_set():
+    app = _make_app(provider=MultiRoleProvider())
+    client = TestClient(app)
+    resp = client.get(
+        "/test", headers={"Authorization": "Bearer valid-token", "X-Provisa-Role": "editor"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["role"] == "editor"
+    assert resp.json()["roles"] is None

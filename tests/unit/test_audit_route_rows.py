@@ -57,7 +57,8 @@ _ENTRY = SimpleNamespace(age_seconds=3)  # the response-cache entry a hit was se
 
 def _state():
     return SimpleNamespace(
-        tenant_db=object(),
+        record_db=(_one_db := object()),
+        tenant_db=_one_db,
         org_id="acme",
         admin_db=None,
         hot_counts=None,  # REQ-826: no Hot-count store; counting has its own tests

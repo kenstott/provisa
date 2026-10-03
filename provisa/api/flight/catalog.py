@@ -95,7 +95,7 @@ def build_catalog_tables(state) -> list[CatalogTable]:  # REQ-127, REQ-128
     """
     import asyncio
 
-    if not state.tenant_db:
+    if not state.model_db:
         return []
 
     loop = asyncio.new_event_loop()
@@ -107,7 +107,7 @@ def build_catalog_tables(state) -> list[CatalogTable]:  # REQ-127, REQ-128
 
 async def _build_catalog_tables_async(state) -> list[CatalogTable]:
     """Async implementation of build_catalog_tables."""
-    async with state.tenant_db.acquire() as conn:
+    async with state.model_db.acquire() as conn:
         rows = await conn.fetch(
             "SELECT id, domain_id, table_name, description, modeling_role, modeling_history "
             "FROM registered_tables ORDER BY domain_id, table_name"

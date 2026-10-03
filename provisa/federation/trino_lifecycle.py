@@ -37,6 +37,19 @@ log = logging.getLogger(__name__)
 # only need those import them there and never reach this module.
 
 
+# The Trino principal every Provisa statement runs as, and the prefix of the source that names
+# the statement's org. trino/etc/resource-groups.json selects on exactly these two.
+ENGINE_USER = "provisa"
+_SOURCE_PREFIX = "provisa/"
+
+
+def engine_source(org_id: str) -> str:  # REQ-056, REQ-1040
+    """The Trino ``source`` of a statement run for ``org_id``."""
+    if not org_id:
+        raise ValueError("a Trino statement must name its org; none is bound")
+    return f"{_SOURCE_PREFIX}{org_id}"
+
+
 def connect(conn_kwargs: dict) -> trino.dbapi.Connection:
     """Open a fresh Trino dbapi connection from the stored kwargs."""
     return trino.dbapi.connect(**conn_kwargs)
@@ -104,6 +117,8 @@ def polling_provider(state: Any, catalog: str, schema: str, table: str, watermar
         schema=schema,
         table=table,
         watermark_column=watermark_column,
+        # REQ-056: the poller's statements are this org's too, and land in its resource group.
+        source=eck["source"],
     )
 
 
@@ -134,7 +149,12 @@ def terminal_conn_kwargs(state: Any) -> dict:
     return dict(
         host=trino_host,
         port=trino_port,
-        user="provisa",
+        user=ENGINE_USER,
+        # REQ-056/REQ-1040: every statement names its org. The Trino user is the same for all
+        # orgs, so resource-groups.json places a statement by this source instead:
+        # "provisa/<org>" -> global.tenant-<org>. A statement from this user with no org in
+        # its source matches no selector and Trino rejects it.
+        source=engine_source(state.active_org_id),
         catalog="system",
         # REQ-1623: the terminal's default schema follows the environment being served, so an
         # unqualified name resolves in the model the caller is actually in.

@@ -3673,7 +3673,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
             assert state.federation_engine is not None
             # REQ-879: coordinate the refresh across the fleet via the shared control-plane catalog.
-            await refresh_mv(state.federation_engine, mv, state.mv_registry, store=state.tenant_db)
+            await refresh_mv(
+                state.federation_engine,
+                mv,
+                state.mv_registry,
+                store=state.model_db,
+                ledger=state.tenant_db,
+            )
             # refresh_mv records a failed refresh on the view and returns (it runs on the
             # scheduler too, where there is nobody to raise to). The mutation answers the
             # caller who asked: a failed refresh is reported as one, with the view's own error
@@ -3821,11 +3827,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         webhook_name: Optional[str] = None,
         args_json: Optional[str] = None,
         sql: Optional[str] = None,
+        role: Optional[str] = None,
     ) -> MutationResult:
         """Create a scheduled trigger (webhook or SQL) and register it live (REQ-1003/1004)."""
         require_capability(info, "org_settings")
         return await _ops.create_scheduled_task_op(
-            id, name, cron, kind, webhook_name, args_json, sql
+            id, name, cron, kind, webhook_name, args_json, sql, role
         )
 
     @strawberry.mutation

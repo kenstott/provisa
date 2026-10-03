@@ -51,6 +51,12 @@ def _recv_timeout() -> int:
 # REQ-1393: Neo4j's own code for a rejected-because-throttled login, so a driver reports the
 # lockout as a lockout rather than as one more wrong password.
 _RATE_LIMIT_CODE = "Neo.ClientError.Security.AuthenticationRateLimit"
+_ARGUMENT_ERROR = "Neo.ClientError.Statement.ArgumentError"
+# An HTTP status from the shared command executor, as the Neo4j error a Bolt client reads.
+_BOLT_CODE_FOR_STATUS = {
+    403: "Neo.ClientError.Security.Forbidden",
+    404: "Neo.ClientError.Procedure.ProcedureNotFound",
+}
 
 
 def _scheme_of(meta: dict) -> str:
@@ -86,6 +92,9 @@ class BoltSession:
         # default-org runtime (single-org deployments).
         self.org_id: str | None = None
         self._org_resolved: bool = False
+        # REQ-1235: the org the presented credential was issued for (a personal access token's),
+        # or None for a credential that names no org. It is the only org such a credential opens.
+        self._credential_org: str | None = None
         # All role_ids the authenticated user holds; each surfaces as a "provisa_<role>" database.
         self.roles: list[str] = []
         # Active role for the current tx/run, chosen via the Bolt `db` field. Defaults to roles[0].
@@ -223,6 +232,7 @@ class BoltSession:
         roles = self._selectable_roles(app_state, identity)
         if not roles:
             return None
+        self._credential_org = identity.active_org_id
         return identity.user_id, roles
 
     @staticmethod
@@ -375,6 +385,7 @@ class BoltSession:
 
     def handle_logoff(self) -> None:
         self.user_id = None
+        self._credential_org = None
         self.roles = []
         self.role_id = None
         self.state = State.AUTHENTICATION
@@ -435,8 +446,8 @@ class BoltSession:
         Bolt's org request is the hostname the driver dialed, carried in TLS SNI (REQ-1234) — the
         same string an HTTP client puts in ``Host``. It names an org without granting one: an org
         the principal is not a member of is refused below, so the org is still derived from
-        membership (single membership auto-selects; platform admin → default runtime; ambiguity
-        raises — no silent cross-tenant default). Runs on the event loop, so a plain set/reset
+        membership (REQ-1235: an org nobody named is refused, a lone membership included; platform
+        admin → default runtime — no silent cross-tenant default). Runs on the event loop, so a plain set/reset
         around handle_run's execution binds it (no thread hop, unlike pgwire)."""
         if self._org_resolved:
             return
@@ -450,6 +461,8 @@ class BoltSession:
             user_id=self.user_id,
             can_act_any_org=can_act_cross_org(caps),
             requested_org=self._requested_org(),
+            credential_org=self._credential_org,
+            named_by="connect over TLS to the org's own hostname (<org>.<domain>), which names it",
         )
         if org_id is not None:
             await ensure_org_runtime(org_id)
@@ -553,6 +566,19 @@ class BoltSession:
                 return
             if isinstance(exc, PermissionError):
                 self.send_failure("Neo.ClientError.Security.Forbidden", str(exc))
+                return
+            from starlette.exceptions import HTTPException as _HTTPException
+
+            from provisa.cypher.command_call import CommandCallRefused
+
+            if isinstance(exc, _HTTPException):
+                # The shared executor's answer (a command call): said in Neo4j's terms.
+                self.send_failure(
+                    _BOLT_CODE_FOR_STATUS.get(exc.status_code, _ARGUMENT_ERROR), exc.detail
+                )
+                return
+            if isinstance(exc, CommandCallRefused):
+                self.send_failure(_ARGUMENT_ERROR, str(exc))
                 return
             import logging as _logging
             import traceback as _tb
@@ -1009,8 +1035,8 @@ async def _impute_relationships(
     """
     from provisa.compiler.naming import apply_cql_property as _cql_prop
 
-    tenant_db = getattr(app_state, "tenant_db", None)
-    if tenant_db is None:
+    model_db = getattr(app_state, "model_db", None)
+    if model_db is None:
         return ["r"], []
 
     raw_ids = list(parameters.get("existingNodeIds") or []) + list(
@@ -1030,7 +1056,7 @@ async def _impute_relationships(
 
     from provisa.core.schema_org import node_ids
 
-    async with tenant_db.acquire() as conn:
+    async with model_db.acquire() as conn:
         result = await conn.execute_core(
             select(node_ids.c.id, node_ids.c.label, node_ids.c.composite_id).where(
                 node_ids.c.id.in_(int_ids)
@@ -1086,12 +1112,6 @@ async def _impute_relationships(
     return ["r"], edges
 
 
-_CALL_CMD_RE = re.compile(
-    r"^\s*CALL\s+([A-Za-z_]\w*)\s*\((.*?)\)\s*(?:YIELD\b.*)?;?\s*$",
-    re.IGNORECASE | re.DOTALL,
-)
-
-
 def _parse_call_arg(tok: str) -> Any:
     """Coerce one CALL argument literal to a Python value (string/number/bool/null)."""
     tok = tok.strip()
@@ -1130,35 +1150,21 @@ def _command_signature(cmd: dict) -> str:
 
 
 async def _maybe_invoke_command_call(
-    cypher: str, role_id: str, app_state
+    cypher: str, parameters: dict, role_id: str, app_state
 ) -> tuple[list[str], list[list[Any]]] | None:
-    """If *cypher* is ``CALL <command>(args)`` for a registered command, invoke it (REQ-1156).
+    """If *cypher* is ``CALL <command>(args)``, invoke it (REQ-1156): read by the one Cypher
+    command-call reader (cypher/command_call.py, shared with Cypher over HTTP), admitted and bound
+    by the shared executor, shaped by its YIELD and RETURN. None falls through to Cypher."""
+    from provisa.api.data.action_exec import bind_command_args, invoke_tracked_function
+    from provisa.cypher.command_call import parse_command_call, project
 
-    Returns (columns, rows-of-values) or None to fall through to normal Cypher parsing. The one
-    governed executor (invoke_tracked_function) enforces writable_by/governance, and positional
-    args are mapped to the command's declared argument names.
-    """
-    fns = getattr(app_state, "tracked_functions", None)
-    if not isinstance(fns, dict):
+    call = parse_command_call(cypher, parameters or {})
+    if call is None:
         return None
-    # Webhooks are governed commands too (REQ-872): CALL a webhook like any other command.
-    callables = {**fns, **(getattr(app_state, "tracked_webhooks", None) or {})}
-    m = _CALL_CMD_RE.match(cypher.strip())
-    if not m:
-        return None
-    name = m.group(1)
-    fn = callables.get(name)
-    if fn is None:
-        return None
-    raw = m.group(2).strip()
-    values = [_parse_call_arg(t) for t in raw.split(",")] if raw else []
-    declared = [a.get("name") for a in (fn.get("arguments") or [])]
-    args = {declared[i]: v for i, v in enumerate(values) if i < len(declared) and declared[i]}
-    from provisa.api.data.action_exec import invoke_tracked_function
-
-    rows = await invoke_tracked_function(name, args, app_state, role_id)
-    cols = list(rows[0].keys()) if rows else []
-    return cols, [[r.get(c) for c in cols] for r in rows]
+    args = bind_command_args(call.name, call.values, app_state, role_id)
+    rows = await invoke_tracked_function(call.name, args, app_state, role_id)
+    cols, shaped = project(call, rows)
+    return cols, [[r.get(c) for c in cols] for r in shaped]
 
 
 _CALL_METRIC_RE = re.compile(
@@ -1297,7 +1303,7 @@ async def _execute_cypher(
     # REQ-1156: `CALL <command>(args)` naming a registered command invokes it through the single
     # governed executor and returns its rows — so Bolt/Cypher clients (Neo4j Browser/Bloom) can run
     # a command exactly like GraphQL/SQL. Placed after _system_query so `CALL dbms.*` still wins.
-    cmd = await _maybe_invoke_command_call(cypher, role_id, app_state)
+    cmd = await _maybe_invoke_command_call(cypher, parameters, role_id, app_state)
     if cmd is not None:
         return (*cmd, None)
 
@@ -1461,9 +1467,9 @@ async def _execute_cypher(
     assembled = assemble_rows(raw_rows, graph_vars)
     serializable = [to_serializable(r) for r in assembled]
 
-    _tenant_db = getattr(app_state, "tenant_db", None)
-    await register_node_ids(serializable, _tenant_db)
-    await register_rel_ids(serializable, _tenant_db)
+    _model_db = getattr(app_state, "model_db", None)  # REQ-1922: graph ids are org-wide
+    await register_node_ids(serializable, _model_db)
+    await register_rel_ids(serializable, _model_db)
 
     columns = list(raw_rows[0].keys()) if raw_rows else []
     rows = [[row.get(col) for col in columns] for row in serializable]

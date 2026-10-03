@@ -27,6 +27,7 @@ import pytest
 
 from provisa.auth.models import AuthIdentity
 from provisa.bolt.session import BoltSession, _scheme_of
+from tests.platform_plane import simple_user_ids
 
 _PASSWORD = "s3cret"
 _HASH = bcrypt.hashpw(_PASSWORD.encode(), bcrypt.gensalt()).decode()
@@ -63,9 +64,15 @@ def simple_provider(monkeypatch):
     provider = SimpleAuthProvider(
         users=[{"username": "alice", "password_hash": _HASH, "roles": ["steward"]}],
         jwt_secret="unit-test-secret",
+        user_ids=simple_user_ids(),
     )
     monkeypatch.setattr(wiring, "build_auth_provider", lambda config, admin_pool=None: provider)
     return provider
+
+
+async def _alice_id(provider) -> str:
+    """alice's stored id: the simple provider identifies a user by it, never by the username."""
+    return await provider._user_ids.id_for("alice")
 
 
 def _session() -> BoltSession:
@@ -92,7 +99,7 @@ class TestBasicScheme:
         self, app_state, simple_provider
     ):
         resolved = await _session()._resolve_user("basic", "alice", _PASSWORD)
-        assert resolved == ("alice", ["analyst", "steward"])
+        assert resolved == (await _alice_id(simple_provider), ["analyst", "steward"])
 
     async def test_a_wrong_password_is_refused(self, app_state, simple_provider):
         assert await _session()._resolve_user("basic", "alice", "wrong") is None
@@ -104,9 +111,9 @@ class TestBasicScheme:
 @pytest.mark.asyncio
 class TestBearerScheme:
     async def test_a_token_authenticates(self, app_state, simple_provider):
-        token = simple_provider.login("alice", _PASSWORD)
+        token = await simple_provider.login("alice", _PASSWORD)
         resolved = await _session()._resolve_user("bearer", "", token)
-        assert resolved == ("alice", ["analyst", "steward"])
+        assert resolved == (await _alice_id(simple_provider), ["analyst", "steward"])
 
     async def test_a_personal_access_token_is_just_a_bearer_credential(
         self, app_state, simple_provider, monkeypatch
@@ -158,7 +165,7 @@ class TestRolesComeFromTheIdentity:
     ):
         app_state.contexts = {"analyst": object()}
         resolved = await _session()._resolve_user("basic", "alice", _PASSWORD)
-        assert resolved == ("alice", ["analyst"])
+        assert resolved == (await _alice_id(simple_provider), ["analyst"])
 
     async def test_an_identity_with_no_selectable_role_is_refused(self, app_state, simple_provider):
         app_state.contexts = {"auditor": object()}
@@ -173,7 +180,7 @@ class TestRolesComeFromTheIdentity:
             ],
         }
         resolved = await _session()._resolve_user("basic", "alice", _PASSWORD)
-        assert resolved == ("alice", ["steward"])
+        assert resolved == (await _alice_id(simple_provider), ["steward"])
 
     async def test_no_default_role_is_a_misconfiguration(self, app_state, simple_provider):
         """An identity matching no rule must be refused, never escalated to some standing role."""

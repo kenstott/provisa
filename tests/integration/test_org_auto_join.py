@@ -94,7 +94,7 @@ def _planes(monkeypatch, *org_rows: dict):
     from types import SimpleNamespace
 
     async def _org_runtime(_org_id: str, _env: str | None = None):
-        return SimpleNamespace(tenant_db=tenant_db)
+        return SimpleNamespace(model_db=tenant_db, tenant_db=tenant_db)
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _org_runtime, raising=False)
     return admin_db, tenant_db, sync_engine
@@ -174,8 +174,11 @@ def _q(sync_engine, schema, stmt):
 def test_auto_join_grants_membership_role_and_resolves_org(matching_planes):
     admin_db, tenant_db, sync_engine = matching_planes
     with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
-        # A plain first request — no invite, no explicit join call.
-        resp = client.get("/whoami", headers={"Authorization": "Bearer tok-alice"})
+        # A plain first request — no invite, no explicit join call. REQ-1235: it names its org,
+        # as every multi-tenant request does; being joined to one org does not name it.
+        resp = client.get(
+            "/whoami", headers={"Authorization": "Bearer tok-alice", "x-org-provisa": "acme"}
+        )
     assert resp.status_code == 200, resp.text
     # The SAME request already resolves the auto-joined org + mirrored role.
     assert resp.json() == {"roles": ["analyst"], "active_org_id": "acme"}
@@ -200,8 +203,12 @@ def test_auto_join_grants_membership_role_and_resolves_org(matching_planes):
 def test_auto_join_idempotent_across_requests(matching_planes):
     admin_db, tenant_db, sync_engine = matching_planes
     with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
-        first = client.get("/whoami", headers={"Authorization": "Bearer tok-alice"})
-        second = client.get("/whoami", headers={"Authorization": "Bearer tok-alice"})
+        first = client.get(
+            "/whoami", headers={"Authorization": "Bearer tok-alice", "x-org-provisa": "acme"}
+        )
+        second = client.get(
+            "/whoami", headers={"Authorization": "Bearer tok-alice", "x-org-provisa": "acme"}
+        )
     assert first.status_code == 200
     assert second.status_code == 200
     assert second.json() == {"roles": ["analyst"], "active_org_id": "acme"}

@@ -15,6 +15,7 @@
     "saved": "सहेजा गया।",
     "savedRestartRequired": "सहेजा गया। लागू करने के लिए सेवा पुनरारंभ करें।",
     "secretOnFile": "सहेजा गया — रखने के लिए खाली छोड़ें",
-    "secretNotSet": "सेट नहीं है"
+    "secretNotSet": "सेट नहीं है",
+    "allowRegistration": "लोगों को अपने खाते स्वयं बनाने दें"
   }
 }

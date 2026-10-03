@@ -130,12 +130,17 @@ def connect(
     username: str,
     password: str,
     role: str | None = None,
+    org: str | None = None,
     kms_provider: str | None = None,
     kms_key_arn: str | None = None,
     dek_cache_ttl: float = 300.0,
     _kms_client: Any = None,
 ) -> "Connection":
     """Create a DB-API 2.0 connection to a Provisa server.
+
+    REQ-1235: ``org`` names the org the connection's requests are for, sent as
+    ``X-Org-Provisa``. A multi-tenant deployment refuses a request that names none; a
+    single-tenant deployment has no org to name, so leave it unset.
 
     REQ-691: when ``kms_provider`` and ``kms_key_arn`` are supplied, result columns
     the server flags encrypted are decrypted client-side with a DEK cached for
@@ -158,6 +163,7 @@ def connect(
         base_url=url.rstrip("/"),
         token=token,
         role=resolved_role,
+        org=org,
         encryption=encryption,
         kms_key_arn=kms_key_arn,
     )
@@ -174,10 +180,12 @@ class Connection:
         role: str | None = None,
         encryption: ClientEncryptionService | None = None,
         kms_key_arn: str | None = None,
+        org: str | None = None,
     ) -> None:
         self._base_url = base_url
         self._token = token
         self._role = role
+        self._org = org  # REQ-1235: the org the requests are for, or None when none was given
         self._encryption = encryption  # REQ-691: client-side column decrypt (or None)
         self._kms_key_arn = kms_key_arn  # REQ-693: proof-of-client-decrypt for high-security gate
         self._closed = False
@@ -193,6 +201,9 @@ class Connection:
         # REQ-273: server-validated requested role; sent only when explicitly chosen.
         if self._role:
             h["X-Provisa-Role"] = self._role
+        # REQ-1235: the org this request is for; sent only when one was given.
+        if self._org:
+            h["X-Org-Provisa"] = self._org
         # REQ-693: signal client-side decryption so high-security mode admits this connection.
         if self._kms_key_arn:
             h["X-Provisa-KMS-Key"] = self._kms_key_arn

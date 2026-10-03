@@ -225,6 +225,33 @@ def _admit_row(
         )
 
 
+def admit_rows(
+    gov: "GovernanceContext",
+    table_id: int,
+    name: str,
+    columns: list[str],
+    rows: list[list] | None = None,
+    session_vars: dict[str, str] | None = None,
+) -> None:
+    """Admit a bulk load — rows given as values, not as a statement (pgwire ``COPY … FROM
+    STDIN``) — by the rules an INSERT of the same columns is admitted by. Called once with
+    ``rows`` None before any data is read (the right and the columns), and again with the rows
+    before any of them is written (the row filter)."""
+    if not gov.can_write:
+        raise WriteNotAdmitted(
+            f"COPY into {name!r}: role {gov.role_id!r} does not hold the 'write' right"
+        )
+    _require_columns(gov, table_id, columns)
+    if rows is None or table_id not in gov.rls_rules:
+        return
+    for row in rows:
+        supplied: dict[str, exp.Expression] = {
+            column: exp.convert(value)  # pyright: ignore[reportAssignmentType]  # sqlglot stub types convert as Expr
+            for column, value in zip(columns, row, strict=False)
+        }
+        _admit_row(gov, table_id, name, supplied, session_vars or {})
+
+
 def _admit_new_values(
     tree: exp.Update,
     gov: "GovernanceContext",

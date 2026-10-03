@@ -15,6 +15,10 @@ spec:
       role: coordinator
   template:
     metadata:
+      annotations:
+        # A subPath mount is never refreshed by the kubelet, so a change to the Trino config
+        # (resource groups included, REQ-056) rolls the coordinator through this digest.
+        checksum/trino-config: {{ include (print $.Template.BasePath "/trino-configmap.yaml") . | sha256sum }}
       labels:
         app: trino
         role: coordinator
@@ -56,6 +60,12 @@ spec:
             - name: exchange
               mountPath: /etc/trino/exchange-manager.properties
               subPath: exchange-manager.properties
+            - name: config
+              mountPath: /etc/trino/resource-groups.properties
+              subPath: resource-groups.properties
+            - name: config
+              mountPath: /etc/trino/resource-groups.json
+              subPath: resource-groups.json
             {{- if .Values.postgresql.enabled }}
             - name: catalog-secret
               mountPath: /etc/trino/catalog/sales_pg.properties

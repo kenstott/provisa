@@ -104,7 +104,8 @@ def _make_state():
         contexts={"analyst": ctx},
         roles={"analyst": {"id": "analyst"}},
         config=config,
-        tenant_db=object(),  # _catalog() only checks truthiness; _build_catalog_tables_async is mocked
+        model_db=(_one_db := object()),
+        tenant_db=_one_db,  # _catalog() only checks truthiness; _build_catalog_tables_async is mocked
     )
 
 
@@ -218,7 +219,8 @@ def _make_prefixed_state():
         contexts={"analyst": ctx},
         roles={"analyst": {"id": "analyst"}},
         config=config,
-        tenant_db=object(),
+        model_db=(_one_db := object()),
+        tenant_db=_one_db,
     )
 
 
@@ -522,6 +524,7 @@ async def test_stdio_capability_tool_succeeds_when_the_pinned_role_holds_the_cap
     ]  # require_role just needs it known
     fake_state.roles = {"curator": {"capabilities": ["data_product_read"]}}
     fake_state.tenant_db = _FakePool()
+    fake_state.model_db = fake_state.tenant_db
     # require_capability_request reads the provisa.api.app module-level `state` singleton, not
     # whatever object build_mcp_server was given — same as production, where they're one object.
     monkeypatch.setattr("provisa.api.app.state", fake_state)
@@ -544,6 +547,7 @@ async def test_stdio_capability_tool_refuses_when_the_pinned_role_lacks_the_capa
     fake_state.contexts["viewer"] = fake_state.contexts["analyst"]
     fake_state.roles = {"viewer": {"capabilities": []}}
     fake_state.tenant_db = _FakePool()
+    fake_state.model_db = fake_state.tenant_db
     monkeypatch.setattr("provisa.api.app.state", fake_state)
     mcp = build_mcp_server(fake_state)
 
@@ -575,6 +579,7 @@ async def test_jev_evaluate_calls_client_with_configured_key(state, monkeypatch)
     # `object()` this fixture otherwise carries (for _catalog()'s truthiness check) isn't a real
     # Database and would blow up read_org_secret's `.acquire()` call.
     state.tenant_db = None
+    state.model_db = state.tenant_db
     mock = AsyncMock(return_value={"answers": {"q1": {"noul": 0.7}}})
     monkeypatch.setattr("provisa.jev.client.evaluate", mock)
     result = await tools.jev_evaluate(
@@ -593,6 +598,7 @@ async def test_jev_evaluate_requires_role(state, monkeypatch):
 async def test_jev_evaluate_fails_loud_without_api_key(state, monkeypatch):
     monkeypatch.delenv("TYPESAFEAI_API_KEY", raising=False)
     state.tenant_db = None  # see note in test_jev_evaluate_calls_client_with_configured_key
+    state.model_db = state.tenant_db
     with pytest.raises(ValueError):
         await tools.jev_evaluate(state, "analyst", None, [{"id": "q1", "type": "noul"}])
 

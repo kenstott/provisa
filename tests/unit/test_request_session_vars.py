@@ -33,24 +33,42 @@ class TestRequestSessionVars:
             ),
             "analyst",
             {},
+            honor_session_headers=False,
         )
         assert out == {"user_id": "u-7", "role": "analyst", "org_id": "acme"}
 
     def test_claim_user_id_is_overridden_by_identity(self):
-        out = request_session_vars(_identity(claims={"X-Hasura-User-Id": 3}), None, {})
+        out = request_session_vars(
+            _identity(claims={"X-Hasura-User-Id": 3}), None, {}, honor_session_headers=False
+        )
         assert out["user_id"] == "u-7"
 
     def test_anonymous_binds_no_user_id_but_headers_do(self):
+        # No auth provider: the deployment has no claims, so the session headers are its context.
         out = request_session_vars(
-            _identity(user_id="anonymous"), "user", {"x-provisa-session-user-id": "2"}
+            _identity(user_id="anonymous"),
+            "user",
+            {"x-provisa-session-user-id": "2"},
+            honor_session_headers=True,
         )
         assert out == {"user_id": "2", "role": "user"}
 
+    def test_with_an_auth_provider_a_header_never_replaces_a_claim(self):
+        # A client header must not redirect a row filter that reads the verified identity.
+        out = request_session_vars(
+            _identity(claims={"tenant_id": "acme"}),
+            "analyst",
+            {"x-provisa-session-tenant-id": "beta", "x-provisa-session-region": "east"},
+            honor_session_headers=False,
+        )
+        assert out["tenant_id"] == "acme"
+        assert "region" not in out
+
     def test_bool_claim_renders_as_sql_literal_text(self):
         assert (
-            request_session_vars(_identity(claims={"x-hasura-is-admin": True}), None, {})[
-                "is_admin"
-            ]
+            request_session_vars(
+                _identity(claims={"x-hasura-is-admin": True}), None, {}, honor_session_headers=False
+            )["is_admin"]
             == "true"
         )
 

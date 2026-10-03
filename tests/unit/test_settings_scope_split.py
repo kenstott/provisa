@@ -64,6 +64,7 @@ class _FakeState:
         self.deployment_cache_default_ttl = 300
         self.config_live_export = False
         self.tenant_db = object()
+        self.model_db = self.tenant_db
 
     @property
     def response_cache_default_ttl(self) -> int:

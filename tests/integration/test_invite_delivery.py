@@ -177,7 +177,12 @@ def planes(monkeypatch, smtp):
     }
     registry = OrgRegistry()
     for org_id, db in org_dbs.items():
-        registry.set(org_id, OrgRuntime(org_id=org_id, tenant_db=db, roles=dict(loaded_roles)))
+        registry.set(
+            org_id,
+            OrgRuntime(
+                org_id=org_id, model_db=db, tenant_db=db, record_db=db, roles=dict(loaded_roles)
+            ),
+        )
     monkeypatch.setattr(app_state, "org_registry", registry, raising=False)
 
     # REQ-1488: ensure_org_runtime takes the environment as well — an environment is a schema of
@@ -226,9 +231,14 @@ def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _auth_in_acme(token: str) -> dict[str, str]:
+    """The same credential on a tenant-plane request, which names its org (REQ-1235)."""
+    return {**_auth(token), "x-org-provisa": "acme"}
+
+
 def _create_invite(client, **body) -> dict:
     resp = client.post(
-        "/admin/invites/", json={"org_id": "acme", **body}, headers=_auth("tok-alice")
+        "/admin/invites/", json={"org_id": "acme", **body}, headers=_auth_in_acme("tok-alice")
     )
     assert resp.status_code == 200, resp.text
     return resp.json()
@@ -362,7 +372,7 @@ def test_the_invite_list_says_who_each_one_was_sent_to(planes, smtp):
     with TestClient(_make_app(planes)) as client:
         _create_invite(client, email="carol@example.test", role_id="analyst")
         _create_invite(client, role_id="analyst")
-        listed = client.get("/admin/invites/", headers=_auth("tok-alice"))
+        listed = client.get("/admin/invites/", headers=_auth_in_acme("tok-alice"))
 
     assert listed.status_code == 200, listed.text
     addressed = {row["token"]: row["email"] for row in listed.json()}

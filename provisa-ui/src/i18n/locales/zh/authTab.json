@@ -15,6 +15,7 @@
     "saved": "已保存。",
     "savedRestartRequired": "已保存。重启服务后生效。",
     "secretOnFile": "已存储——留空以保留",
-    "secretNotSet": "未设置"
+    "secretNotSet": "未设置",
+    "allowRegistration": "允许用户自行创建账户"
   }
 }

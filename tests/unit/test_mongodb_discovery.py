@@ -144,6 +144,7 @@ class TestDiscoverSourceSchemaMongoIssue13:
 
         mock_state = MagicMock()
         mock_state.tenant_db = mock_pg_pool
+        mock_state.model_db = mock_state.tenant_db
         from tests.unit.gate_identity import grant
 
         _, request = grant(monkeypatch, "source_registration", state=mock_state)
@@ -194,6 +195,7 @@ class TestDiscoverSourceSchemaMongoIssue13:
 
         mock_state = MagicMock()
         mock_state.tenant_db = mock_pg_pool
+        mock_state.model_db = mock_state.tenant_db
         from tests.unit.gate_identity import grant
 
         _, request = grant(monkeypatch, "source_registration", state=mock_state)

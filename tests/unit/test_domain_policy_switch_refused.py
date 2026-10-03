@@ -55,6 +55,7 @@ def wired(db, monkeypatch) -> list[int]:
         rebuilds.append(1)
 
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
+    monkeypatch.setattr(appmod.state, "model_db", appmod.state.tenant_db, raising=False)
     monkeypatch.setattr(appmod, "_rebuild_schemas", _rebuild)
     monkeypatch.setattr(settings_router, "require_org_settings", lambda request: None)
     monkeypatch.setattr(settings_router, "read_config", lambda: {})

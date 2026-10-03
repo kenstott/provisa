@@ -33,6 +33,10 @@ vi.mock("../hooks/useAdminOpsQueries", async (importOriginal) => ({
   useDeleteScheduledTask: () => ({ deleteScheduledTask: deleteSpy }),
 }));
 
+vi.mock("../hooks/useAdminQueries", () => ({
+  useRoles: () => ({ roles: [{ id: "ops" }, { id: "analyst" }], loading: false }),
+}));
+
 vi.mock("../api/actions", () => ({
   fetchActions: vi.fn(async () => ({ functions: [], webhooks: [] })),
 }));
@@ -81,6 +85,13 @@ describe("ScheduledTasks — SQL trigger", () => {
       target: { value: "INSERT INTO audit.d SELECT '{{YYYY-MM-DD}}'" },
     });
 
+    // A SQL task runs as a role: without one it is not sent.
+    fireEvent.click(screen.getByTestId("scheduled-tasks-submit"));
+    expect(await screen.findByText(t("scheduledTasks.validationRoleRequired"))).toBeTruthy();
+    expect(createSpy).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("textbox", { name: t("scheduledTasks.roleLabel") }));
+    fireEvent.click(await screen.findByRole("option", { name: "ops", hidden: true }));
     fireEvent.click(screen.getByTestId("scheduled-tasks-submit"));
 
     await waitFor(() => expect(createSpy).toHaveBeenCalledTimes(1));
@@ -90,6 +101,7 @@ describe("ScheduledTasks — SQL trigger", () => {
       cron: "0 2 * * *",
       kind: "sql",
       sql: "INSERT INTO audit.d SELECT '{{YYYY-MM-DD}}'",
+      role: "ops",
     });
   });
 
@@ -102,6 +114,7 @@ describe("ScheduledTasks — SQL trigger", () => {
         webhookUrl: null,
         kind: "sql",
         sql: "INSERT INTO audit.d SELECT 1",
+        role: "ops",
         enabled: true,
         lastRunAt: null,
         nextRunAt: null,
@@ -109,6 +122,7 @@ describe("ScheduledTasks — SQL trigger", () => {
     ];
     render(<ScheduledTasks />);
     expect(screen.getByText("INSERT INTO audit.d SELECT 1")).toBeTruthy();
+    expect(screen.getByText(t("scheduledTasks.runsAs", { role: "ops" }))).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: t("scheduledTasks.delete") }));
     await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith("nightly"));

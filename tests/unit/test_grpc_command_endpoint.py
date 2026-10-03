@@ -71,7 +71,7 @@ def _state():
             "random_python_set": py_fn,
             "secret_cmd": hidden_fn,
         },
-        roles={"admin": {"domain_access": ["*"]}},
+        roles={"admin": {"id": "admin", "capabilities": ["write"], "domain_access": ["*"]}},
     )
 
 

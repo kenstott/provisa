@@ -126,6 +126,7 @@ def _state(store, *, source_cache=None):
     return SimpleNamespace(
         admin_db=None,  # as AppState without a control plane: no debug-trace settings
         response_cache_store=store,
+        model_db="fake",
         tenant_db="fake",
         org_id="org-a",
         model_stamp=1,

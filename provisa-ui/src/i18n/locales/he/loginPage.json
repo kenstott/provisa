@@ -32,6 +32,8 @@
     "firebaseSignInFailed": "הכניסה עם Firebase נכשלה",
     "operatorSignIn": "כניסת מפעיל",
     "operatorSignInTitle": "כניסת מפעיל",
-    "backToSignIn": "חזרה לכניסה"
+    "backToSignIn": "חזרה לכניסה",
+    "signInWithSso": "כניסה עם כניסה יחידה (SSO)",
+    "samlSignInFailed": "הכניסה היחידה (SSO) לא הושלמה. נסו שוב או פנו למנהל המערכת."
   }
 }

@@ -124,6 +124,7 @@ async def plane(monkeypatch) -> Database:
                     insert(table).values(origin="admin", name=name, domain_id=domain_id)
                 )
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
+    monkeypatch.setattr(appmod.state, "model_db", appmod.state.tenant_db, raising=False)
     monkeypatch.setattr(appmod.state, "roles", ROLES, raising=False)
     from provisa.core import domain_policy
 

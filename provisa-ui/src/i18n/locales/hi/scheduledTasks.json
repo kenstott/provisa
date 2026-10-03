@@ -44,6 +44,9 @@
     "firstPage": "पहला पेज",
     "prevPage": "पिछला पेज",
     "nextPage": "अगला पेज",
-    "lastPage": "अंतिम पेज"
+    "lastPage": "अंतिम पेज",
+    "roleLabel": "भूमिका के रूप में चलता है",
+    "validationRoleRequired": "SQL कार्य एक भूमिका के रूप में चलता है: एक चुनें।",
+    "runsAs": "{{role}} के रूप में चलता है"
   }
 }

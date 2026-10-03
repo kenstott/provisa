@@ -215,6 +215,10 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_openmetadata": ["openmetadata-db", "elasticsearch", "openmetadata"],
     # Atlas embeds its own HBase and Solr, so the one service is the whole target.
     "requires_atlas": ["atlas"],
+    # REQ-1265: the directory the LDAP auth provider signs in against.
+    "requires_ldap": ["openldap"],
+    # REQ-1265: the identity provider the SAML auth provider signs in through.
+    "requires_saml_idp": ["saml-idp"],
 }
 # zaychik is the Arrow Flight terminal the in-process app connects to for Flight/CTAS
 # redirects; without it Flight-dependent integration tests fail with connection-refused.
@@ -306,6 +310,11 @@ _ITEST_PORT_ENV = [
     "MARQUEZ_PORT",
     "OPENMETADATA_PORT",
     "ATLAS_PORT",
+    "LDAP_PORT",
+    "SAML_IDP_PORT",
+    # Not a container's port: the test's own service-provider server binds it. It is leased
+    # here because the identity provider is told this address when its container starts.
+    "SAML_SP_PORT",
 ]
 
 

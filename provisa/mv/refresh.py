@@ -412,15 +412,15 @@ async def _read_target_rows(
     return [dict(zip(res.column_names, row, strict=True)) for row in res.rows]
 
 
-def _captures_deltas(mv: MVDefinition, store) -> bool:  # REQ-877
-    """The MV opted into row-delta capture AND a store holds the ledger (its home)."""
-    return mv.capture_row_deltas and store is not None
+def _captures_deltas(mv: MVDefinition, ledger) -> bool:  # REQ-877
+    """The MV opted into row-delta capture AND a state store holds the ledger (its home)."""
+    return mv.capture_row_deltas and ledger is not None
 
 
 async def _snapshot_prev_rows(  # REQ-877
     engine,
     mv: MVDefinition,
-    store,
+    ledger,
     target: str,
     *,
     table_exists: bool,
@@ -428,7 +428,7 @@ async def _snapshot_prev_rows(  # REQ-877
 ) -> list[dict]:
     """Prior landed rows for the delta diff, read BEFORE any mutation. Empty unless this MV captures
     deltas and the target already exists (a first refresh has an empty prior set ⇒ all inserts)."""
-    if _captures_deltas(mv, store) and table_exists:
+    if _captures_deltas(mv, ledger) and table_exists:
         return await _read_target_rows(engine, target, authorization=authorization)
     return []
 
@@ -436,7 +436,7 @@ async def _snapshot_prev_rows(  # REQ-877
 async def _post_refresh_delta_capture(  # REQ-877
     engine,
     mv: MVDefinition,
-    store,
+    ledger,
     prev_rows: list[dict],
     target: str,
     authorization: SystemAuth | None = None,
@@ -445,14 +445,14 @@ async def _post_refresh_delta_capture(  # REQ-877
     landed row sets into the append-only ledger. Runs AFTER the refresh is committed and marked
     fresh, so a slow or failed capture never delays or fails the refresh (REQ-877's mandate).
     Documented blind catch — justified by REQ-877's best-effort rule."""
-    if not _captures_deltas(mv, store):
+    if not _captures_deltas(mv, ledger):
         return
     from provisa.mv.delta import capture_row_deltas  # noqa: PLC0415
 
     try:
         curr_rows = await _read_target_rows(engine, target, authorization=authorization)
         await capture_row_deltas(
-            store, mv, prev_rows, curr_rows, definition_version=_mv_definition_version(mv)
+            ledger, mv, prev_rows, curr_rows, definition_version=_mv_definition_version(mv)
         )
     except Exception:  # noqa: BLE001 — REQ-877: best-effort delta capture never fails refresh
         log.exception("MV %s: row-level delta capture failed (refresh unaffected)", mv.id)
@@ -500,6 +500,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
     registry: MVRegistry,
     store=None,
     writer: str | None = None,
+    ledger=None,
 ) -> None:
     """Refresh a single MV through the engine terminal.
 
@@ -518,7 +519,10 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
     second concurrent instance sees the live lease, its claim returns 0 rows, and it skips. The
     result is finalized with a FENCED COMMIT (only while this instance still owns a live lease);
     a lost lease discards the result rather than clobbering a newer refresh. When ``store`` is
-    None or the MV is ``distributed``, refresh is per-instance (the distributed tier)."""
+    None or the MV is ``distributed``, refresh is per-instance (the distributed tier).
+
+    REQ-877, REQ-1922: ``ledger`` is the org region's STATE store, which holds the row-delta
+    ledger; ``store`` is its MODEL store, which holds the view's catalog row."""
     from provisa.mv.input_signals import gather_input_signals, input_token  # noqa: PLC0415
 
     # A view is built only from inputs the engine reads whole (provisa/mv/readable_inputs.py). A
@@ -684,7 +688,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
             )
             table_exists = existing is not None
             prev_rows = await _snapshot_prev_rows(
-                engine, mv, store, target, table_exists=table_exists, authorization=authorization
+                engine, mv, ledger, target, table_exists=table_exists, authorization=authorization
             )
             plan = (
                 _bitemporal_plan(mv, target, _now_ts_literal())
@@ -726,7 +730,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
             # REQ-877: snapshot the prior landed rows BEFORE any mutation, so the post-refresh diff sees
             # the true previous state (empty unless this MV captures deltas and the target exists).
             prev_rows = await _snapshot_prev_rows(
-                engine, mv, store, target, table_exists=table_exists, authorization=authorization
+                engine, mv, ledger, target, table_exists=table_exists, authorization=authorization
             )
 
             if mv.bitemporal is not None:
@@ -819,7 +823,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
             duration,
         )
         await _post_refresh_delta_capture(
-            engine, mv, store, prev_rows, target, authorization=authorization
+            engine, mv, ledger, prev_rows, target, authorization=authorization
         )  # REQ-877
     except Exception as e:
         if coordinated:

@@ -72,6 +72,7 @@ def booted(monkeypatch):
     monkeypatch.setattr(env_repo, "write_through", _write_through)
     monkeypatch.setattr(app_module.state, "admin_db", _Db())
     monkeypatch.setattr(app_module.state, "tenant_db", _Db())
+    monkeypatch.setattr(app_module.state, "model_db", app_module.state.tenant_db, raising=False)
     monkeypatch.setattr(app_module.state, "_org_id", ORG)
     written["rows"] = rows
     written["started"] = started

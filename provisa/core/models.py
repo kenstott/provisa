@@ -35,6 +35,12 @@ from provisa.core.source_registry import (
     _PG_WIRE_TYPES,
     SOURCE_TO_DIALECT,
 )
+from provisa.core.regions import (
+    OrgRegion,
+    PlatformConfig,
+    StoreConfig,
+    validate_regions,
+)
 
 
 # The sentinel source id for DERIVED relations — defined by their declaration (view_sql,
@@ -242,6 +248,9 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # never (live wherever a live path exists); N > 0 = once a table passes N governed statements
     # per interval; 0 = always (the only guarantee; the source then has no live attach at all).
     replicate: int | None = None
+    # REQ-1921: the org region this source's data lives in (one of the org's ``regions``);
+    # None = no region. A table may name its own.
+    region: str | None = None
     # REQ-1141: mark this source LOAD-PROTECTED. Like replicate 0 it removes the live route
     # AND selects the SCHEDULED freshness discipline: the query path NEVER pulls the source — reads
     # always serve the last materialized snapshot — and the source is refreshed ONLY by the
@@ -971,6 +980,8 @@ class Table(
     # REQ-826: when this table is served from its replica (provisa.core.replicate): -1 never,
     # N > 0 once it passes N governed statements per interval, 0 always. None = its source's value.
     replicate: int | None = None
+    # REQ-1921: the org region this table's data lives in; None = its source's region.
+    region: str | None = None
     # REQ-1141: per-table load-protection override; None = inherit the source's load_protected.
     load_protected: bool | None = None
     # REQ-1141: per-table off-peak window override ("HH:MM-HH:MM"); None = inherit source window.
@@ -1414,8 +1425,10 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     function_name: str
     returns: str  # registered table id (source_id.schema.table)
     arguments: list[FunctionArgument] = Field(default_factory=list)
+    # The one list of roles the command is assigned to; empty assigns it to every role. A role
+    # calls it when it is assigned, reaches its domain, and — for a mutation — holds the write
+    # right (security/mutation_authz.admit_command).
     visible_to: list[str] = Field(default_factory=list)
-    writable_by: list[str] = Field(default_factory=list)
     domain_id: str = ""
     description: str | None = None
     kind: str = "mutation"  # "mutation" or "query"
@@ -1453,6 +1466,18 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
 
     model_config = ConfigDict(populate_by_name=True)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _one_role_list(cls, data: Any) -> Any:
+        """A command carries one role list, ``visible_to``. A configuration still naming a second
+        one fails here, by name, rather than being read as something it no longer is."""
+        if isinstance(data, dict) and "writable_by" in data:
+            raise ValueError(
+                f"command {data.get('name')!r}: 'writable_by' is not a command key — a command "
+                "is assigned to roles by 'visible_to' alone"
+            )
+        return data
+
 
 class Webhook(BaseModel):  # REQ-209, REQ-210, REQ-211
     """External HTTP webhook exposed as a GraphQL query or mutation."""
@@ -1484,7 +1509,23 @@ class ScheduledTrigger(BaseModel):
     # Mutually exclusive with url/function. REQ-1004: the text may contain {{date-token}}
     # placeholders substituted with the run's execution date/time before execution.
     sql: str | None = None
+    # The role a SQL trigger's statement runs as, through the one write admission. Required for a
+    # SQL trigger: a schedule acts as a role someone chose, never as a built-in one.
+    role: str | None = None
     enabled: bool = True
+
+    @model_validator(mode="after")
+    def _sql_trigger_writes_rows_as_a_role(self) -> "ScheduledTrigger":
+        if self.sql is None:
+            return self
+        if not self.role:
+            raise ValueError(f"trigger {self.id!r}: a SQL trigger names the role it runs as")
+        from datetime import datetime, timezone
+
+        from provisa.scheduler.trigger_sql import checked_trigger_sql
+
+        checked_trigger_sql(self.sql, self.id, datetime.now(timezone.utc))
+        return self
 
 
 class LoginThrottleConfig(BaseModel):  # REQ-1393
@@ -1504,15 +1545,20 @@ class LoginThrottleConfig(BaseModel):  # REQ-1393
 class AuthConfig(
     BaseModel
 ):  # REQ-120, REQ-121, REQ-122, REQ-123, REQ-124, REQ-125, REQ-203, REQ-247, REQ-1393
-    provider: str = "none"  # none, firebase, keycloak, oauth, oidc, simple
+    provider: str = "none"  # none, firebase, keycloak, oauth, oidc, ldap, saml, simple
     firebase: dict | None = None
     keycloak: dict | None = None
     oauth: dict | None = None
     oidc: dict | None = (
         None  # REQ-890: generic OIDC (discovery_url, client_id, audience, role_claim)
     )
+    ldap: dict | None = None  # REQ-1265: provisa/auth/providers/ldap.py LdapSettings
+    saml: dict | None = None  # REQ-1265: provisa/auth/providers/saml.py SamlSettings
     simple: dict | None = None
     allow_simple_auth: bool = False  # REQ-124: production guard — simple auth refused unless true
+    # REQ-1265: whether /auth/register creates local accounts (basic provider). The chart's
+    # auth.provider: local turns it off: the break-glass account is the only sign-in.
+    allow_registration: bool = True
     # REQ-1394: pgwire advertises SASL/SCRAM-SHA-256 instead of cleartext. Only the basic provider
     # holds the verifiers SCRAM needs, so the flag has no effect under any other provider.
     scram: bool = False
@@ -2025,6 +2071,11 @@ class ProvisaConfig(BaseModel):
         return self if self._written is None else self._written
 
     server: ServerConfig = Field(default_factory=ServerConfig)
+    # REQ-1921/1922: the platform's physical regions (a deployment key: a node reads them before
+    # it opens any store), and the regions this org selects with the stores it keeps in each.
+    platform: PlatformConfig = Field(default_factory=PlatformConfig)
+    stores: list[StoreConfig] = Field(default_factory=list)
+    regions: list[OrgRegion] = Field(default_factory=list)
     control_plane: ControlPlaneConfig = Field(default_factory=ControlPlaneConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)  # REQ-693
     multitenancy: bool = False
@@ -2101,6 +2152,11 @@ class ProvisaConfig(BaseModel):
     nl: NlConfig = Field(default_factory=NlConfig)
     govdata_sources: list[GovDataSource] = Field(default_factory=list)
     govdata_subscriptions: list[GovDataSubscription] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_regions(self) -> "ProvisaConfig":
+        validate_regions(self)  # REQ-1922
+        return self
 
     @model_validator(mode="after")
     def _validate_metrics(self) -> "ProvisaConfig":

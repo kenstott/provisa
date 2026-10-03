@@ -98,7 +98,7 @@ async def is_protected(admin_db: "Database", org_id: str, name: str, member_coun
 
 async def request_merge(
     admin_db: "Database",
-    tenant_db: "Database",
+    model_db: "Database",
     org_id: str,
     *,
     source_env: str,
@@ -122,7 +122,7 @@ async def request_merge(
     if source_env == target_env:
         raise MergeRequestError(f"an environment cannot be merged into itself ({source_env})")
     report = await plan_copy(
-        tenant_db, org_id, source_env, target_env, mode=MERGE, removals=removals
+        model_db, org_id, source_env, target_env, mode=MERGE, removals=removals
     )
     async with admin_db.acquire() as conn:
         result = await conn.execute_core(
@@ -149,7 +149,7 @@ async def request_merge(
 
 async def request_deploy(
     admin_db: "Database",
-    tenant_db: "Database",
+    model_db: "Database",
     org_id: str,
     *,
     ref: str,
@@ -166,7 +166,7 @@ async def request_deploy(
     of one tree, and a branch that moves between the request and the decision is a different tree
     that nobody has read. Re-pointing the request at the moved branch would be approving by name.
     """
-    report = await plan_deploy(tenant_db, org_id, target_env, tree, ref=sha, seed=seed)
+    report = await plan_deploy(model_db, org_id, target_env, tree, ref=sha, seed=seed)
     async with admin_db.acquire() as conn:
         result = await conn.execute_core(
             env_merge_requests.insert()
@@ -212,7 +212,7 @@ async def get_request(admin_db: "Database", org_id: str, request_id: int) -> dic
         return dict(row._mapping) if row is not None else None
 
 
-async def effective_state(tenant_db: "Database", org_id: str, request: dict) -> str:
+async def effective_state(model_db: "Database", org_id: str, request: dict) -> str:
     """The request's state including the one that is derived rather than stored.
 
     A decided request is never stale: rejection is final, and an applied merge already happened.
@@ -224,7 +224,7 @@ async def effective_state(tenant_db: "Database", org_id: str, request: dict) -> 
         # The tree is pinned to a sha, so what can have moved is the TARGET. Re-planning against
         # the same tree is what says whether the report still describes the deploy.
         current = await plan_deploy(
-            tenant_db,
+            model_db,
             org_id,
             request["target_env"],
             _tree_at(org_id, request["source_sha"]),
@@ -233,7 +233,7 @@ async def effective_state(tenant_db: "Database", org_id: str, request: dict) -> 
         )
     else:
         current = await plan_copy(
-            tenant_db,
+            model_db,
             org_id,
             request["source_env"],
             request["target_env"],
@@ -245,7 +245,7 @@ async def effective_state(tenant_db: "Database", org_id: str, request: dict) -> 
 
 async def decide(
     admin_db: "Database",
-    tenant_db: "Database",
+    model_db: "Database",
     org_id: str,
     request_id: int,
     *,
@@ -281,7 +281,7 @@ async def decide(
         assert result is not None
         return result
 
-    if await effective_state(tenant_db, org_id, request) == STALE:
+    if await effective_state(model_db, org_id, request) == STALE:
         moved = request["target_env"] if _is_deploy(request) else request["source_env"]
         raise MergeRequestError(
             f"merge request {request_id} no longer describes the change it would perform — "
@@ -290,7 +290,7 @@ async def decide(
         )
     if _is_deploy(request):
         applied = await deploy_tree(
-            tenant_db,
+            model_db,
             org_id,
             request["target_env"],
             _tree_at(org_id, request["source_sha"]),
@@ -299,7 +299,7 @@ async def decide(
         )
     else:
         applied = await copy_model(
-            tenant_db,
+            model_db,
             org_id,
             request["source_env"],
             request["target_env"],
