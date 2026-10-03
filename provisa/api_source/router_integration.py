@@ -23,11 +23,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import logging
+import secrets
 
 from provisa.api_source.cache import resolve_ttl
 from provisa.core.environments import active_org_schema
-from provisa.api_source.caller import call_api
-from provisa.api_source.flattener import flatten_response
+from provisa.api_source.caller import AnswerCut, answer_cut_warning, answer_rows, call_api
+from provisa.core.statement_warnings import warn
 from provisa.api_source.models import ApiEndpoint, ApiSource, ApiSourceType
 from provisa.api_source import engine_cache as _engine_cache
 from provisa.api_source.engine_cache import (
@@ -48,7 +49,10 @@ _tracer = _get_tracer(__name__)
 class QueryResult:  # REQ-318
     rows: list[dict]
     from_cache: bool
-    cache_table: str | None = field(default=None)
+    cache_table: str  # the table this statement reads its answer from
+    # The call stopped at the endpoint's max_pages with more to read: the rows are not the
+    # whole answer, and its cache table is this statement's own, never found by another.
+    cut: AnswerCut | None = field(default=None)
 
 
 async def _apply_cache_promotions(
@@ -123,14 +127,17 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
         base_url = source.base_url if source else ""
         auth = source.auth if source else None
 
-        pages = await call_api(endpoint, params, base_url=base_url, auth=auth)
-
-        all_rows: list[dict] = []
-        for page_data in pages:
-            rows = flatten_response(
-                page_data, endpoint.response_root, endpoint.columns, endpoint.response_normalizer
+        answer = await call_api(endpoint, params, base_url=base_url, auth=auth)
+        all_rows, cut = answer_rows(endpoint, answer)
+        if cut is not None:
+            # A cut answer is never cached as the call's answer: it lands under a name of its
+            # own, which no later request looks up, and the statement carries the warning.
+            warn(answer_cut_warning(endpoint.table_name, cut))
+            tbl = cache_table_name(
+                endpoint.source_id,
+                endpoint.table_name,
+                {**params, "__cut__": secrets.token_hex(8)},
             )
-            all_rows.extend(rows)
 
         # LAND through the ONE write face (store_writer, via land_api_cache) — the engine NEVER
         # writes the store; it only reads the landed table back through its attach (loc.catalog).
@@ -145,4 +152,4 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
 
         schedule_drop(engine, loc, tbl, ttl)
 
-        return QueryResult(rows=all_rows, from_cache=False, cache_table=tbl)
+        return QueryResult(rows=all_rows, from_cache=False, cache_table=tbl, cut=cut)

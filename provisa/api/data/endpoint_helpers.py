@@ -185,6 +185,24 @@ def _inject_stats_into_response(response, stats_dict: dict):
     return response
 
 
+def _inject_warnings_into_response(response, warnings: list):
+    """Add what the request's answers say about themselves (REQ-1350) to a JSON body's
+    ``extensions.warnings``, beside any warning the serializer already put there, each as
+    {code, params, message}. Every HTTP response, a file format or a stream included, also
+    carries them in the ``X-Provisa-Warnings`` header (``middleware.response_headers``); a
+    response with no JSON body is left to that."""
+    entries = [w.as_dict() for w in warnings]
+    if isinstance(response, JSONResponse):
+        body = json.loads(bytes(response.body))
+        body.setdefault("extensions", {}).setdefault("warnings", []).extend(entries)
+        skip = {"content-length", "content-type"}
+        extra = {k: v for k, v in response.headers.items() if k.lower() not in skip}
+        return JSONResponse(content=body, headers=extra, status_code=response.status_code)
+    if isinstance(response, dict):
+        response.setdefault("extensions", {}).setdefault("warnings", []).extend(entries)
+    return response
+
+
 def _count_rows_per_source(field_rows: list, ctx) -> dict[str, int]:
     """Count matched rows per source_id using join cardinality in the result.
 

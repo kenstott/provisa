@@ -4704,6 +4704,7 @@
   "serverErrors.json::serverErrors.schema.source_limit_reached": "This organization holds {{held}} of the {{limit}} data sources its {{plan}} plan admits. Change the plan on the Billing page, or remove a source.",
   "tablesPage.json::tablesPage.modelingRole.impliedDimensionTitle": "Implied dimension — Enable Group By is on for this table",
   "tablesPage.json::tablesPage.modelingRole.impliedFactTitle": "Implied fact — Enable Aggregates is on for this table",
+  "pt/serverErrors.json::serverErrors.api.answer_cut": "The answer for {{table}} was cut at max_pages={{max_pages}} ({{rows}} rows): the API has more. Raise the endpoint's max_pages or its page size to read it all.",
   "pt/adminPage.json::adminPage.maxRows": "Max rows per read",
   "pt/adminPage.json::adminPage.maxRowsHint": "The most rows one read of a paged remote table takes, following its cursor page by page.",
   "pt/serverErrors.json::serverErrors.schema.table_registered_fields_omitted": "Table '{{table}}' registered (id={{id}}). Left out, because the source's credential may not read them: {{fields}}",
@@ -4728,5 +4729,7 @@
   "pt/serverErrors.json::serverErrors.actions.written_table_not_registered": "'{{table}}' is not a registered table of source '{{source_id}}'",
   "pt/serverErrors.json::serverErrors.functions.written_table_missing": "command '{{name}}' writes '{{table}}', which is not registered",
   "pt/commandFormFields.json::commandFormFields.writesTable": "Writes table",
-  "pt/commandFormFields.json::commandFormFields.writesTableHint": "The registered table this command changes. After each call, cached results and materialized views over it are refreshed."
+  "pt/commandFormFields.json::commandFormFields.writesTableHint": "The registered table this command changes. After each call, cached results and materialized views over it are refreshed.",
+  "pt/serverErrors.json::serverErrors.api.answer_row_cut": "The answer for {{table}} was cut at max_rows={{max_rows}}: the remote has more. Raise graphql_remote.max_rows to read it all.",
+  "pt/serverErrors.json::serverErrors.replication.row_limit_reached": "The replica of {{table}} was not built: a read of it stops at max_rows={{max_rows}} (graphql_remote.max_rows), and the remote had more after {{rows}} rows. A replica is the whole table, so it is not cut at the bound. Raise graphql_remote.max_rows."
 }

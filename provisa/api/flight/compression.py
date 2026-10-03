@@ -41,11 +41,38 @@ def ipc_write_options() -> pa.ipc.IpcWriteOptions | None:
     return pa.ipc.IpcWriteOptions(compression=codec)
 
 
-def record_batch_stream(data: Any) -> flight.RecordBatchStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    """A Flight stream over a table or reader, compressed as the operator set."""
+def warnings_metadata(warnings: Any) -> pa.Buffer:
+    """What a statement's answer says about itself (REQ-1350), as the ``app_metadata`` of a
+    batch: ``{"provisa_warnings": [{code, params, message}, ...]}``, ASCII-escaped JSON."""
+    import json
+
+    payload = {"provisa_warnings": [w.as_dict() for w in warnings]}
+    return pa.py_buffer(json.dumps(payload, ensure_ascii=True).encode("ascii"))
+
+
+def _with_warnings(schema: pa.Schema, batches: Iterable[Any], warnings: Any) -> Iterable[Any]:
+    """``batches`` behind one zero-row batch carrying the warnings: a Flight header is sent
+    before do_get runs, so the warnings ride the stream, and a zero-row batch carries them for
+    an empty result too."""
+    yield (pa.RecordBatch.from_pylist([], schema=schema), warnings_metadata(warnings))
+    yield from batches
+
+
+def record_batch_stream(
+    data: Any, warnings: Any = ()
+) -> flight.RecordBatchStream | flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """A stream over ``data`` (a Table), with IPC compression where configured. ``warnings``:
+    what the statement's answer says about itself, sent ahead of the rows."""
+    if warnings:
+        return generator_stream(data.schema, data.to_batches(), warnings)
     return flight.RecordBatchStream(data, options=ipc_write_options())  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
 
-def generator_stream(schema: pa.Schema, batches: Iterable[Any]) -> flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    """A Flight stream over lazily produced batches, compressed as the operator set."""
+def generator_stream(
+    schema: pa.Schema, batches: Iterable[Any], warnings: Any = ()
+) -> flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """A lazy stream over ``batches``, with IPC compression where configured. ``warnings``: what
+    the statement's answer says about itself, sent ahead of the rows."""
+    if warnings:
+        batches = _with_warnings(schema, batches, warnings)
     return flight.GeneratorStream(schema, batches, options=ipc_write_options())  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__

@@ -27,7 +27,12 @@ from urllib.parse import parse_qs, unquote, urlparse
 from provisa.core import request_deadline
 from provisa.federation.land_guard import LandGuard
 from provisa.executor.result import QueryResult, ResultStream
-from provisa.federation.runtime_support import run_async_materialized, stream_rows_from_arrow
+from provisa.federation.runtime_support import (
+    close_cursor,
+    open_cursor,
+    run_async_materialized,
+    stream_rows_from_arrow,
+)
 
 _ARROW_CHUNK_ROWS = 65_536  # rows per lazy Cloud Fetch chunk (REQ-1216)
 
@@ -110,7 +115,7 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         from provisa.federation.replica_guard import refuse_live_in_write_surface
 
         refuse_live_in_write_surface(schema, table)  # REQ-1912
-        cur = self._conn.cursor()
+        cur = open_cursor(self._conn)
         try:
             cur.execute(f"CREATE CATALOG IF NOT EXISTS `{catalog}`")
             cur.execute(f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.`{schema}`")
@@ -119,7 +124,7 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
                 f"USING {d['format']} LOCATION '{d['location']}'"
             )
         finally:
-            cur.close()
+            close_cursor(cur)
         return None
 
     def detach_source(self, source: Any) -> None:
@@ -131,11 +136,11 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         if self._engine_for().resolve(source).mechanism not in LIVE_IN_PLACE:
             return
         catalog, schema, table = self._phys_parts(source)
-        cur = self._conn.cursor()
+        cur = open_cursor(self._conn)
         try:
             cur.execute(f"DROP TABLE IF EXISTS `{catalog}`.`{schema}`.`{table}`")
         finally:
-            cur.close()
+            close_cursor(cur)
 
     def _phys_parts(self, source: Any) -> tuple[str, str, str]:
         """The (catalog, schema, table) the compiler emits for a source the engine reads in place —
@@ -234,7 +239,7 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
             )
         catalog = self._catalog
         stage = self._stage_from_env()
-        cur = self._conn.cursor()
+        cur = open_cursor(self._conn)
         try:
             await self._land_guard.run(
                 lambda: land_databricks_native(
@@ -251,7 +256,7 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
                 ),
             )
         finally:
-            cur.close()
+            close_cursor(cur)
         return f"{catalog}.{schema}.{table}"
 
     async def reconcile_replica(
@@ -269,7 +274,7 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         from provisa.federation.databricks_store import reconcile_databricks_native
 
         catalog = self._catalog
-        cur = self._conn.cursor()
+        cur = open_cursor(self._conn)
         try:
             return await self._land_guard.run(
                 lambda: reconcile_databricks_native(
@@ -282,7 +287,7 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
                 ),
             )
         finally:
-            cur.close()
+            close_cursor(cur)
 
     async def reconcile_landed_metadata(self, plan: Any) -> int:
         """Apply the replicated model's keys, descriptions and tags (REQ-1657): informational
@@ -295,13 +300,13 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         targets = plan_targets(plan)
 
         def _run() -> int:
-            cur = self._conn.cursor()
+            cur = open_cursor(self._conn)
             try:
                 return reconcile_metadata_native(
                     cur, targets=targets, edges=plan.edges, known_tags=plan.known_tags
                 )
             finally:
-                cur.close()
+                close_cursor(cur)
 
         return await self._land_guard.run(_run)
 
@@ -327,13 +332,13 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
     def run_arrow(self, sql: str, params: list | None = None) -> Any:
         """Execute Databricks-dialect SQL and return a ``pyarrow.Table`` — Databricks delivers Arrow
         natively via Cloud Fetch, so no Python rows are materialized for the Flight transport."""
-        cur = self._conn.cursor()
+        cur = open_cursor(self._conn)
         try:
             with request_deadline.cancel_on_deadline(cur.cancel):
                 cur.execute(sql, params or None)
                 return cur.fetchall_arrow()
         finally:
-            cur.close()
+            close_cursor(cur)
 
     def run_arrow_stream(self, sql: str, params: list | None = None) -> tuple[Any, Any]:
         """Execute Databricks-dialect SQL and return ``(schema, batch_generator)`` for lazy
@@ -342,13 +347,19 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         Genuinely lazy: ``fetchmany_arrow`` pulls Cloud Fetch chunks from the server on demand, so the
         full result never materializes — peak memory is bounded by one chunk. The cursor closes when the
         generator drains or the consumer stops early. A zero-row result yields an empty-schema stream."""
-        cur = self._conn.cursor()
-        with request_deadline.cancel_on_deadline(cur.cancel):
-            cur.execute(sql, params or None)
-            first = cur.fetchmany_arrow(_ARROW_CHUNK_ROWS)
+        cur = open_cursor(self._conn)
+        try:
+            with request_deadline.cancel_on_deadline(cur.cancel):
+                cur.execute(sql, params or None)
+                first = cur.fetchmany_arrow(_ARROW_CHUNK_ROWS)
+        except BaseException:
+            # A statement the deadline cut short, or one that failed: no stream will own the
+            # cursor, so it is closed here (REQ-1905).
+            close_cursor(cur)
+            raise
         if first.num_rows == 0:  # exhausted immediately — carries the column schema, no rows
             schema = first.schema
-            cur.close()
+            close_cursor(cur)
             return schema, iter(())
         schema = first.schema
 
@@ -362,7 +373,7 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
                         break
                     yield from tbl.to_batches()
             finally:
-                cur.close()
+                close_cursor(cur)
 
         return schema, _batches()
 

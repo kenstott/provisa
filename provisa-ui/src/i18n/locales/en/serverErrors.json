@@ -15,6 +15,10 @@
     "ai_models": {
       "vector_model_fields_required": "each vector_models entry requires id, provider, and dimensions"
     },
+    "api": {
+      "answer_cut": "The answer for {{table}} was cut at max_pages={{max_pages}} ({{rows}} rows): the API has more. Raise the endpoint's max_pages or its page size to read it all.",
+      "answer_row_cut": "The answer for {{table}} was cut at max_rows={{max_rows}}: the remote has more. Raise graphql_remote.max_rows to read it all."
+    },
     "auth": {
       "authentication_required": "Authentication required",
       "auto_join_not_offered": "That organization is not offering to admit you",
@@ -216,7 +220,8 @@
       "table_gone": "Table {{schema}}.{{table}} of source {{source}} is no longer registered, so its replica is not built.",
       "page_limit_reached": "The replica of {{table}} was not built: its endpoint's paging stops at max_pages={{max_pages}}, and the endpoint had more after page {{max_pages}} ({{rows}} rows read). A replica is the whole table, so it is not cut at the cap. Raise the endpoint's max_pages or its page size.",
       "waiting_engine_jobs": "the engine is at its background job cap (replication.engine_jobs)",
-      "waiting_source_cap": "the source is at its live-read cap (max_live_concurrency)"
+      "waiting_source_cap": "the source is at its live-read cap (max_live_concurrency)",
+      "row_limit_reached": "The replica of {{table}} was not built: a read of it stops at max_rows={{max_rows}} (graphql_remote.max_rows), and the remote had more after {{rows}} rows. A replica is the whole table, so it is not cut at the bound. Raise graphql_remote.max_rows."
     },
     "roles": {
       "cannot_delete_system": "Cannot delete system roles",

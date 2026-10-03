@@ -170,7 +170,7 @@ class TestEndpointShape:
         assert seen["body"] == {
             "statements": [{"statement": "MATCH (a) RETURN a.name AS name", "parameters": {}}]
         }
-        assert pages[0]["results"][0]["data"][0]["row"] == ["x"]
+        assert pages.pages[0]["results"][0]["data"][0]["row"] == ["x"]
 
     def test_tabular_normalizer_refuses_a_cypher_error(self):
         from provisa.api_source.normalizers import neo4j_tabular

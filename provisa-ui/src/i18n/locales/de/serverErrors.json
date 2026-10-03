@@ -15,6 +15,10 @@
     "ai_models": {
       "vector_model_fields_required": "jeder vector_models-Eintrag erfordert id, provider und dimensions"
     },
+    "api": {
+      "answer_cut": "Die Antwort für {{table}} wurde bei max_pages={{max_pages}} abgeschnitten ({{rows}} Zeilen): Die API hat weitere Daten. Erhöhen Sie max_pages oder die Seitengröße des Endpunkts, um alles zu lesen.",
+      "answer_row_cut": "Die Antwort für {{table}} wurde bei max_rows={{max_rows}} abgeschnitten: Die Gegenstelle hat weitere Daten. Erhöhen Sie graphql_remote.max_rows, um alles zu lesen."
+    },
     "auth": {
       "authentication_required": "Authentifizierung erforderlich",
       "auto_join_not_offered": "Diese Organisation bietet Ihnen keine Aufnahme an",
@@ -216,7 +220,8 @@
       "table_gone": "Die Tabelle {{schema}}.{{table}} der Quelle {{source}} ist nicht mehr registriert, daher wird ihr Replikat nicht gebaut.",
       "page_limit_reached": "Das Replikat von {{table}} wurde nicht gebaut: Die Paginierung des Endpunkts endet bei max_pages={{max_pages}}, und der Endpunkt hatte nach Seite {{max_pages}} noch weitere Daten ({{rows}} Zeilen gelesen). Ein Replikat ist die ganze Tabelle und wird daher nicht an der Obergrenze abgeschnitten. Erhöhen Sie max_pages oder die Seitengröße des Endpunkts.",
       "waiting_engine_jobs": "die Engine hat ihre Obergrenze für Hintergrundjobs erreicht (replication.engine_jobs)",
-      "waiting_source_cap": "die Quelle hat ihre Obergrenze für Live-Lesezugriffe erreicht (max_live_concurrency)"
+      "waiting_source_cap": "die Quelle hat ihre Obergrenze für Live-Lesezugriffe erreicht (max_live_concurrency)",
+      "row_limit_reached": "Das Replikat von {{table}} wurde nicht gebaut: Ein Lesevorgang endet bei max_rows={{max_rows}} (graphql_remote.max_rows), und die Gegenstelle hatte nach {{rows}} Zeilen noch weitere Daten. Ein Replikat ist die ganze Tabelle und wird daher nicht an der Obergrenze abgeschnitten. Erhöhen Sie graphql_remote.max_rows."
     },
     "roles": {
       "cannot_delete_system": "Systemrollen können nicht gelöscht werden",
