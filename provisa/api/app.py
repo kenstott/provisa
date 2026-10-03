@@ -915,14 +915,11 @@ async def _load_and_build(
     # Kafka-derived tables are present when relationships are validated.
     _process_kafka_sources(raw_config, register_catalogs=apply)
 
-    # Store auth config for middleware setup
-    _raw_auth = raw_config.get("auth")
-    state.auth_config = (
-        None if (isinstance(_raw_auth, dict) and _raw_auth.get("provider") == "none") else _raw_auth
-    )
-    # Signal the lazily-resolving AuthMiddleware that auth_config may have changed so it re-resolves
-    # its provider on the next request (runtime reconfigure — setup wizard / PROVISA_IDP boot path).
-    state.auth_reconfig_generation += 1
+    # The deployment's auth, for every surface (REQ-120): provider config, the flag the wire
+    # surfaces read, and the generation that makes the HTTP middleware re-resolve.
+    from provisa.auth.wiring import bind_auth_config
+
+    bind_auth_config(state, raw_config.get("auth"))
 
     # Load config into PG (and create the engine catalogs)
     config = parse_config_dict(raw_config)
@@ -2770,6 +2767,11 @@ def create_app() -> FastAPI:
     # never re-resolving. None always takes the lazy path, which reads state.auth_config
     # fresh on this app's own first request, after this app's own lifespan has run.
     wire_auth(app, None, db_pool=ActiveOrgPool(), admin_pool=state.admin_db)
+    # REQ-124/REQ-1265: the password sign-in exchange. Mounted unconditionally; it answers for
+    # whatever provider the lifespan binds (bind_auth_config), and 404s where there is none.
+    from provisa.auth.login_router import router as login_router
+
+    app.include_router(login_router)
 
     # REQ-1452/REQ-1455: the egress byte meter. Registered LAST so it is the OUTERMOST middleware —
     # every response body, including the ones auth itself produces, passes through its `send`. It

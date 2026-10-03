@@ -17,44 +17,10 @@ import datetime
 
 import bcrypt
 import jwt
-from fastapi import APIRouter
-from pydantic import BaseModel
 
-from provisa.api.errors import ApiError
 from provisa.auth.models import AuthIdentity, AuthProvider
 
 # Requirements: REQ-120, REQ-124
-
-router = APIRouter(prefix="/auth", tags=["auth"])
-
-# Module-level reference set by app.py when provider=simple
-_provider_instance: SimpleAuthProvider | None = None
-
-
-class LoginRequest(BaseModel):
-    username: str
-    password: str
-
-
-@router.post("/login")
-async def login(request: LoginRequest):  # REQ-124, REQ-1393
-    """Authenticate with username/password and receive a JWT."""
-    if _provider_instance is None:
-        raise ApiError(
-            503, "auth.simple_provider_not_configured", "Simple auth provider not configured"
-        )
-    from provisa.auth.throttle import LockedOut, login_attempt
-
-    try:
-        with login_attempt(request.username, request.password):
-            token = _provider_instance.login(request.username, request.password)
-    except LockedOut as locked:
-        raise ApiError(429, "auth.too_many_attempts", str(locked))
-    except ValueError as e:
-        from fastapi import HTTPException
-
-        raise HTTPException(status_code=401, detail=str(e))
-    return {"access_token": token, "token_type": "bearer"}
 
 
 class SimpleAuthProvider(AuthProvider):  # REQ-120, REQ-124
@@ -81,6 +47,10 @@ class SimpleAuthProvider(AuthProvider):  # REQ-120, REQ-124
             "exp": now + datetime.timedelta(minutes=30),
         }
         return jwt.encode(payload, self._jwt_secret, algorithm="HS256")
+
+    async def password_login(self, username: str, password: str) -> str:  # REQ-124
+        """The ``POST /auth/login`` exchange (provisa/auth/login_router.py)."""
+        return self.login(username, password)
 
     async def validate_token(self, token: str) -> AuthIdentity:  # REQ-120, REQ-124
         decoded = jwt.decode(token, self._jwt_secret, algorithms=["HS256"])

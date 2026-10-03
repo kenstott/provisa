@@ -127,8 +127,12 @@ class IsolatedServer:
         app: str = "main:app",
         loop: str = "auto",
         env: dict[str, str] | None = None,
+        auth: dict | None = None,
     ) -> None:
         self.org_id = org_id
+        # The server's ``auth`` config block. None keeps the unsecured default below; a test of
+        # a secured deployment passes the block an operator would write.
+        self._auth = auth
         # Extra environment for the server process, applied last (a test that measures the
         # server's own telemetry overrides OTEL_SDK_DISABLED here).
         self._extra_env = dict(env or {})
@@ -182,7 +186,10 @@ class IsolatedServer:
             base = _REPO_ROOT / base
         with open(base) as f:
             cfg = yaml.safe_load(f)
-        cfg.setdefault("auth", {})["provider"] = "none"
+        if self._auth is None:
+            cfg.setdefault("auth", {})["provider"] = "none"
+        else:
+            cfg["auth"] = self._auth
         if self._materialize_store_url is not None:
             cfg["materialize_store_url"] = self._materialize_store_url
         tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
@@ -203,7 +210,9 @@ class IsolatedServer:
             "PROVISA_REDIS_EMBEDDED": "1",
         }
 
-    def start(self, *, timeout: float = 120.0) -> None:
+    # A deadline for a loaded machine, not a retry: test lanes run side by side, and a server that
+    # is booting rather than broken still says why in its stderr when the deadline passes.
+    def start(self, *, timeout: float = 300.0) -> None:
         self._cfg_path = self._write_config()
         env = {
             **os.environ,
