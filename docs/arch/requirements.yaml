@@ -48485,11 +48485,13 @@
     each real value: the same real value always shows the same surrogate and different real values show
     different surrogates, so joins, grouping and distinct counts through the column give the results they
     would give on the real values, while the real value is never shown. A surrogate is a random anonymous
-    value; it is not computed from the real value and cannot be turned back into it. The surrogates are
-    kept in a table of the state store (REQ-1920) that holds, for each real value met, the surrogate generated
-    for it: when a value is met again its surrogate is reused, and a value met for the first time is given
-    a new one. Columns joined by a relationship share one set of surrogates, so a join between two masked
-    columns still matches.'
+    value; it is not computed from the real value and cannot be turned back into it. The mask names the
+    kind of fake value to show (a person''s name, an email address, a phone number, a street address,
+    an identifier and so on), and the surrogate is a realistic generated value of that kind, so masked
+    data keeps the look of the real data. The surrogates are kept in a table of the state store (REQ-1920)
+    that holds, for each real value met, the surrogate generated for it: when a value is met again its
+    surrogate is reused, and a value met for the first time is given a new one. Columns joined by a relationship
+    share one set of surrogates, so a join between two masked columns still matches.'
   use_case: An analyst joins a masked customer table to a masked orders table and gets the row counts
     the real data would give, without either table showing a real identifier.
   code:
@@ -48512,6 +48514,15 @@
 
     And no real value is shown
 
+
+    Given a column masked consistently with the fake kind email address
+
+    When a masked role reads it
+
+    Then each value shown is a generated email address
+
+    And the same real address always shows the same generated one
+
     '
   related_reqs:
   - REQ-087
@@ -48527,7 +48538,9 @@
     only (provisa/security/masking.py:29-32). Two points for the design: (1) REQ-1920 says state can be
     discarded and rebuilt from the model and the estate; this table cannot be, since losing it would give
     every value a new random surrogate, so it needs to be kept durably. (2) The table pairs real values
-    with their surrogates, so it is as sensitive as the columns it serves.'
+    with their surrogates, so it is as sensitive as the columns it serves. The maintainer''s model for
+    the generated values is a typed fake-data generator such as the faker library: a stable fake value
+    of a named fake type.'
 - id: REQ-1495
   status: rejected
   group: 13. Multi-Tenancy & Organizations
