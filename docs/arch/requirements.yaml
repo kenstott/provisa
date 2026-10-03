@@ -4402,17 +4402,22 @@
   priority: SHOULD
   type: behavioral
   description: At query execution time, Provisa translates the incoming GraphQL request into a remote
-    GraphQL query and forwards it to the remote endpoint. The response rows are materialized as Parquet
-    in a Trino Iceberg table on S3 (`results.api_cache`, `s3a://provisa-results/api_cache/`). Repeated
-    calls within TTL are served from the Iceberg table via Trino — zero remote hops. The cache table is
-    automatically dropped after TTL expires. (Amended 2026-10-02, PAGED READS) A connection table
-    (REQ-308) is read page by page, `graphql_remote.max_list_items` rows a page, following the remote's
+    GraphQL query and forwards it to the remote endpoint. [SUPERSEDED by REQ-845, 2026-10-03 -- the API
+    cache is held in the engine's own store on every engine, not in a Trino Iceberg table on S3. Kept
+    here for history; do not implement against it.] The response rows are materialized as Parquet in a
+    Trino Iceberg table on S3 (`results.api_cache`, `s3a://provisa-results/api_cache/`). [END SUPERSEDED
+    BLOCK] Repeated calls within TTL are served from the Iceberg table via Trino — zero remote hops. The
+    cache table is automatically dropped after TTL expires. (Amended 2026-10-02, PAGED READS) A connection
+    table (REQ-308) is read page by page, `graphql_remote.max_list_items` rows a page, following the remote's
     cursor until it reports no next page or `graphql_remote.max_rows` rows are read; a read that stops
-    at that bound logs it. When the remote's gateway gives up on a page, the page is asked for again
-    at half the size. When the remote answers that the caller is rate limited and names a wait of two
-    minutes or less, the request is sent again after that wait, three times at most. A source may
-    declare which of its remote's errors mean "this one field of this one row" and which mean "this
-    page asks too much" (REQ-1923); every other error fails the read.
+    at that bound logs it. When the remote's gateway gives up on a page, the page is asked for again at
+    half the size. When the remote answers that the caller is rate limited and names a wait of two minutes
+    or less, the request is sent again after that wait, three times at most. A source may declare which
+    of its remote's errors mean "this one field of this one row" and which mean "this page asks too much"
+    (REQ-1923); every other error fails the read. (Amended 2026-10-03, THE API CACHE LIVES IN THE ENGINE'S
+    STORE:) The rows a call returns are kept in the federation engine's own store, in the org's API cache
+    schema, in one table per API table (REQ-845, REQ-859). This holds on every engine. The cache key and
+    the rule that a mutation is never cached are unchanged.
   use_case: S3/Iceberg materialization of remote schema results eliminates repeated network hops and enables
     federated SQL (WHERE/ORDER BY/LIMIT) over cached data.
   code:
@@ -4778,10 +4783,15 @@
   category: OpenAPI Auto-Registration Connector
   priority: SHOULD
   type: behavioral
-  description: GET operation results are materialized as Parquet in a Trino Iceberg table on S3 (`results.api_cache`,
-    `s3a://provisa-results/api_cache/`). The cache key is a SHA-256 hash of `source_id + operation path
-    + native args`. Repeated calls within TTL hit Trino directly. The cache table is dropped after TTL
-    expires. Mutations are never cached — they are side-effecting.
+  description: '[SUPERSEDED by REQ-845, 2026-10-03 -- the API cache is held in the engine''s own store
+    on every engine, not in a Trino Iceberg table on S3. Kept here for history; do not implement against
+    it.] GET operation results are materialized as Parquet in a Trino Iceberg table on S3 (`results.api_cache`,
+    `s3a://provisa-results/api_cache/`). [END SUPERSEDED BLOCK] The cache key is a SHA-256 hash of `source_id
+    + operation path + native args`. Repeated calls within TTL hit Trino directly. The cache table is
+    dropped after TTL expires. Mutations are never cached — they are side-effecting. (Amended 2026-10-03,
+    THE API CACHE LIVES IN THE ENGINE''S STORE:) The rows a call returns are kept in the federation engine''s
+    own store, in the org''s API cache schema, in one table per API table (REQ-845, REQ-859). This holds
+    on every engine. The cache key and the rule that a mutation is never cached are unchanged.'
   use_case: S3/Iceberg materialization of GET operation results prevents repeated upstream REST calls
     and enables Trino SQL filtering over cached rows.
   code:
@@ -5124,11 +5134,16 @@
   category: gRPC Remote Schema Connector (REQ-322–329)
   priority: SHOULD
   type: behavioral
-  description: Query method results are materialized as Parquet in a Trino Iceberg table on S3 (`results.api_cache`,
-    `s3a://provisa-results/api_cache/`). The cache key is a SHA-256 hash of `source_id + method + native
-    args`. Mutations are never cached — they are side-effecting. One `grpc.aio.Channel` is reused per
-    registered source across requests, stored in `AppState.grpc_remote_channels`. The cache table is dropped
-    after TTL expires.
+  description: '[SUPERSEDED by REQ-845, 2026-10-03 -- the API cache is held in the engine''s own store
+    on every engine, not in a Trino Iceberg table on S3. Kept here for history; do not implement against
+    it.] Query method results are materialized as Parquet in a Trino Iceberg table on S3 (`results.api_cache`,
+    `s3a://provisa-results/api_cache/`). [END SUPERSEDED BLOCK] The cache key is a SHA-256 hash of `source_id
+    + method + native args`. Mutations are never cached — they are side-effecting. One `grpc.aio.Channel`
+    is reused per registered source across requests, stored in `AppState.grpc_remote_channels`. The cache
+    table is dropped after TTL expires. (Amended 2026-10-03, THE API CACHE LIVES IN THE ENGINE''S STORE:)
+    The rows a call returns are kept in the federation engine''s own store, in the org''s API cache schema,
+    in one table per API table (REQ-845, REQ-859). This holds on every engine. The cache key and the rule
+    that a mutation is never cached are unchanged.'
   use_case: S3/Iceberg materialization of gRPC query results enables Trino SQL filtering over cached rows
     and eliminates repeated remote calls. Channel reuse reduces connection overhead.
   code:
@@ -19410,11 +19425,15 @@
   category: Multi-Tenancy
   priority: MUST
   type: structural
-  description: All internal PostgreSQL tables (semantic metadata, non-SQL cache, audit log, materialized
-    view definitions) are scoped to a per-org schema named org_<org_id>. The asyncpg connection pool sets
-    search_path=org_<org_id> on every connection via the connection init hook. A default org_id of "default"
-    is used when ORG_ID env var is not set, producing schema org_default. Existing single-org deployments
-    are unaffected — they transparently use org_default.
+  description: 'All internal PostgreSQL tables (semantic metadata, non-SQL cache, audit log, materialized
+    view definitions) are scoped to a per-org schema named org_<org_id>. [SUPERSEDED by REQ-828, 2026-10-03
+    -- the control-plane pool is psycopg 3, not asyncpg. Kept here for history; do not implement against
+    it.] The asyncpg connection pool sets search_path=org_<org_id> on every connection via the connection
+    init hook. [END SUPERSEDED BLOCK] A default org_id of "default" is used when ORG_ID env var is not
+    set, producing schema org_default. Existing single-org deployments are unaffected — they transparently
+    use org_default. (Amended 2026-10-03, THE POOL IS PSYCOPG 3:) The control-plane store is reached through
+    synchronous SQLAlchemy engines: psycopg 3 on PostgreSQL and pysqlite on SQLite (REQ-828). The pool
+    sets search_path to the org''s schema on every connection.'
   use_case: Schema-per-org provides structural isolation between tenants on a shared PostgreSQL instance.
     Accidental cross-tenant data access requires bypassing both the search_path and the role-level grants.
   integration_test: not_required
@@ -19441,9 +19460,14 @@
   category: Multi-Tenancy
   priority: MUST
   type: structural
-  description: Platform tables (tenants, tenant_config) reside in a dedicated platform schema, never touched
-    by org search_path. The platform schema has a separate asyncpg pool or uses fully-qualified queries
-    (platform.tenants). Org schemas cannot reference or join to the platform schema.
+  description: 'Platform tables (tenants, tenant_config) reside in a dedicated platform schema, never
+    touched by org search_path. [SUPERSEDED by REQ-828, 2026-10-03 -- the control-plane pool is psycopg
+    3, not asyncpg. Kept here for history; do not implement against it.] The platform schema has a separate
+    asyncpg pool or uses fully-qualified queries (platform.tenants). [END SUPERSEDED BLOCK] Org schemas
+    cannot reference or join to the platform schema. (Amended 2026-10-03, THE POOL IS PSYCOPG 3:) The
+    control-plane store is reached through synchronous SQLAlchemy engines: psycopg 3 on PostgreSQL and
+    pysqlite on SQLite (REQ-828). The platform schema has its own pool or is addressed by fully-qualified
+    names.'
   use_case: Tenant registry and billing data must not co-mingle with per-org application data. A compromised
     org connection cannot enumerate other tenants.
   integration_test: not_required
@@ -19494,10 +19518,14 @@
   category: Multi-Tenancy
   priority: MUST
   type: structural
-  description: The Trino non-SQL cache schema is org-scoped. cache_location() in provisa/api_source/trino_cache.py
-    accepts org_id and sets cache_schema=org_<org_id>_api_cache. All callers (endpoint.py, router_integration.py,
-    cypher_router.py) pass org_id from request context. The provisa_admin Trino catalog requires no change
-    as Trino uses fully-qualified catalog.schema.table references.
+  description: The Trino non-SQL cache schema is org-scoped. [SUPERSEDED by REQ-845, 2026-10-03 -- provisa/api_source/trino_cache.py
+    no longer exists; the org's API cache schema is resolved by org_cache_schema in provisa/api_source/engine_cache.py,
+    for every engine. Kept here for history; do not implement against it.] cache_location() in provisa/api_source/trino_cache.py
+    accepts org_id and sets cache_schema=org_<org_id>_api_cache. [END SUPERSEDED BLOCK] All callers (endpoint.py,
+    router_integration.py, cypher_router.py) pass org_id from request context. The provisa_admin Trino
+    catalog requires no change as Trino uses fully-qualified catalog.schema.table references. (Amended
+    2026-10-03, THE API CACHE SCHEMA IS ORG-SCOPED ON EVERY ENGINE:) The API cache schema is named for
+    the org (and for the environment, where one is bound) on every federation engine, not only Trino.
   use_case: Non-SQL cached rows for different orgs land in separate PG schemas within the provisa_admin
     catalog. A Trino query for org A cannot reference org B cache tables without an explicit schema qualifier.
   integration_test: not_required
@@ -23859,7 +23887,9 @@
     production they scale out independently (platform registry in Postgres, tenant registries sharded,
     materialization store in Iceberg/S3, hot cache in Redis, engine in Trino/Snowflake). Tenant isolation
     for components 2-5 MUST be enforced in the app layer (REQ-828), not delegated to any single store''s
-    native RLS, so isolation holds across every medium.'
+    native RLS, so isolation holds across every medium. (Amended 2026-10-03, TERMINOLOGY:) A copy of a
+    source table that this text calls landed or materialized is a replica, and making one is replication
+    (REQ-826, REQ-1915). A materialized view keeps its name.'
   use_case: Names the stateful components multi-tenancy must isolate and deployment must place, separating
     them from the stateless execution pipeline, and makes each independently pluggable so the same platform
     collapses to zero-infra on a laptop and scales each tier independently in production with tenant isolation
@@ -27646,7 +27676,9 @@
   description: Materialization is derived from federation-engine reachability, not a user knob. A source
     the engine cannot reach live is materialized/landed (mandatory). A reachable source is queried live,
     with optional perf-caching (TTL-based). First land of an unreachable source is unconditional; the
-    change signal governs subsequent refresh.
+    change signal governs subsequent refresh. (Amended 2026-10-03, TERMINOLOGY:) A copy of a source table
+    that this text calls landed or materialized is a replica, and making one is replication (REQ-826,
+    REQ-1915). A materialized view keeps its name.
   use_case: Materialization ensures correctness when live access is unavailable; it is driven by infrastructure
     capability, not user preference, eliminating misconfiguration.
   scenario: 'Given a source that the federation engine cannot reach live
@@ -29464,7 +29496,9 @@
     SQLite via the dialect compiler); the land path parses a JSON column's serialized-text value into
     a Python object before insert so the SQLAlchemy JSON column does not double-encode; and the read path
     converts an already-parsed dict/list consistently with the string path. Composite/array types (row/array/list/struct/map)
-    remain collapsed to `text`.
+    remain collapsed to `text`. (Amended 2026-10-03, TERMINOLOGY:) A copy of a source table that this
+    text calls landed or materialized is a replica, and making one is replication (REQ-826, REQ-1915).
+    A materialized view keeps its name.
   use_case: Federation queries over JSON columns maintain type information and enable native JSON operations
     in target stores, rather than forcing serialization fallbacks.
   code:
@@ -31332,7 +31366,9 @@
     outputs, and the API/GraphQL result caches. Redirect result objects are outside the ceiling: they
     are written under a per-query prefix and TTL-deleted, so they are a rate rather than an accumulation,
     and the egress meter (REQ-1452) prices them. Free tiers receive the tightest ceilings; paid tiers
-    larger; enforced and metered per org.'
+    larger; enforced and metered per org. (Amended 2026-10-03, TERMINOLOGY:) A copy of a source table
+    that this text calls landed or materialized is a replica, and making one is replication (REQ-826,
+    REQ-1915). A materialized view keeps its name.'
   use_case: Tiered storage model parallels query-cost caps (REQ-1044) as a primary monetization and resource-isolation
     lever. Platform storage (Postgres schema data, materialized rows, MV outputs, R2 object bytes) is
     the metered resource; federation keeps most source data external. Free tiers get tight bounds to prevent
@@ -31369,7 +31405,9 @@
   description: 'Explicit rejection on storage-cap breach: operations that would push an org past its storage
     ceiling (MV materialization, landing/ingest, result persistence) are REJECTED with an explanatory
     error indicating a higher SKU or bring-your-own (BYO) storage is required — never silently truncated
-    or evicted.'
+    or evicted. (Amended 2026-10-03, TERMINOLOGY:) A copy of a source table that this text calls landed
+    or materialized is a replica, and making one is replication (REQ-826, REQ-1915). A materialized view
+    keeps its name.'
   use_case: 'Mirrors REQ-1044''s monetization-gate semantics: hard rejection, not silent degradation.
     Prevents free-tier abuse and drives tier-upgrade conversion. Project rule (CRITICAL): enforcement
     must be explicit rejection, never a silent cap-and-continue. Error message guides customer toward
@@ -31394,7 +31432,9 @@
     the deployment''s configured store for every MV output and landed table the org writes — a precedence,
     not a fallback. Their bytes never count against platform storage and are neither metered (REQ-1049)
     nor capped (REQ-1046). The org''s store credentials are scoped to that org only and are never returned
-    by any read surface.'
+    by any read surface. (Amended 2026-10-03, TERMINOLOGY:) A copy of a source table that this text calls
+    landed or materialized is a replica, and making one is replication (REQ-826, REQ-1915). A materialized
+    view keeps its name.'
   use_case: Enables premium customers with large or unpredictable storage needs to avoid platform quota
     limits by supplying their own cloud storage. Isolates security/compliance (customer controls bucket
     permissions, encryption, audit logging) and cost (customer's infrastructure bill, not platform cost).
@@ -32673,10 +32713,12 @@
   category: Native Tier Database
   priority: MUST
   type: constraint
-  description: The control-plane SQLite (platform + tenant) MUST run in WAL mode (journal_mode=WAL) with
+  description: 'The control-plane SQLite (platform + tenant) MUST run in WAL mode (journal_mode=WAL) with
     busy_timeout enabled. This is the concurrency guarantee that permits the native DuckDB engine to read
     the tenant DB READ_ONLY while aiosqlite writes config changes without transient "database is locked"
-    errors.
+    errors. (Amended 2026-10-03, THE WRITER IS PYSQLITE:) The control-plane store is reached through synchronous
+    SQLAlchemy engines: psycopg 3 on PostgreSQL and pysqlite on SQLite (REQ-828). What this text calls
+    aiosqlite is that writer.'
   use_case: Enables concurrent read-write access to the control-plane SQLite without lock contention or
     stalling queries. Required for safe multi-client scenarios where the UI (aiosqlite) updates config
     while the native engine queries system state.
@@ -45139,7 +45181,9 @@
     call, and instrumenting them buries the query spans the live trace panel exists to show. Each switch
     gates one instrumentor inside setup_otel, since an instrumentor patches its driver globally and cannot
     be undone later. An unknown subsystem name is rejected rather than written to the config file. The
-    admin Observability tab carries the same switches.'
+    admin Observability tab carries the same switches. (Amended 2026-10-03, THE CATALOG CALLS ARE PSYCOPG
+    CALLS:) The control-plane store is reached through synchronous SQLAlchemy engines: psycopg 3 on PostgreSQL
+    and pysqlite on SQLite (REQ-828). What this text calls an asyncpg call is a psycopg call.'
   use_case: An operator opens the live trace panel, sees it filled with driver-level Postgres spans, and
     turns off the subsystems they do not care about from the Observability tab.
   code:
@@ -51045,10 +51089,12 @@
     scoping statement is a missing dialect entry, not a limit of the backend, and recording it as the
     latter would make a five-line fix look like an unsupported store.
 
-    (Amended 2026-09-29, driver table rename — REQ-828/REQ-1882:) The control-plane driver table is now
-    _ADMIN_DRIVER (sync drivers: psycopg2, pysqlite, PyMySQL, duckdb+provisa) and its refusal reads "unsupported
-    store backend"; it still lists only postgresql, sqlite, duckdb, mysql and mariadb, so the gap this
-    requirement records is unchanged.'
+    (Amended 2026-09-29, driver table rename — REQ-828/REQ-1882:) [SUPERSEDED by REQ-828, 2026-10-03 --
+    the PostgreSQL driver in _ADMIN_DRIVER is psycopg (psycopg 3), not psycopg2. Kept here for history;
+    do not implement against it.] The control-plane driver table is now _ADMIN_DRIVER (sync drivers: psycopg2,
+    pysqlite, PyMySQL, duckdb+provisa) [END SUPERSEDED BLOCK] and its refusal reads "unsupported store
+    backend"; it still lists only postgresql, sqlite, duckdb, mysql and mariadb, so the gap this requirement
+    records is unchanged.'
   use_case: A maintainer choosing a control-plane store is told which ones can hold environments on evidence
     from the backend itself, and any store the catalog offers can actually be opened.
   scenario: 'Given each control-plane store the catalog offers
@@ -57183,7 +57229,9 @@
     through at query time. Nested object and list fields are not landed and are named in one `[remote_schemas]`
     warning per table. A remote schema with no role permissions yields no tables and a warning that says
     so, since without introspection the importer cannot know the schema. The tables take the domain the
-    domain map assigns to the remote schema''s name, else the import default.'
+    domain map assigns to the remote schema''s name, else the import default. (Amended 2026-10-03, TERMINOLOGY:)
+    A copy of a source table that this text calls landed or materialized is a replica, and making one
+    is replication (REQ-826, REQ-1915). A materialized view keeps its name.'
   code:
   - provisa/hasura_v2/remote_schema.py
   - provisa/hasura_v2/mapper.py
@@ -72426,16 +72474,23 @@
   type: behavioral
   description: 'Role selection is server-validated, not client-trusted (REQ-273). The protocol clients
     (DB-API, ADBC, SQLAlchemy) no longer carry a connection `mode` and no longer assume a role: there
-    is no `admin` default and no username-as-role fallback on failed auth. A client may *request* a role
-    via the `X-Provisa-Role` header (or Flight ticket `role`), and the auth middleware honors it only
-    when that role is among the authenticated token''s assignments — otherwise it returns 403. When no
-    auth provider is configured (unsecured deployment), the middleware honors any supplied role by design
-    (no identity to validate against). provisa/auth/middleware.py.'
+    is no `admin` default and [SUPERSEDED by REQ-486 amendment, 2026-10-03 -- the sentence holds for server-side
+    authentication only; the client default is intended. Kept here for history; do not implement against
+    it.] no username-as-role fallback on failed auth [END SUPERSEDED BLOCK]. A client may *request* a
+    role via the `X-Provisa-Role` header (or Flight ticket `role`), and the auth middleware honors it
+    only when that role is among the authenticated token''s assignments — otherwise it returns 403. When
+    no auth provider is configured (unsecured deployment), the middleware honors any supplied role by
+    design (no identity to validate against). provisa/auth/middleware.py. (Amended 2026-10-03, THE SERVER
+    NEVER FALLS BACK; THE CLIENT HAS A DEFAULT:) On the server, a failed authentication never falls back
+    to the username as a role. In the protocol clients (DB-API, ADBC), when the caller gives no role the
+    client sends the username as the requested role. That client default is intended, and the server still
+    honors the requested role only when it is among the authenticated identity''s assignments.'
   notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
     written on 2026-06-19 under the heading ''Client Access & Protocols (Group 8)''; it was dropped when
     requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against
     the code: middleware.py:852-873 honors the requested role only if assigned, else 403; unsecured mode
-    honors supplied role (:416-432).'
+    honors supplied role (:416-432). The client-side default (role = username when none is given) is a
+    maintainer ruling, the REQ-AK5 design; REQ-AK5 is a design label, not a requirement id.'
   since: 2026-06
   code:
   - provisa/auth/middleware.py
