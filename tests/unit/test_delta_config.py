@@ -80,3 +80,34 @@ def test_the_load_accepts_a_well_formed_delta():
     from provisa.core.config_loader import _validate_delta
 
     _validate_delta(_config(_table(watermark_column="u", delta=DeltaConfig(apply="append"))))
+
+
+def test_delta_round_trips_through_the_control_plane(tmp_path):
+    import asyncio
+    from types import SimpleNamespace
+
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.db import init_schema
+    from provisa.core.repositories import table as table_repo
+    from provisa.federation.registry_view import registered_tables
+
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 't.db'}")
+    db = Database(engine, name="org")
+    asyncio.run(init_schema(db, "", org_id="default"))
+
+    async def _go():
+        async with db.acquire() as conn:
+            await table_repo.upsert(
+                conn,
+                _table(watermark_column="u", delta=DeltaConfig(apply="upsert", rebuild_every=3600)),
+                origin="config",
+            )
+        state = SimpleNamespace(model_db=db, tenant_db=db, config=SimpleNamespace(tables=[]))
+        async with db.acquire() as conn:
+            return await registered_tables(state, conn)
+
+    rows = asyncio.run(_go())
+    (t,) = [r for r in rows if r.table_name == "orders"]
+    assert t.delta is not None
+    assert t.delta.apply == "upsert" and t.delta.rebuild_every == 3600
+    engine.dispose()

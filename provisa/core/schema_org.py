@@ -226,6 +226,9 @@ registered_tables = Table(
         "file_glob", Text
     ),  # REQ-788: one logical table over a glob of files; NULL = single file
     Column("source_file_column", Text),  # REQ-788: opt-in column carrying each row's file path
+    Column(
+        "delta", JSON
+    ),  # REQ-874: incremental-reload (delta) declaration; NULL = whole rebuild only
     Column("mv_refresh_interval", Integer, nullable=False, server_default="300"),
     # REQ-963 live-MV debounce (event-loop path). quiet=0 → real-time recompute.
     Column("mv_debounce_quiet", Float, nullable=False, server_default="0"),
