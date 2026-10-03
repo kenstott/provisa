@@ -48489,10 +48489,11 @@
     kind of fake value to show (a person''s name, an email address, a phone number, a street address,
     an identifier and so on), and the surrogate is a realistic generated value of that kind, so masked
     data keeps the look of the real data. The surrogates are kept in a table of the state store (REQ-1920)
-    that holds, for each real value met, a hash of the value and the surrogate generated for it, and never
-    the real value itself, so no personal data is kept in the state store: when a value is met again its
-    surrogate is reused, and a value met for the first time is given a new one. Columns joined by a relationship
-    share one set of surrogates, so a join between two masked columns still matches.'
+    that holds, for each real value met, a one-way transform of the value (a hash, or any reasonable one-way
+    transform with few collisions) and the surrogate generated for it, and never the real value itself,
+    so no personal data is kept in the state store: when a value is met again its surrogate is reused,
+    and a value met for the first time is given a new one. Columns joined by a relationship share one
+    set of surrogates, so a join between two masked columns still matches.'
   use_case: A data scientist, or an LLM acting under its own identity, works on masked data that behaves
     like the real data (joins match, counts are right, values look real) without any personal data reaching
     them. An analyst joins a masked customer table to a masked orders table and gets the row counts the
