@@ -30,6 +30,7 @@ from sqlalchemy import and_, select
 from provisa.api.errors import ApiError
 from provisa.core.schema_org import domains, registered_tables, sources, table_columns
 from provisa.api.admin.capabilities import require_capability_request
+from provisa.api.admin.schema_common import remote_source_counts
 
 if TYPE_CHECKING:
     pass
@@ -167,7 +168,7 @@ async def _register_branded_source(request: Request, body: "GraphQLRemoteSourceR
     """Add a branded source (REQ-1923): check the credential, record the source, register no
     tables. Its tables are available to the Register Table picker from the shipped schema."""
     from provisa.api.app import _rebuild_schemas, state
-    from provisa.graphql_remote.brands import BRANDS, available_tables
+    from provisa.graphql_remote.brands import BRANDS, available_tables, offered_mutation_count
 
     brand = BRANDS.get(body.brand or "")
     if brand is None:
@@ -230,12 +231,11 @@ async def _register_branded_source(request: Request, body: "GraphQLRemoteSourceR
     return {
         "source_id": body.source_id,
         "brand": brand.id,
-        "tables": 0,
-        "available_tables": len(available_tables(brand, namespace)),
-        "functions": 0,
+        **remote_source_counts(
+            0, len(available_tables(brand, namespace)), offered_mutation_count(brand.schema())
+        ),
         "relationships": 0,
         "table_names": [],
-        "function_names": [],
         "kept_tables": [],
     }
 
@@ -350,10 +350,12 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
         domains_before = await glossary_repo.term_domains(conn)
         unchanged: list[dict] = []
         for t in tables:
-            _sql_name = apply_sql_name(t["name"])
+            # A table already registered keeps the name it is registered under.
+            _sql_name = t.get("registered_name") or apply_sql_name(t["name"])
             tbl = Table(
                 source_id=source_id,
-                domain_id=domain_id or "",
+                # A table registered on its own keeps the domain it was registered into.
+                domain_id=t.get("domain_id") or domain_id or "",
                 schema_name="graphql",
                 table_name=_sql_name,
                 description=t.get("description"),
@@ -396,7 +398,10 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
                 )
 
         kept = await table_repo.retire_generated(
-            conn, source_id, "graphql", {apply_sql_name(t["name"]) for t in tables}
+            conn,
+            source_id,
+            "graphql",
+            {t.get("registered_name") or apply_sql_name(t["name"]) for t in tables},
         )
         # REQ-1387: settle only the terms whose fields truly departed.
         await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
@@ -444,9 +449,14 @@ async def register_graphql_remote_source(
     request: Request,  # REQ-307, REQ-308, REQ-311, REQ-312, REQ-597, REQ-598, REQ-599
     body: GraphQLRemoteSourceRequest,
 ):
-    """Register a GraphQL remote source: introspect schema and auto-register tables/functions."""
+    """Add a remote GraphQL source. Its schema is read to confirm the endpoint and the
+    credential, and no table is registered: every table the schema offers is listed by the
+    Register Table picker, and the steward registers the ones wanted (REQ-308)."""
     require_capability_request(request, "source_registration")
-    from provisa.api.app import state
+    from provisa.api.app import _rebuild_schemas, state
+    from provisa.graphql_remote.brands import offered_mutation_count
+    from provisa.graphql_remote.introspect import introspect_schema
+    from provisa.graphql_remote.mapper import map_schema
 
     if body.brand:
         return await _register_branded_source(request, body)
@@ -454,13 +464,9 @@ async def register_graphql_remote_source(
         raise ApiError(422, "graphql_remote.url_required", "A GraphQL endpoint URL is required")
 
     try:
-        tables, functions, auto_relationships = await _introspect_and_map(
-            body.source_id,
-            body.url,
-            body.namespace,
-            body.domain_id,
-            body.auth,
-            field_overrides=body.field_overrides or None,
+        schema = await introspect_schema(body.url, body.auth)
+        offered, _, _ = map_schema(
+            schema, body.namespace, body.source_id, body.domain_id, only=set()
         )
     except Exception as exc:
         raise ApiError(
@@ -470,96 +476,61 @@ async def register_graphql_remote_source(
             error=str(exc),
         ) from exc
 
-    all_relationships = auto_relationships + (body.relationships or [])
-    registration = GraphQLRemoteRegistration(
-        source_id=body.source_id,
-        url=body.url,
-        namespace=body.namespace,
-        domain_id=body.domain_id,
-        auth=body.auth,
-        cache_ttl=body.cache_ttl,
-        tables=tables,
-        functions=functions,
-        relationships=all_relationships,
-    )
-
-    if not hasattr(state, "graphql_remote_sources"):
-        state.graphql_remote_sources = {}
-    reg_dict = registration.model_dump()
-    reg_dict["field_overrides"] = body.field_overrides or {}
-    state.graphql_remote_sources[body.source_id] = reg_dict
-
-    _tenant_db = state.tenant_db
-    # REQ-1918: tables the remote schema no longer has that something still refers to.
-    kept_tables: list[dict] = []
-    if _tenant_db is not None:
-        async with _tenant_db.acquire() as _conn:
-            await _persist_source(
-                request,
-                body.source_id,
-                body.url,
-                body.description,
-                body.namespace,
-                body.auth,
-                None,
-                _conn,
-            )
-            if body.domain_id:
-                await _conn.upsert(
-                    domains,
-                    {"id": body.domain_id},
-                    index_elements=["id"],
-                    update_columns=[],
-                )
-        kept_tables = await _upsert_tables_to_semantic_layer(
+    if state.tenant_db is None:
+        raise ApiError(503, "graphql_remote.database_not_connected", "Database not connected")
+    async with state.tenant_db.acquire() as _conn:
+        await _persist_source(
+            request,
             body.source_id,
-            body.domain_id,
-            tables,
-            _tenant_db,
+            body.url,
+            body.description,
+            body.namespace,
+            body.auth,
+            None,
+            _conn,
         )
-        await _upsert_relationships_to_semantic_layer(all_relationships, _tenant_db, state)
-        try:
-            from provisa.api.app import _rebuild_schemas
-
-            await _rebuild_schemas()
-        except Exception:
-            log.warning("Schema rebuild failed after graphql-remote registration", exc_info=True)
-
-        # REQ-1729: register_table's mutation path re-enters the convergent landed-table
-        # reconcile (REQ-846/932) after registration — the pass that actually creates a
-        # MATERIALIZED source's landing schema/view in the engine catalog. graphql_remote has
-        # no live connector (not in the pgwire-replica _OPERAND_BUILDERS set), so its tables are
-        # MATERIALIZED-only; this REST router upserted registered_tables rows directly and never
-        # reconciled, so a query against a freshly graphql-remote-registered source's table
-        # failed "schema graphql does not exist" — the landing schema had never been created.
-        try:
-            await state.federation_engine.reconcile_landed_tables()
-        except Exception:
-            log.exception("landed-table reconcile after graphql-remote registration failed")
-
-    log.info(
-        "Registered GraphQL remote source %s (%d tables, %d functions, %d relationships)",
-        body.source_id,
-        len(tables),
-        len(functions),
-        len(all_relationships),
-    )
+        if body.domain_id:
+            await _conn.upsert(
+                domains, {"id": body.domain_id}, index_elements=["id"], update_columns=[]
+            )
+    state.graphql_remote_sources[body.source_id] = {
+        "source_id": body.source_id,
+        "url": body.url,
+        "namespace": body.namespace,
+        "domain_id": body.domain_id,
+        "auth": body.auth,
+        "cache_ttl": body.cache_ttl,
+        "field_overrides": body.field_overrides or {},
+        # Kept so the picker and each table registration read it without asking the remote again.
+        "schema": schema,
+        "tables": [],
+        "functions": [],
+        "relationships": body.relationships or [],
+    }
+    await _rebuild_schemas()
+    log.info("Added GraphQL remote source %s (%d tables on offer)", body.source_id, len(offered))
     return {
         "source_id": body.source_id,
-        "tables": len(tables),
-        "functions": len(functions),
-        "relationships": len(all_relationships),
-        "table_names": [t["name"] for t in tables],
-        "function_names": [f["name"] for f in functions],
-        "kept_tables": kept_tables,
+        **remote_source_counts(0, len(offered), offered_mutation_count(schema)),
+        "relationships": 0,
+        "table_names": [],
+        "kept_tables": [],
     }
 
 
 @router.post("/{source_id}/refresh")
 async def refresh_graphql_remote_source(request: Request, source_id: str):  # REQ-311, REQ-598
-    """Re-introspect a registered remote source and update its table/function registrations."""
+    """Read a remote source's schema again and bring its REGISTERED tables up to date with it.
+    Nothing new is registered: a table the schema has gained is on offer, and one it has lost is
+    retired unless something still refers to it."""
     require_capability_request(request, "source_registration")
-    from provisa.api.app import state
+    from provisa.api.admin._graphql_table_registration import (
+        refreshed_registered_tables,
+        remember_table,
+        source_offer,
+    )
+    from provisa.graphql_remote.brands import offered_mutation_count
+    from provisa.api.app import _rebuild_schemas, state
 
     sources = getattr(state, "graphql_remote_sources", {})
     if source_id not in sources:
@@ -580,15 +551,14 @@ async def refresh_graphql_remote_source(request: Request, source_id: str):  # RE
             f"Source {source_id!r} uses a schema that ships with Provisa",
             source_id=source_id,
         )
+    if state.tenant_db is None:
+        raise ApiError(503, "graphql_remote.database_not_connected", "Database not connected")
     try:
-        tables, functions, auto_relationships = await _introspect_and_map(
-            source_id,
-            reg["url"],
-            reg["namespace"],
-            reg.get("domain_id", ""),
-            reg.get("auth"),
-            field_overrides=reg.get("field_overrides") or None,
-        )
+        reg["schema"] = None  # read again, not answered from what is kept
+        offered = await source_offer(state, source_id)
+        assert offered is not None
+        offer, _ = offered
+        tables = await refreshed_registered_tables(state, offer, reg)
     except Exception as exc:
         raise ApiError(
             422,
@@ -597,41 +567,25 @@ async def refresh_graphql_remote_source(request: Request, source_id: str):  # RE
             error=str(exc),
         ) from exc
 
-    manual_rels = [r for r in reg.get("relationships", []) if r.get("remote_managed") is not True]
-    all_relationships = auto_relationships + manual_rels
-    reg["tables"] = tables
-    reg["functions"] = functions
-    reg["relationships"] = all_relationships
-    state.graphql_remote_sources[source_id] = reg
-
-    _tenant_db = state.tenant_db
     # REQ-1918: tables the remote schema no longer has that something still refers to.
-    kept_tables: list[dict] = []
-    if _tenant_db is not None:
-        kept_tables = await _upsert_tables_to_semantic_layer(
-            source_id,
-            reg.get("domain_id", ""),
-            tables,
-            _tenant_db,
-        )
-        await _upsert_relationships_to_semantic_layer(all_relationships, _tenant_db, state)
-        try:
-            from provisa.api.app import _rebuild_schemas
-
-            await _rebuild_schemas()
-        except Exception:
-            log.warning("Schema rebuild failed after graphql-remote refresh", exc_info=True)
-
-    log.info(
-        "Refreshed GraphQL remote source %s (%d relationships)", source_id, len(all_relationships)
+    kept_tables = await _upsert_tables_to_semantic_layer(
+        source_id, reg.get("domain_id", ""), tables, state.tenant_db
     )
+    reg["tables"] = []
+    for table in tables:
+        await remember_table(state, reg, table["sql_name"], table)
+    await _rebuild_schemas()
+
+    log.info("Refreshed GraphQL remote source %s (%d tables)", source_id, len(tables))
     return {
         "source_id": source_id,
-        "tables": len(tables),
-        "functions": len(functions),
-        "relationships": len(all_relationships),
+        **remote_source_counts(
+            len(tables),
+            len(offer.table_index(reg.get("namespace", ""))),
+            offered_mutation_count(offer.schema()),
+        ),
+        "relationships": len(reg.get("relationships", [])),
         "table_names": [t["name"] for t in tables],
-        "function_names": [f["name"] for f in functions],
         "kept_tables": kept_tables,
     }
 

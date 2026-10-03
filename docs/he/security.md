@@ -331,7 +331,7 @@ gRPC, Arrow Flight ו-MCP מוסרים את האישורים שלהם לספרי
 
 ## Hook אישור ABAC
 
-Hook מדיניות חיצוני אופציונלי הנפעל לפני ביצוע השאילתה. (REQ-203) כאשר מוגדר, Provisa קוראת למנוע המדיניות שלך עם זהות המשתמש, התפקידים, הטבלאות, העמודות, והפעולה. התגובה קובעת האם השאילתה ממשיכה. (REQ-203)
+Hook מדיניות חיצוני אופציונלי הנפעל לפני ביצוע השאילתה. (REQ-203) כאשר מוגדר, Provisa קוראת למנוע המדיניות שלך עם זהות המשתמש, התפקידים, הטבלאות, העמודות, והפעולה. התגובה קובעת האם השאילתה ממשיכה. (REQ-203) פקודה שנרשמה עם **דורש אישור** מוצגת לאותו hook לפני כל קריאה; ראו [קריאות לפקודה](#command-calls). (REQ-1924)
 
 ### היקף (Scoping)
 
@@ -366,6 +366,9 @@ message ApprovalRequest {
   repeated string tables = 3;
   repeated string columns = 4;
   string operation = 5;
+  map<string, string> session_vars = 6;
+  string command = 7;         // a command call's name; empty for a query
+  string arguments_json = 8;  // a command call's arguments as a JSON object
 }
 
 message ApprovalResponse {
@@ -386,9 +389,34 @@ message ApprovalResponse {
 | `roles` | string[] | תפקידי Provisa של המשתמש |
 | `tables` | string[] | מזהי טבלה המוזכרים בשאילתה |
 | `columns` | string[] | עמודות שנבחרו בשאילתה |
-| `operation` | string | `"query"` או `"mutation"` |
+| `operation` | string | `"query"` או `"mutation"`; `"command"` עבור קריאה לפקודה |
+| `command` | string | שם הפקודה בקריאה לפקודה; ריק בשאילתה |
+| `arguments` | object | הארגומנטים שבהם נקראת פקודה; ריק בשאילתה |
 
-תעבורות ה-webhook ו-Unix socket מחליפות JSON. התגובה חייבת לכלול `approved` (bool) ואופציונלית `reason` (string). (REQ-246)
+תעבורות ה-webhook ו-Unix socket מחליפות JSON, עם `command` ו-`arguments` כמפתחות. ב-gRPC הארגומנטים עוברים כטקסט ה-JSON `arguments_json`. התגובה חייבת לכלול `approved` (bool) ואופציונלית `reason` (string). (REQ-246) [tool-verified: `provisa/auth/approval_hook.py` `ApprovalRequest`, `_request_to_dict`, `GrpcApprovalHook` (`arguments_json=json.dumps(request.arguments, default=str)`); `provisa/auth/approval.proto`]
+
+### קריאות לפקודה {: #command-calls }
+
+פקודה שהוגדר בה `requires_approval` (מתג **דורש אישור** בטופס הפקודה) עוברת ל-hook לפני כל קריאה, בכל משטח. היא רצה רק אם ה-hook מאשר. הבקשה נושאת `operation: "command"`, את שם הפקודה ואת הארגומנטים שלה; `tables` ו-`columns` ריקים. (REQ-1924) [tool-verified: `provisa/api/data/action_exec.py` `_require_approval` (`operation="command"`, `tables=[]`, `columns=[]`, `command=fn["name"]`, `arguments=args`)]
+
+```json
+{
+  "user": "analyst",
+  "roles": ["analyst"],
+  "tables": [],
+  "columns": [],
+  "operation": "command",
+  "command": "create_issue",
+  "arguments": {"input": {"title": "Crash on save"}}
+}
+```
+
+[inferred: the payload also carries `session_vars`; values shown are placeholders]
+
+שתי דחיות, שתיהן 403 [tool-verified: `_require_approval`]:
+
+- `functions.approval_unavailable`: לא הוגדר hook. בניגוד לשאילתה, פקודה הדורשת אישור לעולם אינה מועברת בלי hook.
+- `functions.approval_denied`: ה-hook השיב `approved: false`. הנימוק נמצא בהודעה.
 
 ### Timeout ונפילה חוזרת (Fallback)
 

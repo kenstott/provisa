@@ -900,6 +900,8 @@ CREATE TABLE IF NOT EXISTS tracked_functions (
     domain_id     TEXT NOT NULL DEFAULT '',
     description   TEXT,
     output_columns JSONB,  -- REQ-1159: canonical IR-typed output dataset contract [{name,type}]
+    requires_approval BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-1924: each call approved by the hook
+    writes_table  TEXT,  -- REQ-1924, REQ-871: "schema.table" of the registered table it writes
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

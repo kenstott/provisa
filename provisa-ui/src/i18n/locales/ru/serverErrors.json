@@ -9,7 +9,8 @@
       "test_endpoint_disabled": "Тестовая конечная точка отключена (задайте PROVISA_ENABLE_TEST_ENDPOINTS, чтобы включить вне production).",
       "unknown_action_type": "Неизвестный actionType '{{action_type}}'",
       "unknown_role": "Неизвестная роль '{{role}}'",
-      "webhook_not_found": "Вебхук '{{name}}' не найден"
+      "webhook_not_found": "Вебхук '{{name}}' не найден",
+      "written_table_not_registered": "'{{table}}' не является зарегистрированной таблицей источника '{{source_id}}'"
     },
     "ai_models": {
       "vector_model_fields_required": "каждая запись vector_models требует id, provider и dimensions"
@@ -106,18 +107,25 @@
       "coordinator_waking": "Среда запускается. Она будет готова примерно через две минуты."
     },
     "functions": {
+      "approval_denied": "В одобрении '{{name}}' отказано: {{reason}}",
+      "approval_unavailable": "команда '{{name}}' требует одобрения, а хук одобрения не настроен",
       "binding_missing_key": "в привязке функции для типа '{{kind}}' отсутствует обязательный ключ '{{key}}'",
       "egress_denied": "исходящее подключение к '{{endpoint}}' запрещено: хост не входит в список разрешенных для исходящего трафика UDF (REQ-885, запрет по умолчанию). Добавьте его в udf_egress_allowlist, чтобы разрешить.",
       "grpc_call_failed": "вызов grpc {{target}}{{path}} завершился ошибкой: {{status}}: {{details}}",
       "grpc_method_invalid": "метод grpc '{{method}}' должен иметь вид 'Service/Method' или 'pkg.Service.Method'",
+      "json_argument_invalid": "аргумент '{{argument}}' для '{{name}}' не является литералом JSON",
       "non_tabular_payload": "функция вернула нетабличные данные: {{payload_type}}",
+      "not_a_remote_source": "Источник '{{source_id}}' не предлагает операций записи",
+      "operation_not_offered": "Источник '{{source_id}}' не предлагает операцию '{{operation}}'",
       "python_callable_invalid": "вызываемый объект python '{{spec}}' должен иметь вид 'module:attr'",
+      "remote_refused": "{{source_id}} отклонил {{operation}}: {{answer}}",
       "result_set_ref_invalid": "ссылка result_set '{{ref}}' должна иметь вид source.schema.table",
       "rowwise_external": "функция '{{name}}' (kind={{impl_kind}}) является построчной внешней: все аргументы — скалярные column_value. Объявите аргумент-отношение table_ref/result_set, чтобы вызовы выполнялись помножественно и пакетно (REQ-885).",
       "script_failed": "скрипт завершился с кодом {{returncode}}: {{stderr}}",
       "source_not_connected": "Источник '{{source_id}}' не подключен",
       "unknown_arg_kind": "Неизвестный arg_kind '{{arg_kind}}' для '{{name}}'",
-      "unknown_impl_kind": "Неизвестный impl_kind функции: '{{impl_kind}}'"
+      "unknown_impl_kind": "Неизвестный impl_kind функции: '{{impl_kind}}'",
+      "written_table_missing": "команда '{{name}}' записывает в '{{table}}', которая не зарегистрирована"
     },
     "graphql_remote": {
       "introspection_failed": "Сбой интроспекции: {{error}}",
@@ -153,7 +161,6 @@
     },
     "openapi": {
       "database_not_connected": "База данных не подключена",
-      "domain_required": "Источник OpenAPI {{source}} объявляет команды ({{commands}}) и не указывает домен: команда относится к домену, поэтому для регистрации он необходим",
       "invalid_json": "Недействительный JSON: {{error}}",
       "refresh_failed": "Сбой обновления: {{error}}",
       "registration_failed": "Сбой регистрации: {{error}}",

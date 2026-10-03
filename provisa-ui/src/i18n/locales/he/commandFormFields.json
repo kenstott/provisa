@@ -60,6 +60,10 @@
     "maskPattern": "תבנית",
     "maskReplace": "החלפה",
     "maskValue": "ערך",
-    "maskPrecision": "דיוק"
+    "maskPrecision": "דיוק",
+    "requiresApproval": "דורש אישור",
+    "requiresApprovalHint": "כל קריאה מתבצעת רק לאחר שה-hook לאישור מאשר אותה. ללא hook מוגדר, קריאות נדחות.",
+    "writesTable": "כותב לטבלה",
+    "writesTableHint": "הטבלה הרשומה שפקודה זו משנה. לאחר כל קריאה, תוצאות שמורות במטמון ותצוגות ממומשות עליה מתרעננות."
   }
 }

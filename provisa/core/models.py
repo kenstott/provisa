@@ -1365,7 +1365,9 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     # REQ-885: implementation-kind dimension. Addressing (name/function_name) is decoupled
     # from binding (transport + location, swappable). ``source_procedure`` is the existing
     # REQ-205–208 path; the others are Provisa-hosted / external implementations.
-    #   source_procedure | script | http | grpc | python
+    #   source_procedure | source_operation | script | http | grpc | python
+    # source_operation (REQ-1924): a write operation of a remote source (OpenAPI, GraphQL, gRPC),
+    # named by source_id and function_name and passed through as is.
     impl_kind: str = "source_procedure"
     # Per-kind transport+location. Never a fallback: dispatch fails loud when a hosted kind
     # is registered without the binding keys its transport requires (REQ-885).
@@ -1383,6 +1385,13 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     # returns, symmetric with each input dataset arg's `columns`. Validated on the way out (fail-loud).
     # This is the source of truth; return_schema is its GraphQL projection. None ⇒ output unvalidated.
     output_columns: list[DatasetColumn] | None = None
+    # REQ-1924: each call is put to the deployment's approval hook (REQ-203) before it runs, and
+    # runs only when the hook approves it. With no hook configured the call is refused.
+    requires_approval: bool = False
+    # REQ-1924, REQ-871: the registered table of the same source this command writes, as
+    # "schema.table", where it is known. After a call, what is held of that table's rows stops
+    # being served, as after any write to it.
+    writes_table: str | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 

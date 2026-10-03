@@ -121,6 +121,55 @@ export async function registeredTableNames(page: Page, sourceId: string): Promis
   return tables.filter((t) => t.sourceId === sourceId).map((t) => t.tableName);
 }
 
+/**
+ * Register one of the tables a remote source offers (REQ-308, REQ-322): adding such a source
+ * registers nothing, so the table is found in what the source offers and registered with the
+ * columns named, each visible to every role. Returns the table's registered name.
+ */
+export async function registerOfferedTable(
+  page: Page,
+  sourceId: string,
+  schemaName: string,
+  nameIncludes: string,
+  columns: string[],
+): Promise<string> {
+  expect(await registeredTableNames(page, sourceId), `${sourceId} registered tables`).toEqual([]);
+  const offered = await page.request.post("/admin/graphql", {
+    data: {
+      query: `query($sourceId: String!, $schemaName: String!) {
+        availableTables(sourceId: $sourceId, schemaName: $schemaName) { name }
+      }`,
+      variables: { sourceId, schemaName },
+    },
+  });
+  expect(offered.ok(), await offered.text()).toBeTruthy();
+  const offeredJson = await offered.json();
+  expect(offeredJson.errors, JSON.stringify(offeredJson.errors)).toBeUndefined();
+  const names = (offeredJson.data.availableTables as { name: string }[]).map((t) => t.name);
+  const tableName = names.find((n) => n.includes(nameIncludes));
+  expect(tableName, `${sourceId} offers no table matching ${nameIncludes}: ${names}`).toBeTruthy();
+  const res = await page.request.post("/admin/graphql", {
+    data: {
+      query: `mutation($t: TableInput!) { registerTable(input: $t) { success message } }`,
+      variables: {
+        t: {
+          sourceId,
+          domainId: "",
+          schemaName,
+          tableName,
+          columns: columns.map((name) => ({ name, visibleTo: ["*"] })),
+        },
+      },
+    },
+  });
+  expect(res.ok(), await res.text()).toBeTruthy();
+  const json = await res.json();
+  expect(json.errors, JSON.stringify(json.errors)).toBeUndefined();
+  expect(json.data.registerTable.success, json.data.registerTable.message).toBeTruthy();
+  expect(await registeredTableNames(page, sourceId)).toEqual([tableName]);
+  return tableName as string;
+}
+
 export async function typeSql(page: Page, sql: string) {
   const editor = page.locator(".cm-content").first();
   await editor.click();

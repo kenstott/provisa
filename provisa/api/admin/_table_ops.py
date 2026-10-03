@@ -246,28 +246,52 @@ async def _ensure_view_column_types(
     return columns, None
 
 
-async def _branded_columns_for_input(
+async def _graphql_columns_for_input(
     input, chosen: list
 ) -> "tuple[list, MutationResult | None] | None":
-    """The columns of a branded GraphQL source's table (REQ-1923), or None when the source is
-    not branded. The table is fitted to what the source's credential may read; the fields left
-    out are held for the mutation to report
-    (:func:`take_omitted_fields`). A table the credential may not read at all is refused."""
-    from provisa.api.admin._graphql_brand_registration import (
-        branded_registration,
+    """The columns of a remote GraphQL source's table (REQ-308, REQ-1923), or None when the
+    source is not one, or the change is to governance alone.
+
+    A table's columns come from the source's schema, fitted to what the source's credential may
+    read; the fields left out are held for the mutation to report (:func:`take_omitted_fields`).
+    A table the credential may not read at all is refused. The remote is asked only when the
+    table's columns change: a table already registered with every column named is a change to
+    who may see what, and is answered from what is stored."""
+    import httpx
+
+    from provisa.api.admin._graphql_table_registration import (
         columns_to_register,
+        registered_column_names,
+        remember_table,
+        source_offer,
     )
     from provisa.api.admin.types import MutationResult
     from provisa.api.app import state
     from provisa.graphql_remote.probe import QueryTooComplex
 
-    branded = branded_registration(state, input.source_id)
-    if branded is None:
+    if input.source_id not in getattr(state, "graphql_remote_sources", {}):
         return None
-    brand, reg = branded
+    picked = {c.name for c in chosen if c.native_filter_type is None}
+    if picked:
+        stored = await registered_column_names(
+            state, input.source_id, input.schema_name, input.table_name
+        )
+        if picked <= stored:
+            return None
     try:
-        columns, omitted = await columns_to_register(
-            brand,
+        offered = await source_offer(state, input.source_id)
+    except (httpx.HTTPError, ValueError) as unreadable:
+        return [], MutationResult(
+            success=False,
+            message=f"The schema of source {input.source_id!r} could not be read: {unreadable}",
+            code="schema.discovery_failed",
+            params={"error": str(unreadable)},
+        )
+    assert offered is not None
+    offer, reg = offered
+    try:
+        columns, omitted, fitted = await columns_to_register(
+            offer,
             reg,
             input.table_name,
             input.domain_id,
@@ -280,7 +304,7 @@ async def _branded_columns_for_input(
         return [], MutationResult(
             success=False,
             message=(
-                f"{brand.label} will not run {input.table_name} with the columns selected: "
+                f"{offer.label} will not run {input.table_name} with the columns selected: "
                 f"{costly.reason}. Choose fewer columns"
             ),
             code="schema.table_too_complex",
@@ -291,14 +315,73 @@ async def _branded_columns_for_input(
         return [], MutationResult(
             success=False,
             message=(
-                f"{brand.label} does not let this source's credential read "
+                f"{offer.label} does not let this source's credential read "
                 f"{input.table_name}: {'; '.join(reasons)}"
             ),
             code="schema.table_not_readable",
             params={"table": input.table_name, "reason": "; ".join(reasons)},
         )
+    await remember_table(state, reg, input.table_name, fitted)
     _OMITTED_FIELDS[(input.source_id, input.table_name)] = omitted
     return columns, None
+
+
+async def _grpc_columns_for_input(
+    input, chosen: list
+) -> "tuple[list, MutationResult | None] | None":
+    """The columns of a gRPC source's table (REQ-322), or None when the source is not one, or
+    the change is to governance alone.
+
+    A table's columns come from the source's proto: the response fields the steward picked
+    (every one when none is named), with the governance the steward gave them, and a
+    native-filter column for each request field."""
+    from provisa.api.admin.grpc_remote_router import (
+        query_columns,
+        record_query_registration,
+        registered_query_tables,
+    )
+    from provisa.grpc_remote.mapper import query_table_name
+    from provisa.api.admin.types import MutationResult
+    from provisa.api.app import state
+
+    reg = getattr(state, "grpc_remote_sources", {}).get(input.source_id)
+    if reg is None:
+        return None
+    namespace = reg.get("namespace", "")
+    picked = {c.name: c for c in chosen if c.native_filter_type is None}
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        stored = (await registered_query_tables(conn, input.source_id)).get(input.table_name)
+        if picked and stored is not None and set(picked) <= stored[1]:
+            return None
+        query = next(
+            (
+                q
+                for q in reg.get("queries") or []
+                if query_table_name(namespace, q) == input.table_name
+            ),
+            None,
+        )
+        if query is None:
+            return [], MutationResult(
+                success=False,
+                message=f"Source {input.source_id!r} offers no table {input.table_name!r}",
+            )
+        await record_query_registration(conn, input.source_id, query, namespace, input.domain_id)
+    output_cols, nf_cols = query_columns(query)
+    columns = []
+    for col in output_cols:
+        pick = picked.get(col.name)
+        if picked and pick is None:
+            continue
+        columns.append(
+            col
+            if pick is None
+            else pick.model_copy(
+                update={"data_type": col.data_type, "object_fields": col.object_fields}
+            )
+        )
+    return [*columns, *nf_cols], None
 
 
 # Fields left out of a branded table while its columns were resolved, held from that step of a
@@ -327,9 +410,24 @@ async def _build_columns_for_input(pool, input) -> "tuple[list, MutationResult |
 
     columns = _build_column_models(input.columns)
     if not input.view_sql:
-        branded = await _branded_columns_for_input(input, columns)
-        if branded is not None:
-            return branded
+        from_schema = await _graphql_columns_for_input(input, columns)
+        if from_schema is None:
+            from_schema = await _grpc_columns_for_input(input, columns)
+        if from_schema is not None:
+            return from_schema
+    if input.view_sql:
+        from provisa.api.admin.types import MutationResult
+        from provisa.api.app import state
+        from provisa.executor.source_operation import refuse_writes_in_definition
+
+        try:
+            refuse_writes_in_definition(
+                input.view_sql,
+                getattr(state, "tracked_functions", None) or {},
+                f"view {input.table_name!r}",
+            )
+        except ValueError as refused:
+            return [], MutationResult(success=False, message=str(refused))
     if input.view_sql and not columns:
         async with pool.acquire() as _vc:
             _roles = [r.id for r in (await _vc.execute_core(select(roles.c.id))).fetchall()]

@@ -814,51 +814,64 @@ _REQ316_SPEC: dict = {
 
 
 # ---------------------------------------------------------------------------
-# REQ-316 Steps — GET operations auto-register as virtual query tables
+# REQ-316 Steps — GET operations are tables on offer; registering one is the curation
 # ---------------------------------------------------------------------------
 
 
-@given("an OpenAPI spec is registered")
-def given_openapi_spec_is_registered(shared_data):
-    """Register the Order Management spec (stored locally, ready to parse)."""
+@given("an OpenAPI source has been added")
+def given_openapi_source_has_been_added(shared_data):
+    """Adding the source stores its spec and registers nothing (REQ-316, amended 2026-10-02)."""
+    from types import SimpleNamespace
+
     shared_data["spec"] = copy.deepcopy(_REQ316_SPEC)
+    shared_data["state"] = SimpleNamespace(
+        openapi_specs={"orders-api": {"spec": shared_data["spec"]}}
+    )
+    shared_data["registered"] = []
 
 
-@when("Provisa parses the spec")
-def when_provisa_parses_the_spec(shared_data):
-    """Parse the spec with the real Provisa mapper."""
-    spec = shared_data["spec"]
-    queries, mutations = map_operations(spec)
+@when("the steward opens the Register Table picker for it")
+def when_steward_opens_register_table_picker(shared_data):
+    """The picker's own listing, from the stored spec."""
+    import asyncio
+
+    from provisa.api.admin.introspect import _native_tables_openapi
+
+    shared_data["offered"] = asyncio.run(
+        _native_tables_openapi("orders-api", "openapi", shared_data["state"])
+    )
+    queries, mutations = map_operations(shared_data["spec"])
     shared_data["queries"] = {q.operation_id: q for q in queries}
     shared_data["mutations"] = {m.operation_id: m for m in mutations}
 
 
-@then(
-    "all GET operations are auto-registered as virtual query tables with "
-    "path/query params as GraphQL arguments"
-)
-def then_get_operations_registered_as_virtual_tables(shared_data):
-    """Assert real mapper output: every GET is a query with its params surfaced."""
+@then("every GET operation of the spec is listed as a table and none is registered")
+def then_every_get_operation_listed_none_registered(shared_data):
     spec: dict = shared_data["spec"]
     queries: dict[str, OpenAPIQuery] = shared_data["queries"]
     mutations: dict[str, OpenAPIMutation] = shared_data["mutations"]
 
-    # Every GET operation in the spec must appear as a virtual query table.
-    expected_get_ids: set[str] = set()
-    for path_item in spec["paths"].values():
-        get_op = path_item.get("get")
-        if get_op:
-            expected_get_ids.add(get_op["operationId"])
-
+    expected_get_ids = {
+        path_item["get"]["operationId"]
+        for path_item in spec["paths"].values()
+        if path_item.get("get")
+    }
     assert expected_get_ids, "fixture must contain GET operations"
+    # Every GET operation is a query the mapper knows, and none is classified as a mutation.
     assert expected_get_ids <= set(queries), (
         f"missing GET virtual tables: {expected_get_ids - set(queries)}"
     )
+    assert expected_get_ids.isdisjoint(mutations)
+    # What the picker offers is drawn from them, and offering registers nothing.
+    offered = {t.name for t in shared_data["offered"]}
+    assert offered and offered <= expected_get_ids, offered
+    assert "listOrders" in offered
+    assert shared_data["registered"] == []
 
-    # No GET may be classified as a mutation.
-    assert expected_get_ids.isdisjoint(mutations), (
-        f"GET operations wrongly classified as mutations: {expected_get_ids & set(mutations)}"
-    )
+
+@then("a table the steward registers has path/query params as GraphQL arguments")
+def then_registered_table_has_params_as_arguments(shared_data):
+    queries: dict[str, OpenAPIQuery] = shared_data["queries"]
 
     # listOrders: query params become GraphQL arguments.
     list_orders = queries["listOrders"]

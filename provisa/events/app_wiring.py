@@ -151,6 +151,7 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
         make_elasticsearch_loader,
         make_firebird_loader,
         make_graphql_remote_loader,
+        make_grpc_remote_loader,
         make_hive_s3_loader,
         make_kafka_loader,
         make_mongodb_loader,
@@ -180,6 +181,9 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
         loaders["graphql_remote"] = make_graphql_remote_loader(
             gql_sources, state.config.graphql_remote.max_rows
         )
+    grpc_sources = getattr(state, "grpc_remote_sources", None)
+    if grpc_sources:
+        loaders["grpc_remote"] = make_grpc_remote_loader(grpc_sources)
     dq_loader = make_dq_loader(state)
     loaders["soda"] = dq_loader
     loaders["great_expectations"] = dq_loader

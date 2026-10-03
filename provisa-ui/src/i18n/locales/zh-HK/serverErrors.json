@@ -9,7 +9,8 @@
       "test_endpoint_disabled": "測試端點已停用（在非生產環境設定 PROVISA_ENABLE_TEST_ENDPOINTS 以啟用）。",
       "unknown_action_type": "未知的 actionType「{{action_type}}」",
       "unknown_role": "未知角色「{{role}}」",
-      "webhook_not_found": "找不到 Webhook「{{name}}」"
+      "webhook_not_found": "找不到 Webhook「{{name}}」",
+      "written_table_not_registered": "'{{table}}' 不是資料來源 '{{source_id}}' 的已註冊表"
     },
     "ai_models": {
       "vector_model_fields_required": "每個 vector_models 項目都需要 id、provider 及 dimensions"
@@ -106,18 +107,25 @@
       "coordinator_waking": "環境正在啟動，大約兩分鐘後就緒。"
     },
     "functions": {
+      "approval_denied": "'{{name}}' 的審批被拒絕：{{reason}}",
+      "approval_unavailable": "命令 '{{name}}' 需要審批，但未設定審批鉤子",
       "binding_missing_key": "類型「{{kind}}」的函數繫結缺少必要索引鍵「{{key}}」",
       "egress_denied": "拒絕連出至「{{endpoint}}」：主機不在 UDF 連出允許清單上（REQ-885 預設拒絕）。請將其加入 udf_egress_allowlist 以允許。",
       "grpc_call_failed": "gRPC 呼叫 {{target}}{{path}} 失敗：{{status}}：{{details}}",
       "grpc_method_invalid": "gRPC 方法「{{method}}」必須為「Service/Method」或「pkg.Service.Method」",
+      "json_argument_invalid": "'{{name}}' 的參數 '{{argument}}' 不是 JSON 字面值",
       "non_tabular_payload": "函數傳回非表格式承載：{{payload_type}}",
+      "not_a_remote_source": "資料來源 '{{source_id}}' 不提供寫入操作",
+      "operation_not_offered": "資料來源 '{{source_id}}' 不提供操作 '{{operation}}'",
       "python_callable_invalid": "Python 可呼叫物件「{{spec}}」必須為「module:attr」",
+      "remote_refused": "{{source_id}} 拒絕了 {{operation}}：{{answer}}",
       "result_set_ref_invalid": "result_set 參考「{{ref}}」必須為 source.schema.table",
       "rowwise_external": "函數「{{name}}」（kind={{impl_kind}}）屬逐行外部呼叫：所有引數都是純量 column_value。請宣告一個 table_ref/result_set 關係引數，使呼叫以集合方式批次執行（REQ-885）。",
       "script_failed": "指令碼以 {{returncode}} 結束：{{stderr}}",
       "source_not_connected": "數據來源「{{source_id}}」未連線",
       "unknown_arg_kind": "「{{name}}」的 arg_kind「{{arg_kind}}」未知",
-      "unknown_impl_kind": "未知的函數 impl_kind：「{{impl_kind}}」"
+      "unknown_impl_kind": "未知的函數 impl_kind：「{{impl_kind}}」",
+      "written_table_missing": "命令 '{{name}}' 寫入 '{{table}}'，但該表未註冊"
     },
     "graphql_remote": {
       "introspection_failed": "內省失敗：{{error}}",
@@ -153,7 +161,6 @@
     },
     "openapi": {
       "database_not_connected": "數據庫未連線",
-      "domain_required": "OpenAPI 資料來源 {{source}} 宣告了 {{commands}} 個指令但未指定網域：指令必須屬於某個網域，因此註冊時需要指定網域",
       "invalid_json": "JSON 無效：{{error}}",
       "refresh_failed": "重新整理失敗：{{error}}",
       "registration_failed": "註冊失敗：{{error}}",

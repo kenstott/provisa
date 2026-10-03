@@ -660,6 +660,20 @@ async def _reject_unbound_writes(parsed: Any, state: Any) -> None:
         )
 
 
+def _refuse_composed_mutators(tree, commands: dict) -> None:
+    """REQ-1924: a source's write operation is an action, called on its own. Composed in a larger
+    statement -- a join, a subquery, a view or a materialized view whose definition holds it --
+    it would perform the write each time the statement is read or refreshed, so it is refused."""
+    from provisa.executor.source_operation import writes_called_in
+
+    called = writes_called_in(tree, commands)
+    if called:
+        raise PermissionError(
+            f"command {called[0]!r} writes to its source and is called on its own: it cannot be "
+            "composed in a query, a view or a materialized view (REQ-1924)"
+        )
+
+
 async def _localize_inline_commands(tree, role_id: str, state) -> bool:
     """REQ-1159: rewrite every inline command call in ``tree`` to a typed local relation, in place.
 
@@ -672,6 +686,8 @@ async def _localize_inline_commands(tree, role_id: str, state) -> bool:
         return False
     from provisa.api.data.action_exec import invoke_tracked_function
     from provisa.executor.command_localize import localize_commands
+
+    _refuse_composed_mutators(tree, commands)
 
     async def _run(name: str, args: dict) -> list[dict]:
         return await invoke_tracked_function(name, args, state, role_id)

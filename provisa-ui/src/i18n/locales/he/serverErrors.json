@@ -9,7 +9,8 @@
       "test_endpoint_disabled": "נקודת הקצה לבדיקות מושבתת (הגדירו את PROVISA_ENABLE_TEST_ENDPOINTS כדי להפעיל בסביבה שאינה ייצור).",
       "unknown_action_type": "actionType לא מוכר '{{action_type}}'",
       "unknown_role": "תפקיד לא מוכר '{{role}}'",
-      "webhook_not_found": "Webhook '{{name}}' לא נמצא"
+      "webhook_not_found": "Webhook '{{name}}' לא נמצא",
+      "written_table_not_registered": "'{{table}}' אינה טבלה רשומה של המקור '{{source_id}}'"
     },
     "ai_models": {
       "vector_model_fields_required": "כל רשומת vector_models דורשת id, provider ו-dimensions"
@@ -106,18 +107,25 @@
       "coordinator_waking": "הסביבה מופעלת. היא תהיה מוכנה בעוד כשתי דקות."
     },
     "functions": {
+      "approval_denied": "האישור נדחה עבור '{{name}}': {{reason}}",
+      "approval_unavailable": "הפקודה '{{name}}' דורשת אישור ולא מוגדר hook לאישור",
       "binding_missing_key": "לקישור הפונקציה עבור kind '{{kind}}' חסר מפתח חובה '{{key}}'",
       "egress_denied": "יציאה אל '{{endpoint}}' נדחתה: המארח אינו ברשימת ההיתרים ליציאת UDF (REQ-885 deny-by-default). הוסיפו אותו ל-udf_egress_allowlist כדי להתיר.",
       "grpc_call_failed": "קריאת grpc {{target}}{{path}} נכשלה: {{status}}: {{details}}",
       "grpc_method_invalid": "מתודת grpc '{{method}}' חייבת להיות 'Service/Method' או 'pkg.Service.Method'",
+      "json_argument_invalid": "הארגומנט '{{argument}}' של '{{name}}' אינו ליטרל JSON",
       "non_tabular_payload": "הפונקציה החזירה מטען לא טבלאי: {{payload_type}}",
+      "not_a_remote_source": "המקור '{{source_id}}' אינו מציע פעולות כתיבה",
+      "operation_not_offered": "המקור '{{source_id}}' אינו מציע את הפעולה '{{operation}}'",
       "python_callable_invalid": "python callable '{{spec}}' חייב להיות 'module:attr'",
+      "remote_refused": "{{source_id}} דחה את {{operation}}: {{answer}}",
       "result_set_ref_invalid": "הפניית result_set '{{ref}}' חייבת להיות source.schema.table",
       "rowwise_external": "הפונקציה '{{name}}' (kind={{impl_kind}}) היא חיצונית ברמת שורה: כל הארגומנטים הם column_value סקלרי. הצהירו על ארגומנט יחס table_ref/result_set כדי שהקריאות יהיו ברמת קבוצה ובאצוות (REQ-885).",
       "script_failed": "הסקריפט הסתיים בקוד {{returncode}}: {{stderr}}",
       "source_not_connected": "המקור '{{source_id}}' אינו מחובר",
       "unknown_arg_kind": "arg_kind לא מוכר '{{arg_kind}}' עבור '{{name}}'",
-      "unknown_impl_kind": "impl_kind לא מוכר של פונקציה: '{{impl_kind}}'"
+      "unknown_impl_kind": "impl_kind לא מוכר של פונקציה: '{{impl_kind}}'",
+      "written_table_missing": "הפקודה '{{name}}' כותבת אל '{{table}}', שאינה רשומה"
     },
     "graphql_remote": {
       "introspection_failed": "Introspection נכשל: {{error}}",
@@ -153,7 +161,6 @@
     },
     "openapi": {
       "database_not_connected": "מסד הנתונים אינו מחובר",
-      "domain_required": "מקור ה-OpenAPI ‏{{source}} מצהיר על {{commands}} פקודות ואינו מציין דומיין: פקודה שייכת לדומיין, ולכן הרישום דורש דומיין",
       "invalid_json": "JSON לא תקין: {{error}}",
       "refresh_failed": "הרענון נכשל: {{error}}",
       "registration_failed": "הרישום נכשל: {{error}}",

@@ -64,8 +64,50 @@ class Brand:
     # and on the page size, so the system's own answer is the measure, not a count of columns.
     too_complex_messages: tuple[str, ...] = ()
 
+    # How far lists nested in an object column are followed, and how many of their items asked for.
+    max_list_depth: int = 2
+    max_list_items: int = 100
+    field_overrides: dict[str, str] | None = None  # a brand's schema is mapped as shipped
+
     def auth(self, token: str) -> dict:
         return {"type": "bearer", "token": token}
+
+    def schema(self) -> dict:
+        return brand_schema(self.id)
+
+    def table_index(self, namespace: str) -> dict[str, dict]:
+        return _table_index(self.id, namespace)
+
+
+@dataclass(frozen=True, eq=False)
+class LiveSchema:
+    """What a plain remote GraphQL source offers: the schema its endpoint answered with, mapped
+    under the deployment's traversal settings. It declares none of what a brand declares about
+    its remote's errors, so a table of such a source is registered as mapped."""
+
+    label: str
+    introspected: dict
+    max_object_depth: int
+    max_list_depth: int
+    max_list_items: int
+    refused_error_types: frozenset[str] = frozenset()
+    too_complex_messages: tuple[str, ...] = ()
+    # REQ-597: fields the steward reclassified between query and mutation.
+    field_overrides: dict[str, str] | None = None
+
+    def schema(self) -> dict:
+        return self.introspected
+
+    def table_index(self, namespace: str) -> dict[str, dict]:
+        tables, _, _ = map_schema(
+            self.introspected, namespace, "", "", field_overrides=self.field_overrides, only=set()
+        )
+        return {t["sql_name"]: t for t in tables}
+
+
+# What a remote GraphQL source's tables are offered from: a brand's shipped schema, or a plain
+# source's own.
+SchemaOffer = Brand | LiveSchema
 
 
 BRANDS: dict[str, Brand] = {
@@ -135,28 +177,44 @@ def _table_index(brand_id: str, namespace: str) -> dict[str, dict]:
     return {t["sql_name"]: t for t in tables}
 
 
-def available_tables(brand: Brand, namespace: str) -> list[dict]:
-    """Every table the brand offers under ``namespace``: how it is read, without its columns."""
-    return list(_table_index(brand.id, namespace).values())
+def available_tables(offer: SchemaOffer, namespace: str) -> list[dict]:
+    """Every table the source offers under ``namespace``: how it is read, without its columns."""
+    return list(offer.table_index(namespace).values())
 
 
-def table_spec(brand: Brand, namespace: str, sql_name: str) -> dict | None:
-    """How one of the brand's tables is read (root field, row path, required arguments, page
+def table_spec(offer: SchemaOffer, namespace: str, sql_name: str) -> dict | None:
+    """How one of the source's tables is read (root field, row path, required arguments, page
     arguments), without its columns. None when the schema offers no such table."""
-    return _table_index(brand.id, namespace).get(sql_name)
+    return offer.table_index(namespace).get(sql_name)
 
 
-def map_table(brand: Brand, namespace: str, source_id: str, domain_id: str, sql_name: str) -> dict:
-    """One of the brand's tables in full, columns included."""
-    spec = table_spec(brand, namespace, sql_name)
+def map_table(
+    offer: SchemaOffer, namespace: str, source_id: str, domain_id: str, sql_name: str
+) -> dict:
+    """One of the source's tables in full, columns included."""
+    spec = table_spec(offer, namespace, sql_name)
     if spec is None:
-        raise KeyError(f"{brand.label} offers no table {sql_name!r}")
+        raise KeyError(f"{offer.label} offers no table {sql_name!r}")
     tables, _, _ = map_schema(
-        brand_schema(brand.id),
+        offer.schema(),
         namespace,
         source_id,
         domain_id,
-        max_object_depth=brand.max_object_depth,
+        max_object_depth=offer.max_object_depth,
+        max_list_depth=offer.max_list_depth,
+        max_list_items=offer.max_list_items,
+        field_overrides=offer.field_overrides,
         only={spec["name"]},
     )
     return next(t for t in tables if t["name"] == spec["name"])
+
+
+def offered_mutation_count(schema: dict) -> int:
+    """How many commands a GraphQL schema offers: the fields of its mutation root."""
+    root = (schema.get("mutationType") or {}).get("name")
+    if root is None:
+        return 0
+    for t in schema.get("types") or []:
+        if t.get("name") == root:
+            return len(t.get("fields") or [])
+    return 0

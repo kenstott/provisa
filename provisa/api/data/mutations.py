@@ -22,7 +22,6 @@ import httpx
 
 from fastapi import HTTPException
 
-from provisa.core.connection_loop import spawn_background
 from provisa.api.errors import ApiError
 from provisa.compiler.mutation_gen import (
     compile_mutation,
@@ -376,45 +375,17 @@ async def _handle_mutation(
                     "affected_rows": len(result.rows),
                 }
             )
-            # Invalidate cache for mutated table (REQ-080)
             if table_meta:
-                from provisa.cache.tenancy import invalidate_tables
+                from provisa.api.data.table_written import after_table_written
 
-                # REQ-595: the acting org's entries — the tenant they were written under.
-                await invalidate_tables(state, [table_meta.table_id])
-                # Mark affected MVs as stale (REQ-084)
-                state.mv_registry.mark_stale(table_meta.table_name)
-                # Emit dataset change event (REQ-172)
-                from provisa.kafka.change_events import emit_change_event
-
-                emit_change_event(mutation.table_name, source_id)
-                # Trigger Kafka sinks for this table (REQ-176, fire-and-forget)
-                from provisa.kafka.sink_executor import trigger_sinks_for_table
-
-                spawn_background(
-                    trigger_sinks_for_table(mutation.table_name, state),
+                await after_table_written(
+                    state,
+                    table_id=table_meta.table_id,
+                    table_name=table_meta.table_name,
+                    schema_name=table_meta.schema_name,
+                    catalog_name=table_meta.catalog_name,
+                    source_id=source_id,
                 )
-                # Invalidate and reload hot table if applicable (Phase AD6)
-                if state.hot_manager is not None:
-                    from provisa.cache.hot_tables import HotTableManager
-
-                    hot_mgr = state.hot_manager
-                    assert isinstance(hot_mgr, HotTableManager)
-                    if hot_mgr.is_hot(table_meta.table_name):
-                        await hot_mgr.invalidate(table_meta.table_name)
-                        entry = hot_mgr.get_entry(table_meta.table_name)
-                        if entry is None:
-                            # Find table config for reload
-                            _tbl_schema = table_meta.schema_name
-                            _tbl_catalog = table_meta.catalog_name
-                            _pk = "id"  # default PK
-                            await hot_mgr.load_table(
-                                state.federation_engine,
-                                table_meta.table_name,
-                                _tbl_schema,
-                                _tbl_catalog,
-                                _pk,
-                            )
         except Exception as e:
             log.exception("Mutation execution failed")
             raise HTTPException(status_code=500, detail=str(e))

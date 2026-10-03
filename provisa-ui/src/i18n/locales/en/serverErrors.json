@@ -9,7 +9,8 @@
       "test_endpoint_disabled": "Test endpoint is disabled (set PROVISA_ENABLE_TEST_ENDPOINTS to enable in non-production).",
       "unknown_action_type": "Unknown actionType '{{action_type}}'",
       "unknown_role": "Unknown role '{{role}}'",
-      "webhook_not_found": "Webhook '{{name}}' not found"
+      "webhook_not_found": "Webhook '{{name}}' not found",
+      "written_table_not_registered": "'{{table}}' is not a registered table of source '{{source_id}}'"
     },
     "ai_models": {
       "vector_model_fields_required": "each vector_models entry requires id, provider, and dimensions"
@@ -106,18 +107,25 @@
       "coordinator_waking": "The environment is starting. It will be ready in about two minutes."
     },
     "functions": {
+      "approval_denied": "Approval denied for '{{name}}': {{reason}}",
+      "approval_unavailable": "command '{{name}}' needs approval and no approval hook is configured",
       "binding_missing_key": "function binding for kind '{{kind}}' is missing required key '{{key}}'",
       "egress_denied": "egress to '{{endpoint}}' is denied: host not on the UDF egress allow-list (REQ-885 deny-by-default). Add it to udf_egress_allowlist to permit.",
       "grpc_call_failed": "grpc call {{target}}{{path}} failed: {{status}}: {{details}}",
       "grpc_method_invalid": "grpc method '{{method}}' must be 'Service/Method' or 'pkg.Service.Method'",
+      "json_argument_invalid": "argument '{{argument}}' of '{{name}}' is not a JSON literal",
       "non_tabular_payload": "function returned non-tabular payload: {{payload_type}}",
+      "not_a_remote_source": "Source '{{source_id}}' offers no write operations",
+      "operation_not_offered": "Source '{{source_id}}' offers no operation '{{operation}}'",
       "python_callable_invalid": "python callable '{{spec}}' must be 'module:attr'",
+      "remote_refused": "{{source_id}} refused {{operation}}: {{answer}}",
       "result_set_ref_invalid": "result_set ref '{{ref}}' must be source.schema.table",
       "rowwise_external": "function '{{name}}' (kind={{impl_kind}}) is row-wise external: all arguments are scalar column_value. Declare a table_ref/result_set relation argument so calls are set-wise and batched (REQ-885).",
       "script_failed": "script exited {{returncode}}: {{stderr}}",
       "source_not_connected": "Source '{{source_id}}' not connected",
       "unknown_arg_kind": "Unknown arg_kind '{{arg_kind}}' for '{{name}}'",
-      "unknown_impl_kind": "Unknown function impl_kind: '{{impl_kind}}'"
+      "unknown_impl_kind": "Unknown function impl_kind: '{{impl_kind}}'",
+      "written_table_missing": "command '{{name}}' writes '{{table}}', which is not registered"
     },
     "graphql_remote": {
       "introspection_failed": "Introspection failed: {{error}}",
@@ -153,7 +161,6 @@
     },
     "openapi": {
       "database_not_connected": "Database not connected",
-      "domain_required": "OpenAPI source {{source}} declares {{commands}} command(s) and names no domain: a command sits in a domain, so the registration needs one",
       "invalid_json": "Invalid JSON: {{error}}",
       "refresh_failed": "Refresh failed: {{error}}",
       "registration_failed": "Registration failed: {{error}}",

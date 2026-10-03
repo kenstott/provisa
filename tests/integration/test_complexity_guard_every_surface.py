@@ -161,7 +161,7 @@ def test_a_role_with_no_limit_runs_the_same_statement(server):
 # --- GraphQL ------------------------------------------------------------------------------------
 
 
-def test_graphql_refuses_an_over_limit_query_with_413(server):
+def test_graphql_runs_a_query_within_the_limit_and_any_query_for_a_role_with_none(server):
     field = _orders_field(server)
     # One relation and two columns is within the limit; the same field asked for three times
     # over is three relations and six columns.

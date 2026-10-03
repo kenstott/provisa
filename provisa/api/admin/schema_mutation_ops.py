@@ -128,10 +128,17 @@ def _identity_user(info: StrawberryInfo):
     return _identity_from_info(info)
 
 
-def _registered_result(input: TableInput, table_id: int | None) -> MutationResult:
-    """What a successful registration answers. A table of a branded source may have had fields
-    left out because the source's credential may not read them (REQ-1923); they are named."""
+async def _registered_result(input: TableInput, table_id: int | None) -> MutationResult:
+    """What a successful registration answers. A table of a remote GraphQL source may have had
+    fields left out because the source's credential may not read them (REQ-1923); they are
+    named. Registering it may also complete a relationship between two of the source's
+    registered tables (REQ-313), which is stored here, once both exist."""
+    from provisa.api.admin._graphql_table_registration import sync_detected_relationships
     from provisa.api.admin._table_ops import take_omitted_fields
+    from provisa.api.app import state
+
+    if await sync_detected_relationships(state, input.source_id):
+        await _rebuild_schemas()
 
     omitted = take_omitted_fields(input.source_id, input.table_name)
     if not omitted:
@@ -471,7 +478,7 @@ async def register_table(
         from provisa.api.admin.schema_common import activate_view_mv
 
         await activate_view_mv(input.table_name)
-    return _registered_result(input, table_id)
+    return await _registered_result(input, table_id)
 
 
 async def deploy_view_to_db(info: StrawberryInfo, table_id: int) -> MutationResult:

@@ -128,6 +128,14 @@ async def client():
                 await delete_source_and_its_tables(c, sid)
 
 
+async def _gql(client, query: str) -> dict:
+    resp = await client.post("/admin/graphql", json={"query": query})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "errors" not in body, body
+    return body["data"]
+
+
 class TestGraphQLRemoteSourceRegistration:
     # integration: mock-justified — respx intercepts outbound HTTP to
     # REMOTE_URL ("https://remote-graphql.example.com/graphql"), a 3rd-party
@@ -153,10 +161,57 @@ class TestGraphQLRemoteSourceRegistration:
         assert resp.status_code == 200
         body = resp.json()
         assert body["source_id"] == "test-remote"
-        assert body["tables"] == 1
-        assert body["functions"] == 1
-        assert "testns__users" in body["table_names"]
-        assert "testns__createUser" in body["function_names"]
+        # REQ-308 (amended 2026-10-02): adding the source registers nothing; its tables are
+        # offered, and the steward registers the ones wanted.
+        assert body["tables"] == 0 and body["table_names"] == []
+        assert body["available_tables"] == 1
+        registered = (await _gql(client, "{ tables { sourceId } }"))["tables"]
+        assert "test-remote" not in {t["sourceId"] for t in registered}
+        offered = (
+            await _gql(
+                client,
+                '{ availableTables(sourceId: "test-remote", schemaName: "graphql") { name } }',
+            )
+        )["availableTables"]
+        assert [t["name"] for t in offered] == ["testns__users"]
+
+    @respx.mock
+    async def test_a_table_is_registered_on_its_own_and_a_refresh_keeps_to_it(self, client):
+        respx.post(REMOTE_URL).mock(
+            return_value=httpx.Response(200, json=SAMPLE_INTROSPECTION_RESPONSE)
+        )
+        await _gql(
+            client,
+            'mutation { createDomain(input: { id: "it_remote", description: "" }) { success } }',
+        )
+        result = (
+            await _gql(
+                client,
+                'mutation { registerTable(input: { sourceId: "test-remote", domainId: "it_remote", '
+                'schemaName: "graphql", tableName: "testns__users", '
+                'columns: [{ name: "name", visibleTo: ["org_admin"] }] }) '
+                "{ success message code } }",
+            )
+        )["registerTable"]
+        assert result["success"], result
+
+        from provisa.api.app import state
+
+        reg = state.graphql_remote_sources["test-remote"]
+        table = next(t for t in reg["tables"] if t["sql_name"] == "testns__users")
+        assert table["field_name"] == "users"
+        assert [c["name"] for c in table["columns"]] == ["name"]  # the column chosen, not id
+
+        # Stored with the source, for a process that starts later.
+        sources = (await _gql(client, "{ sources { id mappingJson } }"))["sources"]
+        mapping = next(s for s in sources if s["id"] == "test-remote")["mappingJson"]
+        assert '"testns__users"' in mapping and '"field_name": "users"' in mapping
+
+        # A refresh brings the registered table up to date and registers nothing new.
+        resp = await client.post("/admin/sources/graphql-remote/test-remote/refresh")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["tables"] == 1 and body["table_names"] == ["testns__users"]
 
     @respx.mock
     async def test_list_sources(self, client):
@@ -206,8 +261,8 @@ class TestGraphQLRemoteSourceRegistration:
         assert resp.status_code == 200
         body = resp.json()
         assert body["source_id"] == "refresh-remote"
-        assert body["tables"] == 1
-        assert body["functions"] == 1
+        # Nothing was registered for this source, so a refresh has nothing to bring up to date.
+        assert body["tables"] == 0
 
     async def test_refresh_unknown_source_returns_404(self, client):
         resp = await client.post("/admin/sources/graphql-remote/nonexistent-source/refresh")
@@ -234,14 +289,6 @@ class TestGraphQLRemoteSourceRegistration:
 GITHUB_URL = "https://api.github.com/graphql"
 _GITHUB_SOURCE = "it-github"
 _GITHUB_DOMAIN = "it_github"
-
-
-async def _gql(client, query: str) -> dict:
-    resp = await client.post("/admin/graphql", json={"query": query})
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert "errors" not in body, body
-    return body["data"]
 
 
 def _github(request: httpx.Request) -> httpx.Response:

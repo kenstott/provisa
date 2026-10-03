@@ -9,7 +9,8 @@
       "test_endpoint_disabled": "Test-endpoint is uitgeschakeld (stel PROVISA_ENABLE_TEST_ENDPOINTS in om dit buiten productie in te schakelen).",
       "unknown_action_type": "Onbekend actionType '{{action_type}}'",
       "unknown_role": "Onbekende rol '{{role}}'",
-      "webhook_not_found": "Webhook '{{name}}' niet gevonden"
+      "webhook_not_found": "Webhook '{{name}}' niet gevonden",
+      "written_table_not_registered": "'{{table}}' is geen geregistreerde tabel van bron '{{source_id}}'"
     },
     "ai_models": {
       "vector_model_fields_required": "elk vector_models-item vereist id, provider en dimensions"
@@ -106,18 +107,25 @@
       "coordinator_waking": "De omgeving wordt gestart. Deze is over ongeveer twee minuten gereed."
     },
     "functions": {
+      "approval_denied": "Goedkeuring geweigerd voor '{{name}}': {{reason}}",
+      "approval_unavailable": "opdracht '{{name}}' vereist goedkeuring en er is geen goedkeuringshook geconfigureerd",
       "binding_missing_key": "functiebinding voor soort '{{kind}}' mist verplichte sleutel '{{key}}'",
       "egress_denied": "uitgaand verkeer naar '{{endpoint}}' is geweigerd: host staat niet op de UDF-egress-toelatingslijst (REQ-885 standaard weigeren). Voeg de host toe aan udf_egress_allowlist om dit toe te staan.",
       "grpc_call_failed": "grpc-aanroep {{target}}{{path}} mislukt: {{status}}: {{details}}",
       "grpc_method_invalid": "grpc-methode '{{method}}' moet 'Service/Method' of 'pkg.Service.Method' zijn",
+      "json_argument_invalid": "argument '{{argument}}' van '{{name}}' is geen JSON-literal",
       "non_tabular_payload": "functie retourneerde een niet-tabellaire payload: {{payload_type}}",
+      "not_a_remote_source": "Bron '{{source_id}}' biedt geen schrijfbewerkingen aan",
+      "operation_not_offered": "Bron '{{source_id}}' biedt geen bewerking '{{operation}}' aan",
       "python_callable_invalid": "python callable '{{spec}}' moet 'module:attr' zijn",
+      "remote_refused": "{{source_id}} heeft {{operation}} geweigerd: {{answer}}",
       "result_set_ref_invalid": "result_set-verwijzing '{{ref}}' moet source.schema.table zijn",
       "rowwise_external": "functie '{{name}}' (kind={{impl_kind}}) is rijgewijs extern: alle argumenten zijn scalaire column_value. Declareer een table_ref/result_set-relatieargument zodat aanroepen setgewijs en gebatcht zijn (REQ-885).",
       "script_failed": "script eindigde met code {{returncode}}: {{stderr}}",
       "source_not_connected": "Bron '{{source_id}}' niet verbonden",
       "unknown_arg_kind": "Onbekende arg_kind '{{arg_kind}}' voor '{{name}}'",
-      "unknown_impl_kind": "Onbekende functie-impl_kind: '{{impl_kind}}'"
+      "unknown_impl_kind": "Onbekende functie-impl_kind: '{{impl_kind}}'",
+      "written_table_missing": "opdracht '{{name}}' schrijft '{{table}}', die niet geregistreerd is"
     },
     "graphql_remote": {
       "introspection_failed": "Introspectie mislukt: {{error}}",
@@ -153,7 +161,6 @@
     },
     "openapi": {
       "database_not_connected": "Database niet verbonden",
-      "domain_required": "OpenAPI-bron {{source}} declareert {{commands}} opdracht(en) en noemt geen domein: een opdracht hoort bij een domein, dus de registratie heeft er een nodig",
       "invalid_json": "Ongeldige JSON: {{error}}",
       "refresh_failed": "Vernieuwen mislukt: {{error}}",
       "registration_failed": "Registratie mislukt: {{error}}",

@@ -52,7 +52,12 @@ import type { Role } from "../types/auth";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { TagControl } from "../components/TagControl";
 import type { ActionType, FormState } from "./commands/types";
-import { EMPTY_FORM, deriveReturnSchema, columnsFromReturnSchema } from "./commands/types";
+import {
+  EMPTY_FORM,
+  OPERATION_SCHEMA,
+  deriveReturnSchema,
+  columnsFromReturnSchema,
+} from "./commands/types";
 import { CommandFormFields } from "./commands/CommandFormFields";
 import { PageLoading } from "../components/PageLoading";
 
@@ -120,9 +125,10 @@ export function CommandsPage() {
        resets the available-functions list synchronously when the selected source changes, before refetching */
     setAvailableFunctions([]);
     const src = sources.find((s) => s.id === form.sourceId);
-    if (!src || src.type !== "openapi") return;
+    const schema = src ? OPERATION_SCHEMA[src.type] : undefined;
+    if (!schema) return;
     setLoadingFunctions(true);
-    getAvailableFunctions(form.sourceId)
+    getAvailableFunctions(form.sourceId, schema)
       .then(setAvailableFunctions)
       .catch(() => setAvailableFunctions([]))
       .finally(() => setLoadingFunctions(false));
@@ -156,6 +162,8 @@ export function CommandsPage() {
         implKind: fn.implKind ?? "source_procedure",
         binding: fn.binding ?? {},
         materialize: fn.materialize ?? false,
+        requiresApproval: fn.requiresApproval ?? false, // REQ-1924
+        writesTable: fn.writesTable ?? "", // REQ-1924, REQ-871
         outputColumns, // REQ-1159
         productId: fn.productId ?? "", // REQ-1634
       });
@@ -184,6 +192,8 @@ export function CommandsPage() {
         implKind: "source_procedure",
         binding: {},
         materialize: false,
+        requiresApproval: false,
+        writesTable: "",
         outputColumns: [],
         productId: "",
       });
@@ -229,6 +239,8 @@ export function CommandsPage() {
           implKind: form.implKind,
           binding: form.binding,
           materialize: form.materialize,
+          requiresApproval: form.requiresApproval, // REQ-1924
+          writesTable: form.writesTable || null, // REQ-1924, REQ-871
           productId: form.productId || null, // REQ-1634
         });
       } else {

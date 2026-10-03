@@ -1053,7 +1053,7 @@ def _apply_brand_table_spec(table: dict, brand, namespace: str) -> bool:
     spec = table_spec(brand, namespace, table["sql_name"])
     if spec is None:
         return False
-    for key in ("field_name", "gql_type_name", "required_args", "pagination", "rows_path"):
+    for key in ("name", "field_name", "gql_type_name", "required_args", "pagination", "rows_path"):
         if key in spec:
             table[key] = spec[key]
     return True
@@ -1082,6 +1082,7 @@ async def _load_graphql_remote_sources_from_db() -> None:
                             _sources_t.c.username,
                             _sources_t.c.password_ref,
                             _sources_t.c.federation_hints,
+                            _sources_t.c.mapping,
                         ).where(_sources_t.c.type == "graphql_remote")
                     )
                 ).fetchall()
@@ -1093,12 +1094,16 @@ async def _load_graphql_remote_sources_from_db() -> None:
                 url = resolve_secrets(src["path"] or "")
                 hints = src["federation_hints"] or {}
                 brand = brand_of(hints)
-                # A plain source registers all its tables in one request, which leaves the full
-                # registration in state; it is loaded here only when this process never saw it.
-                # A branded source's tables are registered one at a time afterwards (REQ-1923),
-                # so its entry is rebuilt from the registry every time.
+                # A plain source's entry is kept up to date in this process as its tables are
+                # registered (admin/_graphql_table_registration.remember_table), and holds the
+                # schema read from its endpoint; it is loaded here only when this process never
+                # saw it. A branded source's entry is rebuilt from the registry every time: how
+                # its tables are read comes from the brand's shipped schema (REQ-1923).
                 if brand is None and source_id in getattr(state, "graphql_remote_sources", {}):
                     continue
+                # How each table a plain source registered one at a time is read, as stored
+                # with the source when it was registered (REQ-308).
+                specs = (src["mapping"] or {}).get("tables") or {}
                 tbl_rows = [
                     dict(_r._mapping)
                     for _r in (
@@ -1133,6 +1138,9 @@ async def _load_graphql_remote_sources_from_db() -> None:
                         ).fetchall()
                     ]
                     table = _build_graphql_remote_table(tr, col_rows, source_id)
+                    # A table with no stored spec is a root field of its own name, as a model
+                    # written by hand declares it; one with a spec is read as the spec says.
+                    table.update(specs.get(tr["table_name"]) or {})
                     if brand is not None and not _apply_brand_table_spec(table, brand, namespace):
                         log.error(
                             "[GQL REMOTE] %s source %s: registered table %s is not in the "
@@ -1143,8 +1151,6 @@ async def _load_graphql_remote_sources_from_db() -> None:
                         )
                         continue
                     tables.append(table)
-                if not tables and brand is None:
-                    continue
                 if not hasattr(state, "graphql_remote_sources"):
                     state.graphql_remote_sources = {}
                 state.graphql_remote_sources[source_id] = {

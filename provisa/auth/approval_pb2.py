@@ -30,7 +30,7 @@ _sym_db = _symbol_database.Default()
 
 
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
-    b'\n\x0e\x61pproval.proto\x12\x0cprovisa.auth"\xdc\x01\n\x0f\x41pprovalRequest\x12\x0c\n\x04user\x18\x01 \x01(\t\x12\r\n\x05roles\x18\x02 \x03(\t\x12\x0e\n\x06tables\x18\x03 \x03(\t\x12\x0f\n\x07\x63olumns\x18\x04 \x03(\t\x12\x11\n\toperation\x18\x05 \x01(\t\x12\x44\n\x0csession_vars\x18\x06 \x03(\x0b\x32..provisa.auth.ApprovalRequest.SessionVarsEntry\x1a\x32\n\x10SessionVarsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01"O\n\x10\x41pprovalResponse\x12\x10\n\x08\x61pproved\x18\x01 \x01(\x08\x12\x0e\n\x06reason\x18\x02 \x01(\t\x12\x19\n\x11\x61\x64\x64itional_filter\x18\x03 \x01(\t2\\\n\x0f\x41pprovalService\x12I\n\x08\x45valuate\x12\x1d.provisa.auth.ApprovalRequest\x1a\x1e.provisa.auth.ApprovalResponseB \n\x10\x63om.provisa.authZ\x0cprovisa/authb\x06proto3'
+    b'\n\x0e\x61pproval.proto\x12\x0cprovisa.auth"\x85\x02\n\x0f\x41pprovalRequest\x12\x0c\n\x04user\x18\x01 \x01(\t\x12\r\n\x05roles\x18\x02 \x03(\t\x12\x0e\n\x06tables\x18\x03 \x03(\t\x12\x0f\n\x07\x63olumns\x18\x04 \x03(\t\x12\x11\n\toperation\x18\x05 \x01(\t\x12\x44\n\x0csession_vars\x18\x06 \x03(\x0b\x32..provisa.auth.ApprovalRequest.SessionVarsEntry\x12\x0f\n\x07\x63ommand\x18\x07 \x01(\t\x12\x16\n\x0e\x61rguments_json\x18\x08 \x01(\t\x1a\x32\n\x10SessionVarsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01"O\n\x10\x41pprovalResponse\x12\x10\n\x08\x61pproved\x18\x01 \x01(\x08\x12\x0e\n\x06reason\x18\x02 \x01(\t\x12\x19\n\x11\x61\x64\x64itional_filter\x18\x03 \x01(\t2\\\n\x0f\x41pprovalService\x12I\n\x08\x45valuate\x12\x1d.provisa.auth.ApprovalRequest\x1a\x1e.provisa.auth.ApprovalResponseB \n\x10\x63om.provisa.authZ\x0cprovisa/authb\x06proto3'
 )
 
 _globals = globals()
@@ -42,11 +42,11 @@ if not _descriptor._USE_C_DESCRIPTORS:
     _globals["_APPROVALREQUEST_SESSIONVARSENTRY"]._loaded_options = None
     _globals["_APPROVALREQUEST_SESSIONVARSENTRY"]._serialized_options = b"8\001"
     _globals["_APPROVALREQUEST"]._serialized_start = 33
-    _globals["_APPROVALREQUEST"]._serialized_end = 253
-    _globals["_APPROVALREQUEST_SESSIONVARSENTRY"]._serialized_start = 203
-    _globals["_APPROVALREQUEST_SESSIONVARSENTRY"]._serialized_end = 253
-    _globals["_APPROVALRESPONSE"]._serialized_start = 255
-    _globals["_APPROVALRESPONSE"]._serialized_end = 334
-    _globals["_APPROVALSERVICE"]._serialized_start = 336
-    _globals["_APPROVALSERVICE"]._serialized_end = 428
+    _globals["_APPROVALREQUEST"]._serialized_end = 294
+    _globals["_APPROVALREQUEST_SESSIONVARSENTRY"]._serialized_start = 244
+    _globals["_APPROVALREQUEST_SESSIONVARSENTRY"]._serialized_end = 294
+    _globals["_APPROVALRESPONSE"]._serialized_start = 296
+    _globals["_APPROVALRESPONSE"]._serialized_end = 375
+    _globals["_APPROVALSERVICE"]._serialized_start = 377
+    _globals["_APPROVALSERVICE"]._serialized_end = 469
 # @@protoc_insertion_point(module_scope)

@@ -331,7 +331,7 @@ gRPC、Arrow Flight 与 MCP 把证书交给不暴露主机名回调的库；这�
 
 ## ABAC批准钩子 (Hook)
 
-可选的外部策略钩子，会在查询执行前触发。（REQ-203）配置此项功能后，Provisa会调用您的策略引擎，并传递用户身份、角色、数据表、列及操作类型。响应结果会决定该查询是否继续执行。（REQ-203）
+可选的外部策略钩子，会在查询执行前触发。（REQ-203）配置此项功能后，Provisa会调用您的策略引擎，并传递用户身份、角色、数据表、列及操作类型。响应结果会决定该查询是否继续执行。（REQ-203）以 **需要审批** 注册的命令，在每次调用前都会提交给同一个钩子；参见[命令调用](#command-calls)。（REQ-1924）
 
 ### 适用范围
 
@@ -366,6 +366,9 @@ message ApprovalRequest {
   repeated string tables = 3;
   repeated string columns = 4;
   string operation = 5;
+  map<string, string> session_vars = 6;
+  string command = 7;         // a command call's name; empty for a query
+  string arguments_json = 8;  // a command call's arguments as a JSON object
 }
 
 message ApprovalResponse {
@@ -386,9 +389,34 @@ gRPC通道属于持久化连接——每个Provisa实例使用一条通道，并
 | `roles` | string[] | 用户的Provisa角色 |
 | `tables` | string[] | 查询中引用的数据表ID |
 | `columns` | string[] | 查询中选取的列 |
-| `operation` | string | `"query"`或`"mutation"` |
+| `operation` | string | `"query"`或`"mutation"`；命令调用为 `"command"` |
+| `command` | string | 命令调用时为命令名称；查询时为空 |
+| `arguments` | object | 调用命令时所用的参数；查询时为空 |
 
-webhook及Unix socket传输方式均以JSON交换数据。响应必须包含`approved`（布尔值），并可选择性包含`reason`（字符串）。（REQ-246）
+webhook及Unix socket传输方式均以JSON交换数据，以 `command` 和 `arguments` 为键。在 gRPC 上，参数以 JSON 文本 `arguments_json` 传送。响应必须包含`approved`（布尔值），并可选择性包含`reason`（字符串）。（REQ-246） [tool-verified: `provisa/auth/approval_hook.py` `ApprovalRequest`, `_request_to_dict`, `GrpcApprovalHook` (`arguments_json=json.dumps(request.arguments, default=str)`); `provisa/auth/approval.proto`]
+
+### 命令调用 {: #command-calls }
+
+设置了 `requires_approval` 的命令（命令表单上的 **需要审批** 开关）在每次调用前都会交给钩子，在所有界面上均如此。仅当钩子批准时才会运行。请求携带 `operation: "command"`、命令名称及其参数；`tables` 和 `columns` 为空。（REQ-1924）[tool-verified: `provisa/api/data/action_exec.py` `_require_approval` (`operation="command"`, `tables=[]`, `columns=[]`, `command=fn["name"]`, `arguments=args`)]
+
+```json
+{
+  "user": "analyst",
+  "roles": ["analyst"],
+  "tables": [],
+  "columns": [],
+  "operation": "command",
+  "command": "create_issue",
+  "arguments": {"input": {"title": "Crash on save"}}
+}
+```
+
+[inferred: the payload also carries `session_vars`; values shown are placeholders]
+
+两种拒绝，均为 403 [tool-verified: `_require_approval`]：
+
+- `functions.approval_unavailable`: 未配置钩子。与查询不同，需要审批的命令绝不会在没有钩子的情况下放行。
+- `functions.approval_denied`: 钩子应答了 `approved: false`。原因见消息。
 
 ### 超时及回退处理
 

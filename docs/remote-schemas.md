@@ -1,6 +1,6 @@
 # Remote Schemas
 
-A remote schema source connects an external API — GraphQL (including GitHub), gRPC, or REST (OpenAPI) — to the Provisa semantic layer. Once registered, the external API's operations become first-class Provisa tables and functions. (REQ-308, REQ-316, REQ-325) Every governance rule, query interface, and security layer applies automatically. (REQ-310, REQ-319, REQ-328) The remote service never sees Provisa's governance rules. (REQ-310, REQ-319, REQ-328)
+A remote schema source connects an external API — GraphQL (including GitHub), gRPC, or REST (OpenAPI) — to the Provisa semantic layer. Adding a source registers no table. The source offers tables, and a steward registers each one wanted through the Register Table picker; that registration is the curation step (REQ-308, REQ-316, REQ-322). A registered table is a first-class Provisa table. (REQ-308, REQ-316, REQ-325) Every governance rule, query interface, and security layer applies automatically. (REQ-310, REQ-319, REQ-328) The remote service never sees Provisa's governance rules. (REQ-310, REQ-319, REQ-328)
 
 ---
 
@@ -8,7 +8,13 @@ A remote schema source connects an external API — GraphQL (including GitHub), 
 
 ### GraphQL remote schema (REQ-307–313)
 
-**How to register.** POST to `/admin/sources/graphql-remote` with the endpoint URL, a namespace, and optional auth. Provisa fires a standard `__schema` introspection query against the remote endpoint. (REQ-307) [tool-verified: `provisa/graphql_remote/introspect.py:47–59`]
+**How to add the source.** POST to `/admin/sources/graphql-remote` with the endpoint URL, a namespace, and optional auth. Provisa fires a standard `__schema` introspection query against the remote endpoint to confirm the endpoint and credential. (REQ-307) [tool-verified: `provisa/graphql_remote/introspect.py:47–59`]
+
+Adding the source registers no table and no command. Every remote source type answers adding and refreshing with the same counts: `tables` (tables registered or brought up to date; 0 on add), `available_tables` (tables on offer), `mutations` (always 0) and `available_mutations` (commands on offer). [tool-verified: `provisa/api/admin/schema_common.py` `remote_source_counts`; `provisa/api/admin/graphql_remote_router.py` `register_graphql_remote_source`]
+
+**Register tables.** Open Tables, then Register Table, pick the source and schema `graphql`, and choose the tables and columns you want. Through the admin GraphQL API: `availableTables(sourceId, schemaName)` lists the tables on offer, `availableColumns` lists a table's columns, and `registerTable(input: TableInput)` registers one with the columns chosen. A registered table is then governed. (REQ-308) [tool-verified: `provisa/api/admin/introspect.py` `_native_tables_graphql` (`if schema_name != "graphql": return []`), `provisa/api/admin/_graphql_table_registration.py` `offered_tables`, `offered_columns`, `columns_to_register`] [tool-verified: `provisa/api/admin/schema_query.py` `available_tables`, `available_columns`; `registerTable` is from the task brief, not read]
+
+How a registered table is read (root field, row path, required arguments, page arguments) is stored in `sources.mapping["tables"]`, so a restarted process reads it without asking the remote for its schema. [tool-verified: `_graphql_table_registration.py` `TABLE_SPECS_KEY = "tables"`, `remember_table`]
 
 ```json
 {
@@ -32,7 +38,7 @@ Auth options: `none`, `bearer` (Authorization header), `basic` (Base64 username:
 
 **Relationships at registration time.** `relationships` declares FK/PK join paths between tables at registration time. These are stored as manually declared relationships (no `remote_managed` flag). On refresh, auto-detected relationships (those with `remote_managed: True`) are re-run and may change; manually declared relationships are not touched. (REQ-554) [tool-verified: `provisa/api/admin/graphql_remote_router.py`]
 
-**What gets auto-discovered.** Every field on the remote `Query` type that returns an OBJECT becomes a virtual table. Every field on the remote `Mutation` type becomes a tracked function. (REQ-308) [tool-verified: `provisa/graphql_remote/mapper.py:243–278`]
+**What the source offers.** Every field on the remote `Query` type that returns an object or a list of objects is offered as a table, and so is each Relay connection under a single-object field (see below). Registering an offered table makes it a table. Each field of the remote `Mutation` type is a command on offer, counted in `available_mutations`; adding the source registers none. Register the ones you want as commands; see [A remote source's write operation](commands.md#a-remote-sources-write-operation-req-1924). (REQ-308, REQ-1924) [tool-verified: `provisa/graphql_remote/mapper.py:243–278`, `graphql_remote_router.py` `register_graphql_remote_source` (`"functions": 0`)]
 
 **Table naming.** Tables are named `{namespace}__{field_name}`. With namespace `petstore` and a `pets` query field: table name is `petstore__pets`. (REQ-312) [tool-verified: `provisa/graphql_remote/mapper.py:250`]
 
@@ -73,11 +79,11 @@ OBJECT types that are NOT reachable as root Query fields (inline types such as `
 
 **Required arguments.** When a root query field has non-null arguments with no default value, those become `native_filter_type: query_param` columns on the table (prefixed `_nf_` at injection time). The executor passes them as GraphQL variables. (REQ-555) [tool-verified: `provisa/graphql_remote/mapper.py:110–120`, `provisa/api/app.py:1280–1303`]
 
-**Relationships detected automatically.** Provisa scans each table's OBJECT-typed columns. When the referenced GQL type is also registered as a table in the same source, a relationship is emitted. Many-to-one relationships infer source and target columns from naming conventions (`breedName` on the source type → `name` on the `Breed` target type). One-to-many (LIST) fields emit relationships with empty column references — the FK lives on the target side. (REQ-554) [tool-verified: `provisa/graphql_remote/mapper.py:162–202`]
+**Relationships detected automatically.** Provisa scans each registered table's OBJECT-typed columns. When the referenced GQL type is also a registered table in the same source, and the column the relationship rides on is among the registered columns, the relationship is stored. A table not yet registered gets none. [tool-verified: `_graphql_table_registration.py` `sync_detected_relationships`] Many-to-one relationships infer source and target columns from naming conventions (`breedName` on the source type → `name` on the `Breed` target type). One-to-many (LIST) fields emit relationships with empty column references — the FK lives on the target side. (REQ-554) [tool-verified: `provisa/graphql_remote/mapper.py:162–202`]
 
-**Mutations.** Mutation fields produce tracked functions with argument types mapped from the mutation's args and a `return_schema` derived from the mutation's return type. (REQ-308) [tool-verified: `provisa/graphql_remote/mapper.py:261–278`]
+**Mutations.** A mutation field is registered as a command of kind `source_operation`, one at a time. Its arguments are each typed `json` and passed to the remote as typed variables; the answer is the JSON the remote returns, with no `return_schema`. See [A remote source's write operation](commands.md#a-remote-sources-write-operation-req-1924). (REQ-1924) [tool-verified: `provisa/api/admin/actions_router.py` `_as_source_operation` (`body.returns = ""`, arguments typed `json`); `provisa/executor/source_operation.py` `_call_graphql`]
 
-**Refresh.** POST to `/admin/sources/graphql-remote/{id}/refresh`. Re-introspects the remote schema and updates table and function registrations. Existing governance rules (RLS, masking) are preserved. (REQ-311) [tool-verified: `provisa/api/admin/graphql_remote_router.py:217–257`]
+**Refresh.** POST to `/admin/sources/graphql-remote/{id}/refresh`. Re-introspects the remote schema and brings the already-registered tables up to date with it. It adds no table and no column: a table or column the schema has gained stays on offer, and a column the schema has lost is dropped. Existing governance rules (RLS, masking) are preserved. (REQ-311) [tool-verified: `provisa/api/admin/graphql_remote_router.py` `refresh_graphql_remote_source`; `_graphql_table_registration.py` `refreshed_registered_tables`: "a column the schema has lost is gone; one it has gained is on offer and is not added"]
 
 **Limitations.**
 
@@ -121,7 +127,7 @@ GitHub is an ordinary source type. Its API is GraphQL, so its tables behave as d
 
 Adding the source registers no tables. [tool-verified: `provisa/api/admin/graphql_remote_router.py` `_register_branded_source` (`"tables": 0`, `verify_query="query { viewer { login } }"`)]
 
-**Register tables.** Open Tables, then Register Table. Pick the GitHub source, pick schema `graphql`, then pick the tables you want. Every table GitHub offers is listed; the registration is your choice of which to expose. [tool-verified: `provisa/api/admin/_graphql_brand_registration.py` `offered_tables`] [inferred: picker labels and the `graphql` schema name from the task brief; the UI strings were not read]
+**Register tables.** Open Tables, then Register Table. Pick the GitHub source, pick schema `graphql`, then pick the tables you want. Every table GitHub offers is listed; the registration is your choice of which to expose. [tool-verified: `provisa/api/admin/_graphql_table_registration.py` `offered_tables`] [inferred: picker labels and the `graphql` schema name from the task brief; the UI strings were not read]
 
 **Token scopes.** When you register a table, Provisa checks it once against GitHub with your token.
 
@@ -156,7 +162,7 @@ GitLab is an ordinary source type and is added and registered the same way as Gi
 
 ### gRPC remote schema (REQ-322–329)
 
-**How to register.** POST to `/admin/grpc-remote/register` with the server address, a path or URL to a `.proto` file, and optional TLS config.
+**How to add the source.** POST to `/admin/grpc-remote/register` with the server address, a path or URL to a `.proto` file, and optional TLS config. Adding the source registers no table.
 
 ```json
 {
@@ -179,13 +185,17 @@ Provisa fetches the proto, parses it with a pure-text parser (no external proto 
 
 Proto files may also be local paths. Import paths for well-known types (`google/protobuf/timestamp.proto`) are stored at registration time and reused on refresh. (REQ-329) [tool-verified: `provisa/grpc_remote/loader.py:135–159`]
 
-**What gets auto-discovered.** Every `rpc` method in the proto is classified as a query or mutation using three signals in priority order: (REQ-323) [tool-verified: `provisa/grpc_remote/mapper.py`]
+**What the source offers.** Every `rpc` method in the proto is classified as a query or mutation using three signals in priority order: (REQ-323) [tool-verified: `provisa/grpc_remote/mapper.py`]
 
 1. **`method_overrides`** in the registration payload — `{"MethodName": "query"}` or `{"MethodName": "mutation"}` overrides everything else.
 2. **`server_streaming: true`** — the server sends a stream of messages; always a virtual table (unless the output is a scalar).
 3. **Output message has a repeated message-type field** — e.g. `ListOrdersResponse { repeated Order items; }` is treated as a list-wrapper and becomes a virtual table. Repeated scalar fields (e.g. `repeated string tags`) do not trigger this — they are array properties on a single entity, not row sources.
 
 Methods that match none of these signals (unary RPC returning a single entity message, or any scalar output) become tracked functions.
+
+**Register tables.** Each query method is offered as one table, named `{namespace}__{Service}__{Method}`, under picker schema `grpc_remote`. Register the ones you want with the Register Table picker (`availableTables`, `availableColumns`, `registerTable`, as for GraphQL sources), choosing response columns. Request fields become `_nf_*` native-filter columns, and these are always included. (REQ-322) [tool-verified: `provisa/api/admin/introspect.py` `_native_tables_grpc` (`if schema_name != "grpc_remote": return []`), `provisa/api/admin/grpc_remote_router.py` `query_table_name`, `query_columns`, `_register_schema` (`if table_name not in registered: continue`), `provisa/api/admin/_table_ops.py` `_grpc_columns_for_input`]
+
+Mutation methods are commands on offer, counted in `available_mutations`; adding the source records none. A gRPC mutation is registered on the Commands page by picking the source and then the method, named `Service.Method`; the command's kind is `source_operation`. See [A remote source's write operation](commands.md#a-remote-sources-write-operation-req-1924). (REQ-1924) [tool-verified: `provisa/executor/source_operation.py` `grpc_operation_name`, `_grpc_operations`; `provisa/api/admin/actions_router.py` `_as_source_operation`]
 
 **Table naming.** The default name is `{namespace}__{ServiceName}__{MethodName}`. Without a namespace, the service and method names are joined directly. Any registered table can be given an `alias`; when set, the alias is the name used everywhere (queries, SDL, relationships). The auto-generated name is the registration key and never changes. (REQ-322) [tool-verified: `provisa/core/repositories/table.py:129–134`]
 
@@ -211,11 +221,11 @@ Methods that match none of these signals (unary RPC returning a single entity me
 
 Server-streaming methods collect all streamed messages into a list before returning rows. (REQ-325) [tool-verified: `provisa/grpc_remote/executor.py:86–119`]
 
-**Mutation methods (REQ-326).** Input message fields become mutation input arguments. The output message schema becomes the `return_schema`. [tool-verified: `provisa/grpc_remote/executor.py:122–143`]
+**Mutation methods (REQ-326).** A registered mutation method is a command whose arguments are the input message's fields, each typed `json` and passed through unchanged. The remote's answer comes back as the rows; a refused call is a 422, `functions.remote_refused`. See [A remote source's write operation](commands.md#a-remote-sources-write-operation-req-1924). (REQ-1924) [tool-verified: `provisa/executor/source_operation.py` `_grpc_operations`, `_call_grpc`, `_refused`]
 
 **Channel management.** One `grpc.aio.Channel` per registered source is stored in app state and reused across requests. The old channel is closed before a new one opens on refresh. (REQ-327) [tool-verified: `provisa/api/admin/grpc_remote_router.py:107–117`]
 
-**Refresh.** POST to `/admin/grpc-remote/refresh/{source_id}`. Re-loads the proto from the stored path, recompiles stubs, and re-registers tables and functions. Alternatively, PUT to `/admin/grpc-remote/{source_id}/proto` with new `proto_text` to update the proto inline. (REQ-329) [tool-verified: `provisa/api/admin/grpc_remote_router.py:241–268`, `provisa/api/admin/grpc_remote_router.py:300–358`]
+**Refresh.** POST to `/admin/grpc-remote/refresh/{source_id}`. Re-loads the proto from the stored path, recompiles stubs, and brings the already-registered tables up to date with the proto, with the columns each was registered with. It registers no new table; a query method added to the proto stays on offer. Alternatively, PUT to `/admin/grpc-remote/{source_id}/proto` with new `proto_text` to update the proto inline. (REQ-329) [tool-verified: `provisa/api/admin/grpc_remote_router.py` `refresh_grpc_remote_source`, `_load_and_register` and `put_grpc_proto` (both pass `registered=await registered_query_tables(conn, source_id)`)]
 
 **Limitations.**
 
@@ -225,7 +235,9 @@ Server-streaming methods collect all streamed messages into a list before return
 
 ### OpenAPI / REST (REQ-314–321)
 
-**How to register.** Call `auto_register_openapi_source` with a source ID, a parsed spec, and connection metadata. The spec is loaded from a local file or URL. (REQ-314) [tool-verified: `provisa/openapi/loader.py:30–55`, `provisa/openapi/register.py:249–264`]
+**How to add the source.** POST to `/admin/openapi/register` with a source ID and a spec, loaded from a local file or URL. The spec is parsed and kept with the source; no table or command is registered. The response reports `tables: 0` and `mutations: 0`, with the counts on offer in `available_tables` and `available_mutations`. (REQ-314) [tool-verified: `provisa/openapi/loader.py:30–55`, `provisa/api/admin/openapi_router.py` `_load_and_register` docstring: "Tables and functions are NOT auto-registered here. Users register them individually via the Register Table / Register Action UI."]
+
+**Register tables.** Register each GET operation wanted through the Register Table picker (`availableTables`, `availableColumns`, `registerTable`), choosing columns. Register each non-GET operation individually as a command on the Commands page, listed by `availableFunctions`; see [A remote source's write operation](commands.md#a-remote-sources-write-operation-req-1924). `PUT /admin/openapi/spec/{source_id}` stores a hand-edited spec, registers nothing, and returns `available_tables` and `available_mutations`. (REQ-316) [tool-verified: `provisa/api/admin/openapi_router.py` `put_openapi_spec`; `provisa/api/admin/schema_query.py` `available_functions` ("returns non-GET operations")] [tool-verified: `provisa/api/admin/_table_ops.py` `_build_columns_for_input`; a registered OpenAPI table is read through the operation in the stored spec, `provisa/api/data/materialization.py` (`state.openapi_specs`)]
 
 **Registration payload.** The `/admin/openapi/register` endpoint accepts two additional fields alongside `source_id`, `spec_path`, etc.:
 
@@ -239,7 +251,7 @@ Server-streaming methods collect all streamed messages into a list before return
 }
 ```
 
-**What gets auto-discovered.** Every GET operation in the spec becomes a virtual table, unless its response schema is a scalar type (`string`, `number`, `boolean`, `integer`) — scalar-returning GETs become tracked functions with a single `value` column instead. Every non-GET operation (POST, PUT, PATCH, DELETE) becomes a tracked function. (REQ-316, REQ-317)
+**What the source offers.** Every GET operation in the spec is offered as a table, unless its response schema is a scalar type (`string`, `number`, `boolean`, `integer`) — scalar-returning GETs are functions with a single `value` column instead. Every non-GET operation (POST, PUT, PATCH, DELETE) is offered as a command, named by its `operationId`. Registered, it takes the operation's path parameters and a `body` argument for the request body, each typed `json`; any other argument goes on the query string. See [A remote source's write operation](commands.md#a-remote-sources-write-operation-req-1924). (REQ-316, REQ-317, REQ-1924) [tool-verified: `provisa/executor/source_operation.py` `_openapi_operations`, `_call_openapi`]
 
 Classification priority: `operation_overrides` (payload) overrides `x-provisa-kind` (spec extension) overrides the GET heuristic. `operation_overrides` is the recommended override path; `x-provisa-kind` is for when the spec itself should carry the classification. (REQ-408) [tool-verified: `provisa/openapi/mapper.py:192–203`]
 
@@ -266,7 +278,7 @@ Classification priority: `operation_overrides` (payload) overrides `x-provisa-ki
 
 **Response caching (REQ-318).** GET operation results are cached in PostgreSQL by `pg_cache.py`. Each combination of request parameters gets its own `_params_hash` group. Rows for a given hash are replaced when the TTL expires. Path-param endpoints (`/pets/{id}`) skip the initial bulk fetch — the cache table is created empty for schema introspection, then populated per-PK as requests arrive. [tool-verified: `provisa/openapi/pg_cache.py:181–234`, `provisa/openapi/pg_cache.py:307–360`]
 
-**Refresh (REQ-321).** Re-parse the spec and call `auto_register_openapi_source` again. Existing governance rules are preserved; registrations are updated with ON CONFLICT upsert. [tool-verified: `provisa/openapi/register.py:249–264`]
+**Refresh (REQ-321).** POST to `/admin/openapi/refresh/{source_id}`. Re-parses the spec through `_load_and_register`, which registers nothing: it adds no table and no column. Existing governance rules are preserved. [tool-verified: `provisa/api/admin/openapi_router.py` `refresh_openapi_source`, `_load_and_register`] A registered table keeps its columns; it is read through the refreshed spec's operation. [tool-verified: `provisa/api/admin/openapi_router.py` `_load_and_register` (replaces `state.openapi_specs[source_id]`), `provisa/api/data/materialization.py`]
 
 **Limitations.**
 

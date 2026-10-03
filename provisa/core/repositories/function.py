@@ -69,6 +69,8 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
         "impl_kind": func.impl_kind,
         "binding": func.binding,
         "materialize": func.materialize,
+        "requires_approval": func.requires_approval,  # REQ-1924
+        "writes_table": func.writes_table,  # REQ-1924, REQ-871
     }
     # REQ-870: re-introspection registers discovered mutations with an empty writable_by; existing
     # admin grants are preserved. An explicit, non-empty writable_by still applies. The preserve
@@ -90,6 +92,8 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
         "impl_kind",
         "binding",
         "materialize",
+        "requires_approval",
+        "writes_table",
     ]
     if func.writable_by:
         update_cols.append("writable_by")
@@ -254,6 +258,8 @@ def function_from_dict(d: dict) -> Function:  # REQ-205, REQ-304
         impl_kind=d.get("impl_kind", "source_procedure"),
         binding=d.get("binding") or {},
         materialize=bool(d.get("materialize", False)),
+        requires_approval=bool(d.get("requires_approval", False)),
+        writes_table=d.get("writes_table"),
     )
 
 

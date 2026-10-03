@@ -1150,6 +1150,50 @@ def make_dq_loader(app_state: Any) -> AdapterLoader:
     return _load
 
 
+def make_grpc_remote_loader(grpc_sources: dict[str, Any]) -> AdapterLoader:  # REQ-325, REQ-327
+    """Build the grpc_remote adapter row-fetch (REQ-941/846): find the query method the table is
+    registered from in ``state.grpc_remote_sources``, call it with no request fields on the
+    source's channel for the running loop, and return its rows with the columns the table was
+    registered with. A table no query method of the source registers as raises
+    :class:`UnsupportedSourceFetch`."""
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        from provisa.compiler.naming import apply_sql_name
+        from provisa.grpc_remote.executor import channel_for, execute_query
+        from provisa.grpc_remote.mapper import query_table_name
+
+        reg = grpc_sources.get(source.id) or {}
+        namespace = reg.get("namespace", "")
+        names = {table.table_name, apply_sql_name(table.table_name)}
+        query = next(
+            (
+                q
+                for q in reg.get("queries") or []
+                if {query_table_name(namespace, q), apply_sql_name(query_table_name(namespace, q))}
+                & names
+            ),
+            None,
+        )
+        if query is None:
+            raise UnsupportedSourceFetch(
+                f"grpc_remote source {source.id!r} table {table.table_name!r}: no query method of "
+                "the source registers as it"
+            )
+        rows = await execute_query(
+            channel_for(reg),
+            query.full_method_path,
+            reg["pb2"],
+            query.input_message,
+            query.output_message,
+            {},
+            server_streaming=query.server_streaming,
+        )
+        registered = [c.name for c in table.columns if not c.name.startswith("_nf_")]
+        return [{name: row.get(name) for name in registered} for row in rows]
+
+    return _load
+
+
 def make_graphql_remote_loader(
     gql_sources: dict[str, Any], max_rows: int | None = None
 ) -> AdapterLoader:

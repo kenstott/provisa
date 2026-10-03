@@ -9,7 +9,8 @@
       "test_endpoint_disabled": "L'endpoint di test è disabilitato (impostare PROVISA_ENABLE_TEST_ENDPOINTS per abilitarlo in ambienti non di produzione).",
       "unknown_action_type": "actionType '{{action_type}}' sconosciuto",
       "unknown_role": "Ruolo '{{role}}' sconosciuto",
-      "webhook_not_found": "Webhook '{{name}}' non trovato"
+      "webhook_not_found": "Webhook '{{name}}' non trovato",
+      "written_table_not_registered": "'{{table}}' non è una tabella registrata della sorgente '{{source_id}}'"
     },
     "ai_models": {
       "vector_model_fields_required": "ogni voce di vector_models richiede id, provider e dimensions"
@@ -106,18 +107,25 @@
       "coordinator_waking": "L'ambiente si sta avviando. Sarà pronto tra circa due minuti."
     },
     "functions": {
+      "approval_denied": "Approvazione negata per '{{name}}': {{reason}}",
+      "approval_unavailable": "il comando '{{name}}' richiede approvazione e non è configurato alcun hook di approvazione",
       "binding_missing_key": "al binding di funzione per il kind '{{kind}}' manca la chiave obbligatoria '{{key}}'",
       "egress_denied": "uscita verso '{{endpoint}}' negata: host non presente nell'elenco consentiti di uscita UDF (REQ-885 rifiuto predefinito). Aggiungerlo a udf_egress_allowlist per consentirlo.",
       "grpc_call_failed": "chiamata grpc {{target}}{{path}} non riuscita: {{status}}: {{details}}",
       "grpc_method_invalid": "il metodo grpc '{{method}}' deve essere 'Service/Method' o 'pkg.Service.Method'",
+      "json_argument_invalid": "l'argomento '{{argument}}' di '{{name}}' non è un letterale JSON",
       "non_tabular_payload": "la funzione ha restituito un payload non tabellare: {{payload_type}}",
+      "not_a_remote_source": "La sorgente '{{source_id}}' non offre operazioni di scrittura",
+      "operation_not_offered": "La sorgente '{{source_id}}' non offre l'operazione '{{operation}}'",
       "python_callable_invalid": "il callable python '{{spec}}' deve essere 'module:attr'",
+      "remote_refused": "{{source_id}} ha rifiutato {{operation}}: {{answer}}",
       "result_set_ref_invalid": "il riferimento result_set '{{ref}}' deve essere source.schema.table",
       "rowwise_external": "la funzione '{{name}}' (kind={{impl_kind}}) è esterna riga per riga: tutti gli argomenti sono column_value scalari. Dichiarare un argomento relazione table_ref/result_set affinché le chiamate siano per insiemi e raggruppate in batch (REQ-885).",
       "script_failed": "script terminato con codice {{returncode}}: {{stderr}}",
       "source_not_connected": "Origine '{{source_id}}' non connessa",
       "unknown_arg_kind": "arg_kind '{{arg_kind}}' sconosciuto per '{{name}}'",
-      "unknown_impl_kind": "impl_kind della funzione sconosciuto: '{{impl_kind}}'"
+      "unknown_impl_kind": "impl_kind della funzione sconosciuto: '{{impl_kind}}'",
+      "written_table_missing": "il comando '{{name}}' scrive '{{table}}', che non è registrata"
     },
     "graphql_remote": {
       "introspection_failed": "Introspezione non riuscita: {{error}}",
@@ -153,7 +161,6 @@
     },
     "openapi": {
       "database_not_connected": "Database non connesso",
-      "domain_required": "L’origine OpenAPI {{source}} dichiara {{commands}} comando/i e non indica alcun dominio: un comando appartiene a un dominio, quindi la registrazione ne richiede uno",
       "invalid_json": "JSON non valido: {{error}}",
       "refresh_failed": "Aggiornamento non riuscito: {{error}}",
       "registration_failed": "Registrazione non riuscita: {{error}}",

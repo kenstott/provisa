@@ -60,6 +60,10 @@
     "maskPattern": "Muster",
     "maskReplace": "Ersetzen",
     "maskValue": "Wert",
-    "maskPrecision": "Genauigkeit"
+    "maskPrecision": "Genauigkeit",
+    "requiresApproval": "Erfordert Genehmigung",
+    "requiresApprovalHint": "Jeder Aufruf wird erst ausgeführt, wenn der Genehmigungs-Hook ihn genehmigt. Ohne konfigurierten Hook werden Aufrufe abgelehnt.",
+    "writesTable": "Schreibt Tabelle",
+    "writesTableHint": "Die registrierte Tabelle, die dieser Befehl ändert. Nach jedem Aufruf werden zwischengespeicherte Ergebnisse und materialisierte Sichten darauf aktualisiert."
   }
 }

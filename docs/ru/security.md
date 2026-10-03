@@ -286,7 +286,7 @@ gRPC, Arrow Flight и MCP передают свои сертификаты би�
 **Как убедиться, что развёртывание в этом режиме:** его называет журнал запуска, запрос `/data/sql` без ключа KMS отвечает 403 с сообщением, называющим REQ-693, а порты pgwire, Bolt и MCP не слушают.
 
 ## Хук утверждения ABAC
-Необязательный внешний хук политики, срабатывающий перед выполнением запроса. (REQ-203) Когда он настроен, Provisa обращается к вашему движку политик, передавая идентичность пользователя, роли, таблицы, колонки и операцию. Ответ определяет, будет ли запрос выполнен. (REQ-203)
+Необязательный внешний хук политики, срабатывающий перед выполнением запроса. (REQ-203) Когда он настроен, Provisa обращается к вашему движку политик, передавая идентичность пользователя, роли, таблицы, колонки и операцию. Ответ определяет, будет ли запрос выполнен. (REQ-203) Команда, зарегистрированная с **Требует одобрения**, перед каждым вызовом передаётся тому же хуку; см. [Вызовы команд](#command-calls). (REQ-1924)
 
 ### Область действия
 Хук срабатывает, только когда запрос затрагивает таблицу или источник, попавшие в область действия, — для всего остального накладных расходов нет. (REQ-204)
@@ -319,6 +319,9 @@ message ApprovalRequest {
   repeated string tables = 3;
   repeated string columns = 4;
   string operation = 5;
+  map<string, string> session_vars = 6;
+  string command = 7;         // a command call's name; empty for a query
+  string arguments_json = 8;  // a command call's arguments as a JSON object
 }
 
 message ApprovalResponse {
@@ -338,9 +341,34 @@ message ApprovalResponse {
 | `roles` | string[] | Роли пользователя в Provisa |
 | `tables` | string[] | Идентификаторы таблиц, упомянутых в запросе |
 | `columns` | string[] | Колонки, выбранные в запросе |
-| `operation` | string | `"query"` или `"mutation"` |
+| `operation` | string | `"query"` или `"mutation"`; `"command"` для вызова команды |
+| `command` | string | Имя команды для вызова команды; пусто для запроса |
+| `arguments` | object | Аргументы, с которыми вызывается команда; пусто для запроса |
 
-Транспорты webhook и Unix-сокета обмениваются JSON. Ответ должен содержать `approved` (bool) и, необязательно, `reason` (string). (REQ-246)
+Транспорты webhook и Unix-сокета обмениваются JSON, причём `command` и `arguments` — ключи. В gRPC аргументы передаются как JSON-текст `arguments_json`. Ответ должен содержать `approved` (bool) и, необязательно, `reason` (string). (REQ-246) [tool-verified: `provisa/auth/approval_hook.py` `ApprovalRequest`, `_request_to_dict`, `GrpcApprovalHook` (`arguments_json=json.dumps(request.arguments, default=str)`); `provisa/auth/approval.proto`]
+
+### Вызовы команд {: #command-calls }
+
+Команда с установленным `requires_approval` (переключатель **Требует одобрения** в форме команды) перед каждым вызовом идёт к хуку, на любой поверхности. Она выполняется, только если хук утверждает. Запрос несёт `operation: "command"`, имя команды и её аргументы; `tables` и `columns` пусты. (REQ-1924) [tool-verified: `provisa/api/data/action_exec.py` `_require_approval` (`operation="command"`, `tables=[]`, `columns=[]`, `command=fn["name"]`, `arguments=args`)]
+
+```json
+{
+  "user": "analyst",
+  "roles": ["analyst"],
+  "tables": [],
+  "columns": [],
+  "operation": "command",
+  "command": "create_issue",
+  "arguments": {"input": {"title": "Crash on save"}}
+}
+```
+
+[inferred: the payload also carries `session_vars`; values shown are placeholders]
+
+Два отказа, оба 403 [tool-verified: `_require_approval`]:
+
+- `functions.approval_unavailable`: хук не настроен. В отличие от запроса, команда, требующая утверждения, никогда не пропускается без хука.
+- `functions.approval_denied`: хук ответил `approved: false`. Причина содержится в сообщении.
 
 ### Тайм-аут и резервное поведение
 ```yaml

@@ -300,7 +300,7 @@ gRPC, Arrow Flight y MCP entregan sus certificados a bibliotecas que no exponen 
 **Verificar que un despliegue está en el modo:** el registro de arranque lo nombra, una petición `/data/sql` sin clave KMS responde 403 con un mensaje que menciona REQ-693, y los puertos de pgwire, Bolt y MCP no están escuchando.
 
 ## Hook de aprobación ABAC
-Un hook de política externo opcional que se activa antes de la ejecución de la consulta. (REQ-203) Cuando está configurado, Provisa realiza una llamada a su motor de políticas con la identidad del usuario, los roles, las tablas, las columnas y la operación. La respuesta determina si la consulta continúa. (REQ-203)
+Un hook de política externo opcional que se activa antes de la ejecución de la consulta. (REQ-203) Cuando está configurado, Provisa realiza una llamada a su motor de políticas con la identidad del usuario, los roles, las tablas, las columnas y la operación. La respuesta determina si la consulta continúa. (REQ-203) Un comando registrado con **Requiere aprobación** se somete al mismo hook antes de cada llamada; véase [Llamadas a comandos](#llamadas-a-comandos). (REQ-1924)
 
 ### Alcance
 El hook solo se activa cuando la consulta toca una tabla u origen con alcance definido — sobrecarga cero para todo lo demás. (REQ-204)
@@ -333,6 +333,9 @@ message ApprovalRequest {
   repeated string tables = 3;
   repeated string columns = 4;
   string operation = 5;
+  map<string, string> session_vars = 6;
+  string command = 7;         // a command call's name; empty for a query
+  string arguments_json = 8;  // a command call's arguments as a JSON object
 }
 
 message ApprovalResponse {
@@ -352,9 +355,34 @@ Los tres transportes llevan la misma carga útil: (REQ-246)
 | `roles` | string[] | Roles de Provisa del usuario |
 | `tables` | string[] | IDs de tabla referenciados en la consulta |
 | `columns` | string[] | Columnas seleccionadas en la consulta |
-| `operation` | string | `"query"` o `"mutation"` |
+| `operation` | string | `"query"` o `"mutation"`; `"command"` para una llamada a un comando |
+| `command` | string | El nombre del comando en una llamada a un comando; vacío en una consulta |
+| `arguments` | object | Los argumentos con los que se invoca un comando; vacío en una consulta |
 
-Los transportes webhook y Unix socket intercambian JSON. La respuesta debe incluir `approved` (bool) y, opcionalmente, `reason` (string). (REQ-246)
+Los transportes webhook y Unix socket intercambian JSON, con `command` y `arguments` como claves. En gRPC los argumentos viajan como el texto JSON `arguments_json`. La respuesta debe incluir `approved` (bool) y, opcionalmente, `reason` (string). (REQ-246) [tool-verified: `provisa/auth/approval_hook.py` `ApprovalRequest`, `_request_to_dict`, `GrpcApprovalHook` (`arguments_json=json.dumps(request.arguments, default=str)`); `provisa/auth/approval.proto`]
+
+### Llamadas a comandos
+
+Un comando con `requires_approval` activado (el interruptor **Requiere aprobación** del formulario del comando) pasa por el hook antes de cada llamada, en todas las superficies. Solo se ejecuta si el hook lo aprueba. La solicitud lleva `operation: "command"`, el nombre del comando y sus argumentos; `tables` y `columns` van vacías. (REQ-1924) [tool-verified: `provisa/api/data/action_exec.py` `_require_approval` (`operation="command"`, `tables=[]`, `columns=[]`, `command=fn["name"]`, `arguments=args`)]
+
+```json
+{
+  "user": "analyst",
+  "roles": ["analyst"],
+  "tables": [],
+  "columns": [],
+  "operation": "command",
+  "command": "create_issue",
+  "arguments": {"input": {"title": "Crash on save"}}
+}
+```
+
+[inferred: the payload also carries `session_vars`; values shown are placeholders]
+
+Dos rechazos, ambos 403 [tool-verified: `_require_approval`]:
+
+- `functions.approval_unavailable`: no hay hook configurado. A diferencia de una consulta, un comando que necesita aprobación nunca se deja pasar sin uno.
+- `functions.approval_denied`: el hook respondió `approved: false`. El motivo va en el mensaje.
 
 ### Tiempo de espera y comportamiento por defecto
 ```yaml

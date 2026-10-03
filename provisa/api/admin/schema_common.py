@@ -600,6 +600,11 @@ async def _sync_view_mv(
     ok, reason = check_view_determinism(view_sql, dialect)
     if not ok:
         raise ValueError(f"non-deterministic MV {table_name!r}: {reason}")
+    from provisa.executor.source_operation import refuse_writes_in_definition
+
+    refuse_writes_in_definition(
+        view_sql, getattr(state, "tracked_functions", None) or {}, f"MV {table_name!r}"
+    )
 
     mv_id = f"view-{table_name}"
     existing = state.mv_registry.get(mv_id)
@@ -780,3 +785,17 @@ async def forget_source_password(source_id: str, password_ref: str) -> None:
         source_password_secret_name(source_id),
         owner_id=secrets_store.ORG_OWNER,
     )
+
+
+def remote_source_counts(
+    registered_tables: int, available_tables: int, available_mutations: int
+) -> dict[str, int]:
+    """What adding or refreshing a remote source (GraphQL, gRPC, OpenAPI) reports, one shape for
+    all of them: the tables it registered or brought up to date, and what it offers. Adding a
+    source registers no command, so ``mutations`` is always 0 (REQ-308, REQ-316, REQ-322)."""
+    return {
+        "tables": registered_tables,
+        "available_tables": available_tables,
+        "mutations": 0,
+        "available_mutations": available_mutations,
+    }

@@ -77,6 +77,8 @@ def _row_to_function(row: dict) -> dict:
         "implKind": row.get("impl_kind", "source_procedure"),
         "binding": row.get("binding") or {},
         "materialize": bool(row.get("materialize", False)),
+        "requiresApproval": bool(row.get("requires_approval", False)),  # REQ-1924
+        "writesTable": row.get("writes_table"),  # REQ-1924, REQ-871
     }
 
 
@@ -152,6 +154,8 @@ class FunctionInput(BaseModel):  # REQ-205, REQ-206, REQ-304, REQ-305, REQ-306
     implKind: str = "source_procedure"
     binding: dict = {}
     materialize: bool = False
+    requiresApproval: bool = False  # REQ-1924
+    writesTable: str | None = None  # REQ-1924, REQ-871: "schema.table" of the table it writes
 
 
 class WebhookInput(BaseModel):  # REQ-209, REQ-210, REQ-211
@@ -166,6 +170,49 @@ class WebhookInput(BaseModel):  # REQ-209, REQ-210, REQ-211
     domainId: str = ""
     description: str | None = None
     kind: str = "mutation"
+
+
+async def _as_source_operation(body: FunctionInput) -> None:
+    """REQ-1924: a command registered on a remote source is one of the source's write
+    operations, called as it is. What it is follows from the operation the source offers -- its
+    kind, the schema it is registered under, its arguments, each passed through as a JSON value
+    -- and not from what the form sent. An operation the source does not offer is refused."""
+    from provisa.api.app import state
+    from provisa.executor.source_operation import OPERATION_SCHEMA, offered_operation
+
+    source_type = (getattr(state, "source_types", None) or {}).get(body.sourceId, "")
+    if source_type not in OPERATION_SCHEMA:
+        return
+    if source_type == "openapi":
+        from provisa.api.admin.schema_helpers import _ensure_openapi_spec
+
+        await _ensure_openapi_spec(body.sourceId)
+    operation = await offered_operation(state, body.sourceId, body.functionName)
+    body.implKind = "source_operation"
+    body.kind = "mutation"
+    body.schemaName = OPERATION_SCHEMA[source_type]
+    body.returns = ""
+    body.binding = {}
+    body.materialize = False
+    body.arguments = [{"name": a, "type": "json"} for a in operation.arguments]
+
+
+def _check_written_table(body: FunctionInput) -> None:
+    """REQ-1924, REQ-871: the table a command is registered as writing is a registered table of
+    the command's own source."""
+    from provisa.api.app import state
+    from provisa.executor.source_operation import written_table
+
+    if body.writesTable is None:
+        return
+    if written_table(state, body.sourceId, body.writesTable) is None:
+        raise ApiError(
+            422,
+            "actions.written_table_not_registered",
+            f"{body.writesTable!r} is not a registered table of source {body.sourceId!r}",
+            source_id=body.sourceId,
+            table=body.writesTable,
+        )
 
 
 def _saved_domain(request: Request, name: str, domain_id: str) -> str:  # REQ-1531
@@ -190,6 +237,8 @@ async def create_function(
     """Create a tracked DB function."""
     require_capability_request(request, "table_registration")
     body.domainId = _saved_domain(request, body.name, body.domainId)
+    await _as_source_operation(body)
+    _check_written_table(body)
     from provisa.api.app import state
     from provisa.core.models import DatasetColumn, Function, FunctionArgument
     from provisa.core.repositories import function as function_repo
@@ -213,6 +262,8 @@ async def create_function(
         impl_kind=body.implKind,
         binding=body.binding,
         materialize=body.materialize,
+        requires_approval=body.requiresApproval,  # REQ-1924
+        writes_table=body.writesTable,  # REQ-1924, REQ-871
         # REQ-1159: the wire model carries the raw [{name,type}] the UI posts (the update path
         # below writes it straight into a JSON column); the domain model wants the typed contract.
         output_columns=(
@@ -239,6 +290,8 @@ async def update_function(
     """Update a tracked DB function by name."""
     require_capability_request(request, "table_registration")
     body.domainId = _saved_domain(request, name, body.domainId)
+    await _as_source_operation(body)
+    _check_written_table(body)
     from provisa.api.app import state
 
     if state.tenant_db is None:
@@ -286,6 +339,8 @@ async def update_function(
                 impl_kind=body.implKind,
                 binding=body.binding,
                 materialize=body.materialize,
+                requires_approval=body.requiresApproval,  # REQ-1924
+                writes_table=body.writesTable,  # REQ-1924, REQ-871
                 updated_at=func.now(),
             )
         )

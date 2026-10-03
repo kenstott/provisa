@@ -97,6 +97,8 @@ def _arg_type_to_openapi(arg_type: str) -> dict[str, Any]:
         return {"type": "number", "format": "double"}
     if t == "boolean":
         return {"type": "boolean"}
+    if t == "json":
+        return {}  # REQ-1924: any JSON value, passed to the command as written
     return {"type": "string"}
 
 

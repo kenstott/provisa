@@ -839,6 +839,10 @@ tracked_functions = Table(
     Column("impl_kind", Text, nullable=False, server_default="source_procedure"),
     Column("binding", JSON, nullable=False, default=dict, server_default="{}"),
     Column("materialize", Boolean, nullable=False, server_default=false()),
+    # REQ-1924: each call is approved by the approval hook before it runs.
+    Column("requires_approval", Boolean, nullable=False, server_default=false()),
+    # REQ-1924, REQ-871: "schema.table" of the registered table the command writes, when known.
+    Column("writes_table", Text),
 )
 
 tracked_webhooks = Table(

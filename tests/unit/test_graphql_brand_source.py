@@ -22,7 +22,7 @@ import pytest
 import respx
 from graphql import parse
 
-from provisa.api.admin import _graphql_brand_registration as registration
+from provisa.api.admin import _graphql_table_registration as registration
 from provisa.core.models import Column
 from provisa.graphql_remote.brands import (
     BRANDS,
@@ -118,15 +118,14 @@ def test_no_github_column_is_a_connection_or_needs_an_argument():
 # --- what the Register Table picker is given ---
 
 
-def test_the_picker_is_offered_every_table_by_its_registered_name():
-    state = SimpleNamespace(graphql_remote_sources={"my-github": _reg(), "plain": {"tables": []}})
-    branded = registration.branded_registration(state, "my-github")
-    assert branded is not None
-    offered = {t["name"]: t for t in registration.offered_tables(*branded)}
-    assert "gh__repository_issues" in offered
-    assert offered["gh__repository_issues"]["description"]
-    assert registration.branded_registration(state, "plain") is None
-    assert registration.branded_registration(state, "absent") is None
+async def test_the_picker_is_offered_every_table_by_its_registered_name():
+    state = SimpleNamespace(graphql_remote_sources={"my-github": _reg()})
+    offered = await registration.source_offer(state, "my-github")
+    assert offered is not None and offered[0] is GITHUB
+    tables = {t["name"]: t for t in registration.offered_tables(*offered)}
+    assert "gh__repository_issues" in tables
+    assert tables["gh__repository_issues"]["description"]
+    assert await registration.source_offer(state, "absent") is None
 
 
 def test_offered_columns_are_typed_and_include_the_required_filters():
@@ -166,7 +165,7 @@ async def test_registering_leaves_out_what_the_token_may_not_read_and_says_so():
         return httpx.Response(200, json={"errors": errors} if errors else {"data": {}})
 
     route = respx.post(GITHUB.url).mock(side_effect=answer)
-    columns, omitted = await registration.columns_to_register(
+    columns, omitted, _ = await registration.columns_to_register(
         GITHUB, _reg(), "gh__repository_issues", "eng", [], 100
     )
     assert route.calls[0].request.headers["authorization"] == "Bearer t0ken"
@@ -186,7 +185,7 @@ async def test_only_the_chosen_columns_register_and_keep_their_governance():
         Column(name="title", visible_to=["analyst"]),
         Column(name="number", visible_to=["analyst"], alias="issueNumber"),
     ]
-    columns, omitted = await registration.columns_to_register(
+    columns, omitted, _ = await registration.columns_to_register(
         GITHUB, _reg(), "gh__repository_issues", "eng", chosen, 100
     )
     assert omitted == []
@@ -209,7 +208,7 @@ async def test_a_table_the_token_may_not_read_at_all_has_no_columns_to_register(
         return httpx.Response(200, json={"errors": [refusal]})
 
     respx.post(GITHUB.url).mock(side_effect=answer)
-    columns, omitted = await registration.columns_to_register(
+    columns, omitted, _ = await registration.columns_to_register(
         GITHUB, _reg(), "gh__viewer_saved_replies", "eng", [], 100
     )
     assert not [c for c in columns if c.native_filter_type is None]
@@ -437,7 +436,7 @@ async def test_a_query_refused_as_too_large_with_a_client_error_status_says_so()
 async def test_the_columns_picked_are_what_the_remote_is_asked_to_price():
     route = respx.post(GITLAB.url).mock(return_value=httpx.Response(200, json={"data": {}}))
     chosen = [Column(name="iid", visible_to=["analyst"]), Column(name="title", visible_to=[])]
-    columns, omitted = await registration.columns_to_register(
+    columns, omitted, _ = await registration.columns_to_register(
         GITLAB, _gitlab_reg(), "gl__project_issues", "eng", chosen, 100
     )
     assert omitted == []
@@ -450,7 +449,7 @@ async def test_the_columns_picked_are_what_the_remote_is_asked_to_price():
 async def test_an_error_that_is_not_about_cost_does_not_refuse_the_table():
     not_found = {"message": "The resource that you are attempting to access does not exist"}
     respx.post(GITLAB.url).mock(return_value=httpx.Response(200, json={"errors": [not_found]}))
-    columns, _ = await registration.columns_to_register(
+    columns, _, _ = await registration.columns_to_register(
         GITLAB, _gitlab_reg(), "gl__project_issues", "eng", [Column(name="iid", visible_to=[])], 100
     )
     assert {c.name for c in columns} == {"iid", "_nf_full_path"}

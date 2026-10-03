@@ -2941,7 +2941,6 @@
   "pt/serverErrors.json::serverErrors.invites.user_management_required": "user_management required",
   "pt/serverErrors.json::serverErrors.neo4j.source_not_found": "Neo4j source '{{source_id}}' not found",
   "pt/serverErrors.json::serverErrors.openapi.database_not_connected": "Database not connected",
-  "pt/serverErrors.json::serverErrors.openapi.domain_required": "OpenAPI source {{source}} declares {{commands}} command(s) and names no domain: a command sits in a domain, so the registration needs one",
   "pt/serverErrors.json::serverErrors.openapi.invalid_json": "Invalid JSON: {{error}}",
   "pt/serverErrors.json::serverErrors.openapi.refresh_failed": "Refresh failed: {{error}}",
   "pt/serverErrors.json::serverErrors.openapi.registration_failed": "Registration failed: {{error}}",
@@ -4615,5 +4614,17 @@
   "pt/serverErrors.json::serverErrors.schema.table_too_complex": "Table '{{table}}' was not registered with the columns selected: {{reason}}. Choose fewer columns.",
   "pt/settings.json::settings.limits.max_query_complexity.label": "Max query complexity",
   "pt/settings.json::settings.limits.max_query_complexity.help": "The highest complexity score one statement may have, for every role. A role may set a lower limit of its own. Leave unset for no limit.",
-  "pt/serverErrors.json::serverErrors.data.query_too_complex": "The query's complexity ({{score}}) exceeds the {{limit_of}} limit of {{limit}}."
+  "pt/serverErrors.json::serverErrors.data.query_too_complex": "The query's complexity ({{score}}) exceeds the {{limit_of}} limit of {{limit}}.",
+  "pt/serverErrors.json::serverErrors.functions.json_argument_invalid": "argument '{{argument}}' of '{{name}}' is not a JSON literal",
+  "pt/serverErrors.json::serverErrors.functions.not_a_remote_source": "Source '{{source_id}}' offers no write operations",
+  "pt/serverErrors.json::serverErrors.functions.operation_not_offered": "Source '{{source_id}}' offers no operation '{{operation}}'",
+  "pt/serverErrors.json::serverErrors.functions.remote_refused": "{{source_id}} refused {{operation}}: {{answer}}",
+  "pt/commandFormFields.json::commandFormFields.requiresApproval": "Requires approval",
+  "pt/commandFormFields.json::commandFormFields.requiresApprovalHint": "Each call runs only once the approval hook approves it. With no hook configured, calls are refused.",
+  "pt/serverErrors.json::serverErrors.functions.approval_denied": "Approval denied for '{{name}}': {{reason}}",
+  "pt/serverErrors.json::serverErrors.functions.approval_unavailable": "command '{{name}}' needs approval and no approval hook is configured",
+  "pt/serverErrors.json::serverErrors.actions.written_table_not_registered": "'{{table}}' is not a registered table of source '{{source_id}}'",
+  "pt/serverErrors.json::serverErrors.functions.written_table_missing": "command '{{name}}' writes '{{table}}', which is not registered",
+  "pt/commandFormFields.json::commandFormFields.writesTable": "Writes table",
+  "pt/commandFormFields.json::commandFormFields.writesTableHint": "The registered table this command changes. After each call, cached results and materialized views over it are refreshed."
 }

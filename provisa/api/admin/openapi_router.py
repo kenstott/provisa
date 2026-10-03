@@ -30,6 +30,7 @@ from pydantic import BaseModel, model_validator
 
 from provisa.api.errors import ApiError
 from provisa.api.admin.capabilities import require_capability_request
+from provisa.api.admin.schema_common import remote_source_counts
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -168,10 +169,11 @@ async def register_openapi_source(
     request: Request,
     body: OpenAPIRegisterRequest,
 ):  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, REQ-406, REQ-407, REQ-408
-    """Load an OpenAPI spec and auto-register tables and tracked functions."""
+    """Load an OpenAPI spec and add the source. Its GET operations are tables on offer and its
+    other operations commands on offer; none is registered here (REQ-316)."""
     require_capability_request(request, "source_registration")
     try:
-        _, n_tables, n_mutations = await _load_and_register(
+        _, n_offered, n_commands = await _load_and_register(
             body.source_id,
             body.spec_path,
             body.domain_id,
@@ -192,21 +194,17 @@ async def register_openapi_source(
         ) from exc
 
     log.info(
-        "Registered OpenAPI source %s (%d tables, %d mutations)",
+        "Added OpenAPI source %s (%d tables and %d commands on offer)",
         body.source_id,
-        n_tables,
-        n_mutations,
+        n_offered,
+        n_commands,
     )
-    return {
-        "source_id": body.source_id,
-        "tables": n_tables,
-        "mutations": n_mutations,
-    }
+    return {"source_id": body.source_id, **remote_source_counts(0, n_offered, n_commands)}
 
 
 @router.post("/refresh/{source_id}")
 async def refresh_openapi_source(request: Request, source_id: str):  # REQ-321
-    """Re-load spec from stored path and re-run auto-registration."""
+    """Re-load the spec from its stored path. Nothing is registered (REQ-316)."""
     require_capability_request(request, "source_registration")
     from provisa.api.app import state
 
@@ -221,7 +219,7 @@ async def refresh_openapi_source(request: Request, source_id: str):  # REQ-321
 
     reg = specs[source_id]
     try:
-        _, n_tables, n_mutations = await _load_and_register(
+        _, n_offered, n_commands = await _load_and_register(
             source_id,
             reg.get("spec_path", ""),
             reg.get("domain_id", ""),
@@ -240,13 +238,12 @@ async def refresh_openapi_source(request: Request, source_id: str):  # REQ-321
         ) from exc
 
     log.info(
-        "Refreshed OpenAPI source %s (%d tables, %d mutations)", source_id, n_tables, n_mutations
+        "Refreshed OpenAPI source %s (%d tables and %d commands on offer)",
+        source_id,
+        n_offered,
+        n_commands,
     )
-    return {
-        "source_id": source_id,
-        "tables": n_tables,
-        "mutations": n_mutations,
-    }
+    return {"source_id": source_id, **remote_source_counts(0, n_offered, n_commands)}
 
 
 @router.post("/preview")
@@ -337,55 +334,27 @@ async def get_openapi_spec(request: Request, source_id: str):
 
 
 @router.put("/spec/{source_id}")
-async def put_openapi_spec(source_id: str, request: Request):  # REQ-316, REQ-317
-    """Store raw spec JSON and run auto-registration."""
+async def put_openapi_spec(source_id: str, request: Request):  # REQ-315, REQ-316
+    """Store a spec written or edited by hand. It is treated as a fetched one is (REQ-315): its
+    GET operations are tables on offer and its other operations are commands on offer, and
+    nothing is registered by storing it -- the steward registers what is wanted (REQ-316)."""
     require_capability_request(request, "source_registration")
     from provisa.api.app import state
+    from provisa.openapi.mapper import parse_spec
 
     try:
         spec = await request.json()
+        queries, mutations = parse_spec(spec)
     except Exception as exc:
         raise ApiError(422, "openapi.invalid_json", f"Invalid JSON: {exc}", error=str(exc)) from exc
 
-    from provisa.openapi.register import auto_register_openapi_source
-
-    if state.tenant_db is None:
-        raise ApiError(503, "openapi.database_not_connected", "Database not connected")
-
-    put_pool = state.tenant_db
-
     specs = getattr(state, "openapi_specs", {})
     existing = specs.get(source_id, {})
-    domain_id = existing.get("domain_id", "")
     base_url = existing.get("base_url", "") or ""
     if not base_url:
         servers = spec.get("servers", [])
         if servers:
             base_url = servers[0].get("url", "")
-    auth_config = existing.get("auth_config")
-    cache_ttl = existing.get("cache_ttl", 300)
-
-    from provisa.openapi.register import CommandsNeedDomain
-
-    async with put_pool.acquire() as conn:
-        try:
-            n_tables, n_mutations, kept_tables = await auto_register_openapi_source(
-                source_id,
-                spec,
-                conn,
-                domain_id,
-                base_url=base_url,
-                auth_config=auth_config,
-                cache_ttl=cache_ttl,
-            )
-        except CommandsNeedDomain as refused:
-            raise ApiError(
-                422,
-                "openapi.domain_required",
-                str(refused),
-                source=source_id,
-                commands=refused.commands,
-            ) from refused
 
     if not hasattr(state, "openapi_specs"):
         state.openapi_specs = {}
@@ -393,19 +362,13 @@ async def put_openapi_spec(source_id: str, request: Request):  # REQ-316, REQ-31
         **existing,
         "spec": spec,
         "spec_path": existing.get("spec_path", ""),
+        "base_url": base_url,
     }
 
     log.info(
-        "Stored spec for OpenAPI source %s (%d tables, %d mutations)",
+        "Stored spec for OpenAPI source %s (%d tables and %d commands on offer)",
         source_id,
-        n_tables,
-        n_mutations,
+        len(queries),
+        len(mutations),
     )
-    return {
-        "source_id": source_id,
-        "tables": n_tables,
-        "mutations": n_mutations,
-        # REQ-1918: tables the spec no longer has that something still refers to — kept, with
-        # what refers to each.
-        "kept_tables": kept_tables,
-    }
+    return {"source_id": source_id, **remote_source_counts(0, len(queries), len(mutations))}

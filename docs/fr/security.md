@@ -331,7 +331,7 @@ gRPC, Arrow Flight et MCP confient leurs certificats à des bibliothèques qui n
 
 ## Point d'ancrage d'approbation ABAC
 
-Un point d'ancrage de politique externe facultatif, déclenché avant l'exécution d'une requête. (REQ-203) Lorsqu'il est configuré, Provisa appelle votre moteur de politiques avec l'identité de l'utilisateur, les rôles, les tables, les colonnes et l'opération. La réponse détermine si la requête se poursuit. (REQ-203)
+Un point d'ancrage de politique externe facultatif, déclenché avant l'exécution d'une requête. (REQ-203) Lorsqu'il est configuré, Provisa appelle votre moteur de politiques avec l'identité de l'utilisateur, les rôles, les tables, les colonnes et l'opération. La réponse détermine si la requête se poursuit. (REQ-203) Une commande enregistrée avec **Nécessite une approbation** est soumise au même point d'ancrage avant chaque appel ; voir [Appels de commande](#appels-de-commande). (REQ-1924)
 
 ### Portée
 
@@ -366,6 +366,9 @@ message ApprovalRequest {
   repeated string tables = 3;
   repeated string columns = 4;
   string operation = 5;
+  map<string, string> session_vars = 6;
+  string command = 7;         // a command call's name; empty for a query
+  string arguments_json = 8;  // a command call's arguments as a JSON object
 }
 
 message ApprovalResponse {
@@ -386,9 +389,34 @@ Les trois transports portent la même charge utile : (REQ-246)
 | `roles` | string[] | Rôles Provisa de l'utilisateur |
 | `tables` | string[] | Identifiants des tables référencées dans la requête |
 | `columns` | string[] | Colonnes sélectionnées dans la requête |
-| `operation` | string | `"query"` ou `"mutation"` |
+| `operation` | string | `"query"` ou `"mutation"` ; `"command"` pour un appel de commande |
+| `command` | string | Le nom de la commande pour un appel de commande ; vide pour une requête |
+| `arguments` | object | Les arguments avec lesquels une commande est appelée ; vide pour une requête |
 
-Les transports webhook et socket Unix échangent du JSON. La réponse doit inclure `approved` (booléen) et, en option, `reason` (chaîne). (REQ-246)
+Les transports webhook et socket Unix échangent du JSON, avec `command` et `arguments` comme clés. Avec gRPC, les arguments circulent sous forme du texte JSON `arguments_json`. La réponse doit inclure `approved` (booléen) et, en option, `reason` (chaîne). (REQ-246) [tool-verified: `provisa/auth/approval_hook.py` `ApprovalRequest`, `_request_to_dict`, `GrpcApprovalHook` (`arguments_json=json.dumps(request.arguments, default=str)`); `provisa/auth/approval.proto`]
+
+### Appels de commande
+
+Une commande dont `requires_approval` est activé (l'interrupteur **Nécessite une approbation** du formulaire de commande) passe par le point d'ancrage avant chaque appel, sur toutes les surfaces. Elle ne s'exécute que si le point d'ancrage approuve. La requête porte `operation: "command"`, le nom de la commande et ses arguments ; `tables` et `columns` sont vides. (REQ-1924) [tool-verified: `provisa/api/data/action_exec.py` `_require_approval` (`operation="command"`, `tables=[]`, `columns=[]`, `command=fn["name"]`, `arguments=args`)]
+
+```json
+{
+  "user": "analyst",
+  "roles": ["analyst"],
+  "tables": [],
+  "columns": [],
+  "operation": "command",
+  "command": "create_issue",
+  "arguments": {"input": {"title": "Crash on save"}}
+}
+```
+
+[inferred: the payload also carries `session_vars`; values shown are placeholders]
+
+Deux refus, tous deux 403 [tool-verified: `_require_approval`] :
+
+- `functions.approval_unavailable`: aucun point d'ancrage n'est configuré. Contrairement à une requête, une commande qui exige une approbation n'est jamais laissée passer sans point d'ancrage.
+- `functions.approval_denied`: le point d'ancrage a répondu `approved: false`. Le motif figure dans le message.
 
 ### Délai d'attente et repli
 

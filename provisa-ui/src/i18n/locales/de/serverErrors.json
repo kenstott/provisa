@@ -9,7 +9,8 @@
       "test_endpoint_disabled": "Test-Endpunkt ist deaktiviert (PROVISA_ENABLE_TEST_ENDPOINTS setzen, um ihn außerhalb der Produktion zu aktivieren).",
       "unknown_action_type": "Unbekannter actionType '{{action_type}}'",
       "unknown_role": "Unbekannte Rolle '{{role}}'",
-      "webhook_not_found": "Webhook '{{name}}' nicht gefunden"
+      "webhook_not_found": "Webhook '{{name}}' nicht gefunden",
+      "written_table_not_registered": "'{{table}}' ist keine registrierte Tabelle der Quelle '{{source_id}}'"
     },
     "ai_models": {
       "vector_model_fields_required": "jeder vector_models-Eintrag erfordert id, provider und dimensions"
@@ -106,18 +107,25 @@
       "coordinator_waking": "Die Umgebung wird gestartet. Sie ist in etwa zwei Minuten bereit."
     },
     "functions": {
+      "approval_denied": "Genehmigung für '{{name}}' verweigert: {{reason}}",
+      "approval_unavailable": "Befehl '{{name}}' erfordert eine Genehmigung, und es ist kein Genehmigungs-Hook konfiguriert",
       "binding_missing_key": "Funktionsbindung für Art '{{kind}}' fehlt der erforderliche Schlüssel '{{key}}'",
       "egress_denied": "Ausgehender Zugriff auf '{{endpoint}}' verweigert: Host steht nicht auf der UDF-Egress-Zulassungsliste (REQ-885 deny-by-default). Fügen Sie ihn zu udf_egress_allowlist hinzu, um ihn zuzulassen.",
       "grpc_call_failed": "gRPC-Aufruf {{target}}{{path}} fehlgeschlagen: {{status}}: {{details}}",
       "grpc_method_invalid": "gRPC-Methode '{{method}}' muss dem Format 'Service/Method' oder 'pkg.Service.Method' entsprechen",
+      "json_argument_invalid": "Argument '{{argument}}' von '{{name}}' ist kein JSON-Literal",
       "non_tabular_payload": "Funktion lieferte eine nicht-tabellarische Nutzlast: {{payload_type}}",
+      "not_a_remote_source": "Quelle '{{source_id}}' bietet keine Schreiboperationen an",
+      "operation_not_offered": "Quelle '{{source_id}}' bietet keine Operation '{{operation}}' an",
       "python_callable_invalid": "Python-Callable '{{spec}}' muss dem Format 'module:attr' entsprechen",
+      "remote_refused": "{{source_id}} hat {{operation}} abgelehnt: {{answer}}",
       "result_set_ref_invalid": "result_set-Referenz '{{ref}}' muss dem Format source.schema.table entsprechen",
       "rowwise_external": "Funktion '{{name}}' (kind={{impl_kind}}) ist zeilenweise extern: alle Argumente sind skalare column_value. Deklarieren Sie ein table_ref-/result_set-Relationsargument, damit Aufrufe mengenweise und gebündelt erfolgen (REQ-885).",
       "script_failed": "Skript wurde mit {{returncode}} beendet: {{stderr}}",
       "source_not_connected": "Quelle '{{source_id}}' nicht verbunden",
       "unknown_arg_kind": "Unbekanntes arg_kind '{{arg_kind}}' für '{{name}}'",
-      "unknown_impl_kind": "Unbekanntes Funktions-impl_kind: '{{impl_kind}}'"
+      "unknown_impl_kind": "Unbekanntes Funktions-impl_kind: '{{impl_kind}}'",
+      "written_table_missing": "Befehl '{{name}}' schreibt '{{table}}', die nicht registriert ist"
     },
     "graphql_remote": {
       "introspection_failed": "Introspektion fehlgeschlagen: {{error}}",
@@ -153,7 +161,6 @@
     },
     "openapi": {
       "database_not_connected": "Datenbank nicht verbunden",
-      "domain_required": "Die OpenAPI-Quelle {{source}} deklariert {{commands}} Befehl(e) und nennt keine Domäne: Ein Befehl gehört zu einer Domäne, daher benötigt die Registrierung eine",
       "invalid_json": "Ungültiges JSON: {{error}}",
       "refresh_failed": "Aktualisierung fehlgeschlagen: {{error}}",
       "registration_failed": "Registrierung fehlgeschlagen: {{error}}",

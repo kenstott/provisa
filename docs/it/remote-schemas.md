@@ -1,6 +1,6 @@
 # Schemi remoti
 
-Un'origine di schema remoto collega un'API esterna — GraphQL, gRPC o REST (OpenAPI) — al livello semantico di Provisa. Una volta registrate, le operazioni dell'API esterna diventano tabelle e funzioni Provisa a tutti gli effetti. (REQ-308, REQ-316, REQ-325) Ogni regola di governance, interfaccia di query e livello di sicurezza si applica automaticamente. (REQ-310, REQ-319, REQ-328) Il servizio remoto non vede mai le regole di governance di Provisa. (REQ-310, REQ-319, REQ-328)
+Un'origine di schema remoto collega un'API esterna — GraphQL (incluso GitHub), gRPC o REST (OpenAPI) — al livello semantico di Provisa. Aggiungere un'origine non registra alcuna tabella. L'origine offre tabelle, e un data steward registra ogni tabella desiderata tramite il selettore «Register Table»; tale registrazione è il passaggio di curation. (REQ-308, REQ-316, REQ-322) Una tabella registrata è una tabella Provisa a tutti gli effetti. (REQ-308, REQ-316, REQ-325) Ogni regola di governance, interfaccia di query e livello di sicurezza si applica automaticamente. (REQ-310, REQ-319, REQ-328) Il servizio remoto non vede mai le regole di governance di Provisa. (REQ-310, REQ-319, REQ-328)
 
 ---
 
@@ -8,7 +8,13 @@ Un'origine di schema remoto collega un'API esterna — GraphQL, gRPC o REST (Ope
 
 ### Schema remoto GraphQL (REQ-307–313)
 
-**Come registrarlo.** Inviare una richiesta POST a `/admin/sources/graphql-remote` con l'URL dell'endpoint, un namespace e un'autenticazione facoltativa. Provisa avvia una query di introspezione standard `__schema` verso l'endpoint remoto. (REQ-307) [tool-verified: `provisa/graphql_remote/introspect.py:47–59`]
+**Come aggiungere l'origine.** Inviare una richiesta POST a `/admin/sources/graphql-remote` con l'URL dell'endpoint, un namespace e un'autenticazione facoltativa. Provisa avvia una query di introspezione standard `__schema` verso l'endpoint remoto per confermare l'endpoint e le credenziali. (REQ-307) [tool-verified: `provisa/graphql_remote/introspect.py:47–59`]
+
+Aggiungere l'origine non registra alcuna tabella né alcun command. Ogni tipo di origine remota risponde all'aggiunta e all'aggiornamento con gli stessi contatori: `tables` (tabelle registrate o aggiornate; 0 all'aggiunta), `available_tables` (tabelle offerte), `mutations` (sempre 0) e `available_mutations` (command offerti). [tool-verified: `provisa/api/admin/schema_common.py` `remote_source_counts`; `provisa/api/admin/graphql_remote_router.py` `register_graphql_remote_source`]
+
+**Registrare le tabelle.** Aprire Tables, poi Register Table, scegliere l'origine e lo schema `graphql`, quindi selezionare le tabelle e le colonne desiderate. Tramite l'API GraphQL di amministrazione: `availableTables(sourceId, schemaName)` elenca le tabelle offerte, `availableColumns` elenca le colonne di una tabella e `registerTable(input: TableInput)` ne registra una con le colonne scelte. Una tabella registrata è quindi governata. (REQ-308) [tool-verified: `provisa/api/admin/introspect.py` `_native_tables_graphql` (`if schema_name != "graphql": return []`), `provisa/api/admin/_graphql_table_registration.py` `offered_tables`, `offered_columns`, `columns_to_register`] [tool-verified: `provisa/api/admin/schema_query.py` `available_tables`, `available_columns`; `registerTable` is from the task brief, not read]
+
+Il modo in cui viene letta una tabella registrata (campo radice, percorso delle righe, argomenti obbligatori, argomenti di paginazione) è memorizzato in `sources.mapping["tables"]`, così un processo riavviato la legge senza chiedere al remoto il suo schema. [tool-verified: `_graphql_table_registration.py` `TABLE_SPECS_KEY = "tables"`, `remember_table`]
 
 ```json
 {
@@ -32,9 +38,18 @@ Opzioni di autenticazione: `none`, `bearer` (header Authorization), `basic` (nom
 
 **Relazioni al momento della registrazione.** `relationships` dichiara percorsi di join FK/PK tra tabelle al momento della registrazione. Vengono memorizzate come relazioni dichiarate manualmente (senza il flag `remote_managed`). Al successivo aggiornamento, le relazioni rilevate automaticamente (quelle con `remote_managed: True`) vengono rieseguite e possono cambiare; le relazioni dichiarate manualmente non vengono modificate. (REQ-554) [tool-verified: `provisa/api/admin/graphql_remote_router.py`]
 
-**Cosa viene rilevato automaticamente.** Ogni campo del tipo `Query` remoto che restituisce un OBJECT diventa una tabella virtuale. Ogni campo del tipo `Mutation` remoto diventa una funzione tracciata. (REQ-308) [tool-verified: `provisa/graphql_remote/mapper.py:243–278`]
+**Cosa offre l'origine.** Ogni campo del tipo `Query` remoto che restituisce un oggetto o una lista di oggetti viene offerto come tabella, così come ogni connessione Relay sotto un campo a oggetto singolo (vedi sotto). Registrare una tabella offerta la rende una tabella. Ogni campo del tipo `Mutation` remoto è un comando offerto, contato in `available_mutations`; aggiungere l'origine non ne registra nessuno. Registrare quelli desiderati come comandi; vedi [Operazione di scrittura di un'origine remota](commands.md#operazione-di-scrittura-di-unorigine-remota-req-1924). (REQ-308, REQ-1924) [tool-verified: `provisa/graphql_remote/mapper.py:243–278`, `graphql_remote_router.py` `register_graphql_remote_source` (`"functions": 0`)]
 
 **Denominazione delle tabelle.** Le tabelle vengono denominate `{namespace}__{field_name}`. Con il namespace `petstore` e un campo di query `pets`: il nome della tabella è `petstore__pets`. (REQ-312) [tool-verified: `provisa/graphql_remote/mapper.py:250`]
+
+**Connessioni Relay.** Molte API restituiscono gli elenchi come connessioni Relay: un oggetto con `nodes` (o `edges { node }`) accanto a `pageInfo`. Provisa mappa una connessione su una tabella dei suoi nodi e la legge pagina per pagina. (REQ-308, REQ-309) [tool-verified: `provisa/graphql_remote/mapper.py` `_is_connection`, `_map_connection_table`]
+
+- Un campo radice che restituisce una connessione (`securityAdvisories`) diventa una tabella dei suoi nodi.
+- Una connessione sull'oggetto singolo restituito da un campo radice diventa una tabella a sé. La tabella assume gli argomenti obbligatori del campo radice. Con `repository(owner, name)` e una connessione `issues` su `Repository`, la tabella è `repositoryIssues`, con nome SQL `gh__repository_issues` nel namespace `gh`. La si filtra tramite le colonne `_nf_owner` e `_nf_name`: `WHERE _nf_owner = 'acme' AND _nf_name = 'widgets'`.
+- Una connessione non è mai una colonna. Altrimenti una riga porterebbe una lettura che il remoto calcola per riga, per ogni connessione che il suo tipo possiede.
+- Una connessione è una tabella solo se il suo campo accetta `first` e `after`, così da poter essere letta pagina per pagina. Una connessione che richiede un argomento proprio non è una tabella. Non lo è nemmeno una connessione di un'unione, né alcuna connessione sotto un campo radice che restituisce un elenco.
+
+[tool-verified: `provisa/graphql_remote/mapper.py` `_map_connection_table`, `_map_child_connection_tables`; `tests/unit/test_graphql_remote_relay.py` `test_child_connection_table_takes_the_root_fields_arguments`]
 
 **Mappatura dei tipi (REQ-308).** I campi scalari vengono mappati direttamente sui tipi Provisa. I campi OBJECT si suddividono in due casi a seconda che il tipo di destinazione sia governato o meno (vedere "Tabelle governate" più avanti). [tool-verified: `provisa/graphql_remote/mapper.py:14–36`, `provisa/api/data/endpoint.py:655–671`, `provisa/compiler/schema_gen.py:481–485`]
 
@@ -60,27 +75,94 @@ Quando una colonna di tipo OBJECT in una tabella governata punta a un altro tipo
 
 I tipi OBJECT NON raggiungibili come campi radice di Query (tipi inline come `ContactInfo` o `Address`) seguono regole diverse: vengono recuperati come colonne blob `jsonb` e compaiono nella SDL come campi di oggetto annidato. I sottocampi sono accessibili tramite estrazione `-->>` in SQL.
 
+**I campi che richiedono un argomento non sono colonne.** Un campo con un argomento obbligatorio non può essere selezionato così com'è, quindi viene lasciato fuori dalle colonne della tabella e dalle selezioni annidate. [tool-verified: `provisa/graphql_remote/mapper.py` `_build_columns`, `_build_gql_field_selection`]
+
 **Argomenti obbligatori.** Quando un campo di query radice presenta argomenti non nulli privi di valore predefinito, questi diventano colonne `native_filter_type: query_param` sulla tabella (con prefisso `_nf_` al momento dell'iniezione). L'executor le passa come variabili GraphQL. (REQ-555) [tool-verified: `provisa/graphql_remote/mapper.py:110–120`, `provisa/api/app.py:1280–1303`]
 
-**Relazioni rilevate automaticamente.** Provisa esamina le colonne di tipo OBJECT di ciascuna tabella. Quando il tipo GQL referenziato è anch'esso registrato come tabella nella stessa origine, viene generata una relazione. Le relazioni molti-a-uno deducono le colonne di origine e destinazione dalle convenzioni di denominazione (`breedName` sul tipo di origine → `name` sul tipo di destinazione `Breed`). I campi uno-a-molti (LIST) generano relazioni con riferimenti di colonna vuoti — la chiave esterna risiede sul lato destinazione. (REQ-554) [tool-verified: `provisa/graphql_remote/mapper.py:162–202`]
+**Relazioni rilevate automaticamente.** Provisa esamina le colonne di tipo OBJECT di ogni tabella registrata. Quando il tipo GQL referenziato è a sua volta una tabella registrata nella stessa origine, e la colonna su cui poggia la relazione è tra le colonne registrate, la relazione viene memorizzata. Una tabella non ancora registrata non ne riceve. [tool-verified: `_graphql_table_registration.py` `sync_detected_relationships`] Le relazioni many-to-one deducono le colonne di origine e di destinazione dalle convenzioni di denominazione (`breedName` sul tipo di origine → `name` sul tipo di destinazione `Breed`). I campi one-to-many (LIST) emettono relazioni con riferimenti di colonna vuoti — la FK risiede sul lato di destinazione. (REQ-554) [tool-verified: `provisa/graphql_remote/mapper.py:162–202`]
 
-**Mutation.** I campi mutation producono funzioni tracciate con tipi di argomento mappati dagli argomenti della mutation e uno `return_schema` derivato dal tipo di ritorno della mutation. (REQ-308) [tool-verified: `provisa/graphql_remote/mapper.py:261–278`]
+**Mutazioni.** Un campo di mutazione viene registrato, uno alla volta, come comando di tipo `source_operation`. I suoi argomenti sono ciascuno tipizzati `json` e passati al servizio remoto come variabili tipizzate; la risposta è il JSON che il servizio remoto restituisce, senza `return_schema`. Vedi [Operazione di scrittura di un'origine remota](commands.md#operazione-di-scrittura-di-unorigine-remota-req-1924). (REQ-1924) [tool-verified: `provisa/api/admin/actions_router.py` `_as_source_operation` (`body.returns = ""`, arguments typed `json`); `provisa/executor/source_operation.py` `_call_graphql`]
 
-**Aggiornamento.** Inviare una richiesta POST a `/admin/sources/graphql-remote/{id}/refresh`. Esegue nuovamente l'introspezione dello schema remoto e aggiorna le registrazioni di tabelle e funzioni. Le regole di governance esistenti (RLS, mascheramento) vengono preservate. (REQ-311) [tool-verified: `provisa/api/admin/graphql_remote_router.py:217–257`]
+**Aggiornamento.** Inviare una richiesta POST a `/admin/sources/graphql-remote/{id}/refresh`. Esegue nuovamente l'introspezione dello schema remoto e porta allo stato di tale schema le tabelle già registrate. Non aggiunge alcuna tabella né colonna: una tabella o una colonna che lo schema ha guadagnato resta offerta, e una colonna che lo schema ha perso viene eliminata. Le regole di governance esistenti (RLS, mascheramento) vengono preservate. (REQ-311) [tool-verified: `provisa/api/admin/graphql_remote_router.py` `refresh_graphql_remote_source`; `_graphql_table_registration.py` `refreshed_registered_tables`: "a column the schema has lost is gone; one it has gained is on offer and is not added"]
 
 **Limitazioni.**
 
 - I campi di query radice di tipo scalare ed ENUM (il cui tipo di ritorno non è OBJECT) diventano funzioni tracciate, non tabelle virtuali. Il loro `return_schema` è costituito da un'unica colonna `value` del tipo scalare mappato. [tool-verified: `provisa/graphql_remote/mapper.py:254–279`]
-- L'annidamento degli oggetti viene risolto al momento della registrazione fino a `graphql_remote.max_object_depth` (predefinito: 5). Sia la selezione per il recupero remoto sia i metadati dei sottocampi vengono costruiti fino a tale profondità; i campi oltre il limite non vengono recuperati e non sono disponibili per l'estrazione SQL. (REQ-556) [tool-verified: `provisa/graphql_remote/mapper.py:38–52`]
-- I campi OBJECT annidati di tipo LIST (ad es. `breed.awards: [Award]`) sono inclusi nella selezione di recupero fino a `graphql_remote.max_list_depth` livelli di annidamento (predefinito: 2). Entro tale limite, la lista viene recuperata come array `jsonb` nella colonna padre, e la selezione GQL inietta `first: N`, dove N corrisponde a `graphql_remote.max_list_items` (predefinito: 100), per limitare la dimensione dell'array. Oltre `max_list_depth`, il campo LIST viene escluso interamente per evitare un'espansione illimitata dei dati. In SQL, l'array è accessibile tramite `json_array_elements(column_name)` o estrazione per indice con `->>`. Se il tipo di elemento della lista dispone di una propria query radice, è preferibile registrarlo come tabella separata e creare una relazione — il percorso di join è più efficiente e bypassa il blob. (REQ-556) [tool-verified: `provisa/graphql_remote/mapper.py:43–70`]
+- L'annidamento degli oggetti viene risolto al momento della registrazione fino a `graphql_remote.max_object_depth` (predefinito: 5). Sia la selezione del recupero remoto sia i metadati dei sottocampi vengono costruiti fino a tale profondità; i campi oltre il limite non vengono recuperati e non sono disponibili per l'estrazione SQL. Un tipo viene attraversato una sola volta lungo un singolo percorso: un campo il cui tipo è già sul cammino verso il basso viene lasciato fuori, così uno schema i cui tipi si riferiscono l'un l'altro viene percorso una volta per tipo, non una volta per livello di profondità. (REQ-556) [tool-verified: `provisa/graphql_remote/mapper.py` `_build_gql_field_selection`, `tests/unit/test_graphql_remote_relay.py` `test_a_type_is_entered_once_along_a_path`]
+- I campi OBJECT annidati di tipo LIST (ad es. `breed.awards: [Award]`) sono inclusi nella selezione di recupero fino a `graphql_remote.max_list_depth` livelli di annidamento (predefinito: 2). Entro tale limite, l'elenco viene recuperato come array `jsonb` nella colonna padre. Quando il campo elenco dichiara un argomento `first` (Relay, PostGraphile, pg_graphql) o un argomento `limit` (Hasura), la selezione lo passa come `first: N` o `limit: N`, dove N è `graphql_remote.max_list_items` (predefinito: 100). Un campo elenco che non dichiara né l'uno né l'altro non riceve alcun argomento, perché un remoto rifiuta un argomento che il campo non dichiara. Oltre `max_list_depth`, il campo LIST viene escluso del tutto per evitare un'espansione illimitata dei dati. In SQL, l'array è accessibile tramite `json_array_elements(column_name)` o l'estrazione per indice con `->>`. Se il tipo di elemento dell'elenco dispone di una propria query radice, registrarlo invece come tabella separata e creare una relazione — il percorso di join è più efficiente e aggira il blob. (REQ-556) [tool-verified: `provisa/graphql_remote/mapper.py` `_list_limit_arg`, `_build_gql_field_selection`; `tests/unit/test_graphql_remote_relay.py` `test_a_plain_list_takes_no_first_and_a_list_that_declares_first_gets_it`]
 - Per le query SQL, le colonne di tipo OBJECT non governate vengono recuperate integralmente dall'origine remota (tutti i sottocampi fino alla profondità configurata) e memorizzate nella cache come `jsonb`. L'accesso ai sottocampi in SQL avviene tramite estrazione `->>` sul blob; la richiesta remota non viene ristretta ai soli campi selezionati dalla query SQL. Quando il tipo di elemento della lista non dispone di una query radice e la rappresentazione in blob risulta insufficiente, è opportuno scrivere la query direttamente in SDL GraphQL — Provisa riproduce fedelmente la selezione di campi GQL, in modo che l'origine remota veda esattamente i campi richiesti. [tool-verified: `provisa/compiler/sql_gen.py:1332–1368`]
-- Se il server remoto rifiuta un campo di tipo OBJECT perché richiede la selezione di sottocampi (situazione che non dovrebbe verificarsi quando `gql_selection` è disponibile), l'executor riprova una volta rimuovendo tali campi, in modo che le colonne scalari vengano comunque restituite. [tool-verified: `provisa/graphql_remote/executor.py:76–80`]
+- Se il server remoto rifiuta un campo di tipo OBJECT perché richiede la selezione di sottocampi (situazione che non dovrebbe verificarsi quando `gql_selection` è disponibile), l'executor riprova una volta rimuovendo tali campi, in modo che le colonne scalari vengano comunque restituite. Ciò vale per le tabelle lette da un campo radice. Una tabella di connessione non segue questo percorso. [tool-verified: `provisa/graphql_remote/executor.py` `execute_remote` (`for attempt in range(2)`), `_execute_connection`]
+
+**Letture paginate.** Una tabella di connessione viene letta tramite cursore. Ogni pagina richiede `first: N, after: $pageCursor` con `pageInfo { hasNextPage endCursor }`, e la lettura segue `endCursor` finché il remoto non segnala che non c'è una pagina successiva. (REQ-309) [tool-verified: `provisa/graphql_remote/executor.py` `_connection_query`, `_execute_connection`]
+
+| Impostazione | Predefinito | Effetto |
+| --- | --- | --- |
+| `graphql_remote.max_list_items` | `100` | Righe per pagina. [tool-verified: `provisa/api/data/materialization.py` passes `limit=max_items` to `execute_remote`] |
+| `graphql_remote.max_rows` | `10000` | Il massimo di righe che una lettura di una tabella di connessione acquisisce. Una lettura che lo raggiunge si ferma e registra un avviso. [tool-verified: `provisa/core/models.py` `GraphQLRemoteConfig`] |
+
+```yaml
+graphql_remote:
+  max_list_items: 100
+  max_rows: 10000
+```
+
+Due risposte fanno riprovare l'executor:
+
+- **Pagina troppo pesante.** Quando il remoto risponde 502 o 504, la stessa pagina viene richiesta di nuovo a metà dimensione, fino a una riga. [tool-verified: `_PAGE_TOO_HEAVY = (502, 504)`, `page_size = max(1, page_size // 2)`]
+- **Limite di frequenza con tempo di attesa.** Quando il remoto risponde 403 o 429 con un `Retry-After` di 120 secondi o meno, l'executor attende quel tempo e invia di nuovo la richiesta, fino a tre tentativi. Un rifiuto senza `Retry-After`, o che chiede un'attesa più lunga, viene sollevato come errore. Ciò vale per ogni lettura, di connessione o meno. [tool-verified: `_post`, `_RETRY_AFTER_STATUSES`, `_RETRY_AFTER_ATTEMPTS`, `_RETRY_AFTER_MAX_SECONDS`]
+
+Qualsiasi altro errore nella risposta fa fallire la lettura, a meno che il tipo di origine non disponga diversamente (vedi GitHub sotto). Una connessione il cui padre è tornato nullo non ha righe. [tool-verified: `_accept_row_field_errors`, `_execute_connection`]
+
+---
+
+### GitHub (REQ-1923)
+
+GitHub è un tipo di origine ordinario. La sua API è GraphQL, quindi le sue tabelle si comportano come descritto sopra, comprese le tabelle di connessione come `gh__repository_issues`. [tool-verified: `provisa/graphql_remote/brands.py` `BRANDS["github"]`]
+
+**Aggiungere l'origine.**
+
+1. Aprire Sources e aggiungere un'origine di tipo **GitHub**.
+2. Inserire un token di accesso GitHub. Facoltativamente inserire un namespace, il prefisso dei nomi di tabella; il valore predefinito è `gh`.
+3. Salvare. Provisa verifica il token presso GitHub. Un token che GitHub rifiuta fa fallire l'aggiunta con il messaggio di GitHub.
+
+Aggiungere l'origine non registra alcuna tabella. [tool-verified: `provisa/api/admin/graphql_remote_router.py` `_register_branded_source` (`"tables": 0`, `verify_query="query { viewer { login } }"`)]
+
+**Registrare le tabelle.** Aprire Tables, poi Register Table. Scegliere l'origine GitHub, scegliere lo schema `graphql`, quindi scegliere le tabelle desiderate. Ogni tabella che GitHub offre viene elencata; la registrazione è la vostra scelta di cosa esporre. [tool-verified: `provisa/api/admin/_graphql_table_registration.py` `offered_tables`] [inferred: picker labels and the `graphql` schema name from the task brief; the UI strings were not read]
+
+**Ambiti (scope) del token.** Quando registrate una tabella, Provisa la verifica una volta presso GitHub con il vostro token.
+
+- Un campo che gli ambiti del token non coprono viene lasciato fuori dalla tabella. Il risultato nomina ogni campo escluso: `Left out, because the source's credential may not read them: projectsV2`. [tool-verified: `provisa/api/admin/schema_mutation_ops.py`]
+- Una tabella che il token non può leggere affatto viene rifiutata, con il motivo di GitHub: `GitHub does not let this source's credential read gh__repository_issues: ...`. [tool-verified: `provisa/api/admin/_table_ops.py` `_branded_columns_for_input`]
+
+**Righe che il token non può vedere.** GitHub risponde `FORBIDDEN` per un campo che il token non può vedere in una particolare riga, come i collaboratori di un repository senza accesso in scrittura, e `NOT_ORG_OWNED_REPO` per un campo che esiste solo nei repository di proprietà di un'organizzazione. Quel campo è nullo in quella riga, il resto della lettura prosegue e Provisa registra un avviso. Un errore a carico della tabella stessa fa fallire la lettura. [tool-verified: `provisa/graphql_remote/brands.py` `error_policy`, `provisa/graphql_remote/executor.py` `_accept_row_field_errors`]
+
+**Pagine pesanti.** Quando GitHub risponde `RESOURCE_LIMITS_EXCEEDED` perché calcolare una pagina costa troppo, la pagina viene richiesta di nuovo a metà dimensione. [tool-verified: `brands.py` `overload`, `executor.py` `_execute_connection`]
+
+**Oggetti annidati.** Le tabelle GitHub usano una propria profondità di annidamento pari a 0 (`max_object_depth=0` per questo tipo di origine), non `graphql_remote.max_object_depth`. Una colonna di oggetto annidato viene selezionata solo con i propri campi scalari; gli oggetti al suo interno compaiono come `__typename`. [tool-verified: `brands.py`]
+
+**Archiviazione del token.** Il token va nel vault dei segreti e la riga dell'origine conserva un riferimento, così un riavvio rilegge l'origine senza dover reinserire il token. [tool-verified: `provisa/api/admin/graphql_remote_router.py` `_persist_source` docstring: "The credential goes to the org's vault and the row carries the reference"]
+
+**Come funziona (operatori).** Lo schema di GitHub è distribuito con Provisa, quindi aggiungere l'origine non effettua alcuna chiamata di introspezione e uno schema grande non costa nulla alla registrazione. Le tabelle vengono mappate da esso una alla volta man mano che le registrate. L'endpoint refresh rifiuta questo tipo di origine; un nuovo schema GitHub arriva con una release di Provisa. [tool-verified: `brands.py` module docstring, `brand_schema`; REQ-1923 "there is no refresh" in `docs/arch/requirements.yaml` REQ-1875 supersession note] [tool-verified: refresh handler returns code `graphql_remote.branded_source_not_refreshed`]
+
+---
+
+### GitLab (REQ-1923)
+
+GitLab è un tipo di origine ordinario e viene aggiunto e registrato come GitHub: aggiungere un'origine di tipo **GitLab** con un token di accesso, quindi registrare le tabelle desiderate dallo schema `graphql`. Il prefisso predefinito dei nomi di tabella è `gl`. L'origine raggiunge `gitlab.com`. [tool-verified: `provisa/graphql_remote/brands.py` `BRANDS["gitlab"]`]
+
+**Scegliere le colonne.** GitLab assegna un costo a ogni query e rifiuta quella che costa troppo: 200 punti per un chiamante anonimo, 250 con un token. Una tabella larga con tutte le colonne selezionate supera tale costo, quindi registrate una tabella GitLab con le colonne che desiderate. [tool-verified: live against gitlab.com 2026-10-02, `project.issues` with all 63 columns answered "Query has complexity of 1733, which exceeds max complexity of 200"; with 14 chosen columns it registered and read]
+
+- Quando registrate una tabella, Provisa chiede una volta a GitLab se servirà la selezione con la dimensione di pagina usata dalle letture. Se GitLab risponde che la query è troppo complessa o troppo grande, la tabella non viene registrata e il risultato riporta il messaggio di GitLab: `Table 'gl__project_issues' was not registered with the columns selected: Query has complexity of 1733, which exceeds max complexity of 200. Choose fewer columns.` [tool-verified: `provisa/graphql_remote/probe.py` `QueryTooComplex`; `provisa/api/admin/_table_ops.py` code `schema.table_too_complex`]
+- Il costo di una colonna dipende dal suo tipo. Un valore semplice costa circa un punto; una colonna di oggetto annidato costa molte volte tanto. Eliminare le colonne di oggetto annidato libera di più. [tool-verified: live, five scalar columns scored 26 at 100 rows a page; two small object columns added 18]
+- La dimensione di pagina fa parte del costo. È `graphql_remote.max_list_items`. [tool-verified: live, the same five columns scored 15 at 5 rows a page and 26 at 100]
+
+**Verifica del token.** GitLab risponde a un token non riconosciuto con un risultato vuoto, non con un errore. Provisa lo considera un token rifiutato e non aggiunge l'origine. [tool-verified: `provisa/api/admin/graphql_remote_router.py` `_verify_live_auth`]
 
 ---
 
 ### Schema remoto gRPC (REQ-322–329)
 
-**Come registrarlo.** Inviare una richiesta POST a `/admin/grpc-remote/register` con l'indirizzo del server, un percorso o un URL a un file `.proto`, e una configurazione TLS facoltativa.
+**Come aggiungere l'origine.** Inviare una richiesta POST a `/admin/grpc-remote/register` con l'indirizzo del server, un percorso o un URL a un file `.proto` e una configurazione TLS facoltativa. Aggiungere l'origine non registra alcuna tabella.
 
 ```json
 {
@@ -103,13 +185,17 @@ Provisa recupera il proto, lo analizza con un parser di solo testo (senza dipend
 
 I file proto possono anche essere percorsi locali. I percorsi di importazione per i tipi ben noti (`google/protobuf/timestamp.proto`) vengono memorizzati al momento della registrazione e riutilizzati in fase di aggiornamento. (REQ-329) [tool-verified: `provisa/grpc_remote/loader.py:135–159`]
 
-**Cosa viene rilevato automaticamente.** Ogni metodo `rpc` nel proto viene classificato come query o mutation usando tre segnali in ordine di priorità: (REQ-323) [tool-verified: `provisa/grpc_remote/mapper.py`]
+**Cosa offre l'origine.** Ogni metodo `rpc` del proto viene classificato come query o mutation mediante tre segnali, in ordine di priorità: (REQ-323) [tool-verified: `provisa/grpc_remote/mapper.py`]
 
 1. **`method_overrides`** nel payload di registrazione — `{"MethodName": "query"}` oppure `{"MethodName": "mutation"}` ha priorità su tutto il resto.
 2. **`server_streaming: true`** — il server invia un flusso di messaggi; è sempre una tabella virtuale (a meno che l'output non sia uno scalare).
 3. **Il messaggio di output presenta un campo ripetuto di tipo messaggio** — ad es. `ListOrdersResponse { repeated Order items; }` viene trattato come un wrapper di lista e diventa una tabella virtuale. I campi scalari ripetuti (ad es. `repeated string tags`) non attivano questa regola — sono proprietà di tipo array di una singola entità, non origini di righe.
 
 I metodi che non corrispondono a nessuno di questi segnali (RPC unario che restituisce un singolo messaggio di entità, o qualsiasi output scalare) diventano funzioni tracciate.
+
+**Registrare le tabelle.** Ogni metodo query è offerto come una tabella, denominata `{namespace}__{Service}__{Method}`, sotto lo schema di selettore `grpc_remote`. Registrare quelli desiderati con il selettore Register Table (`availableTables`, `availableColumns`, `registerTable`, come per le origini GraphQL), scegliendo le colonne di risposta. I campi della richiesta diventano colonne di filtro nativo `_nf_*`, e queste sono sempre incluse. (REQ-322) [tool-verified: `provisa/api/admin/introspect.py` `_native_tables_grpc` (`if schema_name != "grpc_remote": return []`), `provisa/api/admin/grpc_remote_router.py` `query_table_name`, `query_columns`, `_register_schema` (`if table_name not in registered: continue`), `provisa/api/admin/_table_ops.py` `_grpc_columns_for_input`]
+
+I metodi di mutazione sono comandi offerti, contati in `available_mutations`; aggiungere l'origine non ne registra nessuno. Una mutazione gRPC si registra nella pagina Comandi scegliendo l'origine e poi il metodo, chiamato `Service.Method`; il tipo del comando è `source_operation`. Vedi [Operazione di scrittura di un'origine remota](commands.md#operazione-di-scrittura-di-unorigine-remota-req-1924). (REQ-1924) [tool-verified: `provisa/executor/source_operation.py` `grpc_operation_name`, `_grpc_operations`; `provisa/api/admin/actions_router.py` `_as_source_operation`]
 
 **Denominazione delle tabelle.** Il nome predefinito è `{namespace}__{ServiceName}__{MethodName}`. In assenza di namespace, i nomi di servizio e metodo vengono uniti direttamente. A qualsiasi tabella registrata può essere assegnato un `alias`; quando impostato, l'alias è il nome utilizzato ovunque (query, SDL, relazioni). Il nome generato automaticamente è la chiave di registrazione e non cambia mai. (REQ-322) [tool-verified: `provisa/core/repositories/table.py:129–134`]
 
@@ -135,11 +221,11 @@ I metodi che non corrispondono a nessuno di questi segnali (RPC unario che resti
 
 I metodi server-streaming raccolgono tutti i messaggi trasmessi in un elenco prima di restituire le righe. (REQ-325) [tool-verified: `provisa/grpc_remote/executor.py:86–119`]
 
-**Metodi mutation (REQ-326).** I campi del messaggio di input diventano argomenti di input della mutation. Lo schema del messaggio di output diventa il `return_schema`. [tool-verified: `provisa/grpc_remote/executor.py:122–143`]
+**Metodi di mutazione (REQ-326).** Un metodo di mutazione registrato è un comando i cui argomenti sono i campi del messaggio di input, ciascuno tipizzato `json` e passato invariato. La risposta del servizio remoto torna come righe; una chiamata rifiutata è un 422, `functions.remote_refused`. Vedi [Operazione di scrittura di un'origine remota](commands.md#operazione-di-scrittura-di-unorigine-remota-req-1924). (REQ-1924) [tool-verified: `provisa/executor/source_operation.py` `_grpc_operations`, `_call_grpc`, `_refused`]
 
 **Gestione dei canali.** Un `grpc.aio.Channel` per ogni origine registrata viene memorizzato nello stato dell'applicazione e riutilizzato per le richieste successive. Il canale precedente viene chiuso prima che se ne apra uno nuovo al momento dell'aggiornamento. (REQ-327) [tool-verified: `provisa/api/admin/grpc_remote_router.py:107–117`]
 
-**Aggiornamento.** Inviare una richiesta POST a `/admin/grpc-remote/refresh/{source_id}`. Ricarica il proto dal percorso memorizzato, ricompila gli stub e riregistra tabelle e funzioni. In alternativa, inviare una richiesta PUT a `/admin/grpc-remote/{source_id}/proto` con un nuovo `proto_text` per aggiornare il proto in linea. (REQ-329) [tool-verified: `provisa/api/admin/grpc_remote_router.py:241–268`, `provisa/api/admin/grpc_remote_router.py:300–358`]
+**Aggiornamento.** Inviare una richiesta POST a `/admin/grpc-remote/refresh/{source_id}`. Ricarica il proto dal percorso memorizzato, ricompila gli stub e porta allo stato del proto le tabelle già registrate, con le colonne con cui ciascuna è stata registrata. Non registra alcuna nuova tabella; un metodo query aggiunto al proto resta offerto. In alternativa, inviare una richiesta PUT a `/admin/grpc-remote/{source_id}/proto` con un nuovo `proto_text` per aggiornare il proto in linea. (REQ-329) [tool-verified: `provisa/api/admin/grpc_remote_router.py` `refresh_grpc_remote_source`, `_load_and_register` and `put_grpc_proto` (both pass `registered=await registered_query_tables(conn, source_id)`)]
 
 **Limitazioni.**
 
@@ -149,7 +235,9 @@ I metodi server-streaming raccolgono tutti i messaggi trasmessi in un elenco pri
 
 ### OpenAPI / REST (REQ-314–321)
 
-**Come registrarlo.** Chiamare `auto_register_openapi_source` con un ID di origine, una specifica analizzata e metadati di connessione. La specifica viene caricata da un file locale o da un URL. (REQ-314) [tool-verified: `provisa/openapi/loader.py:30–55`, `provisa/openapi/register.py:249–264`]
+**Come aggiungere l'origine.** Inviare una richiesta POST a `/admin/openapi/register` con un ID origine e una specifica, caricata da un file locale o da un URL. La specifica viene analizzata e conservata con l'origine; non viene registrata alcuna tabella né alcun command. La risposta riporta `tables: 0` e `mutations: 0`, con i contatori offerti in `available_tables` e `available_mutations`. (REQ-314) [tool-verified: `provisa/openapi/loader.py:30–55`, `provisa/api/admin/openapi_router.py` `_load_and_register` docstring: "Tables and functions are NOT auto-registered here. Users register them individually via the Register Table / Register Action UI."]
+
+**Registrare le tabelle.** Registrare ogni operazione GET desiderata tramite il selettore Register Table (`availableTables`, `availableColumns`, `registerTable`), scegliendo le colonne. Registrare ogni operazione non GET singolarmente come comando nella pagina Comandi, elencate da `availableFunctions`; vedi [Operazione di scrittura di un'origine remota](commands.md#operazione-di-scrittura-di-unorigine-remota-req-1924). `PUT /admin/openapi/spec/{source_id}` memorizza una specifica modificata a mano, non registra nulla e restituisce `available_tables` e `available_mutations`. (REQ-316) [tool-verified: `provisa/api/admin/openapi_router.py` `put_openapi_spec`; `provisa/api/admin/schema_query.py` `available_functions` ("returns non-GET operations")] [tool-verified: `provisa/api/admin/_table_ops.py` `_build_columns_for_input`; a registered OpenAPI table is read through the operation in the stored spec, `provisa/api/data/materialization.py` (`state.openapi_specs`)]
 
 **Payload di registrazione.** L'endpoint `/admin/openapi/register` accetta due campi aggiuntivi oltre a `source_id`, `spec_path`, ecc.:
 
@@ -163,7 +251,7 @@ I metodi server-streaming raccolgono tutti i messaggi trasmessi in un elenco pri
 }
 ```
 
-**Cosa viene rilevato automaticamente.** Ogni operazione GET nella specifica diventa una tabella virtuale, a meno che il suo schema di risposta non sia un tipo scalare (`string`, `number`, `boolean`, `integer`) — le GET che restituiscono valori scalari diventano funzioni tracciate con un'unica colonna `value`. Ogni operazione diversa da GET (POST, PUT, PATCH, DELETE) diventa una funzione tracciata. (REQ-316, REQ-317)
+**Cosa offre l'origine.** Ogni operazione GET della specifica viene offerta come tabella, a meno che il suo schema di risposta sia un tipo scalare (`string`, `number`, `boolean`, `integer`) — le operazioni GET che restituiscono uno scalare sono invece funzioni con una singola colonna `value`. Ogni operazione non GET (POST, PUT, PATCH, DELETE) viene offerta come comando, chiamato con il suo `operationId`. Una volta registrato, accetta i parametri di percorso dell'operazione e un argomento `body` per il corpo della richiesta, ciascuno tipizzato `json`; ogni altro argomento va nella query string. Vedi [Operazione di scrittura di un'origine remota](commands.md#operazione-di-scrittura-di-unorigine-remota-req-1924). (REQ-316, REQ-317, REQ-1924) [tool-verified: `provisa/executor/source_operation.py` `_openapi_operations`, `_call_openapi`]
 
 Priorità di classificazione: `operation_overrides` (payload) ha priorità su `x-provisa-kind` (estensione della specifica), che a sua volta ha priorità sull'euristica GET. `operation_overrides` è il percorso di override consigliato; `x-provisa-kind` è pensato per i casi in cui la specifica stessa debba veicolare la classificazione. (REQ-408) [tool-verified: `provisa/openapi/mapper.py:192–203`]
 
@@ -190,7 +278,7 @@ Priorità di classificazione: `operation_overrides` (payload) ha priorità su `x
 
 **Cache delle risposte (REQ-318).** I risultati delle operazioni GET vengono memorizzati nella cache in PostgreSQL da `pg_cache.py`. Ogni combinazione di parametri della richiesta ottiene un proprio gruppo `_params_hash`. Le righe di un determinato hash vengono sostituite alla scadenza del TTL. Gli endpoint con parametro di percorso (`/pets/{id}`) saltano il recupero massivo iniziale — la tabella cache viene creata vuota per l'introspezione dello schema, quindi popolata per chiave primaria man mano che arrivano le richieste. [tool-verified: `provisa/openapi/pg_cache.py:181–234`, `provisa/openapi/pg_cache.py:307–360`]
 
-**Aggiornamento (REQ-321).** Analizzare nuovamente la specifica e richiamare `auto_register_openapi_source`. Le regole di governance esistenti vengono preservate; le registrazioni vengono aggiornate tramite upsert ON CONFLICT. [tool-verified: `provisa/openapi/register.py:249–264`]
+**Aggiornamento (REQ-321).** Inviare una richiesta POST a `/admin/openapi/refresh/{source_id}`. Analizza nuovamente la specifica tramite `_load_and_register`, che non registra nulla: non aggiunge alcuna tabella né colonna. Le regole di governance esistenti vengono preservate. [tool-verified: `provisa/api/admin/openapi_router.py` `refresh_openapi_source`, `_load_and_register`] Una tabella registrata mantiene le sue colonne; viene letta tramite l'operazione della spec aggiornata. [tool-verified: `provisa/api/admin/openapi_router.py` `_load_and_register` (replaces `state.openapi_specs[source_id]`), `provisa/api/data/materialization.py`]
 
 **Limitazioni.**
 

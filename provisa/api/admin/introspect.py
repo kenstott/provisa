@@ -208,7 +208,9 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
         return ["graphql"]
 
     if t in ("grpc", "grpc_remote"):
-        return ["grpc"]
+        # The schema a gRPC source's tables are registered under, so a table picked here is
+        # registered where its readers look for it.
+        return ["grpc_remote"]
 
     if t == "kafka":
         # REQ-147's kafka_topics/kafka_sources catalog is populated ONLY by _process_kafka_sources
@@ -567,56 +569,25 @@ async def _native_tables_openapi(  # REQ-314, REQ-316
     ]
 
 
-async def _native_tables_graphql(  # REQ-307, REQ-308
+async def _native_tables_graphql(  # REQ-307, REQ-308, REQ-1923
     source_id: str,
     schema_name: str,
     config_conn: "Connection",
     state,
 ) -> "list[AvailableTableType] | None":
+    """Every table a remote GraphQL source offers, registered or not: adding the source
+    registers none, and this list is what the steward registers from."""
+    from provisa.api.admin._graphql_table_registration import offered_tables, source_offer
     from provisa.api.admin.types import AvailableTableType
 
     if schema_name != "graphql":
         return []
-    # REQ-1923: a branded source offers every table of its shipped schema, registered or not.
-    from provisa.api.admin._graphql_brand_registration import branded_registration, offered_tables
-
-    branded = branded_registration(state, source_id)
-    if branded is not None:
-        return [
-            AvailableTableType(name=t["name"], comment=t["description"])
-            for t in offered_tables(*branded)
-        ]
-    gql_sources = getattr(state, "graphql_remote_sources", {})
-    reg = gql_sources.get(source_id)
-    if reg is not None:
-        url = reg.get("url") or reg.get("endpoint") or ""
-        auth = reg.get("auth") or reg.get("auth_config")
-    else:
-        # Source not yet in state (no registered tables) — query the physical endpoint directly.
-        result = await config_conn.execute_core(
-            select(sources.c.path).where(sources.c.id == source_id)
-        )
-        row = result.fetchone()
-        url = (row[0] or "") if row else ""
-        auth = None
-    if not url:
+    offered = await source_offer(state, source_id)
+    if offered is None:
         return []
-    try:
-        from provisa.graphql_remote.introspect import introspect_schema
-
-        schema = await introspect_schema(url, auth)
-    except Exception:
-        return []
-    query_type_name = (schema.get("queryType") or {}).get("name") or "Query"
-    types_by_name = {tp["name"]: tp for tp in (schema.get("types") or [])}
-    query_type = types_by_name.get(query_type_name)
-    if query_type is None:
-        return []
-    fields = query_type.get("fields") or []
     return [
-        AvailableTableType(name=f["name"], comment=f.get("description"))
-        for f in fields
-        if _gql_field_returns_list(f)
+        AvailableTableType(name=t["name"], comment=t["description"])
+        for t in offered_tables(*offered)
     ]
 
 
@@ -625,36 +596,20 @@ async def _native_tables_grpc(  # REQ-322, REQ-323, REQ-325
     schema_name: str,
     state,
 ) -> "list[AvailableTableType] | None":
+    """Every table a gRPC source offers -- one per query method of its proto -- under the name
+    it registers with. Adding the source registers none of them (REQ-322)."""
+    from provisa.grpc_remote.mapper import query_table_name
     from provisa.api.admin.types import AvailableTableType
 
-    if schema_name != "grpc":
+    if schema_name != "grpc_remote":
         return []
-    grpc_sources = getattr(state, "grpc_remote_sources", {})
-    reg = grpc_sources.get(source_id)
+    reg = getattr(state, "grpc_remote_sources", {}).get(source_id)
     if reg is None:
         return None
-    proto_text = reg.get("proto_text") or ""
-    if not proto_text:
-        return None
-    try:
-        from provisa.grpc_remote.loader import parse_proto_text
-
-        proto_dict = parse_proto_text(proto_text)
-    except Exception:
-        return None
-    messages = proto_dict.get("messages") or {}
-    results: list[AvailableTableType] = []
-    for service in proto_dict.get("services") or []:
-        for method in service.get("methods") or []:
-            is_streaming = method.get("server_streaming", False)
-            if is_streaming:
-                results.append(AvailableTableType(name=method["name"], comment=None))
-                continue
-            output_type = method.get("output_type", "")
-            response_fields = messages.get(output_type) or []
-            if any(f.get("repeated") for f in response_fields):
-                results.append(AvailableTableType(name=method["name"], comment=None))
-    return results
+    return [
+        AvailableTableType(name=query_table_name(reg.get("namespace", ""), q), comment=None)
+        for q in reg.get("queries") or []
+    ]
 
 
 async def _native_tables_kafka(  # REQ-147

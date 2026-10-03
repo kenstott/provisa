@@ -9,7 +9,8 @@
       "test_endpoint_disabled": "टेस्ट एंडपॉइंट अक्षम है (गैर-प्रोडक्शन में सक्षम करने के लिए PROVISA_ENABLE_TEST_ENDPOINTS सेट करें)।",
       "unknown_action_type": "अज्ञात actionType '{{action_type}}'",
       "unknown_role": "अज्ञात भूमिका '{{role}}'",
-      "webhook_not_found": "वेबहुक '{{name}}' नहीं मिला"
+      "webhook_not_found": "वेबहुक '{{name}}' नहीं मिला",
+      "written_table_not_registered": "'{{table}}' स्रोत '{{source_id}}' की पंजीकृत तालिका नहीं है"
     },
     "ai_models": {
       "vector_model_fields_required": "प्रत्येक vector_models प्रविष्टि के लिए id, provider और dimensions आवश्यक हैं"
@@ -106,18 +107,25 @@
       "coordinator_waking": "वातावरण शुरू हो रहा है। यह लगभग दो मिनट में तैयार हो जाएगा।"
     },
     "functions": {
+      "approval_denied": "'{{name}}' के लिए अनुमोदन अस्वीकृत: {{reason}}",
+      "approval_unavailable": "कमांड '{{name}}' को अनुमोदन चाहिए और कोई अनुमोदन हुक कॉन्फ़िगर नहीं है",
       "binding_missing_key": "kind '{{kind}}' की फ़ंक्शन बाइंडिंग में आवश्यक कुंजी '{{key}}' गायब है",
       "egress_denied": "'{{endpoint}}' पर ईग्रेस अस्वीकृत है: होस्ट UDF ईग्रेस अनुमति-सूची में नहीं है (REQ-885 डिफ़ॉल्ट-अस्वीकृति)। अनुमति देने के लिए इसे udf_egress_allowlist में जोड़ें।",
       "grpc_call_failed": "grpc कॉल {{target}}{{path}} विफल हुई: {{status}}: {{details}}",
       "grpc_method_invalid": "grpc मेथड '{{method}}' 'Service/Method' या 'pkg.Service.Method' होना चाहिए",
+      "json_argument_invalid": "'{{name}}' का आर्ग्युमेंट '{{argument}}' JSON लिटरल नहीं है",
       "non_tabular_payload": "फ़ंक्शन ने गैर-तालिका (non-tabular) पेलोड लौटाया: {{payload_type}}",
+      "not_a_remote_source": "स्रोत '{{source_id}}' कोई राइट ऑपरेशन प्रदान नहीं करता",
+      "operation_not_offered": "स्रोत '{{source_id}}' ऑपरेशन '{{operation}}' प्रदान नहीं करता",
       "python_callable_invalid": "python callable '{{spec}}' 'module:attr' होना चाहिए",
+      "remote_refused": "{{source_id}} ने {{operation}} अस्वीकार किया: {{answer}}",
       "result_set_ref_invalid": "result_set ref '{{ref}}' source.schema.table होना चाहिए",
       "rowwise_external": "फ़ंक्शन '{{name}}' (kind={{impl_kind}}) पंक्ति-वार बाहरी है: सभी आर्ग्युमेंट स्केलर column_value हैं। एक table_ref/result_set रिलेशन आर्ग्युमेंट घोषित करें ताकि कॉल सेट-वार और बैच्ड हों (REQ-885)।",
       "script_failed": "स्क्रिप्ट {{returncode}} के साथ समाप्त हुई: {{stderr}}",
       "source_not_connected": "स्रोत '{{source_id}}' कनेक्ट नहीं है",
       "unknown_arg_kind": "'{{name}}' के लिए अज्ञात arg_kind '{{arg_kind}}'",
-      "unknown_impl_kind": "अज्ञात फ़ंक्शन impl_kind: '{{impl_kind}}'"
+      "unknown_impl_kind": "अज्ञात फ़ंक्शन impl_kind: '{{impl_kind}}'",
+      "written_table_missing": "कमांड '{{name}}' '{{table}}' में लिखता है, जो पंजीकृत नहीं है"
     },
     "graphql_remote": {
       "introspection_failed": "इंट्रोस्पेक्शन विफल हुआ: {{error}}",
@@ -153,7 +161,6 @@
     },
     "openapi": {
       "database_not_connected": "डेटाबेस कनेक्ट नहीं है",
-      "domain_required": "OpenAPI स्रोत {{source}} {{commands}} कमांड घोषित करता है और कोई डोमेन नहीं देता: कमांड किसी डोमेन में होता है, इसलिए पंजीकरण के लिए डोमेन आवश्यक है",
       "invalid_json": "अमान्य JSON: {{error}}",
       "refresh_failed": "रीफ़्रेश विफल हुआ: {{error}}",
       "registration_failed": "पंजीकरण विफल हुआ: {{error}}",
