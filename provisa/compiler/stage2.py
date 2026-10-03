@@ -338,6 +338,11 @@ def _govern_select(
     if not alias_to_tid:
         return node
 
+    # --- Every other reference to a governed column (expressions, WHERE, JOIN ON, GROUP BY,
+    # HAVING, ORDER BY, windows): the role computes only over what it can see. Done before the
+    # row filters are added below, which are the policy and read the real values.
+    _govern_references(node, alias_to_tid, gov_ctx)
+
     # --- Rewrite SELECT projection ---
     new_exprs: list[exp.Expr] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     existing_exprs = node.expressions
@@ -355,7 +360,14 @@ def _govern_select(
             if not _is_column_visible(expr, alias_to_tid, gov_ctx):
                 pass  # drop invisible column
             else:
-                new_exprs.append(_maybe_mask_column(expr, alias_to_tid, gov_ctx))
+                masked = _maybe_mask_column(expr, alias_to_tid, gov_ctx)
+                if masked is expr:
+                    new_exprs.append(expr)
+                else:
+                    masked.meta[_GOVERNED] = True
+                    # The masked value keeps the column's name: a client reads `email`, not a
+                    # nameless expression (`?column?`).
+                    new_exprs.append(exp.Alias(this=masked, alias=expr.this.copy()))
         elif isinstance(expr, exp.Alias) and isinstance(expr.this, exp.Column):
             col = expr.this
             if not _is_column_visible(col, alias_to_tid, gov_ctx):
@@ -363,6 +375,7 @@ def _govern_select(
             else:
                 masked = _maybe_mask_column(col, alias_to_tid, gov_ctx)
                 if masked is not col:
+                    masked.meta[_GOVERNED] = True
                     new_exprs.append(exp.Alias(this=masked, alias=expr.alias))
                 else:
                     new_exprs.append(expr)
@@ -388,6 +401,68 @@ def _govern_select(
             node = node.where(rls_filter, dialect="postgres", append=True)
 
     return node
+
+
+#: Marks an expression governance put in a column's place (a mask, or NULL for a hidden column),
+#: so a later pass over the same statement does not govern what is inside it again.
+_GOVERNED = "provisa_governed"
+
+
+def _already_governed(col: exp.Column) -> bool:
+    parent = col.parent
+    while parent is not None:
+        if parent.meta.get(_GOVERNED):
+            return True
+        parent = parent.parent
+    return False
+
+
+def _govern_references(
+    node: exp.Select, alias_to_tid: dict[str, int], gov_ctx: GovernanceContext
+) -> None:
+    """Replace, in place, every reference to a masked column with its mask and every reference
+    to a hidden column with NULL — anywhere in ``node`` except its bare select-list columns,
+    which the projection rewrite names and drops. A column of this SELECT's tables referenced
+    from a nested SELECT by its alias (a correlated subquery) is replaced too."""
+    top_level = {id(e) for e in node.expressions}
+    for col in list(node.find_all(exp.Column)):
+        parent = col.parent
+        if id(col) in top_level or (
+            isinstance(parent, exp.Alias) and id(parent) in top_level and parent.this is col
+        ):
+            continue
+        if _already_governed(col):
+            continue
+        if col.find_ancestor(exp.Select) is not node and col.table not in alias_to_tid:
+            continue  # a nested SELECT's own column: governed when that SELECT is
+        if not _is_column_visible(col, alias_to_tid, gov_ctx):
+            replacement: exp.Expr = exp.Null()  # pyright: ignore[reportPrivateImportUsage]
+        else:
+            replacement = _maybe_mask_column(col, alias_to_tid, gov_ctx)
+            if replacement is col:
+                continue
+        replacement.meta[_GOVERNED] = True
+        _replace_reference(col, replacement)
+
+
+def _replace_reference(col: exp.Column, replacement: exp.Expr) -> None:  # pyright: ignore[reportPrivateImportUsage]
+    """Put ``replacement`` where ``col`` is. A constant cannot stand as an ORDER BY or GROUP BY
+    key on every engine (PostgreSQL reads a bare constant there as a position): an ordering by a
+    constant orders nothing and is dropped; a grouping key keeps its place as a typed value."""
+    parent = col.parent
+    constant = isinstance(replacement, (exp.Literal, exp.Null, exp.Boolean))
+    if constant and isinstance(parent, exp.Ordered) and parent.this is col:
+        order = parent.parent
+        parent.pop()
+        if isinstance(order, exp.Order) and not order.expressions:
+            order.pop()
+        return
+    if constant and isinstance(parent, exp.Group):
+        typed = exp.cast(replacement, "VARCHAR")
+        typed.meta[_GOVERNED] = True
+        col.replace(typed)
+        return
+    col.replace(replacement)
 
 
 def _is_column_visible(
@@ -494,6 +569,29 @@ def _expand_star(
 # --------------------------------------------------------------------------- #
 
 
+def _govern_selects(tree: exp.Expr, gov_ctx: GovernanceContext) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    """Govern every SELECT in ``tree`` — the outer one, and each CTE, derived table, scalar or
+    IN subquery, EXISTS body and set-operation branch — deepest first, each once. (A transform
+    that replaced the outer SELECT never reached the SELECTs inside it, so a CTE or an EXISTS
+    over another table ran with none of the reader's rules.)"""
+    for select in reversed(list(tree.find_all(exp.Select))):
+        governed_select = _govern_select(select, gov_ctx)
+        if governed_select is select:
+            continue
+        if select is tree:
+            tree = governed_select
+        else:
+            select.replace(governed_select)
+    return tree
+
+
+def govern_fragment(sql: str, gov_ctx: GovernanceContext) -> str:
+    """``sql`` — a read that becomes part of a larger statement (a view's body) — with the
+    role's row filters, masks and column visibility applied. No row cap and no sampling: those
+    bound the statement the fragment is put into."""
+    return _govern_selects(sqlglot.parse_one(sql, read="postgres"), gov_ctx).sql(dialect="postgres")
+
+
 def apply_governance(
     sql: str, gov_ctx: GovernanceContext
 ) -> str:  # REQ-002, REQ-038, REQ-263, REQ-264, REQ-266, REQ-267
@@ -506,23 +604,7 @@ def apply_governance(
     trace_stage("govern.in", sql)
     tree = sqlglot.parse_one(sql, read="postgres")
 
-    def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        if isinstance(node, exp.Select):
-            return _govern_select(node, gov_ctx)
-        return node
-
-    tree = tree.transform(_transform)
-
-    # SQLGlot's transform may visit parent Select nodes before their WHERE-clause
-    # subquery children when UNION/CTE structures are present (REQ-264).  Do a
-    # second bottom-up pass over any remaining Subquery nodes so that every
-    # physical table reference inside IN/EXISTS/correlated subqueries is governed.
-    for subq in list(tree.find_all(exp.Subquery)):
-        inner = subq.this
-        if isinstance(inner, exp.Select):
-            governed_inner = _govern_select(inner, gov_ctx)
-            if governed_inner is not inner:
-                subq.set("this", governed_inner)
+    tree = _govern_selects(tree, gov_ctx)
 
     governed = tree.sql(dialect="postgres")
 
