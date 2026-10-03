@@ -60,16 +60,20 @@ async def _init_schema(tenant_db):
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="session", autouse=True)
-async def _restore_config_after_module(tenant_db, _init_schema):
+async def _restore_config_after_module(tenant_db, _init_schema, platform_admin_db):
+    # The reload at the module's end binds the request org's vault from the platform plane too, so
+    # the plane is set up before this fixture and torn down after it.
     yield
     domain_policy.reset()
     async with tenant_db.acquire() as conn:
-        await load_config_from_yaml(MAIN_CONFIG, conn, replace=True)
+        await load_config_from_yaml(MAIN_CONFIG, conn)
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def _clean_and_reset(tenant_db, _init_schema):
-    """Truncate config tables and reset the global policy before each test."""
+async def _clean_and_reset(tenant_db, _init_schema, platform_admin_db):
+    """Truncate config tables and reset the global policy before each test. The platform plane
+    is bound explicitly (``platform_admin_db``): a config load binds the request org's vault from
+    it, and what an earlier module's app left in ``state.admin_db`` is not this module's."""
     domain_policy.reset()
     async with tenant_db.acquire() as conn:
         await conn.execute(

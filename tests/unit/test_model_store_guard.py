@@ -128,6 +128,7 @@ class Plane:
             source_column="id",
             target_column="id",
             cardinality="many-to-one",
+            origin="admin",
         )
         return ObjectRef("relationship", rel_id)
 
@@ -186,7 +187,7 @@ async def test_asking_about_an_object_that_is_not_there_is_a_lookup_error(plane)
 async def test_everything_that_refers_to_a_domain_blocks_it(plane):
     orders = await plane.table("orders")
     await plane.add("table_columns", table_id=orders.id, column_name="id", domain_id="sales")
-    await plane.add("data_products", id="dp", domain_id="sales", name="Sales")
+    await plane.add("data_products", id="dp", domain_id="sales", name="Sales", origin="admin")
     await plane.add(
         "roles", id="seller", capabilities=[], domain_access=["sales", "finance"], origin="admin"
     )
@@ -196,13 +197,15 @@ async def test_everything_that_refers_to_a_domain_blocks_it(plane):
         await conn.execute_core(
             src.update().where(src.c.id == "pg").values(allowed_domains=["sales"])
         )
-    rule = await plane.add("rls_rules", role_id="seller", domain_id="sales", filter_expr=b"1=1")
-    await plane.add("tracked_functions", name="refund", domain_id="sales")
-    await plane.add("tracked_webhooks", name="notify", domain_id="sales")
+    rule = await plane.add(
+        "rls_rules", role_id="seller", domain_id="sales", filter_expr=b"1=1", origin="admin"
+    )
+    await plane.add("tracked_functions", name="refund", domain_id="sales", origin="admin")
+    await plane.add("tracked_webhooks", name="notify", domain_id="sales", origin="admin")
     assignment = await plane.add(
         "user_role_assignments", user_id="u1", role_id="seller", domain_id="sales"
     )
-    term = await plane.add("glossary_terms", name="Order")
+    term = await plane.add("glossary_terms", name="Order", origin="admin")
     await plane.add("glossary_term_domains", term_id=term, domain_id="sales")
 
     sales = ObjectRef("domain", "sales")
@@ -262,7 +265,7 @@ async def test_a_table_is_blocked_by_what_reads_it_and_by_every_relationship_it_
     out = await plane.relationship("orders_customers", orders, customers)
     incoming = await plane.relationship("regions_orders", regions, orders)
     view = await plane.table("open_orders", view_sql="SELECT o.id FROM orders o WHERE o.open")
-    await plane.add("metrics", name="revenue", expression="SUM(orders.amount)")
+    await plane.add("metrics", name="revenue", expression="SUM(orders.amount)", origin="admin")
     await plane.add(
         "materialized_views",
         id="mv-daily",
@@ -271,9 +274,13 @@ async def test_a_table_is_blocked_by_what_reads_it_and_by_every_relationship_it_
         target_schema="s",
         target_table="daily",
     )
-    await plane.add("tracked_functions", name="recent_orders", returns="public.orders")
-    await plane.add("tracked_webhooks", name="notify", url="http://x", returns="public.orders")
-    await plane.add("tracked_functions", name="elsewhere", returns="archive.orders")
+    await plane.add(
+        "tracked_functions", name="recent_orders", returns="public.orders", origin="admin"
+    )
+    await plane.add(
+        "tracked_webhooks", name="notify", url="http://x", returns="public.orders", origin="admin"
+    )
+    await plane.add("tracked_functions", name="elsewhere", returns="archive.orders", origin="admin")
     assert await plane.blocking(orders) == {
         out,
         incoming,
@@ -293,7 +300,9 @@ async def test_a_table_takes_its_columns_row_filters_and_tags_with_it(plane):
     for column in ("id", "amount"):
         await plane.add("table_columns", table_id=orders.id, column_name=column)
     await plane.add("roles", id="seller", capabilities=[], domain_access=["sales"], origin="admin")
-    await plane.add("rls_rules", role_id="seller", table_id=orders.id, filter_expr=b"1=1")
+    await plane.add(
+        "rls_rules", role_id="seller", table_id=orders.id, filter_expr=b"1=1", origin="admin"
+    )
     await plane.add(
         "tag_assignments",
         tag_id="pii",
@@ -301,6 +310,7 @@ async def test_a_table_takes_its_columns_row_filters_and_tags_with_it(plane):
         object_type="table",
         object_key="orders",
         table_id=orders.id,
+        origin="admin",
     )
     other = await plane.table("customers")
     await plane.add("table_columns", table_id=other.id, column_name="id")
@@ -353,12 +363,25 @@ async def test_a_role_is_blocked_by_its_holders_its_heirs_and_every_grant_naming
     assignment = await plane.add(
         "user_role_assignments", user_id="u1", role_id="seller", domain_id="*"
     )
-    await plane.add("rls_rules", role_id="seller", table_id=orders.id, filter_expr=b"1=1")
     await plane.add(
-        "metrics", name="revenue", expression="SUM(orders.amount)", visible_to=["seller"]
+        "rls_rules", role_id="seller", table_id=orders.id, filter_expr=b"1=1", origin="admin"
     )
-    await plane.add("tracked_functions", name="refund", writable_by=["seller"])
-    await plane.add("data_products", id="dp", domain_id="sales", name="Sales", owner_role="seller")
+    await plane.add(
+        "metrics",
+        name="revenue",
+        expression="SUM(orders.amount)",
+        visible_to=["seller"],
+        origin="admin",
+    )
+    await plane.add("tracked_functions", name="refund", writable_by=["seller"], origin="admin")
+    await plane.add(
+        "data_products",
+        id="dp",
+        domain_id="sales",
+        name="Sales",
+        owner_role="seller",
+        origin="admin",
+    )
     async with plane.db.acquire() as conn:
         dom = metadata.tables["domains"]
         await conn.execute_core(dom.update().where(dom.c.id == "finance").values(steward="seller"))
@@ -381,9 +404,9 @@ async def test_a_role_is_blocked_by_its_holders_its_heirs_and_every_grant_naming
 
 
 async def test_a_data_product_is_blocked_by_its_members(plane):
-    await plane.add("data_products", id="dp", domain_id="sales", name="Sales")
+    await plane.add("data_products", id="dp", domain_id="sales", name="Sales", origin="admin")
     member = await plane.table("orders", product_id="dp")
-    await plane.add("tracked_functions", name="refund", product_id="dp")
+    await plane.add("tracked_functions", name="refund", product_id="dp", origin="admin")
     assert await plane.blocking(ObjectRef("data_product", "dp")) == {
         member,
         ObjectRef("command", "refund"),
@@ -391,7 +414,7 @@ async def test_a_data_product_is_blocked_by_its_members(plane):
 
 
 async def test_a_tag_takes_its_assignments_and_values_with_it(plane):
-    await plane.add("tags", id="pii")
+    await plane.add("tags", id="pii", origin="admin")
     await plane.add("tag_param_values", tag_id="pii", value="high")
     orders = await plane.table("orders")
     for column in ("email", "phone"):
@@ -403,6 +426,7 @@ async def test_a_tag_takes_its_assignments_and_values_with_it(plane):
             object_key=f"orders.{column}",
             table_id=orders.id,
             column_name=column,
+            origin="admin",
         )
     pii = ObjectRef("tag", "pii")
     assert await plane.blocking(pii) == set()
@@ -419,8 +443,8 @@ async def test_a_glossary_term_is_blocked_by_its_refs_and_takes_its_edges_with_i
     """Something that points a term at real data is a dependent; its edges, domain links and
     experts are its parts."""
     orders = await plane.table("orders")
-    t1 = await plane.add("glossary_terms", name="Order")
-    t2 = await plane.add("glossary_terms", name="Sale")
+    t1 = await plane.add("glossary_terms", name="Order", origin="admin")
+    t2 = await plane.add("glossary_terms", name="Sale", origin="admin")
     await plane.add("glossary_term_edges", from_term_id=t1, to_term_id=t2, rel_type="RELATED_TO")
     await plane.add("glossary_term_edges", from_term_id=t2, to_term_id=t1, rel_type="RELATED_TO")
     await plane.add("glossary_term_domains", term_id=t1, domain_id="sales")
@@ -538,10 +562,14 @@ async def test_each_dependent_carries_the_name_an_operator_knows_it_by(plane):
     assignment = await plane.add(
         "user_role_assignments", user_id="alice", role_id="seller", domain_id="*"
     )
-    rule = await plane.add("rls_rules", role_id="seller", domain_id="sales", filter_expr=b"1=1")
-    term = await plane.add("glossary_terms", name="Order")
+    rule = await plane.add(
+        "rls_rules", role_id="seller", domain_id="sales", filter_expr=b"1=1", origin="admin"
+    )
+    term = await plane.add("glossary_terms", name="Order", origin="admin")
     await plane.add("glossary_term_domains", term_id=term, domain_id="sales")
-    await plane.add("data_products", id="dp", domain_id="sales", name="Sales product")
+    await plane.add(
+        "data_products", id="dp", domain_id="sales", name="Sales product", origin="admin"
+    )
 
     async with plane.db.acquire() as conn:
         of_role = {d.ref: d.name for d in await integrity.guard(conn, ObjectRef("role", "seller"))}

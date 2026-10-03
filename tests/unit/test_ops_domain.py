@@ -399,6 +399,7 @@ async def test_report_views_functional(uri):
                     table_id=1,
                     object_key="table:1",
                     reason="legacy",
+                    origin="admin",
                 )
             )
             await conn.execute_core(
@@ -409,6 +410,7 @@ async def test_report_views_functional(uri):
                     table_id=2,
                     column_name="email",
                     object_key="column:2:email",
+                    origin="admin",
                 )
             )
             # REQ-1439: the tenant-local directory the report views resolve names through. bob is

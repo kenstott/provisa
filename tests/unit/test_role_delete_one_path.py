@@ -179,9 +179,13 @@ async def test_a_role_someone_holds_or_a_grant_names_is_refused_naming_each(plan
             user_role_assignments.insert().values(user_id="u1", role_id="loose", domain_id="*")
         )
         await conn.execute_core(
-            metrics.insert().values(name="revenue", expression="SUM(o.a)", visible_to=["loose"])
+            metrics.insert().values(
+                name="revenue", expression="SUM(o.a)", visible_to=["loose"], origin="admin"
+            )
         )
-        await conn.execute_core(rls_rules.insert().values(role_id="loose", filter_expr=b"1=1"))
+        await conn.execute_core(
+            rls_rules.insert().values(role_id="loose", filter_expr=b"1=1", origin="admin")
+        )
         with pytest.raises(role_repo.RoleDeleteRefused) as err:
             await role_repo.delete(conn, "loose")
         assert [(kind, via) for kind, _, via in _named(err.value)] == [

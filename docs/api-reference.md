@@ -857,6 +857,10 @@ Load a previously previewed config into the acting org. [tool-verified: `provisa
 
 Uses the same hot-reload path as `PUT /admin/config`. The org's catalog, schemas, and pools are rebuilt before the response returns.
 
+An import is always a merge. What it creates is recorded as made through the admin; it takes over no object, changes no existing object's origin, and removes nothing the imported config does not mention. There is no `replace` field. (REQ-1919)
+
+**Response:** `{"summary": {...}}` — the counts of what the imported config declares.
+
 ---
 
 ### Apache Ossie Interchange (REQ-1316, REQ-1321)

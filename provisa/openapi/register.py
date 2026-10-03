@@ -306,7 +306,7 @@ async def upsert_tracked_function(  # REQ-317
         description=mutation.summary,
         kind="mutation",
     )
-    await function_repo.upsert_function(conn, func, return_schema=return_schema)
+    await function_repo.upsert_function(conn, func, return_schema=return_schema, origin="admin")
     log.debug("Upserted tracked function %s for operation %s", fn_name, mutation.operation_id)
 
 

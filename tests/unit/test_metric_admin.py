@@ -64,7 +64,7 @@ async def test_upsert_of_non_aggregate_metric_is_a_hard_error(tmp_path):
         async with db.acquire() as conn:
             with pytest.raises(ValueError, match="aggregate"):
                 await metric_repo.upsert(
-                    conn, Metric(name="bad_metric", expression="orders.amount")
+                    conn, Metric(name="bad_metric", expression="orders.amount"), origin="admin"
                 )
             assert await metric_repo.list_all(conn) == []  # nothing stored
 
@@ -85,6 +85,7 @@ async def test_upsert_get_list_delete_roundtrip(tmp_path):
                     ai_context="Gross minus refunds.",
                     visible_to=["finance"],
                 ),
+                origin="admin",
             )
             await metric_repo.upsert(
                 conn,
@@ -93,6 +94,7 @@ async def test_upsert_get_list_delete_roundtrip(tmp_path):
                     expression="SUM(Sales.amount)",
                     from_fact="Sales",  # REQ-1320: fact-derived
                 ),
+                origin="admin",
             )
             rows = await metric_repo.list_all(conn)
             assert [r["name"] for r in rows] == ["net_revenue", "sales_amount_sum"]
@@ -118,7 +120,9 @@ async def test_upsert_get_list_delete_roundtrip(tmp_path):
 async def test_upsert_replaces_by_name(tmp_path):
     async with _db(tmp_path) as db:
         async with db.acquire() as conn:
-            await metric_repo.upsert(conn, Metric(name="gmv", expression="SUM(orders.amount)"))
+            await metric_repo.upsert(
+                conn, Metric(name="gmv", expression="SUM(orders.amount)"), origin="admin"
+            )
             await metric_repo.upsert(
                 conn,
                 Metric(
@@ -126,6 +130,7 @@ async def test_upsert_replaces_by_name(tmp_path):
                     expression="SUM(orders.amount) + SUM(orders.tax)",
                     datatype="decimal",
                 ),
+                origin="admin",
             )
             rows = await metric_repo.list_all(conn)
     assert len(rows) == 1
@@ -208,10 +213,12 @@ async def _seed_semantic_layer(conn):
             target_column="id",
             cardinality=Cardinality.many_to_one,
         ),
+        origin="admin",
     )
     await metric_repo.upsert(
         conn,
         Metric(name="net_revenue", expression="SUM(orders.amount) - SUM(orders.refunds)"),
+        origin="admin",
     )
 
 
@@ -291,13 +298,13 @@ async def test_metric_upsert_regenerates_dependent_view_sql(tmp_path):
 
             # unrelated metric → nothing regenerates
             await metric_repo.upsert(
-                conn, Metric(name="order_count", expression="COUNT(orders.amount)")
+                conn, Metric(name="order_count", expression="COUNT(orders.amount)"), origin="admin"
             )
             assert await regenerate_metric_views(conn, "order_count") == []
 
             # the referenced metric changes → the stored view SQL is regenerated
             await metric_repo.upsert(
-                conn, Metric(name="net_revenue", expression="SUM(orders.amount)")
+                conn, Metric(name="net_revenue", expression="SUM(orders.amount)"), origin="admin"
             )
             assert await regenerate_metric_views(conn, "net_revenue") == ["revenue_by_region"]
 

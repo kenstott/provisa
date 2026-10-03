@@ -129,6 +129,8 @@ data_products = Table(  # REQ-1634, REQ-1660
     "data_products",
     metadata,
     Column("id", Text, primary_key=True),
+    # REQ-1919: where the row came from — "config", "admin" or "seed" (see ``sources.origin``).
+    Column("origin", Text, nullable=False),
     Column("domain_id", Text, ForeignKey("domains.id", ondelete="CASCADE"), nullable=False),
     Column("name", Text, nullable=False),
     Column("owner_role", Text),
@@ -282,6 +284,8 @@ relationships = Table(
     "relationships",
     metadata,
     Column("id", Text, primary_key=True),
+    # REQ-1919: where the row came from — "config", "admin" or "seed" (see ``sources.origin``).
+    Column("origin", Text, nullable=False),
     Column(
         "source_table_id",
         Integer,
@@ -326,6 +330,8 @@ metrics = Table(
     "metrics",
     metadata,
     Column("name", Text, primary_key=True),
+    # REQ-1919: where the row came from — "config", "admin" or "seed" (see ``sources.origin``).
+    Column("origin", Text, nullable=False),
     Column("expression", Text, nullable=False),
     Column("datatype", Text),
     Column("description", Text),
@@ -367,6 +373,8 @@ rls_rules = Table(
     "rls_rules",
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
+    # REQ-1919: where the row came from — "config", "admin" or "seed" (see ``sources.origin``).
+    Column("origin", Text, nullable=False),
     Column("table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE")),
     Column("domain_id", Text, ForeignKey("domains.id", ondelete="CASCADE")),
     Column("role_id", Text, ForeignKey("roles.id", ondelete="CASCADE"), nullable=False),
@@ -384,6 +392,8 @@ tags = Table(
     "tags",
     metadata,
     Column("id", Text, primary_key=True),
+    # REQ-1919: where the row came from — "config", "admin" or "seed" (see ``sources.origin``).
+    Column("origin", Text, nullable=False),
     Column("description", Text, nullable=False, server_default=""),
     Column("applies_to", JSON, nullable=False, default=list, server_default="[]"),
     Column("is_system", Boolean, nullable=False, server_default=false()),
@@ -427,6 +437,8 @@ tag_assignments = Table(
     "tag_assignments",
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
+    # REQ-1919: where the row came from — "config", "admin" or "seed" (see ``sources.origin``).
+    Column("origin", Text, nullable=False),
     # No FK: system tags are code-defined (models.SYSTEM_TAGS) with no row to reference.
     Column("tag_id", Text, nullable=False),
     # REQ-1467: tag_id with the parameter stripped ("entity:customer" -> "entity"). Stored, not
@@ -477,6 +489,8 @@ glossary_terms = Table(
     "glossary_terms",
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
+    # REQ-1919: where the row came from — "config", "admin" or "seed" (see ``sources.origin``).
+    Column("origin", Text, nullable=False),
     Column("name", Text, nullable=False),
     Column("definition", Text),
     Column("is_abstract", Boolean, nullable=False, server_default=false()),
@@ -528,6 +542,16 @@ glossary_term_edges = Table(
 # REQ-1591: a term's DECLARED domains — written only for an abstract term (which holds no refs
 # to derive from) and as the stamp left when a rooted term's last ref departs. A term's domains
 # are its refs' domains while it has refs, and these otherwise. See schema.sql for the full rule.
+# REQ-1919: the seeded roles and domains a config file has redefined. A seeded object is the
+# deployment's own and is never removed, but a load of a file that no longer declares it puts the
+# seed's own definition back; this row is how the load knows the file had changed it.
+seed_redefinitions = Table(
+    "seed_redefinitions",
+    metadata,
+    Column("kind", Text, primary_key=True),
+    Column("object_id", Text, primary_key=True),
+)
+
 glossary_term_domains = Table(
     "glossary_term_domains",
     metadata,
@@ -838,6 +862,8 @@ tracked_functions = Table(
     "tracked_functions",
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
+    # REQ-1919: where the row came from — "config", "admin" or "seed" (see ``sources.origin``).
+    Column("origin", Text, nullable=False),
     Column("name", Text, nullable=False, unique=True),
     Column("source_id", Text, nullable=False, server_default=""),
     Column("schema_name", Text, nullable=False, server_default="public"),
@@ -867,6 +893,8 @@ tracked_webhooks = Table(
     "tracked_webhooks",
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
+    # REQ-1919: where the row came from — "config", "admin" or "seed" (see ``sources.origin``).
+    Column("origin", Text, nullable=False),
     Column("name", Text, nullable=False, unique=True),
     Column("url", Text, nullable=False, server_default=""),
     Column("method", Text, nullable=False, server_default="POST"),

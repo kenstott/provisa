@@ -78,6 +78,8 @@ ON CONFLICT (id) DO NOTHING;
 -- structured SLA can't unambiguously attribute which member it describes.
 CREATE TABLE IF NOT EXISTS data_products (
     id            TEXT PRIMARY KEY,
+    -- REQ-1919: where the row came from: 'config', 'admin' or 'seed' (see sources.origin).
+    origin TEXT NOT NULL,
     domain_id     TEXT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
     name          TEXT NOT NULL,
     owner_role    TEXT,
@@ -260,6 +262,8 @@ END $$;
 
 CREATE TABLE IF NOT EXISTS relationships (
     id               TEXT PRIMARY KEY,
+    -- REQ-1919: where the row came from: 'config', 'admin' or 'seed' (see sources.origin).
+    origin TEXT NOT NULL,
     source_table_id  INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
     target_table_id  INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
     source_column    TEXT NOT NULL,
@@ -411,6 +415,8 @@ END $$;
 
 CREATE TABLE IF NOT EXISTS rls_rules (
     id          SERIAL PRIMARY KEY,
+    -- REQ-1919: where the row came from: 'config', 'admin' or 'seed' (see sources.origin).
+    origin TEXT NOT NULL,
     table_id    INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,
     domain_id   TEXT REFERENCES domains(id) ON DELETE CASCADE,
     role_id     TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
@@ -438,6 +444,8 @@ END $$;
 -- present in every install and never stored, so no rows are seeded here.
 CREATE TABLE IF NOT EXISTS tags (
     id             TEXT PRIMARY KEY,
+    -- REQ-1919: where the row came from: 'config', 'admin' or 'seed' (see sources.origin).
+    origin TEXT NOT NULL,
     description    TEXT NOT NULL DEFAULT '',
     applies_to     JSONB NOT NULL DEFAULT '[]',
     is_system      BOOLEAN NOT NULL DEFAULT FALSE,
@@ -480,6 +488,8 @@ END $$;
 -- a UNIQUE over nullable typed columns does not deduplicate under SQL NULL semantics.
 CREATE TABLE IF NOT EXISTS tag_assignments (
     id              SERIAL PRIMARY KEY,
+    -- REQ-1919: where the row came from: 'config', 'admin' or 'seed' (see sources.origin).
+    origin TEXT NOT NULL,
     tag_id          TEXT NOT NULL,
     -- REQ-1467: tag_id with the parameter stripped ('entity:customer' -> 'entity'). Stored
     -- rather than derived at read time because the uniqueness rule below is stated over it.
@@ -564,8 +574,17 @@ END $$;
 -- creates/links terms as columns register and removes refs as they depart; a term losing its
 -- last ref is REMOVED unless an abstract term is connected to the rooted graph through it,
 -- in which case it is deprecated (kept) so no abstract term is left dangling.
+-- REQ-1919: the seeded roles and domains a config file has redefined (see schema_org.py).
+CREATE TABLE IF NOT EXISTS seed_redefinitions (
+    kind      TEXT NOT NULL,
+    object_id TEXT NOT NULL,
+    PRIMARY KEY (kind, object_id)
+);
+
 CREATE TABLE IF NOT EXISTS glossary_terms (
     id              SERIAL PRIMARY KEY,
+    -- REQ-1919: where the row came from: 'config', 'admin' or 'seed' (see sources.origin).
+    origin TEXT NOT NULL,
     name            TEXT NOT NULL,
     definition      TEXT,
     is_abstract     BOOLEAN NOT NULL DEFAULT FALSE,
@@ -672,6 +691,8 @@ CREATE TABLE IF NOT EXISTS materialized_views (
 -- from_fact marks a metric auto-registered from a fact spec's measure (REQ-1320).
 CREATE TABLE IF NOT EXISTS metrics (
     name        TEXT PRIMARY KEY,
+    -- REQ-1919: where the row came from: 'config', 'admin' or 'seed' (see sources.origin).
+    origin TEXT NOT NULL,
     expression  TEXT NOT NULL,
     datatype    TEXT,
     description TEXT,
@@ -907,6 +928,8 @@ CREATE TABLE IF NOT EXISTS live_query_state (
 -- Tracked DB functions exposed as GraphQL mutations (REQ-205)
 CREATE TABLE IF NOT EXISTS tracked_functions (
     id            SERIAL PRIMARY KEY,
+    -- REQ-1919: where the row came from: 'config', 'admin' or 'seed' (see sources.origin).
+    origin TEXT NOT NULL,
     name          TEXT NOT NULL UNIQUE,
     source_id     TEXT NOT NULL DEFAULT '',
     schema_name   TEXT NOT NULL DEFAULT 'public',
@@ -925,6 +948,8 @@ CREATE TABLE IF NOT EXISTS tracked_functions (
 -- Tracked webhooks exposed as GraphQL mutations (REQ-211)
 CREATE TABLE IF NOT EXISTS tracked_webhooks (
     id                 SERIAL PRIMARY KEY,
+    -- REQ-1919: where the row came from: 'config', 'admin' or 'seed' (see sources.origin).
+    origin TEXT NOT NULL,
     name               TEXT NOT NULL UNIQUE,
     url                TEXT NOT NULL DEFAULT '',
     method             TEXT NOT NULL DEFAULT 'POST',

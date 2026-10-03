@@ -82,7 +82,6 @@ from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import CompilationContext
 from sqlalchemy import select
 from provisa.core.config_loader import (
-    config_replace_mode,
     load_config,
     parse_config_dict,
     read_config_with_includes,
@@ -1050,11 +1049,10 @@ async def _load_and_build(
     async with tenant_db.acquire() as conn:
         # Single-writer cluster invariant: every node loads the byte-identical baked config, but only
         # the primary may DELETE rows. A secondary's upserts are idempotent no-ops (the advisory lock
-        # in load_config serializes them), so it stays consistent with the primary; replace mode would
-        # let a secondary wipe primary-registered rows, so it is hard-disabled off the primary. Secrets
+        # in load_config serializes them), so it stays consistent with the primary; the load's
+        # removal of what the file dropped runs on the primary only (REQ-1229, REQ-1919). Secrets
         # (source passwords) are file-only by design — schema.sql never stores them — so every node must
         # parse this file for source pools; PG holds only the shared, primary-written schema.
-        _replace_mode = config_replace_mode(os.environ)
         # REQ-1730: a source registered purely through the UI (createSource mutation, no
         # `sources:` entry in this config) is invisible to config.sources — without this, its
         # engine catalog is never (re)issued on boot or on a PUT /admin/config reload, on
@@ -1080,7 +1078,6 @@ async def _load_and_build(
                 config,
                 conn,
                 None if engine_deferred else state.federation_engine,
-                replace=_replace_mode,
                 extra_sources=_extra_sources,
                 origin="config",
             )
@@ -1160,7 +1157,7 @@ async def _load_and_build(
         async with state.tenant_db.acquire() as _retry_conn:
             for _rel in state.config.relationships:
                 try:
-                    await _rel_repo.upsert(_retry_conn, _rel)
+                    await _rel_repo.upsert(_retry_conn, _rel, origin="config")
                 except ValueError:
                     pass
 
@@ -1586,7 +1583,6 @@ async def build_org_runtime(
                     config,
                     conn,
                     state.federation_engine,
-                    replace=False,
                     catalog_names=rt.source_catalogs,
                     origin="config",
                 )
@@ -2222,7 +2218,7 @@ class _DebugLogBufferHandler(logging.Handler):
 def _boot_generation(launch: str | None) -> str | None:  # REQ-1900
     """The generation this process's once-per-launch boot work belongs to, or ``None`` for a
     process that is not a worker of a launch. Everything that work is derived from is in it — the
-    control-plane schema, the config as it stands on disk, the engine, the replace mode — so a
+    control-plane schema, the config as it stands on disk, the engine — so a
     worker whose inputs differ from the ones the work was done for does the work itself."""
     if launch is None:
         return None
@@ -2235,7 +2231,6 @@ def _boot_generation(launch: str | None) -> str | None:  # REQ-1900
         schema=hashlib.sha256(schema_sql.encode()).hexdigest(),
         config=read_config_with_includes(path) if path.exists() else None,
         engine=state.federation_engine.name,
-        replace=config_replace_mode(os.environ),
     )
 
 

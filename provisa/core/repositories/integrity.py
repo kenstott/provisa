@@ -510,6 +510,16 @@ async def parts(conn: "Connection", ref: ObjectRef) -> dict[str, int]:
     return counts
 
 
+async def discard(conn: "Connection", ref: ObjectRef) -> None:
+    """Remove ``ref``'s parts and its row WITHOUT asking :func:`guard`: for a caller that has
+    already established it may go — the config loader, once its own check of everything the
+    file dropped has passed."""
+    await remove_parts(conn, ref)
+    kind = KINDS[ref.kind]
+    table = metadata.tables[kind.table]
+    await conn.execute_core(table.delete().where(table.c[kind.key] == ref.id))
+
+
 async def wholes_of(conn: "Connection", ref: ObjectRef) -> set[ObjectRef]:
     """The objects ``ref`` is a part of — what it goes with: a column's table, a row filter's
     table and role. Empty for an object that is nothing's part. For a caller removing several

@@ -90,6 +90,7 @@ async def plane(monkeypatch) -> Database:
                     source_column="id",
                     target_column="id",
                     cardinality="many-to-one",
+                    origin="admin",
                 )
             )
         # sales to sales, through a finance table.
@@ -102,6 +103,7 @@ async def plane(monkeypatch) -> Database:
                 source_column="id",
                 target_column="id",
                 cardinality="many-to-one",
+                origin="admin",
             )
         )
         for name, expression in (
@@ -109,14 +111,18 @@ async def plane(monkeypatch) -> Database:
             ("billed", "SUM(invoices.amount)"),
             ("collected", "SUM(orders.amount) - SUM(invoices.amount)"),
         ):
-            await conn.execute_core(insert(metrics).values(name=name, expression=expression))
+            await conn.execute_core(
+                insert(metrics).values(name=name, expression=expression, origin="admin")
+            )
         for table in (tracked_functions, tracked_webhooks):
             for name, domain_id in (
                 ("of_sales", "sales"),
                 ("of_finance", "finance"),
                 ("of_none", ""),
             ):
-                await conn.execute_core(insert(table).values(name=name, domain_id=domain_id))
+                await conn.execute_core(
+                    insert(table).values(origin="admin", name=name, domain_id=domain_id)
+                )
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "roles", ROLES, raising=False)
     from provisa.core import domain_policy

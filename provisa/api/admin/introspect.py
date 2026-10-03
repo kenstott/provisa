@@ -1756,6 +1756,6 @@ async def register_discovered_routines(  # REQ-887
             description=r.description,
             kind=r.kind,
         )
-        await function_repo.upsert_function(conn, func)
+        await function_repo.upsert_function(conn, func, origin="admin")
         registered += 1
     return registered, skipped

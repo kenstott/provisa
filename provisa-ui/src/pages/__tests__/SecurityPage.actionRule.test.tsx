@@ -59,6 +59,7 @@ vi.mock("../../hooks/useSecurityQueries", () => ({
         actionName: "customer_lookup",
         roleId: "analyst",
         filterExpr: "region = 'east'",
+        origin: "config",
       },
     ],
     loading: false,
@@ -86,6 +87,12 @@ describe("SecurityPage — RLS rules on actions (REQ-1679)", () => {
   it("lists an action-scoped rule with its action", () => {
     render(<SecurityRlsPage />);
     expect(screen.getByTestId("rule-scope-9")).toHaveTextContent("customer_lookup");
+  });
+
+  it("marks a rule a config file declares", () => {
+    // REQ-1919: a load of a file that stops declaring it removes it, so the row says whose it is.
+    render(<SecurityRlsPage />);
+    expect(screen.getByTestId("origin-badge")).toHaveTextContent("declared in config");
   });
 
   it("stages actionName when the scope is an action", async () => {

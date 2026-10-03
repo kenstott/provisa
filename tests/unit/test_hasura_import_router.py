@@ -165,10 +165,9 @@ def _wire_apply(monkeypatch) -> dict:
     """Stand in for the org runtime, recording the settled apply sequence."""
     seen: dict = {"order": []}
 
-    async def _load_config(config, conn, engine, replace, catalog_names, *, origin):  # noqa: ARG001
+    async def _load_config(config, conn, engine, catalog_names, *, origin):  # noqa: ARG001
         seen["order"].append("load_config")
         seen["config"] = config
-        seen["replace"] = replace
         seen["catalog_names"] = catalog_names
         seen["origin"] = origin
 
@@ -214,14 +213,11 @@ async def test_apply_runs_the_settled_sequence(monkeypatch):
     _grant(monkeypatch, {"org_settings"})
     seen = _wire_apply(monkeypatch)
 
-    resp = await ir.apply_import(
-        ir.ImportApplyRequest(config_yaml=CONFIG_YAML, replace=False), _request()
-    )
+    resp = await ir.apply_import(ir.ImportApplyRequest(config_yaml=CONFIG_YAML), _request())
 
     # Catalog names FIRST — sources must register under the org's own engine catalogs (REQ-1266).
     assert seen["order"] == ["catalogs", "load_config", "pools", "pk", "rebuild"]
     assert seen["catalog_names"] == {"pg1": "org_7_pg1"}
-    assert seen["replace"] is False
     # REQ-1919: an import through the admin is not a load of the deployment's file. What it
     # creates is the admin's, and the load takes nothing over and removes nothing.
     assert seen["origin"] == "admin"
@@ -229,17 +225,13 @@ async def test_apply_runs_the_settled_sequence(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_apply_passes_replace_through(monkeypatch):
-    _grant(monkeypatch, {"org_settings"})
-    seen = _wire_apply(monkeypatch)
-    resp = await ir.apply_import(
-        ir.ImportApplyRequest(config_yaml=CONFIG_YAML, replace=True), _request()
-    )
-    assert seen["replace"] is True
-    assert resp.replace is True
+async def test_an_import_offers_no_replace(monkeypatch):
+    """REQ-1919: an import is always a merge. The request has no replace field and the answer
+    reports none."""
+    assert "replace" not in ir.ImportApplyRequest.model_fields
+    assert "replace" not in ir.ImportApplyResponse.model_fields
 
 
-@pytest.mark.asyncio
 async def test_apply_rejects_an_invalid_config(monkeypatch):
     _grant(monkeypatch, {"org_settings"})
     _wire_apply(monkeypatch)

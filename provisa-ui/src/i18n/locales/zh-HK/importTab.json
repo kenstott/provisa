@@ -31,8 +31,6 @@
     "warningLocation": "位置",
     "configHeading": "產生的組態",
     "configHelp": "若轉換判斷有誤，請在套用前編輯——連線資料、網域名稱、角色名稱。您所套用的內容與此處顯示的完全一致。",
-    "replace": "取代現有的語意層",
-    "replaceHelp": "刪除此組態中不存在的每個數據來源、表、角色與規則。保持關閉即可將匯入內容合併至組織現有的組態中。",
     "apply": "套用至本組織",
     "applied": "已套用：{{sources}} 個數據來源、{{tables}} 張表、{{roles}} 個角色。",
     "domainNew": "新網域",

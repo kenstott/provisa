@@ -78,7 +78,6 @@ async def admin_client(monkeypatch):
     # this org, and a merge then puts sample_config's `orders` beside r2-orders' `orders`: this
     # app's own startup failed "Ambiguous table name 'orders'" whenever such a module ran first.
     # The same pin test_compile_endpoint and test_cypher_router_api use for this config.
-    monkeypatch.setenv("PROVISA_CONFIG_REPLACE", "true")
     app = app_mod.create_app()
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)

@@ -64,7 +64,8 @@ def test_the_roles_are_seeded_by_a_creation_and_carried_by_nothing_else():
     # REQ-1539: a new environment needs roles to be usable at all, so a creation seeds them. After
     # that they are the environment's own answer — a merge from an unrestricted dev must not be
     # able to overwrite the restricted `developer` row in the base it merges into.
-    assert ec.SEEDED_AT_CREATION == {"roles", "user_role_assignments"}
+    # REQ-1919: the record of which seeded roles a config file redefined goes with the roles.
+    assert ec.SEEDED_AT_CREATION == {"roles", "user_role_assignments", "seed_redefinitions"}
     assert ec.SEEDED_AT_CREATION < ec.CARRIED
 
 

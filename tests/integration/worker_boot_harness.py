@@ -214,7 +214,6 @@ class WorkerBoot:
             "ORG_ID": _BOOT_ORG,
             "PROVISA_ENGINE": self._engine,
             "PROVISA_CONFIG": str(cfg_path),
-            "PROVISA_CONFIG_REPLACE": "true",
             "PROVISA_IDP": "",
             "PROVISA_DEMO": "false",
             "PROVISA_REDIS_EMBEDDED": "1",

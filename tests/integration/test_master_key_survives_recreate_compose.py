@@ -92,7 +92,6 @@ class _Stack:
             "environment": {
                 "PROVISA_ENGINE": "duckdb",
                 "PROVISA_CONFIG": "/app/config/keytest.yaml",
-                "PROVISA_CONFIG_REPLACE": "true",
                 "PROVISA_DEMO": "false",
                 "PROVISA_IDP": "",
                 "PROVISA_REDIS_EMBEDDED": "1",

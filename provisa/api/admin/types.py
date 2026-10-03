@@ -603,6 +603,9 @@ class RLSRuleType:  # REQ-041, REQ-402, REQ-1679
     domain_id: str | None
     role_id: str
     filter_expr: str
+    # REQ-1919: where the rule came from — "config", "admin" or "seed". A rule a config file
+    # declares is removed by a load of a file that no longer declares it.
+    origin: str
     action_name: str | None = None  # REQ-1679
 
 

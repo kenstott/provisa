@@ -31,8 +31,6 @@
     "warningLocation": "Location",
     "configHeading": "Generated configuration",
     "configHelp": "Edit before applying if the conversion guessed wrong — connection details, domain names, role names. What you apply is exactly what is shown here.",
-    "replace": "Replace the existing semantic layer",
-    "replaceHelp": "Deletes every source, table, role and rule not present in this configuration. Leave off to merge the import into what the organization already has.",
     "apply": "Apply to this organization",
     "applied": "Applied: {{sources}} sources, {{tables}} tables, {{roles}} roles.",
     "domainNew": "new domain",

@@ -18,17 +18,26 @@ from sqlalchemy import delete as _delete, select
 
 from provisa.core.models import DataProduct
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
+from provisa.core.repositories.origin import require as require_origin
+from provisa.core.repositories.origin import take_over
 from provisa.core.schema_org import data_products
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
 
-async def upsert(conn: "Connection", product: DataProduct) -> None:  # REQ-1634
+async def upsert(  # REQ-1634, REQ-1919
+    conn: "Connection", product: DataProduct, *, origin: str
+) -> None:
+    """Create the data product, or replace its definition. ``origin`` says where it comes from
+    (``repositories.origin``): written at CREATE, left alone after, except that a config load
+    takes over an admin-made one."""
+    require_origin(origin)
     await conn.upsert(
         data_products,
         {
             "id": product.id,
+            "origin": origin,  # REQ-1919: on INSERT only
             "domain_id": product.domain_id,
             "name": product.name,
             "owner_role": product.owner_role,
@@ -61,6 +70,14 @@ async def upsert(conn: "Connection", product: DataProduct) -> None:  # REQ-1634
             "publish",
             "custom_properties",
         ],
+    )
+    await take_over(
+        conn,
+        data_products,
+        (data_products.c.id == product.id,),
+        kind="data product",
+        ident=product.id,
+        origin=origin,
     )
 
 

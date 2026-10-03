@@ -146,25 +146,29 @@ async def pg_conn(tenant_db):
     # test module has bootstrapped the org_default schema (e.g. `-m group_sources`
     # deselects the app-boot tests that would otherwise create it), so init_schema
     # is called here too — idempotent (CREATE SCHEMA/TABLE IF NOT EXISTS).
-    await init_schema(tenant_db, _SCHEMA_SQL)
+    #
+    # REQ-1919: the org schema is this module's own. A config load removes what its file no
+    # longer declares, so loading this module's file into the org other modules load a different
+    # file into would judge their models as dropped. A deployment has one file; so does this org.
     async with tenant_db.acquire() as conn:
-        await conn.execute("SET search_path TO org_default")
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_ORG_SCHEMA} CASCADE")
+    await init_schema(tenant_db, _SCHEMA_SQL, org_id=_ORG_ID)
+    async with tenant_db.acquire() as conn:
+        await conn.execute(f"SET search_path TO {_ORG_SCHEMA}")
         yield conn
+
+
+_ORG_ID = "openapipets"
+_ORG_SCHEMA = f"org_{_ORG_ID}"
 
 
 @pytest_asyncio.fixture(scope="module", autouse=True)
 async def _cleanup_mock_source(pg_conn):
-    """Remove all DB state written by load_config calls in this module."""
+    """Remove all DB state written by load_config calls in this module: its org schema, and the
+    landing table the API source filled."""
     yield
-    await pg_conn.execute("DELETE FROM api_endpoints WHERE source_id = 'mock-petstore-api'")
-    await pg_conn.execute("DELETE FROM api_sources WHERE id = 'mock-petstore-api'")
-    await pg_conn.execute("DELETE FROM registered_tables WHERE source_id = 'mock-petstore-api'")
-    await pg_conn.execute("DELETE FROM sources WHERE id = 'mock-petstore-api'")
-    await pg_conn.execute("DELETE FROM domains WHERE id = 'pets'")
-    try:
-        await pg_conn.execute('DROP TABLE IF EXISTS "default"."find_pets_by_status"')
-    except Exception:
-        pass
+    await pg_conn.execute(f"DROP SCHEMA IF EXISTS {_ORG_SCHEMA} CASCADE")
+    await pg_conn.execute('DROP TABLE IF EXISTS "default"."find_pets_by_status"')
 
 
 async def test_default_params_from_spec_extracts_enum_values():
@@ -246,7 +250,7 @@ async def test_openapi_config_load_prepopulates_table_with_enum_defaults(pg_conn
             return_value=httpx.Response(200, json=MOCK_PETS)
         )
 
-        await load_config(config, pg_conn, replace=False, origin="config")
+        await load_config(config, pg_conn, origin="config")
 
     # The PG table should have rows pre-populated from the mock API response
     row_count = await pg_conn.fetchval('SELECT COUNT(*) FROM "default"."find_pets_by_status"')
@@ -269,7 +273,7 @@ async def test_openapi_config_load_registers_api_endpoint(pg_conn):
         rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(
             return_value=httpx.Response(200, json=MOCK_PETS)
         )
-        await load_config(config, pg_conn, replace=False, origin="config")
+        await load_config(config, pg_conn, origin="config")
 
     ep = await pg_conn.fetchrow(
         "SELECT path, source_id FROM api_endpoints WHERE table_name = $1",
@@ -296,7 +300,7 @@ async def test_openapi_config_load_registers_api_source(pg_conn):
         rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(
             return_value=httpx.Response(200, json=MOCK_PETS)
         )
-        await load_config(config, pg_conn, replace=False, origin="config")
+        await load_config(config, pg_conn, origin="config")
 
     src = await pg_conn.fetchrow(
         "SELECT base_url FROM api_sources WHERE id = $1",
@@ -320,7 +324,7 @@ async def test_openapi_config_load_empty_table_when_api_returns_no_rows(pg_conn)
     # OpenAPI endpoint (MOCK_BASE_URL), not a docker-compose service.
     with respx.mock(assert_all_called=False) as rx:
         rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(return_value=httpx.Response(200, json=[]))
-        await load_config(config, pg_conn, replace=False, origin="config")
+        await load_config(config, pg_conn, origin="config")
 
     # Table must exist (even if empty)
     exists = await pg_conn.fetchval(

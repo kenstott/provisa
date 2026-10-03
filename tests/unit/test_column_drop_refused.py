@@ -93,6 +93,7 @@ async def _relate(db: Database) -> None:
                 source_column="customer_id",
                 target_column="id",
                 cardinality="many-to-one",
+                origin="admin",
             )
         )
 
@@ -128,7 +129,7 @@ async def test_the_relationships_views_and_metrics_that_name_a_column(plane):
             origin="admin",
         )
         await conn.execute_core(
-            insert(metrics).values(name="revenue", expression="SUM(orders.amount)")
+            insert(metrics).values(name="revenue", expression="SUM(orders.amount)", origin="admin")
         )
         orders = await _id(plane, "orders")
         view = await _id(plane, "big_orders")
@@ -189,6 +190,7 @@ async def test_a_column_nothing_refers_to_is_dropped_with_its_tags(plane):
                     object_key=f"orders.{column}",
                     table_id=orders,
                     column_name=column,
+                    origin="admin",
                 )
             )
         await table_repo.upsert(
@@ -221,7 +223,9 @@ async def test_a_row_filter_on_the_table_that_names_the_column_blocks_the_drop(p
             insert(roles).values(id="seller", capabilities=[], domain_access=["*"], origin="admin")
         )
         await rls_repo.upsert(
-            conn, RLSRule(table_id="orders", role_id="seller", filter="note = 'public'")
+            conn,
+            RLSRule(table_id="orders", role_id="seller", filter="note = 'public'"),
+            origin="admin",
         )
         stored = (
             await conn.execute_core(select(rls_rules.c.id, rls_rules.c.filter_expr))

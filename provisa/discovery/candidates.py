@@ -112,6 +112,7 @@ async def accept(
                 source_column=row["source_column"],
                 target_column=row["target_column"],
                 cardinality=row["cardinality"],
+                origin="admin",  # REQ-1919: accepting a candidate is made through the admin
             )
         )
 
