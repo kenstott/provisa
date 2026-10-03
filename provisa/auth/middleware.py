@@ -378,6 +378,29 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             ]
         return []
 
+    @staticmethod
+    def _meta_role(acting_set: list[str], org_binding: tuple[str, str | None] | None) -> str:
+        """The meta-role acting as ``acting_set``, built in the request's org runtime."""
+        from provisa.api.app import state as _app_state
+        from provisa.core.request_context import (
+            reset_current_env,
+            reset_current_org,
+            set_current_env,
+            set_current_org,
+        )
+        from provisa.security.meta_role import ensure_meta_role
+
+        if org_binding is None:
+            return ensure_meta_role(_app_state, acting_set)
+        org_token = set_current_org(org_binding[0])
+        env_token = set_current_env(org_binding[1]) if org_binding[1] is not None else None
+        try:
+            return ensure_meta_role(_app_state, acting_set)
+        finally:
+            if env_token is not None:
+                reset_current_env(env_token)
+            reset_current_org(org_token)
+
     async def __call__(self, scope, receive, send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
@@ -398,9 +421,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             return
         # REQ-1682: the RLS session variables this request's predicates resolve against.
         from provisa.core.request_context import (
-            reset_role_claims,
             reset_session_vars,
-            set_role_claims,
             set_session_vars,
         )
 
@@ -412,10 +433,6 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 honor_session_headers=self._provider is None,
             )
         )
-        # REQ-1620: the full acting-role set ("Role: All"), if this request carries more than
-        # one — read by effective_domain_access_role at the one governance injection point
-        # (pgwire._pipeline) so every surface unions domain_access the same way.
-        rc_token = set_role_claims(getattr(request.state, "roles", None))
         from provisa.core.request_context import current_acting_role
 
         ar_token = current_acting_role.set(getattr(request.state, "role", None))
@@ -424,10 +441,12 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 await self.app(scope, receive, send)
         finally:
             reset_session_vars(sv_token)
-            reset_role_claims(rc_token)
             current_acting_role.reset(ar_token)
 
     async def _process(self, request: Request):  # REQ-486
+        # Where this request's org runtime is, when it is not the default one: a meta-role is
+        # built in it (_meta_role).
+        _org_binding: tuple[str, str | None] | None = None
         if request.url.path in _SKIP_PATHS or request.url.path.startswith("/public/invite-info/"):
             return None
 
@@ -451,7 +470,18 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 for r in (request.headers.get("x-provisa-role") or ORG_ADMIN_ROLE).split(",")
                 if r.strip()
             ] or [ORG_ADMIN_ROLE]
-            unsecured_role = unsecured_roles[0]
+            from provisa.security.meta_role import MetaRoleNamed, refuse_named_meta_role
+
+            try:
+                refuse_named_meta_role(unsecured_roles)
+            except MetaRoleNamed as exc:
+                return JSONResponse(status_code=403, content={"detail": str(exc)})
+            # Several roles: the request acts as their meta-role (security/meta_role.py).
+            unsecured_role = (
+                self._meta_role(unsecured_roles, None)
+                if len(set(unsecured_roles)) > 1
+                else unsecured_roles[0]
+            )
             request.state.identity = AuthIdentity(
                 user_id="anonymous",
                 email=None,
@@ -460,7 +490,6 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 raw_claims={},
             )
             request.state.role = unsecured_role
-            request.state.roles = unsecured_roles
             request.state.assignments = [
                 RoleAssignment(role_id=r, domain_id="*") for r in unsecured_roles
             ]
@@ -823,6 +852,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                     active_env = None
 
                 await ensure_org_runtime(active_org_id, active_env)
+                _org_binding = (active_org_id, active_env)
                 org_token = set_current_org(active_org_id)
                 env_token = set_current_env(active_env) if active_env is not None else None
                 try:
@@ -921,7 +951,11 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                         status_code=403,
                         content={"detail": f"Role {requested_role!r} is not assigned to this user"},
                     )
-            if acting_set:
+            if len(acting_set) > 1:
+                # Several held roles: the request acts as their meta-role, an ephemeral child of
+                # all of them built on first use in this model generation (security/meta_role).
+                role = self._meta_role(acting_set, _org_binding)
+            elif acting_set:
                 role = acting_set[0]
 
         # Record last-seen identity in user_profiles (platform control plane) before the request is
@@ -941,10 +975,6 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
 
         request.state.identity = identity
         request.state.role = role
-        # REQ-1620: more than one honoured role is the acting SET, read by the role-claims binding
-        # in __call__; a single role leaves it unset, as before.
-        if len(acting_set) > 1:
-            request.state.roles = acting_set
         request.state.assignments = assignments
         request.state.active_org_id = active_org_id
         return None

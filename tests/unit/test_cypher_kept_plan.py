@@ -211,18 +211,16 @@ def test_the_business_view_is_not_the_ops_view(builds):
 
 
 def test_a_wider_acting_role_set_is_a_different_label_map(builds):
-    """REQ-1620: the HTTP surface widens domain_access to every role the caller is acting as."""
-    from provisa.core.request_context import current_role_claims
-
+    """REQ-1620: a set of held roles acts as its meta-role, whose domain_access is the union;
+    its map is its own, never the narrower member's."""
     state = _state()
     state.roles["analyst"]["domain_access"] = ["sales"]
     state.roles["admin"]["domain_access"] = ["sales", "hr"]
+    meta = "meta:admin+analyst"
+    state.roles[meta] = {"id": meta, "domain_access": ["hr", "sales"]}
+    state.contexts[meta] = _ctx()
     alone = _http_map(state)
-    token = current_role_claims.set(("analyst", "admin"))
-    try:
-        widened = _http_map(state)
-    finally:
-        current_role_claims.reset(token)
+    widened = _http_map(state, meta)
     assert widened is not alone
     assert builds.count == 2
 

@@ -109,9 +109,10 @@ def authorize_role(state, identity, requested: str | None) -> str:
     if not requested:
         return mapped
     permitted = {a.role_id for a in resolve_assignments(identity)} | {mapped}
-    if requested not in permitted:
-        raise PermissionError(f"role {requested!r} is not assigned to this identity")
-    return requested
+    from provisa.security.meta_role import resolve_requested_role
+
+    # One role, or a comma-separated set of held roles acting as their meta-role.
+    return resolve_requested_role(state, permitted, requested)
 
 
 def _bearer(metadata) -> str | None:

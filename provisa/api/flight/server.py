@@ -397,11 +397,13 @@ class ProvisaFlightServer(
         if not requested:
             return mapped
         permitted = {a.role_id for a in resolve_assignments(identity)} | {mapped}
-        if str(requested) not in permitted:
-            raise flight.FlightUnauthenticatedError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-                f"role {str(requested)!r} is not assigned to this identity"
-            )
-        return str(requested)
+        from provisa.security.meta_role import resolve_requested_role
+
+        # One role, or a comma-separated set of held roles acting as their meta-role.
+        try:
+            return resolve_requested_role(self._state, permitted, str(requested))
+        except PermissionError as exc:
+            raise flight.FlightUnauthenticatedError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     # ------------------------------------------------------------------
     # Flight SQL handshake

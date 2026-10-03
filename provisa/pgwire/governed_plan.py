@@ -90,21 +90,11 @@ def governance_settings(state: Any) -> tuple[int, bool]:
     return (default_row_limit(), bool(getattr(state, "security_high", False)))
 
 
-def acting_role_set() -> tuple[str, ...]:
-    """The roles the caller is acting as beyond the one the statement runs as (REQ-1620, "Role:
-    All"), in a canonical order — empty for a single role. Domain access is the union over that
-    set (``security.rights.effective_domain_access_role``), so it is an input of governance."""
-    from provisa.core.request_context import current_role_claims
-
-    claims = current_role_claims.get()
-    return tuple(sorted(set(claims))) if claims and len(claims) > 1 else ()
-
-
 def plan_key(state: Any, stage: str, role_id: str, *body: Any) -> str:
-    """``stage`` + generation + role + acting-role set verbatim; ``body`` (unbounded,
-    caller-authored) hashed. Two stages never share a key, so neither can read the other's value.
-    The acting-role set is in the key because a statement admitted under a wider set's domain
-    access must never be served to a narrower one."""
+    """``stage`` + generation + role verbatim; ``body`` (unbounded, caller-authored) hashed. Two
+    stages never share a key, so neither can read the other's value. A set of held roles acts as
+    its meta-role, whose id is the role here, so a wider set never shares a key with a narrower
+    one."""
     digest = hashlib.sha256(
         json.dumps(body, sort_keys=True, default=str, separators=(",", ":")).encode()
     ).hexdigest()
@@ -114,7 +104,6 @@ def plan_key(state: Any, stage: str, role_id: str, *body: Any) -> str:
             str(state.schema_boot_id),
             str(state.schema_version),
             role_id,
-            ",".join(acting_role_set()),
             digest,
         ]
     )

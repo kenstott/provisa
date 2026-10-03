@@ -318,10 +318,9 @@ def test_a_reused_thread_carries_nothing_from_the_request_before(front):
     from provisa.audit.context import current_audit_identity, set_audit_identity, AuditIdentity
     from provisa.core import request_deadline
     from provisa.core.request_context import (
+        current_acting_role,
         current_org,
-        current_role_claims,
         set_current_org,
-        set_role_claims,
     )
 
     seen: dict[str, tuple] = {}
@@ -330,7 +329,7 @@ def test_a_reused_thread_carries_nothing_from_the_request_before(front):
         return (
             threading.get_ident(),
             current_org.get(),
-            current_role_claims.get(),
+            current_acting_role.get(),
             current_audit_identity(),
             otel_compat._request_detail.get(),
             request_deadline.current(),
@@ -338,7 +337,7 @@ def test_a_reused_thread_carries_nothing_from_the_request_before(front):
 
     async def request_a(scope, receive, send):
         set_current_org("acme")
-        set_role_claims(["steward"])
+        current_acting_role.set("steward")
         set_audit_identity(AuditIdentity("alice", "http"))
         otel_compat.set_trace_detail("debug")
         with request_deadline.within(30.0):
@@ -353,7 +352,7 @@ def test_a_reused_thread_carries_nothing_from_the_request_before(front):
     front(body=[b"a"]).call(RequestThreadMiddleware(request_a, pool=pool))
     front(body=[b"b"]).call(RequestThreadMiddleware(request_b, pool=pool))
     assert seen["a"][0] == seen["b"][0]  # the same thread
-    assert seen["a"][1:4] == ("acme", ("steward",), AuditIdentity("alice", "http"))
+    assert seen["a"][1:4] == ("acme", "steward", AuditIdentity("alice", "http"))
     assert seen["a"][4] == "debug" and seen["a"][5] is not None
     assert seen["b"][1:] == (None, None, None, None, None)
 
