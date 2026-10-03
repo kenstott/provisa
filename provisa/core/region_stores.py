@@ -164,6 +164,7 @@ class RegionLane(NamedTuple):
     endpoint: tuple[str, int] | None
     url: str | None
     materialize_url: str
+    cache_url: str  # the org's response cache and Hot counts in this region
 
 
 _ENDPOINT_KINDS = frozenset({"trino", "trino-byo"})
@@ -205,11 +206,16 @@ def region_lane(
     if here is None:
         raise OrgNotInRegion(org_id, region, [r.id for r in regions])
     declared = {s.id: s for s in stores}
-    for role, store_id in (("engine", here.engine), ("replicas", here.replicas)):
+    for role, store_id in (
+        ("engine", here.engine),
+        ("replicas", here.replicas),
+        ("cache", here.cache),
+    ):
         if store_id not in declared:
             raise StoreNotDeclared(org_id, region, role, store_id)
     require_one_materialize_store(here)
     materialize_url = resolve_secrets(declared[here.replicas].url)
+    cache_url = resolve_secrets(declared[here.cache].url)
     store = declared[here.engine]
     require_engine_kind(region, store)
     assert store.kind is not None  # require_engine_kind refuses a store without one
@@ -221,8 +227,8 @@ def region_lane(
                 f"region {region!r} engine store {store.id!r} is a {store.kind} coordinator and "
                 "needs a host and a port in its URL"
             )
-        return RegionLane(store.kind, (parsed.host, parsed.port), None, materialize_url)
-    return RegionLane(store.kind, None, url, materialize_url)
+        return RegionLane(store.kind, (parsed.host, parsed.port), None, materialize_url, cache_url)
+    return RegionLane(store.kind, None, url, materialize_url, cache_url)
 
 
 def refuse_lane_conflict(

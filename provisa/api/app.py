@@ -174,7 +174,6 @@ class AppState:
     schema_boot_id: str = (
         ""  # random UUID set at startup; combined with schema_version for cache keys
     )
-    response_cache_store: CacheStore = NoopCacheStore()
     # The DEPLOYMENT's default response TTL (cache.default_ttl in the config file). An org may
     # narrow it; the routed `response_cache_default_ttl` property below resolves the org's value
     # over this one. Assigned by _load_and_build, never read directly by the query path.
@@ -306,6 +305,8 @@ class AppState:
         # (which run before any request sets the ContextVar) always have a target.
         self.org_registry = OrgRegistry()
         self.org_registry.set(self.org_id, OrgRuntime(org_id=self.org_id))
+        # The deployment's response cache, until startup builds the configured one (REQ-829).
+        self.response_cache_store = NoopCacheStore()
         # REQ-1909: every AppState is born with its live-read permit store — embedded (per process)
         # until startup rebinds it to the deployment's Redis once redis_url is resolved.
         from provisa.federation.live_concurrency import LivePermitStore
@@ -737,6 +738,34 @@ class AppState:
     @settings_overrides.setter
     def settings_overrides(self, value: dict) -> None:
         self._active_runtime().settings_overrides = value
+
+    def _cache_runtime(self, field_name: str) -> OrgRuntime:
+        """The runtime whose cache store answers for the active org: its own, when its region
+        named one (REQ-1922); otherwise the default runtime, which holds the deployment's. With no
+        platform regions no runtime has its own, and every org is served the deployment's cache
+        (REQ-1922 amendment; REQ-829: one cache store per deployment)."""
+        rt = self._active_runtime()
+        return rt if getattr(rt, field_name) is not None else self._default_runtime()
+
+    @property
+    def response_cache_store(self) -> CacheStore:
+        store = self._cache_runtime("response_cache_store").response_cache_store
+        assert store is not None  # the default runtime always holds the deployment's store
+        return store
+
+    @response_cache_store.setter
+    def response_cache_store(self, value: CacheStore) -> None:
+        self._active_runtime().response_cache_store = value
+
+    @property
+    def hot_counts(self) -> Any:
+        counts = self._cache_runtime("hot_counts").hot_counts
+        assert counts is not None  # the default runtime always holds the deployment's counts
+        return counts
+
+    @hot_counts.setter
+    def hot_counts(self, value: Any) -> None:
+        self._active_runtime().hot_counts = value
 
     @property
     def response_cache_default_ttl(self) -> int:
@@ -1529,6 +1558,7 @@ async def _bind_region_stores(org_id: str, env: str, *, initialise: bool) -> Non
 
     assert state.model_db is not None  # opened with the runtime, before its model was loaded
     cp = load_control_plane(config_path_str())
+    await _bind_region_cache(org_id)
     state.model_db, state.tenant_db, state.record_db = await bind_region_stores(
         org_id,
         env,
@@ -1538,6 +1568,36 @@ async def _bind_region_stores(org_id: str, env: str, *, initialise: bool) -> Non
         schema_sql=(Path(__file__).parent.parent / "core" / "schema.sql").read_text(),
         initialise=initialise,
     )
+
+
+_region_caches: dict[str, tuple[Any, Any]] = {}
+
+
+async def _bind_region_cache(org_id: str) -> None:
+    """REQ-1922: the org's response cache and Hot counts are kept on the cache store its region
+    names (one client per store URL in this process). With no platform regions the runtime keeps
+    none of its own and is served the deployment's (AppState._cache_runtime)."""
+    from provisa.cache.store import NoopCacheStore, RedisCacheStore
+    from provisa.core import settings_registry
+    from provisa.core.region_stores import region_lane
+    from provisa.core.repositories.region import list_regions, list_stores
+    from provisa.federation.replica_hot import HotCounts
+
+    assert state.model_db is not None  # opened with the runtime, before its model was loaded
+    async with state.model_db.acquire() as conn:
+        regions, stores = await list_regions(conn), await list_stores(conn)
+    lane = region_lane(org_id, regions, stores)
+    if lane is None:
+        return
+    if lane.cache_url not in _region_caches:
+        store = (
+            RedisCacheStore(lane.cache_url)
+            if settings_registry.value("cache.enabled")
+            else NoopCacheStore()
+        )
+        _region_caches[lane.cache_url] = (store, HotCounts(lane.cache_url))
+    rt = state._active_runtime()
+    rt.response_cache_store, rt.hot_counts = _region_caches[lane.cache_url]
 
 
 async def _require_org_serves_here(org_id: str) -> None:
@@ -2692,6 +2752,9 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     _shutdown_otel()
 
     await state.response_cache_store.close()
+    for _region_store, _ in _region_caches.values():  # REQ-1922: the regions' cache stores
+        await _region_store.close()
+    _region_caches.clear()
     await state.source_pools.close_all()
     if state.tenant_db:
         await state.tenant_db.close()
