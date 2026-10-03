@@ -171,7 +171,11 @@ def _delta_of(raw: Any) -> Any:
 
     from provisa.core.models import DeltaConfig
 
+    # A JSON column stores Python None as the JSON string "null" (SQLAlchemy JSON type), and the
+    # raw-SQL fetch returns JSON as text — so normalize to a dict or treat as "no delta".
     data = json.loads(raw) if isinstance(raw, str) else raw
+    if not isinstance(data, dict):
+        return None
     return DeltaConfig(**data)
 
 

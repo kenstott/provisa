@@ -111,3 +111,14 @@ def test_delta_round_trips_through_the_control_plane(tmp_path):
     assert t.delta is not None
     assert t.delta.apply == "upsert" and t.delta.rebuild_every == 3600
     engine.dispose()
+
+
+def test_delta_of_treats_json_null_and_non_dict_as_no_delta():
+    # A JSON column stores Python None as the string "null"; the raw-SQL fetch returns it as text.
+    from provisa.federation.registry_view import _delta_of
+
+    assert _delta_of(None) is None
+    assert _delta_of("null") is None
+    assert _delta_of("") is None
+    assert _delta_of('{"apply": "append"}').apply == "append"
+    assert _delta_of({"apply": "upsert"}).apply == "upsert"
