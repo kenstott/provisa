@@ -106,7 +106,16 @@ async def reap_expired(
     than an import because the trail is written through the API's org-scoped tenant database and
     this module is core.
     """
-    at = utcnow() if now is None else now
+    from provisa.core import model_change
+
+    # REQ-1524: whatever a sweep writes to a model is one change, committed when it ends.
+    async with model_change.scope("reap expired environments"):
+        return await _reap(pool, admin_db, utcnow() if now is None else now, audit)
+
+
+async def _reap(
+    pool: "Database", admin_db: "Database", at: datetime, audit: "AuditFn | None"
+) -> list[dict]:
     outcomes: list[dict] = []
     failures: list[tuple[str, str, BaseException]] = []
     kept: list[tuple[str, str, dict[str, int]]] = []

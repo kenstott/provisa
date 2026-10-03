@@ -73,7 +73,9 @@ async def planes(docker_postgres, repos):
     async def add_domain(domain_id, env=PROD):
         scoped = domains.to_metadata(MetaData(), schema=org_schema(org_id, env))
         async with tenant_db.acquire() as conn:
-            await conn.execute_core(scoped.insert().values(id=domain_id, description=domain_id))
+            await conn.execute_core(
+                scoped.insert().values(id=domain_id, description=domain_id, origin="admin")
+            )
 
     async def commit(env=PROD, message="change", actor=ACTOR):
         async with tenant_db.acquire() as conn:

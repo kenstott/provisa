@@ -12,6 +12,7 @@
 
 # Requirements: REQ-041, REQ-402, REQ-403
 
+from provisa.core import model_change
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, select
@@ -49,6 +50,9 @@ async def upsert(  # REQ-041, REQ-402, REQ-686, REQ-1919
 
     ``origin`` says where the rule comes from (``repositories.origin``): written when the rule
     is CREATED and left alone after, except that a config load takes over an admin-made one."""
+    model_change.name(
+        "upsert", "row filter", f"{rule.role_id} on {rule.table_id or rule.domain_id}"
+    )  # REQ-1524
     require_origin(origin)
     filter_enc = _encrypt_filter(rule.filter)
     if rule.action_name:  # REQ-1679
@@ -112,6 +116,7 @@ async def delete(  # REQ-041, REQ-402
     domain_id: str | None = None,
     action_name: str | None = None,
 ) -> bool:
+    model_change.name("delete", "row filter", f"{role_id} on {table_id or domain_id}")  # REQ-1524
     if action_name:  # REQ-1679
         stmt = _delete(rls_rules).where(
             rls_rules.c.action_name == action_name, rls_rules.c.role_id == role_id

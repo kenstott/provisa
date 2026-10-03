@@ -29,6 +29,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 
+from provisa.core import model_change
 from provisa.core.config_location import config_path_str
 from provisa.core.connection_loop import CrossLoopLock, LongLived, run_lifecycle_work
 from provisa.api.data.endpoint import router as data_router
@@ -1190,6 +1191,7 @@ async def _load_and_build(
     _mark("prod-baseline")
 
 
+@model_change.commits_itself  # REQ-1524: commits the model it writes itself
 async def _ensure_environment_baselines() -> None:
     """Give every environment of the booted org the starting point its history is supposed to have.
 
@@ -1536,7 +1538,14 @@ async def build_org_runtime(
         # REQ-1488: the environment IS the schema. Every repository query this runtime issues goes
         # through this handle, so scoping it here is what makes an unmodified repository query read
         # the branch's copy of the model rather than prod's.
-        state.tenant_db = Database(tenant_engine, name="org", search_path=org_schema(org_id, env))
+        from provisa.core.model_change import ModelPlane
+
+        state.tenant_db = Database(
+            tenant_engine,
+            name="org",
+            search_path=org_schema(org_id, env),
+            model=ModelPlane(org_id, env),  # REQ-1524: its model's changes are committed
+        )
 
         schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
         if not schema_sql_path.exists():
@@ -2304,13 +2313,16 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         with control_plane_boot_lock(_cp.resolved_platform_url()) as _boot:
             _applied_elsewhere = _boot.completed(_scope, _boot_generation(_launch))
             if not _applied_elsewhere:
-                await _once_per_launch()
+                # REQ-1524: what the boot writes to the model is one change, committed at its end.
+                async with model_change.scope("boot"):
+                    await _once_per_launch()
                 # Computed again: the work above may have rewritten the config file (the auth
                 # section), and the generation the other workers compute is of the file as it now
                 # stands.
                 _boot.mark_completed(_scope, _boot_generation(_launch))
         if _applied_elsewhere:
-            await _load_and_build(apply=False)
+            async with model_change.scope("boot"):
+                await _load_and_build(apply=False)
         _log.warning(
             "startup phase %-20s %s pid=%d",
             "once-per-launch",
@@ -2517,6 +2529,7 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
                         reset_current_org(_tok)
     state.federation_engine.close()
     if state.admin_db is not None:
+        model_change.detach()
         with tolerate_shutdown_failure("admin_db close"):
             await state.admin_db.close()
 
@@ -3178,6 +3191,12 @@ def create_app() -> FastAPI:
             ):
                 await serve_within_deadline(self._inner, scope, receive, send, deadline)
 
+    # REQ-1524: one HTTP request is one model change. Registered before the transport middleware,
+    # so it runs inside it, on the request's own thread: what the request writes to a model is
+    # committed once, before its response starts, so the caller reads its answer after the commit.
+    from provisa.api.model_change_middleware import ModelChangeMiddleware
+
+    app.add_middleware(ModelChangeMiddleware)
     app.add_middleware(_RequestTransportMiddleware)
 
     from provisa.core.request_thread import RequestThreadMiddleware
