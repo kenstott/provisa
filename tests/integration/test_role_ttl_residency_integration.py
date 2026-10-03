@@ -228,8 +228,7 @@ async def test_an_analyst_serves_a_200s_old_replica(db, builds):
     await _built(db, 200)
     assert (
         await ensure_resident(_state(db, _Backend()), {"s"}, reader_role="analyst", table_ids=_READ)
-        == []
-    )
+    ).built == []
     await builds.drain()
     assert builds.count == 0
     assert await _age(db) >= 199  # the persisted record was not touched
@@ -239,12 +238,11 @@ async def test_a_trader_asks_for_a_build_only_past_the_cache_ttl_floor(db, build
     await _built(db, 30)
     assert (
         await ensure_resident(_state(db, _Backend()), {"s"}, reader_role="trader", table_ids=_READ)
-        == []
-    )
+    ).built == []
     await _built(db, 200)
-    assert await ensure_resident(
-        _state(db, _Backend()), {"s"}, reader_role="trader", table_ids=_READ
-    ) == [("s", "orders")]
+    assert (
+        await ensure_resident(_state(db, _Backend()), {"s"}, reader_role="trader", table_ids=_READ)
+    ).built == [("s", "orders")]
     await builds.drain()
     assert builds.count == 1
     assert await _age(db) < 5  # the build's completion is the persisted state now
@@ -259,4 +257,4 @@ async def test_two_concurrent_trader_reads_share_one_build(db, builds):
     )
     await builds.drain()
     assert builds.count == 1
-    assert first == second == [("s", "orders")]  # both waited for that one build
+    assert first.built == second.built == [("s", "orders")]  # both waited for that one build
