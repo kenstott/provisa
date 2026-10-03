@@ -696,7 +696,7 @@ class TestStoreResponseCache:
             ) as mock_store,
         ):
             await _store_response_cache(
-                state, "ck1", {"data": {}}, "pets", ctx, compiled, None, True
+                state, "ck1", {"data": {"pets": []}}, "pets", ctx, compiled, None, True
             )
         mock_store.assert_called_once()
 
@@ -719,7 +719,7 @@ class TestStoreResponseCache:
             ) as mock_store,
         ):
             await _store_response_cache(
-                state, "ck1", {"data": {}}, "pets", ctx, compiled, None, False
+                state, "ck1", {"data": {"pets": []}}, "pets", ctx, compiled, None, False
             )
         mock_store.assert_not_called()
 
@@ -741,7 +741,7 @@ class TestStoreResponseCache:
             ) as mock_store,
         ):
             await _store_response_cache(
-                state, "ck1", {"data": {}}, "pets", ctx, compiled, None, True
+                state, "ck1", {"data": {"pets": []}}, "pets", ctx, compiled, None, True
             )
         mock_store.assert_not_called()
 
@@ -764,7 +764,7 @@ class TestStoreApiSourceCache:
             ) as mock_store,
         ):
             await _store_api_source_cache(
-                state, "ck1", {"data": {}}, "pets", "pets", ctx, "api1", None, True
+                state, "ck1", {"data": {"pets": []}}, "pets", "pets", ctx, "api1", None, True
             )
         mock_store.assert_called_once()
 

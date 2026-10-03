@@ -269,7 +269,10 @@ async def test_graphql_hit_serves_the_rows_the_miss_stored():
     ``[]`` for every hit (perf bench cache pass: 1000 rows on the miss, 0 on every hit)."""
     import decimal
 
+    from types import SimpleNamespace
+
     from provisa.api.data.endpoint import cached_field_rows
+    from provisa.api.data.endpoint_executors import response_cache_entry
     from provisa.cache.middleware import check_cache, store_result
     from provisa.compiler.sql_types import ColumnRef
     from provisa.executor.serialize import serialize_rows
@@ -281,11 +284,13 @@ async def test_graphql_hit_serves_the_rows_the_miss_stored():
         ColumnRef(None, "amount", "amount", None),
     ]
     response_data = serialize_rows(rows, columns, "pb__orders")
-    await store_result(store, "k", response_data, ttl=60, org_id="org-1")
+    entry = response_cache_entry(response_data, "pb__orders", "pb__orders")
+    await store_result(store, "k", entry, ttl=60, org_id="org-1")
     cached = await check_cache(store, "k", "org-1")
     assert cached is not None
-    assert cached_field_rows(cached, "pb__orders") == response_data["data"]["pb__orders"]
-    assert len(cached_field_rows(cached, "pb__orders")) == 2
+    field = SimpleNamespace(canonical_field="pb__orders")
+    assert cached_field_rows(cached, field) == response_data["data"]["pb__orders"]
+    assert len(cached_field_rows(cached, field)) == 2
 
 
 @pytest.mark.asyncio

@@ -647,14 +647,15 @@ async def _prepare_compiled(
     return compiled, mv_used
 
 
-def cached_field_rows(cached: CachedResult, root_field: str) -> Any:  # REQ-544, REQ-1896
-    """The rows a GraphQL Route.CACHE hit serves for ``root_field``: the MISS stored the whole
-    serialized response (``{"data": {root_field: rows}}``, _store_response_cache) through the typed
-    codec, so the rows sit under ``data`` -> ``root_field`` of the decoded payload. Indexed, not
-    ``.get(..., [])``: a missing key is a writer/reader shape mismatch, and defaulting it served an
-    empty result for every hit."""
+def cached_field_rows(cached: CachedResult, compiled: Any) -> Any:  # REQ-544, REQ-1896
+    """The rows a GraphQL Route.CACHE hit serves for the field ``compiled`` reads. The MISS stored
+    the field's rows alias-free (``{"data": {<field>: rows}}``, ``response_cache_entry``) through
+    the typed codec: the key decides the rows (every alias below the root is in the SQL), so two
+    reads of one field under different aliases share the entry, and the caller places the rows
+    under its own alias. Indexed, not ``.get(..., [])``: a missing key is a writer/reader shape
+    mismatch, and defaulting it served an empty result for every hit."""
     cached_data, _ = decode_cached_result(cached)  # REQ-1896: typed binary, not lossy JSON
-    return cached_data["data"][root_field]
+    return cached_data["data"][compiled.canonical_field]
 
 
 async def _execute_one_field(
@@ -733,7 +734,7 @@ async def _execute_one_field(
         else decision.route.name.lower()
     )
     if decision.route == Route.CACHE and cached is not None:
-        field_rows = cached_field_rows(cached, root_field)
+        field_rows = cached_field_rows(cached, compiled)
         _qs_mod.record(
             field=root_field,
             source="cache",

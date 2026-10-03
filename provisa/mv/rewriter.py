@@ -263,6 +263,7 @@ def rewrite_if_aggregate_match(compiled: CompiledQuery) -> CompiledQuery:  # REQ
         sql=new_sql,
         params=compiled.params,
         root_field=compiled.root_field,
+        canonical_field=compiled.canonical_field,
         columns=compiled.columns,
         sources={mv.target_catalog},
     )
@@ -335,6 +336,7 @@ def _rewrite_to_mv(
         sql=sql,
         params=compiled.params,
         root_field=compiled.root_field,
+        canonical_field=compiled.canonical_field,
         columns=compiled.columns,
         sources=new_sources,
     )
@@ -408,6 +410,7 @@ def _partial_rewrite_to_mv(
         sql=sql,
         params=compiled.params,
         root_field=compiled.root_field,
+        canonical_field=compiled.canonical_field,
         columns=compiled.columns,
         sources=new_sources,
         # A partial rewrite: the statement still reads its other tables (REQ-826).

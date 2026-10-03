@@ -695,6 +695,15 @@ def _operator_ttls(state, root_meta, source_ids) -> list[int]:
     return ttls
 
 
+def response_cache_entry(response_data: dict, root_field: str, canonical_field: str) -> dict:
+    """What the response cache holds for one GraphQL field (REQ-544): its rows under the field
+    itself, not under the alias this request gave it (``root_field``). The key is the field's SQL,
+    which carries every alias below the root but not the root's own, so a read under another
+    alias reaches the same entry and places the rows under its alias
+    (``endpoint.cached_field_rows``)."""
+    return {"data": {canonical_field: response_data["data"][root_field]}}
+
+
 async def _store_response_cache(
     state,
     ck: str,
@@ -723,7 +732,7 @@ async def _store_response_cache(
         await store_result(
             state.response_cache_store,
             ck,
-            response_data,
+            response_cache_entry(response_data, root_field, compiled.canonical_field),
             ttl=ttl,
             table_ids=table_ids,
             org_id=org_id,
@@ -758,7 +767,7 @@ async def _store_api_source_cache(
         await store_result(
             state.response_cache_store,
             ck,
-            response_data,
+            response_cache_entry(response_data, root_field, canonical_field),
             ttl=ttl,
             table_ids=_table_ids,
             org_id=org_id,
