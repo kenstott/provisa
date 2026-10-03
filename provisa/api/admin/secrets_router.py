@@ -105,11 +105,11 @@ def _personal_owner(request: Request, org_id: str) -> str:
 
 async def _audit(org_id: str, actor: str | None, action: str, name: str) -> None:
     """Record the act -- the NAME and who acted, never the value, not even its length."""
-    from provisa.api.admin.orgs_router import _org_tenant_db
+    from provisa.api.admin.orgs_router import _org_model_db
     from provisa.core.org_membership import record_admin_action
 
     await record_admin_action(
-        await _org_tenant_db(org_id),
+        await _org_model_db(org_id),
         action=action,
         actor_id=actor or "anonymous",
         subject_id=name,
@@ -205,14 +205,14 @@ async def _environment_planes(org_id: str) -> dict[str, Database]:
     planes: dict[str, Database] = {}
     for env in await list_envs(_admin_pool(), org_id):
         runtime = await ensure_org_runtime(org_id, env["name"])
-        if runtime.tenant_db is None:
+        if runtime.model_db is None:
             raise ApiError(
                 409,
                 "orgs.no_tenant_runtime",
                 f"Org {org_id!r} has no tenant runtime — it may still be provisioning.",
                 org=org_id,
             )
-        planes[env["name"]] = runtime.tenant_db
+        planes[env["name"]] = runtime.model_db
     return planes
 
 

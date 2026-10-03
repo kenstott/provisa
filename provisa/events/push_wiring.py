@@ -129,7 +129,7 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
     skipped, so calling this again after a runtime re-wire (e.g. a new table registered) only
     starts listeners for tables that don't have one yet. Returns the tasks started THIS call
     (empty on a pure re-wire where every push table already has a listener)."""
-    db = getattr(state, "tenant_db", None)
+    db = getattr(state, "model_db", None)
     engine = getattr(state, "federation_engine", None)
     if db is None or engine is None:
         return []

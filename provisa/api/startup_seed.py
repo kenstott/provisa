@@ -716,10 +716,10 @@ async def _init_control_planes(
     from provisa.core.environments import PROD, org_schema
     from provisa.core.model_change import ModelPlane
 
-    from provisa.core.database import org_store_handles
+    from provisa.core.region_stores import open_org_stores
 
-    state.model_db, state.tenant_db = org_store_handles(
-        tenant_engine, org_schema(org_id, PROD), ModelPlane(org_id, PROD)
+    state.model_db, state.tenant_db, state.record_db = open_org_stores(
+        org_schema(org_id, PROD), ModelPlane(org_id, PROD), model_engine=tenant_engine
     )
     state.admin_db = await bring_up_platform(
         cp.resolved_platform_url(),
@@ -727,6 +727,12 @@ async def _init_control_planes(
         pool_min=cp.pool_min,
         org_id=org_id,
         initialise=initialise,
+    )
+    # REQ-1916/1922: the platform state store, in the platform database, behind its own handle.
+    from provisa.core.database import Database
+
+    state.platform_state_db = Database(
+        state.admin_db.engine, name="platform-state", holds="platform_state"
     )
     # REQ-1900: settings changed through the admin API are rows in this control plane; every
     # reader in this process resolves them from it (provisa/core/deployment_settings.py).
@@ -750,11 +756,14 @@ async def _init_control_planes(
     if not schema_sql_path.exists():
         raise RuntimeError(f"control-plane schema.sql missing from the package: {schema_sql_path}")
     if initialise:
-        await init_schema(state.tenant_db, schema_sql_path.read_text(), org_id=org_id)
+        # The org's schema in the control plane's tenant database, which holds its model. With
+        # platform regions its state and record stores are laid out once the model names them
+        # (provisa/core/region_stores.py).
+        await init_schema(state.model_db, schema_sql_path.read_text(), org_id=org_id)
 
         from provisa.audit.query_log import init_audit_schema
 
-        await init_audit_schema(state.tenant_db, org_id=org_id)
+        await init_audit_schema(state.model_db, org_id=org_id)
 
     host, port, database, username, _pw = cp.tenant_parts()
     # Every backend identifies a database (a PG database name, a SQLite file path, …).

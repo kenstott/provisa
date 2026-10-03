@@ -1467,9 +1467,9 @@ async def _execute_cypher(
     assembled = assemble_rows(raw_rows, graph_vars)
     serializable = [to_serializable(r) for r in assembled]
 
-    _tenant_db = getattr(app_state, "tenant_db", None)
-    await register_node_ids(serializable, _tenant_db)
-    await register_rel_ids(serializable, _tenant_db)
+    _model_db = getattr(app_state, "model_db", None)  # REQ-1922: graph ids are org-wide
+    await register_node_ids(serializable, _model_db)
+    await register_rel_ids(serializable, _model_db)
 
     columns = list(raw_rows[0].keys()) if raw_rows else []
     rows = [[row.get(col) for col in columns] for row in serializable]

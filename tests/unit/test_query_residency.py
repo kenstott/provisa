@@ -191,7 +191,8 @@ def _state(sources, tables, backend, plane):
     return SimpleNamespace(
         federation_engine=engine,
         config=SimpleNamespace(sources=sources, tables=tables),
-        tenant_db=_Db(plane),
+        model_db=(_one_db := _Db(plane)),
+        tenant_db=_one_db,
         replica_routes=ReplicaRoutes(floored=_floored(sources, tables)),
     )
 

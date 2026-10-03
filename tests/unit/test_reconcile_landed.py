@@ -92,7 +92,9 @@ def _state(cfg, registered, monkeypatch):
         return []
 
     monkeypatch.setattr("provisa.core.repositories.source.list_all", _no_ui_sources)
-    return SimpleNamespace(config=cfg, tenant_db=_fake_tenant_db(), org_id="acme")
+    return SimpleNamespace(
+        config=cfg, model_db=(_one_db := _fake_tenant_db()), tenant_db=_one_db, org_id="acme"
+    )
 
 
 @pytest.mark.asyncio

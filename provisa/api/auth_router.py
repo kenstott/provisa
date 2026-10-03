@@ -706,7 +706,7 @@ async def register(body: RegisterRequest):
         role_rt = (
             rt if pinned_env is None else await ensure_org_runtime(invite["org_id"], pinned_env)
         )
-        assert role_rt.tenant_db is not None
+        assert role_rt.model_db is not None
         await seat_redeemed_roles(role_rt.model_db, user_id, role_id)
         # REQ-1599: if platform_admin, seat in sandbox org
         from provisa.api.sandbox_org import reseat_after_conferral
@@ -809,7 +809,7 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
         role_rt = (
             rt if pinned_env is None else await ensure_org_runtime(invite["org_id"], pinned_env)
         )
-        assert role_rt.tenant_db is not None
+        assert role_rt.model_db is not None
         await seat_redeemed_roles(role_rt.model_db, user_id, role_id)
         # REQ-1599: an invitation is the other way platform_admin is conferred, and a new administrator
         # is owed the sandbox org the same as the claimant is.
@@ -943,7 +943,7 @@ async def delete_account(request: Request, confirm: str | None = None):
     The removal itself is ``org_membership.remove_account`` — the one an administrator with the
     cross-org right uses too. The person's tokens for each org are revoked with the membership.
     """
-    from provisa.api.admin.orgs_router import _admin_pool, _org_model_db, _org_tenant_db
+    from provisa.api.admin.orgs_router import _admin_pool, _org_model_db, _org_record_db
     from provisa.api.app import state
     from provisa.core.org_membership import AccountRemovalRefused, remove_account
 
@@ -968,7 +968,7 @@ async def delete_account(request: Request, confirm: str | None = None):
             state.model_db,
             user_id,
             model_db_of=_org_model_db,
-            tenant_db_of=_org_tenant_db,
+            record_db_of=_org_record_db,
         )
     except AccountRemovalRefused as refused:
         if refused.reason == "last_org_admin":

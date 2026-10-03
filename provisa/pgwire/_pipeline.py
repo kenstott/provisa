@@ -2844,10 +2844,10 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
 
         result = await _execute_govdata(plan.source_id, plan.sql, state)
     elif plan.source_id == "provisa-admin" or not state.source_pools.has(plan.source_id):
-        # Admin-owned tables (meta.*) live in the provisa tenant_db, not source_pools.
-        tenant_db = state.tenant_db
+        # Admin-owned tables (meta.*) are views over the org's model (REQ-1919): its model store.
+        tenant_db = state.model_db
         if tenant_db is None:
-            raise RuntimeError("Admin tenant_db not available")
+            raise RuntimeError("Admin model_db not available")
         # REQ-1425: the admin terminal is a query terminal like any other — it emits the same
         # provisa.query.* span so meta/ops statements reach the ops queries report.
         _span_name = "provisa.query.postgres" if plan.span_attrs else "admin.execute"

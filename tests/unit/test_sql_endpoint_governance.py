@@ -79,7 +79,9 @@ async def sql_client(monkeypatch):
 
     monkeypatch.setattr("provisa.audit.query_log.log_queries", _log_queries)
     _prev_tenant_db = app_mod.state.tenant_db
+    _prev_record_db = app_mod.state.record_db
     app_mod.state.tenant_db = MagicMock()
+    app_mod.state.record_db = app_mod.state.tenant_db
 
     # REQ-1909: every plan asks the registry which of its sources carry a live-read cap. The
     # stand-in tenant database holds no registered source.
@@ -142,6 +144,7 @@ async def sql_client(monkeypatch):
 
     app_mod.state.auth_config = _prev_auth_config
     app_mod.state.tenant_db = _prev_tenant_db
+    app_mod.state.record_db = _prev_record_db
     app_mod.state.schemas = {}
     app_mod.state.contexts = {}
     app_mod.state.rls_contexts = {}

@@ -89,7 +89,9 @@ async def sql_client(monkeypatch):
     monkeypatch.setattr("provisa.audit.query_log.log_queries", _log_queries)
     _prev_tenant_db = app_mod.state.tenant_db
     _prev_model_db = app_mod.state.model_db
+    _prev_record_db = app_mod.state.record_db
     app_mod.state.tenant_db = MagicMock()
+    app_mod.state.record_db = app_mod.state.tenant_db
     app_mod.state.model_db = app_mod.state.tenant_db
 
     # The stand-in tenant database holds no source registry; routing reads the operator floor from
@@ -145,6 +147,7 @@ async def sql_client(monkeypatch):
     app_mod.state.auth_config = _prev_auth_config
     app_mod.state.tenant_db = _prev_tenant_db
     app_mod.state.model_db = _prev_model_db
+    app_mod.state.record_db = _prev_record_db
     app_mod.state.schemas = {}
     app_mod.state.contexts = {}
     app_mod.state.rls_contexts = {}
@@ -708,6 +711,7 @@ class TestExecuteGovdata:
         conn = SimpleNamespace(execute_core=AsyncMock(return_value=fake_result))
         state = SimpleNamespace(
             model_db=(_one_db := SimpleNamespace(acquire=lambda: _FakeAcquireCtx(conn))),
+            record_db=_one_db,
             tenant_db=_one_db,
         )
         with pytest.raises(HTTPException) as exc_info:
@@ -724,6 +728,7 @@ class TestExecuteGovdata:
         conn = SimpleNamespace(execute_core=AsyncMock(return_value=fake_result))
         state = SimpleNamespace(
             model_db=(_one_db := SimpleNamespace(acquire=lambda: _FakeAcquireCtx(conn))),
+            record_db=_one_db,
             tenant_db=_one_db,
         )
 
@@ -756,6 +761,7 @@ class TestExecuteGovdata:
         conn = SimpleNamespace(execute_core=AsyncMock(return_value=fake_result))
         state = SimpleNamespace(
             model_db=(_one_db := SimpleNamespace(acquire=lambda: _FakeAcquireCtx(conn))),
+            record_db=_one_db,
             tenant_db=_one_db,
         )
 

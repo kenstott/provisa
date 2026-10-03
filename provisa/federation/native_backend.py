@@ -131,7 +131,7 @@ class NativeEngineBackend(EngineBackend):
         # replica (REQ-1912) — removed once, whichever process created it.
         self._detached: set[tuple[str, str, str]] = set()
         # The registry state the last complete walk covered: the identities of (config,
-        # runtime_sources, tables, tenant_db). A schema rebuild REPLACES those objects (app.py
+        # runtime_sources, tables, model_db). A schema rebuild REPLACES those objects (app.py
         # publishes a new source map and a new table list; nothing mutates them in place), so an
         # unchanged identity means there is nothing new to attach and the walk is skipped.
         self._walked: tuple[Any, Any, Any, Any] | None = None
@@ -227,7 +227,7 @@ class NativeEngineBackend(EngineBackend):
             getattr(state, "config", None),
             getattr(state, "runtime_sources", None),
             getattr(state, "tables", None),
-            getattr(state, "tenant_db", None),
+            getattr(state, "model_db", None),
         )
 
     async def _attached_runtime(self, state: Any) -> Any:
@@ -254,7 +254,7 @@ class NativeEngineBackend(EngineBackend):
         was committed since the last one (``attach_control_plane``: a table registered after
         startup is visible to the very next query). That check is per query by design and is not
         part of the registry walk; a PostgreSQL control plane is attached live, once, by the walk."""
-        tdb = getattr(state, "tenant_db", None)
+        tdb = getattr(state, "model_db", None)
         if (
             tdb is not None
             and getattr(tdb, "dialect", None) == "sqlite"
@@ -406,7 +406,7 @@ class NativeEngineBackend(EngineBackend):
         # meta/ops entities resolve (parity with Trino, where provisa_admin is a real catalog). The
         # attach is live, so once is enough; the SQLite control plane is a snapshot and is handled
         # per query by _refresh_control_plane_snapshot.
-        tdb = getattr(state, "tenant_db", None)
+        tdb = getattr(state, "model_db", None)
         if (
             tdb is not None
             and getattr(tdb, "dialect", None) == "postgresql"
@@ -648,7 +648,7 @@ class NativeEngineBackend(EngineBackend):
         the "on MV creation" hook. A store without the metadata hook (enforcing) gets none."""
         if not hasattr(runtime, "reconcile_landed_metadata"):
             return
-        tdb = getattr(state, "tenant_db", None)
+        tdb = getattr(state, "model_db", None)
         if tdb is None:
             return
         from provisa.api.admin.db_queries import fetch_tables

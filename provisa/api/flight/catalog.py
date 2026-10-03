@@ -95,7 +95,7 @@ def build_catalog_tables(state) -> list[CatalogTable]:  # REQ-127, REQ-128
     """
     import asyncio
 
-    if not state.tenant_db:
+    if not state.model_db:
         return []
 
     loop = asyncio.new_event_loop()

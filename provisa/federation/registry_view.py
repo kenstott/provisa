@@ -56,7 +56,7 @@ async def registered_sources(state: Any, conn: Any | None = None) -> list[Source
 
     config = getattr(state, "config", None)
     by_id: dict[str, Source] = {s.id: s for s in (getattr(config, "sources", None) or [])}
-    db = getattr(state, "tenant_db", None)
+    db = getattr(state, "model_db", None)
     if db is None:
         return list(by_id.values())
     if conn is not None:
@@ -139,7 +139,7 @@ async def registered_tables(state: Any, conn: Any | None = None) -> list[Any]:  
         (t.source_id, apply_sql_name(t.table_name)): t
         for t in (getattr(config, "tables", None) or [])
     }
-    db = getattr(state, "tenant_db", None)
+    db = getattr(state, "model_db", None)
     if db is None:
         return []
     if conn is not None:

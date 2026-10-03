@@ -806,14 +806,14 @@ def _system_prompt(current_route: str | None) -> str:
 async def _effective_config(state: Any) -> dict:
     """The acting org's resolved config (REQ-1349) for vendor/model/endpoint lookups.
 
-    Delegates to mcp_tools.effective_config when an org context (state.tenant_db) is bound, so an
+    Delegates to mcp_tools.effective_config when an org context (state.model_db) is bound, so an
     org's ai_models.mcp_chat/ai_endpoints choice made through the AI Models UI is honored on the
-    very next chat turn, no restart. With no tenant_db bound, reads the bare deployment file
+    very next chat turn, no restart. With no model_db bound, reads the bare deployment file
     (read_config()) — the same fallback this module's functions always used before REQ-1349 wiring,
     kept distinct from mcp_tools.effective_config's own fallback (state.config) because chat.py's
     tests configure the deployment file via PROVISA_CONFIG, not a fake state.config object."""
-    tenant_db = getattr(state, "tenant_db", None)
-    if tenant_db is None:
+    model_db = getattr(state, "model_db", None)
+    if model_db is None:
         from provisa.api.admin._config_io import read_config
 
         return read_config()

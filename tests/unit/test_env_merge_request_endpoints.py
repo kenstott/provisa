@@ -105,7 +105,7 @@ def wired(monkeypatch):
     async def _audit(org_id, actor, action, name, detail):
         calls["audit"].append((org_id, actor, action, name, detail))
 
-    async def _org_tenant_db(org_id):
+    async def _org_model_db(org_id):
         return "tenant-db-for-" + org_id
 
     monkeypatch.setattr(er, "_member", _member)
@@ -139,7 +139,7 @@ def wired(monkeypatch):
     monkeypatch.setattr(er, "_state", _State)
     from provisa.api.admin import orgs_router
 
-    monkeypatch.setattr(orgs_router, "_org_tenant_db", _org_tenant_db)
+    monkeypatch.setattr(orgs_router, "_org_model_db", _org_model_db)
     return calls
 
 

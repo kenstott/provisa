@@ -72,29 +72,27 @@ def _caller_user_id(request: Request) -> str | None:
     return None if user_id in (None, "anonymous") else user_id
 
 
-async def _org_tenant_db(org_id: str) -> Database:  # REQ-1305
-    """The Database scoped to ``org_<org_id>``'s schema, building the org runtime if needed.
-
-    Every two-plane operation writes tenant rows through this: user_role_assignments and the org's
-    admin_audit_log live inside the org's own schema, so the process-global state.tenant_db (which
-    points at whichever org the request resolved) is the wrong handle for acting on another org.
-    """
+async def _org_record_db(org_id: str) -> Database:  # REQ-1305, REQ-1922
+    """The RECORD of ``org_<org_id>`` in this node's region (its query_audit_log), building the
+    org runtime if needed. The process-global ``state.record_db`` points at whichever org the
+    request resolved, so it is the wrong handle for acting on another org."""
     from provisa.api.app import ensure_org_runtime
 
     rt = await ensure_org_runtime(org_id)
-    if rt.tenant_db is None:
+    if rt.record_db is None:
         raise ApiError(
             409,
             "orgs.no_tenant_runtime",
             f"Org {org_id!r} has no tenant runtime — it may still be provisioning.",
             org=org_id,
         )
-    return rt.tenant_db
+    return rt.record_db
 
 
 async def _org_model_db(org_id: str) -> Database:  # REQ-1305, REQ-1919
     """The MODEL store of ``org_<org_id>`` (its roles and role assignments), building the org
-    runtime if needed — the model-side twin of :func:`_org_tenant_db`."""
+    runtime if needed. The process-global ``state.model_db`` points at whichever org the request
+    resolved, so it is the wrong handle for acting on another org."""
     from provisa.api.app import ensure_org_runtime
 
     rt = await ensure_org_runtime(org_id)
@@ -894,7 +892,7 @@ async def export_org_config(org_id: str, request: Request):  # REQ-1304
         exists = await conn.execute_core(select(orgs.c.id).where(orgs.c.id == org_id))
         if exists.fetchone() is None:
             raise ApiError(404, "orgs.not_found", "Org not found")
-    await _org_tenant_db(org_id)  # bind the org's runtime before the exporter reads state
+    await _org_model_db(org_id)  # bind the org's runtime before the exporter reads state
     token = set_current_org(org_id)
     try:
         yaml_text = await build_live_config_yaml()
@@ -1037,7 +1035,7 @@ async def list_members(org_id: str, request: Request):  # REQ-042, REQ-059, REQ-
     from provisa.core.org_membership import org_admin_user_ids
 
     await _require_org_admin(request, org_id, allow_cross_org=False)  # REQ-1605
-    admin_ids = await org_admin_user_ids(await _org_tenant_db(org_id))
+    admin_ids = await org_admin_user_ids(await _org_model_db(org_id))
     pool = _admin_pool()
     async with pool.acquire() as conn:
         result = await conn.execute_core(

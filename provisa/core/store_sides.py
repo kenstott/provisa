@@ -42,6 +42,21 @@ from provisa.core.env_classes import (
 
 MODEL_SIDE = "model"
 STATE_SIDE = "state"
+RECORD_SIDE = "record"
+PLATFORM_STATE_SIDE = "platform_state"
+
+#: The handle that holds each side: the org's three (``OrgRuntime``) and the deployment's one
+#: (``AppState.platform_state_db``).
+HANDLE = {
+    MODEL_SIDE: "model_db",
+    STATE_SIDE: "tenant_db",
+    RECORD_SIDE: "record_db",
+    PLATFORM_STATE_SIDE: "platform_state_db",
+}
+
+#: Per (org, region): the request record (REQ-1922: the state store and the record are per org
+#: and region; a region names the store its record is kept in, which may be its state store).
+RECORD: frozenset[str] = frozenset({"query_audit_log", "query_sla_log"})
 
 #: Per (org, region): what one region does.
 STATE: frozenset[str] = frozenset(
@@ -51,9 +66,6 @@ STATE: frozenset[str] = frozenset(
         "preserved_snapshots",
         "mv_refresh_log",
         "mv_delta_ledger",
-        # The record (REQ-1922: the state store and the record are per org and region).
-        "query_audit_log",
-        "query_sla_log",
         # The region's serving: change events and their delivery, live queries, freshness, and
         # what this region's nodes read of its sources.
         "events",
@@ -71,10 +83,25 @@ BOTH: frozenset[str] = frozenset({"config_stamp"})
 
 _ORG_TABLES = CARRIED | IDENTITY_ONLY | NEVER_SENSITIVE | NEVER_RUNTIME | PARTIAL
 
+#: The deployment's own operating state, in the platform database (``provisa/core/platform_state``).
+#: Not an org table: no org handle reaches it, and its handle reaches no org table.
+from provisa.core.platform_state import TABLES as PLATFORM_STATE  # noqa: E402
+
 TABLES: dict[str, frozenset[str]] = {
-    MODEL_SIDE: _ORG_TABLES - STATE - BOTH,
+    MODEL_SIDE: _ORG_TABLES - STATE - RECORD - BOTH,
     STATE_SIDE: STATE,
+    RECORD_SIDE: RECORD,
+    PLATFORM_STATE_SIDE: PLATFORM_STATE,
 }
+
+
+def side_of(table: str) -> str:
+    """The side an org table is kept on (one of :data:`TABLES`' keys)."""
+    for side, tables in TABLES.items():
+        if table in tables:
+            return side
+    raise KeyError(f"{table!r} is kept in more than one store or is no org table")
+
 
 # A table a raw statement names: after FROM / JOIN / INTO / UPDATE / TABLE, optionally
 # schema-qualified and quoted. Over-matching (a column called "from") only names an identifier
@@ -122,6 +149,8 @@ def statement_tables(stmt: Any) -> frozenset[str]:
 
 
 def foreign_tables(holds: str, stmt: Any) -> frozenset[str]:
-    """The tables ``stmt`` touches that belong to the other store than ``holds``."""
-    other = STATE_SIDE if holds == MODEL_SIDE else MODEL_SIDE
-    return statement_tables(stmt) & TABLES[other]
+    """The tables ``stmt`` touches that another store than ``holds`` keeps."""
+    touched = statement_tables(stmt)
+    return frozenset().union(
+        *(touched & tables for side, tables in TABLES.items() if side != holds)
+    )

@@ -174,7 +174,7 @@ async def test_platform_admin_alone_is_refused_the_admin_data_routes(monkeypatch
     def _reached(*_a, **_k):
         raise AssertionError("the route read its store: the gate let the caller through")
 
-    monkeypatch.setattr(audit_query_text_router, "_tenant_pool", _reached)
+    monkeypatch.setattr(audit_query_text_router, "_record_pool", _reached)
     monkeypatch.setattr(roles_router, "_pool", _reached)
     monkeypatch.setattr(local_users_router, "_pool", _reached)
     monkeypatch.setattr(local_users_router, "_admin_pool", _reached)
@@ -357,7 +357,7 @@ async def test_the_bootstrap_administrator_keeps_both_planes(monkeypatch):
     def _past_the_gate():
         raise RuntimeError("past the gate")
 
-    monkeypatch.setattr(audit_query_text_router, "_tenant_pool", _past_the_gate)
+    monkeypatch.setattr(audit_query_text_router, "_record_pool", _past_the_gate)
     with pytest.raises(RuntimeError, match="past the gate"):
         await audit_query_text_router.read_statement_text(req, 1)
 

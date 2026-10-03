@@ -71,7 +71,7 @@ def wired(monkeypatch):
     async def _audit(org_id, actor, action, name, detail):
         calls["audit"].append((org_id, actor, action, name, detail))
 
-    async def _org_tenant_db(org_id):
+    async def _org_model_db(org_id):
         return "tenant-db-for-" + org_id
 
     async def _member_count(org_id):
@@ -118,7 +118,7 @@ def wired(monkeypatch):
         calls["position"].append((org_id, name, deployed_sha, redo_sha))
 
     monkeypatch.setattr("provisa.core.env_store.set_position", set_position)
-    monkeypatch.setattr(orgs_router, "_org_tenant_db", _org_tenant_db)
+    monkeypatch.setattr(orgs_router, "_org_model_db", _org_model_db)
     monkeypatch.setattr(env_repo, "resolve_sha", resolve_sha)
     monkeypatch.setattr(env_repo, "files_at", files_at)
     return calls
